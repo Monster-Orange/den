@@ -18,6 +18,7 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import {
+  HOST_RESTART_NOTE,
   hostStale,
   refreshSessionHost,
   type RefreshDeps,
@@ -113,7 +114,7 @@ function installModule(root: string, version: string): PtyModuleInfo {
 
 function startHost(
   state: string,
-  env: { pty?: PtyModuleInfo | null; den?: string },
+  env: { pty?: PtyModuleInfo | null; den?: string; code?: string },
 ): void {
   const child = spawn(
     process.execPath,
@@ -126,6 +127,7 @@ function startHost(
         ...process.env,
         ...(env.pty ? { DEN_TEST_PTY: JSON.stringify(env.pty) } : {}),
         ...(env.den !== undefined ? { DEN_TEST_DEN: env.den } : {}),
+        ...(env.code !== undefined ? { DEN_TEST_CODE: env.code } : {}),
       },
     },
   );
@@ -145,13 +147,25 @@ async function connectWithin(socket: string, ms = 20_000): Promise<HostClient> {
   }
 }
 
-/** A host from before issue 563: its hello says nothing of what it runs. */
-function oldHost(socket: string): Promise<void> {
+/**
+ * A host from before issue 563: its hello says nothing of what it runs.
+ * `den`: one from 563 to 597, that says its version but not its code.
+ */
+function oldHost(socket: string, den?: string): Promise<void> {
   const server = net.createServer((s) => {
     const r = new LineReader((line) => {
       const q = JSON.parse(line) as { id: number; op: string };
       if (q.op === "hello")
-        s.write(frame({ id: q.id, ok: true, v: 1, pid: 4242, startedAt: "x" }));
+        s.write(
+          frame({
+            id: q.id,
+            ok: true,
+            v: 1,
+            pid: 4242,
+            startedAt: "x",
+            ...(den !== undefined ? { den, pty: null } : {}),
+          }),
+        );
       else if (q.op === "list")
         s.write(frame({ id: q.id, ok: true, sessions: [] }));
       else if (q.op === "shutdown") {
@@ -174,10 +188,15 @@ function oldHost(socket: string): Promise<void> {
 function rig(
   state: string,
   socket: string,
-  installed: () => { den: string | null; pty: PtyModuleInfo | null },
+  installed: () => {
+    den: string | null;
+    code: string | null;
+    pty: PtyModuleInfo | null;
+  },
   over: Partial<RefreshDeps> = {},
 ) {
   const resumed: string[] = [];
+  const notes: [string, string | null][] = [];
   const logs: string[] = [];
   const deps: RefreshDeps = {
     connectExisting: async () => {
@@ -193,7 +212,12 @@ function rig(
     connect: () =>
       ensureHost({
         socket,
-        spawnHost: () => startHost(state, { pty: installed().pty }),
+        spawnHost: () =>
+          startHost(state, {
+            pty: installed().pty,
+            code: installed().code ?? "",
+            den: installed().den ?? "",
+          }),
       }),
     socket,
     installed,
@@ -201,11 +225,14 @@ function rig(
     busy: async () => [],
     waitMs: 60_000,
     pollMs: 50,
-    resume: async (id) => void resumed.push(id),
+    resume: async (id, note) => {
+      resumed.push(id);
+      notes.push([id, note]);
+    },
     log: (l) => void logs.push(l),
     ...over,
   };
-  return { deps, resumed, logs };
+  return { deps, resumed, notes, logs };
 }
 
 describe("issue 563: the terminal host after an update", () => {
@@ -213,7 +240,7 @@ describe("issue 563: the terminal host after an update", () => {
     const { state, socket } = setup();
     const dist = path.join(tmp, "dist");
     const before = installModule(dist, "1.1.0");
-    startHost(state, { pty: before });
+    startHost(state, { pty: before, code: "c1" });
     const c0 = await connectWithin(socket);
     const pid0 = c0.hostPid;
     c0.close();
@@ -221,7 +248,7 @@ describe("issue 563: the terminal host after an update", () => {
     const now = installModule(dist, "1.2.0-beta.18");
     expect(fileIdentity(before.path)).not.toBe(before.id);
 
-    const r = rig(state, socket, () => ({ den: null, pty: now }));
+    const r = rig(state, socket, () => ({ den: null, code: "c1", pty: now }));
     const res = await refreshSessionHost(r.deps);
     expect(res.did).toBe("restarted");
     const c1 = await connectHost(socket);
@@ -234,11 +261,11 @@ describe("issue 563: the terminal host after an update", () => {
   it("a host current with what is installed is left alone", async () => {
     const { state, socket } = setup();
     const now = installModule(path.join(tmp, "dist"), "1.1.0");
-    startHost(state, { pty: now, den: "9.9.9" });
+    startHost(state, { pty: now, den: "9.9.9", code: "c1" });
     const c0 = await connectWithin(socket);
     const pid0 = c0.hostPid;
     c0.close();
-    const r = rig(state, socket, () => ({ den: "9.9.9", pty: now }));
+    const r = rig(state, socket, () => ({ den: "9.9.9", code: "c1", pty: now }));
     expect((await refreshSessionHost(r.deps)).did).toBe("current");
     const c1 = await connectHost(socket);
     expect(c1.hostPid).toBe(pid0);
@@ -246,20 +273,14 @@ describe("issue 563: the terminal host after an update", () => {
     expect(r.resumed).toEqual([]);
   }, 60_000);
 
-  it("a host on another version restarts, after the agents mid-turn are idle", async () => {
+  it("a host whose code changed restarts, after the agents mid-turn are idle", async () => {
     const { state, socket } = setup();
-    startHost(state, { den: "1.0.0" });
+    startHost(state, { den: "1.0.0", code: "c1" });
     (await connectWithin(socket)).close();
     let asks = 0;
-    const r = rig(state, socket, () => ({ den: "1.0.1", pty: null }), {
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
       busy: async () => (++asks < 3 ? ["a1"] : []),
     });
-    // The host that comes back runs the installed version.
-    r.deps.connect = () =>
-      ensureHost({
-        socket,
-        spawnHost: () => startHost(state, { den: "1.0.1" }),
-      });
     const res = await refreshSessionHost(r.deps);
     expect(res).toMatchObject({ did: "restarted", busy: [] });
     expect(asks).toBe(3);
@@ -267,17 +288,12 @@ describe("issue 563: the terminal host after an update", () => {
 
   it("agents still mid-turn when sessions.host_restart_wait_seconds runs out: it restarts anyway", async () => {
     const { state, socket } = setup();
-    startHost(state, { den: "1.0.0" });
+    startHost(state, { den: "1.0.0", code: "c1" });
     (await connectWithin(socket)).close();
-    const r = rig(state, socket, () => ({ den: "1.0.1", pty: null }), {
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
       busy: async () => ["a1"],
       waitMs: 300,
     });
-    r.deps.connect = () =>
-      ensureHost({
-        socket,
-        spawnHost: () => startHost(state, { den: "1.0.1" }),
-      });
     const res = await refreshSessionHost(r.deps);
     expect(res).toMatchObject({ did: "restarted", busy: ["a1"] });
     expect(r.logs.join("\n")).toMatch(/restarting anyway/);
@@ -286,68 +302,170 @@ describe("issue 563: the terminal host after an update", () => {
   it("a host too old to say what it runs counts as different, and is restarted", async () => {
     const { state, socket } = setup();
     await oldHost(socket);
-    const r = rig(state, socket, () => ({ den: "1.0.1", pty: null }), {
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c1", pty: null }), {
       running: async () => [],
     });
-    r.deps.connect = () =>
-      ensureHost({
-        socket,
-        spawnHost: () => startHost(state, { den: "1.0.1" }),
-      });
     const res = await refreshSessionHost(r.deps);
     expect(res).toMatchObject({ did: "restarted", from: 4242 });
   }, 60_000);
+
 });
 
-describe("hostStale and doctor's terminal host row (issue 563)", () => {
+describe("issue 597: the host restarts only when its code or module changed", () => {
+  it("two versions with the same host files: the host is kept, and runs the new version", async () => {
+    const { state, socket } = setup();
+    const now = installModule(path.join(tmp, "dist"), "1.1.0");
+    startHost(state, { pty: now, den: "1.0.0", code: "c1" });
+    const c0 = await connectWithin(socket);
+    const pid0 = c0.hostPid;
+    c0.close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c1", pty: now }), {
+      busy: async () => ["a1"],
+    });
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toEqual({ did: "kept", from: "1.0.0", to: "1.0.1" });
+    const c1 = await connectHost(socket);
+    expect(c1.hostPid).toBe(pid0);
+    // It records the new version: doctor and the next start see it current.
+    expect(c1.hostDen).toBe("1.0.1");
+    expect(c1.hostCode).toBe("c1");
+    c1.close();
+    expect(r.resumed).toEqual([]);
+  }, 60_000);
+
+  it("a changed host file restarts it", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    const c0 = await connectWithin(socket);
+    const pid0 = c0.hostPid;
+    c0.close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }));
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted" });
+    expect((res as { why: string }).why).toMatch(/code/);
+    const c1 = await connectHost(socket);
+    expect(c1.hostPid).not.toBe(pid0);
+    expect(c1.hostCode).toBe("c2");
+    c1.close();
+  }, 60_000);
+
+  it("a changed pty.node restarts it, the same code or not", async () => {
+    const { state, socket } = setup();
+    const dist = path.join(tmp, "dist");
+    const before = installModule(dist, "1.1.0");
+    startHost(state, { pty: before, den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    const now = installModule(dist, "1.1.1");
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c1", pty: now }));
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted" });
+  }, 60_000);
+
+  it("a host that can't answer the code question restarts", async () => {
+    const { state, socket } = setup();
+    await oldHost(socket, "1.0.1");
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c1", pty: null }), {
+      running: async () => [],
+    });
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted", from: 4242 });
+  }, 60_000);
+
+  it("agents cut mid-turn get the carry-on line as their next input; idle ones get none", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      running: async () => ["a1", "a2", "a3"],
+      busy: async () => ["a1", "a3"],
+      waitMs: 100,
+      cutNote: HOST_RESTART_NOTE,
+    });
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted", busy: ["a1", "a3"] });
+    expect(r.notes).toEqual([
+      ["a1", "Den restarted while you were working; check your last step and carry on."],
+      ["a2", null],
+      ["a3", "Den restarted while you were working; check your last step and carry on."],
+    ]);
+  }, 60_000);
+
+  it("the note off (sessions.host_restart_note: false): no agent gets it", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      busy: async () => ["a1"],
+      waitMs: 100,
+      cutNote: null,
+    });
+    await refreshSessionHost(r.deps);
+    expect(r.notes).toEqual([["a1", null]]);
+  }, 60_000);
+});
+
+describe("hostStale and doctor's terminal host row (issues 563, 597)", () => {
   const mod = (p: string): PtyModuleInfo => ({
     path: p,
     version: "1",
     id: fileIdentity(p),
   });
 
-  it("names each way a host is not current", () => {
+  it("names each way a host is not current; another version alone is not one", () => {
     const { state } = setup();
     const file = path.join(state, "pty.node");
     fs.writeFileSync(file, "x");
-    const inst = { den: "2", pty: mod(file) };
-    expect(hostStale({ den: "2", pty: mod(file) }, inst)).toBeNull();
-    expect(hostStale({ den: "2", pty: null }, inst)).toBeNull();
+    const inst = { den: "2", code: "c", pty: mod(file) };
+    expect(hostStale({ den: "2", code: "c", pty: mod(file) }, inst)).toBeNull();
+    expect(hostStale({ den: "2", code: "c", pty: null }, inst)).toBeNull();
+    expect(hostStale({ den: "1", code: "c", pty: null }, inst)).toBeNull();
     expect(hostStale({ den: undefined, pty: null }, inst)).toMatch(/older/);
-    expect(hostStale({ den: "1", pty: null }, inst)).toMatch(/runs 1, 2/);
+    expect(hostStale({ den: "1", code: "b", pty: null }, inst)).toMatch(/code/);
     expect(
-      hostStale({ den: "2", pty: mod(path.join(state, "gone.node")) }, inst),
+      hostStale({ den: "2", code: "c", pty: mod(path.join(state, "gone.node")) }, inst),
     ).toMatch(/no longer on disk/);
     const held = mod(file);
     fs.rmSync(file);
     fs.writeFileSync(file, "y");
     expect(
-      hostStale({ den: "2", pty: held }, { den: "2", pty: mod(file) }),
+      hostStale({ den: "2", code: "c", pty: held }, { den: "2", code: "c", pty: mod(file) }),
     ).toMatch(/replaced/);
   });
 
-  it("doctor: ✗ with the restart command when the host is not current; ✓ when it is or none runs", async () => {
+  it("doctor: current, or restart needed naming the reason, with the restart command", async () => {
+    const { state } = setup();
     const stale = await hostModuleLines("acme", {
-      host: async () => ({ den: "1", pty: null }),
-      installed: () => ({ den: "2", pty: null }),
+      host: async () => ({ den: "1", code: "a", pty: null }),
+      installed: () => ({ den: "2", code: "b", pty: null }),
     });
     expect(stale.check).toMatchObject({
       id: "terminal_host_module",
       status: "fail",
       fix: "acme sessions host --stop",
     });
+    expect(stale.check.detail).toMatch(/^restart needed: host code changed/);
     expect(stale.check.detail).toMatch(
       /restart the terminal host: acme sessions host --stop/,
     );
     expect(stale.lines.join("\n")).not.toMatch(/\bshell\b/i);
+    const file = path.join(state, "pty.node");
+    fs.writeFileSync(file, "x");
+    const held = mod(file);
+    fs.rmSync(file);
+    const module = await hostModuleLines("acme", {
+      host: async () => ({ den: "2", code: "b", pty: held }),
+      installed: () => ({ den: "2", code: "b", pty: null }),
+    });
+    expect(module.check.detail).toMatch(/^restart needed: terminal module changed/);
     const ok = await hostModuleLines("acme", {
-      host: async () => ({ den: "2", pty: null }),
-      installed: () => ({ den: "2", pty: null }),
+      host: async () => ({ den: "1", code: "b", pty: null }),
+      installed: () => ({ den: "2", code: "b", pty: null }),
     });
     expect(ok.check.status).toBe("ok");
+    expect(ok.check.detail).toMatch(/^current/);
     const none = await hostModuleLines("acme", {
       host: async () => null,
-      installed: () => ({ den: "2", pty: null }),
+      installed: () => ({ den: "2", code: "b", pty: null }),
     });
     expect(none.check.status).toBe("ok");
   });

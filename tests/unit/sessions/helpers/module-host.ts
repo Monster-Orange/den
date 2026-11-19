@@ -24,6 +24,10 @@ void runSessionHost({
   stateDir,
   pty: () => ({ available: true, factory: pipePtyFactory }),
   ptyModule: () => pty,
+  // Issue 597: the code id it says it runs ("": can't tell).
+  ...(process.env.DEN_TEST_CODE !== undefined
+    ? { codeId: process.env.DEN_TEST_CODE || null }
+    : {}),
   ...(process.env.DEN_TEST_DEN !== undefined
     ? { denVersion: process.env.DEN_TEST_DEN }
     : {}),

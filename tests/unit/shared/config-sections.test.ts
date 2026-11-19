@@ -118,4 +118,18 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
       } as unknown as DenConfig),
     ).toThrow(/sessions.host_restart_wait_seconds/);
   });
+
+  it("issue 597: sessions.host_restart_note, on by default", () => {
+    expect(readSessionsConfig({} as DenConfig).hostRestartNote).toBe(true);
+    expect(
+      readSessionsConfig({
+        sessions: { host_restart_note: false },
+      } as unknown as DenConfig).hostRestartNote,
+    ).toBe(false);
+    expect(() =>
+      readSessionsConfig({
+        sessions: { host_restart_note: "no" },
+      } as unknown as DenConfig),
+    ).toThrow(/sessions.host_restart_note/);
+  });
 });
