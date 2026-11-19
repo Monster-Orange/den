@@ -474,6 +474,78 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
+## The general button, the page action menu and the settings row
+
+Three pieces, data in, the kit's words out (en, es, ja).
+
+- **The general button** (issue 556): `src/button.css` and `src/button.js`
+  (exports `./button.css`, `./button`). `.den-btn` for any page, inside the
+  frame or not: secondary is the base, `.primary` the accent fill, `.sm`
+  the small size; a link drawn as a button is `a.den-btn`. A visible focus
+  ring, and a 44px tap on a touch screen (its box unchanged). These are
+  the values Den's frame drew; Den now links `button.css` and keeps no
+  copy.
+
+      buttonHtml({ label, variant: "primary", size: "sm", href?, type?,
+                   disabled?, id?, attrs: { "data-…": …, "aria-…": … } })
+
+  A disabled link has no href and `aria-disabled`. Any other variant,
+  size or attribute is dropped.
+
+- **The page action menu** (issue 555), in `shell-html.js` and
+  `shell-client.js` (its look in `shell.css`, More in `button.css`):
+
+      btnBox.innerHTML = pageMenuButtonHtml({ id: "doc-more", lang });
+      hydratePageMenu(document.getElementById("doc-more"), {
+        items: [                          // or () => items, each opening
+          { id: "edit", label: "Edit", href: "/doc/edit" },
+          { id: "copy", label: { key: "app.copy" }, onSelect: copyLink },
+          { hr: true },
+          { id: "dl", label: "Download", disabled: true,
+            note: "Downloads are off.", noteHref: "/settings#downloads" },
+        ],
+        onSelect: (id, item) => {},       // an item with no onSelect
+        lang,
+      });
+
+  "More ▾" is the kit's word. A label or note is the host's words, or
+  `{ key, vars }` in the kit's tables (add yours with `addStrings`). A
+  disabled item has `aria-disabled`, is faint, does nothing (the menu
+  stays open), and is described by its note, right under it: a row to
+  follow when it has `noteHref`, else a line. Keys, focus back and a press
+  outside are ◐ ▾'s. Below 720px (or on touch) More and each row are 44px.
+  `menuRowHtml(row)` is now exported: the row builder the kit's own menus
+  use (◐ ▾ and the account menu draw exactly what they drew before); it
+  takes `disabled`, `describedBy`, `id` and `cls` too.
+
+- **The settings on/off row** (issue 554): `src/setting-row.js` and
+  `src/setting-row.css` (exports `./setting-row`, `./setting-row.css`).
+  Link them with `button.css` and `savestate.css`.
+
+      const row = mountSettingRow(el, {
+        id: "downloads", label: "Owners can download", help: "…",
+        checked: true, who: ["Admins", "Owners"],   // [] is nobody
+        last: { by: "@sam", at: "2026-11-18T10:40:00Z" },  // null: none yet
+        readOnly: false, lang,
+        onSave: (checked) => api.save(checked),     // rejects on failure
+      });
+      row.set("saved"); row.checked(); row.destroy();
+
+  A checkbox and its label, the help line, Save, the save state and the
+  line "Admins and Owners can change this · Last changed 2 minutes ago by
+  @sam". Save calls `onSave` with the box's state: "Saving…" past 400 ms,
+  then "Saved", or "Not saved. Try again."; Save is busy
+  (`aria-disabled`) meanwhile and keeps focus; a change to the box clears
+  "Saved". The state line wears `savestate.css`'s look and is a polite
+  status. `settingRowHtml(o)` draws it in Node, and
+  `hydrateSettingRow(el, { onSave })` wires it. With `form` (`action`, and
+  `csrf`, `field`, `method` if needed) it is a form that posts with no
+  script. `readOnly` disables the box
+  and Save. The words are `kit.setrow.*` and `kit.savestate.*`.
+
+- `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
+  `DenUI.settingRow(el, opts)` are the same, in the kit's language.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

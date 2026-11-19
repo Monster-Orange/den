@@ -205,6 +205,14 @@ export const en = {
   "kit.savestate.error": "Not saved. Retrying…",
   "kit.savestate.copy": "Copy text",
   "kit.savestate.savedAt": "Saved at {time}",
+  // The page action menu (issue 555) and the settings row (issue 554).
+  "kit.pmenu.more": "More",
+  "kit.setrow.save": "Save",
+  "kit.setrow.who": "{who} can change this",
+  "kit.setrow.nobody": "Nobody can change this",
+  "kit.setrow.last": "Last changed {time} by {who}",
+  "kit.setrow.never": "No changes yet",
+  "kit.setrow.error": "Not saved. Try again.",
 };
 
 export const es = {
@@ -406,6 +414,13 @@ export const es = {
   "kit.savestate.error": "No se guardó. Reintentando…",
   "kit.savestate.copy": "Copiar texto",
   "kit.savestate.savedAt": "Guardado a las {time}",
+  "kit.pmenu.more": "Más",
+  "kit.setrow.save": "Guardar",
+  "kit.setrow.who": "{who} pueden cambiar esto",
+  "kit.setrow.nobody": "Nadie puede cambiar esto",
+  "kit.setrow.last": "Último cambio: {time}, por {who}",
+  "kit.setrow.never": "Sin cambios todavía",
+  "kit.setrow.error": "No se guardó. Inténtalo de nuevo.",
 };
 
 export const ja = {
@@ -602,6 +617,13 @@ export const ja = {
   "kit.savestate.error": "保存できていません。再試行しています…",
   "kit.savestate.copy": "テキストをコピー",
   "kit.savestate.savedAt": "{time} に保存しました",
+  "kit.pmenu.more": "その他",
+  "kit.setrow.save": "保存",
+  "kit.setrow.who": "{who}が変更できます",
+  "kit.setrow.nobody": "誰も変更できません",
+  "kit.setrow.last": "最終変更: {time}（{who}）",
+  "kit.setrow.never": "まだ変更はありません",
+  "kit.setrow.error": "保存できませんでした。もう一度お試しください。",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */

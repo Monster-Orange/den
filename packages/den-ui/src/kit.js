@@ -45,6 +45,11 @@
  *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
  *                               editor's save-state line (savestate.js),
  *                               in the kit's language
+ *   DenUI.buttonHtml(o)         the general button (button.js, 0.7.7)
+ *   DenUI.pageMenu(btn, { items, onSelect })   the page action menu on a
+ *                               pageMenuButtonHtml button (0.7.7)
+ *   DenUI.settingRow(el, { onSave, ...row })   the settings on/off row
+ *                               (setting-row.js, 0.7.7)
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -70,6 +75,9 @@ import {
   shellHtml,
   topBarHtml,
   markHtml,
+  menuRowHtml,
+  pageMenuButtonHtml,
+  pageMenuHtml,
   versionChipHtml,
   waitingHtml,
 } from "./shell-html.js";
@@ -78,6 +86,7 @@ import {
   attachMenuFilter,
   hydrateAppearance,
   hydrateBell,
+  hydratePageMenu,
   hydrateScope,
   hydrateSearch,
   hydrateShell,
@@ -96,6 +105,12 @@ import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy } from "./busy.js";
 import { createSaveState } from "./savestate.js";
+import { buttonHtml } from "./button.js";
+import {
+  hydrateSettingRow,
+  mountSettingRow,
+  settingRowHtml,
+} from "./setting-row.js";
 
 const state = {
   lang: "en",
@@ -190,6 +205,24 @@ export const busy = {
 /** An autosaving editor's save-state line, in the kit's language. */
 export function saveState(el, opts = {}) {
   return createSaveState(el, { lang, ...opts });
+}
+
+/**
+ * 0.7.7: the page action menu (issue 555) on a drawn More ▾ button, in the
+ * kit's language (hydratePageMenu).
+ */
+export function pageMenu(btn, opts = {}) {
+  return hydratePageMenu(btn, { lang, ...opts });
+}
+
+/**
+ * 0.7.7: the settings on/off row (issue 554), in the kit's language. With
+ * opts.label (a row's data), it draws the row into el first; else it wires
+ * the row el already holds.
+ */
+export function settingRow(el, opts = {}) {
+  const o = { lang: lang(), ...opts };
+  return opts.label != null ? mountSettingRow(el, o) : hydrateSettingRow(el, o);
 }
 
 /**
@@ -304,6 +337,13 @@ const DenUI = {
   report,
   busy,
   saveState,
+  buttonHtml,
+  menuRowHtml,
+  pageMenuButtonHtml,
+  pageMenuHtml,
+  pageMenu,
+  settingRowHtml,
+  settingRow,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;
