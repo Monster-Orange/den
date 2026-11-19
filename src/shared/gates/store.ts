@@ -844,3 +844,22 @@ export function groupCpuSeconds(pgid: number): number | null {
 export function pidCpuSeconds(pid: number): number | null {
   return psCpuSeconds((_g, p) => p === pid);
 }
+
+/** Group end: one process, as ps lists it. */
+export interface ProcRow {
+  pid: number;
+  ppid: number;
+  pgid: number;
+  /** Seconds since it started. */
+  ageSec: number;
+  comm: string;
+}
+
+/** Group end: a run's group and what left it (red-first stub). */
+export function groupSurvey(
+  _rows: ProcRow[],
+  _pgid: number,
+  _runAgeSec: number,
+): { members: ProcRow[]; escaped: ProcRow[] } | null {
+  return null;
+}
