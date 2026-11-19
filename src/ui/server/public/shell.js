@@ -621,6 +621,8 @@
     "pj.delete": "Delete",
     "pj.activeTag": "(active)",
     "pj.openTerm": "Open in terminal",
+    // Issue 169: the >_ names the person's own terminal app.
+    "pj.openTermIn": "Open in {app}",
     "pj.openEditor": "Open in editor",
     "pj.moreActions": "More actions",
     "pj.moreFor": "More for {ws}",
@@ -2013,8 +2015,8 @@
     "ag.state.exited": "exited",
     "ag.state.exitedCode": "exited ({code})",
     "ag.stop": "Stop",
-    "ag.closeShell": "Close shell",
-    "ag.closeShellTip": "End this shell and anything running in it",
+    "ag.closeShell": "Close terminal",
+    "ag.closeShellTip": "End this terminal and anything running in it",
     "ag.newShell": "New terminal",
     "ag.newShellTip": "Start another shell in this project's folder",
     "ag.shellClosed": "Closed {id}",
@@ -2583,16 +2585,58 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agents",
-    "n.terminal": "Terminal",
-    "n.terminalTip": "Open a shell in this project's folder, in Den",
+    "n.terminal": "Terminals",
+    "n.terminalTip": "Your terminals, each in a project's folder",
     "ag.term.started": "Terminal opened in {w}",
     "ag.term.failed": "Den couldn't open a terminal: {e}",
     // Issue 503: the machine gave no PTY (the reason in {e}).
     "ag.term.ptyFailed":
       "Den couldn't open a terminal: this machine gave it no PTY ({e}). Close terminals you no longer need, or run doctor.",
     "ag.term.noWs": "no project is active. Activate one first.",
-    "ws.termHere": "Terminal here",
+    "ws.termHere": "New terminal",
+    // Issue 482: Terminals, plain shells' own list (terminals-list.js).
+    "ws.termHereTip": "One click starts a terminal in this project's folder",
+    "tm.h": "Terminals",
+    "tm.sub.all": "Plain terminals, one list. Agents are on the Agents page.",
+    "tm.sub.one": "Terminals in {p}.",
+    "tm.sub.switch": "Switch the project at the top to see others.",
+    "tm.new": "New terminal",
+    "tm.newTip": "Start a terminal in the project in view",
+    "tm.running": "Running",
+    "tm.exited": "Exited",
+    "tm.state.running": "running",
+    "tm.state.exited": "exited",
+    "tm.lastUsed": "Last used {when}",
+    "tm.restart": "Restart",
+    "tm.restartName": "Restart {id}",
+    "tm.openName": "Open {id}",
+    // Issue 169: a terminal's title, everywhere it is named.
+    "tm.title": "Terminal {n}",
+    "tm.ended.h": "This terminal ended",
+    "tm.ended.code": "It exited with code {code}, {when}.",
+    "tm.ended.when": "It exited {when}.",
+    "tm.ended.hint": "Restart opens a new terminal in {folder}.",
+    "tm.empty.h": "No terminals yet",
+    "tm.empty.one": "Press New terminal to open one in {p}.",
+    "tm.empty.all": "Press New terminal to open one.",
+    "tm.err.h": "Can’t list terminals",
+    "tm.err.p": "Den can’t reach its terminal service right now.",
+    "tm.err.retry": "Try again",
+    "tm.loading": "Loading terminals",
+    "tm.pick": "Pick a terminal on the left to open it here.",
+    "tm.back": "Terminals",
+    "tm.backTip": "Back to the list of terminals",
+    "tm.keys": "Keys",
+    "tm.key.ctrl": "Ctrl: the next key you press is sent with Ctrl",
+    "ag.sub.only": "Agents only. No plain terminals in this list.",
+    "ag.moved.one": "1 terminal moved to Terminals.",
+    "ag.moved.many": "{n} terminals moved to Terminals.",
+    "ag.moved.closed": "Nothing was closed.",
+    "ag.moved.here": "Your agents are here, as before.",
+    "ag.moved.open": "Open Terminals",
+    "ag.moved.dismiss": "Dismiss",
     "kind.agent": "Agent",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agents",
     "ag.sub.agent": "{n} agent",
     "ag.sub.shells": "{n} shells",
@@ -2757,10 +2801,10 @@
       "Den's Hub settings have a problem. See Settings › Hub.",
     "hub.railBadUrl":
       "Hub's address isn't https, so Den won't open it. See Settings › Hub.",
-    "ag.session": "shell",
+    "ag.session": "terminal",
     "ag.empty":
-      "Pick an agent or shell on the left to open its terminal. Open more to tile them (up to 4).",
-    "ag.none.scope": "No agents or shells in {scope} yet",
+      "Pick an agent on the left to open it. Open more to tile them (up to 4).",
+    "ag.none.scope": "No agents in {scope} yet",
     "ag.detach": "Close pane",
     "ag.to": "To {name} · {ws}",
     "ag.toName": "To {name}",
@@ -2813,6 +2857,7 @@
     "ag.noHost": "No session host is running: nothing has started yet",
     "ag.ws": "Project",
     "ag.pal": "Agents › {ws} / {name}",
+    "tm.pal": "Terminals › {ws} / {name}",
     "ag.palStart": "Start agent…",
     // ON-6: the __DEN_TITLE__ agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ agent",
@@ -4603,9 +4648,10 @@
       tip: "n.terminalTip",
       icon: "terminal",
       group: "develop",
-      // 0.4.45: right under Agents (a view of the same pane).
+      // 0.4.45: right under Agents. Issue 482: a page of its own, the
+      // plain shells' list (a click asks it for the shell used last).
       order: 17.5,
-      href: "/agents?terminal=1",
+      href: "/terminals",
       keywords: ["terminal", "shell", "console", "command line"],
     },
     // 0.4.45: the __DEN_TITLE__ agent is off the rail: one door, the SERVER row
@@ -5083,7 +5129,7 @@
       ws = "";
     }
     return (
-      "/agents?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
+      "/terminals?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
     );
   }
   /**

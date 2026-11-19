@@ -41,6 +41,7 @@ import { hydrateSearch } from "/kit/shell-client.js";
 import { isMac } from "./term-input.js";
 import { formatTime } from "/kit/time.js";
 import { healthReason } from "./value-words.js";
+import { terminalTitle } from "/terminals-list.js";
 
 // ── pure parts ──────────────────────────────────────────────────────────────
 
@@ -433,6 +434,7 @@ const KIND = [
   "service",
   "app",
   "agent",
+  "terminal",
   "workspace",
   "action",
   "setting",
@@ -821,6 +823,40 @@ function openLogs(svc) {
  * the Agents page (AG-4a-term).
  */
 let palSessions = [];
+
+/**
+ * Issue 482: where session `x` sits in the palette. A plain terminal is
+ * "Terminals › <ws> / <name>" and opens on Terminals; an agent is
+ * "Agents › …" on Agents.
+ */
+export function sessionPaletteSpot(x) {
+  const id = encodeURIComponent(x.id);
+  return x.kind === "agent"
+    ? { kind: "agent", key: "ag.pal", path: `/agents?open=${id}` }
+    : { kind: "terminal", key: "tm.pal", path: `/terminals?open=${id}` };
+}
+
+/**
+ * Session `x`'s palette words: "Agents › <ws> / <name>" for an agent (the
+ * name a person gave it, else its persona, then its session's name when
+ * that says more); "Terminals › <ws> / Terminal N" for a terminal (issue
+ * 169, the title every view uses). `t`: the catalog's lookup.
+ */
+export function sessionPaletteLabel(x, t) {
+  const spot = sessionPaletteSpot(x);
+  if (x.kind !== "agent")
+    return t(spot.key, { ws: x.workspace, name: terminalTitle(x, t) });
+  // AG-4b: the name a person gave the agent, else its persona.
+  const base = x.displayName || (x.persona ?? x.label);
+  // AG-4b: the session's name (a /rename, or Den's), when it says more.
+  const sn = (x.sessionTitle ?? "").trim();
+  const extra =
+    sn && sn !== base && sn !== x.persona && sn !== x.label ? sn : "";
+  return t(spot.key, {
+    ws: x.workspace,
+    name: extra ? `${base} · ${extra}` : base,
+  });
+}
 function askPaletteSessions(redraw) {
   if (sh()?.apiOff?.()) return;
   fetch("/api/sessions")
@@ -917,18 +953,11 @@ function paletteItems() {
   for (const x of palSessions) {
     // ON-6: the server agent is "Ask <name>" below, not a workspace's.
     if (x.server) continue;
-    // AG-4b: the name a person gave the agent, else its persona.
-    const base =
-      x.kind === "agent" ? x.displayName || (x.persona ?? x.label) : x.label;
-    // AG-4b: the session's name (a /rename, or Den's), when it says more.
-    const sn = x.kind === "agent" ? (x.sessionTitle ?? "").trim() : "";
-    const extra =
-      sn && sn !== base && sn !== x.persona && sn !== x.label ? sn : "";
-    const name = extra ? `${base} · ${extra}` : base;
+    const spot = sessionPaletteSpot(x);
     items.push({
       key: `agent:${x.id}`,
-      kind: "agent",
-      label: t("ag.pal", { ws: x.workspace, name }),
+      kind: spot.kind,
+      label: sessionPaletteLabel(x, t),
       sub:
         x.kind === "agent" && (x.displayName || x.persona !== x.label)
           ? x.label
@@ -940,10 +969,11 @@ function paletteItems() {
         x.persona ?? "",
         x.displayName ?? "",
         x.sessionTitle ?? "",
+        x.kind === "agent" ? "" : terminalTitle(x, t),
         "agents",
         "terminal",
       ],
-      ...page(`/agents?open=${encodeURIComponent(x.id)}`),
+      ...page(spot.path),
     });
   }
   // 0.4.17: Go to workspace <ws>, for every workspace, the front agent's

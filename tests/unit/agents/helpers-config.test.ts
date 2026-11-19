@@ -117,7 +117,8 @@ describe("agents.exited_shell_minutes (0.4.45)", () => {
     expect(
       readAgentsConfig({} as DenConfig).exitedShellMinutes,
     ).toBeUndefined();
-    expect(DEFAULT_EXITED_SHELL_MINUTES).toBe(10);
+    // Issue 482: 7 days (the mock's row exited 3 days ago is still there).
+    expect(DEFAULT_EXITED_SHELL_MINUTES).toBe(10080);
     expect(minutes(0)).toBe(0);
     expect(minutes(2.5)).toBe(2.5);
     expect(AGENTS_RESERVED_KEYS).toContain("exited_shell_minutes");

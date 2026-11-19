@@ -1711,6 +1711,16 @@
             vars && vars[k] != null ? String(vars[k]) : m,
           );
         };
+        /**
+         * Issue 169: the person's own terminal app (Settings' Default
+         * terminal) by name, once /api/settings says it; null until then.
+         */
+        let _termApp = null;
+        /** Issue 169: what >_ says: "Open in Ghostty", else "Open in terminal". */
+        const termLabel = () =>
+          _termApp
+            ? pT("pj.openTermIn", "Open in {app}", { app: _termApp })
+            : pT("pj.openTerm", "Open in terminal");
         /** A shell string, with the English when the shell isn't up yet. */
         const wsT = (key, fallback) => {
           const v = window.denShell?.t?.(key);
@@ -1797,7 +1807,7 @@
               return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
           <span>${moves}<span class="ws-name" title="${escHtml(fromHub ? wsT("ws.named.hub", "Named in Hub") + " · " + n : n)}">${escHtml(shown)}</span>${isWsActive(n) ? ` <span class="ws-active-tag">${escHtml(pT("pj.activeTag", "(active)"))}</span>` : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
           <span class="ws-item-right">
-            <button class="ws-term-btn" title="${escHtml(pT("pj.openTerm", "Open in terminal"))}" data-open-term="${escHtml(dirPath)}">&#62;_</button>
+            <button class="ws-term-btn" title="${escHtml(termLabel())}" aria-label="${escHtml(termLabel())}" data-open-term="${escHtml(dirPath)}">&#62;_</button>
             <button class="ws-open-btn" title="${escHtml(pT("pj.openEditor", "Open in editor"))}" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
             <div class="ws-menu-wrap">
               <button class="ws-menu-btn" title="${escHtml(pT("pj.moreActions", "More actions"))}" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: shown }))}" data-menu-id="${escHtml(menuId)}">⋮</button>
@@ -2270,7 +2280,7 @@
           <span class="badge ws-agents" id="ws-agents-count" hidden></span>
           ${hubChip}
           ${hubWarn}
-          <a class="ws-head-link" id="ws-term-here" href="/agents?terminal=1&amp;ws=${enc}" title="${escHtml(wsT("n.terminalTip", "Open a shell in this project's folder, in Den"))}">${escHtml(wsT("ws.termHere", "Terminal here"))}</a>
+          <a class="ws-head-link" id="ws-term-here" href="/terminals?new=1&amp;project=${enc}" title="${escHtml(wsT("ws.termHereTip", "One click starts a shell in this project's folder"))}">${escHtml(wsT("ws.termHere", "New terminal"))}</a>
           <a class="ws-head-link" id="ws-open-graph" href="/graph?project=${enc}">${escHtml(pT("pj.openGraph", "Open in Graph →"))}</a>
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: projectLabel(wsData, wsName) }))}" title="${escHtml(pT("pj.moreProject", "More for this project"))}">⋯</button>
@@ -2700,7 +2710,7 @@
           return `<div class="action-menu-wrap">
               <button type="button" class="den-btn sm tbl-btn tbl-more" data-action="toggle-svc-menu" data-menu-id="${menuId}" aria-haspopup="menu" aria-expanded="false" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: repo }))}" data-k="more:${escHtml(repo)}">⋯</button>
               <div class="action-dropdown" id="${menuId}" role="menu" style="display:none">
-                ${local ? `<button role="menuitem" data-open-term="${escHtml(primary.path)}">&gt;_ open in terminal</button><button role="menuitem" data-open-path="${escHtml(primary.path)}">↗ open in editor</button>` : ""}
+                ${local ? `<button role="menuitem" data-open-term="${escHtml(primary.path)}">&gt;_ ${escHtml(termLabel())}</button><button role="menuitem" data-open-path="${escHtml(primary.path)}">↗ open in editor</button>` : ""}
                 <button role="menuitem" title="start / don't start with the project" onclick="toggleAutostart('${q(repo)}', ${isAutoOff})">${isAutoOff ? "⏸ auto-start: off" : "▶ auto-start: on"}</button>
                 ${isUncloned ? `<button role="menuitem" title="Clone this managed repo now" onclick="runRepoSync('${q(repo)}')">⬇ clone now</button>` : ""}
                 <button role="menuitem" onclick="validateServiceManifest('${safe}','${q(repoPath)}','${q(repo)}')">validate<span class="validate-inline" id="vr-${safe}"></span></button>
@@ -4923,6 +4933,22 @@
         fetch("/api/settings")
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
+            // Issue 169: >_ names the default terminal when it's on this
+            // machine; the buttons already drawn say it at once.
+            const app = (d?.terminals ?? []).find(
+              (x) => x && x.key === d?.terminal && x.available,
+            )?.name;
+            if (typeof app === "string" && app && app !== _termApp) {
+              _termApp = app;
+              for (const b of document.querySelectorAll(".ws-term-btn")) {
+                b.title = termLabel();
+                b.setAttribute("aria-label", termLabel());
+              }
+              for (const b of document.querySelectorAll(
+                "[role=menuitem][data-open-term]",
+              ))
+                b.textContent = `>_ ${termLabel()}`;
+            }
             const g = d?.graph?.groupBy;
             if (["none", "app", "org"].includes(g) && g !== _tblGroup) {
               _tblGroup = g;

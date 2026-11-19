@@ -174,7 +174,9 @@ describe("the shell's source", () => {
       "/settings#access",
       "/settings#agents.hub",
     ]);
-    expect(all.filter((h) => h.includes("?"))).toEqual(["/agents?terminal=1"]);
+    // Issue 482: Terminals is a page of its own (/terminals); its rail
+    // click asks it for the shell used last (terminalHref).
+    expect(all.filter((h) => h.includes("?"))).toEqual([]);
     expect(hrefs.sort()).toEqual(
       [
         "/agents",
@@ -186,6 +188,7 @@ describe("the shell's source", () => {
         "/settings",
         "/release",
         "/services",
+        "/terminals",
         "/test-runs",
         "/verify",
         // ON-6: the server agent.

@@ -40,12 +40,13 @@
         "src/ui/server/public/agents-page.js",
         "src/ui/server/public/agents.html",
         "src/ui/server/public/gate-chip.js",
-        "src/ui/server/public/shell-pick.js",
+        "src/ui/server/public/pty-refusal.js",
         "src/ui/server/public/term-drop.js",
         "src/ui/server/public/transcript-view.js"
       ],
       "run": [
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -100,6 +101,8 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminal-title.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -109,10 +112,12 @@
     },
     {
       "when": [
+        "src/ui/server/public/address-card.js",
         "src/ui/server/public/edge-page.js",
         "src/ui/server/public/edge.html"
       ],
       "run": [
+        "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/edge-page.browser.test.ts",
@@ -129,7 +134,9 @@
         "src/ui/server/public/embed-connect.html",
         "src/ui/server/public/embed-connect.js"
       ],
-      "run": ["tests/unit/server/one-url-per-module.browser.test.ts"],
+      "run": [
+        "tests/unit/server/one-url-per-module.browser.test.ts"
+      ],
       "why": "embed-connect.html"
     },
     {
@@ -144,7 +151,9 @@
       "why": "embed.html"
     },
     {
-      "when": ["src/ui/server/public/environments.html"],
+      "when": [
+        "src/ui/server/public/environments.html"
+      ],
       "run": [
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/environments-dead-host.browser.test.ts",
@@ -215,6 +224,7 @@
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
+        "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
@@ -259,6 +269,7 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
@@ -268,7 +279,9 @@
       "why": "local-dev.html"
     },
     {
-      "when": ["src/ui/server/public/logs.html"],
+      "when": [
+        "src/ui/server/public/logs.html"
+      ],
       "run": [
         "tests/unit/den-ui/kit-csp.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
@@ -285,7 +298,9 @@
       "why": "logs.html"
     },
     {
-      "when": ["src/ui/server/public/release.html"],
+      "when": [
+        "src/ui/server/public/release.html"
+      ],
       "run": [
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -324,13 +339,16 @@
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/workspaces-page.browser.test.ts"
       ],
       "why": "server-agent.html"
     },
     {
-      "when": ["src/ui/server/public/services.html"],
+      "when": [
+        "src/ui/server/public/services.html"
+      ],
       "run": [
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
@@ -454,9 +472,12 @@
       "why": "verify.html"
     },
     {
-      "when": ["src/ui/server/public/agent-composer.js"],
+      "when": [
+        "src/ui/server/public/agent-composer.js"
+      ],
       "run": [
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -511,6 +532,8 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminal-title.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -519,7 +542,9 @@
       "why": "agents.html, embed.html"
     },
     {
-      "when": ["src/ui/server/public/agent-start.js"],
+      "when": [
+        "src/ui/server/public/agent-start.js"
+      ],
       "run": [
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
@@ -532,9 +557,11 @@
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
+        "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
+        "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -611,6 +638,8 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminal-title.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -629,6 +658,7 @@
       "run": [
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -689,6 +719,8 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminal-title.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -698,13 +730,16 @@
       "why": "agents.html, server-agent.html"
     },
     {
-      "when": ["src/ui/server/public/persona-ui.css"],
+      "when": [
+        "src/ui/server/public/persona-ui.css"
+      ],
       "run": [
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -796,6 +831,8 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminal-title.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -805,7 +842,9 @@
       "why": "agents.html, settings.html"
     },
     {
-      "when": ["src/ui/server/public/view-scope.js"],
+      "when": [
+        "src/ui/server/public/view-scope.js"
+      ],
       "run": [
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -824,7 +863,9 @@
       "why": "environments.html, release.html"
     },
     {
-      "when": ["src/ui/server/public/ws-delete-agents.js"],
+      "when": [
+        "src/ui/server/public/ws-delete-agents.js"
+      ],
       "run": [
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
@@ -837,6 +878,7 @@
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
+        "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
@@ -889,6 +931,7 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/untrusted-reports.browser.test.ts",
@@ -919,8 +962,10 @@
         "src/ui/server/public/qr.js",
         "src/ui/server/public/restart-den.js",
         "src/ui/server/public/settings-registry.js",
+        "src/ui/server/public/shell-pick.js",
         "src/ui/server/public/svc-panel.js",
         "src/ui/server/public/term-input.js",
+        "src/ui/server/public/terminals-list.js",
         "src/ui/server/public/topbar.js",
         "src/ui/server/public/value-words.js",
         "src/ui/server/public/workspace-picker.js"
@@ -938,9 +983,11 @@
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
+        "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
+        "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -1049,6 +1096,8 @@
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
+        "tests/unit/server/terminal-title.browser.test.ts",
+        "tests/unit/server/terminals-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/untrusted-reports.browser.test.ts",
@@ -1063,13 +1112,16 @@
       "why": "loaded by 12 pages"
     },
     {
-      "when": ["src/ui/server/public/i18n/**"],
+      "when": [
+        "src/ui/server/public/i18n/**"
+      ],
       "run": [
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
         "tests/unit/den-ui/kit-070.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
+        "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
         "tests/unit/server/agents-drop.browser.test.ts",
@@ -1090,15 +1142,19 @@
         "tests/unit/server/settings-hub-project.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-title.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/verify-page.browser.test.ts",
-        "tests/unit/server/workspaces-agents.browser.test.ts"
+        "tests/unit/server/workspaces-agents.browser.test.ts",
+        "tests/unit/server/workspaces-page.browser.test.ts"
       ],
       "why": "the es and ja catalogs: the specs that switch language"
     },
     {
-      "when": ["src/ui/server/public/i18n/*.js"],
+      "when": [
+        "src/ui/server/public/i18n/*.js"
+      ],
       "run": [
         "tests/unit/scripts/words.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -1106,12 +1162,16 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts"
       ],
-      "importers": ["tests/unit/server/helpers/en-catalog.ts"],
+      "importers": [
+        "tests/unit/server/helpers/en-catalog.ts"
+      ],
       "mentions": true,
       "why": "the UI catalogs"
     },
     {
-      "when": ["src/ui/server/public/**"],
+      "when": [
+        "src/ui/server/public/**"
+      ],
       "run": [
         "tests/unit/agents/uploads.test.ts",
         "tests/unit/den-ui/kit-route.test.ts",
@@ -1130,7 +1190,9 @@
       "why": "tests that read every file in public/ (ratchets, tokens, wording, i18n)"
     },
     {
-      "when": ["src/**"],
+      "when": [
+        "src/**"
+      ],
       "run": [
         "tests/unit/scripts/words.test.ts",
         "tests/unit/no-fixture-names.test.ts",
@@ -1140,7 +1202,11 @@
       "why": "tests that walk src/ (words ratchet, fixture names, wording, CLI imports)"
     },
     {
-      "when": ["docs/**", "README.md", "CONTRIBUTING.md"],
+      "when": [
+        "docs/**",
+        "README.md",
+        "CONTRIBUTING.md"
+      ],
       "run": [
         "tests/unit/agents/bring-in.test.ts",
         "tests/unit/agents/context-watch.test.ts",
@@ -1180,7 +1246,9 @@
       "why": "tests that read the docs"
     },
     {
-      "when": ["CHANGELOG.md"],
+      "when": [
+        "CHANGELOG.md"
+      ],
       "run": [
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
@@ -1190,7 +1258,9 @@
       "why": "tests that read the changelog"
     },
     {
-      "when": ["examples/**"],
+      "when": [
+        "examples/**"
+      ],
       "run": [
         "tests/unit/agents/keep-running-survival.test.ts",
         "tests/unit/cli/always-on-service.test.ts",
@@ -1204,37 +1274,63 @@
       "why": "tests that read examples/"
     },
     {
-      "when": ["scripts/ci-pw-install.sh"],
-      "run": ["tests/unit/test-infra/pw-install.test.ts"],
+      "when": [
+        "scripts/ci-pw-install.sh"
+      ],
+      "run": [
+        "tests/unit/test-infra/pw-install.test.ts"
+      ],
       "why": "tests that run scripts/ci-pw-install.sh"
     },
     {
-      "when": ["scripts/doc-shots-guard.js"],
-      "run": ["tests/unit/scripts/doc-shots-guard.browser.test.ts"],
+      "when": [
+        "scripts/doc-shots-guard.js"
+      ],
+      "run": [
+        "tests/unit/scripts/doc-shots-guard.browser.test.ts"
+      ],
       "why": "tests that run scripts/doc-shots-guard.js"
     },
     {
-      "when": ["scripts/docs-links.js"],
-      "run": ["tests/unit/scripts/docs-links.test.ts"],
+      "when": [
+        "scripts/docs-links.js"
+      ],
+      "run": [
+        "tests/unit/scripts/docs-links.test.ts"
+      ],
       "why": "tests that run scripts/docs-links.js"
     },
     {
-      "when": ["scripts/flake-evidence.mjs"],
-      "run": ["tests/unit/test-infra/quarantine.test.ts"],
+      "when": [
+        "scripts/flake-evidence.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/quarantine.test.ts"
+      ],
       "why": "tests that run scripts/flake-evidence.mjs"
     },
     {
-      "when": ["scripts/gate-shape.mjs"],
-      "run": ["tests/unit/test-infra/gate-checks.test.ts"],
+      "when": [
+        "scripts/gate-shape.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/gate-checks.test.ts"
+      ],
       "why": "tests that run scripts/gate-shape.mjs"
     },
     {
-      "when": ["scripts/org-name-commits.mjs"],
-      "run": ["tests/unit/scripts/org-name-commits.test.ts"],
+      "when": [
+        "scripts/org-name-commits.mjs"
+      ],
+      "run": [
+        "tests/unit/scripts/org-name-commits.test.ts"
+      ],
       "why": "tests that run scripts/org-name-commits.mjs"
     },
     {
-      "when": ["scripts/org-names.js"],
+      "when": [
+        "scripts/org-names.js"
+      ],
       "run": [
         "tests/unit/scripts/doc-shots-guard.browser.test.ts",
         "tests/unit/scripts/org-names.test.ts"
@@ -1242,12 +1338,18 @@
       "why": "tests that run scripts/org-names.js"
     },
     {
-      "when": ["scripts/release-ancestry.sh"],
-      "run": ["tests/unit/scripts/release-ancestry.test.ts"],
+      "when": [
+        "scripts/release-ancestry.sh"
+      ],
+      "run": [
+        "tests/unit/scripts/release-ancestry.test.ts"
+      ],
       "why": "tests that run scripts/release-ancestry.sh"
     },
     {
-      "when": ["scripts/setup-secrets.ts"],
+      "when": [
+        "scripts/setup-secrets.ts"
+      ],
       "run": [
         "tests/unit/cli/secrets-preflight.test.ts",
         "tests/unit/cli/setup-secrets-gate.test.ts"
@@ -1255,10 +1357,13 @@
       "why": "tests that run scripts/setup-secrets.ts"
     },
     {
-      "when": ["scripts/words.js"],
+      "when": [
+        "scripts/words.js"
+      ],
       "run": [
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
+        "tests/unit/edge/address-455-parts.test.ts",
         "tests/unit/scripts/words.test.ts",
         "tests/unit/server/i18n-171-values.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts"

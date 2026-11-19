@@ -45,6 +45,7 @@
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import type * as http from "http";
+import * as os from "os";
 import * as path from "path";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
@@ -63,6 +64,7 @@ import {
   getActiveWorkspaces,
   readWorkspacesFile,
   listWorkspaceServices,
+  resolveWorkspaceDir,
 } from "../../shared/environment-manager/workspaces.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -87,12 +89,14 @@ import {
   type HostClient,
 } from "../../shared/sessions/client.js";
 import { parseSessionName } from "../../shared/sessions/names.js";
+import { terminalNumbers } from "../../shared/sessions/terminal-names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import type { HelperSettings } from "../../shared/agents/helpers.js";
 import {
   agentsListWaits,
+  getReposRoot,
   readAgentsConfig,
   DEFAULT_EXITED_SHELL_MINUTES,
   readSessionsConfig,
@@ -170,7 +174,7 @@ export interface SessionRouteDeps {
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
-  /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
+  /** 0.4.45: agents.exited_shell_minutes (0: an exited terminal stays). */
   exitedShellMinutes?: () => number;
   /** D44: the Hub server URL an agent would get now (null: none). */
   hubNow?: () => Promise<string | null>;
@@ -397,6 +401,14 @@ export interface ListedSession {
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
   cwd?: string;
+  /**
+   * Issue 169: a plain terminal's number in its project, shown as
+   * "Terminal N" (terminal-names.ts terminalNumbers). Absent for an agent
+   * and for a name that isn't a terminal's.
+   */
+  terminalNo?: number;
+  /** Issue 482: a shell's folder, the home folder as "~" (Terminals' rows). */
+  folder?: string;
   /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
   state: string;
   exited: boolean;
@@ -484,8 +496,9 @@ export function contextFields(
 }
 
 /**
- * 0.4.45: a plain shell that exited agents.exited_shell_minutes ago, with
- * nothing unread, leaves by itself: the host forgets it (as Remove does).
+ * 0.4.45: a plain terminal that exited agents.exited_shell_minutes ago
+ * (default 7 days), with nothing unread, leaves by itself: the host
+ * forgets it (as Remove does).
  * An agent's session never: its record keeps it. 0: none leaves.
  */
 export async function leaveExitedShells(
@@ -526,6 +539,11 @@ export function listedSessions(
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume" | "modeOf"> & {
       /** #57 (tests): the projects, by key; default the workspaces file. */
       workspaces?: () => Record<string, { name?: unknown }>;
+      /**
+       * Issue 482: project `ws`'s folder, for a shell an older host listed
+       * without its own; default the workspaces file's.
+       */
+      shellDir?: (ws: string) => string | undefined;
       /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
       hubWork?: (
         id: string,
@@ -537,6 +555,15 @@ export function listedSessions(
   hubUrl?: string | null,
 ): ListedSession[] {
   const dist = d.dist();
+  const shellDirOf = (ws: string): string | undefined => {
+    try {
+      if (d.shellDir) return d.shellDir(ws);
+      const cfg = readWorkspacesFile().workspaces?.[ws];
+      return cfg ? resolveWorkspaceDir(ws, cfg, getReposRoot()) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const active = new Set(d.activeWorkspaces());
   if (also) active.add(also);
   // ON-6: the server agent belongs to no workspace, and is always listed.
@@ -714,10 +741,28 @@ export function listedSessions(
       })(),
     });
   }
+  // Issue 169 (Den Design, option a): each plain terminal's number in its
+  // project, shown as "Terminal N".
+  const plainByWs = new Map<
+    string,
+    { id: string; name: string; startedAt?: string }[]
+  >();
   for (const s of mine) {
     if (agentSessions.has(s.ref.id)) continue;
     const p = parseSessionName(s.name, dist)!;
+    const list = plainByWs.get(p.workspace) ?? [];
+    list.push({ id: s.ref.id, name: p.name, startedAt: s.startedAt });
+    plainByWs.set(p.workspace, list);
+  }
+  const terminalNo = new Map<string, number>();
+  for (const list of plainByWs.values())
+    for (const [id, n] of terminalNumbers(list)) terminalNo.set(id, n);
+  for (const s of mine) {
+    if (agentSessions.has(s.ref.id)) continue;
+    const p = parseSessionName(s.name, dist)!;
+    const no = terminalNo.get(s.ref.id);
     out.push({
+      ...(no !== undefined ? { terminalNo: no } : {}),
       id: s.ref.id,
       name: s.name,
       workspace: p.workspace,
@@ -733,6 +778,9 @@ export function listedSessions(
       startedAt: s.startedAt,
       // Issue 448: when a person last typed in it (the rail's Terminal).
       ...(s.inputAt ? { inputAt: s.inputAt } : {}),
+      // Issue 482: its folder and, once it exited, when (Terminals' rows).
+      ...shellFolder(s.cwd ?? shellDirOf(p.workspace)),
+      ...(s.exited && s.exitedAt ? { endedAt: s.exitedAt } : {}),
       attachable: true,
     });
   }
@@ -752,6 +800,23 @@ export function listedSessions(
         : null,
     (ws) => agentOrderOf(ws),
   );
+}
+
+/**
+ * Issue 482: a shell's folder as its row says it: `cwd`, and `folder` with
+ * the home folder as "~". Nothing when it isn't known.
+ */
+function shellFolder(cwd: string | undefined): {
+  cwd?: string;
+  folder?: string;
+} {
+  if (!cwd) return {};
+  const home = os.homedir();
+  const folder =
+    home && (cwd === home || cwd.startsWith(`${home}${path.sep}`))
+      ? `~${cwd.slice(home.length)}`
+      : cwd;
+  return { cwd, folder };
 }
 
 /** D32: the helpers count, under /api/sessions/ but no session's route. */
@@ -1209,9 +1274,18 @@ async function handleClose(
       await new Promise((r) => setTimeout(r, 100));
     }
     const still = (await c.list()).find((x) => x.ref.id === s.ref.id);
-    if (still?.exited) await c.forget(s.ref.id);
-    audit(`${s.name}: ${result}`);
-    sendJson(res, { ok: true, result, forgotten: !!still?.exited || !still });
+    // Issue 482: ?keep=1 (Terminals' Stop) ends it and keeps its row, as
+    // an exited shell with Restart and Remove.
+    const keep =
+      new URL(req.url ?? "/", "http://localhost").searchParams.get("keep") ===
+      "1";
+    if (still?.exited && !keep) await c.forget(s.ref.id);
+    audit(`${s.name}: ${result}${keep ? " (kept)" : ""}`);
+    sendJson(res, {
+      ok: true,
+      result,
+      forgotten: !keep && (!!still?.exited || !still),
+    });
   } catch (e) {
     refuse(503, `the session host: ${(e as Error).message}`, "session_host"); // words-ok: "session host" as the other errors here
   } finally {

@@ -292,7 +292,7 @@ describe("the Start dialog (AG-10.1)", () => {
     const heads = await p.$$eval("#ag-persona .pgh span:first-child", (xs) =>
       xs.map((x) => (x.textContent ?? "").toLowerCase()),
     );
-    expect(heads).toEqual(["engineering", "design", "shell"]);
+    expect(heads).toEqual(["engineering", "design", "terminal"]);
     expect((await pids(p)).at(-1)).toBe(":plain");
     // Every option has its one-line description.
     for (const d of await p.$$eval("#ag-persona .pr .pd", (xs) =>

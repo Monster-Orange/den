@@ -1,8 +1,11 @@
 /**
  * Issue 448: the rail's Terminal opens the project's running shell, not a
  * new one each click. Two clicks give one shell, in front and with the
- * keyboard. "New terminal" in the shell's bar starts another on purpose.
- * With several running, the rail opens the one used last.
+ * keyboard. "New terminal" starts another on purpose. With several
+ * running, the rail opens the one used last.
+ *
+ * Issue 482: shells are on Terminals (/terminals); New terminal is the
+ * page's own button (#tm-new), no longer one in the shell's bar.
  *
  * The demo distribution (helpers/agents-page-server.ts), a scripted PTY
  * (no real shell runs), in Chromium and WebKit. DEN_PW_WS: Den's own
@@ -142,10 +145,11 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     expect(await p.locator(`.pane[data-id="${first}"]`).isVisible()).toBe(true);
   }, 120_000);
 
-  it("New terminal in the shell's bar starts another one", async () => {
+  it("New terminal on the page starts another one", async () => {
     if (skip() || !first) return;
-    const p = await open(`/agents?ws=north&open=${first}`);
-    const btn = p.locator(`.pane[data-id="${first}"] [data-act="new-shell"]`);
+    const p = await open(`/terminals?ws=north&open=${first}`);
+    await p.waitForSelector(`.pane[data-id="${first}"]`);
+    const btn = p.locator("#tm-new");
     await btn.waitFor();
     expect((await btn.textContent())?.trim()).toBe("New terminal");
     const before = s!.made.length;
@@ -166,14 +170,14 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     if (skip() || !first || !second) return;
     const before = s!.made.length;
     // The first one is used last: the rail opens it.
-    const p = await open(`/agents?ws=north&open=${first}`);
+    const p = await open(`/terminals?ws=north&open=${first}`);
     await p.waitForSelector(`.pane[data-id="${first}"] .xterm-screen`);
     await p.click(`.pane[data-id="${first}"] .xterm-screen`);
     await p.waitForTimeout(300);
     await railTerminal(p);
     expect(await keyed(p)).toBe(first);
     // Now the second one: the rail opens that.
-    const q = await open(`/agents?ws=north&open=${second}`);
+    const q = await open(`/terminals?ws=north&open=${second}`);
     await q.waitForSelector(`.pane[data-id="${second}"] .xterm-screen`);
     await q.click(`.pane[data-id="${second}"] .xterm-screen`);
     await q.waitForTimeout(300);

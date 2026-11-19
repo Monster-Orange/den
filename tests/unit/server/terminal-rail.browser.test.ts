@@ -1,8 +1,10 @@
 /**
  * D73: the rail's Terminal opens a plain shell in the project's folder, in
  * the same pane agents use. Typing reaches it; what it prints shows. A
- * reload keeps the tab and starts no second shell. A project's "Terminal
- * here" opens one in that project. The label and tooltip are translated.
+ * reload keeps the tab and starts no second shell. A project's "New
+ * terminal" (issue 482: was "Terminal here") starts one in that project.
+ * The label and tooltip are translated. Issue 482: the page is Terminals
+ * (/terminals); the older /agents?terminal=1 link lands there.
  * Issue 448: a project that already runs a shell gets that one again
  * (terminal-reuse.browser.test.ts has the rest).
  *
@@ -81,7 +83,7 @@ describe("D73: Terminal", () => {
     const p = await open("/services?ws=north");
     const link = p.locator('#den-rail [data-nav="terminal"]');
     expect(await link.getAttribute("title")).toBe(
-      "Open a shell in this project's folder, in Den",
+      "Your terminals, each in a project's folder",
     );
     const before = s!.made.length;
     await p.goto(
@@ -134,16 +136,18 @@ describe("D73: Terminal", () => {
     expect(await rows(p, id!)).toBeDefined();
   }, 90_000);
 
-  it("a project's Terminal here opens one in that project", async () => {
+  it("a project's New terminal opens one in that project", async () => {
     if (skip()) return;
     const p = await open("/?ws=south");
     const here = p.locator("#ws-term-here");
     await here.waitFor();
-    expect(await here.textContent()).toBe("Terminal here");
-    expect(await here.getAttribute("href")).toBe("/agents?terminal=1&ws=south");
+    expect(await here.textContent()).toBe("New terminal");
+    expect(await here.getAttribute("href")).toBe(
+      "/terminals?new=1&project=south",
+    );
     const before = s!.made.length;
     await here.click();
-    await p.waitForFunction(() => !location.search.includes("terminal="));
+    await p.waitForFunction(() => !location.search.includes("new="));
     await p.waitForSelector(".pane .xterm-rows");
     expect(s!.made.length).toBe(before + 1);
     expect(s!.made.at(-1)!.opts.cwd).toBe(s!.wsDir("south"));
@@ -153,18 +157,18 @@ describe("D73: Terminal", () => {
     if (skip()) return;
     // north and south each run a shell already (the tests above): issue
     // 448, Terminal opens that one again, as a tab next to the others.
-    const p = await open("/?ws=north");
+    const p = await open("/agents?terminal=1&ws=north");
     const first = s!.made.length;
-    await p.locator("#ws-term-here").click();
     await p.waitForFunction(() => !location.search.includes("terminal="));
     await p.waitForSelector(".pane[data-id]");
     const firstId = new URL(p.url()).searchParams.get("open")!;
     expect(firstId).toBeTruthy();
     expect(s!.made.length).toBe(first);
 
-    // Another project's Terminal here: the first tab stays.
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=south"));
-    await p.locator("#ws-term-here").click();
+    // Another project's Terminal: the first tab stays.
+    await p.goto(
+      signInUrl(s!.stateDir, s!.base, "/terminals?terminal=1&project=south"),
+    );
     await p.waitForFunction(() => !location.search.includes("terminal="));
     await p.waitForFunction(
       () =>
@@ -182,13 +186,13 @@ describe("D73: Terminal", () => {
       open2,
     );
 
-    // The rail's Terminal from /agents?ws=south: south's shell (not the
-    // first project's) in front, no third tab.
+    // The rail's Terminal from /terminals?project=south: south's shell
+    // (not the first project's) in front, no third tab.
     await p.goto(
       signInUrl(
         s!.stateDir,
         s!.base,
-        `/agents?ws=south&open=${open2.join(",")}`,
+        `/terminals?project=south&open=${open2.join(",")}`,
       ),
     );
     await p.waitForSelector(".pane[data-id]", { state: "attached" });
@@ -213,7 +217,7 @@ describe("D73: Terminal", () => {
       const p = await open("/services?ws=north");
       const link = p.locator('#den-rail [data-nav="terminal"]');
       expect(await link.getAttribute("title")).toBe(
-        "Abrir una terminal en la carpeta de este proyecto, en Den",
+        "Tus terminales, cada una en la carpeta de un proyecto",
       );
     } finally {
       await s!.settings({ language: null });

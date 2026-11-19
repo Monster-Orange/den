@@ -12,6 +12,11 @@
  * - the Name row shows one help line;
  * - a toast never covers the terminal's "To" line.
  *
+ * Issue 482 (mock v3): a shell's pane on Terminals has no To line (its bar
+ * names the shell and its folder), so the To line checks use an agent's
+ * pane on Agents; the terminal case checks Terminals' started toast and
+ * that no To line shows there to be covered.
+ *
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -31,7 +36,11 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -219,9 +228,10 @@ describe("translated pages fit", () => {
       // Issue 448: Terminal reopens a running shell (no toast then), so
       // each case starts its own and ends it: the toast is its "started".
       const before = s!.made.length;
-      const p = await open(lang, width, "/agents?terminal=1");
+      // Issue 482: on Terminals, where a shell's pane has no To line.
+      const p = await open(lang, width, "/terminals?terminal=1");
       await p.waitForSelector(".den-toast");
-      await p.waitForSelector(".agto[data-toast-clear]");
+      await p.waitForSelector(".pane[data-id] .xterm-rows");
       // The toast looks again 0.5 s after it shows (the line may come later).
       await p.waitForTimeout(700);
       const overlap = await toastOverTo(p);
@@ -235,13 +245,23 @@ describe("translated pages fit", () => {
 
   it("a toast up before the terminal's To line shows moves off it when the line comes", async () => {
     if (!browser) return;
-    const r = await fetch(`${s!.base}/api/workspaces/north/sessions`, {
+    // Issue 482: an agent's pane (a shell's has no To line now, and is
+    // not in the Agents list).
+    await fetch(`${s!.base}/api/workspaces/north/agents`, {
       method: "POST",
       headers: { ...denAuth(s!.stateDir), "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({ persona: "planner" }),
     });
-    const { session } = (await r.json()) as { session: { id: string } };
     const pty = s!.made.at(-1)!;
+    pty.emit("> ");
+    const rows = (
+      (await (
+        await fetch(`${s!.base}/api/sessions?ws=north`, {
+          headers: denAuth(s!.stateDir),
+        })
+      ).json()) as { sessions: { id: string; agent?: string }[] }
+    ).sessions;
+    const session = rows.find((x) => x.agent === "planner")!;
     const p = await open("ja", 1280, "/agents?ws=north");
     const row = p.locator(`#agl .agr[data-id="${session.id}"]`);
     await row.waitFor();

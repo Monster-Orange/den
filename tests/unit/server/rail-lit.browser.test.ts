@@ -6,6 +6,10 @@
  * front → Terminal; an agent, or nothing → Agents. And Terminal sits
  * below the server agent in the rail.
  *
+ * Issue 482: Terminals is a page of its own (/terminals), so each page
+ * lights its own item, never both: Terminals on /terminals, Agents on
+ * /agents, whatever runs.
+ *
  * The demo distribution with a session host in this process and a
  * scripted PTY: nothing really runs. Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
@@ -25,7 +29,11 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = process.env.DEN_PW_WS
+      ? await chromium.connect(process.env.DEN_PW_WS, {
+          exposeNetwork: "<loopback>",
+        })
+      : await chromium.launch();
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -75,19 +83,27 @@ async function lit(p: Page, want: string): Promise<string> {
 }
 
 describe("the rail follows the pane in front", () => {
-  it("a shell in front lights Terminal, after the address drops terminal=1 and after a reload", async () => {
+  it("Terminals lights Terminal, after the address drops terminal=1 and after a reload", async () => {
     if (!browser) return;
+    // Issue 482: the old link lands on /terminals.
     const p = await open("/agents?terminal=1&ws=north");
-    await p.waitForSelector(
-      '#agl button.agr[data-kind]:not([data-kind="agent"])',
-    );
+    await p.waitForURL(/\/terminals/);
+    await p.waitForSelector("#agl .tmr button.agr[data-id]");
     await p.waitForFunction(() => !/terminal=1/.test(location.search));
     expect(await lit(p, "terminal")).toBe("terminal");
     await p.reload();
-    await p.waitForSelector(
-      '#agl button.agr[data-kind]:not([data-kind="agent"])',
-    );
+    await p.waitForSelector("#agl .tmr button.agr[data-id]");
     expect(await lit(p, "terminal")).toBe("terminal");
+    await p.context().close();
+  }, 60_000);
+
+  it("issue 482: Agents lights Agents, even with a shell running", async () => {
+    if (!browser) return;
+    // north runs a shell (the test above); Agents never lists it.
+    const p = await open("/agents?ws=north&layout=focus");
+    await p.waitForSelector("#agl:not([aria-busy])");
+    expect(await p.locator('#agl [data-kind="session"]').count()).toBe(0);
+    expect(await lit(p, "agents")).toBe("agents");
     await p.context().close();
   }, 60_000);
 

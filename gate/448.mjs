@@ -176,9 +176,13 @@ export async function run(ctx) {
     await ctx.shot(`second-${cell}`);
     // New terminal in the shell's bar.
     const front = out.steps.second.keyed;
-    const btn = page.locator(
+    // Issue 482: on the Terminals page New terminal sits at the page's
+    // top, not in the shell's bar.
+    const inBar = page.locator(
       `.pane[data-id="${front}"] [data-act="new-shell"]`,
     );
+    const btn =
+      front && (await inBar.count()) > 0 ? inBar : page.locator("#tm-new");
     const hasBtn = front ? (await btn.count()) > 0 : false;
     out.steps.newBtn = hasBtn
       ? (await btn.first().textContent())?.trim() || ""
