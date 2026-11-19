@@ -9,7 +9,7 @@
  * The host is stopped in teardown every time (issue 501).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { execFileSync, spawn, type ChildProcess } from "child_process";
+import { execFileSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -19,9 +19,8 @@ import {
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
+import { startTestHost } from "../../test-hosts.js";
 
-const ENGINE = path.resolve(__dirname, "../../..");
-const LOADER = path.join(ENGINE, "node_modules/tsx/dist/loader.mjs");
 const N = 20;
 
 const maybe =
@@ -78,16 +77,10 @@ async function until(cond: () => Promise<boolean> | boolean, ms: number) {
 beforeAll(async () => {
   if (!loadPty().available) return;
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-503-"));
-  child = spawn(
-    process.execPath,
-    [
-      "--import",
-      `file://${LOADER}`,
-      path.join(__dirname, "helpers", "real-host.ts"),
-      dir,
-    ],
-    { cwd: dir, stdio: "ignore", detached: true },
-  );
+  // Issue 501: the host ends with this file, even if a hook throws first.
+  child = startTestHost(path.join(__dirname, "helpers", "real-host.ts"), dir, {
+    cwd: dir,
+  }).child;
   child.unref();
   c = await connectWithin(20_000);
   hostPid = c.hostPid;

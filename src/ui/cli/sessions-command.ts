@@ -168,6 +168,25 @@ export function hostJob(
   }
 }
 
+/**
+ * Issue 501: what DEN_HOST_TAG may hold. Letters, digits and . _ @ ~ / -,
+ * at most 200: one word on a command line.
+ */
+const HOST_TAG_RE = /^[\w.@~/-]{1,200}$/;
+
+/**
+ * Issue 501: `sessions host`'s arguments when it is started on demand. A
+ * DEN_HOST_TAG in the env goes on its command line as `--tag=<tag>`, so
+ * whoever set it (a test run) finds the hosts it started in a process list
+ * (macOS shows no other process's env). The tag changes nothing else.
+ */
+export function hostArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  const tag = (env.DEN_HOST_TAG ?? "").trim();
+  return HOST_TAG_RE.test(tag)
+    ? ["sessions", "host", `--tag=${tag}`]
+    : ["sessions", "host"];
+}
+
 /** Start `<cli> sessions host` in the background, detached, logging to the state dir. */
 function spawnHost(stateDir: string): void {
   const cmd = cliEntrypoint();
@@ -177,7 +196,7 @@ function spawnHost(stateDir: string): void {
   try {
     const env = { ...process.env };
     delete env.DEN_WORKSPACE_OVERRIDE;
-    const child = spawn(cmd.command, [...cmd.args, "sessions", "host"], {
+    const child = spawn(cmd.command, [...cmd.args, ...hostArgs(env)], {
       cwd: getDistRoot(),
       // Its own session and process group: a web server's or a terminal's
       // end (and `down`'s group signals) never reach it.
@@ -751,7 +770,12 @@ function attachTerminal(
 
 async function host(args: string[], d: Resolved): Promise<number> {
   const where = "sessions host";
-  const p = parseArgs(where, args, { "--stop": false, "--stand-by": false });
+  // --tag: a label on its command line only (hostArgs, issue 501).
+  const p = parseArgs(where, args, {
+    "--stop": false,
+    "--stand-by": false,
+    "--tag": true,
+  });
   noExtra(where, p);
   if (!p.flags["--stop"]) {
     // Issue 503: a config it can't read keeps the default (0 s): the host

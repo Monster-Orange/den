@@ -17,6 +17,14 @@ import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import { isTmpDir, resolveOn, sentinelDir, withSentinel } from "./sentinel.js";
+import { newOwner, stopOwned, tagFor } from "./test-hosts.js";
+
+/**
+ * Issue 501: the owner each server's session hosts are tagged with. A
+ * host the server starts is detached (its own process group), so stopping
+ * the server's group never reaches it: stopServer stops it by its tag.
+ */
+const hostOwners = new WeakMap<ChildProcess, string>();
 
 const REGISTRY_DIR = path.join(os.tmpdir(), "den-test-children");
 const recordOf = (pgid: number): string =>
@@ -102,11 +110,17 @@ export function spawnServer(
   opts: SpawnOptions,
   marker: string = args[args.length - 1] ?? cmd,
 ): ChildProcess {
+  const owner = newOwner();
+  const tag = tagFor(owner);
   const child = spawn(cmd, args, {
     ...opts,
-    env: serverEnv(opts.env ?? process.env),
+    env: {
+      ...serverEnv(opts.env ?? process.env),
+      ...(tag ? { DEN_HOST_TAG: tag } : {}),
+    },
     detached: true,
   });
+  if (tag) hostOwners.set(child, owner);
   if (child.pid) {
     fs.mkdirSync(REGISTRY_DIR, { recursive: true });
     fs.writeFileSync(
@@ -148,6 +162,9 @@ export async function stopServer(
     await new Promise((r) => setTimeout(r, 50));
   if (groupAlive(pgid)) killGroup(pgid, "SIGKILL");
   forgetServer(child);
+  // Issue 501: and the session hosts it started.
+  const owner = child ? hostOwners.get(child) : undefined;
+  if (owner) await stopOwned(owner, graceMs);
 }
 
 /** Drop `child`'s record (its group was stopped some other way). */

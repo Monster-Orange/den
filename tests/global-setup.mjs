@@ -20,6 +20,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { alive, reap } from "./child-reaper.mjs";
+import testHosts from "./test-hosts-core.cjs";
 
 const STUB_BINS = ["claude", "codex", "gemini", "grok", "gh", "launchctl"];
 /**
@@ -71,10 +72,23 @@ exit 99
 
 export default function globalSetup() {
   process.env.DEN_TEST_RUN = String(process.pid);
+  // Issue 501: every session host this run starts carries the run's id on
+  // its command line (tests/test-hosts-core.cjs). A spawn with no env of its own
+  // passes this one on; tests/sentinel.ts adds the test file to the others.
+  process.env.DEN_HOST_TAG = testHosts.hostTag(process.pid);
   const killed = reap((r) => !alive(Number(r.run)) && !alive(Number(r.owner)));
   if (killed.length)
     process.stderr.write(
       `[jest] stopped ${killed.length} test server group(s) an earlier run left behind\n`,
+    );
+  // An earlier run's hosts are only reported: nothing stops a host this
+  // run didn't start.
+  const earlier = testHosts.anyRunHosts().filter((h) => !alive(Number(h.run)));
+  if (earlier.length)
+    process.stderr.write(
+      `[jest] ${earlier.length} session host(s) from earlier test runs still running (pids ${earlier
+        .map((h) => h.pid)
+        .join(", ")}): ps -ww -A -o pid,command | grep -- --tag=den-test-\n`,
     );
   const stubs = path.join(
     os.tmpdir(),

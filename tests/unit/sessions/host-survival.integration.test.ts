@@ -18,6 +18,7 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
+import { startTestHost } from "../../test-hosts.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const LOADER = path.join(ENGINE, "node_modules/tsx/dist/loader.mjs");
@@ -70,7 +71,8 @@ async function connectWithin(ms: number): Promise<HostClient> {
 
 beforeAll(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-survive-"));
-  const host = run("pipe-host.ts", dir);
+  // Issue 501: the host ends with this file, even if a hook throws first.
+  const host = startTestHost(helper("pipe-host.ts"), dir, { cwd: dir }).child;
   host.unref();
   const c = await connectWithin(20_000);
   hostPid = c.hostPid;
