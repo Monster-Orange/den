@@ -117,7 +117,7 @@ export function fakeBed({ den = "good" } = {}) {
       };
     },
     async shot() {},
-    async until(f, ms) {
+    async until(f, _ms) {
       for (let i = 0; i < 20; i++) if (await f()) return i * 100;
       return null;
     },
