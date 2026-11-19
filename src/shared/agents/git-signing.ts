@@ -9,6 +9,14 @@
  * doctor proves it: a commit in a temp repo, signed with the key and
  * checked with git verify-commit (checkAgentSigning). Nothing here prints
  * the key, only its path.
+ *
+ * Issue 523: an agent never signs with the person's key. With no agents
+ * key set, its env turns signing off and points every signer at `false`,
+ * so the person's global commit.gpgsign and GPG key can't reach it.
+ * checkRepoSigning resolves a repo's effective signing config (git config
+ * in the repo: local over global) and refuses when it isn't the agents'
+ * key; setRepoSigning writes the repo-local config Den gives a repo it
+ * clones for agents.
  */
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -56,12 +64,23 @@ export function gitSigningBlock(
 export function agentGitEnv(
   git: AgentGitSettings | undefined,
 ): Record<string, string> {
-  if (!git) return {};
-  const pairs: [string, string][] = [
-    ["gpg.format", "ssh"],
-    ["user.signingkey", git.signingKey],
-    ["commit.gpgsign", "true"],
-  ];
+  // Issue 523: no agents key, no signing. The person's commit.gpgsign,
+  // tag.gpgsign and user.signingkey are switched off for the agent, and an
+  // explicit -S fails (every signer is `false`) rather than sign as them.
+  const pairs: [string, string][] = git
+    ? [
+        ["gpg.format", "ssh"],
+        ["user.signingkey", git.signingKey],
+        ["commit.gpgsign", "true"],
+      ]
+    : [
+        ["commit.gpgsign", "false"],
+        ["tag.gpgsign", "false"],
+        ["user.signingkey", ""],
+        ["gpg.program", "false"],
+        ["gpg.ssh.program", "false"],
+        ["gpg.x509.program", "false"],
+      ];
   const env: Record<string, string> = {
     GIT_CONFIG_COUNT: String(pairs.length),
   };
@@ -160,5 +179,164 @@ export function checkAgentSigning(
     return { ok: true, detail: `commits sign with ${git.signingKey} and verify` };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The GIT_CONFIG_* names a parent's env can carry (Den's own among them). */
+const GIT_CONFIG_ENV = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/;
+
+/** `env` without any GIT_CONFIG_* override: only the config files speak. */
+export function withoutGitConfigEnv(
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(([k]) => !GIT_CONFIG_ENV.test(k)),
+  );
+}
+
+interface Setting {
+  value: string;
+  /** Where git found it: local, global, system, worktree, command. */
+  scope: string;
+}
+
+export interface EffectiveSigning {
+  format?: Setting;
+  key?: Setting;
+  commitSign?: Setting;
+  tagSign?: Setting;
+}
+
+/**
+ * What git would sign `repo`'s commits with: `git config --get` in the
+ * repo, with `env` (and `pre`, leading git args such as `-c k=v`), so a
+ * local value beats the global one exactly as git's own commit sees it.
+ */
+export function effectiveSigning(
+  repo: string,
+  env: NodeJS.ProcessEnv = process.env,
+  pre: readonly string[] = [],
+): EffectiveSigning {
+  const get = (key: string, bool = false): Setting | undefined => {
+    const r = spawnSync(
+      "git",
+      [
+        ...pre,
+        "config",
+        "--show-scope",
+        ...(bool ? ["--type=bool"] : []),
+        "--get",
+        key,
+      ],
+      { cwd: repo, env, encoding: "utf8", timeout: 20_000 },
+    );
+    if (r.status !== 0) return undefined;
+    const line = (r.stdout ?? "").replace(/\n$/, "");
+    const tab = line.indexOf("\t");
+    return tab < 0
+      ? { value: line, scope: "unknown" }
+      : { value: line.slice(tab + 1), scope: line.slice(0, tab) };
+  };
+  return {
+    format: get("gpg.format"),
+    key: get("user.signingkey"),
+    commitSign: get("commit.gpgsign", true),
+    tagSign: get("tag.gpgsign", true),
+  };
+}
+
+const scopeWord = (s: Setting) =>
+  s.scope === "command" ? "the environment or -c" : `the ${s.scope} config`;
+
+/** The line that gives `repo` the agents' key as its own config. */
+export function repoSigningFixLine(
+  repo: string,
+  git: AgentGitSettings,
+): string {
+  const r = JSON.stringify(repo);
+  return `git -C ${r} config gpg.format ssh && git -C ${r} config user.signingkey ${JSON.stringify(git.signingKey)}`;
+}
+
+function sameKey(value: string, git: AgentGitSettings): boolean {
+  const v = value.trim();
+  if (!v || !path.isAbsolute(v)) return false;
+  const n = path.normalize(v);
+  return n === git.signingKey || n === `${git.signingKey}.pub`;
+}
+
+export type RepoSigningCheck =
+  | { ok: true; reason?: undefined }
+  | { ok: false; reason: string };
+
+/**
+ * Issue 523: whether a commit in `repo` would sign as the agents. With an
+ * agents key: the effective gpg.format must be ssh and user.signingkey the
+ * agents' key, or it is refused. With none: signing must be off
+ * (commit.gpgsign and tag.gpgsign), or the commit would sign with someone
+ * else's key. The reason names settings and where they come from, never a
+ * key.
+ */
+export function checkRepoSigning(
+  repo: string,
+  git: AgentGitSettings | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+  pre: readonly string[] = [],
+): RepoSigningCheck {
+  const e = effectiveSigning(repo, env, pre);
+  if (!git) {
+    const on: string[] = [];
+    for (const [k, s] of [
+      ["commit.gpgsign", e.commitSign],
+      ["tag.gpgsign", e.tagSign],
+    ] as const)
+      if (s?.value === "true") on.push(`${k} is on (from ${scopeWord(s)})`);
+    if (!on.length) return { ok: true };
+    return {
+      ok: false,
+      reason: `${repo}: ${on.join(" and ")}, and there is no agents signing key, so the commit would be signed with someone else's key. Agents' commits stay unsigned until agents.git.signing_key is set.`,
+    };
+  }
+  const why: string[] = [];
+  const format = e.format?.value || "openpgp";
+  if (format !== "ssh")
+    why.push(
+      e.format
+        ? `gpg.format is ${format} (from ${scopeWord(e.format)})`
+        : "gpg.format is openpgp (git's default: nothing sets ssh)",
+    );
+  if (!e.key) why.push("user.signingkey is unset");
+  else if (!sameKey(e.key.value, git))
+    why.push(`user.signingkey is another key (from ${scopeWord(e.key)})`);
+  if (!why.length) return { ok: true };
+  return {
+    ok: false,
+    reason: `${repo}: its signing key isn't the agents' key: ${why.join("; ")}. An agent's commit is never signed with anyone else's key. Give the repo the agents' key: ${repoSigningFixLine(repo, git)}`,
+  };
+}
+
+/**
+ * Issue 523: `repo`'s own config signs with the agents' key (gpg.format
+ * ssh, user.signingkey), for a repo Den clones for agents. Throws with
+ * git's reason when it can't.
+ */
+export function setRepoSigning(
+  repo: string,
+  git: AgentGitSettings,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  for (const [k, v] of [
+    ["gpg.format", "ssh"],
+    ["user.signingkey", git.signingKey],
+  ]) {
+    const r = spawnSync("git", ["config", "--local", k, v], {
+      cwd: repo,
+      env: withoutGitConfigEnv(env),
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+    if (r.error || r.status !== 0)
+      throw new Error(
+        `git config ${k}: ${(r.stderr || r.error?.message || "failed").trim()}`,
+      );
   }
 }

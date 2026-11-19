@@ -91,8 +91,22 @@ describe("agents.git.signing_key: the setting", () => {
 });
 
 describe("an agent's env", () => {
-  it("unset: nothing of git's", () => {
-    expect(agentGitEnv(undefined)).toEqual({});
+  it("unset: signing off and every signer `false` (issue 523: never the person's key)", () => {
+    expect(agentGitEnv(undefined)).toEqual({
+      GIT_CONFIG_COUNT: "6",
+      GIT_CONFIG_KEY_0: "commit.gpgsign",
+      GIT_CONFIG_VALUE_0: "false",
+      GIT_CONFIG_KEY_1: "tag.gpgsign",
+      GIT_CONFIG_VALUE_1: "false",
+      GIT_CONFIG_KEY_2: "user.signingkey",
+      GIT_CONFIG_VALUE_2: "",
+      GIT_CONFIG_KEY_3: "gpg.program",
+      GIT_CONFIG_VALUE_3: "false",
+      GIT_CONFIG_KEY_4: "gpg.ssh.program",
+      GIT_CONFIG_VALUE_4: "false",
+      GIT_CONFIG_KEY_5: "gpg.x509.program",
+      GIT_CONFIG_VALUE_5: "false",
+    });
     const env = agentSessionEnv({ PATH: "/bin", HOME: "/h" }, {}, {}, "a1");
     expect(Object.keys(env).filter((k) => k.startsWith("GIT_"))).toEqual([]);
   });
@@ -175,7 +189,7 @@ describe("doctor's check", () => {
 describe("agents start", () => {
   afterEach(cleanupRigs);
 
-  it("an agent Den starts gets the key's GIT_CONFIG_*; unset, none", async () => {
+  it("an agent Den starts gets the key's GIT_CONFIG_*; unset, signing off (issue 523)", async () => {
     const r = await rig();
     r.config.git = { signingKey: key };
     expect(await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps)).toBe(0);
@@ -185,7 +199,10 @@ describe("agents start", () => {
     expect(env.GIT_CONFIG_VALUE_2).toBe("true");
     const r2 = await rig();
     expect(await cmdAgents(["start", "-w", "north", "--persona", "planner"], r2.deps)).toBe(0);
-    expect("GIT_CONFIG_COUNT" in r2.made[0].opts.env).toBe(false);
+    const env2 = r2.made[0].opts.env;
+    expect(env2.GIT_CONFIG_KEY_0).toBe("commit.gpgsign");
+    expect(env2.GIT_CONFIG_VALUE_0).toBe("false");
+    expect(Object.values(env2)).not.toContain(key);
   });
 });
 

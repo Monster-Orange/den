@@ -32,7 +32,10 @@
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { agentGitEnv } from "../../shared/agents/git-signing.js";
+import {
+  agentGitEnv,
+  checkRepoSigning,
+} from "../../shared/agents/git-signing.js";
 import type { Ran } from "./den-update.js";
 
 export const PIN_FILES = ["package.json", "package-lock.json"] as const;
@@ -523,6 +526,15 @@ export function pinGit(
       args[0] === "commit-tree" && o.signingKey
         ? ["commit-tree", "-S", ...args.slice(1)]
         : args;
+    // Issue 523: the signing config this commit would really use (env,
+    // -c, local over global). Not the agents' key: refused, never signed.
+    const guard = checkRepoSigning(
+      root,
+      o.signingKey ? { signingKey: o.signingKey } : undefined,
+      extra ? { ...env, ...extra } : env,
+      pre,
+    );
+    if (!guard.ok) return { code: 1, out: guard.reason };
     ident ??= raw(["config", "--get", "user.email"]).then(
       (r) => r.code === 0 && !!r.out.trim(),
     );

@@ -22,6 +22,7 @@
  * nothing is sent.
  */
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
@@ -41,7 +42,10 @@ import {
 import type { ConfigError } from "../../shared/config-error.js";
 import {
   checkAgentSigning,
+  checkRepoSigning,
+  repoSigningFixLine,
   signingKeyAddLine,
+  withoutGitConfigEnv,
   type AgentGitSettings,
   type SigningCheck,
 } from "../../shared/agents/git-signing.js";
@@ -1214,6 +1218,94 @@ export function signingLines(
   };
 }
 
+/** The line that makes an agents key with no passphrase. */
+export const AGENTS_KEYGEN_LINE =
+  'ssh-keygen -t ed25519 -N "" -C "Den agents" -f ~/.ssh/den_agents';
+
+/**
+ * Issue 523: the agent repos (each agent's folder, at its repo's top)
+ * whose own signing config isn't the agents' key: an agent there without
+ * Den's env would sign as someone else. Read with the config files only
+ * (no GIT_CONFIG_* of the caller's, Den's own included). With no agents
+ * key: a warning that agents' commits are unsigned.
+ */
+export function agentRepoSigningLines(
+  title: string,
+  dirs: readonly string[],
+  git: AgentGitSettings | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
+  if (!git) {
+    const detail = "agent commits are unsigned; set an agents signing key";
+    return {
+      lines: [
+        "",
+        `${title} doctor: agents' commit signing`,
+        "",
+        `  signing  ⚠  ${detail}:`,
+        `             ${AGENTS_KEYGEN_LINE}`,
+        "             then agents.git.signing_key: ~/.ssh/den_agents in config/local/user.yml",
+      ],
+      problem: false,
+      checks: [
+        { id: "agents:signing", status: "warn", detail, fix: AGENTS_KEYGEN_LINE },
+      ],
+    };
+  }
+  const files = withoutGitConfigEnv(env);
+  const tops = new Set<string>();
+  for (const d of dirs) {
+    if (!d || !fs.existsSync(d)) continue;
+    const r = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: d,
+      env: files,
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+    if (r.status === 0 && r.stdout.trim()) tops.add(r.stdout.trim());
+  }
+  const checks: OnboardCheck[] = [];
+  for (const top of [...tops].sort()) {
+    const r = checkRepoSigning(top, git, files);
+    if (!r.ok)
+      checks.push({
+        id: "agents:signing:repo",
+        status: "fail",
+        detail: r.reason,
+        fix: repoSigningFixLine(top, git),
+      });
+  }
+  if (!checks.length) return { lines: [], problem: false, checks };
+  return {
+    lines: [
+      "",
+      `${title} doctor: agent repos that don't sign with the agents' key`,
+      "",
+      ...checks.flatMap((c) => [`  signing  ✗  ${c.detail}`]),
+    ],
+    problem: true,
+    checks,
+  };
+}
+
+/** agentRepoSigningLines for this install: its config and its agents. */
+function agentRepoSigningDoctor(title: string) {
+  let git: AgentGitSettings | undefined;
+  try {
+    git = readAgentsConfig().git;
+  } catch {
+    // A bad agents: block is configLines' row.
+    return { lines: [], problem: false, checks: [] as OnboardCheck[] };
+  }
+  let dirs: string[] = [];
+  try {
+    dirs = listRecords(getStateDir()).map((r) => r.cwd);
+  } catch {
+    dirs = [];
+  }
+  return agentRepoSigningLines(title, dirs, git);
+}
+
 /**
  * `agents:` and `sessions:` (0.4.29): a bad key there stops only the agent
  * and session commands, so doctor names it, with its file and key path,
@@ -1390,6 +1482,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const sign = signingLines(readBrand().name);
     r.checks.push(...sign.checks);
     if (sign.problem) r.ok = false;
+    const repoSign = agentRepoSigningDoctor(readBrand().name);
+    r.checks.push(...repoSign.checks);
+    if (repoSign.problem) r.ok = false;
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
@@ -1455,6 +1550,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
+  const repoSign = agentRepoSigningDoctor(readBrand().name);
+  for (const l of repoSign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
   for (const l of (await addressCheckLines(readBrand().name, product().cli))
@@ -1485,6 +1582,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ownerProblem ||
       cfg.problem ||
       sign.problem ||
+      repoSign.problem ||
       addr.problem
       ? 1
       : 0;

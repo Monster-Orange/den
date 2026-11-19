@@ -4450,7 +4450,8 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. the distribution's: `GIT_CONFIG_*` when `agents.git.signing_key` is set
+4. the distribution's: `GIT_CONFIG_*` for commit signing, the agents' key
+   when `agents.git.signing_key` is set and signing off when it isn't
    ([Agents' commit signing](#agents-commit-signing));
 5. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
 
@@ -4508,6 +4509,35 @@ gh ssh-key add ~/.ssh/den_agents.pub --type signing --title "Den agents"
 `gh` needs the `admin:ssh_signing_key` scope for it
 (`gh auth refresh -s admin:ssh_signing_key`). An agent called `git` (an
 `agents.git` block with only `grants`) is still an agent.
+
+An agent's commit is never signed with your key:
+
+- **No agents key set.** The agent's env turns signing off
+  (`commit.gpgsign false`, `tag.gpgsign false`, an empty
+  `user.signingkey`) and points every signer (`gpg.program`,
+  `gpg.ssh.program`, `gpg.x509.program`) at `false`. Its commits are
+  unsigned, whatever your `~/.gitconfig` says, and an explicit `git commit
+  -S` fails instead of using your GPG key. `<cli> doctor` warns: "agent
+  commits are unsigned; set an agents signing key", with the `ssh-keygen`
+  line above.
+- **Den's own commits** (the pin commit after a self-update) first read
+  the signing config the commit would really use (`git config` in the
+  repo, so a local value beats the global one, with Den's env and `-c`).
+  When it isn't `gpg.format ssh` with the agents' key (or, with no key,
+  when signing is still on), Den refuses the commit and says why, naming
+  the settings and where they come from, never a key.
+- **A repo Den clones for agents** (`repo_clone`) gets the agents' key as
+  its own config: `gpg.format ssh` and `user.signingkey <the key>`. An
+  agent working there without Den's env (in a terminal of its own) still
+  signs as the agents. A repo you add with `repo add` is your checkout,
+  and Den doesn't change its config.
+- **`<cli> doctor`** lists each agent's repo (an agent's folder, at its
+  repo's top) whose own config, read from the config files only, would
+  sign with another key or format, with the line that fixes it:
+
+  ```sh
+  git -C <repo> config gpg.format ssh && git -C <repo> config user.signingkey <the key>
+  ```
 
 ### An agent's token
 

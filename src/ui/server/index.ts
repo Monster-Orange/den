@@ -2743,6 +2743,14 @@ function approvalDeps(): ApprovalDeps {
     },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),
+    // Issue 523: a clone gets the agents' signing key as its own config.
+    agentsGit: () => {
+      try {
+        return readAgentsConfig().git;
+      } catch {
+        return undefined;
+      }
+    },
     // SRV-P2: an agent asks to add or change a persona.
     personas: {
       checkCreate: (a, who) => checkPersonaCreate(agentWebDeps(), a, who),
