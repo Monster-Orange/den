@@ -334,6 +334,7 @@ describe("issue 93: no Open in any row, in en, es and ja", () => {
         await p.locator('#den-bell-pop [data-bell="updates"]').click();
         await p
           .locator('#den-bell-pop .den-bell-row[data-kind="service"]')
+          .first()
           .waitFor();
         const names = await p.$$eval(
           "#den-bell-pop .den-bell-row a, #den-bell-pop .den-bell-row button",
