@@ -41,6 +41,7 @@ import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
+import { ALERT_COUNTS_DEFAULT, ALERT_COUNTS_ROW } from "./alert-rules.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -395,6 +396,27 @@ function alertRows() {
           await N.requestPermission();
         return ctx.post({ alerts: { desktop: v === true } });
       },
+    },
+    {
+      // Issue 160: what counts. The words and the default are
+      // alert-rules.js's, so the rules and this row change in one place.
+      id: "notifications.counts",
+      category: "notifications",
+      label: ALERT_COUNTS_ROW.label,
+      description: ALERT_COUNTS_ROW.description,
+      keywords: [
+        "notifications",
+        "alerts",
+        "watch",
+        "watched",
+        "critical",
+        "policy",
+      ],
+      scope: "user",
+      control: seg(ALERT_COUNTS_ROW.options.map((o) => ({ ...o }))),
+      keys: ["alerts.counts"],
+      read: (ctx) => ctx.data.alerts?.counts ?? ALERT_COUNTS_DEFAULT,
+      write: (v, ctx) => ctx.post({ alerts: { counts: v } }),
     },
     {
       // S2: push, to this device (a phone, or a computer with no tab open).

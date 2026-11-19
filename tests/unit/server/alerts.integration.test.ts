@@ -28,6 +28,8 @@ beforeAll(async () => {
   expect(r.status).toBe(200);
   token = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";
   s.made.at(-1)!.emit("> ");
+  // Issue 160: alerts follow what counts; this project is watched.
+  expect(await s.settings({ approvals_watch: "project:north" })).toBe(200);
 }, 90_000);
 afterAll(async () => {
   await s?.stop();

@@ -9,27 +9,24 @@
  *
  * Two tabs show one: each alert is claimed once per browser, and its id
  * is the notification's tag. A browser that gets push (a service worker
- * subscription) leaves it to the push.
+ * subscription) leaves it to the push. The rules (what counts, when it
+ * stays quiet, one per item, the words) are alert-rules.js.
  */
 
+import { alertLink, claimAlert, quietInFront } from "./alert-rules.js";
+
 const POLL_MS = 5000;
-const CLAIMED = "den-alerts-shown";
 
-/** Only Den's own pages: an alert's link. */
-export const alertLink = (l) =>
-  typeof l === "string" && /^\/(?!\/)/.test(l) ? l : "/agents";
+/** Only Den's own pages: an alert's link (alert-rules.js). */
+export { alertLink };
 
-/** True the first time this browser sees alert `id` (two tabs: one shows it). */
-function claim(win, id) {
+/** This browser's storage, or null when it can't be reached. */
+function storageOf(win) {
   try {
-    const seen = JSON.parse(win.localStorage.getItem(CLAIMED) || "[]");
-    if (seen.includes(id)) return false;
-    seen.push(id);
-    win.localStorage.setItem(CLAIMED, JSON.stringify(seen.slice(-100)));
+    return win.localStorage ?? null;
   } catch {
-    /* no storage: the tag still folds two into one */
+    return null;
   }
-  return true;
 }
 
 /** Whether this browser gets alerts by push already (issue 172 S2). */
@@ -87,9 +84,10 @@ export function initAlerts(win = window) {
       const list = Array.isArray(b.alerts) ? b.alerts : [];
       if (first || !list.length) return;
       // In front: the bell and the Allow dialog already say it.
-      if (doc.visibilityState === "visible" && doc.hasFocus?.()) return;
+      if (quietInFront(doc)) return;
       if (await pushed(win)) return;
-      for (const a of list) if (a?.id && claim(win, a.id)) showAlert(win, a);
+      for (const a of list)
+        if (a?.id && claimAlert(storageOf(win), a.id)) showAlert(win, a);
     } catch {
       /* next tick */
     } finally {

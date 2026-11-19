@@ -33,6 +33,8 @@ export const UI_MODULES: readonly string[] = [
   "/bell.js",
   // Issue 172: alerts outside the bell (desktop notifications).
   "/alerts.js",
+  // Issue 172: alerts' rules and words, the page's and the server's.
+  "/alert-rules.js",
   // Issue 172 S2: the service worker that shows push alerts.
   "/den-sw.js",
   "/edge-page.js",

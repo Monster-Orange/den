@@ -2837,6 +2837,12 @@
       "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
     "set.notifications.desktop.none":
       "Este navegador no puede mostrar notificaciones.",
+    "set.notifications.counts": "Qué te avisa",
+    "set.notifications.counts.d":
+      "Qué te avisa fuera de la campana. Lo que sigues o lo crítico: la pregunta de un agente, su propia petición de tu Permitir, una escritura crítica, o cualquier cosa en un proyecto, agente, repo o servicio que sigues o fijaste. La campana sigue teniéndolo todo.",
+    "set.notifications.counts.o.needs_you": "Todo lo que te necesita",
+    "set.notifications.counts.o.watched_or_critical":
+      "Lo que sigo o lo crítico",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",
