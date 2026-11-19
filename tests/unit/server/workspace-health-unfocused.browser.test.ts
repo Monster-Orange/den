@@ -23,6 +23,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -158,6 +159,11 @@ async function open(ws: string): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("acme-changelog-seen", v);

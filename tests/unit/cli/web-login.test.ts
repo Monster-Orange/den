@@ -173,7 +173,7 @@ describe("each web subcommand's own --help (the dispatcher answers for none of t
     const a = io();
     expect(await cmdWebLogin(["--help"], a.io)).toBe(0);
     expect(a.o.out).toMatch(/^Usage: den web login \[--next <path>\]/);
-    expect(a.o.out).toMatch(/On localhost nothing asks for a sign-in/);
+    expect(a.o.out).toMatch(/On this machine `web up` opens such a link/);
     // No link was minted, so no secret was made for one.
     expect(a.o.out).not.toMatch(/\/auth\?c=/);
     const b = io();

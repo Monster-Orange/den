@@ -643,6 +643,31 @@ async function main() {
         deviceScaleFactor: scale,
         colorScheme: scheme,
       });
+      // 0.4.71: signed in, as `web up` signs a browser in: the one-time
+      // link `web login --no-wait` prints (never printed here).
+      const link = execFileSync(
+        path.join(ENGINE, "bin", "den"),
+        [
+          "web",
+          "login",
+          "--no-wait",
+          "--port",
+          new URL(url).port,
+          "--origin",
+          url,
+        ],
+        {
+          cwd: demo.root,
+          env: serverEnv,
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      ).trim();
+      const sp = await ctx.newPage();
+      const signed = await sp.goto(link);
+      await sp.close();
+      if (!signed?.ok())
+        throw new Error("doc-shots: the one-time sign-in link didn't sign in");
       // "What's new" is for people, not screenshots.
       await ctx.addInitScript((v) => {
         try {

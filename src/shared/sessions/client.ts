@@ -47,6 +47,14 @@ export class HostClient extends EventEmitter {
   hostStartedAt = "";
   /** D20: the host's launchd session (null off macOS or an older host). */
   hostLaunchd: string | null = null;
+  /**
+   * Issue 563: the Den version the host runs (null: it can't tell), or
+   * undefined when the host is too old to say.
+   */
+  hostDen: string | null | undefined = undefined;
+  /** Issue 563: the native PTY module the host loaded (null: none yet). */
+  hostPty: { path: string; version: string | null; id: string | null } | null =
+    null;
 
   constructor(private readonly socket: net.Socket) {
     super();
@@ -187,6 +195,17 @@ export class HostClient extends EventEmitter {
     this.hostPid = Number(r.pid);
     this.hostStartedAt = String(r.startedAt ?? "");
     this.hostLaunchd = typeof r.launchd === "string" ? r.launchd : null;
+    this.hostDen =
+      "den" in r ? (typeof r.den === "string" ? r.den : null) : undefined;
+    const p = r.pty as { path?: unknown; version?: unknown; id?: unknown };
+    this.hostPty =
+      p && typeof p === "object" && typeof p.path === "string"
+        ? {
+            path: p.path,
+            version: typeof p.version === "string" ? p.version : null,
+            id: typeof p.id === "string" ? p.id : null,
+          }
+        : null;
   }
 
   async start(
