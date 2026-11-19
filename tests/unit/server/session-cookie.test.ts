@@ -100,6 +100,7 @@ describe("whether the named https address works (sessions live only there)", () 
     answer?: NamedAnswer;
     cacheMs?: number;
     dropAfter?: number;
+    unknownKeepMs?: number;
   }) {
     let now = 1_000_000;
     let probes = 0;
@@ -116,6 +117,7 @@ describe("whether the named https address works (sessions live only there)", () 
       },
       cacheMs: () => o.cacheMs ?? 60_000,
       dropAfter: () => o.dropAfter ?? 2,
+      unknownKeepMs: () => o.unknownKeepMs ?? 300_000,
       onProven: () => proven++,
       now: () => now,
     });
@@ -167,11 +169,36 @@ describe("whether the named https address works (sessions live only there)", () 
     expect(t.w.works()).toBe(true);
   });
 
-  it("proven is sticky: a check that can't tell (a timeout) keeps it", async () => {
+  it("a check that can't tell keeps it proven, within web.address_unknown_keep_seconds of the last answer as this Den", async () => {
     const t = watch({ url: "https://den.acme.test" });
     t.w.saw("den.acme.test");
-    for (let i = 0; i < 5; i++) await t.recheck("unknown");
+    for (let i = 0; i < 4; i++) await t.recheck("unknown"); // 244 s
     expect(t.w.works()).toBe(true);
+  });
+
+  it("past that window, can't-tell counts as a failure: sign-in comes back where the browser is", async () => {
+    const t = watch({ url: "https://den.acme.test", dropAfter: 2 });
+    t.w.saw("den.acme.test");
+    for (let i = 0; i < 5; i++) await t.recheck("unknown"); // 305 s
+    expect(t.w.works()).toBe(true); // the first failure
+    await t.recheck("unknown"); // the second
+    expect(t.w.works()).toBe(false);
+  });
+
+  it("an answer as this Den starts the window again", async () => {
+    const t = watch({ url: "https://den.acme.test", dropAfter: 1 });
+    t.w.saw("den.acme.test");
+    for (let i = 0; i < 4; i++) await t.recheck("unknown");
+    await t.recheck("den");
+    for (let i = 0; i < 4; i++) await t.recheck("unknown");
+    expect(t.w.works()).toBe(true);
+  });
+
+  it("says when it last answered as this Den", async () => {
+    const t = watch({ url: "https://den.acme.test" });
+    expect(t.w.lastAnswered()).toBeNull();
+    t.w.saw("den.acme.test");
+    expect(typeof t.w.lastAnswered()).toBe("number");
   });
 
   it("only a definite failure, seen dropAfter times in a row, moves it back", async () => {
@@ -208,6 +235,23 @@ describe("whether the named https address works (sessions live only there)", () 
     t.w.works();
     t.w.works();
     expect(t.probes()).toBe(1);
+  });
+});
+
+describe("how long can't-tell keeps a proven address: a Setting", () => {
+  it("web.address_unknown_keep_seconds, default 300 (minutes, not hours), 0 to 3600", () => {
+    const read = (v: unknown) =>
+      addressCheckSettings(() => ({ web: { address_unknown_keep_seconds: v } }))
+        .unknownKeepMs;
+    expect(read(undefined)).toBe(300_000);
+    expect(read(60)).toBe(60_000);
+    expect(read(0)).toBe(0);
+    expect(read(7200)).toBe(300_000);
+    expect(ADDRESS_CHECK_LIMITS.unknown_keep_seconds).toEqual({
+      min: 0,
+      max: 3600,
+      default: 300,
+    });
   });
 });
 

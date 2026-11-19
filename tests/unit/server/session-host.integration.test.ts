@@ -467,3 +467,94 @@ describe('once it works: "This is my computer" (/attest), with no loop', () => {
     expect(loc(again).includes("#den-attest=")).toBe(false);
   });
 });
+
+describe("once it works: sessions count only when minted on the proven address", () => {
+  // The address's name on Den's own port: plain http, no edge proof.
+  const plainNamed = () => ({ host: `${NAMED}:${port}` });
+  let plain = "";
+  let plainCsrf = "";
+  beforeAll(async () => {
+    const r = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
+      ...plainNamed(),
+      ...nav,
+    });
+    const line = sessionLine(r);
+    plain = line.slice(line.indexOf("=") + 1).split(";")[0];
+    // Its CSRF token, as the page that signed in would hold it (the record).
+    const store = JSON.parse(
+      fs.readFileSync(path.join(stateDir, "web-sessions.json"), "utf8"),
+    ) as {
+      sessions: Record<
+        string,
+        { host: string; csrf: string; createdAt: number }
+      >;
+    };
+    const mine = Object.values(store.sessions)
+      .filter((x) => x.host === `${NAMED}:${port}`)
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    plainCsrf = mine?.csrf ?? "";
+  });
+
+  it("a plain-http sign-in on the address's name made a session", () => {
+    expect([plain.length > 0, plainCsrf.length > 0]).toEqual([true, true]);
+  });
+
+  for (const [what, h] of [
+    [
+      "the address with the edge's proof",
+      () => ({ ...named(), "x-forwarded-proto": "https" }),
+    ],
+    ["the address's name on Den's port", plainNamed],
+    ["a loopback name", local],
+  ] as const)
+    for (const name of ["den_session_", "__Host-den_session_"])
+      it(`it counts nowhere: as ${name}<port> on ${what}, no CSRF token and a write is 401`, async () => {
+        const base = { ...h(), cookie: `${name}${port}=${plain}` };
+        const me = await call("GET", "/api/session", {
+          ...base,
+          "sec-fetch-site": "same-origin",
+        });
+        const b = JSON.parse(me.body) as { csrf: unknown; signedIn: unknown };
+        expect([b.signedIn === true, typeof b.csrf === "string"]).toEqual([
+          false,
+          false,
+        ]);
+        const w = await call(
+          WRITE.method,
+          WRITE.path,
+          {
+            ...base,
+            origin: `http://${NAMED}:${port}`,
+            "sec-fetch-site": "same-origin",
+            "x-den-csrf": plainCsrf,
+          },
+          WRITE.body,
+        );
+        expect([w.status, codeOf(w)]).toEqual([401, "signin_required"]);
+      });
+
+  it("sign-out with its own CSRF token ends it on the server", async () => {
+    const r = await call(
+      "POST",
+      "/api/session/logout",
+      {
+        ...plainNamed(),
+        origin: `http://${NAMED}:${port}`,
+        "sec-fetch-site": "same-origin",
+        cookie: `den_session_${port}=${plain}`,
+        "x-den-csrf": plainCsrf,
+      },
+      "{}",
+    );
+    expect([
+      r.status,
+      (JSON.parse(r.body) as { ended?: boolean }).ended,
+    ]).toEqual([200, true]);
+    const store = JSON.parse(
+      fs.readFileSync(path.join(stateDir, "web-sessions.json"), "utf8"),
+    ) as { sessions: Record<string, { csrf: string }> };
+    expect(
+      Object.values(store.sessions).some((x) => x.csrf === plainCsrf),
+    ).toBe(false);
+  });
+});

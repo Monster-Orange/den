@@ -70,3 +70,29 @@ describe("the web row, where the address is shown", () => {
     expect((await web("https://den.example.com")).detail).not.toMatch(RISK);
   });
 });
+
+describe("doctor: when the address stopped answering", () => {
+  it("an https address that answered as this Den before: says when, in local time", () => {
+    const at = "2026-11-19T15:04:00.000Z";
+    const r = sessionHostLines(
+      { url: "https://den.example.com", confirmed: true },
+      false,
+      "Acme",
+      "acme",
+      at,
+    );
+    expect(r.check.status).toBe("warn");
+    expect(r.check.detail).toContain("last answered as this Acme at");
+    expect(r.check.detail).toContain(new Date(at).toLocaleString());
+  });
+  it("working, or never answered: no such words", () => {
+    const w = { url: "https://den.example.com", confirmed: true };
+    expect(
+      sessionHostLines(w, true, "Acme", "acme", "2026-11-19T15:04:00.000Z")
+        .check.detail,
+    ).not.toContain("last answered");
+    expect(
+      sessionHostLines(w, false, "Acme", "acme", null).check.detail,
+    ).not.toContain("last answered");
+  });
+});

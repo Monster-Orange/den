@@ -24,11 +24,17 @@ import {
 const PORT = 41237;
 const local = `localhost:${PORT}`;
 const NAMED = "den.acme.test";
-const SESSION: GuardSession = { key: "k".repeat(64), csrf: "session-csrf" };
+// Minted over the proven https address (its __Host- cookie).
+const SESSION: GuardSession = {
+  key: "k".repeat(64),
+  csrf: "session-csrf",
+  secure: true,
+};
+// Minted anywhere else: a loopback name, or plain http on any name.
 const LOOP_SESSION: GuardSession = {
   key: "l".repeat(64),
-  csrf: "session-csrf",
-  loopback: true,
+  csrf: "loop-csrf",
+  secure: false,
 };
 
 const ctx = (namedWorks: boolean): GuardContext => ({
@@ -128,7 +134,7 @@ describe("a named https address works", () => {
   });
 });
 
-describe("a session made on a loopback name, once the address works", () => {
+describe("a session not minted over the proven address (loopback, or plain http on any name), once it works", () => {
   const named = (extra: Record<string, string>) =>
     req("POST", WRITE, {
       ...page(NAMED, "https"),
@@ -157,10 +163,47 @@ describe("a session made on a loopback name, once the address works", () => {
     ).toMatchObject({ ok: true, session: null });
   });
   it("with no working address it counts, as before (no lockout)", () => {
-    expect(checkRequest(named({}), ctx(false))).toMatchObject({
+    expect(
+      checkRequest(named({ "x-den-csrf": "loop-csrf" }), ctx(false)),
+    ).toMatchObject({
       ok: true,
       principal: { kind: "person-browser" },
     });
+  });
+});
+
+describe("sign-out ends its own session, even one that no longer counts", () => {
+  const logout = (csrf: string) =>
+    req("POST", "/api/session/logout", {
+      ...page(local),
+      "x-den-csrf": csrf,
+      cookie: `den_session_${PORT}=loop`,
+    });
+  it("with that session's own CSRF token: it passes, naming the session to end", () => {
+    expect(checkRequest(logout("loop-csrf"), ctx(true))).toMatchObject({
+      ok: true,
+      session: null,
+      ending: { key: LOOP_SESSION.key },
+    });
+  });
+  it("without it: refused, as any write", () => {
+    expect(checkRequest(logout("other"), ctx(true))).toMatchObject({
+      ok: false,
+      status: 403,
+      code: "csrf",
+    });
+  });
+  it("nothing else passes with a session that no longer counts", () => {
+    expect(
+      checkRequest(
+        req("POST", WRITE, {
+          ...page(local),
+          "x-den-csrf": "loop-csrf",
+          cookie: `den_session_${PORT}=loop`,
+        }),
+        ctx(true),
+      ),
+    ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
   });
 });
 
