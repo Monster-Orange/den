@@ -310,12 +310,14 @@ export interface Runtime {
   /**
    * AG-18: whether conversation `token` is mid-turn (den-claude: its
    * transcript's tail). None, or null: the runtime can't tell. Never
-   * throws. `readMaxBytes`: how far back it may read (D39).
+   * throws. `readMaxBytes`: how far back it may read (D39). `since`
+   * (issue 607): when the agent's live session started (ms); a turn last
+   * written before it was cut with the session that ran it, and is idle.
    */
   turnBusy?(
     token: string,
     env?: NodeJS.ProcessEnv,
-    opts?: { readMaxBytes?: number },
+    opts?: { readMaxBytes?: number; since?: number },
   ): boolean | null;
   /**
    * 0.4.48: the command line of the shell the runtime runs a command in.

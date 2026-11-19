@@ -861,7 +861,13 @@ export const denClaude: Runtime = {
     try {
       const file = transcriptFile(token, env);
       if (!file) return null;
-      return transcriptBusy(file, Date.now(), undefined, opts.readMaxBytes);
+      return transcriptBusy(
+        file,
+        Date.now(),
+        undefined,
+        opts.readMaxBytes,
+        opts.since,
+      );
     } catch {
       return null;
     }
