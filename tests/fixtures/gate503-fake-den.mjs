@@ -7,12 +7,15 @@
  *   doctor no Terminals row in doctor
  *   keys   the config reader lacks the sessions.pty_* keys
  *   pty    another node-pty version is installed
+ *   reason the cap's refusal has no reason
+ * `cap` is sessions.max_concurrent; `capIn` is where the bed sets it:
+ * "den.yml", or "default" (only Den's default in den-config).
  */
 export const PTY = "1.2.0-beta.18";
 export const INTEGRITY =
   "sha512-ryy4liRcw6QBBKWDIbJgTW7Pw8NI2xjri/5s/LZg/jJ8ZVg8MgA1xI/vjpT5qTvDvPjUpU5NybJBrKRgK/QvlA==";
 
-export function fakeBed({ broken = null } = {}) {
+export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
   let host = 3;
   let machine = 40;
   let next = 0;
@@ -24,6 +27,20 @@ export function fakeBed({ broken = null } = {}) {
       if (p === "/api/sessions" && method === "GET")
         return json(200, { sessions: [], workspaces: ["north"] });
       if (p === "/api/workspaces/north/sessions" && method === "POST") {
+        if (open.size >= cap)
+          return json(
+            429,
+            broken === "reason"
+              ? { ok: false, code: "cap" }
+              : {
+                  ok: false,
+                  error: `${cap} sessions are running (sessions.max_concurrent is ${cap})`,
+                  code: "cap",
+                  hints: [
+                    "Stop a session first, or raise sessions.max_concurrent.",
+                  ],
+                },
+          );
         const id = `t${++next}`;
         open.add(id);
         host++;
@@ -69,10 +86,17 @@ export function fakeBed({ broken = null } = {}) {
             },
           },
         });
+      if (rel === "den.yml")
+        return capIn === "den.yml"
+          ? `name: bed\nsessions:\n  close_grace_seconds: 5\n  max_concurrent: ${cap}\nagents:\n  max_concurrent: 4\n`
+          : "name: bed\nagents:\n  max_concurrent: 4\n";
       if (rel === "node_modules/@monster-orange/den/src/shared/den-config.ts")
-        return broken === "keys"
-          ? 'const KEYS = ["close_grace_seconds"];'
-          : 'const KEYS = ["close_grace_seconds", "pty_close_seconds", "pty_warn_above", "pty_machine_warn_percent"];';
+        return (
+          (broken === "keys"
+            ? 'const KEYS = ["close_grace_seconds"];'
+            : 'const KEYS = ["close_grace_seconds", "pty_close_seconds", "pty_warn_above", "pty_machine_warn_percent"];') +
+          `\nexport const DEFAULT_SESSIONS_MAX_CONCURRENT = ${capIn === "default" ? cap : 8};`
+        );
       return null;
     },
     async until(fn, _ms) {

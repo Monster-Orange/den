@@ -15,7 +15,7 @@ config and manifest changes a distribution must make to move to it under
 - When the machine gives no PTY, Terminal and the start dialog say so, with the reason, and the terminal host logs it.
 - `den doctor` shows the terminal host's PTYs and the machine's. It fails above `sessions.pty_warn_above` (400) or at `sessions.pty_machine_warn_percent` (90%) of the machine's limit.
 - **New config key** `sessions.pty_close_seconds` (default 0, den.yml or user.yml): how long after a terminal exits its PTY closes. Settings rows for the terminal limits follow in issue 532.
-- **Live check:** `gate/503.mjs` opens and closes 20 terminals and checks the PTY count returns to where it started, plus doctor's rows, the config keys and the pinned node-pty.
+- **Live check:** `gate/503.mjs` opens terminals up to `sessions.max_concurrent` (at most 20) and closes them, and checks the PTY count returns to where it started and that one past the cap is refused with its reason, plus doctor's rows, the config keys and the pinned node-pty.
 
 ## [0.4.68] - 2026-11-18
 

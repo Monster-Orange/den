@@ -1,17 +1,20 @@
 // gate/503.mjs: the terminal host closes an ended terminal's PTY (issue
 // 503). In a project of the bed, through the API a person's page uses: it
-// opens 20 plain terminals of its own, closes them again, and reads the
-// terminal host's PTY count (doctor's Terminals row) before and after.
+// opens plain terminals of its own up to sessions.max_concurrent (at most
+// 20), plus one past the cap, closes them again, and reads the terminal
+// host's PTY count (doctor's Terminals row) before and after. The one past
+// the cap must be refused with 429 and its reason.
 // Then it reads doctor's rows, the installed Den's config keys, and the
 // installed @lydell/node-pty against the lockfile. It closes every
 // terminal it opened (teardown too) and never touches one the bed had.
 export const issue = 503;
 export const clauses = [
-  "opening and closing 20 terminals leaves the terminal host's PTY count where it started (±1), and the machine's doesn't grow",
+  "opening terminals up to sessions.max_concurrent (at most 20) and closing them leaves the terminal host's PTY count where it started (±1), and the machine's doesn't grow",
   "doctor shows the terminal host's PTYs and the machine's",
   "sessions.pty_close_seconds, pty_warn_above and pty_machine_warn_percent are config keys the installed Den reads",
   "the installed @lydell/node-pty is exactly 1.2.0-beta.18, with the lockfile's integrity",
   "a terminal that can't get a PTY is refused with 503 and a reason, never a hang",
+  "a terminal past sessions.max_concurrent is refused with 429, code cap and a reason that names the key",
 ];
 // Unloaded, a run takes ~40 s; under load several minutes.
 export const timeoutMs = 360000;
@@ -25,6 +28,19 @@ const KEYS = [
   "pty_warn_above",
   "pty_machine_warn_percent",
 ];
+
+/** sessions.max_concurrent as the bed runs it: den.yml, else Den's default. */
+function capOf(ctx) {
+  const yml = ctx.readBed("den.yml") ?? "";
+  const sec = /^sessions:\s*\n((?:[ \t]+.*\n?)*)/m.exec(yml);
+  const set = sec && /^[ \t]+max_concurrent:\s*(\d+)/m.exec(sec[1]);
+  if (set) return Number(set[1]);
+  const cfg =
+    ctx.readBed("node_modules/@monster-orange/den/src/shared/den-config.ts") ??
+    "";
+  const def = /DEFAULT_SESSIONS_MAX_CONCURRENT\s*=\s*(\d+)/.exec(cfg);
+  return def ? Number(def[1]) : null;
+}
 
 const parse = (b) => {
   if (b && typeof b === "object") return b;
@@ -71,13 +87,21 @@ async function closeAll(ctx) {
 export async function setup(ctx) {
   const list = parse((await ctx.fetch("/api/sessions")).body);
   const ws = (list?.workspaces ?? []).filter(Boolean)[0] ?? null;
-  return { ws, before: ptyRow(ctx) };
+  return { ws, before: ptyRow(ctx), cap: capOf(ctx) };
 }
 
 export async function run(ctx, state) {
-  const out = { ws: state.ws, before: state.before, opened: 0, closed: 0 };
+  const out = {
+    ws: state.ws,
+    before: state.before,
+    cap: state.cap,
+    opened: 0,
+    closed: 0,
+  };
   if (!state.ws) return { ...out, skipped: "needs-project" };
-  for (let i = 0; i < N; i++) {
+  // Up to the cap, and one more to see the cap's refusal (when it's < N).
+  const tries = state.cap != null && state.cap < N ? state.cap + 1 : N;
+  for (let i = 0; i < tries; i++) {
     const r = await ctx.fetch(
       `/api/workspaces/${encodeURIComponent(state.ws)}/sessions`,
       {
@@ -88,7 +112,16 @@ export async function run(ctx, state) {
     );
     const id = parse(r.body)?.session?.id;
     if (r.status >= 300 || !id) {
-      out.openError = { status: r.status, body: String(r.body).slice(0, 200) };
+      const b = parse(r.body);
+      out.openError = {
+        status: r.status,
+        code: b?.code ?? null,
+        error: typeof b?.error === "string" ? b.error.slice(0, 300) : null,
+        hints: Array.isArray(b?.hints) ? b.hints.slice(0, 3) : [],
+      };
+      ctx.log?.(
+        `refused after ${out.opened}: ${JSON.stringify(out.openError)}`,
+      );
       break;
     }
     opened.push(id);
@@ -119,7 +152,7 @@ export async function run(ctx, state) {
     "";
   out.keys = Object.fromEntries(KEYS.map((k) => [k, cfg.includes(`"${k}"`)]));
   ctx.log?.(
-    `PTYs: before ${JSON.stringify(state.before)}; with ${n} open ${JSON.stringify(out.during)}; after ${JSON.stringify(out.after)}`,
+    `PTYs (cap ${state.cap}): before ${JSON.stringify(state.before)}; with ${n} open ${JSON.stringify(out.during)}; after ${JSON.stringify(out.after)}`,
   );
   return out;
 }
@@ -134,14 +167,25 @@ export function expect(r) {
   const b = res.before;
   const a = res.after;
   const d = res.during;
+  const e = res.openError;
+  const capRefusal =
+    !!e &&
+    e.status === 429 &&
+    e.code === "cap" &&
+    !!e.error &&
+    [e.error, ...(e.hints ?? [])].some((t) =>
+      String(t).includes("sessions.max_concurrent"),
+    );
   if (res.skipped) {
     rows.push({ clause: clauses[0], ok: null, skip: res.skipped });
   } else {
-    const opened = res.opened === N;
+    // All it asked for, or up to the cap's refusal (sessions the bed
+    // already runs count against the cap too). At least 2 to measure.
+    const opened = res.opened >= 2 && (res.opened === N || capRefusal);
     const hostBack = b?.host != null && a?.host != null && a.host <= b.host + 1;
     // While open, the count must have risen: proves the row counts PTYs.
     const counted =
-      d?.host != null && b?.host != null && d.host >= b.host + N - 1;
+      d?.host != null && b?.host != null && d.host >= b.host + res.opened - 1;
     const machineOk =
       b?.machineUsed == null ||
       a?.machineUsed == null ||
@@ -153,7 +197,7 @@ export function expect(r) {
       ...(opened && counted && hostBack && machineOk
         ? {}
         : {
-            note: `opened ${res.opened}/${N}${res.openError ? ` (${res.openError.status})` : ""}; host ${b?.host} → ${d?.host} → ${a?.host}; machine ${b?.machineUsed} → ${a?.machineUsed}`,
+            note: `opened ${res.opened} (cap ${res.cap})${e ? ` (refused ${e.status} ${e.code})` : ""}; host ${b?.host} → ${d?.host} → ${a?.host}; machine ${b?.machineUsed} → ${a?.machineUsed}`,
           }),
     });
   }
@@ -189,5 +233,16 @@ export function expect(r) {
   // would be a test-only path in shipped code. The refusal is proven in
   // tests/unit/sessions/host-pty-close.test.ts and pty-close.integration.
   rows.push({ clause: clauses[4], ok: null, skip: "needs-pty-limit" });
+  if (res.skipped)
+    rows.push({ clause: clauses[5], ok: null, skip: res.skipped });
+  else if (res.cap == null || res.cap >= N)
+    rows.push({ clause: clauses[5], ok: null, skip: "needs-cap-below-20" });
+  else
+    rows.push({
+      clause: clauses[5],
+      ok: capRefusal,
+      evidence: ["503-log.txt"],
+      ...(capRefusal ? {} : { note: `refusal: ${JSON.stringify(e ?? null)}` }),
+    });
   return rows;
 }
