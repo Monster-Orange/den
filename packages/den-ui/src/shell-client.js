@@ -75,6 +75,11 @@
  *       the checked entry (else the first); ↑ ↓ Home End move; Esc or Tab
  *       closes it and focus goes back to ◐ ▾; a press outside closes it.
  *       → { open(), close(refocus), isOpen() }
+ *   hydratePageMenu(button, { items, onSelect(id, item), lang })
+ *       the page action menu (issue 555) on pageMenuButtonHtml's More ▾,
+ *       as ◐ ▾'s. A disabled item does nothing and keeps it open; its note
+ *       (with an href) is a row to follow. → { open(), close(refocus),
+ *       isOpen() }
  *   setWaiting(o | null, root?)   the update-waiting pill after the
  *       version chip: { label, action, title?, name?, onClick } shows it
  *       (waitingHtml), null hides it.
@@ -87,6 +92,7 @@ import {
   bellPanelHtml,
   menuFilterParts,
   menuHasFilter,
+  pageMenuHtml,
   waitingHtml,
 } from "./shell-html.js";
 import { focusBack } from "./dialog.js";
@@ -703,9 +709,45 @@ export function hydrateAppearance(btn, opts = {}) {
 }
 
 /**
+ * The page action menu (issue 555): the button pageMenuButtonHtml drew,
+ * and its menu on <body>, as ◐ ▾'s.
+ *   hydratePageMenu(button, { items, onSelect(id, item), lang })
+ * items: pageMenuHtml's items (a list, or a function giving one each time
+ * it opens); an item may carry its own onSelect(item). A pick calls the
+ * item's onSelect, else opts.onSelect(id, item), and closes the menu; a
+ * link is followed. A disabled item does nothing. Its note, when it has an
+ * href, is a row to follow.
+ *   → { open(), close(refocus), isOpen() }
+ */
+export function hydratePageMenu(btn, opts = {}) {
+  const lang = () =>
+    typeof opts.lang === "function" ? opts.lang() : opts.lang;
+  const list = () =>
+    (typeof opts.items === "function" ? opts.items() : opts.items) || [];
+  let shown = [];
+  return popMenu(btn, {
+    id: "den-pmenu",
+    cls: "den-pmenu",
+    label: () => kitT(lang(), "kit.pmenu.more"),
+    html: () => {
+      shown = list();
+      return pageMenuHtml({ id: btn.id, items: shown, lang: lang() });
+    },
+    onPick: (kind, value) => {
+      if (kind !== "page") return;
+      const item = shown.find((it) => it && !it.hr && String(it.id) === value);
+      if (!item || item.disabled) return;
+      if (typeof item.onSelect === "function") item.onSelect(item);
+      else if (opts.onSelect) opts.onSelect(item.id, item);
+    },
+  });
+}
+
+/**
  * A kit menu on <body> for a button (◐ ▾, the account entry): placed by
  * it, kept in the window. o: { id (the button's, if it has none), label(),
- * html(), onPick(kind, value, row), onSubmit(event, form) }. Opens on
+ * html(), onPick(kind, value, row), onSubmit(event, form), cls (a class
+ * of its own on the menu) }. Opens on
  * the checked entry, else the first; ↑ ↓ Home End move; Esc or Tab
  * closes it and focus goes back to the button; a press outside closes
  * it. A form's submit button submits it (onSubmit first: preventDefault
@@ -750,7 +792,7 @@ function popMenu(el, o) {
     if (pop) return;
     if (from) btn = from;
     pop = document.createElement("div");
-    pop.className = "den-pop den-um";
+    pop.className = "den-pop den-um" + (o.cls ? " " + o.cls : "");
     pop.tabIndex = -1;
     pop.id = (btn.id || o.id) + "-menu";
     pop.setAttribute("role", "menu");
@@ -765,6 +807,11 @@ function popMenu(el, o) {
         e.target && e.target.closest ? e.target.closest(".den-mi") : null;
       // A form's own button: the form posts (see submit below).
       if (!row || row.type === "submit") return;
+      // A disabled row does nothing, and the menu stays open.
+      if (row.getAttribute("aria-disabled") === "true") {
+        e.preventDefault();
+        return;
+      }
       const kind = row.dataset.kind;
       const value = row.dataset.value;
       if (row.tagName !== "A") e.preventDefault();

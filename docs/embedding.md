@@ -86,10 +86,10 @@ the person:
   URL or in storage, and it is never posted to the host.
 - When the host's origin is taken off the list, its keys stop working.
 
-On the computer Den runs on, the key is minted at once. On another
-computer the frame has no session, so the pane shows **Sign in to Den**.
-That opens a Den window (`/embed/connect`), where the person signs in if
-needed and presses **Allow**. That window posts the key to the pane
+The frame has no session, so the pane shows **Sign in to Den**, on
+the computer Den runs on too. That opens a Den window
+(`/embed/connect`), where the person signs in if needed and presses
+**Allow**. That window posts the key to the pane
 that opened it, targeted at Den's own origin only, and then closes.
 
 ### Messages
@@ -164,31 +164,31 @@ Title: Release notes
 
 ### HTTP routes behind the pane
 
-| Route                                                                 | Who                                                        | What                                                                         |
-| --------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `POST /api/embed/keys` `{ project, agent, origin }`                   | A person: on Den's computer, or signed in. Never an agent. | Mints the key. Returns `{ key, expiresAt, agent, limits }`.                  |
-| `POST /api/embed/say` `{ text, context? }`                            | The key, in `X-Den-Embed-Key`                              | Types the message (and any shared pages, quoted) into the agent, then Enter. |
-| `POST /api/workspaces/<project>/agents/<id>/say` `{ text, context? }` | A person (the Agents page's composer)                      | The same, from Den itself.                                                   |
+| Route                                                                 | Who                                                      | What                                                                         |
+| --------------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `POST /api/embed/keys` `{ project, agent, origin }`                   | A person: signed in, or the CLI's token. Never an agent. | Mints the key. Returns `{ key, expiresAt, agent, limits }`.                  |
+| `POST /api/embed/say` `{ text, context? }`                            | The key, in `X-Den-Embed-Key`                            | Types the message (and any shared pages, quoted) into the agent, then Enter. |
+| `POST /api/workspaces/<project>/agents/<id>/say` `{ text, context? }` | A person (the Agents page's composer)                    | The same, from Den itself.                                                   |
 
 ### Errors
 
-| `code`              | Status | Meaning                                                            |
-| ------------------- | ------ | ------------------------------------------------------------------ |
-| `origin_not_listed` | 403    | The host's origin isn't on the list, or was taken off it.          |
-| `no_agent`          | 404    | The project has no such agent.                                     |
-| `signin_required`   | 401    | On another computer: the person must sign in (the pane offers it). |
-| `bad_key`           | 401    | No key, or not one of Den's.                                       |
-| `key_expired`       | 401    | The key expired. The pane asks for a new one and tries once more.  |
-| `not_running`       | 409    | The agent is stopped. Resume it in Den first.                      |
-| `context_too_large` | 413    | A shared page is over `embed.context_max_kb`.                      |
-| `context_url`       | 400    | A shared page's URL isn't http(s), or is too long.                 |
-| `context_shape`     | 400    | A shared page has fields that aren't text, or unknown fields.      |
-| `empty`             | 400    | Nothing to send.                                                   |
-| `agent_forbidden`   | 403    | An agent's token tried to mint a key.                              |
-| `key_revoked`       | 401    | An app key that was revoked in Settings › Embedding.               |
-| `key_scope`         | 403    | An app key asked about another agent.                              |
-| `embed_key_scope`   | 403    | An embed key was sent to a route it doesn't reach.                 |
-| `origin_mismatch`   | 403    | An app key was sent with another web app's `Origin`.               |
+| `code`              | Status | Meaning                                                           |
+| ------------------- | ------ | ----------------------------------------------------------------- |
+| `origin_not_listed` | 403    | The host's origin isn't on the list, or was taken off it.         |
+| `no_agent`          | 404    | The project has no such agent.                                    |
+| `signin_required`   | 401    | The person must sign in (the pane offers it).                     |
+| `bad_key`           | 401    | No key, or not one of Den's.                                      |
+| `key_expired`       | 401    | The key expired. The pane asks for a new one and tries once more. |
+| `not_running`       | 409    | The agent is stopped. Resume it in Den first.                     |
+| `context_too_large` | 413    | A shared page is over `embed.context_max_kb`.                     |
+| `context_url`       | 400    | A shared page's URL isn't http(s), or is too long.                |
+| `context_shape`     | 400    | A shared page has fields that aren't text, or unknown fields.     |
+| `empty`             | 400    | Nothing to send.                                                  |
+| `agent_forbidden`   | 403    | An agent's token tried to mint a key.                             |
+| `key_revoked`       | 401    | An app key that was revoked in Settings › Embedding.              |
+| `key_scope`         | 403    | An app key asked about another agent.                             |
+| `embed_key_scope`   | 403    | An embed key was sent to a route it doesn't reach.                |
+| `origin_mismatch`   | 403    | An app key was sent with another web app's `Origin`.              |
 
 ## 3. App keys
 

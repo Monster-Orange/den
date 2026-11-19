@@ -1273,6 +1273,19 @@ export interface ServerAgentConfig {
    * off (left to the server agent).
    */
   pin_commit?: "push" | "pr" | "off";
+  /**
+   * Issue 562: a release npm marks a security release (den.security in
+   * its package.json) updates while the server agent waits on its
+   * person's question or permission prompt; never past a pending Allow,
+   * never mid-turn (default true; false: it waits, as any release).
+   */
+  security_update_skips_questions?: boolean;
+  /**
+   * Issue 562 review: once an auto update is installed, how long its
+   * restart waits for the server agent's turn to end (or a pending Allow)
+   * before it restarts anyway (seconds, default 900; 0: no wait).
+   */
+  update_restart_wait_seconds?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1308,7 +1321,14 @@ export interface ResolvedServerAgentConfig {
   updateWaitChecks: number;
   /** #176: server_agent.pin_commit: push (default), pr or off. */
   pinCommit: "push" | "pr" | "off";
+  /** Issue 562: server_agent.security_update_skips_questions. */
+  securityUpdateSkipsQuestions: boolean;
+  /** Issue 562 review: server_agent.update_restart_wait_seconds, in ms. */
+  updateRestartWaitMs: number;
 }
+
+/** Issue 562 review: server_agent.update_restart_wait_seconds when unset. */
+export const UPDATE_RESTART_WAIT_SECONDS_DEFAULT = 900;
 
 /** #251: server_agent.update_wait_checks when unset. */
 export const UPDATE_WAIT_CHECKS_DEFAULT = 2;
@@ -1382,6 +1402,19 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.pin_commit: push, pr or off, not ${JSON.stringify(pcm)}`,
     );
+  const ssq = sa.security_update_skips_questions;
+  if (ssq !== undefined && typeof ssq !== "boolean")
+    throw new Error(
+      `server_agent.security_update_skips_questions: true or false, not ${JSON.stringify(ssq)}`,
+    );
+  const rw = sa.update_restart_wait_seconds;
+  if (
+    rw !== undefined &&
+    (typeof rw !== "number" || !Number.isFinite(rw) || rw < 0)
+  )
+    throw new Error(
+      `server_agent.update_restart_wait_seconds: seconds, 0 or more (got ${JSON.stringify(rw)})`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1403,6 +1436,10 @@ export function readServerAgentConfig(
     role: role ?? "lead",
     updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
     pinCommit: pcm ?? "push",
+    securityUpdateSkipsQuestions: ssq ?? true,
+    updateRestartWaitMs: Math.round(
+      (rw ?? UPDATE_RESTART_WAIT_SECONDS_DEFAULT) * 1000,
+    ),
   };
 }
 
@@ -2031,15 +2068,56 @@ export interface SessionsConfig {
    * `sessions kill` with no --signal) before it gets KILL (default 5).
    */
   close_grace_seconds?: number;
+  /**
+   * Issue 503: how long after a process exits its PTY closes, in seconds
+   * (default 0: at once). Its scrollback stays readable either way.
+   */
+  pty_close_seconds?: number;
+  /** Issue 503: doctor fails above this many PTYs held by the host (400). */
+  pty_warn_above?: number;
+  /**
+   * Issue 503: doctor fails when the machine's PTYs in use reach this
+   * percent of its limit (90).
+   */
+  pty_machine_warn_percent?: number;
+  /**
+   * Issue 563: how long the web server waits for agents mid-turn before it
+   * restarts a terminal host that isn't current with the installed Den
+   * (default 900); then it restarts anyway.
+   */
+  host_restart_wait_seconds?: number;
+  /**
+   * Issue 597: an agent the terminal host's restart cut mid-turn gets one
+   * line on resume, to check its last step and carry on (default true).
+   */
+  host_restart_note?: boolean;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
+export const DEFAULT_PTY_WARN_ABOVE = 400;
+export const DEFAULT_PTY_MACHINE_WARN_PERCENT = 90;
 
 /** `sessions:` with its defaults applied. */
 export interface ResolvedSessionsConfig {
   maxConcurrent: number;
   closeGraceSeconds: number;
+  ptyCloseSeconds: number;
+  ptyWarnAbove: number;
+  ptyMachineWarnPercent: number;
+  hostRestartWaitSeconds: number;
+  hostRestartNote: boolean;
 }
+
+const SESSIONS_KEYS = [
+  "max_concurrent",
+  "close_grace_seconds",
+  "pty_close_seconds",
+  "pty_warn_above",
+  "pty_machine_warn_percent",
+  "host_restart_wait_seconds",
+  "host_restart_note",
+];
 
 /**
  * The effective sessions config. Anything malformed throws, naming the key,
@@ -2056,14 +2134,74 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
   if (!isMapping(raw))
     throw new Error(`sessions: must be a mapping (got ${JSON.stringify(raw)})`);
   for (const k of Object.keys(raw))
-    if (k !== "max_concurrent" && k !== "close_grace_seconds")
+    if (!SESSIONS_KEYS.includes(k))
       throw new Error(
-        `sessions.${k}: unknown key (sessions: takes max_concurrent, close_grace_seconds)`, // words-ok: the config key is sessions:
+        `sessions.${k}: unknown key (sessions: takes ${SESSIONS_KEYS.join(", ")})`, // words-ok: the config key is sessions:
       );
   const out: ResolvedSessionsConfig = {
     maxConcurrent: DEFAULT_SESSIONS_MAX_CONCURRENT,
     closeGraceSeconds: 5,
+    ptyCloseSeconds: 0,
+    ptyWarnAbove: DEFAULT_PTY_WARN_ABOVE,
+    ptyMachineWarnPercent: DEFAULT_PTY_MACHINE_WARN_PERCENT,
+    hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
+    hostRestartNote: true,
   };
+  const note = raw.host_restart_note;
+  if (note !== undefined) {
+    if (typeof note !== "boolean")
+      throw new Error(
+        `sessions.host_restart_note: must be true or false (got ${JSON.stringify(note)})`,
+      );
+    out.hostRestartNote = note;
+  }
+  const hostWait = raw.host_restart_wait_seconds;
+  if (hostWait !== undefined) {
+    if (
+      typeof hostWait !== "number" ||
+      !Number.isFinite(hostWait) ||
+      hostWait < 0 ||
+      hostWait > 86_400
+    )
+      throw new Error(
+        `sessions.host_restart_wait_seconds: must be a number of seconds, 0 to 86400 (got ${JSON.stringify(hostWait)})`,
+      );
+    out.hostRestartWaitSeconds = hostWait;
+  }
+  const ptyClose = raw.pty_close_seconds;
+  if (ptyClose !== undefined) {
+    if (
+      typeof ptyClose !== "number" ||
+      !Number.isFinite(ptyClose) ||
+      ptyClose < 0 ||
+      ptyClose > 86_400
+    )
+      throw new Error(
+        `sessions.pty_close_seconds: must be a number of seconds, 0 to 86400 (got ${JSON.stringify(ptyClose)})`,
+      );
+    out.ptyCloseSeconds = ptyClose;
+  }
+  const warn = raw.pty_warn_above;
+  if (warn !== undefined) {
+    if (typeof warn !== "number" || !Number.isInteger(warn) || warn < 1)
+      throw new Error(
+        `sessions.pty_warn_above: must be a whole number of at least 1 (got ${JSON.stringify(warn)})`,
+      );
+    out.ptyWarnAbove = warn;
+  }
+  const pct = raw.pty_machine_warn_percent;
+  if (pct !== undefined) {
+    if (
+      typeof pct !== "number" ||
+      !Number.isFinite(pct) ||
+      pct <= 0 ||
+      pct > 100
+    )
+      throw new Error(
+        `sessions.pty_machine_warn_percent: must be a percent, above 0 and up to 100 (got ${JSON.stringify(pct)})`,
+      );
+    out.ptyMachineWarnPercent = pct;
+  }
   const grace = raw.close_grace_seconds;
   if (grace !== undefined) {
     if (

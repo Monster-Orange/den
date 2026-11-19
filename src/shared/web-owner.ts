@@ -114,6 +114,29 @@ export function setWebOwnerName(
   return saveWebOwner({ ...was, name: n }, stateDir);
 }
 
+/**
+ * Issue 406: GitHub's answer for the linked owner (account `id`), at a
+ * GitHub sign-in: its display name kept, or forgotten when GitHub has none
+ * now. The owner, or null when none is linked or `id` isn't theirs.
+ */
+export function syncWebOwnerName(
+  id: number,
+  name: string | undefined,
+  stateDir: string = getStateDir(),
+): WebOwner | null {
+  const was = readWebOwner(stateDir);
+  if (!was || was.owner !== `github:${id}`) return null;
+  const n = githubDisplayName(name);
+  if (was.name === n) return was;
+  const rec: WebOwner = {
+    owner: was.owner,
+    login: was.login,
+    ...(n ? { name: n } : {}),
+    linkedAt: was.linkedAt,
+  };
+  return saveWebOwner(rec, stateDir);
+}
+
 function saveWebOwner(rec: WebOwner, stateDir: string): WebOwner {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const file = webOwnerPath(stateDir);

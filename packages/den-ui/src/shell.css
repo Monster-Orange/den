@@ -1233,6 +1233,43 @@ body.den-has-shell .den-upd {
   padding: 0;
   box-sizing: border-box;
 }
+/* The page action menu (issue 555). A disabled item is faint and
+   doesn't light up; its note sits right under it, wraps, and is a row to
+   follow when it links to where to turn it on. */
+.den-pop .den-mi[aria-disabled="true"] {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+.den-pop .den-mi[aria-disabled="true"]:hover {
+  background: none;
+}
+.den-pop .den-mwhy {
+  display: block;
+  max-width: 260px;
+  padding: 0 8px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.den-pop .den-mwhy .den-mi-l {
+  white-space: normal;
+}
+.den-pop a.den-mwhy .den-mi-l {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* A phone: More and every row a 44px target. */
+@media (max-width: 720px), (pointer: coarse) {
+  .den-pmenu-btn,
+  .den-pmenu .den-mi {
+    min-height: var(--tap);
+  }
+  .den-pmenu .den-mwhy {
+    display: flex;
+    padding: 4px 8px 8px;
+    font-size: 13px;
+  }
+}
 /* ◐ ▾'s menu, on <body> above everything, placed under the button. */
 .den-um {
   margin: 0;

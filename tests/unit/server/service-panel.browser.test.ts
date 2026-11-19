@@ -53,6 +53,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -166,6 +167,7 @@ async function page(
     reducedMotion: "reduce",
     ...(touch ? { hasTouch: true, isMobile: true } : {}),
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])

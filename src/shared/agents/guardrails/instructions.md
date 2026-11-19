@@ -60,3 +60,13 @@ role from it in a fresh conversation. Use these headings, each filled in:
 ```
 
 Write it plainly. Explain every ID in it, as in a hand-back.
+
+### Sending feedback about Den
+
+**Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
+person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
+
+**Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
+Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
+is public: never paste secrets, tokens, private repo names, customer or company names, or internal URLs.

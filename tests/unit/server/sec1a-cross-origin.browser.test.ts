@@ -19,6 +19,7 @@ import * as path from "path";
 import type { Browser } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -95,6 +96,10 @@ beforeAll(async () => {
     await fetch(${JSON.stringify(den)} + "/api/settings", {
       method: "POST",
       mode: "no-cors",
+      // With the person's cookie: another port on localhost is the same
+      // site, so the Lax cookie goes, and Origin is what refuses it, not
+      // sign-in (0.4.71). fetch's default sends no cookie here (a 401).
+      credentials: "include",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ editor: "emacs" }),
     }).catch(() => {});
@@ -121,6 +126,11 @@ describe("a page on another origin (SEC-1a)", () => {
     const before = yml();
     expect(before).not.toMatch(/editor:/);
     const ctx = await browser.newContext();
+    await signIn(
+      ctx,
+      path.join(tmp, "home", ".den"),
+      `http://localhost:${port}`,
+    );
     const p = await ctx.newPage();
     // What Den answered the attacker's requests (the browser saw them).
     const refused: number[] = [];
@@ -247,6 +257,11 @@ describe("a page on another origin (SEC-1a)", () => {
         ).json()) as { entries: unknown[] }
       ).entries.length;
     const ctx = await browser.newContext();
+    await signIn(
+      ctx,
+      path.join(tmp, "home", ".den"),
+      `http://localhost:${port}`,
+    );
     const p = await ctx.newPage();
     const answers: number[] = [];
     // Both requests leave the browser (Chrome may block the img's JSON

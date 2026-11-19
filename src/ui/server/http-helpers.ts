@@ -52,6 +52,45 @@ export function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+/** The methods Den serves. Any other answers 405 before any route. */
+export const SERVED_METHODS: ReadonlySet<string> = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+]);
+
+/** 405, with the methods the route takes. No CORS header: Den serves none. */
+export function sendMethodNotAllowed(
+  res: http.ServerResponse,
+  allow = "GET, HEAD, POST, PUT, PATCH, DELETE",
+): void {
+  res.setHeader("Allow", allow);
+  sendJson(
+    res,
+    {
+      ok: false,
+      code: "method_not_allowed",
+      error: `This method isn't served here. Allowed: ${allow}.`,
+    },
+    405,
+  );
+}
+
+/** True when the request is a GET or HEAD (or one of `also`); else answers 405 (a route's own check). */
+export function readMethodOnly(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  also: readonly string[] = [],
+): boolean {
+  const m = (req.method ?? "GET").toUpperCase();
+  if (m === "GET" || m === "HEAD" || also.includes(m)) return true;
+  sendMethodNotAllowed(res, ["GET", "HEAD", ...also].join(", "));
+  return false;
+}
+
 export function sendJson(
   res: http.ServerResponse,
   data: unknown,
