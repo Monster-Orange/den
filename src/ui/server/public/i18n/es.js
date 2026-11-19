@@ -730,6 +730,7 @@
     "err.signin.expiredTitle": "El enlace de inicio de sesión caducó",
     "err.signin.local":
       "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
+    "err.signin.atAddress": "{name} inicia sesión en {address}",
     "err.signin.copy": "Copiar comando",
     "err.signin.title": "Inicia sesión en {name}",
     "err.signin.where":

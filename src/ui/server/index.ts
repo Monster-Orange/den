@@ -1785,9 +1785,15 @@ let EDGE_DIR = { at: 0, dir: null as string | null };
 /** Doctor's view of the address's proof (named-address.ts), in the state dir. */
 const ADDRESS_PROOF_FILE = "address-proof.json";
 
-/** Whether the request's Host is one of the loopback names. */
-function hostIsLoopback(req: http.IncomingMessage): boolean {
-  return GUARD.loopbackNames.includes(hostNameOf(req).replace(/\.$/, ""));
+/**
+ * Whether the request reached Den on its proven https address: through the
+ * edge with its proof, on the address's own name.
+ */
+function onTheAddress(req: http.IncomingMessage, there: string): boolean {
+  return (
+    httpsOf(req, "edge") &&
+    hostNameOf(req).replace(/\.$/, "") === new URL(there).hostname
+  );
 }
 
 /** HTTPS: the edge's X-Forwarded-Proto counts only with its proof (H1). */
@@ -2249,7 +2255,8 @@ function sendToNamedAddress(
   url: URL,
   guard: GuardResult,
 ): boolean {
-  if (!guard.ok || guard.via !== "loopback") return false;
+  // Once proven, sign-in on every other host goes to the address.
+  if (!guard.ok) return false;
   const method = (req.method ?? "GET").toUpperCase();
   const get = method === "GET" || method === "HEAD";
   // /auth on every method it answers (a code's POST too: it mints a
@@ -2261,7 +2268,7 @@ function sendToNamedAddress(
     (url.pathname === "/attest" && get && !url.searchParams.has("hop"));
   if (!page && !SIGNIN_APIS.test(url.pathname)) return false;
   const there = NAMED.address();
-  if (!there) return false;
+  if (!there || onTheAddress(req, there)) return false;
   if (page) {
     res.writeHead(303, {
       Location: `${there}${url.pathname}${url.search}`,
@@ -2321,7 +2328,11 @@ function sendSignedOut(
   const bin = printedCli();
   const loginArgs =
     toLocal || host === `localhost:${PORT}` ? [] : ["--origin", origin];
-  const cmd = cliCommand(bin, "web", "login", ...loginArgs);
+  // Once the address is proven, sign-in happens there.
+  const there = NAMED.address();
+  const cmd = there
+    ? cliCommand(bin, "web", "login", "--origin", there)
+    : cliCommand(bin, "web", "login", ...loginArgs);
   // 0.4.71: a browser on this machine (localhost, from a loopback peer):
   // the page words it for here, and its fallback is `web up`.
   const local =
@@ -2341,6 +2352,8 @@ function sendSignedOut(
       scope: opts.scope,
       name: product().title,
       cmd,
+      // Off the address once it is proven: the page names where to sign in.
+      ...(there && !onTheAddress(req, there) ? { address: there } : {}),
       ...(local ? { local: true, up: cliCommand(bin, "web", "up") } : {}),
       // SEC-2a: which machine runs the commands, and how to reach it.
       machine: machineName(),
@@ -2373,7 +2386,7 @@ function sendSignedOut(
       },
       ...(opts.expired ? { expired: true } : {}),
       ...(opts.confirm ? { confirm: true } : {}),
-      ...(toLocal && !opts.expired
+      ...(toLocal && !opts.expired && !there
         ? {
             localhost: `${localhostOrigin(PORT)}${opts.pathname}${opts.search}`,
           }
@@ -2578,12 +2591,8 @@ async function handleAuth(
     }
     // The address may have been proven while the body was read: sign-in on
     // a loopback name then goes there, and nothing is minted here.
-    const there =
-      checkRequest(req, GUARD, product().cli, product().title).ok &&
-      hostIsLoopback(req)
-        ? NAMED.address()
-        : null;
-    if (there)
+    const there = NAMED.address();
+    if (there && !onTheAddress(req, there))
       return sendJson(
         res,
         {

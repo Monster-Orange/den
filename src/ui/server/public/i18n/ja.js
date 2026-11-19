@@ -710,6 +710,7 @@
     "err.signin.expiredTitle": "サインインリンクの期限切れ",
     "err.signin.local":
       "サインインはアドレスごとです。このページは {host} にあります。サインイン済みの localhost で同じページを開いてください。",
+    "err.signin.atAddress": "{name} のサインインは {address} で行います",
     "err.signin.copy": "コマンドをコピー",
     "err.signin.title": "{name} にサインイン",
     "err.signin.where":

@@ -2152,8 +2152,13 @@ So once this install's https address (`web.url`, served by the edge) works,
 the session cookie is set only there, and `localhost`, `127.0.0.1` and
 `[::1]` get none:
 
-- `web up` and `web open` open the https address. `/auth` and `/signin` on
-  a loopback name answer with a plain redirect to the same path there.
+- `web up` and `web open` open the https address. `/auth`, `/signin` and
+  `/attest` on any other name (a loopback name, a LAN name, or the
+  address's name on Den's own port) answer with a plain redirect to the
+  same path there, and the sign-in APIs answer `signin_elsewhere`. A
+  signed-out page on another name says where Den signs in, with a link, and
+  its `web login` line names the address. Devices on the mesh reach the
+  address itself, so they are never sent away.
 - Once the address is proven, a session counts only if it was signed in
   over that https address. Every other one (a loopback name, or plain http
   on any name) ends at the proof and counts on no host after. Sign-out,

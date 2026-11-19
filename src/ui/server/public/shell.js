@@ -1586,6 +1586,7 @@
     "err.signin.expiredTitle": "Sign-in link expired",
     "err.signin.local":
       "A sign-in belongs to one address. This page is on {host}: open the same page on localhost, where this browser is signed in.",
+    "err.signin.atAddress": "{name} signs in at {address}",
     "err.signin.copy": "Copy command",
     "err.signin.title": "Sign in to {name}",
     "err.signin.where":

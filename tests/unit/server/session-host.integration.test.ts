@@ -565,7 +565,9 @@ describe("once it works: sign-in on every other name goes to the address", () =>
     await stopServer(server);
     fs.rmSync(tmp, { recursive: true, force: true });
     await boot(true);
-    await call("GET", "/", { ...named(), "sec-fetch-site": "none" });
+    // A sign-in page through the edge, with its proof: the address is proven.
+    const p = await call("GET", "/signin", { ...named(), ...nav });
+    expect(p.status).not.toBe(303);
   }, 60_000);
   const lan = () => {
     const h = os.hostname().toLowerCase();
@@ -583,7 +585,19 @@ describe("once it works: sign-in on every other name goes to the address", () =>
         ["GET", `/auth?c=${encodeURIComponent(c)}`],
         ["POST", "/auth"],
       ] as const) {
-        const r = await call(m, p, { ...h(), ...nav });
+        const r =
+          m === "POST"
+            ? await call(
+                m,
+                p,
+                {
+                  ...h(),
+                  origin: `http://${h().host}`,
+                  "sec-fetch-site": "same-origin",
+                },
+                '{"code":"ABCD-EFGH"}',
+              )
+            : await call(m, p, { ...h(), ...nav });
         const to = String(r.headers.location ?? "");
         expect([
           r.status,
