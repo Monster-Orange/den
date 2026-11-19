@@ -13,7 +13,10 @@
  *  2. a browser on another machine with a GitHub session from before names
  *     were kept shows the same two lines (the owner's name);
  *  3. the owner signs in with GitHub and GitHub has no name: Den forgets
- *     the name it kept, and the entry is one line, the kit's one-line one.
+ *     the name it kept, and the entry is one line, the kit's one-line one;
+ *  4. GitHub has no name, Den is connected to Hub, and Hub has a name for
+ *     the same login: Hub's name, two lines; Hub's name for another login
+ *     is never used (one line).
  * Each measured in Chromium and WebKit, at 1280 and at 390 (in ☰'s
  * drawer), against the kit's entry with the same words at the same width.
  *
@@ -465,4 +468,44 @@ describe("issue 406: the account entry is the kit's, name over @login", () => {
       return pg;
     });
   }, 240_000);
+
+  it("GitHub has no name and Hub has one for the same login: Hub's name, two lines; another login's never", async () => {
+    if (skip()) return;
+    expect(readWebOwner(stateDir)?.name).toBeUndefined();
+    const HUB_NAME = "Odette from Hub";
+    /** Den's page, with the rail's Hub look answering as `hub` would. */
+    const withHub =
+      (login: string) =>
+      async (c: BrowserContext): Promise<Page> => {
+        await c.route(/\/api\/hub\?rail=1$/, (r: Route) =>
+          r.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({
+              configured: true,
+              connected: true,
+              state: "connected",
+              url: "https://hub.example.test",
+              team: "Acme",
+              teamUrl: "https://hub.example.test/c/acme",
+              login,
+              name: HUB_NAME,
+            }),
+          }),
+        );
+        const pg = await c.newPage();
+        await pg.goto(`http://localhost:${port}/settings`);
+        // The rail's first Hub look (0.8 s after load) has landed.
+        await pg.waitForFunction(
+          () => !!document.querySelector('[data-hub="connected"]'),
+          undefined,
+          { timeout: 20_000 },
+        );
+        return pg;
+      };
+    await sameAsKit(
+      { name: HUB_NAME, login: OWNER.login },
+      withHub(OWNER.login.toUpperCase()),
+    );
+    await sameAsKit({ login: OWNER.login }, withHub("someone-else"));
+  }, 300_000);
 });

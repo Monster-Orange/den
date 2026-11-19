@@ -449,6 +449,24 @@ describe("hubWhoami (GET /connect/whoami)", () => {
     ]);
   });
 
+  it("issue 406: the person's name (person.name): kept trimmed, else left out", async () => {
+    const base = { install: "north-box", login: "pat" };
+    for (const [v, want] of [
+      ["  Pat Example ", "Pat Example"],
+      ["", undefined],
+      ["   ", undefined],
+      [7, undefined],
+      [null, undefined],
+      ["x".repeat(300), undefined],
+    ] as const) {
+      const h = await fakeHub({ ...base, person: { id: "p_1", name: v } });
+      expect([v, (await hubWhoami(h.url, TOKEN)).personName]).toEqual([
+        v,
+        want,
+      ]);
+    }
+  });
+
   it("unread (threads waiting on the person): a whole number of at least 0, else left out", async () => {
     const base = {
       install: "north-box",
@@ -639,6 +657,25 @@ describe("hubStatus", () => {
       role: "member",
       login: "pat",
     });
+  });
+
+  it("issue 406: carries the person's Hub name for the rail's account entry", async () => {
+    const st = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({ login: "pat", personName: "Pat Example" }),
+    });
+    expect(st).toMatchObject({
+      state: "connected",
+      login: "pat",
+      name: "Pat Example",
+    });
+    const none = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({ login: "pat" }),
+    });
+    expect("name" in none).toBe(false);
   });
 
   it("carries whoami's unread for the rail's badge", async () => {
