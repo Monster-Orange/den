@@ -210,6 +210,21 @@ export const en = {
   "kit.fold.panel": "Panel",
   "kit.fold.show": "Show panel",
   "kit.fold.hidden": "Panel, hidden",
+  // The filter bar (filter-bar.js). A facet's and an option's labels are
+  // the host's; {facet} and {value} are those.
+  "kit.filter.button": "Filters",
+  "kit.filter.buttonN": "Filters ({n})",
+  "kit.filter.chosen": "Chosen filters",
+  "kit.filter.chip": "{facet}:",
+  "kit.filter.remove": "Remove {facet}: {value}",
+  "kit.filter.clear": "Clear",
+  "kit.filter.clearFacet": "Clear {facet}",
+  "kit.filter.clearAll": "Clear all",
+  // The bulk bar (bulk-bar.js). {label} is the host's action.
+  "kit.bulk.selected": "{n} selected",
+  "kit.bulk.clear": "Clear",
+  "kit.bulk.cleared": "Selection cleared",
+  "kit.bulk.action": "{label} {n}",
 };
 
 export const es = {
@@ -414,6 +429,19 @@ export const es = {
   "kit.fold.panel": "Panel",
   "kit.fold.show": "Mostrar panel",
   "kit.fold.hidden": "Panel, oculto",
+  "kit.filter.button": "Filtros",
+  "kit.filter.buttonN": "Filtros ({n})",
+  "kit.filter.chosen": "Filtros elegidos",
+  "kit.filter.chip": "{facet}:",
+  "kit.filter.remove": "Quitar {facet}: {value}",
+  "kit.filter.clear": "Quitar",
+  "kit.filter.clearFacet": "Quitar {facet}",
+  "kit.filter.clearAll": "Quitar todos",
+  "kit.bulk.selected": "{n} seleccionados",
+  "kit.bulk.selected.one": "{n} seleccionado",
+  "kit.bulk.clear": "Quitar selección",
+  "kit.bulk.cleared": "Selección quitada",
+  "kit.bulk.action": "{label} {n}",
 };
 
 export const ja = {
@@ -613,6 +641,18 @@ export const ja = {
   "kit.fold.panel": "パネル",
   "kit.fold.show": "パネルを表示",
   "kit.fold.hidden": "パネル（非表示）",
+  "kit.filter.button": "絞り込み",
+  "kit.filter.buttonN": "絞り込み（{n}）",
+  "kit.filter.chosen": "選んだ条件",
+  "kit.filter.chip": "{facet}：",
+  "kit.filter.remove": "{facet}：{value} を外す",
+  "kit.filter.clear": "解除",
+  "kit.filter.clearFacet": "{facet} を解除",
+  "kit.filter.clearAll": "すべて解除",
+  "kit.bulk.selected": "{n} 件を選択中",
+  "kit.bulk.clear": "選択を解除",
+  "kit.bulk.cleared": "選択を解除しました",
+  "kit.bulk.action": "{label}（{n}）",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */

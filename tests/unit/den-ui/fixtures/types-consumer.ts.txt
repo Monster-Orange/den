@@ -66,6 +66,14 @@ import {
   type EdgeStripCountKind,
 } from "@kit/panel-fold.js";
 import { switchHtml, hydrateSwitch } from "@kit/switch.js";
+import {
+  chosenCount,
+  filterBarHtml,
+  mountFilterBar,
+  type FilterChange,
+  type FilterFacet,
+} from "@kit/filter-bar.js";
+import { bulkBarHtml, mountBulkBar, type BulkAction } from "@kit/bulk-bar.js";
 
 const model: ShellModel = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -285,3 +293,36 @@ sw.set(!sw.on());
 sw.setDisabled(false);
 sw.destroy();
 void (foldBtn + stripHtml + swHtml);
+
+// The filter bar: the host's facets, counts and choices; the kit's words.
+const facets: FilterFacet[] = [
+  { id: "status", label: "Status", options: [{ value: "draft", label: "Draft", count: 2 }] },
+];
+const fbHtml: string = filterBarHtml({ id: "f", facets, selected: { status: ["draft"] }, lang: "es" });
+void fbHtml;
+const fb = mountFilterBar(document.createElement("div"), {
+  facets,
+  selected: {},
+  start: document.createElement("input"),
+  end: [document.createElement("button")],
+  onChange: (sel, change: FilterChange) =>
+    void (chosenCount(sel) + ("clear" in change ? 0 : Number(change.on))),
+});
+fb.update({ selected: { status: [] } });
+fb.open();
+fb.destroy();
+DenUI.filterBar(document.createElement("div"), { facets }).close();
+
+// The bulk bar: the count and the host's actions; a host's own dialog.
+const acts: BulkAction[] = [{ id: "pause", label: "Pause", count: 3, disabled: false }];
+const bbHtml: string = bulkBarHtml({ count: 3, actions: acts });
+void bbHtml;
+const bb = mountBulkBar(document.createElement("div"), {
+  count: 3,
+  actions: acts,
+  onAction: (id, button) => void askConfirm({ title: id, message: "", opener: button }),
+  onClear: () => undefined,
+  returnFocus: () => document.body,
+});
+bb.update({ count: 0 });
+DenUI.bulkBar(document.createElement("div"), { count: 1 }).destroy();
