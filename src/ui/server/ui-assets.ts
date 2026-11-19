@@ -36,6 +36,8 @@ export const UI_MODULES: readonly string[] = [
   // Issue 172 S2: the service worker that shows push alerts.
   "/den-sw.js",
   "/edge-page.js",
+  // Issue 455: Edge's card when another server holds the port.
+  "/address-card.js",
   // Issue 171: values the server sends, in the page's language.
   "/value-words.js",
   // Issue 209: the Verify page.
@@ -85,6 +87,8 @@ export const UI_MODULES: readonly string[] = [
   "/term-pane.js",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
+  // Issue 503: the words for a terminal that got no PTY.
+  "/pty-refusal.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).

@@ -73,6 +73,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     visibility_timeout_seconds: true,
     visibility_retry_seconds: true,
   },
+  // Issue 455: how long, and how often, Den checks its own address.
+  address_check: {
+    timeout_seconds: true,
+    retries: true,
+    cache_seconds: true,
+  },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -198,6 +204,10 @@ describe("the settings inventory (R21)", () => {
         "feedback.visibility_cache_hours",
         "feedback.visibility_timeout_seconds",
         "feedback.visibility_retry_seconds",
+        // Issue 455: the address check's limits.
+        "address_check.timeout_seconds",
+        "address_check.retries",
+        "address_check.cache_seconds",
       ].sort(),
     );
   });

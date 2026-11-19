@@ -113,8 +113,10 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   project's checkout, with an MCP server pinned to that project and a
   token of its own. The web UI's Agents tab lists them and opens their
   terminals.
-- **Browser sign-in beyond loopback.** On localhost no route needs a sign-in,
-  nor through the edge when it shows the browser is on this machine.
+- **Browser sign-in, on this machine too.** On localhost (and through the
+  edge when it shows the browser is on this machine) a browser that isn't
+  signed in can read, but every change, agent and terminal needs a sign-in;
+  `web up` and `web open` open a one-time sign-in link for it.
   Anywhere else, every route needs one: Sign in with GitHub as the Den's
   owner (`<cli> web owner link` links the account once), approving the
   computer with the code its page shows (`<cli> web approve <code>`, or
@@ -167,6 +169,16 @@ other active projects; when it is in several, the error lists the `-w`
 command for each.
 
 In a distribution the command is that distribution's `cli` name.
+
+## Sending feedback about Den
+
+**Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
+person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
+
+**Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
+Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
+is public: never paste secrets, tokens, private repo names, customer or company names, or internal URLs.
 
 ## Developing Den
 

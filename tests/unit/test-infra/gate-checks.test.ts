@@ -36,6 +36,7 @@ describe("live checks: gate/<issue>.mjs", () => {
         "409.mjs: matrix.browsers must list chromium or webkit",
         "409.mjs: matrix.widths must be widths in px (200 or more)",
         "409.mjs: timeoutMs is not a positive whole number",
+        "410.mjs: expect takes one argument, the result (the harness calls expect(result)); it declares 2",
         "notes.mjs: the name is not <issue number>.mjs",
       ],
     });

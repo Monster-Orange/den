@@ -22,6 +22,7 @@ import * as path from "path";
 import type { Browser } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const REPOS = ["shop", "billing"];
@@ -134,6 +135,7 @@ describe("the Graph page's output, in the runs dock (a consumer's dev.18 run)", 
     const ctx = await browser.newContext({
       viewport: { width: 1440, height: 900 },
     });
+    await signIn(ctx, path.join(tmp, "home"), `http://127.0.0.1:${port}`);
     // No first-visit changelog pop-up over the page: the latest is seen.
     const latest = (
       JSON.parse((await getBody("/api/changelog")).body) as {
