@@ -1824,6 +1824,8 @@
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
+    "bell.m.ranLoggedOut":
+      "Mientras tenías la sesión cerrada ({min} min), estos agentes trabajaron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":

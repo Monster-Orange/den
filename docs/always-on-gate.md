@@ -37,7 +37,7 @@ token set <date> (in <store>)`.
 running (always)`.
 6. `./bin/acme doctor`. The service row says `always (system)`, and the
    agent sign-in row says `token` with the date it was set. Neither says
-   "agents will not be able to sign in after logout".
+   "agents will not be able to sign in after logout". The survives logout row says `yes`.
 7. `plutil -p /Library/LaunchDaemons/<label>.plist` and the `.sessions`
    plist: `UserName` is you, `EnvironmentVariables` has
    `DEN_AGENT_SIGNIN => token`, and no token value.
@@ -65,8 +65,11 @@ running (always)`.
 13. The agent from step 8 is still running: same pid, and a start time
     before the logout (step 9). Its terminal shows it kept working, and it
     answers a new prompt without asking to sign in.
-14. The bell has "While <title> was away, N kept running and M came back:
-    <names>", and `<names>` includes the agent from step 8.
+14. Within `ui.console_check_seconds` (30 s) of the login, the bell has
+    "While you were logged out (N min), these agents ran: <names>", and
+    `<names>` includes the agent from step 8. (The web server ran through
+    the logout, so it is this note, not the restart note "While <title>
+    was away".)
 15. `./bin/acme doctor` again: as in step 6.
 
 ## Fail-closed check (optional)

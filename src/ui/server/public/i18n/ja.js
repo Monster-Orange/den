@@ -1774,6 +1774,8 @@
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
+    "bell.m.ranLoggedOut":
+      "ログアウトしていた間（{min} 分）に動いたエージェント: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
     "bell.m.crashLoop":

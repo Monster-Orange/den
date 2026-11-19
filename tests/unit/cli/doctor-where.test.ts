@@ -34,6 +34,7 @@ describe("whereRows", () => {
       ["server", "Background", "ok"],
       ["session host", "Background", "ok"],
       ["service", "always (system)", "ok"],
+      ["survives logout", "yes", "ok"],
     ]);
   });
 
@@ -65,6 +66,8 @@ describe("whereRows", () => {
       ["server", "info"],
       ["session host", "info"],
       ["service", "ok"],
+      // Issue 163: login mode stops agents at logout, said plainly.
+      ["survives logout", "warn"],
     ]);
     expect(formatWhere(rows, "Acme").join("\n")).toMatch(/server\s+Aqua\s+ℹ/);
     expect(whereCheck(rows[0]).status).toBe("ok");
@@ -358,12 +361,14 @@ describe("serviceJobState", () => {
 describe("survives logout", () => {
   const logout = async (over: Partial<WhereDeps> = {}) =>
     (await whereRows(base(over))).find((r) => r.what === "survives logout");
-  const login = (state: "loaded" | "not-loaded" = "loaded") => () => ({
-    state,
-    mode: "login" as const,
-    plist: "/x.plist",
-    domain: "gui/501",
-  });
+  const login =
+    (state: "loaded" | "not-loaded" = "loaded") =>
+    () => ({
+      state,
+      mode: "login" as const,
+      plist: "/x.plist",
+      domain: "gui/501",
+    });
 
   it("always, loaded, host and server outside the desktop login: yes", async () => {
     expect(await logout()).toMatchObject({
@@ -409,7 +414,9 @@ describe("survives logout", () => {
   });
 
   it("always, but the host serving now runs in the desktop login: no", async () => {
-    const row = await logout({ host: async () => ({ launchd: "Aqua", pid: 9 }) });
+    const row = await logout({
+      host: async () => ({ launchd: "Aqua", pid: 9 }),
+    });
     expect(row).toMatchObject({
       session: "no (host in the desktop login)",
       status: "warn",
