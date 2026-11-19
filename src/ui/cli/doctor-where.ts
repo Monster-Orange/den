@@ -98,7 +98,8 @@ export interface WhereRow {
     | WhereRowBase["what"]
     | "agent sign-in"
     | "runtime sign-in"
-    | "keep running";
+    | "keep running"
+    | "survives logout";
   session: string;
   /** info: as chosen, worth knowing (login mode ends at logout). */
   status: "ok" | "info" | "warn";
@@ -346,7 +347,91 @@ export async function whereRows(d: WhereDeps): Promise<WhereRow[]> {
         detail: keepRunningOffer(d.cli),
       });
   }
+  rows.push(
+    logoutRow({
+      svc,
+      server: server?.launchd,
+      // The host serving now runs the agents, the service's or not.
+      host,
+      keep: () => d.keepSetting?.(),
+      cli: d.cli,
+    }),
+  );
   return rows;
+}
+
+/** Den's own way to switch: no terminal line (issue 163). */
+const APPLY_PATH =
+  "Needs you › Keep agents running after logout › Apply, or Settings › Agents › Keep agents running after logout › Apply (one admin password; running agents come back on their own)";
+
+/**
+ * Issue 163: does this install survive a logout? yes, or no with why and
+ * the fix in words. An install from before keep-running was the default
+ * stays in login mode after an update: said plainly, never switched
+ * silently (it needs the admin password).
+ */
+export function logoutRow(d: {
+  svc: ServiceJob | null;
+  server: string | null | undefined;
+  host: { launchd: string | null; pid?: number } | null;
+  keep: () => boolean | undefined;
+  cli: string;
+}): WhereRow {
+  const no = (
+    why: string,
+    detail: string,
+    status: WhereRow["status"] = "warn",
+  ): WhereRow => ({
+    what: "survives logout",
+    session: `no (${why})`,
+    status,
+    detail,
+  });
+  if (!d.svc)
+    return no(
+      "no service",
+      `this install stops its agents at logout: it doesn't run as a service, so the server and its agents run in your login. ${d.cli} service install keeps them running (one admin password).`,
+    );
+  if (d.svc.mode === "login") {
+    let keep: boolean | undefined;
+    try {
+      keep = d.keep();
+    } catch {
+      keep = undefined;
+    }
+    if (keep === false)
+      return no(
+        "turned off",
+        "Keep agents running after logout is off (Settings › Agents), so this install stops its agents at logout, as chosen.",
+        "info",
+      );
+    return no(
+      "login mode",
+      `this install stops its agents at logout (login mode): it was installed before keeping agents running was the default, and an update doesn't change that by itself. To keep them running: ${APPLY_PATH}.`,
+    );
+  }
+  if (d.svc.state === "not-loaded")
+    return no(
+      "job not loaded",
+      "this install's service isn't loaded, so nothing keeps its agents running after logout (see the service row).",
+    );
+  if (endsAtLogout(d.host?.launchd))
+    return no(
+      "host in the desktop login",
+      `the host running the agents now (pid ${d.host?.pid ?? "?"}) was started in your login, not by the service: it and its agents stop at logout (see the session host row).`,
+    );
+  if (endsAtLogout(d.server))
+    return no(
+      "server in the desktop login",
+      "the web server answering now runs in your login, not as the service: it stops at logout (see the server row).",
+    );
+  return {
+    what: "survives logout",
+    session: "yes",
+    status: "ok",
+    detail:
+      "agents keep running when you log out, and are still running when you log back in",
+  };
 }
 
 /** The pid launchd runs `<domain>/<label>` as, or null (launchctl print). */

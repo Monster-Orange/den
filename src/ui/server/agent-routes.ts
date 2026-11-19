@@ -108,7 +108,15 @@ import {
   getReposRoot,
   readAgentsConfig,
   readMcpConfig,
+  uiConsoleCheckSeconds,
+  uiRestartWaitSeconds,
 } from "../../shared/den-config.js";
+import {
+  CONSOLE_AWAY_FILE,
+  consoleOwnerUid,
+  stepConsole,
+  type ConsoleBack,
+} from "../../shared/console-away.js";
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
@@ -2350,6 +2358,106 @@ export function noteRanWhileAway(
     },
     link: "/agents",
   });
+}
+
+/**
+ * Issue 163: back from a logout (the web server ran on, under Keep agents
+ * running after logout): one bell note naming the agents that ran while
+ * the person was logged out. None when nothing ran.
+ */
+export function noteRanWhileLoggedOut(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  back: ConsoleBack,
+): void {
+  const ran = [...back.kept, ...back.started];
+  if (!ran.length) return;
+  const min = Math.max(1, Math.round(back.awayMs / 60_000));
+  const names = ran.join(", ");
+  store.add({
+    kind: "service",
+    subject: "record:agents-ran-while-logged-out",
+    scope: "workspace/den-server",
+    text: `While you were logged out (${min} min), these agents ran: ${names}`,
+    msg: { key: "bell.m.ranLoggedOut", vars: { min, names } },
+    link: "/agents",
+  });
+}
+
+/**
+ * Issue 163: one look at the console (console-away.ts). On the person's
+ * return after longer than `waitMs` (ui.restart_wait_seconds: a quick user
+ * switch is not an absence), the bell note. Returns the return it noted.
+ */
+export function consoleTick(d: {
+  stateDir: string;
+  me: number;
+  owner: () => number | null;
+  running: () => string[];
+  now: () => number;
+  waitMs: number;
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">;
+}): ConsoleBack | null {
+  const r = stepConsole(d.stateDir, {
+    me: d.me,
+    owner: d.owner(),
+    running: d.running(),
+    now: d.now(),
+  });
+  if (r.back && r.back.awayMs > d.waitMs) {
+    noteRanWhileLoggedOut(d.store, r.back);
+    return r.back;
+  }
+  return null;
+}
+
+/**
+ * Issue 163: on macOS, look at the console every ui.console_check_seconds
+ * (30). The running agents are asked only when the person has just left
+ * or just come back, never on a plain tick.
+ */
+export function startLogoutWatch(
+  log: (line: string) => void,
+  deps: AgentRouteDeps = {},
+): void {
+  if (process.platform !== "darwin" || typeof process.getuid !== "function")
+    return;
+  const me = process.getuid();
+  let busy = false;
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const stateDir = getStateDir();
+      const owner = consoleOwnerUid();
+      if (owner === null) return;
+      const away = fs.existsSync(path.join(stateDir, CONSOLE_AWAY_FILE));
+      // Nothing changed: logged in and not away, or still away.
+      if ((owner === me) !== away) return;
+      const running = await runningAgentIds(webDeps(deps.agents)).catch(
+        () => [] as string[],
+      );
+      const { notificationDeps } = await import("./notification-service.js");
+      const back = consoleTick({
+        stateDir,
+        me,
+        owner: () => owner,
+        running: () => running,
+        now: () => Date.now(),
+        waitMs: uiRestartWaitSeconds() * 1000,
+        store: notificationDeps().store,
+      });
+      if (back)
+        log(
+          `Ran while you were logged out (${Math.round(back.awayMs / 60_000)} min): kept running: ${back.kept.join(", ") || "none"} · started: ${back.started.join(", ") || "none"} · ended: ${back.ended.join(", ") || "none"}`,
+        );
+    } catch {
+      /* the bell is best effort: the next tick tries again */
+    } finally {
+      busy = false;
+    }
+  };
+  void tick();
+  setInterval(() => void tick(), uiConsoleCheckSeconds() * 1000).unref();
 }
 
 /** How often stopped agents are checked against remove_stopped_after. */
