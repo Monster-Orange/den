@@ -1976,6 +1976,28 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
   },
   {
+    // Issue 406: the owner's display name, for the account entry.
+    id: "server.owner_name_timeout",
+    category: "server",
+    label: "GitHub name check at start, in seconds",
+    description:
+      "How long __DEN_TITLE__ waits at its start for the owner's name from their public GitHub profile, when it doesn't have the name yet. It never delays the start. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    keywords: [
+      "github",
+      "name",
+      "owner",
+      "account",
+      "timeout",
+      "web.owner_name_timeout_seconds",
+    ],
+    scope: "user",
+    keys: ["web_github.owner_name_timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_github?.ownerNameTimeoutSeconds ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ web_github: { owner_name_timeout_seconds: v } }),
+  },
+  {
     // den#143: how long `web up` waits for the server (user.yml
     // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
     id: "server.ready_probe",

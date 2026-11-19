@@ -1859,6 +1859,9 @@
     "set.server.bridge_probe": "Docker bridge check, in seconds",
     "set.server.bridge_probe.d":
       "How long __DEN_TITLE__ waits for Docker to name the bridge's address at its start. It never delays the start. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout": "GitHub name check at start, in seconds",
+    "set.server.owner_name_timeout.d":
+      "How long __DEN_TITLE__ waits at its start for the owner's name from their public GitHub profile, when it doesn't have the name yet. It never delays the start. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.ready_probe": "Readiness check, in seconds",
     "set.server.ready_probe.d":
       "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
@@ -5305,10 +5308,22 @@
         : id.kind === "local" && id.owner && id.owner.login
           ? id.owner
           : null;
+    // Issue 406: GitHub has no name: Hub's, when Hub's login is the same one.
+    var h = state.hub;
+    var hubName =
+      gh &&
+      h &&
+      h.state === "connected" &&
+      typeof h.name === "string" &&
+      h.name &&
+      typeof h.login === "string" &&
+      h.login.toLowerCase() === String(gh.login).toLowerCase()
+        ? h.name
+        : undefined;
     var who = gh
       ? {
           login: gh.login,
-          name: gh.name || undefined,
+          name: gh.name || hubName || undefined,
           role:
             gh.role === "owner" ? t("acct.roleOwner") : gh.role || undefined,
         }
@@ -7941,6 +7956,9 @@
                     team: b.team,
                     teamUrl: b.teamUrl,
                     unread: b.unread,
+                    // Issue 406: who Hub says this is, for the account entry.
+                    login: b.login,
+                    name: b.name,
                   }
                 : null;
             var k = JSON.stringify(h);
