@@ -217,6 +217,8 @@ export async function holdRestart(d: {
   sleep?(ms: number): Promise<void>;
   log?(line: string): void;
   timedOut?(why: UpdateWait): void;
+  /** Each pass: keeps the update marked under way while it waits. */
+  keepAlive?(): void;
 }): Promise<{ heldMs: number; timedOut: UpdateWait | null }> {
   const now = d.now ?? Date.now;
   const sleep =
@@ -233,6 +235,11 @@ export async function holdRestart(d: {
       );
       d.timedOut?.(why);
       return { heldMs: held, timedOut: why };
+    }
+    try {
+      d.keepAlive?.();
+    } catch {
+      /* the mark is best effort; the hold goes on */
     }
     await sleep(Math.min(every, d.maxMs - held));
   }

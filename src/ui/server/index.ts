@@ -8292,7 +8292,7 @@ const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
  * den_update awaits it after the install, before the watch and restart
  * (holdRestart). A den_update the person or an agent asked for has none.
  */
-let autoRestartHold: (() => Promise<void>) | null = null;
+let autoRestartHold: ((keepAlive: () => void) => Promise<void>) | null = null;
 
 /**
  * SRV-P6 (0.4.48): every server_agent.update_check_minutes (0: never),
@@ -8530,7 +8530,7 @@ function startUpdateCheck(): void {
           if (!ok.ok) return { ok: false, error: ok.error };
           updating = true;
           // Issue 562 review: read the wait again after the install.
-          autoRestartHold = async () => {
+          autoRestartHold = async (keepAlive) => {
             const { holdRestart, restartedWhileWorkingNote } =
               await import("./update-check.js");
             let maxMs = 900_000;
@@ -8542,6 +8542,7 @@ function startUpdateCheck(): void {
             await holdRestart({
               waitWhy: () => agentWaitWhy(!!opts?.security),
               maxMs,
+              keepAlive,
               log: (line) => {
                 serverLog(`  ${line}`, "lifecycle");
                 recordAction(null, { verb: "den-update-check", detail: line });

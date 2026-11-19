@@ -76,6 +76,20 @@ describe("the restart after the install reads the wait again", () => {
     expect(r).toEqual({ heldMs: 5_000, timedOut: null });
   });
 
+  it("keeps the update marked under way on each pass it waits, and not once it goes", async () => {
+    const c = clock();
+    let beats = 0;
+    await holdRestart({
+      waitWhy: seq("busy", "busy", "approval", null),
+      maxMs: 900_000,
+      everyMs: 5_000,
+      now: c.now,
+      sleep: c.sleep,
+      keepAlive: () => void beats++,
+    });
+    expect(beats).toBe(3);
+  });
+
   it("the wait times out: it restarts anyway, says why in the log, and leaves the bell line", async () => {
     const c = clock();
     const notes: string[] = [];
