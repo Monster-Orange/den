@@ -23,6 +23,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -53,7 +54,6 @@ const PAGE = (lang: string) => `<!doctype html>
 <body><button id="go">Go</button>
 <script type="module">
 import * as kit from "/busy.js";
-import { launchBrowser } from "../helpers/browser.js";
 window.seen = { toasts: [], opened: [], reports: [], reloads: 0 };
 kit.configureBusy({
   idHeader: "X-Probe-Id",

@@ -14,6 +14,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -71,7 +72,6 @@ document.addEventListener("mousedown", (e) => {
 }, true);
 import DenUI from "/kit/kit.js";
 import { askConfirm } from "/kit/dialog.js";
-import { launchBrowser } from "../helpers/browser.js";
 DenUI.configure({
   lang: "en",
   product: { name: "Acme" },

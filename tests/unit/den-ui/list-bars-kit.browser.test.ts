@@ -34,6 +34,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -90,7 +91,6 @@ const PAGE_JS = `
 import { mountFilterBar } from "/filter-bar.js";
 import { mountBulkBar } from "/bulk-bar.js";
 import { askConfirm } from "/dialog.js";
-import { launchBrowser } from "../helpers/browser.js";
 window.FACETS = [
   { id: "kind", label: "Kind", options: [
     { value: "doc", label: "Docs", count: 12 },

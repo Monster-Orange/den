@@ -19,6 +19,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -47,7 +48,6 @@ const PAGE = (lang: string, mode: string) => `<!doctype html>
 <p id="line"></p>
 <script type="module">
 import { createSaveState } from "/savestate.js";
-import { launchBrowser } from "../helpers/browser.js";
 window.saves = [];
 window.copied = [];
 // http://kit.test is not a secure context: no clipboard of its own.

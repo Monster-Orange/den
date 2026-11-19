@@ -21,6 +21,7 @@ import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { shellHtml } from "../../../packages/den-ui/src/shell-html.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -81,7 +82,6 @@ ${STYLES.map((s) => `<link rel="stylesheet" href="/kit/${s}.css">`).join("\n")}
 
 const APP = `
 import DenUI from "/kit/kit.js";
-import { launchBrowser } from "../helpers/browser.js";
 const model = ${JSON.stringify(MODEL)};
 DenUI.configure({ lang: "en", product: { name: "Acme" } });
 const root = document.getElementById("den-shell");

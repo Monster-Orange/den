@@ -41,6 +41,7 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const KIT = path.join(ENGINE, "packages", "den-ui", "src");
@@ -254,7 +255,6 @@ ${["tokens", "fonts", "base", "shell"].map((s) => `<link rel="stylesheet" href="
 
 const kitApp = (account: object) => `
 import DenUI from "/kit/kit.js";
-import { launchBrowser } from "../helpers/browser.js";
 DenUI.configure({ lang: "en", product: { name: "Acme" } });
 const model = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },

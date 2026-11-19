@@ -37,6 +37,7 @@ import {
   searchSlot,
   versionSlotW,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -84,7 +85,6 @@ document.addEventListener("mousedown", (e) => {
   if (e.target.closest && e.target.closest("button") && !e.target.closest(".den-bell-pop")) e.preventDefault();
 }, true);
 import DenUI from "/kit/kit.js";
-import { launchBrowser } from "../helpers/browser.js";
 const q = new URLSearchParams(location.search);
 window.log = { search: [], account: 0, events: 0, opened: 0, closed: 0, picks: [], waited: 0 };
 DenUI.configure({ lang: "en", product: { name: "Acme" } });

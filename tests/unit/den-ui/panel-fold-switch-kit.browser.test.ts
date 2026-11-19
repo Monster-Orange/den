@@ -24,6 +24,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -58,7 +59,6 @@ const PAGE = (lang: string, mode: string) => `<!doctype html>
 <script type="module">
 import { foldToggleHtml, edgeStripHtml, hydrateFoldToggle, hydrateEdgeStrip } from "/panel-fold.js";
 import { switchHtml, hydrateSwitch } from "/switch.js";
-import { launchBrowser } from "../helpers/browser.js";
 const lang = document.documentElement.lang;
 window.calls = [];
 window.layout = "panel";

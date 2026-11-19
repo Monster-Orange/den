@@ -29,6 +29,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const POPOVERS = path.join(__dirname, "fixtures", "kit-menu-popovers.json");
@@ -137,7 +138,6 @@ window.ready = true;
         ? `<main><button id="ap" type="button">◐</button></main>
 <script type="module">
 import { hydrateAppearance } from "/shell-client.js";
-import { launchBrowser } from "../helpers/browser.js";
 hydrateAppearance(document.getElementById("ap"), {
   lang: "es",
   menu: () => ({

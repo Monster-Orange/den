@@ -49,6 +49,7 @@ import {
   navWarnings,
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -94,7 +95,6 @@ ${STYLES.map((s) => `<link rel="stylesheet" href="/kit/${s}.css">`).join("\n")}
  */
 const APP = `
 import DenUI from "/kit/kit.js";
-import { launchBrowser } from "../helpers/browser.js";
 const q = new URLSearchParams(location.search);
 const lang = q.get("lang") || "en";
 DenUI.configure({ lang, product: { name: "Acme" } });
