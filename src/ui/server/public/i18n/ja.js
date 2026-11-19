@@ -762,6 +762,15 @@
     "err.signin.other": "その他の方法({cmd} による一回限りのリンク)",
     "err.signin.otherStep":
       "{host} で(このコンピューターではありません)次を実行し、表示されたリンクをこのブラウザで開きます:",
+    "err.signin.whereLocal":
+      "{name} はこのコンピューターで動いています。このブラウザがあなたであることを確認するため、一度サインインしてください。サインインは続きます。",
+    "err.signin.step1Local": "このコンピューターのターミナルで次を実行します:",
+    "err.signin.otherLocal":
+      "その他の方法({cmd} が一回限りのサインインリンクを開きます)",
+    "err.signin.otherStepLocal":
+      "このコンピューターのターミナルで次を実行します。このページがサインインした状態で開きます:",
+    "shell.signin.line": "ここで変更するにはサインインしてください。",
+    "shell.signin.btn": "サインイン",
     "err.signin.codeExpired": "このコードは期限切れです。",
     "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
     "err.signin.codeFailed":
@@ -859,6 +868,9 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
+    "set.server.owner_name_timeout.d":
+      "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
@@ -1074,6 +1086,11 @@
     "hubgh.none": "なし (アクセスなし)",
     "hubgh.give": "Den Hub にアクセスを許可",
     "hubgh.change": "リポジトリを変更",
+    "hubgh.error":
+      "Den Hub は GitHub で {org} を確認できませんでした: {reason}。後でもう一度お試しください。",
+    "hubgh.errorNoReason":
+      "Den Hub は GitHub で {org} を確認できませんでした。後でもう一度お試しください。",
+    "hubgh.retry": "もう一度確認",
     "set.distribution.hub_github": "Den Hub の GitHub アクセス",
     "set.agents.hub_github": "Den Hub の GitHub アクセス",
     "hubla.noProjects": "まだプロジェクトがありません。",
@@ -1427,6 +1444,7 @@
     "pair.title": "このコンピューターを許可しますか?",
     "pair.what": "{device} {client} が Den にサインインしようとしています。",
     "pair.aDevice": "ブラウザー",
+    "pair.local": "このコンピューター(localhost 経由)",
     "pair.help":
       "このコードがそのコンピューターの画面に表示されている場合のみ許可してください。",
     "pair.allow": "許可",
@@ -1778,6 +1796,18 @@
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
+    "bell.m.hostRestarted":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。",
+    "bell.m.hostRestartedAgents":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。",
+    "bell.m.hostRestartedTerminals":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。実行中のエージェントはありませんでした。終了したターミナル: {terminals} 件。",
+    "bell.m.hostRestartedNone":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。実行中のエージェントもターミナルもありませんでした。",
+    "bell.m.hostRestartedCut":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
+    "bell.m.hostRestartedAgentsCut":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
@@ -1796,6 +1826,10 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.updateWaitsWhat":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
+    "bell.m.updatedSecurity":
+      "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.restartedWhileWorking":
+      "{agent} が作業中でしたが、__DEN_TITLE__ は更新を完了するために再起動しました",
     "bell.m.updateWaitsAskedWhat":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました: {what} ({since} から)",
     "bell.m.pinNotCommitted":
@@ -2798,7 +2832,7 @@
     "set.cli.web_port.d":
       "config/local/user.yml の web.port はディストリビューションの値より優先されます。次に Web サーバーが起動したときに適用されます。", // words-ok: the en string's own word, translated
     "set.cli.signin.d":
-      "localhost ではサインインを求められません。エッジ経由では、このマシンだとエッジが示さない限りブラウザはサインインします (web.edge_unattested: local の場合、判別できないものはローカルとみなします)。別のマシンからは必ずサインインします: GitHub でサインイン、または一回限りのリンク (__DEN_CLI__ web login) を使います。設定 › アクセス にサインイン済みのブラウザが表示されます。",
+      "どのブラウザも、このマシンでも一度サインインすると、サインインが続きます。ここでは __DEN_CLI__ web up が一回限りのサインインリンクを開きます。サインインしていないブラウザは表示はできますが、何も変更できません。別のマシンからは: GitHub でサインイン、または一回限りのリンク (__DEN_CLI__ web login)。設定 › アクセス にサインイン済みのブラウザが表示されます。",
     "set.cli.sudo.d":
       "Den が実行するコマンドに sudo が必要なときだけ使い、そのときだけ尋ねます。サインインではないので、ほかには必要ありません。",
     "set.cli.op_token.d":
@@ -2921,7 +2955,7 @@
       "ポート {port} は {owner} が使っているため、{host} は {owner} に届きます。",
     "edgeAddr.banner.unknown":
       "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
-    "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",
+    "edgeAddr.banner.none": "まだ届きません: {host} では何も応答していません。",
     "edgeAddr.banner.fix": "Edge で直す",
     "edgeAddr.banner.dismiss": "閉じる",
     "edgeAddr.card.title":
@@ -2934,7 +2968,9 @@
     "edgeAddr.card.unknown":
       "__DEN_TITLE__ が特定できない何かが使っています。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
     "edgeAddr.card.none":
-      "{wanted} ではまだ何も応答しません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+      "まだ届きません: {wanted} では何も応答していません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.sub.held": "停止中: ポート {port} は使用中です",
+    "edgeAddr.sub.none": "まだ届きません",
     "edgeAddr.kind.container": "Docker コンテナ",
     "edgeAddr.kind.process": "プロセス",
     "edgeAddr.what": "どうしますか？",

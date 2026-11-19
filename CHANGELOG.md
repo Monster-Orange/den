@@ -4,7 +4,58 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.69] - unreleased
+## [0.4.73] - unreleased
+
+### Fixed
+
+- **Issue 455: no address is shown before it is checked.** `den doctor`'s Address row and the server's start line give the address that was checked, Den's own port, and say the edge address isn't checked yet until it answers as this Den. When something holds port 80 and never answers, `den web up` says "Not reachable yet" once instead of going quiet; until the edge address is proven, its "Visit:" line and the page it opens use the checked address. The Edge page's sub line follows the address card, shows "Not reachable yet" when nothing answers, and doctor names a container "Docker container" as the Edge page does.
+- The rail's account entry shows two lines again, the name and then @login (issue 406). A browser signed in with GitHub before names were kept shows the owner's name; a GitHub sign-in by the owner keeps GitHub's current display name. An owner linked before names were kept gets the name once, on start, from their public GitHub profile (no token). With no name anywhere, the entry stays one line, @login.
+- Den Hub's GitHub access (Settings and `den doctor`): when Hub couldn't check an org on GitHub, Den says so and gives Hub's reason with a Check again button, instead of the install prompt. The "Den Hub can't see" list keeps your own spelling and matches whatever the case. (issue 526)
+
+### Added
+
+- New setting: Settings › Server › "GitHub name check at start, in seconds" (`web.owner_name_timeout_seconds`, default 10, 1 to 600). It never delays the start.
+- den-ui: the panel fold toggle (`./panel-fold`), the folded panel's 40px edge strip with "Show panel" and an optional count, and a labelled switch (`./switch`), in en, es and ja. Den serves them at /kit/.
+- den-ui: a list's filter bar and bulk bar, a general button, a page action menu, and a settings on/off row, in en, es and ja. Den serves them at /kit/.
+- New setting: `sessions.host_restart_note` (default on): agents whose turn was cut by a terminal host restart get one line asking them to check their last step and carry on.
+
+### Changed
+
+- The terminal host restarts on an update only when its own code or the terminal module changed; otherwise it keeps running and adopts the new version (issue 597). The first update to this version still restarts it once. The bell names agents cut mid-turn, and the audit row keeps every resumed, failed and cut agent. `den doctor`'s Host row says whether a restart is needed.
+- Live check: gate 542's host-side requests go to the bed's own loopback address.
+
+## [0.4.72] - 2026-11-19
+
+### Security
+
+- **Sign-in on this machine too.** Every browser signs in once, on the computer Den runs on too, and stays signed in. `den web up` and `den web open` sign the browser in, including a tab that's already open. A browser that isn't signed in can look and change nothing: it shows "Sign in to make changes here." with a Sign in button. Scripts send `den web token --print` as a bearer. `GET /api/session` gives a CSRF token only to a signed-in session. Routes that run a command for their output now need a sign-in or the token: the service log routes, log search, the GitHub repo and branch lists, and My reports. Upgrading is recommended. Live check `gate/542.mjs`.
+
+### Changed
+
+- Self-update: a release marked as a security release (`"den": {"security": true}` in its package.json, read from npm) now updates while the server agent waits on your question or permission prompt. It still never goes past a pending Allow or restarts mid-turn, and the bell tells you the question is still open. Turn it off with `server_agent.security_update_skips_questions: false`. (issue 562)
+- Self-update: once an auto update is installed, Den checks again before it restarts. If the server agent started working, or an Allow is pending, the restart waits up to `server_agent.update_restart_wait_seconds` (default 900), keeping the update marked under way. It then restarts anyway and tells you in the bell. (issue 562)
+
+## [0.4.71] - 2026-11-19
+
+### Fixed
+
+- **Issue 563: after an update, Den restarts its terminal host when that host still runs the old version or holds a terminal module the update replaced.** Before this, new agents and terminals failed to start with `posix_spawnp failed`. Agents mid-turn are waited for, up to `sessions.host_restart_wait_seconds` (default 900). Running agents resume and open terminals end. The bell says so, in a sentence that fits what ran.
+- `doctor` has a Host row: ✗ with `<cli> sessions host --stop` when the terminal host isn't current. It finds the terminal module in the layout the current terminal library ships (its binary under `prebuilds/`).
+- Live check `gate/503.mjs` judges the terminal host's own PTY count; the machine's count is logged only. Live check `gate/563.mjs`.
+
+## [0.4.70] - 2026-11-18
+
+### Fixed
+
+- The live log view handles repo and service names the way log history and search do. Live check `gate/536.mjs`.
+- Stricter request method handling. Live check `gate/573.mjs`.
+- Settings: a saved row shows its saved value after one click and one save (issue 424).
+
+### Docs
+
+- Agent instructions say how to send feedback: the Report button first, a GitHub issue as the fallback.
+
+## [0.4.69] - 2026-11-18
 
 ### Fixed
 

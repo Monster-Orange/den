@@ -370,6 +370,58 @@ export interface AppearanceMenu {
   lang?: string;
 }
 export declare function appearanceMenuHtml(o?: AppearanceMenu): string;
+/** One row of a kit menu (◐ ▾, the account menu and the page menu draw theirs with it). */
+export interface MenuRow {
+  label: string;
+  /** A link (a disabled one is drawn as a button: nothing to follow). */
+  href?: string | null;
+  /** A radio: aria-checked. */
+  checked?: boolean | null;
+  /** data-kind and data-value: what a pick reports. */
+  kind?: string | null;
+  value?: string | number | null;
+  id?: string | null;
+  /** A class of its own, after den-mi. */
+  cls?: string | null;
+  /** aria-disabled="true". */
+  disabled?: boolean;
+  /** The id of the line that says why. */
+  describedBy?: string | null;
+}
+export declare function menuRowHtml(r: MenuRow): string;
+/** A host's words: text, or a key in the kit's tables (addStrings) and its vars. */
+export type HostWords =
+  | string
+  | { key: string; vars?: Record<string, unknown> };
+/** An item of the page action menu, or a rule. */
+export type PageMenuItem =
+  | {
+      id: string;
+      label: HostWords;
+      /** A link to follow; else a button (onSelect). */
+      href?: string;
+      disabled?: boolean;
+      /** Why it is disabled: drawn under it, and its description. */
+      note?: HostWords;
+      /** Where to turn it on: the note becomes a row to follow. */
+      noteHref?: string;
+      /** Its own pick (hydratePageMenu), before opts.onSelect. */
+      onSelect?: (item: PageMenuItem) => void;
+    }
+  | { hr: true };
+/** More ▾: the kit's button, a menu button. */
+export declare function pageMenuButtonHtml(o?: {
+  id?: string;
+  size?: "sm";
+  lang?: string;
+}): string;
+/** The page action menu's rows, from data. */
+export declare function pageMenuHtml(o: {
+  /** The menu button's id: each row's id is "<id>-<item id>". */
+  id?: string;
+  items: PageMenuItem[];
+  lang?: string;
+}): string;
 export interface WaitingOptions {
   /** The words before the dot ("stale server"). */
   label?: string;

@@ -8,6 +8,7 @@
  *   keys   the config reader lacks the sessions.pty_* keys
  *   pty    another node-pty version is installed
  *   reason the cap's refusal has no reason
+ *   others another program on the machine opens 3 PTYs while the check runs
  * `cap` is sessions.max_concurrent; `capIn` is where the bed sets it:
  * "den.yml", or "default" (only Den's default in den-config).
  */
@@ -53,6 +54,7 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
           host--;
           machine--;
         }
+        if (broken === "others" && open.size === 0) machine += 3;
         return json(200, { ok: true });
       }
       return json(404, { ok: false });

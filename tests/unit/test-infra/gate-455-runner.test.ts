@@ -19,12 +19,12 @@ interface Row {
   skip?: string;
 }
 
-function runGate(broken: string | null) {
+function runGate(broken: string | null, address: string | null = null) {
   const js = `
     const g = await import("./gate/455.mjs");
     const { runLikeBed } = await import("./tests/fixtures/gate-runner-like.mjs");
     const { fakeBed } = await import("./tests/fixtures/gate455-fake-den.mjs");
-    const { ctx } = fakeBed({ broken: ${JSON.stringify(broken)} });
+    const { ctx } = fakeBed({ broken: ${JSON.stringify(broken)}, address: ${JSON.stringify(address)} });
     const out = await runLikeBed("455.mjs", g, ctx);
     console.log(JSON.stringify({ clauses: g.clauses, notes: ctx.notes, ...out }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
@@ -67,5 +67,46 @@ describe("gate/455.mjs as the bed runs it", () => {
     expect(r.error).toBeUndefined();
     const row = (r.rows ?? []).find((x) => x.clause === r.clauses[i]);
     expect(row?.ok).toBe(false);
+  });
+
+  // After 0.4.68: when nothing answers at Den's address, the command line
+  // (doctor) and the page (the Edge card) say "Not reachable yet".
+  describe("nothing answers at Den's address", () => {
+    const clause = (r: ReturnType<typeof runGate>) =>
+      (r.rows ?? []).find((x) => /Not reachable yet/.test(x.clause));
+
+    it("a working Den: the clause passes", () => {
+      const r = runGate(null, "nothing");
+      expect(r.error).toBeUndefined();
+      expect(clause(r)?.ok).toBe(true);
+      const judged = (r.rows ?? []).filter((x) => x.ok !== null);
+      expect(judged.every((x) => x.ok === true)).toBe(true);
+    });
+
+    it.each(["unreachable-cli", "unreachable-page"])(
+      "a Den with the line missing (%s) fails it",
+      (broken) => {
+        const r = runGate(broken, "nothing");
+        expect(r.error).toBeUndefined();
+        expect(clause(r)?.ok).toBe(false);
+      },
+    );
+
+    it("the address works: the clause is skipped, not passed", () => {
+      const r = runGate(null);
+      expect(clause(r)?.ok).toBeNull();
+    });
+  });
+
+  it("held by another server: a sub line that says running fails the Edge clause", () => {
+    const ok = runGate(null, "held");
+    expect(ok.error).toBeUndefined();
+    expect((ok.rows ?? []).find((x) => x.clause === ok.clauses[4])?.ok).toBe(
+      true,
+    );
+    const r = runGate("sub-running", "held");
+    expect((r.rows ?? []).find((x) => x.clause === r.clauses[4])?.ok).toBe(
+      false,
+    );
   });
 });

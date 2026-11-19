@@ -40,6 +40,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -128,6 +129,7 @@ async function page(
     viewport: { width: opts.width ?? 1440, height: opts.height ?? 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -742,6 +744,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
               colorScheme: scheme,
               reducedMotion: "reduce",
             });
+            await signIn(ctx, s!.stateDir, s!.base);
             await ctx.addInitScript((v) => {
               try {
                 for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -847,6 +850,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     });
+    await signIn(ctx, s!.stateDir, s!.base);
     await ctx.addInitScript((v) => {
       try {
         for (const k of ["den-changelog-seen", "acme-changelog-seen"])
