@@ -40,6 +40,7 @@ import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const KIT = path.join(ENGINE, "packages", "den-ui", "src");
@@ -390,6 +391,8 @@ describe("issue 406: the account entry is the kit's, name over @login", () => {
     expect(asked).toHaveLength(1);
     expect(asked[0].auth).toBe(false);
     await sameAsKit({ name: NAME, login: OWNER.login }, async (ctx) => {
+      // Sign-in on this machine too: a local browser opens the one-time link first.
+      await signIn(ctx, stateDir, `http://localhost:${port}`);
       const p = await ctx.newPage();
       await p.goto(`http://localhost:${port}/settings`);
       return p;
@@ -463,6 +466,8 @@ describe("issue 406: the account entry is the kit's, name over @login", () => {
     await ctx.close();
     expect(readWebOwner(stateDir)?.name).toBeUndefined();
     await sameAsKit({ login: OWNER.login }, async (c) => {
+      // Sign-in on this machine too: a local browser opens the one-time link first.
+      await signIn(c, stateDir, `http://localhost:${port}`);
       const pg = await c.newPage();
       await pg.goto(`http://localhost:${port}/settings`);
       return pg;
@@ -492,6 +497,8 @@ describe("issue 406: the account entry is the kit's, name over @login", () => {
             }),
           }),
         );
+        // Sign-in on this machine too: a local browser opens the one-time link first.
+        await signIn(c, stateDir, `http://localhost:${port}`);
         const pg = await c.newPage();
         await pg.goto(`http://localhost:${port}/settings`);
         // The rail's first Hub look (0.8 s after load) has landed.
