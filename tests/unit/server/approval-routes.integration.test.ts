@@ -3,10 +3,11 @@
  * agent's workspace_create or repo_add waits for the person and runs only
  * on their Allow, from a signed-in browser holding its approval key.
  *
- * What an agent with a shell has, and is refused: an anonymous loopback
- * request, the CLI's bearer, a session cookie with the CSRF token
- * /api/session hands out (what a dev server on another localhost port
- * could capture). No code, cookie, key or token is printed.
+ * What an agent with a shell has, and is refused: a loopback request with
+ * no sign-in (a write needs a sign-in on this machine too, 0.4.71: 401
+ * signin_required), the CLI's bearer, a session cookie with its CSRF token
+ * but no approval key. The ask itself is the MCP's, with the CLI's
+ * bearer. No code, cookie, key or token is printed.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { execFileSync, type ChildProcess } from "child_process";
@@ -21,6 +22,7 @@ import {
 } from "../../../src/shared/web-secret.js";
 import { mintClaimCode } from "../../../src/shared/claim-code.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -119,7 +121,10 @@ const page = (b: { cookie: string; csrf: string }) => ({
   "sec-fetch-site": "same-origin",
   "x-den-csrf": b.csrf,
 });
-/** An anonymous loopback caller's CSRF token (what an agent with a shell gets). */
+/**
+ * What /api/session hands a loopback caller with no sign-in: no CSRF
+ * token since 0.4.71 (what an agent with a shell gets).
+ */
 async function loopbackCsrf(): Promise<string> {
   return String(
     json(await call("GET", "/api/session", { "sec-fetch-site": "same-origin" }))
@@ -143,8 +148,9 @@ const pendingIds = async () =>
     }[]
   ).map((x) => x.id);
 
+/** The MCP's ask: the CLI's bearer (a write needs a sign-in or a bearer). */
 const ask = async (action: string, args: unknown, note?: string) =>
-  call("POST", "/api/approvals", await anon(), {
+  call("POST", "/api/approvals", denAuth(stateDir), {
     action,
     args,
     ...(note ? { note } : {}),
@@ -225,8 +231,13 @@ describe("held writes (ON-3)", () => {
     );
     const decide = (h: Record<string, string>) =>
       call("POST", `/api/approvals/${id}/decide`, h, { decision: "allow" });
+    // No sign-in on loopback: a write needs one on this machine too (0.4.71).
+    const unsigned = await decide(await anon());
+    expect([unsigned.status, json(unsigned).code]).toEqual([
+      401,
+      "signin_required",
+    ]);
     const tries = [
-      await decide(await anon()),
       await decide({ ...bearer(), origin: `http://localhost:${port}` }),
       await decide(page(await browser())),
     ];
@@ -303,7 +314,7 @@ describe("held writes (ON-3)", () => {
       400,
       "unknown_action",
     ]);
-    const extra = await call("POST", "/api/approvals", await anon(), {
+    const extra = await call("POST", "/api/approvals", denAuth(stateDir), {
       action: "workspace_create",
       args: { name: "x" },
       summary: "something nice",
@@ -448,7 +459,9 @@ describe("issue 142: a held write counts in the bell", () => {
       await anon(),
       {},
     );
-    expect(no.status).toBe(403);
+    // No sign-in on loopback: a write needs one on this machine too (0.4.71).
+    expect([no.status, json(no).code]).toEqual([401, "signin_required"]);
+    expect(await pendingIds()).toContain(id);
     const ok = await call(
       "POST",
       `/api/approvals/${id}/withdraw`,

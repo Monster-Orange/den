@@ -37,6 +37,7 @@ export function projectSync(): ProjectSync {
         (ws) => agents.get(ws) ?? [],
       );
     },
+    spelling: projectRepos,
     send: async (projects) => {
       const at = await hubAndToken();
       if (!at) return null;

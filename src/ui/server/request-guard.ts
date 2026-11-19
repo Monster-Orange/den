@@ -24,10 +24,10 @@
  *  - Sign-in (§4, route-classes.ts): beyond loopback (a LAN name, a peer
  *    that isn't loopback, or the edge hostname for a client on another
  *    machine) every route needs a session or a bearer. Otherwise 401
- *    `signin_required`. On loopback no route does, shell-grade ones
- *    included (Ward, 2026-11-06: the lock, R8, is the only prompt there;
- *    Host, Origin and CSRF cover CSRF and DNS rebinding). SIGNIN_FREE
- *    routes never need one.
+ *    `signin_required`. On loopback (0.4.71) every route that isn't
+ *    `readonly` needs one too: writes, upgrades, shell-grade routes and
+ *    the GETs that run something. A plain read there passes with the Host
+ *    check. SIGNIN_FREE routes never need one.
  *  - The edge (0.4.3, 0.4.5: edgeClient): the edge hostname from an edge
  *    peer gets loopback's treatment when the edge attests the client is
  *    this machine (the right-most X-Forwarded-For entry, the one the edge
@@ -44,13 +44,13 @@
  *    allowed host (http or https). No Origin needs a valid bearer.
  *    Otherwise 403 `origin_rejected`.
  *  - CSRF: a browser mutation (Origin, no bearer) carries `X-Den-CSRF`:
- *    the session's token when it is signed in, else (loopback) this server
- *    start's. Both come from `GET /api/session`. Otherwise 403 `csrf`.
+ *    the session's own token, from `GET /api/session` (only a signed-in
+ *    browser gets one). Otherwise 403 `csrf`.
  *
  * GETs, pages and SSE streams on loopback pass with only the Host check
  * (§6), except the GETs route-classes.ts marks `mutating` or `shell-grade`
- * (a run, a service's lifecycle command): same-origin only, or a CLI's
- * bearer. A sign-in GET (SIGNIN_GETS: /auth, the GitHub sign-in poll) may
+ * (a run, a service's lifecycle command, a log tail): a sign-in, and
+ * same-origin only, or a CLI's bearer. A sign-in GET (SIGNIN_GETS: /auth, the GitHub sign-in poll) may
  * also come with no fetch metadata at all, as a plain-http LAN origin's do.
  *
  * The audit actor (auditActorOf, principalOf) comes from the credential,
@@ -58,7 +58,7 @@
  * `person:<os user>` for a person token or a signed-in browser. An
  * x-den-actor claim is kept only as an unverified label.
  */
-import { randomBytes, timingSafeEqual, createHash } from "crypto";
+import { timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
 import { readMcpConfig } from "../../shared/den-config.js";
 import { LIFECYCLE_CMDS } from "../mcp/guards.js";
@@ -91,7 +91,10 @@ import {
 } from "./route-classes.js";
 
 export const CSRF_HEADER = "x-den-csrf";
-const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+// Only GET and HEAD are reads: any other method is checked as a change
+// (the server answers 405 to one outside the six before this runs).
+const READS = new Set(["GET", "HEAD"]);
+const changes = (method: string) => !READS.has(method);
 
 /** An agent's actor token (SEC-1c): what it was minted as. */
 export interface AgentPrincipal {
@@ -145,8 +148,6 @@ export interface GuardContext {
     token: string,
     req: http.IncomingMessage,
   ) => `person:${string}` | AgentPrincipal | "revoked" | "elsewhere" | null;
-  /** This server start's CSRF token (loopback, no session). */
-  csrfToken: string;
   /** The live session the request's cookie names (SEC-1b), or null. */
   session?: (req: http.IncomingMessage) => GuardSession | null;
   /**
@@ -222,11 +223,6 @@ export type GuardResult =
       /** agent_forbidden: the agent refused, for the audit. */
       principal?: Principal;
     };
-
-/** A fresh per-start CSRF token. */
-export function newCsrfToken(): string {
-  return randomBytes(32).toString("base64url");
-}
 
 /** `host[:port]` → { name, port }; IPv6 names keep their brackets. */
 export function parseHostHeader(
@@ -617,7 +613,7 @@ export function checkRequest(
   const pathname = reqUrl.pathname;
   const cls: RouteClass =
     routeClass(method, pathname) ??
-    (MUTATING.has(method) || isUpgrade(req) ? "mutating" : "readonly");
+    (changes(method) || isUpgrade(req) ? "mutating" : "readonly");
 
   if (principal?.kind === "agent") {
     const refused = agentRefusal(
@@ -637,9 +633,14 @@ export function checkRequest(
       };
   }
 
-  // §4: a session (or a bearer) beyond loopback; on loopback, never.
+  // §4: a session (or a bearer) beyond loopback for every route; on this
+  // machine too (0.4.71) for every route that changes something, runs
+  // something or reaches a shell: what isn't `readonly`, every write
+  // method and every upgrade. A plain read on loopback passes as before.
   const signinFree = SIGNIN_FREE.some((r) => pathMatches(r, pathname));
-  if (!principal && !session && !signinFree && beyond) {
+  const needsSignin =
+    cls !== "readonly" || changes(method) || isUpgrade(req);
+  if (!principal && !session && !signinFree && (beyond || needsSignin)) {
     const scope: SigninScope = "den";
     return {
       ok: false,
@@ -663,7 +664,7 @@ export function checkRequest(
     ? { kind: "person-browser", session: session.key }
     : null;
 
-  if (!MUTATING.has(method) && !isUpgrade(req)) {
+  if (!changes(method) && !isUpgrade(req)) {
     if (isMutatingGet(method, pathname)) {
       const refused = mutatingGetRefusal(req, ctx, pathname, principal, cli);
       if (refused) return refused;
@@ -720,9 +721,8 @@ export function checkRequest(
   const csrf =
     header(req, CSRF_HEADER) ??
     (isUpgrade(req) ? csrfFromProtocols(req) : undefined);
-  // Signed in: the session's own token; else (loopback) this start's.
-  const want = session ? session.csrf : ctx.csrfToken;
-  if (!csrf || !same(csrf, want))
+  // The session's own token: there is no other (0.4.71).
+  if (!csrf || !session || !same(csrf, session.csrf))
     return {
       ok: false,
       status: 403,
@@ -853,6 +853,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
 export const AGENT_PERSON_RUNS: readonly string[] = [
   "/api/aws/login",
   "/api/workspace/exec",
+  // The person's own reports, live from GitHub as the person.
+  "/api/report/mine",
 ];
 
 /** `/api/sessions/<id>/…`: a session's own routes (AG-4a-term's io). */

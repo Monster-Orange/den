@@ -15,6 +15,9 @@ import {
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import type { OnboardCheck } from "./doctor-onboard.js";
+import { engineVersion } from "../../shared/paths.js";
+import { installedPtyModule } from "../../shared/sessions/pty.js";
+import { hostCodeId } from "../../shared/sessions/host-code.js";
 
 export interface PtySettings {
   warnAbove: number;
@@ -145,6 +148,105 @@ export async function ptyLines(
       id: "terminal_host_ptys",
       status: fail ? "fail" : mark === "⚠" ? "warn" : "ok",
       detail,
+    },
+    problem: fail,
+  };
+}
+
+/**
+ * Issue 563: doctor's row for the terminal host's version and native
+ * module. The host says what it runs and which module it loaded (its
+ * `hello`); ✗ when that isn't what is installed (an update it outlived),
+ * the module it loaded is gone from disk, or it is too old to say. No
+ * host running, or one that loaded no module yet, is fine. Issue 597:
+ * "current", or "restart needed: host code changed" / "terminal module
+ * changed"; another Den version with the same code is current.
+ */
+export interface HostModuleDeps {
+  /** What the running host says (null: none runs). */
+  host: () => Promise<
+    | (import("../../shared/sessions/host-refresh.js").HostRuns & {
+        pid?: number;
+        startedAt?: string;
+      })
+    | null
+  >;
+  installed: () => import("../../shared/sessions/host-refresh.js").Installed;
+}
+
+export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
+  return {
+    host: async () => {
+      const { connectHost } = await import("../../shared/sessions/client.js");
+      const { sessionPaths } = await import("../../shared/sessions/paths.js");
+      const { hostRuns } =
+        await import("../../shared/sessions/host-refresh.js");
+      let c;
+      try {
+        c = await connectHost(sessionPaths(stateDir).socket);
+      } catch {
+        return null;
+      }
+      try {
+        return { ...hostRuns(c), pid: c.hostPid, startedAt: c.hostStartedAt };
+      } finally {
+        c.close();
+      }
+    },
+    installed: () => ({
+      den: engineVersion() ?? null,
+      code: hostCodeId(),
+      pty: installedPtyModule(),
+    }),
+  };
+}
+
+export async function hostModuleLines(
+  cli: string,
+  d: HostModuleDeps,
+): Promise<{ lines: string[]; check: OnboardCheck; problem: boolean }> {
+  const { hostCheck } = await import("../../shared/sessions/host-refresh.js");
+  let h: Awaited<ReturnType<HostModuleDeps["host"]>> = null;
+  try {
+    h = await d.host();
+  } catch {
+    h = null;
+  }
+  const fix = `${cli} sessions host --stop`; // words-ok: the CLI command itself
+  let detail: string;
+  let fail = false;
+  if (!h)
+    detail =
+      "no terminal host runs (it starts with the first agent or terminal)";
+  else {
+    const need = hostCheck(h, d.installed());
+    if (need) {
+      fail = true;
+      detail = `restart needed: ${need.restart === "code" ? "host code changed" : "terminal module changed"} (${need.why}): new agents and terminals may fail to start; restart the terminal host: ${fix}`;
+    } else
+      detail = h.pty
+        ? `current: the terminal host runs the installed code and terminal module (${h.pty.path})`
+        : "current: the terminal host runs the installed code (no terminal module loaded yet)";
+  }
+  return {
+    lines: [`  Host  ${fail ? "✗" : "✓"}  ${detail}`],
+    check: {
+      id: "terminal_host_module",
+      status: fail ? "fail" : "ok",
+      detail,
+      ...(fail ? { fix } : {}),
+      // What the host says it runs, for a live check (no secret in it).
+      ...(h
+        ? {
+            host: {
+              pid: h.pid ?? null,
+              startedAt: h.startedAt ?? null,
+              den: h.den ?? null,
+              code: h.code ?? null,
+              pty: h.pty,
+            },
+          }
+        : {}),
     },
     problem: fail,
   };

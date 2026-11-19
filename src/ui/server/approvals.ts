@@ -116,9 +116,8 @@ function same(a: string, b: string): boolean {
 
 /**
  * Routes that let another browser in (pair a device, a sign-in link for
- * an edge hostname, link or unlink the GitHub owner). On loopback an
- * anonymous request counts as the person, and an agent with a shell can
- * send one, so these need more: the person's bearer (the CLI, which
+ * an edge hostname, link or unlink the GitHub owner). These need more
+ * than a sign-in: the person's bearer (the CLI, which
  * refuses inside an agent's session), or what may approve (a signed-in
  * browser holding its approval key).
  */

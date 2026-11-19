@@ -624,6 +624,11 @@ export interface HubWhoami {
    * comment from the agent's own person; Den falls back to the login.
    */
   personId?: string;
+  /**
+   * Issue 406: that person's name on Hub (whoami's `person.name`), for the
+   * rail's account entry when GitHub has none. Trimmed; at most 200 characters.
+   */
+  personName?: string;
   company?: { slug?: string; name?: string; url?: string };
   /** Hub's MCP endpoint; opaque. */
   mcpUrl?: string;
@@ -694,6 +699,8 @@ export type HubStatus =
       label?: string;
       role?: string;
       login?: string;
+      /** Issue 406: the person's name on Hub (whoami's person.name). */
+      name?: string;
       /** Hub threads waiting on the person (whoami's unread). */
       unread?: number;
       /**
@@ -709,6 +716,13 @@ export type HubStatus =
 
 type FetchFn = typeof fetch;
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+/** Issue 406: a person's name from Hub: trimmed, one line, at most 200 characters. */
+const personName = (v: unknown): string | undefined => {
+  const n = typeof v === "string" ? v.trim() : "";
+  // No control characters (code points below 32, and 127).
+  const plain = [...n].every((c) => c >= " " && c !== "\u007f");
+  return n && n.length <= 200 && plain ? n : undefined;
+};
 
 /** One JSON call to Hub, bounded; its answer, or a HubCallError. */
 async function hubCall(
@@ -798,6 +812,11 @@ export async function hubWhoami(
     ...(str(b.login) ? { login: str(b.login)! } : {}),
     ...(str((b.person as Record<string, unknown> | undefined)?.id)
       ? { personId: str((b.person as Record<string, unknown>).id)! }
+      : {}),
+    ...(personName((b.person as Record<string, unknown> | undefined)?.name)
+      ? {
+          personName: personName((b.person as Record<string, unknown>).name)!,
+        }
       : {}),
     ...(Object.keys(company).length ? { company } : {}),
     ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
@@ -1590,6 +1609,7 @@ async function hubStatusOnce(
       ...(who.install ? { label: who.install } : {}),
       ...(who.role ? { role: who.role } : {}),
       ...(who.login ? { login: who.login } : {}),
+      ...(who.personName ? { name: who.personName } : {}),
       ...(who.unread !== undefined ? { unread: who.unread } : {}),
       ...(who.token === "legacy" && !rotated ? { legacy: true } : {}),
       ...(rotated ? { rotated: true } : {}),

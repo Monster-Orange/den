@@ -1002,26 +1002,125 @@ export function appearanceButtonHtml({ id, label, title, lang } = {}) {
   );
 }
 
-/** One row of a kit menu: a radio (checked set), a link or a button. */
-function menuRowHtml(r) {
+/**
+ * One row of a kit menu: a radio (checked set), a link or a button. The
+ * kit's own menus (◐ ▾, the account menu) and the page action menu draw
+ * their rows with it.
+ *   menuRowHtml({ label, href?, checked?, kind?, value?, id?, cls?,
+ *                 disabled?, describedBy? })
+ * disabled: aria-disabled="true", and a link becomes a button (nothing to
+ * follow); describedBy: the id of the line that says why.
+ */
+export function menuRowHtml(r) {
   const radio = r.checked != null;
-  const tag = r.href != null ? "a" : "button";
+  const link = r.href != null && !r.disabled;
+  const tag = link ? "a" : "button";
   return (
     "<" +
     tag +
-    ' class="den-mi" tabindex="-1" role="' +
+    ' class="den-mi' +
+    (r.cls ? " " + esc(r.cls) : "") +
+    '" tabindex="-1" role="' +
     (radio ? "menuitemradio" : "menuitem") +
     '"' +
     (radio ? ' aria-checked="' + (r.checked ? "true" : "false") + '"' : "") +
-    (r.href != null ? ' href="' + esc(r.href) + '"' : ' type="button"') +
+    (link ? ' href="' + esc(r.href) + '"' : ' type="button"') +
     (r.kind ? ' data-kind="' + esc(r.kind) + '"' : "") +
     (r.value != null ? ' data-value="' + esc(r.value) + '"' : "") +
+    (r.id ? ' id="' + esc(r.id) + '"' : "") +
+    (r.disabled ? ' aria-disabled="true"' : "") +
+    (r.describedBy ? ' aria-describedby="' + esc(r.describedBy) + '"' : "") +
     '><span class="den-mi-l">' +
     esc(r.label) +
     "</span></" +
     tag +
     ">"
   );
+}
+
+/** An id made of safe characters: letters, digits, - and _. */
+const safeId = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "-");
+
+/** A host's words: text, or { key, vars } in the kit's tables (addStrings). */
+const words = (w, lang) =>
+  w == null
+    ? ""
+    : typeof w === "object"
+      ? w.key
+        ? kitT(lang, w.key, w.vars)
+        : ""
+      : String(w);
+
+/**
+ * The page action menu's button (issue 555): "More ▾", the kit's button
+ * (button.css), a menu button. hydratePageMenu (shell-client.js) opens
+ * its menu.
+ *   pageMenuButtonHtml({ id?, size?: "sm", lang })
+ */
+export function pageMenuButtonHtml({ id, size, lang } = {}) {
+  return (
+    '<button type="button" class="den-btn' +
+    (size === "sm" ? " sm" : "") +
+    ' den-pmenu-btn" id="' +
+    esc(safeId(id || "den-pmenu")) +
+    '" aria-haspopup="menu" aria-expanded="false">' +
+    esc(kitT(lang, "kit.pmenu.more")) +
+    ' <span aria-hidden="true">▾</span></button>'
+  );
+}
+
+/**
+ * The page action menu's rows (issue 555), from data.
+ *   pageMenuHtml({ id, items, lang })
+ * id: the menu button's (each row's id is "<id>-<item id>"). Each item:
+ *   { id, label, href?, disabled?, note?, noteHref? }  or  { hr: true }
+ * label and note: the host's words, or { key, vars } in the kit's tables
+ * (a host adds its keys with addStrings). A disabled item has
+ * aria-disabled and is described by its note, drawn right under it: a row
+ * to follow when the note has an href (where to turn it on), else a line.
+ * An item with no id or no label draws nothing.
+ */
+export function pageMenuHtml({ id, items, lang } = {}) {
+  const base = safeId(id || "den-pmenu");
+  return (items || [])
+    .map((it) => {
+      if (!it) return "";
+      if (it.hr) return '<div class="den-hr" role="separator"></div>';
+      const label = words(it.label, lang);
+      if (it.id == null || it.id === "" || !label) return "";
+      const rowId = base + "-" + safeId(it.id);
+      const note = it.disabled ? words(it.note, lang) : "";
+      const noteId = rowId + "-note";
+      return (
+        menuRowHtml({
+          label,
+          href: it.href,
+          kind: "page",
+          value: it.id,
+          id: rowId,
+          cls: "den-pmi",
+          disabled: !!it.disabled,
+          describedBy: note ? noteId : null,
+        }) +
+        (!note
+          ? ""
+          : it.noteHref != null
+            ? menuRowHtml({
+                label: note,
+                href: it.noteHref,
+                kind: "note",
+                value: it.id,
+                id: noteId,
+                cls: "den-mwhy",
+              })
+            : '<p class="den-mnote den-mwhy" id="' +
+              esc(noteId) +
+              '">' +
+              esc(note) +
+              "</p>")
+      );
+    })
+    .join("");
 }
 
 /**

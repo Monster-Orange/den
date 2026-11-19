@@ -78,6 +78,13 @@ describe("gate/503.mjs as the bed runs it", () => {
     expect(r.notes.some((n) => /^PTYs \(cap 8\): before /.test(n))).toBe(true);
   });
 
+  it("another program's PTYs on the machine don't fail it: the host is the bed's own count, the machine's is a note", () => {
+    const r = runGate("others");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 0)?.ok).toBe(true);
+    expect(r.notes.some((n) => /machine 4\d → 4\d/.test(n))).toBe(true);
+  });
+
   it.each([
     ["leak", 0],
     ["doctor", 1],

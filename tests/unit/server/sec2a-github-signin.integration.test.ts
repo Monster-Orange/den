@@ -25,6 +25,7 @@ import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+import { signedIn } from "./helpers/signed-in.js";
 /** The edge folder, with the invented proof in it (H1). */
 const edgeProofDir = (d: string) => (writeTestEdgeProof(d), d);
 
@@ -114,6 +115,10 @@ const edge = (extra: Record<string, string> = {}) => ({
 const bearer = () => ({
   authorization: cliAuthHeaders(stateDir).Authorization ?? "",
 });
+/**
+ * A localhost page with no sign-in: Origin and what /api/session hands it
+ * (no CSRF token since 0.4.71).
+ */
 async function localCsrf(): Promise<Record<string, string>> {
   const s = json(
     await call("GET", "/api/session", { "sec-fetch-site": "same-origin" }),
@@ -123,6 +128,11 @@ async function localCsrf(): Promise<Record<string, string>> {
     "x-den-csrf": String(s.csrf),
     "sec-fetch-site": "same-origin",
   };
+}
+/** A signed-in localhost page: its cookie, Origin and its session's CSRF token. */
+async function localPage(): Promise<Record<string, string>> {
+  const s = await signedIn(stateDir, `http://localhost:${port}`);
+  return { ...s.headers, "sec-fetch-site": "same-origin" };
 }
 /** Poll `p` (the server's view of a flow) until it isn't pending. */
 async function settle(
@@ -221,14 +231,21 @@ describe("before an owner is linked", () => {
     expect([r.status, json(r).code]).toEqual([401, "signin_required"]);
   });
 
-  it("0.4.12: on plain localhost an anonymous page (any agent's curl) can't link the owner", async () => {
+  it("0.4.12: on plain localhost an anonymous page (any agent's curl) can't link the owner: a write needs a sign-in on this machine too (0.4.71), and a signed-in page without its approval key can't either", async () => {
     const r = await call(
       "POST",
       "/api/web/owner/link",
       await localCsrf(),
       "{}",
     );
-    expect([r.status, json(r).code]).toEqual([403, "signin_to_approve"]);
+    expect([r.status, json(r).code]).toEqual([401, "signin_required"]);
+    const p = await call(
+      "POST",
+      "/api/web/owner/link",
+      await localPage(),
+      "{}",
+    );
+    expect([p.status, json(p).code]).toEqual([403, "signin_to_approve"]);
   });
 
   it("on localhost the person (the CLI's bearer) links the owner through the server's device flow; the token is dropped", async () => {
@@ -464,7 +481,8 @@ describe("Settings › Access", () => {
     const mine = json(await call("GET", "/api/web/sessions", edge({ cookie })))
       .sessions as { id: string; current?: boolean }[];
     const me = mine.find((s) => s.current)!;
-    const h = await localCsrf();
+    // A signed-in localhost page (a write needs a sign-in on this machine too, 0.4.71).
+    const h = await localPage();
     const r = await call(
       "POST",
       "/api/web/logout",
@@ -477,14 +495,23 @@ describe("Settings › Access", () => {
   });
 
   it("Pair a device: a one-time link for an edge hostname, which signs a browser in there once", async () => {
-    // 0.4.12: an anonymous localhost page can't make one; the person can.
+    // 0.4.12: an anonymous localhost page can't make one (a write needs a
+    // sign-in on this machine too, 0.4.71), nor a signed-in page without
+    // its approval key; the person can.
     const anon = await call(
       "POST",
       "/api/web/pair",
       await localCsrf(),
       JSON.stringify({ host: EDGE }),
     );
-    expect([anon.status, json(anon).code]).toEqual([403, "signin_to_approve"]);
+    expect([anon.status, json(anon).code]).toEqual([401, "signin_required"]);
+    const page = await call(
+      "POST",
+      "/api/web/pair",
+      await localPage(),
+      JSON.stringify({ host: EDGE }),
+    );
+    expect([page.status, json(page).code]).toEqual([403, "signin_to_approve"]);
     const h = bearer();
     expect(json(await call("GET", "/api/web/pair", h))).toEqual({
       hosts: [EDGE],
