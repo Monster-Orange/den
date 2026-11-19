@@ -13,7 +13,9 @@
  *                                           each time it changes
  *
  * ops: hello, start, list, attach, detach, write, resize, signal,
- * scrollback, forget, shutdown. A request whose `v` is not the host's is
+ * scrollback, forget, access, ptys (issue 503: the PTY masters the host
+ * holds), adopt (issue 597: the Den version it now counts as, after an
+ * update that didn't change its code), shutdown. A request whose `v` is not the host's is
  * refused with code "protocol", except `shutdown`, which every version
  * takes, so an older host can always be stopped.
  *

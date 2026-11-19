@@ -24,6 +24,7 @@ import {
 import { startDenServer } from "../../child-servers.js";
 import { pageImport } from "./helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const FAKES = ["gh", "op", "doppler", "mkcert"];
@@ -108,6 +109,7 @@ async function page() {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  await signIn(ctx, path.join(tmp, "acme-home"), `http://localhost:${port}`);
   const latest = (
     JSON.parse((await getBody("/api/changelog")).body) as {
       version: string;

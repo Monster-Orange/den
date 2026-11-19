@@ -29,7 +29,15 @@ import {
   type HostErrorCode,
   type Request,
 } from "./protocol.js";
-import type { PtyLoad, PtyProcess } from "./pty.js";
+import {
+  countPtyMasters,
+  loadedPtyModule,
+  type PtyLoad,
+  type PtyModuleInfo,
+  type PtyProcess,
+} from "./pty.js";
+import { engineVersion } from "../paths.js";
+import { hostCodeId } from "./host-code.js";
 import { launchdSession } from "../launchd-session.js";
 import {
   SESSION_POOLS,
@@ -64,6 +72,30 @@ export interface SessionHostOptions {
    * What it starts inherits it, so the agents have it too.
    */
   fullDiskAccess?: () => boolean | null;
+  /**
+   * Issue 503: how long after a session's process exits its PTY master is
+   * closed, in ms (sessions.pty_close_seconds; default 0: at once). The
+   * scrollback stays, in memory and in its log.
+   */
+  ptyCloseMs?: number;
+  /** Issue 503: the PTY masters this process holds (default: counted). */
+  openPtys?: () => number | null;
+  /**
+   * Issue 563: the Den version this host runs (default: its engine's, read
+   * when it starts), for `hello`: the web server restarts a host that runs
+   * another version than the one installed.
+   */
+  denVersion?: string | null;
+  /**
+   * Issue 563: the native PTY module this process loaded (default: what
+   * loadPty loaded; null: none yet), for `hello`.
+   */
+  ptyModule?: () => PtyModuleInfo | null;
+  /**
+   * Issue 597: the id of the code it runs (default: hostCodeId of its
+   * engine, as it starts; null: it can't tell), for `hello`.
+   */
+  codeId?: string | null;
 }
 
 interface Session {
@@ -182,6 +214,20 @@ function printableActor(v: unknown): string {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Issue 448: what a terminal sends on its own, never a person: replies to
+ * the program's queries (device attributes, a cursor or status report, a
+ * mode report), focus in and out, and OSC or DCS answers (a colour query).
+ * A key that starts with ESC (an arrow, F1) is none of these.
+ */
+const TERMINAL_REPLY =
+  // eslint-disable-next-line no-control-regex
+  /^(?:\x1b\[[?>=]?[\d;]*[cRn]|\x1b\[\??[\d;]*\$y|\x1b\[[IO]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[^\x1b]*\x1b\\)+$/;
+
+function terminalReply(bytes: Buffer): boolean {
+  return TERMINAL_REPLY.test(bytes.toString("latin1"));
+}
+
+/**
  * D18: Full Disk Access, as macOS grants it to this executable: only such
  * a process may list ~/Library/Application Support/com.apple.TCC. null off
  * macOS, or when the folder is not there to ask.
@@ -211,6 +257,13 @@ export class SessionHost {
   private closed = false;
   /** D20: where it runs; stamped on every session it starts. */
   private readonly launchd: string | null;
+  /**
+   * Issue 563: the Den version it runs, as it started; issue 597: or the
+   * one an update that left its code alone recorded (`adopt`).
+   */
+  private denVersion: string | null;
+  /** Issue 597: the id of its code, as it started. */
+  private readonly codeId: string | null;
 
   constructor(private readonly opts: SessionHostOptions) {
     this.paths = sessionPaths(opts.stateDir);
@@ -220,6 +273,17 @@ export class SessionHost {
         : launchdSession();
     // "unknown" (launchctl said nothing) is no stamp at all.
     this.launchd = where === "unknown" ? null : where;
+    let v: string | null = null;
+    if (opts.denVersion !== undefined) v = opts.denVersion;
+    else
+      try {
+        v = engineVersion() ?? null;
+      } catch {
+        v = null;
+      }
+    this.denVersion = v;
+    this.codeId =
+      opts.codeId !== undefined ? opts.codeId : (hostCodeId() ?? null);
   }
 
   private log(line: string): void {
@@ -513,6 +577,18 @@ export class SessionHost {
           pid: process.pid,
           startedAt: this.startedAt,
           launchd: this.launchd,
+          // Issue 563: what it runs, so a client can tell it is current.
+          den: this.denVersion,
+          // Issue 597: the code it runs (it restarts only when that or its
+          // module changed).
+          code: this.codeId,
+          pty: (() => {
+            try {
+              return (this.opts.ptyModule ?? loadedPtyModule)();
+            } catch {
+              return null;
+            }
+          })(),
         };
       case "list":
         return {
@@ -535,6 +611,9 @@ export class SessionHost {
         if (s.pty && !s.info.exited && typeof req.data === "string") {
           const bytes = Buffer.from(req.data, "base64");
           s.pty.write(bytes);
+          // Issue 448: a person used it (the rail's Terminal opens the
+          // shell used last, whichever browser typed).
+          if (!terminalReply(bytes)) s.info.inputAt = new Date().toISOString();
           // A line end is a prompt sent; a terminal's own replies to the
           // program's queries (escape sequences) carry none.
           if (
@@ -592,6 +671,18 @@ export class SessionHost {
         this.forget(s);
         return {};
       }
+      case "adopt": {
+        // Issue 597: an update that left its code and module alone: it
+        // runs the installed version now, without a restart.
+        const den = req.den;
+        if (typeof den !== "string" || !den || den.length > 64)
+          throw new Refusal("bad-request", "adopt needs den: a version");
+        this.denVersion = den;
+        return { den };
+      }
+      case "ptys":
+        // Issue 503: the PTY masters it holds (doctor shows them).
+        return { open: (this.opts.openPtys ?? countPtyMasters)() };
       case "access":
         // D18: what this host (and every agent in it) may reach.
         return {
@@ -691,10 +782,12 @@ export class SessionHost {
         rows,
       });
     } catch (e) {
-      throw new Refusal(
-        "spawn",
-        `could not start ${argv[0]}: ${(e as Error).message}`,
+      // Issue 503: never silent: the reason goes back and into the log.
+      const why = String((e as Error)?.message ?? e).split("\n")[0];
+      this.log(
+        `terminal ${printableActor(name)} could not open a PTY for ${printableActor(argv[0])}: ${why}`,
       );
+      throw new Refusal("spawn", `could not open a PTY for ${argv[0]}: ${why}`);
     }
     for (const s of same) this.forget(s);
 
@@ -741,6 +834,10 @@ export class SessionHost {
         s.info.exitCode = signal ? 128 + signal : exitCode;
         s.info.exitedAt = new Date().toISOString();
         s.pty = null;
+        // Issue 503: its master closes (after sessions.pty_close_seconds),
+        // or a long-running host holds one per exited session until the
+        // machine has none left.
+        this.closePty(pty);
         s.log.flush();
         if (this.sessions.get(id) === s) this.persist(s);
         for (const [aid, c] of s.attachments)
@@ -757,6 +854,20 @@ export class SessionHost {
         `session ${id} (${name}) --keep-env ${kept} · by ${printableActor(req.actor)}`,
       );
     return s.info;
+  }
+
+  /** Issue 503: close an exited session's master, after the delay. */
+  private closePty(pty: PtyProcess): void {
+    const close = () => {
+      try {
+        pty.close?.();
+      } catch (e) {
+        this.log(`could not close a PTY: ${(e as Error).message}`);
+      }
+    };
+    const ms = this.opts.ptyCloseMs ?? 0;
+    if (ms > 0) setTimeout(close, ms).unref();
+    else close();
   }
 
   private attach(conn: Conn, req: Request): SessionInfo {

@@ -44,6 +44,11 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // 0.4.48: Den on the Docker bridge for the edge (Linux).
   "web.bridge_listen": ["web_bridge", "listen"],
   "web.bridge_probe_seconds": ["web_bridge", "probe_seconds"],
+  // Issue 406: the start's wait for the owner's GitHub name.
+  "web.owner_name_timeout_seconds": [
+    "web_github",
+    "owner_name_timeout_seconds",
+  ],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
@@ -80,6 +85,10 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "visibility_timeout_seconds",
   ],
   "feedback.visibility_retry_seconds": ["feedback", "visibility_retry_seconds"],
+  // Issue 455: how long, and how often, Den checks its own address.
+  "web.address_check_timeout_seconds": ["address_check", "timeout_seconds"],
+  "web.address_check_retries": ["address_check", "retries"],
+  "web.address_check_cache_seconds": ["address_check", "cache_seconds"],
 };
 
 /**

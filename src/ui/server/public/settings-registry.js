@@ -1891,6 +1891,46 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
   },
   {
+    // Issue 455: the address check's limits (user.yml web.address_check_*).
+    id: "server.address_check_timeout",
+    category: "server",
+    label: "Address check wait",
+    description:
+      "How long __DEN_TITLE__ waits for an address to answer when it checks that the address reaches this __DEN_TITLE__, before it prints or opens it. __DEN_CLI__ config web.address_check_timeout_seconds=5",
+    keywords: ["address", "check", "edge", "port", "timeout", "wait"],
+    scope: "user",
+    keys: ["address_check.timeout_seconds"],
+    control: { type: "number", min: 0.5, max: 600, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.timeout_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ address_check: { timeout_seconds: v } }),
+  },
+  {
+    id: "server.address_check_retries",
+    category: "server",
+    label: "Address check retries",
+    description:
+      "How many more times __DEN_TITLE__ asks an address that didn't answer in time. __DEN_CLI__ config web.address_check_retries=2",
+    keywords: ["address", "check", "edge", "retries"],
+    scope: "user",
+    keys: ["address_check.retries"],
+    control: { type: "number", min: 0, max: 20, step: 1 },
+    read: (ctx) => ctx.data.address_check?.retries ?? 2,
+    write: (v, ctx) => ctx.post({ address_check: { retries: v } }),
+  },
+  {
+    id: "server.address_check_cache",
+    category: "server",
+    label: "Address check kept for",
+    description:
+      "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
+    keywords: ["address", "check", "edge", "cache"],
+    scope: "user",
+    keys: ["address_check.cache_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.cache_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ address_check: { cache_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",
@@ -1934,6 +1974,28 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
+    // Issue 406: the owner's display name, for the account entry.
+    id: "server.owner_name_timeout",
+    category: "server",
+    label: "GitHub name check at start, in seconds",
+    description:
+      "How long __DEN_TITLE__ waits at its start for the owner's name from their public GitHub profile, when it doesn't have the name yet. It never delays the start. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    keywords: [
+      "github",
+      "name",
+      "owner",
+      "account",
+      "timeout",
+      "web.owner_name_timeout_seconds",
+    ],
+    scope: "user",
+    keys: ["web_github.owner_name_timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_github?.ownerNameTimeoutSeconds ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ web_github: { owner_name_timeout_seconds: v } }),
   },
   {
     // den#143: how long `web up` waits for the server (user.yml
@@ -3045,7 +3107,7 @@ export const DEN_SETTINGS = [
     category: "cli",
     label: "Browser sign-in",
     description:
-      "On localhost nothing asks for a sign-in. Through the edge, a browser signs in unless the edge shows it is this machine (web.edge_unattested: local counts one it can't place as local), and from another machine it always does: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
+      "Every browser signs in once, on this machine too, and stays signed in. Here, __DEN_CLI__ web up opens a one-time sign-in link; a browser that isn't signed in can look but change nothing. From another machine: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
     keywords: ["sign in", "sign out", "login", "logout", "session", "browser"],
     scope: "user",
     control: {
@@ -4729,7 +4791,14 @@ function renderAddress(host, ctx) {
 export function hubUncoveredHtml(list, t) {
   const un = Array.isArray(list) ? list : [];
   if (!un.length) return "";
-  const orgs = [...new Set(un.map((u) => u.org))];
+  // Issue 526: org names match whatever their case: one button per org.
+  const seen = new Set();
+  const orgs = un
+    .map((u) => u.org)
+    .filter((o) => {
+      const k = String(o).toLowerCase();
+      return seen.has(k) ? false : (seen.add(k), true);
+    });
   return (
     `<div data-hubp-uncovered>` +
     un
@@ -4740,7 +4809,10 @@ export function hubUncoveredHtml(list, t) {
       .join("") +
     orgs
       .map((org) => {
-        const href = un.find((u) => u.org === org && u.installUrl)?.installUrl;
+        const k = String(org).toLowerCase();
+        const href = un.find(
+          (u) => String(u.org).toLowerCase() === k && u.installUrl,
+        )?.installUrl;
         return href && /^https:\/\/github\.com\//.test(href)
           ? `<a class="btn sm primary" data-hubp-give="${escR(org)}" href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(t("hubp.giveAccess", { org }))}</a> `
           : "";
@@ -5238,25 +5310,39 @@ export function hubGithubHtml(b, t) {
     `<div data-hubgh data-hubgh-state="orgs">` +
     orgs
       .map((o) => {
+        // Issue 526: Hub couldn't ask GitHub. Its reason as text, Check
+        // again, and never a link, even when Hub sends one.
+        if (o.access === "error") {
+          const reason = typeof o.error === "string" ? o.error : "";
+          return (
+            `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="error">` +
+            `<span class="rt-dot warn"></span> ${escR(reason ? t("hubgh.error", { org: o.org, reason }) : t("hubgh.errorNoReason", { org: o.org }))}` +
+            ` <button type="button" class="btn sm" data-hubgh-retry>${escR(t("hubgh.retry"))}</button>` +
+            `</p>`
+          );
+        }
         const what =
           o.access === "all"
             ? t("hubgh.all")
             : o.access === "some"
               ? t("hubgh.some", { n: o.covered, m: o.total })
               : t("hubgh.none");
+        // none: give access when there's no installation; one that leaves
+        // these repos out sends only manage_url, and that's Change repos.
+        const give = o.access === "none" && !!o.installUrl;
         const href =
           o.access === "some"
             ? o.manageUrl || o.installUrl
             : o.access === "none"
-              ? o.installUrl
+              ? o.installUrl || o.manageUrl
               : null;
-        const label = o.access === "none" ? t("hubgh.give") : t("hubgh.change");
+        const label = give ? t("hubgh.give") : t("hubgh.change");
         const dot = o.access === "all" ? "ok" : "warn";
         return (
           `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="${escR(o.access)}">` +
           `<span class="rt-dot ${dot}"></span> ${escR(t("hubgh.line", { org: o.org, what }))}` +
           (href && /^https:\/\/github\.com\//.test(href)
-            ? ` <a class="btn sm${o.access === "none" ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
+            ? ` <a class="btn sm${give ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
             : "") +
           `</p>`
         );
@@ -5292,6 +5378,13 @@ function renderHubGithub(host, ctx) {
         host.querySelectorAll("[data-hubgh-open]").forEach((a) =>
           a.addEventListener("click", () => {
             host.dataset.hubghAway = "1";
+          }),
+        );
+        // Issue 526: Check again asks Hub once more.
+        host.querySelectorAll("[data-hubgh-retry]").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            btn.disabled = true;
+            draw();
           }),
         );
       })

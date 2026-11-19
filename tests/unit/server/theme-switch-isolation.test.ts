@@ -32,6 +32,7 @@ import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 import { denAuth } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { pageImport } from "./helpers/page-import.js";
 
@@ -489,7 +490,6 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
         fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
       ) as Record<string, unknown>;
       await new Promise((r) => setTimeout(r, 500));
-      const before = snapshot();
 
       const latest = (
         JSON.parse((await request("GET", "/api/changelog")).body) as {
@@ -506,6 +506,14 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
           /* none */
         }
       }, latest ?? "");
+      // The person's browser, signed in as `web up` does (0.4.71). Before
+      // the snapshot: signing in records the session in DEN_HOME.
+      await signIn(
+        ctx,
+        path.join(tmp, "home", ".den"),
+        `http://localhost:${PORT}`,
+      );
+      const before = snapshot();
       const p = await ctx.newPage();
       const reqs: string[] = [];
       p.on("request", (r) =>
@@ -557,11 +565,15 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
         'POST /api/settings {"appearance":{"mode":"light"}}',
         'POST /api/settings {"appearance":{"theme":"paper"}}',
       ]);
+      // Issue 455: the address banner's read (GET /api/edge/address) is the
+      // page load's, and only reads.
       expect(
-        reqs.filter((r) =>
-          /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
-            r,
-          ),
+        reqs.filter(
+          (r) =>
+            r !== "GET /api/edge/address" &&
+            /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
+              r,
+            ),
         ),
       ).toEqual([]);
 

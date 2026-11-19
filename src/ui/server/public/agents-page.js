@@ -101,6 +101,8 @@ import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
+import { latestShell } from "/shell-pick.js";
+import { startFailText, terminalFailText } from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -315,9 +317,10 @@ function rememberedOpen() {
 }
 
 /**
- * Issue 448: when this browser last used each shell (its terminal took the
- * keyboard), so the rail's Terminal opens the one used last. Per browser;
- * a shell it never used counts from when it started.
+ * Issue 448: when this browser last used each shell (a person clicked or
+ * typed in its pane), so the rail's Terminal opens the one used last. The
+ * server keeps when each was last typed in from any browser (inputAt);
+ * this adds a click here. A shell never used counts from its start.
  */
 const SHELL_USED_KEY = "den-shell-used";
 
@@ -333,9 +336,12 @@ function shellUsed() {
 function markShellUsed(id) {
   const r = rowOf(id);
   if (r?.kind !== "session") return;
+  const was = shellUsed();
+  // Every key calls here: once a second is enough.
+  if (typeof was[id] === "number" && Date.now() - was[id] < 1000) return;
   const live = new Set((st.data?.sessions ?? []).map((x) => x.id));
   const used = {};
-  for (const [k, v] of Object.entries(shellUsed()))
+  for (const [k, v] of Object.entries(was))
     if (live.has(k) && typeof v === "number") used[k] = v;
   used[id] = Date.now();
   try {
@@ -343,28 +349,6 @@ function markShellUsed(id) {
   } catch {
     /* none: the newest shell instead */
   }
-}
-
-/**
- * Issue 448: project `ws`'s running plain shell used last (`used`: id to
- * ms; else its start), or null when none runs there. `ws` null: in any
- * project.
- */
-export function latestShell(rows, ws, used = {}) {
-  const at = (r) =>
-    Math.max(
-      typeof used[r.id] === "number" ? used[r.id] : 0,
-      Date.parse(r.startedAt ?? "") || 0,
-    );
-  let best = null;
-  for (const r of rows ?? [])
-    if (
-      r?.kind === "session" &&
-      !r.exited &&
-      (ws === null || r.workspace === ws)
-    )
-      if (!best || at(r) >= at(best)) best = r;
-  return best;
 }
 
 function writeUrl() {
@@ -2967,7 +2951,9 @@ async function openPane(id, { front = true } = {}) {
     el.addEventListener(
       ev,
       (e) => {
-        if (e.isTrusted) p.inputAt = performance.now();
+        if (!e.isTrusted) return;
+        p.inputAt = performance.now();
+        markShellUsed(p.id);
       },
       true,
     );
@@ -3008,8 +2994,17 @@ async function openPane(id, { front = true } = {}) {
   el.addEventListener("focusin", () => {
     if (!p.following) claimSize(p);
     st.keyPane = p.id;
-    markShellUsed(p.id);
   });
+  // Issue 448: used means a person's click or key here, never the focus
+  // the page gives a pane itself (a load puts the front tab's terminal in
+  // focus, which must not make it the one used last).
+  el.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.isTrusted) markShellUsed(p.id);
+    },
+    true,
+  );
   p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
   refit(p);
@@ -4600,7 +4595,7 @@ function startBody() {
 function showStartError(err) {
   const el = $d("#ag-err");
   // Issue 479: its runtime's copy is quarantined: why, the path and the
-  // choices (Use this, open its folder), not only the message.
+  // choices (Use this, Copy path), not only the message.
   const q = err?.data?.quarantined;
   if (q?.path) {
     el.innerHTML = quarantinedHtml(q, t);
@@ -4608,7 +4603,7 @@ function showStartError(err) {
     el.hidden = false;
     return;
   }
-  el.textContent = err?.message || String(err);
+  el.textContent = startFailText(err, t);
   // AG-10.10: that agent is running: offer to open it.
   const running = err?.data?.running;
   if (running?.sessionId) {
@@ -5838,6 +5833,9 @@ export async function mountAgentsPage(root) {
  * runs, or with `fresh` (the shell bar's New terminal).
  */
 async function openTerminal(asked = "", { fresh = false } = {}) {
+  // Issue 448: decide on the server's list as it is now (a shell may have
+  // ended since this page's last list), and on when each was last typed in.
+  if (!fresh) await refresh().catch(() => {});
   const all = st.data?.workspaces ?? [];
   const used = shellUsed();
   // Issue 448: no project named or in view (every project shows): the
@@ -5870,9 +5868,8 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
     if (r?.session?.id) await bringShell(r.session.id);
   } catch (err) {
-    window.denShell?.toast?.(
-      t("ag.term.failed", { e: err?.message || String(err) }),
-    );
+    // Issue 503: never silent; no PTY has its own words.
+    window.denShell?.toast?.(terminalFailText(err, t));
   }
 }
 

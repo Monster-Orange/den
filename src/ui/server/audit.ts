@@ -71,6 +71,12 @@ export interface AuditEntry {
    * named, so each one's activity list shows it (`GET /api/activity`).
    */
   addresses?: string[];
+  /**
+   * Issue 597: the agents an action touched, in full (the detail, cut at
+   * 400 characters, has the counts): e.g. the terminal host's restart's
+   * resumed, failed and cut-mid-turn agents.
+   */
+  agents?: Record<string, unknown>;
 }
 
 type Sink = (line: string, actor: AgentActor | null) => void;
@@ -157,6 +163,8 @@ export function recordAction(
     reason?: string;
     addresses?: string[];
     targetWorkspace?: string;
+    /** Issue 597: the agents it touched, in full. */
+    agents?: Record<string, unknown>;
   },
   /** The credential's actor (request-guard principalOf). */
   principal?: string,
@@ -198,6 +206,7 @@ export function recordAction(
     ...(action.outcome ? { outcome: action.outcome } : {}),
     ...(action.reason ? { reason: clean(action.reason, 300) } : {}),
     ...(action.addresses?.length ? { addresses: action.addresses } : {}),
+    ...(action.agents ? { agents: action.agents } : {}),
   };
   ring.push(entry);
   if (ring.length > RING_MAX) ring.shift();

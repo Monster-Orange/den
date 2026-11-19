@@ -4,6 +4,139 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.73] - unreleased
+
+### Fixed
+
+- **Issue 455: no address is shown before it is checked.** `den doctor`'s Address row and the server's start line give the address that was checked, Den's own port, and say the edge address isn't checked yet until it answers as this Den. When something holds port 80 and never answers, `den web up` says "Not reachable yet" once instead of going quiet; until the edge address is proven, its "Visit:" line and the page it opens use the checked address. The Edge page's sub line follows the address card, shows "Not reachable yet" when nothing answers, and doctor names a container "Docker container" as the Edge page does.
+- The rail's account entry shows two lines again, the name and then @login (issue 406). A browser signed in with GitHub before names were kept shows the owner's name; a GitHub sign-in by the owner keeps GitHub's current display name. An owner linked before names were kept gets the name once, on start, from their public GitHub profile (no token). With no name anywhere, the entry stays one line, @login.
+- Den Hub's GitHub access (Settings and `den doctor`): when Hub couldn't check an org on GitHub, Den says so and gives Hub's reason with a Check again button, instead of the install prompt. The "Den Hub can't see" list keeps your own spelling and matches whatever the case. (issue 526)
+
+### Added
+
+- New setting: Settings › Server › "GitHub name check at start, in seconds" (`web.owner_name_timeout_seconds`, default 10, 1 to 600). It never delays the start.
+- den-ui: the panel fold toggle (`./panel-fold`), the folded panel's 40px edge strip with "Show panel" and an optional count, and a labelled switch (`./switch`), in en, es and ja. Den serves them at /kit/.
+- Live checks for issue 456 (Den picks the agent CLI copy a new terminal gets) and issue 479 (a quarantined copy never starts). Gate 335's header clause (issue 473) now runs.
+
+## [0.4.72] - 2026-11-19
+
+### Security
+
+- **Sign-in on this machine too.** Every browser signs in once, on the computer Den runs on too, and stays signed in. `den web up` and `den web open` sign the browser in, including a tab that's already open. A browser that isn't signed in can look and change nothing: it shows "Sign in to make changes here." with a Sign in button. Scripts send `den web token --print` as a bearer. `GET /api/session` gives a CSRF token only to a signed-in session. Routes that run a command for their output now need a sign-in or the token: the service log routes, log search, the GitHub repo and branch lists, and My reports. Upgrading is recommended. Live check `gate/542.mjs`.
+
+### Changed
+
+- Self-update: a release marked as a security release (`"den": {"security": true}` in its package.json, read from npm) now updates while the server agent waits on your question or permission prompt. It still never goes past a pending Allow or restarts mid-turn, and the bell tells you the question is still open. Turn it off with `server_agent.security_update_skips_questions: false`. (issue 562)
+- Self-update: once an auto update is installed, Den checks again before it restarts. If the server agent started working, or an Allow is pending, the restart waits up to `server_agent.update_restart_wait_seconds` (default 900), keeping the update marked under way. It then restarts anyway and tells you in the bell. (issue 562)
+
+## [0.4.71] - 2026-11-19
+
+### Fixed
+
+- **Issue 563: after an update, Den restarts its terminal host when that host still runs the old version or holds a terminal module the update replaced.** Before this, new agents and terminals failed to start with `posix_spawnp failed`. Agents mid-turn are waited for, up to `sessions.host_restart_wait_seconds` (default 900). Running agents resume and open terminals end. The bell says so, in a sentence that fits what ran.
+- `doctor` has a Host row: ✗ with `<cli> sessions host --stop` when the terminal host isn't current. It finds the terminal module in the layout the current terminal library ships (its binary under `prebuilds/`).
+- Live check `gate/503.mjs` judges the terminal host's own PTY count; the machine's count is logged only. Live check `gate/563.mjs`.
+
+## [0.4.70] - 2026-11-18
+
+### Fixed
+
+- The live log view handles repo and service names the way log history and search do. Live check `gate/536.mjs`.
+- Stricter request method handling. Live check `gate/573.mjs`.
+- Settings: a saved row shows its saved value after one click and one save (issue 424).
+
+### Docs
+
+- Agent instructions say how to send feedback: the Report button first, a GitHub issue as the fallback.
+
+## [0.4.69] - 2026-11-18
+
+### Fixed
+
+- **Issue 503: the terminal host no longer keeps a PTY for each exited terminal.** Before, a long-running host could use up every PTY on the machine. The terminal library `@lydell/node-pty` is now 1.2.0-beta.18, pinned with integrity hashes. The stable 1.2.0 follows when it ships (issue 513).
+
+### Added
+
+- When the machine gives no PTY, Terminal and the start dialog say so, with the reason, and the terminal host logs it.
+- `den doctor` shows the terminal host's PTYs and the machine's. It fails above `sessions.pty_warn_above` (400) or at `sessions.pty_machine_warn_percent` (90%) of the machine's limit.
+- **New config key** `sessions.pty_close_seconds` (default 0, den.yml or user.yml): how long after a terminal exits its PTY closes. Settings rows for the terminal limits follow in issue 532.
+- **Live check:** `gate/503.mjs` opens terminals up to `sessions.max_concurrent` (at most 20) and closes them, and checks the PTY count returns to where it started and that one past the cap is refused with its reason, plus doctor's rows, the config keys and the pinned node-pty.
+
+## [0.4.68] - 2026-11-18
+
+### Fixed
+
+- **Issue 455: Den no longer gives an address that reaches another server.**
+  - When port 80 (the edge's http port) is held by something else, `den up`, `den open`, the sign-in link and `den doctor` use Den's own port. They name what holds port 80 and say so once.
+  - Every address is checked first with an identity challenge that only this Den can answer.
+  - The port check now covers IPv6 and the wildcard addresses, as Docker publishes them.
+  - `edge up` checks on every run.
+  - When nothing answers at the address Den gives, `den web up`, `den web open` and the sign-in link say "Not reachable yet: nothing answers at <address>." next to it, and name the next step when Den knows the edge is down.
+
+### Added
+
+- **The Edge page shows a status card when port 80 is held.** It names the owner and offers two choices: "Add Den to that proxy" (a route for nginx, Caddy or Traefik, with Copy) and "Free port 80". It also has Check again, and Take over for an old Den edge.
+- **Every page shows a one-time banner** with the working address.
+- **`den edge route --for nginx|caddy|traefik`** prints the route. (`--for=<proxy>` works too; in 0.4.68-dev.1 and dev.2 the command refused `--for` as an unknown flag.)
+- **Three new Settings** (Settings › Server, user.yml `web.`): `address_check_timeout_seconds` (default 5), `address_check_retries` (default 2), `address_check_cache_seconds` (default 60).
+
+### Changed
+
+- **Live checks: `scripts/gate-shape.mjs` refuses an `expect` that declares more than one parameter.** The harness calls `expect(result)` alone, so a second parameter is always undefined there.
+
+## [0.4.67] - 2026-11-18
+
+den-ui 0.7.6 ships with this release.
+
+### Added
+
+- den-ui 0.7.6 (#467): the save-state line for autosaving editors
+  (`./savestate`, `./savestate.css`, `DenUI.saveState`). It saves 800 ms
+  after the last change and at once on blur or when the page is hidden,
+  shows "Saving…" only past 400 ms, and on failure says "Not saved.
+  Retrying…" with Copy text and retries at 2, 4 and 8 s, then every
+  30 s, and when the browser is back online. Only the error and its
+  recovery are announced. Words in en, es and ja.
+
+### Fixed
+
+- Bell: a question an agent ends its turn on now always counts on the
+  badge, even if its page was open when the turn ended. A finished turn
+  always shows under Updates. Opening the agent clears it there (issue
+  142, #468).
+- Bell: just opening an agent's pane no longer counts as answering its
+  question (#468).
+- The rail's Terminal opens the shell used most recently. With All
+  projects selected, that is across every project, not the first one
+  listed; with one project, that project's (issue 448, #484).
+- "Used" means a person typed in it, from any browser or machine: Den now
+  remembers when each shell last had input, so a reload or another
+  computer gets the same answer (#484).
+- The rail's Terminal never opens a shell that has exited, even one that
+  ended while the page was open. With no running shell, it starts a new
+  one (#484).
+
+## [0.4.66] - 2026-11-18
+
+den-ui 0.7.5 ships with this release (the shared Markdown editor). It
+did not publish on its own: the kit's publish rides Den's release (issue
+464 decouples them).
+
+### Fixed
+
+- Pinned services follow the project filter (issue 402). With the view
+  filtered to one project, the rail's Pinned list shows only that
+  project's services; All active shows every pin again. Filtering never
+  changes or deletes a pin. (#461)
+
+### Added
+
+- den-ui 0.7.5: a shared Markdown editor (`./markdown-editor`,
+  `./markdown-editor.css`). CodeMirror 6 on the Markdown text, the live
+  preview drawn in place, IME-safe Enter, loaded lazily behind a plain
+  textarea; toolbar words in en, es and ja. Den's own pages don't load
+  it.
+
 ## [0.4.65] - 2026-11-18
 
 0.4.65-dev.1 was skipped: its commit failed CI and was never handed to a

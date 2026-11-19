@@ -179,6 +179,40 @@ describe("session host", () => {
     expect(Date.parse((await c.list())[0].bellAt ?? "")).not.toBeNaN();
   });
 
+  it("issue 448: a person's input stamps inputAt; a terminal's reply to a query doesn't", async () => {
+    const dir = stateDir();
+    const { made } = await host(dir);
+    const c = await client(dir);
+    const { ref } = await c.start(spec("acme-north:planner"));
+    const att = c.attach(ref.id, { onData: () => undefined });
+    await att.ready;
+    // What xterm answers on its own: a device attributes reply, a cursor
+    // report, focus in and out, a colour query's answer.
+    for (const reply of [
+      "\u001b[?1;2c",
+      "\u001b[12;40R",
+      "\u001b[I",
+      "\u001b[O",
+      "\u001b]11;rgb:0000/0000/0000\u001b\\",
+    ])
+      c.write(ref.id, Buffer.from(reply));
+    const inputAt = async () =>
+      ((await c.list())[0] as { inputAt?: string }).inputAt;
+    await until(() => made[0].writes.length === 5);
+    expect(await inputAt()).toBeUndefined();
+    // A key (an arrow key starts with ESC too).
+    c.write(ref.id, Buffer.from("\u001b[A"));
+    await until(() => made[0].writes.length === 6);
+    const first = (await inputAt()) ?? "";
+    expect(Date.parse(first)).not.toBeNaN();
+    await new Promise((r) => setTimeout(r, 5));
+    c.write(ref.id, Buffer.from("l"));
+    await until(() => made[0].writes.length === 7);
+    expect(Date.parse((await inputAt()) ?? "")).toBeGreaterThan(
+      Date.parse(first),
+    );
+  });
+
   it("passes write, resize and signal to the PTY, and reports the exit", async () => {
     const dir = stateDir();
     const { made } = await host(dir);
