@@ -52,6 +52,12 @@ import {
   enterAction,
   type MarkdownEditor,
 } from "@kit/markdown-editor.js";
+import {
+  createSaveState,
+  saveScheduler,
+  SAVE_AFTER_MS,
+  type SaveStateChange,
+} from "@kit/savestate.js";
 
 const model: ShellModel = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -228,3 +234,24 @@ const act: "submit" | "newline" | "ime" | null = enterAction(
 );
 void act;
 md.destroy();
+
+// The save-state line: any field, the host's save and Copy text.
+const field = document.createElement("textarea");
+const line = createSaveState(document.createElement("p"), {
+  save: () => fetch("/save", { method: "PUT", body: field.value }),
+  copyText: () => field.value,
+  watch: field,
+  words: { saved: "Kept" },
+});
+line.changed();
+void line.flush().then(() => line.state() === "saved");
+const sch = saveScheduler({
+  save: async () => undefined,
+  onChange: (c: SaveStateChange) => void (c.announce === "error" && c.at),
+});
+sch.destroy();
+const viaKit = DenUI.saveState(document.createElement("p"), {
+  save: async () => undefined,
+});
+viaKit.destroy();
+void (SAVE_AFTER_MS + 0);

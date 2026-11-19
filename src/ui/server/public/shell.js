@@ -621,6 +621,8 @@
     "pj.delete": "Delete",
     "pj.activeTag": "(active)",
     "pj.openTerm": "Open in terminal",
+    // Issue 169: the >_ names the person's own terminal app.
+    "pj.openTermIn": "Open in {app}",
     "pj.openEditor": "Open in editor",
     "pj.moreActions": "More actions",
     "pj.moreFor": "More for {ws}",

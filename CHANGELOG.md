@@ -4,7 +4,19 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.67] - unreleased
+## [0.4.67] - 2026-11-18
+
+den-ui 0.7.6 ships with this release.
+
+### Added
+
+- den-ui 0.7.6 (#467): the save-state line for autosaving editors
+  (`./savestate`, `./savestate.css`, `DenUI.saveState`). It saves 800 ms
+  after the last change and at once on blur or when the page is hidden,
+  shows "Saving…" only past 400 ms, and on failure says "Not saved.
+  Retrying…" with Copy text and retries at 2, 4 and 8 s, then every
+  30 s, and when the browser is back online. Only the error and its
+  recovery are announced. Words in en, es and ja.
 
 ### Fixed
 

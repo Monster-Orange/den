@@ -106,8 +106,8 @@ const NAMES = [
   "text",
   "__DEN_CLI__",
   "__DEN_TITLE__",
-  // A terminal's own name (agent-ops: "shell", "shell-2").
-  "shell",
+  // A terminal's own name (agent-ops, issue 169: "terminal-1", "terminal-2").
+  "terminal-\\d+",
   // A unit (a check's time: "2 ms"), as the literal check's NAMES.
   "ms",
 ];
