@@ -2170,7 +2170,8 @@ export async function handleWorkspaceRoutes(
   }
 
   if (pathname === "/api/workspace/sync") {
-    if (!readMethodOnly(req, res)) return;
+    // The page streams it with GET; the MCP sync tool calls it with POST.
+    if (!readMethodOnly(req, res, ["POST"])) return;
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

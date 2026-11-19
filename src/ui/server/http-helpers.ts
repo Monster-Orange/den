@@ -79,14 +79,15 @@ export function sendMethodNotAllowed(
   );
 }
 
-/** True when the request is a GET or HEAD; else answers 405 (a route's own check). */
+/** True when the request is a GET or HEAD (or one of `also`); else answers 405 (a route's own check). */
 export function readMethodOnly(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  also: readonly string[] = [],
 ): boolean {
   const m = (req.method ?? "GET").toUpperCase();
-  if (m === "GET" || m === "HEAD") return true;
-  sendMethodNotAllowed(res, "GET, HEAD");
+  if (m === "GET" || m === "HEAD" || also.includes(m)) return true;
+  sendMethodNotAllowed(res, ["GET", "HEAD", ...also].join(", "));
   return false;
 }
 

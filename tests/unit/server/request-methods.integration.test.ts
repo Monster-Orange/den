@@ -243,6 +243,17 @@ describe("a method other than the six answers 405 before any route", () => {
   }, 30_000);
 });
 
+describe("the MCP sync tool's POST", () => {
+  it("POST /api/workspace/sync takes the person's bearer (the MCP tool's call), and refuses a bare one", async () => {
+    const p = "/api/workspace/sync?ws=north";
+    expect((await call("POST", p, bearer())).status).toBe(200);
+    expect((await call("POST", p)).status).toBe(403);
+    expect(
+      (await call("POST", p, { origin: "https://elsewhere.example" })).status,
+    ).toBe(403);
+  }, 30_000);
+});
+
 describe("GET /api/manifest/validate?path=", () => {
   const v = (p: string, h: Record<string, string> = {}) =>
     call("GET", `/api/manifest/validate?path=${encodeURIComponent(p)}`, h);
