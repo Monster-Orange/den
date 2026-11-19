@@ -162,7 +162,11 @@ export async function ptyLines(
 export interface HostModuleDeps {
   /** What the running host says (null: none runs). */
   host: () => Promise<
-    import("../../shared/sessions/host-refresh.js").HostRuns | null
+    | (import("../../shared/sessions/host-refresh.js").HostRuns & {
+        pid?: number;
+        startedAt?: string;
+      })
+    | null
   >;
   installed: () => import("../../shared/sessions/host-refresh.js").Installed;
 }
@@ -198,7 +202,7 @@ export async function hostModuleLines(
   d: HostModuleDeps,
 ): Promise<{ lines: string[]; check: OnboardCheck; problem: boolean }> {
   const { hostStale } = await import("../../shared/sessions/host-refresh.js");
-  let h = null;
+  let h: Awaited<ReturnType<HostModuleDeps["host"]>> = null;
   try {
     h = await d.host();
   } catch {
