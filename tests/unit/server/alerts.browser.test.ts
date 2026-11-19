@@ -206,7 +206,6 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
         note: "pick a name",
       });
       expect(r.status).toBe(202);
-      const id = ((await r.json()) as { id?: string }).id ?? "";
       await p.waitForFunction(
         () => (window as unknown as { __shown: unknown[] }).__shown.length > 0,
         null,
@@ -220,15 +219,10 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       expect(shown).toHaveLength(1);
       expect(shown[0].body).toBe("planner needs your Allow");
       expect(shown[0].title).toBeTruthy();
-      const d = await fetch(`${s!.base}/api/approvals/${id}/decide`, {
-        method: "POST",
-        headers: {
-          ...denAuth(s!.stateDir),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ decision: "deny" }),
-      });
-      expect(d.status).toBe(200);
+      // The person says no (the page's Allow dialog), so the next test
+      // starts with no request pending.
+      await p.locator("#den-ap-deny").click();
+      await p.locator("#den-ap-dlg").waitFor({ state: "hidden" });
     } finally {
       await p.context().close();
       await s!.settings({ approvals_watch: "project:north" });
