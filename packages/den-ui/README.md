@@ -709,8 +709,8 @@ choices. Every product draws it from data the same way.
     area.select("devices"); area.toast("Signed out Safari on iPhone");
     area.update(newData); area.close();
 
-- **The shell**: a pop-up 960 wide by up to 640 (`min(960px, 100vw -
-  32px)` by `min(88vh, 640px)`); a 240px rail on the sunken surface with a
+- **The shell**: a pop-up 960 wide by up to 760 (`min(960px, 100vw -
+  32px)` by `min(88vh, 760px)`); a 240px rail on the sunken surface with a
   search box (`/` jumps there), the groups Account, Sign-in and access,
   Devices and Notifications, the open section marked with a 3px accent
   bar, and "Install settings →" at its foot. Every pane stays mounted;

@@ -4,7 +4,7 @@
  * area with openAccountArea and a host that records what it's asked. The
  * approved Account area mock (v2) is the spec.
  *
- *   - the pop-up is 960 by 640 at 1280 wide, the rail 240px; it opens on
+ *   - the pop-up is 960 wide and 88vh high up to 760, the rail 240px; it opens on
  *     the asked section and puts ?account=<section> in the address
  *   - a section's row in the rail opens its pane and marks it
  *   - "/" jumps to the search; a search hides the sections with no match;
@@ -104,10 +104,10 @@ window.ready = true;
 
 async function open(
   engine: Engine,
-  o: { lang?: string; width?: number; section?: string } = {},
+  o: { lang?: string; width?: number; height?: number; section?: string } = {},
 ): Promise<Page> {
   const ctx = await browsers[engine]!.newContext({
-    viewport: { width: o.width ?? 1280, height: 800 },
+    viewport: { width: o.width ?? 1280, height: o.height ?? 800 },
     reducedMotion: "reduce",
     locale: o.lang ?? "en",
     hasTouch: (o.width ?? 1280) < 768,
@@ -163,10 +163,13 @@ for (const engine of ENGINES) {
   const skip = () => !browsers[engine];
 
   describe(`the Account area (${engine})`, () => {
-    it("is 960 by 640 with a 240px rail, open on the asked section, the section in the address", async () => {
+    it("is 960 wide and 88vh high (704 at 800) with a 240px rail, open on the asked section, the section in the address", async () => {
       if (skip()) return;
       const p = await open(engine, { section: "devices" });
-      expect(await box(p, "dialog.den-aa-dlg")).toEqual({ w: 960, h: 640 });
+      expect(await box(p, "dialog.den-aa-dlg")).toEqual({ w: 960, h: 704 });
+      const tall = await open(engine, { section: "devices", height: 1100 });
+      expect(await box(tall, "dialog.den-aa-dlg")).toEqual({ w: 960, h: 760 });
+      await tall.context().close();
       expect((await box(p, ".den-aa-rail"))!.w).toBe(240);
       expect(await shown(p)).toEqual(["devices"]);
       expect(await address(p)).toBe("/page?x=1&account=devices");

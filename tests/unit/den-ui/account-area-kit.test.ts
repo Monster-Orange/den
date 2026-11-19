@@ -475,9 +475,9 @@ describe("the look (account-area.css): the mock's values", () => {
     return css.slice(i, css.indexOf("}", i));
   };
 
-  it("is 960 wide by up to 640, with a 240px rail beside the pane", () => {
+  it("is 960 wide by up to 760 (the other product's rule, value for value), with a 240px rail beside the pane", () => {
     expect(rule(".den-aa-dlg")).toContain("width: min(960px, 100vw - 32px)");
-    expect(rule(".den-aa-dlg")).toContain("height: min(88vh, 640px)");
+    expect(rule(".den-aa-dlg")).toContain("height: min(88vh, 760px)");
     expect(rule(".den-aa")).toContain("grid-template-columns: 240px 1fr");
   });
 

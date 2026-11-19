@@ -1,6 +1,6 @@
 /* den-ui: the Account area (account-area.js, issue 310). Tokens only.
    The approved Account area mock (v2), value for value: an account
-   pop-up (960 wide by up to 640, a 240px rail on the sunken surface, the
+   pop-up (960 wide by up to 760, a 240px rail on the sunken surface, the
    selected row on the card surface with a 3px accent bar, the pane's
    title in the display face at 22px, plain rows in cards), and under
    768px the rail as a strip with a search box and a select, every
@@ -10,7 +10,7 @@
   box-sizing: border-box;
   width: min(960px, 100vw - 32px);
   max-width: none;
-  height: min(88vh, 640px);
+  height: min(88vh, 760px);
   max-height: none;
   padding: 0;
   border: 1px solid var(--border-strong);
