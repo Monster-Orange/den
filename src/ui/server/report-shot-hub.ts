@@ -25,7 +25,7 @@ export const PREFLIGHT_PATH =
   "/api/installs/self/reports/screenshots/preflight";
 /** Where a report's masked screenshot is sent. */
 export const UPLOAD_PATH = "/api/installs/self/reports/screenshots";
-/** The largest screenshot Hub takes. */
+/** The largest screenshot sent to Hub by default (a Setting: shotLimits). */
 export const MAX_SHOT_BYTES = 6 * 1024 * 1024;
 
 export type Preflight =
@@ -65,7 +65,10 @@ export interface ReportShotHubDeps {
   /** Hub's address and this install's token, or null when not connected. */
   hub: () => Promise<{ url: string; token: string } | null>;
   fetch?: typeof fetch;
-  timeoutMs?: number;
+  /** How long to wait for Hub (ms), read at each call: a Setting. */
+  timeoutMs?: number | (() => number);
+  /** The largest PNG sent (bytes), read at each call: a Setting. */
+  maxBytes?: () => number;
 }
 
 const TARGET = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -76,7 +79,8 @@ const str = (v: unknown): string | null =>
   typeof v === "string" && v ? v : null;
 
 export function reportShotHub(d: ReportShotHubDeps) {
-  const timeout = d.timeoutMs ?? 10_000;
+  const timeout = () =>
+    typeof d.timeoutMs === "function" ? d.timeoutMs() : (d.timeoutMs ?? 10_000);
   const call = async (
     url: string,
     init: RequestInit,
@@ -85,7 +89,7 @@ export function reportShotHub(d: ReportShotHubDeps) {
       const res = await (d.fetch ?? fetch)(url, {
         ...init,
         redirect: "error",
-        signal: AbortSignal.timeout(timeout),
+        signal: AbortSignal.timeout(timeout()),
       });
       let body: Record<string, unknown> = {};
       try {
@@ -139,7 +143,8 @@ export function reportShotHub(d: ReportShotHubDeps) {
       png: Buffer,
       o: { draftId: string; targetRepo: string },
     ): Promise<Upload> {
-      if (png.length > MAX_SHOT_BYTES) return { ok: false, why: "too-big" };
+      if (png.length > (d.maxBytes?.() ?? MAX_SHOT_BYTES))
+        return { ok: false, why: "too-big" };
       if (!png.subarray(0, 8).equals(PNG_MAGIC))
         return { ok: false, why: "not-png" };
       if (!TARGET.test(o.targetRepo)) return { ok: false, why: "refused" };

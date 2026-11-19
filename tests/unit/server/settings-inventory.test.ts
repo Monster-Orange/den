@@ -48,7 +48,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
   // Issue 403: how long a filed report's screenshot is kept.
-  reports: { screenshot_keep_days: true },
+  reports: {
+    screenshot_keep_days: true,
+    screenshot_max_mb: true,
+    hub_screenshot_max_mb: true,
+    hub_timeout_seconds: true,
+  },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -179,6 +184,9 @@ describe("the settings inventory (R21)", () => {
         "agents_list.refresh_timeout_seconds",
         // Issue 403: how long a filed report's screenshot is kept.
         "reports.screenshot_keep_days",
+        "reports.screenshot_max_mb",
+        "reports.hub_screenshot_max_mb",
+        "reports.hub_timeout_seconds",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",

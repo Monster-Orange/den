@@ -38,7 +38,11 @@ import {
 } from "../../../src/ui/server/report-routes.js";
 import { reportShotHub } from "../../../src/ui/server/report-shot-hub.js";
 import { feedbackSettings } from "../../../src/shared/report-store.js";
-import { shotKeepDays, shotStore } from "../../../src/shared/report-shots.js";
+import {
+  shotKeepDays,
+  shotLimits,
+  shotStore,
+} from "../../../src/shared/report-shots.js";
 import {
   PERSON_ONLY_SETTINGS,
   patchCliRows,
@@ -55,6 +59,10 @@ const events: string[] = [];
 
 // ── The fake Hub ────────────────────────────────────────────────────────
 let hubAnswer: [number, unknown] = [201, {}];
+/** How long the fake Hub waits before it answers an upload (ms). */
+let hubDelay = 0;
+/** The user.yml the limits are read from (Settings). */
+let user: Record<string, unknown> = {};
 let preflightAnswer: [number, unknown] = [200, {}];
 const hubSeen: {
   url: string;
@@ -203,8 +211,10 @@ const deps: ReportRouteDeps = {
   shotHub: reportShotHub({
     hub: async () =>
       connected ? { url: hubBase, token: "install-token-never-shown" } : null,
-    timeoutMs: 2000,
+    maxBytes: () => shotLimits(user).hubBytes,
+    timeoutMs: () => shotLimits(user).hubTimeoutMs,
   }),
+  shotMaxBytes: () => shotLimits(user).keptBytes,
   // Den's own check, on the real request guard (tokens below).
   shotReader: (r) => shotReaderOf(r, checkRequest(r, guardCtx())),
   readBody: (req) =>
@@ -232,8 +242,14 @@ beforeAll(async () => {
         body: Buffer.concat(chunks),
       });
       const [status, body] = pre ? preflightAnswer : hubAnswer;
-      res.writeHead(status, { "content-type": "application/json" });
-      res.end(JSON.stringify(body));
+      setTimeout(
+        () => {
+          if (res.destroyed) return;
+          res.writeHead(status, { "content-type": "application/json" });
+          res.end(JSON.stringify(body));
+        },
+        pre ? 0 : hubDelay,
+      );
     });
   });
   await new Promise<void>((ok) => hub.listen(0, "127.0.0.1", ok));
@@ -264,6 +280,8 @@ beforeEach(() => {
   connected = true;
   ghFileCode = 0;
   ghEditCode = 0;
+  hubDelay = 0;
+  user = {};
   appStatus = 201;
   preflightAnswer = [
     200,
@@ -599,6 +617,47 @@ describe("issue 403: filing with a screenshot", () => {
     ).toBe(false);
   });
 
+  it("Hub doesn't answer within reports.hub_timeout_seconds: filed, kept here, 'unreachable'", async () => {
+    user = { reports: { hub_timeout_seconds: 1 } };
+    hubDelay = 1500;
+    const t0 = Date.now();
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(Date.now() - t0).toBeLessThan(1450);
+    expect(r.status).toBe(200);
+    expect(r.body.shot).toMatchObject({ where: "local", why: "unreachable" });
+    expect(filedBody()).toContain(LOCAL_LINE(r.body.shot.id));
+    noPointer(filedBody());
+  });
+
+  it("over reports.hub_screenshot_max_mb: kept here, never sent ('too-big')", async () => {
+    user = { reports: { hub_screenshot_max_mb: 1 } };
+    const big = Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]);
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      shot: `data:image/png;base64,${big.toString("base64")}`,
+      shareShot: true,
+    });
+    expect(r.body.shot).toMatchObject({ where: "local", why: "too-big" });
+    expect(hubSeen).toHaveLength(0);
+  });
+
+  it("over reports.screenshot_max_mb: refused before anything is filed", async () => {
+    user = { reports: { screenshot_max_mb: 1 } };
+    const big = Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]);
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      shot: `data:image/png;base64,${big.toString("base64")}`,
+      shareShot: true,
+    });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/at most 1 MB/);
+    expect(events).toEqual([]);
+  });
+
   it("not connected: filed, kept here, no Hub call", async () => {
     connected = false;
     const r = await call("POST", "/api/report/send", {
@@ -833,6 +892,55 @@ describe("issue 403: the janitor", () => {
     ).toEqual({ ok: true });
     expect(user.reports).toBeUndefined();
     expect(PERSON_ONLY_SETTINGS).toContain("reports");
+  });
+
+  it("the limits are Settings with permissive defaults: 8 MB kept, 6 MB to Hub, 10 s for Hub", () => {
+    expect(shotLimits({})).toEqual({
+      keptBytes: 8 * 1024 * 1024,
+      hubBytes: 6 * 1024 * 1024,
+      hubTimeoutMs: 10_000,
+    });
+    expect(
+      shotLimits({
+        reports: {
+          screenshot_max_mb: 32,
+          hub_screenshot_max_mb: 16,
+          hub_timeout_seconds: 60,
+        },
+      }),
+    ).toEqual({
+      keptBytes: 32 * 1024 * 1024,
+      hubBytes: 16 * 1024 * 1024,
+      hubTimeoutMs: 60_000,
+    });
+    // Out of range, or not a number: the default.
+    expect(
+      shotLimits({
+        reports: {
+          screenshot_max_mb: 0,
+          hub_screenshot_max_mb: "6",
+          hub_timeout_seconds: 9999,
+        },
+      }),
+    ).toEqual(shotLimits({}));
+    const u: Record<string, unknown> = {};
+    expect(
+      patchCliRows(u, {
+        reports: {
+          screenshot_max_mb: 16,
+          hub_screenshot_max_mb: 12,
+          hub_timeout_seconds: 30,
+        },
+      }),
+    ).toEqual({ ok: true });
+    expect(u.reports).toEqual({
+      screenshot_max_mb: 16,
+      hub_screenshot_max_mb: 12,
+      hub_timeout_seconds: 30,
+    });
+    expect(patchCliRows(u, { reports: { hub_timeout_seconds: 0 } }).ok).toBe(
+      false,
+    );
   });
 
   it("a screenshot older than its days goes, with its record; a newer one stays", () => {

@@ -555,6 +555,8 @@ describe("the ⌘K palette (R17)", () => {
       "Show up to this many helpers under an agent SETTING",
       // Issue 403: fuzzy too ("S…h…o…p" in "Report screenshots, kept for").
       "Report screenshots, kept for SETTING",
+      // Issue 403: and its size limit, looser still (…p in "kept").
+      "Report screenshots, largest kept SETTING",
     ]);
     await p.keyboard.press("ArrowDown");
     expect(await p.getAttribute(q, "aria-activedescendant")).toBe(

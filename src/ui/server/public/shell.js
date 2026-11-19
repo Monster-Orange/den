@@ -1865,6 +1865,16 @@
     "set.server.report_screenshot_days": "Report screenshots, kept for",
     "set.server.report_screenshot_days.d":
       "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max": "Report screenshots, largest kept",
+    "set.server.report_screenshot_max.d":
+      "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "Report screenshots, largest sent to Hub",
+    "set.server.report_screenshot_hub_max.d":
+      "The largest masked screenshot __DEN_TITLE__ sends to Hub. A larger one is still kept here, and the report is still filed. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait": "Report screenshots, wait for Hub",
+    "set.server.report_screenshot_hub_wait.d":
+      "How long __DEN_TITLE__ waits for Hub to take a report's screenshot. After this, the screenshot is kept here, and the report is already filed. __DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "Report: repository visibility kept for",
     "set.server.report_visibility_cache.d":

@@ -1864,6 +1864,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ reports: { screenshot_keep_days: v } }),
   },
   {
+    // Issue 403: the largest report screenshot kept here (reports.*).
+    id: "server.report_screenshot_max",
+    category: "server",
+    label: "Report screenshots, largest kept",
+    description:
+      "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    keywords: ["report", "screenshot", "feedback", "size", "limit"],
+    scope: "user",
+    keys: ["reports.screenshot_max_mb"],
+    control: { type: "number", min: 1, max: 64, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.reports?.screenshot_max_mb ?? 8,
+    write: (v, ctx) => ctx.post({ reports: { screenshot_max_mb: v } }),
+  },
+  {
+    // Issue 403: the largest report screenshot sent to Hub.
+    id: "server.report_screenshot_hub_max",
+    category: "server",
+    label: "Report screenshots, largest sent to Hub",
+    description:
+      "The largest masked screenshot __DEN_TITLE__ sends to Hub. A larger one is still kept here, and the report is still filed. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    keywords: ["report", "screenshot", "feedback", "hub", "size", "limit"],
+    scope: "user",
+    keys: ["reports.hub_screenshot_max_mb"],
+    control: { type: "number", min: 1, max: 64, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.reports?.hub_screenshot_max_mb ?? 6,
+    write: (v, ctx) => ctx.post({ reports: { hub_screenshot_max_mb: v } }),
+  },
+  {
+    // Issue 403: how long a report's screenshot waits for Hub.
+    id: "server.report_screenshot_hub_wait",
+    category: "server",
+    label: "Report screenshots, wait for Hub",
+    description:
+      "How long __DEN_TITLE__ waits for Hub to take a report's screenshot. After this, the screenshot is kept here, and the report is already filed. __DEN_CLI__ config reports.hub_timeout_seconds=10",
+    keywords: ["report", "screenshot", "feedback", "hub", "timeout", "wait"],
+    scope: "user",
+    keys: ["reports.hub_timeout_seconds"],
+    control: { type: "number", min: 1, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.reports?.hub_timeout_seconds ?? 10,
+    write: (v, ctx) => ctx.post({ reports: { hub_timeout_seconds: v } }),
+  },
+  {
     // Issue 415: Report says who can see a report: each destination's
     // visibility on GitHub, kept and waited for (user.yml feedback.*).
     id: "server.report_visibility_cache",

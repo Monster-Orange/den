@@ -389,7 +389,11 @@ import {
   readFeedbackSettings,
 } from "../../shared/report-store.js";
 import { reportShotHub } from "./report-shot-hub.js";
-import { shotKeepDays, shotStore } from "../../shared/report-shots.js";
+import {
+  shotKeepDays,
+  shotLimits,
+  shotStore,
+} from "../../shared/report-shots.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -1728,6 +1732,9 @@ const GITHUB = githubEndpoints();
 /** Issue 403: Hub, for a report's screenshot (every Hub call is in there). */
 const REPORT_SHOT_HUB = reportShotHub({
   hub: async () => (await import("./hub-sync-service.js")).hubAndToken(),
+  // Settings (reports.*), read at each call.
+  maxBytes: () => shotLimits(readUserConfig()).hubBytes,
+  timeoutMs: () => shotLimits(readUserConfig()).hubTimeoutMs,
 });
 const DEVICE_FLOWS = new DeviceFlows({
   client: githubDeviceClient(GITHUB),
@@ -3945,6 +3952,7 @@ async function handleRequest(
       searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
       // Issue 403: a report's screenshot to Hub, with the install's Bearer.
       shotHub: REPORT_SHOT_HUB,
+      shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
       // Issue 403: a kept screenshot is the person's (proved, as approvals
       // ask) or this install's own agent's; never an anonymous request.
       shotReader: (r) => shotReaderOf(r, guard),
@@ -6909,7 +6917,16 @@ async function handleRequest(
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
         // Issue 403: how long a filed report's screenshot is kept (reports.*).
-        reports: { screenshot_keep_days: shotKeepDays(user) },
+        reports: (() => {
+          const l = shotLimits(user);
+          const MB = 1024 * 1024;
+          return {
+            screenshot_keep_days: shotKeepDays(user),
+            screenshot_max_mb: l.keptBytes / MB,
+            hub_screenshot_max_mb: l.hubBytes / MB,
+            hub_timeout_seconds: l.hubTimeoutMs / 1000,
+          };
+        })(),
         // 0.4.46: how a terminal pane reconnects on its own (panes.*).
         panes_reconnect: (() => {
           try {

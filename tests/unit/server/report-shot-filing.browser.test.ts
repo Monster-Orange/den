@@ -156,7 +156,7 @@ describe.each(ENGINES)(
       await p.context().close();
     });
 
-    it("Hub would take it: Review says who it goes to, ticked; the send carries the masked PNG and the box", async () => {
+    it("Hub would take it: Review says who it goes to, a box that starts unticked; ticked, the send carries the masked PNG and the box", async () => {
       if (skip()) return;
       const fake: Fake = {
         sent: [],
@@ -171,8 +171,10 @@ describe.each(ENGINES)(
         "Your masked screenshot goes to Acme maintainers",
       );
       const box = dlg(p).locator('[data-f="shareshot"]');
-      expect(await box.isChecked()).toBe(true);
+      // A tick per report: it starts unticked (Vision, 2026-11-18).
+      expect(await box.isChecked()).toBe(false);
       expect(fake.asked).toEqual(["acme-eng/engine"]);
+      await box.check();
       await dlg(p).locator('[data-act="send"]').click();
       await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
       expect(fake.sent[0]!.shareShot).toBe(true);
@@ -184,7 +186,7 @@ describe.each(ENGINES)(
       await p.context().close();
     });
 
-    it("the box unticked: the shot still goes to Den, not on", async () => {
+    it("the box left unticked: the shot still goes to Den, not on", async () => {
       if (skip()) return;
       const fake: Fake = {
         sent: [],
@@ -193,7 +195,9 @@ describe.each(ENGINES)(
       };
       const p = await page(engine, fake);
       await toReview(p);
-      await dlg(p).locator('[data-f="shareshot"]').uncheck();
+      const box = dlg(p).locator('[data-f="shareshot"]');
+      await box.waitFor();
+      expect(await box.isChecked()).toBe(false);
       await dlg(p).locator('[data-act="send"]').click();
       await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
       expect(fake.sent[0]!.shareShot).toBe(false);

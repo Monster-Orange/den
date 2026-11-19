@@ -22,7 +22,8 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
- *   reports: { screenshot_keep_days? }
+ *   reports: { screenshot_keep_days?, screenshot_max_mb?,
+ *              hub_screenshot_max_mb?, hub_timeout_seconds? }
  *                                     user.yml reports.* (issue 403)
  *   address_check: { timeout_seconds?, retries?, cache_seconds? }
  *                                     user.yml web.address_check_* (issue 455)
@@ -34,7 +35,11 @@
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
-import { SHOT_KEEP_DAYS_MAX, SHOT_KEEP_DAYS_MIN } from "./report-shots.js";
+import {
+  SHOT_KEEP_DAYS_MAX,
+  SHOT_KEEP_DAYS_MIN,
+  SHOT_LIMITS,
+} from "./report-shots.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
@@ -158,13 +163,34 @@ const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
 };
 
-/** Issue 403: how long a filed report's kept screenshot stays (days). */
+/**
+ * Issue 403: how long a filed report's kept screenshot stays (days), the
+ * largest kept and sent to Hub (MB), and how long Den waits for Hub (s).
+ */
 const REPORTS: Record<string, Limit> = {
   screenshot_keep_days: {
     key: "screenshot_keep_days",
     min: SHOT_KEEP_DAYS_MIN,
     max: SHOT_KEEP_DAYS_MAX,
     int: true,
+  },
+  screenshot_max_mb: {
+    key: "screenshot_max_mb",
+    min: SHOT_LIMITS.screenshot_max_mb.min,
+    max: SHOT_LIMITS.screenshot_max_mb.max,
+    int: false,
+  },
+  hub_screenshot_max_mb: {
+    key: "hub_screenshot_max_mb",
+    min: SHOT_LIMITS.hub_screenshot_max_mb.min,
+    max: SHOT_LIMITS.hub_screenshot_max_mb.max,
+    int: false,
+  },
+  hub_timeout_seconds: {
+    key: "hub_timeout_seconds",
+    min: SHOT_LIMITS.hub_timeout_seconds.min,
+    max: SHOT_LIMITS.hub_timeout_seconds.max,
+    int: false,
   },
 };
 

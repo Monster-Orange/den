@@ -501,9 +501,14 @@ export interface UserConfig {
   /**
    * Issue 403: a filed report's screenshot, kept on this install.
    * `screenshot_keep_days` (30): how long, then the janitor deletes it.
+   * `screenshot_max_mb` (8) the largest kept, `hub_screenshot_max_mb` (6)
+   * the largest sent to Hub, `hub_timeout_seconds` (10) the wait for Hub.
    */
   reports?: {
     screenshot_keep_days?: unknown;
+    screenshot_max_mb?: unknown;
+    hub_screenshot_max_mb?: unknown;
+    hub_timeout_seconds?: unknown;
   };
   /**
    * Issue 278: agents stuck compacting and instruction files that eat the

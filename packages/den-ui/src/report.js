@@ -30,7 +30,8 @@
  *                 the masked screenshot would go on to someone (Review
  *                 shows "goes to <recipient>" with a checkbox, else "text
  *                 only"). send/githubSend then carry `shot` (the masked
- *                 PNG as a data URL) and `shareShot` (the box, ticked);
+ *                 PNG as a data URL) and `shareShot` (the box: unticked
+ *                 until the person ticks it for this report);
  *                 their answer's `shot`: { where: "hub", recipient } or
  *                 { where: "local", why? }, said once it is sent
  *     busy(action, run, opts)   the working pop-up (busy.js's busyAction
@@ -248,9 +249,10 @@ export async function openReport(opts = {}) {
     noShot: false,
     drag: null,
     // Issue 403: whether the screenshot would go on (shotShare), and the
-    // person's box for this report (ticked by default).
+    // person's box for this report: a tick per report, so it starts
+    // unticked (Vision, 2026-11-18).
     share: null,
-    shareShot: true,
+    shareShot: false,
   };
   const self = { dlg, st, close };
   const sends = () => !!(ad.send || ad.fileReport);

@@ -114,8 +114,8 @@ export async function run(ctx) {
       ).trim();
       r.box = await dlg.locator('[data-f="shareshot"]').count();
       if (r.box) {
+        // A tick per report: it starts unticked, and the check leaves it so.
         r.boxChecked = await dlg.locator('[data-f="shareshot"]').isChecked();
-        await dlg.locator('[data-f="shareshot"]').uncheck();
       }
     }
     await ctx.shot(`review-${tag}`);
@@ -218,13 +218,13 @@ export function expect(cells) {
               r.sentShot === true &&
               ((SHARE_TO.test(r.line) &&
                 r.box === 1 &&
-                r.boxChecked === true &&
+                r.boxChecked === false &&
                 r.sentShare === false) ||
                 (r.line === TEXT_ONLY && r.box === 0 && r.sentShare === false)),
           ),
           detail: d(
             (r) =>
-              `"${r.line}", box ${r.box ? (r.boxChecked ? "ticked, then unticked" : "unticked") : "none"}, send carried the PNG ${r.sentShot}, shareShot ${r.sentShare}`,
+              `"${r.line}", box ${r.box ? (r.boxChecked ? "ticked at the start" : "unticked at the start, left so") : "none"}, send carried the PNG ${r.sentShot}, shareShot ${r.sentShare}`,
           ),
           evidence: cells.map(
             ({ cell }) => `review-${cell.browser}-${cell.width}.png`,

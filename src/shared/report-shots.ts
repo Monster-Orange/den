@@ -3,7 +3,8 @@
  * whoever fixes it can ask for it (report_screenshot(<report id>), the
  * person or this install's own server agent only). One PNG and its record
  * per report under <state>/reports/shots, kept for
- * `reports.screenshot_keep_days` (30) and then deleted by the janitor.
+ * `reports.screenshot_keep_days` (30) and then deleted by the janitor;
+ * the size and wait limits are Settings too (shotLimits).
  *
  *   <state>/reports/shots/<id>.png    the masked PNG
  *   <state>/reports/shots/<id>.json   { id, repo, savedAt, hub? }
@@ -62,19 +63,61 @@ export interface ShotRecord {
 }
 
 const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
-/** The largest screenshot Den keeps (a data URL's PNG). */
+/** The largest screenshot Den keeps by default (shotLimits: a Setting). */
 export const MAX_KEPT_BYTES = 8 * 1024 * 1024;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 /** A PNG data URL's bytes, or null when it isn't one (or is too big). */
-export function pngOfDataUrl(v: unknown): Buffer | null {
-  if (typeof v !== "string" || v.length > MAX_KEPT_BYTES * 1.4) return null;
+export function pngOfDataUrl(
+  v: unknown,
+  maxBytes: number = MAX_KEPT_BYTES,
+): Buffer | null {
+  if (typeof v !== "string" || v.length > maxBytes * 1.4) return null;
   const m = PNG_DATA_URL.exec(v);
   if (!m) return null;
   const png = Buffer.from(m[1]!, "base64");
-  if (png.length > MAX_KEPT_BYTES || !png.subarray(0, 8).equals(PNG_MAGIC))
+  if (png.length > maxBytes || !png.subarray(0, 8).equals(PNG_MAGIC))
     return null;
   return png;
+}
+
+/**
+ * Issue 403: the screenshot limits, Settings with permissive defaults
+ * (user.yml reports.*): the largest kept here (`screenshot_max_mb`, 8),
+ * the largest sent to Hub (`hub_screenshot_max_mb`, 6) and how long Den
+ * waits for Hub (`hub_timeout_seconds`, 10). Out of range: the default.
+ */
+export const SHOT_LIMITS = {
+  screenshot_max_mb: { def: 8, min: 1, max: 64 },
+  hub_screenshot_max_mb: { def: 6, min: 1, max: 64 },
+  hub_timeout_seconds: { def: 10, min: 1, max: 300 },
+} as const;
+
+export interface ShotLimits {
+  keptBytes: number;
+  hubBytes: number;
+  hubTimeoutMs: number;
+}
+
+export function shotLimits(user: unknown): ShotLimits {
+  const r =
+    user && typeof user === "object"
+      ? (user as { reports?: unknown }).reports
+      : undefined;
+  const of = (k: keyof typeof SHOT_LIMITS): number => {
+    const { def, min, max } = SHOT_LIMITS[k];
+    const v =
+      r && typeof r === "object" ? (r as Record<string, unknown>)[k] : null;
+    return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max
+      ? v
+      : def;
+  };
+  const MB = 1024 * 1024;
+  return {
+    keptBytes: Math.floor(of("screenshot_max_mb") * MB),
+    hubBytes: Math.floor(of("hub_screenshot_max_mb") * MB),
+    hubTimeoutMs: Math.round(of("hub_timeout_seconds") * 1000),
+  };
 }
 
 /** A new report id. */

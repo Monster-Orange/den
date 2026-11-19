@@ -71,6 +71,7 @@ import {
   type FeedbackSettings,
 } from "../../shared/report-store.js";
 import {
+  MAX_KEPT_BYTES,
   REPORT_ID,
   newReportId,
   pngOfDataUrl,
@@ -115,6 +116,8 @@ export interface ReportRouteDeps {
    * every screenshot stays here.
    */
   shotHub?: Pick<ReportShotHub, "preflight" | "upload">;
+  /** Issue 403: the largest screenshot kept here (bytes; a Setting). */
+  shotMaxBytes?: () => number;
   /**
    * Issue 403: whether this caller may read a kept screenshot
    * (shotReaderOf with the request's guard). Absent: nobody may.
@@ -320,10 +323,14 @@ const HUB_ID = /^[A-Za-z0-9_-]{1,64}$/;
  * report id (the draft's, else a new one) and bytes. Nothing is kept or
  * sent yet. null when the send has none; a string when it isn't a PNG.
  */
-function pendingShot(b: Record<string, unknown>): PendingShot | null | string {
+function pendingShot(
+  b: Record<string, unknown>,
+  maxBytes: number,
+): PendingShot | null | string {
   if (b.shot === undefined || b.shot === null) return null;
-  const png = pngOfDataUrl(b.shot);
-  if (!png) return "the screenshot must be a PNG data URL of at most 8 MB";
+  const png = pngOfDataUrl(b.shot, maxBytes);
+  if (!png)
+    return `the screenshot must be a PNG data URL of at most ${Math.round((maxBytes / 1024 / 1024) * 10) / 10} MB`;
   const id =
     typeof b.draftId === "string" && REPORT_ID.test(b.draftId)
       ? b.draftId
@@ -705,7 +712,7 @@ export function handleReportRoutes(
         const dup = await sameTitle(d, c.repo, c.title);
         if (dup) return d.sendJson(res, { ok: false, duplicate: dup }, 409);
       }
-      const pending = pendingShot(b);
+      const pending = pendingShot(b, d.shotMaxBytes?.() ?? MAX_KEPT_BYTES);
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
       const body = c.body + filedLine(pending);
@@ -810,7 +817,7 @@ export function handleReportRoutes(
       const link = newIssueUrl(c.repo, c.title, c.body);
       // Issue 403: held with the report; nothing kept or sent before the
       // person approves and GitHub files it (decideReport).
-      const pending = pendingShot(b);
+      const pending = pendingShot(b, d.shotMaxBytes?.() ?? MAX_KEPT_BYTES);
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
       const s = d.settings();
