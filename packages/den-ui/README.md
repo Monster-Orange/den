@@ -681,6 +681,67 @@ Three pieces, data in, the kit's words out (en, es, ja).
 - `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
   `DenUI.settingRow(el, opts)` are the same, in the kit's language.
 
+## The Account area
+
+One place for "me", apart from Settings (issue 310): the person's
+profile, how they sign in, their devices and their own notification
+choices. Every product draws it from data the same way.
+`src/account-area.js` and `src/account-area.css` (exports
+`./account-area`, `./account-area.css`). Link them with `button.css`,
+`switch.css` and `dialog.css`.
+
+    const area = openAccountArea({
+      current: "profile",          // or accountSectionOf(location.search)
+      profile: { name, login, role, editHref, how: "github",
+                 since: "2026-11-18T09:00:00Z", signOut: true,
+                 signOutEverywhere: true },
+      access: { github: { login, linkedAt, unlink: true }, pair: true,
+                tokens: [{ id, name, createdAt, lastUsedAt }], newToken: true },
+      devices: { list: [{ id, name, current, where, lastSeenAt }],
+                 waiting: [{ code, minutes: 10 }], pair: true,
+                 signOutEverywhere: true },     // { error: true }: can't list
+      notifications: { items: [{ id, label, help, on }] },
+      settings: { href: "/settings" },          // "Install settings →"
+      lang, product,
+      onAction: (act, { id, name }) => api(act, id),   // a promise
+      onToggle: (id, on) => api.save(id, on),          // reject: put back
+    });
+    area.select("devices"); area.toast("Signed out Safari on iPhone");
+    area.update(newData); area.close();
+
+- **The shell**: a pop-up 960 wide by up to 760 (`min(960px, 100vw -
+  32px)` by `min(88vh, 760px)`); a 240px rail on the sunken surface with a
+  search box (`/` jumps there), the groups Account, Sign-in and access,
+  Devices and Notifications, the open section marked with a 3px accent
+  bar, and "Install settings →" at its foot. Every pane stays mounted;
+  only the open one shows. Under 768px it takes the screen less 8px a
+  side, and the rail is a strip: ✕, the title, the search box and a select
+  of the sections; every control is 44px.
+- **The sections**, in this order, each drawn only when the host gives its
+  data: Profile (the avatar, the name or @login, "@login · Role", Edit on
+  GitHub, how this browser signed in and since when, Sign out and Sign out
+  everywhere); Access and security (GitHub with Unlink or Link, Another
+  way in with Pair a device, personal tokens with Revoke and New token when
+  the host has tokens); Devices and sessions (each device with "This
+  device", where, last seen and Sign out; "No other devices"; "Can’t list
+  your devices" with Try again; Waiting to be approved with Approve; Pair a
+  device and Sign out everywhere); Your notifications (one switch each,
+  saved when changed, no Save button).
+- **The address**: `accountSectionOf(location.search)` reads
+  `?account=<section>`, and `accountAreaHref(href, section)` writes it (or
+  takes it out with `null`). The area keeps the address current while it
+  is open, and takes it out when it closes (`history: false` leaves it).
+- **Keys**: in the search, Esc clears it first, then closes; Enter jumps
+  to the first row that matches and flashes it; a search hides the
+  sections with no match. Sign out everywhere asks first, with the kit's
+  danger dialog and the mock's words.
+- `accountAreaHtml(data)` and the pane builders (`profilePaneHtml`,
+  `accessPaneHtml`, `devicesPaneHtml`, `notificationsPaneHtml`) run in
+  Node; `hydrateAccountArea(el, opts)` wires a drawn area.
+  `DenUI.accountArea(opts)` is `openAccountArea` in the kit's language.
+  The words are `kit.acct.*`. The button gains a `ghost` variant (no box,
+  the accent's text) for the rows' actions.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

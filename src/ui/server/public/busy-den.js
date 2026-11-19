@@ -182,6 +182,35 @@ export const DEN_ACTIONS = {
       failure: "sa.fresh.fail",
     },
   },
+  // Issue 310: the Account area's writes (account-den.js): sign a browser
+  // out, approve a waiting code, unlink the owner's GitHub.
+  "sign-out": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.signOutW",
+      success: "busy.signOutS",
+      failure: "busy.signOutF",
+    },
+  },
+  "approve-device": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.approveW",
+      success: "busy.approveS",
+      failure: "busy.approveF",
+    },
+  },
+  "unlink-owner": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.unlinkW",
+      success: "busy.unlinkS",
+      failure: "busy.unlinkF",
+    },
+  },
   "sign-out-all": {
     who: "__DEN_TITLE__",
     keys: {

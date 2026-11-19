@@ -116,6 +116,8 @@ const chip = (p: Page) =>
     text: (await p.textContent("#den-ident .den-lbl"))?.trim(),
     kind: await p.getAttribute("#den-ident", "data-ident"),
     href: await p.getAttribute("#den-ident", "href"),
+    // Issue 310: a button opening the Account area.
+    act: await p.getAttribute("#den-ident", "data-act"),
   }));
 /**
  * What's new never opens over the page (issue 198). The context starts
@@ -142,7 +144,7 @@ async function seeWhatsNew(ctx: BrowserContext): Promise<void> {
 }
 
 describe("the identity chip", () => {
-  it("on localhost: Local, opening Settings › Access, with the rail's own item metrics; no toast", async () => {
+  it("on localhost: Local, opening the Account area, with the rail's own item metrics; no toast", async () => {
     if (skip()) return;
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
@@ -156,7 +158,8 @@ describe("the identity chip", () => {
     expect(await chip(p)).toEqual({
       text: "Local",
       kind: "local",
-      href: "/settings#access",
+      href: null,
+      act: "account",
     });
     expect(await p.locator(".den-toast").count()).toBe(0);
     // Measured, not eyeballed: the chip is a rail item like Settings.
@@ -201,7 +204,8 @@ describe("the identity chip", () => {
     expect(await chip(p)).toEqual({
       text: "Local",
       kind: "device",
-      href: "/settings#access",
+      href: null,
+      act: "account",
     });
     await whatsNewStaysShut(p);
     // Linked devices: this sign-in, by its method, marked This device.

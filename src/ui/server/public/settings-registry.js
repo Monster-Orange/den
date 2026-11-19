@@ -36,6 +36,7 @@ import {
   timeZones,
   upgradeTimes,
 } from "/kit/time.js";
+import { deviceWords } from "./device-words.js";
 import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
@@ -556,25 +557,9 @@ export function seenAgo(iso, now = Date.now()) {
   return L("set.ui.dAgo", "{n} d ago", { n: Math.round(s / 86400) });
 }
 
-/**
- * 0.4.45: a device's name (the server's English: "Chrome on Linux", "A
- * browser on macOS", "Unknown browser") in the page's words; the browser's
- * and the system's names stay as they are.
- */
-export function deviceWords(name, tr = L) {
-  const s = String(name ?? "").trim();
-  if (!s || s === "Unknown browser")
-    return tr("set.ui.unknownBrowser", "Unknown browser");
-  const any = /^A browser on (.+)$/.exec(s);
-  if (any) return tr("set.ui.aBrowserOn", "A browser on {os}", { os: any[1] });
-  const on = /^(.+?) on (.+)$/.exec(s);
-  if (on)
-    return tr("set.ui.deviceOn", "{browser} on {os}", {
-      browser: on[1],
-      os: on[2],
-    });
-  return s;
-}
+// 0.4.45: a device's name in the page's words (device-words.js, shared
+// with the Account area since issue 310).
+export { deviceWords };
 
 /**
  * One linked device's line (SEC-2a: every sign-in, whatever the method):
@@ -632,6 +617,14 @@ const ROW_STYLE =
   "display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;padding:6px 0;border-top:1px solid var(--border)";
 const CODE_STYLE =
   "font:22px/1.4 var(--mono);letter-spacing:0.12em;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken)";
+
+/**
+ * Issue 310: "Your account →", opening the Account area (?account=, which
+ * the shell opens on any page; account-den.js).
+ */
+function drawAccountLink(host) {
+  host.innerHTML = `<a class="den-btn" id="set-account-link" href="?account=profile" data-den-aa-open="profile">${escHtml(L("set.ui.yourAccount", "Your account →"))}</a>`;
+}
 
 /** Linking the owner in the page: start, show the code, poll the server. */
 function drawOwner(host, ctx) {
@@ -1270,6 +1263,19 @@ const EMBED_ROWS = [
 ];
 
 const ACCESS_ROWS = [
+  // Issue 310: the person's own things are in the Account area (the kit's),
+  // apart from Settings; Settings keeps a link there.
+  {
+    id: "access.account",
+    category: "access",
+    label: "Your profile and devices",
+    description:
+      "Your profile, how this browser signed in, and your devices are in a place of their own, apart from Settings.",
+    keywords: ["account", "profile", "me", "sign out", "devices", "sessions"],
+    scope: "user",
+    control: { type: "custom", render: drawAccountLink },
+    read: () => null,
+  },
   {
     id: "access.owner",
     category: "access",

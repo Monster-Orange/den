@@ -56,6 +56,9 @@
  *                               pageMenuButtonHtml button (issue 555)
  *   DenUI.settingRow(el, { onSave, ...row })   the settings on/off row
  *                               (setting-row.js, issue 554)
+ *   DenUI.accountArea({ ...data, onAction, onToggle })   the Account area
+ *                               in a pop-up (account-area.js, issue 310);
+ *                               DenUI.accountAreaHtml(data) its markup
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -119,6 +122,7 @@ import {
   mountSettingRow,
   settingRowHtml,
 } from "./setting-row.js";
+import { accountAreaHtml, openAccountArea } from "./account-area.js";
 
 const state = {
   lang: "en",
@@ -244,6 +248,14 @@ export function settingRow(el, opts = {}) {
 }
 
 /**
+ * The Account area (issue 310) in a pop-up, in the kit's language: the
+ * host's data and its onAction and onToggle (openAccountArea).
+ */
+export function accountArea(opts = {}) {
+  return openAccountArea({ lang: lang(), ...opts });
+}
+
+/**
  * Binds the drawn shell, the chip and Report (see the top), and the 0.7.0
  * pieces it finds: the scope crumbs (opts.scope), the search
  * (opts.search: { onActivate }), the bell (opts.bell: { items, title,
@@ -364,6 +376,8 @@ const DenUI = {
   pageMenu,
   settingRowHtml,
   settingRow,
+  accountAreaHtml,
+  accountArea,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;

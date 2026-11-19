@@ -1499,6 +1499,15 @@
     "busy.askAllowW": "Asking…",
     "busy.askAllowS": "Asked. Allow it in the dialog.",
     "busy.askAllowF": "Couldn't ask.",
+    "busy.signOutW": "Signing out…",
+    "busy.signOutS": "Signed out.",
+    "busy.signOutF": "Not signed out.",
+    "busy.approveW": "Approving…",
+    "busy.approveS": "Approved.",
+    "busy.approveF": "Couldn't approve.",
+    "busy.unlinkW": "Unlinking GitHub…",
+    "busy.unlinkS": "GitHub unlinked.",
+    "busy.unlinkF": "Couldn't unlink GitHub.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
@@ -1992,6 +2001,10 @@
     "set.cli.signin": "Browser sign-in",
     "set.cli.sudo": "Admin password",
     "set.cli.op_token": "1Password token source",
+    "set.access.account": "Your profile and devices",
+    "set.ui.yourAccount": "Your account →", // words-ok: the approved Account area mock's link, word for word (issue 310)
+    "set.access.account.d":
+      "Your profile, how this browser signed in, and your devices are in a place of their own, apart from Settings.",
     "set.access.owner": "Owner",
     "set.access.devices": "Linked devices",
     "ident.toast": "This device is signed in to {name} on {host}",
@@ -5308,7 +5321,7 @@
 
   /**
    * SEC-2a: the rail foot's account entry (the kit's, den-ui 0.7.1), last
-   * in the rail's foot, opening Settings › Access. Who is signed in, as
+   * in the rail's foot, opening the Account area. Who is signed in, as
    * data: this browser's GitHub sign-in ({ name, login }), else, on a
    * local browser on this machine only, the install owner's GitHub
    * identity (/api/session's identity.owner) with its role. A browser
@@ -5345,9 +5358,11 @@
             gh.role === "owner" ? t("acct.roleOwner") : gh.role || undefined,
         }
       : { local: true, lang: lang };
+    // Issue 310: a button opening the Account area (account-den.js), not a
+    // link into Settings.
     return Object.assign(who, {
       navId: "identity",
-      href: "/settings#access",
+      action: true,
       id: "den-ident",
       attrs: { "data-ident": id.kind },
     });
@@ -8045,6 +8060,31 @@
     e.preventDefault();
     openReport();
   });
+
+  // Issue 310: the Account area (the kit's, through account-den.js): the
+  // rail foot's account entry, any "Your account" link, and
+  // ?account=<section> in the address, on any page.
+  document.addEventListener("click", function (e) {
+    var b =
+      e.target && e.target.closest
+        ? e.target.closest(
+            '#den-ident[data-act="account"], [data-den-aa-open]',
+          )
+        : null;
+    if (!b || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    openAccount(b.getAttribute("data-den-aa-open") || "profile", b);
+  });
+  function openAccount(section, opener) {
+    return import("/account-den.js")
+      .then(function (m) {
+        return m.openAccount({ section: section, opener: opener });
+      })
+      .catch(function (err) {
+        console.warn("The area for you did not open: " + (err && err.message));
+      });
+  }
+  if (/[?&]account=/.test(location.search)) openAccount(null);
 
   /** FB (den#81): the Report an issue dialog (the kit's, through report-den.js). */
   function openReport(opts) {
