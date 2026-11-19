@@ -50,6 +50,8 @@ afterAll(() => {
 const AGENTS_MAY: Record<string, string> = {
   "POST /api/approvals":
     "asks the person to allow a held write; nothing runs until they do",
+  "POST /api/approvals/:id/withdraw":
+    "takes back its own held write (issue 142); another's is refused, nothing runs",
   "POST /api/activity": "an agent's report of a refused call, appended only",
   "GET /api/service/exec":
     "MCP service lifecycle: up, down, restart, local only (checked for an agent)",

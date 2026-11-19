@@ -397,3 +397,67 @@ describe("held writes (ON-3)", () => {
     expect(list.body).not.toContain(String(r.ticket));
   }, 60_000);
 });
+
+describe("issue 142: a held write counts in the bell", () => {
+  const held = async (id: string) => {
+    const b = json(await call("GET", "/api/notifications", bearer())) as {
+      unread: number;
+      groups: {
+        subjects: {
+          items: { subject: string; kind: string; read: boolean }[];
+        }[];
+      }[];
+    };
+    const items = b.groups
+      .flatMap((g) => g.subjects.flatMap((s) => s.items))
+      .filter((n) => n.subject === `record:held-${id}`);
+    return { unread: b.unread, items };
+  };
+
+  it("one counted decision item while it waits; Deny takes it out", async () => {
+    const id = String(
+      json(await ask("workspace_create", { name: "bellws" })).id,
+    );
+    const w = await held(id);
+    expect(w.items).toHaveLength(1);
+    expect(w.items[0]).toMatchObject({ kind: "decision", read: false });
+    const b = await browser();
+    await call(
+      "POST",
+      `/api/approvals/${id}/decide`,
+      { ...page(b), "x-den-approve-key": b.key },
+      { decision: "deny" },
+    );
+    const after = await held(id);
+    expect(after.items).toEqual([]);
+    expect(after.unread).toBeLessThan(w.unread);
+  }, 60_000);
+
+  it("the person's own ask: withdrawn with the same bearer, its item goes; nobody else may", async () => {
+    const r = await call("POST", "/api/approvals", bearer(), {
+      action: "workspace_create",
+      args: { name: "takeback" },
+      note: "a check's own request",
+    });
+    expect(r.status).toBe(202);
+    const id = String(json(r).id);
+    expect((await held(id)).items).toHaveLength(1);
+    const no = await call(
+      "POST",
+      `/api/approvals/${id}/withdraw`,
+      await anon(),
+      {},
+    );
+    expect(no.status).toBe(403);
+    const ok = await call(
+      "POST",
+      `/api/approvals/${id}/withdraw`,
+      bearer(),
+      {},
+    );
+    expect([ok.status, json(ok).state]).toEqual([200, "withdrawn"]);
+    expect((await held(id)).items).toEqual([]);
+    expect(await pendingIds()).not.toContain(id);
+    expect(await workspaces()).not.toContain("takeback");
+  }, 60_000);
+});

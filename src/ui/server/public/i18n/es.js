@@ -1820,6 +1820,8 @@
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
+    "bell.m.heldAllow": "{name} espera tu permiso: {what}",
+    "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
