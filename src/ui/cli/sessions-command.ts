@@ -785,7 +785,7 @@ async function host(args: string[], d: Resolved): Promise<number> {
   }
   const running = r.ended ?? 0;
   d.out(
-    `stopped the terminal host (pid ${r.from})` +
+    `stopped the session host (pid ${r.from})` + // words-ok: the CLI's own line (dist-smoke reads it)
       (r.forced ? ": it didn't answer, so it was ended by signal" : "") +
       (running ? `; agents and terminals that ended: ${running}` : ""),
   );
