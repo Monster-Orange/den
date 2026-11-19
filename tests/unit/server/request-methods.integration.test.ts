@@ -247,7 +247,8 @@ describe("the MCP sync tool's POST", () => {
   it("POST /api/workspace/sync takes the person's bearer (the MCP tool's call), and refuses a bare one", async () => {
     const p = "/api/workspace/sync?ws=north";
     expect((await call("POST", p, bearer())).status).toBe(200);
-    expect((await call("POST", p)).status).toBe(403);
+    // Bare on this machine: a sign-in is asked for (401), nothing runs.
+    expect((await call("POST", p)).status).toBe(401);
     expect(
       (await call("POST", p, { origin: "https://elsewhere.example" })).status,
     ).toBe(403);
