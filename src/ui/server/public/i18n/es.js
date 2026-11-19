@@ -3004,7 +3004,7 @@
       "El puerto {port} lo ocupa {owner}, así que {host} va a {owner}.",
     "edgeAddr.banner.unknown":
       "El puerto {port} lo usa algo que __DEN_TITLE__ no sabe nombrar, así que {host} va allí.",
-    "edgeAddr.banner.none": "Todavía nada responde en {host}.",
+    "edgeAddr.banner.none": "Aún no se puede llegar: nada responde en {host}.",
     "edgeAddr.banner.fix": "Arréglalo en Edge",
     "edgeAddr.banner.dismiss": "Descartar",
     "edgeAddr.card.title":
@@ -3018,7 +3018,9 @@
     "edgeAddr.card.unknown":
       "Lo ocupa algo que __DEN_TITLE__ no sabe nombrar. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
     "edgeAddr.card.none":
-      "Todavía nada responde en {wanted}. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+      "Aún no se puede llegar: nada responde en {wanted}. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+    "edgeAddr.sub.held": "no está en marcha: el puerto {port} está en uso",
+    "edgeAddr.sub.none": "aún no se puede llegar",
     "edgeAddr.kind.container": "contenedor de Docker",
     "edgeAddr.kind.process": "proceso",
     "edgeAddr.what": "¿Qué quieres hacer?",
