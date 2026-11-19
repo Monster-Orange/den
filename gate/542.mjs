@@ -16,10 +16,15 @@ export const timeoutMs = 90000;
 
 const LINE = "Sign in to make changes here.";
 
-/** A request with nothing: no cookie, no bearer, no Origin. */
+/**
+ * A request with nothing: no cookie, no bearer, no Origin. It runs on the
+ * host, so it goes to the bed's own loopback address (ctx.hostUrl), never the
+ * browser's address (ctx.url), which only resolves inside the browser's box.
+ */
 async function bare(ctx, path, method = "GET") {
+  if (!ctx.hostUrl) return { status: 0, code: "no-host-url" };
   try {
-    const r = await fetch(new URL(path, ctx.url), {
+    const r = await fetch(new URL(path, ctx.hostUrl), {
       method,
       redirect: "manual",
       headers: method === "GET" ? {} : { "content-type": "application/json" },
