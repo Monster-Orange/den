@@ -110,6 +110,11 @@ runtime and model.
 [Reference](docs/reference.md) (configuration, manifests, strategies, CLI) · [Distributions](docs/distributions.md) ·
 [Den Hub](docs/hub.md) (connect an install to Hub) · [Changelog](CHANGELOG.md)
 
-Found a bug or have an idea? [Open an issue](https://github.com/Monster-Orange/den/issues/new).
+Found a bug or have an idea? Press the Report button on any page or pop-up in Den. It sends a screenshot, the page
+and the Den version to the install's feedback repo, and shows whether that repo is private or public. An agent can't press it yet: a `den report` command and agent tool
+are coming (issue 565). If you can't press it,
+[open an issue](https://github.com/Monster-Orange/den/issues/new) with the Den version (`den --version`), your OS,
+the steps, and what you expected against what happened. The repo is public: never paste secrets, tokens, private
+repo names, customer or company names, or internal URLs.
 
 MIT licence.

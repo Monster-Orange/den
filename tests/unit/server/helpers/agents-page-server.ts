@@ -69,6 +69,8 @@ export interface AgentsPageServer {
   webDown(): Promise<void>;
   /** Starts the web server again, on the same port. */
   webUp(): Promise<void>;
+  /** Issue 563: whether the in-process host was closed (asked to stop). */
+  hostClosed(): boolean;
   /** The web server's process group (issue 242: a test pauses it, as a busy Den). */
   serverPid(): number | undefined;
   stop(): Promise<void>;
@@ -116,6 +118,11 @@ export async function startAgentsPageServer(
     health?: Record<string, string>;
     /** A repo's local `up` command (notes, blog); `true` when unset. */
     up?: Record<string, string>;
+    /**
+     * Issue 563: the native PTY module the in-process host says it loaded
+     * (its hello), as a host that outlived an update would.
+     */
+    hostPty?: { path: string; version: string | null; id: string | null };
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -280,7 +287,14 @@ export async function startAgentsPageServer(
     flushMs: 0,
     log: () => undefined,
     launchdSession: opts.launchd ?? null,
+    ...(opts.hostPty ? { ptyModule: () => opts.hostPty ?? null } : {}),
   });
+  let hostClosed = false;
+  const closeHost = host.close.bind(host);
+  host.close = async () => {
+    hostClosed = true;
+    await closeHost();
+  };
   await host.listen();
 
   const env: NodeJS.ProcessEnv = {
@@ -379,6 +393,7 @@ export async function startAgentsPageServer(
       server = null;
     },
     serverPid: () => server?.pid,
+    hostClosed: () => hostClosed,
     async webUp() {
       if (server) return;
       server = (await startWeb(async () => port)).server;

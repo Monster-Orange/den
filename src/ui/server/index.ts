@@ -25,6 +25,7 @@ import type { UpdateWait } from "./update-check.js";
 
 import {
   isUpdateAsk,
+  securityUpdateNote,
   staleUpdateAsk,
   updateWaitNotes,
 } from "./update-check.js";
@@ -132,6 +133,7 @@ import {
   searchSystemHistory,
   pruneDeadSnapshots,
   isSafeServiceName,
+  tailArgv,
 } from "./log-history.js";
 import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import {
@@ -287,7 +289,6 @@ import {
   isLoopbackAddress,
   isLoopbackBind,
   localNet,
-  newCsrfToken,
   principalOf,
   requestIsHttps,
   sessionRequestAllowed,
@@ -934,6 +935,52 @@ const STATIC_EXTS = new Set([
 ]);
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
+/** A message's first line: a parser's code frame quotes the file. */
+function firstLine(m: string): string {
+  return String(m).split("\n")[0].replace(/:\s*$/, "");
+}
+
+/**
+ * Where `p` really is, when it is a project repo's checkout or inside one,
+ * both as written and after resolving every symlink; else null.
+ */
+function manifestPathInRepo(p: string): string | null {
+  if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
+  let roots: string[];
+  try {
+    roots = allWorkspaceCheckouts()
+      .map((c) => c.repoPath)
+      .filter((r): r is string => !!r && path.isAbsolute(r));
+  } catch {
+    return null;
+  }
+  const within = (x: string, rs: string[]) =>
+    rs.some(
+      (r) => x === r || x.startsWith(r.endsWith(path.sep) ? r : r + path.sep),
+    );
+  if (
+    !within(
+      path.resolve(p),
+      roots.map((r) => path.resolve(r)),
+    )
+  )
+    return null;
+  let real: string;
+  try {
+    real = fs.realpathSync(p);
+  } catch {
+    return null;
+  }
+  const realRoots = roots.flatMap((r) => {
+    try {
+      return [fs.realpathSync(r)];
+    } catch {
+      return [];
+    }
+  });
+  return within(real, realRoots) ? real : null;
+}
+
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
   return Object.entries(readWorkspacesFile().workspaces).flatMap(
@@ -1019,7 +1066,10 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readMethodOnly,
   sendJson,
+  sendMethodNotAllowed,
+  SERVED_METHODS,
   serveFile,
   serveUntrustedFile,
   UNTRUSTED_FILE_HEADERS,
@@ -1079,7 +1129,10 @@ import {
   writeTargets,
 } from "../../shared/approval-policy.js";
 import { alertSettings, patchAlerts } from "./alerts.js";
-import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
+import {
+  SERVER_AGENT_ID,
+  serverAgentName,
+} from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
   agentNameOf,
@@ -1443,6 +1496,16 @@ function handleAttest(
       403,
       "This works only on the computer this Den runs on, at localhost.",
     );
+  // 0.4.71: and only for a browser signed in there (or the person's CLI):
+  // the code it hands out may make its holder the owner.
+  if (!guard.session && guard.principal?.kind !== "person")
+    return sendSignedOut(req, res, {
+      pathname: "/attest",
+      search: url.search,
+      scope: "den",
+      requestId,
+      message: signinMessage("den", product().cli, product().title),
+    });
   const ret = attestReturn(url.searchParams.get("return"), denEdgeHosts());
   const secret = webSecret.current();
   if (!ret || !secret)
@@ -1703,7 +1766,6 @@ const GUARD: GuardContext = {
     const secret = webSecret.current();
     return secret ? verifyPersonToken(token, secret) : null;
   },
-  csrfToken: newCsrfToken(),
   session: (req) => webSessions.lookup(sessionCookie(req)),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
   // The edge hostname only from the edge's own peers (loopback, Docker).
@@ -2063,6 +2125,11 @@ function sendSignedOut(
   const loginArgs =
     toLocal || host === `localhost:${PORT}` ? [] : ["--origin", origin];
   const cmd = cliCommand(bin, "web", "login", ...loginArgs);
+  // 0.4.71: a browser on this machine (localhost, from a loopback peer):
+  // the page words it for here, and its fallback is `web up`.
+  const local =
+    host === `localhost:${PORT}` &&
+    isLoopbackAddress(req.socket?.remoteAddress);
   const ssh = sshTargetOf(req);
   const user = sshUserNow();
   const gh = githubSignin();
@@ -2077,6 +2144,7 @@ function sendSignedOut(
       scope: opts.scope,
       name: product().title,
       cmd,
+      ...(local ? { local: true, up: cliCommand(bin, "web", "up") } : {}),
       // SEC-2a: which machine runs the commands, and how to reach it.
       machine: machineName(),
       ssh: {
@@ -2330,6 +2398,19 @@ async function handleAuth(
   // server running): it signs in when opened, once, as before.
   if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
     return gone();
+  // 0.4.71: `web up` sends an open tab here each time; a browser already
+  // signed in keeps its session (the code is spent), so Linked devices
+  // doesn't fill with one per run.
+  const already = checkRequest(req, GUARD, product().cli, product().title);
+  if (already.ok && already.session) {
+    res.writeHead(303, {
+      Location: safeNext(url.searchParams.get("next")),
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end();
+    return;
+  }
   const s = startSession(req, "link");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -2592,6 +2673,8 @@ function approvalDeps(): ApprovalDeps {
           writeRestartMarker(stateDir, marker);
           return { path: restartMarkerPath(stateDir), marker };
         },
+        // Issue 562 review: Den's own auto update reads the wait again.
+        ...(auto && autoRestartHold ? { beforeRestart: autoRestartHold } : {}),
         restart: () => {
           serverLog(`↻ update restart asked by ${by}: ${reason}`, "lifecycle");
           setTimeout(() => {
@@ -3249,6 +3332,90 @@ function installedServiceMode(): "login" | "always" | null {
   }
 }
 
+/**
+ * MODE-5: the Settings rows that were the command line's, as GET
+ * /api/settings shows them. A save answers them too, so the page redraws
+ * a saved row with its new value, not the old one (issue 424).
+ */
+function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
+  return {
+    log_window_lines: user.log_window_lines ?? 20_000,
+    local_dev: user.local_dev !== false,
+    cli_tabs: user.cli_tabs === true,
+    // den#85: the crash-loop guard's settings (web.crash_loop_*).
+    crash_loop: crashLoopSettings(user.web),
+    // 0.4.48: Den on the Docker bridge for the edge (Linux).
+    web_bridge: (() => {
+      const w = (user.web ?? {}) as Record<string, unknown>;
+      return {
+        listen: w.bridge_listen === "off" ? "off" : "auto",
+        probeSeconds:
+          typeof w.bridge_probe_seconds === "number"
+            ? w.bridge_probe_seconds
+            : 10,
+      };
+    })(),
+    // den#143: how long `web up` waits for the server.
+    web_ready: (() => {
+      try {
+        const c = readWebAuthConfig(getDistRoot(), product().configFile);
+        return {
+          probeSeconds: c.readyProbeSeconds,
+          startSeconds: c.startWaitSeconds,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+    agent_context: (() => {
+      const c = contextWatchSettings(user.agent_context);
+      return {
+        compaction_loop_count: c.loopCount,
+        compaction_loop_minutes: c.loopMinutes,
+        pause_after_loop: c.pause,
+        instruction_share_percent: c.sharePercent,
+        context_tokens: c.contextTokens,
+      };
+    })(),
+    // den#156: the Agents list's waits (agents_list.*).
+    agents_list: (() => {
+      try {
+        return agentsListWaits(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 415: how long Report keeps, and waits for, a repo's
+    // visibility (feedback.*), their defaults when unset.
+    feedback: (() => {
+      const f = feedbackSettings(null, {}, user.feedback);
+      return {
+        visibility_cache_hours: f.visibilityCacheHours,
+        visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+        visibility_retry_seconds: f.visibilityRetrySeconds,
+      };
+    })(),
+    // Issue 455: the address check's limits (web.address_check_*).
+    address_check: (() => {
+      const a = addressCheckSettings(() => user);
+      return {
+        timeout_seconds: a.timeoutMs / 1000,
+        retries: a.retries,
+        cache_seconds: a.cacheMs / 1000,
+      };
+    })(),
+    // 0.4.46: how a terminal pane reconnects on its own (panes.*).
+    panes_reconnect: (() => {
+      try {
+        return panesReconnect(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+  };
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -3302,6 +3469,11 @@ async function handleRequest(
       });
     }
   }
+
+  // Only the six methods Den serves reach the checks and the routes; any
+  // other (OPTIONS included: Den serves no cross-origin requests) is 405.
+  if (!SERVED_METHODS.has((req.method ?? "GET").toUpperCase()))
+    return sendMethodNotAllowed(res);
 
   // ── Request checks (SEC-1a): Host, credential, Origin, CSRF ────────────────
   // Before any route, and before a refused request can clear a cache.
@@ -3413,15 +3585,19 @@ async function handleRequest(
     (req.method === "GET" || req.method === "HEAD")
   ) {
     // Read-only and sign-in free (§6b.3): it checks the session itself.
-    // Signed in, or on loopback (no sign-in there), it goes on to a
-    // same-origin `next`; signed out beyond loopback, it is the signed-out
-    // page (the `web login` hint, never a form for the secret).
+    // Signed in, it goes on to a same-origin `next`; signed out, here on
+    // this machine too (0.4.71), it is the signed-out page (never a form
+    // for the secret).
     // D67: `again=1` (the approvals banner's Sign in): the sign-in page
     // even with a session, or on loopback: approving needs a signed-in
     // browser with an approval key, which a browser without one (signed
     // in before 0.4.15, its storage cleared, or never) gets here.
     const again = url.searchParams.get("again") === "1";
-    if (guard.ok && (guard.session || !guard.beyond) && !again) {
+    if (
+      guard.ok &&
+      (guard.session || guard.principal?.kind === "person") &&
+      !again
+    ) {
       res.writeHead(303, {
         Location: safeNext(url.searchParams.get("next")),
         "Cache-Control": "no-store",
@@ -4762,6 +4938,7 @@ async function handleRequest(
 
   // ── API: service exec (SSE) — catalog-aware ────────────────────────────────
   if (pathname === "/api/service/exec") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const cmdName = url.searchParams.get("cmd");
@@ -5064,6 +5241,7 @@ async function handleRequest(
 
   // ── API: service logs (SSE) ───────────────────────────────────────────────
   if (pathname === "/api/service/logs") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5294,6 +5472,7 @@ async function handleRequest(
   // — see log-history.ts). env=local only in v1; other envs return
   // { unsupported: true } so the client renders a friendly notice.
   if (pathname === "/api/service/history") {
+    if (!readMethodOnly(req, res)) return;
     // This handler sits ABOVE the blanket /api/service* local-dev guard
     // (later in this function), so it must enforce the guard itself.
     if (!isLocalEnabled()) {
@@ -5347,6 +5526,7 @@ async function handleRequest(
   // Greps the FULL history of each requested system (targets = the /logs
   // toolbar's list, computed client-side so scoping lives in one place).
   if (pathname === "/api/logs/search") {
+    if (!readMethodOnly(req, res)) return;
     // /api/logs is not covered by the downstream /api/service* local-dev
     // guard — enforce it here.
     if (!isLocalEnabled()) {
@@ -5382,10 +5562,15 @@ async function handleRequest(
   }
 
   if (pathname === "/api/service/taillog") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     if (!repoName || !svcName)
       return send400(res, "repo and service are required");
+    // The same names the history and search routes take: they reach a
+    // log path (a folder is made for it) and the tail's arguments.
+    if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
+      return send400(res, "invalid repo/service name");
 
     // Resolve manifest log source. The client names an exact service, so
     // when the manifest has that key, use it directly — resolveService's
@@ -5410,7 +5595,7 @@ async function handleRequest(
     ] as LogSource | undefined;
 
     const daemonLogPath = getServiceLogPath(repoName, svcName);
-    const fallbackCmd = `tail -F -n ${LIVE_TAIL_LINES} "${daemonLogPath}"`;
+    const [tailCmd, tailArgs] = tailArgv(daemonLogPath, LIVE_TAIL_LINES);
 
     const manifestCmd =
       logSource?.type === "shell" && logSource.cmd ? logSource.cmd : null;
@@ -5457,8 +5642,8 @@ async function handleRequest(
         text: `── streaming container logs: ${container} ──`,
       });
       currentProc = spawnStreaming(
-        `docker logs -f --tail ${LIVE_TAIL_LINES} ${container}`,
-        [],
+        "docker",
+        ["logs", "-f", "--tail", String(LIVE_TAIL_LINES), container],
         { ...process.env },
         (line) => emit({ type: "line", text: line }),
         (exitCode) => {
@@ -5485,8 +5670,8 @@ async function handleRequest(
         text: "── container log unavailable — watching startup log ──",
       });
       currentProc = spawnStreaming(
-        fallbackCmd,
-        [],
+        tailCmd,
+        tailArgs,
         { ...process.env },
         (line) => emit({ type: "line", text: line }),
         () => {
@@ -5593,6 +5778,7 @@ async function handleRequest(
 
   // ── API: run tests (SSE) ───────────────────────────────────────────────────
   if (pathname === "/api/run") {
+    if (!readMethodOnly(req, res)) return;
     const pillar = url.searchParams.get("pillar") as Pillar | null;
     const modules = url.searchParams.getAll("module").filter(Boolean);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5851,6 +6037,7 @@ async function handleRequest(
 
   // ── API: AWS re-authenticate (SSE) ───────────────────────────────────────
   if (pathname === "/api/aws/login") {
+    if (!readMethodOnly(req, res)) return;
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const profiles = loadAwsProfiles();
     const profile = profiles[env];
@@ -5956,14 +6143,20 @@ async function handleRequest(
         csrf: g.session.csrf,
         actor: "person-browser",
         signedIn: true,
-        identity: {
-          kind: github ? "github" : "device",
-          via: rec?.via ?? "link",
-          ...(github ? { login: rec.login } : {}),
-          ...(github && rec.name ? { name: rec.name } : {}),
-          // A link or a code (no GitHub sign-in of its own): no GitHub
-          // identity, never the owner's. It may be someone else's device.
-        },
+        // 0.4.71: a browser on this machine, signed in with a link or a
+        // code, is the local browser it always was (the owner's chip).
+        identity:
+          !github && !g.beyond
+            ? localIdentity()
+            : {
+                kind: github ? "github" : "device",
+                via: rec?.via ?? "link",
+                ...(github ? { login: rec.login } : {}),
+                ...(github && rec.name ? { name: rec.name } : {}),
+                // A link or a code (no GitHub sign-in of its own): no
+                // GitHub identity, never the owner's. It may be someone
+                // else's device.
+              },
         ...(webSessions.takeWelcome(g.session.key)
           ? {
               justSignedIn: true,
@@ -5973,17 +6166,19 @@ async function handleRequest(
           : {}),
       });
     }
+    // 0.4.71: no session, no token, here too: a browser on this machine
+    // signs in (`web up` opens the one-time link) before it changes
+    // anything. It reads as before.
     return sendJson(res, {
-      csrf: g?.beyond ? null : GUARD.csrfToken,
+      csrf: null,
       actor: null,
       signedIn: false,
-      // A browser on this machine: the install owner's GitHub identity
-      // (the account entry), when Den knows it.
-      ...(g && !g.beyond ? { identity: localIdentity() } : {}),
+      reason: `Sign in to make changes here: run \`${product().cli} web up\` (it opens a one-time sign-in link), or open /signin.`,
+      signin: `/signin?next=${encodeURIComponent("/")}`,
       // SEC-2a-UX: the signed-out page watches this, so Sign in with
       // GitHub appears once an owner is linked, with no reload. The
       // owner's login is what that page shows anyway.
-      ...(g?.beyond || !g ? { github: githubSignin() } : {}),
+      github: githubSignin(),
     });
   }
   // Sign out: this browser's session ends and its cookie is cleared.
@@ -6471,36 +6666,70 @@ async function handleRequest(
         return send400(res, `Invalid request: ${(e as Error).message}`);
       }
     }
-    if (req.method === "GET") {
+    if (req.method === "GET" || req.method === "HEAD") {
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
+      // Only inside a project's repo: the path as written and, after every
+      // symlink, where it really is. Any other path is refused the same way,
+      // there or not.
+      const real = manifestPathInRepo(filePath);
+      if (!real)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            code: "outside_repos",
+            error:
+              "Validate reads only a repo folder (or a file in one) of a project here.",
+          },
+          403,
+        );
+      // Errors name the file's line and column, never its text.
+      const plain = (r: ReturnType<typeof validateManifest>) => ({
+        ...r,
+        errors: r.errors.map((e) => ({ ...e, message: firstLine(e.message) })),
+        warnings: r.warnings.map((w) => ({
+          ...w,
+          message: firstLine(w.message),
+        })),
+      });
       try {
-        const isDir =
-          fs.existsSync(filePath) && fs.lstatSync(filePath).isDirectory();
+        const isDir = fs.statSync(real).isDirectory();
         // A repo folder: every layer that applies (repo or held, override,
         // merged), flattened into the usual shape; each error names its file.
         if (isDir) {
-          const layered = validateManifestLayers(filePath);
+          const layered = validateManifestLayers(real);
           if (layered.layers.length > 0)
             return sendJson(res, {
               valid: layered.valid,
               version: layered.layers[0].result.version,
-              errors: layered.layers.flatMap((l) => l.result.errors),
-              warnings: layered.layers.flatMap((l) => l.result.warnings),
-              manifestLayers: loadManifest(filePath).layers,
-              layers: layered.layers,
+              errors: layered.layers.flatMap((l) => plain(l.result).errors),
+              warnings: layered.layers.flatMap((l) => plain(l.result).warnings),
+              manifestLayers: loadManifest(real).layers,
+              layers: layered.layers.map((l) => ({
+                ...l,
+                result: plain(l.result),
+              })),
             });
         }
         const denYml = isDir
-          ? path.join(filePath, `${product().manifestYml}`)
-          : filePath;
+          ? path.join(real, `${product().manifestYml}`)
+          : real;
         const content = fs.readFileSync(denYml, "utf-8");
-        return sendJson(res, validateManifest(content));
+        return sendJson(res, plain(validateManifest(content)));
       } catch (e) {
         return sendJson(res, {
           valid: false,
           version: 1,
-          errors: [{ path: "", message: (e as Error).message }],
+          errors: [
+            {
+              path: "",
+              message:
+                (e as NodeJS.ErrnoException).code === "ENOENT"
+                  ? "No manifest there."
+                  : "The manifest couldn't be read.",
+            },
+          ],
           warnings: [],
         });
       }
@@ -6767,7 +6996,8 @@ async function handleRequest(
         terminals: terminalList,
         editor_overrides: user.editor_overrides ?? {},
         languages: SUPPORTED_LANGUAGES,
-        log_window_lines: user.log_window_lines ?? 20_000,
+        // MODE-5: the rows that were the command line's (a save answers them too).
+        ...cliRowSettings(user),
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell),
@@ -6781,8 +7011,6 @@ async function handleRequest(
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
         user_web_port: userWebPort(user as Record<string, unknown>),
-        local_dev: user.local_dev !== false,
-        cli_tabs: user.cli_tabs === true,
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
@@ -6809,33 +7037,8 @@ async function handleRequest(
             return true;
           }
         })(),
-        // den#85: the crash-loop guard's settings (web.crash_loop_*).
-        crash_loop: crashLoopSettings(user.web),
         // Issue 144: the machine's gate slots, not this install's.
         gate_slots: gates().settings(),
-        // 0.4.48: Den on the Docker bridge for the edge (Linux).
-        web_bridge: (() => {
-          const w = (user.web ?? {}) as Record<string, unknown>;
-          return {
-            listen: w.bridge_listen === "off" ? "off" : "auto",
-            probeSeconds:
-              typeof w.bridge_probe_seconds === "number"
-                ? w.bridge_probe_seconds
-                : 10,
-          };
-        })(),
-        // den#143: how long `web up` waits for the server.
-        web_ready: (() => {
-          try {
-            const c = readWebAuthConfig(getDistRoot(), product().configFile);
-            return {
-              probeSeconds: c.readyProbeSeconds,
-              startSeconds: c.startWaitSeconds,
-            };
-          } catch {
-            return null;
-          }
-        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6861,54 +7064,8 @@ async function handleRequest(
         agent_signin: await agentSigninView(),
         // Issue 339: the sign-in accounts per vendor (never a token).
         agent_accounts: agentAccountsView(),
-        // Issue 278: agents stuck compacting; instruction size (agent_context.*).
-        agent_context: (() => {
-          const c = contextWatchSettings(user.agent_context);
-          return {
-            compaction_loop_count: c.loopCount,
-            compaction_loop_minutes: c.loopMinutes,
-            pause_after_loop: c.pause,
-            instruction_share_percent: c.sharePercent,
-            context_tokens: c.contextTokens,
-          };
-        })(),
-        // den#156: the Agents list's waits (agents_list.*).
-        agents_list: (() => {
-          try {
-            return agentsListWaits(() => user);
-          } catch {
-            return null;
-          }
-        })(),
-        // Issue 415: how long Report keeps, and waits for, a repo's
-        // visibility (feedback.*), their defaults when unset.
-        feedback: (() => {
-          const f = feedbackSettings(null, {}, user.feedback);
-          return {
-            visibility_cache_hours: f.visibilityCacheHours,
-            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
-            visibility_retry_seconds: f.visibilityRetrySeconds,
-          };
-        })(),
-        // Issue 455: the address check's limits (web.address_check_*).
-        address_check: (() => {
-          const a = addressCheckSettings(() => user);
-          return {
-            timeout_seconds: a.timeoutMs / 1000,
-            retries: a.retries,
-            cache_seconds: a.cacheMs / 1000,
-          };
-        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
-        // 0.4.46: how a terminal pane reconnects on its own (panes.*).
-        panes_reconnect: (() => {
-          try {
-            return panesReconnect(() => user);
-          } catch {
-            return null;
-          }
-        })(),
         // SEC-2a: the name the signed-out page gives this machine, and
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),
@@ -7207,6 +7364,9 @@ async function handleRequest(
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
+          ...cliRowSettings(user),
+          // Issue 144: the gate slots, as GET shows them (issue 424).
+          gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals),
@@ -8172,6 +8332,13 @@ const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
 const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
 
 /**
+ * Issue 562 review: set by the update check while its auto update runs:
+ * den_update awaits it after the install, before the watch and restart
+ * (holdRestart). A den_update the person or an agent asked for has none.
+ */
+let autoRestartHold: ((keepAlive: () => void) => Promise<void>) | null = null;
+
+/**
  * SRV-P6 (0.4.48): every server_agent.update_check_minutes (0: never),
  * one updateCheck tick (update-check.ts). Read once at start: a changed
  * interval takes effect at the next restart; self_update is read per tick.
@@ -8212,8 +8379,35 @@ function startUpdateCheck(): void {
   if (!every) return;
   let busy = false;
   let updating = false;
-  /** #251: why an auto update would wait now; null: a quiet moment. */
-  const updateWaitWhy = async (): Promise<UpdateWait | null> => {
+  /**
+   * Issue 562 review: the wait again once the install is done, leaving
+   * out "updating" (this update is the one under way).
+   */
+  const agentWaitWhy = async (
+    pastPerson: boolean,
+  ): Promise<UpdateWait | null> => {
+    const w = attentionWaiting().get(SERVER_AGENT_ID);
+    const onPerson = w === "permission" || w === "asked";
+    if (onPerson && !pastPerson) return w;
+    if (approvals?.queue.pending().length) return "approval";
+    if (onPerson) return null;
+    const ops = await import("../cli/agent-ops.js");
+    const { webDeps } = await import("./agent-routes.js");
+    return (await ops.serverAgentInputState(webDeps())) === "busy"
+      ? "busy"
+      : null;
+  };
+  /**
+   * #251: why an auto update would wait now; null: a quiet moment.
+   * Issue 562: `pastPerson` leaves out the server agent's own question or
+   * permission prompt (a security release): a pending Allow still holds
+   * it, and so does a turn that is working. A turn paused on its person
+   * isn't working (its transcript's open tool call reads busy): it
+   * resumes after the restart.
+   */
+  const updateWaitWhy = async (
+    pastPerson = false,
+  ): Promise<UpdateWait | null> => {
     if (updating) return "updating";
     const u = await import("./den-update.js");
     const last = u.readUpdateState(getStateDir());
@@ -8224,14 +8418,7 @@ function startUpdateCheck(): void {
     )
       return "updating";
     // The server agent's own wait first: it is what the person can end.
-    const w = attentionWaiting().get(SERVER_AGENT_ID);
-    if (w === "permission" || w === "asked") return w;
-    if (approvals?.queue.pending().length) return "approval";
-    const ops = await import("../cli/agent-ops.js");
-    const { webDeps } = await import("./agent-routes.js");
-    return (await ops.serverAgentInputState(webDeps())) === "busy"
-      ? "busy"
-      : null;
+    return agentWaitWhy(pastPerson);
   };
   const tick = async (): Promise<void> => {
     if (busy) return;
@@ -8266,7 +8453,35 @@ function startUpdateCheck(): void {
         last: () => u.readUpdateState(getStateDir()),
         idle: async () => (await updateWaitWhy()) === null,
         // #251: why it waits, so the log and the bell can say so.
-        waitWhy: updateWaitWhy,
+        waitWhy: () => updateWaitWhy(),
+        // Issue 562: a security release: npm's version data marks it.
+        waitPast: () => updateWaitWhy(true),
+        security: (version) =>
+          u.npmViewSecurity(
+            u.npmCommand(),
+            ENGINE_PACKAGE,
+            version,
+            getDistRoot(),
+          ),
+        securitySkipsQuestions: () => {
+          try {
+            return readServerAgentConfig().securityUpdateSkipsQuestions;
+          } catch {
+            return true;
+          }
+        },
+        securityNote: (version) => {
+          try {
+            securityUpdateNote(
+              notificationDeps().store,
+              product().title,
+              serverAgentName(product().title),
+              version,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitChecks: () => {
           try {
             return readServerAgentConfig().updateWaitChecks;
@@ -8352,12 +8567,44 @@ function startUpdateCheck(): void {
         // approval policy (issue 160) may hold it for the person.
         pinCommit: (version) => runPinCommit(version, true),
         pinNotice: pinBellNotice,
-        update: async (version, reason) => {
+        update: async (version, reason, opts) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
           const ok = await a.check({ version, reason });
           if (!ok.ok) return { ok: false, error: ok.error };
           updating = true;
+          // Issue 562 review: read the wait again after the install.
+          autoRestartHold = async (keepAlive) => {
+            const { holdRestart, restartedWhileWorkingNote } =
+              await import("./update-check.js");
+            let maxMs = 900_000;
+            try {
+              maxMs = readServerAgentConfig().updateRestartWaitMs;
+            } catch {
+              /* the default */
+            }
+            await holdRestart({
+              waitWhy: () => agentWaitWhy(!!opts?.security),
+              maxMs,
+              keepAlive,
+              log: (line) => {
+                serverLog(`  ${line}`, "lifecycle");
+                recordAction(null, { verb: "den-update-check", detail: line });
+              },
+              timedOut: () => {
+                try {
+                  restartedWhileWorkingNote(
+                    notificationDeps().store,
+                    product().title,
+                    serverAgentName(product().title),
+                    version,
+                  );
+                } catch {
+                  /* the bell is best effort */
+                }
+              },
+            });
+          };
           try {
             const r = (await a.run(ok.args, {
               id: "update-check",
@@ -8368,6 +8615,7 @@ function startUpdateCheck(): void {
               : { ok: false, error: String(r.error ?? "not updated") };
           } finally {
             updating = false;
+            autoRestartHold = null;
           }
         },
         ask: async (version, reason) => {

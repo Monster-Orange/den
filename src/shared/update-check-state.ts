@@ -10,7 +10,12 @@ import * as path from "path";
 export type UpdateTick =
   | { did: "current" }
   | { did: "skipped"; version?: string; why: string }
-  | { did: "asked" | "updating"; version: string }
+  | {
+      did: "asked" | "updating";
+      version: string;
+      /** Issue 562: a security release, updated past an open question. */
+      security?: boolean;
+    }
   /** #251: why it waits, in words (doctor and Settings say it). */
   | {
       did: "waiting";

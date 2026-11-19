@@ -29,7 +29,14 @@ import {
   type HostErrorCode,
   type Request,
 } from "./protocol.js";
-import { countPtyMasters, type PtyLoad, type PtyProcess } from "./pty.js";
+import {
+  countPtyMasters,
+  loadedPtyModule,
+  type PtyLoad,
+  type PtyModuleInfo,
+  type PtyProcess,
+} from "./pty.js";
+import { engineVersion } from "../paths.js";
 import { launchdSession } from "../launchd-session.js";
 import {
   SESSION_POOLS,
@@ -72,6 +79,17 @@ export interface SessionHostOptions {
   ptyCloseMs?: number;
   /** Issue 503: the PTY masters this process holds (default: counted). */
   openPtys?: () => number | null;
+  /**
+   * Issue 563: the Den version this host runs (default: its engine's, read
+   * when it starts), for `hello`: the web server restarts a host that runs
+   * another version than the one installed.
+   */
+  denVersion?: string | null;
+  /**
+   * Issue 563: the native PTY module this process loaded (default: what
+   * loadPty loaded; null: none yet), for `hello`.
+   */
+  ptyModule?: () => PtyModuleInfo | null;
 }
 
 interface Session {
@@ -233,6 +251,8 @@ export class SessionHost {
   private closed = false;
   /** D20: where it runs; stamped on every session it starts. */
   private readonly launchd: string | null;
+  /** Issue 563: the Den version it runs, as it started. */
+  private readonly denVersion: string | null;
 
   constructor(private readonly opts: SessionHostOptions) {
     this.paths = sessionPaths(opts.stateDir);
@@ -242,6 +262,15 @@ export class SessionHost {
         : launchdSession();
     // "unknown" (launchctl said nothing) is no stamp at all.
     this.launchd = where === "unknown" ? null : where;
+    let v: string | null = null;
+    if (opts.denVersion !== undefined) v = opts.denVersion;
+    else
+      try {
+        v = engineVersion() ?? null;
+      } catch {
+        v = null;
+      }
+    this.denVersion = v;
   }
 
   private log(line: string): void {
@@ -535,6 +564,15 @@ export class SessionHost {
           pid: process.pid,
           startedAt: this.startedAt,
           launchd: this.launchd,
+          // Issue 563: what it runs, so a client can tell it is current.
+          den: this.denVersion,
+          pty: (() => {
+            try {
+              return (this.opts.ptyModule ?? loadedPtyModule)();
+            } catch {
+              return null;
+            }
+          })(),
         };
       case "list":
         return {

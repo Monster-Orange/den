@@ -22,6 +22,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { proxyRoutes } from "../../../src/shared/edge/proxy-route.js";
+import { signIn } from "./helpers/signed-in.js";
 
 jest.setTimeout(90_000);
 
@@ -111,6 +112,7 @@ async function open(e: (typeof ENGINES)[number], width: number): Promise<Page> {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript(() => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])

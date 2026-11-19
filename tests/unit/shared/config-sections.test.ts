@@ -102,4 +102,20 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
       ptyMachineWarnPercent: 75,
     });
   });
+
+  it("issue 563: sessions.host_restart_wait_seconds, 900 by default", () => {
+    expect(readSessionsConfig({} as DenConfig).hostRestartWaitSeconds).toBe(
+      900,
+    );
+    expect(
+      readSessionsConfig({
+        sessions: { host_restart_wait_seconds: 30 },
+      } as unknown as DenConfig).hostRestartWaitSeconds,
+    ).toBe(30);
+    expect(() =>
+      readSessionsConfig({
+        sessions: { host_restart_wait_seconds: -1 },
+      } as unknown as DenConfig),
+    ).toThrow(/sessions.host_restart_wait_seconds/);
+  });
 });

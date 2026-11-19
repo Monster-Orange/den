@@ -1434,6 +1434,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
       r.checks.push(pt.check);
       if (pt.problem) r.ok = false;
+      // Issue 563: the terminal host runs what is installed.
+      const { hostModuleLines, defaultHostModuleDeps } =
+        await import("./doctor-ptys.js");
+      const hm = await hostModuleLines(
+        product().cli,
+        defaultHostModuleDeps(getStateDir()),
+      );
+      r.checks.push(hm.check);
+      if (hm.problem) r.ok = false;
     }
     {
       const { hubStatus } = await import("../../shared/hub.js");
@@ -1517,6 +1526,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   const { ptyLines, defaultPtyDeps } = await import("./doctor-ptys.js");
   const pty = await ptyLines(readBrand().name, defaultPtyDeps(getStateDir()));
   for (const l of pty.lines) console.log(l);
+  // Issue 563: the terminal host runs what is installed.
+  const { hostModuleLines, defaultHostModuleDeps } =
+    await import("./doctor-ptys.js");
+  const hm = await hostModuleLines(
+    product().cli,
+    defaultHostModuleDeps(getStateDir()),
+  );
+  for (const l of hm.lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
@@ -1575,6 +1592,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       held.problem ||
       ownerProblem ||
       pty.problem ||
+      hm.problem ||
       cfg.problem ||
       sign.problem ||
       addr.problem
@@ -1602,6 +1620,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     held.problem ||
     ownerProblem ||
     pty.problem ||
+    hm.problem ||
     cfg.problem ||
     found
     ? 1

@@ -307,6 +307,10 @@ export interface ErrorPageData {
     scope: "terminal" | "agents" | "den";
     name: string;
     cmd: string;
+    /** 0.4.71: a browser on this machine (localhost from a loopback peer). */
+    local?: boolean;
+    /** 0.4.71: with `local`, the command that signs it in (`web up`). */
+    up?: string;
     /** SEC-2a: the machine that runs the commands. */
     machine: string;
     /** SEC-2a: how to reach it over ssh. */
