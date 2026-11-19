@@ -61,6 +61,14 @@ describe("GitHubService", () => {
       expect(svc.listBranches("org/repo$(evil)")).toEqual([]);
     });
 
+    it("rejects a . or .. segment (another API path), and asks gh nothing", () => {
+      for (const s of ["../..", "./repo", "org/..", "../repo", "org/."])
+        expect(svc.listBranches(s)).toEqual([]);
+      expect(mockExecFileSync).not.toHaveBeenCalled();
+      mockExecFileSync.mockReturnValue('["main"]\n');
+      expect(svc.listBranches("my.org/re..po")).toEqual(["main"]);
+    });
+
     it("caches results and returns from cache on second call", () => {
       mockExecFileSync.mockReturnValue('["main"]\n');
       svc.listBranches("org/repo");

@@ -34,6 +34,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { pageImport } from "./helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -174,6 +175,7 @@ async function open(width = 1280) {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s.stateDir, s.base);
   await ctx.addInitScript(() => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -335,6 +337,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    await signIn(ctx, s.stateDir, s.base);
     const p = await ctx.newPage();
     const errors: string[] = [];
     p.on("pageerror", (e) => errors.push(e.message));

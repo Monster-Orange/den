@@ -39,6 +39,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -122,6 +123,7 @@ async function page(url: string, width = 1440, height = 900): Promise<Page> {
     viewport: { width, height },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])

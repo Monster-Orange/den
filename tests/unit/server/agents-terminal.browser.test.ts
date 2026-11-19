@@ -35,6 +35,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -145,6 +146,7 @@ async function page(url: string, stub = true): Promise<Page> {
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript(
     ([v, stubbed]) => {
       try {
