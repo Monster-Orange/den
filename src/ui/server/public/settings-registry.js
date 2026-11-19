@@ -2791,7 +2791,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Terminal host wait",
     description:
-      "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "How long __DEN_TITLE__ waits for the terminal host: the Agents list, opening a terminal, and doctor. After this, it says the host doesn't answer; Terminal offers Restart, and the list tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
     keywords: ["timeout", "terminal", "host", "list", "wait"],
     scope: "user",
     keys: ["agents_list.host_timeout_seconds"],

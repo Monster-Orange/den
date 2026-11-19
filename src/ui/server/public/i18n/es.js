@@ -572,6 +572,9 @@
     "busy.restartW": "Reiniciando {name}…",
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
+    "busy.hostW": "Reiniciando el anfitrión de terminales…",
+    "busy.hostS": "El anfitrión de terminales se reinició.",
+    "busy.hostF": "No se pudo reiniciar el anfitrión de terminales.",
     "busy.modeW": "Cambiando el modo de {name}…",
     "busy.modeS": "Modo de {name} cambiado.",
     "busy.modeF": "No se pudo cambiar el modo de {name}. Nada cambió.",
@@ -946,7 +949,7 @@
       "El primer intento espera 1 s y cada espera se duplica, hasta este valor. __DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
-      "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "Cuánto espera __DEN_TITLE__ al host de terminales: la lista de agentes, al abrir una terminal y en doctor. Pasado este tiempo, dice que el host no responde; Terminal ofrece Reiniciar y la lista lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.agents.compaction_loop": "Compactación repetida: compactaciones",
     "set.agents.compaction_loop.d":
       "Cuántas compactaciones automáticas puede tener un agente dentro de los minutos de abajo antes de que la campana avise de que se compacta una y otra vez. Una campana por episodio. __DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -1797,6 +1800,9 @@
     "ag.term.ptyFailed":
       "Den no pudo abrir una terminal: esta máquina no le dio un PTY ({e}). Cierra las terminales que ya no uses o ejecuta doctor.",
     "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
+    "ag.term.stuck":
+      "Den no pudo abrir una terminal: su anfitrión de terminales no responde ({e}). Reinícialo para volver a abrir terminales y agentes. Sus terminales abiertas terminarán.",
+    "ag.term.restartHost": "Reiniciar",
     "ws.termHere": "Terminal aquí",
     "kind.agent": "Agente",
     "ag.sub.agents": "{n} agentes",

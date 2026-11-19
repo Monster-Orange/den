@@ -95,7 +95,11 @@ import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
-import { startFailText, terminalFailText } from "/pty-refusal.js";
+import {
+  offersHostRestart,
+  startFailText,
+  terminalFailText,
+} from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -5818,6 +5822,16 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     await bringShell(running.id);
     return;
   }
+  // Issue 500: the list just found the terminal host there and not
+  // answering: say so now, with Restart, instead of a second wait.
+  if (!fresh && st.data?.hostStuck) {
+    terminalFailed(
+      { code: "host_stuck", message: st.data.hostError || "" },
+      asked,
+      fresh,
+    );
+    return;
+  }
   try {
     const r = await api(
       "POST",
@@ -5829,9 +5843,38 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
     if (r?.session?.id) await bringShell(r.session.id);
   } catch (err) {
-    // Issue 503: never silent; no PTY has its own words.
-    window.denShell?.toast?.(terminalFailText(err, t));
+    terminalFailed(err, asked, fresh);
   }
+}
+
+/**
+ * Issue 503: a terminal that didn't open is never silent; no PTY has its
+ * own words. Issue 500: a terminal host that doesn't answer offers
+ * Restart, then opens the terminal asked for.
+ */
+function terminalFailed(err, asked, fresh) {
+  if (offersHostRestart(err) && window.denShell?.toastAction)
+    window.denShell.toastAction(
+      terminalFailText(err, t),
+      t("ag.term.restartHost"),
+      () => void restartTerminalHost(asked, fresh),
+      HOST_STUCK_TOAST_MS,
+    );
+  else window.denShell?.toast?.(terminalFailText(err, t));
+}
+
+/** Issue 500: how long the stuck host's error (and Restart) stays. */
+const HOST_STUCK_TOAST_MS = 120_000;
+
+/**
+ * Issue 500: a person's Restart of a terminal host that doesn't answer,
+ * through the working pop-up; then the terminal they asked for opens.
+ */
+async function restartTerminalHost(asked, fresh) {
+  const out = await window.denShell.busyAction("restart-host", (headers) =>
+    api("POST", "/api/agents/terminal-host/restart", {}, { headers }),
+  );
+  if (out) await openTerminal(asked, { fresh });
 }
 
 /**

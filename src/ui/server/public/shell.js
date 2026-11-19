@@ -1432,6 +1432,9 @@
     "busy.restartW": "Restarting {name}…",
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
+    "busy.hostW": "Restarting the terminal host…",
+    "busy.hostS": "The terminal host restarted.",
+    "busy.hostF": "Couldn't restart the terminal host.",
     "busy.modeW": "Setting {name}'s mode…",
     "busy.modeS": "{name}'s mode is set.",
     "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
@@ -1911,7 +1914,7 @@
       "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
-      "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "How long __DEN_TITLE__ waits for the terminal host: the Agents list, opening a terminal, and doctor. After this, it says the host doesn't answer; Terminal offers Restart, and the list tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.agents.compaction_loop": "Compacting repeatedly: compactions",
     "set.agents.compaction_loop.d":
       "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -2616,6 +2619,10 @@
     "ag.term.ptyFailed":
       "Den couldn't open a terminal: this machine gave it no PTY ({e}). Close terminals you no longer need, or run doctor.",
     "ag.term.noWs": "no project is active. Activate one first.",
+    // Issue 500: the terminal host doesn't answer (the reason in {e}).
+    "ag.term.stuck":
+      "Den couldn't open a terminal: its terminal host doesn't answer ({e}). Restart it to start terminals and agents again. Its open terminals end.",
+    "ag.term.restartHost": "Restart",
     "ws.termHere": "Terminal here",
     "kind.agent": "Agent",
     "ag.sub.agents": "{n} agents",

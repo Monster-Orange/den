@@ -246,6 +246,13 @@ export interface AgentRouteDeps {
   hubConnect?: import("./hub-connect.js").HubConnect;
   /** H5: Settings › Project setup › Hub project (tests swap Hub and the store). */
   hubProject?: Partial<import("./hub-project-routes.js").HubProjectRouteDeps>;
+  /**
+   * Issue 500 (tests): POST /api/agents/terminal-host/restart's restart.
+   * Default: restartHost on this Den's host.
+   */
+  restartHost?: () => Promise<
+    import("../../shared/sessions/host-stuck.js").HostRestarted
+  >;
 }
 
 const AGENTS_PATH =
@@ -363,7 +370,13 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
         ok: false,
         error: e.message,
         // Issue 503: no PTY to open (the page has its own words for it).
-        code: e.code === "spawn" ? "pty_open" : "session_host",
+        // Issue 500: a host that doesn't answer (the page offers Restart).
+        code:
+          e.code === "spawn"
+            ? "pty_open"
+            : e.code === "timeout"
+              ? "host_stuck"
+              : "session_host",
       },
       e.code === "cap" ? 429 : 503,
     );
@@ -561,6 +574,8 @@ export async function handleAgentRoutes(
     pathname === "/api/agents/resume-interrupted";
   if (pathname === "/api/agents/rotation")
     return rotationRoute(req, res, webDeps(deps.agents));
+  if (pathname === "/api/agents/terminal-host/restart")
+    return terminalHostRestartRoute(req, res, webDeps(deps.agents), deps);
   const mp = MODES_PATH.exec(pathname);
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
   const mcpp = MCP_SERVERS_PATH.exec(pathname);
@@ -1751,6 +1766,71 @@ async function personaRoute(
   } catch (e) {
     audit(e instanceof Error ? e.message : String(e));
     sendError(res, e);
+  }
+  return true;
+}
+
+/**
+ * Issue 500: POST /api/agents/terminal-host/restart. A person's Restart
+ * (Terminal's, through the working pop-up): the terminal host stops (the
+ * supported way when it answers; by signal when it doesn't, only the
+ * process its sessions.host.json names) and a new one starts. Its
+ * sessions end. Never an agent's; audited, refused or done.
+ */
+async function terminalHostRestartRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  d: AgentsResolved,
+  deps: AgentRouteDeps,
+): Promise<true> {
+  if (req.method !== "POST") return methodNotAllowed(res, "POST");
+  const actor = auditActorOf(req);
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "terminal-host",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError("only a person can restart the terminal host", {
+        status: 403,
+      });
+    const run =
+      deps.restartHost ??
+      (async () => {
+        const { restartHost } =
+          await import("../../shared/sessions/host-stuck.js");
+        const { sessionPaths } = await import("../../shared/sessions/paths.js");
+        const p = sessionPaths(d.stateDir());
+        return restartHost({
+          socket: p.socket,
+          infoFile: p.info,
+          connectExisting: () => d.connectExisting(),
+          connect: () => d.connect(),
+        });
+      });
+    const r = await run();
+    const detail =
+      `terminal host restarted by a person: pid ${r.from || "none"} → ${r.to}` +
+      (r.forced ? " (it didn't answer: ended by signal)" : "") +
+      (r.ended ? `; agents and terminals that ended: ${r.ended}` : "");
+    audit(detail);
+    sendJson(res, { ok: true, restarted: r });
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    audit("terminal host restart", why);
+    if (e instanceof AgentError || e instanceof HostError) sendError(res, e);
+    else
+      sendJson(
+        res,
+        { ok: false, error: why, code: "host_restart_failed" },
+        503,
+      );
   }
   return true;
 }

@@ -18,6 +18,13 @@ import type { OnboardCheck } from "./doctor-onboard.js";
 import { engineVersion } from "../../shared/paths.js";
 import { installedPtyModule } from "../../shared/sessions/pty.js";
 import { hostCodeId } from "../../shared/sessions/host-code.js";
+import { sessionPaths } from "../../shared/sessions/paths.js";
+import {
+  describeHost,
+  hostStuck,
+  readHostInfo,
+  type HostInfo,
+} from "../../shared/sessions/host-stuck.js";
 
 export interface PtySettings {
   warnAbove: number;
@@ -64,18 +71,52 @@ export function machinePtys(
   return null;
 }
 
+/**
+ * Issue 500: one doctor run waits for a host that doesn't answer once (its
+ * PTY row and its Host row ask the same host): the first wait's failure is
+ * kept for STUCK_KEEP_MS, by state dir.
+ */
+const stuckSeen = new Map<string, { e: Error; at: number }>();
+const STUCK_KEEP_MS = 60_000;
+
+/**
+ * The running host on `stateDir`'s socket: null when none runs; throws
+ * when it doesn't answer (HostError "timeout", within
+ * Settings › Terminal host wait), or once that was seen this run.
+ */
+async function doctorConnect(
+  stateDir: string,
+  timeoutMs?: number,
+): Promise<import("../../shared/sessions/client.js").HostClient | null> {
+  const seen = stuckSeen.get(stateDir);
+  if (seen && Date.now() - seen.at < STUCK_KEEP_MS) throw seen.e;
+  stuckSeen.delete(stateDir);
+  const { connectHost, noHost } =
+    await import("../../shared/sessions/client.js");
+  try {
+    return await connectHost(
+      sessionPaths(stateDir).socket,
+      timeoutMs === undefined ? {} : { timeoutMs },
+    );
+  } catch (e) {
+    if (noHost(e)) return null;
+    if (hostStuck(e))
+      stuckSeen.set(stateDir, { e: e as Error, at: Date.now() });
+    throw e;
+  }
+}
+
 /** The running Den's: its terminal host, its config, this machine. */
 export function defaultPtyDeps(stateDir: string): PtyDeps {
   return {
     open: async () => {
-      const { connectHost } = await import("../../shared/sessions/client.js");
-      const { sessionPaths } = await import("../../shared/sessions/paths.js");
       let c;
       try {
-        c = await connectHost(sessionPaths(stateDir).socket);
+        c = await doctorConnect(stateDir);
       } catch {
-        return null; // none runs
+        return null; // it doesn't answer: the Host row says so
       }
+      if (!c) return null; // none runs
       try {
         return (await c.ptys())?.open ?? null;
       } finally {
@@ -163,7 +204,10 @@ export async function ptyLines(
  * changed"; another Den version with the same code is current.
  */
 export interface HostModuleDeps {
-  /** What the running host says (null: none runs). */
+  /**
+   * What the running host says (null: none runs). Issue 500: throws when
+   * it doesn't answer (HostError "timeout").
+   */
   host: () => Promise<
     | (import("../../shared/sessions/host-refresh.js").HostRuns & {
         pid?: number;
@@ -172,21 +216,21 @@ export interface HostModuleDeps {
     | null
   >;
   installed: () => import("../../shared/sessions/host-refresh.js").Installed;
+  /** Issue 500: what the host wrote to sessions.host.json (null: none). */
+  info?: () => import("../../shared/sessions/host-stuck.js").HostInfo | null;
 }
 
-export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
+export function defaultHostModuleDeps(
+  stateDir: string,
+  /** Issue 500 (tests): how long it waits for the host; default the setting. */
+  timeoutMs?: number,
+): HostModuleDeps {
   return {
     host: async () => {
-      const { connectHost } = await import("../../shared/sessions/client.js");
-      const { sessionPaths } = await import("../../shared/sessions/paths.js");
       const { hostRuns } =
         await import("../../shared/sessions/host-refresh.js");
-      let c;
-      try {
-        c = await connectHost(sessionPaths(stateDir).socket);
-      } catch {
-        return null;
-      }
+      const c = await doctorConnect(stateDir, timeoutMs);
+      if (!c) return null;
       try {
         return { ...hostRuns(c), pid: c.hostPid, startedAt: c.hostStartedAt };
       } finally {
@@ -198,6 +242,7 @@ export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
       code: hostCodeId(),
       pty: installedPtyModule(),
     }),
+    info: () => readHostInfo(sessionPaths(stateDir).info),
   };
 }
 
@@ -207,15 +252,28 @@ export async function hostModuleLines(
 ): Promise<{ lines: string[]; check: OnboardCheck; problem: boolean }> {
   const { hostCheck } = await import("../../shared/sessions/host-refresh.js");
   let h: Awaited<ReturnType<HostModuleDeps["host"]>> = null;
+  let noAnswer: string | null = null;
   try {
     h = await d.host();
-  } catch {
+  } catch (e) {
     h = null;
+    noAnswer = e instanceof Error ? e.message : String(e);
   }
   const fix = `${cli} sessions host --stop`; // words-ok: the CLI command itself
   let detail: string;
   let fail = false;
-  if (!h)
+  let info: HostInfo | null = null;
+  if (noAnswer !== null) {
+    // Issue 500: a host that doesn't answer starts no shell: say so, with
+    // what it wrote as it began to serve (its pid, its version).
+    fail = true;
+    try {
+      info = d.info?.() ?? null;
+    } catch {
+      info = null;
+    }
+    detail = `the terminal host doesn't answer: ${noAnswer} (${describeHost(info)}): no agent or terminal can start; restart it from Terminal, or: ${fix}`;
+  } else if (!h)
     detail =
       "no terminal host runs (it starts with the first agent or terminal)";
   else {
@@ -235,6 +293,19 @@ export async function hostModuleLines(
       status: fail ? "fail" : "ok",
       detail,
       ...(fail ? { fix } : {}),
+      // Issue 500: a host that doesn't answer, and what it wrote.
+      ...(noAnswer !== null
+        ? {
+            stuck: true,
+            host: {
+              pid: info?.pid ?? null,
+              startedAt: info?.startedAt ?? null,
+              den: info?.den ?? null,
+              code: info?.code ?? null,
+              pty: null,
+            },
+          }
+        : {}),
       // What the host says it runs, for a live check (no secret in it).
       ...(h
         ? {

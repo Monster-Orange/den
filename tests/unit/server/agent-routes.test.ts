@@ -24,6 +24,7 @@ import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { HostError } from "../../../src/shared/sessions/client.js";
 
 interface Api {
   r: Rig;
@@ -44,7 +45,9 @@ afterEach(async () => {
   await cleanupRigs();
 });
 
-async function api(): Promise<Api> {
+async function api(
+  over: Omit<Parameters<typeof handleAgentRoutes>[3], "agents"> = {},
+): Promise<Api> {
   const r = await rig();
   const server = http.createServer((req, res) => {
     const id = newRequestId();
@@ -69,6 +72,7 @@ async function api(): Promise<Api> {
       agents: r.deps,
       // A first instruction counts its session ready quickly here.
       instruction: { quietMs: 30, maxMs: 1500 },
+      ...over,
     })
       .then((handled) => {
         if (!handled) {
@@ -1498,6 +1502,8 @@ describe("the persona routes (AG-10.6, AG-10.7)", () => {
       ["POST", "/api/personas/copy-checker", { ...mine, permission: "all" }],
       ["DELETE", "/api/personas/copy-checker", undefined],
       ["POST", "/api/workspaces/north/sessions", undefined],
+      // Issue 500: a person's Restart only.
+      ["POST", "/api/agents/terminal-host/restart", undefined],
       [
         "POST",
         "/api/workspaces/north/agents",
@@ -1566,6 +1572,73 @@ describe("POST /api/workspaces/<ws>/sessions (Plain session, AG-10.1)", () => {
     expect(String(r.json.error)).toMatch(/posix_openpt failed: no PTY left/);
     expect(recentActions().at(-1)).toMatchObject({
       verb: "sessions",
+      outcome: "refused",
+    });
+  });
+
+  it("issue 500: a terminal host that doesn't answer is a 503 with code host_stuck, never a wait", async () => {
+    const a = await api();
+    a.r.deps.env = { ...a.r.deps.env, SHELL: "/bin/sh" };
+    a.r.deps.connect = () =>
+      Promise.reject(
+        new HostError(
+          "timeout",
+          "the terminal host did not answer within 15 s",
+        ),
+      );
+    const r = await a.call("POST", "/api/workspaces/north/sessions");
+    expect(r.status).toBe(503);
+    expect(r.json).toMatchObject({ ok: false, code: "host_stuck" });
+    expect(String(r.json.error)).toMatch(/did not answer within 15 s/);
+  });
+});
+
+describe("POST /api/agents/terminal-host/restart (issue 500)", () => {
+  it("a person's Restart: the host restarts, audited", async () => {
+    let asked = 0;
+    const a = await api({
+      restartHost: async () => {
+        asked++;
+        return {
+          from: 4242,
+          to: 4343,
+          forced: true,
+          ended: null,
+          fromVersion: "0.4.70",
+        };
+      },
+    });
+    const r = await a.call("POST", "/api/agents/terminal-host/restart", {});
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({
+      ok: true,
+      restarted: { from: 4242, to: 4343, forced: true },
+    });
+    expect(asked).toBe(1);
+    expect(recentActions().at(-1)).toMatchObject({
+      actor: "user",
+      verb: "terminal-host",
+      detail: expect.stringMatching(/pid 4242 → 4343 \(it didn't answer/),
+    });
+    expect(
+      (await a.call("GET", "/api/agents/terminal-host/restart")).status,
+    ).toBe(405);
+  });
+
+  it("a restart that fails says why (503), audited as refused", async () => {
+    const a = await api({
+      restartHost: async () => {
+        throw new Error(
+          "pid 4242 from sessions.host.json is not that host any more",
+        );
+      },
+    });
+    const r = await a.call("POST", "/api/agents/terminal-host/restart", {});
+    expect(r.status).toBe(503);
+    expect(r.json).toMatchObject({ ok: false, code: "host_restart_failed" });
+    expect(String(r.json.error)).toMatch(/not that host any more/);
+    expect(recentActions().at(-1)).toMatchObject({
+      verb: "terminal-host",
       outcome: "refused",
     });
   });

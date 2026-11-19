@@ -126,6 +126,8 @@ describe("a terminal host that doesn't answer a list (den#156)", () => {
       });
       expect(Date.now() - t0).toBeLessThan(3000);
       expect(body.hostError).toMatch(/did not answer within 0\.3 s/);
+      // Issue 500: there, and not answering: Terminal offers Restart.
+      expect(body.hostStuck).toBe(true);
       expect(body.sessions).toEqual([]);
       expect(body.refreshTimeoutSeconds).toBe(15);
     } finally {

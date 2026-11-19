@@ -83,6 +83,7 @@ import type {
 } from "../../shared/agents/rotation.js";
 import {
   connectHost,
+  HostError,
   noHost,
   type HostClient,
 } from "../../shared/sessions/client.js";
@@ -782,6 +783,7 @@ export async function handleSessionList(
   let sessions: SessionInfo[] = [];
   let host = false;
   let hostError: string | undefined;
+  let hostStuck = false;
   const waits = d.listWaits();
   try {
     const c = await d.connectExisting();
@@ -800,6 +802,8 @@ export async function handleSessionList(
     }
   } catch (e) {
     hostError = (e as Error).message;
+    // Issue 500: it is there and doesn't answer (Terminal offers Restart).
+    hostStuck = e instanceof HostError && e.code === "timeout";
   }
   // `?ws=<name>`: that workspace's too, active or not, and whether it is
   // active and known (the page says so rather than show all of them).
@@ -825,6 +829,7 @@ export async function handleSessionList(
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
+    ...(hostStuck ? { hostStuck } : {}),
     // den#156: how long the page waits for its next list.
     refreshTimeoutSeconds: waits.refresh_timeout_seconds,
     backend: pty.available
