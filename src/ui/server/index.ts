@@ -3245,6 +3245,90 @@ function installedServiceMode(): "login" | "always" | null {
   }
 }
 
+/**
+ * MODE-5: the Settings rows that were the command line's, as GET
+ * /api/settings shows them. A save answers them too, so the page redraws
+ * a saved row with its new value, not the old one (issue 424).
+ */
+function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
+  return {
+    log_window_lines: user.log_window_lines ?? 20_000,
+    local_dev: user.local_dev !== false,
+    cli_tabs: user.cli_tabs === true,
+    // den#85: the crash-loop guard's settings (web.crash_loop_*).
+    crash_loop: crashLoopSettings(user.web),
+    // 0.4.48: Den on the Docker bridge for the edge (Linux).
+    web_bridge: (() => {
+      const w = (user.web ?? {}) as Record<string, unknown>;
+      return {
+        listen: w.bridge_listen === "off" ? "off" : "auto",
+        probeSeconds:
+          typeof w.bridge_probe_seconds === "number"
+            ? w.bridge_probe_seconds
+            : 10,
+      };
+    })(),
+    // den#143: how long `web up` waits for the server.
+    web_ready: (() => {
+      try {
+        const c = readWebAuthConfig(getDistRoot(), product().configFile);
+        return {
+          probeSeconds: c.readyProbeSeconds,
+          startSeconds: c.startWaitSeconds,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+    agent_context: (() => {
+      const c = contextWatchSettings(user.agent_context);
+      return {
+        compaction_loop_count: c.loopCount,
+        compaction_loop_minutes: c.loopMinutes,
+        pause_after_loop: c.pause,
+        instruction_share_percent: c.sharePercent,
+        context_tokens: c.contextTokens,
+      };
+    })(),
+    // den#156: the Agents list's waits (agents_list.*).
+    agents_list: (() => {
+      try {
+        return agentsListWaits(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 415: how long Report keeps, and waits for, a repo's
+    // visibility (feedback.*), their defaults when unset.
+    feedback: (() => {
+      const f = feedbackSettings(null, {}, user.feedback);
+      return {
+        visibility_cache_hours: f.visibilityCacheHours,
+        visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+        visibility_retry_seconds: f.visibilityRetrySeconds,
+      };
+    })(),
+    // Issue 455: the address check's limits (web.address_check_*).
+    address_check: (() => {
+      const a = addressCheckSettings(() => user);
+      return {
+        timeout_seconds: a.timeoutMs / 1000,
+        retries: a.retries,
+        cache_seconds: a.cacheMs / 1000,
+      };
+    })(),
+    // 0.4.46: how a terminal pane reconnects on its own (panes.*).
+    panes_reconnect: (() => {
+      try {
+        return panesReconnect(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+  };
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -6767,7 +6851,8 @@ async function handleRequest(
         terminals: terminalList,
         editor_overrides: user.editor_overrides ?? {},
         languages: SUPPORTED_LANGUAGES,
-        log_window_lines: user.log_window_lines ?? 20_000,
+        // MODE-5: the rows that were the command line's (a save answers them too).
+        ...cliRowSettings(user),
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell),
@@ -6781,8 +6866,6 @@ async function handleRequest(
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
         user_web_port: userWebPort(user as Record<string, unknown>),
-        local_dev: user.local_dev !== false,
-        cli_tabs: user.cli_tabs === true,
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
@@ -6809,33 +6892,8 @@ async function handleRequest(
             return true;
           }
         })(),
-        // den#85: the crash-loop guard's settings (web.crash_loop_*).
-        crash_loop: crashLoopSettings(user.web),
         // Issue 144: the machine's gate slots, not this install's.
         gate_slots: gates().settings(),
-        // 0.4.48: Den on the Docker bridge for the edge (Linux).
-        web_bridge: (() => {
-          const w = (user.web ?? {}) as Record<string, unknown>;
-          return {
-            listen: w.bridge_listen === "off" ? "off" : "auto",
-            probeSeconds:
-              typeof w.bridge_probe_seconds === "number"
-                ? w.bridge_probe_seconds
-                : 10,
-          };
-        })(),
-        // den#143: how long `web up` waits for the server.
-        web_ready: (() => {
-          try {
-            const c = readWebAuthConfig(getDistRoot(), product().configFile);
-            return {
-              probeSeconds: c.readyProbeSeconds,
-              startSeconds: c.startWaitSeconds,
-            };
-          } catch {
-            return null;
-          }
-        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6861,54 +6919,8 @@ async function handleRequest(
         agent_signin: await agentSigninView(),
         // Issue 339: the sign-in accounts per vendor (never a token).
         agent_accounts: agentAccountsView(),
-        // Issue 278: agents stuck compacting; instruction size (agent_context.*).
-        agent_context: (() => {
-          const c = contextWatchSettings(user.agent_context);
-          return {
-            compaction_loop_count: c.loopCount,
-            compaction_loop_minutes: c.loopMinutes,
-            pause_after_loop: c.pause,
-            instruction_share_percent: c.sharePercent,
-            context_tokens: c.contextTokens,
-          };
-        })(),
-        // den#156: the Agents list's waits (agents_list.*).
-        agents_list: (() => {
-          try {
-            return agentsListWaits(() => user);
-          } catch {
-            return null;
-          }
-        })(),
-        // Issue 415: how long Report keeps, and waits for, a repo's
-        // visibility (feedback.*), their defaults when unset.
-        feedback: (() => {
-          const f = feedbackSettings(null, {}, user.feedback);
-          return {
-            visibility_cache_hours: f.visibilityCacheHours,
-            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
-            visibility_retry_seconds: f.visibilityRetrySeconds,
-          };
-        })(),
-        // Issue 455: the address check's limits (web.address_check_*).
-        address_check: (() => {
-          const a = addressCheckSettings(() => user);
-          return {
-            timeout_seconds: a.timeoutMs / 1000,
-            retries: a.retries,
-            cache_seconds: a.cacheMs / 1000,
-          };
-        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
-        // 0.4.46: how a terminal pane reconnects on its own (panes.*).
-        panes_reconnect: (() => {
-          try {
-            return panesReconnect(() => user);
-          } catch {
-            return null;
-          }
-        })(),
         // SEC-2a: the name the signed-out page gives this machine, and
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),
@@ -7207,6 +7219,9 @@ async function handleRequest(
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
+          ...cliRowSettings(user),
+          // Issue 144: the gate slots, as GET shows them (issue 424).
+          gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals),
