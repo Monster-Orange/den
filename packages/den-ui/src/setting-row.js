@@ -37,10 +37,51 @@
  * hydrated with onSave saves through it instead of posting.
  *
  * Its look is setting-row.css, with button.css and savestate.css.
+ *
+ * The field variant (issue 584): a label, a single-line input or a
+ * multi-line textarea, an error line under it, a help line, Save and the
+ * save state. The host's words (label, help, placeholder, error,
+ * saveLabel) are its own text or { key, vars } in the kit's tables.
+ *
+ *   settingFieldHtml({
+ *     id, name?,          as above
+ *     label, help?,       the host's words
+ *     value,              the saved value (text; a list is one per line)
+ *     placeholder?,       the host's words
+ *     multiline, rows?,   a textarea (rows: 4 by default); else an input
+ *     error?,             the host's words under the input (null: none);
+ *                         state "error" with none says the kit's
+ *     saveLabel?,         Save's words: the kit's shared verb by default;
+ *                         a host-only action keeps its own ("Save folders")
+ *     readOnly, state, form, who?, last?, lang, now?, zone?
+ *                         as above; the who/last line only when given
+ *   })
+ *
+ *   const f = hydrateSettingField(el, {
+ *     onSave(value, headers?) → Promise<string | void>,
+ *     action?,            a working pop-up action the host registered
+ *                         (busy.js registerActions): Save runs through
+ *                         busyAction, and headers carry its request id
+ *     lang,
+ *   })
+ *   const f = mountSettingField(el, opts)   draws it into el, then hydrates
+ *   f.value()  f.set(state)  f.setError(words | null)  f.save()  f.destroy()
+ *
+ * Save is disabled until the value differs from the saved one. It calls
+ * onSave with the value: "Saving…" past SAVING_AFTER_MS, as the on/off
+ * row; with `action`, the working pop-up too (it holds Save, opens past
+ * OPEN_MS and closes when it saved). Saved: the field shows the saved
+ * value (what onSave resolved with, when text; else what it sent), which
+ * is the new baseline, and Save waits again. A reject: the error line says
+ * the rejection's fieldError (the host's words) or the kit's "Not saved.
+ * Try again.", the input is aria-invalid, and Save stays to try again.
+ * When Save had focus and waits again after a save, focus goes to the
+ * field. busy.js is loaded only when `action` is first used.
+ * A form row (no script) draws Save enabled; hydrating disables it.
  */
 import { buttonHtml } from "./button.js";
 import { SAVING_AFTER_MS } from "./savestate.js";
-import { esc, kitT } from "./strings.js";
+import { esc, hostWords, kitT, kitVerb } from "./strings.js";
 import { timeHtml, upgradeTimes } from "./time.js";
 
 const STATES = ["idle", "saving", "saved", "error"];
@@ -257,4 +298,272 @@ export function hydrateSettingRow(el, opts = {}) {
 export function mountSettingRow(el, opts = {}) {
   el.innerHTML = settingRowHtml(opts);
   return hydrateSettingRow(el.firstElementChild, opts);
+}
+
+/** A textarea drops one leading newline of its text: give it one. */
+const areaText = (v) => "\n" + esc(v);
+
+/** The field row's markup (see the top). */
+export function settingFieldHtml(o = {}) {
+  const id = safeId(o.id || "den-setfield");
+  const lang = o.lang;
+  const state = STATES.includes(o.state) ? o.state : "idle";
+  const f = o.form && o.form.action ? o.form : null;
+  const tag = f ? "form" : "div";
+  const help = hostWords(o.help, lang);
+  const err =
+    hostWords(o.error, lang) ||
+    (state === "error" ? kitT(lang, "kit.setrow.error") : "");
+  const meta = o.who != null || o.last !== undefined;
+  const describedBy =
+    id +
+    "-err" +
+    (help ? " " + id + "-help" : "") +
+    (meta ? " " + id + "-meta" : "");
+  const value = o.value == null ? "" : String(o.value);
+  const ph = hostWords(o.placeholder, lang);
+  const common =
+    ' class="den-setfield-in" id="' +
+    id +
+    '-in" name="' +
+    esc(o.name || id) +
+    '"';
+  const tail =
+    (ph ? ' placeholder="' + esc(ph) + '"' : "") +
+    ' aria-describedby="' +
+    describedBy +
+    '"' +
+    (err ? ' aria-invalid="true"' : "") +
+    (o.readOnly ? " readonly" : "");
+  const rows = Math.max(1, Math.floor(Number(o.rows) || 4));
+  const input = o.multiline
+    ? "<textarea" +
+      common +
+      ' rows="' +
+      rows +
+      '"' +
+      tail +
+      ">" +
+      areaText(value) +
+      "</textarea>"
+    : '<input type="text"' +
+      common +
+      ' value="' +
+      esc(value) +
+      '"' +
+      tail +
+      ">";
+  return (
+    "<" +
+    tag +
+    ' class="den-setrow den-setfield" id="' +
+    id +
+    '" data-den-setfield' +
+    (f
+      ? ' method="' +
+        esc(f.method || "post") +
+        '" action="' +
+        esc(f.action) +
+        '">' +
+        (f.csrf != null
+          ? '<input type="hidden" name="' +
+            esc(f.field || "csrf") +
+            '" value="' +
+            esc(f.csrf) +
+            '">'
+          : "")
+      : ">") +
+    '<label class="den-setfield-l" for="' +
+    id +
+    '-in">' +
+    esc(hostWords(o.label, lang)) +
+    "</label>" +
+    input +
+    '<p class="den-setfield-err" id="' +
+    id +
+    '-err" aria-live="polite">' +
+    esc(err) +
+    "</p>" +
+    (help
+      ? '<p class="den-setrow-help" id="' + id + '-help">' + esc(help) + "</p>"
+      : "") +
+    '<div class="den-setrow-act">' +
+    buttonHtml({
+      label: hostWords(o.saveLabel, lang) || kitVerb(lang, "save"),
+      type: f ? "submit" : "button",
+      // Nothing has changed yet. A form keeps it for a page with no script.
+      disabled: !!o.readOnly || !f,
+      attrs: { "data-den-setfield-save": "" },
+    }).replace(' data-den-setfield-save=""', " data-den-setfield-save") +
+    '<p class="den-savestate den-setrow-state" id="' +
+    id +
+    '-state" data-state="' +
+    (state === "error" ? "idle" : state) +
+    '" role="status">' +
+    (state === "error" ? "" : esc(settingStateText(state, lang))) +
+    "</p></div>" +
+    (meta
+      ? '<p class="den-setrow-meta" id="' +
+        id +
+        '-meta">' +
+        settingMetaHtml({
+          who: o.who,
+          last: o.last,
+          lang,
+          now: o.now,
+          zone: o.zone,
+        }) +
+        "</p>"
+      : "") +
+    "</" +
+    tag +
+    ">"
+  );
+}
+
+/** Wires a drawn field row (see the top). */
+export function hydrateSettingField(el, opts = {}) {
+  const lang = () =>
+    typeof opts.lang === "function"
+      ? opts.lang()
+      : opts.lang ||
+        (el.closest && el.closest("[lang]")
+          ? el.closest("[lang]").getAttribute("lang")
+          : undefined);
+  const input = el.querySelector(".den-setfield-in");
+  const save = el.querySelector("[data-den-setfield-save]");
+  const line = el.querySelector(".den-setrow-state");
+  const errLine = el.querySelector(".den-setfield-err");
+  let base = input ? input.defaultValue : "";
+  let busy = false;
+  let slow = 0;
+  let dead = false;
+  const locked = () => !input || input.readOnly || input.disabled;
+  const value = () => (input ? input.value : "");
+
+  /** Save waits while nothing changed, the field is locked, or it saves. */
+  function sync() {
+    if (!save || busy) return;
+    save.disabled = locked() || value() === base;
+  }
+
+  function set(state) {
+    if (!line || dead) return;
+    const s = STATES.includes(state) && state !== "error" ? state : "idle";
+    line.setAttribute("data-state", s);
+    line.textContent = settingStateText(s, lang());
+    if (state === "error") setError(null, true);
+  }
+
+  /** The error line: the host's words; null clears it; kit: the kit's. */
+  function setError(words, kit) {
+    if (!errLine || dead) return;
+    const t =
+      hostWords(words, lang()) || (kit ? kitT(lang(), "kit.setrow.error") : "");
+    errLine.textContent = t;
+    if (!input) return;
+    if (t) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
+  }
+
+  function run(e) {
+    if (e) e.preventDefault();
+    if (busy || dead || !opts.onSave || locked() || value() === base) return;
+    const sent = value();
+    busy = true;
+    if (!opts.action) save.setAttribute("aria-disabled", "true");
+    clearTimeout(slow);
+    slow = setTimeout(() => busy && set("saving"), SAVING_AFTER_MS);
+    let p;
+    try {
+      if (opts.action) {
+        let ok = false;
+        let got;
+        // Loaded when first used: a server drawing the row never needs it.
+        p = import("./busy.js")
+          .then(({ busyAction }) =>
+            busyAction(opts.action, (headers) => opts.onSave(sent, headers), {
+              button: save,
+              quietFail: true,
+              inlineError: true,
+              onDone: (d) => {
+                ok = true;
+                got = d;
+              },
+            }),
+          )
+          .then(() => {
+            // Closed after a failure the pop-up showed: not saved.
+            if (!ok) throw new Error("not saved");
+            return got;
+          });
+      } else p = Promise.resolve(opts.onSave(sent));
+    } catch (err) {
+      p = Promise.reject(err);
+    }
+    return p.then(
+      (got) => done(true, sent, got),
+      (err) => done(false, sent, err),
+    );
+  }
+
+  function done(ok, sent, got) {
+    clearTimeout(slow);
+    busy = false;
+    if (dead) return;
+    save.removeAttribute("aria-disabled");
+    if (ok) {
+      base = typeof got === "string" ? got : sent;
+      // Typed on while it saved: keep what the person typed.
+      if (input && input.value === sent) input.value = base;
+      setError(null);
+      set("saved");
+    } else {
+      set("idle");
+      setError(got && got.fieldError, true);
+    }
+    // Saved, Save waits again: focus goes to the field, never to nothing.
+    const had =
+      typeof document !== "undefined" && document.activeElement === save;
+    sync();
+    if (had && save.disabled && input) input.focus();
+  }
+
+  const onInput = () => {
+    if (!busy) set("idle");
+    sync();
+  };
+  const onClick = (e) => {
+    // A form with no onSave posts on its own.
+    if (!opts.onSave) return;
+    run(e);
+  };
+  const onSubmit = (e) => {
+    if (opts.onSave) run(e);
+  };
+  if (input) input.addEventListener("input", onInput);
+  if (save) save.addEventListener("click", onClick);
+  if (el.tagName === "FORM") el.addEventListener("submit", onSubmit);
+  sync();
+  upgradeTimes(el);
+
+  return {
+    set,
+    setError: (w) => setError(w, false),
+    value,
+    save: () => run(null),
+    destroy() {
+      dead = true;
+      clearTimeout(slow);
+      if (input) input.removeEventListener("input", onInput);
+      if (save) save.removeEventListener("click", onClick);
+      if (el.tagName === "FORM") el.removeEventListener("submit", onSubmit);
+    },
+  };
+}
+
+/** Draws the field row into `el` (its contents), then wires it. */
+export function mountSettingField(el, opts = {}) {
+  el.innerHTML = settingFieldHtml(opts);
+  return hydrateSettingField(el.firstElementChild, opts);
 }

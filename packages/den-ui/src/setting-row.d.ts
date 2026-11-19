@@ -1,3 +1,5 @@
+import type { HostWords } from "./strings.js";
+
 /** The row's save state. */
 export type SettingRowState = "idle" | "saving" | "saved" | "error";
 
@@ -73,3 +75,80 @@ export declare function mountSettingRow(
   el: Element,
   opts: SettingRowOptions & SettingRowHydrateOptions,
 ): SettingRow;
+
+/** The field row's data (issue 584): a text field, its help and Save. */
+export interface SettingFieldOptions {
+  /** The row's id (safe characters); its parts' ids start with it. */
+  id: string;
+  /** The field's form name (default: id). */
+  name?: string;
+  /** The host's words, or { key, vars } in the kit's tables. */
+  label: HostWords;
+  /** A help line (the host's words); "" or none for none. */
+  help?: HostWords | null;
+  /** The saved value; a list is one item per line. */
+  value?: string;
+  placeholder?: HostWords | null;
+  /** A textarea of `rows` lines (default 4); else a single-line input. */
+  multiline?: boolean;
+  rows?: number;
+  /** The host's words under the input; null: none. */
+  error?: HostWords | null;
+  /** Save's words: the kit's shared verb by default. */
+  saveLabel?: HostWords | null;
+  /** This person can't change it: the field is read-only, Save disabled. */
+  readOnly?: boolean;
+  state?: SettingRowState;
+  form?: SettingRowOptions["form"];
+  /** Who can change it and its last change: the line only when given. */
+  who?: string[];
+  last?: { by: string; at: string } | null;
+  lang?: string;
+  now?: string | Date;
+  zone?: string;
+}
+
+export interface SettingFieldHydrateOptions {
+  /**
+   * Save: the value; it resolves with the saved value (text) or nothing,
+   * and rejects when it did not save (fieldError: the words to show).
+   * headers: the working pop-up's request id, with `action`.
+   */
+  onSave?: (
+    value: string,
+    headers?: Record<string, string>,
+  ) => Promise<unknown> | unknown;
+  /** A working pop-up action the host registered (busy.js). */
+  action?: string;
+  lang?: string | (() => string);
+}
+
+/** A rejection of onSave may carry the words for the error line. */
+export interface SettingFieldError extends Error {
+  fieldError?: HostWords;
+}
+
+export interface SettingField {
+  /** Draws a state the host decides ("error": the kit's words). */
+  set(state: SettingRowState): void;
+  /** The error line: the host's words; null clears it. */
+  setError(words: HostWords | null): void;
+  /** The field's value now. */
+  value(): string;
+  /** Save now, as a press of Save would. */
+  save(): Promise<void> | undefined;
+  destroy(): void;
+}
+
+/** The field row's markup. */
+export declare function settingFieldHtml(o: SettingFieldOptions): string;
+/** Wires a drawn field row. */
+export declare function hydrateSettingField(
+  el: Element,
+  opts?: SettingFieldHydrateOptions,
+): SettingField;
+/** Draws the field row into el (its contents), then wires it. */
+export declare function mountSettingField(
+  el: Element,
+  opts: SettingFieldOptions & SettingFieldHydrateOptions,
+): SettingField;

@@ -56,10 +56,14 @@
  *                               pageMenuButtonHtml button (issue 555)
  *   DenUI.settingRow(el, { onSave, ...row })   the settings on/off row
  *                               (setting-row.js, issue 554)
+ *   DenUI.settingField(el, { onSave, action?, ...row })   its text-field
+ *                               variant (setting-row.js, issue 584)
+ *   DenUI.verb(name)            a shared verb (save, cancel, delete,
+ *                               close, retry) in the kit's language
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
-import { addStrings, kitT, setProduct } from "./strings.js";
+import { addStrings, kitT, kitVerb, setProduct } from "./strings.js";
 import {
   accountHtml,
   accountWho,
@@ -115,8 +119,11 @@ import { mountFilterBar } from "./filter-bar.js";
 import { mountBulkBar } from "./bulk-bar.js";
 import { buttonHtml } from "./button.js";
 import {
+  hydrateSettingField,
   hydrateSettingRow,
+  mountSettingField,
   mountSettingRow,
+  settingFieldHtml,
   settingRowHtml,
 } from "./setting-row.js";
 
@@ -147,6 +154,11 @@ export function configure(o = {}) {
 
 export function t(key, vars) {
   return kitT(lang(), key, vars);
+}
+
+/** A shared verb (strings.js VERBS) in the kit's language. */
+export function verb(name) {
+  return kitVerb(lang(), name);
 }
 
 export function strings(l, table) {
@@ -241,6 +253,18 @@ export function pageMenu(btn, opts = {}) {
 export function settingRow(el, opts = {}) {
   const o = { lang: lang(), ...opts };
   return opts.label != null ? mountSettingRow(el, o) : hydrateSettingRow(el, o);
+}
+
+/**
+ * The settings row's text-field variant (issue 584), in the kit's
+ * language. With opts.label, drawn into el first; else the row el holds
+ * is wired.
+ */
+export function settingField(el, opts = {}) {
+  const o = { lang: lang(), ...opts };
+  return opts.label != null
+    ? mountSettingField(el, o)
+    : hydrateSettingField(el, o);
 }
 
 /**
@@ -364,6 +388,9 @@ const DenUI = {
   pageMenu,
   settingRowHtml,
   settingRow,
+  settingFieldHtml,
+  settingField,
+  verb,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;
