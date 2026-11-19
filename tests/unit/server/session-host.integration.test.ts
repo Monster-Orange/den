@@ -336,3 +336,134 @@ describe("once it works: no session on a loopback name", () => {
     expect(r.status).toBe(200);
   });
 });
+
+describe("once it works: a session made on loopback counts nowhere", () => {
+  const bearer = () => ({
+    authorization: cliAuthHeaders(stateDir).Authorization ?? "",
+  });
+  it("it was ended when the address was proven (web sessions no longer lists it)", async () => {
+    const r = await call("GET", "/api/web/sessions", {
+      ...local(),
+      ...bearer(),
+    });
+    expect(r.status).toBe(200);
+    const hosts = (
+      JSON.parse(r.body) as { sessions: { host: string }[] }
+    ).sessions.map((x) => x.host);
+    expect(hosts.filter((h) => h === `localhost:${port}`)).toEqual([]);
+    expect(hosts.filter((h) => h === NAMED).length).toBeGreaterThan(0);
+  });
+
+  // A local app holding the copied loopback cookie sends it to Den's port
+  // with the named Host and X-Forwarded-Proto, with and without the proof.
+  const value = () => loopCookie.slice(loopCookie.indexOf("=") + 1);
+  for (const [what, extra] of [
+    ["no proof", {}],
+    ["the edge's proof", EDGE_PROOF],
+  ] as const)
+    for (const name of ["den_session_", "__Host-den_session_"])
+      it(`the copied cookie as ${name}<port> on the named Host (${what}): no CSRF token, and a write is 401`, async () => {
+        const h: Record<string, string> = {
+          host: NAMED,
+          "x-forwarded-for": "127.0.0.1",
+          "x-forwarded-proto": "https",
+          ...extra,
+          cookie: `${name}${port}=${value()}`,
+        };
+        const me = await call("GET", "/api/session", {
+          ...h,
+          "sec-fetch-site": "same-origin",
+        });
+        const b = JSON.parse(me.body) as { csrf: unknown; signedIn: unknown };
+        expect([b.signedIn === true, typeof b.csrf === "string"]).toEqual([
+          false,
+          false,
+        ]);
+        const w = await call(
+          WRITE.method,
+          WRITE.path,
+          {
+            ...h,
+            origin: `https://${NAMED}`,
+            "sec-fetch-site": "same-origin",
+            "x-den-csrf": loopCsrf,
+          },
+          WRITE.body,
+        );
+        expect([w.status, codeOf(w)]).toEqual([401, "signin_required"]);
+      });
+
+  it("a POST /auth on loopback mints nothing: the same 303 to the named address", async () => {
+    const q = `/auth?c=${encodeURIComponent(code())}`;
+    const r = await call(
+      "POST",
+      q,
+      {
+        ...local(),
+        origin: `http://localhost:${port}`,
+        "sec-fetch-site": "same-origin",
+      },
+      '{"code":"ABCD-EFGH"}',
+    );
+    // Compared, never shown: the location carries the one-time code.
+    expect([
+      r.status,
+      String(r.headers.location) === `https://${NAMED}${q}`,
+      sessionLine(r),
+    ]).toEqual([303, true, ""]);
+  });
+});
+
+describe('once it works: "This is my computer" (/attest), with no loop', () => {
+  const RET = `https://${NAMED}/`;
+  const q = `/attest?return=${encodeURIComponent(RET)}`;
+  let namedCookie: Record<string, string> = {};
+  beforeAll(async () => {
+    const s = await signedIn(stateDir, `http://localhost:${port}`, {
+      host: NAMED,
+      edge: EDGE,
+    });
+    namedCookie = { cookie: s.cookie };
+  });
+  const loc = (r: Reply) => String(r.headers.location ?? "");
+
+  it("on loopback it goes to the named address's /attest", async () => {
+    const r = await call("GET", q, { ...local(), ...nav });
+    expect([r.status, loc(r)]).toEqual([303, `https://${NAMED}${q}`]);
+  });
+
+  it("on the named address with no session: the sign-in page, never a redirect (no loop)", async () => {
+    const r = await call("GET", q, { ...named(), ...nav });
+    expect(r.status).toBe(401);
+    expect(r.headers.location).toBeUndefined();
+  });
+
+  it("signed in there, a browser the edge places here: straight back with the code", async () => {
+    const r = await call("GET", q, { ...named(), ...namedCookie, ...nav });
+    expect(r.status).toBe(303);
+    expect(loc(r).startsWith(`${RET}#den-attest=a1.`)).toBe(true);
+  });
+
+  it("signed in there, a browser the edge can't place: through loopback once, then back with the code", async () => {
+    const away = { ...named(), "x-forwarded-for": "0.250.250.254" };
+    const r = await call("GET", q, { ...away, ...namedCookie, ...nav });
+    expect(r.status).toBe(303);
+    const hop = new URL(loc(r));
+    expect([hop.origin, hop.pathname]).toEqual([
+      `http://localhost:${port}`,
+      "/attest",
+    ]);
+    const back = await call("GET", hop.pathname + hop.search, {
+      ...local(),
+      ...nav,
+    });
+    expect(back.status).toBe(303);
+    expect(loc(back).startsWith(`${RET}#den-attest=a1.`)).toBe(true);
+    // The hop works once.
+    const again = await call("GET", hop.pathname + hop.search, {
+      ...local(),
+      ...nav,
+    });
+    expect(loc(again).includes("#den-attest=")).toBe(false);
+  });
+});

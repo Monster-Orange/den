@@ -19,6 +19,10 @@ import {
   NamedAddressWatch,
   type NamedAnswer,
 } from "../../../src/ui/server/named-address.js";
+import {
+  ADDRESS_CHECK_LIMITS,
+  addressCheckSettings,
+} from "../../../src/shared/edge/address-check.js";
 
 const PORT = 41236;
 const flags = (line: string) =>
@@ -72,11 +76,11 @@ describe("the Set-Cookie line", () => {
 
 describe("reading the cookie", () => {
   const both = `den_session_${PORT}=old; __Host-den_session_${PORT}=new`;
-  it("over https: the __Host- one first, else the plain one a browser signed in before kept", () => {
+  it("over https: only the __Host- one; a plain-named cookie there doesn't count (a sibling host could plant one)", () => {
     expect(readSessionCookie(both, PORT, true)).toBe("new");
-    expect(readSessionCookie(`den_session_${PORT}=old`, PORT, true)).toBe(
-      "old",
-    );
+    expect(
+      readSessionCookie(`den_session_${PORT}=old`, PORT, true),
+    ).toBeUndefined();
   });
   it("over http: only the plain one (a __Host- cookie never rides plain http)", () => {
     expect(readSessionCookie(both, PORT, false)).toBe("old");
@@ -96,9 +100,11 @@ describe("whether the named https address works (sessions live only there)", () 
     predict?: boolean;
     answer?: NamedAnswer;
     cacheMs?: number;
+    dropAfter?: number;
   }) {
     let now = 1_000_000;
     let probes = 0;
+    let proven = 0;
     let answer: NamedAnswer = o.answer ?? "unknown";
     let resolveProbe: (() => void) | null = null;
     const w = new NamedAddressWatch({
@@ -111,17 +117,26 @@ describe("whether the named https address works (sessions live only there)", () 
         });
       },
       cacheMs: () => o.cacheMs ?? 60_000,
+      dropAfter: () => o.dropAfter ?? 2,
+      onProven: () => proven++,
       now: () => now,
     });
+    const settle = async () => {
+      resolveProbe?.();
+      resolveProbe = null;
+      await new Promise((r) => setImmediate(r));
+    };
     return {
       w,
-      tick: (ms: number) => (now += ms),
       probes: () => probes,
-      setAnswer: (a: NamedAnswer) => (answer = a),
-      settle: async () => {
-        resolveProbe?.();
-        resolveProbe = null;
-        await new Promise((r) => setImmediate(r));
+      proven: () => proven,
+      settle,
+      /** Let the cached answer go stale, check again with `a`, and settle. */
+      recheck: async (a: NamedAnswer) => {
+        answer = a;
+        now += (o.cacheMs ?? 60_000) + 1;
+        w.works();
+        await settle();
       },
     };
   }
@@ -137,28 +152,56 @@ describe("whether the named https address works (sessions live only there)", () 
     const t = watch({ url: "https://den.acme.test", predict: true });
     expect(t.w.works()).toBe(true);
     expect(t.probes()).toBe(1);
-    await t.settle(); // unknown: it doesn't reach this Den
+    await t.settle(); // unknown, never proven: it doesn't work
     expect(t.w.works()).toBe(false);
-    t.setAnswer("den");
-    t.tick(61_000);
-    t.w.works(); // stale: checks again
-    await t.settle();
+    await t.recheck("den");
     expect(t.w.works()).toBe(true);
   });
 
-  it("the edge's proven https request on the address's host counts at once, for the check's lifetime", async () => {
+  it("the edge's proven https request on the address's host proves it at once; another host doesn't", async () => {
     const t = watch({ url: "https://den.acme.test", predict: false });
     expect(t.w.works()).toBe(false);
     await t.settle();
+    t.w.saw("other.acme.test");
+    expect(t.w.works()).toBe(false);
     t.w.saw("den.acme.test");
     expect(t.w.works()).toBe(true);
-    t.w.saw("other.acme.test"); // another host: no change
-    t.tick(59_000);
+  });
+
+  it("proven is sticky: a check that can't tell (a timeout) keeps it", async () => {
+    const t = watch({ url: "https://den.acme.test" });
+    t.w.saw("den.acme.test");
+    for (let i = 0; i < 5; i++) await t.recheck("unknown");
     expect(t.w.works()).toBe(true);
-    t.tick(2_000);
-    t.w.works();
-    await t.settle(); // the check, unknown: not any more
+  });
+
+  it("only a definite failure, seen dropAfter times in a row, moves it back", async () => {
+    const t = watch({ url: "https://den.acme.test", dropAfter: 2 });
+    t.w.saw("den.acme.test");
+    await t.recheck("nothing");
+    expect(t.w.works()).toBe(true);
+    await t.recheck("unknown"); // can't tell: neither counts nor resets
+    expect(t.w.works()).toBe(true);
+    await t.recheck("den"); // proven again: the count starts over
+    await t.recheck("other");
+    expect(t.w.works()).toBe(true);
+    await t.recheck("nothing");
     expect(t.w.works()).toBe(false);
+  });
+
+  it("onProven runs once each time it becomes proven (to end the sessions made on loopback)", async () => {
+    const t = watch({ url: "https://den.acme.test", dropAfter: 1 });
+    t.w.works();
+    await t.settle();
+    expect(t.proven()).toBe(0);
+    t.w.saw("den.acme.test");
+    t.w.saw("den.acme.test");
+    await t.recheck("den");
+    expect(t.proven()).toBe(1);
+    await t.recheck("nothing");
+    expect(t.w.works()).toBe(false);
+    await t.recheck("den");
+    expect(t.proven()).toBe(2);
   });
 
   it("checks one at a time", () => {
@@ -166,5 +209,21 @@ describe("whether the named https address works (sessions live only there)", () 
     t.w.works();
     t.w.works();
     expect(t.probes()).toBe(1);
+  });
+});
+
+describe("how many definite failures move a proven address back: a Setting", () => {
+  it("web.address_check_drop_after, permissive default 2, 1 to 100", () => {
+    const read = (v: unknown) =>
+      addressCheckSettings(() => ({ web: { address_check_drop_after: v } }))
+        .dropAfter;
+    expect(read(undefined)).toBe(2);
+    expect(read(5)).toBe(5);
+    expect(read(0)).toBe(2);
+    expect(ADDRESS_CHECK_LIMITS.drop_after).toEqual({
+      min: 1,
+      max: 100,
+      default: 2,
+    });
   });
 });

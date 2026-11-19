@@ -16,6 +16,7 @@ import { describe, expect, it } from "@jest/globals";
 import type * as http from "http";
 import {
   checkRequest,
+  requestIsHttps,
   type GuardContext,
   type GuardSession,
 } from "../../../src/ui/server/request-guard.js";
@@ -24,16 +25,25 @@ const PORT = 41237;
 const local = `localhost:${PORT}`;
 const NAMED = "den.acme.test";
 const SESSION: GuardSession = { key: "k".repeat(64), csrf: "session-csrf" };
+const LOOP_SESSION: GuardSession = {
+  key: "l".repeat(64),
+  csrf: "session-csrf",
+  loopback: true,
+};
 
 const ctx = (namedWorks: boolean): GuardContext => ({
   port: PORT,
   loopbackNames: ["localhost", "127.0.0.1", "[::1]"],
   edgeHosts: () => [NAMED],
   verifyBearer: (t) => (t === "den_pt_good" ? "person:someone" : null),
+  // "good": a session made on the named host; "loop": one made on a
+  // loopback name (its cookie copied, sent anywhere).
   session: (req) =>
     /den_session_\d+=good/.test(String(req.headers.cookie ?? ""))
       ? SESSION
-      : null,
+      : /den_session_\d+=loop/.test(String(req.headers.cookie ?? ""))
+        ? LOOP_SESSION
+        : null,
   peerIsLoopback: () => true,
   edgeProved: () => true,
   loopbackSessions: () => !namedWorks,
@@ -115,6 +125,56 @@ describe("a named https address works", () => {
         ctx(true),
       ),
     ).toMatchObject({ ok: true, principal: { kind: "person-browser" } });
+  });
+});
+
+describe("a session made on a loopback name, once the address works", () => {
+  const named = (extra: Record<string, string>) =>
+    req("POST", WRITE, {
+      ...page(NAMED, "https"),
+      "x-forwarded-for": "127.0.0.1",
+      "x-forwarded-proto": "https",
+      cookie: `__Host-den_session_${PORT}=loop`,
+      ...extra,
+    });
+  it("doesn't count on the named host either: 401, with or without the edge's proof", () => {
+    for (const proved of [true, false])
+      expect(
+        checkRequest(named({}), { ...ctx(true), edgeProved: () => proved }),
+      ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
+  });
+  it("and GET /api/session there finds no session", () => {
+    expect(
+      checkRequest(
+        req("GET", "/api/session", {
+          host: NAMED,
+          "x-forwarded-proto": "https",
+          "sec-fetch-site": "same-origin",
+          cookie: `den_session_${PORT}=loop`,
+        }),
+        ctx(true),
+      ),
+    ).toMatchObject({ ok: true, session: null });
+  });
+  it("with no working address it counts, as before (no lockout)", () => {
+    expect(checkRequest(named({}), ctx(false))).toMatchObject({
+      ok: true,
+      principal: { kind: "person-browser" },
+    });
+  });
+});
+
+describe("X-Forwarded-Proto counts only with the edge's proof", () => {
+  const r = req("GET", "/auth", {
+    host: NAMED,
+    "x-forwarded-proto": "https",
+  });
+  it("from an edge peer without the proof: not https", () => {
+    expect(requestIsHttps(r, "edge")).toBe(false);
+    expect(requestIsHttps(r, "edge", false)).toBe(false);
+  });
+  it("with it: https", () => {
+    expect(requestIsHttps(r, "edge", true)).toBe(true);
   });
 });
 
