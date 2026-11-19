@@ -51,7 +51,7 @@ import {
   type SigningCheck,
 } from "../../shared/agents/git-signing.js";
 import { signingWord } from "../../shared/agents/signing-words.js";
-import type { UiLanguage } from "../server/ui-language.js";
+import type { SigningLanguage } from "../../shared/agents/signing-words.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
@@ -1631,7 +1631,7 @@ export function agentRepoSigningLines(
   dirs: readonly string[],
   git: AgentGitSettings | undefined,
   env: NodeJS.ProcessEnv = process.env,
-  lang: UiLanguage = "en",
+  lang: SigningLanguage = "en",
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   if (!git) {
     const detail = signingWord(lang, "doctor.unsigned");
@@ -1640,7 +1640,8 @@ export function agentRepoSigningLines(
         "",
         signingWord(lang, "doctor.head", { title }),
         "",
-        `  signing  ⚠  ${detail}:`,
+        // A note, not a fault: a new install has no agents key yet.
+        `  signing  ℹ  ${detail}:`,
         `             ${AGENTS_KEYGEN_LINE}`,
         `             ${signingWord(lang, "doctor.thenSet")}`,
       ],
