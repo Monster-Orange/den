@@ -147,14 +147,26 @@ export function createApprovalQueue(
 
 const ONE_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})$/;
 const DECIDE_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})\/decide$/;
+/** Issue 142: the asker takes back its own request. */
+const WITHDRAW_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})\/withdraw$/;
 
 /** Whether `pathname` is one of the routes above. */
 export function isApprovalPath(pathname: string): boolean {
   return (
     pathname === "/api/approvals" ||
     ONE_PATH.test(pathname) ||
-    DECIDE_PATH.test(pathname)
+    DECIDE_PATH.test(pathname) ||
+    WITHDRAW_PATH.test(pathname)
   );
+}
+
+/** Issue 142: tell the bell what waits changed; best effort. */
+function changed(deps: { changed?: () => void }): void {
+  try {
+    deps.changed?.();
+  } catch {
+    /* the bell is best effort: the queue and the trail have it */
+  }
 }
 
 /** Who asked: the credential's actor, else this machine's anonymous caller. */
@@ -249,6 +261,11 @@ export async function handleApprovalRoutes(
      * the policy or a setting): alert them outside the bell.
      */
     held?: (agent: string, project: string | undefined) => void;
+    /**
+     * Issue 142: what waits changed (asked, decided, withdrawn): the bell's
+     * held-write items follow the queue (held-bell.ts).
+     */
+    changed?: () => void;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -453,6 +470,7 @@ export async function handleApprovalRoutes(
       } catch {
         /* an alert is best effort: the Allow dialog still asks */
       }
+    changed(deps);
     sendJson(
       res,
       {
@@ -603,6 +621,7 @@ export async function handleApprovalRoutes(
             },
         principalOf(req),
       );
+    changed(deps);
     if (r.ok) {
       sendJson(res, { ok: true, ...approvalView(r.approval) });
       // Issue 334: what a run shows once (a new app key) went to this
@@ -615,6 +634,58 @@ export async function handleApprovalRoutes(
         r.code,
         r.error,
       );
+    return true;
+  }
+
+  // Issue 142: the asker withdraws its own request: the same agent token,
+  // or the same person's bearer or session. Never a decision: nothing
+  // runs, and the trail says who withdrew it.
+  const wd = WITHDRAW_PATH.exec(pathname);
+  if (wd && method === "POST") {
+    const asker = agent ? agent.actor : principalOf(req);
+    const refused = (status: number, code: string, error: string) => {
+      recordAction(
+        auditActorOf(req),
+        {
+          verb: "approval-withdraw",
+          detail: wd[1],
+          outcome: "refused",
+          reason: code,
+        },
+        principalOf(req),
+      );
+      refuse(res, status, code, error);
+      return true;
+    };
+    if (!asker)
+      return refused(
+        403,
+        "not_asker",
+        "Only the one that asked may withdraw a request: sign in, or use the asking agent's token.",
+      );
+    const r = deps.queue.withdraw(wd[1], asker);
+    if (!r.ok)
+      return refused(
+        r.code === "not_found"
+          ? 404
+          : r.code === "not_asker"
+            ? 403
+            : r.code === "expired"
+              ? 410
+              : 409,
+        r.code,
+        r.error,
+      );
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "approval-withdraw",
+        detail: `withdrawn by ${asker}: ${r.approval.action}: ${r.approval.summary} [${wd[1]}]`,
+      },
+      principalOf(req),
+    );
+    changed(deps);
+    sendJson(res, { ok: true, ...approvalView(r.approval) });
     return true;
   }
 

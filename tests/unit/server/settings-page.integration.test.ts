@@ -66,10 +66,21 @@ function snapshot(): Record<string, string> {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) walk(abs);
-      else if (e.isFile())
+      else if (e.isFile()) {
+        // The running server writes its own state atomically (a .tmp file
+        // renamed into place), so a file listed here can be gone a moment
+        // later: it was never there to compare.
+        let body: Buffer;
+        try {
+          body = fs.readFileSync(abs);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw err;
+        }
         out[path.relative(tmp, abs)] = createHash("sha256")
-          .update(fs.readFileSync(abs))
+          .update(body)
           .digest("hex");
+      }
     }
   };
   walk(tmp);
