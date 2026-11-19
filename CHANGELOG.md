@@ -16,7 +16,13 @@ config and manifest changes a distribution must make to move to it under
 
 - New setting: Settings › Server › "GitHub name check at start, in seconds" (`web.owner_name_timeout_seconds`, default 10, 1 to 600). It never delays the start.
 - den-ui: the panel fold toggle (`./panel-fold`), the folded panel's 40px edge strip with "Show panel" and an optional count, and a labelled switch (`./switch`), in en, es and ja. Den serves them at /kit/.
-- Live checks for issue 456 (Den picks the agent CLI copy a new terminal gets) and issue 479 (a quarantined copy never starts). Gate 335's header clause (issue 473) now runs.
+- den-ui: a list's filter bar and bulk bar, a general button, a page action menu, and a settings on/off row, in en, es and ja. Den serves them at /kit/.
+- New setting: `sessions.host_restart_note` (default on): agents whose turn was cut by a terminal host restart get one line asking them to check their last step and carry on.
+
+### Changed
+
+- The terminal host restarts on an update only when its own code or the terminal module changed; otherwise it keeps running and adopts the new version (issue 597). The first update to this version still restarts it once. The bell names agents cut mid-turn, and the audit row keeps every resumed, failed and cut agent. `den doctor`'s Host row says whether a restart is needed.
+- Live check: gate 542's host-side requests go to the bed's own loopback address.
 
 ## [0.4.72] - 2026-11-19
 
