@@ -4,11 +4,17 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.70] - 2026-11-18
+## [0.4.70] - unreleased
 
 ### Fixed
 
 - The live log view handles repo and service names the way log history and search do. Live check `gate/536.mjs`.
+- Stricter request method handling. Live check `gate/573.mjs`.
+- Settings: a saved row shows its saved value after one click and one save (issue 424).
+
+### Docs
+
+- Agent instructions say how to send feedback: the Report button first, a GitHub issue as the fallback.
 
 ## [0.4.69] - 2026-11-18
 
