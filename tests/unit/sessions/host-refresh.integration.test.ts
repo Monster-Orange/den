@@ -66,8 +66,9 @@ function setup(): { state: string; socket: string } {
 }
 
 /**
- * A native module as npm lays it out: <root>/node_modules/@lydell/
- * node-pty and its platform package holding pty.node.
+ * A native module as npm lays it out, shaped as the real 1.2.0 betas are:
+ * <root>/node_modules/@lydell/node-pty and its platform package holding
+ * prebuilds/<platform>-<arch>/pty.node, and neither exports package.json.
  */
 function installModule(root: string, version: string): PtyModuleInfo {
   const base = path.join(root, "node_modules", "@lydell");
@@ -76,7 +77,11 @@ function installModule(root: string, version: string): PtyModuleInfo {
   fs.mkdirSync(own, { recursive: true });
   fs.writeFileSync(
     path.join(own, "package.json"),
-    JSON.stringify({ name: "@lydell/node-pty", version }),
+    JSON.stringify({
+      name: "@lydell/node-pty",
+      version,
+      exports: { ".": { default: "./index.js" } },
+    }),
   );
   fs.writeFileSync(path.join(own, "index.js"), "module.exports = {};\n");
   // npm: the old folder moves aside, the new one comes, the old one goes.
@@ -94,9 +99,12 @@ function installModule(root: string, version: string): PtyModuleInfo {
     JSON.stringify({
       name: `@lydell/node-pty-${process.platform}-${process.arch}`,
       version,
+      exports: "./lib/index.js",
     }),
   );
-  fs.writeFileSync(path.join(plat, "pty.node"), `native ${version}\n`);
+  const pre = path.join(plat, "prebuilds", `${process.platform}-${process.arch}`);
+  fs.mkdirSync(pre, { recursive: true });
+  fs.writeFileSync(path.join(pre, "pty.node"), `native ${version}\n`);
   fs.writeFileSync(path.join(root, "package.json"), "{}");
   const info = installedPtyModule(root);
   if (!info) throw new Error("the fake module did not resolve");
