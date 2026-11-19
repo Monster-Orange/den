@@ -65,7 +65,9 @@ export async function run(ctx, s) {
   out.after = hostRow(ctx);
   const p = out.after?.host?.pty?.path ?? null;
   if (p) {
-    const m = /(node_modules\/@lydell\/[^/]+)\/(pty\.node)$/.exec(p);
+    // The folder that holds pty.node, as the installed package lays it out
+    // (the 1.2.0 betas: <platform package>/prebuilds/<platform>-<arch>/).
+    const m = /(node_modules\/@lydell\/.+)\/(pty\.node)$/.exec(p);
     out.ptyRel = m ? m[1] : null;
     out.ptyListed = m ? (ctx.listBed(m[1]) ?? []).includes(m[2]) : false;
   }
