@@ -72,3 +72,13 @@ That's all. Don't go on to add repos.
 3. If there is neither, ask the person **one** clear question, with your best guess as the default.
 4. If you're stuck after two tries, stop. Tell them what you ran, what it said, and where Den writes its logs
    (`~/.<name>/`), so they can get help.
+
+## After install: sending feedback about Den
+
+**Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
+person to press it, or use the agent path once it exists.
+
+**Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
+Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
+is public: never paste secrets, tokens, private repo names, customer or company names, or internal URLs.
