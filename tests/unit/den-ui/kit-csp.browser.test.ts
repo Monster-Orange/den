@@ -56,9 +56,7 @@ beforeAll(async () => {
         : "chromium"
     ) as "chromium" | "webkit" | "firefox";
     const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -90,6 +88,7 @@ const APP = `
 import DenUI from "/kit/kit.js";
 import { registerActions } from "/kit/busy.js";
 import { askConfirm } from "/kit/dialog.js";
+import { launchBrowser } from "../helpers/browser.js";
 window.askConfirm = askConfirm;
 registerActions({
   save: { who: "Acme", words: { en: { working: "Saving", success: "Saved", failure: "Could not save" } } },

@@ -63,15 +63,12 @@ beforeAll(async () => {
   try {
     const pw = await import("playwright");
     for (const b of BROWSERS)
-      browsers[b] = process.env.DEN_PW_WS
-        ? await pw[b].connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await pw[b].launch(
-            b === "chromium"
-              ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
-              : {},
-          );
+      browsers[b] = await launchBrowser(
+        pw[b],
+        b === "chromium"
+          ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
+          : {},
+      );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -257,6 +254,7 @@ ${["tokens", "fonts", "base", "shell"].map((s) => `<link rel="stylesheet" href="
 
 const kitApp = (account: object) => `
 import DenUI from "/kit/kit.js";
+import { launchBrowser } from "../helpers/browser.js";
 DenUI.configure({ lang: "en", product: { name: "Acme" } });
 const model = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },

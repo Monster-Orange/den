@@ -49,11 +49,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -88,6 +84,7 @@ document.addEventListener("mousedown", (e) => {
   if (e.target.closest && e.target.closest("button") && !e.target.closest(".den-bell-pop")) e.preventDefault();
 }, true);
 import DenUI from "/kit/kit.js";
+import { launchBrowser } from "../helpers/browser.js";
 const q = new URLSearchParams(location.search);
 window.log = { search: [], account: 0, events: 0, opened: 0, closed: 0, picks: [], waited: 0 };
 DenUI.configure({ lang: "en", product: { name: "Acme" } });

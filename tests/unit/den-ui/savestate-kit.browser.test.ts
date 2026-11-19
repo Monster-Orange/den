@@ -27,7 +27,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -47,6 +47,7 @@ const PAGE = (lang: string, mode: string) => `<!doctype html>
 <p id="line"></p>
 <script type="module">
 import { createSaveState } from "/savestate.js";
+import { launchBrowser } from "../helpers/browser.js";
 window.saves = [];
 window.copied = [];
 // http://kit.test is not a secure context: no clipboard of its own.

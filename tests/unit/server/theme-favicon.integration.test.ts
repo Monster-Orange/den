@@ -26,6 +26,7 @@ import type { Browser, Page } from "playwright";
 import { png } from "../../fixtures/images.js";
 import { spawnServer, stopServer } from "../../child-servers.js";
 import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = process.cwd();
 const PORT = 25876 + Math.floor(Math.random() * 1000);
@@ -78,7 +79,7 @@ function theme(
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

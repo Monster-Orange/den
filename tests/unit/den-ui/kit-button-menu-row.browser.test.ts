@@ -39,7 +39,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -137,6 +137,7 @@ window.ready = true;
         ? `<main><button id="ap" type="button">◐</button></main>
 <script type="module">
 import { hydrateAppearance } from "/shell-client.js";
+import { launchBrowser } from "../helpers/browser.js";
 hydrateAppearance(document.getElementById("ap"), {
   lang: "es",
   menu: () => ({

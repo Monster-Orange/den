@@ -16,6 +16,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -24,10 +25,7 @@ let latest = "";
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw.chromium.connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw.chromium.launch();
+    browser = await launchBrowser(pw.chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

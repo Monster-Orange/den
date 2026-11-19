@@ -20,6 +20,7 @@ import {
 } from "./helpers/error-frame-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
@@ -39,11 +40,7 @@ beforeAll(async () => {
     const { chromium } = await import("playwright");
     // DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a Playwright
     // run-server (its localhost is this machine's: exposeNetwork).
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

@@ -32,7 +32,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -58,6 +58,7 @@ const PAGE = (lang: string, mode: string) => `<!doctype html>
 <script type="module">
 import { foldToggleHtml, edgeStripHtml, hydrateFoldToggle, hydrateEdgeStrip } from "/panel-fold.js";
 import { switchHtml, hydrateSwitch } from "/switch.js";
+import { launchBrowser } from "../helpers/browser.js";
 const lang = document.documentElement.lang;
 window.calls = [];
 window.layout = "panel";

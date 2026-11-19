@@ -43,7 +43,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -90,6 +90,7 @@ const PAGE_JS = `
 import { mountFilterBar } from "/filter-bar.js";
 import { mountBulkBar } from "/bulk-bar.js";
 import { askConfirm } from "/dialog.js";
+import { launchBrowser } from "../helpers/browser.js";
 window.FACETS = [
   { id: "kind", label: "Kind", options: [
     { value: "doc", label: "Docs", count: 12 },

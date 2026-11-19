@@ -31,7 +31,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -53,6 +53,7 @@ const PAGE = (lang: string) => `<!doctype html>
 <body><button id="go">Go</button>
 <script type="module">
 import * as kit from "/busy.js";
+import { launchBrowser } from "../helpers/browser.js";
 window.seen = { toasts: [], opened: [], reports: [], reloads: 0 };
 kit.configureBusy({
   idHeader: "X-Probe-Id",
