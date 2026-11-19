@@ -98,7 +98,8 @@ export async function sayBody(
 
 /**
  * Type `text` into `rec`'s session and press Enter. Throws 409
- * not_running when it has no live session.
+ * not_running when it has no live session, and 409 dialog_open when its
+ * screen ends with a dialog for its person (nothing typed).
  */
 export async function typeMessage(
   d: AgentsResolved,
@@ -110,14 +111,28 @@ export async function typeMessage(
       status: 409,
       code: "not_running",
     });
+  let dialog = false;
   const sent = await sendFirstInstruction(
     d,
     rec.session.id,
     rec.runtime,
     text,
     // It is waiting for its person now: no wait for quiet.
-    { quietMs: 0, maxMs: 0 },
+    {
+      quietMs: 0,
+      maxMs: 0,
+      onDialog: () => {
+        dialog = true;
+      },
+    },
   );
+  // A dialog for its person is open: its answer is theirs, in the
+  // terminal; a message typed now would answer it.
+  if (dialog)
+    throw new AgentError(
+      `${rec.id} is waiting on you in its terminal. Answer it there first.`,
+      { status: 409, code: "dialog_open" },
+    );
   if (!sent)
     throw new AgentError(`${rec.id} is not running. Resume it first.`, {
       status: 409,
