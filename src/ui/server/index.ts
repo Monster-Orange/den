@@ -132,6 +132,7 @@ import {
   searchSystemHistory,
   pruneDeadSnapshots,
   isSafeServiceName,
+  tailArgv,
 } from "./log-history.js";
 import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import {
@@ -5381,6 +5382,10 @@ async function handleRequest(
     const svcName = url.searchParams.get("service");
     if (!repoName || !svcName)
       return send400(res, "repo and service are required");
+    // The same names the history and search routes take: they reach a
+    // log path (a folder is made for it) and the tail's arguments.
+    if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
+      return send400(res, "invalid repo/service name");
 
     // Resolve manifest log source. The client names an exact service, so
     // when the manifest has that key, use it directly — resolveService's
@@ -5405,7 +5410,7 @@ async function handleRequest(
     ] as LogSource | undefined;
 
     const daemonLogPath = getServiceLogPath(repoName, svcName);
-    const fallbackCmd = `tail -F -n ${LIVE_TAIL_LINES} "${daemonLogPath}"`;
+    const [tailCmd, tailArgs] = tailArgv(daemonLogPath, LIVE_TAIL_LINES);
 
     const manifestCmd =
       logSource?.type === "shell" && logSource.cmd ? logSource.cmd : null;
@@ -5452,8 +5457,8 @@ async function handleRequest(
         text: `── streaming container logs: ${container} ──`,
       });
       currentProc = spawnStreaming(
-        `docker logs -f --tail ${LIVE_TAIL_LINES} ${container}`,
-        [],
+        "docker",
+        ["logs", "-f", "--tail", String(LIVE_TAIL_LINES), container],
         { ...process.env },
         (line) => emit({ type: "line", text: line }),
         (exitCode) => {
@@ -5480,8 +5485,8 @@ async function handleRequest(
         text: "── container log unavailable — watching startup log ──",
       });
       currentProc = spawnStreaming(
-        fallbackCmd,
-        [],
+        tailCmd,
+        tailArgs,
         { ...process.env },
         (line) => emit({ type: "line", text: line }),
         () => {
