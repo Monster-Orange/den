@@ -58,7 +58,7 @@ repo, fix a failing service, change a setting, explain what's running.
 
 **Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
 the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
-person to press it, or use the agent path once it exists.
+person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
 
 **Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
 Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
