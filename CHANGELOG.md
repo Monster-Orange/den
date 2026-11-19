@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.70] - unreleased
+
+### Fixed
+
+- The live log view handles repo and service names the way log history and search do. Live check `gate/536.mjs`.
+
 ## [0.4.69] - 2026-11-18
 
 ### Fixed
