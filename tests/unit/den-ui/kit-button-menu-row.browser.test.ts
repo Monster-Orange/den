@@ -1,5 +1,5 @@
 /**
- * den-ui 0.7.7: three pieces, in a browser, on a bare page built from the
+ * den-ui, issues 554, 555 and 556: three pieces, in a browser, on a bare page built from the
  * kit's own files (Chromium, headless; the page's clock is faked):
  *
  * 1. The general button (issue 556): `.den-btn` from button.css, outside
@@ -19,8 +19,8 @@
  *    44px rows at 390, the menu kept in the window.
  * 4. The kit's own menus (◐ ▾) look as they did before menuRowHtml was
  *    exported: every row's computed style and height, light and dark,
- *    against fixtures/kit-077-popovers.json (taken from den-ui 0.7.6 with
- *    DEN_UI_CAPTURE_077=1).
+ *    against fixtures/kit-menu-popovers.json (taken from the kit before
+ *    the export, with DEN_UI_CAPTURE_MENU=1).
  *
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
@@ -31,8 +31,8 @@ import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
-const POPOVERS = path.join(__dirname, "fixtures", "kit-077-popovers.json");
-const CAPTURE = process.env.DEN_UI_CAPTURE_077 === "1";
+const POPOVERS = path.join(__dirname, "fixtures", "kit-menu-popovers.json");
+const CAPTURE = process.env.DEN_UI_CAPTURE_MENU === "1";
 const ORIGIN = "http://kit.test";
 let browser: Browser | null = null;
 
@@ -52,7 +52,7 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-/** Den's own button rules, as its frame script drew them before 0.7.7. */
+/** Den's own button rules, as its frame script drew them before the kit had a general button. */
 const DEN_RULES = `
 .den-btn { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button);
   padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); }

@@ -14,7 +14,7 @@
  *     with an href is a row of its own you can follow.
  *
  * The browser half (keys, focus back, a disabled item does nothing, the
- * look in light and dark at 1280 and 390) is kit-077.browser.test.ts.
+ * look in light and dark at 1280 and 390) is kit-button-menu-row.browser.test.ts.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -29,14 +29,14 @@ import * as strings from "../../../packages/den-ui/src/strings.js";
 type Table = Record<string, string>;
 const { en, es, ja } = strings as unknown as Record<string, Table>;
 
-// The kit's own menus, drawn by den-ui 0.7.6 (before the export).
-const APPEARANCE_076 =
+// The kit's own menus, drawn before menuRowHtml was exported.
+const APPEARANCE_BEFORE =
   '<div class="den-ml" aria-hidden="true">Apariencia</div><button class="den-mi" tabindex="-1" role="menuitemradio" aria-checked="false" type="button" data-kind="mode" data-value="system"><span class="den-mi-l">Sistema</span></button><button class="den-mi" tabindex="-1" role="menuitemradio" aria-checked="true" type="button" data-kind="mode" data-value="dark"><span class="den-mi-l">Oscuro</span></button><button class="den-mi" tabindex="-1" role="menuitemradio" aria-checked="false" type="button" data-kind="mode" data-value="light"><span class="den-mi-l">Claro</span></button><div class="den-hr" role="separator"></div><div class="den-ml" aria-hidden="true">Tema</div><button class="den-mi" tabindex="-1" role="menuitemradio" aria-checked="true" type="button" data-kind="theme" data-value="den"><span class="den-mi-l">Den</span></button><button class="den-mi" tabindex="-1" role="menuitemradio" aria-checked="false" type="button" data-kind="theme" data-value="x"><span class="den-mi-l">X &lt;y&gt;</span></button><p class="den-mnote" role="status">A note</p><div class="den-hr" role="separator"></div><div class="den-ml" aria-hidden="true">Idioma</div><button class="den-mi" tabindex="-1" role="menuitemradio" aria-checked="true" type="button" data-kind="language" data-value="en"><span class="den-mi-l">English</span></button><button class="den-mi" tabindex="-1" role="menuitemradio" aria-checked="false" type="button" data-kind="language" data-value="ja"><span class="den-mi-l">日本語</span></button><div class="den-hr" role="separator"></div><a class="den-mi" tabindex="-1" role="menuitem" href="/settings" data-kind="item"><span class="den-mi-l">Settings</span></a><button class="den-mi" tabindex="-1" role="menuitem" type="button" data-kind="item" data-value="help"><span class="den-mi-l">Help</span></button>';
-const ACCOUNT_076 =
+const ACCOUNT_BEFORE =
   '<div class="den-ml den-acct" data-nav-shape="name,login"><span class="den-acct-n">Sam</span><span class="den-acct-l">@sam</span><span class="den-acct-r">Owner</span></div><div class="den-hr" role="separator"></div><a class="den-mi" tabindex="-1" role="menuitem" href="/me" data-kind="item"><span class="den-mi-l">Profile</span></a><button class="den-mi" tabindex="-1" role="menuitem" type="button" data-kind="item" data-value="keys"><span class="den-mi-l">Keys</span></button><form class="den-mform" method="post" action="/out"><input type="hidden" name="csrf" value="t0k"><button type="submit" class="den-mi" tabindex="-1" role="menuitem"><span class="den-mi-l">Sign out</span></button></form>';
 
 describe("menuRowHtml, exported: the kit's own menus are unchanged", () => {
-  it("◐ ▾'s menu draws what 0.7.6 drew", () => {
+  it("◐ ▾'s menu draws what it drew before the export", () => {
     expect(
       appearanceMenuHtml({
         mode: "dark",
@@ -55,10 +55,10 @@ describe("menuRowHtml, exported: the kit's own menus are unchanged", () => {
         ],
         lang: "es",
       }),
-    ).toBe(APPEARANCE_076);
+    ).toBe(APPEARANCE_BEFORE);
   });
 
-  it("the account menu draws what 0.7.6 drew", () => {
+  it("the account menu draws what it drew before the export", () => {
     expect(
       accountMenuHtml({
         name: "Sam",
@@ -70,7 +70,7 @@ describe("menuRowHtml, exported: the kit's own menus are unchanged", () => {
           { label: "Sign out", action: { url: "/out", csrf: "t0k" } },
         ],
       }),
-    ).toBe(ACCOUNT_076);
+    ).toBe(ACCOUNT_BEFORE);
   });
 
   it("menuRowHtml: a radio, a link, a button, as the kit's menus draw them", () => {

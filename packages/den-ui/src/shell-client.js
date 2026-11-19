@@ -75,7 +75,7 @@
  *       the checked entry (else the first); ↑ ↓ Home End move; Esc or Tab
  *       closes it and focus goes back to ◐ ▾; a press outside closes it.
  *       → { open(), close(refocus), isOpen() }
- *   hydratePageMenu(button, { items, onSelect(id, item), lang })   0.7.7:
+ *   hydratePageMenu(button, { items, onSelect(id, item), lang })
  *       the page action menu (issue 555) on pageMenuButtonHtml's More ▾,
  *       as ◐ ▾'s. A disabled item does nothing and keeps it open; its note
  *       (with an href) is a row to follow. → { open(), close(refocus),

@@ -12,7 +12,7 @@
  *
  * The browser half (each variant's look, light and dark, the same as Den's
  * own rules before the move; keys; the tap size) is
- * kit-077.browser.test.ts.
+ * kit-button-menu-row.browser.test.ts.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";

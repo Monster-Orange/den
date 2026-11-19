@@ -270,7 +270,7 @@ const viaKit = DenUI.saveState(document.createElement("p"), {
 viaKit.destroy();
 void (SAVE_AFTER_MS + 0);
 
-// 0.7.7: the general button, the page action menu and the settings row.
+// The general button, the page action menu and the settings row (issues 554-556).
 const kbtn: string = buttonHtml({ label: "Go", variant: "primary", size: "sm", attrs: { "data-x": 1 } });
 void (kbtn + buttonClass("secondary", "md"));
 void menuRowHtml({ label: "A", disabled: true, describedBy: "n" });

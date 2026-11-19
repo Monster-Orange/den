@@ -1233,7 +1233,7 @@ body.den-has-shell .den-upd {
   padding: 0;
   box-sizing: border-box;
 }
-/* 0.7.7: the page action menu (issue 555). A disabled item is faint and
+/* The page action menu (issue 555). A disabled item is faint and
    doesn't light up; its note sits right under it, wraps, and is a row to
    follow when it links to where to turn it on. */
 .den-pop .den-mi[aria-disabled="true"] {

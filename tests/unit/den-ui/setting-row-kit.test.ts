@@ -13,7 +13,7 @@
  *     hidden field); without, Save is a plain button the client wires.
  *
  * The browser half (Save calls onSave, the states, keys and focus, the
- * look in light and dark at 1280 and 390) is kit-077.browser.test.ts.
+ * look in light and dark at 1280 and 390) is kit-button-menu-row.browser.test.ts.
  */
 import { describe, expect, it } from "@jest/globals";
 import { settingRowHtml } from "../../../packages/den-ui/src/setting-row.js";

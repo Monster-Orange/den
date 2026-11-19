@@ -45,11 +45,11 @@
  *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
  *                               editor's save-state line (savestate.js),
  *                               in the kit's language
- *   DenUI.buttonHtml(o)         the general button (button.js, 0.7.7)
+ *   DenUI.buttonHtml(o)         the general button (button.js, issue 556)
  *   DenUI.pageMenu(btn, { items, onSelect })   the page action menu on a
- *                               pageMenuButtonHtml button (0.7.7)
+ *                               pageMenuButtonHtml button (issue 555)
  *   DenUI.settingRow(el, { onSave, ...row })   the settings on/off row
- *                               (setting-row.js, 0.7.7)
+ *                               (setting-row.js, issue 554)
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -208,7 +208,7 @@ export function saveState(el, opts = {}) {
 }
 
 /**
- * 0.7.7: the page action menu (issue 555) on a drawn More ▾ button, in the
+ * The page action menu (issue 555) on a drawn More ▾ button, in the
  * kit's language (hydratePageMenu).
  */
 export function pageMenu(btn, opts = {}) {
@@ -216,7 +216,7 @@ export function pageMenu(btn, opts = {}) {
 }
 
 /**
- * 0.7.7: the settings on/off row (issue 554), in the kit's language. With
+ * The settings on/off row (issue 554), in the kit's language. With
  * opts.label (a row's data), it draws the row into el first; else it wires
  * the row el already holds.
  */

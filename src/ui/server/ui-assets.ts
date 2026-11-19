@@ -159,8 +159,8 @@ export const KIT_FILES: readonly string[] = [
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",
-  // den-ui 0.7.7: the general button (Den's own .den-btn moved into the
-  // kit) and the settings on/off row.
+  // den-ui: the general button (issue 556; Den's own .den-btn moved into
+  // the kit) and the settings on/off row (issue 554).
   "button.js",
   "button.css",
   "setting-row.js",
@@ -343,7 +343,7 @@ export function kitShellScript(
 
 /** The kit's stylesheets every page with the shell links, in this order. */
 export const KIT_PAGE_CSS: readonly string[] = [
-  // den-ui 0.7.7: the general button, .den-btn. First, where Den's own
+  // den-ui: the general button, .den-btn (issue 556). First, where Den's own
   // rules for it came from (the frame's sheet, after the page's own).
   "/kit/button.css",
   "/kit/shell.css",

@@ -8336,8 +8336,9 @@
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
     "@keyframes den-pulse { 50% { opacity: .35; } }",
     "@media (prefers-reduced-motion: reduce) { .den-dot.run, .den-dot.pending { animation: none; } }",
-    // Buttons (.den-btn, .sm, .primary) are the kit's: button.css (den-ui
-    // 0.7.7), linked in every page with the frame (KIT_PAGE_CSS).
+    // Buttons (.den-btn, .sm, .primary) are the kit's general button:
+    // button.css (issue 556), linked in every page with the frame
+    // (KIT_PAGE_CSS).
     // A phone's top bar makes room for Report: Runs is in the dock bar.
     "@media (max-width: 480px) { #den-runs { display: none; } }",
     // …and the status chip's words shorten (…) rather than push the page
