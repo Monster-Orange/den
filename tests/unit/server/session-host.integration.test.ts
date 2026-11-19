@@ -26,7 +26,10 @@ import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
 import * as path from "path";
-import { cliAuthHeaders, readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  cliAuthHeaders,
+  readWebSecret,
+} from "../../../src/shared/web-secret.js";
 import { mintLoginCode } from "../../../src/shared/web-session.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
@@ -281,9 +284,7 @@ describe("once it works: no session on a loopback name", () => {
   it("a loopback /signin goes to the named address", async () => {
     const r = await call("GET", "/signin?next=%2F", { ...local(), ...nav });
     expect(r.status).toBe(303);
-    expect(String(r.headers.location)).toBe(
-      `https://${NAMED}/signin?next=%2F`,
-    );
+    expect(String(r.headers.location)).toBe(`https://${NAMED}/signin?next=%2F`);
   });
 
   it("the loopback session no longer counts: a write is 401 signin_required", async () => {

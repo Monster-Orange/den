@@ -906,17 +906,22 @@ export async function addressCheckLines(
   title: string,
   cli: string,
   deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
-): Promise<{ lines: string[]; check: OnboardCheck | null }> {
+): Promise<{
+  lines: string[];
+  check: OnboardCheck | null;
+  /** Whether the install's https address reaches this Den now. */
+  works: boolean;
+}> {
   const { checkAddress, doctorAddressLines, localIdentityKey, cliLanguage } =
     await import("../../shared/edge/address-check.js");
   const { readWebPort } = await import("../../shared/edge/config.js");
   const w = readWebUrl();
-  if (!w) return { lines: [], check: null };
+  if (!w) return { lines: [], check: null, works: false };
   let port: number;
   try {
     port = readWebPort();
   } catch {
-    return { lines: [], check: null };
+    return { lines: [], check: null, works: false };
   }
   const st = await checkAddress({
     webPort: port,
@@ -937,6 +942,40 @@ export async function addressCheckLines(
       status: d.status,
       detail: d.lines.join(" "),
       ...(st.address ? { url: st.address } : {}),
+    },
+    works: w.url.startsWith("https:") && st.wantedAnswer === "den",
+  };
+}
+
+/**
+ * Where the browser sign-in lives. With a working https address (web.url,
+ * through the edge) the session cookie lives only there, host-only and
+ * Secure. Without one it lives on the host the person uses (localhost
+ * here), and browsers share a host's cookies across its ports: other apps
+ * opened on that host could see it. A warning, with what to set.
+ */
+export function sessionHostLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  works: boolean,
+  title: string,
+  cli: string,
+): { lines: string[]; check: OnboardCheck } {
+  const named = w && w.url.startsWith("https:") && works ? w.url : null;
+  const detail = named
+    ? `the sign-in lives only on ${named}`
+    : `the sign-in lives on the address the browser uses (localhost here), so other apps you open on it could see the sign-in. Set up the https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\` and \`${cli} edge up\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Sign-in`,
+      "",
+      `  sign-in  ${named ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: {
+      id: "signin_host",
+      status: named ? "ok" : "warn",
+      detail,
+      ...(named ? {} : { settings: ADDRESS_SETTINGS_LINK }),
     },
   };
 }
@@ -1415,6 +1454,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     {
       const ac = await addressCheckLines(readBrand().name, product().cli);
       if (ac.check) r.checks.push(ac.check);
+      r.checks.push(
+        sessionHostLines(
+          readWebUrl(),
+          ac.works,
+          readBrand().name,
+          product().cli,
+        ).check,
+      );
     }
     r.checks.push(
       pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
@@ -1488,9 +1535,17 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of sign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);
-  for (const l of (await addressCheckLines(readBrand().name, product().cli))
-    .lines)
-    console.log(l);
+  {
+    const ac = await addressCheckLines(readBrand().name, product().cli);
+    for (const l of ac.lines) console.log(l);
+    for (const l of sessionHostLines(
+      readWebUrl(),
+      ac.works,
+      readBrand().name,
+      product().cli,
+    ).lines)
+      console.log(l);
+  }
   for (const l of pushContactLines(
     readWebUrl(),
     readBrand().name,

@@ -12,7 +12,9 @@
  *    session runs). A bearer that doesn't verify: 401 `unauthorized`; an
  *    actor token `web logout --all` revoked: 401 `token_revoked` ("restart
  *    or resume the agent"). Or
- *    the browser's session cookie (SEC-1b), looked up server-side.
+ *    the browser's session cookie (SEC-1b), looked up server-side. Once
+ *    Den's own named https address works, a session cookie on a loopback
+ *    name doesn't count (loopbackSessions): it lives on that address.
  *  - An agent's token (SEC-1c, §5) never reaches: web.secret's management
  *    and sign-in (/api/web/*, /auth, /api/session/logout), the lock (R8:
  *    /api/sudo-password*), or a shell-grade route other than its own
@@ -148,8 +150,18 @@ export interface GuardContext {
     token: string,
     req: http.IncomingMessage,
   ) => `person:${string}` | AgentPrincipal | "revoked" | "elsewhere" | null;
-  /** The live session the request's cookie names (SEC-1b), or null. */
-  session?: (req: http.IncomingMessage) => GuardSession | null;
+  /**
+   * The live session the request's cookie names (SEC-1b), or null. `via`:
+   * how it reached Den (which cookie name counts: session-cookie.ts).
+   */
+  session?: (req: http.IncomingMessage, via: Via) => GuardSession | null;
+  /**
+   * Whether a session counts on a loopback name. False once Den's own
+   * named https address works (named-address.ts): the session lives only
+   * there, since browsers share a host's cookies across its ports. Unset:
+   * true (an install with no working https address, a unit test).
+   */
+  loopbackSessions?: () => boolean;
   /**
    * Whether the request's peer is loopback. Unset: taken as loopback (a
    * request object without a socket, in a unit test); the server sets it.
@@ -606,7 +618,12 @@ export function checkRequest(
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
-  const session = principal ? null : (ctx.session?.(req) ?? null);
+  // A session on a loopback name counts only while Den has no working
+  // named https address (the session lives there then).
+  const session =
+    principal || (via === "loopback" && ctx.loopbackSessions?.() === false)
+      ? null
+      : (ctx.session?.(req, via) ?? null);
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");
@@ -638,8 +655,7 @@ export function checkRequest(
   // something or reaches a shell: what isn't `readonly`, every write
   // method and every upgrade. A plain read on loopback passes as before.
   const signinFree = SIGNIN_FREE.some((r) => pathMatches(r, pathname));
-  const needsSignin =
-    cls !== "readonly" || changes(method) || isUpgrade(req);
+  const needsSignin = cls !== "readonly" || changes(method) || isUpgrade(req);
   if (!principal && !session && !signinFree && (beyond || needsSignin)) {
     const scope: SigninScope = "den";
     return {

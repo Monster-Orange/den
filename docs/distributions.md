@@ -2145,6 +2145,28 @@ device, sign in with GitHub as the Den's owner, approve the computer with
 the code its page shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
 
+**The sign-in lives on Den's own address (0.4.72).** Browsers share a
+host's cookies across its ports: a cookie set on `localhost` reaches every
+other app you open on `localhost`, a dev server in a container among them.
+So once this install's https address (`web.url`, served by the edge) works,
+the session cookie is set only there, and `localhost`, `127.0.0.1` and
+`[::1]` get none:
+
+- `web up` and `web open` open the https address. `/auth` and `/signin` on
+  a loopback name answer with a plain redirect to the same path there.
+- A session cookie a browser kept on a loopback name no longer counts for a
+  change. Plain reads there stay open, and the CLI's token
+  (`web token --print`), the MCP and agents' tokens work on loopback as
+  before.
+- "Works" means Den's own check of the address found this Den there (the
+  same check `doctor` and `web up` make, kept for
+  `web.address_check_cache_seconds`), or the edge just brought an https
+  request for it. Until then, and on an install with no https address (the
+  edge off, its port taken, a fresh install), sign-in stays on the address
+  the browser uses, so nothing locks you out. `doctor` then warns: other
+  apps you open on that address could see the sign-in, and it says how to
+  set up the https address.
+
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
 user, and the CLI does that for you:
@@ -2187,10 +2209,14 @@ user, and the CLI does that for you:
   its bearer and never logs the code. `--no-wait` prints the link alone and
   returns, as before (no code); with no server running `web login` does
   that too, and says so.
-- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Lax (a
+- **The cookie** is host-only (no Domain), HttpOnly, SameSite=Lax (a
   person's click on a link from another site lands signed in; that site's
-  own requests carry no cookie) and Path=/, and Secure when the request
-  came over HTTPS through the edge. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
+  own requests carry no cookie) and Path=/. Over HTTPS through the edge it
+  is `__Host-den_session_<port>` and Secure, so the browser sends it to
+  that address only, over https only (a browser that signed in there
+  before 0.4.72 keeps its `den_session_<port>` cookie, which moves to the
+  new name on its next page load). Over plain http it is
+  `den_session_<port>`. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
   browser allows. Each signed-in page load sends it again (the same value),

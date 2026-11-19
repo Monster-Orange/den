@@ -305,7 +305,12 @@ describe("the login link", () => {
       "x-forwarded-proto": "https",
     });
     expect(edge.status).toBe(303);
-    expect(flags(setCookie(edge))).toContain("secure");
+    // Over https the cookie is the __Host- one (host-only, Secure): where the session lives.
+    const line =
+      ([] as string[])
+        .concat(edge.headers["set-cookie"] ?? [])
+        .find((c) => c.startsWith(`__Host-${cookieName()}=`)) ?? "";
+    expect(flags(line)).toContain("secure");
     // A spoofed header from loopback with a localhost Host: no Secure.
     const spoof = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
       ...nav,
