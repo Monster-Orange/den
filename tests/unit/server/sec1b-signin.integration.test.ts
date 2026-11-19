@@ -298,21 +298,40 @@ describe("the login link", () => {
     expect([r.status, setCookie(r)]).toEqual([403, ""]);
   });
 
-  it("Secure only over HTTPS from the edge: X-Forwarded-Proto counts on the edge Host only", async () => {
+  it("Secure only over HTTPS from the edge: X-Forwarded-Proto counts on the edge Host, with the edge's proof, only", async () => {
+    // The edge's header counts only with its proof now: sent as the edge sends it.
     const edge = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
       ...nav,
       host: EDGE,
       "x-forwarded-proto": "https",
+      ...EDGE_PROOF,
     });
     expect(edge.status).toBe(303);
-    expect(flags(setCookie(edge))).toContain("secure");
+    // Over https the cookie is the __Host- one (host-only, Secure): where the session lives.
+    const line =
+      ([] as string[])
+        .concat(edge.headers["set-cookie"] ?? [])
+        .find((c) => c.startsWith(`__Host-${cookieName()}=`)) ?? "";
+    expect(flags(line)).toContain("secure");
     // A spoofed header from loopback with a localhost Host: no Secure.
     const spoof = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
       ...nav,
       "x-forwarded-proto": "https",
     });
     expect(spoof.status).toBe(303);
+    // A cookie was set (so "no Secure" can't pass on no cookie at all).
+    expect(setCookie(spoof).length).toBeGreaterThan(0);
     expect(flags(setCookie(spoof))).not.toContain("secure");
+    // The edge Host with the header but without the edge's proof: not https,
+    // so the plain cookie, no Secure.
+    const unproved = await call(
+      "GET",
+      `/auth?c=${encodeURIComponent(code())}`,
+      { ...nav, host: EDGE, "x-forwarded-proto": "https" },
+    );
+    expect(unproved.status).toBe(303);
+    expect(setCookie(unproved).length).toBeGreaterThan(0);
+    expect(flags(setCookie(unproved))).not.toContain("secure");
   });
 });
 

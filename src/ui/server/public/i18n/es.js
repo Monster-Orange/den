@@ -730,6 +730,7 @@
     "err.signin.expiredTitle": "El enlace de inicio de sesión caducó",
     "err.signin.local":
       "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
+    "err.signin.atAddress": "{name} inicia sesión en {address}",
     "err.signin.copy": "Copiar comando",
     "err.signin.title": "Inicia sesión en {name}",
     "err.signin.where":
@@ -886,6 +887,14 @@
       "Comprobación de dirección guardada durante",
     "set.server.address_check_cache.d":
       "Cuánto tiempo reutilizan el aviso de la página y Edge la última comprobación de la dirección de __DEN_TITLE__. 0 comprueba en cada lectura. __DEN_CLI__ config web.address_check_cache_seconds=60",
+    "set.server.address_check_drop_after":
+      "Fallos de la dirección antes de que el inicio de sesión vuelva",
+    "set.server.address_unknown_keep":
+      "Dirección mantenida mientras las comprobaciones no saben",
+    "set.server.address_unknown_keep.d":
+      "Una vez comprobada la dirección https de __DEN_TITLE__, cuánto tiempo las comprobaciones que no pueden saberlo (sin respuesta a tiempo) mantienen el inicio de sesión allí, desde su última respuesta. Después se toman como fallos, y el inicio de sesión vuelve al nombre propio de esta máquina. Mejor corto. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    "set.server.address_check_drop_after.d":
+      "Una vez comprobada la dirección https de __DEN_TITLE__, el inicio de sesión vive solo allí. Cuántas comprobaciones seguidas deben encontrar otra cosa, o nada, respondiendo en esa dirección antes de que el inicio de sesión vuelva a funcionar en el nombre propio de esta máquina. Una comprobación que no puede saberlo se ignora. __DEN_CLI__ config web.address_check_drop_after=2",
     "set.server.bridge_listen": "Puente de Docker, para el edge",
     "set.server.bridge_listen.d":
       "Solo en Linux, con un edge configurado aquí: __DEN_TITLE__ también escucha en la dirección del puente de Docker, por donde el edge llega a esta máquina. Desactivado: solo 127.0.0.1, y el edge no llega a __DEN_TITLE__. Se aplica en el siguiente arranque. __DEN_CLI__ config web.bridge_listen=off",
