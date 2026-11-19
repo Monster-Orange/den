@@ -17,7 +17,7 @@ function runGate(kind: "fixed" | "unfixed" | "no-keep-host") {
     const kind = ${JSON.stringify(kind)};
     if (kind !== "no-keep-host") process.env.BG_HOST_BEFORE = "111 1700000000 0.4.70";
     else delete process.env.BG_HOST_BEFORE;
-    const PTY = "/bed/node_modules/@lydell/node-pty-darwin-arm64/pty.node";
+    const PTY = "/bed/node_modules/@lydell/node-pty-darwin-arm64/prebuilds/darwin-arm64/pty.node";
     let started = false;
     const host = () => kind === "fixed"
       ? { pid: 222, startedAt: "2026-11-19T04:00:00.000Z", den: "0.4.71", pty: started ? { path: PTY, version: "1.2.0-beta.18", id: "sha256:x" } : null }
@@ -36,7 +36,7 @@ function runGate(kind: "fixed" | "unfixed" | "no-keep-host") {
         if (rel === "audit.jsonl") return kind === "fixed" ? '{"verb":"terminal-host","detail":"terminal host restarted (pid 111 → 222)"}\\n' : "";
         return null;
       },
-      listBed(rel) { return rel === "node_modules/@lydell/node-pty-darwin-arm64" ? ["package.json", "pty.node", "spawn-helper"] : null; },
+      listBed(rel) { return rel === "node_modules/@lydell/node-pty-darwin-arm64/prebuilds/darwin-arm64" ? ["pty.node", "spawn-helper"] : null; },
       async api(p) { return p === "/api/notifications" ? { groups: [] } : {}; },
       agent() { return { start() { started = true; return { code: 0 }; }, async running() { return 500; }, state() { return "running"; }, remove() {} }; },
     };
