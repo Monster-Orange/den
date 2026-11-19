@@ -8746,6 +8746,14 @@ function startUpdateCheck(): void {
             return true;
           }
         },
+        // Issue 603: past a working turn too; the restart holds for it.
+        securitySkipsBusy: () => {
+          try {
+            return readServerAgentConfig().securityUpdateSkipsBusy;
+          } catch {
+            return true;
+          }
+        },
         securityNote: (version) => {
           try {
             securityUpdateNote(
