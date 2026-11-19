@@ -38,6 +38,20 @@ import {
   localPreview,
 } from "@kit/report.js";
 import { rectOf, masked } from "@kit/report-shot.js";
+import { buttonHtml, buttonClass } from "@kit/button.js";
+import {
+  menuRowHtml,
+  pageMenuButtonHtml,
+  pageMenuHtml,
+  type PageMenuItem,
+} from "@kit/shell-html.js";
+import { hydratePageMenu } from "@kit/shell-client.js";
+import {
+  settingRowHtml,
+  mountSettingRow,
+  hydrateSettingRow,
+  type SettingRow,
+} from "@kit/setting-row.js";
 import {
   busyAction,
   registerActions,
@@ -326,3 +340,32 @@ const bb = mountBulkBar(document.createElement("div"), {
 });
 bb.update({ count: 0 });
 DenUI.bulkBar(document.createElement("div"), { count: 1 }).destroy();
+
+// The general button, the page action menu and the settings row (issues 554-556).
+const kbtn: string = buttonHtml({ label: "Go", variant: "primary", size: "sm", attrs: { "data-x": 1 } });
+void (kbtn + buttonClass("secondary", "md"));
+void menuRowHtml({ label: "A", disabled: true, describedBy: "n" });
+const pitems: PageMenuItem[] = [
+  { id: "edit", label: "Edit", href: "/e" },
+  { hr: true },
+  { id: "dl", label: { key: "app.dl" }, disabled: true, note: "Off", noteHref: "/s", onSelect: () => undefined },
+];
+const more = document.createElement("div");
+more.innerHTML = pageMenuButtonHtml({ id: "more", lang: "en" }) + pageMenuHtml({ id: "more", items: pitems });
+const pm = hydratePageMenu(more.firstElementChild as HTMLElement, {
+  items: () => pitems,
+  onSelect: (id: string) => void id.length,
+});
+pm.close(true);
+const viaKitMenu = DenUI.pageMenu(more.firstElementChild as HTMLElement, { items: pitems });
+void viaKitMenu.isOpen();
+void settingRowHtml({ id: "r", label: "On", checked: true, who: ["Admins"], last: { by: "@a", at: "2026-01-01T00:00:00Z" }, state: "saved", form: { action: "/s", csrf: "t" } });
+const sr: SettingRow = mountSettingRow(document.createElement("div"), {
+  id: "r",
+  label: "On",
+  onSave: async (on: boolean) => void on,
+});
+sr.set("error");
+void sr.checked();
+hydrateSettingRow(document.createElement("div"), { onSave: () => undefined }).destroy();
+DenUI.settingRow(document.createElement("div"), { id: "r", label: "On" }).destroy();

@@ -51,6 +51,11 @@
  *   DenUI.bulkBar(el, { count, actions, onAction, onClear })
  *                               a list's bar while rows are selected
  *                               (bulk-bar.js)
+ *   DenUI.buttonHtml(o)         the general button (button.js, issue 556)
+ *   DenUI.pageMenu(btn, { items, onSelect })   the page action menu on a
+ *                               pageMenuButtonHtml button (issue 555)
+ *   DenUI.settingRow(el, { onSave, ...row })   the settings on/off row
+ *                               (setting-row.js, issue 554)
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -76,6 +81,9 @@ import {
   shellHtml,
   topBarHtml,
   markHtml,
+  menuRowHtml,
+  pageMenuButtonHtml,
+  pageMenuHtml,
   versionChipHtml,
   waitingHtml,
 } from "./shell-html.js";
@@ -84,6 +92,7 @@ import {
   attachMenuFilter,
   hydrateAppearance,
   hydrateBell,
+  hydratePageMenu,
   hydrateScope,
   hydrateSearch,
   hydrateShell,
@@ -104,6 +113,12 @@ import { busyAction, configureBusy } from "./busy.js";
 import { createSaveState } from "./savestate.js";
 import { mountFilterBar } from "./filter-bar.js";
 import { mountBulkBar } from "./bulk-bar.js";
+import { buttonHtml } from "./button.js";
+import {
+  hydrateSettingRow,
+  mountSettingRow,
+  settingRowHtml,
+} from "./setting-row.js";
 
 const state = {
   lang: "en",
@@ -208,6 +223,24 @@ export function filterBar(el, opts = {}) {
 /** A list's bulk bar, in the kit's language. */
 export function bulkBar(el, opts = {}) {
   return mountBulkBar(el, { lang, ...opts });
+}
+
+/**
+ * The page action menu (issue 555) on a drawn More ▾ button, in the
+ * kit's language (hydratePageMenu).
+ */
+export function pageMenu(btn, opts = {}) {
+  return hydratePageMenu(btn, { lang, ...opts });
+}
+
+/**
+ * The settings on/off row (issue 554), in the kit's language. With
+ * opts.label (a row's data), it draws the row into el first; else it wires
+ * the row el already holds.
+ */
+export function settingRow(el, opts = {}) {
+  const o = { lang: lang(), ...opts };
+  return opts.label != null ? mountSettingRow(el, o) : hydrateSettingRow(el, o);
 }
 
 /**
@@ -324,6 +357,13 @@ const DenUI = {
   saveState,
   filterBar,
   bulkBar,
+  buttonHtml,
+  menuRowHtml,
+  pageMenuButtonHtml,
+  pageMenuHtml,
+  pageMenu,
+  settingRowHtml,
+  settingRow,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;
