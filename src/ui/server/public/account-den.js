@@ -212,7 +212,15 @@ export async function openAccount({ section, opener } = {}) {
     linkCss("account-area.css"),
     linkCss("switch.css"),
   ]);
-  const api = (m, p, b) => sh().api(m, p, b);
+  // Every write goes through the working pop-up (busy-den.js names the
+  // action); it resolves undefined when the write didn't happen.
+  const write = (name, url, body, button) =>
+    sh().busyAction(
+      name,
+      (headers) => sh().api("POST", url, body, { headers }),
+      { button },
+    );
+  const done = (then) => (r) => (r === undefined ? undefined : then(r));
   const goSettings = (hash) => {
     area.close();
     location.assign("/settings#" + hash);
@@ -233,28 +241,41 @@ export async function openAccount({ section, opener } = {}) {
     onClosed: () => {
       open = null;
     },
-    onAction(act, { id, name }) {
+    onAction(act, { id, name, button }) {
+      const reload = done(() => location.reload());
       switch (act) {
         case "signout":
-          return api("POST", "/api/session/logout", {}).then(() =>
-            location.reload(),
+          return write("sign-out", "/api/session/logout", {}, button).then(
+            reload,
           );
         case "signout-all":
-          return api("POST", "/api/web/logout", {}).then(() =>
-            location.reload(),
+          return write("sign-out-all", "/api/web/logout", {}, button).then(
+            reload,
           );
         case "device-signout": {
           const me = latest.devices.list?.find((d) => d.id === id)?.current;
-          return api("POST", "/api/web/logout", { id }).then(() => {
-            if (me) return location.reload();
-            area.toast(kitT(lang, "kit.acct.signedOut", { name }));
-            return refresh();
-          });
+          return write("sign-out", "/api/web/logout", { id }, button).then(
+            done(() => {
+              if (me) return location.reload();
+              area.toast(kitT(lang, "kit.acct.signedOut", { name }));
+              return refresh();
+            }),
+          );
         }
         case "approve":
-          return api("POST", "/api/web/approve", { code: id }).then(refresh);
+          return write(
+            "approve-device",
+            "/api/web/approve",
+            { code: id },
+            button,
+          ).then(done(refresh));
         case "unlink":
-          return api("POST", "/api/web/owner/unlink", {}).then(refresh);
+          return write(
+            "unlink-owner",
+            "/api/web/owner/unlink",
+            {},
+            button,
+          ).then(done(refresh));
         case "link":
           return goSettings("access.owner");
         case "pair":

@@ -36,6 +36,7 @@ import {
   timeZones,
   upgradeTimes,
 } from "/kit/time.js";
+import { kitT } from "/kit/strings.js";
 import { deviceWords } from "./device-words.js";
 import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
@@ -623,7 +624,10 @@ const CODE_STYLE =
  * the shell opens on any page; account-den.js).
  */
 function drawAccountLink(host) {
-  host.innerHTML = `<a class="den-btn" id="set-account-link" href="?account=profile" data-den-aa-open="profile">${escHtml(L("set.ui.yourAccount", "Your account →"))}</a>`;
+  // The link's words are the kit's (the mock's "Your account →").
+  const pageLang = () =>
+    (typeof window !== "undefined" && window.denShell?.lang?.()) || "en";
+  host.innerHTML = `<a class="den-btn" id="set-account-link" href="?account=profile" data-den-aa-open="profile">${escHtml(kitT(pageLang(), "kit.acct.yourAccount"))}</a>`;
 }
 
 /** Linking the owner in the page: start, show the code, poll the server. */
@@ -1268,9 +1272,9 @@ const ACCESS_ROWS = [
   {
     id: "access.account",
     category: "access",
-    label: "Your account",  // words-ok: the approved Account area mock's own word (issue 310)
+    label: "Your profile and devices",
     description:
-      "Your profile, how this browser signed in, and your devices and sessions are in your Account area, apart from Settings.",  // words-ok: the approved Account area mock's own word (issue 310)
+      "Your profile, how this browser signed in, and your devices are in a place of their own, apart from Settings.",
     keywords: ["account", "profile", "me", "sign out", "devices", "sessions"],
     scope: "user",
     control: { type: "custom", render: drawAccountLink },

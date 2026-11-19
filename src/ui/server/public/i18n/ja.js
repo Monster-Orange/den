@@ -620,6 +620,15 @@
     "busy.askAllowW": "確認しています…",
     "busy.askAllowS": "確認しました。ダイアログで許可してください。",
     "busy.askAllowF": "確認できませんでした。",
+    "busy.signOutW": "サインアウトしています…",
+    "busy.signOutS": "サインアウトしました。",
+    "busy.signOutF": "サインアウトできませんでした。",
+    "busy.approveW": "承認しています…",
+    "busy.approveS": "承認しました。",
+    "busy.approveF": "承認できませんでした。",
+    "busy.unlinkW": "GitHub の連携を解除しています…",
+    "busy.unlinkS": "GitHub の連携を解除しました。",
+    "busy.unlinkF": "GitHub の連携を解除できませんでした。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -1117,9 +1126,9 @@
     "set.cli.signin": "ブラウザのサインイン",
     "set.cli.sudo": "管理者パスワード",
     "set.cli.op_token": "1Password トークンの取得元",
-    "set.access.account": "自分のアカウント",  // words-ok: the approved Account area mock's own word (issue 310)
-    "set.access.account.d": "プロフィール、このブラウザーのサインイン方法、デバイスとセッションは、設定とは別のアカウントエリアにあります。",  // words-ok: the approved Account area mock's own word (issue 310)
-    "set.ui.yourAccount": "自分のアカウント →",  // words-ok: the approved Account area mock's own word (issue 310)
+    "set.access.account": "プロフィールとデバイス",
+    "set.access.account.d":
+      "プロフィール、このブラウザーのサインイン方法、デバイスは、設定とは別の場所にあります。",
     "set.access.owner": "オーナー",
     "set.access.devices": "リンク済みデバイス",
     "set.access.waiting": "承認待ちのデバイス",

@@ -1499,6 +1499,15 @@
     "busy.askAllowW": "Asking…",
     "busy.askAllowS": "Asked. Allow it in the dialog.",
     "busy.askAllowF": "Couldn't ask.",
+    "busy.signOutW": "Signing out…",
+    "busy.signOutS": "Signed out.",
+    "busy.signOutF": "Not signed out.",
+    "busy.approveW": "Approving…",
+    "busy.approveS": "Approved.",
+    "busy.approveF": "Couldn't approve.",
+    "busy.unlinkW": "Unlinking GitHub…",
+    "busy.unlinkS": "GitHub unlinked.",
+    "busy.unlinkF": "Couldn't unlink GitHub.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
@@ -1984,9 +1993,9 @@
     "set.cli.signin": "Browser sign-in",
     "set.cli.sudo": "Admin password",
     "set.cli.op_token": "1Password token source",
-    "set.access.account": "Your account",  // words-ok: the approved Account area mock's own word (issue 310)
-    "set.access.account.d": "Your profile, how this browser signed in, and your devices and sessions are in your Account area, apart from Settings.",  // words-ok: the approved Account area mock's own word (issue 310)
-    "set.ui.yourAccount": "Your account →",  // words-ok: the approved Account area mock's own word (issue 310)
+    "set.access.account": "Your profile and devices",
+    "set.access.account.d":
+      "Your profile, how this browser signed in, and your devices are in a place of their own, apart from Settings.",
     "set.access.owner": "Owner",
     "set.access.devices": "Linked devices",
     "ident.toast": "This device is signed in to {name} on {host}",
@@ -8063,7 +8072,7 @@
         return m.openAccount({ section: section, opener: opener });
       })
       .catch(function (err) {
-        console.warn("Account area: " + (err && err.message));  // words-ok: the approved Account area mock's own word (issue 310)
+        console.warn("The area for you did not open: " + (err && err.message));
       });
   }
   if (/[?&]account=/.test(location.search)) openAccount(null);

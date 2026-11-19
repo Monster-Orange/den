@@ -170,7 +170,7 @@ describe("Settings › Access", () => {
     );
     expect(access[0]).toMatchObject({
       id: "access.account",
-      label: "Your account",
+      label: "Your profile and devices",
     });
   });
 });

@@ -3746,8 +3746,8 @@
    "key": "#den-ident",
    "parent": "#den-rail",
    "slot": "foot",
-   "role": "link",
-   "tag": "a",
+   "role": "button",
+   "tag": "button",
    "name": "Ada Fixture@ada-fixture",
    "classes": [
     "den-ni"
