@@ -333,6 +333,47 @@ describe("FB: Report an issue, the server's side", () => {
     expect(mine.status).toBe(200);
   });
 
+  it("FB-6: an agent's diagnostics are redacted, like the dialog's preview (no host, path or name)", async () => {
+    const a = await call(
+      "GET",
+      "/api/report/diagnostics",
+      undefined,
+      "builder",
+    );
+    expect(a.status).toBe(200);
+    expect(a.body.redacted).toBe(true);
+    const text = JSON.stringify(a.body.sections);
+    expect(Object.keys(a.body.sections).sort()).toEqual(["Config", "Den"]);
+    for (const leak of ["acme.local.example.com", "/Users/pat", "rocket"])
+      expect(text).not.toContain(leak);
+    // ?redact=1: the same for any caller (the MCP tool always asks).
+    const q = await call("GET", "/api/report/diagnostics?redact=1");
+    expect(q.body).toMatchObject({ redacted: true, sections: a.body.sections });
+    // A person's dialog still gets the exact text (its preview redacts).
+    const p = await call("GET", "/api/report/diagnostics");
+    expect(p.body.redacted).toBeFalsy();
+    expect(JSON.stringify(p.body.sections)).toContain("acme.local.example.com");
+  });
+
+  it("FB-6: a draft saved as an agent's names the agent; with no agent on the call it is refused, never anonymous", async () => {
+    const none = await call("POST", "/api/report/drafts", {
+      ...FORM,
+      asAgent: true,
+    });
+    expect(none.status).toBe(403);
+    expect((await call("GET", "/api/report/drafts")).body.drafts).toEqual([]);
+    const ok = await call(
+      "POST",
+      "/api/report/drafts",
+      { ...FORM, asAgent: true },
+      "builder",
+    );
+    expect(ok.status).toBe(200);
+    expect(
+      (await call("GET", "/api/report/drafts")).body.drafts[0],
+    ).toMatchObject({ by: "agent:builder" });
+  });
+
   it("feedback.capture_seconds: how long the screenshot may take (15)", () => {
     expect(feedbackSettings({}, {}, {}).captureSeconds).toBe(15);
     expect(

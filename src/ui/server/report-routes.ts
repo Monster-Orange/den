@@ -7,7 +7,9 @@
  *   GET    /api/report              destinations (each with its visibility
  *                                    on GitHub, issue 415), GitHub sign-in,
  *                                    the limit
- *   GET    /api/report/diagnostics  the server's sections, as exact text
+ *   GET    /api/report/diagnostics  the server's sections, as exact text;
+ *                                    an agent's (or ?redact=1) redacted,
+ *                                    with redacted: true (FB-6)
  *   POST   /api/report/preview      {form, sections, redact, repo} → the
  *                                    exact title and body (redacted)
  *   POST   /api/report/send         a person's only. Over the hour's limit:
@@ -17,7 +19,8 @@
  *                                    open: 409 duplicate (F5), unless
  *                                    `addTo` (a comment there) or `fileNew`
  *   GET    /api/report/drafts       Finish later's and agents' drafts
- *   POST   /api/report/drafts       save one (an agent's stays a draft)
+ *   POST   /api/report/drafts       save one (an agent's stays a draft;
+ *                                    asAgent with no agent: 403)
  *   GET    /api/report/drafts/<id>  one, with its screenshot
  *   DELETE /api/report/drafts/<id>  a person discards one
  *   GET    /api/report/mine         My reports: the person's issues on the
@@ -41,6 +44,7 @@ import { spawn } from "child_process";
 import {
   issueBody,
   issueTitle,
+  redactedSections,
   type RedactNames,
   type ReportForm,
   type ReportKind,
@@ -436,7 +440,18 @@ export function handleReportRoutes(
   if (pathname === "/api/report/diagnostics" && req.method === "GET")
     return run(async () => {
       if (!d.settings().enabled) return off();
-      d.sendJson(res, { ok: true, sections: await d.diagnostics() });
+      const sections = await d.diagnostics();
+      // FB-6: an agent (or ?redact=1, the MCP tool's ask) gets them
+      // redacted, as the issue would show them; the person's dialog gets
+      // the exact text and redacts in its preview.
+      const q = new URL(req.url ?? "/", "http://den.invalid").searchParams;
+      if (d.agentOf(req) || q.get("redact") === "1")
+        return d.sendJson(res, {
+          ok: true,
+          redacted: true,
+          sections: redactedSections(sections, d.names()),
+        });
+      d.sendJson(res, { ok: true, sections });
     });
 
   if (pathname === "/api/report/preview" && req.method === "POST")
@@ -685,6 +700,18 @@ export function handleReportRoutes(
       if (typeof form === "string")
         return d.sendJson(res, { ok: false, error: form }, 400);
       const agent = d.agentOf(req);
+      // FB-6: a draft an agent saves (feedback_report) names the agent:
+      // with no agent on the call it is refused, never saved as no one's.
+      if (b.asAgent === true && !agent)
+        return d.sendJson(
+          res,
+          {
+            ok: false,
+            error:
+              "an agent's report names the agent; this call has no agent identity",
+          },
+          403,
+        );
       const shot =
         typeof b.shot === "string" &&
         /^data:image\/(png|jpeg|webp);base64,/.test(b.shot) &&

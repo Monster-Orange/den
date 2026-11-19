@@ -124,6 +124,8 @@ Reads (they change nothing):
 - `agent_helpers`: an agent's helpers.
 - `ask_human`: ask your person a question.
 - `notifications_list`: your person's bell.
+- `feedback_diagnostics`, `feedback_report`: report an issue with Den.
+  It is saved as a draft under your name, and your person sends it.
 - `approval_check`: where one of your held asks stands.
 - `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
