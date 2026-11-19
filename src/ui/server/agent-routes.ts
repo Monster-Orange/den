@@ -1948,15 +1948,17 @@ export function noteHostRestarted(
     scope: "workspace/den-server",
     text:
       `${title} restarted its terminal host on the installed version, so new agents and terminals start again. ` +
-      (n
-        ? `${n} agent${n === 1 ? "" : "s"} resumed: ${names}. `
-        : "No agent was running. ") +
-      (terminals
-        ? `${terminals} open terminal${terminals === 1 ? "" : "s"} ended.`
-        : "No terminal was open."),
+      (n && terminals
+        ? `Agents resumed: ${names}. Terminals that ended: ${terminals}.`
+        : n
+          ? `Agents resumed: ${names}. No terminal was running.`
+          : terminals
+            ? `No agent was running. Terminals that ended: ${terminals}.`
+            : "No agent or terminal was running."),
     msg: {
-      key: "bell.m.hostRestarted",
-      vars: { n, names: names || "-", terminals },
+      // One key per case, so each language says it as a sentence.
+      key: `bell.m.hostRestarted${n && terminals ? "" : n ? "Agents" : terminals ? "Terminals" : "None"}`,
+      vars: { names, terminals },
     },
     link: "/agents",
   });
