@@ -931,6 +931,52 @@ const STATIC_EXTS = new Set([
 ]);
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
+/** A message's first line: a parser's code frame quotes the file. */
+function firstLine(m: string): string {
+  return String(m).split("\n")[0].replace(/:\s*$/, "");
+}
+
+/**
+ * Where `p` really is, when it is a project repo's checkout or inside one,
+ * both as written and after resolving every symlink; else null.
+ */
+function manifestPathInRepo(p: string): string | null {
+  if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
+  let roots: string[];
+  try {
+    roots = allWorkspaceCheckouts()
+      .map((c) => c.repoPath)
+      .filter((r): r is string => !!r && path.isAbsolute(r));
+  } catch {
+    return null;
+  }
+  const within = (x: string, rs: string[]) =>
+    rs.some(
+      (r) => x === r || x.startsWith(r.endsWith(path.sep) ? r : r + path.sep),
+    );
+  if (
+    !within(
+      path.resolve(p),
+      roots.map((r) => path.resolve(r)),
+    )
+  )
+    return null;
+  let real: string;
+  try {
+    real = fs.realpathSync(p);
+  } catch {
+    return null;
+  }
+  const realRoots = roots.flatMap((r) => {
+    try {
+      return [fs.realpathSync(r)];
+    } catch {
+      return [];
+    }
+  });
+  return within(real, realRoots) ? real : null;
+}
+
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
   return Object.entries(readWorkspacesFile().workspaces).flatMap(
@@ -1016,7 +1062,10 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readMethodOnly,
   sendJson,
+  sendMethodNotAllowed,
+  SERVED_METHODS,
   serveFile,
   serveUntrustedFile,
   UNTRUSTED_FILE_HEADERS,
@@ -3299,6 +3348,11 @@ async function handleRequest(
     }
   }
 
+  // Only the six methods Den serves reach the checks and the routes; any
+  // other (OPTIONS included: Den serves no cross-origin requests) is 405.
+  if (!SERVED_METHODS.has((req.method ?? "GET").toUpperCase()))
+    return sendMethodNotAllowed(res);
+
   // ── Request checks (SEC-1a): Host, credential, Origin, CSRF ────────────────
   // Before any route, and before a refused request can clear a cache.
   const guard = checkRequest(req, GUARD, product().cli, product().title);
@@ -4758,6 +4812,7 @@ async function handleRequest(
 
   // ── API: service exec (SSE) — catalog-aware ────────────────────────────────
   if (pathname === "/api/service/exec") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const cmdName = url.searchParams.get("cmd");
@@ -5060,6 +5115,7 @@ async function handleRequest(
 
   // ── API: service logs (SSE) ───────────────────────────────────────────────
   if (pathname === "/api/service/logs") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5290,6 +5346,7 @@ async function handleRequest(
   // — see log-history.ts). env=local only in v1; other envs return
   // { unsupported: true } so the client renders a friendly notice.
   if (pathname === "/api/service/history") {
+    if (!readMethodOnly(req, res)) return;
     // This handler sits ABOVE the blanket /api/service* local-dev guard
     // (later in this function), so it must enforce the guard itself.
     if (!isLocalEnabled()) {
@@ -5343,6 +5400,7 @@ async function handleRequest(
   // Greps the FULL history of each requested system (targets = the /logs
   // toolbar's list, computed client-side so scoping lives in one place).
   if (pathname === "/api/logs/search") {
+    if (!readMethodOnly(req, res)) return;
     // /api/logs is not covered by the downstream /api/service* local-dev
     // guard — enforce it here.
     if (!isLocalEnabled()) {
@@ -5378,6 +5436,7 @@ async function handleRequest(
   }
 
   if (pathname === "/api/service/taillog") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     if (!repoName || !svcName)
@@ -5593,6 +5652,7 @@ async function handleRequest(
 
   // ── API: run tests (SSE) ───────────────────────────────────────────────────
   if (pathname === "/api/run") {
+    if (!readMethodOnly(req, res)) return;
     const pillar = url.searchParams.get("pillar") as Pillar | null;
     const modules = url.searchParams.getAll("module").filter(Boolean);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5851,6 +5911,7 @@ async function handleRequest(
 
   // ── API: AWS re-authenticate (SSE) ───────────────────────────────────────
   if (pathname === "/api/aws/login") {
+    if (!readMethodOnly(req, res)) return;
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const profiles = loadAwsProfiles();
     const profile = profiles[env];
@@ -6471,36 +6532,70 @@ async function handleRequest(
         return send400(res, `Invalid request: ${(e as Error).message}`);
       }
     }
-    if (req.method === "GET") {
+    if (req.method === "GET" || req.method === "HEAD") {
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
+      // Only inside a project's repo: the path as written and, after every
+      // symlink, where it really is. Any other path is refused the same way,
+      // there or not.
+      const real = manifestPathInRepo(filePath);
+      if (!real)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            code: "outside_repos",
+            error:
+              "Validate reads only a repo folder (or a file in one) of a project here.",
+          },
+          403,
+        );
+      // Errors name the file's line and column, never its text.
+      const plain = (r: ReturnType<typeof validateManifest>) => ({
+        ...r,
+        errors: r.errors.map((e) => ({ ...e, message: firstLine(e.message) })),
+        warnings: r.warnings.map((w) => ({
+          ...w,
+          message: firstLine(w.message),
+        })),
+      });
       try {
-        const isDir =
-          fs.existsSync(filePath) && fs.lstatSync(filePath).isDirectory();
+        const isDir = fs.statSync(real).isDirectory();
         // A repo folder: every layer that applies (repo or held, override,
         // merged), flattened into the usual shape; each error names its file.
         if (isDir) {
-          const layered = validateManifestLayers(filePath);
+          const layered = validateManifestLayers(real);
           if (layered.layers.length > 0)
             return sendJson(res, {
               valid: layered.valid,
               version: layered.layers[0].result.version,
-              errors: layered.layers.flatMap((l) => l.result.errors),
-              warnings: layered.layers.flatMap((l) => l.result.warnings),
-              manifestLayers: loadManifest(filePath).layers,
-              layers: layered.layers,
+              errors: layered.layers.flatMap((l) => plain(l.result).errors),
+              warnings: layered.layers.flatMap((l) => plain(l.result).warnings),
+              manifestLayers: loadManifest(real).layers,
+              layers: layered.layers.map((l) => ({
+                ...l,
+                result: plain(l.result),
+              })),
             });
         }
         const denYml = isDir
-          ? path.join(filePath, `${product().manifestYml}`)
-          : filePath;
+          ? path.join(real, `${product().manifestYml}`)
+          : real;
         const content = fs.readFileSync(denYml, "utf-8");
-        return sendJson(res, validateManifest(content));
+        return sendJson(res, plain(validateManifest(content)));
       } catch (e) {
         return sendJson(res, {
           valid: false,
           version: 1,
-          errors: [{ path: "", message: (e as Error).message }],
+          errors: [
+            {
+              path: "",
+              message:
+                (e as NodeJS.ErrnoException).code === "ENOENT"
+                  ? "No manifest there."
+                  : "The manifest couldn't be read.",
+            },
+          ],
           warnings: [],
         });
       }

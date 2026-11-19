@@ -22,7 +22,7 @@ import {
   type AgentsResolved,
 } from "../cli/agent-ops.js";
 import { webDeps } from "./agent-routes.js";
-import { readBody, sendJson, send400 } from "./http-helpers.js";
+import { readBody, readMethodOnly, sendJson, send400 } from "./http-helpers.js";
 import type { ResolvedService } from "../../shared/types/index.js";
 import type { EditorManager } from "./editor-manager.js";
 import type { GitHubService } from "./github-service.js";
@@ -1245,6 +1245,7 @@ export async function handleWorkspaceRoutes(
   // Runs a command (up/down/restart/setup) on all services in the active
   // workspace in DERIVED dependency order, streaming labeled output as SSE events.
   if (pathname === "/api/workspace/exec") {
+    if (!readMethodOnly(req, res)) return;
     const cmd = url.searchParams.get("cmd");
     if (!cmd) return send400(res, "cmd required");
 
@@ -2169,6 +2170,7 @@ export async function handleWorkspaceRoutes(
   }
 
   if (pathname === "/api/workspace/sync") {
+    if (!readMethodOnly(req, res)) return;
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

@@ -252,7 +252,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R("/api/health", "runs the manifests' health probes: read-only checks"),
   R("/api/test-sources", "git rev-parse in each repo: read-only"),
-  R("/api/manifest/validate", "GET validates a file at a path: read-only"),
+  M(
+    ["GET", "HEAD"],
+    "/api/manifest/validate",
+    "reads a file at a path, inside a repo: Den's own page or a token",
+  ),
   // ON-3 (onboard-routes.ts): reads only; nothing written, no repo tool run.
   R("/api/onboard/status", "what's set up and the next step (file reads)"),
   R(
