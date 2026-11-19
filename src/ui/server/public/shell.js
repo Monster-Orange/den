@@ -1913,7 +1913,7 @@
     "set.server.gate_idle_window.d":
       "How long a test run's CPU is measured over before it counts as idle or busy. __DEN_CLI__ gate settings --idle-sample-seconds 60",
     "set.server.gate_idle_grace":
-      "Idle test run: flagged this long before a release run may stop it, in minutes",
+      "Idle test run: grace before a release run may cancel it, in minutes",
     "set.server.gate_idle_grace.d":
       "A release candidate's waiting run may stop a test run flagged idle for this long, and the record says who and why. A test run that isn't flagged is never stopped this way. __DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
     "set.server.crash_loop_wait": "Restart guard's longest wait",

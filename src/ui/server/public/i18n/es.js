@@ -947,7 +947,7 @@
     "set.server.gate_idle_window.d":
       "Durante cuánto tiempo se mide la CPU de una prueba antes de contar como inactiva u ocupada. __DEN_CLI__ gate settings --idle-sample-seconds 60",
     "set.server.gate_idle_grace":
-      "Prueba inactiva: marcada este tiempo antes de que una prueba de versión pueda detenerla, en minutos",
+      "Prueba inactiva: margen antes de que una prueba de versión pueda cancelarla, en minutos",
     "set.server.gate_idle_grace.d":
       "La prueba en espera de una versión candidata puede detener una prueba marcada como inactiva durante este tiempo, y el registro dice quién y por qué. Una prueba sin marca nunca se detiene así. __DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
