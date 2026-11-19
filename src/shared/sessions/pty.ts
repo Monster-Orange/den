@@ -199,43 +199,51 @@ export function installedPtyModule(
   platform: string = process.platform,
   arch: string = process.arch,
 ): PtyModuleInfo | null {
-  let pkgFile: string;
-  try {
-    pkgFile = createRequire(path.join(root, "package.json")).resolve(
-      `${PTY_MODULE}/package.json`,
-    );
-  } catch {
-    return null;
-  }
+  // Found through Node's search folders, not require.resolve of
+  // "<pkg>/package.json": the 1.2.0 betas don't export their package.json.
+  const dir = packageDir(path.join(root, "package.json"), PTY_MODULE);
+  if (!dir) return null;
   let version: string | null = null;
   try {
     const v = (
-      JSON.parse(fs.readFileSync(pkgFile, "utf-8")) as { version?: unknown }
+      JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8")) as {
+        version?: unknown;
+      }
     ).version;
     version = typeof v === "string" ? v : null;
   } catch {
     /* unreadable: no version */
   }
-  const dir = path.dirname(pkgFile);
+  const prebuilt = path.join("prebuilds", `${platform}-${arch}`, "pty.node");
   const candidates: string[] = [];
-  try {
-    candidates.push(
-      path.join(
-        path.dirname(
-          createRequire(pkgFile).resolve(
-            `${PTY_MODULE}-${platform}-${arch}/package.json`,
-          ),
-        ),
-        "pty.node",
-      ),
-    );
-  } catch {
-    /* no platform package: a build of its own */
-  }
-  candidates.push(path.join(dir, "build", "Release", "pty.node"));
+  const plat = packageDir(
+    path.join(dir, "package.json"),
+    `${PTY_MODULE}-${platform}-${arch}`,
+  );
+  if (plat)
+    candidates.push(path.join(plat, prebuilt), path.join(plat, "pty.node"));
+  candidates.push(
+    path.join(dir, prebuilt),
+    path.join(dir, "build", "Release", "pty.node"),
+  );
   for (const c of candidates) {
     const id = fileIdentity(c);
     if (id) return { path: c, version, id };
+  }
+  return null;
+}
+
+/** The folder of package `name` as Node would find it from `from`, or null. */
+function packageDir(from: string, name: string): string | null {
+  let dirs: string[] | null = null;
+  try {
+    dirs = createRequire(from).resolve.paths(name);
+  } catch {
+    return null;
+  }
+  for (const d of dirs ?? []) {
+    const dir = path.join(d, name);
+    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
   }
   return null;
 }
