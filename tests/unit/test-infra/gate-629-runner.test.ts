@@ -1,0 +1,171 @@
+/**
+ * Issue 629's live check, run as the bed runs it (runLikeBed) on a fake
+ * bed: a Den that holds its note after a restart while the server agent
+ * shows a dialog for its person, and refuses a message from the page with
+ * 409 dialog_open, passes; a Den that types the note once its wait runs
+ * out, and types the message, fails; a restart held for an Allow fails
+ * clause 1 (never skipped). The Hub clauses skip with their reason.
+ */
+import { describe, expect, it } from "@jest/globals";
+import { spawnSync } from "child_process";
+import * as path from "path";
+
+const ROOT = path.resolve(__dirname, "../../..");
+
+type Kind = "fixed" | "unfixed" | "held-for-allow";
+
+function runGate(kind: Kind) {
+  const js = `
+    const g = await import("./gate/629.mjs");
+    const { runLikeBed } = await import("./tests/fixtures/gate-runner-like.mjs");
+    const kind = ${JSON.stringify(kind)};
+    let clock = 1_700_000_000_000;
+    const now = () => clock;
+    Date.now = now;
+    const typed = { server: [], "gate-629-say": [] };
+    const dialog = { server: false, "gate-629-say": false };
+    const yml = { closed: false, set: null };
+    let started = "2026-11-19T00:00:00.000Z";
+    let selfUpdate = "ask";
+    let restartAt = null, upAt = null, held = false, told = false;
+    const audit = [];
+    const WAIT = 10_000;
+    // The fake Den's back-note loop, as server-restart.ts's tellBack runs.
+    function tick() {
+      if (restartAt !== null && upAt === null && clock >= restartAt + 2000) {
+        upAt = clock; started = new Date(clock).toISOString();
+      }
+      if (upAt === null || told) return;
+      const past = clock >= upAt + WAIT;
+      if (kind === "unfixed" ? past : !dialog.server && past) {
+        typed.server.push({ t: clock, text: "Den is back", enter: true });
+        told = true; held = false;
+        audit.push('{"verb":"server-back","detail":"on x: y; agent:server told"}');
+      } else if (kind !== "unfixed" && dialog.server && past) held = true;
+    }
+    const bell = () => {
+      tick();
+      const subjects = [];
+      if (held) subjects.push({ subject: "record:den-back-note-held", items: [{ kind: "service" }] });
+      if (dialog.server) subjects.push({ subject: "agent:server", items: [{ kind: "waiting" }] });
+      return { groups: [{ subjects }], waiting: dialog.server ? [{ agent: "server" }] : [] };
+    };
+    const agent = (id) => ({
+      start() { return { code: 0 }; },
+      async running() { return 300; },
+      state() { return "running"; },
+      remove() {},
+      permissionRequest() { dialog[id] = true; },
+      print(t) { if (/\\[2J/.test(t)) dialog[id] = false; },
+      async typed({ since }) {
+        tick();
+        const s = typeof since === "number" ? since : Date.parse(since);
+        return typed[id].filter((x) => x.t >= s);
+      },
+      async mcp(tool) {
+        if (tool === "den_restart_server" && selfUpdate === "auto" && kind !== "held-for-allow")
+          restartAt = clock;
+        return { ok: true };
+      },
+    });
+    const ctx = {
+      notes: [], log(...a) { this.notes.push(a.join(" ")); },
+      async sleep(ms) { clock += ms; tick(); },
+      async until(fn, ms) {
+        const end = clock + ms;
+        for (;;) { if (await fn()) return 0; if (clock >= end) return null; clock += 500; tick(); }
+      },
+      userYml(o) { yml.set = o; return { close() { yml.closed = true; } }; },
+      stubLog() { return []; },
+      cli() { return { code: 0, out: "", err: "" }; },
+      readBed(rel) {
+        if (rel === "state:agents/gate-629-say.json") return JSON.stringify({ workspace: "gate-ws", runtime: "den-claude" });
+        if (rel === "state:agents/server.json") return JSON.stringify({ workspace: "den-server", runtime: "den-claude" });
+        if (rel === "state:audit.jsonl") return audit.join("\\n");
+        return null;
+      },
+      async api(p, init) {
+        if (p === "/api/notifications") return bell();
+        if (p === "/api/server-info") { tick(); return { startedAt: started, restartWaitSeconds: 10 }; }
+        if (p === "/api/settings") {
+          if (init?.method === "POST") selfUpdate = JSON.parse(init.body).server_agent_self_update ?? "ask";
+          return { server_agent_self_update: selfUpdate };
+        }
+        return {};
+      },
+      async fetch(p, init) {
+        if (p === "/api/settings") { await ctx.api(p, init); return { status: 200, body: "{}" }; }
+        if (/\\/agents\\/gate-629-say\\/say$/.test(p)) {
+          if (kind !== "unfixed" && dialog["gate-629-say"])
+            return { status: 409, body: JSON.stringify({ ok: false, code: "dialog_open", error: "waiting on you" }) };
+          typed["gate-629-say"].push({ t: clock, text: JSON.parse(init.body).text, enter: true });
+          audit.push('{"verb":"agents","detail":"send gate-629-say a message in gate-ws (40 characters)"}');
+          return { status: 200, body: JSON.stringify({ ok: true }) };
+        }
+        return { status: 404, body: "{}" };
+      },
+    };
+    ctx.agent = agent;
+    const out = await runLikeBed("629.mjs", g, ctx);
+    console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate }));`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    timeout: 60_000,
+  });
+  if (r.status !== 0) throw new Error(r.stderr || `exit ${r.status}`);
+  return JSON.parse(r.stdout.trim().split("\n").pop()!) as {
+    clauses: string[];
+    rows?: {
+      clause: string;
+      ok: boolean | null;
+      skip?: string;
+      detail?: string;
+    }[];
+    error?: string;
+    yml: { closed: boolean; set: unknown };
+    selfUpdate: string;
+  };
+}
+
+const row = (r: ReturnType<typeof runGate>, i: number) =>
+  (r.rows ?? []).find((x) => x.clause === r.clauses[i]);
+
+describe("gate/629.mjs as the bed runs it", () => {
+  it("a Den that holds its note and refuses the message passes clauses 1 and 4", () => {
+    const r = runGate("fixed");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 0)?.ok).toBe(true);
+    expect(row(r, 3)?.ok).toBe(true);
+  });
+
+  it("a Den that types into the dialog fails clauses 1 and 4", () => {
+    const r = runGate("unfixed");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 0)?.ok).toBe(false);
+    expect(row(r, 3)?.ok).toBe(false);
+  });
+
+  it("a restart held for an Allow fails clause 1, never skips it", () => {
+    const r = runGate("held-for-allow");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 0)?.ok).toBe(false);
+    expect(row(r, 0)?.skip).toBeUndefined();
+    expect(row(r, 0)?.detail).toMatch(/Allow/);
+  });
+
+  it("the Hub clauses skip with their reason", () => {
+    const r = runGate("fixed");
+    for (const i of [1, 2]) {
+      expect(row(r, i)?.ok).toBeNull();
+      expect(row(r, i)?.skip).toBe("needs-hub");
+    }
+  });
+
+  it("puts back the restart wait and the self-update setting", () => {
+    const r = runGate("fixed");
+    expect(r.yml.set).toEqual({ ui: { restart_wait_seconds: 10 } });
+    expect(r.yml.closed).toBe(true);
+    expect(r.selfUpdate).toBe("ask");
+  });
+});
