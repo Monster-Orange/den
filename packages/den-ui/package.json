@@ -38,6 +38,10 @@
     "./markdown-editor": "./src/markdown-editor.js",
     "./markdown-editor.css": "./src/markdown-editor.css",
     "./savestate.css": "./src/savestate.css",
+    "./panel-fold": "./src/panel-fold.js",
+    "./panel-fold.css": "./src/panel-fold.css",
+    "./switch": "./src/switch.js",
+    "./switch.css": "./src/switch.css",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
       "default": "./inventory/nav-inventory.js"

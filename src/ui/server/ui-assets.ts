@@ -159,6 +159,12 @@ export const KIT_FILES: readonly string[] = [
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",
+  // Issues 548, 549, 551: the panel fold toggle and its edge strip, and the
+  // switch, with their looks.
+  "panel-fold.js",
+  "panel-fold.css",
+  "switch.js",
+  "switch.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.

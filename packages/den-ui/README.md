@@ -474,6 +474,71 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
+## The panel fold toggle, its edge strip and the switch
+
+- `src/panel-fold.js`, `src/panel-fold.css` (exports `./panel-fold`,
+  `./panel-fold.css`): a side panel that folds away so the main column
+  reads clean (issues 548 and 549). The host keeps the state (shown or
+  folded, remembered or not) and lays its page out; the kit draws the two
+  controls and owns their words, keys and focus.
+
+      import { foldToggleHtml, edgeStripHtml, hydrateFoldToggle,
+        hydrateEdgeStrip } from "@monster-orange/den-ui/panel-fold";
+      // link panel-fold.css after tokens.css
+      bar.innerHTML = foldToggleHtml({ pressed: true, controls: "side", lang });
+      slot.innerHTML = edgeStripHtml({ count: 2, controls: "side", lang });
+      const fold = hydrateFoldToggle(bar.querySelector(".den-fold"), {
+        onToggle: (next) => layout(next ? "panel" : "folded"),
+      });
+      const strip = hydrateEdgeStrip(slot.querySelector(".den-strip"), {
+        onShow: () => { layout("panel"); fold.set(true); },
+      });
+      fold.set(kept === "panel");   // the host's own change: no call
+      strip.setCount(3);
+
+- **The toggle** is a `<button class="den-fold">` with an icon and the
+  kit's word ("Panel"), `aria-pressed` (pressed: the panel shows) and
+  `aria-controls` when given. A press (click, Enter, Space) moves
+  `aria-pressed` and calls `onToggle(next)`; focus stays on it. 32px tall;
+  44px on a phone or a touch screen.
+- **The strip** goes where the folded panel was: 40px wide, a
+  `role="complementary"` region named "Panel, hidden", a "Show panel" icon
+  button (32px, a 44×44px tap on a phone or a touch screen) and the count
+  under it (none at 0, 99+ past 99). The count is seen as a number and
+  heard as the kit's badge words: `what` is `"open"` (default),
+  `"waiting"`, `"down"` or `"running"`. Show panel calls `onShow()`; when
+  the host then hides the strip and leaves focus there, focus goes to the
+  fold toggle for the same panel (else to the panel, when it takes
+  focus). A focus the host moved itself is kept.
+- Hosts pass data, never words: a `label`, `title` or `aria-label` given to
+  either builder is not used. Words: `kit.fold.panel`, `kit.fold.show`,
+  `kit.fold.hidden` and `kit.badge.*`, in en, es and ja. Show or hide each
+  with the `hidden` attribute.
+- `src/switch.js`, `src/switch.css` (exports `./switch`, `./switch.css`):
+  a labelled on/off control (issue 551).
+
+      import { switchHtml, hydrateSwitch } from "@monster-orange/den-ui/switch";
+      row.innerHTML = switchHtml({ label: "Show notes in the text",
+        help: "Kept on this device.", on: true, disabled: false, id: "notes" });
+      const sw = hydrateSwitch(row.querySelector(".den-switch"), {
+        onChange: (on) => save(on),
+      });
+      sw.set(false); sw.setDisabled(true); sw.on(); sw.destroy();
+
+- `<label class="den-switch">` holds the label, the help under it, then an
+  `<input type="checkbox" role="switch">` named by the label alone
+  (`aria-labelledby`) and described by the help (`aria-describedby`). The
+  label and help are the host's own words, the name of its own setting,
+  as a page's name in the rail is; the switch adds no words of its own (a
+  screen reader says on and off). No label: nothing is drawn. No `id`: one
+  of the kit's (`den-sw-N`). A click on the row, Space or Enter calls
+  `onChange(on)`; disabled is out of the tab order and calls nothing.
+- The row is 44px tall. The track is `--accent-fill` on and
+  `--border-strong` off (`--border` when disabled); the knob is
+  `--surface` and slides over `--dur-fast`, not at all under reduced
+  motion. A transparent border shows the track in forced colours.
+- Under `style-src 'self'`: no inline styles, nothing injected.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).
