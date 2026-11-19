@@ -22,7 +22,8 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
- *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after? }
+ *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
+ *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
@@ -187,7 +188,11 @@ const ADDRESS_CHECK: Record<string, Limit> = Object.fromEntries(
   Object.entries(ADDRESS_CHECK_LIMITS).map(([k, l]) => [
     k,
     {
-      key: `address_check_${k}`,
+      // The sign-in's window has its own name in user.yml web.
+      key:
+        k === "unknown_keep_seconds"
+          ? "address_unknown_keep_seconds"
+          : `address_check_${k}`,
       min: l.min,
       max: l.max,
       int: k === "retries" || k === "drop_after",

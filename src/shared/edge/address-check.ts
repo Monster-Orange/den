@@ -53,6 +53,12 @@ export const ADDRESS_CHECK_LIMITS = {
    * (named-address.ts). A check that can't tell never counts.
    */
   drop_after: { min: 1, max: 100, default: 2 },
+  /**
+   * How long a check that can't tell keeps a proven address proven, from
+   * its last answer as this Den (user.yml web.address_unknown_keep_seconds).
+   * Short by default: past it, can't-tell counts toward drop_after.
+   */
+  unknown_keep_seconds: { min: 0, max: 3600, default: 300 },
 } as const;
 
 export interface AddressCheckSettings {
@@ -62,6 +68,8 @@ export interface AddressCheckSettings {
   cacheMs: number;
   /** web.address_check_drop_after (the probe itself doesn't use it). */
   dropAfter?: number;
+  /** web.address_unknown_keep_seconds, in ms (the probe doesn't use it). */
+  unknownKeepMs?: number;
 }
 
 function limited(v: unknown, l: { min: number; max: number; default: number }) {
@@ -98,6 +106,11 @@ export function addressCheckSettings(
     dropAfter: Math.round(
       limited(web.address_check_drop_after, ADDRESS_CHECK_LIMITS.drop_after),
     ),
+    unknownKeepMs:
+      limited(
+        web.address_unknown_keep_seconds,
+        ADDRESS_CHECK_LIMITS.unknown_keep_seconds,
+      ) * 1000,
   };
 }
 

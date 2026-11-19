@@ -1946,6 +1946,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ address_check: { drop_after: v } }),
   },
   {
+    id: "server.address_unknown_keep",
+    category: "server",
+    label: "Address kept while checks can't tell",
+    description:
+      "Once __DEN_TITLE__'s https address is proven, how long checks that can't tell (no answer in time) keep sign-in there, from its last answer. After that they count as failures, so sign-in comes back on this machine's own name. Keep it short. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    keywords: ["address", "check", "edge", "sign-in", "timeout", "window"],
+    scope: "user",
+    keys: ["address_check.unknown_keep_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.unknown_keep_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ address_check: { unknown_keep_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",

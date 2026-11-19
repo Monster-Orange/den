@@ -7,10 +7,11 @@
  *  - the address check (address-check.ts, the identity probe through the
  *    address) finds this Den there, or
  *  - the edge brings a proven https request for that host here.
- * Proven is sticky. A check that can't tell (a timeout) keeps it, so a
- * stalled check can't reopen loopback. Only a definite failure (another
- * server, or nothing, answers), seen web.address_check_drop_after times in
- * a row, moves it back. The check runs again in the background every
+ * Proven is sticky for a while. A check that can't tell (a timeout) keeps
+ * it within web.address_unknown_keep_seconds of the last answer as this
+ * Den; past that window it counts as a failure. A failure (something else,
+ * or nothing, answers; or can't-tell past the window), seen
+ * web.address_check_drop_after times in a row, moves it back. The check runs again in the background every
  * web.address_check_cache_seconds, one at a time.
  *
  * Never proven: it doesn't work, and sign-in stays where the person is,
@@ -34,6 +35,10 @@ export interface NamedWatchDeps {
   cacheMs: () => number;
   /** web.address_check_drop_after. */
   dropAfter: () => number;
+  /** web.address_unknown_keep_seconds, in ms. */
+  unknownKeepMs: () => number;
+  /** Proven, or its last answer as this Den, changed (for doctor). */
+  onChange?: (s: { proven: boolean; lastAnswered: number | null }) => void;
   /** It just became proven. */
   onProven?: () => void;
   now?: () => number;
@@ -55,6 +60,10 @@ export class NamedAddressWatch {
   private url: string | null = null;
   private proven = false;
   private failures = 0;
+  /** The last answer as this Den (a check, or the edge's request). */
+  private answeredAt: number | null = null;
+  /** When onChange last ran. */
+  private saidAt: number | null = null;
   /** When the last check completed, or null before the first. */
   private checkedAt: number | null = null;
   private running = false;
@@ -74,6 +83,7 @@ export class NamedAddressWatch {
       this.proven = false;
       this.failures = 0;
       this.checkedAt = null;
+      this.answeredAt = null;
     }
     return u;
   }
@@ -91,6 +101,12 @@ export class NamedAddressWatch {
     return this.proven ? url : null;
   }
 
+  /** When the address last answered as this Den (ms), or null. */
+  lastAnswered(): number | null {
+    this.current();
+    return this.answeredAt;
+  }
+
   /** Whether the named https address works now. */
   works(): boolean {
     return this.address() !== null;
@@ -105,12 +121,30 @@ export class NamedAddressWatch {
 
   private prove(): void {
     this.failures = 0;
-    if (this.proven) return;
-    this.proven = true;
+    this.answeredAt = this.now();
+    const was = this.proven;
+    if (!this.proven) {
+      this.proven = true;
+      try {
+        this.d.onProven?.();
+      } catch {
+        /* the caller logs its own */
+      }
+    }
+    // Said again at most once a minute (every edge request proves).
+    if (!was || this.saidAt === null || this.answeredAt - this.saidAt >= 60_000)
+      this.changed();
+  }
+
+  private changed(): void {
+    this.saidAt = this.now();
     try {
-      this.d.onProven?.();
+      this.d.onChange?.({
+        proven: this.proven,
+        lastAnswered: this.answeredAt,
+      });
     } catch {
-      /* the caller logs its own */
+      /* doctor says nothing then */
     }
   }
 
@@ -118,11 +152,18 @@ export class NamedAddressWatch {
     if (url !== this.url) return; // web.url changed meanwhile
     this.checkedAt = this.now();
     if (a === "den") return this.prove();
-    if (a === "unknown") return;
+    // Can't tell: no change, within the window from the last answer.
+    if (
+      a === "unknown" &&
+      (this.answeredAt === null ||
+        this.now() - this.answeredAt <= this.d.unknownKeepMs())
+    )
+      return;
     this.failures++;
     if (this.proven && this.failures >= Math.max(1, this.d.dropAfter())) {
       this.proven = false;
       this.failures = 0;
+      this.changed();
     }
   }
 

@@ -123,11 +123,11 @@ export interface GuardSession {
   /** sha256 of its approval key (approvals.ts); unset before 0.4.15. */
   approveKeyHash?: string;
   /**
-   * Made on a loopback name. Once Den's own named https address works it
-   * counts on no host: its cookie may have been copied by another local
-   * app (loopbackSessions).
+   * Minted over https through the edge with its proof (the `__Host-`
+   * cookie). Once Den's own named https address works, only such a
+   * session counts (loopbackSessions).
    */
-  loopback?: boolean;
+  secure?: boolean;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -216,6 +216,11 @@ export type GuardResult =
       beyond: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
+      /**
+       * Sign-out only: the session its cookie names when that session no
+       * longer counts (its own CSRF token proved the page). It ends it.
+       */
+      ending?: GuardSession;
       /** The client's address when Den can attest it (SEC-2a: a device's record). */
       client?: string;
     }
@@ -627,19 +632,22 @@ export function checkRequest(
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
-  // Once Den's own named https address works, the session lives only
-  // there: none counts on a loopback name, and one made on a loopback name
-  // counts on no host (its cookie may have been copied).
+  // Once Den's own named https address works, sessions count only when
+  // minted on it: none on a loopback name, and none minted elsewhere.
   const namedOnly = ctx.loopbackSessions?.() === false;
-  const found =
-    principal || (via === "loopback" && namedOnly)
-      ? null
-      : (ctx.session?.(req, via) ?? null);
-  const session = found?.loopback && namedOnly ? null : found;
+  const found = principal ? null : (ctx.session?.(req, via) ?? null);
+  const session =
+    namedOnly && (via === "loopback" || !found?.secure) ? null : found;
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");
   const pathname = reqUrl.pathname;
+  // Sign-out of a session that no longer counts: it may end that session
+  // only, with its own CSRF token (checked below, with the Origin).
+  const ending =
+    !session && found && method === "POST" && pathname === SIGNOUT
+      ? found
+      : null;
   const cls: RouteClass =
     routeClass(method, pathname) ??
     (changes(method) || isUpgrade(req) ? "mutating" : "readonly");
@@ -668,7 +676,13 @@ export function checkRequest(
   // method and every upgrade. A plain read on loopback passes as before.
   const signinFree = SIGNIN_FREE.some((r) => pathMatches(r, pathname));
   const needsSignin = cls !== "readonly" || changes(method) || isUpgrade(req);
-  if (!principal && !session && !signinFree && (beyond || needsSignin)) {
+  if (
+    !principal &&
+    !session &&
+    !ending &&
+    !signinFree &&
+    (beyond || needsSignin)
+  ) {
     const scope: SigninScope = "den";
     return {
       ok: false,
@@ -749,6 +763,16 @@ export function checkRequest(
   const csrf =
     header(req, CSRF_HEADER) ??
     (isUpgrade(req) ? csrfFromProtocols(req) : undefined);
+  if (ending && csrf && same(csrf, ending.csrf))
+    return {
+      ok: true,
+      principal: null,
+      via,
+      beyond,
+      session: null,
+      ending,
+      ...(client ? { client: normAddress(client) } : {}),
+    };
   // The session's own token: there is no other (0.4.71).
   if (!csrf || !session || !same(csrf, session.csrf))
     return {
@@ -760,6 +784,9 @@ export function checkRequest(
     };
   return ok(browser ?? { kind: "person-browser" });
 }
+
+/** Sign-out's route. */
+const SIGNOUT = "/api/session/logout";
 
 /** Routes an agent's token never reaches, whatever the method (SEC-1 §5). */
 export const AGENT_FORBIDDEN: readonly string[] = [

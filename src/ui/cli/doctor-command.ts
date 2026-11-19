@@ -948,6 +948,21 @@ export async function addressCheckLines(
 }
 
 /**
+ * When the running server last saw its https address answer as this Den
+ * (its state dir's address-proof.json), or null.
+ */
+function addressLastAnswered(): string | null {
+  try {
+    const j = JSON.parse(
+      fs.readFileSync(path.join(getStateDir(), "address-proof.json"), "utf8"),
+    ) as { lastAnswered?: unknown };
+    return typeof j.lastAnswered === "string" ? j.lastAnswered : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Where the browser sign-in lives. With a working https address (web.url,
  * through the edge) the session cookie lives only there, host-only and
  * Secure. Without one it lives on the host the person uses (localhost
@@ -959,11 +974,17 @@ export function sessionHostLines(
   works: boolean,
   title: string,
   cli: string,
+  lastAnswered: string | null = null,
 ): { lines: string[]; check: OnboardCheck } {
   const named = w && w.url.startsWith("https:") && works ? w.url : null;
+  // When an https address stopped answering as this Den, say when.
+  const since =
+    !named && w?.url.startsWith("https:") && lastAnswered
+      ? `${w.url} last answered as this ${title} at ${new Date(lastAnswered).toLocaleString()}; `
+      : "";
   const detail = named
     ? `the sign-in lives only on ${named}`
-    : `the sign-in lives on the address the browser uses (localhost here), so other apps you open on it could see the sign-in. Set up the https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\` and \`${cli} edge up\``;
+    : `${since}the sign-in lives on the address the browser uses (localhost here), so other apps you open on it could see the sign-in. Set up the https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\` and \`${cli} edge up\``;
   return {
     lines: [
       "",
@@ -1462,6 +1483,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
           ac.works,
           readBrand().name,
           product().cli,
+          addressLastAnswered(),
         ).check,
       );
     }
@@ -1545,6 +1567,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ac.works,
       readBrand().name,
       product().cli,
+      addressLastAnswered(),
     ).lines)
       console.log(l);
   }

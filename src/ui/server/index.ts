@@ -1741,39 +1741,55 @@ const NAMED = new NamedAddressWatch({
   },
   cacheMs: () => addressCheckSettings().cacheMs,
   dropAfter: () => addressCheckSettings().dropAfter ?? 2,
-  // Proven: every session made on a loopback name ends now (its cookie may
-  // have been copied by another local app), its terminals with it.
+  unknownKeepMs: () => addressCheckSettings().unknownKeepMs ?? 300_000,
+  // Proven: sessions count only when minted on the address; every other
+  // session ends now, its terminals with it.
   onProven: () => {
     try {
-      const ended = webSessions.endWhere(madeOnLoopback);
+      const ended = webSessions.endWhere((x) => x.secure !== true);
       closeSessionSockets(ended);
       if (ended.length)
         serverLog(
-          `  ${product().title}'s address is proven: the sign-in lives there now; ${ended.length} sign-in(s) made on this machine's own name ended`,
+          `  ${product().title}'s address is proven: sign-in lives there now; ${ended.length} other sign-in(s) ended`,
           "lifecycle",
         );
     } catch (e) {
       serverLog(
-        `  ⚠ sign-ins made on this machine's own name could not be ended: ${(e as Error).message}`,
+        `  ⚠ sign-ins not made on ${product().title}'s address could not be ended: ${(e as Error).message}`,
         "warn",
       );
     }
   },
+  // For doctor: whether it is proven, and when it last answered as this Den.
+  onChange: (st) => {
+    try {
+      fs.writeFileSync(
+        path.join(getStateDir(), ADDRESS_PROOF_FILE),
+        JSON.stringify({
+          proven: st.proven,
+          lastAnswered: st.lastAnswered
+            ? new Date(st.lastAnswered).toISOString()
+            : null,
+        }),
+        { mode: 0o600 },
+      );
+    } catch {
+      /* doctor says nothing then */
+    }
+  },
 });
-
-/**
- * Whether a session was made on a loopback name: its record says so, or
- * (a session from before 0.4.72) its Host was one.
- */
-function madeOnLoopback(s: { reach?: string; host: string }): boolean {
-  if (s.reach) return s.reach === "loopback";
-  const h = s.host.toLowerCase().replace(/:\d+$/, "");
-  return GUARD.loopbackNames.includes(h);
-}
 
 const LAN_HOSTS = lanHosts();
 /** H1: the edge's state folder (its proof's), re-read at most every 10 s. */
 let EDGE_DIR = { at: 0, dir: null as string | null };
+/** Doctor's view of the address's proof (named-address.ts), in the state dir. */
+const ADDRESS_PROOF_FILE = "address-proof.json";
+
+/** Whether the request's Host is one of the loopback names. */
+function hostIsLoopback(req: http.IncomingMessage): boolean {
+  return GUARD.loopbackNames.includes(hostNameOf(req).replace(/\.$/, ""));
+}
+
 /** HTTPS: the edge's X-Forwarded-Proto counts only with its proof (H1). */
 function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
   return requestIsHttps(req, via, EDGE_PROVED(req));
@@ -1903,7 +1919,7 @@ const GUARD: GuardContext = {
   },
   session: (req, via) => {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
-    return s ? { ...s, loopback: madeOnLoopback(s) } : null;
+    return s ? { ...s, secure: s.secure === true } : null;
   },
   // Once Den's own named https address works, the session lives there.
   loopbackSessions: () => !NAMED.works(),
@@ -2073,17 +2089,21 @@ function startSession(
 ): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
+  // Minted over the edge's proven https: the only kind that counts once
+  // the address is proven.
+  const secure = httpsOf(req, named);
   const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
     ...(named ? { reach: named } : {}),
+    secure,
     via,
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
     ...(login && name ? { name } : {}),
   });
   return {
-    cookie: sessionSetCookie(id, httpsOf(req, named)),
+    cookie: sessionSetCookie(id, secure),
     approveKey,
   };
 }
@@ -2556,6 +2576,24 @@ async function handleAuth(
         r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
       );
     }
+    // The address may have been proven while the body was read: sign-in on
+    // a loopback name then goes there, and nothing is minted here.
+    const there =
+      checkRequest(req, GUARD, product().cli, product().title).ok &&
+      hostIsLoopback(req)
+        ? NAMED.address()
+        : null;
+    if (there)
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: "signin_elsewhere",
+          error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
+          address: there,
+        },
+        403,
+      );
     if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
     const g = checkRequest(req, GUARD, product().cli, product().title);
     LOGIN_WAITS.used(nonce, {
@@ -3581,6 +3619,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         retries: a.retries,
         cache_seconds: a.cacheMs / 1000,
         drop_after: a.dropAfter,
+        unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
       };
     })(),
     // 0.4.46: how a terminal pane reconnects on its own (panes.*).
@@ -6365,11 +6404,9 @@ async function handleRequest(
   if (pathname === "/api/session/logout" && req.method === "POST") {
     const g = guard.ok ? guard : null;
     const https = httpsOf(req, g?.via ?? null);
-    // The session the cookie names, even one that no longer counts here
-    // (made on a loopback name once the address works): it ends too, so a
-    // copy of its cookie elsewhere ends with it.
-    const named =
-      g?.session ?? webSessions.lookup(sessionCookie(req, https)) ?? null;
+    // Its session, or (one that no longer counts) the one its cookie names,
+    // proved by that session's own CSRF token: it ends on the server.
+    const named = g?.session ?? g?.ending ?? null;
     const ended = named ? webSessions.end(named.key) : false;
     if (named) closeSessionSockets([named.key]);
     res.setHeader("Set-Cookie", clearSessionCookies(PORT, https));

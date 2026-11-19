@@ -80,6 +80,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cache_seconds: true,
     // Failures in a row before the sign-in moves back off a proven address.
     drop_after: true,
+    // How long can't-tell keeps it proven (web.address_unknown_keep_seconds).
+    unknown_keep_seconds: true,
   },
 };
 
@@ -211,6 +213,7 @@ describe("the settings inventory (R21)", () => {
         "address_check.retries",
         "address_check.cache_seconds",
         "address_check.drop_after",
+        "address_check.unknown_keep_seconds",
       ].sort(),
     );
   });

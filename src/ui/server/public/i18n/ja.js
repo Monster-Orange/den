@@ -866,6 +866,9 @@
       "ページのバナーと Edge が __DEN_TITLE__ のアドレスの前回の確認を使い回す時間。0 は読むたびに確認します。__DEN_CLI__ config web.address_check_cache_seconds=60",
     "set.server.address_check_drop_after":
       "サインインが戻るまでのアドレス失敗回数",
+    "set.server.address_unknown_keep": "確認が判断できない間アドレスを保つ時間",
+    "set.server.address_unknown_keep.d":
+      "__DEN_TITLE__ の https アドレスが確認された後、判断できない確認（時間内に応答なし）がサインインをそこに保つ時間。最後の応答から数えます。過ぎると失敗として扱い、サインインはこのマシン自身の名前に戻ります。短くしてください。__DEN_CLI__ config web.address_unknown_keep_seconds=300",
     "set.server.address_check_drop_after.d":
       "__DEN_TITLE__ の https アドレスが確認されると、サインインはそこだけに置かれます。そのアドレスで別のものが応答するか何も応答しない確認が何回続いたら、このマシン自身の名前でサインインが再び使えるようになるか。判断できない確認は無視します。__DEN_CLI__ config web.address_check_drop_after=2",
     "set.server.bridge_listen": "Docker ブリッジ (edge 用)",

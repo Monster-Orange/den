@@ -2154,10 +2154,11 @@ the session cookie is set only there, and `localhost`, `127.0.0.1` and
 
 - `web up` and `web open` open the https address. `/auth` and `/signin` on
   a loopback name answer with a plain redirect to the same path there.
-- Every sign-in made on a loopback name ends when the address is proven,
-  and one made there counts on no host after (its cookie may have been
-  copied). Sign-out ends the session its cookie names, even one that no
-  longer counts. Plain reads on loopback stay open, and the CLI's token
+- Once the address is proven, a session counts only if it was signed in
+  over that https address. Every other one (a loopback name, or plain http
+  on any name) ends at the proof and counts on no host after. Sign-out,
+  with that session's own page, ends the session its cookie names, even
+  one that no longer counts. Plain reads on loopback stay open, and the CLI's token
   (`web token --print`), the MCP and agents' tokens work on loopback as
   before.
 - **This is my computer** (`/attest`) on a loopback name goes to the
@@ -2168,10 +2169,13 @@ the session cookie is set only there, and `localhost`, `127.0.0.1` and
 - "Proven" means Den's own check of the address found this Den there (the
   same check `doctor` and `web up` make, every
   `web.address_check_cache_seconds`), or the edge brought an https request
-  for it with its proof. It stays proven through checks that can't tell (a
-  timeout). Only a definite failure (another server, or nothing, answers),
+  for it with its proof. A check that can't tell (a timeout, no DNS answer)
+  keeps it proven for `web.address_unknown_keep_seconds` after the last
+  answer as this Den (300 unless set; 0 to 3600); past that it counts as a
+  failure. A failure (something else, or nothing, answers),
   `web.address_check_drop_after` times in a row (2 unless set; 1 to 100),
-  moves sign-in back to the address the browser uses. Before it is proven,
+  moves sign-in back to the address the browser uses. `doctor` says when
+  the address last answered as this Den. Before it is proven,
   and on an install with no https address (the edge off, its port taken, a
   fresh install), sign-in stays where the browser is, so nothing locks you
   out. `doctor` then warns: other apps you open on that address could see
