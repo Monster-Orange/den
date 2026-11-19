@@ -458,6 +458,8 @@ describe("hubWhoami (GET /connect/whoami)", () => {
       [7, undefined],
       [null, undefined],
       ["x".repeat(300), undefined],
+      ["Pat\nExample", undefined],
+      ["Pat\u007fExample", undefined],
     ] as const) {
       const h = await fakeHub({ ...base, person: { id: "p_1", name: v } });
       expect([v, (await hubWhoami(h.url, TOKEN)).personName]).toEqual([

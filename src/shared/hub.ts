@@ -719,9 +719,9 @@ const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 /** Issue 406: a person's name from Hub: trimmed, one line, at most 200 characters. */
 const personName = (v: unknown): string | undefined => {
   const n = typeof v === "string" ? v.trim() : "";
-  return n && n.length <= 200 && !/[\u0000-\u001f\u007f]/.test(n)
-    ? n
-    : undefined;
+  // No control characters (code points below 32, and 127).
+  const plain = [...n].every((c) => c >= " " && c !== "\u007f");
+  return n && n.length <= 200 && plain ? n : undefined;
 };
 
 /** One JSON call to Hub, bounded; its answer, or a HubCallError. */
