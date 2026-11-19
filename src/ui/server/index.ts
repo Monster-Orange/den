@@ -25,6 +25,7 @@ import type { UpdateWait } from "./update-check.js";
 
 import {
   isUpdateAsk,
+  securityUpdateNote,
   staleUpdateAsk,
   updateWaitNotes,
 } from "./update-check.js";
@@ -1124,7 +1125,10 @@ import {
   writeTargets,
 } from "../../shared/approval-policy.js";
 import { alertSettings, patchAlerts } from "./alerts.js";
-import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
+import {
+  SERVER_AGENT_ID,
+  serverAgentName,
+} from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
   agentNameOf,
@@ -2664,6 +2668,8 @@ function approvalDeps(): ApprovalDeps {
           writeRestartMarker(stateDir, marker);
           return { path: restartMarkerPath(stateDir), marker };
         },
+        // Issue 562 review: Den's own auto update reads the wait again.
+        ...(auto && autoRestartHold ? { beforeRestart: autoRestartHold } : {}),
         restart: () => {
           serverLog(`↻ update restart asked by ${by}: ${reason}`, "lifecycle");
           setTimeout(() => {
@@ -8321,6 +8327,13 @@ const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
 const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
 
 /**
+ * Issue 562 review: set by the update check while its auto update runs:
+ * den_update awaits it after the install, before the watch and restart
+ * (holdRestart). A den_update the person or an agent asked for has none.
+ */
+let autoRestartHold: ((keepAlive: () => void) => Promise<void>) | null = null;
+
+/**
  * SRV-P6 (0.4.48): every server_agent.update_check_minutes (0: never),
  * one updateCheck tick (update-check.ts). Read once at start: a changed
  * interval takes effect at the next restart; self_update is read per tick.
@@ -8361,8 +8374,35 @@ function startUpdateCheck(): void {
   if (!every) return;
   let busy = false;
   let updating = false;
-  /** #251: why an auto update would wait now; null: a quiet moment. */
-  const updateWaitWhy = async (): Promise<UpdateWait | null> => {
+  /**
+   * Issue 562 review: the wait again once the install is done, leaving
+   * out "updating" (this update is the one under way).
+   */
+  const agentWaitWhy = async (
+    pastPerson: boolean,
+  ): Promise<UpdateWait | null> => {
+    const w = attentionWaiting().get(SERVER_AGENT_ID);
+    const onPerson = w === "permission" || w === "asked";
+    if (onPerson && !pastPerson) return w;
+    if (approvals?.queue.pending().length) return "approval";
+    if (onPerson) return null;
+    const ops = await import("../cli/agent-ops.js");
+    const { webDeps } = await import("./agent-routes.js");
+    return (await ops.serverAgentInputState(webDeps())) === "busy"
+      ? "busy"
+      : null;
+  };
+  /**
+   * #251: why an auto update would wait now; null: a quiet moment.
+   * Issue 562: `pastPerson` leaves out the server agent's own question or
+   * permission prompt (a security release): a pending Allow still holds
+   * it, and so does a turn that is working. A turn paused on its person
+   * isn't working (its transcript's open tool call reads busy): it
+   * resumes after the restart.
+   */
+  const updateWaitWhy = async (
+    pastPerson = false,
+  ): Promise<UpdateWait | null> => {
     if (updating) return "updating";
     const u = await import("./den-update.js");
     const last = u.readUpdateState(getStateDir());
@@ -8373,14 +8413,7 @@ function startUpdateCheck(): void {
     )
       return "updating";
     // The server agent's own wait first: it is what the person can end.
-    const w = attentionWaiting().get(SERVER_AGENT_ID);
-    if (w === "permission" || w === "asked") return w;
-    if (approvals?.queue.pending().length) return "approval";
-    const ops = await import("../cli/agent-ops.js");
-    const { webDeps } = await import("./agent-routes.js");
-    return (await ops.serverAgentInputState(webDeps())) === "busy"
-      ? "busy"
-      : null;
+    return agentWaitWhy(pastPerson);
   };
   const tick = async (): Promise<void> => {
     if (busy) return;
@@ -8415,7 +8448,35 @@ function startUpdateCheck(): void {
         last: () => u.readUpdateState(getStateDir()),
         idle: async () => (await updateWaitWhy()) === null,
         // #251: why it waits, so the log and the bell can say so.
-        waitWhy: updateWaitWhy,
+        waitWhy: () => updateWaitWhy(),
+        // Issue 562: a security release: npm's version data marks it.
+        waitPast: () => updateWaitWhy(true),
+        security: (version) =>
+          u.npmViewSecurity(
+            u.npmCommand(),
+            ENGINE_PACKAGE,
+            version,
+            getDistRoot(),
+          ),
+        securitySkipsQuestions: () => {
+          try {
+            return readServerAgentConfig().securityUpdateSkipsQuestions;
+          } catch {
+            return true;
+          }
+        },
+        securityNote: (version) => {
+          try {
+            securityUpdateNote(
+              notificationDeps().store,
+              product().title,
+              serverAgentName(product().title),
+              version,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitChecks: () => {
           try {
             return readServerAgentConfig().updateWaitChecks;
@@ -8501,12 +8562,44 @@ function startUpdateCheck(): void {
         // approval policy (issue 160) may hold it for the person.
         pinCommit: (version) => runPinCommit(version, true),
         pinNotice: pinBellNotice,
-        update: async (version, reason) => {
+        update: async (version, reason, opts) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
           const ok = await a.check({ version, reason });
           if (!ok.ok) return { ok: false, error: ok.error };
           updating = true;
+          // Issue 562 review: read the wait again after the install.
+          autoRestartHold = async (keepAlive) => {
+            const { holdRestart, restartedWhileWorkingNote } =
+              await import("./update-check.js");
+            let maxMs = 900_000;
+            try {
+              maxMs = readServerAgentConfig().updateRestartWaitMs;
+            } catch {
+              /* the default */
+            }
+            await holdRestart({
+              waitWhy: () => agentWaitWhy(!!opts?.security),
+              maxMs,
+              keepAlive,
+              log: (line) => {
+                serverLog(`  ${line}`, "lifecycle");
+                recordAction(null, { verb: "den-update-check", detail: line });
+              },
+              timedOut: () => {
+                try {
+                  restartedWhileWorkingNote(
+                    notificationDeps().store,
+                    product().title,
+                    serverAgentName(product().title),
+                    version,
+                  );
+                } catch {
+                  /* the bell is best effort */
+                }
+              },
+            });
+          };
           try {
             const r = (await a.run(ok.args, {
               id: "update-check",
@@ -8517,6 +8610,7 @@ function startUpdateCheck(): void {
               : { ok: false, error: String(r.error ?? "not updated") };
           } finally {
             updating = false;
+            autoRestartHold = null;
           }
         },
         ask: async (version, reason) => {
