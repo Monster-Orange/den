@@ -172,13 +172,9 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/report/drafts",
     "/api/report/drafts/:id",
     "/api/report/github-send/:id",
-    // My reports: live from GitHub as the person (an agent gets 403).
-    "/api/report/mine",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
-    "/api/github/branches",
-    "/api/github/repos",
     "/api/workspaces/available-repos",
     "/api/workspaces/services",
     "/api/workspaces/settings",
@@ -300,6 +296,14 @@ export const ROUTES: readonly RouteEntry[] = [
     ["GET", "HEAD"],
     "/api/logs/search",
     "searches the logs (grep, docker logs)",
+  ),
+  // They run gh as the person: what its sign-in can see, and its quota.
+  M(["GET", "HEAD"], "/api/github/branches", "lists a repo's branches (gh)"),
+  M(["GET", "HEAD"], "/api/github/repos", "lists the person's repos (gh)"),
+  M(
+    ["GET", "HEAD"],
+    "/api/report/mine",
+    "the person's own reports, live (gh; an agent gets 403)",
   ),
   R(
     "/api/release/deploy",

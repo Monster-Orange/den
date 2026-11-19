@@ -853,6 +853,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
 export const AGENT_PERSON_RUNS: readonly string[] = [
   "/api/aws/login",
   "/api/workspace/exec",
+  // The person's own reports, live from GitHub as the person.
+  "/api/report/mine",
 ];
 
 /** `/api/sessions/<id>/…`: a session's own routes (AG-4a-term's io). */
