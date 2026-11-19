@@ -197,7 +197,7 @@ const count = (v: unknown) =>
 /** GET /api/installs/self/github, read defensively. */
 export function readCoverage(body: unknown): OrgCoverage[] {
   const b = (body ?? {}) as Record<string, unknown>;
-  return (Array.isArray(b.orgs) ? b.orgs : []).flatMap((x) => {
+  return (Array.isArray(b.orgs) ? b.orgs : []).flatMap((x): OrgCoverage[] => {
     const o = (x ?? {}) as Record<string, unknown>;
     const org = plain(o.org, 39);
     const access = o.access;
@@ -238,8 +238,7 @@ export function withDenSpelling(
   own: string[],
 ): Uncovered[] {
   const byKey = new Map<string, string>();
-  for (const r of own)
-    if (typeof r === "string") byKey.set(r.toLowerCase(), r);
+  for (const r of own) if (typeof r === "string") byKey.set(r.toLowerCase(), r);
   return uncovered.map((u) => {
     const r = byKey.get(u.repo.toLowerCase());
     if (!r) return u;

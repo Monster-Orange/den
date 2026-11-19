@@ -26,8 +26,7 @@ const fixture = (f: string) =>
 
 /** The <p> for one org. */
 const rowOf = (html: string, org: string) =>
-  html.match(new RegExp(`<p [^>]*data-hubgh-org="${org}"[^]*?</p>`))?.[0] ??
-  "";
+  html.match(new RegExp(`<p [^>]*data-hubgh-org="${org}"[^]*?</p>`))?.[0] ?? "";
 
 describe("hubGithubHtml (issue 526)", () => {
   it("Hub's sample: the error org shows the couldn't-check line and Check again, no link", async () => {
