@@ -2751,6 +2751,13 @@ function approvalDeps(): ApprovalDeps {
         return undefined;
       }
     },
+    language: () => {
+      try {
+        return uiLanguage(readUserConfig().language);
+      } catch {
+        return "en";
+      }
+    },
     // SRV-P2: an agent asks to add or change a persona.
     personas: {
       checkCreate: (a, who) => checkPersonaCreate(agentWebDeps(), a, who),
@@ -3000,6 +3007,22 @@ function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
         return;
       }
       case "commit_failed":
+        // Issue 523: refused for its signing key: the bell's own words.
+        if (step.signing) {
+          const sv = step.signing.vars;
+          add(
+            `${t} ${v}: ${t} didn't commit its pin: ${step.why}`,
+            step.signing.code === "noKey"
+              ? "bell.m.pinSigningNoKey"
+              : "bell.m.pinSigningRefused",
+            {
+              repo: sv.repo,
+              settings: sv.settings,
+              ...(sv.fix ? { fix: sv.fix } : {}),
+            },
+          );
+          return;
+        }
         add(
           `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
           "bell.m.pinCommitFailed",

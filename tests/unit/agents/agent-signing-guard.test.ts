@@ -20,6 +20,7 @@ import {
   setRepoSigning,
 } from "../../../src/shared/agents/git-signing.js";
 import { agentSessionEnv } from "../../../src/shared/agents/runtimes.js";
+import { SIGNING_WORDS, signingWord } from "../../../src/shared/agents/signing-words.js";
 import { pinGit } from "../../../src/ui/server/pin-commit.js";
 import { runClone } from "../../../src/shared/repo-clone.js";
 import { agentRepoSigningLines } from "../../../src/ui/cli/doctor-command.js";
@@ -274,5 +275,56 @@ describe("doctor: agent repos whose signing key isn't the agents key (issue 523)
       }),
     ]);
     expect(r.checks[0].fix).toMatch(/ssh-keygen -t ed25519 -N "" -C "Den agents" -f ~\/\.ssh\/den_agents/);
+  });
+
+  it("says it in the person's language", () => {
+    const es = agentRepoSigningLines("Acme", [], undefined, base, "es");
+    expect(es.checks[0].detail).toBe(SIGNING_WORDS.es["doctor.unsigned"]);
+    const bad = newRepo("bad");
+    const ja = agentRepoSigningLines("Acme", [bad], { signingKey: agentsKey }, base, "ja");
+    expect(ja.lines.join("\n")).toContain("エージェントの鍵ではありません");
+    expect(ja.lines.join("\n")).toContain(bad);
+  });
+});
+
+describe("the refusal's words (issue 523)", () => {
+  const ph = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+  it("es and ja have every en line, with the same placeholders", () => {
+    const en = SIGNING_WORDS.en;
+    for (const lang of ["es", "ja"] as const) {
+      const tr = SIGNING_WORDS[lang];
+      expect(Object.keys(tr).sort()).toEqual(Object.keys(en).sort());
+      for (const k of Object.keys(en) as (keyof typeof en)[])
+        expect([lang, k, ph(tr[k])]).toEqual([lang, k, ph(en[k])]);
+    }
+  });
+
+  it("a refusal carries its word and placeholders, and says it in ja", () => {
+    const repo = newRepo();
+    const r = checkRepoSigning(repo, { signingKey: agentsKey }, base, [], "ja");
+    expect(r.ok).toBe(false);
+    expect(r.refusal).toEqual({
+      code: "notAgentsKey",
+      vars: {
+        repo,
+        settings: "gpg.format=openpgp (default), user.signingkey≠agents (global)",
+        fix: expect.stringContaining("gpg.format ssh"),
+      },
+    });
+    expect(r.reason).toBe(signingWord("ja", "notAgentsKey", r.refusal!.vars));
+    expect(r.reason).not.toContain(PERSON_KEY);
+  });
+
+  it("Den's pin commit hands the bell the refusal, not only text", async () => {
+    const repo = newRepo();
+    fs.writeFileSync(path.join(repo, "package.json"), "{}\n");
+    const run = pinGit(repo, {
+      signingKey: agentsKey,
+      env: { ...base, GIT_CONFIG_PARAMETERS: `'gpg.format'='openpgp'` },
+    });
+    await run(["add", "--", "package.json"]);
+    const c = await run(["commit", "-q", "-m", "pin"]);
+    expect(c.refused?.code).toBe("notAgentsKey");
+    expect(c.refused?.vars.settings).toBe("gpg.format=openpgp (-c/env)");
   });
 });

@@ -2666,6 +2666,10 @@
       "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push failed: {why}. __DEN_TITLE__ tries again at the next update check",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
+    "bell.m.pinSigningRefused":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ didn't commit its pin: in {repo}, the signing key isn't the agents' key ({settings}). It never signs with anyone else's key. Give the repo the agents' key: {fix}",
+    "bell.m.pinSigningNoKey":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ didn't commit its pin: in {repo}, signing is still on ({settings}) and there is no agents signing key. It never signs with anyone else's key.",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
     "bell.m.pinBranchPushed":

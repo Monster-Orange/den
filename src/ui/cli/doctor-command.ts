@@ -49,6 +49,8 @@ import {
   type AgentGitSettings,
   type SigningCheck,
 } from "../../shared/agents/git-signing.js";
+import { signingWord } from "../../shared/agents/signing-words.js";
+import type { UiLanguage } from "../server/ui-language.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
@@ -1234,17 +1236,18 @@ export function agentRepoSigningLines(
   dirs: readonly string[],
   git: AgentGitSettings | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  lang: UiLanguage = "en",
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   if (!git) {
-    const detail = "agent commits are unsigned; set an agents signing key";
+    const detail = signingWord(lang, "doctor.unsigned");
     return {
       lines: [
         "",
-        `${title} doctor: agents' commit signing`,
+        signingWord(lang, "doctor.head", { title }),
         "",
         `  signing  ⚠  ${detail}:`,
         `             ${AGENTS_KEYGEN_LINE}`,
-        "             then agents.git.signing_key: ~/.ssh/den_agents in config/local/user.yml",
+        `             ${signingWord(lang, "doctor.thenSet")}`,
       ],
       problem: false,
       checks: [
@@ -1266,7 +1269,7 @@ export function agentRepoSigningLines(
   }
   const checks: OnboardCheck[] = [];
   for (const top of [...tops].sort()) {
-    const r = checkRepoSigning(top, git, files);
+    const r = checkRepoSigning(top, git, files, [], lang);
     if (!r.ok)
       checks.push({
         id: "agents:signing:repo",
@@ -1279,7 +1282,7 @@ export function agentRepoSigningLines(
   return {
     lines: [
       "",
-      `${title} doctor: agent repos that don't sign with the agents' key`,
+      signingWord(lang, "doctor.reposHead", { title }),
       "",
       ...checks.flatMap((c) => [`  signing  ✗  ${c.detail}`]),
     ],
@@ -1289,7 +1292,7 @@ export function agentRepoSigningLines(
 }
 
 /** agentRepoSigningLines for this install: its config and its agents. */
-function agentRepoSigningDoctor(title: string) {
+async function agentRepoSigningDoctor(title: string) {
   let git: AgentGitSettings | undefined;
   try {
     git = readAgentsConfig().git;
@@ -1303,7 +1306,8 @@ function agentRepoSigningDoctor(title: string) {
   } catch {
     dirs = [];
   }
-  return agentRepoSigningLines(title, dirs, git);
+  const { cliLanguage } = await import("../../shared/edge/address-check.js");
+  return agentRepoSigningLines(title, dirs, git, process.env, cliLanguage());
 }
 
 /**
@@ -1482,7 +1486,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const sign = signingLines(readBrand().name);
     r.checks.push(...sign.checks);
     if (sign.problem) r.ok = false;
-    const repoSign = agentRepoSigningDoctor(readBrand().name);
+    const repoSign = await agentRepoSigningDoctor(readBrand().name);
     r.checks.push(...repoSign.checks);
     if (repoSign.problem) r.ok = false;
     const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
@@ -1550,7 +1554,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
-  const repoSign = agentRepoSigningDoctor(readBrand().name);
+  const repoSign = await agentRepoSigningDoctor(readBrand().name);
   for (const l of repoSign.lines) console.log(l);
   const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
   for (const l of addr.lines) console.log(l);

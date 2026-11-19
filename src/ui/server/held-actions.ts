@@ -81,6 +81,8 @@ import {
   type GitRunner,
 } from "../../shared/repo-clone.js";
 import type { AgentGitSettings } from "../../shared/agents/git-signing.js";
+import { signingWord } from "../../shared/agents/signing-words.js";
+import type { UiLanguage } from "./ui-language.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
   readPolicySetting,
@@ -208,6 +210,8 @@ export interface HeldActionDeps {
    * its own config. Unset or undefined: the clone's config is left alone.
    */
   agentsGit?: () => AgentGitSettings | undefined;
+  /** The person's language (user.yml `language`) for Den's new words. */
+  language?: () => UiLanguage;
   /** SRV-P2: persona_create's and persona_update's checks and writes. */
   personas?: {
     checkCreate: (
@@ -609,9 +613,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             : "With git and your own credentials (not gh: it isn't GitHub).",
           `Into: ${t.dest} (a new folder; nothing there changes).`,
           ...(d.agentsGit?.()
-            ? [
-                "Its own git config gets the agents' signing key (gpg.format ssh), so commits there never use your key.",
-              ]
+            ? [signingWord(d.language?.() ?? "en", "cloneDetail")]
             : []),
           "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
         ],
@@ -628,7 +630,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       );
       if (!t.ok) return t;
       const signing = d.agentsGit?.();
-      const out = await runClone(t, d.gitRun, signing ? { signing } : {});
+      const out = await runClone(
+        t,
+        d.gitRun,
+        signing ? { signing, lang: d.language?.() ?? "en" } : {},
+      );
       return out.ok
         ? {
             ...out,

@@ -22,6 +22,8 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import type { UiLanguage } from "../../ui/server/ui-language.js";
+import { signingWord } from "./signing-words.js";
 
 export interface AgentGitSettings {
   /** The private key's absolute path (~ expanded). */
@@ -245,8 +247,8 @@ export function effectiveSigning(
   };
 }
 
-const scopeWord = (s: Setting) =>
-  s.scope === "command" ? "the environment or -c" : `the ${s.scope} config`;
+/** Where a setting came from, in git's own words ("-c/env" for command). */
+const scopeOf = (s: Setting) => (s.scope === "command" ? "-c/env" : s.scope);
 
 /** The line that gives `repo` the agents' key as its own config. */
 export function repoSigningFixLine(
@@ -264,54 +266,71 @@ function sameKey(value: string, git: AgentGitSettings): boolean {
   return n === git.signingKey || n === `${git.signingKey}.pub`;
 }
 
+/**
+ * Why a commit was refused: its word (signing-words.ts) and that word's
+ * placeholders, so the bell and doctor say it in the person's language.
+ */
+export interface SigningRefusal {
+  code: "noKey" | "notAgentsKey";
+  vars: { repo: string; settings: string; fix?: string };
+}
+
 export type RepoSigningCheck =
-  | { ok: true; reason?: undefined }
-  | { ok: false; reason: string };
+  | { ok: true; reason?: undefined; refusal?: undefined }
+  | { ok: false; reason: string; refusal: SigningRefusal };
 
 /**
  * Issue 523: whether a commit in `repo` would sign as the agents. With an
  * agents key: the effective gpg.format must be ssh and user.signingkey the
  * agents' key, or it is refused. With none: signing must be off
  * (commit.gpgsign and tag.gpgsign), or the commit would sign with someone
- * else's key. The reason names settings and where they come from, never a
- * key.
+ * else's key. The reason (in `lang`) names settings in git's notation and
+ * where they come from, never a key.
  */
 export function checkRepoSigning(
   repo: string,
   git: AgentGitSettings | undefined,
   env: NodeJS.ProcessEnv = process.env,
   pre: readonly string[] = [],
+  lang: UiLanguage = "en",
 ): RepoSigningCheck {
   const e = effectiveSigning(repo, env, pre);
+  const refuse = (refusal: SigningRefusal): RepoSigningCheck => ({
+    ok: false,
+    reason: signingWord(lang, refusal.code, refusal.vars),
+    refusal,
+  });
   if (!git) {
     const on: string[] = [];
     for (const [k, s] of [
       ["commit.gpgsign", e.commitSign],
       ["tag.gpgsign", e.tagSign],
     ] as const)
-      if (s?.value === "true") on.push(`${k} is on (from ${scopeWord(s)})`);
+      if (s?.value === "true") on.push(`${k}=true (${scopeOf(s)})`);
     if (!on.length) return { ok: true };
-    return {
-      ok: false,
-      reason: `${repo}: ${on.join(" and ")}, and there is no agents signing key, so the commit would be signed with someone else's key. Agents' commits stay unsigned until agents.git.signing_key is set.`,
-    };
+    return refuse({
+      code: "noKey",
+      vars: { repo, settings: on.join(", ") },
+    });
   }
   const why: string[] = [];
   const format = e.format?.value || "openpgp";
   if (format !== "ssh")
     why.push(
-      e.format
-        ? `gpg.format is ${format} (from ${scopeWord(e.format)})`
-        : "gpg.format is openpgp (git's default: nothing sets ssh)",
+      `gpg.format=${format} (${e.format ? scopeOf(e.format) : "default"})`,
     );
-  if (!e.key) why.push("user.signingkey is unset");
+  if (!e.key) why.push("user.signingkey (unset)");
   else if (!sameKey(e.key.value, git))
-    why.push(`user.signingkey is another key (from ${scopeWord(e.key)})`);
+    why.push(`user.signingkey≠agents (${scopeOf(e.key)})`);
   if (!why.length) return { ok: true };
-  return {
-    ok: false,
-    reason: `${repo}: its signing key isn't the agents' key: ${why.join("; ")}. An agent's commit is never signed with anyone else's key. Give the repo the agents' key: ${repoSigningFixLine(repo, git)}`,
-  };
+  return refuse({
+    code: "notAgentsKey",
+    vars: {
+      repo,
+      settings: why.join(", "),
+      fix: repoSigningFixLine(repo, git),
+    },
+  });
 }
 
 /**

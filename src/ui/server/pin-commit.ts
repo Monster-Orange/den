@@ -35,16 +35,20 @@ import * as path from "path";
 import {
   agentGitEnv,
   checkRepoSigning,
+  type SigningRefusal,
 } from "../../shared/agents/git-signing.js";
 import type { Ran } from "./den-update.js";
 
 export const PIN_FILES = ["package.json", "package-lock.json"] as const;
 
-/** git with its arguments (and extra env), run in the distribution's root. */
+/**
+ * git with its arguments (and extra env), run in the distribution's root.
+ * Issue 523: a commit refused for its signing key says why in `refused`.
+ */
 export type GitRun = (
   args: string[],
   env?: Record<string, string>,
-) => Promise<Ran>;
+) => Promise<Ran & { refused?: SigningRefusal }>;
 
 /** How the pin leaves: pushed to the branch, or a pull request. */
 export type PinMode = "push" | "pr";
@@ -80,7 +84,14 @@ export type PinStep =
       why: string;
       first: boolean;
     }
-  | { did: "commit_failed"; version: string; why: string; first: boolean }
+  | {
+      did: "commit_failed";
+      version: string;
+      why: string;
+      first: boolean;
+      /** Issue 523: refused for its signing key (the bell's own words). */
+      signing?: SigningRefusal;
+    }
   /** The pin files had nothing to commit (someone committed them). */
   | { did: "clean"; version: string }
   /** pr: the branch is pushed and its pull request open. */
@@ -254,7 +265,7 @@ export async function commitPin(
         writePinRecord(d.stateDir, { version, state: "clean", at: at() });
         return { did: "clean", version };
       }
-      const failCommit = (why: string): PinStep => {
+      const failCommit = (why: string, signing?: SigningRefusal): PinStep => {
         const first = !(same?.state === "commit_failed" && same.noted);
         writePinRecord(d.stateDir, {
           version,
@@ -263,7 +274,13 @@ export async function commitPin(
           noted: true,
           at: at(),
         });
-        return { did: "commit_failed", version, why, first };
+        return {
+          did: "commit_failed",
+          version,
+          why,
+          first,
+          ...(signing ? { signing } : {}),
+        };
       };
       // Issue 160: the policy says ask: hold it, once per version.
       if (d.allow?.() === "ask") {
@@ -310,7 +327,9 @@ export async function commitPin(
             body,
           ]);
           if (ct.code !== 0)
-            return failCommit(`git commit-tree: ${tail(ct.out)}`);
+            return ct.refused
+              ? failCommit(ct.out, ct.refused)
+              : failCommit(`git commit-tree: ${tail(ct.out)}`);
           sha = ct.out.trim();
         } finally {
           fs.rmSync(idx, { force: true });
@@ -329,7 +348,10 @@ export async function commitPin(
           "--",
           ...files,
         ]);
-        if (c.code !== 0) return failCommit(`git commit: ${tail(c.out)}`);
+        if (c.code !== 0)
+          return c.refused
+            ? failCommit(c.out, c.refused)
+            : failCommit(`git commit: ${tail(c.out)}`);
         const h = await d.git(["rev-parse", "HEAD"]);
         sha = h.out.trim();
       }
@@ -534,7 +556,8 @@ export function pinGit(
       extra ? { ...env, ...extra } : env,
       pre,
     );
-    if (!guard.ok) return { code: 1, out: guard.reason };
+    if (!guard.ok)
+      return { code: 1, out: guard.reason, refused: guard.refusal };
     ident ??= raw(["config", "--get", "user.email"]).then(
       (r) => r.code === 0 && !!r.out.trim(),
     );
