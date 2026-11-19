@@ -2639,6 +2639,8 @@
     "bell.pickBody.one":
       "Den can't tell which Hub project fits it. Click to choose. Nothing is filed for it until then.",
     "bell.m.pick.one": "{n} project needs your pick",
+    "bell.m.hostRestarted":
+      "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed ({n}): {names}. Open terminals that ended: {terminals}.",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",

@@ -287,7 +287,7 @@ export async function startAgentsPageServer(
     flushMs: 0,
     log: () => undefined,
     launchdSession: opts.launchd ?? null,
-    ...(opts.hostPty ? { ptyModule: () => opts.hostPty } : {}),
+    ...(opts.hostPty ? { ptyModule: () => opts.hostPty ?? null } : {}),
   });
   let hostClosed = false;
   const closeHost = host.close.bind(host);

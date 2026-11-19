@@ -1817,6 +1817,8 @@
     "bell.pickBody.one":
       "Den no sabe qué proyecto de Hub le corresponde. Haz clic para elegir. No se guarda nada de él hasta entonces.",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
+    "bell.m.hostRestarted":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados ({n}): {names}. Terminales abiertas que terminaron: {terminals}.",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",

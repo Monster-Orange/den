@@ -2039,9 +2039,16 @@ export interface SessionsConfig {
    * percent of its limit (90).
    */
   pty_machine_warn_percent?: number;
+  /**
+   * Issue 563: how long the web server waits for agents mid-turn before it
+   * restarts a terminal host that isn't current with the installed Den
+   * (default 900); then it restarts anyway.
+   */
+  host_restart_wait_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
 export const DEFAULT_PTY_WARN_ABOVE = 400;
 export const DEFAULT_PTY_MACHINE_WARN_PERCENT = 90;
 
@@ -2052,6 +2059,7 @@ export interface ResolvedSessionsConfig {
   ptyCloseSeconds: number;
   ptyWarnAbove: number;
   ptyMachineWarnPercent: number;
+  hostRestartWaitSeconds: number;
 }
 
 const SESSIONS_KEYS = [
@@ -2060,6 +2068,7 @@ const SESSIONS_KEYS = [
   "pty_close_seconds",
   "pty_warn_above",
   "pty_machine_warn_percent",
+  "host_restart_wait_seconds",
 ];
 
 /**
@@ -2087,7 +2096,21 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     ptyCloseSeconds: 0,
     ptyWarnAbove: DEFAULT_PTY_WARN_ABOVE,
     ptyMachineWarnPercent: DEFAULT_PTY_MACHINE_WARN_PERCENT,
+    hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
   };
+  const hostWait = raw.host_restart_wait_seconds;
+  if (hostWait !== undefined) {
+    if (
+      typeof hostWait !== "number" ||
+      !Number.isFinite(hostWait) ||
+      hostWait < 0 ||
+      hostWait > 86_400
+    )
+      throw new Error(
+        `sessions.host_restart_wait_seconds: must be a number of seconds, 0 to 86400 (got ${JSON.stringify(hostWait)})`,
+      );
+    out.hostRestartWaitSeconds = hostWait;
+  }
   const ptyClose = raw.pty_close_seconds;
   if (ptyClose !== undefined) {
     if (

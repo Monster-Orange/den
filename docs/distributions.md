@@ -3283,6 +3283,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
     pty_machine_warn_percent: 90
   ```
 
+- Issue 563: the terminal host is a process of its own, so a web
+  restart (and a self-update's) leaves it running the version it
+  started on. When the web server starts, it asks the host which Den it
+  runs and which native terminal module it loaded. A host on another
+  version, holding a module that is no longer the installed one (npm
+  deletes the old one's folder at an update, and new terminals then fail
+  with `posix_spawnp failed`), or too old to say, is restarted the way
+  `<cli> sessions host --stop` does. Agents mid-turn are waited for, up
+  to `sessions.host_restart_wait_seconds` (default 900); then it restarts
+  anyway. The agents that were running resume; open terminals end; the
+  bell and the audit say so. `<cli> doctor`'s Host row shows what the
+  host runs, ✗ with the restart command when it isn't current.
+
+  ```yaml
+  sessions:
+    host_restart_wait_seconds: 900
+  ```
+
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
   optional dependency (prebuilt binaries for macOS, Linux and Windows,
   nothing downloaded at install). Without it (`npm install
