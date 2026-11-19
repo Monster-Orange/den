@@ -4693,6 +4693,26 @@ the agent's own files folder (`agent-hooks-lost.jsonl`), and `doctor`
 shows a warning per agent with marks lost in the last day: how many, and
 the last reason.
 
+When Den can't place a caller, the audit row says why: the lookup timed
+out, failed, found no matching connection or more than one, or was
+still running when the wait ended. A caller that had already closed its
+connection is refused all the same, but nothing is there to answer, so
+its row says "the caller had gone" (reason `token_caller_gone`) and it
+isn't counted as a refused agent.
+
+An agent's hooks (its attention mark for the bell, the Hub inbox check)
+stay connected long enough for a busy machine to place them, and try
+again when a call fails or is turned away. These are Settings
+(Settings › Agents, or `config agent_hooks.*`, in user.yml), read when
+an agent starts:
+
+```yaml
+agent_hooks:
+  timeout_seconds: 20 # each try's wait, 1 to 600
+  retries: 2 # tries after the first, 0 to 10
+  backoff_seconds: 1 # the first pause, doubling, 0 to 60
+```
+
 An agent's token reaches only its own session's routes, and never a
 shell-grade route, `/api/web/*`, sign-in or sign-out, or the admin
 password's routes: it can't set the admin password, use it for sudo or

@@ -508,6 +508,17 @@ export interface UserConfig {
     retry_seconds?: unknown;
   };
   /**
+   * Issue 609: how an agent's hooks (its attention mark, the Hub inbox
+   * check) call Den: timeout_seconds (20) a try, retries (2) after a
+   * failed or refused try, backoff_seconds (1) the first pause, doubling
+   * (agents/guardrails/hook-call.ts). Read at the agent's launch.
+   */
+  agent_hooks?: {
+    timeout_seconds?: unknown;
+    retries?: unknown;
+    backoff_seconds?: unknown;
+  };
+  /**
    * Issue 278: agents stuck compacting and instruction files that eat the
    * context (context-watch.ts): compaction_loop_count (3) automatic
    * compactions within compaction_loop_minutes (10) ring the bell;

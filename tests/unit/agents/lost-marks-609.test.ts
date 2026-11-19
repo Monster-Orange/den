@@ -39,6 +39,7 @@ describe("issue 609: why a mark was lost", () => {
         env: ENV,
         fetch: async () => new Response("{}", { status: 403 }),
         onMiss: (r) => why.push(r),
+        sleep: async () => undefined,
       }),
     ).toBe(false);
     expect(
@@ -48,9 +49,44 @@ describe("issue 609: why a mark was lost", () => {
           throw new Error("connect ECONNREFUSED");
         },
         onMiss: (r) => why.push(r),
+        sleep: async () => undefined,
       }),
     ).toBe(false);
     expect(why).toEqual(["refused (HTTP 403)", "no answer"]);
+  });
+
+  it("named once, only after the last try; a later try that lands names nothing", async () => {
+    const seen: string[] = [];
+    let n = 0;
+    expect(
+      await sendAttention("http://127.0.0.1:1", EV, {
+        env: ENV,
+        call: { timeoutMs: 1_000, retries: 2, backoffMs: 0 },
+        fetch: async () => {
+          n++;
+          seen.push(`try ${n}`);
+          throw new Error("down");
+        },
+        onMiss: (r) => seen.push(`miss: ${r}`),
+        sleep: async () => undefined,
+      }),
+    ).toBe(false);
+    expect(seen).toEqual(["try 1", "try 2", "try 3", "miss: no answer"]);
+    const why: string[] = [];
+    n = 0;
+    expect(
+      await sendAttention("http://127.0.0.1:1", EV, {
+        env: ENV,
+        call: { timeoutMs: 1_000, retries: 2, backoffMs: 0 },
+        fetch: async () =>
+          ++n < 3
+            ? new Response("{}", { status: 503 })
+            : new Response("{}", { status: 200 }),
+        onMiss: (r) => why.push(r),
+        sleep: async () => undefined,
+      }),
+    ).toBe(true);
+    expect(why).toEqual([]);
   });
 });
 

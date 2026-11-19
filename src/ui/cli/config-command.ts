@@ -92,6 +92,10 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // Issue 609: how long Den's process lookups (lsof, ps) wait.
   "process_lookup.first_seconds": ["process_lookup", "first_seconds"],
   "process_lookup.retry_seconds": ["process_lookup", "retry_seconds"],
+  // Issue 609: how agents' hooks wait for Den, and retry.
+  "agent_hooks.timeout_seconds": ["agent_hooks", "timeout_seconds"],
+  "agent_hooks.retries": ["agent_hooks", "retries"],
+  "agent_hooks.backoff_seconds": ["agent_hooks", "backoff_seconds"],
 };
 
 /**

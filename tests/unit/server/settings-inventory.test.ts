@@ -87,6 +87,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 609: how long Den's process lookups wait.
   process_lookup: { first_seconds: true, retry_seconds: true },
+  // Issue 609: how agents' hooks wait for Den, and retry.
+  agent_hooks: {
+    timeout_seconds: true,
+    retries: true,
+    backoff_seconds: true,
+  },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -223,6 +229,10 @@ describe("the settings inventory (R21)", () => {
         // Issue 609: how long Den's process lookups wait.
         "process_lookup.first_seconds",
         "process_lookup.retry_seconds",
+        // Issue 609: how agents' hooks wait for Den, and retry.
+        "agent_hooks.timeout_seconds",
+        "agent_hooks.retries",
+        "agent_hooks.backoff_seconds",
       ].sort(),
     );
   });
