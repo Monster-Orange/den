@@ -18,6 +18,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { denAuth } from "./helpers/den-auth.js";
+import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -247,11 +248,11 @@ describe("the MCP sync tool's POST", () => {
   it("POST /api/workspace/sync takes the person's bearer (the MCP tool's call), and refuses a bare one", async () => {
     const p = "/api/workspace/sync?ws=north";
     expect((await call("POST", p, bearer())).status).toBe(200);
-    // Bare on this machine: a sign-in is asked for (401), nothing runs.
+    // No session on this machine: a sign-in is asked for (401), nothing runs.
     expect((await call("POST", p)).status).toBe(401);
     expect(
       (await call("POST", p, { origin: "https://elsewhere.example" })).status,
-    ).toBe(403);
+    ).toBe(401);
   }, 30_000);
 });
 
@@ -259,13 +260,19 @@ describe("GET /api/manifest/validate?path=", () => {
   const v = (p: string, h: Record<string, string> = {}) =>
     call("GET", `/api/manifest/validate?path=${encodeURIComponent(p)}`, h);
 
-  // This server's own page: same-origin, as the Local Dev page's fetch.
-  const page = () => ({
-    origin: `http://localhost:${port}`,
-    "sec-fetch-site": "same-origin",
-  });
+  // This server's own page, signed in: same-origin, as the Local Dev
+  // page's fetch (sign-in on this machine too, 0.4.71).
+  let session: SignedIn | undefined;
+  const page = async () => {
+    session ??= await signedIn(home, `http://localhost:${port}`);
+    return {
+      cookie: session.cookie,
+      origin: `http://localhost:${port}`,
+      "sec-fetch-site": "same-origin",
+    };
+  };
 
-  it("runs only for this server's page or a token: bare or from another site, 403, nothing quoted", async () => {
+  it("runs only for this server's signed-in page or a token: bare or from another site, refused, nothing quoted", async () => {
     for (const h of [
       {},
       { "sec-fetch-site": "cross-site" },
@@ -276,7 +283,8 @@ describe("GET /api/manifest/validate?path=", () => {
         path.join(tmp, "outside", "creds.txt"),
       ]) {
         const r = await v(p, h);
-        expect([JSON.stringify(h), r.status]).toEqual([JSON.stringify(h), 403]);
+        // No session: a sign-in is asked for (401); refused either way.
+        expect([JSON.stringify(h), r.status]).toEqual([JSON.stringify(h), 401]);
         expect(r.body).not.toContain(OUTSIDE_TEXT);
       }
     }
@@ -291,7 +299,7 @@ describe("GET /api/manifest/validate?path=", () => {
       path.join(repos, "shop", "..", "..", "outside", "creds.txt"),
       "/etc/hosts",
     ]) {
-      for (const h of [bearer(), page()]) {
+      for (const h of [bearer(), await page()]) {
         const r = await v(p, h);
         answers.push(r.status);
         expect(r.body).not.toContain(OUTSIDE_TEXT);
@@ -302,7 +310,7 @@ describe("GET /api/manifest/validate?path=", () => {
   });
 
   it("inside a repo it validates; a file that won't parse is named by line, its text never quoted", async () => {
-    for (const h of [bearer(), page()]) {
+    for (const h of [bearer(), await page()]) {
       const ok = await v(path.join(repos, "shop"), h);
       expect(ok.status).toBe(200);
       expect(JSON.parse(ok.body)).toMatchObject({ valid: true });
