@@ -221,6 +221,49 @@ describe("den_update holds the restart after the install, before the watch", () 
     expect(res).toMatchObject({ ok: true, to: "1.1.0" });
     expect(order).toEqual(["install", "doctor", "hold", "watch", "restart"]);
   });
+
+  it("a hold longer than the in-flight hour keeps the update marked under way: a second update is refused", async () => {
+    let clock = Date.parse("2026-11-19T01:00:00Z");
+    let second: Awaited<ReturnType<typeof updateDen>> | null = null;
+    const deps = (hold?: (keepAlive?: () => void) => Promise<void>) => ({
+      root,
+      engine,
+      stateDir,
+      pkg: { name: "@example/den", version: "1.0.0" },
+      npmView: async (spec: string) => spec.split("@").pop()!,
+      npm: ["npm"],
+      cli: ["den"],
+      run: async () => ({ code: 0, out: JSON.stringify({ checks: [] }) }),
+      ...(hold ? { beforeRestart: hold } : {}),
+      watch: () => 1,
+      note: (reason: string) => ({
+        path: path.join(stateDir, "r.json"),
+        marker: { reason },
+      }),
+      restart: () => undefined,
+      port: 7000,
+      pid: 1,
+      waitMs: 180_000,
+      now: () => clock,
+    });
+    const res = await updateDen(
+      "1.1.0",
+      deps(async (keepAlive) => {
+        // A working turn holds the restart for two hours, the marker kept
+        // fresh while it waits (every pass of the hold).
+        for (let m = 0; m < 120; m += 5) {
+          clock += 5 * 60_000;
+          keepAlive?.();
+        }
+        second = await updateDen("1.2.0", deps());
+      }),
+    );
+    expect(res).toMatchObject({ ok: true, to: "1.1.0" });
+    expect(second).toMatchObject({ ok: false });
+    expect((second as { error?: string } | null)?.error).toMatch(
+      /^an update to 1\.1\.0 is already installing/,
+    );
+  });
 });
 
 describe("the bell line and the setting", () => {
