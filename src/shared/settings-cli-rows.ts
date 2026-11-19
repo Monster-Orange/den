@@ -28,7 +28,8 @@
  *   reports: { screenshot_keep_days?, screenshot_max_mb?,
  *              hub_screenshot_max_mb?, hub_timeout_seconds? }
  *                                     user.yml reports.* (issue 403)
- *   address_check: { timeout_seconds?, retries?, cache_seconds? }
+ *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
+ *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
@@ -242,7 +243,16 @@ const AGENTS_LIST: Record<string, Limit> = {
 const ADDRESS_CHECK: Record<string, Limit> = Object.fromEntries(
   Object.entries(ADDRESS_CHECK_LIMITS).map(([k, l]) => [
     k,
-    { key: `address_check_${k}`, min: l.min, max: l.max, int: k === "retries" },
+    {
+      // The sign-in's window has its own name in user.yml web.
+      key:
+        k === "unknown_keep_seconds"
+          ? "address_unknown_keep_seconds"
+          : `address_check_${k}`,
+      min: l.min,
+      max: l.max,
+      int: k === "retries" || k === "drop_after",
+    },
   ]),
 );
 

@@ -960,11 +960,17 @@ export async function addressCheckLines(
   cli: string,
   deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
   checked?: DoctorAddress | null,
-): Promise<{ lines: string[]; check: OnboardCheck | null }> {
-  const { doctorAddressLines } =
+): Promise<{
+  lines: string[];
+  check: OnboardCheck | null;
+  /** Whether the install's https address reaches this Den now. */
+  works: boolean;
+}> {
+  const { doctorAddressLines, cliLanguage } =
     await import("../../shared/edge/address-check.js");
+  const w = readWebUrl();
   const st = (checked ?? (await doctorAddress(cli, deps)))?.state;
-  if (!st) return { lines: [], check: null };
+  if (!w || !st) return { lines: [], check: null, works: false };
   const d = doctorAddressLines(st, { lang: cliLanguage(), title, cli });
   const [head, ...rest] = d.lines;
   return {
@@ -977,6 +983,63 @@ export async function addressCheckLines(
       status: d.status,
       detail: d.lines.join(" "),
       ...(st.address ? { url: st.address } : {}),
+    },
+    works: w.url.startsWith("https:") && st.wantedAnswer === "den",
+  };
+}
+
+/**
+ * When the running server last saw its https address answer as this Den
+ * (its state dir's address-proof.json), or null.
+ */
+function addressLastAnswered(): string | null {
+  try {
+    const j = JSON.parse(
+      fs.readFileSync(path.join(getStateDir(), "address-proof.json"), "utf8"),
+    ) as { lastAnswered?: unknown };
+    return typeof j.lastAnswered === "string" ? j.lastAnswered : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where the browser sign-in lives. With a working https address (web.url,
+ * through the edge) the session cookie lives only there, host-only and
+ * Secure. Without one it lives on the host the person uses (localhost
+ * here), and browsers share a host's cookies across its ports: other apps
+ * opened on that host could see it. A warning, with what to set.
+ */
+export function sessionHostLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  works: boolean,
+  title: string,
+  cli: string,
+  lastAnswered: string | null = null,
+): { lines: string[]; check: OnboardCheck } {
+  const named = w && w.url.startsWith("https:") && works ? w.url : null;
+  // When an https address stopped answering as this Den, say when.
+  const since =
+    !named && w?.url.startsWith("https:") && lastAnswered
+      ? `${w.url} last answered as this ${title} at ${new Date(lastAnswered).toLocaleString()}; `
+      : "";
+  const detail = named
+    ? `the sign-in lives only on ${named}`
+    : `${since}the sign-in lives on the address the browser uses (localhost here), so other apps you open on it could see the sign-in. Set up the https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\` and \`${cli} edge up\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Sign-in`,
+      "",
+      // An https address that doesn't reach this Den yet: "!", as the
+      // address check beside it says it (not an install-wide ⚠).
+      `  sign-in  ${named ? "✓" : w?.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
+    ],
+    check: {
+      id: "signin_host",
+      status: named ? "ok" : "warn",
+      detail,
+      ...(named ? {} : { settings: ADDRESS_SETTINGS_LINK }),
     },
   };
 }
@@ -1501,6 +1564,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         checked,
       );
       if (ac.check) r.checks.push(ac.check);
+      r.checks.push(
+        sessionHostLines(
+          readWebUrl(),
+          ac.works,
+          readBrand().name,
+          product().cli,
+          addressLastAnswered(),
+        ).check,
+      );
     }
     r.checks.push(
       pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
@@ -1580,10 +1652,23 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     checked,
   );
   for (const l of addr.lines) console.log(l);
-  for (const l of (
-    await addressCheckLines(readBrand().name, product().cli, {}, checked)
-  ).lines)
-    console.log(l);
+  {
+    const ac = await addressCheckLines(
+      readBrand().name,
+      product().cli,
+      {},
+      checked,
+    );
+    for (const l of ac.lines) console.log(l);
+    for (const l of sessionHostLines(
+      readWebUrl(),
+      ac.works,
+      readBrand().name,
+      product().cli,
+      addressLastAnswered(),
+    ).lines)
+      console.log(l);
+  }
   for (const l of pushContactLines(
     readWebUrl(),
     readBrand().name,

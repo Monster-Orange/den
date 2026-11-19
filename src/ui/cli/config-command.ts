@@ -92,6 +92,8 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.address_check_timeout_seconds": ["address_check", "timeout_seconds"],
   "web.address_check_retries": ["address_check", "retries"],
   "web.address_check_cache_seconds": ["address_check", "cache_seconds"],
+  "web.address_check_drop_after": ["address_check", "drop_after"],
+  "web.address_unknown_keep_seconds": ["address_check", "unknown_keep_seconds"],
 };
 
 /**

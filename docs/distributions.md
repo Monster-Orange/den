@@ -2145,6 +2145,47 @@ device, sign in with GitHub as the Den's owner, approve the computer with
 the code its page shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
 
+**The sign-in lives on Den's own address (0.4.72).** Browsers share a
+host's cookies across its ports: a cookie set on `localhost` reaches every
+other app you open on `localhost`, a dev server in a container among them.
+So once this install's https address (`web.url`, served by the edge) works,
+the session cookie is set only there, and `localhost`, `127.0.0.1` and
+`[::1]` get none:
+
+- `web up` and `web open` open the https address. `/auth`, `/signin` and
+  `/attest` on any other name (a loopback name, a LAN name, or the
+  address's name on Den's own port) answer with a plain redirect to the
+  same path there, and the sign-in APIs answer `signin_elsewhere`. A
+  signed-out page on another name says where Den signs in, with a link, and
+  its `web login` line names the address. Devices on the mesh reach the
+  address itself, so they are never sent away.
+- Once the address is proven, a session counts only if it was signed in
+  over that https address. Every other one (a loopback name, or plain http
+  on any name) ends at the proof and counts on no host after. Sign-out,
+  with that session's own page, ends the session its cookie names, even
+  one that no longer counts. Plain reads on loopback stay open, and the CLI's token
+  (`web token --print`), the MCP and agents' tokens work on loopback as
+  before.
+- **This is my computer** (`/attest`) on a loopback name goes to the
+  address. There, a signed-in browser the edge places on this machine gets
+  its code at once; one it can't place goes through `localhost` once, with
+  a link that works once for 2 minutes. A browser not signed in gets the
+  sign-in page there.
+- "Proven" means Den's own check of the address found this Den there (the
+  same check `doctor` and `web up` make, every
+  `web.address_check_cache_seconds`), or the edge brought an https request
+  for it with its proof. A check that can't tell (a timeout, no DNS answer)
+  keeps it proven for `web.address_unknown_keep_seconds` after the last
+  answer as this Den (300 unless set; 0 to 3600); past that it counts as a
+  failure. A failure (something else, or nothing, answers),
+  `web.address_check_drop_after` times in a row (2 unless set; 1 to 100),
+  moves sign-in back to the address the browser uses. `doctor` says when
+  the address last answered as this Den. Before it is proven,
+  and on an install with no https address (the edge off, its port taken, a
+  fresh install), sign-in stays where the browser is, so nothing locks you
+  out. `doctor` then warns: other apps you open on that address could see
+  the sign-in, and it says how to set up the https address.
+
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
 user, and the CLI does that for you:
@@ -2187,10 +2228,14 @@ user, and the CLI does that for you:
   its bearer and never logs the code. `--no-wait` prints the link alone and
   returns, as before (no code); with no server running `web login` does
   that too, and says so.
-- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Lax (a
+- **The cookie** is host-only (no Domain), HttpOnly, SameSite=Lax (a
   person's click on a link from another site lands signed in; that site's
-  own requests carry no cookie) and Path=/, and Secure when the request
-  came over HTTPS through the edge. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
+  own requests carry no cookie) and Path=/. Over HTTPS through the edge it
+  is `__Host-den_session_<port>` and Secure, so the browser sends it to
+  that address only, over https only. Over https only that name counts (a
+  browser that signed in there before 0.4.72 signs in once more). Over
+  plain http it is `den_session_<port>`. The edge's `X-Forwarded-Proto`
+  counts only with the edge's proof. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
   browser allows. Each signed-in page load sends it again (the same value),
@@ -3488,6 +3533,17 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   the server agent was waiting on you; its question is still open".
   `server_agent.security_update_skips_questions` (org config, default
   `true`): `false` makes a security release wait like any other.
+- **A security release doesn't wait for a busy agent** (issue 603). With
+  `self_update: auto`, a security release also installs while the server
+  agent is in the middle of a turn, at the first check that finds it.
+  The restart that follows still waits for the turn to end (below, up to
+  `server_agent.update_restart_wait_seconds`). That restart is the web
+  server's: the server agent's turn runs in the terminal host, which
+  keeps running unless its own code changed. A pending Allow still holds
+  the update. The log and the audit say it went ahead while the agent
+  was busy. `server_agent.security_update_skips_busy` (org config,
+  default `true`): `false` makes a security release wait for the turn
+  before it installs. Other releases wait for the turn as before.
 - **The restart looks again after the install** (issue 562). The install
   takes a while, and a turn may start meanwhile (the person answers the
   question). Once an auto update is installed and its doctor has run,

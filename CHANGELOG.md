@@ -4,7 +4,22 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.73] - unreleased
+## [0.4.74] - unreleased
+
+### Security
+
+- Sign-in: once Den's own https address works, the browser sign-in lives only there, and sign-in on any other name goes to it. Installs without a working https address keep signing in as before, and `den doctor` says how to set the address up. If the address stops answering, sign-in where the browser is comes back after `web.address_unknown_keep_seconds` (new, default 300). New setting `web.address_check_drop_after` (default 2). Upgrading is recommended. (issue 601)
+- A security release no longer waits for a busy agent before installing; the restart still waits for turns to end. New setting `server_agent.security_update_skips_busy` (default on). (issue 603)
+
+### Fixed
+
+- An agent whose turn was cut by a terminal host restart no longer reads as mid-turn after it resumes, so updates and restarts don't wait on it. (issue 607)
+
+### Added
+
+- Live check `gate/601.mjs`.
+
+## [0.4.73] - 2026-11-19
 
 ### Fixed
 
@@ -23,6 +38,11 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host restarts on an update only when its own code or the terminal module changed; otherwise it keeps running and adopts the new version (issue 597). The first update to this version still restarts it once. The bell names agents cut mid-turn, and the audit row keeps every resumed, failed and cut agent. `den doctor`'s Host row says whether a restart is needed.
 - Live check: gate 542's host-side requests go to the bed's own loopback address.
+- den-ui 0.8.0: the kit pieces above are published with this release.
+
+### Checks
+
+- Full bed run: 85 pass, 0 fail. Gate 327's four clauses timed out under machine load (LOAD, not FAIL) and were released on an exception: they passed on the five earlier beds, nothing in this release touches the bell's permission rows they check, and a security release was waiting behind this one. Its rerun stays queued; a failure there gets a same-day patch.
 
 ## [0.4.72] - 2026-11-19
 

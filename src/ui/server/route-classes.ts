@@ -972,6 +972,14 @@ export const SIGNIN_ID_BEACONS: readonly string[] = [
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   // UK-2: how a write sent with the working pop-up's id ended.
   "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
+  // Sign-in's API calls on a loopback name, once Den's own address works.
+  "index.ts:SIGNIN_APIS": [
+    "/api/github/signin",
+    "/api/github/signin/:id",
+    "/api/signin/code",
+    "/api/signin/code/:id",
+    "/api/signin/code/:id/withdraw",
+  ],
   "agent-link-routes.ts:LINK_PATH": ["/p/:project/agents/:id"],
   "embed-routes.ts:EMBED_PATH": ["/embed/p/:project/agents/:id"],
   "embed-routes.ts:STATE_PATH": ["/api/embed/p/:project/agents/:id/state"],

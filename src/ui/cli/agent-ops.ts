@@ -5981,16 +5981,20 @@ export const TURN_POLL_MS = 1_000;
  * 0.4.48: a turn that ended with a job it started still running under it
  * (a gate in the background) is busy too, so "after its turn" never
  * kills a running gate.
+ * Issue 607: busy comes from the live session, not the transcript alone:
+ * a turn last written before that session started was cut with the one
+ * that ran it (a terminal host restart), and reads idle.
  */
 async function agentBusy(
   d: AgentsResolved,
   rec: AgentRecord,
 ): Promise<boolean | null> {
-  const pid = await withClient(d, async (c) => {
+  const live = await withClient(d, async (c) => {
     const s = sessionOf(await c.list(), rec);
-    return s && !s.exited ? s.pid : null;
+    return s && !s.exited ? s : null;
   });
-  if (pid === null) return false;
+  if (live === null) return false;
+  const pid = live.pid;
   const rt = getRuntime(rec.runtime);
   if (!rt?.turnBusy || !rec.resumeToken) return null;
   let readMaxBytes: number | undefined;
@@ -5999,9 +6003,25 @@ async function agentBusy(
   } catch {
     /* unreadable config: the default */
   }
-  const busy = rt.turnBusy(rec.resumeToken, d.env, { readMaxBytes });
+  const busy = rt.turnBusy(rec.resumeToken, d.env, {
+    readMaxBytes,
+    since: liveSince(live, rec),
+  });
   if (busy !== false) return busy;
   return (await agentJob(d, rec, pid)) !== null;
+}
+
+/**
+ * Issue 607: when agent `rec`'s live session started (ms): its session
+ * host's own start for it, else the record's (its resume's, else its
+ * start's). Undefined when none reads.
+ */
+function liveSince(s: SessionInfo, rec: AgentRecord): number | undefined {
+  for (const t of [s.startedAt, rec.resumedAt, rec.startedAt]) {
+    const ms = t ? Date.parse(t) : Number.NaN;
+    if (Number.isFinite(ms)) return ms;
+  }
+  return undefined;
 }
 
 /**

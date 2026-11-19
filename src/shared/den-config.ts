@@ -1289,6 +1289,12 @@ export interface ServerAgentConfig {
    */
   security_update_skips_questions?: boolean;
   /**
+   * Issue 603: a security release also installs while the server agent
+   * is mid-turn; its restart still waits for the turn to end (default
+   * true; false: it waits for the turn before it installs).
+   */
+  security_update_skips_busy?: boolean;
+  /**
    * Issue 562 review: once an auto update is installed, how long its
    * restart waits for the server agent's turn to end (or a pending Allow)
    * before it restarts anyway (seconds, default 900; 0: no wait).
@@ -1331,6 +1337,8 @@ export interface ResolvedServerAgentConfig {
   pinCommit: "push" | "pr" | "off";
   /** Issue 562: server_agent.security_update_skips_questions. */
   securityUpdateSkipsQuestions: boolean;
+  /** Issue 603: server_agent.security_update_skips_busy. */
+  securityUpdateSkipsBusy: boolean;
   /** Issue 562 review: server_agent.update_restart_wait_seconds, in ms. */
   updateRestartWaitMs: number;
 }
@@ -1415,6 +1423,11 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.security_update_skips_questions: true or false, not ${JSON.stringify(ssq)}`,
     );
+  const ssb = sa.security_update_skips_busy;
+  if (ssb !== undefined && typeof ssb !== "boolean")
+    throw new Error(
+      `server_agent.security_update_skips_busy: true or false, not ${JSON.stringify(ssb)}`,
+    );
   const rw = sa.update_restart_wait_seconds;
   if (
     rw !== undefined &&
@@ -1445,6 +1458,7 @@ export function readServerAgentConfig(
     updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
     pinCommit: pcm ?? "push",
     securityUpdateSkipsQuestions: ssq ?? true,
+    securityUpdateSkipsBusy: ssb ?? true,
     updateRestartWaitMs: Math.round(
       (rw ?? UPDATE_RESTART_WAIT_SECONDS_DEFAULT) * 1000,
     ),
