@@ -51,6 +51,8 @@ beforeAll(async () => {
   expect(r.status).toBe(200);
   token = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";
   s.made.at(-1)!.emit("> ");
+  // Issue 160: alerts follow the approval policy; this project is watched.
+  expect(await s.settings({ approvals_watch: "project:north" })).toBe(200);
 }, 90_000);
 
 afterAll(async () => {
@@ -169,6 +171,70 @@ const firstRead = (p: Page) =>
   });
 
 describe("issue 172 S1: desktop alerts from an open tab", () => {
+  it("what counts: a quiet need (a permission nobody watches) shows nothing; a needs-you item (the agent's own ask) shows one", async () => {
+    if (skip()) return;
+    expect(await s!.settings({ approvals_watch: null })).toBe(200);
+    const p = await open("/services", { permission: "granted", front: false });
+    try {
+      await firstRead(p);
+      expect(
+        (
+          await asAgent("/api/agents/self/attention", {
+            event: "waiting",
+            why: "permission",
+            hooked: true,
+          })
+        ).status,
+      ).toBe(200);
+      for (let i = 0; i < 2; i++)
+        await p.waitForResponse((x) => x.url().includes("/api/alerts?after="), {
+          timeout: 15_000,
+        });
+      expect(
+        await p.evaluate(
+          () => (window as unknown as { __shown: unknown[] }).__shown.length,
+        ),
+      ).toBe(0);
+      await asAgent("/api/agents/self/attention", {
+        event: "resumed",
+        from: "session",
+      });
+      const r = await asAgent("/api/approvals", {
+        action: "workspace_create",
+        args: { name: "upriver" },
+        ask: true,
+        note: "pick a name",
+      });
+      expect(r.status).toBe(202);
+      const id = ((await r.json()) as { id?: string }).id ?? "";
+      await p.waitForFunction(
+        () => (window as unknown as { __shown: unknown[] }).__shown.length > 0,
+        null,
+        { timeout: 20_000 },
+      );
+      const shown = await p.evaluate(() =>
+        (
+          window as unknown as { __shown: { title: string; body: string }[] }
+        ).__shown.map((n) => ({ title: n.title, body: n.body })),
+      );
+      expect(shown).toHaveLength(1);
+      expect(shown[0].body).toBe("planner needs your Allow");
+      expect(shown[0].title).toBeTruthy();
+      const d = await fetch(`${s!.base}/api/approvals/${id}/decide`, {
+        method: "POST",
+        headers: {
+          ...denAuth(s!.stateDir),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ decision: "deny" }),
+      });
+      expect(d.status).toBe(200);
+    } finally {
+      await p.context().close();
+      await s!.settings({ approvals_watch: "project:north" });
+    }
+  }, 90_000);
+
   it("in the background: a new wait shows one notification; a click opens the agent", async () => {
     if (skip()) return;
     const p = await open("/services", { permission: "granted", front: false });
@@ -271,6 +337,36 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
     expect(await s!.settingsGet()).toMatchObject({
       alerts: { desktop: true },
     });
+    // What counts (issue 160's policy): what you watch or what's critical,
+    // by default; Everything that needs you is the other choice.
+    const counts = p.locator("#setting-notifications-counts");
+    await counts.locator('button[data-v="watched_or_critical"]').waitFor();
+    expect(
+      await counts
+        .locator('button[data-v="watched_or_critical"]')
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      await counts.locator('button[data-v="needs_you"]').textContent(),
+    ).toBe("Everything that needs you");
+    expect(
+      await counts
+        .locator('button[data-v="watched_or_critical"]')
+        .textContent(),
+    ).toBe("What I watch or what's critical");
+    await counts.locator('button[data-v="needs_you"]').click();
+    for (
+      let i = 0;
+      i < 100 &&
+      ((await s!.settingsGet()).alerts as { counts?: string } | undefined)
+        ?.counts !== "needs_you";
+      i++
+    )
+      await p.waitForTimeout(100);
+    expect(await s!.settingsGet()).toMatchObject({
+      alerts: { counts: "needs_you" },
+    });
+    await s!.settings({ alerts: { counts: null } });
     // Quiet hours: a start alone says it needs an end.
     await p
       .locator("#setting-notifications-quiet_from select")
