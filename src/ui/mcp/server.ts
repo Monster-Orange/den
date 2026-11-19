@@ -574,9 +574,10 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
 /**
  * Issue 335: `<cli> mcp headers <name>`, the headersHelper of a project's
  * extra MCP server: prints `{"Authorization":"Bearer …"}` for the calling
- * agent's own project (its token says which), read from the install's
- * secrets store now. Stdout is Claude Code's; errors go to stderr, never
- * with the bearer.
+ * agent's own project (its token says which). Issue 473: it runs in the
+ * agent's own process, so it asks the running Den server, which reads its
+ * own secrets store; never this process's store or env. Stdout is Claude
+ * Code's; errors go to stderr, never with the bearer.
  */
 export async function runMcpHeaders(argv: string[]): Promise<number> {
   const cli = product().cli;
@@ -585,21 +586,18 @@ export async function runMcpHeaders(argv: string[]): Promise<number> {
     process.stderr.write(`Usage: ${cli} mcp headers <server name>\n`);
     return 2;
   }
-  const { projectMcpHeaders, parseProjectMcpServers } =
+  const { projectMcpHeaders } =
     await import("../../shared/agents/project-mcp.js");
-  const { workspaceMcpServersRaw } =
-    await import("../../shared/environment-manager/workspaces.js");
-  const { getSecretsProvider, namedSecretRef } =
-    await import("../../shared/secrets/index.js");
+  let port: number;
+  try {
+    port = readWebPort();
+  } catch {
+    port = DEFAULT_PORT;
+  }
   const r = await projectMcpHeaders(name, {
     env: process.env,
-    stateDir: getStateDir(),
-    servers: (ws) => parseProjectMcpServers(workspaceMcpServersRaw(ws)).servers,
-    secret: async (ref) => {
-      const sref = namedSecretRef(ref);
-      if (!sref) throw new Error(`secrets.refs.${ref} is not set`);
-      return getSecretsProvider().get(sref);
-    },
+    base: denWebBase(port),
+    cli,
   });
   if (!r.ok) {
     process.stderr.write(`${cli} mcp headers: ${r.error}\n`);

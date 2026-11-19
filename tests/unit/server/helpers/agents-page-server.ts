@@ -118,6 +118,10 @@ export async function startAgentsPageServer(
     health?: Record<string, string>;
     /** A repo's local `up` command (notes, blog); `true` when unset. */
     up?: Record<string, string>;
+    /** Issue 473: a project's agents.mcp_servers (north, south). */
+    mcpServers?: Record<string, unknown[]>;
+    /** Issue 473: more of the web server's own env (never an agent's). */
+    serverEnv?: Record<string, string>;
     /**
      * Issue 563: the native PTY module the in-process host says it loaded
      * (its hello), as a host that outlived an update would.
@@ -156,6 +160,12 @@ export async function startAgentsPageServer(
         `      ${repo}:`,
         "        mode: dev-managed",
         `        path: ${path.join(repos, repo)}`,
+        ...(opts.mcpServers?.[ws]
+          ? [
+              "    agents:",
+              `      mcp_servers: ${JSON.stringify(opts.mcpServers[ws])}`,
+            ]
+          : []),
       ]),
       ...(opts.inactive ?? []).flatMap((ws) => [
         `  ${ws}:`,
@@ -324,6 +334,7 @@ export async function startAgentsPageServer(
     DEN_NO_OPEN: "1",
     ACME_NO_OPEN: "1",
     NO_COLOR: "1",
+    ...opts.serverEnv,
   };
   // node itself, by path: the env's PATH may not have it.
   const startWeb = (pickPort?: () => Promise<number>) =>
