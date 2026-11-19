@@ -4,11 +4,11 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.72] - unreleased
+## [0.4.72] - 2026-11-19
 
 ### Security
 
-- **Sign-in on this machine too.** Every browser signs in once, on the computer Den runs on too, and stays signed in. `den web up` and `den web open` sign the browser in, including a tab that's already open. A browser that isn't signed in can look and change nothing: it shows "Sign in to make changes here." with a Sign in button. Scripts send `den web token --print` as a bearer. `GET /api/session` gives a CSRF token only to a signed-in session. Routes that run a command for their output now need a sign-in or the token: the service log routes, log search, the GitHub repo and branch lists, and My reports. Upgrading is recommended.
+- **Sign-in on this machine too.** Every browser signs in once, on the computer Den runs on too, and stays signed in. `den web up` and `den web open` sign the browser in, including a tab that's already open. A browser that isn't signed in can look and change nothing: it shows "Sign in to make changes here." with a Sign in button. Scripts send `den web token --print` as a bearer. `GET /api/session` gives a CSRF token only to a signed-in session. Routes that run a command for their output now need a sign-in or the token: the service log routes, log search, the GitHub repo and branch lists, and My reports. Upgrading is recommended. Live check `gate/542.mjs`.
 
 ### Changed
 
