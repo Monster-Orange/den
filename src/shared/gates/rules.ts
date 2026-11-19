@@ -53,6 +53,13 @@ export interface GateEntry {
   runGroup?: boolean;
   /** Issue 585: cancelled while running; freed once its group is gone. */
   cancelled?: { by: string; at: string };
+  /**
+   * Idle flag: when its run's process tree was found idle past its
+   * estimate (ISO). A flag only: nothing is stopped by it.
+   */
+  idleAt?: string;
+  /** Idle flag: the last CPU reading of its run's tree (seconds, at ISO). */
+  cpuSample?: { at: string; cpu: number };
 }
 
 export interface GateSettings {
@@ -68,6 +75,14 @@ export interface GateSettings {
   releaseTagMaxAgeHours: number;
   /** Issue 585: a cancelled run's grace between TERM and KILL. */
   cancelGraceSeconds: number;
+  /** Idle flag: how long past its estimate a run is first looked at. */
+  idleFlagAfterMinutes: number;
+  /** Idle flag: below this share of one CPU over a window, a tree is idle. */
+  idleCpuPercent: number;
+  /** Idle flag: the window its CPU is measured over. */
+  idleSampleSeconds: number;
+  /** Idle flag: how long a slot stays flagged before a release run may cancel it. */
+  idleCancelGraceMinutes: number;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -77,6 +92,10 @@ export const GATE_DEFAULTS: GateSettings = {
   releaseQuietWaitMinutes: 10,
   releaseTagMaxAgeHours: 168,
   cancelGraceSeconds: 60,
+  idleFlagAfterMinutes: 15,
+  idleCpuPercent: 2,
+  idleSampleSeconds: 60,
+  idleCancelGraceMinutes: 10,
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
@@ -147,15 +166,41 @@ export function gone(e: GateEntry, alive: (pid: number) => boolean): boolean {
 }
 
 /** Who cancels: a person, or an agent by its proven `agent:<id>`. */
-export type Canceller = { person: true } | { agent: string };
+export type Canceller =
+  | { person: true }
+  | { agent: string }
+  /** A release run (its slot's id) that holds or waits: idle slots only. */
+  | { release: string };
 
 /**
  * Issue 585: the slot's owner (the agent that asked, by its id) or a
- * person may cancel it; no one else.
+ * person may cancel it; no one else. Idle flag: a release run that holds
+ * or waits (`ctx.releases`) may cancel a slot only once it has been
+ * flagged idle for the grace (idleCancellable); never an unflagged one.
  */
-export function mayCancel(e: GateEntry, c: Canceller): boolean {
+export function mayCancel(
+  e: GateEntry,
+  c: Canceller,
+  ctx?: {
+    now: number;
+    releases: ReadonlySet<string>;
+    settings?: Pick<GateSettings, "idleCancelGraceMinutes">;
+  },
+): boolean {
   if ("person" in c) return c.person === true;
+  if ("release" in c)
+    return (
+      !!ctx &&
+      ctx.releases.has(c.release) &&
+      e.id !== c.release &&
+      idleCancellable(e, ctx.settings ?? GATE_DEFAULTS, ctx.now)
+    );
   return !!c.agent && !!e.actor && e.actor === c.agent;
+}
+
+/** Idle flag: how many whole minutes a holder is past its estimate. */
+export function minutesPast(e: GateEntry, now: number): number {
+  return Math.max(0, Math.floor((now - expectedEnd(e)) / 60_000));
 }
 
 /** When a holder is expected to end (ms), from its grant and estimate. */
@@ -199,11 +244,35 @@ export function expectedStart(
   return free;
 }
 
-/** Idle flag: whether a flagged slot may be cancelled for a release run (red-first stub). */
+/**
+ * Idle flag: a holder flagged idle for at least the grace. Only such a
+ * slot may be cancelled for a release run.
+ */
 export function idleCancellable(
-  _e: GateEntry,
-  _s: Pick<GateSettings, "idleCancelGraceMinutes">,
-  _now: number,
+  e: GateEntry,
+  s: Pick<GateSettings, "idleCancelGraceMinutes">,
+  now: number,
 ): boolean {
-  return false;
+  return (
+    !!e.grantedAt &&
+    !!e.idleAt &&
+    now - t(e.idleAt) >= s.idleCancelGraceMinutes * 60_000
+  );
+}
+
+/**
+ * Idle flag: whether a holder is due a CPU look: held past its estimate
+ * plus idleFlagAfterMinutes, with a run of its own to measure.
+ */
+export function idleDue(
+  e: GateEntry,
+  s: Pick<GateSettings, "idleFlagAfterMinutes">,
+  now: number,
+): boolean {
+  return (
+    !!e.grantedAt &&
+    e.runPid !== undefined &&
+    !e.cancelled &&
+    now >= expectedEnd(e) + s.idleFlagAfterMinutes * 60_000
+  );
 }

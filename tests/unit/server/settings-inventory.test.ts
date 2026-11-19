@@ -54,6 +54,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     release_quiet_wait_minutes: true,
     release_tag_max_age_hours: true,
     cancel_grace_seconds: true,
+    idle_flag_after_minutes: true,
+    idle_cpu_percent: true,
+    idle_sample_seconds: true,
+    idle_cancel_grace_minutes: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -192,6 +196,10 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.release_quiet_wait_minutes",
         "gate_slots.release_tag_max_age_hours",
         "gate_slots.cancel_grace_seconds",
+        "gate_slots.idle_flag_after_minutes",
+        "gate_slots.idle_cpu_percent",
+        "gate_slots.idle_sample_seconds",
+        "gate_slots.idle_cancel_grace_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",

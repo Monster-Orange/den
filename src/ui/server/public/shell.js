@@ -1902,6 +1902,20 @@
     "set.server.gate_cancel_grace": "Stopped test run's grace before KILL",
     "set.server.gate_cancel_grace.d":
       "When a test run is stopped (Stop on the Agents page), it gets TERM and this long to end, then KILL. Its slot frees once it has ended. __DEN_CLI__ gate settings --cancel-grace-seconds 60",
+    "set.server.gate_idle_after":
+      "Idle test run looked at, minutes past its estimate",
+    "set.server.gate_idle_after.d":
+      "A test run still holding its slot this long after its estimate has its CPU measured. If it is idle, it is flagged in gate status and in its agent's bell. It is never stopped by the flag. __DEN_CLI__ gate settings --idle-flag-after-minutes 15",
+    "set.server.gate_idle_cpu": "Idle test run: CPU below, in percent",
+    "set.server.gate_idle_cpu.d":
+      "A test run whose processes together use less than this share of one CPU over the window counts as idle. __DEN_CLI__ gate settings --idle-cpu-percent 2",
+    "set.server.gate_idle_window": "Idle test run: measured over, in seconds",
+    "set.server.gate_idle_window.d":
+      "How long a test run's CPU is measured over before it counts as idle or busy. __DEN_CLI__ gate settings --idle-sample-seconds 60",
+    "set.server.gate_idle_grace":
+      "Idle test run: flagged this long before a release run may stop it, in minutes",
+    "set.server.gate_idle_grace.d":
+      "A release candidate's waiting run may stop a test run flagged idle for this long, and the record says who and why. A test run that isn't flagged is never stopped this way. __DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2700,6 +2714,8 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.gateIdle":
+      "Test run {label} is idle {n} min past its estimate and holds its gate slot",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":

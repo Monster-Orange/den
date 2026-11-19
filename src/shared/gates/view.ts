@@ -3,7 +3,13 @@
  * `gate status --json` show it. Issue 498: with the release slot and who
  * holds it.
  */
-import { expectedEnd, expectedStart, overrun, type GateKind } from "./rules.js";
+import {
+  expectedEnd,
+  expectedStart,
+  minutesPast,
+  overrun,
+  type GateKind,
+} from "./rules.js";
 import type { GateStore } from "./store.js";
 
 export interface GateSlotView {
@@ -18,6 +24,8 @@ export interface GateSlotView {
   tag?: string;
   /** Issue 585: cancelled, stopping its run before the slot frees. */
   cancelled?: boolean;
+  /** Idle flag: its run's tree found idle past its estimate. */
+  idle?: { since: string; minutesPast: number };
   grantedAt?: string;
   expectedEnd?: string;
   overrun?: boolean;
@@ -38,6 +46,9 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(e.actor ? { actor: e.actor } : {}),
     ...(e.tag ? { tag: e.tag } : {}),
     ...(e.cancelled ? { cancelled: true } : {}),
+    ...(e.idleAt
+      ? { idle: { since: e.idleAt, minutesPast: minutesPast(e, now) } }
+      : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,

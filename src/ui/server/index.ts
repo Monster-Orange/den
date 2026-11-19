@@ -261,6 +261,7 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import { handleGateRoutes, isGatePath } from "./gate-routes.js";
+import { startGateIdleBell } from "./gate-idle-bell.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
@@ -8446,6 +8447,8 @@ void CRASH_GATE.then(() =>
     }
     // Issue 278: agents stuck compacting ring the bell (agent_context.*).
     startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
+    // Gate slots: an agent's test run idle past its estimate rings its bell.
+    startGateIdleBell();
     // Issue 163 (a): an install from before it was on by default is
     // offered Keep agents running after logout once (it needs sudo).
     try {

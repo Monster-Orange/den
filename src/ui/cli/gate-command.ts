@@ -19,16 +19,24 @@
  *                            and freed when its process group is gone
  *   settings [--cpu-slots N] [--overrun-margin-minutes N] [--release-slots N]
  *            [--release-quiet-wait-minutes N] [--release-tag-max-age-hours N]
- *            [--cancel-grace-seconds N]
+ *            [--cancel-grace-seconds N] [--idle-flag-after-minutes N]
+ *            [--idle-cpu-percent N] [--idle-sample-seconds N]
+ *            [--idle-cancel-grace-minutes N]
  *                            the machine's; a person changes them
  */
 import { spawn } from "child_process";
 import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
-import { cancelSlot, stopRun } from "../../shared/gates/cancel.js";
+import {
+  cancelIdleFor,
+  cancelSlot,
+  stopRun,
+  type StopDeps,
+} from "../../shared/gates/cancel.js";
 import { proveReleaseTag } from "../../shared/gates/release-proof.js";
 import {
   expectedEnd,
+  minutesPast,
   expectedStart,
   overrun,
   type Canceller,
@@ -61,6 +69,7 @@ export const GATE_HELP = {
     "{cli} gate cancel <id>          withdraw a slot and stop its run (its owner or a person)",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N] [--release-slots N]",
     "    [--release-quiet-wait-minutes N] [--release-tag-max-age-hours N] [--cancel-grace-seconds N]",
+    "    [--idle-flag-after-minutes N] [--idle-cpu-percent N] [--idle-sample-seconds N] [--idle-cancel-grace-minutes N]",
   ],
 };
 
@@ -201,7 +210,10 @@ export function slotLine(
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
     const stopping = e.cancelled ? ` (cancelled by ${e.cancelled.by})` : "";
-    return `${e.id}  holds ${kindWords(e)}  ${e.who}  "${e.label}"  until about ${hm(expectedEnd(e))}${late}${stopping}`;
+    const idle = e.idleAt
+      ? ` (idle ${minutesPast(e, now)} min past its estimate)`
+      : "";
+    return `${e.id}  holds ${kindWords(e)}  ${e.who}  "${e.label}"  until about ${hm(expectedEnd(e))}${late}${idle}${stopping}`;
   }
   return `${e.id}  waits for ${kindWords(e)}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now))}`;
 }
@@ -243,6 +255,14 @@ const lastRow = (s: GateStore, id: string, event: GateEventRow["event"]) =>
     .events()
     .filter((r) => r.id === id && r.event === event)
     .at(-1);
+
+/** How this command stops a run: the store's liveness, d's clock. */
+const stopDeps = (d: GateDeps): StopDeps => ({
+  alive: (p) => d.store.isAlive(p),
+  kill: d.kill ?? ((p, sig) => process.kill(p, sig)),
+  sleep: d.sleep,
+  now: d.now,
+});
 
 async function run(args: string[], d: GateDeps): Promise<number> {
   const { f, pos, rest } = flags(args, {
@@ -337,6 +357,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         }
         throw new Error(`the slot ${id} was ended while waiting`);
       }
+      // Idle flag: a waiting release run cancels a slot flagged idle past
+      // the grace (never an unflagged one), saying which and why.
+      if (kind === "release" && !e.grantedAt)
+        for (const c of cancelIdleFor(s, id, stopDeps(d)))
+          d.err(
+            `gate: cancelled ${c.id} (${c.reason}) so the release run can start`,
+          );
     }
     d.err(`gate: ${id} holds ${kindWords(e)}; running ${label}`);
     if (kind === "release")
@@ -495,6 +522,10 @@ const SETTING_FLAGS = [
   ["--release-quiet-wait-minutes", "release_quiet_wait_minutes"],
   ["--release-tag-max-age-hours", "release_tag_max_age_hours"],
   ["--cancel-grace-seconds", "cancel_grace_seconds"],
+  ["--idle-flag-after-minutes", "idle_flag_after_minutes"],
+  ["--idle-cpu-percent", "idle_cpu_percent"],
+  ["--idle-sample-seconds", "idle_sample_seconds"],
+  ["--idle-cancel-grace-minutes", "idle_cancel_grace_minutes"],
 ] as const;
 
 function settings(args: string[], d: GateDeps): number {
@@ -519,6 +550,9 @@ function settings(args: string[], d: GateDeps): number {
   const s = d.store.settings();
   d.out(
     `release slots ${s.releaseSlots} · release waits ${s.releaseQuietWaitMinutes} min for quiet · candidate tags up to ${s.releaseTagMaxAgeHours} h old · cancel grace ${s.cancelGraceSeconds} s`,
+  );
+  d.out(
+    `idle runs looked at ${s.idleFlagAfterMinutes} min past their estimate · idle below ${s.idleCpuPercent}% CPU over ${s.idleSampleSeconds} s · a release run may cancel one flagged ${s.idleCancelGraceMinutes} min`,
   );
   d.out(
     `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate`,

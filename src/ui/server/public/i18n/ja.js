@@ -908,6 +908,20 @@
     "set.server.gate_cancel_grace": "止めたテスト実行の KILL までの猶予",
     "set.server.gate_cancel_grace.d":
       "テスト実行を止めると (エージェント画面の「止める」)、TERM を送り、この時間だけ待ってから KILL します。終わってから順番が空きます。__DEN_CLI__ gate settings --cancel-grace-seconds 60",
+    "set.server.gate_idle_after":
+      "止まっているテスト実行を調べるまで、見込みを過ぎた分",
+    "set.server.gate_idle_after.d":
+      "見込みをこの時間過ぎても順番を持っているテスト実行は CPU を測ります。動いていなければ gate status とエージェントのベルで印が付きます。印が付いても止められることはありません。__DEN_CLI__ gate settings --idle-flag-after-minutes 15",
+    "set.server.gate_idle_cpu": "止まっているテスト実行: CPU がこれ未満 (%)",
+    "set.server.gate_idle_cpu.d":
+      "測る時間の間、プロセス全体で CPU 1 つ分のこの割合より少なければ、止まっているとみなします。__DEN_CLI__ gate settings --idle-cpu-percent 2",
+    "set.server.gate_idle_window": "止まっているテスト実行: 測る時間 (秒)",
+    "set.server.gate_idle_window.d":
+      "テスト実行の CPU をどれだけの時間測ってから、止まっているか動いているかを決めるか。__DEN_CLI__ gate settings --idle-sample-seconds 60",
+    "set.server.gate_idle_grace":
+      "止まっているテスト実行: リリース実行が止められるまで印が付いている時間 (分)",
+    "set.server.gate_idle_grace.d":
+      "リリース候補の待っている実行は、この時間止まっている印が付いたテスト実行を止められます。記録には誰がなぜ止めたかが残ります。印のないテスト実行がこの方法で止められることはありません。__DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1825,6 +1839,8 @@
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.gateIdle":
+      "テスト実行 {label} は見込みを {n} 分過ぎても止まったまま、順番を持っています",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":

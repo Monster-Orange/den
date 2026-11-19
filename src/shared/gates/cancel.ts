@@ -9,7 +9,13 @@
  * one. Only the group gate run made for that slot is ever signalled; a
  * slot with no run of its own (held over MCP) is freed without a signal.
  */
-import { mayCancel, type Canceller, type GateEntry } from "./rules.js";
+import {
+  idleCancellable,
+  mayCancel,
+  minutesPast,
+  type Canceller,
+  type GateEntry,
+} from "./rules.js";
 import type { GateCancel, GateStore } from "./store.js";
 
 export interface StopDeps {
@@ -84,10 +90,29 @@ export function cancelSlot(
   by: string,
   d: StopDeps = realStopDeps(store),
 ): CancelResult {
-  const e: GateEntry | null = store.peek(id);
-  if (!e) return { ok: false, code: "no_slot" };
-  if (!mayCancel(e, canceller)) return { ok: false, code: "not_yours" };
-  const c = store.cancel(id, by);
+  let e: GateEntry | null;
+  let reason: string | undefined;
+  if ("release" in canceller) {
+    // Idle flag: for a release run, only a slot flagged idle past the
+    // grace, and the record says why.
+    const all = store.list();
+    const now = store.time();
+    e = all.find((x) => x.id === id) ?? null;
+    if (!e) return { ok: false, code: "no_slot" };
+    const releases = new Set(
+      all.filter((x) => x.kind === "release").map((x) => x.id),
+    );
+    if (
+      !mayCancel(e, canceller, { now, releases, settings: store.settings() })
+    )
+      return { ok: false, code: "not_yours" };
+    reason = `idle ${minutesPast(e, now)} min past its estimate`;
+  } else {
+    e = store.peek(id);
+    if (!e) return { ok: false, code: "no_slot" };
+    if (!mayCancel(e, canceller)) return { ok: false, code: "not_yours" };
+  }
+  const c = store.cancel(id, by, reason);
   if (!c) return { ok: false, code: "no_slot" };
   if (c.was === "running" && c.runPid !== undefined) {
     const runPid = c.runPid;
@@ -101,11 +126,30 @@ export function cancelSlot(
   return { ...c, ok: true, done: Promise.resolve(true) };
 }
 
-/** Idle flag: a release run cancels flagged slots (red-first stub). */
+/**
+ * Idle flag: release run `releaseId` (holding or waiting) cancels every
+ * slot flagged idle for at least idle_cancel_grace_minutes, each recorded
+ * with the release run as who and "idle N min past its estimate" as why.
+ * A slot that isn't flagged, or not yet for the grace, is left alone.
+ */
 export function cancelIdleFor(
-  _store: GateStore,
-  _releaseId: string,
-  _d?: StopDeps,
-): { id: string; done: Promise<boolean> }[] {
-  return [];
+  store: GateStore,
+  releaseId: string,
+  d: StopDeps = realStopDeps(store),
+): { id: string; reason: string; done: Promise<boolean> }[] {
+  const all = store.list();
+  const rel = all.find((x) => x.id === releaseId && x.kind === "release");
+  if (!rel) return [];
+  const s = store.settings();
+  const now = store.time();
+  const by = `${rel.who} (release run ${rel.tag ?? rel.id})`;
+  const out: { id: string; reason: string; done: Promise<boolean> }[] = [];
+  for (const e of all) {
+    if (e.id === releaseId || e.cancelled || !idleCancellable(e, s, now))
+      continue;
+    const r = cancelSlot(store, e.id, { release: releaseId }, by, d);
+    if (r.ok)
+      out.push({ id: e.id, reason: r.row.reason ?? "", done: r.done });
+  }
+  return out;
 }

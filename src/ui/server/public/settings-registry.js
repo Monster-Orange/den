@@ -2152,6 +2152,62 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { cancel_grace_seconds: v } }),
   },
   {
+    // Gate slots: a run idle past its estimate is flagged (never stopped).
+    id: "server.gate_idle_after",
+    category: "server",
+    label: "Idle test run looked at, minutes past its estimate",
+    description:
+      "A test run still holding its slot this long after its estimate has its CPU measured. If it is idle, it is flagged in gate status and in its agent's bell. It is never stopped by the flag. __DEN_CLI__ gate settings --idle-flag-after-minutes 15",
+    keywords: ["gate", "slot", "idle", "estimate", "flag"],
+    scope: "user",
+    keys: ["gate_slots.idle_flag_after_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.idleFlagAfterMinutes ?? 15,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { idle_flag_after_minutes: v } }),
+  },
+  {
+    id: "server.gate_idle_cpu",
+    category: "server",
+    label: "Idle test run: CPU below, in percent",
+    description:
+      "A test run whose processes together use less than this share of one CPU over the window counts as idle. __DEN_CLI__ gate settings --idle-cpu-percent 2",
+    keywords: ["gate", "slot", "idle", "cpu"],
+    scope: "user",
+    keys: ["gate_slots.idle_cpu_percent"],
+    control: { type: "number", min: 0, max: 100, step: 0.5, unit: "%" },
+    read: (ctx) => ctx.data.gate_slots?.idleCpuPercent ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { idle_cpu_percent: v } }),
+  },
+  {
+    id: "server.gate_idle_window",
+    category: "server",
+    label: "Idle test run: measured over, in seconds",
+    description:
+      "How long a test run's CPU is measured over before it counts as idle or busy. __DEN_CLI__ gate settings --idle-sample-seconds 60",
+    keywords: ["gate", "slot", "idle", "sample", "window"],
+    scope: "user",
+    keys: ["gate_slots.idle_sample_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.gate_slots?.idleSampleSeconds ?? 60,
+    write: (v, ctx) => ctx.post({ gate_slots: { idle_sample_seconds: v } }),
+  },
+  {
+    id: "server.gate_idle_grace",
+    category: "server",
+    label:
+      "Idle test run: flagged this long before a release run may stop it, in minutes",
+    description:
+      "A release candidate's waiting run may stop a test run flagged idle for this long, and the record says who and why. A test run that isn't flagged is never stopped this way. __DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
+    keywords: ["gate", "slot", "idle", "release", "cancel", "grace"],
+    scope: "user",
+    keys: ["gate_slots.idle_cancel_grace_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.idleCancelGraceMinutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { idle_cancel_grace_minutes: v } }),
+  },
+  {
     // SRV-P6 (0.4.48): how this install takes a new version
     // (user.yml server_agent.self_update). A person's only.
     id: "server.self_update",

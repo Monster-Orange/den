@@ -22,6 +22,7 @@
  */
 import type * as http from "http";
 import { cancelSlot, type StopDeps } from "../../shared/gates/cancel.js";
+import type { Canceller } from "../../shared/gates/rules.js";
 import type { GateStore } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
@@ -51,17 +52,25 @@ export interface GateRouteDeps {
   stop?: StopDeps;
 }
 
-async function slotId(req: http.IncomingMessage): Promise<string> {
+async function slotBody(
+  req: http.IncomingMessage,
+): Promise<{ id: string; release?: string }> {
   try {
     const raw = await readBody(req);
     const v = JSON.parse(raw.length > 4096 ? "{}" : raw || "{}") as {
       id?: unknown;
+      release?: unknown;
     };
-    return typeof v.id === "string" ? v.id : "";
+    return {
+      id: typeof v.id === "string" ? v.id : "",
+      ...(typeof v.release === "string" ? { release: v.release } : {}),
+    };
   } catch {
-    return "";
+    return { id: "" };
   }
 }
+
+const slotId = async (req: http.IncomingMessage) => (await slotBody(req)).id;
 
 export async function handleGateRoutes(
   req: http.IncomingMessage,
@@ -133,27 +142,44 @@ async function cancelRoute(
       403,
     );
   if (claimOnly) return notYours();
-  const id = await slotId(req);
-  if (!/^[a-z0-9-]{1,64}$/.test(id))
+  const { id, release } = await slotBody(req);
+  const SLOT = /^[a-z0-9-]{1,64}$/;
+  if (!SLOT.test(id) || (release !== undefined && !SLOT.test(release)))
     return sendJson(res, { ok: false, error: "give the slot's id" }, 400);
   const store = d.store();
-  const by = `${d.title} · ${principalOf(req) ?? "a person in the browser"}`;
-  const r = cancelSlot(
-    store,
-    id,
-    agent ? { agent: agent.actor } : { person: true },
-    by,
-    d.stop,
-  );
+  let by = `${d.title} · ${principalOf(req) ?? "a person in the browser"}`;
+  let canceller: Canceller = agent ? { agent: agent.actor } : { person: true };
+  if (release !== undefined) {
+    // Idle flag: for a release run, by a person or the agent that asked
+    // for that release run; only a slot flagged idle past the grace.
+    const rel = store.peek(release);
+    if (!rel || rel.kind !== "release")
+      return sendJson(res, { ok: false, error: "no such release run" }, 404);
+    if (agent && rel.actor !== agent.actor) return notYours();
+    by += ` for release run ${rel.tag ?? rel.id}`;
+    canceller = { release };
+  }
+  const r = cancelSlot(store, id, canceller, by, d.stop);
   if (!r.ok)
     return r.code === "not_yours"
-      ? notYours()
+      ? release !== undefined
+        ? sendJson(
+            res,
+            {
+              ok: false,
+              code: "not_idle",
+              error:
+                "a release run cancels only a slot flagged idle for the grace",
+            },
+            403,
+          )
+        : notYours()
       : sendJson(res, { ok: false, error: "no such slot" }, 404);
   (d.audit ?? recordAction)(
     agent ? auditActorOf(req) : null,
     {
       verb: "gate-cancel",
-      detail: `cancelled gate slot ${r.row.id} (${r.row.label}; ${r.row.who}) while ${r.was === "queued" ? "it waited" : "it ran"}; slot log ${store.eventsFile} at ${r.row.at}`,
+      detail: `cancelled gate slot ${r.row.id} (${r.row.label}; ${r.row.who}) while ${r.was === "queued" ? "it waited" : "it ran"}${r.row.reason ? `, ${r.row.reason}` : ""}; slot log ${store.eventsFile} at ${r.row.at}`,
     },
     principalOf(req),
   );

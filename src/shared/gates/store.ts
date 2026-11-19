@@ -19,6 +19,7 @@
  * Nothing here kills a process or takes a live holder's slot: stopping a
  * cancelled run is cancel.ts's, and the slot is freed only after it.
  */
+import { execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -30,6 +31,8 @@ import {
   expectedStart,
   gone,
   grants,
+  idleDue,
+  minutesPast,
   overrun,
   type GateEntry,
   type GateKind,
@@ -63,6 +66,10 @@ export type GateSettingsPatch = {
   release_quiet_wait_minutes?: number | null;
   release_tag_max_age_hours?: number | null;
   cancel_grace_seconds?: number | null;
+  idle_flag_after_minutes?: number | null;
+  idle_cpu_percent?: number | null;
+  idle_sample_seconds?: number | null;
+  idle_cancel_grace_minutes?: number | null;
 };
 
 /** Each setting: its least and most, whether it is whole, and its field. */
@@ -95,6 +102,25 @@ export const GATE_LIMITS: Record<
     max: 3600,
     int: false,
     field: "cancelGraceSeconds",
+  },
+  idle_flag_after_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "idleFlagAfterMinutes",
+  },
+  idle_cpu_percent: { min: 0, max: 100, int: false, field: "idleCpuPercent" },
+  idle_sample_seconds: {
+    min: 1,
+    max: 3600,
+    int: false,
+    field: "idleSampleSeconds",
+  },
+  idle_cancel_grace_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "idleCancelGraceMinutes",
   },
 };
 
@@ -141,7 +167,9 @@ export type GateEvent =
   | "taken-back-gone"
   | "overdue"
   | "ended-early"
-  | "cancelled";
+  | "cancelled"
+  | "idle"
+  | "idle-cleared";
 
 /** Issue 498: another holder, as a release run's record names it. */
 export interface GateAlongside {
@@ -176,6 +204,11 @@ export interface GateEventRow {
   alongside?: GateAlongside[];
   /** Issue 498: it started past the quiet wait, beside ordinary runs. */
   ranAnyway?: boolean;
+  /** cancelled: why, when not its owner's or a person's own choice. */
+  reason?: string;
+  /** idle: minutes past its estimate, and its tree's CPU share (%). */
+  minutesPast?: number;
+  cpuPercent?: number;
 }
 
 /** What `cancel` did (issue 585). */
@@ -208,6 +241,13 @@ export interface GateStoreOpts {
   lockWaitMs?: number;
   /** Issue 498: the machine's load average (os.loadavg). */
   load?: () => number[];
+  /**
+   * Idle flag: a holder's run tree's CPU seconds so far, or null when it
+   * can't be read. Default: its process group's (groupCpuSeconds), only
+   * on a store with real liveness; a store with a stubbed `alive` reads
+   * nothing unless given one.
+   */
+  cpu?: (e: GateEntry) => number | null;
 }
 
 /** How far back cancelledBy reads the slot log. */
@@ -219,6 +259,7 @@ export class GateStore {
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
   private readonly load: () => number[];
+  private readonly cpu: (e: GateEntry) => number | null;
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
@@ -226,6 +267,61 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.load = o.load ?? (() => os.loadavg());
+    this.cpu =
+      o.cpu ??
+      (o.alive
+        ? () => null
+        : (e) =>
+            e.runPid === undefined
+              ? null
+              : e.runGroup
+                ? groupCpuSeconds(e.runPid)
+                : pidCpuSeconds(e.runPid));
+  }
+
+  /**
+   * Idle flag: a holder due a look (idleDue) gets a CPU reading at most
+   * once a window. A window later, below idle_cpu_percent of one CPU, it
+   * is flagged (recorded `idle`, once); busy again, the flag is cleared.
+   * Only a flag: nothing is stopped here. Returns whether it changed.
+   */
+  private sampleIdle(e: GateEntry, s: GateSettings, now: number): boolean {
+    if (!idleDue(e, s, now)) return false;
+    const prev = e.cpuSample;
+    const windowMs = s.idleSampleSeconds * 1000;
+    if (prev && now - Date.parse(prev.at) < windowMs) return false;
+    let cpu: number | null = null;
+    try {
+      cpu = this.cpu(e);
+    } catch {
+      cpu = null;
+    }
+    if (cpu === null) return false;
+    const at = new Date(now).toISOString();
+    e.cpuSample = { at, cpu };
+    if (!prev) return true;
+    const secs = (now - Date.parse(prev.at)) / 1000;
+    const pct = secs > 0 ? (Math.max(0, cpu - prev.cpu) / secs) * 100 : 100;
+    if (pct < s.idleCpuPercent && !e.idleAt) {
+      e.idleAt = at;
+      this.record(e, {
+        event: "idle",
+        minutesPast: minutesPast(e, now),
+        cpuPercent: Math.round(pct * 100) / 100,
+      });
+    } else if (pct >= s.idleCpuPercent && e.idleAt) {
+      delete e.idleAt;
+      this.record(e, {
+        event: "idle-cleared",
+        cpuPercent: Math.round(pct * 100) / 100,
+      });
+    }
+    return true;
+  }
+
+  /** The store's clock (ms). */
+  time(): number {
+    return this.now();
   }
 
   /** Whether a pid (or, negative, a process group) is still running. */
@@ -502,6 +598,7 @@ export class GateStore {
       this.write(e);
       this.record(e, { event: "overdue", ...this.heldFor(e, now) });
     }
+    for (const e of entries) if (this.sampleIdle(e, s, now)) this.write(e);
     return entries.sort(
       (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt) || byQueue(a, b),
     );
@@ -649,7 +746,7 @@ export class GateStore {
    * and frees it with releaseCancelled once the run's group is gone.
    * Who may cancel is the caller's to check (rules.ts mayCancel).
    */
-  cancel(id: string, by: string): GateCancel | null {
+  cancel(id: string, by: string, reason?: string): GateCancel | null {
     return this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
       if (!e) return null;
@@ -662,6 +759,7 @@ export class GateStore {
         label: e.label,
         by: (e.cancelled?.by ?? by).slice(0, 200),
         was,
+        ...(reason ? { reason: reason.slice(0, 200) } : {}),
       };
       if (was === "running" && e.runPid !== undefined) {
         let at = e.cancelled?.at;
@@ -692,12 +790,57 @@ export class GateStore {
   }
 }
 
-/** Idle flag: CPU time as ps prints it, in seconds (red-first stub). */
-export function parseCpuTime(_s: string): number | null {
-  return null;
+/**
+ * Idle flag: CPU time as ps prints it, in seconds: Linux's
+ * `[dd-]hh:mm:ss`, macOS's `[hh:]mm:ss.cc`. Null when it isn't one.
+ */
+export function parseCpuTime(s: string): number | null {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(s.trim());
+  if (!m) return null;
+  const [, d, h, mm, ss] = m;
+  return (
+    Number(d ?? 0) * 86400 +
+    Number(h ?? 0) * 3600 +
+    Number(mm) * 60 +
+    Number(ss)
+  );
 }
 
-/** Idle flag: a process group's summed CPU seconds (red-first stub). */
-export function groupCpuSeconds(_pgid: number): number | null {
-  return null;
+/**
+ * Idle flag: the CPU seconds of every process ps lists that matches `pick`
+ * (its process group, or its pid), summed; null when ps can't say (no ps,
+ * Windows, nothing matched).
+ */
+function psCpuSeconds(pick: (pgid: number, pid: number) => boolean) {
+  if (process.platform === "win32") return null;
+  let out = "";
+  try {
+    out = execFileSync("ps", ["-A", "-o", "pgid=,pid=,time="], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+  let sum = 0;
+  let seen = false;
+  for (const line of out.split("\n")) {
+    const [g, p, time] = line.trim().split(/\s+/);
+    if (!g || !p || !time || !pick(Number(g), Number(p))) continue;
+    const s = parseCpuTime(time);
+    if (s === null) continue;
+    sum += s;
+    seen = true;
+  }
+  return seen ? sum : null;
+}
+
+/** Idle flag: a process group's summed CPU seconds, or null. */
+export function groupCpuSeconds(pgid: number): number | null {
+  return psCpuSeconds((g) => g === pgid);
+}
+
+/** Idle flag: one process's CPU seconds, or null. */
+export function pidCpuSeconds(pid: number): number | null {
+  return psCpuSeconds((_g, p) => p === pid);
 }

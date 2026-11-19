@@ -5532,6 +5532,20 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   is stopped. Its grant and its release in the slot log carry the load
   average and the runs beside it, and `gate run` prints them at its start
   and end. `gate status` shows the release slot and who holds it.
+- A run still holding its slot `idle_flag_after_minutes` (default 15)
+  past its estimate has its process group's CPU measured over
+  `idle_sample_seconds` (default 60). Below `idle_cpu_percent` (default
+  2) of one CPU, it is flagged idle: `gate status` says "idle N min past
+  its estimate" (and `--json` carries `idle`), the slot log records
+  `idle`, and when the holder is one of this install's agents, its
+  project's bell gets a Needs-you item. The flag stops nothing. If the run
+  gets busy again the flag clears (`idle-cleared`). Its owner or a person
+  can cancel it as above. A waiting release run may cancel a slot only
+  once it has been flagged for `idle_cancel_grace_minutes` (default 10);
+  `gate run --kind release` does so on its own and says which. The slot
+  log's `cancelled` row and the audit name the release run as who and
+  "idle N min past its estimate" as why. A slot that isn't flagged is
+  never cancelled this way.
 - The slots are the machine user's, shared by every install and repo, and
   need no running Den: `DEN_GATE_DIR`, else `~/Library/Application
 Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`

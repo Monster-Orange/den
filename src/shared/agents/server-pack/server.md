@@ -131,6 +131,9 @@ Reads (they change nothing):
   as `<cli> gate run -- <command>` instead.
 - `gate_slot_cancel`: withdraw your own slot. A waiting run never starts;
   a running one is stopped, and its slot frees once it has ended.
+  A slot whose run sits idle well past its estimate is flagged ("idle N
+  min past its estimate" in `gate_slot_status`, and a Needs-you bell for
+  its agent). The flag stops nothing; cancel your own if it is stuck.
 
 Hub files (through Den, as you; when Hub is connected):
 

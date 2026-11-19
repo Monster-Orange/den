@@ -936,6 +936,20 @@
       "Margen de una prueba detenida antes de KILL",
     "set.server.gate_cancel_grace.d":
       "Cuando se detiene una prueba (Detener en la página Agentes), recibe TERM y este tiempo para terminar; luego KILL. Su turno queda libre cuando ha terminado. __DEN_CLI__ gate settings --cancel-grace-seconds 60",
+    "set.server.gate_idle_after":
+      "Prueba inactiva revisada, minutos pasada su estimación",
+    "set.server.gate_idle_after.d":
+      "A una prueba que sigue con su turno tanto tiempo después de su estimación se le mide la CPU. Si está inactiva, se marca en gate status y en la campana de su agente. La marca nunca la detiene. __DEN_CLI__ gate settings --idle-flag-after-minutes 15",
+    "set.server.gate_idle_cpu": "Prueba inactiva: CPU por debajo de, en porcentaje",
+    "set.server.gate_idle_cpu.d":
+      "Una prueba cuyos procesos juntos usan menos que esta parte de una CPU durante el intervalo se considera inactiva. __DEN_CLI__ gate settings --idle-cpu-percent 2",
+    "set.server.gate_idle_window": "Prueba inactiva: medida durante, en segundos",
+    "set.server.gate_idle_window.d":
+      "Durante cuánto tiempo se mide la CPU de una prueba antes de contar como inactiva u ocupada. __DEN_CLI__ gate settings --idle-sample-seconds 60",
+    "set.server.gate_idle_grace":
+      "Prueba inactiva: marcada este tiempo antes de que una prueba de versión pueda detenerla, en minutos",
+    "set.server.gate_idle_grace.d":
+      "La prueba en espera de una versión candidata puede detener una prueba marcada como inactiva durante este tiempo, y el registro dice quién y por qué. Una prueba sin marca nunca se detiene así. __DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1882,6 +1896,8 @@
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
+    "bell.m.gateIdle":
+      "La prueba {label} está inactiva {n} min pasada su estimación y conserva su turno",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
