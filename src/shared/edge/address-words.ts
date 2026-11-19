@@ -29,6 +29,7 @@ export type AddressWord =
   | "doctor.route"
   | "doctor.ok"
   | "doctor.unchecked"
+  | "edgeUnchecked"
   | "unreachable"
   | "edgeDown"
   | "edgeNotDen"
@@ -56,7 +57,7 @@ export const ADDRESS_WORDS: Readonly<
     "doctor.headBare": "Edge: not running. Port {port} is held by {owner}.",
     "doctor.headUnknown":
       "Edge: not running. Port {port} is in use by something {title} cannot name.",
-    "doctor.headNone": "Nothing answers at {wanted} yet.",
+    "doctor.headNone": "Not reachable yet: nothing answers at {wanted}.",
     "doctor.checked":
       "{title} answers at {address}. That address was checked just now: it is this {title}.",
     "doctor.options":
@@ -67,6 +68,8 @@ export const ADDRESS_WORDS: Readonly<
     "doctor.unchecked":
       "{title} is not running here, so no address was checked.",
     unreachable: "Not reachable yet: nothing answers at {address}.",
+    edgeUnchecked:
+      "The edge address {wanted} isn't checked yet: it hasn't answered as this {title}.",
     edgeDown: "The edge isn't running. Start it with: {cli} edge up",
     edgeNotDen: "Port {port} answers, but it isn't {title}: {what}.",
     edgeHeld:
@@ -93,7 +96,7 @@ export const ADDRESS_WORDS: Readonly<
       "Edge: no está en marcha. El puerto {port} lo ocupa {owner}.",
     "doctor.headUnknown":
       "Edge: no está en marcha. El puerto {port} lo usa algo que {title} no sabe nombrar.",
-    "doctor.headNone": "Todavía nada responde en {wanted}.",
+    "doctor.headNone": "Aún no se puede llegar: nada responde en {wanted}.",
     "doctor.checked":
       "{title} responde en {address}. Esa dirección se comprobó ahora mismo: es este {title}.",
     "doctor.options":
@@ -104,6 +107,8 @@ export const ADDRESS_WORDS: Readonly<
     "doctor.unchecked":
       "{title} no está en marcha aquí, así que no se comprobó ninguna dirección.",
     unreachable: "Aún no se puede llegar: nada responde en {address}.",
+    edgeUnchecked:
+      "La dirección del edge {wanted} aún no está comprobada: todavía no ha respondido como este {title}.",
     edgeDown: "El edge no está en marcha. Arráncalo con: {cli} edge up",
     edgeNotDen: "El puerto {port} responde, pero no es {title}: {what}.",
     edgeHeld:
@@ -131,7 +136,7 @@ export const ADDRESS_WORDS: Readonly<
       "Edge: 停止中。ポート {port} は {owner} が使っています。",
     "doctor.headUnknown":
       "Edge: 停止中。ポート {port} は {title} が特定できない何かが使っています。",
-    "doctor.headNone": "{wanted} ではまだ何も応答しません。",
+    "doctor.headNone": "まだ届きません: {wanted} では何も応答していません。",
     "doctor.checked":
       "{title} は {address} で応答します。このアドレスはたった今確認しました: この {title} です。",
     "doctor.options":
@@ -142,6 +147,8 @@ export const ADDRESS_WORDS: Readonly<
     "doctor.unchecked":
       "{title} がここで動いていないため、アドレスは確認していません。",
     unreachable: "まだ届きません: {address} では何も応答していません。",
+    edgeUnchecked:
+      "edge のアドレス {wanted} はまだ確認していません: この {title} として応答していません。",
     edgeDown: "edge が動いていません。起動するには: {cli} edge up",
     edgeNotDen:
       "ポート {port} は応答しますが、{title} ではありません: {what}。",

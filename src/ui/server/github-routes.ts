@@ -21,6 +21,7 @@ import { githubPrincipal } from "../../shared/github-device.js";
 import {
   clearWebOwner,
   readWebOwner,
+  syncWebOwnerName,
   writeWebOwner,
 } from "../../shared/web-owner.js";
 import type {
@@ -125,9 +126,9 @@ export function decideFlow(
   log: (line: string) => void,
   rules: () => ClaimRules = () => ({}),
 ): Decide {
-  /** Link `identity` as the owner unless one appeared meanwhile. */
+  /** Link `identity` (its display name too) as the owner unless one appeared meanwhile. */
   const claim = (
-    identity: { id: number; login: string },
+    identity: { id: number; login: string; name?: string },
     how: string,
   ): "ok" | "refused" => {
     const now = readWebOwner(stateDir());
@@ -139,7 +140,7 @@ export function decideFlow(
   };
   /** A member of `org` claims it; anyone else is refused, with why. */
   const memberClaim = async (
-    identity: { id: number; login: string },
+    identity: { id: number; login: string; name?: string },
     org: string,
     ctx: { orgMember(org: string): Promise<string> },
   ): Promise<Decision> => {
@@ -174,6 +175,9 @@ export function decideFlow(
         return { refused: unclaimedSigninReason(identity.login, r) };
       }
       const ok = owner.owner === githubPrincipal(identity.id);
+      // Issue 406: the owner's display name as GitHub has it now (kept for
+      // the account entry; forgotten when GitHub has none).
+      if (ok) syncWebOwnerName(identity.id, identity.name, stateDir());
       log(
         ok
           ? `  ✓ signed in with GitHub (@${identity.login})`

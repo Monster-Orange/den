@@ -159,8 +159,11 @@ describe("the Edge page (PL-SPEC §10)", () => {
       /^TLSnoneset in edge\.tls$/,
     );
     expect(tiles.find((t) => t.startsWith("CA trust"))).toMatch(/no CA/);
-    // Read-only: no buttons on the page.
-    expect(await p.$$("#den-content button")).toEqual([]);
+    // Read-only: no buttons in the edge's view. (The address card above it
+    // has Check again when Den's address doesn't answer: issue 455. Here
+    // nothing serves the edge address, so it is shown.) A count, not the
+    // handles: a failure must not crash the worker serializing them.
+    expect(await p.locator("#edge-body button").count()).toBe(0);
     // Nothing started or written: no edge state dir.
     expect(fs.existsSync(path.join(tmp, "edge-state"))).toBe(false);
     await p.context().close();

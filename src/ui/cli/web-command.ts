@@ -44,7 +44,11 @@ import {
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
-import { edgeNames, webRouteHosts } from "../../shared/edge/render.js";
+import {
+  edgeDomains,
+  edgeNames,
+  webRouteHosts,
+} from "../../shared/edge/render.js";
 import { containerState } from "../../shared/edge/runtime.js";
 import {
   expiringTokenWarning,
@@ -97,6 +101,9 @@ import {
   upNoticeLines,
   upAddressLines,
   givenAddress,
+  edgeUncheckedLine,
+  isEdgeAddress,
+  statedAddress,
   type AddressState,
   type CheckDeps,
 } from "../../shared/edge/address-check.js";
@@ -1608,7 +1615,18 @@ async function runWeb(args: string[]): Promise<void> {
         cli: product().cli,
       })
     : null;
-  const origin = (proven ? givenAddress(proven) : null) ?? addr?.url ?? null;
+  // When web.url is the edge address and it hasn't answered as this Den
+  // (nothing answers, another server does, or no answer in time), Visit
+  // and what opens are the checked address, as doctor and web.log give it,
+  // and one line names the edge address as not checked yet. Once it is
+  // proven, it is the address (D80).
+  const said =
+    proven && addr ? statedAddress(proven, isEdgeAddressHere(addr.url)) : null;
+  const origin =
+    (said?.unchecked ? said.address : null) ??
+    (proven ? givenAddress(proven) : null) ??
+    addr?.url ??
+    null;
   const shownNow = origin ?? shown;
   if (running && !svc.handled && !started)
     console.log(
@@ -1616,7 +1634,7 @@ async function runWeb(args: string[]): Promise<void> {
         `\n  OK ${product().title} web is already running at ${shownNow}`,
       ),
     );
-  // Nothing answers the address: still the one given (D80), said plainly.
+  // Nothing answers the address: said plainly, next to the checked one.
   if (proven && addr)
     for (const l of upAddressLines(
       proven,
@@ -1624,6 +1642,16 @@ async function runWeb(args: string[]): Promise<void> {
       edgeDownFor(addr.url),
     ))
       console.log(chalk.yellow(`  ! ${l}`));
+  if (said?.unchecked)
+    console.log(
+      chalk.gray(
+        `  ${edgeUncheckedLine(said.unchecked, {
+          lang: cliLanguage(),
+          title: product().title,
+          cli: product().cli,
+        })}`,
+      ),
+    );
   if (proven?.address && addr && proven.address !== addr.url) {
     const words = {
       lang: cliLanguage(),
@@ -1839,6 +1867,17 @@ export async function provenOrigin(
   }
   return { origin: given, state };
 }
+/** Whether `url` is the edge address here (issue 455: isEdgeAddress). */
+function isEdgeAddressHere(url: string): boolean {
+  let domains: string[] = [];
+  try {
+    domains = edgeDomains(readEdgeConfig());
+  } catch {
+    domains = []; // no edge configured: only a loopback name counts
+  }
+  return isEdgeAddress(url, domains);
+}
+
 /**
  * Whether the edge that serves `wanted` is down, when Den can tell: the
  * install has an edge publishing the address's port, and its container
