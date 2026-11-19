@@ -1269,6 +1269,19 @@ export interface ServerAgentConfig {
    * off (left to the server agent).
    */
   pin_commit?: "push" | "pr" | "off";
+  /**
+   * Issue 562: a release npm marks a security release (den.security in
+   * its package.json) updates while the server agent waits on its
+   * person's question or permission prompt; never past a pending Allow,
+   * never mid-turn (default true; false: it waits, as any release).
+   */
+  security_update_skips_questions?: boolean;
+  /**
+   * Issue 562 review: once an auto update is installed, how long its
+   * restart waits for the server agent's turn to end (or a pending Allow)
+   * before it restarts anyway (seconds, default 900; 0: no wait).
+   */
+  update_restart_wait_seconds?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1304,7 +1317,14 @@ export interface ResolvedServerAgentConfig {
   updateWaitChecks: number;
   /** #176: server_agent.pin_commit: push (default), pr or off. */
   pinCommit: "push" | "pr" | "off";
+  /** Issue 562: server_agent.security_update_skips_questions. */
+  securityUpdateSkipsQuestions: boolean;
+  /** Issue 562 review: server_agent.update_restart_wait_seconds, in ms. */
+  updateRestartWaitMs: number;
 }
+
+/** Issue 562 review: server_agent.update_restart_wait_seconds when unset. */
+export const UPDATE_RESTART_WAIT_SECONDS_DEFAULT = 900;
 
 /** #251: server_agent.update_wait_checks when unset. */
 export const UPDATE_WAIT_CHECKS_DEFAULT = 2;
@@ -1378,6 +1398,19 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.pin_commit: push, pr or off, not ${JSON.stringify(pcm)}`,
     );
+  const ssq = sa.security_update_skips_questions;
+  if (ssq !== undefined && typeof ssq !== "boolean")
+    throw new Error(
+      `server_agent.security_update_skips_questions: true or false, not ${JSON.stringify(ssq)}`,
+    );
+  const rw = sa.update_restart_wait_seconds;
+  if (
+    rw !== undefined &&
+    (typeof rw !== "number" || !Number.isFinite(rw) || rw < 0)
+  )
+    throw new Error(
+      `server_agent.update_restart_wait_seconds: seconds, 0 or more (got ${JSON.stringify(rw)})`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1399,6 +1432,10 @@ export function readServerAgentConfig(
     role: role ?? "lead",
     updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
     pinCommit: pcm ?? "push",
+    securityUpdateSkipsQuestions: ssq ?? true,
+    updateRestartWaitMs: Math.round(
+      (rw ?? UPDATE_RESTART_WAIT_SECONDS_DEFAULT) * 1000,
+    ),
   };
 }
 

@@ -3459,6 +3459,31 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   your Allow", linked to that agent. After
   `server_agent.update_wait_checks` passes in a row (default 2) it counts
   as needing you. The update never goes past a pending Allow.
+- **A security release doesn't wait on an open question** (issue 562). A
+  release whose package.json has `"den": {"security": true}` is a
+  security release. Den reads the mark only from npm's version data for
+  that version (`npm view <package>@<version> den`), never from a tag
+  name or the changelog; no mark, or npm can't say, is an ordinary
+  release. With `self_update: auto`, a security release updates while
+  the server agent waits on its person's question or permission prompt.
+  That conversation resumes after the restart, as on any restart. It
+  still never goes past a pending Allow, and never restarts while a turn
+  is working. The bell then says "Den updated for a security fix while
+  the server agent was waiting on you; its question is still open".
+  `server_agent.security_update_skips_questions` (org config, default
+  `true`): `false` makes a security release wait like any other.
+- **The restart looks again after the install** (issue 562). The install
+  takes a while, and a turn may start meanwhile (the person answers the
+  question). Once an auto update is installed and its doctor has run,
+  Den reads the wait again before it restarts: a security release goes
+  past the server agent's question or prompt, any other release doesn't.
+  A working turn or a pending Allow holds the restart, read again every
+  few seconds, for at most `server_agent.update_restart_wait_seconds`
+  (org config, default 900). Then Den restarts anyway, since the new
+  version is installed and the old one is still running. The log says
+  why, and the bell says "Den restarted to finish an update while the
+  server agent was working". An update the person or an agent asked for
+  restarts as before.
 - **Den commits and pushes the new pin itself** (#176). Once an update
   is verified (the watch saw the new version answer, `state: good`) and
   this Den runs it, the lead install's update check commits the pin and

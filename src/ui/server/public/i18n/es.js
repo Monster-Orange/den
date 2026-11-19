@@ -1845,6 +1845,10 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "bell.m.updateWaitsWhat":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
+    "bell.m.updatedSecurity":
+      "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.restartedWhileWorking":
+      "__DEN_TITLE__ se reinició para terminar una actualización mientras {agent} trabajaba",
     "bell.m.updateWaitsAskedWhat":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta: {what} (desde {since})",
     "bell.m.pinNotCommitted":

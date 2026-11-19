@@ -2667,6 +2667,10 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
     "bell.m.updateWaitsWhat":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
+    "bell.m.updatedSecurity":
+      "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.restartedWhileWorking":
+      "__DEN_TITLE__ restarted to finish an update while {agent} was working",
     "bell.m.updateWaitsAskedWhat":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question: {what} (since {since})",
     "bell.m.pinNotCommitted":
