@@ -320,6 +320,30 @@ describe("telling the agent", () => {
     expect([told, typed]).toEqual(["told", ["back"]]);
   });
 
+  it("a dialog that opens just as the note is typed: held back, kept, and typed after it is answered", async () => {
+    let clock = 0;
+    let tries = 0;
+    const typed: string[] = [];
+    const told = await tellBack("back", {
+      state: async () => "idle" as never,
+      // Open only when the type found it (its second read), then answered.
+      dialog: async () => tries === 1 && clock < 5000,
+      type: async (t) => {
+        tries++;
+        if (tries === 1) return false;
+        typed.push(t);
+        return true;
+      },
+      waitMs: 3000,
+      pollMs: 1000,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    expect([told, typed, tries]).toEqual(["told", ["back"], 2]);
+  });
+
   it("the agent stops while its dialog is open: nothing typed, the bell item goes", async () => {
     let clock = 0;
     let n = 0;

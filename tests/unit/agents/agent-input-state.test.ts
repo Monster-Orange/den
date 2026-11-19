@@ -106,7 +106,6 @@ async function sessionStart(r: Rig): Promise<number> {
   }
 }
 
-
 /**
  * The runtime's permission dialog, as its screen ends while it waits for
  * its person (the first choice highlighted).
@@ -331,7 +330,12 @@ describe("a dialog waiting for the person: Den never types into it", () => {
     q.made[0].emit(DIALOG);
     await settle();
     expect(
-      await agentInputState(resolveAgentsDeps(q.deps), "planner", new Set(), 200),
+      await agentInputState(
+        resolveAgentsDeps(q.deps),
+        "planner",
+        new Set(),
+        200,
+      ),
     ).toBe("busy");
   }, 30_000);
 

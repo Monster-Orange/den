@@ -1043,12 +1043,18 @@ export async function handleAgentRoutes(
       // never logged; its length is.
       if (instruction && !s.early) {
         const id = s.rec.id;
+        let dialog = false;
         void sendFirstInstruction(
           d,
           s.info.ref.id,
           s.rec.runtime,
           instruction,
-          deps.instruction ?? {},
+          {
+            ...(deps.instruction ?? {}),
+            onDialog: () => {
+              dialog = true;
+            },
+          },
         ).then((sent) =>
           recordAction(
             actor,
@@ -1059,7 +1065,9 @@ export async function handleAgentRoutes(
                 ? {}
                 : {
                     outcome: "refused" as const,
-                    reason: "its session ended or no host",
+                    reason: dialog
+                      ? "not typed: a dialog waits for its person in its terminal"
+                      : "the agent ended, or no terminal host",
                   }),
             },
             principalOf(req),

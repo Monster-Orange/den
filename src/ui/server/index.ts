@@ -26,6 +26,8 @@ import type { UpdateWait } from "./update-check.js";
 import {
   isUpdateAsk,
   securityUpdateNote,
+  backNoteHeldNote,
+  BACK_NOTE_HELD_SUBJECT,
   staleUpdateAsk,
   updateWaitNotes,
 } from "./update-check.js";
@@ -8592,9 +8594,36 @@ async function serverBack(): Promise<void> {
       const ops = await import("../cli/agent-ops.js");
       const { webDeps } = await import("./agent-routes.js");
       const d = webDeps();
+      const agentName = serverAgentName(product().title);
       told = await tellBack(text, {
         state: () => ops.serverAgentInputState(d),
         type: (t) => ops.typeIntoAgent(d, SERVER_AGENT_ID, t),
+        // Issue 629: never into a dialog for its person; kept until answered.
+        dialog: () => ops.serverAgentDialogOpen(d),
+        held: () => {
+          serverLog(
+            `  Back from a restart: the note to ${agentName} waits for its person's dialog`,
+            "lifecycle",
+          );
+          try {
+            backNoteHeldNote(
+              notificationDeps().store,
+              product().title,
+              agentName,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
+        cleared: () => {
+          try {
+            notificationDeps().store.remove(
+              (x) => x.subject === BACK_NOTE_HELD_SUBJECT,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitMs: restartWaitSeconds() * 1000,
       });
     } catch (e) {
