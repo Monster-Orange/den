@@ -34,6 +34,21 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
       readSessionsConfig,
     ],
     [
+      "sessions.pty_close_seconds",
+      { sessions: { pty_close_seconds: "hunter2" } },
+      readSessionsConfig,
+    ],
+    [
+      "sessions.pty_warn_above",
+      { sessions: { pty_warn_above: "hunter2" } },
+      readSessionsConfig,
+    ],
+    [
+      "sessions.pty_machine_warn_percent",
+      { sessions: { pty_machine_warn_percent: "hunter2" } },
+      readSessionsConfig,
+    ],
+    [
       "agents.max_concurrent",
       { agents: { max_concurrent: "hunter2" } },
       readAgentsConfig,
@@ -67,5 +82,24 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
         sessions: { close_grace_seconds: 0.5 },
       } as unknown as DenConfig).closeGraceSeconds,
     ).toBe(0.5);
+  });
+
+  it("issue 503: the PTY Settings, permissive by default", () => {
+    const d = readSessionsConfig({} as DenConfig);
+    expect(d.ptyCloseSeconds).toBe(0);
+    expect(d.ptyWarnAbove).toBe(400);
+    expect(d.ptyMachineWarnPercent).toBe(90);
+    const set = readSessionsConfig({
+      sessions: {
+        pty_close_seconds: 2,
+        pty_warn_above: 50,
+        pty_machine_warn_percent: 75,
+      },
+    } as unknown as DenConfig);
+    expect(set).toMatchObject({
+      ptyCloseSeconds: 2,
+      ptyWarnAbove: 50,
+      ptyMachineWarnPercent: 75,
+    });
   });
 });

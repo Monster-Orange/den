@@ -163,6 +163,25 @@ export class HostClient extends EventEmitter {
     }
   }
 
+  /**
+   * Issue 503: how many PTY masters the host holds (open null: it can't
+   * count them there). null from a host older than this request.
+   */
+  async ptys(): Promise<{ open: number | null } | null> {
+    try {
+      const r = await this.request("ptys");
+      return {
+        open:
+          typeof r.open === "number" && Number.isInteger(r.open)
+            ? r.open
+            : null,
+      };
+    } catch (e) {
+      if (e instanceof HostError && e.code === "bad-request") return null;
+      throw e;
+    }
+  }
+
   async hello(): Promise<void> {
     const r = await this.request("hello");
     this.hostPid = Number(r.pid);
