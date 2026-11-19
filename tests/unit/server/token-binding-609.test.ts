@@ -149,8 +149,7 @@ describe("issue 609: an unplaced caller's reason", () => {
 describe("issue 609: the lookup says why it found no caller (macOS, fake lsof)", () => {
   const PORT = 52922;
   const TO = 7777;
-  const row = (pid: number) =>
-    `p${pid}\nn127.0.0.1:${PORT}->127.0.0.1:${TO}\n`;
+  const row = (pid: number) => `p${pid}\nn127.0.0.1:${PORT}->127.0.0.1:${TO}\n`;
   const find = (run: (cmd: string) => Promise<string>) =>
     loopbackPeerFind(PORT, TO, {
       platform: "darwin",
@@ -168,7 +167,9 @@ describe("issue 609: the lookup says why it found no caller (macOS, fake lsof)",
   it("no row: none; two: several", async () => {
     expect(await find(async () => "")).toEqual({ miss: "none" });
     expect(
-      await find(async (cmd) => (cmd.endsWith("lsof") ? row(1) + row(2) : "")),
+      await find(async (cmd) =>
+        cmd.endsWith("lsof") ? row(11) + row(12) : "",
+      ),
     ).toEqual({ miss: "several" });
   });
   it("a lookup that timed out: timeout; one that couldn't run: failed", async () => {

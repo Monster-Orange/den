@@ -99,16 +99,20 @@ function darwinPeer(
   to: number | undefined,
   o: ReturnType<typeof defaults>,
 ): number | null {
-  return lsofPeer(o.run(DARWIN_LSOF, lsofArgs(port)), port, to, o.self);
+  return one(lsofPids(o.run(DARWIN_LSOF, lsofArgs(port)), port, to, o.self));
 }
 
-/** lsof -F's answer: the one pid whose client end is `port` (to `to`). */
-function lsofPeer(
+/** The one pid of `found`, else null. */
+const one = (found: Set<number>): number | null =>
+  found.size === 1 ? [...found][0] : null;
+
+/** lsof -F's answer: the pids whose client end is `port` (to `to`). */
+function lsofPids(
   out: string,
   port: number,
   to: number | undefined,
   self: number,
-): number | null {
+): Set<number> {
   // -F: "p<pid>" starts a process, "n<local>-><remote>" each of its files.
   const found = new Set<number>();
   let pid = 0;
@@ -124,7 +128,7 @@ function lsofPeer(
         found.add(pid);
     }
   }
-  return found.size === 1 ? [...found][0] : null;
+  return found;
 }
 
 /** "127.0.0.1:52922" or "[::1]:52922" with that port. */
@@ -144,6 +148,19 @@ function linuxPeer(
   to: number | undefined,
   o: ReturnType<typeof defaults>,
 ): number | null {
+  const f = linuxPids(port, to, o);
+  return f.miss ? null : one(f.pids);
+}
+
+/**
+ * The pids holding the client end of `port` (to `to`) in /proc; `miss`
+ * when there was no single socket to look for.
+ */
+function linuxPids(
+  port: number,
+  to: number | undefined,
+  o: ReturnType<typeof defaults>,
+): { pids: Set<number>; miss?: "none" | "several" } {
   const hex4 = (n: number) => n.toString(16).toUpperCase().padStart(4, "0");
   const hex = hex4(port);
   const toHex = to === undefined ? undefined : hex4(to);
@@ -168,7 +185,8 @@ function linuxPeer(
       inodes.add(c[9]);
     }
   }
-  if (inodes.size !== 1) return null;
+  if (inodes.size !== 1)
+    return { pids: new Set(), miss: inodes.size ? "several" : "none" };
   const want = `socket:[${[...inodes][0]}]`;
   const found = new Set<number>();
   for (const name of o.readdir("/proc")) {
@@ -192,7 +210,7 @@ function linuxPeer(
       }
     }
   }
-  return found.size === 1 ? [...found][0] : null;
+  return { pids: found };
 }
 
 /** /proc/net/tcp's hex address: 127.x.x.x (little-endian), ::1, ::ffff:127.0.0.1. */
@@ -314,45 +332,107 @@ export async function runAsync(
 }
 
 /**
+ * Issue 609: runAsync that tells why it has no answer: throws
+ * LookupTimeoutError when every try timed out, and the error when the
+ * command couldn't run. A command that ran and exited non-zero (lsof's
+ * "no match") answers its output, "" for nothing.
+ */
+export async function runAsyncStrict(
+  cmd: string,
+  args: string[],
+  timeouts: readonly number[] = lookupTimeouts(),
+): Promise<string> {
+  for (const timeout of timeouts) {
+    const r = await new Promise<
+      { out: string } | { timedOut: true } | { error: Error }
+    >((res) => {
+      execFile(cmd, args, { encoding: "utf8", timeout }, (err, stdout) => {
+        if (!err) return res({ out: stdout });
+        const { killed, code } = err as { killed?: boolean; code?: unknown };
+        if (killed === true || code === "ETIMEDOUT")
+          return res({ timedOut: true });
+        // It ran and said no (an exit status): its output.
+        if (typeof code === "number") return res({ out: stdout ?? "" });
+        res({ error: err });
+      });
+    });
+    if ("out" in r) return r.out;
+    if ("error" in r) throw r.error;
+  }
+  throw new LookupTimeoutError(cmd);
+}
+
+/**
+ * Issue 609: why no single caller was found. timeout: the lookup took too
+ * long; failed: it couldn't run; none: no connection matched (the caller
+ * had closed it, or never held it); several: more than one did.
+ */
+export type LookupMiss = "timeout" | "failed" | "none" | "several";
+
+/** A caller's line of parents, or why there is none. */
+export type PeerFind = { line: number[] } | { miss: LookupMiss };
+
+const missOf = (e: unknown): LookupMiss =>
+  e instanceof LookupTimeoutError ? "timeout" : "failed";
+
+/**
  * Issue 242: loopbackPeerPid without holding the event loop, and with the
  * caller's line of parents taken at the same moment: [pid, its parent, …].
  * Run when the connection arrives, the caller is still there; its line
  * then answers "inside this session?" however late the request is read.
- * Null: no single caller found.
+ * Issue 609: with no single caller, why (LookupMiss).
  */
+export async function loopbackPeerFind(
+  port: number,
+  to: number | undefined,
+  d: AsyncPeerDeps = {},
+): Promise<PeerFind> {
+  if (!validPort(port)) return { miss: "none" };
+  if (to !== undefined && !validPort(to)) return { miss: "none" };
+  const platform = d.platform ?? process.platform;
+  const self = d.self ?? process.pid;
+  const asked = Date.now();
+  if (platform === "darwin") {
+    const run = d.run ?? ((c: string, a: string[]) => runAsyncStrict(c, a));
+    let pids: Set<number>;
+    try {
+      pids = lsofPids(await run(DARWIN_LSOF, lsofArgs(port)), port, to, self);
+    } catch (e) {
+      return { miss: missOf(e) };
+    }
+    if (pids.size !== 1) return { miss: pids.size ? "several" : "none" };
+    const pid = [...pids][0];
+    try {
+      const table = psTable(
+        await (d.run ? run(DARWIN_PS, PS_ARGS) : sharedPs(asked)),
+      );
+      return { line: lineOf(pid, (p) => table.get(p) ?? null) };
+    } catch {
+      // The caller is known; its parents are checked when judged.
+      return { line: [pid] };
+    }
+  }
+  if (platform === "linux") {
+    try {
+      // /proc reads: quick, and done at once, while the caller is there.
+      const o = defaults({ ...d, run: () => "" });
+      const f = linuxPids(port, to, o);
+      if (f.miss) return { miss: f.miss };
+      if (f.pids.size !== 1) return { miss: f.pids.size ? "several" : "none" };
+      return { line: lineOf([...f.pids][0], procParent(o)) };
+    } catch {
+      return { miss: "failed" };
+    }
+  }
+  return { miss: "failed" };
+}
+
+/** loopbackPeerFind's line, or null when no single caller was found. */
 export async function loopbackPeerLine(
   port: number,
   to: number | undefined,
   d: AsyncPeerDeps = {},
 ): Promise<number[] | null> {
-  if (!validPort(port)) return null;
-  if (to !== undefined && !validPort(to)) return null;
-  const platform = d.platform ?? process.platform;
-  const self = d.self ?? process.pid;
-  const asked = Date.now();
-  try {
-    if (platform === "darwin") {
-      const run = d.run ?? ((c: string, a: string[]) => runAsync(c, a));
-      const pid = lsofPeer(
-        await run(DARWIN_LSOF, lsofArgs(port)),
-        port,
-        to,
-        self,
-      );
-      if (pid === null) return null;
-      const table = psTable(
-        await (d.run ? run(DARWIN_PS, PS_ARGS) : sharedPs(asked)),
-      );
-      return lineOf(pid, (p) => table.get(p) ?? null);
-    }
-    if (platform === "linux") {
-      // /proc reads: quick, and done at once, while the caller is there.
-      const o = defaults({ ...d, run: () => "" });
-      const pid = linuxPeer(port, to, o);
-      return pid === null ? null : lineOf(pid, procParent(o));
-    }
-  } catch {
-    return null;
-  }
-  return null;
+  const f = await loopbackPeerFind(port, to, d);
+  return "line" in f ? f.line : null;
 }

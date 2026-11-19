@@ -912,6 +912,15 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.hook_wait": "エージェントのフックの待ち時間",
+    "set.agents.hook_wait.d":
+      "エージェントのフックが、あなたが必要だと __DEN_TITLE__ に知らせるときや Hub の受信箱を確認するときに、1 回の試行で __DEN_TITLE__ を待つ時間です。混み合ったマシンでは応答が遅れることがあります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    "set.agents.hook_retries": "エージェントのフックの再試行回数",
+    "set.agents.hook_retries.d":
+      "__DEN_TITLE__ が時間内に応答しなかったか呼び出しを断ったときに、エージェントのフックがあと何回試すかです。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.retries=2",
+    "set.agents.hook_backoff": "エージェントのフックの間隔",
+    "set.agents.hook_backoff.d":
+      "エージェントのフックが最初の再試行の前に待つ時間です。その後の間隔は毎回倍になります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "圧縮の繰り返し: 回数",
     "set.agents.compaction_loop.d":
       "下の分数のうちにエージェントが自動圧縮をこの回数より多く行うと、ベルが圧縮を繰り返していると知らせます。1 回の繰り返しにつきベルは 1 回です。__DEN_CLI__ config agent_context.compaction_loop_count=3",

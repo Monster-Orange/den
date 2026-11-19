@@ -1149,9 +1149,11 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
   callerPid,
+  callerMiss,
   peerSettled,
   refusalDetail,
   tokenCaller,
@@ -1734,6 +1736,11 @@ const GUARD: GuardContext = {
           : null;
         const from = tokenCaller(req, root);
         if (from !== "ok") {
+          // Issue 609: why it wasn't placed. A caller that had already
+          // closed its connection is refused all the same, but nothing is
+          // there to answer: audited as gone, not as a refused agent.
+          const why = from === "unknown" ? callerMiss(req) : null;
+          const gone = why === "gone";
           recordAction(
             null,
             {
@@ -1745,9 +1752,10 @@ const GUARD: GuardContext = {
                 root,
                 method: req.method ?? "GET",
                 path: new URL(req.url ?? "/", "http://x").pathname,
+                why,
               }),
-              outcome: "refused",
-              reason: `token_${from}`,
+              ...(gone ? {} : { outcome: "refused" as const }),
+              reason: gone ? "token_caller_gone" : `token_${from}`,
             },
             rec.actor,
           );
@@ -3405,6 +3413,15 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         pause_after_loop: c.pause,
         instruction_share_percent: c.sharePercent,
         context_tokens: c.contextTokens,
+      };
+    })(),
+    // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
+    agent_hooks: (() => {
+      const c = hookCallSettings(() => user);
+      return {
+        timeout_seconds: c.timeoutMs / 1000,
+        retries: c.retries,
+        backoff_seconds: c.backoffMs / 1000,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
@@ -7139,6 +7156,7 @@ async function handleRequest(
           agent_context?: unknown;
           feedback?: unknown;
           address_check?: unknown;
+          agent_hooks?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -7174,6 +7192,7 @@ async function handleRequest(
             agent_context: body.agent_context,
             feedback: body.feedback,
             address_check: body.address_check,
+            agent_hooks: body.agent_hooks,
           });
           if (!c.ok) return send400(res, c.error);
         }

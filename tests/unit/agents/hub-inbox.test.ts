@@ -70,8 +70,12 @@ function agent(at = base) {
 }
 const env = () => ({ DEN_ACTOR_TOKEN: denToken(n) });
 /** The check as the agent's Stop hook runs it. */
+/** One try, as before issue 609's retries (hook-call.test covers those). */
 const check = (a: InboxArgs, more: { timeoutMs?: number } = {}) =>
-  inboxBlock(a, { env: env(), ...more });
+  inboxBlock(a, {
+    env: env(),
+    call: { timeoutMs: more.timeoutMs ?? 2_000, retries: 0, backoffMs: 0 },
+  });
 
 const reset = (y: unknown, s = 200) => {
   yours = y;

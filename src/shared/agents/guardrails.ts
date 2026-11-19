@@ -20,6 +20,12 @@
  * matter `den_hooks` / `den_instructions`), the persona winning.
  */
 import { ATTENTION_EVENTS } from "./guardrails/attention-hook.js";
+import {
+  HOOK_CALL_DEFAULT,
+  hookCallBudgetSeconds,
+  hookCallFlags,
+  type HookCall,
+} from "./guardrails/hook-call.js";
 import * as fs from "fs";
 import * as path from "path";
 import { enginePath, scriptEntrypoint, type EngineCommand } from "../engine.js";
@@ -125,7 +131,16 @@ export interface ApiOnlyArgs {
  */
 export interface InboxHookArgs {
   base: string;
+  /** Issue 609: how the check calls Den (user.yml agent_hooks.*). */
+  call?: HookCall;
 }
+
+/** `--hub-inbox <base>` and, given, issue 609's call flags. */
+const inboxFlags = (inbox: InboxHookArgs): string[] => [
+  "--hub-inbox",
+  inbox.base,
+  ...(inbox.call ? hookCallFlags(inbox.call) : []),
+];
 
 /** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
 export const PRETOOL_MATCHER = "Bash|Read";
@@ -175,7 +190,7 @@ export function hookCommands(
           ...c.args,
           ...known.flatMap((k) => ["--known", k]),
           ...(handback ? [] : ["--no-handback"]),
-          ...(inbox ? ["--hub-inbox", inbox.base] : []),
+          ...(inbox ? inboxFlags(inbox) : []),
         ],
       }))(more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"))),
     ),
@@ -227,15 +242,45 @@ export function guardrailHooks(
  * (attention-hook.ts). Merged beside Den's other hooks. PermissionRequest
  * prints nothing, so Claude Code still asks the person.
  */
-export function attentionHooks(base: string): Record<string, unknown[]> {
+export function attentionHooks(
+  base: string,
+  /** Issue 609: each try's wait, retries, pause (user.yml agent_hooks.*). */
+  call: HookCall = HOOK_CALL_DEFAULT,
+): Record<string, unknown[]> {
   const cmd = commandLine(
     ((c: EngineCommand): EngineCommand => ({
       command: c.command,
-      args: [...c.args, "--den", base],
+      args: [...c.args, "--den", base, ...hookCallFlags(call)],
     }))(scriptEntrypoint("src/shared/agents/guardrails/attention-hook.ts")),
   );
-  const entry = { hooks: [{ type: "command", command: cmd, timeout: 10 }] };
+  // The runtime's own limit on the hook covers every try (issue 609).
+  const entry = {
+    hooks: [
+      {
+        type: "command",
+        command: cmd,
+        timeout: Math.max(10, hookCallBudgetSeconds(call)),
+      },
+    ],
+  };
   return Object.fromEntries(ATTENTION_EVENTS.map((e) => [e, [entry]]));
+}
+
+/**
+ * Issue 609: at least `seconds` for each of `event`'s hooks (the Stop
+ * hook's inbox check makes the same tries as the attention hook).
+ */
+export function widenHookTimeouts(
+  hooks: Record<string, unknown> | null,
+  event: string,
+  seconds: number,
+): void {
+  const entries = hooks?.[event];
+  if (!Array.isArray(entries)) return;
+  for (const e of entries as { hooks?: { timeout?: number }[] }[])
+    for (const h of e.hooks ?? [])
+      if (typeof h.timeout === "number" && h.timeout < seconds)
+        h.timeout = seconds;
 }
 
 /** Two `hooks` blocks as one: each event's entries, the first's first. */
@@ -278,8 +323,7 @@ export function apiOnlyHooks(
                       "--inbox-only",
                       "--files",
                       inbox.files,
-                      "--hub-inbox",
-                      inbox.base,
+                      ...inboxFlags(inbox),
                     ],
                   }))(
                     scriptEntrypoint(
@@ -287,7 +331,10 @@ export function apiOnlyHooks(
                     ),
                   ),
                 ),
-                timeout: 30,
+                timeout: Math.max(
+                  30,
+                  hookCallBudgetSeconds(inbox.call ?? HOOK_CALL_DEFAULT),
+                ),
               },
             ],
           },

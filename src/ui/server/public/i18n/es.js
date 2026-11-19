@@ -938,6 +938,15 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.hook_wait": "Espera de los hooks de agente",
+    "set.agents.hook_wait.d":
+      "Cuánto esperan los hooks de un agente a __DEN_TITLE__ en cada intento cuando le avisan de que el agente te necesita o revisan la bandeja de Hub. Una máquina ocupada puede tardar en responder. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    "set.agents.hook_retries": "Reintentos de los hooks de agente",
+    "set.agents.hook_retries.d":
+      "Cuántas veces más lo intenta el hook de un agente cuando __DEN_TITLE__ no respondió a tiempo o rechazó la llamada. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.retries=2",
+    "set.agents.hook_backoff": "Pausa de los hooks de agente",
+    "set.agents.hook_backoff.d":
+      "Cuánto espera el hook de un agente antes de su primer reintento. Cada pausa siguiente se duplica. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "Compactación repetida: compactaciones",
     "set.agents.compaction_loop.d":
       "Cuántas compactaciones automáticas puede tener un agente dentro de los minutos de abajo antes de que la campana avise de que se compacta una y otra vez. Una campana por episodio. __DEN_CLI__ config agent_context.compaction_loop_count=3",

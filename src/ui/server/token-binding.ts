@@ -13,22 +13,39 @@
  * "connection" event) and never holds the event loop, so a busy Den or a
  * caller that gives up soon can't outrun it. An agent's request waits for
  * it (peerSettled, agents.token_peer_wait_ms) before its token is judged.
+ *
+ * Issue 609: a caller Den can't place says why (PeerMiss), and one that
+ * had already closed its connection is "gone": still refused, but nothing
+ * is there to answer, so it is audited apart from a live agent's refusal.
  */
 import type * as http from "http";
 import type { Socket } from "net";
 import { isLoopbackAddress } from "./request-guard.js";
-import { descendsFrom, loopbackPeerLine } from "../../shared/peer-process.js";
+import {
+  descendsFrom,
+  loopbackPeerFind,
+  type LookupMiss,
+} from "../../shared/peer-process.js";
 import { ACTOR_TOKEN_PREFIX } from "../../shared/actor-token.js";
 
 /** ok: from the agent's own processes; elsewhere: proved not; unknown: couldn't tell. */
 export type TokenCaller = "ok" | "elsewhere" | "unknown";
 
+/**
+ * Issue 609: why a caller wasn't placed: the lookup's own reason, or
+ * waiting (the request's wait ended while it ran), or gone (the caller
+ * closed its connection before it was placed).
+ */
+export type PeerMiss = LookupMiss | "waiting" | "gone";
+
+type PeerAnswer = number | null | { miss: LookupMiss };
+
 export interface BindingDeps {
   /**
    * The caller's pid from its port and the server's own (issue 196), now
-   * or later. Given, the session check is `descends`.
+   * or later; or why there is none. Given, the session check is `descends`.
    */
-  peer?: (port: number, to: number) => number | null | Promise<number | null>;
+  peer?: (port: number, to: number) => PeerAnswer | Promise<PeerAnswer>;
   descends?: (pid: number, root: number) => boolean;
 }
 
@@ -37,6 +54,10 @@ interface Peer {
   pid?: number | null;
   /** The caller and its parents when it was found (the real lookup). */
   line?: number[];
+  /** Issue 609: why it wasn't found. */
+  miss?: LookupMiss;
+  /** Issue 609: the caller closed its end. */
+  gone?: boolean;
   done: Promise<void>;
 }
 
@@ -55,25 +76,56 @@ export function watchPeer(sock: Socket, d: BindingDeps = {}): void {
   const to = sock.localPort ?? 0;
   const peer: Peer = { done: Promise.resolve() };
   PEERS.set(sock, peer);
-  const settle = (pid: number | null, line?: number[]) => {
-    peer.pid = pid;
-    if (line) peer.line = line;
+  // Issue 609: the caller's end closing (it gave up, or finished).
+  const gone = () => {
+    peer.gone = true;
+  };
+  sock.once?.("end", gone);
+  sock.once?.("close", gone);
+  const answer = (v: PeerAnswer) => {
+    if (typeof v === "number") peer.pid = v;
+    else {
+      peer.pid = null;
+      peer.miss = v?.miss ?? "none";
+    }
   };
   if (d.peer) {
-    let v: number | null | Promise<number | null>;
+    let v: PeerAnswer | Promise<PeerAnswer>;
     try {
       v = d.peer(from, to);
     } catch {
-      v = null;
+      v = { miss: "failed" };
     }
-    if (v instanceof Promise) peer.done = v.then(settle, () => settle(null));
-    else settle(v);
+    if (v instanceof Promise)
+      peer.done = v.then(answer, () => answer({ miss: "failed" }));
+    else answer(v);
     return;
   }
-  peer.done = loopbackPeerLine(from, to).then(
-    (line) => (line ? settle(line[0], line) : settle(null)),
-    () => settle(null),
+  peer.done = loopbackPeerFind(from, to).then(
+    (f) => {
+      if ("line" in f) {
+        peer.pid = f.line[0];
+        peer.line = f.line;
+      } else answer(f);
+    },
+    () => answer({ miss: "failed" }),
   );
+}
+
+/**
+ * Issue 609: why this request's caller wasn't placed, or null when it
+ * was (or isn't on loopback). A caller that closed its connection and
+ * wasn't found: gone, whatever the lookup said.
+ */
+export function callerMiss(req: http.IncomingMessage): PeerMiss | null {
+  const sock = req.socket;
+  if (!sock || !isLoopbackAddress(sock.remoteAddress)) return null;
+  const peer = PEERS.get(sock);
+  if (!peer) return null;
+  if (typeof peer.pid === "number") return null;
+  const closed = peer.gone === true || sock.destroyed || sock.readableEnded;
+  if (closed && peer.miss !== "several") return "gone";
+  return peer.pid === undefined ? "waiting" : (peer.miss ?? "none");
 }
 
 /**
@@ -147,9 +199,20 @@ export function agentPeerWait(
   return m && m[1].startsWith(ACTOR_TOKEN_PREFIX) ? binding.waitMs : null;
 }
 
+/** Issue 609: each reason as the audit says it. */
+const MISS_WORDS: Record<PeerMiss, string> = {
+  timeout: "the lookup timed out",
+  failed: "the lookup failed",
+  none: "no matching connection",
+  several: "more than one matching connection",
+  waiting: "the lookup was still running",
+  gone: "the caller had gone",
+};
+
 /**
  * The audit detail of a refused agent token: both pids (issue 242), the
- * caller's and the agent's own (its session root), "?" for unknown.
+ * caller's and the agent's own (its session root), "?" for unknown; and,
+ * for an unplaced caller, why (issue 609).
  */
 export function refusalDetail(o: {
   actor: string;
@@ -158,10 +221,12 @@ export function refusalDetail(o: {
   root: number | null;
   method: string;
   path: string;
+  why?: PeerMiss | null;
 }): string {
   const where =
     o.from === "unknown"
       ? "a process Den couldn't place"
       : "outside the agent's own processes";
-  return `${o.actor}'s token from ${where} (pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
+  const why = o.from === "unknown" && o.why ? `${MISS_WORDS[o.why]}; ` : "";
+  return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
 }

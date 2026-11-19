@@ -2786,6 +2786,46 @@ export const DEN_SETTINGS = [
       ctx.post({ agents_list: { refresh_timeout_seconds: v } }),
   },
   {
+    // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
+    id: "agents.hook_wait",
+    category: "agents",
+    label: "Agent hook wait",
+    description:
+      "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    keywords: ["timeout", "hook", "attention", "bell", "wait"],
+    scope: "user",
+    keys: ["agent_hooks.timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agent_hooks?.timeout_seconds ?? 20,
+    write: (v, ctx) => ctx.post({ agent_hooks: { timeout_seconds: v } }),
+  },
+  {
+    id: "agents.hook_retries",
+    category: "agents",
+    label: "Agent hook retries",
+    description:
+      "How many more times an agent's hook tries when __DEN_TITLE__ didn't answer in time or turned the call away. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.retries=2",
+    keywords: ["retry", "hook", "attention", "bell"],
+    scope: "user",
+    keys: ["agent_hooks.retries"],
+    control: { type: "number", min: 0, max: 10, step: 1 },
+    read: (ctx) => ctx.data.agent_hooks?.retries ?? 2,
+    write: (v, ctx) => ctx.post({ agent_hooks: { retries: v } }),
+  },
+  {
+    id: "agents.hook_backoff",
+    category: "agents",
+    label: "Agent hook pause",
+    description:
+      "How long an agent's hook waits before its first retry. Each later pause doubles. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
+    keywords: ["retry", "backoff", "pause", "hook"],
+    scope: "user",
+    keys: ["agent_hooks.backoff_seconds"],
+    control: { type: "number", min: 0, max: 60, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.agent_hooks?.backoff_seconds ?? 1,
+    write: (v, ctx) => ctx.post({ agent_hooks: { backoff_seconds: v } }),
+  },
+  {
     // Issue 278: agents stuck compacting; instruction size (agent_context.*).
     id: "agents.compaction_loop",
     category: "agents",

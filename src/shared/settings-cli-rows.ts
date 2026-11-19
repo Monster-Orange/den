@@ -30,6 +30,8 @@
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
+ *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
+ *                                     user.yml agent_hooks.* (issue 609)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -38,6 +40,7 @@ import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
+import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -84,6 +87,8 @@ export const PERSON_ONLY_SETTINGS = [
   "feedback",
   // Issue 455: how long, and how often, Den checks its own address.
   "address_check",
+  // Issue 609: how agents' hooks wait for Den, and retry.
+  "agent_hooks",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -202,6 +207,14 @@ const ADDRESS_CHECK: Record<string, Limit> = Object.fromEntries(
   Object.entries(ADDRESS_CHECK_LIMITS).map(([k, l]) => [
     k,
     { key: `address_check_${k}`, min: l.min, max: l.max, int: k === "retries" },
+  ]),
+);
+
+/** Issue 609: user.yml agent_hooks.* (hook-call.ts). */
+const AGENT_HOOKS: Record<string, Limit> = Object.fromEntries(
+  Object.entries(HOOK_CALL_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: k === "retries" },
   ]),
 );
 
@@ -429,6 +442,14 @@ export function patchCliRows(
       "web",
       ADDRESS_CHECK,
       body.address_check,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agent_hooks",
+      "agent_hooks",
+      AGENT_HOOKS,
+      body.agent_hooks,
       apply,
     );
   if (e) return { ok: false, error: e };

@@ -18,6 +18,7 @@ import {
   type StrategyEntry,
 } from "../strategies/registry.js";
 import type { CatalogEntry } from "./catalog.js";
+import type { HookCall } from "./guardrails/hook-call.js";
 import type { AgentRecord } from "./records.js";
 import type { Persona } from "./personas.js";
 import type { BinSource, RuntimeFind } from "./runtime-search.js";
@@ -121,7 +122,11 @@ export interface LaunchInput {
    * hooks (Notification: waiting; Stop: finished). No token: the hook
    * sends the agent's own, from its env.
    */
-  attention?: { base: string };
+  attention?: {
+    base: string;
+    /** Issue 609: how its hooks call Den (user.yml agent_hooks.*). */
+    call?: HookCall;
+  };
   /**
    * The caller's environment, for finding the runtime's CLI on PATH. The
    * agent does not get it: it starts from an allowlist (sessions/env.ts),

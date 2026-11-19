@@ -25,6 +25,7 @@ import {
   hookCallOf,
   hookCallSettings,
 } from "../../../src/shared/agents/guardrails/hook-call.js";
+import { patchCliRows } from "../../../src/shared/settings-cli-rows.js";
 import { inboxBlock } from "../../../src/shared/agents/guardrails/hub-inbox.js";
 import { loadPersonas } from "../../../src/shared/agents/personas.js";
 import { getRuntime } from "../../../src/shared/agents/runtimes.js";
@@ -51,7 +52,7 @@ async function slowDen(ms: number): Promise<{
     req.resume();
     setTimeout(() => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(req.url?.endsWith("/api/inbox") ? '{"yours":0}' : "{}");
+      res.end(req.url?.endsWith("/api/inbox") ? '{"yours":1}' : "{}");
     }, ms);
   });
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
@@ -80,12 +81,10 @@ describe("issue 609: a slow Den still gets the mark", () => {
     const den = await slowDen(3_000);
     const files = path.join(root, "inbox");
     try {
-      await inboxBlock({ base: den.base, files }, { env: ENV });
+      const out = await inboxBlock({ base: den.base, files }, { env: ENV });
       expect(den.hits()).toBe(1);
-      // It read the answer: the count it was told is kept.
-      expect(
-        JSON.parse(fs.readFileSync(path.join(files, "hub-inbox.json"), "utf8")),
-      ).toEqual({ yours: 0 });
+      // It read the answer: one comment waits, and the agent is told.
+      expect(out).toContain("1 Hub comment waits on you");
     } finally {
       await den.close();
     }
@@ -217,6 +216,38 @@ describe("issue 609: the hooks' wait is a Setting", () => {
         throw new Error("unreadable");
       }),
     ).toEqual(HOOK_CALL_DEFAULT);
+  });
+
+  it("Settings writes them to user.yml agent_hooks, checked first", () => {
+    const user: Record<string, unknown> = {};
+    expect(
+      patchCliRows(user, {
+        agent_hooks: { timeout_seconds: 30, retries: 3, backoff_seconds: 0.5 },
+      }),
+    ).toEqual({ ok: true });
+    expect(user.agent_hooks).toEqual({
+      timeout_seconds: 30,
+      retries: 3,
+      backoff_seconds: 0.5,
+    });
+    expect(patchCliRows(user, { agent_hooks: { retries: 1.5 } }).ok).toBe(
+      false,
+    );
+    expect(patchCliRows(user, { agent_hooks: { timeout_seconds: 0 } }).ok).toBe(
+      false,
+    );
+    expect(patchCliRows(user, { agent_hooks: { soon: 1 } }).ok).toBe(false);
+    expect((user.agent_hooks as { retries: number }).retries).toBe(3);
+    expect(
+      patchCliRows(user, {
+        agent_hooks: {
+          timeout_seconds: null,
+          retries: null,
+          backoff_seconds: null,
+        },
+      }),
+    ).toEqual({ ok: true });
+    expect(user.agent_hooks).toBeUndefined();
   });
 
   it("the hook's flags round-trip; missing or bad flags are the defaults", () => {
