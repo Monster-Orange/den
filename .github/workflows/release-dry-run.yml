@@ -1,0 +1,51 @@
+# The release's dry run, on every dev tag v<version>-dev.N (issue 615, CONTRIBUTING › Releasing). A release that fails
+# only in the release run (a test that depends on the release commit's versions, a step only the release takes) shows
+# up here, on the candidate's commit, beside its bed run, instead of after it.
+# - plan: the versions the release will carry, decided at the tag (scripts/release-dry-run.mjs plan): Den's without
+#   -dev.N, and the kit's own (packages/den-ui). A kit changed since the version npm has, with that version unchanged,
+#   fails here: the candidate bumps the kit, never the release commit.
+# - gates: release.yml's own checks, tests and pack (release-gates.yml), each on a copy with those versions applied.
+# Nothing is tagged, committed, pushed or published, and no token is here: it reads the repository only.
+name: release dry run
+
+on:
+  push:
+    tags: ["v*-dev.*"]
+
+permissions:
+  contents: read
+
+# a newer push of the same tag replaces the run
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      den: ${{ steps.plan.outputs.den }}
+      kit: ${{ steps.plan.outputs.kit }}
+      date: ${{ steps.plan.outputs.date }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the kit's history since the commit npm's copy was built from
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+      - name: The versions the release will carry
+        id: plan
+        run: node scripts/release-dry-run.mjs plan "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+  gates:
+    needs: plan
+    uses: ./.github/workflows/release-gates.yml
+    with:
+      den-version: ${{ needs.plan.outputs.den }}
+      kit-version: ${{ needs.plan.outputs.kit }}
+      changelog-date: ${{ needs.plan.outputs.date }}
+    secrets:
+      DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}

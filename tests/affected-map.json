@@ -1247,6 +1247,11 @@
       "why": "tests that run scripts/release-ancestry.sh"
     },
     {
+      "when": ["scripts/release-dry-run.mjs"],
+      "run": ["tests/unit/scripts/release-dry-run.test.ts"],
+      "why": "tests that run scripts/release-dry-run.mjs"
+    },
+    {
       "when": ["scripts/setup-secrets.ts"],
       "run": [
         "tests/unit/cli/secrets-preflight.test.ts",

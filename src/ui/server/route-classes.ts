@@ -275,6 +275,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/approvals/:id/decide",
     "the person's Allow runs the held write once; Deny runs nothing",
   ),
+  M(
+    ["POST"],
+    "/api/approvals/:id/withdraw",
+    "the asker takes back its own held write (issue 142); nothing runs",
+  ),
   // 0.4.71: each starts a process for its output (a log command, `tail`,
   // `docker logs`, `grep`): a sign-in, as every GET that runs something.
   M(
@@ -1035,6 +1040,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
   "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
   "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],
+  "approval-routes.ts:WITHDRAW_PATH": ["/api/approvals/:id/withdraw"],
   // Issue 209: a Verify run's record, and a module's kept output.
   "verify-routes.ts:RUN_PATH": [
     "/api/verify/runs/:id",
