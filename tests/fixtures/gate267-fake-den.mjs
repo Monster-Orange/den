@@ -11,13 +11,20 @@
 //   "heldOff":    the bed turned held writes off.
 // Invented names only.
 const NAV = [
-  "general",
+  "appearance",
+  "editor",
+  "navigation",
+  "graph",
+  "workspace",
   "agents",
   "hub",
   "notifications",
   "access",
-  "edge",
+  "embed",
+  "secrets",
   "server",
+  "cli",
+  "distribution",
 ];
 const WORDS = {
   en: {
@@ -78,14 +85,15 @@ export function fakeBed({ den = "built" } = {}) {
     approvals: [],
     restarts: 0,
   };
-  const problemOf = (v) =>
-    /^https:\/\//.test(v) || !v ? null : PROBLEM;
+  const problemOf = (v) => (/^https:\/\//.test(v) || !v ? null : PROBLEM);
   const restart = () => {
     st.pid++;
     st.restarts++;
   };
   const userYml = () =>
-    st.url ? `language: ${st.lang}\nhub:\n  url: ${st.url}\n` : `language: ${st.lang}\n`;
+    st.url
+      ? `language: ${st.lang}\nhub:\n  url: ${st.url}\n`
+      : `language: ${st.lang}\n`;
   const w = () => WORDS[st.lang];
 
   function read() {
@@ -98,13 +106,18 @@ export function fakeBed({ den = "built" } = {}) {
     ];
     return {
       lang: st.lang,
-      nav: NAV,
+      nav: den === "oldSection" ? NAV.filter((c) => c !== "hub") : NAV,
       section: true,
       title: "Hub",
       description: w().description,
       links:
         den === "fixed"
-          ? [{ href: "https://docs.example.test/docs/hub.md", text: "What is Hub?" }]
+          ? [
+              {
+                href: "https://docs.example.test/docs/hub.md",
+                text: "What is Hub?",
+              },
+            ]
           : [],
       rows,
       agentsHub: w().agentsHub,
@@ -171,7 +184,12 @@ export function fakeBed({ den = "built" } = {}) {
         return {
           status: 200,
           body: st.url
-            ? { configured: true, url: st.url, connected: false, state: "no_token" }
+            ? {
+                configured: true,
+                url: st.url,
+                connected: false,
+                state: "no_token",
+              }
             : { configured: false },
         };
       if (path === "/api/settings" && !body)
@@ -191,10 +209,16 @@ export function fakeBed({ den = "built" } = {}) {
       }
       if (path === "/api/approvals") {
         if (den === "heldOff")
-          return { status: 403, body: { ok: false, code: "approvals_off", error: "off" } };
+          return {
+            status: 403,
+            body: { ok: false, code: "approvals_off", error: "off" },
+          };
         const p = problemOf(body.args?.url ?? "");
         if (p)
-          return { status: 400, body: { ok: false, code: "invalid_args", error: PROBLEM } };
+          return {
+            status: 400,
+            body: { ok: false, code: "invalid_args", error: PROBLEM },
+          };
         st.approvals.push(body);
         return { status: 202, body: { ok: true, id: "a".repeat(16) } };
       }
@@ -202,9 +226,13 @@ export function fakeBed({ den = "built" } = {}) {
     },
     readBed(rel) {
       if (rel === "config/local/user.yml") return userYml();
+      if (rel === "package.json")
+        return JSON.stringify({ dependencies: { "@acme/den": "1.0.0" } });
+      if (!rel.startsWith("node_modules/@acme/den/")) return null;
       if (rel.endsWith("/docs/hub.md")) return HUB_MD;
       if (rel.endsWith("/README.md")) return "[Den Hub](docs/hub.md) (connect)";
-      if (rel.endsWith("/docs/reference.md")) return "see [docs/hub.md](hub.md).";
+      if (rel.endsWith("/docs/reference.md"))
+        return "see [docs/hub.md](hub.md).";
       if (rel.endsWith("/server.md"))
         return "- `hub_connect`: set, change or clear Hub's address.";
       return null;

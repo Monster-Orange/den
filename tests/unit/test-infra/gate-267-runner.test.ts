@@ -104,9 +104,18 @@ describe("gate/267.mjs as the bed runs it", () => {
   it("a bed with a Hub address already: nothing is written, and the writes are not run, saying why", () => {
     const r = runGate("hubSet");
     expect(r.error).toBeUndefined();
-    expect(r.rows?.[2]).toMatchObject({ ok: null, skip: "needs-no-hub-address" });
-    expect(r.rows?.[3]).toMatchObject({ ok: null, skip: "needs-no-hub-address" });
-    expect(r.rows?.[5]).toMatchObject({ ok: null, skip: "needs-no-hub-address" });
+    expect(r.rows?.[2]).toMatchObject({
+      ok: null,
+      skip: "needs-no-hub-address",
+    });
+    expect(r.rows?.[3]).toMatchObject({
+      ok: null,
+      skip: "needs-no-hub-address",
+    });
+    expect(r.rows?.[5]).toMatchObject({
+      ok: null,
+      skip: "needs-no-hub-address",
+    });
     expect(r.after.url).toBe("https://hub.example.test");
   });
 
