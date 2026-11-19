@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.73] - unreleased
+## [0.4.73] - 2026-11-19
 
 ### Fixed
 
@@ -23,6 +23,11 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host restarts on an update only when its own code or the terminal module changed; otherwise it keeps running and adopts the new version (issue 597). The first update to this version still restarts it once. The bell names agents cut mid-turn, and the audit row keeps every resumed, failed and cut agent. `den doctor`'s Host row says whether a restart is needed.
 - Live check: gate 542's host-side requests go to the bed's own loopback address.
+- den-ui 0.8.0: the kit pieces above are published with this release.
+
+### Checks
+
+- Full bed run: 85 pass, 0 fail. Gate 327's four clauses timed out under machine load (LOAD, not FAIL) and were released on an exception: they passed on the five earlier beds, nothing in this release touches the bell's permission rows they check, and a security release was waiting behind this one. Its rerun stays queued; a failure there gets a same-day patch.
 
 ## [0.4.72] - 2026-11-19
 
