@@ -974,6 +974,16 @@
     "ap.do.approval_policy.project":
       "プロジェクト {where} の承認ポリシーを {to} に変更",
     "ap.do.pr_close": "{repo} のプルリクエスト {pr} を閉じる: {comment}",
+    "ap.do.report": "{repo} に報告を送る: {title}",
+    "ap.det.report.to.public": "送り先: {repo}（公開リポジトリ）",
+    "ap.det.report.to.private": "送り先: {repo}（非公開リポジトリ）",
+    "ap.det.report.to.internal": "送り先: {repo}（内部リポジトリ）",
+    "ap.det.report.pubW": "公開リポジトリ。スクリーンショットとテキストは誰でも見られます。見せたくない部分は隠してください。",
+    "ap.det.report.privN": "このリポジトリにアクセスできる人だけが見られます。",
+    "ap.det.report.addTo": "issue {n} にコメントを追加します。",
+    "ap.det.report.title": "タイトル: {title}",
+    "ap.det.report.body": "投稿される内容そのもの:",
+    "ap.det.report.shot": "スクリーンショット: {path}。Den は画像から秘密情報を取り除きません。先に確認してください。GitHub の issue API は画像を受け付けないため、後で手動で添付します。",
     "set.agents.default_mode": "エージェントのモード: Den 全体の既定",
     "set.agents.default_mode.d":
       "__DEN_TITLE__ エージェントを含むすべてのエージェントが動くモードです。プロジェクトが上書きした場合を除きます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。変更は、動いているエージェントにもターンの終わりに自動で反映されます。",

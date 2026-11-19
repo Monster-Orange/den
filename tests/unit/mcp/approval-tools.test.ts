@@ -798,10 +798,12 @@ describe("issue 565: report", () => {
       { repo: "acme-eng/engine", visibility: "public" },
       { repo: "acme-dist/tracker", visibility: "private" },
     ];
-    api.get = async (path, query, method, body) => {
+    const get = api.get.bind(api);
+    api.get = async (path, query, method, body, headers) => {
+      if (path !== "/api/report")
+        return get(path, query, method, body, headers);
       calls.push({ path, query, method, body });
-      if (path === "/api/report") return { ok: true, enabled: true, repos };
-      throw new DenHttpError("GET", path, 404, "not found");
+      return { ok: true, enabled: true, repos };
     };
     const r = await callTool("report", {}, ctx(api, true));
     expect(r.isError).toBe(false);

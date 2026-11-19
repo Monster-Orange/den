@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close, report): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2451,6 +2451,79 @@ const APPROVAL_TOOLS: DenTool[] = [
         "pr_close",
         "pr_close",
         { project, repo, pr, comment } as Args,
+        a,
+        ctx,
+      );
+    },
+  },
+  // Issue 565: Den's Report for agents, the browser's own path (the same
+  // targets, scrub and filing). A public target always waits for the
+  // person's Allow; a private one follows the approval policy.
+  {
+    name: "report",
+    title: "Report an issue",
+    description:
+      "File a bug, idea or question through Den's Report, the same as Report on any page: the same targets, the same scrub of secrets and names before anything leaves this machine, filed on GitHub. The issue says you filed it. Without `title`: lists the targets, each with its label (public, private or internal). To a public target (visible to everyone on GitHub) it always waits for the person's Allow, showing them exactly what will be posted; to a private one the approval policy decides. `screenshot`: the full path of a .png, .jpg or .webp to attach (named in the Review; attached by hand after, as GitHub's issue API takes no images). An open issue with the same title: ask again with add_to (its number) or file_new: true. If Den's Report is off or can't reach GitHub, fall back to a GitHub issue (the answer gives the new-issue link)." +
+      HELD,
+    action: true,
+    shape: {
+      title: z
+        .string()
+        .max(200)
+        .optional()
+        .describe("The report's title (omit to list the targets)"),
+      description: z
+        .string()
+        .max(20_000)
+        .optional()
+        .describe("What happened, or the idea, in plain words"),
+      kind: z
+        .enum(["bug", "idea", "question"])
+        .optional()
+        .describe("bug (the default), idea or question"),
+      repo: z
+        .string()
+        .optional()
+        .describe("The target, owner/name (default: the first target)"),
+      screenshot: z
+        .string()
+        .optional()
+        .describe("Full path of an image to attach (.png, .jpg, .webp)"),
+      redact: z
+        .boolean()
+        .optional()
+        .describe(
+          "false keeps host and project names (secrets are always taken out)",
+        ),
+      add_to: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Add to this open issue (a comment) instead"),
+      file_new: z
+        .boolean()
+        .optional()
+        .describe("true: file a new one even with the same title open"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const title = str(a.title);
+      if (!title) return ctx.api.get("/api/report");
+      return askPerson(
+        "report",
+        "report",
+        {
+          kind: str(a.kind) ?? "bug",
+          title,
+          description: str(a.description),
+          repo: str(a.repo),
+          screenshot: str(a.screenshot),
+          ...(a.redact === false ? { redact: false } : {}),
+          ...(typeof a.add_to === "number" ? { add_to: a.add_to } : {}),
+          ...(a.file_new === true ? { file_new: true } : {}),
+        } as Args,
         a,
         ctx,
       );

@@ -373,6 +373,15 @@ service:api/web"`).
   | `agent_import` | ask      | bring in a conversation as an agent; only `writes.agent_import` lowers it                           |
   | `pr_close`     | auto     | close a stale or superseded PR after a Hub note; a stricter `policy` or a watched repo makes it ask |
 
+  `report` is a held write (issue 565: `{ title, description?, kind?,
+repo?, screenshot?, add_to?, file_new?, redact? }`), what an agent's
+  MCP `report` and `den report` ask for. It files through the browser's
+  Report: the same targets (`feedback.repo` too), the same scrub, the
+  person's `gh`; the issue says which agent filed it, and the activity
+  trail says who filed it and where. To a public target (or one whose
+  visibility isn't known) it is always the person's own Allow; to a
+  private one it follows the policy.
+
   `pr_close` is a held write (`{ repo, pr, comment, project? }`): Den
   runs `gh pr close <pr> --repo <owner/name> --comment <comment>` as the
   person running Den. Nothing is merged and no branch is deleted. It is

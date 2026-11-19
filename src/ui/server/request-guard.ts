@@ -638,8 +638,7 @@ export function checkRequest(
   // something or reaches a shell: what isn't `readonly`, every write
   // method and every upgrade. A plain read on loopback passes as before.
   const signinFree = SIGNIN_FREE.some((r) => pathMatches(r, pathname));
-  const needsSignin =
-    cls !== "readonly" || changes(method) || isUpgrade(req);
+  const needsSignin = cls !== "readonly" || changes(method) || isUpgrade(req);
   if (!principal && !session && !signinFree && (beyond || needsSignin)) {
     const scope: SigninScope = "den";
     return {
@@ -1043,6 +1042,13 @@ export function agentPrincipalOf(
 ): AgentPrincipal | null {
   const p = PRINCIPALS.get(req);
   return p?.kind === "agent" ? p : null;
+}
+
+/** The kind of credential the request proved, if any (issue 565's audit). */
+export function principalKindOf(
+  req: http.IncomingMessage,
+): Principal["kind"] | undefined {
+  return PRINCIPALS.get(req)?.kind;
 }
 
 /**

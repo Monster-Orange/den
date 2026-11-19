@@ -2,9 +2,14 @@
  * FB (den#81): `<cli> feedback`, Report an issue from a shell. It uses the
  * page's own routes on this install's web server, as the person: the
  * server's preview (/api/report/preview) is printed, exactly what will be
- * posted, then y/N, then /api/report/send. Off a terminal it is refused
- * unless --yes. An agent is always refused: its reports stay drafts for a
- * person (the MCP feedback tools).
+ * posted, with the target's label and warning as the form shows them,
+ * then y/N, then /api/report/send. Off a terminal it is refused unless
+ * --yes.
+ *
+ * Issue 565: `<cli> report` is the same command. From an agent's shell (an
+ * agent token) it asks for the held write `report` (POST /api/approvals,
+ * report-held.ts): to a public target the person's Allow, always; to a
+ * private one the approval policy. The agent never sends it itself.
  */
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
@@ -30,18 +35,46 @@ export interface FeedbackIo {
 }
 
 export const FEEDBACK_HELP = {
-  usage: "feedback [--title <t>] [--kind bug|idea|question] [options]",
+  usage: "report [--title <t>] [--kind bug|idea|question] [options]",
   lines: [
-    "Report an issue from a shell, the same as Report on any page. Prints",
-    "exactly what will be posted, then asks before sending it to GitHub.",
+    "Report an issue from a shell, the same as Report on any page (also",
+    "`feedback`). Prints exactly what will be posted, secrets and names",
+    "taken out, and who can see it, then asks before filing it on GitHub.",
     "  --description <text> | --description-file <path|->",
-    "  --repo <owner/repo>   where it goes (default: the first destination)",
+    "  --repo <owner/repo>   where it goes (default: the first target)",
+    "  --targets             list the targets and who can see each",
+    "  --screenshot <path>   an image to attach to the issue by hand after",
     "  --no-redact           keep host names and paths (on by default)",
     "  --add-to <n> | --new  when an open report has the same title",
     "  --preview             print it, send nothing",
     "  --yes                 send without asking (needed off a terminal)",
+    "From an agent: the person allows it in the browser first (always for",
+    "a public target). Report off or GitHub unreachable: file a GitHub",
+    "issue instead (the new-issue link is given).",
   ],
 };
+
+/**
+ * Issue 565: each target's label and the line about who can see it: the
+ * Report form's own words (the UI kit's kit.report.pub, .priv, .int,
+ * .pubW and .privN), word for word.
+ */
+export const TARGET_WORDS = {
+  public: "Public repository",
+  private: "Private repository",
+  internal: "Internal repository",
+  publicWarning:
+    "Screenshots and text are visible to everyone. Mask anything private.",
+  privateNote: "Only people with access to this repository can see it.",
+} as const;
+
+type Visibility = "public" | "private" | "internal";
+const visOf = (v: unknown): Visibility =>
+  v === "private" || v === "internal" ? v : "public";
+const labelOf = (v: Visibility): string => TARGET_WORDS[v];
+/** The form's line above Send, as one line. */
+const seeLine = (v: Visibility): string =>
+  `${labelOf(v)}. ${v === "public" ? TARGET_WORDS.publicWarning : TARGET_WORDS.privateNote}`;
 
 const KINDS = ["bug", "idea", "question"] as const;
 
@@ -110,8 +143,9 @@ export async function cmdFeedback(
     "--description-file",
     "--repo",
     "--add-to",
+    "--screenshot",
   ];
-  const FLAGS = ["--no-redact", "--new", "--preview", "--yes"];
+  const FLAGS = ["--no-redact", "--new", "--preview", "--yes", "--targets"];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if (VALUED.includes(a) && i + 1 < args.length) opt[a] = args[++i]!;
@@ -125,13 +159,44 @@ export async function cmdFeedback(
     io.err(`${cli}: ${msg}\n`);
     return code;
   };
-  if (isAgentTokenEnv(io.env))
-    return fail(
-      "only a person sends a report. An agent saves it as a draft for a person to send (the feedback tools over MCP).",
-    );
+  const getInfo = async (): Promise<
+    { status: number; data: Record<string, unknown> } | number
+  > => {
+    try {
+      const info = await io.api("GET", "/api/report");
+      if (info.status !== 200)
+        return fail(
+          String(info.data.error ?? `the web app answered ${info.status}`),
+        );
+      return info;
+    } catch {
+      return fail(
+        `the web app is not running, so the report can't be made. Start it (\`${cli} web up\`) and try again, or file a GitHub issue instead.`,
+      );
+    }
+  };
+  const targetsOf = (data: Record<string, unknown>) =>
+    Array.isArray(data.repos)
+      ? (data.repos as { repo?: unknown; visibility?: unknown }[])
+          .filter(
+            (r): r is { repo: string; visibility?: unknown } =>
+              typeof r.repo === "string",
+          )
+          .map((r) => ({ repo: r.repo, visibility: visOf(r.visibility) }))
+      : [];
+  // Issue 565: the targets and their labels, as the form shows them.
+  if (flags.has("--targets")) {
+    const info = await getInfo();
+    if (typeof info === "number") return info;
+    for (const t of targetsOf(info.data))
+      io.out(`${t.repo}  ${seeLine(t.visibility)}\n`);
+    return 0;
+  }
+  // Issue 565: an agent asks for the held write; the person allows it.
+  const agent = isAgentTokenEnv(io.env);
   const yes = flags.has("--yes");
   const preview = flags.has("--preview");
-  if (!io.tty && !yes && !preview)
+  if (!agent && !io.tty && !yes && !preview)
     return fail(
       "sending a report needs a person at a terminal to read it first. Run it in one, or read it with --preview and send it with --yes.",
       2,
@@ -171,29 +236,64 @@ export async function cmdFeedback(
   }
   kind = kind ?? "bug";
 
-  let info: { status: number; data: Record<string, unknown> };
-  try {
-    info = await io.api("GET", "/api/report");
-  } catch {
-    return fail(
-      `the web app is not running, so the report can't be made. Start it (\`${cli} web up\`) and try again.`,
-    );
-  }
-  if (info.status !== 200)
-    return fail(
-      String(info.data.error ?? `the web app answered ${info.status}`),
-    );
-  const repos = Array.isArray(info.data.repos)
-    ? (info.data.repos as { repo?: unknown }[])
-        .map((r) => r.repo)
-        .filter((r): r is string => typeof r === "string")
-    : [];
+  const info = await getInfo();
+  if (typeof info === "number") return info;
+  const targets = targetsOf(info.data);
+  const repos = targets.map((t) => t.repo);
   const repo = opt["--repo"] ?? repos[0];
   if (!repo || !repos.includes(repo))
     return fail(
       `--repo is one of this install's destinations: ${repos.join(", ") || "none"}`,
       2,
     );
+  const visibility =
+    targets.find((t) => t.repo === repo)?.visibility ?? "public";
+  const shot = opt["--screenshot"];
+
+  if (agent) {
+    // Issue 565: the held write `report` (report-held.ts). The server
+    // composes, scrubs and shows the person exactly what will be posted.
+    let r: { status: number; data: Record<string, unknown> };
+    try {
+      r = await io.api("POST", "/api/approvals", {
+        action: "report",
+        args: {
+          kind,
+          title,
+          description: description ?? "",
+          repo,
+          redact: !flags.has("--no-redact"),
+          ...(shot !== undefined ? { screenshot: shot } : {}),
+          ...(addTo !== undefined ? { add_to: addTo } : {}),
+          ...(flags.has("--new") ? { file_new: true } : {}),
+        },
+      });
+    } catch {
+      return fail(
+        `the web app is not running, so the report can't be made. File a GitHub issue instead.`,
+      );
+    }
+    if (r.status !== 202)
+      return fail(String(r.data.error ?? `the web app answered ${r.status}`));
+    const id = String(r.data.id ?? "");
+    if (r.data.state === "done") {
+      const res = (r.data.result ?? {}) as Record<string, unknown>;
+      if (res.ok !== true)
+        return fail(
+          `${String(res.error ?? "it wasn't filed")}${typeof res.newIssueUrl === "string" ? `\nOr file a GitHub issue: ${res.newIssueUrl}` : ""}`,
+        );
+      io.out(`✓ Filed: ${String(res.url ?? "")}\n`);
+      if (typeof res.next === "string") io.out(`${res.next}\n`);
+      return 0;
+    }
+    if (r.data.state !== "pending")
+      return fail(`the request ended ${String(r.data.state)} (${id})`);
+    io.out(
+      `To: ${repo} (${seeLine(visibility)})\nThe report waits for the person's Allow in Den's browser (request ${id}). Nothing is sent until they allow it.\n`,
+    );
+    return 0;
+  }
+
   const form = {
     kind,
     title,
@@ -207,7 +307,7 @@ export async function cmdFeedback(
   if (p.status !== 200)
     return fail(String(p.data.error ?? `the preview failed (${p.status})`));
   io.out(
-    `To: ${repo} (anyone who can see this repo can read it)\nTitle: ${String(p.data.title)}\n\n${String(p.data.body)}\n\n`,
+    `To: ${repo} (${seeLine(visibility)})\nTitle: ${String(p.data.title)}\n\n${String(p.data.body)}\n\n${shot !== undefined ? `Screenshot: ${shot} (not scrubbed: look at it first; attach it to the issue by hand after)\n\n` : ""}`,
   );
   if (preview) return 0;
   if (!yes) {
@@ -235,6 +335,10 @@ export async function cmdFeedback(
           ? `✓ Added to #${String(extra.addTo)}: ${url}\n`
           : `✓ Filed: ${url}\n`,
       );
+      if (shot !== undefined)
+        io.out(
+          `Attach the screenshot (${shot}) to it by hand: GitHub's issue API takes no images.\n`,
+        );
       return 0;
     }
     const dup = r.data.duplicate as
@@ -273,3 +377,6 @@ export async function cmdFeedback(
     );
   }
 }
+
+/** Issue 565: `<cli> report`, the same command as `feedback`. */
+export const cmdReport = cmdFeedback;

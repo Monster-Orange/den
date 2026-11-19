@@ -163,7 +163,14 @@ describe("FB: <cli> feedback", () => {
     const f = fake({ env: { DEN_ACTOR_TOKEN: "x" }, tty: false });
     expect(
       await cmdFeedback(
-        [...ARGS, "--yes", "--repo", "acme-eng/engine", "--screenshot", "/tmp/p.png"],
+        [
+          ...ARGS,
+          "--yes",
+          "--repo",
+          "acme-eng/engine",
+          "--screenshot",
+          "/tmp/p.png",
+        ],
         f.io,
       ),
     ).toBe(0);
