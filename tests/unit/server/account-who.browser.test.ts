@@ -26,6 +26,7 @@ import { writeWebOwner } from "../../../src/shared/web-owner.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 
@@ -197,6 +198,8 @@ describe("the account entry draws who is signed in", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    // A browser on this machine, signed in as `web up` does (0.4.71).
+    await signIn(ctx, stateDir, `http://localhost:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://localhost:${port}/`);
     expect(await entry(p)).toMatchObject({
@@ -216,6 +219,8 @@ describe("the account entry draws who is signed in", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    // A browser on this machine, signed in as `web up` does (0.4.71).
+    await signIn(ctx, stateDir, `http://localhost:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://localhost:${port}/`);
     expect(await entry(p)).toMatchObject({

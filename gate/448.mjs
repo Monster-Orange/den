@@ -18,7 +18,8 @@ export const clauses = [
   "Terminal never opens an exited shell; with none running in scope, it starts one",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
-export const timeoutMs = 180000;
+// Per cell. Unloaded, a cell takes 70–85 s; on a busy machine more than 180 s.
+export const timeoutMs = 360000;
 
 /** The shells this check started, by cell, for teardown. */
 const started = new Set();
@@ -79,7 +80,8 @@ async function typeAt(ctx, page, id, { exit = false } = {}) {
   if (exit) await page.keyboard.type("exit");
   await page.keyboard.press("Enter");
   await ctx.sleep(300);
-  if (exit) return ctx.until(() => ended(page, id), 15000);
+  // ctx.until gives the ms it took (0 counts) or null on timeout.
+  if (exit) return (await ctx.until(() => ended(page, id), 15000)) !== null;
   return true;
 }
 

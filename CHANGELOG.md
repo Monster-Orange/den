@@ -4,7 +4,73 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.67] - unreleased
+## [0.4.72] - unreleased
+
+### Security
+
+- **Sign-in on this machine too.** Every browser signs in once, on the computer Den runs on too, and stays signed in. `den web up` and `den web open` sign the browser in, including a tab that's already open. A browser that isn't signed in can look and change nothing: it shows "Sign in to make changes here." with a Sign in button. Scripts send `den web token --print` as a bearer. `GET /api/session` gives a CSRF token only to a signed-in session. Routes that run a command for their output now need a sign-in or the token: the service log routes, log search, the GitHub repo and branch lists, and My reports. Upgrading is recommended.
+
+### Changed
+
+- Self-update: a release marked as a security release (`"den": {"security": true}` in its package.json, read from npm) now updates while the server agent waits on your question or permission prompt. It still never goes past a pending Allow or restarts mid-turn, and the bell tells you the question is still open. Turn it off with `server_agent.security_update_skips_questions: false`. (issue 562)
+- Self-update: once an auto update is installed, Den checks again before it restarts. If the server agent started working, or an Allow is pending, the restart waits up to `server_agent.update_restart_wait_seconds` (default 900), keeping the update marked under way. It then restarts anyway and tells you in the bell. (issue 562)
+
+## [0.4.71] - 2026-11-19
+
+### Fixed
+
+- **Issue 563: after an update, Den restarts its terminal host when that host still runs the old version or holds a terminal module the update replaced.** Before this, new agents and terminals failed to start with `posix_spawnp failed`. Agents mid-turn are waited for, up to `sessions.host_restart_wait_seconds` (default 900). Running agents resume and open terminals end. The bell says so, in a sentence that fits what ran.
+- `doctor` has a Host row: ✗ with `<cli> sessions host --stop` when the terminal host isn't current. It finds the terminal module in the layout the current terminal library ships (its binary under `prebuilds/`).
+- Live check `gate/503.mjs` judges the terminal host's own PTY count; the machine's count is logged only. Live check `gate/563.mjs`.
+
+## [0.4.70] - 2026-11-18
+
+### Fixed
+
+- The live log view handles repo and service names the way log history and search do. Live check `gate/536.mjs`.
+- Stricter request method handling. Live check `gate/573.mjs`.
+- Settings: a saved row shows its saved value after one click and one save (issue 424).
+
+### Docs
+
+- Agent instructions say how to send feedback: the Report button first, a GitHub issue as the fallback.
+
+## [0.4.69] - 2026-11-18
+
+### Fixed
+
+- **Issue 503: the terminal host no longer keeps a PTY for each exited terminal.** Before, a long-running host could use up every PTY on the machine. The terminal library `@lydell/node-pty` is now 1.2.0-beta.18, pinned with integrity hashes. The stable 1.2.0 follows when it ships (issue 513).
+
+### Added
+
+- When the machine gives no PTY, Terminal and the start dialog say so, with the reason, and the terminal host logs it.
+- `den doctor` shows the terminal host's PTYs and the machine's. It fails above `sessions.pty_warn_above` (400) or at `sessions.pty_machine_warn_percent` (90%) of the machine's limit.
+- **New config key** `sessions.pty_close_seconds` (default 0, den.yml or user.yml): how long after a terminal exits its PTY closes. Settings rows for the terminal limits follow in issue 532.
+- **Live check:** `gate/503.mjs` opens terminals up to `sessions.max_concurrent` (at most 20) and closes them, and checks the PTY count returns to where it started and that one past the cap is refused with its reason, plus doctor's rows, the config keys and the pinned node-pty.
+
+## [0.4.68] - 2026-11-18
+
+### Fixed
+
+- **Issue 455: Den no longer gives an address that reaches another server.**
+  - When port 80 (the edge's http port) is held by something else, `den up`, `den open`, the sign-in link and `den doctor` use Den's own port. They name what holds port 80 and say so once.
+  - Every address is checked first with an identity challenge that only this Den can answer.
+  - The port check now covers IPv6 and the wildcard addresses, as Docker publishes them.
+  - `edge up` checks on every run.
+  - When nothing answers at the address Den gives, `den web up`, `den web open` and the sign-in link say "Not reachable yet: nothing answers at <address>." next to it, and name the next step when Den knows the edge is down.
+
+### Added
+
+- **The Edge page shows a status card when port 80 is held.** It names the owner and offers two choices: "Add Den to that proxy" (a route for nginx, Caddy or Traefik, with Copy) and "Free port 80". It also has Check again, and Take over for an old Den edge.
+- **Every page shows a one-time banner** with the working address.
+- **`den edge route --for nginx|caddy|traefik`** prints the route. (`--for=<proxy>` works too; in 0.4.68-dev.1 and dev.2 the command refused `--for` as an unknown flag.)
+- **Three new Settings** (Settings › Server, user.yml `web.`): `address_check_timeout_seconds` (default 5), `address_check_retries` (default 2), `address_check_cache_seconds` (default 60).
+
+### Changed
+
+- **Live checks: `scripts/gate-shape.mjs` refuses an `expect` that declares more than one parameter.** The harness calls `expect(result)` alone, so a second parameter is always undefined there.
+
+## [0.4.67] - 2026-11-18
 
 den-ui 0.7.6 ships with this release.
 

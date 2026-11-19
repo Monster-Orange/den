@@ -19,6 +19,7 @@ import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 /** The edge folder, with the invented proof in it (H1). */
@@ -146,6 +147,9 @@ describe("the identity chip", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    // The person's browser on this machine, signed in as `web up` does
+    // (0.4.71): a signed-out one has no identity to show.
+    await signIn(ctx, stateDir, `http://localhost:${port}`);
     const p = await ctx.newPage();
     // Not on /settings: its item there is the current page (bolder).
     await p.goto(`http://localhost:${port}/`);

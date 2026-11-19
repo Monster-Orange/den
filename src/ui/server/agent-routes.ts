@@ -143,6 +143,9 @@ import {
   updatePersona,
   listRuntimes,
   markInterrupted,
+  runningAgentIds,
+  busyAgentIds,
+  resumeAfterHostRestart,
   modeCheck,
   modeRestartDetail,
   cancelStalePersonaChanges,
@@ -356,7 +359,12 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
   if (e instanceof HostError) {
     sendJson(
       res,
-      { ok: false, error: e.message, code: "session_host" },
+      {
+        ok: false,
+        error: e.message,
+        // Issue 503: no PTY to open (the page has its own words for it).
+        code: e.code === "spawn" ? "pty_open" : "session_host",
+      },
       e.code === "cap" ? 429 : 503,
     );
     return;
@@ -1922,6 +1930,105 @@ export function noteStartedWithoutHub(
 }
 
 /**
+ * Issue 563: the bell's one note that the terminal host restarted on the
+ * installed version: the agents that resumed, and that open terminals
+ * ended.
+ */
+export function noteHostRestarted(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  title: string,
+  resumed: readonly string[],
+  terminals: number,
+): void {
+  const names = resumed.join(", ");
+  const n = resumed.length;
+  store.add({
+    kind: "service",
+    subject: "record:terminal-host-restarted",
+    scope: "workspace/den-server",
+    text:
+      `${title} restarted its terminal host on the installed version, so new agents and terminals start again. ` +
+      (n && terminals
+        ? `Agents resumed: ${names}. Terminals that ended: ${terminals}.`
+        : n
+          ? `Agents resumed: ${names}. No terminal was running.`
+          : terminals
+            ? `No agent was running. Terminals that ended: ${terminals}.`
+            : "No agent or terminal was running."),
+    msg: {
+      // One key per case, so each language says it as a sentence.
+      key: `bell.m.hostRestarted${n && terminals ? "" : n ? "Agents" : terminals ? "Terminals" : "None"}`,
+      vars: { names, terminals },
+    },
+    link: "/agents",
+  });
+}
+
+/**
+ * Issue 563: after an update, a terminal host still on the old version
+ * (or the old native module) restarts, and the agents it ran resume.
+ */
+export async function refreshTerminalHost(
+  d: AgentsResolved,
+  log: (line: string) => void,
+): Promise<void> {
+  const { refreshSessionHost } =
+    await import("../../shared/sessions/host-refresh.js");
+  const { sessionPaths } = await import("../../shared/sessions/paths.js");
+  const { installedPtyModule } = await import("../../shared/sessions/pty.js");
+  const { engineVersion } = await import("../../shared/paths.js");
+  let waitS = 900;
+  try {
+    const cfg = await import("../../shared/den-config.js");
+    waitS = cfg.readSessionsConfig().hostRestartWaitSeconds;
+  } catch {
+    /* the default; validate names a bad value */
+  }
+  const r = await refreshSessionHost({
+    connectExisting: () => d.connectExisting(),
+    connect: () => d.connect(),
+    socket: sessionPaths(d.stateDir()).socket,
+    installed: () => ({
+      den: engineVersion() ?? null,
+      pty: installedPtyModule(),
+    }),
+    running: () => runningAgentIds(d),
+    busy: (ids) => busyAgentIds(d, ids),
+    waitMs: waitS * 1000,
+    resume: (id) => resumeAfterHostRestart(d, id),
+    log: (l) => log(`  ${l}`),
+  });
+  if (r.did === "failed") {
+    const line = `terminal host not restarted: ${r.why}; restart it: ${product().cli} sessions host --stop`; // words-ok: the CLI command itself
+    log(`  ⚠ ${line}`);
+    recordAction(null, { verb: "terminal-host", detail: line.slice(0, 400) });
+    return;
+  }
+  if (r.did !== "restarted") return;
+  const line =
+    `terminal host restarted (pid ${r.from} → ${r.to}): ${r.why}` +
+    (r.busy.length ? `; mid-turn when restarted: ${r.busy.join(", ")}` : "") +
+    `; agents resumed: ${r.resumed.join(", ") || "none"}` +
+    (r.failed.length
+      ? `; not resumed: ${r.failed.map((f) => `${f.agent} (${f.why})`).join(", ")}`
+      : "") +
+    `; open terminals ended: ${r.terminals}`;
+  log(`  ${line}`);
+  recordAction(null, { verb: "terminal-host", detail: line.slice(0, 400) });
+  try {
+    const { notificationDeps } = await import("./notification-service.js");
+    noteHostRestarted(
+      notificationDeps().store,
+      product().title,
+      r.resumed,
+      r.terminals,
+    );
+  } catch {
+    /* the bell is best effort: the audit has it */
+  }
+}
+
+/**
  * Issue 163: "ran while you were away", one bell note: the agents that kept
  * running while the web server was down, and those restored at its start.
  */
@@ -1993,6 +2100,13 @@ export function startAgentUpkeep(
       }
     } catch (e) {
       log(`  ⚠ persona changes after the restart: ${(e as Error).message}`);
+    }
+    // Issue 563: a terminal host left on the old version by an update
+    // restarts first, so what resumes below starts in the new one.
+    try {
+      await refreshTerminalHost(d, log);
+    } catch (e) {
+      log(`  ⚠ terminal host after the restart: ${(e as Error).message}`);
     }
     try {
       // 0.4.46 agents.restore_on_boot: every agent that was running, after

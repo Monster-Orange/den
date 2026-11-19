@@ -1891,6 +1891,46 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
   },
   {
+    // Issue 455: the address check's limits (user.yml web.address_check_*).
+    id: "server.address_check_timeout",
+    category: "server",
+    label: "Address check wait",
+    description:
+      "How long __DEN_TITLE__ waits for an address to answer when it checks that the address reaches this __DEN_TITLE__, before it prints or opens it. __DEN_CLI__ config web.address_check_timeout_seconds=5",
+    keywords: ["address", "check", "edge", "port", "timeout", "wait"],
+    scope: "user",
+    keys: ["address_check.timeout_seconds"],
+    control: { type: "number", min: 0.5, max: 600, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.timeout_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ address_check: { timeout_seconds: v } }),
+  },
+  {
+    id: "server.address_check_retries",
+    category: "server",
+    label: "Address check retries",
+    description:
+      "How many more times __DEN_TITLE__ asks an address that didn't answer in time. __DEN_CLI__ config web.address_check_retries=2",
+    keywords: ["address", "check", "edge", "retries"],
+    scope: "user",
+    keys: ["address_check.retries"],
+    control: { type: "number", min: 0, max: 20, step: 1 },
+    read: (ctx) => ctx.data.address_check?.retries ?? 2,
+    write: (v, ctx) => ctx.post({ address_check: { retries: v } }),
+  },
+  {
+    id: "server.address_check_cache",
+    category: "server",
+    label: "Address check kept for",
+    description:
+      "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
+    keywords: ["address", "check", "edge", "cache"],
+    scope: "user",
+    keys: ["address_check.cache_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.cache_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ address_check: { cache_seconds: v } }),
+  },
+  {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
     // (user.yml web.bridge_listen). A person's only.
     id: "server.bridge_listen",
@@ -3053,7 +3093,7 @@ export const DEN_SETTINGS = [
     category: "cli",
     label: "Browser sign-in",
     description:
-      "On localhost nothing asks for a sign-in. Through the edge, a browser signs in unless the edge shows it is this machine (web.edge_unattested: local counts one it can't place as local), and from another machine it always does: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
+      "Every browser signs in once, on this machine too, and stays signed in. Here, __DEN_CLI__ web up opens a one-time sign-in link; a browser that isn't signed in can look but change nothing. From another machine: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
     keywords: ["sign in", "sign out", "login", "logout", "session", "browser"],
     scope: "user",
     control: {

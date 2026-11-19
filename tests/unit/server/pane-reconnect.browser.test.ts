@@ -30,6 +30,7 @@ import {
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -130,6 +131,9 @@ async function page(): Promise<Page> {
       get: () => (w.__hidden ? "hidden" : "visible"),
     });
   }, latest);
+  // The person's browser, signed in as `web up` does (0.4.71): a pane's
+  // socket needs the session. The session outlives a web server restart.
+  await signIn(ctx, s!.stateDir, s!.base);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(`${s!.base}/agents?open=${sid}&layout=tabs`);

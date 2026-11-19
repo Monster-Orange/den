@@ -75,3 +75,59 @@ describe("web up's browser", () => {
     expect(calls).toEqual(["focus", "open http://den.test/auth?c=x"]);
   });
 });
+
+describe("web up with a tab already open (sign-in on this machine too)", () => {
+  it("sends the open tab to a fresh one-time link, back to the page it was on", () => {
+    const calls: string[] = [];
+    const nexts: (string | undefined)[] = [];
+    const link = (next?: string) => {
+      nexts.push(next);
+      return `http://den.test/auth?c=x&next=${encodeURIComponent(next ?? "/")}`;
+    };
+    const r = openOrFocusDenWebUrl(link, 4000, true, {
+      env: {},
+      focus: () => ({
+        status: "focused" as const,
+        app: "Google Chrome",
+        url: "http://den.test/agents?p=demo",
+      }),
+      navigate: (app: string, u: string) => {
+        calls.push(`navigate ${app} ${u}`);
+        return true;
+      },
+      open: (u: string) => {
+        calls.push(`open ${u}`);
+        return { status: "opened" as const };
+      },
+    });
+    expect(r).toEqual({ status: "focused", app: "Google Chrome" });
+    expect(nexts).toEqual(["/agents?p=demo"]);
+    expect(calls).toEqual([
+      `navigate Google Chrome http://den.test/auth?c=x&next=${encodeURIComponent("/agents?p=demo")}`,
+    ]);
+  });
+
+  it("opens the link in a new tab when the open tab can't be sent there", () => {
+    const calls: string[] = [];
+    const r = openOrFocusDenWebUrl(
+      () => "http://den.test/auth?c=x",
+      4000,
+      true,
+      {
+        env: {},
+        focus: () => ({
+          status: "focused" as const,
+          app: "Safari",
+          url: "http://den.test/",
+        }),
+        navigate: () => false,
+        open: (u: string) => {
+          calls.push(`open ${u}`);
+          return { status: "opened" as const };
+        },
+      },
+    );
+    expect(r).toEqual({ status: "opened" });
+    expect(calls).toEqual(["open http://den.test/auth?c=x"]);
+  });
+});
