@@ -38,7 +38,7 @@ function runGate(kind: "fixed" | "kept" | "unfixed" | "no-keep-host") {
       },
       readBed(rel) {
         if (rel === "node_modules/@monster-orange/den/package.json") return JSON.stringify({ version: "0.4.71" });
-        if (rel === "audit.jsonl") return kind === "fixed" ? '{"verb":"terminal-host","detail":"terminal host restarted (pid 111 → 222)"}\\n' : kind === "kept" ? '{"verb":"terminal-host","detail":"host kept: code unchanged (0.4.70 → 0.4.71)"}\\n' : "";
+        if (rel === "state:audit.jsonl") return kind === "fixed" ? '{"verb":"terminal-host","detail":"terminal host restarted (pid 111 → 222)"}\\n' : kind === "kept" ? '{"verb":"terminal-host","detail":"host kept: code unchanged (0.4.70 → 0.4.71)"}\\n' : "";
         return null;
       },
       listBed(rel) { return rel === "node_modules/@lydell/node-pty-darwin-arm64/prebuilds/darwin-arm64" ? ["pty.node", "spawn-helper"] : null; },
