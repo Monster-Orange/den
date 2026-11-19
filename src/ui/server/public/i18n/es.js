@@ -785,6 +785,15 @@
     "err.signin.other": "Otras formas (el enlace de un solo uso con {cmd})",
     "err.signin.otherStep":
       "En {host} (no en este ordenador), ejecuta esto y abre en este navegador el enlace que imprime:",
+    "err.signin.whereLocal":
+      "{name} corre en este ordenador. Inicia sesión una vez para que sepa que este navegador eres tú. La sesión se mantiene.",
+    "err.signin.step1Local": "En una terminal de este ordenador, ejecuta:",
+    "err.signin.otherLocal":
+      "Otras formas ({cmd} abre un enlace de inicio de sesión de un solo uso)",
+    "err.signin.otherStepLocal":
+      "En una terminal de este ordenador, ejecuta esto. Abre esta página con la sesión iniciada:",
+    "shell.signin.line": "Inicia sesión para hacer cambios aquí.",
+    "shell.signin.btn": "Iniciar sesión",
     "err.signin.codeExpired": "Este código caducó.",
     "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
     "err.signin.codeFailed":
@@ -1452,6 +1461,7 @@
     "pair.title": "¿Permitir este equipo?",
     "pair.what": "{device} {client} quiere iniciar sesión en Den.",
     "pair.aDevice": "Un navegador",
+    "pair.local": "en este ordenador, por localhost",
     "pair.help":
       "Permítelo solo si este código aparece en la pantalla de ese equipo.",
     "pair.allow": "Permitir",
@@ -2857,7 +2867,7 @@
     "set.cli.web_port.d":
       "web.port en config/local/user.yml tiene prioridad sobre el de la distribución. Se aplica la próxima vez que se inicie el servidor web.", // words-ok: the en string's own word, translated
     "set.cli.signin.d":
-      "En localhost no se pide iniciar sesión. A través del edge, un navegador inicia sesión salvo que el edge indique que es esta máquina (web.edge_unattested: local trata como local uno que no puede situar), y desde otra máquina siempre: Iniciar sesión con GitHub o un enlace de un solo uso (__DEN_CLI__ web login). Ajustes › Acceso lista los navegadores con la sesión iniciada.",
+      "Cada navegador inicia sesión una vez, también en esta máquina, y la sesión se mantiene. Aquí, __DEN_CLI__ web up abre un enlace de inicio de sesión de un solo uso; un navegador sin sesión puede mirar pero no cambiar nada. Desde otra máquina: Iniciar sesión con GitHub o un enlace de un solo uso (__DEN_CLI__ web login). Ajustes › Acceso lista los navegadores con la sesión iniciada.", // words-ok: "iniciar sesión" is how Spanish says sign in
     "set.cli.sudo.d":
       "Solo se usa cuando un comando que ejecuta Den necesita sudo, y solo se pide entonces. No es un inicio de sesión: nada más lo necesita.",
     "set.cli.op_token.d":

@@ -22,6 +22,7 @@ import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
 import { writeRecord } from "../../../src/shared/agents/records.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -104,17 +105,12 @@ async function ask(
   args: unknown,
   note?: string,
 ): Promise<string> {
-  const s = (await (
-    await fetch(`${base()}/api/session`, {
-      headers: { "sec-fetch-site": "same-origin" },
-    })
-  ).json()) as { csrf?: string };
+  // The CLI's credential, as the MCP server sends it (mcp/api.ts).
   const r = await fetch(`${base()}/api/approvals`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      origin: base(),
-      "x-den-csrf": String(s.csrf ?? ""),
+      ...denAuth(stateDir),
     },
     body: JSON.stringify({ action, args, ...(note ? { note } : {}) }),
   });
@@ -226,6 +222,11 @@ describe("the approval dialog (ON-3)", () => {
       /waiting for your approval.*sign in/i,
     );
     expect(await p.$("#den-ap-dlg[open]")).toBeNull();
+    // Signed out on this machine too: the page says so in one line.
+    await p.waitForSelector('[data-banner="signin"]', { timeout: 15_000 });
+    expect(await p.textContent('[data-banner="signin"]')).toContain(
+      "Sign in to make changes here.",
+    );
     expect(await p.content()).not.toContain("anon&quot;");
     expect(await stateOf(id)).toBe("pending");
     expect(await workspaces()).not.toContain("anon");

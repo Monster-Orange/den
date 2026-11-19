@@ -17,6 +17,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -117,6 +118,7 @@ describe("the What's new dialog", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
+    await signIn(ctx, path.join(tmp, "home"), `http://127.0.0.1:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://127.0.0.1:${port}/services`);
     // The pill's label comes from the same read: wait for it.
@@ -136,6 +138,7 @@ describe("the What's new dialog", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
+    await signIn(ctx, path.join(tmp, "home"), `http://127.0.0.1:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://127.0.0.1:${port}/services`);
     // First visit: it opens by itself.
@@ -187,6 +190,7 @@ describe("the What's new dialog", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1024, height: 300 },
       });
+      await signIn(ctx, path.join(tmp, "home"), `http://127.0.0.1:${port}`);
       const p = await ctx.newPage();
       // The newest release's notes can be one line: give it enough bullets
       // that the dialog scrolls whatever CHANGELOG.md says today.

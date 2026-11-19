@@ -71,13 +71,21 @@ function raw(
       (res) => {
         if (String(res.headers["content-type"]).includes("event-stream")) {
           res.destroy();
-          resolve({ status: res.statusCode ?? 0, headers: res.headers, body: "" });
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+            body: "",
+          });
           return;
         }
         let text = "";
         res.on("data", (d: Buffer) => (text += d.toString()));
         res.on("end", () =>
-          resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text }),
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+            body: text,
+          }),
         );
       },
     );

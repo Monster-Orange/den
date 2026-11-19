@@ -31,6 +31,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -93,6 +94,7 @@ async function viewer(
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   // Issue 231: the page asks for it stamped (?v=<version>).
   await ctx.route("**/vendor/xterm.mjs?v=*", (r) =>
     r.fulfill({

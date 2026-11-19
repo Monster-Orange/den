@@ -3,24 +3,24 @@
  * One source for the request checks (request-guard.ts) and for which routes
  * need a signed-in session (SEC-1b).
  *
- *   readonly     reads state. On loopback a GET passes with the Host check
- *                alone (§6), even when it runs a read-only probe (a health
- *                check, a `git rev-parse`, a `docker logs` tail).
- *   mutating     changes state or runs a declared lifecycle command: config,
- *                workspaces, the lock, a deploy, a service's up/down, a test
- *                run, a sync, an SSO login (§4: "up, down, restart, …").
- *                Origin and CSRF; the session's CSRF when one is signed in.
+ *   readonly     reads state, and starts no process on the request. On
+ *                loopback a GET passes with the Host check alone (§6). A
+ *                GET that starts a process (a `tail`, a `docker logs`, a
+ *                probe command) is `mutating`, never `readonly` (0.4.71).
+ *   mutating     changes state or runs something: config, workspaces, the
+ *                lock, a deploy, a service's up/down, a test run, a sync,
+ *                an SSO login (§4: "up, down, restart, …"), a log tail.
+ *                A sign-in (a session or a bearer), then Origin and the
+ *                session's CSRF.
  *   shell-grade  a shell for the caller, or what manages them: an agent's
  *                start or resume (a runtime in a PTY), the browser
- *                sessions, and (AG-4a-term) /api/sessions/*. On loopback
- *                Origin and CSRF, as mutating, and no sign-in (Ward,
- *                2026-11-06); an agent's token never reaches one but its
- *                own session's.
+ *                sessions, and (AG-4a-term) /api/sessions/*. As mutating;
+ *                an agent's token never reaches one but its own session's.
  *
  * Beyond loopback (the edge hostname, or a peer that isn't loopback) every
- * class needs a signed-in session or a bearer (§4); SIGNIN_FREE lists the
- * only routes that don't (how a browser gets a session, and what it asks
- * first).
+ * class needs a signed-in session or a bearer (§4); on loopback every class
+ * but `readonly` does (0.4.71). SIGNIN_FREE lists the only routes that
+ * never do (how a browser gets a session, and what it asks first).
  *
  * POST, PUT, PATCH and DELETE are checked as mutations by method, whatever
  * the table says; they are listed so SEC-1b reads one table. A GET that is
@@ -143,8 +143,6 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/health/stream",
     "/api/services",
     "/api/service/daemons",
-    "/api/service/history",
-    "/api/logs/search",
     "/api/catalog",
     "/api/:cli/config",
     "/api/session",
@@ -277,8 +275,28 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/approvals/:id/decide",
     "the person's Allow runs the held write once; Deny runs nothing",
   ),
-  R("/api/service/logs", "reads (and follows) a service's log"),
-  R("/api/service/taillog", "tails a service's log (tail, docker logs)"),
+  // 0.4.71: each starts a process for its output (a log command, `tail`,
+  // `docker logs`, `grep`): a sign-in, as every GET that runs something.
+  M(
+    ["GET", "HEAD"],
+    "/api/service/logs",
+    "follows a service's log: runs its log command",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/service/taillog",
+    "tails a service's log (tail, docker logs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/service/history",
+    "a service's log history (docker ps, docker logs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/logs/search",
+    "searches the logs (grep, docker logs)",
+  ),
   R(
     "/api/release/deploy",
     "GET attaches to a deploy session's log; it starts nothing",

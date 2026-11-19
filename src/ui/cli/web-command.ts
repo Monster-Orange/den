@@ -133,7 +133,12 @@ interface StopServerResult {
 }
 
 type BrowserFocusResult =
-  | { status: "focused"; app: string }
+  | {
+      status: "focused";
+      app: string;
+      /** The focused tab's URL (0.4.71: where its sign-in link goes back to). */
+      url?: string;
+    }
   | { status: "not-found" }
   | { status: "unsupported" }
   | { status: "error"; apps: string[]; error: string };
@@ -960,7 +965,7 @@ if application ${appleScriptString(appName)} is running then
           set active tab index of w to tabIndex
           set index of w to 1
           activate
-          return "focused"
+          return "focused " & u
         end if
       end repeat
     end repeat
@@ -983,7 +988,7 @@ if application "Safari" is running then
           set current tab of w to t
           set index of w to 1
           activate
-          return "focused"
+          return "focused " & u
         end if
       end repeat
     end repeat
@@ -1028,7 +1033,12 @@ function focusExistingBrowserTab(port: number): BrowserFocusResult {
       continue;
     }
 
-    if (result === "focused") return { status: "focused", app: app.name };
+    if (result === "focused" || result.startsWith("focused "))
+      return {
+        status: "focused",
+        app: app.name,
+        ...(result.length > 8 ? { url: result.slice(8) } : {}),
+      };
     if (result === "not-found") inspectedBrowser = true;
   }
 
@@ -1037,6 +1047,41 @@ function focusExistingBrowserTab(port: number): BrowserFocusResult {
   }
 
   return { status: "not-found" };
+}
+
+/**
+ * 0.4.71: send the tab focusTab just brought forward to `url` (its sign-in
+ * link). False when it can't (the browser said no, or isn't scriptable).
+ */
+function navigateFocusedTab(app: string, url: string): boolean {
+  if (process.platform !== "darwin") return false;
+  const kind = BROWSER_APPS.find((a) => a.name === app)?.kind;
+  if (!kind) return false;
+  const tab =
+    kind === "safari"
+      ? "current tab of front window"
+      : "active tab of front window";
+  try {
+    runAppleScript(
+      `tell application ${appleScriptString(app)} to set URL of ${tab} to ${appleScriptString(url)}`,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The path, query and hash of a tab's URL, for its sign-in's `next`. */
+function tabNext(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url);
+    // An open sign-in or auth page goes home after, not back to itself.
+    if (u.pathname === "/auth" || u.pathname === "/signin") return "/";
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return undefined;
+  }
 }
 
 function openUrl(url: string): BrowserOpenResult {
@@ -1061,15 +1106,18 @@ function openUrl(url: string): BrowserOpenResult {
 /**
  * Focus a tab already on this server, else open `url()` (SEC-1b: the
  * sign-in link, minted only when it is opened). `focus: false` (`web
- * open`) always opens.
+ * open`) always opens. 0.4.71: a focused tab is sent to a fresh link too,
+ * back to the page it was on, so it is signed in whatever it held; when
+ * it can't be, the link opens in a new tab.
  */
 export function openOrFocusDenWebUrl(
-  url: () => string,
+  url: (next?: string) => string,
   port: number,
   focus = true,
   /** A test's stubs; the env says whether it may open at all. */
   deps: {
     focus?: (port: number) => BrowserFocusResult;
+    navigate?: (app: string, url: string) => boolean;
     open?: (url: string) => BrowserOpenResult;
     env?: NodeJS.ProcessEnv;
   } = {},
@@ -1080,7 +1128,16 @@ export function openOrFocusDenWebUrl(
   if (why) return { status: "skipped", why };
   if (focus) {
     const focusResult = (deps.focus ?? focusExistingBrowserTab)(port);
-    if (focusResult.status === "focused") return focusResult;
+    if (focusResult.status === "focused") {
+      const link = url(tabNext(focusResult.url));
+      // Inside an agent's session the "link" is the plain page: the
+      // focused tab stays as it is.
+      if (!/\/auth\?/.test(link))
+        return { status: "focused", app: focusResult.app };
+      if ((deps.navigate ?? navigateFocusedTab)(focusResult.app, link))
+        return { status: "focused", app: focusResult.app };
+      return (deps.open ?? openUrl)(link);
+    }
 
     if (focusResult.status === "error" && process.platform === "darwin") {
       return focusResult;
@@ -1596,7 +1653,8 @@ async function runWeb(args: string[]): Promise<void> {
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
   let link: string | null = personGrantRefusal(process.env) ? origin : null;
-  const signIn = () => (link ??= freshLoginLink(options.port, "/", origin));
+  const signIn = (next?: string) =>
+    (link ??= freshLoginLink(options.port, next ?? "/", origin));
   const browser = openOrFocusDenWebUrl(
     signIn,
     options.port,
@@ -1900,9 +1958,9 @@ const LOGIN_HELP = () =>
   "  unless set) for one browser, and a\n" +
   "  code the page behind the link asks for, then waits until the link is used:\n" +
   '  "Signed in: <browser> (<address>) at <time>", or "Expired: nobody used the\n' +
-  '  link" (exit 1). On localhost nothing asks for a sign-in; it is needed when\n' +
-  "  this server is reached from another machine (pass the edge hostname as\n" +
-  "  --host, or a LAN address as --origin).\n" +
+  '  link" (exit 1). On this machine `web up` opens such a link by itself.\n' +
+  "  From another machine, pass the edge hostname as --host, or a LAN address\n" +
+  "  as --origin.\n" +
   "  --next <path>   where the browser lands after signing in (same origin only)\n" +
   "  --host <name>   an edge hostname that routes here (an edge domain or alias,\n" +
   "                  a VPN name among them): the link uses its edge URL\n" +

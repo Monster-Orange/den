@@ -766,6 +766,15 @@
     "err.signin.other": "その他の方法({cmd} による一回限りのリンク)",
     "err.signin.otherStep":
       "{host} で(このコンピューターではありません)次を実行し、表示されたリンクをこのブラウザで開きます:",
+    "err.signin.whereLocal":
+      "{name} はこのコンピューターで動いています。このブラウザがあなたであることを確認するため、一度サインインしてください。サインインは続きます。",
+    "err.signin.step1Local": "このコンピューターのターミナルで次を実行します:",
+    "err.signin.otherLocal":
+      "その他の方法({cmd} が一回限りのサインインリンクを開きます)",
+    "err.signin.otherStepLocal":
+      "このコンピューターのターミナルで次を実行します。このページがサインインした状態で開きます:",
+    "shell.signin.line": "ここで変更するにはサインインしてください。",
+    "shell.signin.btn": "サインイン",
     "err.signin.codeExpired": "このコードは期限切れです。",
     "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
     "err.signin.codeFailed":
@@ -1416,6 +1425,7 @@
     "pair.title": "このコンピューターを許可しますか?",
     "pair.what": "{device} {client} が Den にサインインしようとしています。",
     "pair.aDevice": "ブラウザー",
+    "pair.local": "このコンピューター(localhost 経由)",
     "pair.help":
       "このコードがそのコンピューターの画面に表示されている場合のみ許可してください。",
     "pair.allow": "許可",
@@ -2787,7 +2797,7 @@
     "set.cli.web_port.d":
       "config/local/user.yml の web.port はディストリビューションの値より優先されます。次に Web サーバーが起動したときに適用されます。", // words-ok: the en string's own word, translated
     "set.cli.signin.d":
-      "localhost ではサインインを求められません。エッジ経由では、このマシンだとエッジが示さない限りブラウザはサインインします (web.edge_unattested: local の場合、判別できないものはローカルとみなします)。別のマシンからは必ずサインインします: GitHub でサインイン、または一回限りのリンク (__DEN_CLI__ web login) を使います。設定 › アクセス にサインイン済みのブラウザが表示されます。",
+      "どのブラウザも、このマシンでも一度サインインすると、サインインが続きます。ここでは __DEN_CLI__ web up が一回限りのサインインリンクを開きます。サインインしていないブラウザは表示はできますが、何も変更できません。別のマシンからは: GitHub でサインイン、または一回限りのリンク (__DEN_CLI__ web login)。設定 › アクセス にサインイン済みのブラウザが表示されます。",
     "set.cli.sudo.d":
       "Den が実行するコマンドに sudo が必要なときだけ使い、そのときだけ尋ねます。サインインではないので、ほかには必要ありません。",
     "set.cli.op_token.d":
