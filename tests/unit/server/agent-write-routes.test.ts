@@ -56,6 +56,9 @@ const AGENTS_MAY: Record<string, string> = {
   "HEAD /api/service/exec": "as GET",
   "GET /api/run": "MCP tests_run: starts a test run",
   "HEAD /api/run": "as GET",
+  "GET /api/manifest/validate":
+    "MCP manifest_validate: reads a manifest inside a repo, never quoting it",
+  "HEAD /api/manifest/validate": "as GET",
   "POST /api/workspace/sync": "MCP sync: git clone and pull in the checkouts",
   "GET /api/workspace/sync": "the same sync, streamed (as the page does)",
   "HEAD /api/workspace/sync": "as GET",

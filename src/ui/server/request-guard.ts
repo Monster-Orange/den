@@ -91,7 +91,10 @@ import {
 } from "./route-classes.js";
 
 export const CSRF_HEADER = "x-den-csrf";
-const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+// Only GET and HEAD are reads: any other method is checked as a change
+// (the server answers 405 to one outside the six before this runs).
+const READS = new Set(["GET", "HEAD"]);
+const changes = (method: string) => !READS.has(method);
 
 /** An agent's actor token (SEC-1c): what it was minted as. */
 export interface AgentPrincipal {
@@ -617,7 +620,7 @@ export function checkRequest(
   const pathname = reqUrl.pathname;
   const cls: RouteClass =
     routeClass(method, pathname) ??
-    (MUTATING.has(method) || isUpgrade(req) ? "mutating" : "readonly");
+    (changes(method) || isUpgrade(req) ? "mutating" : "readonly");
 
   if (principal?.kind === "agent") {
     const refused = agentRefusal(
@@ -663,7 +666,7 @@ export function checkRequest(
     ? { kind: "person-browser", session: session.key }
     : null;
 
-  if (!MUTATING.has(method) && !isUpgrade(req)) {
+  if (!changes(method) && !isUpgrade(req)) {
     if (isMutatingGet(method, pathname)) {
       const refused = mutatingGetRefusal(req, ctx, pathname, principal, cli);
       if (refused) return refused;
