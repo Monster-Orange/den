@@ -32,6 +32,13 @@
  *     tried again at every pass; the bell says it once. With pin_commit:
  *     pr it opens a pull request instead; the approval policy (issue 160)
  *     may hold it for the person's Allow.
+ *   - Issue 562: a version npm marks a security release (den.security:
+ *     true in its package.json, read from npm's version data only) doesn't
+ *     wait on the server agent's question or permission prompt: those
+ *     conversations resume after the restart. It still waits on a pending
+ *     Allow and for the turn's end, and the bell says the question is
+ *     still open. server_agent.security_update_skips_questions: false
+ *     turns it off. An unreadable mark is no mark.
  *
  * Every input is a function (tests fake each); the server wires them.
  */
@@ -144,6 +151,29 @@ export function updateWaitNotes(
   };
 }
 
+/** Issue 562: the bell item after a security update past an open question. */
+export const SECURITY_UPDATE_SUBJECT = "record:den-update-security";
+
+/**
+ * Issue 562: say Den updated for a security fix while `agent` waited on
+ * the person; its question is still open (it resumes after the restart).
+ */
+export function securityUpdateNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  version: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: SECURITY_UPDATE_SUBJECT,
+    scope: "workspace/den-server",
+    text: `${title} updated for a security fix while ${agent} was waiting on you; its question is still open`,
+    msg: { key: "bell.m.updatedSecurity", vars: { agent, v: version } },
+    link: "/server-agent",
+  });
+}
+
 /** #142: a bell item asking the person to Allow a Den update. */
 export function isUpdateAsk(n: {
   subject: string;
@@ -190,6 +220,21 @@ export interface UpdateCheckDeps {
   waitWhy?(): Promise<UpdateWait | null>;
   /** Issue 327: what the server agent waits on, since when, or null. */
   waitWhat?(): WaitDetail | null;
+  /**
+   * Issue 562: why an update would wait leaving out the server agent's
+   * own question or permission prompt (a pending Allow, a working turn,
+   * an update under way), or null. Absent: a security release waits too.
+   */
+  waitPast?(): Promise<UpdateWait | null>;
+  /**
+   * Issue 562: whether npm's version data marks `version` a security
+   * release (den.security); null: npm can't say (unmarked, asked again).
+   */
+  security?(version: string): Promise<boolean | null>;
+  /** Issue 562: server_agent.security_update_skips_questions (default true). */
+  securitySkipsQuestions?(): boolean;
+  /** Issue 562: the bell: updated past the agent's question or prompt. */
+  securityNote?(version: string, why: "asked" | "permission"): void;
   /** #251: server_agent.update_wait_checks (default 2). */
   waitChecks?(): number;
   /** #251: a line for the server log and the audit trail. */
@@ -272,6 +317,25 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
     if (noted) {
       noted = false;
       d.waitDone?.();
+    }
+  };
+  /** Issue 562: each version's security mark, once npm said it. */
+  const marks = new Map<string, boolean>();
+  const marked = async (v: string): Promise<boolean> => {
+    if (!d.security) return false;
+    const known = marks.get(v);
+    if (known !== undefined) return known;
+    const m = await d.security(v).catch(() => null);
+    if (m === null) return false;
+    marks.set(v, m);
+    return m;
+  };
+  /** Issue 562: may this pass go past the agent's question or prompt? */
+  const skipsQuestions = (): boolean => {
+    try {
+      return d.securitySkipsQuestions?.() ?? true;
+    } catch {
+      return false;
     }
   };
   let pinUncommitted = 0;
@@ -412,7 +476,20 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         }
         return { did: "asked", version: want };
       }
-      const wait = await waitWhy();
+      let wait = await waitWhy();
+      // Issue 562: a security release goes past the agent's own question
+      // or permission prompt, never past an Allow or a working turn.
+      let past: "asked" | "permission" | null = null;
+      if (
+        (wait === "asked" || wait === "permission") &&
+        d.waitPast &&
+        skipsQuestions() &&
+        (await marked(want))
+      ) {
+        const was = wait;
+        wait = await d.waitPast().catch(() => "busy" as const);
+        if (!wait) past = was;
+      }
       if (wait) {
         const at = waitsOnPerson(wait)
           ? (() => {
@@ -452,11 +529,19 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         };
       }
       notWaiting();
+      if (past)
+        d.log?.(
+          `update check: Den ${want} is a security release: it updates past ${WAIT_TEXT[past]}`,
+        );
       const r = await d.update(want, reason).catch((e: unknown) => ({
         ok: false,
         error: e instanceof Error ? e.message : String(e),
       }));
-      if (r.ok) return { did: "updating", version: want };
+      if (r.ok) {
+        if (!past) return { did: "updating", version: want };
+        d.securityNote?.(want, past);
+        return { did: "updating", version: want, security: true };
+      }
       const why = r.error ?? "the update didn't run";
       d.notice(want, `Den couldn't update to ${want}: ${why}`, {
         key: "bell.m.updateFailed",

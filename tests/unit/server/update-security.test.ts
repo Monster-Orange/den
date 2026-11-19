@@ -74,7 +74,11 @@ describe("a security release while the server agent waits on its person (issue 5
   it("marked, the agent asked a question: it updates, and the bell says the question is still open", async () => {
     const f = fake();
     const t = await updateCheck(f.d).tick();
-    expect(t).toMatchObject({ did: "updating", version: "1.3.0", security: true });
+    expect(t).toMatchObject({
+      did: "updating",
+      version: "1.3.0",
+      security: true,
+    });
     expect(f.updates()).toBe(1);
     expect(f.asked).toEqual(["1.3.0"]);
     expect(f.notes).toContain("security 1.3.0 asked");

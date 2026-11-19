@@ -1269,6 +1269,13 @@ export interface ServerAgentConfig {
    * off (left to the server agent).
    */
   pin_commit?: "push" | "pr" | "off";
+  /**
+   * Issue 562: a release npm marks a security release (den.security in
+   * its package.json) updates while the server agent waits on its
+   * person's question or permission prompt; never past a pending Allow,
+   * never mid-turn (default true; false: it waits, as any release).
+   */
+  security_update_skips_questions?: boolean;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1304,6 +1311,8 @@ export interface ResolvedServerAgentConfig {
   updateWaitChecks: number;
   /** #176: server_agent.pin_commit: push (default), pr or off. */
   pinCommit: "push" | "pr" | "off";
+  /** Issue 562: server_agent.security_update_skips_questions. */
+  securityUpdateSkipsQuestions: boolean;
 }
 
 /** #251: server_agent.update_wait_checks when unset. */
@@ -1378,6 +1387,11 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.pin_commit: push, pr or off, not ${JSON.stringify(pcm)}`,
     );
+  const ssq = sa.security_update_skips_questions;
+  if (ssq !== undefined && typeof ssq !== "boolean")
+    throw new Error(
+      `server_agent.security_update_skips_questions: true or false, not ${JSON.stringify(ssq)}`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1399,6 +1413,7 @@ export function readServerAgentConfig(
     role: role ?? "lead",
     updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
     pinCommit: pcm ?? "push",
+    securityUpdateSkipsQuestions: ssq ?? true,
   };
 }
 

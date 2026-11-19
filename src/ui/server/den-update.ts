@@ -457,6 +457,51 @@ export async function npmViewVersion(
   }
 }
 
+/**
+ * Issue 562: whether `npm view <pkg>@<version> den --json` (that
+ * version's package.json in npm's registry document) marks it a security
+ * release: `den.security` is exactly true. No `den`, or anything else:
+ * false. Never a tag name or the changelog.
+ */
+export function parseSecurityMark(out: string): boolean {
+  const t = out.trim();
+  if (!t) return false;
+  try {
+    const v = JSON.parse(t) as unknown;
+    return (
+      !!v &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      (v as { security?: unknown }).security === true
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Issue 562: the security mark of `version` from npm's version data;
+ * null when npm can't say (it counts as unmarked, and is asked again).
+ */
+export async function npmViewSecurity(
+  npm: string[],
+  pkg: string,
+  version: string,
+  cwd: string,
+): Promise<boolean | null> {
+  if (!UPDATE_SPEC_RE.test(version) || version === "latest") return null;
+  // stdout only: a warning npm prints on stderr isn't the field.
+  return new Promise((resolve) =>
+    execFile(
+      npm[0],
+      [...npm.slice(1), "view", `${pkg}@${version}`, "den", "--json"],
+      { cwd, timeout: 2 * 60_000, maxBuffer: 1024 * 1024 },
+      (err, stdout) =>
+        resolve(err ? null : parseSecurityMark(String(stdout ?? ""))),
+    ),
+  );
+}
+
 /** Start the watch, detached from this server (it outlives it). */
 export function spawnWatch(
   script: string,

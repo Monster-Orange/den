@@ -25,6 +25,7 @@ import type { UpdateWait } from "./update-check.js";
 
 import {
   isUpdateAsk,
+  securityUpdateNote,
   staleUpdateAsk,
   updateWaitNotes,
 } from "./update-check.js";
@@ -1125,7 +1126,10 @@ import {
   writeTargets,
 } from "../../shared/approval-policy.js";
 import { alertSettings, patchAlerts } from "./alerts.js";
-import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
+import {
+  SERVER_AGENT_ID,
+  serverAgentName,
+} from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
   agentNameOf,
@@ -8322,8 +8326,17 @@ function startUpdateCheck(): void {
   if (!every) return;
   let busy = false;
   let updating = false;
-  /** #251: why an auto update would wait now; null: a quiet moment. */
-  const updateWaitWhy = async (): Promise<UpdateWait | null> => {
+  /**
+   * #251: why an auto update would wait now; null: a quiet moment.
+   * Issue 562: `pastPerson` leaves out the server agent's own question or
+   * permission prompt (a security release): a pending Allow still holds
+   * it, and so does a turn that is working. A turn paused on its person
+   * isn't working (its transcript's open tool call reads busy): it
+   * resumes after the restart.
+   */
+  const updateWaitWhy = async (
+    pastPerson = false,
+  ): Promise<UpdateWait | null> => {
     if (updating) return "updating";
     const u = await import("./den-update.js");
     const last = u.readUpdateState(getStateDir());
@@ -8335,8 +8348,10 @@ function startUpdateCheck(): void {
       return "updating";
     // The server agent's own wait first: it is what the person can end.
     const w = attentionWaiting().get(SERVER_AGENT_ID);
-    if (w === "permission" || w === "asked") return w;
+    const onPerson = w === "permission" || w === "asked";
+    if (onPerson && !pastPerson) return w;
     if (approvals?.queue.pending().length) return "approval";
+    if (onPerson) return null;
     const ops = await import("../cli/agent-ops.js");
     const { webDeps } = await import("./agent-routes.js");
     return (await ops.serverAgentInputState(webDeps())) === "busy"
@@ -8376,7 +8391,35 @@ function startUpdateCheck(): void {
         last: () => u.readUpdateState(getStateDir()),
         idle: async () => (await updateWaitWhy()) === null,
         // #251: why it waits, so the log and the bell can say so.
-        waitWhy: updateWaitWhy,
+        waitWhy: () => updateWaitWhy(),
+        // Issue 562: a security release: npm's version data marks it.
+        waitPast: () => updateWaitWhy(true),
+        security: (version) =>
+          u.npmViewSecurity(
+            u.npmCommand(),
+            ENGINE_PACKAGE,
+            version,
+            getDistRoot(),
+          ),
+        securitySkipsQuestions: () => {
+          try {
+            return readServerAgentConfig().securityUpdateSkipsQuestions;
+          } catch {
+            return true;
+          }
+        },
+        securityNote: (version) => {
+          try {
+            securityUpdateNote(
+              notificationDeps().store,
+              product().title,
+              serverAgentName(product().title),
+              version,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitChecks: () => {
           try {
             return readServerAgentConfig().updateWaitChecks;
