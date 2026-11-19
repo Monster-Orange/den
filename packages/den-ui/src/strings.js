@@ -205,6 +205,11 @@ export const en = {
   "kit.savestate.error": "Not saved. Retrying…",
   "kit.savestate.copy": "Copy text",
   "kit.savestate.savedAt": "Saved at {time}",
+  // The panel fold toggle and its edge strip (panel-fold.js). The strip's
+  // count is worded by kit.badge.*.
+  "kit.fold.panel": "Panel",
+  "kit.fold.show": "Show panel",
+  "kit.fold.hidden": "Panel, hidden",
 };
 
 export const es = {
@@ -406,6 +411,9 @@ export const es = {
   "kit.savestate.error": "No se guardó. Reintentando…",
   "kit.savestate.copy": "Copiar texto",
   "kit.savestate.savedAt": "Guardado a las {time}",
+  "kit.fold.panel": "Panel",
+  "kit.fold.show": "Mostrar panel",
+  "kit.fold.hidden": "Panel, oculto",
 };
 
 export const ja = {
@@ -602,6 +610,9 @@ export const ja = {
   "kit.savestate.error": "保存できていません。再試行しています…",
   "kit.savestate.copy": "テキストをコピー",
   "kit.savestate.savedAt": "{time} に保存しました",
+  "kit.fold.panel": "パネル",
+  "kit.fold.show": "パネルを表示",
+  "kit.fold.hidden": "パネル（非表示）",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */

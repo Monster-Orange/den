@@ -58,6 +58,14 @@ import {
   SAVE_AFTER_MS,
   type SaveStateChange,
 } from "@kit/savestate.js";
+import {
+  foldToggleHtml,
+  edgeStripHtml,
+  hydrateFoldToggle,
+  hydrateEdgeStrip,
+  type EdgeStripCountKind,
+} from "@kit/panel-fold.js";
+import { switchHtml, hydrateSwitch } from "@kit/switch.js";
 
 const model: ShellModel = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
@@ -255,3 +263,25 @@ const viaKit = DenUI.saveState(document.createElement("p"), {
 });
 viaKit.destroy();
 void (SAVE_AFTER_MS + 0);
+
+// The panel fold toggle, its edge strip and the switch: data and callbacks.
+const foldBtn: string = foldToggleHtml({ pressed: true, controls: "side", lang: "ja" });
+const kind: EdgeStripCountKind = "waiting";
+const stripHtml: string = edgeStripHtml({ count: 2, what: kind, controls: "side" });
+const fold = hydrateFoldToggle(document.querySelector<HTMLElement>(".den-fold"), {
+  onToggle: (next: boolean) => void next,
+});
+fold.set(!fold.pressed());
+const strip = hydrateEdgeStrip(document.querySelector<HTMLElement>(".den-strip"), {
+  onShow: () => fold.set(true),
+});
+strip.setCount(3, "open");
+strip.destroy();
+const swHtml: string = switchHtml({ label: "Notes", on: true, help: "Kept here." });
+const sw = hydrateSwitch(document.querySelector<HTMLElement>(".den-switch"), {
+  onChange: (on: boolean) => void on,
+});
+sw.set(!sw.on());
+sw.setDisabled(false);
+sw.destroy();
+void (foldBtn + stripHtml + swHtml);
