@@ -57,6 +57,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
+import { LOST_FILE } from "./guardrails/lost-marks.js";
 import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
@@ -575,7 +576,14 @@ function common(input: LaunchInput): {
   // NT-1: every agent tells Den when it waits for its person.
   const hooks = mergeHooks(
     baseHooks,
-    input.attention ? attentionHooks(input.attention.base) : null,
+    input.attention
+      ? attentionHooks(
+          input.attention.base,
+          // Issue 609: where a mark Den never took is recorded (its own
+          // files dir, which doctor reads).
+          { file: path.join(input.filesDir, LOST_FILE), agent: input.agentId },
+        )
+      : null,
   );
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the

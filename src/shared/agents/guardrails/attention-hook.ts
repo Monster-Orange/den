@@ -21,6 +21,7 @@
  * the agent and prints nothing (fails open).
  */
 import { actorTokenOf } from "../../actor-token.js";
+import { recordLost } from "./lost-marks.js";
 
 export type AttentionEvent =
   | {
@@ -147,6 +148,8 @@ export async function sendAttention(
     env?: Record<string, string | undefined>;
     fetch?: FetchFn;
     timeoutMs?: number;
+    /** Issue 609: why Den didn't take it ("no answer", or its refusal). */
+    onMiss?: (reason: string) => void;
   } = {},
 ): Promise<boolean> {
   const t = actorTokenOf(opts.env ?? process.env);
@@ -166,10 +169,18 @@ export async function sendAttention(
         signal: AbortSignal.timeout(opts.timeoutMs ?? 2000),
       },
     );
+    if (!r.ok) opts.onMiss?.(`refused (HTTP ${r.status})`);
     return r.ok;
   } catch {
+    opts.onMiss?.("no answer");
     return false;
   }
+}
+
+/** `--<name> <value>`, or "". */
+function argOf(argv: readonly string[], name: string): string {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] ? argv[i + 1] : "";
 }
 
 export function denArg(argv: readonly string[]): string {
@@ -180,7 +191,8 @@ export function denArg(argv: readonly string[]): string {
 async function main(): Promise<void> {
   let text = "";
   for await (const chunk of process.stdin) text += String(chunk);
-  const base = denArg(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const base = denArg(argv);
   if (!base) return;
   let input: unknown;
   try {
@@ -189,7 +201,17 @@ async function main(): Promise<void> {
     return;
   }
   const ev = attentionOf(input);
-  if (ev) await sendAttention(base, ev);
+  if (!ev) return;
+  // Issue 609: a mark Den never took is recorded, for doctor.
+  const lost = argOf(argv, "--lost");
+  let why = "";
+  const ok = await sendAttention(base, ev, { onMiss: (r) => (why = r) });
+  if (!ok && why && lost)
+    recordLost(lost, {
+      agent: argOf(argv, "--agent") || "?",
+      event: ev.event,
+      reason: why,
+    });
 }
 
 if (process.argv[1] && /attention-hook\.[jt]s$/.test(process.argv[1]))

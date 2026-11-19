@@ -1848,6 +1848,12 @@
     "set.server.crash_loop_minutes": "Restart guard window, in minutes",
     "set.server.crash_loop_minutes.d":
       "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "Process lookup wait",
+    "set.server.lookup_first.d":
+      "How long __DEN_TITLE__ waits on its first try when it asks the system which process holds a connection (lsof, ps). An agent's own calls are placed this way. __DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "Process lookup retry wait",
+    "set.server.lookup_retry.d":
+      "How long the second try waits when the first ran out of time. A busy machine can be slow to answer. __DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout": "Address check wait",
     "set.server.address_check_timeout.d":
       "How long __DEN_TITLE__ waits for an address to answer when it checks that the address reaches this __DEN_TITLE__, before it prints or opens it. __DEN_CLI__ config web.address_check_timeout_seconds=5",

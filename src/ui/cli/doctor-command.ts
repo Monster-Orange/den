@@ -48,6 +48,11 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
+  lostFiles,
+  lostMarkLines,
+} from "../../shared/agents/guardrails/lost-marks.js";
+import { uiLanguage } from "../server/ui-language.js";
+import {
   readCheckState,
   selfUpdateSummary,
   type CheckState,
@@ -1215,6 +1220,27 @@ export function selfUpdateLines(
 }
 
 /**
+ * Issue 609: each agent whose attention marks Den never took in the last
+ * day (after the hook's tries): how many, and the last reason. A warning.
+ */
+export function attentionLostLines(
+  title: string,
+  stateDir: string = getStateDir(),
+  read: () => { language?: unknown } = readUserConfig,
+): ReturnType<typeof lostMarkLines> {
+  let lang: unknown;
+  try {
+    lang = read().language;
+  } catch {
+    lang = undefined;
+  }
+  return lostMarkLines(lostFiles(stateDir), {
+    lang: uiLanguage(lang),
+    title,
+  });
+}
+
+/**
  * UK-2 (0.4.48): ui.request_memory_seconds became requests.keep_minutes.
  * Shown only while the old key is set: what it became, and whether it still
  * counts (until 0.4.49, when requests.keep_minutes is unset).
@@ -1592,6 +1618,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
+    // Issue 609: attention marks Den never took, per agent.
+    r.checks.push(...attentionLostLines(readBrand().name).checks);
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1681,6 +1709,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
+  for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {

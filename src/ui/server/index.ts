@@ -1154,6 +1154,7 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import { lookupTimeouts } from "../cli/proc-lookup.js";
 import {
   agentPeerWait,
   callerPid,
@@ -3635,6 +3636,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         instruction_share_percent: c.sharePercent,
         context_tokens: c.contextTokens,
       };
+    })(),
+    // Issue 609: how long Den's process lookups wait (process_lookup.*).
+    process_lookup: (() => {
+      const [first, retry] = lookupTimeouts({}, () => user);
+      return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
     agents_list: (() => {
@@ -7373,6 +7379,7 @@ async function handleRequest(
           agent_context?: unknown;
           feedback?: unknown;
           address_check?: unknown;
+          process_lookup?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -7408,6 +7415,7 @@ async function handleRequest(
             agent_context: body.agent_context,
             feedback: body.feedback,
             address_check: body.address_check,
+            process_lookup: body.process_lookup,
           });
           if (!c.ok) return send400(res, c.error);
         }

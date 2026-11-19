@@ -89,6 +89,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.address_check_cache_seconds": ["address_check", "cache_seconds"],
   "web.address_check_drop_after": ["address_check", "drop_after"],
   "web.address_unknown_keep_seconds": ["address_check", "unknown_keep_seconds"],
+  // Issue 609: how long Den's process lookups (lsof, ps) wait.
+  "process_lookup.first_seconds": ["process_lookup", "first_seconds"],
+  "process_lookup.retry_seconds": ["process_lookup", "retry_seconds"],
 };
 
 /**

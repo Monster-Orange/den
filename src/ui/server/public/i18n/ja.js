@@ -856,6 +856,12 @@
     "set.server.crash_loop_minutes": "再起動ガードの時間枠(分)",
     "set.server.crash_loop_minutes.d":
       "上の、正常に終了しなかった回数を数える分数です。__DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "プロセス検索の待ち時間",
+    "set.server.lookup_first.d":
+      "接続を持っているプロセスをシステムに問い合わせるとき (lsof、ps)、__DEN_TITLE__ が最初の試行で待つ時間です。エージェント自身の呼び出しはこの方法で特定されます。__DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "プロセス検索の再試行の待ち時間",
+    "set.server.lookup_retry.d":
+      "最初の試行が時間切れになったときに、2 回目の試行が待つ時間です。混み合ったマシンでは応答が遅れることがあります。__DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout": "アドレス確認の待ち時間",
     "set.server.address_check_timeout.d":
       "アドレスがこの __DEN_TITLE__ に届くか確認するとき、表示したり開いたりする前に __DEN_TITLE__ が応答を待つ時間。__DEN_CLI__ config web.address_check_timeout_seconds=5",

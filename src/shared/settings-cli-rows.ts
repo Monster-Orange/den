@@ -31,6 +31,8 @@
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
+ *   process_lookup: { first_seconds?, retry_seconds? }
+ *                                     user.yml process_lookup.* (issue 609)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -39,6 +41,7 @@ import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
+import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -85,6 +88,8 @@ export const PERSON_ONLY_SETTINGS = [
   "feedback",
   // Issue 455: how long, and how often, Den checks its own address.
   "address_check",
+  // Issue 609: how long Den's process lookups wait.
+  "process_lookup",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -212,6 +217,14 @@ const ADDRESS_CHECK: Record<string, Limit> = Object.fromEntries(
       max: l.max,
       int: k === "retries" || k === "drop_after",
     },
+  ]),
+);
+
+/** Issue 609: user.yml process_lookup.* (proc-lookup.ts). */
+const PROCESS_LOOKUP: Record<string, Limit> = Object.fromEntries(
+  Object.entries(LOOKUP_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: false },
   ]),
 );
 
@@ -439,6 +452,14 @@ export function patchCliRows(
       "web",
       ADDRESS_CHECK,
       body.address_check,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "process_lookup",
+      "process_lookup",
+      PROCESS_LOOKUP,
+      body.process_lookup,
       apply,
     );
   if (e) return { ok: false, error: e };

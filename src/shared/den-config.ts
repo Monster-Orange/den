@@ -499,6 +499,15 @@ export interface UserConfig {
     refresh_timeout_seconds?: unknown;
   };
   /**
+   * Issue 609: how long Den's process lookups (lsof, ps) wait:
+   * first_seconds (5) the first try, retry_seconds (20) the one after
+   * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
+   */
+  process_lookup?: {
+    first_seconds?: unknown;
+    retry_seconds?: unknown;
+  };
+  /**
    * Issue 278: agents stuck compacting and instruction files that eat the
    * context (context-watch.ts): compaction_loop_count (3) automatic
    * compactions within compaction_loop_minutes (10) ring the bell;

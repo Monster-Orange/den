@@ -875,6 +875,12 @@
     "set.server.crash_loop_minutes": "Ventana de la protección, en minutos",
     "set.server.crash_loop_minutes.d":
       "Los minutos en los que se cuentan los cierres no limpios de arriba. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "Espera de la búsqueda de procesos",
+    "set.server.lookup_first.d":
+      "Cuánto espera __DEN_TITLE__ en su primer intento cuando pregunta al sistema qué proceso tiene una conexión (lsof, ps). Así se ubican las llamadas de un agente. __DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "Espera del reintento de la búsqueda",
+    "set.server.lookup_retry.d":
+      "Cuánto espera el segundo intento cuando el primero se quedó sin tiempo. Una máquina ocupada puede tardar en responder. __DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout":
       "Espera de la comprobación de dirección",
     "set.server.address_check_timeout.d":

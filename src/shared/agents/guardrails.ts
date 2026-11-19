@@ -227,11 +227,20 @@ export function guardrailHooks(
  * (attention-hook.ts). Merged beside Den's other hooks. PermissionRequest
  * prints nothing, so Claude Code still asks the person.
  */
-export function attentionHooks(base: string): Record<string, unknown[]> {
+export function attentionHooks(
+  base: string,
+  /** Issue 609: where a lost mark is recorded, and for which agent. */
+  lost?: { file: string; agent: string },
+): Record<string, unknown[]> {
   const cmd = commandLine(
     ((c: EngineCommand): EngineCommand => ({
       command: c.command,
-      args: [...c.args, "--den", base],
+      args: [
+        ...c.args,
+        "--den",
+        base,
+        ...(lost ? ["--lost", lost.file, "--agent", lost.agent] : []),
+      ],
     }))(scriptEntrypoint("src/shared/agents/guardrails/attention-hook.ts")),
   );
   const entry = { hooks: [{ type: "command", command: cmd, timeout: 10 }] };

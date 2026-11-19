@@ -396,7 +396,8 @@ service:api/web"`).
   to re-run: `web down` answers `stopped: false` when the server wasn't
   running, and `ok` is true once nothing answers on its port. On a busy
   machine, where `lsof` or `ps` can't say which process holds the port
-  (each lookup gets 5 s, then 20 s; `DEN_LOOKUP_TIMEOUTS_MS` sets them),
+  (each lookup gets 5 s, then 20 s: the Settings `process_lookup.first_seconds`
+  and `retry_seconds`; `DEN_LOOKUP_TIMEOUTS_MS` overrides both),
   `web down` and `web restart` exit 1 saying they couldn't tell, and
   their `--json` answers `ok: false` with `stopped: false` (and `running:
 null` when the server doesn't answer either). Run them again.
@@ -4677,6 +4678,20 @@ process Den couldn't place. The audit row names both pids: the caller's
 agents:
   token_peer_wait_ms: 30000 # ms, 0 to 600000
 ```
+
+Den finds an agent's caller with the same lookups, so their limits
+(Settings › Server, `config process_lookup.*`) count here too:
+
+```yaml
+process_lookup:
+  first_seconds: 5 # the first try, 0.5 to 600
+  retry_seconds: 20 # the try after it ran out of time, 1 to 600
+```
+
+An attention mark Den never took (no answer, or a refusal) is written to
+the agent's own files folder (`agent-hooks-lost.jsonl`), and `doctor`
+shows a warning per agent with marks lost in the last day: how many, and
+the last reason.
 
 An agent's token reaches only its own session's routes, and never a
 shell-grade route, `/api/web/*`, sign-in or sign-out, or the admin

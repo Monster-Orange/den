@@ -1891,6 +1891,33 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
   },
   {
+    // Issue 609: how long Den's process lookups wait (user.yml process_lookup.*).
+    id: "server.lookup_first",
+    category: "server",
+    label: "Process lookup wait",
+    description:
+      "How long __DEN_TITLE__ waits on its first try when it asks the system which process holds a connection (lsof, ps). An agent's own calls are placed this way. __DEN_CLI__ config process_lookup.first_seconds=5",
+    keywords: ["timeout", "lookup", "lsof", "process", "agent"],
+    scope: "user",
+    keys: ["process_lookup.first_seconds"],
+    control: { type: "number", min: 0.5, max: 600, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.process_lookup?.first_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ process_lookup: { first_seconds: v } }),
+  },
+  {
+    id: "server.lookup_retry",
+    category: "server",
+    label: "Process lookup retry wait",
+    description:
+      "How long the second try waits when the first ran out of time. A busy machine can be slow to answer. __DEN_CLI__ config process_lookup.retry_seconds=20",
+    keywords: ["timeout", "lookup", "retry", "process"],
+    scope: "user",
+    keys: ["process_lookup.retry_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.process_lookup?.retry_seconds ?? 20,
+    write: (v, ctx) => ctx.post({ process_lookup: { retry_seconds: v } }),
+  },
+  {
     // Issue 455: the address check's limits (user.yml web.address_check_*).
     id: "server.address_check_timeout",
     category: "server",

@@ -1,8 +1,9 @@
 /**
  * Issue 609: an attention mark Den never took leaves a trace. The hook
- * writes one line to the state folder's agent-hooks-lost.jsonl (the agent,
- * the event, the reason); `doctor` shows a row per agent with marks lost
- * in the last day: how many, and the last reason. In en, es and ja.
+ * writes one line to the agent's own files dir (agent-hooks-lost.jsonl:
+ * the agent, the event, the reason); `doctor` reads every agent's and
+ * shows a row per agent with marks lost in the last day: how many, and
+ * the last reason. In en, es and ja.
  * Temp dirs and a fake fetch; no real runtime runs.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -13,6 +14,7 @@ import { sendAttention } from "../../../src/shared/agents/guardrails/attention-h
 import {
   LOST_FILE,
   LOST_WORDS,
+  lostFiles,
   lostMarkLines,
   recordLost,
 } from "../../../src/shared/agents/guardrails/lost-marks.js";
@@ -154,6 +156,27 @@ describe("issue 609: a lost mark leaves a trace", () => {
     ).toEqual({ lines: [], checks: [] });
   });
 
+  it("doctor finds every agent's file under the state dir", () => {
+    const state = path.join(root, "state-scan");
+    for (const id of ["a1", "a2", "a3"])
+      fs.mkdirSync(path.join(state, "agent-files", id), { recursive: true });
+    for (const id of ["a1", "a3"])
+      recordLost(path.join(state, "agent-files", id, LOST_FILE), {
+        agent: id,
+        event: "waiting",
+        reason: "no answer",
+      });
+    expect(
+      lostFiles(state)
+        .map((f) => path.basename(path.dirname(f)))
+        .sort(),
+    ).toEqual(["a1", "a3"]);
+    expect(lostFiles(path.join(root, "no-state"))).toEqual([]);
+    expect(
+      lostMarkLines(lostFiles(state), { lang: "en", title: "Den" }).checks,
+    ).toHaveLength(2);
+  });
+
   it("es and ja have every en line, with the same placeholders", () => {
     const ph = (s: string) =>
       [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
@@ -190,7 +213,9 @@ describe("issue 609: a lost mark leaves a trace", () => {
       out.files![path.join(inp.filesDir, "settings.json")],
     ) as { hooks: Record<string, { hooks: { command: string }[] }[]> };
     const cmd = hooks.Notification[0].hooks[0].command;
-    expect(cmd).toContain(`--lost ${path.join(root, "state", LOST_FILE)}`);
+    expect(cmd).toContain(
+      `--lost ${path.join(root, "files", persona.id, LOST_FILE)}`,
+    );
     expect(cmd).toContain(`--agent ${persona.id}`);
   });
 });

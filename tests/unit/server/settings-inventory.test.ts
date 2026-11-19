@@ -85,6 +85,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // How long can't-tell keeps it proven (web.address_unknown_keep_seconds).
     unknown_keep_seconds: true,
   },
+  // Issue 609: how long Den's process lookups wait.
+  process_lookup: { first_seconds: true, retry_seconds: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -218,6 +220,9 @@ describe("the settings inventory (R21)", () => {
         "address_check.cache_seconds",
         "address_check.drop_after",
         "address_check.unknown_keep_seconds",
+        // Issue 609: how long Den's process lookups wait.
+        "process_lookup.first_seconds",
+        "process_lookup.retry_seconds",
       ].sort(),
     );
   });
