@@ -1305,6 +1305,27 @@
         "tests/unit/server/i18n-pages.browser.test.ts"
       ],
       "why": "tests that run scripts/words.js"
+    },
+    {
+      "when": [
+        "gate/142.mjs",
+        "gate/448.mjs",
+        "gate/455.mjs",
+        "gate/503.mjs",
+        "gate/536.mjs",
+        "gate/563.mjs",
+        "gate/573.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-448-clauses.test.ts",
+        "tests/unit/test-infra/gate-455-runner.test.ts",
+        "tests/unit/test-infra/gate-503-runner.test.ts",
+        "tests/unit/test-infra/gate-536-runner.test.ts",
+        "tests/unit/test-infra/gate-563-runner.test.ts",
+        "tests/unit/test-infra/gate-573-runner.test.ts"
+      ],
+      "why": "a live check's module runs in its own runner test (a gate change once reached main with its runner test red, unselected)"
     }
   ]
 }
