@@ -33,6 +33,11 @@
  *                                    the filled-in new-issue link
  *   GET    /api/report/github-send/<id>  that flow, for the page's poll
  *
+ * Issue 565: an agent's report is the held write `report` (report-held.ts,
+ * from MCP `report` and `<cli> report`): it composes, reads the targets
+ * and files through compose, reportTargets and fileReport here, the
+ * browser's own path.
+ *
  * `gh` runs through `deps.gh` (tests pass a fake: never the real one).
  */
 import * as http from "http";
@@ -46,7 +51,7 @@ import {
   type ReportKind,
 } from "../../shared/feedback.js";
 import type { Decision, FlowView } from "./device-flows.js";
-import { repoVisibilities } from "./report-visibility.js";
+import { repoVisibilities, type RepoVisibility } from "./report-visibility.js";
 import {
   draftStore,
   sentLog,
@@ -82,6 +87,18 @@ export interface ReportRouteDeps {
     ): Promise<FlowView | { error: "busy" | "no_client_id" }>;
     get(id: string, purpose: "report"): FlowView | null;
   };
+  /**
+   * Issue 565: the activity trail's line for a filed report: who filed it
+   * (`by`: an agent's held write; else the request's own credential, the
+   * person in the browser or at the command line) and where it went.
+   */
+  audit?: (e: {
+    by?: string;
+    req?: http.IncomingMessage;
+    repo: string;
+    url: string;
+    added: boolean;
+  }) => void;
   /** An open issue with this title, read without a token (F5), or null. */
   searchOpen?: (
     repo: string,
@@ -186,7 +203,7 @@ const DRAFT_PATH = /^\/api\/report\/drafts\/([a-f0-9]{16})$/;
 const KINDS: readonly ReportKind[] = ["bug", "idea", "question"];
 
 /** What the client sends for a preview or a send. */
-interface Draftish {
+export interface Draftish {
   kind?: unknown;
   title?: unknown;
   description?: unknown;
@@ -226,8 +243,8 @@ export function newIssueUrl(repo: string, title: string, body: string): string {
   return `https://github.com/${repo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(cut)}`;
 }
 
-/** The exact title and body that would be posted. */
-async function compose(
+/** The exact title and body that would be posted (issue 565: the CLI's and agents' too). */
+export async function compose(
   b: Draftish,
   d: ReportRouteDeps,
 ): Promise<
@@ -257,7 +274,7 @@ async function compose(
 }
 
 /** Whether `gh` is signed in to GitHub (`gh auth status`). */
-async function ghSignedIn(d: ReportRouteDeps): Promise<boolean> {
+export async function ghSignedIn(d: ReportRouteDeps): Promise<boolean> {
   try {
     return (
       (await d.gh(["auth", "status", "--hostname", "github.com"])).code === 0
@@ -341,7 +358,7 @@ async function hasLabel(
 }
 
 /** An open issue on `repo` with exactly this title, if there is one. */
-async function sameTitle(
+export async function sameTitle(
   d: ReportRouteDeps,
   repo: string,
   title: string,
@@ -372,6 +389,146 @@ async function sameTitle(
   } catch {
     return null;
   }
+}
+
+/**
+ * The destinations and who can see each (issue 415), as the form shows
+ * them. Issue 565: the CLI's and agents' list too (GET /api/report and
+ * the held `report` read this one).
+ */
+export async function reportTargets(
+  d: ReportRouteDeps,
+  now: () => number = d.now ?? Date.now,
+): Promise<{
+  signedIn: boolean;
+  repos: { repo: string; visibility: RepoVisibility }[];
+}> {
+  const s = d.settings();
+  const signedIn = await ghSignedIn(d);
+  // Read with the person's `gh` (none signed in: no access, so no
+  // lookup). Unknown reads as public; the wait is short and bounded.
+  const vis = signedIn
+    ? await repoVisibilities(d.stateDir(), s.repos, {
+        gh: (a) => d.gh(a),
+        ttlMs: s.visibilityCacheHours * 3_600_000,
+        timeoutMs: s.visibilityTimeoutSeconds * 1000,
+        retryMs: s.visibilityRetrySeconds * 1000,
+        now,
+      })
+    : {};
+  return {
+    signedIn,
+    repos: s.repos.map((repo) => ({
+      repo,
+      visibility: vis[repo] ?? "public",
+    })),
+  };
+}
+
+/** A composed report (compose's answer). */
+export type Composed = {
+  title: string;
+  body: string;
+  repo: string;
+  label: string;
+};
+
+/**
+ * Files a composed report as the person, with their `gh`: the hour's limit
+ * (F7), the GitHub sign-in (F4), the same title open (F5, unless `addTo`
+ * or `fileNew`), then a new issue or a comment. Issue 565: the browser's
+ * send and an agent's allowed `report` both file here.
+ */
+export async function fileReport(
+  d: ReportRouteDeps,
+  c: Composed,
+  o: {
+    who: string;
+    addTo: number | null;
+    fileNew: boolean;
+    draftId?: string;
+    by?: string;
+    req?: http.IncomingMessage;
+  },
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const now = d.now ?? Date.now;
+  const s = d.settings();
+  const log = sentLog(d.stateDir());
+  if (log.recent(o.who, now()) >= s.maxPerHour)
+    return {
+      status: 429,
+      body: {
+        ok: false,
+        limit: s.maxPerHour,
+        nextAt: new Date(log.nextAt(o.who, now())).toISOString(),
+        error: `at most ${s.maxPerHour} reports an hour`,
+      },
+    };
+  if (!(await ghSignedIn(d)))
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        need: "github",
+        error: "sending needs a GitHub sign-in: nothing was sent",
+        deviceFlow: !!d.flows,
+        newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
+      },
+    };
+  const addTo = o.addTo;
+  if (addTo === null && !o.fileNew) {
+    const dup = await sameTitle(d, c.repo, c.title);
+    if (dup) return { status: 409, body: { ok: false, duplicate: dup } };
+  }
+  const r =
+    addTo !== null
+      ? await d.gh(
+          ["issue", "comment", String(addTo), "-R", c.repo, "--body-file", "-"],
+          c.body,
+        )
+      : await d.gh(
+          [
+            "issue",
+            "create",
+            "-R",
+            c.repo,
+            "--title",
+            c.title,
+            ...((await hasLabel(d, c.repo, c.label))
+              ? ["--label", c.label]
+              : []),
+            "--body-file",
+            "-",
+          ],
+          c.body,
+        );
+  if (r.code !== 0)
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
+        newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
+      },
+    };
+  log.add(o.who, now());
+  if (o.draftId) draftStore(d.stateDir()).remove(o.draftId);
+  const url = r.stdout.trim().split("\n").pop() ?? "";
+  try {
+    d.audit?.({
+      ...(o.by ? { by: o.by } : {}),
+      ...(o.req ? { req: o.req } : {}),
+      repo: c.repo,
+      url,
+      added: addTo !== null,
+    });
+  } catch {
+    /* the trail is best effort: the issue is filed */
+  }
+  return {
+    status: 200,
+    body: { ok: true, url, repo: c.repo, added: addTo !== null },
+  };
 }
 
 export function handleReportRoutes(
@@ -406,26 +563,13 @@ export function handleReportRoutes(
     return run(async () => {
       const s = d.settings();
       const who = d.personOf(req);
-      const signedIn = await ghSignedIn(d);
       // Issue 415: each destination's visibility, so the form says who can
-      // see it, read with the person's `gh` (none signed in: no access, so
-      // no lookup). Unknown reads as public; the wait is short and bounded.
-      const vis = signedIn
-        ? await repoVisibilities(d.stateDir(), s.repos, {
-            gh: (a) => d.gh(a),
-            ttlMs: s.visibilityCacheHours * 3_600_000,
-            timeoutMs: s.visibilityTimeoutSeconds * 1000,
-            retryMs: s.visibilityRetrySeconds * 1000,
-            now,
-          })
-        : {};
+      // see it.
+      const { signedIn, repos } = await reportTargets(d, now);
       d.sendJson(res, {
         ok: true,
         enabled: s.enabled,
-        repos: s.repos.map((repo) => ({
-          repo,
-          visibility: vis[repo] ?? "public",
-        })),
+        repos,
         github: { signedIn, deviceFlow: !!d.flows },
         maxPerHour: s.maxPerHour,
         captureSeconds: s.captureSeconds,
@@ -464,82 +608,14 @@ export function handleReportRoutes(
       const c = await compose(b, d);
       if (typeof c === "string")
         return d.sendJson(res, { ok: false, error: c }, 400);
-      const s = d.settings();
-      const who = d.personOf(req);
-      const log = sentLog(d.stateDir());
-      if (log.recent(who, now()) >= s.maxPerHour)
-        return d.sendJson(
-          res,
-          {
-            ok: false,
-            limit: s.maxPerHour,
-            nextAt: new Date(log.nextAt(who, now())).toISOString(),
-            error: `at most ${s.maxPerHour} reports an hour`,
-          },
-          429,
-        );
-      if (!(await ghSignedIn(d)))
-        return d.sendJson(
-          res,
-          {
-            ok: false,
-            need: "github",
-            error: "sending needs a GitHub sign-in: nothing was sent",
-            deviceFlow: !!d.flows,
-            newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
-          },
-          409,
-        );
-      const addTo = Number.isInteger(b.addTo) ? (b.addTo as number) : null;
-      if (addTo === null && b.fileNew !== true) {
-        const dup = await sameTitle(d, c.repo, c.title);
-        if (dup) return d.sendJson(res, { ok: false, duplicate: dup }, 409);
-      }
-      const r =
-        addTo !== null
-          ? await d.gh(
-              [
-                "issue",
-                "comment",
-                String(addTo),
-                "-R",
-                c.repo,
-                "--body-file",
-                "-",
-              ],
-              c.body,
-            )
-          : await d.gh(
-              [
-                "issue",
-                "create",
-                "-R",
-                c.repo,
-                "--title",
-                c.title,
-                ...((await hasLabel(d, c.repo, c.label))
-                  ? ["--label", c.label]
-                  : []),
-                "--body-file",
-                "-",
-              ],
-              c.body,
-            );
-      if (r.code !== 0)
-        return d.sendJson(
-          res,
-          {
-            ok: false,
-            error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
-            newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
-          },
-          502,
-        );
-      log.add(who, now());
-      if (typeof b.draftId === "string")
-        draftStore(d.stateDir()).remove(b.draftId);
-      const url = r.stdout.trim().split("\n").pop() ?? "";
-      d.sendJson(res, { ok: true, url, repo: c.repo, added: addTo !== null });
+      const r = await fileReport(d, c, {
+        who: d.personOf(req),
+        addTo: Number.isInteger(b.addTo) ? (b.addTo as number) : null,
+        fileNew: b.fileNew === true,
+        ...(typeof b.draftId === "string" ? { draftId: b.draftId } : {}),
+        req,
+      });
+      d.sendJson(res, r.body, r.status);
     });
 
   if (pathname === "/api/report/github-send" && req.method === "POST")

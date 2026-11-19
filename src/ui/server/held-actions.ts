@@ -73,6 +73,9 @@
  *   pr_close          issue 160: close a stale or superseded pull request
  *                     after a Hub note, with a comment saying why (gh
  *                     pr close). Auto unless the repo is watched or pinned
+ *   report            issue 565: an agent's Report (report-held.ts), filed
+ *                     through the browser's own path. A public target is
+ *                     always the person's Allow; a private one, the policy
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -198,6 +201,8 @@ export interface HeldActionDeps {
   }) => Promise<unknown>;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  /** Issue 565: an agent's Report (report-held.ts reportHeld). */
+  report?: HeldAction;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -845,6 +850,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     approval_policy: approvalPolicy,
     pr_close: prClose,
     den_pin_commit: pinCommit,
+    report: d.report ?? {
+      check: () => ({ ok: false, error: "this Den can't file reports here" }),
+      run: async () => ({
+        ok: false,
+        error: "this Den can't file reports here",
+      }),
+    },
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
   };

@@ -140,6 +140,8 @@ const READ_ROUTES = new Set([
   "/api/onboard/manifest",
   // NT (MCP notifications_list): the bell, read as the agent sees it.
   "/api/notifications",
+  // Issue 565 (MCP report): Report's targets and their labels.
+  "/api/report",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */

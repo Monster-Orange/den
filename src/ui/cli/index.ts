@@ -565,6 +565,8 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
   feedback: FEEDBACK_HELP,
+  // Issue 565: the same command, as Report is named on every page.
+  report: FEEDBACK_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -622,6 +624,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "hub",
   "notifications",
   "feedback",
+  "report",
   "service",
   "theme",
   "plugin",
@@ -662,6 +665,7 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   // FB: Den's own report routes; a report matters most when the config is
   // what's wrong.
   "feedback",
+  "report",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1201,6 +1205,7 @@ class DenCLI {
           break;
 
         case "feedback":
+        case "report":
           process.exitCode = await cmdFeedback(args.slice(1));
           break;
 

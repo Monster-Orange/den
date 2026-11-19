@@ -64,8 +64,12 @@ Write it plainly. Explain every ID in it, as in a hand-back.
 ### Sending feedback about Den
 
 **Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
-the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
-person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. You use the
+same Report: the MCP tool `report` (no `title`: the targets and who can see each), or `den report --title <t>
+--description <text>` in a shell. Den takes secrets and names out, says you filed it, and files it on GitHub. To a
+public target your person sees exactly what will be posted and presses Allow first; to a private one the approval
+policy decides. `screenshot` (MCP) or `--screenshot` (shell) names an image to attach by hand after. Report off
+or unable to reach GitHub: use the fallback below (the answer gives a filled-in new-issue link).
 
 **Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
 Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo

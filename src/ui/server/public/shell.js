@@ -1966,6 +1966,16 @@
     "ap.do.approval_policy.project":
       "Change project {where}'s approval policy to {to}",
     "ap.do.pr_close": "Close pull request {pr} on {repo}: {comment}",
+    "ap.do.report": "File a report on {repo}: {title}",
+    "ap.det.report.to.public": "To: {repo} (Public repository)",
+    "ap.det.report.to.private": "To: {repo} (Private repository)",
+    "ap.det.report.to.internal": "To: {repo} (Internal repository)",
+    "ap.det.report.pubW": "Public repository. Screenshots and text are visible to everyone. Mask anything private.",
+    "ap.det.report.privN": "Only people with access to this repository can see it.",
+    "ap.det.report.addTo": "Adds a comment to issue {n}.",
+    "ap.det.report.title": "Title: {title}",
+    "ap.det.report.body": "Exactly what will be posted:",
+    "ap.det.report.shot": "Screenshot: {path}. Den doesn't scrub images: look at it first. GitHub's issue API takes no images, so it is attached by hand after.",
     "set.agents.default_mode": "Agents' mode: Den-wide default",
     "set.agents.default_mode.d":
       "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",

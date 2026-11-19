@@ -289,6 +289,7 @@ import {
   isLoopbackAddress,
   isLoopbackBind,
   localNet,
+  principalKindOf,
   principalOf,
   requestIsHttps,
   sessionRequestAllowed,
@@ -387,7 +388,9 @@ import {
   machineSection,
   publicSearchOpen,
   runGh,
+  type ReportRouteDeps,
 } from "./report-routes.js";
+import { reportHeld } from "./report-held.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -2517,6 +2520,66 @@ type ApprovalDeps = {
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
 };
 let approvals: ApprovalDeps | null = null;
+
+/**
+ * FB (den#81): Report's routes' deps. Issue 565: an agent's held `report`
+ * files through the same ones.
+ */
+function reportDeps(): ReportRouteDeps {
+  return {
+    settings: () =>
+      readFeedbackSettings(
+        getEngineRoot(),
+        path.join(getDistRoot(), product().configFile),
+        readUserConfig().feedback,
+      ),
+    stateDir: () => getStateDir(),
+    gh: runGh,
+    names: () => {
+      const w = readWebUrl();
+      let webHost: string | undefined;
+      try {
+        webHost = w ? new URL(w.url).hostname : undefined;
+      } catch {
+        webHost = undefined;
+      }
+      return {
+        home: os.homedir(),
+        hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
+        orgs: [product().name],
+      };
+    },
+    diagnostics: async () => ({
+      Den: `${product().cli} ${engineVersion() ?? "?"}`,
+      Machine: machineSection(),
+    }),
+    agentOf: (r) => {
+      const a = agentPrincipalOf(r) || auditActorOf(r);
+      return a ? String(a) : null;
+    },
+    personOf: () => "person",
+    // Issue 565: who filed it (an agent, or the person in the browser or
+    // at the command line) and where.
+    audit: ({ by, req: r, repo, url, added }) => {
+      const who =
+        by ??
+        `${(r && principalOf(r)) || "person"} (${r && principalKindOf(r) === "person" ? "command line" : "browser"})`;
+      recordAction(
+        r ? auditActorOf(r) : null,
+        {
+          verb: "report-file",
+          detail: `${who} ${added ? "added to" : "filed"} a report on ${repo}: ${url}`,
+        },
+        r ? principalOf(r) : by,
+      );
+    },
+    flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
+    searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+    readBody,
+    sendJson: (r, body, status) => sendJson(r, body, status),
+  };
+}
+
 /** The held writes and their queue, made on first use. */
 function approvalDeps(): ApprovalDeps {
   if (approvals) return approvals;
@@ -2842,6 +2905,8 @@ function approvalDeps(): ApprovalDeps {
     },
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    // Issue 565: an agent's Report, through the browser's own path.
+    report: reportHeld(reportDeps()),
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
@@ -4111,46 +4176,7 @@ async function handleRequest(
   )
     return;
   // FB (den#81): Report an issue, filed as the person with their `gh`.
-  if (
-    handleReportRoutes(req, res, pathname, {
-      settings: () =>
-        readFeedbackSettings(
-          getEngineRoot(),
-          path.join(getDistRoot(), product().configFile),
-          readUserConfig().feedback,
-        ),
-      stateDir: () => getStateDir(),
-      gh: runGh,
-      names: () => {
-        const w = readWebUrl();
-        let webHost: string | undefined;
-        try {
-          webHost = w ? new URL(w.url).hostname : undefined;
-        } catch {
-          webHost = undefined;
-        }
-        return {
-          home: os.homedir(),
-          hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
-          orgs: [product().name],
-        };
-      },
-      diagnostics: async () => ({
-        Den: `${product().cli} ${engineVersion() ?? "?"}`,
-        Machine: machineSection(),
-      }),
-      agentOf: (r) => {
-        const a = agentPrincipalOf(r) || auditActorOf(r);
-        return a ? String(a) : null;
-      },
-      personOf: () => "person",
-      flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
-      searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
-      readBody,
-      sendJson: (r, body, status) => sendJson(r, body, status),
-    })
-  )
-    return;
+  if (handleReportRoutes(req, res, pathname, reportDeps())) return;
 
   // The graph's modules (graph.js, panel.js, …) and vendored libraries (ELK).
   if (serveUiAsset(res, pathname, PUBLIC_DIR)) return;

@@ -10,8 +10,11 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   cmdFeedback,
+  cmdReport,
+  TARGET_WORDS,
   type FeedbackIo,
 } from "../../../src/ui/cli/feedback-command.js";
+import { en as kitEn } from "../../../packages/den-ui/src/strings.js";
 
 interface Call {
   method: string;
@@ -26,6 +29,8 @@ function fake(
     env?: Record<string, string>;
     send?: [number, Record<string, unknown>][];
     info?: [number, Record<string, unknown>];
+    /** Issue 565: what POST /api/approvals answers an agent's report. */
+    approval?: Record<string, unknown>;
   } = {},
 ) {
   const out: string[] = [];
@@ -74,6 +79,17 @@ function fake(
         ];
         return { status, data };
       }
+      if (path === "/api/approvals")
+        return {
+          status: 202,
+          data: {
+            ok: true,
+            id: "ap0123456789abcd",
+            state: "pending",
+            askedBecause: "critical",
+            ...(opts.approval ?? {}),
+          },
+        };
       return { status: 404, data: { ok: false } };
     },
   };
@@ -143,11 +159,107 @@ describe("FB: <cli> feedback", () => {
     expect(h.err()).toMatch(/--title/);
   });
 
-  it("an agent is refused, even with --yes: its reports stay drafts for a person", async () => {
+  it("issue 565: an agent's report is the held write `report`: it asks the person and never sends it itself", async () => {
     const f = fake({ env: { DEN_ACTOR_TOKEN: "x" }, tty: false });
-    expect(await cmdFeedback([...ARGS, "--yes"], f.io)).toBe(1);
-    expect(f.err()).toMatch(/only a person sends a report/);
-    expect(f.calls).toHaveLength(0);
+    expect(
+      await cmdFeedback(
+        [
+          ...ARGS,
+          "--yes",
+          "--repo",
+          "acme-eng/engine",
+          "--screenshot",
+          "/tmp/p.png",
+        ],
+        f.io,
+      ),
+    ).toBe(0);
+    expect(f.sent()).toHaveLength(0);
+    const asked = f.calls.filter((c) => c.path === "/api/approvals");
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.body).toEqual({
+      action: "report",
+      args: {
+        kind: "bug",
+        title: "Pane drops",
+        description: "It drops.",
+        repo: "acme-eng/engine",
+        redact: true,
+        screenshot: "/tmp/p.png",
+      },
+    });
+    expect(f.out()).toMatch(/waits for the person's Allow/);
+    expect(f.out()).toContain("ap0123456789abcd");
+    // Allowed at once (a private target the policy runs): the link.
+    const g = fake({
+      env: { DEN_ACTOR_TOKEN: "x" },
+      tty: false,
+      approval: {
+        state: "done",
+        result: {
+          ok: true,
+          url: "https://github.com/acme-eng/engine/issues/42",
+        },
+      },
+    });
+    expect(await cmdFeedback(ARGS, g.io)).toBe(0);
+    expect(g.out()).toContain(
+      "✓ Filed: https://github.com/acme-eng/engine/issues/42",
+    );
+  });
+
+  it("issue 565: `report` and `feedback` are one command; --targets lists each target with its label", async () => {
+    const f = fake({
+      tty: false,
+      info: [
+        200,
+        {
+          ok: true,
+          repos: [
+            { repo: "acme-eng/engine", visibility: "public" },
+            { repo: "acme-dist/tracker", visibility: "private" },
+          ],
+        },
+      ],
+    });
+    expect(await cmdReport(["--targets"], f.io)).toBe(0);
+    expect(f.out()).toContain("acme-eng/engine  Public repository");
+    expect(f.out()).toContain("acme-dist/tracker  Private repository");
+    expect(f.sent()).toHaveLength(0);
+  });
+
+  it("issue 565: the preview carries the browser's label and its visible-to-everyone warning", async () => {
+    const f = fake({
+      tty: false,
+      info: [
+        200,
+        {
+          ok: true,
+          repos: [
+            { repo: "acme-eng/engine", visibility: "public" },
+            { repo: "acme-dist/tracker", visibility: "private" },
+          ],
+        },
+      ],
+    });
+    expect(await cmdFeedback([...ARGS, "--preview"], f.io)).toBe(0);
+    expect(f.out()).toContain(
+      "To: acme-eng/engine (Public repository. Screenshots and text are visible to everyone. Mask anything private.)",
+    );
+    const g = fake({
+      tty: false,
+      info: [
+        200,
+        {
+          ok: true,
+          repos: [{ repo: "acme-dist/tracker", visibility: "private" }],
+        },
+      ],
+    });
+    expect(await cmdFeedback([...ARGS, "--preview"], g.io)).toBe(0);
+    expect(g.out()).toContain(
+      "To: acme-dist/tracker (Private repository. Only people with access to this repository can see it.)",
+    );
   });
 
   it("--preview prints it and sends nothing", async () => {
@@ -262,5 +374,17 @@ describe("FB: <cli> feedback", () => {
     const r = fake();
     expect(await cmdFeedback([...ARGS, "--repo", "other/repo"], r.io)).toBe(2);
     expect(r.err()).toContain("acme-eng/engine");
+  });
+});
+
+describe("issue 565: the command line's labels are the browser's words", () => {
+  it("each label and warning is the UI kit's English, word for word", () => {
+    expect(TARGET_WORDS).toEqual({
+      public: kitEn["kit.report.pub"],
+      private: kitEn["kit.report.priv"],
+      internal: kitEn["kit.report.int"],
+      publicWarning: kitEn["kit.report.pubW"],
+      privateNote: kitEn["kit.report.privN"],
+    });
   });
 });

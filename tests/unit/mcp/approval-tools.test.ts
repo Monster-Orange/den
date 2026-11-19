@@ -750,3 +750,71 @@ describe("issue 160: pr_close", () => {
     expect(calls.filter((c) => c.path === "/api/approvals")).toEqual([]);
   });
 });
+
+describe("issue 565: report", () => {
+  it("files through the held write `report`: the form as the browser sends it, never a send route", async () => {
+    expect(toolsFor(cfg()).map((t) => t.name)).toContain("report");
+    const { api, calls } = fakeApi([
+      { state: "pending" },
+      {
+        state: "done",
+        result: {
+          ok: true,
+          url: "https://github.com/acme-eng/engine/issues/42",
+        },
+      },
+    ]);
+    const r = await callTool(
+      "report",
+      {
+        title: "Pane drops",
+        description: "It drops.",
+        kind: "bug",
+        repo: "acme-eng/engine",
+        screenshot: "/tmp/pane.png",
+        note: "seen twice today",
+      },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "report",
+      args: {
+        kind: "bug",
+        title: "Pane drops",
+        description: "It drops.",
+        repo: "acme-eng/engine",
+        screenshot: "/tmp/pane.png",
+      },
+      note: "seen twice today",
+    });
+    expect(r.text).toContain("https://github.com/acme-eng/engine/issues/42");
+    expect(calls.some((c) => c.path.startsWith("/api/report/"))).toBe(false);
+  });
+
+  it("with no title it lists the targets and their labels, as the browser's form has them", async () => {
+    const { api, calls } = fakeApi([]);
+    const repos = [
+      { repo: "acme-eng/engine", visibility: "public" },
+      { repo: "acme-dist/tracker", visibility: "private" },
+    ];
+    const get = api.get.bind(api);
+    api.get = async (path, query, method, body, headers) => {
+      if (path !== "/api/report")
+        return get(path, query, method, body, headers);
+      calls.push({ path, query, method, body });
+      return { ok: true, enabled: true, repos };
+    };
+    const r = await callTool("report", {}, ctx(api, true));
+    expect(r.isError).toBe(false);
+    expect(JSON.parse(r.text)).toMatchObject({ repos });
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+
+  it("its description says it is Den's Report, with GitHub issues as the fallback", () => {
+    const t = toolsFor(cfg()).find((x) => x.name === "report")!;
+    expect(t.description).toMatch(/Report/);
+    expect(t.description).toMatch(/visible to everyone/);
+    expect(t.description).toMatch(/GitHub issue/);
+  });
+});

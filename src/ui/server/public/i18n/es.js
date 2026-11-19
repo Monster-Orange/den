@@ -1002,6 +1002,16 @@
     "ap.do.approval_policy.project":
       "Cambiar la política de aprobación del proyecto {where} a {to}",
     "ap.do.pr_close": "Cerrar la pull request {pr} de {repo}: {comment}",
+    "ap.do.report": "Enviar un informe a {repo}: {title}",
+    "ap.det.report.to.public": "Para: {repo} (Repositorio público)",
+    "ap.det.report.to.private": "Para: {repo} (Repositorio privado)",
+    "ap.det.report.to.internal": "Para: {repo} (Repositorio interno)",
+    "ap.det.report.pubW": "Repositorio público. Las capturas y el texto los ve todo el mundo. Tapa lo que sea privado.",
+    "ap.det.report.privN": "Solo lo ve quien tiene acceso a este repositorio.",
+    "ap.det.report.addTo": "Añade un comentario a la incidencia {n}.",
+    "ap.det.report.title": "Título: {title}",
+    "ap.det.report.body": "Exactamente lo que se publicará:",
+    "ap.det.report.shot": "Captura: {path}. Den no limpia imágenes: revísala antes. La API de incidencias de GitHub no acepta imágenes, así que se adjunta a mano después.",
     "set.agents.default_mode":
       "Modo de los agentes: valor por defecto de todo Den",
     "set.agents.default_mode.d":

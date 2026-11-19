@@ -187,6 +187,10 @@ export const HELD_WRITE_RISK: Readonly<
     kind: "ask",
     why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it",
   },
+  report: {
+    risk: "widens",
+    why: "files a report on GitHub (issue 565): to a public target, visible to everyone, always the person's Allow; to a private one, the policy",
+  },
   pr_close: {
     risk: "routine",
     kind: "auto",
