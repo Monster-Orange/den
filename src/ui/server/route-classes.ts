@@ -174,6 +174,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/report/drafts",
     "/api/report/drafts/:id",
     "/api/report/github-send/:id",
+    // Issue 403: where a report's screenshot goes (Hub's answer, a read),
+    // and a kept one (the person or this install's own agent only).
+    "/api/report/shot-share",
+    "/api/report/shots/:id",
     // My reports: live from GitHub as the person (an agent gets 403).
     "/api/report/mine",
     "/api/themes",
@@ -947,6 +951,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "embed-routes.ts:STATE_PATH": ["/api/embed/p/:project/agents/:id/state"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
+  "report-routes.ts:SHOT_PATH": ["/api/report/shots/:id"],
   "agent-routes.ts:AGENTS_PATH": [
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",
