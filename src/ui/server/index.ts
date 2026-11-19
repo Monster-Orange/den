@@ -930,6 +930,52 @@ const STATIC_EXTS = new Set([
 ]);
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
+/** A message's first line: a parser's code frame quotes the file. */
+function firstLine(m: string): string {
+  return String(m).split("\n")[0].replace(/:\s*$/, "");
+}
+
+/**
+ * Where `p` really is, when it is a project repo's checkout or inside one,
+ * both as written and after resolving every symlink; else null.
+ */
+function manifestPathInRepo(p: string): string | null {
+  if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
+  let roots: string[];
+  try {
+    roots = allWorkspaceCheckouts()
+      .map((c) => c.repoPath)
+      .filter((r): r is string => !!r && path.isAbsolute(r));
+  } catch {
+    return null;
+  }
+  const within = (x: string, rs: string[]) =>
+    rs.some(
+      (r) => x === r || x.startsWith(r.endsWith(path.sep) ? r : r + path.sep),
+    );
+  if (
+    !within(
+      path.resolve(p),
+      roots.map((r) => path.resolve(r)),
+    )
+  )
+    return null;
+  let real: string;
+  try {
+    real = fs.realpathSync(p);
+  } catch {
+    return null;
+  }
+  const realRoots = roots.flatMap((r) => {
+    try {
+      return [fs.realpathSync(r)];
+    } catch {
+      return [];
+    }
+  });
+  return within(real, realRoots) ? real : null;
+}
+
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
   return Object.entries(readWorkspacesFile().workspaces).flatMap(
@@ -1015,7 +1061,10 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readMethodOnly,
   sendJson,
+  sendMethodNotAllowed,
+  SERVED_METHODS,
   serveFile,
   serveUntrustedFile,
   UNTRUSTED_FILE_HEADERS,
@@ -3272,6 +3321,90 @@ function installedServiceMode(): "login" | "always" | null {
   }
 }
 
+/**
+ * MODE-5: the Settings rows that were the command line's, as GET
+ * /api/settings shows them. A save answers them too, so the page redraws
+ * a saved row with its new value, not the old one (issue 424).
+ */
+function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
+  return {
+    log_window_lines: user.log_window_lines ?? 20_000,
+    local_dev: user.local_dev !== false,
+    cli_tabs: user.cli_tabs === true,
+    // den#85: the crash-loop guard's settings (web.crash_loop_*).
+    crash_loop: crashLoopSettings(user.web),
+    // 0.4.48: Den on the Docker bridge for the edge (Linux).
+    web_bridge: (() => {
+      const w = (user.web ?? {}) as Record<string, unknown>;
+      return {
+        listen: w.bridge_listen === "off" ? "off" : "auto",
+        probeSeconds:
+          typeof w.bridge_probe_seconds === "number"
+            ? w.bridge_probe_seconds
+            : 10,
+      };
+    })(),
+    // den#143: how long `web up` waits for the server.
+    web_ready: (() => {
+      try {
+        const c = readWebAuthConfig(getDistRoot(), product().configFile);
+        return {
+          probeSeconds: c.readyProbeSeconds,
+          startSeconds: c.startWaitSeconds,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+    agent_context: (() => {
+      const c = contextWatchSettings(user.agent_context);
+      return {
+        compaction_loop_count: c.loopCount,
+        compaction_loop_minutes: c.loopMinutes,
+        pause_after_loop: c.pause,
+        instruction_share_percent: c.sharePercent,
+        context_tokens: c.contextTokens,
+      };
+    })(),
+    // den#156: the Agents list's waits (agents_list.*).
+    agents_list: (() => {
+      try {
+        return agentsListWaits(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 415: how long Report keeps, and waits for, a repo's
+    // visibility (feedback.*), their defaults when unset.
+    feedback: (() => {
+      const f = feedbackSettings(null, {}, user.feedback);
+      return {
+        visibility_cache_hours: f.visibilityCacheHours,
+        visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+        visibility_retry_seconds: f.visibilityRetrySeconds,
+      };
+    })(),
+    // Issue 455: the address check's limits (web.address_check_*).
+    address_check: (() => {
+      const a = addressCheckSettings(() => user);
+      return {
+        timeout_seconds: a.timeoutMs / 1000,
+        retries: a.retries,
+        cache_seconds: a.cacheMs / 1000,
+      };
+    })(),
+    // 0.4.46: how a terminal pane reconnects on its own (panes.*).
+    panes_reconnect: (() => {
+      try {
+        return panesReconnect(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+  };
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -3325,6 +3458,11 @@ async function handleRequest(
       });
     }
   }
+
+  // Only the six methods Den serves reach the checks and the routes; any
+  // other (OPTIONS included: Den serves no cross-origin requests) is 405.
+  if (!SERVED_METHODS.has((req.method ?? "GET").toUpperCase()))
+    return sendMethodNotAllowed(res);
 
   // ── Request checks (SEC-1a): Host, credential, Origin, CSRF ────────────────
   // Before any route, and before a refused request can clear a cache.
@@ -4789,6 +4927,7 @@ async function handleRequest(
 
   // ── API: service exec (SSE) — catalog-aware ────────────────────────────────
   if (pathname === "/api/service/exec") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const cmdName = url.searchParams.get("cmd");
@@ -5091,6 +5230,7 @@ async function handleRequest(
 
   // ── API: service logs (SSE) ───────────────────────────────────────────────
   if (pathname === "/api/service/logs") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5321,6 +5461,7 @@ async function handleRequest(
   // — see log-history.ts). env=local only in v1; other envs return
   // { unsupported: true } so the client renders a friendly notice.
   if (pathname === "/api/service/history") {
+    if (!readMethodOnly(req, res)) return;
     // This handler sits ABOVE the blanket /api/service* local-dev guard
     // (later in this function), so it must enforce the guard itself.
     if (!isLocalEnabled()) {
@@ -5374,6 +5515,7 @@ async function handleRequest(
   // Greps the FULL history of each requested system (targets = the /logs
   // toolbar's list, computed client-side so scoping lives in one place).
   if (pathname === "/api/logs/search") {
+    if (!readMethodOnly(req, res)) return;
     // /api/logs is not covered by the downstream /api/service* local-dev
     // guard — enforce it here.
     if (!isLocalEnabled()) {
@@ -5409,6 +5551,7 @@ async function handleRequest(
   }
 
   if (pathname === "/api/service/taillog") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     if (!repoName || !svcName)
@@ -5624,6 +5767,7 @@ async function handleRequest(
 
   // ── API: run tests (SSE) ───────────────────────────────────────────────────
   if (pathname === "/api/run") {
+    if (!readMethodOnly(req, res)) return;
     const pillar = url.searchParams.get("pillar") as Pillar | null;
     const modules = url.searchParams.getAll("module").filter(Boolean);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5882,6 +6026,7 @@ async function handleRequest(
 
   // ── API: AWS re-authenticate (SSE) ───────────────────────────────────────
   if (pathname === "/api/aws/login") {
+    if (!readMethodOnly(req, res)) return;
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const profiles = loadAwsProfiles();
     const profile = profiles[env];
@@ -6510,36 +6655,70 @@ async function handleRequest(
         return send400(res, `Invalid request: ${(e as Error).message}`);
       }
     }
-    if (req.method === "GET") {
+    if (req.method === "GET" || req.method === "HEAD") {
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
+      // Only inside a project's repo: the path as written and, after every
+      // symlink, where it really is. Any other path is refused the same way,
+      // there or not.
+      const real = manifestPathInRepo(filePath);
+      if (!real)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            code: "outside_repos",
+            error:
+              "Validate reads only a repo folder (or a file in one) of a project here.",
+          },
+          403,
+        );
+      // Errors name the file's line and column, never its text.
+      const plain = (r: ReturnType<typeof validateManifest>) => ({
+        ...r,
+        errors: r.errors.map((e) => ({ ...e, message: firstLine(e.message) })),
+        warnings: r.warnings.map((w) => ({
+          ...w,
+          message: firstLine(w.message),
+        })),
+      });
       try {
-        const isDir =
-          fs.existsSync(filePath) && fs.lstatSync(filePath).isDirectory();
+        const isDir = fs.statSync(real).isDirectory();
         // A repo folder: every layer that applies (repo or held, override,
         // merged), flattened into the usual shape; each error names its file.
         if (isDir) {
-          const layered = validateManifestLayers(filePath);
+          const layered = validateManifestLayers(real);
           if (layered.layers.length > 0)
             return sendJson(res, {
               valid: layered.valid,
               version: layered.layers[0].result.version,
-              errors: layered.layers.flatMap((l) => l.result.errors),
-              warnings: layered.layers.flatMap((l) => l.result.warnings),
-              manifestLayers: loadManifest(filePath).layers,
-              layers: layered.layers,
+              errors: layered.layers.flatMap((l) => plain(l.result).errors),
+              warnings: layered.layers.flatMap((l) => plain(l.result).warnings),
+              manifestLayers: loadManifest(real).layers,
+              layers: layered.layers.map((l) => ({
+                ...l,
+                result: plain(l.result),
+              })),
             });
         }
         const denYml = isDir
-          ? path.join(filePath, `${product().manifestYml}`)
-          : filePath;
+          ? path.join(real, `${product().manifestYml}`)
+          : real;
         const content = fs.readFileSync(denYml, "utf-8");
-        return sendJson(res, validateManifest(content));
+        return sendJson(res, plain(validateManifest(content)));
       } catch (e) {
         return sendJson(res, {
           valid: false,
           version: 1,
-          errors: [{ path: "", message: (e as Error).message }],
+          errors: [
+            {
+              path: "",
+              message:
+                (e as NodeJS.ErrnoException).code === "ENOENT"
+                  ? "No manifest there."
+                  : "The manifest couldn't be read.",
+            },
+          ],
           warnings: [],
         });
       }
@@ -6806,7 +6985,8 @@ async function handleRequest(
         terminals: terminalList,
         editor_overrides: user.editor_overrides ?? {},
         languages: SUPPORTED_LANGUAGES,
-        log_window_lines: user.log_window_lines ?? 20_000,
+        // MODE-5: the rows that were the command line's (a save answers them too).
+        ...cliRowSettings(user),
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell),
@@ -6820,8 +7000,6 @@ async function handleRequest(
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
         user_web_port: userWebPort(user as Record<string, unknown>),
-        local_dev: user.local_dev !== false,
-        cli_tabs: user.cli_tabs === true,
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
@@ -6848,33 +7026,8 @@ async function handleRequest(
             return true;
           }
         })(),
-        // den#85: the crash-loop guard's settings (web.crash_loop_*).
-        crash_loop: crashLoopSettings(user.web),
         // Issue 144: the machine's gate slots, not this install's.
         gate_slots: gates().settings(),
-        // 0.4.48: Den on the Docker bridge for the edge (Linux).
-        web_bridge: (() => {
-          const w = (user.web ?? {}) as Record<string, unknown>;
-          return {
-            listen: w.bridge_listen === "off" ? "off" : "auto",
-            probeSeconds:
-              typeof w.bridge_probe_seconds === "number"
-                ? w.bridge_probe_seconds
-                : 10,
-          };
-        })(),
-        // den#143: how long `web up` waits for the server.
-        web_ready: (() => {
-          try {
-            const c = readWebAuthConfig(getDistRoot(), product().configFile);
-            return {
-              probeSeconds: c.readyProbeSeconds,
-              startSeconds: c.startWaitSeconds,
-            };
-          } catch {
-            return null;
-          }
-        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6900,54 +7053,8 @@ async function handleRequest(
         agent_signin: await agentSigninView(),
         // Issue 339: the sign-in accounts per vendor (never a token).
         agent_accounts: agentAccountsView(),
-        // Issue 278: agents stuck compacting; instruction size (agent_context.*).
-        agent_context: (() => {
-          const c = contextWatchSettings(user.agent_context);
-          return {
-            compaction_loop_count: c.loopCount,
-            compaction_loop_minutes: c.loopMinutes,
-            pause_after_loop: c.pause,
-            instruction_share_percent: c.sharePercent,
-            context_tokens: c.contextTokens,
-          };
-        })(),
-        // den#156: the Agents list's waits (agents_list.*).
-        agents_list: (() => {
-          try {
-            return agentsListWaits(() => user);
-          } catch {
-            return null;
-          }
-        })(),
-        // Issue 415: how long Report keeps, and waits for, a repo's
-        // visibility (feedback.*), their defaults when unset.
-        feedback: (() => {
-          const f = feedbackSettings(null, {}, user.feedback);
-          return {
-            visibility_cache_hours: f.visibilityCacheHours,
-            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
-            visibility_retry_seconds: f.visibilityRetrySeconds,
-          };
-        })(),
-        // Issue 455: the address check's limits (web.address_check_*).
-        address_check: (() => {
-          const a = addressCheckSettings(() => user);
-          return {
-            timeout_seconds: a.timeoutMs / 1000,
-            retries: a.retries,
-            cache_seconds: a.cacheMs / 1000,
-          };
-        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
-        // 0.4.46: how a terminal pane reconnects on its own (panes.*).
-        panes_reconnect: (() => {
-          try {
-            return panesReconnect(() => user);
-          } catch {
-            return null;
-          }
-        })(),
         // SEC-2a: the name the signed-out page gives this machine, and
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),
@@ -7246,6 +7353,9 @@ async function handleRequest(
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
+          ...cliRowSettings(user),
+          // Issue 144: the gate slots, as GET shows them (issue 424).
+          gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals),
