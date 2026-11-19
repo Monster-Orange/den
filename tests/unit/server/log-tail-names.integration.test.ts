@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
+import { denAuth } from "./helpers/den-auth.js";
 import {
   removeFrameTmp,
   startFrameServer,
@@ -43,7 +44,11 @@ function get(
   return new Promise((resolve, reject) => {
     const req = http.get(
       `${s!.base}/api/service/taillog?${new URLSearchParams(query)}`,
-      { agent: false },
+      {
+        agent: false,
+        // 0.4.71: a log route runs a command: the CLI's token.
+        headers: denAuth(path.join(s!.tmp, "den-home")),
+      },
       (res) => {
         let body = "";
         const done = () => {

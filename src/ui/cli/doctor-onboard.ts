@@ -53,6 +53,16 @@ export interface OnboardCheck {
   port?: number;
   /** A Settings link (a path with ?q=) where a person fixes it. */
   settings?: string;
+  /**
+   * Issue 563: the terminal host's own answer (its pid, start, Den version
+   * and loaded terminal module), on its doctor row.
+   */
+  host?: {
+    pid: number | null;
+    startedAt: string | null;
+    den: string | null;
+    pty: { path: string; version: string | null; id: string | null } | null;
+  };
 }
 
 /** Settings' row for this install's address (web.url), as a ?q= link. */

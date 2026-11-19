@@ -146,6 +146,15 @@ describe("the classes", () => {
       "/api/workspace/exec",
       "/api/workspace/sync",
       "/api/aws/login",
+      // 0.4.71: a GET that starts a process for its output.
+      "/api/service/logs",
+      "/api/service/taillog",
+      "/api/service/history",
+      "/api/logs/search",
+      // They run gh as the person (a private repo's name, the API quota).
+      "/api/github/branches",
+      "/api/github/repos",
+      "/api/report/mine",
     ]) {
       expect([p, routeClass("GET", p)]).toEqual([p, "mutating"]);
       expect([p, isMutatingGet("GET", p)]).toEqual([p, true]);
@@ -248,7 +257,6 @@ describe("the classes", () => {
       "/",
       "/api/health",
       "/api/health/stream",
-      "/api/service/logs",
       "/api/release/deploy",
       "/api/settings",
       "/api/release/config",
