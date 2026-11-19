@@ -474,6 +474,141 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
+## The panel fold toggle, its edge strip and the switch
+
+- `src/panel-fold.js`, `src/panel-fold.css` (exports `./panel-fold`,
+  `./panel-fold.css`): a side panel that folds away so the main column
+  reads clean (issues 548 and 549). The host keeps the state (shown or
+  folded, remembered or not) and lays its page out; the kit draws the two
+  controls and owns their words, keys and focus.
+
+      import { foldToggleHtml, edgeStripHtml, hydrateFoldToggle,
+        hydrateEdgeStrip } from "@monster-orange/den-ui/panel-fold";
+      // link panel-fold.css after tokens.css
+      bar.innerHTML = foldToggleHtml({ pressed: true, controls: "side", lang });
+      slot.innerHTML = edgeStripHtml({ count: 2, controls: "side", lang });
+      const fold = hydrateFoldToggle(bar.querySelector(".den-fold"), {
+        onToggle: (next) => layout(next ? "panel" : "folded"),
+      });
+      const strip = hydrateEdgeStrip(slot.querySelector(".den-strip"), {
+        onShow: () => { layout("panel"); fold.set(true); },
+      });
+      fold.set(kept === "panel");   // the host's own change: no call
+      strip.setCount(3);
+
+- **The toggle** is a `<button class="den-fold">` with an icon and the
+  kit's word ("Panel"), `aria-pressed` (pressed: the panel shows) and
+  `aria-controls` when given. A press (click, Enter, Space) moves
+  `aria-pressed` and calls `onToggle(next)`; focus stays on it. 32px tall;
+  44px on a phone or a touch screen.
+- **The strip** goes where the folded panel was: 40px wide, a
+  `role="complementary"` region named "Panel, hidden", a "Show panel" icon
+  button (32px, a 44×44px tap on a phone or a touch screen) and the count
+  under it (none at 0, 99+ past 99). The count is seen as a number and
+  heard as the kit's badge words: `what` is `"open"` (default),
+  `"waiting"`, `"down"` or `"running"`. Show panel calls `onShow()`; when
+  the host then hides the strip and leaves focus there, focus goes to the
+  fold toggle for the same panel (else to the panel, when it takes
+  focus). A focus the host moved itself is kept.
+- Hosts pass data, never words: a `label`, `title` or `aria-label` given to
+  either builder is not used. Words: `kit.fold.panel`, `kit.fold.show`,
+  `kit.fold.hidden` and `kit.badge.*`, in en, es and ja. Show or hide each
+  with the `hidden` attribute.
+- `src/switch.js`, `src/switch.css` (exports `./switch`, `./switch.css`):
+  a labelled on/off control (issue 551).
+
+      import { switchHtml, hydrateSwitch } from "@monster-orange/den-ui/switch";
+      row.innerHTML = switchHtml({ label: "Show notes in the text",
+        help: "Kept on this device.", on: true, disabled: false, id: "notes" });
+      const sw = hydrateSwitch(row.querySelector(".den-switch"), {
+        onChange: (on) => save(on),
+      });
+      sw.set(false); sw.setDisabled(true); sw.on(); sw.destroy();
+
+- `<label class="den-switch">` holds the label, the help under it, then an
+  `<input type="checkbox" role="switch">` named by the label alone
+  (`aria-labelledby`) and described by the help (`aria-describedby`). The
+  label and help are the host's own words, the name of its own setting,
+  as a page's name in the rail is; the switch adds no words of its own (a
+  screen reader says on and off). No label: nothing is drawn. No `id`: one
+  of the kit's (`den-sw-N`). A click on the row, Space or Enter calls
+  `onChange(on)`; disabled is out of the tab order and calls nothing.
+- The row is 44px tall. The track is `--accent-fill` on and
+  `--border-strong` off (`--border` when disabled); the knob is
+  `--surface` and slides over `--dur-fast`, not at all under reduced
+  motion. A transparent border shows the track in forced colours.
+- Under `style-src 'self'`: no inline styles, nothing injected.
+
+## A list's filter bar and bulk bar
+
+Two parts for a list of things (issues 552 and 553). Both are data-only:
+the host passes its facets, counts, choices, actions and callbacks; the
+kit draws the markup and owns every word, in en, es and ja. A facet's,
+an option's and an action's label are the host's own words, given as data
+(as a rail page's label is); the kit never takes a host's words for its
+own parts or names.
+
+- `src/filter-bar.js`, `src/filter-bar.css` (exports `./filter-bar`,
+  `./filter-bar.css`): one "Filters (n)" button that opens a panel of
+  facets, and what is chosen as chips under the row, each with ×, then
+  Clear all.
+
+      import { mountFilterBar } from "@monster-orange/den-ui/filter-bar";
+      // link filter-bar.css after tokens.css
+      const bar = mountFilterBar(el, {
+        id: "docs-filter",
+        facets: [{ id: "status", label: "Status",
+                   options: [{ value: "draft", label: "Draft", count: 2 }] }],
+        selected: { status: ["draft"] },
+        onChange: (selected, change) => applyFilter(selected),
+        start: findBox,              // the host's nodes before Filters
+        end: [sortButton, addButton],// and after it, in the same row
+      });
+      bar.update({ facets });        // new counts; focus stays put
+
+  `change` is `{ facet, value, on }` (an option or a chip),
+  `{ clear: facetId }` (a facet's Clear) or `{ clear: null }` (Clear
+  all). Each option shows its count; one with 0 can't be chosen unless it is chosen.
+  Filters is a disclosure (`aria-expanded`, `aria-controls`); the panel
+  is a group named "Filters", a group per facet, its options toggle
+  buttons (`aria-pressed`). Esc in the panel closes it, focus on Filters.
+  Removing a chip focuses the next chip, else the one before, else
+  Filters; Clear all focuses Filters; a facet's Clear its first option.
+  Under 720px the start node takes its own line and the chips scroll in
+  their own row; there, and on `(pointer: coarse)`, every control is
+  `--tap` (44px) tall. `filterBarHtml(data)` draws it in Node.
+
+- `src/bulk-bar.js`, `src/bulk-bar.css` (exports `./bulk-bar`,
+  `./bulk-bar.css`): "{n} selected", Clear, and the host's actions with
+  their counts ("Pause 3"), sticky at the bottom of the list.
+
+      import { mountBulkBar } from "@monster-orange/den-ui/bulk-bar";
+      const bulk = mountBulkBar(el, {
+        count: 3,
+        actions: [{ id: "pause", label: "Pause", count: 3 },
+                  { id: "move", label: "Move", count: 3, disabled: true }],
+        onAction: (id, button) =>      // a host's own dialog: the button
+          askConfirm({ title, message, opener: button }), // gets focus back
+        onClear: () => unselectAll(),
+        returnFocus: () => selectAllBox,
+      });
+      bulk.update({ count: 0 });       // hidden at 0
+
+  `el` becomes the bar,
+  `<div class="den-bulk" role="region" aria-label="3 selected">`; a
+  visually hidden polite region beside it says the count when it
+  changes and "Selection cleared" after Clear. A disabled action never
+  reaches the host. Clear hides the bar at once and focus goes to
+  `returnFocus`. It sticks 12px over the bottom of the scrolling list
+  (and over the safe area). Under 720px each action takes the bar's
+  width; there, and on a touch screen, every button is 44px tall.
+  `bulkBarHtml(data)` draws it in Node.
+
+- `DenUI.filterBar(el, opts)` and `DenUI.bulkBar(el, opts)` mount them
+  in the kit's language. Den serves the four files at `/kit/`.
+- The words are `kit.filter.*` and `kit.bulk.*` in `strings.js`. Both
+  work under `script-src 'self'; style-src 'self'`.
+
 ## The general button, the page action menu and the settings row
 
 Three pieces, data in, the kit's words out (en, es, ja).

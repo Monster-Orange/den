@@ -45,6 +45,12 @@
  *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
  *                               editor's save-state line (savestate.js),
  *                               in the kit's language
+ *   DenUI.filterBar(el, { facets, selected, onChange, start, end })
+ *                               a list's Filters button, chosen chips
+ *                               and facet panel (filter-bar.js)
+ *   DenUI.bulkBar(el, { count, actions, onAction, onClear })
+ *                               a list's bar while rows are selected
+ *                               (bulk-bar.js)
  *   DenUI.buttonHtml(o)         the general button (button.js, issue 556)
  *   DenUI.pageMenu(btn, { items, onSelect })   the page action menu on a
  *                               pageMenuButtonHtml button (issue 555)
@@ -105,6 +111,8 @@ import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy } from "./busy.js";
 import { createSaveState } from "./savestate.js";
+import { mountFilterBar } from "./filter-bar.js";
+import { mountBulkBar } from "./bulk-bar.js";
 import { buttonHtml } from "./button.js";
 import {
   hydrateSettingRow,
@@ -205,6 +213,16 @@ export const busy = {
 /** An autosaving editor's save-state line, in the kit's language. */
 export function saveState(el, opts = {}) {
   return createSaveState(el, { lang, ...opts });
+}
+
+/** A list's filter bar, in the kit's language. */
+export function filterBar(el, opts = {}) {
+  return mountFilterBar(el, { lang, ...opts });
+}
+
+/** A list's bulk bar, in the kit's language. */
+export function bulkBar(el, opts = {}) {
+  return mountBulkBar(el, { lang, ...opts });
 }
 
 /**
@@ -337,6 +355,8 @@ const DenUI = {
   report,
   busy,
   saveState,
+  filterBar,
+  bulkBar,
   buttonHtml,
   menuRowHtml,
   pageMenuButtonHtml,
