@@ -85,7 +85,7 @@ describe("gate/95.mjs as the bed runs it", () => {
     const r = runGate(den);
     expect(r.error).toBeUndefined();
     expect(r.rows?.[i].ok).toBe(false);
-    expect(oks(r)).toEqual(only(r, i).map((ok, j) => (j === i ? false : ok)));
+    expect(oks(r)).toEqual(allBut(i));
   });
 
   it("no engine named in the bed: the file clauses are not run, saying why", () => {
