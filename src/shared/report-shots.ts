@@ -48,7 +48,17 @@ export interface ShotRecord {
   /** owner/name the report was filed on. */
   repo: string;
   savedAt: string;
-  hub?: { id: string; sha256: string; expires: string; recipient: string };
+  /**
+   * Hub's record of it. `confirmed`: Hub's sha256 is the one of the bytes
+   * sent (false: Hub stored something else, or said so wrongly).
+   */
+  hub?: {
+    id: string;
+    sha256: string;
+    expires: string;
+    recipient: string;
+    confirmed: boolean;
+  };
 }
 
 const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
@@ -90,10 +100,19 @@ export function shotStore(stateDir: string) {
   return {
     dir,
     save(id: string, png: Buffer, repo: string, now = Date.now()): ShotRecord {
+      // The same report sent again with the same bytes keeps Hub's record.
+      const had = readRec(id);
+      let same = false;
+      try {
+        same = !!had?.hub && fs.readFileSync(fileOf(id, "png")).equals(png);
+      } catch {
+        same = false;
+      }
       const rec: ShotRecord = {
         id,
         repo,
         savedAt: new Date(now).toISOString(),
+        ...(same && had?.hub ? { hub: had.hub } : {}),
       };
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       writeFileAtomic(fileOf(id, "png"), png, { mode: 0o600 });

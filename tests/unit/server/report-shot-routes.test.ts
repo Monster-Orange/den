@@ -3,9 +3,11 @@
  *
  *   GET  /api/report/shot-share?repo=   Hub's preflight, for Review's line
  *   POST /api/report/send               with `shot` (the masked PNG) and
- *                                       `shareShot`: kept here always; sent
- *                                       to Hub first when ticked; filed
- *                                       anyway when Hub says no
+ *                                       `shareShot`: the issue is filed
+ *                                       first; then the PNG is kept here,
+ *                                       and when ticked sent to Hub, and
+ *                                       the issue's screenshot line updated.
+ *                                       Hub saying no never stops a filing
  *   GET  /api/report/shots/<id>         the kept PNG: the person or this
  *                                       install's server agent only
  *
@@ -21,6 +23,7 @@ import {
   expect,
   it,
 } from "@jest/globals";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
@@ -63,25 +66,43 @@ let hubBase = "";
 let connected = true;
 
 // ── Den's report routes, on a fake gh ───────────────────────────────────
+/** gh's exit code for filing (issue create or comment), and for the edit. */
+let ghFileCode = 0;
+let ghEditCode = 0;
 const ghCalls: { args: string[]; stdin?: string }[] = [];
 const gh = async (args: string[], stdin?: string): Promise<GhResult> => {
   ghCalls.push({ args, stdin });
   if (args[0] === "auth") return { code: 0, stdout: "", stderr: "" };
+  if (args[0] === "api" && args.includes("PATCH")) {
+    events.push("gh:patch");
+    return { code: ghEditCode, stdout: "{}", stderr: "" };
+  }
   if (args[0] === "api") return { code: 0, stdout: "{}", stderr: "" };
+  if (args[0] === "issue" && args[1] === "edit") {
+    events.push("gh:edit");
+    return { code: ghEditCode, stdout: "", stderr: "" };
+  }
   if (args[0] === "issue" && args[1] === "list")
     return { code: 0, stdout: "[]", stderr: "" };
   if (args[0] === "issue" && (args[1] === "create" || args[1] === "comment")) {
     events.push(`gh:${args[1]}`);
+    if (ghFileCode !== 0)
+      return { code: ghFileCode, stdout: "", stderr: "HTTP 403: refused" };
     return {
       code: 0,
-      stdout: "https://github.com/acme-eng/engine/issues/42\n",
+      stdout:
+        args[1] === "create"
+          ? "https://github.com/acme-eng/engine/issues/42\n"
+          : "https://github.com/acme-eng/engine/issues/7#issuecomment-77\n",
       stderr: "",
     };
   }
   return { code: 1, stdout: "", stderr: "unknown" };
 };
 
-const apiCalls: { path: string; body?: unknown }[] = [];
+const apiCalls: { method: string; path: string; body?: unknown }[] = [];
+/** What the GitHub App's create answers (201, or a refusal). */
+let appStatus = 201;
 const timers: (() => void)[] = [];
 const fakeClient: GithubDeviceClient = {
   start: async () => ({
@@ -97,13 +118,28 @@ const fakeClient: GithubDeviceClient = {
   }),
   user: async () => ({ id: 1, login: "pat" }),
   orgMember: async () => "unreadable",
-  api: async (_t, _method, p, body) => {
+  api: async (_t, method, p, body) => {
     if (/\/labels\//.test(p)) return { status: 200, body: {} };
-    apiCalls.push({ path: p, body });
-    events.push("app:create");
+    apiCalls.push({ method, path: p, body });
+    if (method === "PATCH") {
+      events.push("app:patch");
+      return { status: 200, body: {} };
+    }
+    const comment = /\/comments$/.test(p);
+    events.push(comment ? "app:comment" : "app:create");
+    if (appStatus !== 201) return { status: appStatus, body: {} };
     return {
       status: 201,
-      body: { html_url: "https://github.com/acme-eng/engine/issues/43" },
+      body: comment
+        ? {
+            id: 88,
+            html_url:
+              "https://github.com/acme-eng/engine/issues/7#issuecomment-88",
+          }
+        : {
+            number: 43,
+            html_url: "https://github.com/acme-eng/engine/issues/43",
+          },
     };
   },
 };
@@ -226,6 +262,9 @@ beforeEach(() => {
   ghCalls.length = 0;
   apiCalls.length = 0;
   connected = true;
+  ghFileCode = 0;
+  ghEditCode = 0;
+  appStatus = 201;
   preflightAnswer = [
     200,
     { share: true, recipient: "Acme maintainers", why: null },
@@ -235,7 +274,7 @@ beforeEach(() => {
     {
       id: "shot_7",
       tool: "hub_report_screenshot shot_7",
-      sha256: "cd".repeat(32),
+      sha256: PNG_SHA,
       expires: "2026-12-17T00:00:00.000Z",
       recipient: "Acme maintainers",
     },
@@ -257,11 +296,12 @@ const call = async (
   return { status: r.status, body: (await r.json()) as Record<string, any> };
 };
 
-/** A real 1×1 PNG. */
+/** A real 1×1 PNG, and its sha256 (what Hub answers it stored). */
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
   "base64",
 );
+const PNG_SHA = createHash("sha256").update(PNG).digest("hex");
 const SHOT = `data:image/png;base64,${PNG.toString("base64")}`;
 const FORM = {
   kind: "bug",
@@ -275,6 +315,22 @@ const FORM = {
 const filedBody = () =>
   ghCalls.find((c) => c.args[0] === "issue" && c.args[1] === "create")?.stdin ??
   "";
+/** The body the issue was updated to (`gh issue edit`), or "". */
+const editedBody = () =>
+  ghCalls.find((c) => c.args[0] === "issue" && c.args[1] === "edit")?.stdin ??
+  "";
+/** The local line, and Hub's: never a recipient, link or path. */
+const LOCAL_LINE = (id: string) =>
+  `Screenshot: kept on the reporting install; its agent can read it with report_screenshot(${id})`;
+const HUB_LINE = "Screenshot: hub_report_screenshot shot_7 (sent to Den Hub)";
+/** Approve the held GitHub App send: its flow polls and files it. */
+async function approve() {
+  for (let i = 0; i < 5 && !apiCalls.some((c) => c.method !== "GET"); i++) {
+    for (const fn of timers.splice(0)) fn();
+    await new Promise((ok) => setTimeout(ok, 30));
+  }
+  await new Promise((ok) => setTimeout(ok, 60));
+}
 
 /** Nothing in a filed body that points at the image. */
 function noPointer(body: string) {
@@ -324,7 +380,7 @@ describe("issue 403: Review's line (shot-share)", () => {
 });
 
 describe("issue 403: filing with a screenshot", () => {
-  it("ticked and connected: sent to Hub BEFORE the issue; the body names Hub's tool; a local copy is kept with Hub's record", async () => {
+  it("ticked and connected: the issue first, then Hub, then the line updated; no recipient in the issue; a local copy with Hub's record", async () => {
     const r = await call("POST", "/api/report/send", {
       ...FORM,
       draftId: "0123456789abcdef",
@@ -336,38 +392,110 @@ describe("issue 403: filing with a screenshot", () => {
       where: "hub",
       recipient: "Acme maintainers",
     });
-    expect(events).toEqual(["hub:upload", "gh:create"]);
+    expect(events).toEqual(["gh:create", "hub:upload", "gh:edit"]);
     const up = hubSeen[0]!;
     expect(up.url).toBe("/api/installs/self/reports/screenshots");
     expect(up.headers["x-den-report"]).toBe("0123456789abcdef");
     expect(up.headers["x-den-target"]).toBe("acme-eng/engine");
     expect(up.headers.authorization).toBe("Bearer install-token-never-shown");
     expect(up.body.equals(PNG)).toBe(true);
-    const body = filedBody();
-    expect(body).toContain(
-      "Screenshot: hub_report_screenshot shot_7 (Hub, Acme maintainers)",
-    );
-    noPointer(body);
+    // Filed with the line that was true then; updated once Hub had it.
+    expect(filedBody()).toContain(LOCAL_LINE("0123456789abcdef"));
+    const edit = ghCalls.find((c) => c.args[1] === "edit")!;
+    expect(edit.args).toEqual([
+      "issue",
+      "edit",
+      "42",
+      "-R",
+      "acme-eng/engine",
+      "--body-file",
+      "-",
+    ]);
+    expect(editedBody()).toContain(HUB_LINE);
+    expect(editedBody()).not.toContain("report_screenshot(");
+    for (const b of [filedBody(), editedBody()]) {
+      expect(b).not.toContain("Acme maintainers");
+      noPointer(b);
+    }
     const kept = shotStore(state).get("0123456789abcdef");
     expect(kept?.png.equals(PNG)).toBe(true);
     expect(kept?.record.hub).toEqual({
       id: "shot_7",
-      sha256: "cd".repeat(32),
+      sha256: PNG_SHA,
       expires: "2026-12-17T00:00:00.000Z",
       recipient: "Acme maintainers",
+      confirmed: true,
     });
+  });
+
+  it("adding to an existing issue: the comment first, then Hub, then the comment updated", async () => {
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      addTo: 7,
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(r.status).toBe(200);
+    expect(events).toEqual(["gh:comment", "hub:upload", "gh:patch"]);
+    const comment = ghCalls.find((c) => c.args[1] === "comment")!;
+    expect(r.body.shot).toMatchObject({ where: "hub" });
+    expect(comment.stdin).toMatch(
+      /Screenshot: kept on the reporting install; its agent can read it with report_screenshot\([a-f0-9]{16}\)/,
+    );
+    noPointer(comment.stdin ?? "");
+    const patch = ghCalls.find((c) => c.args.includes("PATCH"))!;
+    expect(patch.args).toEqual([
+      "api",
+      "-X",
+      "PATCH",
+      "repos/acme-eng/engine/issues/comments/77",
+      "--input",
+      "-",
+    ]);
+    const sent = JSON.parse(patch.stdin ?? "{}") as { body: string };
+    expect(sent.body).toContain(HUB_LINE);
+    expect(sent.body).not.toContain("Acme maintainers");
+    noPointer(sent.body);
+  });
+
+  it("the line's update fails: still filed, and Hub has it", async () => {
+    ghEditCode = 1;
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.shot).toMatchObject({ where: "hub" });
+    noPointer(filedBody());
+  });
+
+  it("GitHub refuses the filing: nothing to Hub, nothing kept, and the link carries no screenshot line", async () => {
+    ghFileCode = 1;
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      draftId: "0123456789abcdef",
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(r.status).toBe(502);
+    expect(hubSeen).toHaveLength(0);
+    expect(shotStore(state).get("0123456789abcdef")).toBeNull();
+    const link = new URL(r.body.newIssueUrl as string);
+    const linkBody = link.searchParams.get("body") ?? "";
+    expect(linkBody).not.toMatch(/Screenshot:/);
+    expect(linkBody).not.toMatch(/data:|reports[\\/]shots|\.png\b/i);
   });
 
   it.each([
     [403, { why: "off" }, "off"],
     [403, { why: "not-a-person" }, "not-a-person"],
-    [409, {}, "conflict"],
     [413, {}, "too-big"],
     [415, {}, "not-png"],
     [429, {}, "limit"],
     [500, {}, "unreachable"],
   ])(
-    "Hub answers %i: filed anyway, kept here, the body names the local tool (%s)",
+    "Hub answers %i: filed first, kept here, the line stays local (%s)",
     async (status, answer, why) => {
       hubAnswer = [status, answer];
       const r = await call("POST", "/api/report/send", {
@@ -379,14 +507,97 @@ describe("issue 403: filing with a screenshot", () => {
       expect(r.body.shot).toMatchObject({ where: "local", why });
       const id = r.body.shot.id as string;
       expect(id).toMatch(/^[a-f0-9]{16}$/);
-      const body = filedBody();
-      expect(body).toContain(
-        `Screenshot: kept on the reporting install; its agent can read it with report_screenshot(${id})`,
-      );
-      noPointer(body);
+      expect(events).toEqual(["gh:create", "hub:upload"]);
+      expect(filedBody()).toContain(LOCAL_LINE(id));
+      noPointer(filedBody());
       expect(shotStore(state).get(id)?.png.equals(PNG)).toBe(true);
     },
   );
+
+  it("a retry Hub answers 'conflict': Hub has it (its earlier record), never 'stayed local'", async () => {
+    await call("POST", "/api/report/send", {
+      ...FORM,
+      draftId: "0123456789abcdef",
+      shot: SHOT,
+      shareShot: true,
+    });
+    events.length = 0;
+    ghCalls.length = 0;
+    hubAnswer = [409, {}];
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      fileNew: true,
+      draftId: "0123456789abcdef",
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.shot).toEqual({
+      where: "hub",
+      recipient: "Acme maintainers",
+    });
+    expect(editedBody()).toContain(HUB_LINE);
+  });
+
+  it("'conflict' with no earlier record here: still Hub's, by the report id", async () => {
+    hubAnswer = [409, {}];
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      draftId: "0123456789abcdef",
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(r.body.shot).toMatchObject({ where: "hub" });
+    expect(r.body.shot.why).toBeUndefined();
+    expect(editedBody()).toContain(
+      "Screenshot: hub_report_screenshot for report 0123456789abcdef (sent to Den Hub)",
+    );
+    noPointer(editedBody());
+  });
+
+  it("Hub answers 201 with a badly shaped id: kept here, the local line, no update", async () => {
+    hubAnswer = [
+      201,
+      {
+        id: "../../shot 7",
+        tool: "hub_report_screenshot x",
+        sha256: PNG_SHA,
+        expires: "2026-12-17T00:00:00.000Z",
+        recipient: "Acme maintainers",
+      },
+    ];
+    const r = await call("POST", "/api/report/send", {
+      ...FORM,
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(r.body.shot).toMatchObject({ where: "local", why: "refused" });
+    expect(events).toEqual(["gh:create", "hub:upload"]);
+    expect(shotStore(state).get(r.body.shot.id)?.record.hub).toBeUndefined();
+    noPointer(filedBody());
+  });
+
+  it("Hub's sha256 isn't the one sent: Hub has it, recorded as not confirmed", async () => {
+    hubAnswer = [
+      201,
+      {
+        id: "shot_7",
+        tool: "hub_report_screenshot shot_7",
+        sha256: "ab".repeat(32),
+        expires: "2026-12-17T00:00:00.000Z",
+        recipient: "Acme maintainers",
+      },
+    ];
+    await call("POST", "/api/report/send", {
+      ...FORM,
+      draftId: "0123456789abcdef",
+      shot: SHOT,
+      shareShot: true,
+    });
+    expect(
+      shotStore(state).get("0123456789abcdef")?.record.hub?.confirmed,
+    ).toBe(false);
+  });
 
   it("not connected: filed, kept here, no Hub call", async () => {
     connected = false;
@@ -430,13 +641,13 @@ describe("issue 403: filing with a screenshot", () => {
     expect(events).toEqual([]);
   });
 
-  it("Hub's recipient with a link in it: the body still has none", async () => {
+  it("Hub's recipient with a link in it: never in the issue", async () => {
     hubAnswer = [
       201,
       {
-        id: "shot_8",
-        tool: "hub_report_screenshot shot_8",
-        sha256: "ef".repeat(32),
+        id: "shot_7",
+        tool: "hub_report_screenshot shot_7",
+        sha256: PNG_SHA,
         expires: "2026-12-17T00:00:00.000Z",
         recipient: "Acme https://evil.example/x.png data:x",
       },
@@ -446,36 +657,90 @@ describe("issue 403: filing with a screenshot", () => {
       shot: SHOT,
       shareShot: true,
     });
-    expect(filedBody()).toMatch(
-      /Screenshot: hub_report_screenshot shot_8 \(Hub, /,
-    );
+    expect(editedBody()).toContain(HUB_LINE);
+    expect(editedBody()).not.toContain("Acme");
     noPointer(filedBody());
+    noPointer(editedBody());
   });
 
-  it("the GitHub App's way: sent to Hub before the issue, the body names it", async () => {
+  it("the GitHub App's way: nothing reaches Hub until the person approved and the issue is filed", async () => {
     const r = await call("POST", "/api/report/github-send", {
       ...FORM,
+      draftId: "0123456789abcdef",
       shot: SHOT,
       shareShot: true,
     });
     expect(r.status).toBe(200);
-    expect(events).toEqual(["hub:upload"]);
-    // The person approves: the flow polls once and files it.
-    for (let i = 0; i < 3 && !apiCalls.length; i++) {
-      for (const fn of timers.splice(0)) fn();
-      await new Promise((ok) => setTimeout(ok, 30));
-    }
-    expect(events).toEqual(["hub:upload", "app:create"]);
-    const body = String((apiCalls[0]!.body as { body: string }).body);
-    expect(body).toContain(
-      "Screenshot: hub_report_screenshot shot_7 (Hub, Acme maintainers)",
-    );
-    noPointer(body);
+    expect(events).toEqual([]);
+    expect(shotStore(state).get("0123456789abcdef")).toBeNull();
+    await approve();
+    expect(events).toEqual(["app:create", "hub:upload", "app:patch"]);
+    const created = String((apiCalls[0]!.body as { body: string }).body);
+    expect(created).toContain(LOCAL_LINE("0123456789abcdef"));
+    noPointer(created);
+    const patch = apiCalls.find((c) => c.method === "PATCH")!;
+    expect(patch.path).toBe("/repos/acme-eng/engine/issues/43");
+    const updated = String((patch.body as { body: string }).body);
+    expect(updated).toContain(HUB_LINE);
+    expect(updated).not.toContain("Acme maintainers");
+    noPointer(updated);
     const flow = await call("GET", `/api/report/github-send/${r.body.flow.id}`);
     expect(flow.body.flow.result.shot).toEqual({
       where: "hub",
       recipient: "Acme maintainers",
     });
+    expect(shotStore(state).get("0123456789abcdef")?.record.hub?.id).toBe(
+      "shot_7",
+    );
+  });
+
+  it("the GitHub App's way, adding to an issue: the comment is updated", async () => {
+    await call("POST", "/api/report/github-send", {
+      ...FORM,
+      addTo: 7,
+      shot: SHOT,
+      shareShot: true,
+    });
+    await approve();
+    expect(events).toEqual(["app:comment", "hub:upload", "app:patch"]);
+    const patch = apiCalls.find((c) => c.method === "PATCH")!;
+    expect(patch.path).toBe("/repos/acme-eng/engine/issues/comments/88");
+    noPointer(String((patch.body as { body: string }).body));
+  });
+
+  it("the GitHub App's way, the box unticked: kept here, the local line, Hub never asked", async () => {
+    const r = await call("POST", "/api/report/github-send", {
+      ...FORM,
+      shot: SHOT,
+      shareShot: false,
+    });
+    await approve();
+    expect(events).toEqual(["app:create"]);
+    expect(hubSeen).toHaveLength(0);
+    const created = String((apiCalls[0]!.body as { body: string }).body);
+    const id = /report_screenshot\(([a-f0-9]{16})\)/.exec(created)?.[1] ?? "";
+    expect(shotStore(state).get(id)?.png.equals(PNG)).toBe(true);
+    noPointer(created);
+    const flow = await call("GET", `/api/report/github-send/${r.body.flow.id}`);
+    expect(flow.body.flow.result.shot).toEqual({ where: "local", id });
+  });
+
+  it("the GitHub App's way, GitHub refuses: nothing to Hub, nothing kept, the page keeps its link", async () => {
+    appStatus = 403;
+    const r = await call("POST", "/api/report/github-send", {
+      ...FORM,
+      draftId: "0123456789abcdef",
+      shot: SHOT,
+      shareShot: true,
+    });
+    const link = new URL(r.body.newIssueUrl as string);
+    expect(link.searchParams.get("body") ?? "").not.toMatch(/Screenshot:/);
+    await approve();
+    expect(events).toEqual(["app:create"]);
+    expect(hubSeen).toHaveLength(0);
+    expect(shotStore(state).get("0123456789abcdef")).toBeNull();
+    const flow = await call("GET", `/api/report/github-send/${r.body.flow.id}`);
+    expect(JSON.stringify(flow.body.flow)).toMatch(/GitHub refused it \(403\)/);
   });
 });
 

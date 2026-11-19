@@ -17,6 +17,7 @@ import {
   it,
 } from "@jest/globals";
 import * as http from "http";
+import { createHash } from "crypto";
 import type { AddressInfo } from "net";
 import {
   PREFLIGHT_PATH,
@@ -79,6 +80,7 @@ const PNG = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.from("not really pixels"),
 ]);
+const PNG_SHA = createHash("sha256").update(PNG).digest("hex");
 
 describe("issue 403: preflight", () => {
   it("GET …/screenshots/preflight?target=<owner/name> with the install's Bearer", async () => {
@@ -142,7 +144,7 @@ describe("issue 403: upload", () => {
       {
         id: "shot_1",
         tool: "hub_report_screenshot shot_1",
-        sha256: "ab".repeat(32),
+        sha256: PNG_SHA,
         expires: "2026-12-17T00:00:00.000Z",
         recipient: "Acme maintainers",
       },
@@ -155,9 +157,10 @@ describe("issue 403: upload", () => {
       ok: true,
       id: "shot_1",
       tool: "hub_report_screenshot shot_1",
-      sha256: "ab".repeat(32),
+      sha256: PNG_SHA,
       expires: "2026-12-17T00:00:00.000Z",
       recipient: "Acme maintainers",
+      confirmed: true,
     });
     expect(UPLOAD_PATH).toBe("/api/installs/self/reports/screenshots");
     const s = seen[0]!;
@@ -192,6 +195,49 @@ describe("issue 403: upload", () => {
       expect(r).toEqual({ ok: false, why, status });
     },
   );
+
+  it("201 whose sha256 isn't the one of the bytes sent: kept, not confirmed", async () => {
+    answer = [
+      201,
+      {
+        id: "shot_1",
+        tool: "hub_report_screenshot shot_1",
+        sha256: "AB".repeat(32),
+        expires: "2026-12-17T00:00:00.000Z",
+        recipient: "Acme maintainers",
+      },
+    ];
+    expect(
+      await client().upload(PNG, {
+        draftId: "0123456789abcdef",
+        targetRepo: "acme-eng/engine",
+      }),
+    ).toMatchObject({ ok: true, sha256: "ab".repeat(32), confirmed: false });
+  });
+
+  it.each([
+    ["sha256 not 64 hex", { sha256: "not-a-hash" }],
+    ["sha256 too short", { sha256: "ab".repeat(31) }],
+    ["expires not a date", { expires: "soon" }],
+  ])("201 with a badly shaped record (%s): refused", async (_n, bad) => {
+    answer = [
+      201,
+      {
+        id: "shot_1",
+        tool: "hub_report_screenshot shot_1",
+        sha256: PNG_SHA,
+        expires: "2026-12-17T00:00:00.000Z",
+        recipient: "Acme maintainers",
+        ...bad,
+      },
+    ];
+    expect(
+      await client().upload(PNG, {
+        draftId: "0123456789abcdef",
+        targetRepo: "acme-eng/engine",
+      }),
+    ).toEqual({ ok: false, why: "refused", status: 201 });
+  });
 
   it("201 without the record's fields: refused", async () => {
     answer = [201, { id: "shot_1" }];

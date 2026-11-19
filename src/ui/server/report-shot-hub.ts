@@ -8,13 +8,17 @@
  *                       POST <hub>UPLOAD_PATH, the raw masked PNG, with
  *                       X-Den-Report: <draft id> (Hub keeps one per id) and
  *                       X-Den-Target: <owner/name>
- *                       201 → { ok, id, tool, sha256, expires, recipient }
+ *                       201 → { ok, id, tool, sha256, expires, recipient,
+ *                       confirmed } (sha256 64 hex, expires a date; confirmed:
+ *                       Hub's sha256 is the one of the bytes sent)
  *                       else { ok: false, why, status? }
  *
  * Both with the install's connection Bearer (as the project sync and the
  * deliveries call Hub). Nothing here throws, and nothing logs the token or
  * the image: a failure is an outcome the filing falls back from.
  */
+
+import { createHash } from "crypto";
 
 /** Hub's answer to "would a screenshot for this repo be shared?". */
 export const PREFLIGHT_PATH =
@@ -52,6 +56,8 @@ export type Upload =
       sha256: string;
       expires: string;
       recipient: string;
+      /** Hub's sha256 is the one of the bytes Den sent. */
+      confirmed: boolean;
     }
   | { ok: false; why: UploadWhy; status?: number };
 
@@ -63,6 +69,7 @@ export interface ReportShotHubDeps {
 }
 
 const TARGET = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const SHA256 = /^[a-f0-9]{64}$/i;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const HUB_403_WHY = new Set(["off", "not-maintained", "not-a-person"]);
 const str = (v: unknown): string | null =>
@@ -157,14 +164,26 @@ export function reportShotHub(d: ReportShotHubDeps) {
         const sha256 = str(body.sha256);
         const expires = str(body.expires);
         const recipient = str(body.recipient);
-        if (id && tool && sha256 && expires && recipient)
+        if (
+          id &&
+          tool &&
+          sha256 &&
+          SHA256.test(sha256) &&
+          expires &&
+          expires.length <= 64 &&
+          Number.isFinite(Date.parse(expires)) &&
+          recipient
+        )
           return {
             ok: true,
             id,
             tool,
-            sha256,
+            sha256: sha256.toLowerCase(),
             expires,
             recipient: recipient.slice(0, 200),
+            confirmed:
+              sha256.toLowerCase() ===
+              createHash("sha256").update(png).digest("hex"),
           };
         return { ok: false, why: "refused", status };
       }
