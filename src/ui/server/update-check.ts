@@ -45,6 +45,14 @@
  *     Allow holds it, every few seconds, at most
  *     server_agent.update_restart_wait_seconds; then it restarts anyway
  *     (the new version is installed), says why, and leaves a bell line.
+ *   - Issue 603: a security release doesn't wait for a working turn
+ *     either: it installs at that pass, on the security path, and its
+ *     restart waits for the turn to end (holdRestart, bounded). The
+ *     restart is the web server's; the turn lives in the terminal host,
+ *     which a restart keeps unless its code changed (issue 597). A
+ *     pending Allow or an update under way still holds it; a wait that
+ *     can't be read is no turn. server_agent.security_update_skips_busy:
+ *     false turns it off. The log and the audit say it went ahead.
  *
  * Every input is a function (tests fake each); the server wires them.
  */
@@ -304,6 +312,8 @@ export interface UpdateCheckDeps {
   security?(version: string): Promise<boolean | null>;
   /** Issue 562: server_agent.security_update_skips_questions (default true). */
   securitySkipsQuestions?(): boolean;
+  /** Issue 603: server_agent.security_update_skips_busy (default true). */
+  securitySkipsBusy?(): boolean;
   /** Issue 562: the bell: updated past the agent's question or prompt. */
   securityNote?(version: string, why: "asked" | "permission"): void;
   /** #251: server_agent.update_wait_checks (default 2). */
@@ -380,12 +390,35 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   // Issue 327: a bell item from before a restart may be there: the first
   // pass that doesn't wait clears it.
   let noted = true;
-  const waitWhy = async (): Promise<UpdateWait | null> =>
-    d.waitWhy
-      ? d.waitWhy().catch(() => "busy" as const)
-      : (await d.idle().catch(() => false))
-        ? null
-        : "busy";
+  /**
+   * Issue 603: whether the last read's "busy" is a working turn (read as
+   * such), not a read that failed or idle()'s plain "not idle".
+   */
+  let turnRead = false;
+  const waitWhy = async (): Promise<UpdateWait | null> => {
+    turnRead = false;
+    if (!d.waitWhy)
+      return (await d.idle().catch(() => false)) ? null : "busy";
+    try {
+      const w = await d.waitWhy();
+      turnRead = w === "busy";
+      return w;
+    } catch {
+      return "busy";
+    }
+  };
+  const waitPast = async (
+    read: () => Promise<UpdateWait | null>,
+  ): Promise<UpdateWait | null> => {
+    turnRead = false;
+    try {
+      const w = await read();
+      turnRead = w === "busy";
+      return w;
+    } catch {
+      return "busy";
+    }
+  };
   const notWaiting = () => {
     lastWhy = null;
     personPasses = 0;
@@ -409,6 +442,14 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   const skipsQuestions = (): boolean => {
     try {
       return d.securitySkipsQuestions?.() ?? true;
+    } catch {
+      return false;
+    }
+  };
+  /** Issue 603: may this pass go past a working turn? */
+  const skipsBusy = (): boolean => {
+    try {
+      return d.securitySkipsBusy?.() ?? true;
     } catch {
       return false;
     }
@@ -562,8 +603,14 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         (await marked(want))
       ) {
         const was = wait;
-        wait = await d.waitPast().catch(() => "busy" as const);
+        wait = await waitPast(d.waitPast);
         if (!wait) past = was;
+      }
+      // Issue 603: nor for a working turn: the restart waits for its end.
+      let pastTurn = false;
+      if (wait === "busy" && turnRead && skipsBusy() && (await marked(want))) {
+        wait = null;
+        pastTurn = true;
       }
       if (wait) {
         const at = waitsOnPerson(wait)
@@ -608,15 +655,20 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         d.log?.(
           `update check: Den ${want} is a security release: it updates past ${WAIT_TEXT[past]}`,
         );
+      if (pastTurn)
+        d.log?.(
+          `update check: Den ${want} is a security release: it updates while ${WAIT_TEXT.busy}; the restart waits for the turn to end`,
+        );
+      const security = !!past || pastTurn;
       const r = await d
-        .update(want, reason, { security: !!past })
+        .update(want, reason, { security })
         .catch((e: unknown) => ({
           ok: false,
           error: e instanceof Error ? e.message : String(e),
         }));
       if (r.ok) {
-        if (!past) return { did: "updating", version: want };
-        d.securityNote?.(want, past);
+        if (!security) return { did: "updating", version: want };
+        if (past) d.securityNote?.(want, past);
         return { did: "updating", version: want, security: true };
       }
       const why = r.error ?? "the update didn't run";

@@ -3488,6 +3488,17 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   the server agent was waiting on you; its question is still open".
   `server_agent.security_update_skips_questions` (org config, default
   `true`): `false` makes a security release wait like any other.
+- **A security release doesn't wait for a busy agent** (issue 603). With
+  `self_update: auto`, a security release also installs while the server
+  agent is in the middle of a turn, at the first check that finds it.
+  The restart that follows still waits for the turn to end (below, up to
+  `server_agent.update_restart_wait_seconds`). That restart is the web
+  server's: the server agent's turn runs in the terminal host, which
+  keeps running unless its own code changed. A pending Allow still holds
+  the update. The log and the audit say it went ahead while the agent
+  was busy. `server_agent.security_update_skips_busy` (org config,
+  default `true`): `false` makes a security release wait for the turn
+  before it installs. Other releases wait for the turn as before.
 - **The restart looks again after the install** (issue 562). The install
   takes a while, and a turn may start meanwhile (the person answers the
   question). Once an auto update is installed and its doctor has run,
