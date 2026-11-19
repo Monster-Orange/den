@@ -535,3 +535,8 @@ export async function searchSystemHistory(
     );
   });
 }
+
+/** `tail -F -n <lines> <file>` as an argument list (no command line). */
+export function tailArgv(file: string, lines: number): [string, string[]] {
+  return ["tail", ["-F", "-n", String(lines), file]];
+}
