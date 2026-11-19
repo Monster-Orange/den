@@ -20,6 +20,8 @@ import {
   setRepoSigning,
   type AgentGitSettings,
 } from "./agents/git-signing.js";
+import { signingWord } from "./agents/signing-words.js";
+import type { UiLanguage } from "../ui/server/ui-language.js";
 import {
   isSafeRemote,
   redactRemote,
@@ -139,6 +141,8 @@ export async function runClone(
     /** agents.git: the clone's own config signs with the agents' key. */
     signing?: AgentGitSettings;
     env?: NodeJS.ProcessEnv;
+    /** The person's language, for the reason when that fails. */
+    lang?: UiLanguage;
   } = {},
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
   const args = [
@@ -169,7 +173,11 @@ export async function runClone(
     } catch (e) {
       return {
         ok: false,
-        error: `cloned ${t.shown} into ${t.dest}, but could not give it the agents' signing key: ${(e as Error).message}`,
+        error: signingWord(o.lang ?? "en", "cloneSetFailed", {
+          source: t.shown,
+          path: t.dest,
+          why: (e as Error).message,
+        }),
       };
     }
   return { ok: true, path: t.dest };
