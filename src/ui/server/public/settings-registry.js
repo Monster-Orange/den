@@ -36,7 +36,6 @@ import {
   timeZones,
   upgradeTimes,
 } from "/kit/time.js";
-import { kitT } from "/kit/strings.js";
 import { deviceWords } from "./device-words.js";
 import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
@@ -624,10 +623,7 @@ const CODE_STYLE =
  * the shell opens on any page; account-den.js).
  */
 function drawAccountLink(host) {
-  // The link's words are the kit's (the mock's "Your account →").
-  const pageLang = () =>
-    (typeof window !== "undefined" && window.denShell?.lang?.()) || "en";
-  host.innerHTML = `<a class="den-btn" id="set-account-link" href="?account=profile" data-den-aa-open="profile">${escHtml(kitT(pageLang(), "kit.acct.yourAccount"))}</a>`;
+  host.innerHTML = `<a class="den-btn" id="set-account-link" href="?account=profile" data-den-aa-open="profile">${escHtml(L("set.ui.yourAccount", "Your account →"))}</a>`;
 }
 
 /** Linking the owner in the page: start, show the code, poll the server. */

@@ -1127,6 +1127,7 @@
     "set.cli.sudo": "管理者パスワード",
     "set.cli.op_token": "1Password トークンの取得元",
     "set.access.account": "プロフィールとデバイス",
+    "set.ui.yourAccount": "自分のアカウント →", // words-ok: the approved Account area mock's link, word for word (issue 310)
     "set.access.account.d":
       "プロフィール、このブラウザーのサインイン方法、デバイスは、設定とは別の場所にあります。",
     "set.access.owner": "オーナー",

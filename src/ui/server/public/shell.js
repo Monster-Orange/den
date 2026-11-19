@@ -1994,6 +1994,7 @@
     "set.cli.sudo": "Admin password",
     "set.cli.op_token": "1Password token source",
     "set.access.account": "Your profile and devices",
+    "set.ui.yourAccount": "Your account →", // words-ok: the approved Account area mock's link, word for word (issue 310)
     "set.access.account.d":
       "Your profile, how this browser signed in, and your devices are in a place of their own, apart from Settings.",
     "set.access.owner": "Owner",

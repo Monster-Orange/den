@@ -1154,6 +1154,7 @@
     "set.cli.sudo": "Contraseña de administrador",
     "set.cli.op_token": "Origen del token de 1Password",
     "set.access.account": "Tu perfil y tus dispositivos",
+    "set.ui.yourAccount": "Tu cuenta →", // words-ok: the approved Account area mock's link, word for word (issue 310)
     "set.access.account.d":
       "Tu perfil, cómo entró este navegador y tus dispositivos están en un lugar propio, aparte de los Ajustes.",
     "set.access.owner": "Propietario",
