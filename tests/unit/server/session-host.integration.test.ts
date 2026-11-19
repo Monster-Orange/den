@@ -30,7 +30,10 @@ import {
   cliAuthHeaders,
   readWebSecret,
 } from "../../../src/shared/web-secret.js";
-import { mintLoginCode } from "../../../src/shared/web-session.js";
+import {
+  mintLoginCode,
+  WebSessionStore,
+} from "../../../src/shared/web-session.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { signedIn } from "./helpers/signed-in.js";
@@ -134,7 +137,11 @@ function write(file: string, content: string): void {
 let loopCookie = "";
 let loopCsrf = "";
 
-beforeAll(async () => {
+/**
+ * A fresh server on a fresh install. `lan`: a plain-http LAN bind, so this
+ * machine's LAN name reaches it too (and every edge request is beyond).
+ */
+async function boot(lan: boolean): Promise<void> {
   tmp = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "den-session-host-")),
   );
@@ -161,6 +168,7 @@ beforeAll(async () => {
       "  address_check_cache_seconds: 3600",
       "  address_check_timeout_seconds: 1",
       "  address_check_retries: 0",
+      ...(lan ? ["  allow_plain_http_remote: true"] : []),
       "",
     ].join("\n"),
   );
@@ -180,13 +188,16 @@ beforeAll(async () => {
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
         PORT: "0",
+        ...(lan ? { DEN_BIND_HOST: "0.0.0.0" } : {}),
       },
     },
     { timeoutMs: 40_000 },
   );
   server = started.server;
   port = started.port;
-}, 60_000);
+}
+
+beforeAll(() => boot(false), 60_000);
 
 afterAll(async () => {
   await stopServer(server);
@@ -473,29 +484,18 @@ describe("once it works: sessions count only when minted on the proven address",
   const plainNamed = () => ({ host: `${NAMED}:${port}` });
   let plain = "";
   let plainCsrf = "";
-  beforeAll(async () => {
-    const r = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
-      ...plainNamed(),
-      ...nav,
-    });
-    const line = sessionLine(r);
-    plain = line.slice(line.indexOf("=") + 1).split(";")[0];
-    // Its CSRF token, as the page that signed in would hold it (the record).
-    const store = JSON.parse(
-      fs.readFileSync(path.join(stateDir, "web-sessions.json"), "utf8"),
-    ) as {
-      sessions: Record<
-        string,
-        { host: string; csrf: string; createdAt: number }
-      >;
-    };
-    const mine = Object.values(store.sessions)
-      .filter((x) => x.host === `${NAMED}:${port}`)
-      .sort((a, b) => b.createdAt - a.createdAt)[0];
-    plainCsrf = mine?.csrf ?? "";
+  beforeAll(() => {
+    // A record not minted over the address (sign-in there now goes to the
+    // address, so one is made as before 0.4.72 would have made it).
+    const made = new WebSessionStore({
+      stateDir: () => stateDir,
+      secret: () => readWebSecret(stateDir),
+    }).create({ host: `${NAMED}:${port}`, reach: "edge", via: "link" });
+    plain = made.id;
+    plainCsrf = made.session.csrf;
   });
 
-  it("a plain-http sign-in on the address's name made a session", () => {
+  it("a session minted over plain http on the address's name exists", () => {
     expect([plain.length > 0, plainCsrf.length > 0]).toEqual([true, true]);
   });
 
@@ -556,5 +556,79 @@ describe("once it works: sessions count only when minted on the proven address",
     expect(
       Object.values(store.sessions).some((x) => x.csrf === plainCsrf),
     ).toBe(false);
+  });
+});
+
+describe("once it works: sign-in on every other name goes to the address", () => {
+  // Its own server, bound to the LAN too, its address proven by the edge.
+  beforeAll(async () => {
+    await stopServer(server);
+    fs.rmSync(tmp, { recursive: true, force: true });
+    await boot(true);
+    await call("GET", "/", { ...named(), "sec-fetch-site": "none" });
+  }, 60_000);
+  const lan = () => {
+    const h = os.hostname().toLowerCase();
+    return { host: `${h.endsWith(".local") ? h : `${h}.local`}:${port}` };
+  };
+  const plainNamed = () => ({ host: `${NAMED}:${port}` });
+  for (const [what, h] of [
+    ["a LAN name", lan],
+    ["the address's name on Den's plain port", plainNamed],
+  ] as const) {
+    it(`${what}: /signin and /auth go to the address (303), no cookie, the code unspent`, async () => {
+      const c = code();
+      for (const [m, p] of [
+        ["GET", "/signin"],
+        ["GET", `/auth?c=${encodeURIComponent(c)}`],
+        ["POST", "/auth"],
+      ] as const) {
+        const r = await call(m, p, { ...h(), ...nav });
+        const to = String(r.headers.location ?? "");
+        expect([
+          r.status,
+          to.startsWith(`https://${NAMED}/`),
+          sessionLine(r) === "",
+        ]).toEqual([303, true, true]);
+      }
+      // The code still works on the address: nothing was spent.
+      const there = await call("GET", `/auth?c=${encodeURIComponent(c)}`, {
+        ...named(),
+        ...nav,
+      });
+      expect(sessionLine(there).startsWith("__Host-")).toBe(true);
+    });
+    it(`${what}: the sign-in APIs answer signin_elsewhere`, async () => {
+      const r = await call(
+        "POST",
+        "/api/github/signin",
+        {
+          ...h(),
+          origin: `http://${h().host}`,
+          "sec-fetch-site": "same-origin",
+        },
+        "{}",
+      );
+      expect([r.status, codeOf(r)]).toEqual([403, "signin_elsewhere"]);
+    });
+    it(`${what}: the signed-out page names the address, and its CLI line signs in there`, async () => {
+      const r = await call("GET", "/", { ...h(), ...nav });
+      expect([
+        r.status,
+        r.body.includes(`"address":"https://${NAMED}"`),
+        r.body.includes(`--origin https://${NAMED}`),
+      ]).toEqual([401, true, true]);
+    });
+  }
+  it("the address itself, through the edge for a device on the mesh: not sent away", async () => {
+    const r = await call("GET", "/signin", {
+      ...named(),
+      "x-forwarded-for": "100.64.0.7",
+      ...nav,
+    });
+    expect([r.status === 303, String(r.headers.location ?? "")]).toEqual([
+      false,
+      "",
+    ]);
   });
 });
