@@ -2082,6 +2082,11 @@ export interface SessionsConfig {
    * (default 900); then it restarts anyway.
    */
   host_restart_wait_seconds?: number;
+  /**
+   * Issue 597: an agent the terminal host's restart cut mid-turn gets one
+   * line on resume, to check its last step and carry on (default true).
+   */
+  host_restart_note?: boolean;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
@@ -2097,6 +2102,7 @@ export interface ResolvedSessionsConfig {
   ptyWarnAbove: number;
   ptyMachineWarnPercent: number;
   hostRestartWaitSeconds: number;
+  hostRestartNote: boolean;
 }
 
 const SESSIONS_KEYS = [
@@ -2106,6 +2112,7 @@ const SESSIONS_KEYS = [
   "pty_warn_above",
   "pty_machine_warn_percent",
   "host_restart_wait_seconds",
+  "host_restart_note",
 ];
 
 /**
@@ -2134,7 +2141,16 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     ptyWarnAbove: DEFAULT_PTY_WARN_ABOVE,
     ptyMachineWarnPercent: DEFAULT_PTY_MACHINE_WARN_PERCENT,
     hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
+    hostRestartNote: true,
   };
+  const note = raw.host_restart_note;
+  if (note !== undefined) {
+    if (typeof note !== "boolean")
+      throw new Error(
+        `sessions.host_restart_note: must be true or false (got ${JSON.stringify(note)})`,
+      );
+    out.hostRestartNote = note;
+  }
   const hostWait = raw.host_restart_wait_seconds;
   if (hostWait !== undefined) {
     if (
