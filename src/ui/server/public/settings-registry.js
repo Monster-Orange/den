@@ -4706,7 +4706,14 @@ function renderAddress(host, ctx) {
 export function hubUncoveredHtml(list, t) {
   const un = Array.isArray(list) ? list : [];
   if (!un.length) return "";
-  const orgs = [...new Set(un.map((u) => u.org))];
+  // Issue 526: org names match whatever their case: one button per org.
+  const seen = new Set();
+  const orgs = un
+    .map((u) => u.org)
+    .filter((o) => {
+      const k = String(o).toLowerCase();
+      return seen.has(k) ? false : (seen.add(k), true);
+    });
   return (
     `<div data-hubp-uncovered>` +
     un
@@ -4717,7 +4724,10 @@ export function hubUncoveredHtml(list, t) {
       .join("") +
     orgs
       .map((org) => {
-        const href = un.find((u) => u.org === org && u.installUrl)?.installUrl;
+        const k = String(org).toLowerCase();
+        const href = un.find(
+          (u) => String(u.org).toLowerCase() === k && u.installUrl,
+        )?.installUrl;
         return href && /^https:\/\/github\.com\//.test(href)
           ? `<a class="btn sm primary" data-hubp-give="${escR(org)}" href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(t("hubp.giveAccess", { org }))}</a> `
           : "";
@@ -5215,25 +5225,39 @@ export function hubGithubHtml(b, t) {
     `<div data-hubgh data-hubgh-state="orgs">` +
     orgs
       .map((o) => {
+        // Issue 526: Hub couldn't ask GitHub. Its reason as text, Check
+        // again, and never a link, even when Hub sends one.
+        if (o.access === "error") {
+          const reason = typeof o.error === "string" ? o.error : "";
+          return (
+            `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="error">` +
+            `<span class="rt-dot warn"></span> ${escR(reason ? t("hubgh.error", { org: o.org, reason }) : t("hubgh.errorNoReason", { org: o.org }))}` +
+            ` <button type="button" class="btn sm" data-hubgh-retry>${escR(t("hubgh.retry"))}</button>` +
+            `</p>`
+          );
+        }
         const what =
           o.access === "all"
             ? t("hubgh.all")
             : o.access === "some"
               ? t("hubgh.some", { n: o.covered, m: o.total })
               : t("hubgh.none");
+        // none: give access when there's no installation; one that leaves
+        // these repos out sends only manage_url, and that's Change repos.
+        const give = o.access === "none" && !!o.installUrl;
         const href =
           o.access === "some"
             ? o.manageUrl || o.installUrl
             : o.access === "none"
-              ? o.installUrl
+              ? o.installUrl || o.manageUrl
               : null;
-        const label = o.access === "none" ? t("hubgh.give") : t("hubgh.change");
+        const label = give ? t("hubgh.give") : t("hubgh.change");
         const dot = o.access === "all" ? "ok" : "warn";
         return (
           `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="${escR(o.access)}">` +
           `<span class="rt-dot ${dot}"></span> ${escR(t("hubgh.line", { org: o.org, what }))}` +
           (href && /^https:\/\/github\.com\//.test(href)
-            ? ` <a class="btn sm${o.access === "none" ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
+            ? ` <a class="btn sm${give ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
             : "") +
           `</p>`
         );
@@ -5269,6 +5293,13 @@ function renderHubGithub(host, ctx) {
         host.querySelectorAll("[data-hubgh-open]").forEach((a) =>
           a.addEventListener("click", () => {
             host.dataset.hubghAway = "1";
+          }),
+        );
+        // Issue 526: Check again asks Hub once more.
+        host.querySelectorAll("[data-hubgh-retry]").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            btn.disabled = true;
+            draw();
           }),
         );
       })

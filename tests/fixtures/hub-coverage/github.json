@@ -1,0 +1,6 @@
+{"orgs":[
+ {"org":"acme","access":"all","covered":3,"total":3,"manage_url":"https://github.com/organizations/acme/settings/installations/<id>"},
+ {"org":"acme-labs","access":"some","covered":1,"total":4,"manage_url":"https://github.com/organizations/acme-labs/settings/installations/<id>"},
+ {"org":"globex","access":"none","covered":0,"total":2,"install_url":"https://github.com/apps/<app-slug>/installations/new?state=<state>"},
+ {"org":"initech","access":"error","covered":0,"total":5,"error":"Hub couldn't ask GitHub (GitHub answered 503)"}
+]}

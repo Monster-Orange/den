@@ -1075,6 +1075,11 @@
     "hubgh.none": "なし (アクセスなし)",
     "hubgh.give": "Den Hub にアクセスを許可",
     "hubgh.change": "リポジトリを変更",
+    "hubgh.error":
+      "Den Hub は GitHub で {org} を確認できませんでした: {reason}。後でもう一度お試しください。",
+    "hubgh.errorNoReason":
+      "Den Hub は GitHub で {org} を確認できませんでした。後でもう一度お試しください。",
+    "hubgh.retry": "もう一度確認",
     "set.distribution.hub_github": "Den Hub の GitHub アクセス",
     "set.agents.hub_github": "Den Hub の GitHub アクセス",
     "hubla.noProjects": "まだプロジェクトがありません。",
