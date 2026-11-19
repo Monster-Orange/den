@@ -8,7 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Security
 
-- Sign-in: once Den's own https address works, the browser sign-in lives only there, and sign-in on any other name goes to it. Installs without a working https address keep signing in as before, and `den doctor` says how to set the address up. If the address stops answering, sign-in where the browser is comes back after `web.address_unknown_keep_seconds` (new, default 300). New setting `web.address_check_drop_after` (default 2). Upgrading is recommended. (issue 601)
+- Sign-in: once Den's own https address works, the browser sign-in lives only there, and sign-in on any other name goes to it. Installs without a working https address keep signing in as before, and `den doctor` says how to set the address up. If the address stops answering, sign-in where the browser is comes back once `web.address_check_drop_after` checks in a row fail (new, default 2; the check runs every `web.address_check_cache_seconds`, default 60, so about two minutes). A check that can't tell, a timeout, keeps the address for `web.address_unknown_keep_seconds` (new, default 300) from its last answer. Upgrading is recommended. (issue 601)
 - A security release no longer waits for a busy agent before installing; the restart still waits for turns to end. New setting `server_agent.security_update_skips_busy` (default on). (issue 603)
 
 ### Fixed
