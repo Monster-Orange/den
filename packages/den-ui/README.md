@@ -474,6 +474,76 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
+## A list's filter bar and bulk bar
+
+Two parts for a list of things (issues 552 and 553). Both are data-only:
+the host passes its facets, counts, choices, actions and callbacks; the
+kit draws the markup and owns every word, in en, es and ja. A facet's,
+an option's and an action's label are the host's own words, given as data
+(as a rail page's label is); the kit never takes a host's words for its
+own parts or names.
+
+- `src/filter-bar.js`, `src/filter-bar.css` (exports `./filter-bar`,
+  `./filter-bar.css`): one "Filters (n)" button that opens a panel of
+  facets, and what is chosen as chips under the row, each with ×, then
+  Clear all.
+
+      import { mountFilterBar } from "@monster-orange/den-ui/filter-bar";
+      // link filter-bar.css after tokens.css
+      const bar = mountFilterBar(el, {
+        id: "docs-filter",
+        facets: [{ id: "status", label: "Status",
+                   options: [{ value: "draft", label: "Draft", count: 2 }] }],
+        selected: { status: ["draft"] },
+        onChange: (selected, change) => applyFilter(selected),
+        start: findBox,              // the host's nodes before Filters
+        end: [sortButton, addButton],// and after it, in the same row
+      });
+      bar.update({ facets });        // new counts; focus stays put
+
+  `change` is `{ facet, value, on }` (an option or a chip),
+  `{ clear: facetId }` (a facet's Clear) or `{ clear: null }` (Clear
+  all). Each option shows its count; one with 0 can't be chosen unless it is chosen.
+  Filters is a disclosure (`aria-expanded`, `aria-controls`); the panel
+  is a group named "Filters", a group per facet, its options toggle
+  buttons (`aria-pressed`). Esc in the panel closes it, focus on Filters.
+  Removing a chip focuses the next chip, else the one before, else
+  Filters; Clear all focuses Filters; a facet's Clear its first option.
+  Under 720px the start node takes its own line and the chips scroll in
+  their own row; there, and on `(pointer: coarse)`, every control is
+  `--tap` (44px) tall. `filterBarHtml(data)` draws it in Node.
+
+- `src/bulk-bar.js`, `src/bulk-bar.css` (exports `./bulk-bar`,
+  `./bulk-bar.css`): "{n} selected", Clear, and the host's actions with
+  their counts ("Pause 3"), sticky at the bottom of the list.
+
+      import { mountBulkBar } from "@monster-orange/den-ui/bulk-bar";
+      const bulk = mountBulkBar(el, {
+        count: 3,
+        actions: [{ id: "pause", label: "Pause", count: 3 },
+                  { id: "move", label: "Move", count: 3, disabled: true }],
+        onAction: (id, button) =>      // a host's own dialog: the button
+          askConfirm({ title, message, opener: button }), // gets focus back
+        onClear: () => unselectAll(),
+        returnFocus: () => selectAllBox,
+      });
+      bulk.update({ count: 0 });       // hidden at 0
+
+  `el` becomes the bar,
+  `<div class="den-bulk" role="region" aria-label="3 selected">`; a
+  visually hidden polite region beside it says the count when it
+  changes and "Selection cleared" after Clear. A disabled action never
+  reaches the host. Clear hides the bar at once and focus goes to
+  `returnFocus`. It sticks 12px over the bottom of the scrolling list
+  (and over the safe area). Under 720px each action takes the bar's
+  width; there, and on a touch screen, every button is 44px tall.
+  `bulkBarHtml(data)` draws it in Node.
+
+- `DenUI.filterBar(el, opts)` and `DenUI.bulkBar(el, opts)` mount them
+  in the kit's language. Den serves the four files at `/kit/`.
+- The words are `kit.filter.*` and `kit.bulk.*` in `strings.js`. Both
+  work under `script-src 'self'; style-src 'self'`.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

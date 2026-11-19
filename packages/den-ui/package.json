@@ -38,6 +38,10 @@
     "./markdown-editor": "./src/markdown-editor.js",
     "./markdown-editor.css": "./src/markdown-editor.css",
     "./savestate.css": "./src/savestate.css",
+    "./filter-bar": "./src/filter-bar.js",
+    "./filter-bar.css": "./src/filter-bar.css",
+    "./bulk-bar": "./src/bulk-bar.js",
+    "./bulk-bar.css": "./src/bulk-bar.css",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
       "default": "./inventory/nav-inventory.js"

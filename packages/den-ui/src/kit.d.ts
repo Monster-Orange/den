@@ -54,6 +54,8 @@ import type {
 import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
+import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
+import type { BulkBar, BulkBarOptions } from "./bulk-bar.js";
 
 /** Every call to the product goes through it; the kit names no URL. */
 export interface Adapter extends ReportAdapter {
@@ -164,6 +166,13 @@ export declare function saveState(
   el: HTMLElement,
   opts: SaveStateOptions,
 ): SaveState;
+/** A list's filter bar, in the kit's language. */
+export declare function filterBar(
+  el: HTMLElement,
+  opts: FilterBarOptions,
+): FilterBar;
+/** A list's bulk bar, in the kit's language. */
+export declare function bulkBar(el: HTMLElement, opts: BulkBarOptions): BulkBar;
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
@@ -215,6 +224,8 @@ export interface DenUIKit {
   report: typeof report;
   busy: typeof busy;
   saveState: typeof saveState;
+  filterBar: typeof filterBar;
+  bulkBar: typeof bulkBar;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

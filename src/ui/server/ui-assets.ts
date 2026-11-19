@@ -159,6 +159,11 @@ export const KIT_FILES: readonly string[] = [
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",
+  // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
+  "filter-bar.js",
+  "filter-bar.css",
+  "bulk-bar.js",
+  "bulk-bar.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.
