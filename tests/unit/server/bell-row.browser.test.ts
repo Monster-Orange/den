@@ -71,6 +71,13 @@ beforeAll(async () => {
     if (i === 0) st.markRead({ id: n!.id });
     await new Promise((r) => setTimeout(r, 5));
   }
+  // Issue 187: a row with no link opens nothing, so it keeps the arrow.
+  st.add({
+    kind: "service",
+    subject: "agent:quiet",
+    scope: "workspace/north",
+    text: "Quiet check passed",
+  });
 }, 90_000);
 
 afterAll(async () => {
@@ -265,6 +272,53 @@ describe.each([1280, 390])(
       await stays(p);
       await p.context().close();
     }, 90_000);
+
+    it("issue 187: a row that opens shows the pointer; its controls keep their own cursor", async () => {
+      if (skip()) return;
+      const p = await open(width);
+      await openBell(p);
+      const pop = p.locator("#den-bell-pop");
+      await pop.locator('[data-bell="updates"]').click();
+      await pop.locator('.den-bell-row[data-kind="service"]').first().waitFor();
+      const cursor = (sel: string) =>
+        p.$$eval(sel, (els) => els.map((e) => getComputedStyle(e).cursor));
+      // Every row with a link, and the parts of it that aren't controls
+      // (its dot, its text, its time): the pointer.
+      const linked = '#den-bell-pop .den-bell-row:has(a[data-bell="open"])';
+      for (const sel of [
+        linked,
+        `${linked} .den-dot`,
+        `${linked} a[data-bell="open"]`,
+        `${linked} time`,
+      ]) {
+        const all = await cursor(sel);
+        expect(all.length).toBeGreaterThan(0);
+        expect(all.filter((c) => c !== "pointer")).toEqual([]);
+      }
+      // A row with no link opens nothing: no pointer.
+      const plain = await cursor(
+        '#den-bell-pop .den-bell-row:not(:has(a[data-bell="open"]))',
+      );
+      expect(plain.length).toBeGreaterThan(0);
+      expect(plain.filter((c) => c === "pointer")).toEqual([]);
+      // ×N and ⊘ keep the cursor their own rule gives them, in a row
+      // that opens or not: their own, never inherited from the row.
+      const own = await p.$$eval(
+        '#den-bell-pop .den-bell-row [data-bell="fold"], #den-bell-pop .den-bell-row [data-bell="stop"]',
+        (els) =>
+          els.map((e) => {
+            const row = e.closest(".den-bell-row") as HTMLElement;
+            const was = row.style.cursor;
+            row.style.cursor = "text";
+            const c = getComputedStyle(e).cursor;
+            row.style.cursor = was;
+            return c;
+          }),
+      );
+      expect(own.length).toBeGreaterThan(0);
+      expect(own.filter((c) => c !== "pointer")).toEqual([]);
+      await p.context().close();
+    }, 90_000);
   },
 );
 
@@ -280,6 +334,7 @@ describe("issue 93: no Open in any row, in en, es and ja", () => {
         await p.locator('#den-bell-pop [data-bell="updates"]').click();
         await p
           .locator('#den-bell-pop .den-bell-row[data-kind="service"]')
+          .first()
           .waitFor();
         const names = await p.$$eval(
           "#den-bell-pop .den-bell-row a, #den-bell-pop .den-bell-row button",
