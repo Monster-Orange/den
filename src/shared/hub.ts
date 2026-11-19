@@ -139,6 +139,25 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
+  /**
+   * Issue 249 hub.agent_tokens (default true): each agent calls Hub with a
+   * token bound to it on Hub (minted under the install's grant), so Hub
+   * sees it as a verified actor. False: every agent uses the install's.
+   */
+  agentTokens: boolean;
+  /**
+   * Issue 249 hub.agent_token_retry_seconds (default 600, at least 5): how
+   * long Den waits to ask again when Hub couldn't give an agent a token.
+   */
+  agentTokenRetrySeconds: number;
+  /**
+   * Issue 249 hub.agent_token_max_age_days (default 30; 0: never): an
+   * agent's token older than this is replaced at its next Hub call, with
+   * no person act: Den mints the new one and uses it from then on. Den
+   * never revokes the old one: Hub ends it (the new one's first use, or
+   * Hub's grace period).
+   */
+  agentTokenMaxAgeDays: number;
 }
 
 type RawHub =
@@ -159,6 +178,9 @@ type RawHub =
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
+      agent_tokens?: unknown;
+      agent_token_retry_seconds?: unknown;
+      agent_token_max_age_days?: unknown;
     }
   | undefined;
 
@@ -272,6 +294,27 @@ export function readHubConfig(
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
+  const agentTok = h.agent_tokens;
+  if (
+    agentTok !== undefined &&
+    agentTok !== null &&
+    typeof agentTok !== "boolean"
+  )
+    throw new Error("hub.agent_tokens must be true or false");
+  const agentRetry = secs(
+    h.agent_token_retry_seconds,
+    "agent_token_retry_seconds",
+    600,
+  );
+  const maxAge = h.agent_token_max_age_days;
+  if (
+    maxAge !== undefined &&
+    maxAge !== null &&
+    !(typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0)
+  )
+    throw new Error(
+      "hub.agent_token_max_age_days must be a number, 0 or more (0: never)",
+    );
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -300,6 +343,9 @@ export function readHubConfig(
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
+    agentTokens: agentTok !== false,
+    agentTokenRetrySeconds: agentRetry,
+    agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 30,
   };
 }
 
@@ -780,6 +826,8 @@ async function hubCall(
   throw new HubCallError(
     "unreachable",
     `Hub answered ${res.status}${said ? `: ${said}` : ""}`,
+    str(body.error),
+    res.status,
   );
 }
 
@@ -1405,6 +1453,83 @@ export async function hubRevoke(
     return true;
   } catch (e) {
     if (e instanceof HubCallError && e.kind === "rejected") return false;
+    throw e;
+  }
+}
+
+/**
+ * Issue 249: a token bound to one agent of this install, minted by Hub
+ * with the install's own token (the install's one grant covers its
+ * agents): POST <url>/connect/agent {agent_id, agent_name}. Hub answers
+ * {token, token_id, agent}; an answer for another agent is refused. A Hub
+ * without agent tokens answers 404 or 405: a HubCallError ("refused") with
+ * that status. A 403 is a HubCallError ("forbidden") whose `code` is Hub's
+ * `error` value: agents_not_covered (the install's grant doesn't cover
+ * agents) or install_token_required (an agent's token tried to mint). The
+ * token never leaves Den's server: the caller keeps it in the server's
+ * store.
+ */
+export async function hubMintAgentToken(
+  url: string,
+  installToken: string,
+  agent: { id: string; name: string },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{ token: string; tokenId: string }> {
+  const b = await hubCall(
+    `${url}/connect/agent`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(installToken),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ agent_id: agent.id, agent_name: agent.name }),
+    },
+    { timeoutMs: 15_000, ...opts },
+  );
+  const token = str(b.token);
+  const tokenId = str(b.token_id);
+  if (!token || !/^\S{8,}$/.test(token) || !tokenId)
+    throw new HubCallError("refused", "Hub's answer had no agent token");
+  const for_ = (b.agent as { id?: unknown } | null | undefined)?.id;
+  if (for_ !== undefined && for_ !== agent.id)
+    throw new HubCallError(
+      "refused",
+      "Hub's answer was a token for another agent",
+    );
+  return { token, tokenId };
+}
+
+/**
+ * Issue 249: revoke one agent's token with the install's token: POST
+ * <url>/connect/revoke {token_id}. The install stays connected. True when
+ * Hub revoked it now; false when Hub has no such live token (404).
+ */
+export async function hubRevokeAgentToken(
+  url: string,
+  installToken: string,
+  tokenId: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<boolean> {
+  try {
+    await hubCall(
+      `${url}/connect/revoke`,
+      {
+        method: "POST",
+        headers: {
+          ...bearer(installToken),
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ token_id: tokenId }),
+      },
+      opts,
+    );
+    return true;
+  } catch (e) {
+    if (e instanceof HubCallError && e.kind === "refused" && e.status === 404)
+      return false;
     throw e;
   }
 }

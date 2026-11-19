@@ -115,6 +115,10 @@ import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import {
+  agentHubBound,
+  usesInstallToken,
+} from "../../shared/hub-agent-tokens.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
@@ -370,6 +374,12 @@ export interface ListedSession {
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
+  /**
+   * Issue 249: Hub is connected and this agent calls it with its own
+   * token, bound to it on Hub (true), or with the install's (false).
+   * Unset: Hub isn't connected, or the server agent.
+   */
+  hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -694,6 +704,11 @@ export function listedSessions(
         });
         return st ? { mcpStale: st } : {};
       })(),
+      // Issue 249: whether Hub knows it by its own token (Hub connected;
+      // never the server agent, which keeps the install's).
+      ...(typeof hubUrl === "string" && !usesInstallToken(rec)
+        ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
+        : {}),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),
