@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.70",
+  "version": "0.4.71-dev.1",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -126,8 +126,5 @@
   },
   "optionalDependencies": {
     "@lydell/node-pty": "1.2.0-beta.18"
-  },
-  "den": {
-    "security": true
   }
 }

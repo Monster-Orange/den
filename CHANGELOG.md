@@ -4,6 +4,14 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.71] - unreleased
+
+### Fixed
+
+- **Issue 563: after an update, Den restarts its terminal host when that host still runs the old version or holds a terminal module the update replaced.** Before this, new agents and terminals failed to start with `posix_spawnp failed`. Agents mid-turn are waited for, up to `sessions.host_restart_wait_seconds` (default 900). Running agents resume and open terminals end. The bell says so.
+- `doctor` has a Host row: ✗ with `<cli> sessions host --stop` when the terminal host isn't current.
+- Live check `gate/503.mjs` judges the terminal host's own PTY count; the machine's count is logged only. Live check `gate/563.mjs`.
+
 ## [0.4.70] - 2026-11-18
 
 ### Fixed
