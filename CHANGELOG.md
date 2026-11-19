@@ -4,6 +4,18 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.69] - unreleased
+
+### Fixed
+
+- **Issue 503: the terminal host no longer keeps a PTY for each exited terminal.** Before, a long-running host could use up every PTY on the machine. The terminal library `@lydell/node-pty` is now 1.2.0-beta.18, pinned with integrity hashes. The stable 1.2.0 follows when it ships (issue 513).
+
+### Added
+
+- When the machine gives no PTY, Terminal and the start dialog say so, with the reason, and the terminal host logs it.
+- `den doctor` shows the terminal host's PTYs and the machine's. It fails above `sessions.pty_warn_above` (400) or at `sessions.pty_machine_warn_percent` (90%) of the machine's limit.
+- **New Setting:** `sessions.pty_close_seconds` (default 0): how long after a terminal exits its PTY closes.
+
 ## [0.4.68] - 2026-11-18
 
 ### Fixed
