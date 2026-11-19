@@ -78,6 +78,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     timeout_seconds: true,
     retries: true,
     cache_seconds: true,
+    // Failures in a row before the sign-in moves back off a proven address.
+    drop_after: true,
   },
 };
 
@@ -208,6 +210,7 @@ describe("the settings inventory (R21)", () => {
         "address_check.timeout_seconds",
         "address_check.retries",
         "address_check.cache_seconds",
+        "address_check.drop_after",
       ].sort(),
     );
   });
