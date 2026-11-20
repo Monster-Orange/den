@@ -23,6 +23,7 @@ Fixes for issues reported by the person running Den, plus the 0.4.78 items that 
 - Report: a repository whose visibility Den can't tell reads "Visibility not known", never "Public repository". (issue 415)
 - Connect never links the default project to a Hub project on its own. (issue 649)
 - Pop-ups use Den's font, never the browser's serif. Switch and Unlink sit in one row in Settings › Project setup. (issue 651)
+- Sign-in: on the Den machine, a sign-in page opened on a loopback address goes to Den's https address once it is proven, even when that address is itself a loopback name kept from before. Other devices are never sent there. (issue 601)
 
 ### Added
 
@@ -44,6 +45,7 @@ Fixes for issues reported by the person running Den, plus the 0.4.78 items that 
 
 ### Checks
 
+- Live checks for issues 701, 658, 659, 666 and 699. The 403 check reaches the bed from the host; the 479 check opens the Stopped fold. A check that fetches the browser's address from the host fails the shape check.
 - The live check for issue 631 skips, with its reason, when the kept terminal host already ran the installed version. A live check that answers a clause twice is refused.
 - The live check for issue 629 answers the dialog with a hook, and waits for it.
 
