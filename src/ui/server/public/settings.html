@@ -122,34 +122,6 @@
         display: flex;
         align-items: center;
       }
-      .hubp-dlg {
-        width: min(440px, calc(100vw - 32px));
-        padding: 0;
-        border: 1px solid var(--border-strong, var(--border));
-        border-radius: 10px;
-        background: var(--raised, var(--surface, var(--bg)));
-        color: var(--text);
-        box-shadow: var(--shadow);
-      }
-      .hubp-dlg::backdrop {
-        background: rgba(0, 0, 0, 0.25);
-      }
-      .hubp-dlg-b {
-        padding: 16px 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .hubp-dlg-b h2 {
-        font-size: 15px;
-        margin: 0;
-      }
-      .hubp-dlg-acts {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: flex-end;
-      }
       /* Issue 167 (mock v6 B): Unclear matches, one group per project;
          40px touch targets; at 600px and under the rows stack. */
       .hubla-group {

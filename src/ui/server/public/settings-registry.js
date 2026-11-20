@@ -40,6 +40,7 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -5142,39 +5143,32 @@ export function hubProjectHtml(b, t, name) {
  * Issue 167 (mock v6 H3): Unlink asks first, in a dialog with its own
  * Report button. Resolves true on "Yes, unlink".
  */
-function askHubUnlink(ctx, t, project, hub) {
-  document.getElementById("hubp-dlg")?.remove();
-  const d = document.createElement("dialog");
-  d.id = "hubp-dlg";
-  d.className = "hubp-dlg";
-  d.setAttribute("aria-labelledby", "hubp-dlg-h");
-  d.innerHTML =
-    `<form method="dialog" class="hubp-dlg-b">` +
-    `<h2 id="hubp-dlg-h">${escR(t("hubp.unlinkAsk", { project, hub }))}</h2>` +
-    `<p class="set-note">${escR(t("hubp.unlinkDoes", { project, hub }))}</p>` +
-    `<div class="hubp-dlg-acts" data-den-foot>${ctx.shell?.reportButton?.(true) ?? ""}` +
-    `<button type="button" class="btn sm" data-hubp-dlg="cancel">${escR(t("hubp.cancel"))}</button>` +
-    `<button type="submit" class="btn sm primary" data-hubp-dlg="yes">${escR(t("hubp.unlinkYes"))}</button>` +
-    `</div></form>`;
-  document.body.append(d);
-  return new Promise((resolve) => {
-    let yes = false;
-    d.addEventListener("close", () => {
-      d.remove();
-      resolve(yes);
-    });
-    d.querySelector('[data-hubp-dlg="cancel"]').addEventListener("click", () =>
-      d.close(),
-    );
-    d.querySelector("form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      yes = true;
-      d.close();
-    });
-    if (typeof d.showModal === "function") d.showModal();
-    else d.setAttribute("open", "");
-    d.querySelector('[data-hubp-dlg="cancel"]').focus();
+async function askHubUnlink(ctx, t, project, hub) {
+  // Issue 669: the kit's confirm frame (its Report too), no dialog of its own.
+  const html = dialogHtml({
+    kind: "confirm",
+    id: "hubp-dlg",
+    ids: { h: "hubp-dlg-h" },
+    className: "hubp-dlg",
+    role: "dialog",
+    title: t("hubp.unlinkAsk", { project, hub }),
+    body: `<p class="set-note">${escR(t("hubp.unlinkDoes", { project, hub }))}</p>`,
+    actions: [
+      {
+        label: t("hubp.cancel"),
+        value: "cancel",
+        attrs: { "data-hubp-dlg": "cancel" },
+      },
+      {
+        label: t("hubp.unlinkYes"),
+        value: "yes",
+        kind: "primary",
+        attrs: { "data-hubp-dlg": "yes" },
+      },
+    ],
   });
+  const h = mountDialog(html, { focus: '[data-hubp-dlg="cancel"]' });
+  return (await h.closed) === "yes";
 }
 
 function wireHubProject(host, ctx, url, t, b) {
