@@ -177,8 +177,8 @@ describe("issue 193: a resumed agent hears what changed in Hub's tools", () => {
     await new Promise((r) => setTimeout(r, 6000));
     clearInterval(spin);
     expect(notes(pty)).toBe(0);
-    // At its prompt: the note, once.
-    s.made[pty].emit("> ");
+    // At its prompt (on its own line): the note, once.
+    s.made[pty].emit("\r\n> ");
     await until(() => notes(pty) > 0, 30_000);
     expect(typed(pty)).toContain(NOTE);
     expect(seen().planner.conv).toBe(conv);

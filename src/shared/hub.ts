@@ -98,6 +98,12 @@ export interface HubConfig {
    */
   deliveryPollSeconds: number;
   /**
+   * Issue 664 hub.delivery_held_note_seconds (default 60, at least 5): how
+   * long text waits for an agent that isn't at its prompt before the bell
+   * says so (it keeps saying it while the text waits).
+   */
+  deliveryHeldNoteSeconds: number;
+  /**
    * 0.4.51 hub.inbox_watch (default true): one watcher per install reads
    * Hub's inbox for this install's agents and types each new item into
    * its agent's pane (issue 166). False: no reading at all.
@@ -152,6 +158,7 @@ type RawHub =
       names_check_seconds?: unknown;
       delivery_heartbeat_seconds?: unknown;
       delivery_poll_seconds?: unknown;
+      delivery_held_note_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
       inbox_backoff_max_seconds?: unknown;
@@ -257,6 +264,11 @@ export function readHubConfig(
     15,
   );
   const poll = secs(h.delivery_poll_seconds, "delivery_poll_seconds", 30);
+  const heldNote = secs(
+    h.delivery_held_note_seconds,
+    "delivery_held_note_seconds",
+    60,
+  );
   const names = secs(h.names_check_seconds, "names_check_seconds", 300);
   const iw = h.inbox_watch;
   if (iw !== undefined && iw !== null && typeof iw !== "boolean")
@@ -293,6 +305,7 @@ export function readHubConfig(
     namesCheckSeconds: names,
     deliveryHeartbeatSeconds: beat,
     deliveryPollSeconds: poll,
+    deliveryHeldNoteSeconds: heldNote,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
     inboxBackoffMaxSeconds: inboxBackoff,

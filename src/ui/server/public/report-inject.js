@@ -41,9 +41,8 @@ export const FOOTERS = [
   ".cl-footer",
   ".den-svp-foot",
   ".btns",
-  ".rd-acts",
-  ".sa-fresh-acts",
-  ".wsd-acts",
+  // Issues 669, 670: the kit's dialog frame's footer.
+  ".dk-ft",
   "[data-den-foot]",
 ];
 

@@ -127,6 +127,21 @@ describe("0.4.40: Hub comments on the agent's card", () => {
     await p.context().close();
   }, 60_000);
 
+  it("issue 664: held because it isn't at its prompt: the line says why", async () => {
+    if (skip()) return;
+    const p = await open({
+      working: 0,
+      queued: 1,
+      artifact: "Pricing page",
+      held: "not_at_prompt",
+    });
+    await p.waitForSelector(line);
+    expect((await p.textContent(line))?.trim()).toBe(
+      "1 Hub comment waits for it · Pricing page · Waiting: the agent isn't at its prompt",
+    );
+    await p.context().close();
+  }, 60_000);
+
   it("nothing: no line", async () => {
     if (skip()) return;
     const p = await open({ working: 0, queued: 0 });

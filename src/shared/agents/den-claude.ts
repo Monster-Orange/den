@@ -999,6 +999,17 @@ export const denClaude: Runtime = {
     match: /Do you want to [^?\n]{0,300}\?[\s\S]{0,400}?1\.\s*Yes/i,
     afterMax: 600,
   },
+  // Issue 664: its input box: a prompt line starting ">" or "❯" (then a
+  // space or a no-break space; inside a box's "│" in older versions),
+  // never a numbered choice, with the box's lower edge ("─", "╰") right
+  // under it or nothing at all; after it only its footer ("? for
+  // shortcuts", the mode) and status line. An earlier prompt echoed in
+  // the conversation has a blank line under it, so it never counts.
+  inputPrompt: {
+    match:
+      /(?:^|\n)[ \t]*(?:│[ \t]*)?[>❯](?![\t\p{Zs}]*\d+[.)])(?:[\t\p{Zs}][^\n]*)?(?=\n[ \t]*[─━╰]|$)/u,
+    afterMax: 400,
+  },
   approvals: "terminal",
   envPassthrough: ["CLAUDE_CONFIG_DIR"],
   // Claude Code's session plumbing: the session id, its messaging socket and

@@ -48,14 +48,25 @@ export interface DeliveryAgents {
   /** Type `text` into the agent's session, then Enter. False when it couldn't. */
   type(agent: string, text: string): Promise<boolean>;
   /**
+   * Issue 664: whether the last state() found the agent's turn over but
+   * its input prompt not shown (so "busy"): what waits says why.
+   */
+  notAtPrompt?(agent: string): boolean;
+  /**
    * Issue 701: why a busy agent holds its deliveries, in plain words for
    * the person (Hub shows it on the comment), or null: mid-turn.
    */
   why?(agent: string): Promise<string | null>;
 }
 
+/** Issue 664: why an agent's held text waits, when Den knows. */
+export type HeldWhy = "not_at_prompt";
+
 /** Issue 701: what Hub is told while an agent is mid-turn. */
 export const HELD_BUSY = "the agent is busy with a turn";
+/** Issue 701: what Hub is told while its turn is over but no prompt shows. */
+export const HELD_NOT_AT_PROMPT =
+  "the agent's turn is over, but its input prompt isn't on its screen yet";
 /** Issue 701: what Hub is told while the agent isn't running. */
 export const HELD_STOPPED = "the agent isn't running; typed when it next runs";
 /** Issue 701: what Hub is told while Den doesn't know its person yet. */
@@ -90,6 +101,11 @@ export interface DeliveryLoopDeps {
    */
   held?: (dv: Delivery) => void;
   /**
+   * Issue 664: `n` items have waited `waitedMs` for `agent` because it
+   * isn't at its prompt (said every pump while it lasts); n 0: no longer.
+   */
+  heldNote?: (agent: string, n: number, waitedMs: number) => void;
+  /**
    * Issue 701: a comment from the agent's own person was typed into it:
    * a question it asked that person is answered.
    */
@@ -107,6 +123,8 @@ export interface AgentHubWork {
   queued: number;
   artifact?: string;
   url?: string;
+  /** Issue 664: why the queued ones wait, when Den knows. */
+  held?: HeldWhy;
 }
 
 interface Active {
@@ -165,6 +183,8 @@ export class DeliveryLoop {
    * person), said once until it's typed.
    */
   private readonly waitSaid = new Set<string>();
+  /** Issue 664: agents whose queue waits because they aren't at their prompt, since when. */
+  private readonly notAtPrompt = new Map<string, number>();
   /** What persist() last wrote. */
   private persisted = "null";
   private readonly hb: number;
@@ -257,6 +277,9 @@ export class DeliveryLoop {
     return {
       working: a?.ids.length ?? 0,
       queued: q,
+      ...(q && this.notAtPrompt.has(agent)
+        ? { held: "not_at_prompt" as const }
+        : {}),
       ...((first?.artifact ?? next?.thread.artifact)
         ? { artifact: first?.artifact ?? next?.thread.artifact }
         : {}),
@@ -440,7 +463,40 @@ export class DeliveryLoop {
     try {
       await this.pumpOneNow(agent, s);
     } finally {
+      this.noteHeld(agent, s);
       this.persist();
+    }
+  }
+
+  /**
+   * Issue 664: an agent's queue waits because its turn is over but its
+   * input prompt doesn't show: its row and the bell say so, for as long
+   * as it lasts.
+   */
+  private noteHeld(agent: string, s: AgentState): void {
+    const q = this.queue.get(agent)?.length ?? 0;
+    const held =
+      q > 0 &&
+      s === "busy" &&
+      !this.active.has(agent) &&
+      this.d.agents.notAtPrompt?.(agent) === true;
+    const since = this.notAtPrompt.get(agent);
+    try {
+      if (held) {
+        const at = since ?? this.now();
+        if (since === undefined) {
+          this.notAtPrompt.set(agent, at);
+          this.d.log?.(
+            `hub delivery: holding ${q} item${q === 1 ? "" : "s"} for ${agent}: it isn't at its prompt`,
+          );
+        }
+        this.d.heldNote?.(agent, q, this.now() - at);
+      } else if (since !== undefined) {
+        this.notAtPrompt.delete(agent);
+        this.d.heldNote?.(agent, 0, 0);
+      }
+    } catch {
+      // The bell's trouble never stops delivery.
     }
   }
 
@@ -496,7 +552,13 @@ export class DeliveryLoop {
       } catch {
         /* no reason to hand: busy */
       }
-      await this.ackHeld(q, why || HELD_BUSY);
+      await this.ackHeld(
+        q,
+        why ||
+          (this.d.agents.notAtPrompt?.(agent) === true
+            ? HELD_NOT_AT_PROMPT
+            : HELD_BUSY),
+      );
       // #248: say once that it waits, and on what.
       if (!this.waitSaid.has(agent)) {
         this.waitSaid.add(agent);
