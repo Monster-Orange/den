@@ -967,6 +967,20 @@
     "set.server.gate_runners": "Tokens de runners de CI",
     "set.server.gate_runners.d":
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
+    "set.server.gate_boxes": "Máquinas de pruebas",
+    "set.server.gate_boxes.d":
+      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check":
+      "Espera de la comprobación de una máquina, en segundos",
+    "set.server.gate_box_check.d":
+      "Cuánto espera Den la respuesta de una máquina de pruebas cuando está a punto de darle un turno. Sin respuesta, la máquina se omite. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck":
+      "Una máquina omitida se comprueba de nuevo tras, en segundos",
+    "set.server.gate_runner_entries": "Entradas de runners de CI",
+    "set.server.gate_runner_entries.d":
+      "Qué trabajos de CI de qué repositorios pueden ejecutarse en qué máquina de pruebas: las etiquetas del runner que piden, la variable del repositorio que los enruta, cuántos a la vez, si cada uno toma el turno pesado de la máquina y quién responde por ella. Por ahora son solo ajustes: Den aún no arranca runners. Un agente pide añadir una y tú lo permites. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
+    "set.server.gate_box_recheck.d":
+      "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1611,6 +1625,20 @@
       "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
     "ap.det.gate_runner_token_create.revoke":
       "Puedes revocarlo cuando quieras en Ajustes, en Tokens de runners de CI.",
+    "ap.do.gate_runner_entry_set":
+      "Dejar que los trabajos de CI de {repo} se ejecuten en la máquina de pruebas {box}",
+    "ap.det.gate_runner_entry_set.reach":
+      "Deja que los trabajos de CI de {repo} con las etiquetas {labels} se ejecuten en la máquina de pruebas {box}, como mucho {n} a la vez.",
+    "ap.det.gate_runner_entry_set.change":
+      "Cambia la entrada que deja que los trabajos de CI de {repo} con las etiquetas {labels} se ejecuten en la máquina de pruebas {box}, como mucho {n} a la vez.",
+    "ap.det.gate_runner_entry_set.heavy":
+      "Cada trabajo toma uno de los turnos de {box}, así que nunca se ejecuta junto a otro trabajo pesado allí.",
+    "ap.det.gate_runner_entry_set.light":
+      "Sus trabajos son ligeros: no toman ningún turno en {box}.",
+    "ap.det.gate_runner_entry_set.route":
+      "La variable del repositorio {variable} envía sus trabajos a la máquina, o de vuelta a los runners alojados. {owner} responde por ella.",
+    "ap.det.gate_runner_entry_set.remove":
+      "Puedes quitarla cuando quieras en Ajustes, en Entradas de runners de CI.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":
@@ -2338,6 +2366,12 @@
     "gate.priority": "prioridad de versión: {reason}",
     "gate.priorityWaits":
       "prioridad de versión, después de la anterior: {reason}",
+    "gate.onBox": "en la máquina de pruebas {box}",
+    "gate.anyBox": "aquí o en una máquina de pruebas",
+    "gate.boxesH": "Máquinas de pruebas",
+    "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
+    "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
+    "gate.boxDown": "{box}: omitida, no responde ({reason})",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
@@ -2715,6 +2749,38 @@
     "set.ui.appKeyRevoked": "revocada {when}",
     "set.ui.appKeyRevoke": "Revocar",
     "set.ui.runnerNone": "Aún no hay tokens de runner.",
+    "set.ui.boxName": "Nombre",
+    "set.ui.boxSsh": "ssh (usuario@host)",
+    "set.ui.boxPort": "Puerto ssh",
+    "set.ui.boxKey": "Archivo de clave ssh",
+    "set.ui.boxPw": "Servidor de Playwright (ws://)",
+    "set.ui.boxSlots": "Turnos de navegador",
+    "set.ui.boxHold": "Archivo de pausa (en la máquina)",
+    "set.ui.boxScale": "Escala de tiempo",
+    "set.ui.boxSave": "Guardar máquina",
+    "set.ui.boxNone":
+      "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
+    "set.ui.boxSlotsN": "{n} turnos de navegador",
+    "set.ui.boxHoldIs": "archivo de pausa {path}",
+    "set.ui.boxScaleIs": "tiempo ×{n}",
+    "set.ui.boxRemove": "Quitar",
+    "set.ui.reRepo": "Repositorio (dueño/nombre)",
+    "set.ui.reBox": "Máquina de pruebas",
+    "set.ui.reLabels": "Etiquetas del runner (separadas por comas)",
+    "set.ui.reVar": "Variable de enrutamiento",
+    "set.ui.reSlots": "A la vez",
+    "set.ui.reHeavy": "Toma el turno pesado de la máquina",
+    "set.ui.reOwner": "Quién responde por ella",
+    "set.ui.reSave": "Guardar entrada",
+    "set.ui.reNone":
+      "No hay entradas de runners. Los trabajos de CI usan runners alojados.",
+    "set.ui.reNoBox":
+      "Primero añade una máquina de pruebas, en Máquinas de pruebas.",
+    "set.ui.reHeavyIs": "pesado",
+    "set.ui.reLightIs": "ligero",
+    "set.ui.reSlotsN": "{n} a la vez",
+    "set.ui.reVarIs": "variable {v}",
+    "set.ui.reOwnerIs": "responde {who}",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",

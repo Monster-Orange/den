@@ -188,6 +188,10 @@ export const HELD_WRITE_RISK: Readonly<
     areas: ["secrets"],
     why: "makes a token a CI runner uses to take gate slots on this machine",
   },
+  gate_runner_entry_set: {
+    risk: "critical",
+    why: "lets a repo's CI jobs run on a test box: it widens what runs there",
+  },
   host_restart: {
     risk: "critical",
     why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",

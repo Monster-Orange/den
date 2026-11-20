@@ -1260,6 +1260,301 @@ function drawRunnerTokens(host, ctx) {
   draw();
 }
 
+/**
+ * Issue 625: the test boxes, browser slots on other machines. A person
+ * adds one (its name, how Den reaches it, its slots, its hold file and
+ * time scale), and removes one. Saving a box of the same name replaces it.
+ * Never a key: ssh names a key file on this machine.
+ */
+function drawGateBoxes(host, ctx) {
+  const shell = ctx.shell;
+  const field = (id, key, en, type, extra) =>
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L(key, en))}</span>` +
+    `<input id="${id}" type="${type}" ${extra || ""}></label>`;
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;flex-basis:100%">` +
+    field("set-box-name", "set.ui.boxName", "Name", "text", 'maxlength="64"') +
+    field(
+      "set-box-ssh",
+      "set.ui.boxSsh",
+      "ssh (login@host)",
+      "text",
+      'maxlength="320"',
+    ) +
+    field(
+      "set-box-port",
+      "set.ui.boxPort",
+      "ssh port",
+      "number",
+      'min="1" max="65535" step="1"',
+    ) +
+    field(
+      "set-box-key",
+      "set.ui.boxKey",
+      "ssh key file",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-pw",
+      "set.ui.boxPw",
+      "Playwright address (ws://)",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-slots",
+      "set.ui.boxSlots",
+      "Browser slots",
+      "number",
+      'min="1" max="64" step="1" value="1"',
+    ) +
+    field(
+      "set-box-hold",
+      "set.ui.boxHold",
+      "Hold file (on the box)",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-scale",
+      "set.ui.boxScale",
+      "Time scale",
+      "number",
+      'min="1" max="10" step="0.1" value="1"',
+    ) +
+    `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
+    `</div>` +
+    `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-box-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-box-out");
+  const list = host.querySelector("#set-box-list");
+  const save = host.querySelector("#set-box-save");
+  const val = (id) => host.querySelector(id).value.trim();
+  const num = (id) => (val(id) === "" ? undefined : Number(val(id)));
+  const warn = (e) => {
+    out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+  };
+  const post = (path, body, button) =>
+    shell
+      .busyAction(
+        "save",
+        (headers) => shell.api("POST", path, body, { headers }),
+        { button },
+      )
+      .then(() => {
+        out.innerHTML = "";
+        draw();
+      });
+  const draw = () =>
+    shell
+      .api("GET", "/api/gate-slots/boxes")
+      .then((b) => {
+        const boxes = (b && b.boxes) || [];
+        if (!boxes.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.boxNone", "No test boxes. Browser runs use this machine only."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          boxes
+            .map(
+              (x) =>
+                `<li style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span>${escHtml(x.name)}</span>` +
+                `<span class="set-note">${escHtml(
+                  L("set.ui.boxSlotsN", "{n} browser slots", {
+                    n: x.browser_slots,
+                  }),
+                )}</span>` +
+                `<span class="set-note mono">${escHtml(
+                  [x.ssh, x.playwright].filter(Boolean).join(" · "),
+                )}</span>` +
+                (x.hold_file
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxHoldIs", "hold file {path}", { path: x.hold_file }))}</span>`
+                  : "") +
+                (x.time_scale && x.time_scale !== 1
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxScaleIs", "time ×{n}", { n: x.time_scale }))}</span>`
+                  : "") +
+                `<button type="button" class="btn sm" data-box-rm="${escHtml(x.name)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-box-rm]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/boxes/remove",
+              { name: btn.getAttribute("data-box-rm") },
+              btn,
+            ).catch(warn);
+          });
+      })
+      .catch(() => {});
+  save.addEventListener("click", () => {
+    const box = {
+      name: val("#set-box-name"),
+      ssh: val("#set-box-ssh") || undefined,
+      ssh_port: num("#set-box-port"),
+      ssh_identity: val("#set-box-key") || undefined,
+      playwright: val("#set-box-pw") || undefined,
+      browser_slots: num("#set-box-slots"),
+      hold_file: val("#set-box-hold") || undefined,
+      time_scale: num("#set-box-scale"),
+    };
+    post("/api/gate-slots/boxes", { box }, save).catch(warn);
+  });
+  draw();
+}
+
+/**
+ * Issue 642: the CI runner entries, one repo's jobs on one test box. A
+ * person adds one (repo, box, labels, routing variable, at a time, heavy
+ * or light, who answers for it) and removes one. Saving the same repo on
+ * the same box replaces it. Settings only: nothing starts a runner yet.
+ */
+function drawRunnerEntries(host, ctx) {
+  const shell = ctx.shell;
+  const field = (id, key, en, type, extra) =>
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L(key, en))}</span>` +
+    `<input id="${id}" type="${type}" ${extra || ""}></label>`;
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;flex-basis:100%">` +
+    field(
+      "set-re-repo",
+      "set.ui.reRepo",
+      "Repo (owner/name)",
+      "text",
+      'maxlength="141"',
+    ) +
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L("set.ui.reBox", "Test box"))}</span>` +
+    `<select id="set-re-box"></select></label>` +
+    field(
+      "set-re-labels",
+      "set.ui.reLabels",
+      "Runner labels (comma-separated)",
+      "text",
+      'maxlength="1300"',
+    ) +
+    field(
+      "set-re-var",
+      "set.ui.reVar",
+      "Routing variable",
+      "text",
+      'maxlength="100"',
+    ) +
+    field(
+      "set-re-slots",
+      "set.ui.reSlots",
+      "At a time",
+      "number",
+      'min="1" max="64" step="1" value="1"',
+    ) +
+    field(
+      "set-re-owner",
+      "set.ui.reOwner",
+      "Who answers for it",
+      "text",
+      'maxlength="64"',
+    ) +
+    `<label style="display:flex;gap:4px;align-items:center;flex:1 1 140px">` +
+    `<input id="set-re-heavy" type="checkbox" checked>` +
+    `<span class="set-note">${escHtml(L("set.ui.reHeavy", "Takes the box's heavy slot"))}</span></label>` +
+    `<button type="button" class="btn sm" id="set-re-save">${escHtml(L("set.ui.reSave", "Save entry"))}</button>` +
+    `</div>` +
+    `<div id="set-re-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-re-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-re-out");
+  const list = host.querySelector("#set-re-list");
+  const save = host.querySelector("#set-re-save");
+  const boxSel = host.querySelector("#set-re-box");
+  const val = (id) => host.querySelector(id).value.trim();
+  const warn = (e) => {
+    out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+  };
+  const post = (path, body, button) =>
+    shell
+      .busyAction(
+        "save",
+        (headers) => shell.api("POST", path, body, { headers }),
+        { button },
+      )
+      .then(() => {
+        out.innerHTML = "";
+        draw();
+      });
+  const draw = () =>
+    shell
+      .api("GET", "/api/gate-slots/runner-entries")
+      .then((b) => {
+        const boxes = (b && b.boxes) || [];
+        const entries = (b && b.entries) || [];
+        const picked = boxSel.value;
+        boxSel.innerHTML = boxes
+          .map((n) => `<option value="${escHtml(n)}">${escHtml(n)}</option>`)
+          .join("");
+        if (boxes.includes(picked)) boxSel.value = picked;
+        save.disabled = !boxes.length;
+        if (!boxes.length)
+          out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.reNoBox", "Set a test box first, under Test boxes."))}</span>`;
+        if (!entries.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.reNone", "No runner entries. CI jobs use hosted runners."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          entries
+            .map(
+              (x) =>
+                `<li style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span class="mono">${escHtml(x.repo)}</span>` +
+                `<span>→ ${escHtml(x.box)}</span>` +
+                `<span class="set-note">${escHtml(
+                  x.heavy
+                    ? L("set.ui.reHeavyIs", "heavy")
+                    : L("set.ui.reLightIs", "light"),
+                )}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reSlotsN", "{n} at a time", { n: x.slots }))}</span>` +
+                `<span class="set-note mono">${escHtml(x.labels.join(", "))}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reVarIs", "variable {v}", { v: x.routing_variable }))}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reOwnerIs", "owner {who}", { who: x.owner }))}</span>` +
+                `<button type="button" class="btn sm" data-re-repo="${escHtml(x.repo)}" data-re-box="${escHtml(x.box)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-re-repo]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/runner-entries/remove",
+              {
+                repo: btn.getAttribute("data-re-repo"),
+                box: btn.getAttribute("data-re-box"),
+              },
+              btn,
+            ).catch(warn);
+          });
+      })
+      .catch(() => {});
+  save.addEventListener("click", () => {
+    const slots = val("#set-re-slots");
+    const entry = {
+      repo: val("#set-re-repo"),
+      box: boxSel.value,
+      labels: val("#set-re-labels"),
+      routing_variable: val("#set-re-var"),
+      slots: slots === "" ? undefined : Number(slots),
+      heavy: host.querySelector("#set-re-heavy").checked,
+      owner: val("#set-re-owner"),
+    };
+    post("/api/gate-slots/runner-entries", { entry }, save).catch(warn);
+  });
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
   {
@@ -2354,6 +2649,57 @@ export const DEN_SETTINGS = [
     scope: "user",
     control: { type: "custom", render: drawRunnerTokens },
     read: () => null,
+  },
+  {
+    // Issue 625: test boxes, a browser slot source each.
+    id: "server.gate_boxes",
+    category: "server",
+    label: "Test boxes",
+    description:
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    keywords: ["gate", "slot", "box", "remote", "browser", "tests", "machine"],
+    scope: "user",
+    control: { type: "custom", render: drawGateBoxes },
+    read: () => null,
+  },
+  {
+    // Issue 642: a repo's CI jobs on a test box (settings only, slice 1).
+    id: "server.gate_runner_entries",
+    category: "server",
+    label: "CI runner entries",
+    description:
+      "Which repos' CI jobs may run on which test box: the runner labels the jobs ask for, the repo variable that routes them, how many at a time, whether each takes the box's heavy slot, and who answers for it. For now these are settings only: Den doesn't start runners yet. An agent asks to add one and you allow it. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
+    keywords: ["gate", "runner", "ci", "box", "repo", "labels", "routing"],
+    scope: "user",
+    control: { type: "custom", render: drawRunnerEntries },
+    read: () => null,
+  },
+  {
+    id: "server.gate_box_check",
+    category: "server",
+    label: "Test box check waits, in seconds",
+    description:
+      "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    keywords: ["gate", "slot", "box", "timeout", "check"],
+    scope: "user",
+    keys: ["gate_slots.box_check_timeout_seconds"],
+    control: { type: "number", min: 1, max: 120, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.boxCheckTimeoutSeconds ?? 8,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { box_check_timeout_seconds: v } }),
+  },
+  {
+    id: "server.gate_box_recheck",
+    category: "server",
+    label: "A skipped test box is checked again after, in seconds",
+    description:
+      "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    keywords: ["gate", "slot", "box", "hold", "recheck"],
+    scope: "user",
+    keys: ["gate_slots.box_recheck_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.boxRecheckSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ gate_slots: { box_recheck_seconds: v } }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

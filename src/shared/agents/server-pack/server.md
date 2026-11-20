@@ -186,6 +186,10 @@ Held (each waits for the person's Allow):
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as
   the CI system's secret at once, and never print it.
+- `gate_runner_entry_set`: let a repo's CI jobs run on a test box the
+  person set (its labels, routing variable, slots, heavy or light, who
+  answers for it). It waits for the person's Allow. Nothing starts a
+  runner yet: it is a setting.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the

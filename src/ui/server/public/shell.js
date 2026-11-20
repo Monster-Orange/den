@@ -744,6 +744,35 @@
     "set.ui.appKeyRevoked": "revoked {when}",
     "set.ui.appKeyRevoke": "Revoke",
     "set.ui.runnerNone": "No runner tokens yet.",
+    "set.ui.boxName": "Name",
+    "set.ui.boxSsh": "ssh (login@host)",
+    "set.ui.boxPort": "ssh port",
+    "set.ui.boxKey": "ssh key file",
+    "set.ui.boxPw": "Playwright address (ws://)",
+    "set.ui.boxSlots": "Browser slots",
+    "set.ui.boxHold": "Hold file (on the box)",
+    "set.ui.boxScale": "Time scale",
+    "set.ui.boxSave": "Save box",
+    "set.ui.boxNone": "No test boxes. Browser runs use this machine only.",
+    "set.ui.boxSlotsN": "{n} browser slots",
+    "set.ui.boxHoldIs": "hold file {path}",
+    "set.ui.boxScaleIs": "time ×{n}",
+    "set.ui.boxRemove": "Remove",
+    "set.ui.reRepo": "Repo (owner/name)",
+    "set.ui.reBox": "Test box",
+    "set.ui.reLabels": "Runner labels (comma-separated)",
+    "set.ui.reVar": "Routing variable",
+    "set.ui.reSlots": "At a time",
+    "set.ui.reHeavy": "Takes the box's heavy slot",
+    "set.ui.reOwner": "Who answers for it",
+    "set.ui.reSave": "Save entry",
+    "set.ui.reNone": "No runner entries. CI jobs use hosted runners.",
+    "set.ui.reNoBox": "Set a test box first, under Test boxes.",
+    "set.ui.reHeavyIs": "heavy",
+    "set.ui.reLightIs": "light",
+    "set.ui.reSlotsN": "{n} at a time",
+    "set.ui.reVarIs": "variable {v}",
+    "set.ui.reOwnerIs": "owner {who}",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -1942,6 +1971,19 @@
     "set.server.gate_runners": "CI runner tokens",
     "set.server.gate_runners.d":
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
+    "set.server.gate_boxes": "Test boxes",
+    "set.server.gate_boxes.d":
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check": "Test box check waits, in seconds",
+    "set.server.gate_box_check.d":
+      "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck":
+      "A skipped test box is checked again after, in seconds",
+    "set.server.gate_runner_entries": "CI runner entries",
+    "set.server.gate_runner_entries.d":
+      "Which repos' CI jobs may run on which test box: the runner labels the jobs ask for, the repo variable that routes them, how many at a time, whether each takes the box's heavy slot, and who answers for it. For now these are settings only: Den doesn't start runners yet. An agent asks to add one and you allow it. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
+    "set.server.gate_box_recheck.d":
+      "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2442,6 +2484,20 @@
       "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
     "ap.det.gate_runner_token_create.revoke":
       "You can revoke it any time in Settings, under CI runner tokens.",
+    "ap.do.gate_runner_entry_set":
+      "Let {repo}'s CI jobs run on the test box {box}",
+    "ap.det.gate_runner_entry_set.reach":
+      "Lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.change":
+      "Changes the entry that lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.heavy":
+      "Each job takes one of {box}'s gate slots, so it never runs beside another heavy job there.",
+    "ap.det.gate_runner_entry_set.light":
+      "Its jobs are light: they take no gate slot on {box}.",
+    "ap.det.gate_runner_entry_set.route":
+      "The repo variable {variable} sends its jobs to the box, or back to hosted runners. {owner} answers for it.",
+    "ap.det.gate_runner_entry_set.remove":
+      "You can remove it any time in Settings, under CI runner entries.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -3156,6 +3212,13 @@
     // Issue 715: a release run a person waits on, and why.
     "gate.priority": "release priority: {reason}",
     "gate.priorityWaits": "release priority, after the one ahead: {reason}",
+    // Issue 625: test boxes, browser slots on other machines.
+    "gate.onBox": "on box {box}",
+    "gate.anyBox": "here or on a test box",
+    "gate.boxesH": "Test boxes",
+    "gate.boxSlots": "{box}: {held} of {n} browser slots in use",
+    "gate.boxHeld": "{box}: skipped, held ({reason})",
+    "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
