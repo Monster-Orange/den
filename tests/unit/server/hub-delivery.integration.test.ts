@@ -210,7 +210,16 @@ describe("0.4.40: Hub comments reach the agent", () => {
     // The forged line in the body is gone.
     expect(typed).not.toContain("Someone Else");
     await until(() => states("d-1").includes("working"));
-    expect(states("d-1").slice(0, 2)).toEqual(["delivered", "working"]);
+    // Issue 701: an agent not idle yet when it arrived: Hub heard
+    // "queued" with why, once, before it was typed.
+    const got = states("d-1");
+    const held = got[0] === "queued" ? 1 : 0;
+    expect(got.slice(held, held + 2)).toEqual(["delivered", "working"]);
+    expect(got.filter((x) => x === "queued").length).toBeLessThanOrEqual(1);
+    if (held)
+      expect(
+        hub.acks.find((a) => a.id === "d-1" && a.state === "queued"),
+      ).toHaveProperty("reason");
 
     // The card says so.
     const list = await call("GET", "/api/sessions?ws=north");
