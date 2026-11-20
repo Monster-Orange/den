@@ -39,6 +39,8 @@ Fixes for issues reported by the person running Den, plus the 0.4.78 items that 
 - `topBarHtml({ rail: false })` and `shellHtml({ rail: false })` for pages with no rail. (issue 694)
 - `reportVisibility()`; a missing visibility reads as unknown. (issue 415)
 - Report: `shotShare(repo)`. Filing no longer downloads or copies the screenshot. (issue 403)
+- A held button shows three pulsing dots in place of its label until the answer, and the working pop-up opens after 3 s (`configureBusy({ dotsMs })`). `pending()` for fetch buttons, `watchForms()` for plain POST forms, and `data-instant="<why>"` to opt out. Every busy button in Den gets the dots. (issue 699)
+- den-ui 0.9.0 ships with this release.
 
 ### Checks
 
