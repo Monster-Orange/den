@@ -168,12 +168,14 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(login).toContain('data-nav-shape="login"');
     // The role is never in the rail's entry: its shape is name, login.
     const role = accountHtml({
-      name: "Ada",
+      name: "Ada Lovelace",
       login: "ada",
       role: "Owner",
       href: "/me",
     });
-    expect(lines(role)).toEqual(["n:Ada", "l:@ada"]);
+    // (Issue 656: a name that is just the login, "Ada" for "ada", is no
+    // name; account-name-parity.test.ts has those.)
+    expect(lines(role)).toEqual(["n:Ada Lovelace", "l:@ada"]);
     expect(role).toContain('data-nav-shape="name,login"');
     expect(role).not.toContain("Owner");
     expect(
@@ -451,7 +453,7 @@ describe("the package ships every kit file", () => {
       expect(fs.existsSync(path.join(PKG, "src", f))).toBe(true);
   });
   it("packs src/ and bin/, with den-ui-parity as its bin", () => {
-    expect(pkg.version).toMatch(/^0\.7\.\d+$/);
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(pkg.files).toEqual(expect.arrayContaining(["src/", "bin/"]));
     expect(pkg.bin["den-ui-parity"]).toBe("bin/den-ui-parity.mjs");
     expect(fs.existsSync(path.join(PKG, pkg.bin["den-ui-parity"]))).toBe(true);

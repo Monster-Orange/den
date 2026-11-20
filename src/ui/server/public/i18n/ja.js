@@ -710,6 +710,7 @@
     "err.signin.expiredTitle": "サインインリンクの期限切れ",
     "err.signin.local":
       "サインインはアドレスごとです。このページは {host} にあります。サインイン済みの localhost で同じページを開いてください。",
+    "err.signin.atAddress": "{name} のサインインは {address} で行います",
     "err.signin.copy": "コマンドをコピー",
     "err.signin.title": "{name} にサインイン",
     "err.signin.where":
@@ -855,6 +856,12 @@
     "set.server.crash_loop_minutes": "再起動ガードの時間枠(分)",
     "set.server.crash_loop_minutes.d":
       "上の、正常に終了しなかった回数を数える分数です。__DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "プロセス検索の待ち時間",
+    "set.server.lookup_first.d":
+      "接続を持っているプロセスをシステムに問い合わせるとき (lsof、ps)、__DEN_TITLE__ が最初の試行で待つ時間です。エージェント自身の呼び出しはこの方法で特定されます。__DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "プロセス検索の再試行の待ち時間",
+    "set.server.lookup_retry.d":
+      "最初の試行が時間切れになったときに、2 回目の試行が待つ時間です。混み合ったマシンでは応答が遅れることがあります。__DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout": "アドレス確認の待ち時間",
     "set.server.address_check_timeout.d":
       "アドレスがこの __DEN_TITLE__ に届くか確認するとき、表示したり開いたりする前に __DEN_TITLE__ が応答を待つ時間。__DEN_CLI__ config web.address_check_timeout_seconds=5",
@@ -864,6 +871,13 @@
     "set.server.address_check_cache": "アドレス確認の保持時間",
     "set.server.address_check_cache.d":
       "ページのバナーと Edge が __DEN_TITLE__ のアドレスの前回の確認を使い回す時間。0 は読むたびに確認します。__DEN_CLI__ config web.address_check_cache_seconds=60",
+    "set.server.address_check_drop_after":
+      "サインインが戻るまでのアドレス失敗回数",
+    "set.server.address_unknown_keep": "確認が判断できない間アドレスを保つ時間",
+    "set.server.address_unknown_keep.d":
+      "__DEN_TITLE__ の https アドレスが確認された後、判断できない確認（時間内に応答なし）がサインインをそこに保つ時間。最後の応答から数えます。過ぎると失敗として扱い、サインインはこのマシン自身の名前に戻ります。短くしてください。__DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    "set.server.address_check_drop_after.d":
+      "__DEN_TITLE__ の https アドレスが確認されると、サインインはそこだけに置かれます。そのアドレスで別のものが応答するか何も応答しない確認が何回続いたら、このマシン自身の名前でサインインが再び使えるようになるか。判断できない確認は無視します。__DEN_CLI__ config web.address_check_drop_after=2",
     "set.server.bridge_listen": "Docker ブリッジ (edge 用)",
     "set.server.bridge_listen.d":
       "Linux のみ。ここに edge がある場合、__DEN_TITLE__ は Docker ブリッジのアドレスでも待ち受けます。edge はそこからこのマシンに届きます。オフ: 127.0.0.1 のみで、edge から __DEN_TITLE__ に届きません。次の起動から反映されます。__DEN_CLI__ config web.bridge_listen=off",
@@ -896,7 +910,7 @@
       "各報告先リポジトリが公開か非公開かを __DEN_TITLE__ が覚えておく時間です。これを過ぎると、GitHub にもう一度確認します。__DEN_CLI__ config feedback.visibility_cache_hours=24",
     "set.server.report_visibility_wait": "報告：リポジトリの公開範囲の待ち時間",
     "set.server.report_visibility_wait.d":
-      "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると公開として表示し、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると「不明」と表示し（注意書きは残ります）、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     "set.server.report_visibility_retry": "報告：リポジトリの公開範囲の再確認",
     "set.server.report_visibility_retry.d":
       "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
@@ -915,6 +929,15 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.hook_wait": "エージェントのフックの待ち時間",
+    "set.agents.hook_wait.d":
+      "エージェントのフックが、あなたが必要だと __DEN_TITLE__ に知らせるときや Hub の受信箱を確認するときに、1 回の試行で __DEN_TITLE__ を待つ時間です。混み合ったマシンでは応答が遅れることがあります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    "set.agents.hook_retries": "エージェントのフックの再試行回数",
+    "set.agents.hook_retries.d":
+      "__DEN_TITLE__ が時間内に応答しなかったか呼び出しを断ったときに、エージェントのフックがあと何回試すかです。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.retries=2",
+    "set.agents.hook_backoff": "エージェントのフックの間隔",
+    "set.agents.hook_backoff.d":
+      "エージェントのフックが最初の再試行の前に待つ時間です。その後の間隔は毎回倍になります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "圧縮の繰り返し: 回数",
     "set.agents.compaction_loop.d":
       "下の分数のうちにエージェントが自動圧縮をこの回数より多く行うと、ベルが圧縮を繰り返していると知らせます。1 回の繰り返しにつきベルは 1 回です。__DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -1198,6 +1221,7 @@
     "ag.state.interrupted": "中断",
     "ag.why.stopped": "{time} に停止しました",
     "ag.why.interrupted": "中断: {name} が再起動しました",
+    "ag.why.restartFailed": "再起動後に戻りませんでした: {why}",
     "ag.why.exited": "終了しました",
     "ag.why.exitedCode": "終了しました（コード {code}）",
     "ag.fresh": "新しく始める",
@@ -1803,6 +1827,8 @@
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
+    "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
+    "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
@@ -1820,6 +1846,8 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
     "bell.m.updatedSecurity":
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.backNoteHeld":
+      "__DEN_TITLE__ が戻りました。{agent} への連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.restartedWhileWorking":
       "{agent} が作業中でしたが、__DEN_TITLE__ は更新を完了するために再起動しました",
     "bell.m.updateWaitsAskedWhat":

@@ -94,6 +94,24 @@ describe("Connect links the clear ones", () => {
     expect(t.changed()).toBe(1);
   });
 
+  it("issue 649: never links the catch-all project `default`, even to a Hub project named default; never counts it as a pick", async () => {
+    const t = deps({
+      default: [P("default", "name")],
+      north: [P("north", "repo")],
+    });
+    expect(await linkClearProjects(t.d)).toEqual({
+      linked: ["north"],
+      unclear: [],
+    });
+    expect(t.written).toEqual({
+      north: { id: "north", slug: "north", name: "NORTH" },
+    });
+    const u = deps({ default: [P("a", "repo"), P("b", "name")] });
+    expect(await linkClearProjects(u.d)).toEqual({ linked: [], unclear: [] });
+    expect(u.written).toEqual({});
+    expect(u.changed()).toBe(0);
+  });
+
   it("Hub can't suggest (an older Hub, or it doesn't answer): links nothing", async () => {
     for (const bad of ["throw", null] as const) {
       const t = deps({ north: [P("north", "repo")], south: bad });

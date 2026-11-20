@@ -17,6 +17,7 @@ import type { Browser } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -32,11 +33,7 @@ function write(file: string, content: string): void {
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

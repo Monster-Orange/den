@@ -42,7 +42,7 @@ describe("live checks: gate/<issue>.mjs", () => {
     });
   });
 
-  it("checks expect's rows: ok null only with a skip reason, every clause answered", () => {
+  it("checks expect's rows: ok null only with a skip reason, every clause answered once", () => {
     const js = `
       const { checkRows } = await import("./scripts/gate-shape.mjs");
       const c = ["a", "b"];
@@ -52,6 +52,7 @@ describe("live checks: gate/<issue>.mjs", () => {
         skipWithOk: checkRows([{ clause: "a", ok: true, skip: "person" }, { clause: "b", ok: true }], c),
         missing: checkRows([{ clause: "a", ok: true }], c),
         stranger: checkRows([{ clause: "a", ok: true }, { clause: "b", ok: "yes" }, { clause: "z", ok: true }], c),
+        twice: checkRows([{ clause: "a", ok: true }, { clause: "b", ok: true }, { clause: "a", ok: true }], c),
       }));`;
     const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
       cwd: ROOT,
@@ -66,6 +67,8 @@ describe("live checks: gate/<issue>.mjs", () => {
         "row 2: ok is not true, false or null",
         'row 3: clause "z" is not one of clauses',
       ],
+      // CONTRIBUTING.md: expect answers each clause once.
+      twice: ['row 3: clause "a" is answered more than once'],
     });
   });
 

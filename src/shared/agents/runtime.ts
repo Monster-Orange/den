@@ -18,6 +18,7 @@ import {
   type StrategyEntry,
 } from "../strategies/registry.js";
 import type { CatalogEntry } from "./catalog.js";
+import type { HookCall } from "./guardrails/hook-call.js";
 import type { AgentRecord } from "./records.js";
 import type { Persona } from "./personas.js";
 import type { BinSource, RuntimeCopy, RuntimeFind } from "./runtime-search.js";
@@ -125,7 +126,11 @@ export interface LaunchInput {
    * hooks (Notification: waiting; Stop: finished). No token: the hook
    * sends the agent's own, from its env.
    */
-  attention?: { base: string };
+  attention?: {
+    base: string;
+    /** Issue 609: how its hooks call Den (user.yml agent_hooks.*). */
+    call?: HookCall;
+  };
   /**
    * The caller's environment, for finding the runtime's CLI on PATH. The
    * agent does not get it: it starts from an allowlist (sessions/env.ts),
@@ -314,12 +319,14 @@ export interface Runtime {
   /**
    * AG-18: whether conversation `token` is mid-turn (den-claude: its
    * transcript's tail). None, or null: the runtime can't tell. Never
-   * throws. `readMaxBytes`: how far back it may read (D39).
+   * throws. `readMaxBytes`: how far back it may read (D39). `since`
+   * (issue 607): when the agent's live session started (ms); a turn last
+   * written before it was cut with the session that ran it, and is idle.
    */
   turnBusy?(
     token: string,
     env?: NodeJS.ProcessEnv,
-    opts?: { readMaxBytes?: number },
+    opts?: { readMaxBytes?: number; since?: number },
   ): boolean | null;
   /**
    * 0.4.48: the command line of the shell the runtime runs a command in.

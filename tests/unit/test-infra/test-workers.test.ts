@@ -57,7 +57,7 @@ describe("jest workers (den#143)", () => {
     // A shared runner starved by cores-minus-one workers ran the heaviest
     // files 2-8 times slower, past their budgets. The cap is the setting,
     // set on the job; never a number in the config.
-    for (const f of ["ci.yml", "release.yml"]) {
+    for (const f of ["ci.yml", "release-gates.yml"]) {
       const doc = yaml.parse(
         fs.readFileSync(path.join(ROOT, ".github", "workflows", f), "utf-8"),
       ) as { jobs: { tests: { env?: Record<string, unknown> } } };

@@ -1868,7 +1868,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Report: repository visibility wait",
     description:
-      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says not known (with the caution), and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     keywords: ["report", "feedback", "visibility", "timeout", "wait"],
     scope: "user",
     keys: ["feedback.visibility_timeout_seconds"],
@@ -1889,6 +1889,33 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.feedback?.visibility_retry_seconds ?? 60,
     write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
+  },
+  {
+    // Issue 609: how long Den's process lookups wait (user.yml process_lookup.*).
+    id: "server.lookup_first",
+    category: "server",
+    label: "Process lookup wait",
+    description:
+      "How long __DEN_TITLE__ waits on its first try when it asks the system which process holds a connection (lsof, ps). An agent's own calls are placed this way. __DEN_CLI__ config process_lookup.first_seconds=5",
+    keywords: ["timeout", "lookup", "lsof", "process", "agent"],
+    scope: "user",
+    keys: ["process_lookup.first_seconds"],
+    control: { type: "number", min: 0.5, max: 600, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.process_lookup?.first_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ process_lookup: { first_seconds: v } }),
+  },
+  {
+    id: "server.lookup_retry",
+    category: "server",
+    label: "Process lookup retry wait",
+    description:
+      "How long the second try waits when the first ran out of time. A busy machine can be slow to answer. __DEN_CLI__ config process_lookup.retry_seconds=20",
+    keywords: ["timeout", "lookup", "retry", "process"],
+    scope: "user",
+    keys: ["process_lookup.retry_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.process_lookup?.retry_seconds ?? 20,
+    write: (v, ctx) => ctx.post({ process_lookup: { retry_seconds: v } }),
   },
   {
     // Issue 455: the address check's limits (user.yml web.address_check_*).
@@ -1929,6 +1956,34 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
     read: (ctx) => ctx.data.address_check?.cache_seconds ?? 60,
     write: (v, ctx) => ctx.post({ address_check: { cache_seconds: v } }),
+  },
+  {
+    // The sign-in lives on __DEN_TITLE__'s own address once it is proven:
+    // how many definite failures in a row move it back.
+    id: "server.address_check_drop_after",
+    category: "server",
+    label: "Address failures before sign-in moves back",
+    description:
+      "Once __DEN_TITLE__'s https address is proven, the sign-in lives only there. How many checks in a row must find something else, or nothing, answering at that address before sign-in works on this machine's own name again. A check that can't tell is ignored. __DEN_CLI__ config web.address_check_drop_after=2",
+    keywords: ["address", "check", "edge", "sign-in", "cookie", "failures"],
+    scope: "user",
+    keys: ["address_check.drop_after"],
+    control: { type: "number", min: 1, max: 100, step: 1 },
+    read: (ctx) => ctx.data.address_check?.drop_after ?? 2,
+    write: (v, ctx) => ctx.post({ address_check: { drop_after: v } }),
+  },
+  {
+    id: "server.address_unknown_keep",
+    category: "server",
+    label: "Address held while checks can't tell",
+    description:
+      "Once __DEN_TITLE__'s https address is proven, how long checks that can't tell (no answer in time) keep sign-in there, from its last answer. After that they count as failures, so sign-in comes back on this machine's own name. Keep it short. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    keywords: ["address", "check", "edge", "sign-in", "timeout", "window"],
+    scope: "user",
+    keys: ["address_check.unknown_keep_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.unknown_keep_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ address_check: { unknown_keep_seconds: v } }),
   },
   {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
@@ -2798,6 +2853,46 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agents_list?.refresh_timeout_seconds ?? 15,
     write: (v, ctx) =>
       ctx.post({ agents_list: { refresh_timeout_seconds: v } }),
+  },
+  {
+    // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
+    id: "agents.hook_wait",
+    category: "agents",
+    label: "Agent hook wait",
+    description:
+      "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    keywords: ["timeout", "hook", "attention", "bell", "wait"],
+    scope: "user",
+    keys: ["agent_hooks.timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agent_hooks?.timeout_seconds ?? 20,
+    write: (v, ctx) => ctx.post({ agent_hooks: { timeout_seconds: v } }),
+  },
+  {
+    id: "agents.hook_retries",
+    category: "agents",
+    label: "Agent hook retries",
+    description:
+      "How many more times an agent's hook tries when __DEN_TITLE__ didn't answer in time or turned the call away. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.retries=2",
+    keywords: ["retry", "hook", "attention", "bell"],
+    scope: "user",
+    keys: ["agent_hooks.retries"],
+    control: { type: "number", min: 0, max: 10, step: 1 },
+    read: (ctx) => ctx.data.agent_hooks?.retries ?? 2,
+    write: (v, ctx) => ctx.post({ agent_hooks: { retries: v } }),
+  },
+  {
+    id: "agents.hook_backoff",
+    category: "agents",
+    label: "Agent hook pause",
+    description:
+      "How long an agent's hook waits before its first retry. Each later pause doubles. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
+    keywords: ["retry", "backoff", "pause", "hook"],
+    scope: "user",
+    keys: ["agent_hooks.backoff_seconds"],
+    control: { type: "number", min: 0, max: 60, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.agent_hooks?.backoff_seconds ?? 1,
+    write: (v, ctx) => ctx.post({ agent_hooks: { backoff_seconds: v } }),
   },
   {
     // Issue 278: agents stuck compacting; instruction size (agent_context.*).

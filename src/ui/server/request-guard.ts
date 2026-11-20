@@ -12,7 +12,9 @@
  *    session runs). A bearer that doesn't verify: 401 `unauthorized`; an
  *    actor token `web logout --all` revoked: 401 `token_revoked` ("restart
  *    or resume the agent"). Or
- *    the browser's session cookie (SEC-1b), looked up server-side.
+ *    the browser's session cookie (SEC-1b), looked up server-side. Once
+ *    Den's own named https address works, a session cookie on a loopback
+ *    name doesn't count (loopbackSessions): it lives on that address.
  *  - An agent's token (SEC-1c, §5) never reaches: web.secret's management
  *    and sign-in (/api/web/*, /auth, /api/session/logout), the lock (R8:
  *    /api/sudo-password*), or a shell-grade route other than its own
@@ -120,6 +122,12 @@ export interface GuardSession {
   csrf: string;
   /** sha256 of its approval key (approvals.ts); unset before 0.4.15. */
   approveKeyHash?: string;
+  /**
+   * Minted over https through the edge with its proof (the `__Host-`
+   * cookie). Once Den's own named https address works, only such a
+   * session counts (loopbackSessions).
+   */
+  secure?: boolean;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -148,8 +156,18 @@ export interface GuardContext {
     token: string,
     req: http.IncomingMessage,
   ) => `person:${string}` | AgentPrincipal | "revoked" | "elsewhere" | null;
-  /** The live session the request's cookie names (SEC-1b), or null. */
-  session?: (req: http.IncomingMessage) => GuardSession | null;
+  /**
+   * The live session the request's cookie names (SEC-1b), or null. `via`:
+   * how it reached Den (which cookie name counts: session-cookie.ts).
+   */
+  session?: (req: http.IncomingMessage, via: Via) => GuardSession | null;
+  /**
+   * Whether a session counts on a loopback name. False once Den's own
+   * named https address works (named-address.ts): the session lives only
+   * there, since browsers share a host's cookies across its ports. Unset:
+   * true (an install with no working https address, a unit test).
+   */
+  loopbackSessions?: () => boolean;
   /**
    * Whether the request's peer is loopback. Unset: taken as loopback (a
    * request object without a socket, in a unit test); the server sets it.
@@ -198,6 +216,11 @@ export type GuardResult =
       beyond: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
+      /**
+       * Sign-out only: the session its cookie names when that session no
+       * longer counts (its own CSRF token proved the page). It ends it.
+       */
+      ending?: GuardSession;
       /** The client's address when Den can attest it (SEC-2a: a device's record). */
       client?: string;
     }
@@ -431,18 +454,26 @@ export function edgeClient(
 
 /**
  * Whether the request came over HTTPS: the socket's own encryption, or,
- * only for the edge hostname from an edge peer, `X-Forwarded-Proto: https`.
- * A spoofed header on a loopback Host never counts.
+ * only for the edge hostname from an edge peer that carries the edge's
+ * proof (`proved`, H1), `X-Forwarded-Proto: https`. A spoofed header on a
+ * loopback Host, or from a local process without the proof, never counts.
+ * The edge says `wss` for a WebSocket upgrade over TLS (the terminal
+ * pane's): that is https too.
  */
 export function requestIsHttps(
   req: http.IncomingMessage,
   via: Via | null,
+  proved = false,
 ): boolean {
   if ((req.socket as { encrypted?: boolean } | undefined)?.encrypted)
     return true;
-  if (via !== "edge" || !isEdgePeer(req.socket?.remoteAddress)) return false;
-  const xfp = header(req, "x-forwarded-proto");
-  return xfp?.split(",")[0].trim().toLowerCase() === "https";
+  if (!proved || via !== "edge" || !isEdgePeer(req.socket?.remoteAddress))
+    return false;
+  const xfp = header(req, "x-forwarded-proto")
+    ?.split(",")[0]
+    .trim()
+    .toLowerCase();
+  return xfp === "https" || xfp === "wss";
 }
 
 /** A bind address that only this machine can reach. */
@@ -606,11 +637,22 @@ export function checkRequest(
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
-  const session = principal ? null : (ctx.session?.(req) ?? null);
+  // Once Den's own named https address works, sessions count only when
+  // minted on it: none on a loopback name, and none minted elsewhere.
+  const namedOnly = ctx.loopbackSessions?.() === false;
+  const found = principal ? null : (ctx.session?.(req, via) ?? null);
+  const session =
+    namedOnly && (via === "loopback" || !found?.secure) ? null : found;
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");
   const pathname = reqUrl.pathname;
+  // Sign-out of a session that no longer counts: it may end that session
+  // only, with its own CSRF token (checked below, with the Origin).
+  const ending =
+    !session && found && method === "POST" && pathname === SIGNOUT
+      ? found
+      : null;
   const cls: RouteClass =
     routeClass(method, pathname) ??
     (changes(method) || isUpgrade(req) ? "mutating" : "readonly");
@@ -638,9 +680,14 @@ export function checkRequest(
   // something or reaches a shell: what isn't `readonly`, every write
   // method and every upgrade. A plain read on loopback passes as before.
   const signinFree = SIGNIN_FREE.some((r) => pathMatches(r, pathname));
-  const needsSignin =
-    cls !== "readonly" || changes(method) || isUpgrade(req);
-  if (!principal && !session && !signinFree && (beyond || needsSignin)) {
+  const needsSignin = cls !== "readonly" || changes(method) || isUpgrade(req);
+  if (
+    !principal &&
+    !session &&
+    !ending &&
+    !signinFree &&
+    (beyond || needsSignin)
+  ) {
     const scope: SigninScope = "den";
     return {
       ok: false,
@@ -721,6 +768,16 @@ export function checkRequest(
   const csrf =
     header(req, CSRF_HEADER) ??
     (isUpgrade(req) ? csrfFromProtocols(req) : undefined);
+  if (ending && csrf && same(csrf, ending.csrf))
+    return {
+      ok: true,
+      principal: null,
+      via,
+      beyond,
+      session: null,
+      ending,
+      ...(client ? { client: normAddress(client) } : {}),
+    };
   // The session's own token: there is no other (0.4.71).
   if (!csrf || !session || !same(csrf, session.csrf))
     return {
@@ -732,6 +789,9 @@ export function checkRequest(
     };
   return ok(browser ?? { kind: "person-browser" });
 }
+
+/** Sign-out's route. */
+const SIGNOUT = "/api/session/logout";
 
 /** Routes an agent's token never reaches, whatever the method (SEC-1 §5). */
 export const AGENT_FORBIDDEN: readonly string[] = [

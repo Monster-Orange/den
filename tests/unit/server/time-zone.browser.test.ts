@@ -22,6 +22,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 // Three days ago at 05:30 UTC: the evening before in Los Angeles, the
 // afternoon of that day in Tokyo, so the date shown names the zone.
@@ -53,9 +54,7 @@ const browsers: Partial<Record<"chromium" | "webkit", Browser>> = {};
 const errors: string[] = [];
 
 async function connect(type: BrowserType): Promise<Browser> {
-  return process.env.DEN_PW_WS
-    ? type.connect(process.env.DEN_PW_WS, { exposeNetwork: "<loopback>" })
-    : type.launch();
+  return launchBrowser(type);
 }
 
 beforeAll(async () => {
