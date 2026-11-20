@@ -8820,6 +8820,7 @@ void CRASH_GATE.then(() =>
       void m.startDeliveries({
         heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
         pollSeconds: cfg?.deliveryPollSeconds ?? 30,
+        heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
         waiting: typingHeldIds,
         log: (l) => serverLog(`  ${l}`, "warn"),
       });

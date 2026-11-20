@@ -801,10 +801,15 @@ export function hubWorkHtml(r, tr = t) {
       ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(w.artifact)}</a>`
       : ` · ${esc(w.artifact)}`
     : "";
+  // Issue 664: why the queued ones wait, when Den knows.
+  const why =
+    w.working > 0 || w.held !== "not_at_prompt"
+      ? ""
+      : ` · <span data-held="not_at_prompt">${esc(tr("ag.hub.notAtPrompt"))}</span>`;
   return (
     `<div class="aghub" data-hubwork="${w.working > 0 ? "working" : "queued"}">` +
     `<span class="den-dot ${w.working > 0 ? "ok" : "warn"}" aria-hidden="true"></span> ` +
-    `${esc(tr(key, { n }))}${art}</div>`
+    `${esc(tr(key, { n }))}${art}${why}</div>`
   );
 }
 
