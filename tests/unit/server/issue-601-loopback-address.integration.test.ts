@@ -9,6 +9,8 @@
  * to a device that isn't this machine, and a request on the address
  * itself is answered there (no loop).
  *
+ * Subject (issue 708): src/ui/server/named-address.ts, src/ui/server/index.ts.
+ *
  * The edge is modelled with its headers (helpers/edge-proof.ts): the
  * edge's proven https request for the address is what proves it. No code,
  * cookie or token is printed.
