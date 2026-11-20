@@ -20,6 +20,7 @@ import {
   accountHtml,
   accountMenuHtml,
   accountWho,
+  sameAsLogin,
 } from "../../../packages/den-ui/src/shell-html.js";
 
 const SHELL = fs.readFileSync(
@@ -60,6 +61,8 @@ function denAccount(p: Person): Record<string, unknown> {
   };
   const ctx = {
     state,
+    // The kit's classic script (window.DenUIShell), as shell.js reads it.
+    DUI: { sameAsLogin },
     lang: "en",
     t: (k: string) => k,
     result: null as unknown,
