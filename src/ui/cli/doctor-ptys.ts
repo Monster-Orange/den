@@ -25,7 +25,6 @@ import {
 } from "../../shared/sessions/host-refresh-state.js";
 import { readUserConfig } from "../../shared/den-config.js";
 import { localDateTime } from "../../shared/local-time.js";
-import { timeZonePref } from "../server/time-zone-pref.js";
 
 export interface PtySettings {
   warnAbove: number;
@@ -218,7 +217,12 @@ export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
     refresh: () => readHostRefreshState(stateDir),
     zone: () => {
       try {
-        return timeZonePref(readUserConfig().time_zone) ?? undefined;
+        // user.yml time_zone, as time-zone-pref.ts reads it (the CLI
+        // imports no server module): a zone Intl can't use is the machine's.
+        const z = readUserConfig().time_zone;
+        if (typeof z !== "string" || !z || z.length > 64) return undefined;
+        new Intl.DateTimeFormat("en", { timeZone: z });
+        return z;
       } catch {
         return undefined; // the machine's own zone
       }
