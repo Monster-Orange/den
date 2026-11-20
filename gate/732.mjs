@@ -169,7 +169,7 @@ export async function run(ctx, s) {
   // message from the page, forks a detached shell of its own that sources
   // a file under shell-snapshots/ and sleeps, as Claude Code's background
   // shells look to Den. Its turn ends at once.
-  const bg = await say(ctx, s.id, `/bg ${JOB_S}`);
+  const bg = await say(ctx, s.id, `/bg ${JOB_S} g732`);
   r.bg = { status: bg.status, code: bg.code };
   await ctx.sleep(2000);
   await endTurn(ctx, a, s.id, "Started the watcher in the background.");
