@@ -18,6 +18,10 @@
 //   own:  whether the bed's Hub comments as the install's person;
 //   hub:  false: the bed has no Hub;
 //   modes: false: the bed's stub has no start modes.
+//   rotates: true: its persona's rotation counts compactions (after 3);
+//         else none can ever be due (after 0).
+//   marksDue: true: an undone relaunch from a handoff with none due
+//         comes back marked due (a mark it never had: wrong).
 // Invented names only.
 
 const REASON = "a permission question is on its screen";
@@ -32,6 +36,8 @@ export function fakeBed({
   own = true,
   hub = true,
   modes = true,
+  rotates = false,
+  marksDue = false,
 } = {}) {
   const fixed = den === "fixed";
   const agents = new Map();
@@ -126,28 +132,42 @@ export function fakeBed({
     return name;
   };
 
+  /** A new conversation's rotation.json, as Den's launch writes it. */
+  const launched = (a) => ({
+    conversation: a.token,
+    compactions: 0,
+    after: rotates ? 3 : 0,
+  });
+
   /** Den's relaunch from the handoff: { status, body }. */
   const relaunch = (a, why) => {
+    const before = a.rotation;
     const name = archive(a);
     if (!name) return { status: 409, body: { ok: false, code: "no_handoff" } };
     const was = a.token;
     a.token = `conv-${++tok}`;
-    a.rotation = null;
+    a.rotation = launched(a);
     a.rotations.push({ reason: why, conversation: was, next: a.token });
     if (stubStart(a, false)) return { status: 200, body: { ok: true } };
     if (fixed) {
-      // Issue 658: never began: handoff.md back, the rotation due again.
+      // Issue 658: never began: handoff.md back, and the rotation as it
+      // was before (due again when it was due; a relaunch from a handoff
+      // with none due never makes one due).
       a.files["handoff.md"] = a.handoffs[name];
       delete a.handoffs[name];
-      a.rotation = { due: "manual", relaunchWanted: true };
+      a.rotation = marksDue
+        ? { ...before, due: "manual", relaunchWanted: true }
+        : before
+          ? { ...before, conversation: a.token }
+          : null;
     }
     return { status: 502, body: { ok: false, code: "exited_at_once" } };
   };
 
   /** Den's Resume: { status, body }. */
   const resume = (a) => {
-    if (fixed && a.rotation?.due && a.rotation.relaunchWanted) {
-      const r = relaunch(a, "manual");
+    if (fixed && a.rotation?.due) {
+      const r = relaunch(a, a.rotation.due);
       return r.status === 200
         ? { status: 200, body: { ok: true, relaunched: true } }
         : r;
@@ -197,6 +217,7 @@ export function fakeBed({
           rotation: null,
           rotations: [],
         };
+        a.rotation = launched(a);
         agents.set(id, a);
         return { code: stubStart(a, false) ? 0 : 1 };
       },
@@ -226,6 +247,13 @@ export function fakeBed({
         if (ev === "PostToolUse" && get()) get().perm = false;
       },
       async sh(cmd) {
+        // Den's compaction hook, as the gate stands in for it.
+        const rot =
+          /^printf '%s' '(\{[\s\S]*\})' > '[^']+\/rotation\.json'$/.exec(cmd);
+        if (rot) {
+          get().rotation = JSON.parse(rot[1]);
+          return { status: 0, out: "", err: "" };
+        }
         const m = /^printf '%b' '([\s\S]*)' > '([^']+)\/handoff\.md'$/.exec(
           cmd,
         );
@@ -393,7 +421,21 @@ export function fakeBed({
         headers: {},
         body: JSON.stringify(r.body),
       });
-      if (m[2] === "relaunch") return out(relaunch(a, "manual"));
+      if (m[2] === "relaunch") {
+        let body = {};
+        try {
+          body = JSON.parse(init?.body ?? "{}");
+        } catch {
+          /* none */
+        }
+        const due = a.rotation?.due;
+        if (!due && body.fromHandoff !== true)
+          return out({
+            status: 409,
+            body: { ok: false, error: "has not rotated: resume it instead" },
+          });
+        return out(relaunch(a, due ?? "manual"));
+      }
       if (m[2] === "resume") return out(resume(a));
       if (fixed && (a.trust || a.perm))
         return out({

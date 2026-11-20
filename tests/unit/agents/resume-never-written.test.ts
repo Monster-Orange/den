@@ -367,6 +367,62 @@ describe("issue 658, clause 2: a relaunch that ends before its conversation exis
   }, 30_000);
 });
 
+describe("issue 658, clause 2 through the relaunch route (the bed's path)", () => {
+  /** The next launch shows the trust question and exits 1 at once. */
+  function exitsAtOnce(r: Rig): Promise<void> {
+    const n = r.made.length;
+    return (async () => {
+      for (let i = 0; i < 200 && r.made.length <= n; i++) await settle(10);
+      r.made[n].emit(TRUST);
+      r.made[n].exit(1);
+    })();
+  }
+  const sansConversation = (s: object | null) => {
+    const { conversation: _c, ...rest } = (s ?? {}) as Record<string, unknown>;
+    return rest;
+  };
+
+  it("a rotated agent: 502 exited_at_once, handoff.md back, the rotation due as it was", async () => {
+    const r = await base();
+    r.deps.exitWatchMs = 400;
+    await started(r);
+    rotated(r);
+    await stop(r);
+    const before = readRotation(files(r));
+    const post = await route(r);
+    const said = exitsAtOnce(r);
+    const res = await post(`/api/workspaces/north/agents/${ID}/relaunch`, {});
+    await said;
+    expect(res.status).toBe(502);
+    expect(res.json.code).toBe("exited_at_once");
+    expect(fs.readFileSync(handoffMd(r), "utf-8")).toBe(GOOD_HANDOFF);
+    const after = readRotation(files(r));
+    expect(after?.conversation).toBe(rec(r).resumeToken);
+    expect(after?.due).toBe("compactions");
+    expect(sansConversation(after)).toMatchObject(sansConversation(before));
+  }, 30_000);
+
+  it("from its handoff with none due ({ fromHandoff: true }): handoff.md back, rotation.json as it was before", async () => {
+    const r = await base();
+    r.deps.exitWatchMs = 400;
+    await started(r);
+    fs.writeFileSync(handoffMd(r), GOOD_HANDOFF);
+    await stop(r);
+    const before = readRotation(files(r));
+    const post = await route(r);
+    const said = exitsAtOnce(r);
+    const res = await post(`/api/workspaces/north/agents/${ID}/relaunch`, {
+      fromHandoff: true,
+    });
+    await said;
+    expect(res.status).toBe(502);
+    expect(fs.readFileSync(handoffMd(r), "utf-8")).toBe(GOOD_HANDOFF);
+    const after = readRotation(files(r));
+    expect(after?.conversation).toBe(rec(r).resumeToken);
+    expect(sansConversation(after)).toEqual(sansConversation(before));
+  }, 30_000);
+});
+
 describe("issue 658, point 4: relaunch from the newest handoff when no rotation is due", () => {
   it("agents relaunch <id> --from-handoff: the newest kept handoff, recorded as manual", async () => {
     const r = await base();

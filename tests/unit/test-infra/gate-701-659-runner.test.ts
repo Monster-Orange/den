@@ -128,6 +128,27 @@ describe("gate/658.mjs as the bed runs it", () => {
     for (let i = 0; i < 3; i++) expect(row(r, i).ok).toBe(true);
   });
 
+  it("a rotating persona: the gate rotates it first, and a fixed Den leaves the rotation due", () => {
+    const r = runGate("658.mjs", { den: "fixed", rotates: true });
+    expect(r.error).toBeUndefined();
+    for (let i = 0; i < 3; i++) expect(row(r, i).ok).toBe(true);
+    expect(row(r, 1).detail).toMatch(/rotated first/);
+    expect(row(r, 1).detail).toMatch(/"due":"compactions"/);
+  });
+
+  it("from a handoff with none due, a Den that marks a rotation due fails clause 2", () => {
+    const r = runGate("658.mjs", { den: "fixed", marksDue: true });
+    expect(r.error).toBeUndefined();
+    expect(row(r, 1).ok).toBe(false);
+    expect(row(r, 1).detail).toMatch(/none due/);
+  });
+
+  it("the reported Den, rotating: the handoff stays archived and the rotation isn't due", () => {
+    const r = runGate("658.mjs", { den: "unfixed", rotates: true });
+    expect(r.error).toBeUndefined();
+    for (let i = 0; i < 2; i++) expect(row(r, i).ok).toBe(false);
+  });
+
   it("the reported Den: the handoff stays archived and Resume answers 502", () => {
     const r = runGate("658.mjs", { den: "unfixed" });
     expect(r.error).toBeUndefined();
