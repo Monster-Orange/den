@@ -115,8 +115,9 @@ describe("Edge's card (mock v3)", () => {
     expect(words).toContain("Den's proxy is not running: port 80 is in use");
   });
   it("the status line names the owner and where Den serves instead, with the check's time", () => {
+    // The check's time is the kit's (issue 668): the page language's clock.
     expect(words).toMatch(
-      /Held by nginx , Docker container web-proxy-1 \(not Den\)\. Den is serving at http:\/\/localhost:7777 instead\. Checked \d\d:\d\d\./,
+      /Held by nginx , Docker container web-proxy-1 \(not Den\)\. Den is serving at http:\/\/localhost:7777 instead\. Checked \d{1,2}:\d\d(\s[AP]M)?\./,
     );
     expect(html).toContain("<b>nginx</b>");
     expect(html).toContain("<b>web-proxy-1</b>");

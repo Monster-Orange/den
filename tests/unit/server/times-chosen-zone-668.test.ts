@@ -89,6 +89,7 @@ const ZONES = ["America/Los_Angeles", "Asia/Tokyo", "UTC"];
 const LANGS = ["en", "es", "ja"];
 
 describe("T2 parity: Den's way = the kit's way, same zone and language", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped page modules
   let mods: Record<string, any>;
   beforeAll(async () => {
     g.window = {
@@ -102,9 +103,8 @@ describe("T2 parity: Den's way = the kit's way, same zone and language", () => {
       gate: await import("../../../src/ui/server/public/gate-chip.js"),
       bell: await import("../../../src/ui/server/public/bell.js"),
       verify: await import("../../../src/ui/server/public/verify-page.js"),
-      settings: await import(
-        "../../../src/ui/server/public/settings-registry.js"
-      ),
+      settings:
+        await import("../../../src/ui/server/public/settings-registry.js"),
     };
   });
   afterAll(() => {
@@ -127,7 +127,9 @@ describe("T2 parity: Den's way = the kit's way, same zone and language", () => {
         expect(mods.address.clock(ISO)).toBe(time);
         expect(mods.gate.gateTime(ISO)).toBe(time);
         expect(
-          mods.bell.noteText({ msg: { key: "bell.m.x", vars: { since: ISO } } }),
+          mods.bell.noteText({
+            msg: { key: "bell.m.x", vars: { since: ISO } },
+          }),
         ).toBe(datetime);
         expect(mods.verify.metaLine({ endedAt: ISO })).toBe(datetime);
         expect(

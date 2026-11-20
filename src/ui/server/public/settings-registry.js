@@ -1057,7 +1057,7 @@ function drawAppKeys(host, ctx) {
   const origins = Array.isArray(ctx.data?.embed?.origins)
     ? ctx.data.embed.origins
     : [];
-  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+  const when = appKeyWhen;
   let asked = null;
   const ask = (action, args, button) =>
     shell
@@ -1389,20 +1389,17 @@ export function keepTokenLine(s, t) {
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
 }
 
-/** A set date in the reader's language and time zone (the ISO date if not). */
+/**
+ * A set date in the person's chosen zone and the page's language, the
+ * kit's way (issue 668); the ISO date when it can't be read.
+ */
 function localDay(iso) {
-  let date = String(iso).slice(0, 10);
-  try {
-    const tz =
-      document.documentElement.getAttribute("data-den-tz") || undefined;
-    date = new Date(iso).toLocaleDateString(
-      document.documentElement.lang || undefined,
-      { year: "numeric", month: "short", day: "numeric", timeZone: tz },
-    );
-  } catch {
-    /* the ISO date stays */
-  }
-  return date;
+  return formatTime(iso, { style: "date" }) || String(iso ?? "").slice(0, 10);
+}
+
+/** An app key's used or revoked time, the kit's way (issue 668). */
+export function appKeyWhen(iso) {
+  return iso ? formatTime(iso) : "";
 }
 
 /**
