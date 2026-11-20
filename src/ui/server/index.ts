@@ -395,6 +395,7 @@ import {
   publicSearchOpen,
   runGh,
 } from "./report-routes.js";
+import { publicRepoVisibility } from "./report-visibility.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -4446,6 +4447,7 @@ async function handleRequest(
       personOf: () => "person",
       flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
       searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+      publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })

@@ -122,6 +122,9 @@ export const en = {
   "kit.report.pub": "Public repository",
   "kit.report.priv": "Private repository",
   "kit.report.int": "Internal repository",
+  "kit.report.unk": "Visibility not known",
+  "kit.report.unkW":
+    "Treat it as public: screenshots and text may be visible to everyone. Mask anything private.",
   "kit.report.privN": "Only people with access to this repository can see it.",
   "kit.report.privW":
     "Only people with access to this repository can see it: {who}.",
@@ -349,6 +352,9 @@ export const es = {
   "kit.report.pub": "Repositorio público",
   "kit.report.priv": "Repositorio privado",
   "kit.report.int": "Repositorio interno",
+  "kit.report.unk": "Visibilidad desconocida",
+  "kit.report.unkW":
+    "Trátalo como público: puede que todo el mundo vea las capturas y el texto. Tapa lo que sea privado.",
   "kit.report.privN": "Solo lo ve quien tiene acceso a este repositorio.",
   "kit.report.privW":
     "Solo lo ve quien tiene acceso a este repositorio: {who}.",
@@ -568,6 +574,9 @@ export const ja = {
   "kit.report.pub": "公開リポジトリ",
   "kit.report.priv": "非公開リポジトリ",
   "kit.report.int": "内部リポジトリ",
+  "kit.report.unk": "公開範囲は不明",
+  "kit.report.unkW":
+    "公開として扱ってください。スクリーンショットとテキストは誰でも見られるかもしれません。見せたくない部分は隠してください。",
   "kit.report.privN": "このリポジトリにアクセスできる人だけが見られます。",
   "kit.report.privW":
     "このリポジトリにアクセスできる人だけが見られます（{who}）。",

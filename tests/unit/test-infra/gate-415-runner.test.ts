@@ -3,8 +3,9 @@
  * per matrix cell, expect(result), checkRows, teardown) on a fake bed
  * (tests/fixtures/gate415-fake-den.mjs; GitHub's API stood in, no network).
  * Beyond clauses 1–3 it must answer:
- *   4. unknown visibility is treated as public (the bed's visibility cache
- *      says which target Den couldn't learn);
+ *   4. unknown visibility shows "not known" with the caution kept: never
+ *      the Public repository pill, never a private claim (the bed's
+ *      visibility cache says which target Den couldn't learn);
  *   5. with several repos in the drop-down, the pill and note follow the
  *      selected repo;
  *   6. en/es/ja text for the pill, the warning and the note.
@@ -18,7 +19,7 @@ import * as path from "path";
 const ROOT = path.resolve(__dirname, "../../..");
 
 const UNKNOWN =
-  "unknown visibility is treated as public: the pill and the warning show";
+  "unknown visibility shows a not-known pill and the caution: never the Public repository pill, never a private claim";
 const FOLLOWS =
   "with several repos in the drop-down, the pill and note follow the selected repo";
 const WORDS =
@@ -38,10 +39,12 @@ const PUB = { repo: "acme/engine", visibility: "public", real: "public" };
 const PRIV = { repo: "acme/vault", visibility: "private", real: "not-public" };
 const UNK = {
   repo: "acme/nowhere",
-  visibility: "public",
+  visibility: "unknown",
   real: "not-public",
   unknown: true,
 };
+/** The old contract: Den said public for a target it couldn't learn. */
+const UNK_AS_PUBLIC = { ...UNK, visibility: "public" };
 
 function runGate(opts: Record<string, unknown> = {}) {
   const js = `
@@ -91,11 +94,24 @@ describe("gate/415.mjs as the bed runs it", () => {
     expect(r.language).toBe("en");
   });
 
-  it("an unknown target shows public, and clause 1 leaves it to clause 4", () => {
+  it("an unknown target shows not known with the caution, and clause 1 leaves it to clause 4", () => {
     const r = runGate({ targets: [PUB, UNK] });
     expect(r.error).toBeUndefined();
     expect(row(r, UNKNOWN)?.ok).toBe(true);
     expect(row(r, API)?.ok).toBe(true);
+    expect(row(r, WORDS)?.ok).toBe(true);
+  });
+
+  it("an unknown target shown as Public repository fails clause 4", () => {
+    const r = runGate({ targets: [PUB, UNK_AS_PUBLIC] });
+    expect(r.error).toBeUndefined();
+    expect(row(r, UNKNOWN)?.ok).toBe(false);
+  });
+
+  it("an unknown target with no caution fails clause 4", () => {
+    const r = runGate({ targets: [PUB, UNK], unknownWarn: false });
+    expect(r.error).toBeUndefined();
+    expect(row(r, UNKNOWN)?.ok).toBe(false);
   });
 
   it("only the public target (today's bed): 4 and 5 not run with their reasons, 6 runs", () => {
