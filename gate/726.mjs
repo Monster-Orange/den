@@ -1,28 +1,52 @@
-// gate/726.mjs: changing a Den's Hub is clean (issue 726).
+// gate/726.mjs: changing a Den's Hub is clean (issue 726), run for real on
+// the bed, in two legs, then put back as it was.
 //
-// The bed has one Hub, and a real change would revoke the bed's own token
-// (getting a new one is the person's Connect, in Hub's sign-in page). So
-// the change itself is not run here: the four clauses of the issue skip
-// (needs-second-hub) and are proven by the jest suites named in the PR
-// (hub-binding, hub-change, hub-connect, hub-address, doctor-hub-previous).
-// What the bed does prove, without changing its settings for good:
-//   - Den's Hub state is bound to the Hub it uses (state:hub/bound.json:
-//     its origin), which every clause rests on;
-//   - doctor has the "state from an earlier Hub" row and the revoke row;
-//   - through the API, saving the same address (a trailing slash) is not a
-//     change: no revoke, still connected; and a bad address is refused
-//     before anything is revoked.
+// Leg 1, the address: the bed Den moves from test Hub A (ctx.hubs.a) to
+// test Hub B (ctx.hubs.b) through POST /api/settings, the path that used
+// to skip the revoke. Then it connects to B.
+// Then back from B to A (B's token gets 401 on B), so the gate ends on A.
+// Leg 2, the company: on A, the bed connects again for the second test
+// company (ctx.hubs.a.companies, two gate-726* entries), then for the first.
+//
+// Allowed by test fixture (Vision's ruling): the harness's fixture Connect
+// presses Allow as the fixture person, and comments are posted by the
+// harness's Hub helper, only on the two test Hubs and only in test
+// companies. Nothing steps around Hub's refusal of sign-in links in agent
+// sessions. The old token stays in the harness: the module only sees the
+// HTTP status of a call with it.
+//
+// Each leg proves, as the issue words it:
+//   - a comment before the change is typed once, and never again after
+//     (the seen file is archived, Den's cursor is no longer the old one);
+//   - a comment after the change is typed once;
+//   - no project keeps an id from before, the bell offers the picks, and
+//     the count drops once the project is linked again;
+//   - the old token gets 401 where it was issued;
+//   - the bell has no items from before; doctor shows hub:previous ok and
+//     hub:unrevoked ok.
+//
+// Without the fixture Connect every clause skips: a change revokes the
+// bed's own token, and only Connect can put the bed back.
 export const issue = 726;
 export const clauses = [
-  "after a Hub change, no project is linked to an id from the old Hub, and the bell offers the picks",
-  "a comment posted on the new Hub after the change is typed once, and no comment from the old Hub is typed or reported to the new one",
-  "changing the address through the API revokes the old token (or doctor names it as not revoked)",
-  "no bell item from the old Hub remains after the change",
-  "this install's Hub state is bound to the Hub it uses",
-  "doctor has a row for state from an earlier Hub, and one for tokens not revoked",
-  "through the API, the same address is not a change and a bad one is refused, and the token still works",
+  "address change: a comment on Hub A is typed once, and after the change no old comment is typed again (A's seen file archived, its cursor not sent to B)",
+  "address change: a new comment on Hub B arrives and is typed once",
+  "address change: no project keeps an A id, the bell offers the picks, and after linking on B the count drops",
+  "address change: the old token is revoked on A (a call with it gets 401)",
+  "address change: the bell has no A items, and doctor shows hub:previous with no hub:unrevoked",
+  "moving back to A: the token B issued gets 401 on B, and the bed is connected to A again",
+  "company change: a comment before is typed once and never again after, and a comment in the second company is typed once",
+  "company change: no project keeps the first company's id, the bell offers the picks, and after linking the count drops",
+  "company change: the first company's token gets 401",
+  "company change: the bell has no items from the first company, and doctor shows hub:previous with no hub:unrevoked",
 ];
-export const timeoutMs = 120000;
+export const timeoutMs = 600000;
+
+const WS = "proj-gate";
+const TYPED_MS = 90000;
+const QUIET_MS = 20000;
+const FIXTURE = "allowed by test fixture";
+const NO_CONNECT = "needs Hub fixture connect-allow";
 
 const parse = (b) => {
   if (b && typeof b === "object") return b;
@@ -32,7 +56,6 @@ const parse = (b) => {
     return null;
   }
 };
-
 const origin = (u) => {
   try {
     return new URL(u).origin;
@@ -40,91 +63,386 @@ const origin = (u) => {
     return "";
   }
 };
+const fresh = (p) =>
+  `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-async function hubState(ctx) {
-  const h = await ctx.api("/api/hub?rail=1").catch(() => null);
-  return h?.state ?? null;
-}
-
-const save = (ctx, url) =>
+const saveHub = (ctx, url) =>
   ctx.fetch("/api/settings", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ hub_url: url }),
   });
 
-export async function setup(ctx) {
-  if (!ctx.hub?.url) return { skip: "needs-hub" };
+async function hubUrlNow(ctx) {
   const s = await ctx.api("/api/settings").catch(() => null);
-  return { hubUrl: s?.hub_url ?? null };
+  return s?.hub_url ?? null;
+}
+
+async function connected(ctx) {
+  const h = await ctx.api("/api/hub?rail=1").catch(() => null);
+  return h?.state === "connected";
+}
+
+/** The fixture Connect to `key` (for `company`), then wait for it. */
+async function connect(ctx, key, company) {
+  const c = await ctx
+    .hubConnect(key, company ? { company } : {})
+    .catch((e) => ({ ok: false, why: String(e?.message ?? e).slice(0, 200) }));
+  if (!c?.ok) return { ok: false, why: c?.why ?? "connect failed" };
+  const ms = await ctx.until(() => connected(ctx), 30000);
+  return ms === null
+    ? { ok: false, why: "not connected after Connect" }
+    : { ok: true, company: c.company ?? company ?? null };
+}
+
+/** Point the bed at `key`'s Hub and connect. */
+async function moveTo(ctx, key, company) {
+  const url = ctx.hubs[key].url;
+  if (origin((await hubUrlNow(ctx)) ?? "") !== origin(url)) {
+    const r = await saveHub(ctx, url);
+    if (r.status !== 200) return { ok: false, why: `save ${r.status}` };
+  }
+  if (await connected(ctx)) return { ok: true };
+  return connect(ctx, key, company);
+}
+
+const linkOf = (ctx) =>
+  ctx.api(`/api/workspaces/${WS}/hub-project`).catch(() => null);
+
+const linkTo = (ctx, slug) =>
+  ctx.fetch(`/api/workspaces/${WS}/hub-project`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ hub: slug }),
+  });
+
+/** Link the project to the first Hub project offered, when it has none. */
+async function ensureLinked(ctx) {
+  const l = await linkOf(ctx);
+  if (l?.hub?.id) return { id: l.hub.id, how: "linked" };
+  const slug = l?.suggestions?.[0]?.slug ?? l?.projects?.[0]?.slug;
+  if (!slug) return { id: null, how: "no Hub project offered" };
+  const r = await linkTo(ctx, slug);
+  return { id: (await linkOf(ctx))?.hub?.id ?? null, how: `PUT ${r.status}` };
+}
+
+/** Every bell item, read and unread, flattened. */
+async function bellItems(ctx) {
+  const n = await ctx.api("/api/notifications").catch(() => ({}));
+  return [
+    ...(n?.groups ?? []),
+    ...(n?.updates?.groups ?? []),
+    ...(n?.older?.groups ?? []),
+  ]
+    .flatMap((g) => (g?.subjects ?? []).map((s) => ({ g, s })))
+    .flatMap(({ g, s }) =>
+      (s?.items ?? []).map((i) => ({
+        subject: i?.subject ?? s?.subject ?? "",
+        source: i?.source ?? g?.source ?? null,
+        scope: i?.scope ?? g?.scope ?? "",
+        key: i?.msg?.key ?? "",
+        n: i?.msg?.vars?.n ?? null,
+        read: !!i?.read,
+      })),
+    );
+}
+
+const isHubItem = (i) =>
+  i.source === "hub" ||
+  String(i.scope).startsWith("hub/") ||
+  /^record:(hub-comments|not-at-prompt:)/.test(i.subject) ||
+  /^bell\.m\.(hub|hubOn|hubNoAnswer|notAtPrompt|held\.)/.test(i.key);
+
+async function pickCount(ctx) {
+  const p = (await bellItems(ctx)).find(
+    (i) => i.subject === "record:hub-pick" && !i.read,
+  );
+  return p ? Number(p.n) || 0 : 0;
+}
+
+function doctorRows(ctx) {
+  const j = parse(ctx.cli(["doctor", "--json"], { timeout: 90000 })?.out);
+  const row = (id) => {
+    const c = (j?.checks ?? []).find((x) => x?.id === id);
+    return c ? { status: c.status, detail: String(c.detail ?? "") } : null;
+  };
+  return { previous: row("hub:previous"), unrevoked: row("hub:unrevoked") };
+}
+
+async function typedCount(a, since, mark) {
+  try {
+    const rows = await a.typed({ since });
+    const t = Array.isArray(rows)
+      ? rows.map((x) => x?.text ?? "").join("")
+      : "";
+    return t.split(mark).length - 1;
+  } catch {
+    return null;
+  }
+}
+
+/** Post on `hub` for the stub and wait until it's typed. */
+async function commentTyped(ctx, hub, a, agent, company) {
+  const mark = fresh("g726");
+  const since = Date.now();
+  let id = null;
+  try {
+    id =
+      (
+        await hub.comment({
+          agent,
+          workspace: WS,
+          text: `gate 726: a Hub comment (${mark})`,
+          ...(company ? { company } : {}),
+        })
+      )?.id ?? null;
+  } catch (e) {
+    return { mark, id, threw: String(e?.message ?? e).slice(0, 200) };
+  }
+  const typedMs = await ctx.until(
+    async () => ((await typedCount(a, since, mark)) ?? 0) > 0,
+    TYPED_MS,
+  );
+  await ctx.sleep(3000);
+  return { mark, id, typedMs, times: await typedCount(a, since, mark) };
+}
+
+const seenCursor = (ctx) =>
+  parse(ctx.readBed("state:hub/deliveries-seen.json"))?.last ?? null;
+
+/**
+ * One leg: before the change (linked, a comment typed, the token kept),
+ * the change, what's left right after, then the new side (connected,
+ * linked again, a comment typed, the old one never again).
+ */
+async function leg(ctx, s, a, o) {
+  const r = {};
+  r.linkBefore = (await ensureLinked(ctx)).id;
+  r.before = await commentTyped(ctx, o.fromHub, a, s.agent, o.fromCompany);
+  r.cursorBefore = seenCursor(ctx);
+  const tok = await ctx.hubTokenSnapshot();
+  r.tokenBefore = await ctx.hubTokenStatus(tok, o.fromKey);
+  const archives = (ctx.listBed("state:hub/previous") ?? []).length;
+  const changedAt = Date.now();
+  r.change = await o.change();
+  if (!r.change.ok) return r;
+  await ctx.sleep(3000);
+  r.tokenAfter = await ctx.hubTokenStatus(tok, o.fromKey);
+  const prev = ctx.listBed("state:hub/previous") ?? [];
+  r.newArchive = prev.length > archives;
+  r.archivedSeen =
+    r.newArchive &&
+    (ctx.listBed(`state:hub/previous/${prev[prev.length - 1]}`) ?? []).includes(
+      "deliveries-seen.json",
+    );
+  r.cursorAfter = seenCursor(ctx);
+  r.linkAfter = (await linkOf(ctx))?.hub?.id ?? null;
+  r.picksAfter = await pickCount(ctx);
+  r.hubItemsAfter = (await bellItems(ctx)).filter(
+    (i) => isHubItem(i) && !i.read,
+  ).length;
+  r.doctor = doctorRows(ctx);
+  r.connect = await o.connect();
+  if (!r.connect.ok) return r;
+  await ctx.sleep(3000);
+  r.picksOnNew = await pickCount(ctx);
+  const l = await ensureLinked(ctx);
+  r.linkNew = l.id;
+  r.linkHow = l.how;
+  r.picksLinked = await pickCount(ctx);
+  r.after = await commentTyped(ctx, o.toHub, a, s.agent, o.toCompany);
+  await ctx.sleep(QUIET_MS);
+  r.oldAgain = await typedCount(a, changedAt, r.before.mark);
+  r.cursorNew = seenCursor(ctx);
+  return r;
+}
+
+export async function setup(ctx) {
+  if (!ctx.hubs?.a?.url || !ctx.hubs?.b?.url) return { skip: "needs-two-hubs" };
+  if (!ctx.hubConnect) return { skip: NO_CONNECT };
+  if (!ctx.hubTokenSnapshot || !ctx.hubTokenStatus)
+    return { skip: "needs-token-check" };
+  const was = await hubUrlNow(ctx);
+  const link = (await linkOf(ctx))?.hub?.slug ?? null;
+  return { was, link, agent: fresh("gate-726") };
 }
 
 export async function run(ctx, s) {
   if (s.skip) return s;
-  const bound = parse(ctx.readBed("state:hub/bound.json"));
-  const d = parse((await ctx.cli(["doctor", "--json"])).out);
-  const checks = Array.isArray(d?.checks) ? d.checks : [];
-  const row = (id) => {
-    const c = checks.find((x) => x?.id === id);
-    return c ? { status: c.status, detail: String(c.detail ?? "") } : null;
-  };
-  const before = await hubState(ctx);
-  let same = null;
-  let bad = null;
-  if (s.hubUrl) {
-    same = (await save(ctx, `${s.hubUrl}/`)).status;
-    bad = (await save(ctx, "http://hub-726.invalid")).status;
+  const { a: A, b: B } = ctx.hubs;
+  const out = { fixture: FIXTURE };
+  const sameOrigin = origin(A.url) === origin(B.url);
+  // The test companies on A (gate-726, gate-726b): leg 2 needs two.
+  const ac = (A.companies ?? []).filter((c) => /^gate-726/.test(String(c)));
+  const a1 = ac[0];
+  const a2 = ac[1];
+  const b1 = (B.companies ?? []).find((c) => /^gate-726/.test(String(c)));
+  const start = await moveTo(ctx, "a", a1);
+  out.start = start;
+  if (!start.ok) return out;
+  const stub = ctx.agent(s.agent, { workspace: WS });
+  stub.start("tester");
+  out.running = (await stub.running(30000)) != null;
+  if (!out.running) return out;
+  await ctx.sleep(2000);
+
+  // Leg 1: A -> B by address, then back to B -> A (B's token revoked on B).
+  if (sameOrigin) {
+    out.address = { skip: "the two test Hubs share an origin" };
+    out.back = { skip: "the two test Hubs share an origin" };
+  } else {
+    out.address = await leg(ctx, s, stub, {
+      fromKey: "a",
+      fromHub: A,
+      fromCompany: a1,
+      toHub: B,
+      toCompany: b1,
+      change: async () => {
+        const st = (await saveHub(ctx, B.url)).status;
+        return { ok: st === 200, why: `save ${st}` };
+      },
+      connect: () => connect(ctx, "b", b1),
+    });
+    out.back = { connectedB: await connected(ctx) };
+    if (out.back.connectedB) {
+      const tok = await ctx.hubTokenSnapshot();
+      out.back.before = await ctx.hubTokenStatus(tok, "b");
+      out.back.save = (await saveHub(ctx, A.url)).status;
+      await ctx.sleep(3000);
+      out.back.after = await ctx.hubTokenStatus(tok, "b");
+    }
+    out.back.onA = await moveTo(ctx, "a", a1);
   }
-  const after = await hubState(ctx);
-  return {
-    hub: origin(ctx.hub.url),
-    hubUrl: s.hubUrl ? origin(s.hubUrl) : null,
-    bound: bound ? { origin: bound.origin, company: !!bound.company } : null,
-    previous: row("hub:previous"),
-    unrevoked: row("hub:unrevoked"),
-    before,
-    after,
-    same,
-    bad,
-  };
+
+  // Leg 2: on A, company a1 -> a2 (Connect again), then back to a1.
+  if (!a2) out.company = { skip: "needs a second test company" };
+  else if (!(await connected(ctx)))
+    out.company = { skip: "the bed is not connected to Hub A" };
+  else {
+    out.company = await leg(ctx, s, stub, {
+      fromKey: "a",
+      fromHub: A,
+      fromCompany: a1,
+      toHub: A,
+      toCompany: a2,
+      // Connect again, for the other company: the change and the connect
+      // are one step here.
+      change: () => connect(ctx, "a", a2),
+      connect: async () => ({ ok: true }),
+    });
+    out.company.restored = await connect(ctx, "a", a1);
+  }
+  return out;
 }
 
 export async function teardown(ctx, s) {
-  // Put the address back exactly as it was (a no-op when nothing moved).
-  if (s?.hubUrl) await save(ctx, s.hubUrl).catch(() => undefined);
+  if (!s || s.skip) return;
+  try {
+    ctx.agent(s.agent, { workspace: WS }).remove();
+  } catch {
+    /* gone */
+  }
+  // The gate ends bound to A, on its first test company, with the link.
+  const a1 = (ctx.hubs.a.companies ?? []).find((c) =>
+    /^gate-726/.test(String(c)),
+  );
+  const m = await moveTo(ctx, "a", a1).catch(() => ({ ok: false }));
+  if (m.ok && a1) await connect(ctx, "a", a1).catch(() => undefined);
+  if (s.link) await linkTo(ctx, s.link).catch(() => undefined);
 }
 
-export function expect(cells) {
-  const r = cells[0]?.result ?? {};
-  const live = [0, 1, 2, 3].map((i) => ({
-    clause: clauses[i],
-    ok: null,
-    skip: r.skip ?? "needs-second-hub",
-  }));
-  if (r.skip)
-    return [
-      ...live,
-      ...[4, 5, 6].map((i) => ({ clause: clauses[i], ok: null, skip: r.skip })),
-    ];
-  const want = r.hubUrl ?? r.hub;
+/** The rows for one leg: [typed, links, token, bell+doctor] (+ new comment). */
+function legRows(r, names, base) {
+  if (r?.skip)
+    return names.map((clause) => ({ clause, ok: null, skip: r.skip }));
+  if (base) return names.map((clause) => ({ clause, ok: false, detail: base }));
+  if (!r?.change?.ok)
+    return names.map((clause) => ({
+      clause,
+      ok: false,
+      detail: `the change didn't go through: ${r?.change?.why}`,
+    }));
+  const fx = ` (${FIXTURE})`;
+  const on = r.connect?.ok === true;
+  const b = r.before ?? {};
+  const a = r.after ?? {};
+  const typed = {
+    ok:
+      b.times === 1 &&
+      r.archivedSeen === true &&
+      r.cursorAfter !== r.cursorBefore &&
+      on &&
+      r.oldAgain === 0 &&
+      (r.cursorNew === null || r.cursorNew !== r.cursorBefore),
+    detail: `before: typed ${b.times} time(s) in ${b.typedMs} ms${b.threw ? ` (post threw: ${b.threw})` : ""}; archived ${r.newArchive}, with the seen file ${r.archivedSeen}; Den's cursor after ${r.cursorAfter === r.cursorBefore ? "still the old one" : "not the old one"}, once connected ${r.cursorNew === r.cursorBefore ? "the old one" : "not the old one"}; the old comment typed again: ${r.oldAgain}${on ? "" : `; not connected after: ${r.connect?.why}`}${fx}`,
+  };
+  const fresh = {
+    ok: on && a.times === 1,
+    detail: on
+      ? `after: typed ${a.times} time(s) in ${a.typedMs} ms${a.threw ? ` (post threw: ${a.threw})` : ""}${fx}`
+      : `not connected after the change: ${r.connect?.why}`,
+  };
+  const links = {
+    ok:
+      !!r.linkBefore &&
+      r.linkAfter === null &&
+      r.picksAfter >= 1 &&
+      on &&
+      !!r.linkNew &&
+      r.linkNew !== r.linkBefore &&
+      r.picksLinked < r.picksAfter,
+    detail: `linked before ${r.linkBefore ? "yes" : "no"}; right after the change the link is ${r.linkAfter ? (r.linkAfter === r.linkBefore ? "still the old id" : "another id") : "gone"}; the bell: ${r.picksAfter} need a pick; once connected ${r.picksOnNew}; linked ${r.linkNew ? (r.linkNew === r.linkBefore ? "to the old id" : "to a new id") : "no"} (${r.linkHow}); then ${r.picksLinked}${fx}`,
+  };
+  const token = {
+    ok: r.tokenBefore === 200 && r.tokenAfter === 401,
+    detail: `the old token: ${r.tokenBefore} before the change, ${r.tokenAfter} after`,
+  };
+  const bell = {
+    ok:
+      r.hubItemsAfter === 0 &&
+      r.doctor?.previous?.status === "ok" &&
+      r.doctor?.unrevoked?.status === "ok",
+    detail: `unread Hub items right after the change: ${r.hubItemsAfter}; doctor hub:previous ${JSON.stringify(r.doctor?.previous)}; hub:unrevoked ${JSON.stringify(r.doctor?.unrevoked)}`,
+  };
+  return names.length === 5
+    ? [typed, fresh, links, token, bell].map((x, i) => ({
+        clause: names[i],
+        ...x,
+      }))
+    : [
+        {
+          clause: names[0],
+          ok: typed.ok && fresh.ok,
+          detail: `${typed.detail}; ${fresh.detail}`,
+        },
+        { clause: names[1], ...links },
+        { clause: names[2], ...token },
+        { clause: names[3], ...bell },
+      ];
+}
+
+export function expect(r) {
+  const res = r ?? {};
+  if (res.skip)
+    return clauses.map((clause) => ({ clause, ok: null, skip: res.skip }));
+  const base = !res.start?.ok
+    ? `could not connect the bed to the first Hub: ${res.start?.why}`
+    : !res.running
+      ? `the stub did not run in ${WS}`
+      : null;
+  const k = res.back ?? {};
+  const back = k.skip
+    ? { clause: clauses[5], ok: null, skip: k.skip }
+    : base
+      ? { clause: clauses[5], ok: false, detail: base }
+      : {
+          clause: clauses[5],
+          ok: k.before === 200 && k.after === 401 && k.onA?.ok === true,
+          detail: `B's token: ${k.before} before the move back, ${k.after} after (save ${k.save}); connected to A again: ${k.onA?.ok ? "yes" : (k.onA?.why ?? "no")}`,
+        };
   return [
-    ...live,
-    {
-      clause: clauses[4],
-      ok: !!r.bound && r.bound.origin === want,
-      detail: `bound to ${r.bound?.origin ?? "nothing"}${r.bound?.company ? " with its company" : ""}; the bed's Hub is ${want}`,
-    },
-    {
-      clause: clauses[5],
-      ok: !!r.previous && !!r.unrevoked && r.previous.status !== "fail",
-      detail: `hub:previous ${r.previous ? `${r.previous.status}: ${r.previous.detail}` : "missing"}; hub:unrevoked ${r.unrevoked ? `${r.unrevoked.status}: ${r.unrevoked.detail}` : "missing"}`,
-    },
-    r.hubUrl
-      ? {
-          clause: clauses[6],
-          ok: r.same === 200 && r.bad === 400 && r.after === r.before,
-          detail: `same address with a slash: ${r.same}; a bad address: ${r.bad}; Hub ${r.before} before, ${r.after} after`,
-        }
-      : { clause: clauses[6], ok: null, skip: "needs-hub-url" },
+    ...legRows(res.address, clauses.slice(0, 5), base),
+    back,
+    ...legRows(res.company, clauses.slice(6), base),
   ];
 }
