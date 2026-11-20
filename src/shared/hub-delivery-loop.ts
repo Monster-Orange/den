@@ -6,6 +6,8 @@
  * - no such agent here: ack `refused`;
  * - stopped: ack `queued`; it goes in when the agent next runs;
  * - mid-turn: kept until the turn ends;
+ * - issue 701: whatever holds it, Hub hears `queued` with the reason in
+ *   plain words, once per reason (kept across a restart);
  * - waiting for its person: typed into its session (the same path as a
  *   keystroke from the pane), then ack `delivered` and `working`.
  * Issue 334: a web app's relayed message (EMBED_PREFIX) takes the same
@@ -21,6 +23,7 @@ import {
   deliveryRaw,
   deliveryText,
   EMBED_PREFIX,
+  isOwner,
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
@@ -44,7 +47,20 @@ export interface DeliveryAgents {
   state(agent: string): Promise<AgentState>;
   /** Type `text` into the agent's session, then Enter. False when it couldn't. */
   type(agent: string, text: string): Promise<boolean>;
+  /**
+   * Issue 701: why a busy agent holds its deliveries, in plain words for
+   * the person (Hub shows it on the comment), or null: mid-turn.
+   */
+  why?(agent: string): Promise<string | null>;
 }
+
+/** Issue 701: what Hub is told while an agent is mid-turn. */
+export const HELD_BUSY = "the agent is busy with a turn";
+/** Issue 701: what Hub is told while the agent isn't running. */
+export const HELD_STOPPED = "the agent isn't running; typed when it next runs";
+/** Issue 701: what Hub is told while Den doesn't know its person yet. */
+export const HELD_NO_OWNER =
+  "Den is still asking Hub who its person is; typed once Hub answers";
 
 export interface DeliveryLoopDeps {
   hub: DeliveryHub;
@@ -73,6 +89,11 @@ export interface DeliveryLoopDeps {
    * links on its own).
    */
   held?: (dv: Delivery) => void;
+  /**
+   * Issue 701: a comment from the agent's own person was typed into it:
+   * a question it asked that person is answered.
+   */
+  answered?: (agent: string) => void;
   /** NT: the agent finished its Hub comments (done, not failed). */
   finished?: (
     agent: string,
@@ -101,10 +122,15 @@ interface Active {
 /** A turn that never shows as started is over after this long. */
 const NO_START_MS = 2 * 60_000;
 
+/** Issue 701: the reason a restored delivery was last acked held with. */
+const heldWhy = new WeakMap<Delivery, string>();
+
 /** What Den's held file brings back: a delivery, and Den's own text for an inbox item. */
 function parseHeld(r: unknown): Delivery | null {
   const dv = parseDelivery(r);
   if (!dv) return null;
+  const why = (r as { held_reason?: unknown }).held_reason;
+  if (typeof why === "string") heldWhy.set(dv, why.slice(0, 300));
   const text = (r as { text?: unknown }).text;
   if (dv.id.startsWith(LOCAL_PREFIX) && typeof text === "string")
     dv.text = text.slice(0, 40_000);
@@ -118,6 +144,8 @@ export class DeliveryLoop {
   private readonly states = new Map<string, AckState>();
   /** Ids Hub answered 410 for (sent again, or withdrawn): never acked again. */
   private readonly superseded = new Set<string>();
+  /** Issue 701: the reason each held delivery was last acked `queued` with. */
+  private readonly heldReason = new Map<string, string>();
   /**
    * A held delivery a new one repeats (the same agent, thread, author and
    * words: Hub's Try again): new id → the old ids it took the place of.
@@ -165,6 +193,10 @@ export class DeliveryLoop {
       const q = list
         .map((r) => parseHeld(r))
         .filter((x): x is Delivery => !!x && x.agent === agent);
+      for (const dv of q) {
+        const why = heldWhy.get(dv);
+        if (why) this.heldReason.set(dv.id, why);
+      }
       if (q.length) this.queue.set(agent, q);
     }
     for (const [agent, a] of Object.entries(h.active ?? {})) {
@@ -197,7 +229,13 @@ export class DeliveryLoop {
   private persist(): void {
     const queue: Record<string, unknown[]> = {};
     for (const [a, q] of this.queue)
-      if (q.length) queue[a] = q.map(deliveryRaw);
+      if (q.length)
+        queue[a] = q.map((dv) => {
+          const why = this.heldReason.get(dv.id);
+          return why
+            ? { ...deliveryRaw(dv), held_reason: why }
+            : deliveryRaw(dv);
+        });
     const active: Record<string, Active> = {};
     for (const [a, v] of this.active) active[a] = v;
     const empty = !Object.keys(queue).length && !Object.keys(active).length;
@@ -260,6 +298,12 @@ export class DeliveryLoop {
         );
         return;
       }
+      // Issue 701: Hub has no such delivery: nothing to type it for.
+      if ((e as { status?: number })?.status === 404) {
+        this.drop(id);
+        this.d.log?.(`hub delivery ${id}: not on Hub (404): dropped`);
+        return;
+      }
       // Unacked: Hub sends it again, and the repeat is re-acked.
       this.d.log?.(
         `hub delivery ${id}: ack ${state} failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
@@ -270,6 +314,7 @@ export class DeliveryLoop {
   /** Forget a delivery Hub superseded: out of every queue and turn. */
   private drop(id: string): void {
     this.superseded.add(id);
+    this.heldReason.delete(id);
     for (const [agent, q] of this.queue) {
       const left = q.filter((dv) => dv.id !== id);
       if (left.length === q.length) continue;
@@ -292,7 +337,13 @@ export class DeliveryLoop {
     if (this.d.seen.has(dv.id) || this.states.has(dv.id)) {
       const st = this.states.get(dv.id);
       // A repeat: Hub didn't get the ack; say it again (never twice to the agent).
-      if (st) await this.ack(dv.id, st);
+      const why = this.heldReason.get(dv.id);
+      if (st)
+        await this.ack(
+          dv.id,
+          st,
+          st === "queued" && why ? { reason: why } : {},
+        );
       return;
     }
     if (dv.kind === "held") {
@@ -373,7 +424,7 @@ export class DeliveryLoop {
     q.push(dv);
     this.queue.set(dv.agent, q);
     this.persist();
-    if (s === "stopped") await this.ack(dv.id, "queued");
+    if (s === "stopped") await this.ackHeld([dv], HELD_STOPPED);
     await this.pumpOne(dv.agent, s);
   }
 
@@ -435,12 +486,17 @@ export class DeliveryLoop {
       return;
     }
     if (s === "stopped") {
-      for (const dv of q)
-        if (this.states.get(dv.id) !== "queued")
-          await this.ack(dv.id, "queued");
+      await this.ackHeld(q, HELD_STOPPED);
       return;
     }
     if (s !== "idle") {
+      let why: string | null = null;
+      try {
+        why = (await this.d.agents.why?.(agent)) ?? null;
+      } catch {
+        /* no reason to hand: busy */
+      }
+      await this.ackHeld(q, why || HELD_BUSY);
       // #248: say once that it waits, and on what.
       if (!this.waitSaid.has(agent)) {
         this.waitSaid.add(agent);
@@ -455,6 +511,7 @@ export class DeliveryLoop {
     const o = this.d.owner();
     if (!o && q.some((dv) => dv.text === undefined)) {
       this.d.ownerWanted?.();
+      await this.ackHeld(q, HELD_NO_OWNER);
       return;
     }
     const texts = q.map((dv) => dv.text ?? deliveryText(dv, o!));
@@ -503,8 +560,34 @@ export class DeliveryLoop {
       lastBeat: now,
     });
     for (const dv of q) {
+      this.heldReason.delete(dv.id);
       await this.ack(dv.id, "delivered");
       await this.ack(dv.id, "working");
+    }
+    // Issue 701: the person's own comment answers a question the agent
+    // asked them (its waiting mark goes).
+    if (
+      o &&
+      q.some((dv) => !dv.id.startsWith(LOCAL_PREFIX) && isOwner(dv.author, o))
+    ) {
+      try {
+        this.d.answered?.(agent);
+      } catch {
+        // The bell's trouble never stops delivery.
+      }
+    }
+  }
+
+  /**
+   * Issue 701: tell Hub why these wait (`queued`, with the reason in
+   * plain words), once per reason. Den's own items have no ack.
+   */
+  private async ackHeld(q: Delivery[], reason: string): Promise<void> {
+    for (const dv of [...q]) {
+      if (dv.id.startsWith(LOCAL_PREFIX)) continue;
+      if (this.heldReason.get(dv.id) === reason) continue;
+      this.heldReason.set(dv.id, reason);
+      await this.ack(dv.id, "queued", { reason });
     }
   }
 

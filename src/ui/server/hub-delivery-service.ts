@@ -51,8 +51,21 @@ interface StartOpts {
   heartbeatSeconds: number;
   pollSeconds: number;
   waiting: () => ReadonlySet<string>;
+  /**
+   * Issue 701: what `agent` waits on for its person ("permission",
+   * "approval", "paused"), or null.
+   */
+  waitingWhy?: (agent: string) => string | null;
   log: (line: string) => void;
 }
+
+/** Issue 701: Hub's words for why a delivery waits (it shows them). */
+const HELD_WORDS: Record<string, string> = {
+  trust: "a question about trusting its folder is on its screen",
+  permission: "a permission question is on its screen",
+  approval: "it waits for its person to Allow a change",
+  paused: "it is paused after a compaction loop until its person goes on",
+};
 let lastOpts: StartOpts | null = null;
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
@@ -211,6 +224,19 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     agents: {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
       type: (id, text) => ops.typeIntoAgent(d, id, text),
+      why: async (id) => {
+        const dialog = await ops.agentDialogKind(d, id);
+        const why = dialog ?? o.waitingWhy?.(id) ?? null;
+        return why ? (HELD_WORDS[why] ?? null) : null;
+      },
+    },
+    // Issue 701: the person's comment answers the agent's question.
+    answered: (agent) => {
+      void import("./notification-service.js")
+        .then(({ notificationDeps }) =>
+          notificationDeps().attention.answered(agent),
+        )
+        .catch(() => undefined);
     },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),

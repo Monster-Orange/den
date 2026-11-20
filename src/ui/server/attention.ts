@@ -76,6 +76,22 @@ export function typingHeld(
   return out;
 }
 
+/**
+ * Issue 701: the agents Hub deliveries (and relayed messages) wait for:
+ * as typingHeld, but an ask_human question doesn't hold them. The agent
+ * ended its turn to wait for its person's answer, and the person's
+ * comment is that answer. A permission dialog, a held Allow or a pause
+ * still holds them; so does a dialog on screen (agentInputState).
+ */
+export function deliveryHeld(
+  why: ReadonlyMap<string, string>,
+  approvalActors: Iterable<string>,
+  paused: Iterable<string> = [],
+): Set<string> {
+  const asked = new Map([...why].filter(([, w]) => w !== "asked"));
+  return typingHeld(asked, approvalActors, paused);
+}
+
 export interface AttentionDeps {
   store: NotificationStore;
   /** A short mark of the agent's output now (a hash of its tail), or null. */
@@ -399,6 +415,15 @@ export class Attention {
   /** Its person typed into its terminal: answered, whatever it waited on. */
   typed(agent: string): void {
     if (this.waiting.has(agent)) this.clear(agent);
+  }
+
+  /**
+   * Issue 701: a comment from the agent's person was typed into it: its
+   * question is answered. A dialog (permission) isn't: only its answer on
+   * screen ends that.
+   */
+  answered(agent: string): void {
+    if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
   }
 
   private clear(agent: string): void {

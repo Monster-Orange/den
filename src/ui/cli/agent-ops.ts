@@ -7724,6 +7724,36 @@ export async function agentInputState(
 }
 
 /**
+ * Issue 701: the dialog for its person agent `id`'s screen ends with:
+ * "trust" (its folder-trust question), "permission", or null (none, no
+ * live session, or Den can't read it). Never throws.
+ */
+export async function agentDialogKind(
+  d: AgentsResolved,
+  id: string,
+): Promise<"trust" | "permission" | null> {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec || rec.stoppedAt) return null;
+  try {
+    const c = await d.connectExisting();
+    if (!c) return null;
+    try {
+      const s = sessionOf(await c.list(), rec);
+      if (!s || s.exited) return null;
+      const out = (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8");
+      const rt = getRuntime(rec.runtime);
+      if (promptOnScreen(out, rt?.trustPrompt)) return "trust";
+      if (promptOnScreen(out, rt?.permissionPrompt)) return "permission";
+      return null;
+    } finally {
+      c.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
  * SRV-1a: the server agent's input state, for Den's own "Server is back"
  * line. (agentInputState skips it: Hub's comments never reach it.)
  */

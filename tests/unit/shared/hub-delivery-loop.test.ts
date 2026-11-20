@@ -139,7 +139,8 @@ describe("who gets a delivery, and when", () => {
     expect(s.typed[0].text).toContain(
       "This is an edit request from your person",
     );
-    expect(s.of("d1")).toEqual(["delivered", "working"]);
+    // Issue 701: Hub was told why it waited.
+    expect(s.of("d1")).toEqual(["queued", "delivered", "working"]);
   });
 
   it("no such agent here: refused, nothing typed", async () => {
@@ -162,7 +163,8 @@ describe("who gets a delivery, and when", () => {
     s.states["ag-1"] = "idle";
     await s.loop.pump();
     expect(s.typed).toHaveLength(1);
-    expect(s.of("d1")).toEqual(["queued", "delivered", "working"]);
+    // Issue 701: queued again when the reason changed (stopped, then busy).
+    expect(s.of("d1")).toEqual(["queued", "queued", "delivered", "working"]);
   });
 
   it("mid-turn: kept until the turn ends; two waiting go in together", async () => {
@@ -170,7 +172,11 @@ describe("who gets a delivery, and when", () => {
     await s.loop.take(dv("d1"));
     await s.loop.take(dv("d2"));
     expect(s.typed).toEqual([]);
-    expect(s.acks).toEqual([]);
+    // Issue 701: Hub is told why, once each.
+    expect(s.acks).toEqual([
+      { id: "d1", state: "queued", reason: "the agent is busy with a turn" },
+      { id: "d2", state: "queued", reason: "the agent is busy with a turn" },
+    ]);
     s.states["ag-1"] = "idle";
     await s.loop.pump();
     expect(s.typed).toHaveLength(1);
