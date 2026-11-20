@@ -1369,6 +1369,8 @@
     // prompt() and alert().
     "dlg.ok": "OK",
     "dlg.cancel": "Cancel",
+    // Issue 670: a large dialog's Close (the kit's frame).
+    "dlg.close": "Close",
     "dlg.keep": "Keep",
     "dlg.delete": "Delete",
     "dlg.remove": "Remove",

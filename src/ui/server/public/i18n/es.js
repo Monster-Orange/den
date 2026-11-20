@@ -515,6 +515,7 @@
     // prompt() and alert().
     "dlg.ok": "Aceptar",
     "dlg.cancel": "Cancelar",
+    "dlg.close": "Cerrar",
     "dlg.keep": "Conservar",
     "dlg.delete": "Eliminar",
     "dlg.remove": "Quitar",

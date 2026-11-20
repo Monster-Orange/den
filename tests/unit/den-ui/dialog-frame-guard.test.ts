@@ -43,7 +43,9 @@ const RADIUS = /(?:\bdialog\b|-dlg\b)[^{}]*\{[^}]*\bborder-radius\s*:/g;
 
 /** Each offence in a source: dialogs made, backdrops, radii. */
 export function offences(src: string): number {
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "");
+  const code = src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
   return (
     (code.match(CREATE) ?? []).length +
     (code.match(BACKDROP) ?? []).length +
@@ -65,9 +67,15 @@ describe("issues 669, 670: Den's pages draw no dialog of their own", () => {
   it("the check can fail", () => {
     expect(offences('const d = document.createElement("dialog");')).toBe(1);
     expect(offences("<dialog id=x></dialog>")).toBe(1);
-    expect(offences(".x-dlg{border-radius:10px}.x-dlg::backdrop{background:rgba(0,0,0,.25)}")).toBe(2);
+    expect(
+      offences(
+        ".x-dlg{border-radius:10px}.x-dlg::backdrop{background:rgba(0,0,0,.25)}",
+      ),
+    ).toBe(2);
     expect(offences("dialog.y {\n  border-radius: 12px;\n}")).toBe(1);
-    expect(offences("/* a <dialog> in a comment */ .row{border-radius:4px}")).toBe(0);
+    expect(
+      offences("/* a <dialog> in a comment */ .row{border-radius:4px}"),
+    ).toBe(0);
   });
 
   it("no moved file makes a dialog or styles one", () => {

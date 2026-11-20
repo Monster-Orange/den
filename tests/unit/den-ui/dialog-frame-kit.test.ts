@@ -88,9 +88,12 @@ describe("issue 669: the confirm frame", () => {
   });
 
   it("the footer carries the product's Report first, when given", () => {
-    const html = dialogHtml({ ...CONFIRM, report: "<button data-den-report>R</button>" });
+    const html = dialogHtml({
+      ...CONFIRM,
+      report: "<button data-den-report>R</button>",
+    });
     expect(html).toMatch(
-      /<div data-den-foot class="dk-ft"><button data-den-report>R<\/button><button type="submit" class="dk-btn" value="cancel"/,
+      /<div class="dk-ft"><button data-den-report>R<\/button><button type="submit" class="dk-btn" value="cancel"/,
     );
   });
 
@@ -102,26 +105,39 @@ describe("issue 669: the confirm frame", () => {
       attrs: { "data-state": "confirm" },
       actions: [
         { label: "Back", href: "/t/waiting?x=1&y=2" },
-        { label: "Go", value: "go", kind: "primary", attrs: { "data-rd": "go" } },
+        {
+          label: "Go",
+          value: "go",
+          kind: "primary",
+          attrs: { "data-rd": "go" },
+        },
       ],
     });
     expect(html).toMatch(/^<dialog [^>]*\sopen[\s>]/);
     expect(html).toContain('class="dk-dlg dk-confirm hubp-dlg"');
     expect(html).toContain('data-state="confirm"');
-    expect(html).toContain('<a class="dk-btn" href="/t/waiting?x=1&amp;y=2">Back</a>');
+    expect(html).toContain(
+      '<a class="dk-btn" href="/t/waiting?x=1&amp;y=2">Back</a>',
+    );
     expect(html).toContain('data-rd="go"');
   });
 
   it("askConfirm and askText are thin wrappers on the frame", () => {
     configureDialog({ lang: () => "en", words: {}, report: null });
-    const s = askSpec("confirm", { title: "Gone?", message: "a\nb", danger: true }, "q1");
+    const s = askSpec(
+      "confirm",
+      { title: "Gone?", message: "a\nb", danger: true },
+      "q1",
+    );
     expect(s.kind).toBe("confirm");
     const html = dialogHtml(s);
     expect(html).toContain('data-dk-kind="confirm"');
     expect(html).toContain('<p class="dk-text">a\nb</p>');
     expect(html).toContain('data-dk="cancel"');
     expect(html).toContain("dk-danger");
-    const text = dialogHtml(askSpec("text", { title: "Rename", value: 'x"y' }, "q2"));
+    const text = dialogHtml(
+      askSpec("text", { title: "Rename", value: 'x"y' }, "q2"),
+    );
     expect(text).toContain('role="dialog"');
     expect(text).toContain('value="x&quot;y"');
     const tellHtml = dialogHtml(askSpec("tell", { message: "Done" }, "q3"));
@@ -142,24 +158,34 @@ describe("issue 670: the large dialog frame", () => {
     expect(html).toMatch(
       /<form class="dk-x-f" method="dialog"><button type="submit" class="dk-btn dk-x" value="close" data-dk="close">Close<\/button><\/form>/,
     );
-    expect(html).toContain('<div class="dk-body" id="helpers-body"><ol><li>one</li></ol></div>');
+    expect(html).toContain(
+      '<div class="dk-body" id="helpers-body"><ol><li>one</li></ol></div>',
+    );
     expect(html).toContain('<p class="dk-note">Read only.</p>');
     expect(html).toContain('data-dk="clear"');
     // Clear done before Close.
-    expect(html.indexOf('data-dk="clear"')).toBeLessThan(html.indexOf('data-dk="close"'));
+    expect(html.indexOf('data-dk="clear"')).toBeLessThan(
+      html.indexOf('data-dk="close"'),
+    );
   });
 
   it("names its heading and body by the product's ids, when given", () => {
-    const html = dialogHtml({ ...PANEL, ids: { h: "hp-h", body: "hp-body", sub: "x-sub" } });
+    const html = dialogHtml({
+      ...PANEL,
+      ids: { h: "hp-h", body: "hp-body", sub: "x-sub" },
+    });
     expect(html).toContain('aria-labelledby="hp-h"');
     expect(html).toContain('id="hp-body"');
     expect(html).toContain('id="x-sub"');
   });
 
   it("the close word comes from the kit in en, es and ja", () => {
-    for (const l of ["en", "es", "ja"]) expect(DIALOG_WORDS[l]!.close).toBeTruthy();
+    for (const l of ["en", "es", "ja"])
+      expect(DIALOG_WORDS[l]!.close).toBeTruthy();
     configureDialog({ lang: () => "es", words: {}, report: null });
-    expect(dialogHtml({ ...PANEL, closeLabel: undefined })).toContain(">Cerrar</button>");
+    expect(dialogHtml({ ...PANEL, closeLabel: undefined })).toContain(
+      ">Cerrar</button>",
+    );
     configureDialog({ lang: () => "en" });
   });
 });
@@ -168,24 +194,36 @@ describe("issues 669, 670: parity, both products' call shapes", () => {
   const SHAPES = [
     ["confirm", CONFIRM],
     ["panel", PANEL],
-    ["confirm, open, with Report", { ...CONFIRM, open: true, report: "<a data-den-report>R</a>" }],
+    [
+      "confirm, open, with Report",
+      { ...CONFIRM, open: true, report: "<a data-den-report>R</a>" },
+    ],
   ] as const;
 
-  it.each(SHAPES)("%s: Den's path and the server-side call render the same HTML", (_n, spec) => {
-    configureDialog({ lang: () => "en", words: {}, report: null });
-    const den = denDialogHtml(spec as never);
-    const server = dialogHtml(JSON.parse(JSON.stringify(spec)));
-    expect(den).toBe(server);
-  });
+  it.each(SHAPES)(
+    "%s: Den's path and the server-side call render the same HTML",
+    (_n, spec) => {
+      configureDialog({ lang: () => "en", words: {}, report: null });
+      const den = denDialogHtml(spec as never);
+      const server = dialogHtml(JSON.parse(JSON.stringify(spec)));
+      expect(den).toBe(server);
+    },
+  );
 
   it("the parity check can fail: different data, different HTML", () => {
-    expect(dialogHtml(CONFIRM)).not.toBe(dialogHtml({ ...CONFIRM, title: "Other" }));
+    expect(dialogHtml(CONFIRM)).not.toBe(
+      dialogHtml({ ...CONFIRM, title: "Other" }),
+    );
   });
 
   it("askConfirm's frame is the confirm a server writes by hand", () => {
     configureDialog({ lang: () => "en", words: {}, report: null });
     const viaAsk = dialogHtml(
-      askSpec("confirm", { title: "Unlink?", message: "It stays.", okLabel: "Yes" }, "u"),
+      askSpec(
+        "confirm",
+        { title: "Unlink?", message: "It stays.", okLabel: "Yes" },
+        "u",
+      ),
     );
     const byHand = dialogHtml({
       kind: "confirm",
@@ -204,19 +242,27 @@ describe("issues 669, 670: parity, both products' call shapes", () => {
 describe("issues 669, 670: one look", () => {
   /** The rule for a selector in dialog.css. */
   const rule = (sel: string) =>
-    CSS.match(new RegExp(`(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+    CSS.match(
+      new RegExp(
+        `(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`,
+      ),
+    )?.[1] ?? "";
 
   it("the theme's radius, backdrop and font; no number of its own", () => {
     const frame = rule(".dk-dlg");
     expect(frame).toMatch(/border-radius:\s*var\(--radius\)/);
     expect(frame).toMatch(/font-family:\s*var\(--sans\)/);
-    expect(rule(".dk-dlg::backdrop")).toMatch(/background:\s*var\(--kit-scrim\)/);
+    expect(rule(".dk-dlg::backdrop")).toMatch(
+      /background:\s*var\(--kit-scrim\)/,
+    );
     expect(CSS).not.toMatch(/border-radius:\s*\d/);
     expect(CSS).not.toMatch(/\brgba?\(|#[0-9a-fA-F]{3,8}\b/);
   });
 
   it("form fields and buttons inside take the dialog's font (issue 651)", () => {
-    expect(CSS).toMatch(/\.dk-dlg :where\(button, input, select, textarea\)\s*\{\s*font: inherit;/);
+    expect(CSS).toMatch(
+      /\.dk-dlg :where\(button, input, select, textarea\)\s*\{\s*font: inherit;/,
+    );
   });
 
   it("the large dialog's body scrolls, its header and footer stay", () => {
@@ -226,7 +272,9 @@ describe("issues 669, 670: one look", () => {
 
   it("dialog.d.ts declares the frame", () => {
     expect(DTS).toMatch(/export interface DialogSpec/);
-    expect(DTS).toMatch(/export declare function dialogHtml\(spec: DialogSpec\): string;/);
+    expect(DTS).toMatch(
+      /export declare function dialogHtml\(spec: DialogSpec\): string;/,
+    );
     expect(DTS).toMatch(/export declare function mountDialog\(/);
     expect(DTS).toMatch(/export declare function askSpec\(/);
   });

@@ -497,6 +497,7 @@
     // prompt() and alert().
     "dlg.ok": "OK",
     "dlg.cancel": "キャンセル",
+    "dlg.close": "閉じる",
     "dlg.keep": "残す",
     "dlg.delete": "削除",
     "dlg.remove": "外す",
