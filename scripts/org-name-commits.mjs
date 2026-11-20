@@ -10,16 +10,19 @@
  *
  * Range mode fails (2) with no patterns, like the file gate, so a missing
  * secret never passes silently. Message mode passes quietly with none, so a
- * machine without the names file can still commit. Only new ranges are
+ * machine without the names file can still commit; a per-user names file
+ * that is there but broken (a dangling link, no patterns) fails it, so a
+ * hook never checks 0 patterns without saying so. Only new ranges are
  * checked: nothing already on main is rewritten.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-import { orgHitsWide, orgPatterns } from "./org-names.js";
+import { orgHitsWide, orgPatternsOrExit } from "./org-names.js";
 
 const [mode, arg] = process.argv.slice(2);
-const patterns = orgPatterns();
+// A per-user names file that is there but broken fails both modes (issue 528).
+const patterns = orgPatternsOrExit("org-name check");
 
 if (mode === "--message") {
   if (patterns.length === 0) process.exit(0);

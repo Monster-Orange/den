@@ -2,7 +2,7 @@
 /**
  * DOC-1: the README's screenshots, generated from examples/demo.
  *
- *   DEN_ORG_NAMES_FILE=../notes/org-names.txt node scripts/doc-shots.mjs
+ *   DEN_ORG_NAMES_FILE=<your names file> node scripts/doc-shots.mjs
  *   npm run docs:shots
  *
  * Runs a Den web server on a scratch copy of examples/distribution with the

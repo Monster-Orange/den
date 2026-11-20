@@ -6,20 +6,77 @@
  * named by DEN_ORG_NAMES_FILE. With neither set the gate fails, so a missing
  * secret can never pass silently.
  *
- *   DEN_ORG_NAMES_FILE=../notes/org-names.txt node scripts/org-name-gate.mjs
+ *   DEN_ORG_NAMES_FILE=<your names file> node scripts/org-name-gate.mjs
  *   node scripts/org-name-gate.mjs --tree <commit>   that commit's files (pre-push)
+ *   node scripts/org-name-gate.mjs --check-file      where the names come from
+ *
+ * --check-file (issue 528) says which case applies and the pattern count,
+ * never a pattern: exit 0 names loaded; 3 none configured (the hooks pass);
+ * 1 set but broken (a dangling link, a file with no patterns, a missing
+ * DEN_ORG_NAMES_FILE). The pre-push hook runs it first.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
-import { orgHitsWide, orgPatterns } from "./org-names.js";
+import {
+  brokenNamesMessage,
+  orgHitsWide,
+  orgPatterns,
+  orgPatternsOrExit,
+  userNamesFileState,
+} from "./org-names.js";
 
 const [flag, tree] = process.argv.slice(2);
 if (flag === "--tree" && !tree) {
-  console.error("usage: org-name-gate.mjs [--tree <commit>]");
+  console.error("usage: org-name-gate.mjs [--tree <commit> | --check-file]");
   process.exit(2);
 }
-const patterns = orgPatterns();
+
+if (flag === "--check-file") {
+  const count = (n) => `${n} pattern${n === 1 ? "" : "s"}`;
+  const env = process.env;
+  if (env.DEN_ORG_NAMES !== undefined || env.DEN_ORG_NAMES_FILE) {
+    const from =
+      env.DEN_ORG_NAMES !== undefined
+        ? "DEN_ORG_NAMES"
+        : `the names file at ${env.DEN_ORG_NAMES_FILE} (DEN_ORG_NAMES_FILE)`;
+    if (
+      env.DEN_ORG_NAMES === undefined &&
+      !existsSync(env.DEN_ORG_NAMES_FILE)
+    ) {
+      console.error(`names: ${from} is set but missing`);
+      process.exit(1);
+    }
+    const n = orgPatterns().length;
+    console.log(`names: ${from}, ${count(n)}`);
+    // As before for the variables: 0 patterns is "none configured" to the
+    // hooks; the gates themselves still fail (2) on it.
+    process.exit(n ? 0 : 3);
+  }
+  const own = userNamesFileState();
+  if (own.state === "none") {
+    console.log(
+      `names: no names file at ${own.file || "(no HOME)"}; the hooks pass without one`,
+    );
+    process.exit(3);
+  }
+  if (own.state === "broken-link") {
+    console.error(
+      `names: ${brokenNamesMessage(own.file)}. It is a broken link: its target is missing.`,
+    );
+    process.exit(1);
+  }
+  if (own.state === "empty") {
+    console.error(
+      `names: ${brokenNamesMessage(own.file)}. It loads 0 patterns.`,
+    );
+    process.exit(1);
+  }
+  console.log(`names: the names file at ${own.file}, ${count(own.count)}`);
+  process.exit(0);
+}
+
+const patterns = orgPatternsOrExit("org-name gate");
 if (patterns.length === 0) {
   console.error(
     "org-name gate: no patterns (set DEN_ORG_NAMES or DEN_ORG_NAMES_FILE)",
