@@ -100,6 +100,8 @@ beforeAll(async () => {
     session: { backend: "den-pty", id: sid },
     sessionName: "acme-north:scout",
   });
+  // Issue 664: at its input prompt, so a message is typed in.
+  pty.emit("> ");
   // Another web app: one server, two origins.
   hostServer = http.createServer((req, res) => {
     const u = new URL(req.url ?? "/", "http://x");
