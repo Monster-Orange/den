@@ -57,10 +57,16 @@ import * as fs from "fs";
 import * as path from "path";
 import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
+import { LOST_FILE } from "./guardrails/lost-marks.js";
+import {
+  HOOK_CALL_DEFAULT,
+  hookCallBudgetSeconds,
+} from "./guardrails/hook-call.js";
 import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
   attentionHooks,
+  widenHookTimeouts,
   GUARDRAILS_DIR,
   guardrailHooks,
   hookCommands,
@@ -542,7 +548,11 @@ function common(input: LaunchInput): {
   const mode = permissionMode(input);
   // D41: the Stop hook asks Hub for comments waiting on this agent.
   const inboxBase = input.mcp.hub?.inboxBase;
-  const inbox = inboxBase ? { base: inboxBase } : undefined;
+  // Issue 609: its call to Den waits and retries as the attention hook's.
+  const call = input.attention?.call;
+  const inbox = inboxBase
+    ? { base: inboxBase, ...(call ? { call } : {}) }
+    : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -573,9 +583,23 @@ function common(input: LaunchInput): {
         )
       : null;
   // NT-1: every agent tells Den when it waits for its person.
+  if (inbox && baseHooks)
+    widenHookTimeouts(
+      baseHooks,
+      "Stop",
+      hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
+    );
   const hooks = mergeHooks(
     baseHooks,
-    input.attention ? attentionHooks(input.attention.base) : null,
+    input.attention
+      ? attentionHooks(
+          input.attention.base,
+          input.attention.call,
+          // Issue 609: where a mark Den never took (after its last try)
+          // is recorded: its own files dir, which doctor reads.
+          { file: path.join(input.filesDir, LOST_FILE), agent: input.agentId },
+        )
+      : null,
   );
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the

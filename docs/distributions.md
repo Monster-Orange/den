@@ -404,7 +404,8 @@ service:api/web"`).
   to re-run: `web down` answers `stopped: false` when the server wasn't
   running, and `ok` is true once nothing answers on its port. On a busy
   machine, where `lsof` or `ps` can't say which process holds the port
-  (each lookup gets 5 s, then 20 s; `DEN_LOOKUP_TIMEOUTS_MS` sets them),
+  (each lookup gets 5 s, then 20 s: the Settings `process_lookup.first_seconds`
+  and `retry_seconds`; `DEN_LOOKUP_TIMEOUTS_MS` overrides both),
   `web down` and `web restart` exit 1 saying they couldn't tell, and
   their `--json` answers `ok: false` with `stopped: false` (and `running:
 null` when the server doesn't answer either). Run them again.
@@ -4684,6 +4685,40 @@ process Den couldn't place. The audit row names both pids: the caller's
 ```yaml
 agents:
   token_peer_wait_ms: 30000 # ms, 0 to 600000
+```
+
+Den finds an agent's caller with the same lookups, so their limits
+(Settings › Server, `config process_lookup.*`) count here too:
+
+```yaml
+process_lookup:
+  first_seconds: 5 # the first try, 0.5 to 600
+  retry_seconds: 20 # the try after it ran out of time, 1 to 600
+```
+
+An attention mark Den never took (no answer, or a refusal) is written to
+the agent's own files folder (`agent-hooks-lost.jsonl`), and `doctor`
+shows a warning per agent with marks lost in the last day: how many, and
+the last reason.
+
+When Den can't place a caller, the audit row says why: the lookup timed
+out, failed, found no matching connection or more than one, or was
+still running when the wait ended. A caller that had already closed its
+connection is refused all the same, but nothing is there to answer, so
+its row says "the caller had gone" (reason `token_caller_gone`) and it
+isn't counted as a refused agent.
+
+An agent's hooks (its attention mark for the bell, the Hub inbox check)
+stay connected long enough for a busy machine to place them, and try
+again when a call fails or is turned away. These are Settings
+(Settings › Agents, or `config agent_hooks.*`, in user.yml), read when
+an agent starts:
+
+```yaml
+agent_hooks:
+  timeout_seconds: 20 # each try's wait, 1 to 600
+  retries: 2 # tries after the first, 0 to 10
+  backoff_seconds: 1 # the first pause, doubling, 0 to 60
 ```
 
 An agent's token reaches only its own session's routes, and never a

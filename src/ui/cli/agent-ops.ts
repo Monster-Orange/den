@@ -79,6 +79,7 @@ import { resolveWorkspaceInput } from "../../shared/environment-manager/workspac
 import { readWebPort } from "../../shared/edge/config.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
+import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   INHERIT,
   SUBAGENT_DEFAULTS,
@@ -3141,7 +3142,11 @@ function launchInput(
     // prompt; its writes wait for the person's Allow in the browser.
     ...(isServerScope(ws) ? { denToolsAllowed: true } : {}),
     // NT-1: it tells Den when it waits for its person (the bell).
-    attention: { base: d.denBase() },
+    // Issue 609: its hooks' wait and retries (user.yml agent_hooks.*).
+    attention: {
+      base: d.denBase(),
+      call: hookCallSettings(readUserConfig),
+    },
   };
 }
 
