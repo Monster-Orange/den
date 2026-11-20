@@ -92,6 +92,26 @@ the computer Den runs on too. That opens a Den window
 **Allow**. That window posts the key to the pane
 that opened it, targeted at Den's own origin only, and then closes.
 
+### What the frame keeps: only the draft
+
+When the host page navigates, the frame reloads. So that a half-written
+message is not lost, the pane keeps one thing in the frame's own
+storage: the unsent draft.
+
+- It is kept in `sessionStorage` (in `localStorage` only when
+  `sessionStorage` is unavailable), under one key per Den install,
+  project and agent (`den-draft:<host>:<project>:<agent>`).
+- It is stored as you type and restored when the pane loads again.
+- It is cleared when the message is sent, and when you empty the box
+  yourself.
+- It is never sent anywhere: not to Den, and never posted to the host.
+- `sessionStorage` belongs to the browser tab, so closing the tab drops
+  the draft. A browser that partitions a frame's storage by the host's
+  site keeps a separate draft for each host.
+
+Den's own Agents page keeps its message box's draft the same way, so a
+reload there brings it back too.
+
 ### Messages
 
 Every message is a `postMessage` between the host page and the pane's

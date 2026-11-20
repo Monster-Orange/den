@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <script>
       // Mode before first paint: yours (the server fills it in below),
       // else the system's, else the theme's default, else dark.
@@ -1179,6 +1182,91 @@
         .agl {
           max-height: 50vh;
         }
+      }
+      /* Issue 302: a phone. The agent's message box is the pane's foot,
+         always there: the box and Send side by side, the box's words 16px
+         (iOS zooms under 16) with 11px 14px inside, Send a 44px target;
+         its bottom clears the home indicator (the kit's --den-foot-pad). */
+      .pane .agc.agc-phone {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        column-gap: 8px;
+        padding: 8px 16px var(--den-foot-pad, 12px);
+      }
+      .pane .agc.agc-phone > .agc-chips,
+      .pane .agc.agc-phone > .agc-msg {
+        grid-column: 1 / -1;
+      }
+      .pane .agc.agc-phone > .agc-hint {
+        display: none;
+      }
+      .pane .agc.agc-phone > .agc-in {
+        grid-column: 1;
+        grid-row: 2;
+        font-size: 16px;
+        line-height: 22px;
+        padding: 11px 14px;
+        min-height: 44px;
+        max-height: calc(var(--vv-h, 100dvh) * 0.25);
+        border-radius: 12px;
+        resize: none;
+        box-sizing: border-box;
+      }
+      .pane .agc.agc-phone > .agc-acts {
+        grid-column: 2;
+        grid-row: 2;
+        flex-wrap: nowrap;
+      }
+      .pane .agc.agc-phone > .agc-msg {
+        grid-row: 3;
+      }
+      /* No page shared: the box and Send are the first row (no empty row
+         and its gap above them). */
+      .pane .agc.agc-phone:has(> .agc-chips[hidden]) > :is(.agc-in, .agc-acts) {
+        grid-row: 1;
+      }
+      .pane .agc.agc-phone:has(> .agc-chips[hidden]) > .agc-msg {
+        grid-row: 2;
+      }
+      /* Issue 302, the mock's frame 2 ("An agent opened"): on a phone an
+         agent open is the whole screen, with no runs dock. Back on the
+         list (no agent open) the dock is there again, shut (frame 1). */
+      body[data-phone-agent] #den-dock {
+        display: none !important;
+      }
+      .pane .agc.agc-phone .agc-send {
+        min-height: 44px;
+        min-width: 44px;
+        padding-inline: 14px;
+        border-radius: 12px;
+        font-size: 15px;
+      }
+      /* The terminal's own input: 16px, so a tap on it never zooms. */
+      @media (pointer: coarse), (max-width: 720px) {
+        .pane .xterm-helper-textarea {
+          font-size: 16px !important;
+        }
+      }
+      /* The keyboard up (the kit's phone.js: data-kbd-up, --vv-h): the
+         pane being typed in is the whole visible area, the terminal to
+         read and the box above the keyboard; its bar, the page's header,
+         the list and the To line step aside, as the top bar and the runs
+         dock do. */
+      :root[data-kbd-up] .pane:focus-within {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--vv-h, 100dvh);
+        min-height: 0;
+        z-index: 30;
+        border-radius: 0;
+        border-width: 0;
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+      :root[data-kbd-up] .pane:focus-within > .bar2,
+      :root[data-kbd-up] .pane:focus-within > .agto {
+        display: none;
       }
     </style>
   </head>

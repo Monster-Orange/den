@@ -3854,6 +3854,10 @@
   // (window.DenUIShell): the top bar, the rail, the version chip and the
   // Report button are drawn by it, from Den's registries as data.
   var DUI = window.DenUIShell;
+  // Issue 302: a phone's on-screen keyboard, once, on every page: the
+  // root gets data-kbd-up and --vv-h while it is up (the kit's phone.js;
+  // phone.css steps the top bar aside).
+  if (DUI && DUI.initKeyboardUp) DUI.initKeyboardUp(window);
   /** An icon's <svg> (the kit's line drawings; a product's own markup). */
   function icon(name) {
     return DUI.icon(name);
@@ -4440,6 +4444,7 @@
   /** The runs dock open or collapsed to its bar (R16a), remembered. */
   function setDock(on) {
     dockOpen = !!on;
+    dockShutHere = false;
     renderDock();
     return rememberDock();
   }
@@ -6156,6 +6161,26 @@
   var runSel = null;
   var DOCK_H = 170;
   var dockOpen = state.dock === true;
+  // Issue 302: a page may show the dock shut for its own view (a phone's
+  // list of agents), never saving it: the person's choice stays as it
+  // was. The person's own Show runs ends it. The Agents page on a phone
+  // (the kit's breakpoint) starts so, from the first paint: the mock's
+  // frame 1 shows the dock shut, frame 2 (an agent open, by its address)
+  // shows none. The Agents page keeps both as panes open and close.
+  var PHONE_MQ = "(pointer: coarse), (max-width: 767.98px)";
+  var agentsPhone =
+    page === "agents" &&
+    !!(window.matchMedia && window.matchMedia(PHONE_MQ).matches);
+  var dockShutHere = agentsPhone;
+  if (agentsPhone && document.body && document.body.dataset) {
+    var openAddr =
+      /\/agents\/[^/]+\/?$/.test(location.pathname || "") ||
+      /[?&]open=/.test(location.search || "");
+    if (openAddr) document.body.dataset.phoneAgent = "";
+  }
+  function dockShown() {
+    return dockOpen && !dockShutHere;
+  }
   var dockH = state.dockHeight >= 60 ? state.dockHeight : DOCK_H;
   var runSeqId = 0;
   var runListeners = [];
@@ -6170,6 +6195,8 @@
   if (dock.setAttribute) {
     dock.setAttribute("role", "region");
     dock.setAttribute("aria-label", t("runs.title"));
+    // Issue 302: it steps aside while a phone's keyboard is up.
+    dock.setAttribute("data-kbd-hide", "");
   }
   function placeDock() {
     if (document.body && document.body.appendChild)
@@ -6318,7 +6345,7 @@
           .join("")
       : "<span>" + esc(t("runs.none")) + "</span>";
     var acts = "";
-    if (dockOpen && sel) {
+    if (dockShown() && sel) {
       (sel.actions || []).forEach(function (a, i) {
         acts +=
           '<button type="button" class="den-ib" data-ract="' +
@@ -6364,9 +6391,9 @@
           "</button>"
         : "") +
       '<button type="button" class="den-ib" data-act="dock" aria-expanded="' +
-      (dockOpen ? "true" : "false") +
+      (dockShown() ? "true" : "false") +
       '" aria-controls="den-dock-out">' +
-      esc(dockOpen ? t("dock.close") + " ▾" : t("dock.show") + " ▴") +
+      esc(dockShown() ? t("dock.close") + " ▾" : t("dock.show") + " ▴") +
       "</button>"
     );
   }
@@ -6448,9 +6475,9 @@
           document.activeElement.getAttribute("data-dock")
         : null;
     bar.innerHTML = barHtml();
-    dock.classList.toggle("open", dockOpen);
+    dock.classList.toggle("open", dockShown());
     var out = outEl();
-    if (dockOpen && !out) {
+    if (dockShown() && !out) {
       out = document.createElement("pre");
       out.id = "den-dock-out";
       out.setAttribute("role", "tabpanel");
@@ -6463,7 +6490,7 @@
       });
       dock.appendChild(out);
       fillOut();
-    } else if (!dockOpen && out) {
+    } else if (!dockShown() && out) {
       out.remove();
       shownRun = null;
     } else if (out && selectedRun() !== shownRun) fillOut();
@@ -6480,7 +6507,7 @@
       on.scrollIntoView({ block: "nearest", inline: "nearest" });
     var chip = document.getElementById("den-runs");
     if (chip) {
-      chip.setAttribute("aria-expanded", dockOpen ? "true" : "false");
+      chip.setAttribute("aria-expanded", dockShown() ? "true" : "false");
       chip.setAttribute("aria-controls", "den-dock");
     }
   }
@@ -6544,6 +6571,7 @@
       if (opts && opts.select) runSel = r.id;
       if (opts && opts.open === true) {
         dockOpen = true;
+        dockShutHere = false;
         rememberDock();
       }
       renderDock();
@@ -6569,6 +6597,7 @@
       // action whose whole point is output (e.g. a service's Logs).
       if (opts.open === true) {
         dockOpen = true;
+        dockShutHere = false;
         rememberDock();
       }
       renderDock();
@@ -6635,6 +6664,7 @@
       runSel = r.id;
       if (o && o.open === true) {
         dockOpen = true;
+        dockShutHere = false;
         rememberDock();
       }
       renderDock();
@@ -6660,22 +6690,33 @@
     },
     show: function () {
       dockOpen = true;
+      dockShutHere = false;
       rememberDock();
       renderDock();
     },
     hide: function () {
       dockOpen = false;
+      dockShutHere = false;
       rememberDock();
       renderDock();
     },
     toggle: function () {
-      dockOpen = !dockOpen;
+      // What the person sees, flipped: shut here (a phone's list) and
+      // saved open, Show runs opens it and the saved choice is unchanged.
+      dockOpen = !dockShown();
+      dockShutHere = false;
       rememberDock();
       renderDock();
       return dockOpen;
     },
     isOpen: function () {
-      return dockOpen;
+      return dockShown();
+    },
+    /** Issue 302: shut for this view only, or not; never saved. */
+    shutHere: function (on) {
+      if (dockShutHere === !!on) return;
+      dockShutHere = !!on;
+      renderDock();
     },
     has: function (id) {
       return !!runById(String(id));
@@ -6841,7 +6882,7 @@
       }
       if (next < 0 || !shown[next]) return;
       e.preventDefault();
-      runsApi.select(shown[next].id, { open: dockOpen });
+      runsApi.select(shown[next].id, { open: dockShown() });
       if (typeof shown[next].onSelect === "function")
         shown[next].onSelect(shown[next].id);
       var to = dock.querySelector('[data-rsel="' + shown[next].n + '"]');

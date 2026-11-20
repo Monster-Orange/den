@@ -33,7 +33,16 @@
     "tests/unit/server/ui-assets.test.ts",
     "tests/unit/server/route-classes.test.ts"
   ],
-  "subjects": {},
+  "subjects": {
+    "tests/unit/server/agent-phone.browser.test.ts": [
+      "packages/den-ui/src/phone.css",
+      "packages/den-ui/src/phone.js",
+      "src/ui/server/public/agent-composer.js",
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents.html",
+      "src/ui/server/public/embed-page.js"
+    ]
+  },
   "subjectless": [
     "tests/unit/cli/address-455-unchecked.integration.test.ts",
     "tests/unit/cli/dev-metrics-cli-ship.integration.test.ts",
@@ -230,6 +239,7 @@
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
@@ -321,6 +331,7 @@
         "src/ui/server/public/embed.html"
       ],
       "run": [
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts"
       ],
@@ -399,6 +410,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/phone-kit.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -408,6 +420,7 @@
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -569,6 +582,7 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
@@ -653,6 +667,7 @@
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
@@ -725,6 +740,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/phone-kit.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -737,6 +753,7 @@
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
@@ -832,6 +849,7 @@
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
@@ -910,6 +928,7 @@
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
@@ -1041,6 +1060,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/phone-kit.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1050,6 +1070,7 @@
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -1147,6 +1168,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/phone-kit.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1159,6 +1181,7 @@
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
+        "tests/unit/server/agent-phone.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
@@ -1335,6 +1358,7 @@
       "run": [
         "tests/unit/agents/quarantined-launch.test.ts",
         "tests/unit/agents/uploads.test.ts",
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/button-kit.test.ts",
         "tests/unit/den-ui/dialog-frame-guard.test.ts",
         "tests/unit/den-ui/kit-route.test.ts",
@@ -1396,10 +1420,12 @@
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
+        "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
@@ -1490,6 +1516,7 @@
     {
       "when": ["scripts/words.js"],
       "run": [
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
@@ -1554,6 +1581,18 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "packages/den-ui/src/phone.css",
+        "packages/den-ui/src/phone.js",
+        "src/ui/server/public/agent-composer.js",
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/agents.html",
+        "src/ui/server/public/embed-page.js"
+      ],
+      "run": ["tests/unit/server/agent-phone.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/server/agents-layout-pref.ts"],
       "run": ["tests/unit/server/agents-layout.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -1614,6 +1653,13 @@
     {
       "when": ["src/shared/web-session.ts"],
       "run": ["tests/unit/server/i18n-pages.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/index.ts", "src/ui/server/named-address.ts"],
+      "run": [
+        "tests/unit/server/issue-601-loopback-address.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {

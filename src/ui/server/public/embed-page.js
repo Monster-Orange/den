@@ -33,7 +33,7 @@
  * { type: "den:sent" } after each Send, and { type: "den:error", code,
  * message } when something fails.
  */
-import { makeComposer } from "/agent-composer.js";
+import { draftKey, makeComposer } from "/agent-composer.js";
 
 let cfg = {};
 try {
@@ -179,7 +179,18 @@ function gotKey(j) {
   open.href = `/p/${encodeURIComponent(agent.project)}/agents/${encodeURIComponent(agent.id)}`;
   open.hidden = false;
   if (!composer) {
-    composer = makeComposer({ t, name: agent.name || agent.id, send });
+    composer = makeComposer({
+      t,
+      name: agent.name || agent.id,
+      send,
+      // Issue 302: an unsent draft survives the frame's reload (the host
+      // page navigating reloads it), in this frame's own storage only.
+      draft: draftKey({
+        install: location.host,
+        project: agent.project,
+        agent: agent.id,
+      }),
+    });
     $("emb-composer").append(composer.el);
     for (const p of pending) composer.addContext(p);
     pending = [];

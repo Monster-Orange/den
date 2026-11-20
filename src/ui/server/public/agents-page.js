@@ -106,7 +106,7 @@ import { startFailText, terminalFailText } from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
-import { makeComposer } from "/agent-composer.js";
+import { draftKey, makeComposer, readDraft } from "/agent-composer.js";
 import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
 import {
   attachFiles,
@@ -1772,10 +1772,35 @@ function paintTabs(strip) {
     .join("");
 }
 
+/** The kit's phone (phone.css): a touch screen, or 767.98px and under. */
+const KIT_PHONE = "(pointer: coarse), (max-width: 767.98px)";
+
+/**
+ * Issue 302, the mock's frames 1 and 2: on a phone, an agent open has no
+ * runs dock (agents.html hides it under body[data-phone-agent]), and the
+ * list shows it shut. Both for this view only: the person's saved choice
+ * (open, say, on their desktop) is never changed.
+ */
+function paintPhoneDock() {
+  const onPhone = !!window.matchMedia?.(KIT_PHONE).matches;
+  // An agent open, or one the address names that is still opening (the
+  // shell hid the dock for it from the first paint).
+  const agent =
+    onPhone && (!!st.deep || st.open.some((id) => rowOf(id)?.kind === "agent"));
+  if (agent) document.body.dataset.phoneAgent = "";
+  else delete document.body.dataset.phoneAgent;
+  // Only as the view becomes a phone's or stops being one: the person's
+  // own Show runs on the list then stays open.
+  if (paintPhoneDock.was === onPhone) return;
+  paintPhoneDock.was = onPhone;
+  window.denShell?.runs?.shutHere?.(onPhone);
+}
+
 function paintLayout() {
   const box = st.root.querySelector("#agr");
   const n = st.open.length;
   paintSwitch();
+  paintPhoneDock();
   if (n === 0) {
     box.className = "agempty";
     delete box.dataset.layout;
@@ -3018,6 +3043,11 @@ async function openPane(id, { front = true } = {}) {
   );
   p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
+  // Issue 302: an agent's message box: always there on a phone, and
+  // wherever an unsent draft was kept for it (a reload brings it back).
+  const row = rowOf(id);
+  if (row?.kind === "agent" && (phone() || readDraft(composerDraft(row))))
+    ensureComposer(row);
   refit(p);
   // The theme's font may still be loading: measure again once it has.
   document.fonts?.ready?.then(() => {
@@ -5778,6 +5808,7 @@ export async function mountAgentsPage(root) {
     paintLayout();
     paintList();
   });
+  window.matchMedia?.(KIT_PHONE).addEventListener?.("change", paintPhoneDock);
 
   // NT-2: while this tab is visible and focused, the agents in its panes
   // don't notify (the bell); Den forgets it 10 s after the last word.
@@ -5841,6 +5872,8 @@ export async function mountAgentsPage(root) {
   const linkedAgent = new URLSearchParams(location.search).get("agent");
   writeUrl();
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
+  // Issue 302: the addressed agent opened, or not (stopped, gone).
+  paintPhoneDock();
   if (termWs !== null) await openTerminal(termWs);
   if (startAsked) void openStart();
 }
@@ -5964,13 +5997,38 @@ async function openLinkedAgent(agent, ws) {
  * Nothing is sent until the person presses Send (POST …/say).
  */
 function openComposer(r, text) {
-  const p = st.panes.get(r.id);
+  const p = ensureComposer(r);
   if (!p) return;
+  p.composer.setText(text);
+  // The keyboard is the composer's now, not the terminal's once it opens.
+  if (st.focusOnOpen === r.id) st.focusOnOpen = null;
+  p.composer.focus();
+}
+
+/** Issue 302: where agent `r`'s unsent draft is kept. */
+function composerDraft(r) {
+  return draftKey({
+    install: location.host,
+    project: r.workspace,
+    agent: r.agent,
+  });
+}
+
+/**
+ * The composer under agent `r`'s terminal, made once (issue 103), with
+ * its draft kept (issue 302). On a phone it is the pane's foot, always
+ * there, with no Close. Returns the pane, or null.
+ */
+function ensureComposer(r) {
+  const p = st.panes.get(r.id);
+  if (!p) return null;
   if (!p.composer) {
     const name = displayName(r);
+    const onPhone = phone();
     const c = makeComposer({
       t,
       name,
+      draft: composerDraft(r),
       // BUSY-1: Send goes through the working pop-up. A quick refusal
       // comes back to the composer, which says it; the pop-up closed
       // after a failure resolves null, and the text stays in the box.
@@ -5993,19 +6051,33 @@ function openComposer(r, text) {
         );
         if (!out) throw new Error(t("agc.kept"));
       },
-      onClose: () => {
-        c.el.remove();
-        p.composer = null;
-        refit(p);
-        p.term?.focus();
-      },
+      onClose: onPhone
+        ? undefined
+        : () => {
+            c.el.remove();
+            p.composer = null;
+            refit(p);
+            p.term?.focus();
+          },
     });
+    // A phone: the foot clears the home indicator (the kit's phone.css).
+    if (onPhone) {
+      c.el.classList.add("den-phone-foot", "agc-phone");
+      // One line to start; it grows with the words, to a quarter of the
+      // visible height (agents.html), then scrolls in place.
+      const box = c.el.querySelector(".agc-in");
+      box.rows = 1;
+      const grow = () => {
+        box.style.height = "auto";
+        // border-box: the words' height and the box's own borders.
+        box.style.height = `${box.scrollHeight + box.offsetHeight - box.clientHeight}px`;
+      };
+      box.addEventListener("input", grow);
+      requestAnimationFrame(grow);
+    }
     p.composer = c;
     p.el.insertBefore(c.el, p.el.querySelector(".agto"));
     refit(p);
   }
-  p.composer.setText(text);
-  // The keyboard is the composer's now, not the terminal's once it opens.
-  if (st.focusOnOpen === r.id) st.focusOnOpen = null;
-  p.composer.focus();
+  return p;
 }

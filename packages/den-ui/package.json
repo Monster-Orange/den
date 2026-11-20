@@ -52,6 +52,8 @@
     "./setting-row.css": "./src/setting-row.css",
     "./marks/*": "./src/marks/*",
     "./site/*": "./src/site/*",
+    "./phone": "./src/phone.js",
+    "./phone.css": "./src/phone.css",
     "./inventory": {
       "types": "./inventory/nav-inventory.d.ts",
       "default": "./inventory/nav-inventory.js"
