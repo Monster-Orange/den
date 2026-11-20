@@ -447,14 +447,16 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 }
 
 /**
- * Review M4 (0.4.46): Edit and Write denied under the person's own config
- * folder (config/local: user.yml holds self_update and the person's
- * settings). The team file beside it stays editable. A cooperating
- * agent's boundary only; the server's token rules are the real one.
+ * Review M4 (0.4.46): edits denied under the person's own config folder
+ * (config/local: user.yml holds self_update and the person's settings).
+ * The team file beside it stays editable. A cooperating agent's boundary
+ * only; the server's token rules are the real one. Issue 660: Claude Code
+ * covers file writes under Edit(path) rules and warns that a Write(path)
+ * rule never matches, so Den writes the Edit rule only.
  */
 export function personConfigDenyRules(dir: string): string[] {
   const abs = path.resolve(dir);
-  return [`Edit(/${abs}/**)`, `Write(/${abs}/**)`];
+  return [`Edit(/${abs}/**)`];
 }
 
 /** The readers named in the Bash deny rules (stateDirDenyRules). */
