@@ -49,6 +49,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
+  // Issue 456: how long Den waits for the shell's PATH.
+  agents_shell: { path_timeout_seconds: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -191,6 +193,8 @@ describe("the settings inventory (R21)", () => {
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",
+        // Issue 456: how long Den waits for the shell's PATH.
+        "agents_shell.path_timeout_seconds",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",

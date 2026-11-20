@@ -5314,43 +5314,68 @@ first match wins:
          bin: /Users/me/.local/bin/claude
    ```
 
-3. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
-   start, in the background, under a 3-second timeout. On a timeout or
-   any failure it is left out.
-4. **The server's own PATH.**
-5. **The runtime's install directories** (its catalog entry's; for
+3. **Your interactive shell's PATH**, the first choice: the CLI your
+   terminal runs. `$SHELL -ilc` is asked once, before the first search
+   (stdin closed, the answer kept), so a PATH set in an interactive
+   startup file such as `~/.zshrc` counts. Its source is
+   `interactive-shell`. Until it answers, or when it fails, the next
+   three decide.
+4. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
+   start, in the background. On a timeout or any failure it is left out.
+
+   Both asks wait at most **Settings › Agents › Shell PATH wait**
+   (`agents.shell_path_timeout_seconds` in user.yml: 10 when unset, 1 to
+   120), so a slow startup file is still read:
+
+   ```yaml
+   # config/local/user.yml
+   agents:
+     shell_path_timeout_seconds: 10
+   ```
+
+5. **The server's own PATH.**
+6. **The runtime's install directories** (its catalog entry's; for
    den-claude: `~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`,
    `/usr/local/bin` and npm's global bin, `$npm_config_prefix/bin` and
    node's own directory). Den never runs npm to find it.
-6. **Your interactive shell's PATH**, only while a catalog runtime is
-   still not found: `$SHELL -ilc` once (stdin closed, 3-second timeout,
-   the answer kept), for a PATH set only in an interactive startup file
-   such as `~/.zshrc`. Its source is `interactive-shell`.
+
+When more than one copy is found, the first is used and the others are
+listed with the version their install says (a Homebrew keg's directory,
+npm's `package.json`). Den never runs a copy it didn't choose: only the
+copy in use gets its version command. On macOS a copy carrying the
+`com.apple.quarantine` attribute is never run either, so a scan never
+makes macOS warn; it shows "quarantined, not run" instead. The attribute
+is read with `xattr`, never by running the file.
 
 Paths are this machine's only: Den reads them from `config/local` files,
 never from the distribution's config. **Settings › Agents › Runtimes**
-shows each runtime's status, version, the path in use and its source.
+shows each runtime's status, version, the path in use and its source,
+then **Also found:** the other copies, each with **Use this**, which pins
+it (`agents.runtimes.<id>.bin`, at the scope shown).
 **Set path…** runs the runtime's version command and refuses a path that
 isn't that runtime (its output, npm package or install location must name
-it); **Clear** removes it. The **Paths for** selector switches between
+it), or a quarantined file (not run); **Clear** removes it. The **Paths for** selector switches between
 every project (`user.yml`) and one project (`workspaces.yml`). Only a
 person sets a path, never an agent (`POST /api/agents/runtimes/<id>/path`,
 audited).
 
 Sessions and agents Den starts get the same directories on their PATH
 (and a configured CLI's own directory), so the runtime's own tools are
-found too. Two engine variables override the search for tests and
+found too. Engine variables override the search for tests and
 diagnosis: `DEN_LOGIN_SHELL` (the shell to ask instead of `$SHELL`; `off`
 for none) and `DEN_RUNTIME_DIRS` (a PATH-style list that replaces every
-runtime's install directories; empty for none).
+runtime's install directories; empty for none). `DEN_QUARANTINE_CHECK=off`
+reads no file as quarantined.
 
 **`<cli> agents doctor`** prints, for each runtime (installed first), its
 status, the CLI it runs and where that came from (the project's or the
 user.yml `agents.runtimes` setting, the login shell's PATH, PATH, an
 install directory, or the interactive shell's PATH), its version (`claude
---version`, run once under a timeout), the directories it searched (names
-only, never an environment value), and the fix when it's missing. It
-resolves the login shell's PATH first, as the web server does. It exits 1
+--version`, run once under a timeout, on the copy in use only; "quarantined,
+not run" for a quarantined one), each other copy found with its version
+(`also`), the directories it searched (names only, never an environment
+value), and the fix when it's missing. It resolves the login shell's PATH
+first, as the web server does. It exits 1
 when the default runtime is unavailable; `-w <ws>` uses that project's
 paths; `--json` prints what the Start dialog gets. A search list the same
 as the one above it prints once.

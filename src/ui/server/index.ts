@@ -202,6 +202,8 @@ import {
   type ReleaseConfig,
   readWebKeepAliveSeconds,
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
+  shellPathTimeoutMs,
+  agentsShellPathTimeoutSeconds,
 } from "../../shared/den-config.js";
 import {
   CONFIG_ERROR_STATUS,
@@ -3748,6 +3750,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     agents_list: (() => {
       try {
         return agentsListWaits(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 456: how long Den waits for the shell's PATH.
+    agents_shell: (() => {
+      try {
+        return {
+          path_timeout_seconds: agentsShellPathTimeoutSeconds(() => user),
+        };
       } catch {
         return null;
       }
@@ -7478,6 +7490,7 @@ async function handleRequest(
           web_ready?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
+          agents_shell?: unknown;
           agent_context?: unknown;
           feedback?: unknown;
           address_check?: unknown;
@@ -7515,6 +7528,7 @@ async function handleRequest(
             web_github: body.web_github,
             web_ready: body.web_ready,
             agents_list: body.agents_list,
+            agents_shell: body.agents_shell,
             agent_context: body.agent_context,
             feedback: body.feedback,
             address_check: body.address_check,
@@ -8483,11 +8497,12 @@ try {
 } catch (e) {
   serverLog(`  ⚠ web.secret could not be created: ${(e as Error).message}`);
 }
-// AG-0.1: the login shell's PATH, once, in the background (3 s at most),
+// AG-0.1: the login shell's PATH, once, in the background (at most
+// agents.shell_path_timeout_seconds, 10 s unset: issue 456),
 // so agents find their CLI as the person's terminal would: a launchd
 // service's PATH leaves out ~/.local/bin. Until (or unless) it answers, the
 // search is this PATH and the runtimes' install directories.
-void initLoginPath();
+void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // D80: the install's address (web.url), the one people are given. An
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never

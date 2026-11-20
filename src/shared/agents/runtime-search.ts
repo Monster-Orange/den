@@ -12,20 +12,28 @@
  *                   (per machine, so never in the distribution's config):
  *                   an absolute path to an executable file; a bad one (at
  *                   either scope) is refused with its reason, never skipped.
- *   2. login-shell  the login shell's PATH (`$SHELL -lc`), resolved once
- *                   at server start, async, under a 3-second timeout; on
+ *   2. interactive-shell  issue 456, the first choice: the interactive
+ *                   login shell's PATH (`$SHELL -ilc`, where many people
+ *                   set PATH in .zshrc/.bashrc), the PATH their terminal
+ *                   has. Asked once per process, stdin closed, under
+ *                   agents.shell_path_timeout_seconds (10 s), and kept
+ *                   (ensureInteractivePath); until it answers, or when it
+ *                   fails, the fallbacks below decide.
+ *   3. login-shell  the login shell's PATH (`$SHELL -lc`), resolved once
+ *                   at server start, async, under the same timeout; on
  *                   any failure it is left out (the current PATH remains).
- *   3. PATH         the caller's own PATH.
- *   4. well-known   the runtime's install directories (its `find.dirs`:
+ *   4. PATH         the caller's own PATH.
+ *   5. well-known   the runtime's install directories (its `find.dirs`:
  *                   for den-claude ~/.local/bin, ~/.claude/local,
  *                   /opt/homebrew/bin, /usr/local/bin and npm's global
  *                   bin, derived from npm_config_prefix and node's own
  *                   directory, never by running npm).
- *   5. interactive-shell  only when a runtime is still missing: the
- *                   interactive login shell's PATH (`$SHELL -ilc`, where
- *                   some people set PATH in .zshrc/.bashrc), asked once per
- *                   process with stdin closed under the same 3-second
- *                   timeout, and kept (ensureInteractivePath).
+ *
+ * Every other copy found is listed (`others`), with the version its
+ * install's files say, never by running it. A copy macOS has quarantined
+ * (com.apple.quarantine, read by isQuarantined without running the file)
+ * is never run: no version command, no "Set path…" check. It is reported
+ * "quarantined, not run", so a scan never makes macOS warn.
  *
  * Sessions and agents Den starts get the same directories on their PATH
  * (sessionPath), so the runtime's own tools are found too.
@@ -34,9 +42,10 @@
  * secrets), read from the env given, else this process's: DEN_LOGIN_SHELL,
  * the shell to ask instead of $SHELL ("off": none), and DEN_RUNTIME_DIRS,
  * a PATH-style list that replaces every runtime's well-known directories
- * (empty: none).
+ * (empty: none). And DEN_QUARANTINE_CHECK: "off", no file is read as
+ * quarantined (tests set it).
  */
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -52,7 +61,14 @@ export type BinSource =
 export const LOGIN_SHELL_ENV = "DEN_LOGIN_SHELL";
 /** A PATH-style list replacing every runtime's well-known directories. */
 export const RUNTIME_DIRS_ENV = "DEN_RUNTIME_DIRS";
-export const LOGIN_PATH_TIMEOUT_MS = 3000;
+/** "off": the quarantine attribute is never read (tests). */
+export const QUARANTINE_CHECK_ENV = "DEN_QUARANTINE_CHECK";
+/**
+ * How long a shell is given to say its PATH when the caller passes no
+ * timeout: agents.shell_path_timeout_seconds's default (den-config.ts
+ * SHELL_PATH_TIMEOUT), which callers read and pass (issue 456).
+ */
+export const LOGIN_PATH_TIMEOUT_MS = 10_000;
 
 /** How a runtime's CLI is found and its version asked (catalog-shaped). */
 export interface RuntimeFind {
@@ -69,10 +85,24 @@ export interface SearchDir {
   source: Exclude<BinSource, "setting" | "workspace">;
 }
 
+/** Another copy of a runtime the search found (issue 456): never run. */
+export interface RuntimeCopy {
+  path: string;
+  source: SearchDir["source"];
+  /** What its install's files say (a Homebrew keg's, npm's package.json). */
+  version?: string;
+  /** It carries com.apple.quarantine. */
+  quarantined?: true;
+}
+
 export interface Located {
   available: boolean;
   path?: string;
   source?: BinSource;
+  /** The chosen copy carries com.apple.quarantine: it is never run. */
+  quarantined?: true;
+  /** The other copies found, in search order (absent when none). */
+  others?: RuntimeCopy[];
   /** Why it is unavailable. */
   why?: string;
   /** The directories searched, in order (none when a setting decided). */
@@ -187,7 +217,7 @@ export async function initLoginPath(o: LoginPathOptions = {}): Promise<void> {
   if (p) setLoginPath(p);
 }
 
-// ── the interactive shell's PATH (the fallback) ─────────────────────────────
+// ── the interactive shell's PATH (the first choice) ─────────────────────────
 
 let interactiveDirs: string[] | null = null;
 let interactiveAsked: Promise<void> | null = null;
@@ -195,9 +225,9 @@ let interactiveAsked: Promise<void> | null = null;
 /**
  * Ask the interactive login shell (`$SHELL -ilc`) for its PATH, once per
  * process (stdin closed, the same timeout), and keep its directories as
- * the last place a runtime is looked for. Only for a runtime still missing
- * after the login PATH and the install directories; a second call waits
- * on (or returns) the first. Never throws.
+ * the first place a runtime is looked for (issue 456): the PATH the
+ * person's terminal has. A second call waits on (or returns) the first.
+ * Never throws.
  */
 export function ensureInteractivePath(
   o: Omit<LoginPathOptions, "flags"> = {},
@@ -266,8 +296,8 @@ export function wellKnownDirs(
 }
 
 /**
- * Where a runtime is looked for, in order: login shell, PATH, well-known,
- * then (once asked) the interactive shell's PATH.
+ * Where a runtime is looked for, in order: the interactive shell's PATH
+ * (once asked), then the login shell's, PATH, well-known.
  */
 export function searchDirs(
   find: RuntimeFind | undefined,
@@ -278,10 +308,10 @@ export function searchDirs(
     for (const dir of dirs)
       if (!out.some((x) => x.dir === dir)) out.push({ dir, source });
   };
+  add(interactiveDirs ?? [], "interactive-shell");
   add(loginDirs ?? [], "login-shell");
   add(absoluteDirs(env.PATH ?? ""), "PATH");
   add(wellKnownDirs(find, env), "well-known");
-  add(interactiveDirs ?? [], "interactive-shell");
   return out;
 }
 
@@ -333,9 +363,76 @@ export interface BinSetting {
 }
 
 /**
+ * Every copy of `find.bins` in `dirs`, in order, one per real file (a
+ * Homebrew link and its keg are one copy). Runs nothing.
+ */
+export function findCopies(
+  find: RuntimeFind,
+  dirs: readonly SearchDir[],
+): { path: string; source: SearchDir["source"] }[] {
+  const out: { path: string; source: SearchDir["source"]; real: string }[] = [];
+  for (const { dir, source } of dirs)
+    for (const bin of find.bins) {
+      const file = path.join(dir, bin);
+      if (!isExecutableFile(file)) continue;
+      const real = realOf(file);
+      if (!out.some((c) => c.real === real))
+        out.push({ path: file, source, real });
+    }
+  return out.map(({ path: p, source }) => ({ path: p, source }));
+}
+
+function realOf(file: string): string {
+  try {
+    return fs.realpathSync(file);
+  } catch {
+    return file;
+  }
+}
+
+/** The copies other than `chosen`, each with its install's version. */
+function otherCopies(
+  copies: readonly { path: string; source: SearchDir["source"] }[],
+  chosen: string,
+): RuntimeCopy[] {
+  const real = realOf(chosen);
+  return copies
+    .filter((c) => c.path !== chosen && realOf(c.path) !== real)
+    .map((c) => {
+      const version = installVersion(c.path);
+      return {
+        path: c.path,
+        source: c.source,
+        ...(version ? { version } : {}),
+        ...(isQuarantined(c.path) ? { quarantined: true as const } : {}),
+      };
+    });
+}
+
+/** The chosen copy's Located: its quarantine, and the others found. */
+function chosenCopy(
+  file: string,
+  source: BinSource,
+  copies: readonly { path: string; source: SearchDir["source"] }[],
+  searched: string[],
+): Located {
+  const others = otherCopies(copies, file);
+  return {
+    available: true,
+    path: file,
+    source,
+    ...(isQuarantined(file) ? { quarantined: true as const } : {}),
+    ...(others.length ? { others } : {}),
+    searched,
+  };
+}
+
+/**
  * Find runtime `id`'s CLI: the setting when there is one (refused with its
- * reason when bad), else the first of `find.bins` in searchDirs. Runs
- * nothing. `setting` is a value (global, as before) or a BinSetting.
+ * reason when bad), else the first of `find.bins` in searchDirs; the other
+ * copies the search finds are listed (issue 456). Runs none of them (the
+ * quarantine attribute is read without running the file). `setting` is a
+ * value (global, as before) or a BinSetting.
  */
 export function locateRuntime(
   id: string,
@@ -352,21 +449,23 @@ export function locateRuntime(
   if (set && set.value !== undefined && set.value !== null) {
     const c = checkBinSetting(id, set.value, set.key);
     return "path" in c
-      ? { available: true, path: c.path, source: set.source, searched: [] }
+      ? chosenCopy(
+          c.path,
+          set.source,
+          findCopies(find, searchDirs(find, env)),
+          [],
+        )
       : { available: false, why: c.why, source: set.source, searched: [] };
   }
   const dirs = searchDirs(find, env);
-  for (const { dir, source } of dirs)
-    for (const bin of find.bins) {
-      const file = path.join(dir, bin);
-      if (isExecutableFile(file))
-        return {
-          available: true,
-          path: file,
-          source,
-          searched: dirs.map((d) => d.dir),
-        };
-    }
+  const copies = findCopies(find, dirs);
+  if (copies.length)
+    return chosenCopy(
+      copies[0].path,
+      copies[0].source,
+      copies,
+      dirs.map((d) => d.dir),
+    );
   return {
     available: false,
     why: `${find.bins.join(" or ")} not found (searched ${dirs.length} ${dirs.length === 1 ? "directory" : "directories"})`,
@@ -418,6 +517,103 @@ export function sessionPath(
   return [...before, ...(own ? [own] : []), ...after].join(path.delimiter);
 }
 
+// ── macOS quarantine (issue 456) ────────────────────────────────────────────
+
+/** Whether a file carries com.apple.quarantine, read without running it. */
+export type QuarantineReader = (file: string) => boolean;
+
+export const QUARANTINE_ATTR = "com.apple.quarantine";
+
+/**
+ * The default reader: on macOS, `/usr/bin/xattr -p com.apple.quarantine
+ * <file>` (xattr reads the attribute; the file itself is never run), under
+ * a 2-second timeout. False elsewhere, under DEN_QUARANTINE_CHECK=off, or
+ * when xattr can't answer.
+ */
+export const xattrQuarantineReader: QuarantineReader = (file) => {
+  if (process.platform !== "darwin") return false;
+  if (process.env[QUARANTINE_CHECK_ENV] === "off") return false;
+  try {
+    const r = spawnSync("/usr/bin/xattr", ["-p", QUARANTINE_ATTR, file], {
+      stdio: ["ignore", "ignore", "ignore"],
+      timeout: 2000,
+    });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+};
+
+let quarantineReader: QuarantineReader | undefined;
+const quarantineSeen = new Map<string, boolean>();
+
+/** Replace (or, with undefined, restore) the quarantine reader (tests). */
+export function setQuarantineReader(r: QuarantineReader | undefined): void {
+  quarantineReader = r;
+  quarantineSeen.clear();
+}
+
+/**
+ * Whether `file` (its real file) carries com.apple.quarantine, asked once
+ * per file identity: a change to its attributes changes its ctime, so it
+ * is asked again. Never runs the file; never throws.
+ */
+export function isQuarantined(file: string): boolean {
+  let real: string;
+  let key: string;
+  try {
+    real = fs.realpathSync(file);
+    const st = fs.statSync(real);
+    key = `${real}\0${st.ino}\0${st.mtimeMs}\0${st.ctimeMs}`;
+  } catch {
+    return false;
+  }
+  const seen = quarantineSeen.get(key);
+  if (seen !== undefined) return seen;
+  let q = false;
+  try {
+    q = (quarantineReader ?? xattrQuarantineReader)(real) === true;
+  } catch {
+    q = false;
+  }
+  quarantineSeen.set(key, q);
+  return q;
+}
+
+const VERSION_DIR = /^v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/;
+
+/**
+ * A copy's version from its install's files, never by running it: a
+ * version-named file or directory among the last three parts of its real
+ * path (Homebrew's Cellar/<name>/<version>/bin/<name>, a native install's
+ * versions/<version>), else the nearest package.json's version (an npm
+ * install). Only the last three, so a version further up (nvm's
+ * versions/node/v24.x/…) is never taken for the CLI's. Undefined when
+ * neither says.
+ */
+export function installVersion(file: string): string | undefined {
+  const real = realOf(file);
+  const parts = real.split(path.sep);
+  for (let i = parts.length - 1; i >= Math.max(0, parts.length - 3); i--) {
+    const m = VERSION_DIR.exec(parts[i]);
+    if (m) return m[1];
+  }
+  for (let dir = path.dirname(real), i = 0; i < 6; i++) {
+    try {
+      const pkg = JSON.parse(
+        fs.readFileSync(path.join(dir, "package.json"), "utf-8"),
+      ) as { version?: unknown };
+      if (typeof pkg.version === "string") return pkg.version;
+    } catch {
+      /* not here */
+    }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return undefined;
+}
+
 // ── the version ─────────────────────────────────────────────────────────────
 
 const VERSION_TIMEOUT_MS = 3000;
@@ -432,7 +628,8 @@ export function parseVersion(out: string): string | undefined {
 /**
  * Run `<bin> <versionArgs>` once (under a timeout; stdin closed, the env
  * as given) and keep the answer, per path and file identity, so a page
- * asking again runs nothing. Undefined when it fails or prints none.
+ * asking again runs nothing. Undefined when it fails or prints none, and
+ * for a quarantined file, which is never run (issue 456).
  */
 export function runtimeVersion(
   bin: string,
@@ -440,6 +637,7 @@ export function runtimeVersion(
   env: NodeJS.ProcessEnv,
   timeoutMs: number = VERSION_TIMEOUT_MS,
 ): Promise<string | undefined> {
+  if (isQuarantined(bin)) return Promise.resolve(undefined);
   let key: string;
   try {
     const st = fs.statSync(bin);
@@ -494,14 +692,17 @@ export function runtimeVersion(
 /**
  * Run `<bin> <args>` (stdin closed, under a timeout, never cached) and
  * return what it printed and whether it exited 0: to check a path someone
- * sets is the runtime it claims to be. Never throws.
+ * sets is the runtime it claims to be. A quarantined file is never run
+ * (`quarantined: true`, issue 456). Never throws.
  */
 export function versionOutput(
   bin: string,
   args: readonly string[],
   env: NodeJS.ProcessEnv,
   timeoutMs: number = VERSION_TIMEOUT_MS,
-): Promise<{ ok: boolean; out: string }> {
+): Promise<{ ok: boolean; out: string; quarantined?: true }> {
+  if (isQuarantined(bin))
+    return Promise.resolve({ ok: false, out: "", quarantined: true });
   return new Promise((resolve) => {
     let out = "";
     let done = false;
