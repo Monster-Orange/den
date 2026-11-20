@@ -43,24 +43,31 @@ interface Case {
 }
 
 /**
- * Runs ES-module code in a child Node, `input` as JSON on its stdin (read
+ * Runs ES-module code in a child Node, `input` as JSON in a temp file (read
  * with `ARGS()`): never in the environment, where Linux caps one variable
- * at 128 KB (E2BIG; the replay's cases are bigger). A failure comes back
- * as a plain Error: a child-process error refers to itself (`.error`), and
- * jest's worker can't send that to the parent.
+ * at 128 KB (E2BIG; the replay's cases are bigger), and never on stdin,
+ * where an input over 64 KB sometimes left the child waiting for the rest
+ * and the parent for the child, until jest's timeout (issue 708: the map
+ * passed 64 KB). A failure comes back as a plain Error: a child-process
+ * error refers to itself (`.error`), and jest's worker can't send that to
+ * the parent.
  */
 function child(code: string, input: unknown): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-affected-"));
+  const file = path.join(dir, "args.json");
+  fs.writeFileSync(file, JSON.stringify(input));
   try {
     return execFileSync(
       process.execPath,
       [
         "--input-type=module",
         "-e",
-        `import { readFileSync as readStdin } from "node:fs"; const ARGS = () => JSON.parse(readStdin(0, "utf-8"));\n${code}`,
+        `import { readFileSync as readArgs } from "node:fs"; const ARGS = () => JSON.parse(readArgs(process.argv[1], "utf-8"));\n${code}`,
+        file,
       ],
       {
         encoding: "utf-8",
-        input: JSON.stringify(input),
+        stdio: ["ignore", "pipe", "pipe"],
         maxBuffer: 64 * 1024 * 1024,
       },
     );
@@ -69,6 +76,8 @@ function child(code: string, input: unknown): string {
     throw new Error(
       `child node failed: ${err.message ?? e}\n${err.stderr ?? ""}`,
     );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
