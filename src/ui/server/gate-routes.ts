@@ -214,20 +214,27 @@ async function handleRunnerTokens(
   pathname: string,
   d: GateRouteDeps,
 ): Promise<void> {
-  if (
-    agentPrincipalOf(req) ||
-    auditActorOf(req) ||
-    runnerPrincipalOf(req) ||
-    !principalOf(req)?.startsWith("person:")
-  )
+  if (agentPrincipalOf(req) || auditActorOf(req) || runnerPrincipalOf(req))
     return sendJson(
       res,
       {
         ok: false,
         code: "person_only",
-        error: "only a signed-in person lists or revokes runner tokens",
+        error: "only a person lists or revokes runner tokens",
       },
       403,
+    );
+  // A signed-out page (a plain read on loopback passes the checks) is
+  // told to sign in, as for any person's data.
+  if (!principalOf(req)?.startsWith("person:"))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_required",
+        error: "sign in to see the runner tokens",
+      },
+      401,
     );
   if (!d.runners)
     return sendJson(res, { ok: false, error: "no runner tokens here" }, 404);

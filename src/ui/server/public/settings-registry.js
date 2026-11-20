@@ -1235,17 +1235,23 @@ function drawRunnerTokens(host, ctx) {
           `</ul>`;
         for (const btn of list.querySelectorAll("[data-revoke]"))
           btn.addEventListener("click", () => {
-            btn.disabled = true;
             shell
-              .api("POST", "/api/gate-slots/runners/revoke", {
-                id: btn.getAttribute("data-revoke"),
-              })
+              .busyAction(
+                "save",
+                (headers) =>
+                  shell.api(
+                    "POST",
+                    "/api/gate-slots/runners/revoke",
+                    { id: btn.getAttribute("data-revoke") },
+                    { headers },
+                  ),
+                { button: btn },
+              )
               .then(() => {
                 out.innerHTML = "";
                 draw();
               })
               .catch((e) => {
-                btn.disabled = false;
                 out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
               });
           });
