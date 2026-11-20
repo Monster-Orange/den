@@ -144,9 +144,12 @@ function fakeViewport() {
   };
 }
 
-async function phone(engine: Engine): Promise<{ p: Page; errors: string[] }> {
+async function phone(
+  engine: Engine,
+  viewport = { width: 390, height: 844 },
+): Promise<{ p: Page; errors: string[] }> {
   const ctx = await browsers[engine]!.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport,
     hasTouch: true,
     isMobile: true,
     reducedMotion: "reduce",
@@ -419,6 +422,196 @@ describe.each(ENGINES)(
     }, 120_000);
   },
 );
+
+/** An element's box, or null when it isn't drawn. */
+const shown = (p: Page, sel: string) =>
+  p.evaluate((q) => {
+    const el = document.querySelector<HTMLElement>(q);
+    if (!el || el.offsetParent === null) return null;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0
+      ? { x: r.x, y: r.y, w: r.width, h: r.height }
+      : null;
+  }, sel);
+const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
+const back = (id: string) =>
+  `.pane[data-id="${sid[id]}"] .bar2 [data-act="back"]`;
+const sideways = (p: Page) =>
+  p.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+
+// Slice 2, the mock's frames 1, 2 and 6: at 480px and under the Agents
+// page is two screens, the list and the agent. Back (‹) is the switch:
+// it returns to the list and keeps ?open=; a row opens its agent again.
+describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
+  it.each([
+    [390, 844],
+    [430, 932],
+  ])(
+    "at %ipx an agent open is the whole screen, Back shows the list with ?open= kept, a row opens the agent",
+    async (width, height) => {
+      if (!browsers[engine]) return;
+      const { p, errors } = await phone(engine, { width, height });
+      await openAgent(p, "scout");
+      // Frame 2: no list, no page header, no tab strip; the pane fills
+      // the window under the top bar; a 44px Back named for the list.
+      expect(await shown(p, "#agl")).toBeNull();
+      expect(await shown(p, "#den-content > .ph")).toBeNull();
+      expect(await shown(p, "#agr > .agtabs")).toBeNull();
+      const pn = (await shown(p, `.pane[data-id="${sid.scout}"]`))!;
+      expect(pn).not.toBeNull();
+      expect(pn.y + pn.h).toBeLessThanOrEqual(height + 1);
+      expect(pn.h).toBeGreaterThanOrEqual(height * 0.75);
+      const b = (await shown(p, back("scout")))!;
+      expect(b).not.toBeNull();
+      expect(Math.round(b.w)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(b.h)).toBeGreaterThanOrEqual(44);
+      expect(await p.locator(back("scout")).getAttribute("aria-label")).toBe(
+        "Back to agents",
+      );
+      // Stop and ⋯ in the bar are 44px too.
+      const more = (await shown(
+        p,
+        `.pane[data-id="${sid.scout}"] .bar2 [data-act="more"]`,
+      ))!;
+      expect(Math.round(more.h)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(more.w)).toBeGreaterThanOrEqual(44);
+      expect(await sideways(p)).toBeLessThanOrEqual(0);
+      const before = new URL(p.url());
+      // Back: the list, with the runs dock as on frame 1; the agent stays
+      // open (the address keeps it).
+      await p.locator(back("scout")).tap();
+      await p.locator(row("scout")).waitFor({ state: "visible" });
+      expect(await shown(p, `.pane[data-id="${sid.scout}"]`)).toBeNull();
+      expect(await p.locator("#den-dock").isVisible()).toBe(true);
+      const after = new URL(p.url());
+      expect(after.pathname).toBe(before.pathname);
+      expect(after.searchParams.get("open")).toBe(
+        before.searchParams.get("open"),
+      );
+      expect(await sideways(p)).toBeLessThanOrEqual(0);
+      // A row: its agent, the whole screen again.
+      await p.locator(row("planner")).tap();
+      await pane(p, "planner").locator(".agc .agc-in").waitFor();
+      expect(await shown(p, `.pane[data-id="${sid.planner}"]`)).not.toBeNull();
+      expect(await shown(p, "#agl")).toBeNull();
+      await p.locator(back("planner")).tap();
+      await p.locator(row("scout")).tap();
+      await p.locator(back("scout")).waitFor({ state: "visible" });
+      expect(await shown(p, "#agl")).toBeNull();
+      expect(errors).toEqual([]);
+      await p.context().close();
+    },
+    90_000,
+  );
+
+  it("above 480px nothing changes: the list and the agent side by side or stacked, no Back", async () => {
+    if (!browsers[engine]) return;
+    const { p, errors } = await phone(engine, { width: 600, height: 900 });
+    await openAgent(p, "scout");
+    expect(await shown(p, "#agl")).not.toBeNull();
+    expect(await shown(p, `.pane[data-id="${sid.scout}"]`)).not.toBeNull();
+    expect(await shown(p, back("scout"))).toBeNull();
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("⋯ → Terminal keys: a row of 44px keys above the box; Esc, Ctrl-C and the arrows reach the agent; ⋯ → Hide terminal keys", async () => {
+    if (!browsers[engine]) return;
+    const { p, errors } = await phone(engine);
+    await openAgent(p, "scout");
+    const keys = pane(p, "scout").locator(".agkeys");
+    expect(await keys.count()).toBe(0);
+    await pane(p, "scout").locator('.bar2 [data-act="more"]').tap();
+    await p.getByRole("menuitem", { name: "Terminal keys" }).tap();
+    await keys.waitFor({ state: "visible" });
+    expect(await keys.getAttribute("aria-label")).toBe("Terminal keys");
+    const sizes = await keys
+      .locator("button")
+      .evaluateAll((bs) =>
+        bs.map((b) => [
+          b.getAttribute("aria-label"),
+          Math.round(b.getBoundingClientRect().width),
+          Math.round(b.getBoundingClientRect().height),
+        ]),
+      );
+    expect(sizes.map((s) => s[0])).toEqual([
+      "Escape",
+      "Control-C",
+      "Up arrow",
+      "Down arrow",
+      "Left arrow",
+      "Right arrow",
+    ]);
+    for (const [, w, h] of sizes) {
+      expect(w).toBeGreaterThanOrEqual(44);
+      expect(h).toBeGreaterThanOrEqual(44);
+    }
+    // Above the message box, inside the window.
+    const k = (await keys.boundingBox())!;
+    const bx = (await box(p, "scout").boundingBox())!;
+    expect(k.y + k.height).toBeLessThanOrEqual(bx.y + 1);
+    expect(k.x + k.width).toBeLessThanOrEqual(390);
+    expect(await sideways(p)).toBeLessThanOrEqual(0);
+    // Each key reaches the agent as the terminal's own bytes.
+    const press = async (label: string, want: string) => {
+      const from = pty.scout.writes.length;
+      await keys.getByRole("button", { name: label }).tap();
+      const t0 = Date.now();
+      while (!typed("scout", from).includes(want) && Date.now() - t0 < 10_000)
+        await new Promise((r) => setTimeout(r, 100));
+      expect(typed("scout", from)).toContain(want);
+    };
+    await press("Control-C", "\x03");
+    await press("Escape", "\x1b");
+    await press("Up arrow", "\x1b[A");
+    await press("Right arrow", "\x1b[C");
+    // ⋯ again: Hide terminal keys.
+    await pane(p, "scout").locator('.bar2 [data-act="more"]').tap();
+    await p.getByRole("menuitem", { name: "Hide terminal keys" }).tap();
+    await keys.waitFor({ state: "detached" });
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("the keyboard up, a tap on the terminal puts it down; the terminal's own input never raises it", async () => {
+    if (!browsers[engine]) return;
+    const { p, errors } = await phone(engine);
+    await openAgent(p, "scout");
+    await box(p, "scout").tap();
+    await p.evaluate(() =>
+      (window as unknown as { vv: (n: number) => void }).vv(844 - 336),
+    );
+    await frameTick(p);
+    expect(
+      await p.evaluate(() => "kbdUp" in document.documentElement.dataset),
+    ).toBe(true);
+    // The terminal reads (the mock: a tap on the reading area puts the
+    // keyboard down).
+    expect(
+      await pane(p, "scout").locator(".term").getAttribute("data-kbd-dismiss"),
+    ).not.toBeNull();
+    await pane(p, "scout").locator(".term").tap();
+    await frameTick(p);
+    expect(
+      await p.evaluate(() => "kbdUp" in document.documentElement.dataset),
+    ).toBe(false);
+    expect(
+      await box(p, "scout").evaluate((el) => el === document.activeElement),
+    ).toBe(false);
+    // Its hidden input asks for no on-screen keyboard.
+    expect(
+      await pane(p, "scout")
+        .locator(".xterm-helper-textarea")
+        .getAttribute("inputmode"),
+    ).toBe("none");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+});
 
 /** The frame Den's embedded pane is in, once its composer is there. */
 async function embFrame(p: Page): Promise<Frame> {
