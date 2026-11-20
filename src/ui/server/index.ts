@@ -340,7 +340,13 @@ import {
   sessionSetCookie as sessionCookieLine,
 } from "./session-cookie.js";
 import { NamedAddressWatch, type NamedAnswer } from "./named-address.js";
-import { kitPage, serveUiAsset } from "./ui-assets.js";
+import {
+  kitPage,
+  kitSiteDir,
+  serveSiteFile,
+  serveUiAsset,
+  sitePage,
+} from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
 import {
   migrateWebUrl,
@@ -777,7 +783,8 @@ const themeDeps: ThemeRouteDeps = {
   prefs: () => appearancePrefs(readUserConfig().appearance),
   distributionTheme: () => readBrand().theme,
   warn: (line) => serverLog(line, "warn"),
-  denFavicon: path.join(PUBLIC_DIR, "favicon.ico"),
+  // Issue 644: the kit's tab icon, for a theme with a text mark.
+  denFavicon: path.join(kitSiteDir(), "favicon.ico"),
 };
 // The pre-paint script in each page reads the user's mode and the theme's
 // default mode from these placeholders, so the first paint is right.
@@ -798,7 +805,8 @@ setHtmlFill((html) => {
     /* defaults */
   }
   // issue 206: the person's time zone, when picked, for the first paint.
-  let out = zonePage(kitPage(localizePage(html, lang)), zone)
+  // Issue 644: the kit's head snippet (tab icons, manifest, theme colour).
+  let out = zonePage(sitePage(kitPage(localizePage(html, lang))), zone)
     .split("@@DEN_MODE@@")
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")
@@ -4466,26 +4474,25 @@ async function handleRequest(
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
   }
 
-  if (pathname === "/favicon.ico") {
-    return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
-  }
+  // Issue 644: the kit's site files at the root (/favicon.ico,
+  // /favicon.svg, /apple-touch-icon.png, the icons, /site.webmanifest).
   // Issue 172 S2: the app manifest, so a phone can add Den to its home
-  // screen (an iPhone gets push only from there).
+  // screen (an iPhone gets push only from there); /manifest.webmanifest is
+  // its older URL.
+  if (
+    pathname === "/favicon.ico" ||
+    pathname === "/favicon.svg" ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname === "/icon-192.png" ||
+    pathname === "/icon-512.png" ||
+    pathname === "/icon-maskable-512.png" ||
+    pathname === "/site.webmanifest"
+  ) {
+    serveSiteFile(res, pathname, product().title);
+    return;
+  }
   if (pathname === "/manifest.webmanifest") {
-    res.writeHead(200, {
-      "Content-Type": "application/manifest+json",
-      "Cache-Control": "no-store",
-    });
-    res.end(
-      JSON.stringify({
-        name: product().title,
-        short_name: product().title,
-        start_url: "/agents",
-        scope: "/",
-        display: "standalone",
-        icons: [{ src: "/favicon.ico", sizes: "48x48" }],
-      }),
-    );
+    serveSiteFile(res, "/site.webmanifest", product().title);
     return;
   }
 

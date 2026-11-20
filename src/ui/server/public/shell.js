@@ -5761,8 +5761,9 @@
       el.focus();
     });
 
-  // The browser-tab icon is the active theme's (dev.22), set here and
-  // nowhere else: no page links one. Until appearance.js knows the theme
+  // The browser-tab icon is the active theme's (dev.22), set here. A page
+  // comes with the kit's icons (issue 644's head snippet: Den's default
+  // theme's own), which this replaces. Until appearance.js knows the theme
   // (it calls setFavicon with the versioned URL for the mode it draws in,
   // again on every theme or mode change), the bare route serves the
   // active theme's, never cached.
