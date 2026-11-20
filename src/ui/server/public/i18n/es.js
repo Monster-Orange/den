@@ -2099,6 +2099,18 @@
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
     "ag.hub.notAtPrompt":
       "En espera: el agente no está en su indicador de entrada",
+    "hw.title": "Trabajo en Hub",
+    "hw.needsYou": "Te necesita",
+    "hw.building": "En construcción",
+    "hw.blocked": "Bloqueado",
+    "hw.doneOf": "{done} de {total} hechos",
+    "hw.workingOn": "Trabajando en {item}",
+    "hw.lastOn": "Último: {item}",
+    "hub.quiet.line":
+      "El trabajo de Hub aparece aquí cuando este Den está conectado a Hub.",
+    "hub.quiet.connect": "Conectar a Hub",
+    "hub.quiet.plan": "El plan de Hub de tu empresa aún no incluye esto.",
+    "hub.quiet.refused": "Hub lo rechazó: {error}",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
     "tx.error": "Error",

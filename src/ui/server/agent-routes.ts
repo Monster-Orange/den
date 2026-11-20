@@ -259,6 +259,11 @@ export interface AgentRouteDeps {
     | null
   >;
   projectSync?: import("../../shared/hub-project-sync.js").ProjectSync;
+  /** Issue 754 (tests): what Hub knows about the work (a stub Hub). */
+  hubWork?: Pick<
+    import("../../shared/hub-work.js").HubWorkReader,
+    "projectWork" | "agentsCurrent"
+  >;
   /** 0.4.40 (tests): comment delivery, restarted on connect, stopped on disconnect. */
   hubDeliveries?: { restart(): void; stop(): void };
   /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
@@ -646,6 +651,30 @@ export async function handleAgentRoutes(
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");
     return m.hubNamesRoute(req, res, await m.defaultHubNamesDeps());
+  }
+  // Issue 754: what Hub knows about the work (home page's Work in Hub
+  // card, the Agents page's rows). Read through the install's token; kept
+  // in memory only.
+  if (pathname === "/api/hub/work" || pathname === "/api/hub/agents-current") {
+    const method = req.method ?? "GET";
+    if (method !== "GET" && method !== "HEAD")
+      return methodNotAllowed(res, "GET");
+    const reader =
+      deps.hubWork ??
+      (await import("../../shared/hub-work.js")).hubWorkReader();
+    const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+    const list = (k: string) =>
+      (q.get(k) ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    sendJson(
+      res,
+      pathname === "/api/hub/work"
+        ? await reader.projectWork(list("projects"))
+        : await reader.agentsCurrent(list("agents")),
+    );
+    return true;
   }
   // H5: Den Hub's GitHub App coverage, and a sync on demand.
   if (pathname === "/api/hub/github" || pathname === "/api/hub/sync") {

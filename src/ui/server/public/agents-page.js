@@ -105,6 +105,11 @@ import { latestShell } from "/shell-pick.js";
 import { startFailText, terminalFailText } from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
+import {
+  ensureHubWorkCss,
+  hubCurrentHtml,
+  loadAgentsCurrent,
+} from "/hub-work.js";
 import { termPane } from "/term-pane.js";
 import { makeComposer } from "/agent-composer.js";
 import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
@@ -770,6 +775,7 @@ function stoppedHtml(r, wsTag = false) {
       ? `<div class="agcallout">${compactingHtml(r)}</div>`
       : "") +
     hubWorkHtml(r) +
+    hubItemHtml(r) +
     `</div>`
   );
 }
@@ -820,6 +826,31 @@ export function hubWorkHtml(r, tr = t) {
     `<span class="den-dot ${w.working > 0 ? "ok" : "warn"}" aria-hidden="true"></span> ` +
     `${esc(tr(key, { n }))}${art}${why}</div>`
   );
+}
+
+/**
+ * Issue 754: the agent's current Hub item ("Working on …" / "Last on …"),
+ * from GET /api/hub/agents-current (asked at most every 30 s); nothing
+ * without one, or without Hub.
+ */
+function hubItemHtml(r) {
+  return r?.kind === "agent" ? hubCurrentHtml(st.hubCurrent?.[r.agent]) : "";
+}
+const HUB_CURRENT_MS = 30_000;
+function askHubCurrent() {
+  if (st.hubCurrentAt && Date.now() - st.hubCurrentAt < HUB_CURRENT_MS) return;
+  st.hubCurrentAt = Date.now();
+  const ids = (st.data?.sessions ?? [])
+    .filter((r) => r.kind === "agent" && r.agent)
+    .map((r) => r.agent);
+  if (!ids.length) return;
+  void loadAgentsCurrent(ids).then((a) => {
+    const next = a?.hub === "ok" ? (a.agents ?? {}) : {};
+    if (JSON.stringify(next) === JSON.stringify(st.hubCurrent ?? {})) return;
+    st.hubCurrent = next;
+    ensureHubWorkCss();
+    paintList();
+  });
 }
 
 /** Issue 278: "840 KB" (whole KB; under 1 KB: bytes). */
@@ -987,7 +1018,7 @@ function rowHtml(r) {
   // #80: the badge is a button beside the row's (laid over its place).
   const toggle = r.kind === "agent" ? helperToggleHtml(r, hOpen) : "";
   const row = toggle ? `<div class="agrw">${button}${toggle}</div>` : button;
-  const hub = hubWorkHtml(r);
+  const hub = hubWorkHtml(r) + hubItemHtml(r);
   if (!callout) return row + hub + helpers;
   return (
     `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
@@ -1502,6 +1533,7 @@ async function refreshOnce() {
       if (typeof st.data?.refreshTimeoutSeconds === "number")
         st.listWaitS = st.data.refreshTimeoutSeconds;
       toastAutoRelaunches(st.data?.sessions ?? []);
+      askHubCurrent();
     }
   } catch {
     /* the last list stays; the next ask may answer */

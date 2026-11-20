@@ -871,6 +871,10 @@ async function hubCall(
       "forbidden",
       `${said ?? "Hub refused this install"}: ask an admin of the company on Hub`,
       str(body.error),
+      // Issue 754: Hub's answer, for its machine `code` (its `error` is
+      // words for people).
+      403,
+      body,
     );
   if (res.status >= 400 && res.status < 500)
     throw new HubCallError(
@@ -1256,6 +1260,47 @@ export async function hubGithubCoverage(
 ): Promise<Record<string, unknown>> {
   return hubCall(
     `${url}/api/installs/self/github`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    opts,
+  );
+}
+
+/**
+ * Issue 754: a project's work on Hub (GET <url>/api/projects/:id/work).
+ * Hub's answer as it is; shared/hub-work.ts holds the contract and reads it.
+ */
+export async function hubProjectWork(
+  url: string,
+  token: string,
+  projectId: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<unknown> {
+  return hubCall(
+    `${url}/api/projects/${encodeURIComponent(projectId)}/work`,
+    {
+      method: "GET",
+      headers: { ...bearer(token), Accept: "application/json" },
+    },
+    opts,
+  );
+}
+
+/**
+ * Issue 754: each agent's current Hub item, one batch (GET
+ * <url>/api/agents/current?agent_ids=…, Den's agent ids). Hub's answer as
+ * it is; shared/hub-work.ts reads it.
+ */
+export async function hubAgentsCurrent(
+  url: string,
+  token: string,
+  agentIds: readonly string[],
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<unknown> {
+  return hubCall(
+    `${url}/api/agents/current?agent_ids=${encodeURIComponent(agentIds.join(","))}`,
     {
       method: "GET",
       headers: { ...bearer(token), Accept: "application/json" },
