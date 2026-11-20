@@ -127,6 +127,18 @@ export interface HubConfig {
    */
   deliveryAnswerMinutes: number;
   /**
+   * Issue 702 hub.delivery_alert_minutes (default 15, 0: off): minutes
+   * with no good read of Hub's comments (and no open stream) before
+   * doctor warns and the bell says "Hub comments aren't arriving".
+   */
+  deliveryAlertMinutes: number;
+  /**
+   * Issue 703 hub.delivery_stream_silence_seconds (default 75, three of
+   * Hub's 25 s keep-alives; 0: off; else at least 5): no bytes on the
+   * comment stream this long, and Den reopens it.
+   */
+  deliveryStreamSilenceSeconds: number;
+  /**
    * 0.4.51 hub.inbox_watch (default true): one watcher per install reads
    * Hub's inbox for this install's agents and types each new item into
    * its agent's pane (issue 166). False: no reading at all.
@@ -186,6 +198,8 @@ type RawHub =
       delivery_type_timeout_seconds?: unknown;
       delivery_held_bell_minutes?: unknown;
       delivery_answer_minutes?: unknown;
+      delivery_alert_minutes?: unknown;
+      delivery_stream_silence_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
       inbox_backoff_max_seconds?: unknown;
@@ -317,6 +331,28 @@ export function readHubConfig(
     5,
   );
   const answer = mins(h.delivery_answer_minutes, "delivery_answer_minutes", 30);
+  const am = h.delivery_alert_minutes;
+  if (
+    am !== undefined &&
+    am !== null &&
+    !(typeof am === "number" && Number.isFinite(am) && am >= 0)
+  )
+    throw new Error(
+      "hub.delivery_alert_minutes must be a number, 0 or more (0: off)",
+    );
+  const sil = h.delivery_stream_silence_seconds;
+  if (
+    sil !== undefined &&
+    sil !== null &&
+    !(
+      typeof sil === "number" &&
+      Number.isFinite(sil) &&
+      (sil === 0 || sil >= 5)
+    )
+  )
+    throw new Error(
+      "hub.delivery_stream_silence_seconds must be 0 (off) or a number, at least 5",
+    );
   const names = secs(h.names_check_seconds, "names_check_seconds", 300);
   const iw = h.inbox_watch;
   if (iw !== undefined && iw !== null && typeof iw !== "boolean")
@@ -358,6 +394,8 @@ export function readHubConfig(
     deliveryTypeTimeoutSeconds: typeTimeout,
     deliveryHeldBellMinutes: heldBell,
     deliveryAnswerMinutes: answer,
+    deliveryAlertMinutes: typeof am === "number" ? am : 15,
+    deliveryStreamSilenceSeconds: typeof sil === "number" ? sil : 75,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
     inboxBackoffMaxSeconds: inboxBackoff,

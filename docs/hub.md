@@ -119,6 +119,16 @@ it next runs. Items wait through a restart of Den. The server agent doesn't take
 Hub sees where each one is: queued, delivered, working, done or failed. The agent's card says
 "Working on N Hub comments".
 
+Den fetches the comments itself; Hub never calls the install, so an install on a local-only address
+gets them too. Den keeps a stream open to Hub and reads the list as well when the stream fails. Hub
+sends a keep-alive on the stream every 25 seconds and ends it itself after a while; Den opens it
+again at once. No bytes for `hub.delivery_stream_silence_seconds` and Den reopens it.
+
+When Den has had no good read from Hub for `hub.delivery_alert_minutes` (a stream that opened, a
+keep-alive, or a list answer), the bell says "Hub comments aren't arriving", with the reason: the
+token wasn't accepted, Hub refused, Den can't reach Hub, or the stream keeps closing or goes silent.
+It goes away on the next good read. A quiet Hub with no comments never raises it.
+
 ### When Hub is down
 
 An agent never fails to start because of Hub: it starts without Hub's tools. When Hub answers again,
@@ -193,29 +203,31 @@ Settings › Hub writes what you need. You rarely set these by hand.
 Den reads `hub.*` from the org config (`config/<name>.yml`), then from `config/local/user.yml`. The
 user file wins.
 
-| Key                                  | Default            | What it does                                                                                                                              |
-| ------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `hub.url`                            | none               | Hub's address. https, or http only to this machine. Unset: no Hub at all.                                                                 |
-| `hub.token`                          | none               | Where this install's token is kept. Connect sets it. A secret ref, the name of a `secrets.refs` entry, or `file:` / `keychain:` / `env:`. |
-| `hub.mcp_url`                        | `<hub.url>/mcp`    | Hub's tools address. Connect sets it from Hub's answer.                                                                                   |
-| `hub.allow_tools`                    | `true`             | Agents use Hub's tools without asking.                                                                                                    |
-| `hub.inbox_on_stop`                  | `nudge`            | An agent about to stop is asked once to answer the Hub comments waiting on it. `off`: never asked.                                        |
-| `hub.inbox_watch`                    | `true`             | Den reads Hub's inbox and types new items into their agents. `false`: it doesn't.                                                         |
-| `hub.inbox_poll_seconds`             | `30` (at least 5)  | How often Den reads Hub's inbox.                                                                                                          |
-| `hub.inbox_backoff_max_seconds`      | `600` (at least 5) | The longest wait between inbox reads while Hub doesn't answer.                                                                            |
-| `hub.delivery_poll_seconds`          | `30` (at least 5)  | How often Den reads Hub's comments when Hub has no live stream.                                                                           |
-| `hub.delivery_held_note_seconds`     | `60` (at least 5)  | How long text waits for an agent that isn't at its prompt before the bell says so.                                                        |
-| `hub.delivery_held_bell_minutes`     | `5` (at least 1)   | How long a Hub comment waits for a busy agent (or one with a dialog, a held Allow, a pause) before the bell says so, and why.             |
-| `hub.delivery_answer_minutes`        | `30` (at least 1)  | A typed comment whose turn never shows as ended is "delivered, no answer yet" after this; the agent's next comments go on.                |
-| `hub.delivery_state_timeout_seconds` | `60` (at least 5)  | The longest Den waits to read one agent's state; that agent's comments wait, the others go on.                                            |
-| `hub.delivery_type_timeout_seconds`  | `120` (at least 5) | The longest one agent's paste holds the others' comments.                                                                                 |
-| `hub.delivery_heartbeat_seconds`     | `15` (at least 5)  | How often Den tells Hub an agent is still working on a comment.                                                                           |
-| `hub.sync_check_seconds`             | `30` (at least 5)  | How often Den checks whether its project list changed, to send it to Hub.                                                                 |
-| `hub.names_check_seconds`            | `300` (at least 5) | How often Den asks Hub for its projects' names, so a rename in Hub shows here.                                                            |
-| `hub.mcp_retry_seconds`              | `30` (at least 5)  | How often Den checks whether Hub answers again, for agents that started without its tools.                                                |
-| `hub.mcp_retry_attempts`             | `0` (no limit)     | How many times Den restarts one agent for Hub's tools before it leaves it to you.                                                         |
-| `hub.tools_check_seconds`            | `300` (at least 5) | How often Den reads Hub's tool list, to tell agents what changed.                                                                         |
-| `hub.tools_restart`                  | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.             |
+| Key                                   | Default            | What it does                                                                                                                              |
+| ------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `hub.url`                             | none               | Hub's address. https, or http only to this machine. Unset: no Hub at all.                                                                 |
+| `hub.token`                           | none               | Where this install's token is kept. Connect sets it. A secret ref, the name of a `secrets.refs` entry, or `file:` / `keychain:` / `env:`. |
+| `hub.mcp_url`                         | `<hub.url>/mcp`    | Hub's tools address. Connect sets it from Hub's answer.                                                                                   |
+| `hub.allow_tools`                     | `true`             | Agents use Hub's tools without asking.                                                                                                    |
+| `hub.inbox_on_stop`                   | `nudge`            | An agent about to stop is asked once to answer the Hub comments waiting on it. `off`: never asked.                                        |
+| `hub.inbox_watch`                     | `true`             | Den reads Hub's inbox and types new items into their agents. `false`: it doesn't.                                                         |
+| `hub.inbox_poll_seconds`              | `30` (at least 5)  | How often Den reads Hub's inbox.                                                                                                          |
+| `hub.inbox_backoff_max_seconds`       | `600` (at least 5) | The longest wait between inbox reads while Hub doesn't answer.                                                                            |
+| `hub.delivery_poll_seconds`           | `30` (at least 5)  | How often Den reads Hub's comments when Hub has no live stream.                                                                           |
+| `hub.delivery_alert_minutes`          | `15` (`0`: off)    | Minutes with no good read of Hub's comments before doctor warns and the bell says they aren't arriving.                                   |
+| `hub.delivery_stream_silence_seconds` | `75` (`0`: off)    | No bytes on the comment stream this long (three of Hub's 25 s keep-alives), and Den reopens it.                                           |
+| `hub.delivery_held_note_seconds`      | `60` (at least 5)  | How long text waits for an agent that isn't at its prompt before the bell says so.                                                        |
+| `hub.delivery_held_bell_minutes`      | `5` (at least 1)   | How long a Hub comment waits for a busy agent (or one with a dialog, a held Allow, a pause) before the bell says so, and why.             |
+| `hub.delivery_answer_minutes`         | `30` (at least 1)  | A typed comment whose turn never shows as ended is "delivered, no answer yet" after this; the agent's next comments go on.                |
+| `hub.delivery_state_timeout_seconds`  | `60` (at least 5)  | The longest Den waits to read one agent's state; that agent's comments wait, the others go on.                                            |
+| `hub.delivery_type_timeout_seconds`   | `120` (at least 5) | The longest one agent's paste holds the others' comments.                                                                                 |
+| `hub.delivery_heartbeat_seconds`      | `15` (at least 5)  | How often Den tells Hub an agent is still working on a comment.                                                                           |
+| `hub.sync_check_seconds`              | `30` (at least 5)  | How often Den checks whether its project list changed, to send it to Hub.                                                                 |
+| `hub.names_check_seconds`             | `300` (at least 5) | How often Den asks Hub for its projects' names, so a rename in Hub shows here.                                                            |
+| `hub.mcp_retry_seconds`               | `30` (at least 5)  | How often Den checks whether Hub answers again, for agents that started without its tools.                                                |
+| `hub.mcp_retry_attempts`              | `0` (no limit)     | How many times Den restarts one agent for Hub's tools before it leaves it to you.                                                         |
+| `hub.tools_check_seconds`             | `300` (at least 5) | How often Den reads Hub's tool list, to tell agents what changed.                                                                         |
+| `hub.tools_restart`                   | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.             |
 
 Two more keys touch Hub:
 
@@ -233,6 +245,10 @@ A bad value names its key. Settings › Hub shows the problem, for example
 
 - `✓` when connected, with the company, this install's name and your role.
 - `⚠` when not, with the reason and whether to Connect or Reconnect.
+
+A "Hub comments" row shows the Hub the server reads comments from, whether its stream is open, the
+last good read and the last comment. It warns, with the reason, after `hub.delivery_alert_minutes`
+with no good read.
 
 When connected, it also has a row per project (linked to which Hub project, or not linked) and a row
 on Den Hub's GitHub access. A Hub that is down never fails doctor: agents still run.

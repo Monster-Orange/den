@@ -27,9 +27,13 @@ import {
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
+  TROUBLE_TEXT,
+  troubleOf,
   type AckState,
   type Delivery,
+  type DeliveryHealth,
   type DeliveryOwner,
+  type DeliveryTrouble,
   type SeenDeliveries,
 } from "./hub-delivery.js";
 
@@ -170,7 +174,25 @@ export interface DeliveryLoopDeps {
     agent: string,
     w: { count: number; artifact?: string; url?: string },
   ) => void;
+  /**
+   * Issue 702: the path's health changed (stream open or not, trouble, a
+   * delivery), or its last good read moved a minute on. Never per byte.
+   */
+  onHealth?: (h: DeliveryHealth) => void;
+  /** Issue 702: what a restart keeps (the last delivery's time). */
+  health0?: { lastDeliveryAt?: number | null };
+  /**
+   * Issue 703: no bytes on an open stream for this long (Hub sends a
+   * keep-alive every 25 s): closed, the list read once, reopened. 0: never.
+   * Read each time a stream opens. Default 75 s.
+   */
+  silenceMs?: () => number;
 }
+
+/** Issue 703: a stream that lived this long ended cleanly: Hub's own end. */
+const SHORT_LIFE_MS = 5_000;
+/** Issue 702: onHealth again when only the last good read moved this far. */
+const HEALTH_EVERY_MS = 60_000;
 
 /** What an agent's card shows: "Working on N Hub comments · <artifact>". */
 export interface AgentHubWork {
@@ -255,13 +277,96 @@ export class DeliveryLoop {
   private readonly answerMs: number;
   private readonly now: () => number;
 
+  /** Issue 702: the delivery path's health. */
+  private readonly h: DeliveryHealth;
+  /** What onHealth last got (its key) and the good read it carried. */
+  private healthSaid = "";
+  private healthOkSaid = 0;
+  /**
+   * The troubles logged: each is said once until a good read (a list
+   * answer keeps "refused": Hub without a stream reads the list each time).
+   */
+  private readonly troubleSaid = new Set<DeliveryTrouble>();
+
   constructor(private readonly d: DeliveryLoopDeps) {
     this.hb = d.heartbeatMs ?? 15_000;
     this.stateMs = d.stateTimeoutMs ?? 60_000;
     this.typeMs = d.typeTimeoutMs ?? 120_000;
     this.answerMs = d.answerTimeoutMs ?? 30 * 60_000;
     this.now = d.now ?? Date.now;
+    this.h = {
+      since: this.now(),
+      streamOpen: false,
+      lastOkAt: null,
+      lastDeliveryAt: d.health0?.lastDeliveryAt ?? null,
+      trouble: null,
+      troubleAt: null,
+    };
     this.restore();
+  }
+
+  /** Issue 702: the delivery path's health now (a copy). */
+  health(): DeliveryHealth {
+    return { ...this.h };
+  }
+
+  private healthChanged(): void {
+    const key = JSON.stringify([
+      this.h.since,
+      this.h.streamOpen,
+      this.h.trouble,
+      this.h.lastDeliveryAt,
+    ]);
+    const ok = this.h.lastOkAt ?? 0;
+    if (key === this.healthSaid && ok - this.healthOkSaid < HEALTH_EVERY_MS)
+      return;
+    this.healthSaid = key;
+    this.healthOkSaid = ok;
+    try {
+      this.d.onHealth?.(this.health());
+    } catch {
+      /* its trouble never stops delivery */
+    }
+  }
+
+  /**
+   * A good read: the list answered ("list"), the stream opened ("open"),
+   * or bytes came after that ("bytes"). What is said again later: a list
+   * answer keeps what was said about the stream ("refused": Hub without
+   * a stream reads the list each time); an open alone keeps "closed" and
+   * "silent" (a stream that ends or goes quiet at once is said once, not
+   * at every reopen).
+   */
+  private readOk(how: "list" | "open" | "bytes"): void {
+    this.h.lastOkAt = this.now();
+    this.h.trouble = null;
+    this.h.troubleAt = null;
+    const keep: DeliveryTrouble[] =
+      how === "list"
+        ? ["refused", "closed", "silent"]
+        : how === "open"
+          ? ["closed", "silent"]
+          : [];
+    for (const t of [...this.troubleSaid])
+      if (!keep.includes(t)) this.troubleSaid.delete(t);
+    this.healthChanged();
+  }
+
+  /** Something went wrong: kept, and logged once per kind until a good read. */
+  private troubled(t: DeliveryTrouble, why: string): void {
+    this.h.trouble = t;
+    this.h.troubleAt = this.now();
+    if (!this.troubleSaid.has(t)) {
+      this.troubleSaid.add(t);
+      this.d.log?.(`hub deliveries: ${why.slice(0, 200)}`);
+    }
+    this.healthChanged();
+  }
+
+  private streamIs(open: boolean): void {
+    if (this.h.streamOpen === open) return;
+    this.h.streamOpen = open;
+    this.healthChanged();
   }
 
   /**
@@ -437,6 +542,8 @@ export class DeliveryLoop {
         );
       return;
     }
+    this.h.lastDeliveryAt = this.now();
+    this.healthChanged();
     if (dv.kind === "held") {
       try {
         this.d.held?.(dv);
@@ -825,12 +932,40 @@ export class DeliveryLoop {
     const first = this.d.retryMs?.first ?? 1000;
     const max = this.d.retryMs?.max ?? 60_000;
     let wait = first;
+    this.h.since = this.now();
+    this.healthChanged();
     while (!signal.aborted) {
-      let refused = false;
+      // Issue 703: one stream's own abort, for the silence watch.
+      const one = new AbortController();
+      const up = () => one.abort();
+      signal.addEventListener("abort", up, { once: true });
+      const silenceMs = this.d.silenceMs?.() ?? 75_000;
+      let silent = false;
+      let watch: ReturnType<typeof setTimeout> | null = null;
+      const arm = () => {
+        if (watch) clearTimeout(watch);
+        if (!(silenceMs > 0)) return;
+        watch = setTimeout(() => {
+          silent = true;
+          one.abort();
+        }, silenceMs);
+        watch.unref?.();
+      };
+      const openedAt = this.now();
+      let outcome: "ended" | "failed" | "refused" = "ended";
+      let chunks = 0;
       try {
+        arm();
         const reader = new SseReader();
-        for await (const chunk of this.d.hub.stream(this.d.seen.last, signal)) {
-          wait = first;
+        for await (const chunk of this.d.hub.stream(
+          this.d.seen.last,
+          one.signal,
+        )) {
+          // Issue 702/703: the stream opened, or sent bytes (Hub's
+          // keep-alive too): a good read.
+          arm();
+          this.streamIs(true);
+          this.readOk(chunks++ === 0 ? "open" : "bytes");
           for (const ev of reader.feed(chunk)) {
             if (ev.event !== "delivery") continue;
             let v: unknown;
@@ -843,21 +978,47 @@ export class DeliveryLoop {
             const id = ev.id ?? parseDelivery(v)?.id;
             if (id) this.d.seen.setLast(id);
           }
-          if (signal.aborted) return;
+          if (signal.aborted || silent) break;
         }
       } catch (e) {
-        if (signal.aborted) return;
-        refused = (e as { kind?: string })?.kind === "refused";
-        if (!refused)
-          this.d.log?.(
-            `hub deliveries: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+        if (!signal.aborted && !silent) {
+          const t = troubleOf(e);
+          outcome = t === "refused" ? "refused" : "failed";
+          this.troubled(
+            t,
+            t === "refused"
+              ? `${String((e as Error)?.message ?? e)}; reading the list instead`
+              : String((e as Error)?.message ?? e),
           );
+        }
+      } finally {
+        if (watch) clearTimeout(watch);
+        signal.removeEventListener("abort", up);
+        this.streamIs(false);
       }
-      if (refused) {
+      if (signal.aborted) return;
+      if (outcome === "refused") {
         await this.poll();
         await sleep(this.d.pollMs ?? 30_000, signal);
         continue;
       }
+      const lived = this.now() - openedAt >= SHORT_LIFE_MS;
+      if (lived) wait = first;
+      if (silent) {
+        // Issue 703: no bytes, not even Hub's keep-alive: a half-dead
+        // connection. Read the list once, then open a new stream at once.
+        this.troubled(
+          "silent",
+          `no bytes on the comment stream for ${Math.round(silenceMs / 1000)}s: reopening it`,
+        );
+        await this.poll();
+        continue;
+      }
+      // Issue 703: Hub ends a long stream itself: reopen at once.
+      if (outcome === "ended" && lived) continue;
+      if (outcome === "ended") this.troubled("closed", TROUBLE_TEXT.closed);
+      // Issue 702: whatever happened to the stream, the list still runs.
+      await this.poll();
       await sleep(wait, signal);
       wait = Math.min(max, wait * 2);
     }
@@ -868,9 +1029,15 @@ export class DeliveryLoop {
     let list: unknown[];
     try {
       list = await this.d.hub.list(this.d.seen.last);
-    } catch {
+    } catch (e) {
+      // Issue 702: never swallowed: kept for doctor and the bell.
+      this.troubled(
+        troubleOf(e),
+        `the comment list: ${String((e as Error)?.message ?? e)}`,
+      );
       return;
     }
+    this.readOk("list");
     for (const v of list) {
       await this.take(v);
       const id = parseDelivery(v)?.id;

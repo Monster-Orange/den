@@ -107,6 +107,10 @@ describe("issue 631, clause 2: an agent relaunched from its handoff", () => {
     const t2 = rec(r, "be-dev").resumeToken!;
     expect(t2).not.toBe(t1);
     expect(await runningAgentIds(d)).toEqual(["be-dev"]);
+    // Issue 658: it ran from its handoff, so its runtime wrote the new
+    // conversation (only the runtime's own record makes one to resume).
+    const dir = path.join(r.dir, "cc", "projects", "p");
+    fs.writeFileSync(path.join(dir, `${t2}.jsonl`), "{}\n");
 
     await r.restartHost();
     await resumeAfterHostRestart(d, "be-dev", null);

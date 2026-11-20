@@ -1238,6 +1238,8 @@
     "ag.stopped": "エージェント {id} を停止しました",
     "ag.stillStopping": "{id} はまだ停止中です",
     "ag.resumedFresh": "{id}: まだ再開するものがないため、新しく開始しました",
+    "ag.resumedHandoff":
+      "{id}: 会話が書き込まれていなかったため、最後の引き継ぎから新しく開始しました",
     "ag.inactive": "プロジェクト {ws} はアクティブではありません",
     "ag.otherTabs": "他のプロジェクトのタブ {n} 件を非表示",
     "ag.showAllActive": "すべてのアクティブで表示",
@@ -1251,6 +1253,8 @@
     "ag.why.stopped": "{time} に停止しました",
     "ag.why.interrupted": "中断: {name} が再起動しました",
     "ag.why.restartFailed": "再起動後に戻りませんでした: {why}",
+    "ag.why.trustDeclined":
+      "開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "ag.why.exited": "終了しました",
     "ag.why.exitedCode": "終了しました（コード {code}）",
     "ag.fresh": "新しく始める",
@@ -1267,6 +1271,7 @@
     "ag.relaunch": "今すぐ再起動",
     "ag.relaunchName": "{id} を今すぐ再起動",
     "ag.relaunched": "{id} を引き継ぎから再起動しました",
+    "ag.relaunchHandoff": "最後の引き継ぎから再起動",
     "ag.rc.autoAsk":
       "交代の時期です（{why}）。待機中になったら Den が引き継ぎを書かせ、再起動します。",
     "ag.rc.autoReady":
@@ -1818,6 +1823,7 @@
     "ag.waiting.permission": "権限の確認待ち",
     "ag.waiting.input": "入力待ち",
     "ag.waiting.asked": "質問があります",
+    "ag.waiting.trust": "待機中: このフォルダを信頼しますか?",
     "bell.title": "通知",
     "bell.n": "通知: 未読 {n} 件",
     "bell.markAll": "すべて既読にする",
@@ -1863,6 +1869,9 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
+    "bell.m.trust": "{name}: 待機中: このフォルダを信頼しますか?",
+    "bell.m.trustDeclined":
+      "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
@@ -1925,6 +1934,18 @@
       "__DEN_TITLE__ {v}: 固定バージョンのコミットはあなたの許可を待っています",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubCommentsRejected":
+      "Hub のコメントが届いていません: Hub がこのインストールのトークンを受け付けませんでした (設定 › Hub: 再接続)",
+    "bell.m.hubCommentsForbidden":
+      "Hub のコメントが届いていません: Hub がこのインストールへのコメント配信を拒否しました",
+    "bell.m.hubCommentsRefused":
+      "Hub のコメントが届いていません: Hub にこのインストール向けのコメント配信がありません",
+    "bell.m.hubCommentsUnreachable":
+      "Hub のコメントが届いていません: __DEN_TITLE__ から Hub に接続できません",
+    "bell.m.hubCommentsClosed":
+      "Hub のコメントが届いていません: Hub がコメントのストリームを何度も閉じています",
+    "bell.m.hubCommentsSilent":
+      "Hub のコメントが届いていません: コメントのストリームが途絶えました",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",

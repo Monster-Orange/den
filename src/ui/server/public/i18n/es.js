@@ -1268,6 +1268,8 @@
     "ag.stopped": "Agente {id} detenido",
     "ag.stillStopping": "{id} todavía se está deteniendo",
     "ag.resumedFresh": "{id}: aún no hay nada que reanudar; se inició de nuevo",
+    "ag.resumedHandoff":
+      "{id}: su conversación nunca se escribió; se inició de nuevo desde su último traspaso",
     "ag.inactive": "El proyecto {ws} no está activo",
     "ag.otherTabs.one": "{n} pestaña de otros proyectos oculta",
     "ag.otherTabs": "{n} pestañas de otros proyectos ocultas",
@@ -1282,6 +1284,8 @@
     "ag.why.stopped": "Lo detuviste a las {time}",
     "ag.why.interrupted": "Interrumpido: {name} se reinició",
     "ag.why.restartFailed": "No volvió tras un reinicio: {why}",
+    "ag.why.trustDeclined":
+      "No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "ag.why.exited": "Salió",
     "ag.why.exitedCode": "Salió (código {code})",
     "ag.fresh": "Empezar de cero",
@@ -1299,6 +1303,7 @@
     "ag.relaunch": "Relanzar ahora",
     "ag.relaunchName": "Relanzar {id} ahora",
     "ag.relaunched": "{id} relanzado desde su traspaso",
+    "ag.relaunchHandoff": "Relanzar desde su último traspaso",
     "ag.rc.autoAsk":
       "Toca rotar ({why}). Den le pide el traspaso cuando esté libre y luego lo relanza.",
     "ag.rc.autoReady":
@@ -1865,6 +1870,7 @@
     "ag.waiting.permission": "necesita permiso",
     "ag.waiting.input": "te espera",
     "ag.waiting.asked": "te preguntó",
+    "ag.waiting.trust": "En espera: ¿confiar en esta carpeta?",
     "bell.title": "Notificaciones",
     "bell.n": "Notificaciones: {n} sin leer",
     "bell.n.one": "Notificaciones: {n} sin leer",
@@ -1914,6 +1920,9 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
+    "bell.m.trust": "{name}: En espera: ¿confiar en esta carpeta?",
+    "bell.m.trustDeclined":
+      "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
@@ -1998,6 +2007,18 @@
       "__DEN_TITLE__ {v}: confirmar su versión fijada espera tu permiso",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubCommentsRejected":
+      "Los comentarios de Hub no llegan: Hub no aceptó el token de esta instalación (Ajustes › Hub: Volver a conectar)",
+    "bell.m.hubCommentsForbidden":
+      "Los comentarios de Hub no llegan: Hub rechazó la entrega de comentarios de esta instalación",
+    "bell.m.hubCommentsRefused":
+      "Los comentarios de Hub no llegan: Hub no tiene entrega de comentarios para esta instalación",
+    "bell.m.hubCommentsUnreachable":
+      "Los comentarios de Hub no llegan: __DEN_TITLE__ no puede conectar con Hub",
+    "bell.m.hubCommentsClosed":
+      "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
+    "bell.m.hubCommentsSilent":
+      "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
