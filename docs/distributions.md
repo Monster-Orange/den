@@ -5356,7 +5356,11 @@ isn't quarantined (set `agents.runtimes.<id>.bin` to it), or clear this
 one yourself (run it once from a terminal and allow it when macOS asks).
 The Start dialog says so before Start, with the path as selectable
 text and **Copy path** (the page may be a browser on another machine,
-so nothing opens a folder on the Den machine), **Use this** for each
+so nothing opens a folder on the Den machine), **Open a terminal
+there** (Den's own terminal, in this browser: a shell in the project
+shown, started in the copy's folder, through
+`POST /api/workspaces/<ws>/sessions` with `{ "cwd": "<folder>" }`; a
+person only), **Use this** for each
 such copy, and **Check again**. A refused resume from an agent's row
 offers **Open Settings › Runtimes**, which opens
 `/settings?runtime=<id>#agents.runtimes` at that runtime's row (with

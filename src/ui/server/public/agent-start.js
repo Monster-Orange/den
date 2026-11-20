@@ -238,6 +238,9 @@ export function quarantinedHtml(q, t) {
     " " +
     `<span class="mono ag-q-path" style="user-select:all;-webkit-user-select:all">${escHtml(q.path)}</span> ` +
     btn(`data-q-copy="${escHtml(q.path)}"`, t("ag.rt.copyPath")) +
+    (q.dir
+      ? " " + btn(`data-q-term="${escHtml(q.dir)}"`, t("ag.rt.openTerminal"))
+      : "") +
     (others.length
       ? ` <span class="ag-q-others" role="list">` +
         escHtml(t("ag.rt.useOther")) +
@@ -273,12 +276,15 @@ export function quarantinedHtml(q, t) {
  * shows in the line, never as a toast. `ws` (a value or a function): the
  * project shown, for a pin at project scope.
  */
-export function wireQuarantine(host, { api, reload, ws, t }) {
+export function wireQuarantine(
+  host,
+  { api, reload, ws, t, open = (u) => globalThis.window?.location?.assign(u) },
+) {
   if (!host || host.dataset.qWired) return;
   host.dataset.qWired = "1";
   host.addEventListener("click", async (e) => {
     const b = e.target?.closest?.(
-      "button[data-q-pin],button[data-q-copy],button[data-q-again]",
+      "button[data-q-pin],button[data-q-copy],button[data-q-term],button[data-q-again]",
     );
     if (!b || !host.contains(b)) return;
     e.preventDefault();
@@ -304,6 +310,23 @@ export function wireQuarantine(host, { api, reload, ws, t }) {
           { button: b },
         );
         if (done) await reload();
+      } else if (b.dataset.qTerm) {
+        // Open a terminal there: Den's own terminal (a plain shell in the
+        // project shown, started in the copy's folder), in this browser.
+        const w = typeof ws === "function" ? ws() : ws;
+        if (!w) throw new Error(t("ag.term.noWs"));
+        const url = `/api/workspaces/${encodeURIComponent(w)}/sessions`;
+        const run = (headers) =>
+          api("POST", url, { cwd: b.dataset.qTerm }, { headers });
+        const busy = globalThis.window?.denShell?.busyAction;
+        const r = busy
+          ? await busy("open-terminal", run, { button: b })
+          : await run({});
+        const id = r?.session?.id;
+        if (id)
+          open(
+            `/agents?ws=${encodeURIComponent(w)}&open=${encodeURIComponent(id)}`,
+          );
       } else if (b.dataset.qCopy) {
         b.textContent = (await copyPath(b))
           ? t("ag.rt.copied")

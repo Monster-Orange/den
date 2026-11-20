@@ -541,6 +541,9 @@
     "busy.startW": "{name} を開始しています…",
     "busy.startS": "{name} を開始しました。",
     "busy.startF": "{name} を開始できませんでした。",
+    "busy.termW": "ターミナルを開いています…",
+    "busy.termS": "ターミナルを開きました。",
+    "busy.termF": "ターミナルを開けませんでした。",
     "busy.sayW": "{name} に送信しています…",
     "busy.sayS": "{name} に送信しました。",
     "busy.sayF": "{name} に送信できませんでした。",
@@ -2175,6 +2178,7 @@
     "ag.rt.clearSelf":
       "または Den のマシンで自分で解除: そこでターミナルから一度実行し、macOS に聞かれたら許可します。Den が隔離を外すことはありません。",
     "ag.rt.copyPath": "パスをコピー",
+    "ag.rt.openTerminal": "そこでターミナルを開く",
     "ag.rt.copied": "コピーしました",
     "ag.rt.copyByHand": "選択しました: ⌘C または Ctrl+C でコピーしてください",
     "ag.rt.openRuntimes": "設定 › ランタイムを開く",

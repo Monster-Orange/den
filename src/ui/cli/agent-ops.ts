@@ -8013,11 +8013,20 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
+  opts: { cwd?: string } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
     throw usage(`project "${ws}" does not exist`, 404);
-  const dir = d.workspaceDir(ws);
+  // Issue 479: Open a terminal there (a quarantined copy's folder). A
+  // person's own shell, so any folder they could cd to; it must be one.
+  if (opts.cwd !== undefined) {
+    if (!path.isAbsolute(opts.cwd))
+      throw usage(`cwd must be an absolute path: ${opts.cwd}`);
+    if (!fs.statSync(opts.cwd, { throwIfNoEntry: false })?.isDirectory())
+      throw usage(`cwd ${opts.cwd} is not a folder`);
+  }
+  const dir = opts.cwd ?? d.workspaceDir(ws);
   if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
     throw refused(`project ${ws}'s directory ${dir} does not exist`);
   ptyOrRefuse(d);

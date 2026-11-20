@@ -564,6 +564,9 @@
     "busy.startW": "Iniciando {name}…",
     "busy.startS": "{name} iniciado.",
     "busy.startF": "No se pudo iniciar {name}.",
+    "busy.termW": "Abriendo una terminal…",
+    "busy.termS": "Terminal abierta.",
+    "busy.termF": "No se pudo abrir una terminal.",
     "busy.sayW": "Enviando a {name}…",
     "busy.sayS": "Enviado a {name}.",
     "busy.sayF": "No se pudo enviar a {name}.",
@@ -2239,6 +2242,7 @@
     "ag.rt.clearSelf":
       "O quítala tú en la máquina de Den: ejecútala una vez desde una terminal allí y permítela cuando macOS lo pregunte. Den nunca quita la cuarentena.",
     "ag.rt.copyPath": "Copiar ruta",
+    "ag.rt.openTerminal": "Abrir una terminal allí",
     "ag.rt.copied": "Copiado",
     "ag.rt.copyByHand": "Seleccionada: cópiala con ⌘C o Ctrl+C",
     "ag.rt.openRuntimes": "Abrir Ajustes › Runtimes",
