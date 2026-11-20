@@ -204,6 +204,7 @@ import {
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
   agentsShellPathTimeoutSeconds,
+  heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import {
@@ -1195,7 +1196,7 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
-import { syncHeldBell } from "./held-bell.js";
+import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
 import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
@@ -1249,7 +1250,7 @@ import {
   tellBack,
   writeRestartMarker,
 } from "./server-restart.js";
-import type { ApprovalQueue } from "./approvals.js";
+import type { Approval, ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
@@ -3333,7 +3334,16 @@ function approvalDeps(): ApprovalDeps {
   });
   approvals = {
     actions,
-    queue: createApprovalQueue(actions, () => getStateDir()),
+    // Issue 746: one that lapses unanswered rings the bell and tells its asker.
+    // Issue 742: it waits held_writes.wait_minutes (read per ask), and
+    // what waits is kept under the state dir: a restart brings it back,
+    // and what it can't bring back is lost, out loud.
+    queue: createApprovalQueue(actions, () => getStateDir(), {
+      ttlMs: () => heldWriteWaitMinutes() * 60_000,
+      file: path.join(getStateDir(), HELD_WRITES_FILE),
+      onExpire: (a) => void heldWriteLapsed(a),
+      onLost: (a, why) => void heldWriteLost(a, why),
+    }),
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
@@ -3377,26 +3387,120 @@ function syncHeldWrites(): void {
     syncHeldBell(
       notificationDeps().store,
       approvals ? approvals.queue.pending() : [],
-      {
-        projectOf: (a) =>
-          typeof a.args.project === "string"
-            ? a.args.project
-            : a.agent
-              ? (readAgentRecord(getStateDir(), a.agent)?.workspace ??
-                undefined)
-              : undefined,
-      },
+      { projectOf: heldProjectOf },
     );
   } catch {
     /* the bell is best effort */
   }
 }
+/** The project a held write is in: its args', else its asking agent's. */
+function heldProjectOf(a: Approval): string | undefined {
+  return typeof a.args.project === "string"
+    ? a.args.project
+    : a.agent
+      ? (readAgentRecord(getStateDir(), a.agent)?.workspace ?? undefined)
+      : undefined;
+}
 /**
- * Issue 142: at the start (a restart ended every request: their items go)
- * and every few seconds while any wait (one that expired: its item goes).
+ * Issue 746: a held write lapsed unanswered. The bell says so, and the
+ * agent that asked is told in its session once it is at its prompt (never
+ * into a dialog for its person), as Den's own "Server is back" line is
+ * (tellBack, up to ui.restart_wait_seconds). One audit row says who was
+ * told what.
+ */
+async function heldWriteLapsed(a: Approval): Promise<void> {
+  let store: ReturnType<typeof notificationDeps>["store"];
+  try {
+    store = notificationDeps().store;
+  } catch {
+    return;
+  }
+  const told = await heldLapsed(a, {
+    store,
+    projectOf: heldProjectOf,
+    tell: tellHeldAsker,
+  });
+  try {
+    recordAction(
+      null,
+      {
+        verb: "approval-expired",
+        detail: `lapsed unanswered: ${a.action}: ${a.summary} [${a.id}]; ${a.actor} ${told}`,
+      },
+      a.actor,
+    );
+  } catch {
+    /* the trail is best effort here */
+  }
+}
+/**
+ * Issue 746: tells a held write's asking agent `text` in its session once
+ * it is at its prompt (never into a dialog for its person), as Den's own
+ * "Server is back" line is (tellBack, up to ui.restart_wait_seconds).
+ */
+async function tellHeldAsker(agent: string, text: string): Promise<string> {
+  const ops = await import("../cli/agent-ops.js");
+  const { webDeps } = await import("./agent-routes.js");
+  const d = webDeps();
+  const server = agent === SERVER_AGENT_ID;
+  return tellBack(text, {
+    state: () =>
+      server
+        ? ops.serverAgentInputState(d)
+        : ops.agentInputState(d, agent, typingHeldIds()),
+    type: (t) => ops.typeIntoAgent(d, agent, t),
+    dialog: () =>
+      server
+        ? ops.serverAgentDialogOpen(d)
+        : ops.agentDialogKind(d, agent).then((k) => k !== null),
+    waitMs: restartWaitSeconds() * 1000,
+  });
+}
+/** Issue 742: the held-write queue's file, under the state dir. */
+const HELD_WRITES_FILE = "held-writes.json";
+/**
+ * Issue 742: a restart could not bring back a held write (or, the queue
+ * file unreadable, any). The bell says so, the asking agent is told, and
+ * one audit row says what was lost and who was told.
+ */
+async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
+  let told = "nobody told";
+  try {
+    told = await heldLost(a, why, {
+      store: notificationDeps().store,
+      projectOf: heldProjectOf,
+      tell: tellHeldAsker,
+    });
+  } catch {
+    /* the bell is best effort; the trail below still says it */
+  }
+  try {
+    recordAction(
+      null,
+      {
+        verb: "approval-lost",
+        detail: a
+          ? `lost at a restart: ${a.action}: ${a.summary} [${a.id}] (${why}); ${a.actor} ${told}`
+          : `lost at a restart: ${why}`,
+      },
+      a?.actor,
+    );
+  } catch {
+    /* the trail is best effort here */
+  }
+}
+/**
+ * Issue 142: at the start and every few seconds while any wait (one that
+ * expired: its item goes). Issue 742: the queue is made at the start, so
+ * what waited before a restart is read back and shows in the bell.
  */
 function startHeldWritesBell(): void {
   let shown = true;
+  try {
+    approvalDeps();
+  } catch {
+    /* made on first use instead; the bell follows then */
+  }
   syncHeldWrites();
   setInterval(() => {
     const n = approvals ? approvals.queue.pending().length : 0;
@@ -3498,7 +3602,7 @@ async function runPinCommit(
                 summary: ok.summary,
                 params: ok.params,
                 details: ok.details,
-                ttlMs: UPDATE_ASK_TTL_MS,
+                ttlMs: updateAskTtlMs(),
               });
               recordAction(null, {
                 verb: "approval-ask",
@@ -3927,6 +4031,8 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       const [first, retry] = lookupTimeouts({}, () => user);
       return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
     })(),
+    // Issue 742: how long a held write waits for the person's Allow.
+    held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
     // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
     agent_hooks: (() => {
       const c = hookCallSettings(() => user);
@@ -4221,7 +4327,11 @@ async function handleRequest(
   }
   // NT: the bell, and agents saying they wait for their person.
   if (guard.ok && isNotificationPath(pathname)) {
-    await handleNotificationRoutes(req, res, pathname, notificationDeps());
+    await handleNotificationRoutes(req, res, pathname, {
+      ...notificationDeps(),
+      // Issue 746: what waits for the person's Allow leads Needs you.
+      held: () => (approvals ? approvals.queue.pending() : []),
+    });
     return;
   }
   // ON-3: an agent's held writes; Allow from the person's browser only.
@@ -7716,6 +7826,7 @@ async function handleRequest(
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
+          held_writes?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -7755,6 +7866,7 @@ async function handleRequest(
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
+            held_writes: body.held_writes,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -9089,8 +9201,13 @@ function updateCheckSettings(): {
   };
 }
 
-/** SRV-P6: how long Den's own "update to X" waits in Needs you. */
-const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
+/**
+ * SRV-P6: how long Den's own "update to X" waits in Needs you: a day, or
+ * the held-write window when that is longer (issue 742).
+ */
+function updateAskTtlMs(): number {
+  return Math.max(24 * 60 * 60_000, heldWriteWaitMinutes() * 60_000);
+}
 /** The update states that mean an update is under way. */
 const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
 
@@ -9406,7 +9523,7 @@ function startUpdateCheck(): void {
               summary: ok.summary,
               params: ok.params,
               details: ok.details,
-              ttlMs: UPDATE_ASK_TTL_MS,
+              ttlMs: updateAskTtlMs(),
             });
             recordAction(null, {
               verb: "approval-ask",

@@ -41,6 +41,7 @@
  *                                     user.yml process_lookup.* (issue 609)
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
+ *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -53,7 +54,7 @@ import {
 } from "./report-shots.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
-import { SHELL_PATH_TIMEOUT } from "./den-config.js";
+import { HELD_WAIT_MINUTES, SHELL_PATH_TIMEOUT } from "./den-config.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
@@ -115,6 +116,8 @@ export const PERSON_ONLY_SETTINGS = [
   "approvals_policy",
   "approvals_watch",
   "approvals_critical",
+  // Issue 742: how long a held write waits for the person's Allow.
+  "held_writes",
 ] as const;
 
 /**
@@ -310,6 +313,16 @@ const FEEDBACK: Record<string, Limit> = Object.fromEntries(
 const AGENT_CONTEXT: Record<string, Limit> = Object.fromEntries(
   Object.entries(CONTEXT_WATCH_KEYS).map(([k, l]) => [k, { key: k, ...l }]),
 );
+
+/** Issue 742: user.yml held_writes.wait_minutes (den-config.ts). */
+const HELD_WRITES: Record<string, Limit> = {
+  wait_minutes: {
+    key: "wait_minutes",
+    min: HELD_WAIT_MINUTES.min,
+    max: HELD_WAIT_MINUTES.max,
+    int: true,
+  },
+};
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
 const LOG_LINES = { min: 1000, max: 1_000_000 };
@@ -547,6 +560,14 @@ export function patchCliRows(
       "agent_hooks",
       AGENT_HOOKS,
       body.agent_hooks,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "held_writes",
+      "held_writes",
+      HELD_WRITES,
+      body.held_writes,
       apply,
     );
   if (e) return { ok: false, error: e };

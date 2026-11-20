@@ -2979,6 +2979,29 @@ export const DEN_SETTINGS = [
       ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
   },
   {
+    // Issue 742: how long an agent's request waits for your Allow
+    // (user.yml held_writes.wait_minutes). A person's only.
+    id: "agents.held_wait",
+    category: "agents",
+    label: "Requests wait for your Allow",
+    description:
+      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    keywords: [
+      "approval",
+      "allow",
+      "wait",
+      "expire",
+      "lapse",
+      "held",
+      "request",
+    ],
+    scope: "user",
+    keys: ["held_writes.wait_minutes"],
+    control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
+    write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
+  },
+  {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the
     // projects that override it.
