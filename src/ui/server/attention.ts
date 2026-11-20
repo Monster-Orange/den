@@ -38,6 +38,18 @@ import type {
 } from "../../shared/notifications.js";
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 import { leadAskText } from "./lead-routing.js";
+import { STATUS_STATES, type StatusState } from "../../shared/sessions/bell.js";
+
+/**
+ * Issue 771: a status an agent's own session said with OSC 7501, and when
+ * the sessions host read it (notification-service.ts statusesOf).
+ */
+export interface StatusReport {
+  agent: string;
+  workspace: string;
+  state: StatusState;
+  at: string;
+}
 
 export type WaitingWhy = "permission" | "input" | "asked";
 
@@ -184,6 +196,8 @@ interface Waiting {
   workspace: string;
   /** Cleared by the runtime's hooks, not by its output. */
   byHook: boolean;
+  /** Issue 771: said by OSC 7501; cleared by its next status, not its output. */
+  byStatus?: boolean;
   /** Issue 609: the hash of the asked tool's input (attention-hook.ts). */
   input?: string;
   /** Issue 101: the lead its question went to, instead of its person. */
@@ -197,6 +211,10 @@ export class Attention {
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
+  /** Issue 771: each agent's last OSC 7501 status seen ("state@at"). */
+  private readonly statusSeen = new Map<string, string>();
+  /** Issue 771: each agent's status, as its terminal last said it. */
+  private readonly status = new Map<string, StatusState>();
   /** Issue 369: rows from before this server still to decide. */
   private orphansLeft = true;
   /** Issue 609: events in the order they came (a set's awaits aside). */
@@ -219,6 +237,11 @@ export class Attention {
   /** The agents waiting now, and why (the sessions list, the bell). */
   waitingNow(): Map<string, WaitingWhy> {
     return new Map([...this.waiting].map(([a, w]) => [a, w.why]));
+  }
+
+  /** Issue 771: the agents whose terminal said a status, and the last one. */
+  statusNow(): Map<string, StatusState> {
+    return new Map(this.status);
   }
 
   /** Issue 327: what `agent` waits on and since when, or undefined. */
@@ -257,6 +280,8 @@ export class Attention {
           hooked?: boolean;
           /** Issue 609: the asked tool's input hash. */
           input?: string;
+          /** Issue 771: said by OSC 7501 (held until its next status). */
+          status?: boolean;
         }
       | { event: "finished"; text?: string; question?: string }
       | {
@@ -417,6 +442,7 @@ export class Attention {
       mark,
       workspace,
       byHook: hooked,
+      byStatus: ev.status === true || cur?.byStatus === true,
       input: what === cur?.what ? (cur?.input ?? ev.input) : ev.input,
       ...(lead ? { lead } : {}),
     });
@@ -450,9 +476,10 @@ export class Attention {
     // #142: without hooks, a bell is all there is: an update, not a need.
     // Issue 142: kept even while a page shows the agent (only the alert
     // waits for it to be off screen). A need counts until it is answered;
-    // an update goes on that page's next "looking".
+    // an update goes on that page's next "looking". Issue 771: a program
+    // that said it is blocked (OSC 7501) needs its person.
     this.d.store.add({
-      kind: ev.why === "input" ? "finished" : "waiting",
+      kind: ev.why === "input" && ev.status !== true ? "finished" : "waiting",
       subject,
       scope,
       text,
@@ -587,6 +614,40 @@ export class Attention {
   }
 
   /**
+   * Issue 771: the statuses agents' own terminals said (OSC 7501). Each
+   * new one becomes the agent's status; blocked or error marks it waiting
+   * for its person (kept until its next status, its person typing, or it
+   * ending; its output moving doesn't clear it), working or idle ends a
+   * wait (not an ask: Den holds that question), done ends its turn. One
+   * first seen more than 10 s old is history: the status only. An
+   * unknown state is ignored.
+   */
+  async statuses(list: readonly StatusReport[]): Promise<void> {
+    for (const r of list) {
+      if (!(STATUS_STATES as readonly string[]).includes(r.state)) continue;
+      const key = `${r.state}@${r.at}`;
+      const prev = this.statusSeen.get(r.agent);
+      if (prev === key) continue;
+      this.statusSeen.set(r.agent, key);
+      this.status.set(r.agent, r.state);
+      if (prev === undefined && this.now() - Date.parse(r.at) > 10_000)
+        continue;
+      const w = this.waiting.get(r.agent);
+      if (r.state === "blocked" || r.state === "error") {
+        if (w) w.byStatus = true;
+        else
+          await this.event(r.agent, r.workspace, {
+            event: "waiting",
+            why: "input",
+            status: true,
+          });
+      } else if (r.state === "done") {
+        await this.event(r.agent, r.workspace, { event: "finished" });
+      } else if (w && w.why !== "asked") this.clear(r.agent);
+    }
+  }
+
+  /**
    * An agent without hooks whose output moved since it settled: no longer
    * waiting. In its first SETTLE_MS, output only moves the mark.
    */
@@ -594,7 +655,7 @@ export class Attention {
     await this.reconcile();
     await this.sweepEnded();
     for (const [agent, w] of [...this.waiting]) {
-      if (w.byHook) continue;
+      if (w.byHook || w.byStatus) continue;
       const m = await this.d.outputMark(agent);
       if (m === null || m === w.mark) continue;
       if (w.mark === null || this.now() - w.at < SETTLE_MS) {
@@ -685,6 +746,7 @@ export class Attention {
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
     this.lastRun.delete(agent);
+    this.status.delete(agent);
     this.clear(agent);
   }
 

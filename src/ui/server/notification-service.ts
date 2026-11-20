@@ -19,7 +19,7 @@ import {
   readNotificationConfig,
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
-import { Attention } from "./attention.js";
+import { Attention, type StatusReport } from "./attention.js";
 import { AlertFeed } from "./alert-feed.js";
 import { alertPrefs } from "./alerts.js";
 import { uiLanguage } from "./ui-language.js";
@@ -187,25 +187,64 @@ export function bellsOf(
 }
 
 /**
- * NT-1 (3): the agents whose session rang the terminal's bell. Claude
- * Code's agents are left out: their hooks say it, more exactly.
+ * Issue 771: the statuses running agents' own sessions said with OSC 7501
+ * (SessionInfo.status), each to the agent whose session printed it.
+ * Claude Code's agents are left out, as for bells: their hooks say it.
  */
-async function sessionBells(): Promise<
-  { agent: string; workspace: string; bellAt: string }[]
-> {
+export function statusesOf(
+  sessions: readonly SessionInfo[],
+  records: readonly AgentRecord[],
+): StatusReport[] {
+  const said = new Map(
+    sessions
+      .filter((x) => x.status && !x.exited)
+      .map((x) => [x.ref.id, x.status!]),
+  );
+  return records
+    .filter(
+      (r) =>
+        !HOOKED_RUNTIMES.has(r.runtime) &&
+        !r.stoppedAt &&
+        said.has(r.session.id),
+    )
+    .map((r) => {
+      const st = said.get(r.session.id)!;
+      return {
+        agent: r.id,
+        workspace: r.workspace,
+        state: st.state,
+        at: st.at,
+      };
+    });
+}
+
+/**
+ * NT-1 (3): the agents whose session rang the terminal's bell, and
+ * (issue 771) the statuses their sessions said. Claude Code's agents are
+ * left out: their hooks say it, more exactly.
+ */
+async function sessionSignals(): Promise<{
+  bells: { agent: string; workspace: string; bellAt: string }[];
+  statuses: StatusReport[];
+}> {
+  const none = { bells: [], statuses: [] };
   try {
     const { webDeps } = await import("./agent-routes.js");
     const c = await webDeps().connectExisting();
-    if (!c) return [];
+    if (!c) return none;
     try {
       const sessions = await c.list();
-      if (!sessions.some((x) => x.bellAt)) return [];
-      return bellsOf(sessions, listRecords(getStateDir()));
+      if (!sessions.some((x) => x.bellAt || x.status)) return none;
+      const records = listRecords(getStateDir());
+      return {
+        bells: bellsOf(sessions, records),
+        statuses: statusesOf(sessions, records),
+      };
     } finally {
       c.close();
     }
   } catch {
-    return [];
+    return none;
   }
 }
 
@@ -293,7 +332,11 @@ export function notificationDeps(): {
       busy = true;
       void attention!
         .check()
-        .then(async () => attention!.bells(await sessionBells()))
+        .then(async () => {
+          const sig = await sessionSignals();
+          await attention!.bells(sig.bells);
+          await attention!.statuses(sig.statuses);
+        })
         .catch(() => undefined)
         .finally(() => (busy = false));
     }, 2000);

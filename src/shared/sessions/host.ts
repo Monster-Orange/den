@@ -821,6 +821,9 @@ export class SessionHost {
     pty.onData((d) => {
       s.log.append(d);
       if (s.bell.feed(d)) s.info.bellAt = new Date().toISOString();
+      // Issue 771: its own output said its status (OSC 7501).
+      const st = s.bell.takeStatus();
+      if (st) s.info.status = { ...st, at: new Date().toISOString() };
       if (!s.attachments.size) {
         s.info.unread = true;
         return;
