@@ -17,7 +17,9 @@ import { attentionOf } from "../../../src/shared/agents/guardrails/attention-hoo
 let dir = "";
 let clock = 1_000_000;
 
-function mk(outputMark: (id: string) => Promise<string | null> = async () => null) {
+function mk(
+  outputMark: (id: string) => Promise<string | null> = async () => null,
+) {
   const store = new NotificationStore(dir, () => new Date(clock));
   const a = new Attention({
     store,
@@ -57,14 +59,22 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("issue 609: a wait's own tool run clears it", () => {
   it("the hooks name the tool use: PostToolUse says which tool ran, both say which input", () => {
-    const p = ask("Bash", { command: "ls" }) as { what?: string; input?: string };
-    const r = ran("Bash", { command: "ls" }) as { what?: string; input?: string };
+    const p = ask("Bash", { command: "ls" }) as {
+      what?: string;
+      input?: string;
+    };
+    const r = ran("Bash", { command: "ls" }) as {
+      what?: string;
+      input?: string;
+    };
     expect(r.what).toBe("Bash");
     expect(p.input).toMatch(/^[0-9a-f]{16}$/);
     expect(r.input).toBe(p.input);
     // The input travels as a hash, never as the command.
     expect(JSON.stringify(p)).not.toContain("ls");
-    expect((ran("Bash", { command: "pwd" }) as { input?: string }).input).not.toBe(p.input);
+    expect(
+      (ran("Bash", { command: "pwd" }) as { input?: string }).input,
+    ).not.toBe(p.input);
   });
 
   it("its tool's run 0.5 s after the dialog clears it (the bed's dev.3 run)", async () => {
