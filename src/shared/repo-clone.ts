@@ -8,10 +8,20 @@
  * and the person's own credentials, never gh's (SEC-0). The check touches
  * no network and writes nothing. The clone runs git without a shell, the
  * URL after `--`, and a remote's user info is never shown.
+ *
+ * Issue 523: with an agents signing key set, the clone gets it as its own
+ * config (gpg.format ssh, user.signingkey), so a commit there never falls
+ * back to the person's global signing key.
  */
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  setRepoSigning,
+  type AgentGitSettings,
+} from "./agents/git-signing.js";
+import { signingWord } from "./agents/signing-words.js";
+import type { UiLanguage } from "../ui/server/ui-language.js";
 import {
   isSafeRemote,
   redactRemote,
@@ -127,6 +137,13 @@ const gitRun: GitRunner = (args) =>
 export async function runClone(
   t: Extract<CloneTarget, { ok: true }>,
   run: GitRunner = gitRun,
+  o: {
+    /** agents.git: the clone's own config signs with the agents' key. */
+    signing?: AgentGitSettings;
+    env?: NodeJS.ProcessEnv;
+    /** The person's language, for the reason when that fails. */
+    lang?: UiLanguage;
+  } = {},
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
   const args = [
     ...(t.gh ? ["-c", "credential.helper=!gh auth git-credential"] : []),
@@ -139,7 +156,6 @@ export async function runClone(
   try {
     fs.mkdirSync(path.dirname(t.dest), { recursive: true });
     await run(args);
-    return { ok: true, path: t.dest };
   } catch (e) {
     const err = e as Error & { stderr?: unknown };
     const said =
@@ -151,4 +167,18 @@ export async function runClone(
       );
     return { ok: false, error: `could not clone ${t.shown}: ${first}` };
   }
+  if (o.signing)
+    try {
+      setRepoSigning(t.dest, o.signing, o.env);
+    } catch (e) {
+      return {
+        ok: false,
+        error: signingWord(o.lang ?? "en", "cloneSetFailed", {
+          source: t.shown,
+          path: t.dest,
+          why: (e as Error).message,
+        }),
+      };
+    }
+  return { ok: true, path: t.dest };
 }
