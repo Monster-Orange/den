@@ -715,7 +715,7 @@ describe("hostStale and doctor's terminal host row (issues 563, 597)", () => {
     ).toMatch(/replaced/);
   });
 
-  it("doctor: current, or restart needed naming the reason, with the restart command", async () => {
+  it("doctor: current, or restart needed naming the reason, with the held write (issue 731)", async () => {
     const { state } = setup();
     const stale = await hostModuleLines("acme", {
       host: async () => ({ den: "1", code: "a", pty: null }),
@@ -724,12 +724,10 @@ describe("hostStale and doctor's terminal host row (issues 563, 597)", () => {
     expect(stale.check).toMatchObject({
       id: "terminal_host_module",
       status: "fail",
-      fix: "acme sessions host --stop",
+      held: { action: "host_restart" },
     });
     expect(stale.check.detail).toMatch(/^restart needed: host code changed/);
-    expect(stale.check.detail).toMatch(
-      /restart the terminal host: acme sessions host --stop/,
-    );
+    expect(JSON.stringify(stale.check)).not.toMatch(/sessions host --stop/);
     expect(stale.lines.join("\n")).not.toMatch(/\bshell\b/i);
     const file = path.join(state, "pty.node");
     fs.writeFileSync(file, "x");
