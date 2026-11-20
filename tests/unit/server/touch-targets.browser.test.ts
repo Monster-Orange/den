@@ -33,7 +33,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { launchBrowser } from "../helpers/browser.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
@@ -91,11 +92,8 @@ const EXCEPTIONS: { sel: string; within?: boolean; why: string }[] = [
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    for (const e of ENGINES)
-      browsers[e] = ws
-        ? await pw[e].connect(ws, { exposeNetwork: "<loopback>" })
-        : await pw[e].launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -432,17 +430,13 @@ describe.each(ENGINES)(
     it("the held-write ask: Allow, Deny, Review, Later stacked full width, Allow first, each 44px", async () => {
       if (skip()) return;
       const p = await phone(engine, "/services", { claim: true });
-      const sess = (await (
-        await fetch(`${s!.base}/api/session`, {
-          headers: { "sec-fetch-site": "same-origin" },
-        })
-      ).json()) as { csrf?: string };
+      // What an MCP tool with no agent token does: the CLI's credential
+      // asks the server to hold a write (as approval-dialog's test does).
       const res = await fetch(`${s!.base}/api/approvals`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: s!.base,
-          "x-den-csrf": String(sess.csrf ?? ""),
+          ...denAuth(s!.stateDir),
         },
         body: JSON.stringify({
           action: "workspace_create",
