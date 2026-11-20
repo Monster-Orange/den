@@ -105,6 +105,10 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
     },
     approvals: "terminal",
     scrubEnv: [],
+    // Issue 664: the repo has no capture of what these draw at their
+    // input prompt, so none is declared: today's rule (no dialog on
+    // screen, no waiting mark, an idle turn or quiet output).
+    inputPrompt: undefined, // unproven: today's rule
     // Issue 338: its sign-in data's variable, set from the install's
     // secrets store under the always-on service, for its agents only.
     ...(e.signIn ? { signInTokenEnv: e.signIn.env } : {}),

@@ -254,8 +254,9 @@ export type TypingCheck = "ok" | "dialog" | "not_at_prompt";
  * only when the screen ends with the runtime's input prompt (its footer
  * at most after it) and no dialog shows anywhere on it. "dialog": a
  * dialog for its person is on screen (in its runtime's words, or any
- * choice list). "not_at_prompt": anything else, including a runtime that
- * declares no input prompt (it can't be shown at one). Pure.
+ * choice list). "not_at_prompt": anything else, or an unknown runtime.
+ * A known runtime that declares no input prompt keeps today's rule
+ * ("ok" with no dialog on screen). Pure.
  */
 export function typingCheck(
   output: string,
@@ -274,7 +275,10 @@ export function typingCheck(
     if (new RegExp(re.source, re.flags.replace("g", "")).test(screen))
       return "dialog";
   const ip = rt?.inputPrompt;
-  if (!ip) return "not_at_prompt";
+  // A runtime with no proven input prompt (no capture of what it draws):
+  // today's rule, no dialog on screen is enough here; its caller still
+  // asks for no waiting mark and an idle turn or quiet output.
+  if (!ip) return rt ? "ok" : "not_at_prompt";
   const re = new RegExp(ip.match.source, ip.match.flags.replace("g", "") + "g");
   let m: RegExpExecArray | null = null;
   for (let x = re.exec(screen); x; x = re.exec(screen)) {

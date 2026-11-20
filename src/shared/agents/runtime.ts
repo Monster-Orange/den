@@ -360,10 +360,10 @@ export interface Runtime {
   /**
    * Issue 664: the runtime's input prompt, as its screen ends with it
    * while it waits for typed text (its prompt line, then only its footer).
-   * Den types into an agent only when this shows (typingCheck). None: Den
-   * can't show it is at its prompt, so nothing is typed into it. Every
-   * runtime runs in a terminal; one with no screen at all would need its
-   * own way in, not this.
+   * Den types into an agent only when this shows (typingCheck). None
+   * (unproven, no capture of what it draws): today's rule, typed when no
+   * dialog shows on its screen, no waiting mark is set and its turn is
+   * idle (or its output quiet).
    */
   inputPrompt?: import("./trust-prompt.js").InputPrompt;
   /**

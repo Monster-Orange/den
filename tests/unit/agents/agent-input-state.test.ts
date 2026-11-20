@@ -16,6 +16,8 @@ import {
 } from "../../../src/ui/cli/agent-ops.js";
 import { typeMessage } from "../../../src/ui/server/agent-say.js";
 import type { SessionInfo } from "../../../src/shared/sessions/types.js";
+import { getRuntime, runtimeIds } from "../../../src/shared/agents/runtime.js";
+import "../../../src/shared/agents/runtimes.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 afterEach(cleanupRigs);
@@ -536,4 +538,74 @@ describe("issue 664: typed only at the agent's input prompt", () => {
       "  ? for shortcuts\r\n";
     expect(await typedInto(old)).toEqual({ typed: true, state: "idle" });
   }, 60_000);
+});
+
+/**
+ * Issue 664, per runtime: each built-in runtime either declares its input
+ * prompt (den-claude, from captured screens) or keeps today's rule
+ * (unproven: no capture of what it draws). A first instruction still
+ * reaches a fresh agent on each; a dialog on screen still holds it.
+ */
+describe("issue 664: each runtime's input check", () => {
+  const RUNTIMES: Record<
+    string,
+    { prompt: "declared" | "today"; ready: string }
+  > = {
+    "den-claude": { prompt: "declared", ready: "\x1b[2J\x1b[H> " },
+    codex: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
+    gemini: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
+    grok: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
+    generic: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
+  };
+
+  it("every registered runtime is in this table", () => {
+    expect(runtimeIds().sort()).toEqual(Object.keys(RUNTIMES).sort());
+    for (const [id, want] of Object.entries(RUNTIMES))
+      expect([id, getRuntime(id)?.inputPrompt ? "declared" : "today"]).toEqual([
+        id,
+        want.prompt,
+      ]);
+  });
+
+  for (const [id, want] of Object.entries(RUNTIMES))
+    it(`${id}: a fresh agent's first instruction is typed; with a dialog on screen it is not`, async () => {
+      const r = await rig();
+      await started(r, null);
+      const d = resolveAgentsDeps(r.deps);
+      const sid = (record(r, "planner").session as { id: string }).id;
+      r.made[0].emit(want.ready);
+      await settle();
+      expect(
+        await sendFirstInstruction(d, sid, id, "go", { quietMs: 0, maxMs: 0 }),
+      ).toBe(true);
+      await settle();
+      expect(Buffer.concat(r.made[0].writes).toString()).toContain("go");
+      // A dialog in a form no runtime declares: held on every runtime.
+      r.made[0].emit("\r\nRun this tool?\r\n❯ 1. Allow once\r\n  2. Deny\r\n");
+      await settle();
+      const before = r.made[0].writes.length;
+      let held = false;
+      expect(
+        await sendFirstInstruction(d, sid, id, "again", {
+          quietMs: 0,
+          maxMs: 0,
+          onDialog: () => {
+            held = true;
+          },
+        }),
+      ).toBe(false);
+      expect(held).toBe(true);
+      expect(r.made[0].writes.length).toBe(before);
+      if (want.prompt === "declared") {
+        // Proven only at its prompt: other output holds it.
+        r.made[0].emit("\x1b[2J\x1b[Hstill working on it");
+        await settle();
+        expect(
+          await sendFirstInstruction(d, sid, id, "later", {
+            quietMs: 0,
+            maxMs: 0,
+          }),
+        ).toBe(false);
+      }
+    }, 30_000);
 });
