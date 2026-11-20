@@ -418,7 +418,9 @@ import {
   publicSearchOpen,
   runGh,
   shotReaderOf,
+  type ReportRouteDeps,
 } from "./report-routes.js";
+import { reportHeld } from "./report-held.js";
 import { publicRepoVisibility } from "./report-visibility.js";
 import {
   feedbackSettings,
@@ -2937,6 +2939,65 @@ function declaredCommand<T>(
   return own(forEnv, cmd) ? forEnv![cmd] : undefined;
 }
 
+/**
+ * FB (den#81): Report's server side, as the page, the command line and
+ * (issue 565) an agent's held `report` use it. A request's own reader of
+ * kept screenshots is added by the route.
+ */
+function reportRouteDeps(): ReportRouteDeps {
+  return {
+    settings: () =>
+      readFeedbackSettings(
+        getEngineRoot(),
+        path.join(getDistRoot(), product().configFile),
+        readUserConfig().feedback,
+      ),
+    stateDir: () => getStateDir(),
+    gh: runGh,
+    names: () => {
+      const w = readWebUrl();
+      let webHost: string | undefined;
+      try {
+        webHost = w ? new URL(w.url).hostname : undefined;
+      } catch {
+        webHost = undefined;
+      }
+      return {
+        home: os.homedir(),
+        hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
+        orgs: [product().name],
+      };
+    },
+    diagnostics: async () => ({
+      Den: `${product().cli} ${engineVersion() ?? "?"}`,
+      Machine: machineSection(),
+    }),
+    agentOf: (r) => {
+      const a = agentPrincipalOf(r) || auditActorOf(r);
+      return a ? String(a) : null;
+    },
+    personOf: () => "person",
+    flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
+    searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+    // Issue 403: a report's screenshot to Hub, with the install's Bearer.
+    shotHub: REPORT_SHOT_HUB,
+    shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+    publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    // Issue 565: who filed a report and where it went, in the trail.
+    audit: ({ by, repo, url, added }) =>
+      recordAction(
+        null,
+        {
+          verb: "report-file",
+          detail: `${added ? "added to" : "filed"} ${url || repo} on ${repo}, by ${by}`,
+        },
+        by.startsWith("agent:") ? by : undefined,
+      ),
+    readBody,
+    sendJson: (r, body, status) => sendJson(r, body, status),
+  };
+}
+
 // ── ON-3: the writes held for the person (approval-routes.ts) ─────────────────
 type ApprovalDeps = {
   queue: ApprovalQueue;
@@ -3149,6 +3210,8 @@ function approvalDeps(): ApprovalDeps {
       );
       return res;
     },
+    // Issue 565: an agent files a report as the page does (public: Allow).
+    report: reportHeld(reportRouteDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
     // Issue 160: an agent closes a stale or superseded pull request after
@@ -4679,48 +4742,10 @@ async function handleRequest(
   // FB (den#81): Report an issue, filed as the person with their `gh`.
   if (
     handleReportRoutes(req, res, pathname, {
-      settings: () =>
-        readFeedbackSettings(
-          getEngineRoot(),
-          path.join(getDistRoot(), product().configFile),
-          readUserConfig().feedback,
-        ),
-      stateDir: () => getStateDir(),
-      gh: runGh,
-      names: () => {
-        const w = readWebUrl();
-        let webHost: string | undefined;
-        try {
-          webHost = w ? new URL(w.url).hostname : undefined;
-        } catch {
-          webHost = undefined;
-        }
-        return {
-          home: os.homedir(),
-          hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
-          orgs: [product().name],
-        };
-      },
-      diagnostics: async () => ({
-        Den: `${product().cli} ${engineVersion() ?? "?"}`,
-        Machine: machineSection(),
-      }),
-      agentOf: (r) => {
-        const a = agentPrincipalOf(r) || auditActorOf(r);
-        return a ? String(a) : null;
-      },
-      personOf: () => "person",
-      flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
-      searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
-      // Issue 403: a report's screenshot to Hub, with the install's Bearer.
-      shotHub: REPORT_SHOT_HUB,
-      shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+      ...reportRouteDeps(),
       // Issue 403: a kept screenshot is the person's (proved, as approvals
       // ask) or this install's own agent's; never an anonymous request.
       shotReader: (r) => shotReaderOf(r, guard),
-      publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
-      readBody,
-      sendJson: (r, body, status) => sendJson(r, body, status),
     })
   )
     return;
