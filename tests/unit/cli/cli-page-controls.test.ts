@@ -190,6 +190,10 @@ const LISTING: Record<string, Entry> = {
     "0.4.67",
     "remove a vendor's account and its token (the CLI only for now)",
   ),
+  // Issue 441: an outside runner (the bed gate) hands its verdict file to
+  // the CLI; the Checks page shows the run it makes.
+  "verify import": script("an outside runner's verdict file, from its script"),
+  "verify remove": script("takes back an imported run, from a gate's cleanup"),
   "agents permission": slot(
     "0.4.46",
     "MODE-1: a project's and an agent's mode",
@@ -217,6 +221,7 @@ const DISPATCH: Record<string, { file: string; not?: string[] }> = {
   gate: { file: "gate-command.ts" },
   repo: { file: "repo-command.ts" },
   onboard: { file: "onboard-command.ts" },
+  verify: { file: "verify-command.ts" },
 };
 
 /** The CLI's registered commands (index.ts TELEMETRY_COMMANDS). */

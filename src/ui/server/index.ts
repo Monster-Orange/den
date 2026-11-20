@@ -3639,6 +3639,8 @@ function verifyDeps(): VerifyServerDeps {
     focusedProject: () => getFocusedWorkspaceName(),
     repos: (p) => listReposWithManifests(p),
     environments: () => orgEnvironments(),
+    // Issue 441: verify.environments and verify.import, read per request.
+    verifyConfig: () => readDenConfig().verify,
   };
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */
