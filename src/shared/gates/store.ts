@@ -1066,7 +1066,7 @@ export function listProcs(): ProcRow[] {
   if (process.platform === "win32") return [];
   let out = "";
   try {
-    out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,etime=,comm="], {
+    out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,etime=,args="], {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
       maxBuffer: 16 * 1024 * 1024,
@@ -1084,7 +1084,8 @@ export function listProcs(): ProcRow[] {
       ppid: Number(m[2]),
       pgid: Number(m[3]),
       ageSec: age ?? 0,
-      comm: path.basename(m[5]!.trim()).slice(0, 64),
+      // The command name: argv[0]'s base name (comm can be a thread name).
+      comm: path.basename(m[5]!.trim().split(/\s+/)[0] ?? "").slice(0, 64),
     });
   }
   return rows;
