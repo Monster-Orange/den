@@ -1187,6 +1187,7 @@ import {
 import {
   handleAgentRoutes,
   startAgentUpkeep,
+  startLogoutWatch,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
 import {
@@ -8508,6 +8509,10 @@ const CRASH_GATE: Promise<void> = (() => {
 // (after the crash-loop wait: a start that waits resumes nothing yet).
 void CRASH_GATE.then(() =>
   startAgentUpkeep((line) => serverLog(line, "lifecycle")),
+);
+// Issue 163: back from a logout the server ran through: who ran meanwhile.
+void CRASH_GATE.then(() =>
+  startLogoutWatch((line) => serverLog(line, "lifecycle")),
 );
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
