@@ -46,6 +46,7 @@ import {
 } from "../server/helpers/agents-page-server.js";
 import { pageImport } from "../server/helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const CAPTURE = process.env.DEN_UI_CAPTURE === "1";
 const FIXTURE = path.join(__dirname, "fixtures", "den-shell-baseline.json");
@@ -267,11 +268,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    browser = process.env.DEN_PW_WS
-      ? await pw.chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await pw.chromium.launch();
+    browser = await launchBrowser(pw.chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

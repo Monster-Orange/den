@@ -23,6 +23,7 @@ import { readWebSecret } from "../../../src/shared/web-secret.js";
 import { writeRecord } from "../../../src/shared/agents/records.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { denAuth } from "./helpers/den-auth.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -36,10 +37,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await chromium.connect(ws, { exposeNetwork: "<loopback>" })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
