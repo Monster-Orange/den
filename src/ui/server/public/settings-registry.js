@@ -2509,7 +2509,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Test boxes",
     description:
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that can use a box (`gate run --kind browser --box any`) takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     keywords: ["gate", "slot", "box", "remote", "browser", "tests", "machine"],
     scope: "user",
     control: { type: "custom", render: drawGateBoxes },

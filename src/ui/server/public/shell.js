@@ -1958,7 +1958,7 @@
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
     "set.server.gate_boxes": "Test boxes",
     "set.server.gate_boxes.d":
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that can use a box (`gate run --kind browser --box any`) takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     "set.server.gate_box_check": "Test box check waits, in seconds",
     "set.server.gate_box_check.d":
       "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
