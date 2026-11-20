@@ -127,7 +127,12 @@ export type HeldActions = Readonly<Record<string, HeldAction>>;
 export function createApprovalQueue(
   actions: HeldActions,
   stateDir: () => string,
-  o: { ttlMs?: number; now?: () => number } = {},
+  o: {
+    ttlMs?: number;
+    now?: () => number;
+    /** Issue 746: a request ended unanswered. */
+    onExpire?: (a: Approval) => void;
+  } = {},
 ): ApprovalQueue {
   return new ApprovalQueue({
     ...o,
@@ -222,6 +227,13 @@ export function approvalView(
       ? { result: resultFor(a, o.asker === true) }
       : {}),
     ...(a.endedBecause ? { endedBecause: a.endedBecause } : {}),
+    // Issue 746: why it ended, and what the asker can do.
+    ...(a.state === "expired"
+      ? {
+          reason:
+            "Lapsed unanswered: the person did not answer before it expired. Nothing ran. Ask again if it is still needed.",
+        }
+      : {}),
   };
 }
 
