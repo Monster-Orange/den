@@ -457,6 +457,8 @@ export function edgeClient(
  * only for the edge hostname from an edge peer that carries the edge's
  * proof (`proved`, H1), `X-Forwarded-Proto: https`. A spoofed header on a
  * loopback Host, or from a local process without the proof, never counts.
+ * The edge says `wss` for a WebSocket upgrade over TLS (the terminal
+ * pane's): that is https too.
  */
 export function requestIsHttps(
   req: http.IncomingMessage,
@@ -467,8 +469,11 @@ export function requestIsHttps(
     return true;
   if (!proved || via !== "edge" || !isEdgePeer(req.socket?.remoteAddress))
     return false;
-  const xfp = header(req, "x-forwarded-proto");
-  return xfp?.split(",")[0].trim().toLowerCase() === "https";
+  const xfp = header(req, "x-forwarded-proto")
+    ?.split(",")[0]
+    .trim()
+    .toLowerCase();
+  return xfp === "https" || xfp === "wss";
 }
 
 /** A bind address that only this machine can reach. */
