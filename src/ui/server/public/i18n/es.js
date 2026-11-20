@@ -643,6 +643,12 @@
     "busy.askAllowW": "Preguntando…",
     "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
     "busy.askAllowF": "No se pudo preguntar.",
+    "busy.pushTestW": "Enviando un aviso de prueba…",
+    "busy.pushTestS": "Aviso de prueba hecho. Cada dispositivo dice cómo fue.",
+    "busy.pushTestF": "No se pudo enviar el aviso de prueba.",
+    "busy.pushForgetW": "Olvidando este dispositivo…",
+    "busy.pushForgetS": "Este dispositivo ya no recibe push.",
+    "busy.pushForgetF": "No se pudo olvidar este dispositivo.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -3044,6 +3050,27 @@
     "set.notifications.phone.none":
       "Este navegador no puede recibir push. En un iPhone, añade __DEN_TITLE__ a la pantalla de inicio (Compartir y luego Añadir a pantalla de inicio) y ábrelo desde allí.",
     "set.notifications.phone.failed": "No se pudo activar el push aquí.",
+    "set.notifications.push_devices": "Dispositivos que reciben push",
+    "set.notifications.push_devices.d":
+      "Cada dispositivo que activó el push. Envía un aviso de prueba para comprobar que tu teléfono lo recibe: cada dispositivo dice si su servicio de push lo aceptó. Olvida el que ya no uses.",
+    "set.notifications.devices.none":
+      "Ningún dispositivo recibe push todavía. Abre __DEN_TITLE__ en tu teléfono (Emparejar un dispositivo, en Acceso, inicia sesión en él) y activa allí Avisos en este dispositivo por push.",
+    "set.notifications.devices.this": "(este dispositivo)",
+    "set.notifications.devices.added": "Añadido {t}",
+    "set.notifications.devices.forget": "Olvidar",
+    "set.notifications.devices.test": "Enviar un aviso de prueba",
+    "set.notifications.test.reached": "Enviado: su servicio de push lo aceptó.",
+    "set.notifications.test.gone":
+      "Ya no está: este dispositivo ya no recibe push, así que se quitó.",
+    "set.notifications.test.refused":
+      "No enviado: su servicio de push respondió {status}.",
+    "set.notifications.test.noAnswer":
+      "No enviado: su servicio de push no respondió a tiempo (Espera del push).",
+    "set.notifications.svc.apple": "Push de Apple",
+    "set.notifications.svc.google": "Push de Google",
+    "set.notifications.svc.mozilla": "Push de Firefox",
+    "set.notifications.svc.microsoft": "Push de Microsoft",
+    "set.notifications.svc.other": "Otro servicio de push",
     "set.notifications.quiet_from": "Inicio de las horas de silencio",
     "set.notifications.quiet_from.d":
       "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",

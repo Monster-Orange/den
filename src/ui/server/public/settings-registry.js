@@ -418,6 +418,27 @@ function alertRows() {
       read: (ctx) => ctx.data.alerts?.phone !== false,
       write: (v, ctx) => ctx.post({ alerts: { phone: v === true } }),
     },
+    {
+      // Issue 172: which devices get push, a test alert to each, and
+      // Forget for one no longer used (a lost phone).
+      id: "notifications.push_devices",
+      category: "notifications",
+      label: "Devices that get push",
+      description:
+        "Each device that turned on push. Send a test alert to check that your phone gets it: each device says whether its push service took it. Forget one you no longer use.",
+      keywords: [
+        "notifications",
+        "alerts",
+        "phone",
+        "push",
+        "devices",
+        "test",
+        "iphone",
+      ],
+      scope: "user",
+      control: { type: "custom", render: drawPushDevices },
+      read: () => null,
+    },
     ...[
       [
         "quiet_from",
@@ -535,6 +556,8 @@ function drawPush(host, ctx, io) {
       got = "failed";
     }
     if (got === "ok" && on) await io.save(true);
+    if (got === "ok" && typeof window !== "undefined")
+      window.dispatchEvent(new CustomEvent("den:push-devices"));
     const now = !!(await pushSubscription());
     draw(now, got === "ok" ? "" : why[got]());
   };
@@ -542,6 +565,145 @@ function drawPush(host, ctx, io) {
   void pushSubscription().then((s) => {
     if (s && ctx.data.alerts?.phone !== false) draw(true, "");
   });
+}
+
+/** A push service, as the device list says it. */
+const pushServiceName = (svc) =>
+  ({
+    apple: () => L("set.notifications.svc.apple", "Apple push"),
+    google: () => L("set.notifications.svc.google", "Google push"),
+    mozilla: () => L("set.notifications.svc.mozilla", "Firefox push"),
+    microsoft: () => L("set.notifications.svc.microsoft", "Microsoft push"),
+  })[svc]?.() ?? L("set.notifications.svc.other", "Other push service");
+
+/** This browser's device id (the server's: a hash of its endpoint), or "". */
+async function thisDeviceId() {
+  try {
+    const sub = await pushSubscription();
+    if (!sub?.endpoint || !globalThis.crypto?.subtle) return "";
+    const d = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(sub.endpoint),
+    );
+    return [...new Uint8Array(d)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 16);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Issue 172: the person's devices that get push. Each one: what it is,
+ * its push service, when it was added (local time), "this device", and
+ * Forget. Send a test alert pushes to each and says, per device, whether
+ * its push service took it. Both writes go through the working pop-up.
+ */
+export function drawPushDevices(host, ctx) {
+  let result = null; // the last test's answer, by device id
+  const busy = (name, path, body, button) => {
+    const run = (headers) => ctx.shell.api("POST", path, body, { headers });
+    return ctx.shell.busyAction
+      ? ctx.shell.busyAction(name, run, { button, toastFast: false })
+      : run({}).catch(() => null);
+  };
+  const outcome = (d) =>
+    d.reached
+      ? L("set.notifications.test.reached", "Sent: its push service took it.")
+      : d.gone
+        ? L(
+            "set.notifications.test.gone",
+            "Gone: this device no longer takes push, so it was removed.",
+          )
+        : d.status
+          ? L(
+              "set.notifications.test.refused",
+              "Not sent: its push service answered {status}.",
+              { status: d.status },
+            )
+          : L(
+              "set.notifications.test.noAnswer",
+              "Not sent: no answer from its push service in time (Push wait).",
+            );
+  const draw = (devices, mine) => {
+    const rows = devices
+      .map((d) => {
+        const what = [d.device, pushServiceName(d.service)]
+          .filter(Boolean)
+          .join(" \u00b7 ");
+        const r = result?.get(d.id);
+        return (
+          `<li class="set-push-device" data-device="${escHtml(d.id)}">` +
+          `<span><b>${escHtml(what)}</b>` +
+          (d.id === mine
+            ? ` <span class="set-note">${escHtml(L("set.notifications.devices.this", "(this device)"))}</span>`
+            : "") +
+          `<br><span class="set-note">${escHtml(L("set.notifications.devices.added", "Added {t}", { t: shortTime(d.at) }))}</span>` +
+          (r
+            ? `<br><span class="${r.reached ? "set-note" : "set-warn"}" data-test-result role="status">${escHtml(outcome(r))}</span>`
+            : "") +
+          `</span> <button type="button" class="btn" data-forget="${escHtml(d.id)}">${escHtml(L("set.notifications.devices.forget", "Forget"))}</button></li>`
+        );
+      })
+      .join("");
+    const gone = result
+      ? [...result.values()].filter(
+          (r) => r.gone && !devices.some((d) => d.id === r.id),
+        )
+      : [];
+    host.innerHTML =
+      (devices.length
+        ? `<ul id="set-push-devices" style="list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px">${rows}</ul>`
+        : `<p class="set-note" id="set-push-none">${escHtml(L("set.notifications.devices.none", "No device gets push yet. Open __DEN_TITLE__ on your phone (Pair a device, under Access, signs it in), then turn on Alerts on this device by push there."))}</p>`) +
+      gone
+        .map(
+          (r) =>
+            `<p class="set-warn" data-test-result role="status">${escHtml([r.device, pushServiceName(r.service)].filter(Boolean).join(" \u00b7 "))}: ${escHtml(outcome(r))}</p>`,
+        )
+        .join("") +
+      `<button type="button" class="btn" id="set-push-test"${devices.length ? "" : " disabled"}>${escHtml(L("set.notifications.devices.test", "Send a test alert"))}</button>`;
+    host.querySelector("#set-push-test")?.addEventListener("click", (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      void busy("push-test", "/api/alerts/test", {}, btn)
+        .then((r) => {
+          if (r && Array.isArray(r.devices))
+            result = new Map(r.devices.map((d) => [d.id, d]));
+        })
+        .finally(() => void load());
+    });
+    host.querySelectorAll("[data-forget]").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        btn.disabled = true;
+        result?.delete(btn.dataset.forget);
+        void busy(
+          "push-forget",
+          "/api/alerts/forget",
+          { id: btn.dataset.forget },
+          btn,
+        ).finally(() => void load());
+      }),
+    );
+  };
+  const load = async () => {
+    let devices = [];
+    try {
+      const r = await ctx.shell.api("GET", "/api/alerts/devices");
+      devices = Array.isArray(r?.devices) ? r.devices : [];
+    } catch {
+      devices = [];
+    }
+    if (host.isConnected !== false) draw(devices, await thisDeviceId());
+  };
+  // This device's push switch (drawPush) changed the list: read it again.
+  const changed = () =>
+    host.isConnected === false
+      ? window.removeEventListener("den:push-devices", changed)
+      : void load();
+  if (typeof window !== "undefined")
+    window.addEventListener("den:push-devices", changed);
+  void load();
 }
 
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */

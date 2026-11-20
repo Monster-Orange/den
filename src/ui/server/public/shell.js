@@ -1066,6 +1066,27 @@
     "set.notifications.phone.none":
       "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
     "set.notifications.phone.failed": "Couldn't turn on push here.",
+    "set.notifications.push_devices": "Devices that get push",
+    "set.notifications.push_devices.d":
+      "Each device that turned on push. Send a test alert to check that your phone gets it: each device says whether its push service took it. Forget one you no longer use.",
+    "set.notifications.devices.none":
+      "No device gets push yet. Open __DEN_TITLE__ on your phone (Pair a device, under Access, signs it in), then turn on Alerts on this device by push there.",
+    "set.notifications.devices.this": "(this device)",
+    "set.notifications.devices.added": "Added {t}",
+    "set.notifications.devices.forget": "Forget",
+    "set.notifications.devices.test": "Send a test alert",
+    "set.notifications.test.reached": "Sent: its push service took it.",
+    "set.notifications.test.gone":
+      "Gone: this device no longer takes push, so it was removed.",
+    "set.notifications.test.refused":
+      "Not sent: its push service answered {status}.",
+    "set.notifications.test.noAnswer":
+      "Not sent: no answer from its push service in time (Push wait).",
+    "set.notifications.svc.apple": "Apple push",
+    "set.notifications.svc.google": "Google push",
+    "set.notifications.svc.mozilla": "Firefox push",
+    "set.notifications.svc.microsoft": "Microsoft push",
+    "set.notifications.svc.other": "Other push service",
     "set.notifications.quiet_from": "Quiet hours start",
     "set.notifications.quiet_from.d":
       "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
@@ -1512,6 +1533,12 @@
     "busy.askAllowW": "Asking…",
     "busy.askAllowS": "Asked. Allow it in the dialog.",
     "busy.askAllowF": "Couldn't ask.",
+    "busy.pushTestW": "Sending a test alert…",
+    "busy.pushTestS": "Test alert done. Each device says how it went.",
+    "busy.pushTestF": "Couldn't send the test alert.",
+    "busy.pushForgetW": "Forgetting this device…",
+    "busy.pushForgetS": "This device no longer gets push.",
+    "busy.pushForgetF": "Couldn't forget this device.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
