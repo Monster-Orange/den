@@ -488,6 +488,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/settings"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
+  // Issue 666: Make <alias> this Den's address (the owner's only).
+  M(["POST"], "/api/web-url/adopt"),
   // Issue 163: Keep agents running after logout › Apply (a person's only).
   M(
     ["POST"],

@@ -44,3 +44,28 @@ export function checkWebUrl(s: unknown): { url: string } | { error: string } {
   if (!u.hostname) return { error: "the address needs a host name" };
   return { url: u.origin };
 }
+
+/** Whether `url` (any string) is an address naming this machine only. */
+export function isLoopbackUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return isLoopbackName(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Issue 666: of an install's edge addresses, the ones that can be its
+ * address: valid origins, never loopback, https first.
+ */
+export function aliasCandidates(urls: readonly string[]): string[] {
+  const ok = urls
+    .map((u) => checkWebUrl(u))
+    .flatMap((r) => ("url" in r && !isLoopbackUrl(r.url) ? [r.url] : []));
+  const uniq = [...new Set(ok)];
+  return [
+    ...uniq.filter((u) => u.startsWith("https:")),
+    ...uniq.filter((u) => !u.startsWith("https:")),
+  ];
+}

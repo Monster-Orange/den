@@ -25,6 +25,10 @@ import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
+import {
+  aliasCandidates,
+  loopbackRefusal,
+} from "../../shared/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
@@ -903,7 +907,51 @@ export function addressLines(
   title: string,
   cli: string,
   checked: DoctorAddress | null = null,
+  /** Issue 666: this install's edge alias (aliasCandidates), if any. */
+  alias: string | null = null,
 ): { lines: string[]; problem: boolean; check: OnboardCheck } {
+  // Issue 666: a loopback address is a problem, never ✓ and never one to
+  // confirm: other devices can't open it. The fix is the alias, if any.
+  const loop = w ? loopbackRefusal(w.url) : null;
+  if (w && loop) {
+    // Issue 455 still holds: the address that was checked comes first,
+    // and an edge address not checked yet is said as such.
+    let lead = "";
+    let url: string | undefined;
+    if (checked && checked.state.wanted === w.url) {
+      const said = statedAddress(checked.state, checked.edge);
+      if (said.unchecked) {
+        const why = edgeUncheckedLine(said.unchecked, {
+          lang: cliLanguage(),
+          title,
+          cli,
+        });
+        lead = said.address ? `${said.address}. ${why} ` : `${why} `;
+        url = said.address ?? undefined;
+      }
+    }
+    const detail =
+      lead +
+      (alias
+        ? `${loop}. Make ${alias} the address: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url ${alias}\``
+        : `${loop}. Set the address other devices open: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url <address>\``);
+    return {
+      lines: ["", `${title} doctor: Address`, "", `  address  ✗  ${detail}`],
+      problem: true,
+      check: {
+        id: "address",
+        status: "fail",
+        detail,
+        ...(url ? { url } : {}),
+        settings: ADDRESS_SETTINGS_LINK,
+        ...(alias
+          ? { fix: `${cli} web url ${alias}` }
+          : {
+              ask: `${w.url} only opens on this machine. What address do people open this ${title} at (for example https://${cli}.local.example.com)? Then run \`${cli} web url <address>\`.`,
+            }),
+      },
+    };
+  }
   if (!w) {
     const detail = `not set: set it in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url <address>\` (for example https://${cli}.local.example.com)`;
     return {
@@ -1052,6 +1100,25 @@ export function sessionHostLines(
  * The address check doctor's Address sections share (issue 455): null when
  * web.url isn't set or the web port can't be read.
  */
+/**
+ * Issue 666: this install's edge alias, the address doctor offers when
+ * web.url names this machine only: the first edge route to Den's web port
+ * that isn't loopback (https first), or null.
+ */
+export async function edgeAlias(): Promise<string | null> {
+  try {
+    const { readWebPort } = await import("../../shared/edge/config.js");
+    const { webRouteHosts } = await import("../../shared/edge/render.js");
+    if (!hasEdgeBlock()) return null;
+    const urls = webRouteHosts(readEdgeConfig(), new Set([readWebPort()])).map(
+      (r) => r.url,
+    );
+    return aliasCandidates(urls)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function doctorAddress(
   cli: string,
   deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
@@ -1578,6 +1645,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       readBrand().name,
       product().cli,
       checked,
+      await edgeAlias(),
     );
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
@@ -1677,6 +1745,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     readBrand().name,
     product().cli,
     checked,
+    await edgeAlias(),
   );
   for (const l of addr.lines) console.log(l);
   {

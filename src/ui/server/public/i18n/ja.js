@@ -713,6 +713,14 @@
     "err.signin.local":
       "サインインはアドレスごとです。このページは {host} にあります。サインイン済みの localhost で同じページを開いてください。",
     "err.signin.atAddress": "{name} のサインインは {address} で行います",
+    "err.signin.offerTitle": "{alias} を {name} のアドレスにする",
+    "err.signin.offerLoop":
+      "{name} のアドレスは {url} ですが、これはそのマシンでしか開けないため、サインインでそこへ移動できません。",
+    "err.signin.offerWrong":
+      "{name} のアドレスは {url} ですが、ここからは使えません。",
+    "err.signin.offerUnset": "{name} にはまだアドレスがありません。",
+    "err.signin.offerHow":
+      "下で {name} のオーナーとしてサインインしてください（GitHub、またはそのマシンで承認するコード）。そのあと {alias} をアドレスにすると、ここでサインインできます。",
     "err.signin.copy": "コマンドをコピー",
     "err.signin.title": "{name} にサインイン",
     "err.signin.where":
@@ -970,6 +978,10 @@
     "addr.saved": "保存しました: {url} が応答しました。",
     "addr.notSaved": "保存していません。前のアドレスのままです。",
     "addr.empty": "先にアドレスを入力してください。",
+    "addr.loopback":
+      "{url} はこのマシンでしか開けません。ほかのデバイスからは届きません。",
+    "addr.adopt": "{alias} を __DEN_TITLE__ のアドレスにする",
+    "addr.adopted": "保存しました: {url} がアドレスになりました。",
     "set.workspace.approvals_policy":
       "このプロジェクトでのエージェントの書き込み",
     "set.workspace.approvals_policy.d":

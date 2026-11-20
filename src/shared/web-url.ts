@@ -17,9 +17,15 @@ import {
   readUserConfig,
   type UserConfig,
 } from "./den-config.js";
-import { checkWebUrl } from "./web-url-check.js";
+import {
+  aliasCandidates,
+  checkWebUrl,
+  isLoopbackUrl,
+  loopbackRefusal,
+} from "./web-url-check.js";
+import { auditConfig } from "./config-audit.js";
 
-export { checkWebUrl };
+export { checkWebUrl, isLoopbackUrl };
 
 export interface WebUrl {
   /** The origin: scheme, host and port, no path. */
@@ -58,55 +64,124 @@ export function readWebUrl(
   };
 }
 
-/** Set the address (as the person gave it: confirmed). Returns the origin. */
+/**
+ * Issue 666: how a web.url change came about, for its activity row: the
+ * path (`web url`, Settings, the migration, an alias made the address)
+ * and who asked (a person's principal; absent: the process's own user).
+ */
+export interface WebUrlChange {
+  path: string;
+  who?: string;
+}
+
+/** The activity row for a web.url change (or a refused one). */
+function auditChange(
+  from: string | null,
+  to: string,
+  how: WebUrlChange,
+  refused?: string,
+): void {
+  auditConfig({
+    verb: "web-url",
+    detail: `${from ?? "unset"} → ${to} (by ${how.path}${how.who ? `, ${how.who}` : ""})`,
+    ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
+  });
+}
+
+/** web.url as written (valid or not), for the row's "from". */
+function storedUrl(read: () => UserConfig): string | null {
+  try {
+    const u = webBlock(read()).url;
+    return typeof u === "string" && u ? u : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Set the address (as the person gave it: confirmed). Returns the origin.
+ * Issue 666: a loopback name is refused here, whoever calls, and every
+ * change (or refusal) is an activity row.
+ */
 export function setWebUrl(
   address: string,
   merge: (p: Partial<UserConfig>) => unknown = mergeUserConfig,
   read: () => UserConfig = readUserConfig,
+  how: WebUrlChange = { path: "setWebUrl" },
 ): string {
   const ok = checkWebUrl(address);
   if (!("url" in ok)) throw new Error(ok.error);
+  const before = storedUrl(read);
+  const loop = loopbackRefusal(ok.url);
+  if (loop) {
+    auditChange(before, ok.url, how, loop);
+    throw new Error(loop);
+  }
   const web: Record<string, unknown> = { ...webBlock(read()), url: ok.url };
   delete web.url_confirmed;
   delete web.url_from;
   merge({ web });
+  auditChange(before, ok.url, how);
   return ok.url;
+}
+
+/** What the migration may take: an edge route's address, and where from. */
+export interface WebUrlFinding {
+  url: string;
+  from: string;
 }
 
 /**
  * One time, for an install made before web.url: the address it already
- * had (`found`: Hub's den_url, else an edge route to this server), written
- * unconfirmed with where it came from. Nothing when web.url is set, or
- * when there is nothing to take. Returns what is set afterwards.
+ * had (`found`: the edge routes to this server), written unconfirmed with
+ * where it came from. Nothing when web.url is set, or when there is
+ * nothing to take. Returns what is set afterwards.
+ *
+ * Issue 666: a loopback name is never taken (an edge on `localhost` gave
+ * https://<name>.localhost, which only this machine opens): the first
+ * alias that isn't one is (https first). A loopback web.url already there
+ * is replaced by that alias, unconfirmed, for doctor to show; with no
+ * alias it stays, and doctor fails it.
  */
 export function migrateWebUrl(
-  found: () => { url: string; from: string } | undefined,
+  found: () => WebUrlFinding | readonly WebUrlFinding[] | undefined,
   merge: (p: Partial<UserConfig>) => unknown = mergeUserConfig,
   read: () => UserConfig = readUserConfig,
 ): WebUrl | null {
   const now = readWebUrl(read);
-  if (now) return now;
-  let hit: { url: string; from: string } | undefined;
+  if (now && !isLoopbackUrl(now.url)) return now;
+  let hits: readonly WebUrlFinding[] = [];
   try {
-    hit = found();
+    const f = found();
+    hits = !f ? [] : Array.isArray(f) ? f : [f as WebUrlFinding];
   } catch {
-    hit = undefined;
+    hits = [];
   }
-  const ok = hit ? checkWebUrl(hit.url) : null;
-  if (!hit || !ok || !("url" in ok)) return null;
+  const [url] = aliasCandidates(hits.map((h) => h.url));
+  const hit = url
+    ? hits.find((h) => {
+        const c = checkWebUrl(h.url);
+        return "url" in c && c.url === url;
+      })
+    : undefined;
+  if (!url || !hit) return now;
+  const from = now
+    ? `${hit.from}, in place of ${now.url}, which only this machine opens`
+    : hit.from;
   try {
     merge({
       web: {
         ...webBlock(read()),
-        url: ok.url,
+        url,
         url_confirmed: false,
-        url_from: hit.from,
+        url_from: from,
       },
     });
   } catch {
-    return null;
+    return now;
   }
-  return { url: ok.url, confirmed: false, from: hit.from };
+  auditChange(now?.url ?? null, url, { path: "the one-time migration" });
+  return { url, confirmed: false, from };
 }
 
 /** What a person reads where the address would be, when it isn't set. */
