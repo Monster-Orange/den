@@ -730,6 +730,46 @@ Three pieces, data in, the kit's words out (en, es, ja).
 - `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
   `DenUI.settingRow(el, opts)` are the same, in the kit's language.
 
+## The Account area (issue 310)
+
+`src/account-area.js` and `src/account-area.css` (exports
+`./account-area`, `./account-area.css`): the person's own place, apart
+from Settings, in every product. It copies an existing product's Account
+pop-up value for value: a 240 px rail of sections with a search box
+beside one pane, `?account=<section>` in the address, and on a phone
+(under 768 px) a strip with the search box and a select. The kit draws it
+from data. Every word is the kit's (`kit.aa.*`, en, es and ja), and every
+name, date and code comes from the product.
+
+    import { openAccountArea } from "@monster-orange/den-ui/account-area";
+
+    openAccountArea({
+      settingsHref: "/settings",
+      profile: { name, login, role, how: "github", since,
+                 signOut: { url: "/auth/logout", csrf }, signOutAll: true },
+      access: { github: { login, linkedAt, unlink: true }, pair: true,
+                tokens: [{ id, name, createdAt, lastUsedAt }], newToken: true },
+      devices: { list: [{ id, name, where, lastSeen, current }],
+                 waiting: [{ code, minutes }], pair: true, signOutAll: true },
+      notifications: [{ id, label, help, on }],
+      onAction: (act, id, button, extra) => ...,
+    });
+
+- Sections: Profile; Access and security; Devices and sessions; Your
+  notifications. A section with no data is left out.
+- `accountAreaHtml(data)` is pure (it runs on a server too). Every pane is
+  drawn, so search finds rows in all of them. Only the open one shows.
+- `onAction` gets `unlink`, `pair`, `new-token`, `revoke-token`,
+  `sign-out-device`, `sign-out-all` (the kit asks first), `approve`,
+  `retry-devices` and `notify` (`extra.on`; a rejected promise switches it
+  back). Send each request through `pending(button, ...)` so the button
+  shows its dots.
+- Sign out is a plain POST form with its csrf (`watchForms()` gives it
+  dots). There is no Sign out without `signOut`.
+- Keys: "/" goes to search, Escape clears it first, and Enter opens the
+  first hit's section and flashes its row.
+- Dates are `<time>` in the viewer's own time zone.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

@@ -1,0 +1,414 @@
+/* den-ui: the Account area (account-area.js, issue 310). an existing product's Account
+   pop-up, value for value (the approved mock "Account area: Den and Den
+   Hub" v2): min(960px, 100vw - space-8) by min(88vh, 760px); a 240 px rail
+   on the sunken surface beside the pane; under 768 px the rail becomes a
+   strip (search and a select) over the pane, every control 44 px. The source's
+   space-N is 4N px: space-8 is the kit's --space-6 (32 px), space-5 is
+   20 px. Tokens only; linked, never injected (style-src 'self'). */
+.den-aa-dlg {
+  font-family: var(--sans);
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  width: min(960px, 100vw - var(--space-6));
+  height: min(88vh, 760px);
+  max-width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-dialog);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.den-aa-dlg[open] {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.den-aa-dlg::backdrop {
+  background: var(--kit-scrim);
+}
+/* The top bar: only its Close shows on a desktop (the rail names it). */
+.den-aa-top {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 1;
+}
+.den-aa-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  margin: 0;
+}
+.den-aa-x {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-xl);
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+.den-aa-x:hover {
+  background: var(--sunken);
+}
+.den-aa-host {
+  min-height: 0;
+  grid-row: 1 / -1;
+}
+.den-aa {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100%;
+  min-height: 0;
+  font-size: var(--fs-m);
+  line-height: var(--lh);
+}
+.den-aa-rail {
+  background: var(--sunken);
+  border-right: 1px solid var(--border);
+  padding: var(--space-3) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-y: auto;
+}
+.den-aa-find {
+  position: relative;
+  margin: 0 var(--space-1) var(--space-2);
+}
+.den-aa-search {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-button);
+  padding: 6px 28px 6px 10px;
+  font: inherit;
+  font-size: var(--fs-s);
+}
+.den-aa-find kbd {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 11px var(--mono);
+  color: var(--faint);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+}
+.den-aa-select {
+  display: none;
+}
+.den-aa-grp {
+  font: 500 11px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  padding: 10px 10px 4px;
+}
+.den-aa-row {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-button);
+  color: var(--text);
+  font-size: 13.5px;
+  text-decoration: none;
+}
+.den-aa-row:hover {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+.den-aa-row[aria-current="page"] {
+  background: var(--surface);
+  font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.den-aa-row:focus-visible,
+.den-aa-search:focus-visible,
+.den-aa-sw:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.den-aa-grow {
+  flex: 1;
+}
+.den-aa-cross {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-s);
+  color: var(--accent-text);
+  border-top: 1px solid var(--border);
+  text-decoration: none;
+}
+.den-aa-panes {
+  overflow-y: auto;
+  min-width: 0;
+  padding: 20px var(--space-5) var(--space-6);
+}
+.den-aa-found:empty {
+  display: none;
+}
+.den-aa-found {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+.den-aa-pane {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.den-aa-pane[hidden] {
+  display: none;
+}
+/* Searching: each pane with a hit shows under its own heading. */
+.den-aa-pane + .den-aa-pane {
+  margin-top: var(--space-5);
+}
+.den-aa-pane h2 {
+  font: 400 var(--fs-2xl) / 1.2 var(--display);
+  margin: 0;
+}
+.den-aa-sub {
+  font: 500 11px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  margin: var(--space-1) 0 calc(-1 * var(--space-2));
+}
+.den-aa-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-1) var(--space-4);
+}
+.den-aa-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.den-aa-item:first-child {
+  border-top: 0;
+}
+.den-aa-item[hidden] {
+  display: none;
+}
+.den-aa-l {
+  min-width: 0;
+}
+.den-aa-l b {
+  display: block;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.den-aa-l small {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.den-aa-me-l {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  min-width: 0;
+}
+.den-aa-av {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  display: grid;
+  place-items: center;
+  font: 600 var(--fs-2xl) var(--sans);
+  object-fit: cover;
+}
+.den-aa-chip {
+  font: 11px var(--mono);
+  font-weight: 400;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 7px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.den-aa-chip.ok {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.den-aa-foot {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.den-aa-out {
+  margin: 0;
+  display: contents;
+}
+.den-aa .den-btn.ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--accent-text);
+}
+.den-aa .den-btn.ghost:not([aria-busy="true"]):hover {
+  background: var(--sunken);
+}
+.den-aa-none,
+.den-aa-card p {
+  margin: 0;
+  color: var(--muted);
+}
+.den-aa-empty,
+.den-aa-bad {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+.den-aa-empty b,
+.den-aa-bad b {
+  font-weight: 500;
+}
+.den-aa-bad {
+  border-color: var(--bad);
+}
+.den-aa-bad .den-btn {
+  margin-top: var(--space-2);
+}
+.den-aa-sw {
+  font: 11px var(--mono);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 9px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.den-aa-sw[aria-checked="true"] {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+/* A search hit jumped to: flashed once. */
+.den-aa-flash {
+  animation: den-aa-flash 1.2s var(--ease);
+}
+@keyframes den-aa-flash {
+  from {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-aa-flash {
+    animation: none;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+}
+
+/* The phone (the source: under 768 px): full width minus space-4, the rail a
+   strip at the top (search and a select of the sections, at most 45vh),
+   the pane the rest with space-4 around it; 44 px to touch. */
+@media (max-width: 767px) {
+  .den-aa-dlg {
+    width: calc(100vw - var(--space-4));
+    height: calc(100dvh - var(--space-4));
+  }
+  .den-aa-top {
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+    min-height: 48px;
+    border-bottom: 1px solid var(--border);
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+  }
+  .den-aa-title {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    font: 600 var(--fs-l) var(--sans);
+  }
+  .den-aa-x {
+    min-width: var(--tap);
+    min-height: var(--tap);
+  }
+  .den-aa-host {
+    grid-row: auto;
+  }
+  .den-aa {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .den-aa-rail {
+    max-height: 45vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-2);
+  }
+  .den-aa-find {
+    margin: 0;
+  }
+  .den-aa-search,
+  .den-aa-select {
+    min-height: var(--tap);
+    font-size: 16px;
+  }
+  .den-aa-find kbd {
+    display: none;
+  }
+  .den-aa-select {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: var(--radius-button);
+    padding: 0 var(--space-3);
+  }
+  .den-aa-grp,
+  .den-aa-row,
+  .den-aa-grow {
+    display: none;
+  }
+  .den-aa-cross {
+    border-top: 0;
+    padding: 0;
+    min-height: var(--tap);
+    display: flex;
+    align-items: center;
+  }
+  .den-aa-panes {
+    padding: var(--space-4);
+  }
+  .den-aa-item {
+    min-height: 56px;
+  }
+  .den-aa .den-btn,
+  .den-aa-sw {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+  }
+}

@@ -68,6 +68,11 @@ import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
 import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
+import type {
+  AccountArea,
+  AccountAreaOptions,
+  openAccountArea,
+} from "./account-area.js";
 import type { BulkBar, BulkBarOptions } from "./bulk-bar.js";
 
 /** Every call to the product goes through it; the kit names no URL. */
@@ -190,6 +195,11 @@ export declare function filterBar(
 ): FilterBar;
 /** A list's bulk bar, in the kit's language. */
 export declare function bulkBar(el: HTMLElement, opts: BulkBarOptions): BulkBar;
+/** Issue 310: the Account area, in the kit's language. */
+export declare const account: {
+  open: typeof openAccountArea;
+  mount: (el: HTMLElement, opts?: AccountAreaOptions) => AccountArea;
+};
 /** The page action menu on a drawn More ▾ button, in the kit's language. */
 export declare function pageMenu(
   btn: HTMLElement,
@@ -256,6 +266,7 @@ export interface DenUIKit {
   saveState: typeof saveState;
   filterBar: typeof filterBar;
   bulkBar: typeof bulkBar;
+  account: typeof account;
   buttonHtml: typeof buttonHtml;
   menuRowHtml: typeof menuRowHtml;
   pageMenuButtonHtml: typeof pageMenuButtonHtml;
