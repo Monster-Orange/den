@@ -20,6 +20,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 // A page load, then the dialog: the first warms the browser up.
 jest.setTimeout(30_000);
@@ -35,11 +36,7 @@ beforeAll(async () => {
     const pw = await import("playwright");
     const engine =
       process.env.DEN_HELPERS_BROWSER === "webkit" ? "webkit" : "chromium";
-    browser = process.env.DEN_PW_WS
-      ? await pw[engine].connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

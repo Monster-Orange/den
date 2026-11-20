@@ -26,6 +26,8 @@ import type { UpdateWait } from "./update-check.js";
 import {
   isUpdateAsk,
   securityUpdateNote,
+  backNoteHeldNote,
+  BACK_NOTE_HELD_SUBJECT,
   staleUpdateAsk,
   updateWaitNotes,
 } from "./update-check.js";
@@ -1126,6 +1128,8 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
+import { syncHeldBell } from "./held-bell.js";
+import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
   patchApprovals,
@@ -2753,6 +2757,7 @@ type ApprovalDeps = {
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
+  changed: () => void;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -3134,8 +3139,47 @@ function approvalDeps(): ApprovalDeps {
     // Issue 172: a write held for the person's Allow alerts them.
     held: (agent, project) =>
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
+    // Issue 142: a held write counts in the bell while it waits.
+    changed: syncHeldWrites,
   };
   return approvals;
+}
+/**
+ * Issue 142: the bell's held-write items made to match what waits now
+ * (held-bell.ts). Best effort: the queue and the Allow dialog have it.
+ */
+function syncHeldWrites(): void {
+  try {
+    syncHeldBell(
+      notificationDeps().store,
+      approvals ? approvals.queue.pending() : [],
+      {
+        projectOf: (a) =>
+          typeof a.args.project === "string"
+            ? a.args.project
+            : a.agent
+              ? (readAgentRecord(getStateDir(), a.agent)?.workspace ??
+                undefined)
+              : undefined,
+      },
+    );
+  } catch {
+    /* the bell is best effort */
+  }
+}
+/**
+ * Issue 142: at the start (a restart ended every request: their items go)
+ * and every few seconds while any wait (one that expired: its item goes).
+ */
+function startHeldWritesBell(): void {
+  let shown = true;
+  syncHeldWrites();
+  setInterval(() => {
+    const n = approvals ? approvals.queue.pending().length : 0;
+    if (!n && !shown) return;
+    syncHeldWrites();
+    shown = n > 0;
+  }, 5000).unref();
 }
 /** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
 export function approvalsSettings(raw: unknown): {
@@ -8443,6 +8487,8 @@ void CRASH_GATE.then(() =>
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
+    // Issue 142: a held write counts in the bell while it waits.
+    startHeldWritesBell();
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
     // web.owner_name_timeout_seconds: how long it waits.
@@ -8575,9 +8621,36 @@ async function serverBack(): Promise<void> {
       const ops = await import("../cli/agent-ops.js");
       const { webDeps } = await import("./agent-routes.js");
       const d = webDeps();
+      const agentName = serverAgentName(product().title);
       told = await tellBack(text, {
         state: () => ops.serverAgentInputState(d),
         type: (t) => ops.typeIntoAgent(d, SERVER_AGENT_ID, t),
+        // Issue 629: never into a dialog for its person; kept until answered.
+        dialog: () => ops.serverAgentDialogOpen(d),
+        held: () => {
+          serverLog(
+            `  Back from a restart: the note to ${agentName} waits for its person's dialog`,
+            "lifecycle",
+          );
+          try {
+            backNoteHeldNote(
+              notificationDeps().store,
+              product().title,
+              agentName,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
+        cleared: () => {
+          try {
+            notificationDeps().store.remove(
+              (x) => x.subject === BACK_NOTE_HELD_SUBJECT,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitMs: restartWaitSeconds() * 1000,
       });
     } catch (e) {

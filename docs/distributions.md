@@ -261,7 +261,15 @@ with "If you didn't ask an agent to do this, Deny." under it.
   token: its own), `GET /api/approvals/<id>` (the asking agent's own, the
   ticket holder's, or the person's) and
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
-  Every ask and decision is in the activity trail.
+  `POST /api/approvals/<id>/withdraw` (from 0.4.73) takes a request back
+  before anyone decides: only its asker may (the same agent token, or the
+  same person's bearer or session); anyone else gets 403, a decided
+  request 409, an unknown one 404. It reads `withdrawn` after, and nothing
+  runs. Every ask, decision and withdrawal is in the activity trail.
+- **A held write counts in the bell** (from 0.4.73): while it waits, it is
+  one item under Needs you, linked to the asking agent. It goes when the
+  request is allowed, denied, expired or withdrawn. Den's own "update to
+  X" ask has its one item.
 - **The server agent restarts its own Den** (`den_restart_server
 { reason }`, the held action `den_restart`). Den restarts in place on
   the version installed now, as Settings › Restart Den does; agents and

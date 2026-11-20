@@ -62,7 +62,10 @@ import {
   runningIntent,
   type CommandLineOf,
 } from "../../shared/agents/running-mode.js";
-import { trustPromptIn } from "../../shared/agents/trust-prompt.js";
+import {
+  promptOnScreen,
+  trustPromptIn,
+} from "../../shared/agents/trust-prompt.js";
 import {
   resolveMode,
   type EffectiveMode,
@@ -7457,19 +7460,39 @@ export function instructionBytes(
 }
 
 /**
+ * Whether `screen` ends with a dialog of `runtime`'s that only its person
+ * answers: a permission dialog, or its folder-trust question. Den never
+ * types into one: Enter would pick its first choice.
+ */
+export function personDialogOnScreen(runtime: string, screen: string): boolean {
+  const rt = getRuntime(runtime);
+  return (
+    promptOnScreen(screen, rt?.permissionPrompt) ||
+    promptOnScreen(screen, rt?.trustPrompt)
+  );
+}
+
+/**
  * Send an agent its first instruction once it is ready (AG-10.1): it has
  * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
  * waiting), or READY_MAX_MS passed. Typed into its session over the host's
  * write path (the same as a keystroke from the pane), never as an argument
  * or through a shell. False when the session ended first or there is no
- * host. Never throws.
+ * host, or its screen ends with a dialog for its person (never typed
+ * into; `onDialog` says so).
+ * Never throws.
  */
 export async function sendFirstInstruction(
   d: AgentsResolved,
   sessionId: string,
   runtime: string,
   text: string,
-  o: { quietMs?: number; maxMs?: number } = {},
+  o: {
+    quietMs?: number;
+    maxMs?: number;
+    /** Called when a dialog for its person held the text back. */
+    onDialog?: () => void;
+  } = {},
 ): Promise<boolean> {
   const quiet = o.quietMs ?? READY_QUIET_MS;
   const max = o.maxMs ?? READY_MAX_MS;
@@ -7491,6 +7514,12 @@ export async function sendFirstInstruction(
       } else if (said && Date.now() - changedAt >= quiet) break;
       if (Date.now() >= deadline) break;
       await new Promise((r) => setTimeout(r, READY_POLL_MS));
+    }
+    // A dialog waiting for its person: nothing typed. Its answer is
+    // theirs, and Enter would pick its first choice.
+    if (personDialogOnScreen(runtime, said)) {
+      o.onDialog?.();
+      return false;
     }
     const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
     const b = instructionBytes(text, said, soft);
@@ -7537,6 +7566,32 @@ export async function serverAgentInputState(
   return inputState(d, rec, new Set(), quietMs);
 }
 
+/**
+ * Whether the server agent's screen ends with a dialog for its person (a
+ * permission dialog, its trust question). False when it has no live
+ * session; true when Den can't read it (never typed into on a doubt).
+ */
+export async function serverAgentDialogOpen(
+  d: AgentsResolved,
+): Promise<boolean> {
+  const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
+  if (!rec) return false;
+  try {
+    const c = await d.connectExisting();
+    if (!c) return false;
+    try {
+      const s = sessionOf(await c.list(), rec);
+      if (!s || s.exited) return false;
+      const out = (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8");
+      return personDialogOnScreen(rec.runtime, out);
+    } finally {
+      c.close();
+    }
+  } catch {
+    return true;
+  }
+}
+
 async function inputState(
   d: AgentsResolved,
   rec: AgentRecord,
@@ -7550,13 +7605,22 @@ async function inputState(
     const c = await d.connectExisting();
     if (!c) return "stopped";
     let live = false;
+    let dialog = false;
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
+      // A dialog waiting for the person: not at its prompt, whatever its
+      // transcript or quiet output says.
+      if (live && s)
+        dialog = personDialogOnScreen(
+          rec.runtime,
+          (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8"),
+        );
     } finally {
       c.close();
     }
     if (!live) return "stopped";
+    if (dialog) return "busy";
     if (waiting.has(id)) return "busy";
     const busy = await agentBusy(d, rec);
     if (busy !== null) return busy ? "busy" : "idle";
@@ -7641,7 +7705,8 @@ export async function answerServerAgentTrust(
 
 /**
  * 0.4.40: type a Hub comment into agent `id`'s session, once its output is
- * quiet (as a first instruction is, AG-10.1). False when it isn't running.
+ * quiet (as a first instruction is, AG-10.1). False when it isn't running,
+ * or its screen ends with a dialog for its person (never typed into).
  */
 export async function typeIntoAgent(
   d: AgentsResolved,

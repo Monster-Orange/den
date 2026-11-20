@@ -74,6 +74,12 @@ afterAll(async () => {
         `beforeAll(async () => { b = await pw.chromium.connect(ws); });`,
       ),
     ).toEqual(["it opens a browser and no afterAll calls closeBrowserSuite"]);
+    // A browser from the helper (tests/unit/helpers/browser.ts) too.
+    expect(
+      bareTeardowns(
+        `beforeAll(async () => { b = await launchBrowser(chromium); });`,
+      ),
+    ).toEqual(["it opens a browser and no afterAll calls closeBrowserSuite"]);
   });
 
   it("passes a suite that closes through the helper", () => {

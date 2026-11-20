@@ -29,6 +29,7 @@ import * as yaml from "yaml";
 import type { Browser, Page } from "playwright";
 import { spawnServer, stopServer } from "../../child-servers.js";
 import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = process.cwd();
 const PORT = 23876 + Math.floor(Math.random() * 1000);
@@ -66,10 +67,21 @@ function snapshot(): Record<string, string> {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) walk(abs);
-      else if (e.isFile())
+      else if (e.isFile()) {
+        // The running server writes its own state atomically (a .tmp file
+        // renamed into place), so a file listed here can be gone a moment
+        // later: it was never there to compare.
+        let body: Buffer;
+        try {
+          body = fs.readFileSync(abs);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw err;
+        }
         out[path.relative(tmp, abs)] = createHash("sha256")
-          .update(fs.readFileSync(abs))
+          .update(body)
           .digest("hex");
+      }
     }
   };
   walk(tmp);
@@ -93,7 +105,7 @@ const changedSince = (before: Record<string, string>) => {
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

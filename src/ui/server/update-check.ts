@@ -188,6 +188,28 @@ export function securityUpdateNote(
   });
 }
 
+/** Issue 629: the bell item while Den's note waits on the person's dialog. */
+export const BACK_NOTE_HELD_SUBJECT = "record:den-back-note-held";
+
+/**
+ * Issue 629: Den is back, and its note to `agent` waits: a dialog for the
+ * person is open in its terminal, and Den never types into one.
+ */
+export function backNoteHeldNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: BACK_NOTE_HELD_SUBJECT,
+    scope: "workspace/den-server",
+    text: `${title} is back; its note to ${agent} waits until you answer ${agent} in its terminal`,
+    msg: { key: "bell.m.backNoteHeld", vars: { agent } },
+    link: "/server-agent",
+  });
+}
+
 /** Issue 562 review: the bell line after a restart that stopped waiting. */
 export const RESTARTED_WORKING_SUBJECT = "record:den-update-restarted-working";
 
@@ -397,8 +419,7 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   let turnRead = false;
   const waitWhy = async (): Promise<UpdateWait | null> => {
     turnRead = false;
-    if (!d.waitWhy)
-      return (await d.idle().catch(() => false)) ? null : "busy";
+    if (!d.waitWhy) return (await d.idle().catch(() => false)) ? null : "busy";
     try {
       const w = await d.waitWhy();
       turnRead = w === "busy";

@@ -4,6 +4,26 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.75] - 2026-11-19
+
+A security release. Upgrading is recommended.
+
+### Security
+
+- Den no longer types into an agent while the agent shows a dialog for its person (a permission dialog, or its folder-trust question). This covers the note after a restart, Hub comments, the tools note, a lead's question, messages from the page or Hub, and first instructions. The note after a restart is kept until the dialog is answered, and the bell says it is waiting. A message sent while such a dialog is open is refused with a clear reason (409 `dialog_open`). Versions 0.4.72 to 0.4.74 could, after a security self-update, answer the server agent's open permission prompt themselves; see the advisory. Until you upgrade: `server_agent.self_update: ask`, or `server_agent.security_update_skips_questions: false`. (issue 629)
+
+### Fixed
+
+- A held write waiting on your Allow counts in the bell, as one item under Needs you. It goes when the request is allowed, denied, expired or withdrawn. New: `POST /api/approvals/<id>/withdraw` lets the asker take back its own held write before anyone decides; the activity trail records it as withdrawn. (issue 142)
+
+### Changed
+
+- Every dev tag runs a dry run of the release: the release's own checks, tests and pack with the versions it will carry, and nothing published. (issue 615)
+
+### Checks
+
+- The live checks for the rail's Terminal (issue 448) and the Report form's visibility pill (issue 415) prove their en, es and ja words and the remaining cases. A new live check proves that Den types nothing into an agent while its dialog is open (issue 629).
+
 ## [0.4.74] - 2026-11-19
 
 ### Security

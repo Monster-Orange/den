@@ -270,6 +270,24 @@ trusted publishing (no token anywhere):
   such tag of the version is in the release commit's history
   (`scripts/release-ancestry.sh`): a candidate that passed its gate but
   never merged stops the release.
+- Every pushed dev tag starts the release's dry run
+  (`.github/workflows/release-dry-run.yml`, issue 615). It applies the
+  release commit's edits to the runner's copy only
+  (`scripts/release-dry-run.mjs`): Den's version without `-dev.N` in
+  `package.json`, `package-lock.json` and
+  `examples/distribution/package.json`, the kit's version, and the
+  changelog entry's date. Then it runs the release's own checks, tests and
+  pack (`release-gates.yml`, which `release.yml` calls too). It never tags,
+  publishes or makes a GitHub release, and has no token. Its result is a
+  check on the candidate's commit, beside the bed run: a failure there
+  would fail the release.
+- The kit's version (`packages/den-ui`) is decided in the candidate,
+  never in the release commit. When a candidate changes the kit and npm
+  already has its version, bump the kit's version (its `package.json` and
+  its entry in `package-lock.json`) in the candidate before the dev tag.
+  The dry run fails and says so otherwise.
+- The release commit changes only Den's version and the changelog entry's
+  date: everything else was in the candidate the dry run checked.
 - Bump the version in `package.json`, `package-lock.json` and
   `CHANGELOG.md` together; the changelog entry lists the **Migrations** a
   distribution must make.
