@@ -17,7 +17,10 @@
 // showing the dialog answers 409 dialog_open and types nothing.
 //
 // Clauses 2 (a Hub comment) and 3 (the tools note): the bed has no Hub and
-// can't change a tool list, so both skip.
+// can't change a tool list, so both skip. With a Hub, clause 2's stub
+// answers its dialog as a real agent does: its screen clears, then its
+// PostToolUse hook (the waiting mark Den holds the comment on clears only
+// on a hook).
 export const issue = 629;
 export const clauses = [
   "after a restart, Den's note to its agent is not typed while the agent shows a dialog for its person; the bell says the note waits, the agent's waiting row stays, and the note is typed once the dialog is answered",
@@ -251,8 +254,13 @@ async function hubHeld(ctx, s) {
   await ctx.sleep(HUB_QUIET_MS);
   r.typedWhileOpen = await typedOf(h, since);
   r.stateWhileOpen = (await ctx.hub.delivery?.(r.id).catch(() => null)) ?? null;
+  // The stub answers its dialog as a real agent does: its screen goes
+  // back to its prompt, then the allowed tool runs and its PostToolUse
+  // hook says it went on ("resumed"). Den's waiting mark is set by a hook
+  // and clears only on one, never on the screen.
   const answered = Date.now();
   h.print(PROMPT);
+  await h.hook("PostToolUse", { tool_name: "Bash" });
   r.toldMs = await ctx.until(
     async () => ((await typedOf(h, answered)) ?? "").includes(token),
     60000,
