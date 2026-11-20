@@ -2,14 +2,15 @@
 // busy for typing; restarts still wait for, or ask about, the job.
 //
 // A stub in the bed's workspace linked to Hub's e2e project ends its turn,
-// then runs a command in its own session that keeps a background shell
-// alive under it, as Claude Code's background shells look to Den: a shell
-// that sources a file under shell-snapshots/, then sleeps.
+// then gets the stub's `/bg <secs>` verb (typed in as a message from the
+// page): it forks a detached shell under the stub's own process that
+// sources a file under shell-snapshots/ and sleeps, as Claude Code's
+// background shells look to Den.
 //
 // First, whether Den sees that job at all: a Restart after its turn, as
 // the Agents page asks it, must answer 409 job_running with the job's
-// minutes, and nothing restarts (clause 3). If it doesn't (the stub's
-// command returned at once, or the job isn't under its session), every
+// minutes, and nothing restarts (clause 3). If it doesn't (a bed whose
+// stub has no /bg verb, or a job outside its session), every
 // clause skips (needs-background-job): the restart then goes ahead on
 // this check's own stub, and teardown removes it.
 //
@@ -76,6 +77,19 @@ function sessionOf(ctx, id) {
   return parse(ctx.readBed(`state:agents/${id}.json`))?.session?.id ?? null;
 }
 
+/** A message from the page (POST …/say): { status, code }. */
+async function say(ctx, id, text) {
+  const r = await ctx.fetch(
+    `/api/workspaces/${encodeURIComponent(WS)}/agents/${encodeURIComponent(id)}/say`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    },
+  );
+  return { status: r?.status ?? null, code: parse(r?.body)?.code ?? null };
+}
+
 /** Restart after its turn, as the page asks it: { status, code, job }. */
 async function restartProbe(ctx, id) {
   const r = await ctx.fetch(
@@ -136,7 +150,7 @@ async function post(ctx, s, token, text) {
 
 export async function setup(ctx) {
   const id = fresh(NAME);
-  return { id, dir: `/tmp/den-${id}`, hub: !!ctx.hub };
+  return { id, hub: !!ctx.hub };
 }
 
 export async function run(ctx, s) {
@@ -151,13 +165,15 @@ export async function run(ctx, s) {
   r.transcript = !!ctx.transcriptPath(s.id);
   await endTurn(ctx, a, s.id, "Watching the build log in the background.");
 
-  // The background shell: under its session, as Claude Code's look.
-  const snap = `${s.dir}/shell-snapshots/snapshot-sh-732.sh`;
-  await a.sh(`mkdir -p '${s.dir}/shell-snapshots' && : > '${snap}'`, 30000);
-  void Promise.resolve(
-    a.sh(`/bin/sh -c ". '${snap}'; sleep ${JOB_S}; true"`, (JOB_S + 20) * 1000),
-  ).catch(() => {});
-  await ctx.sleep(3000);
+  // The background shell: the stub's `/bg <secs>` verb, typed in as a
+  // message from the page, forks a detached shell of its own that sources
+  // a file under shell-snapshots/ and sleeps, as Claude Code's background
+  // shells look to Den. Its turn ends at once.
+  const bg = await say(ctx, s.id, `/bg ${JOB_S} g732`);
+  r.bg = { status: bg.status, code: bg.code };
+  await ctx.sleep(2000);
+  await endTurn(ctx, a, s.id, "Started the watcher in the background.");
+  await ctx.sleep(2000);
 
   // Clause 3, and whether Den sees the job at all.
   r.session = sessionOf(ctx, s.id);
@@ -236,11 +252,8 @@ export async function teardown(ctx, s) {
   try {
     const a = ctx.agent(s.id, { workspace: WS });
     if (a.state()) {
-      try {
-        await a.sh(`pkill -f '${s.dir}/' ; rm -rf '${s.dir}'`, 30000);
-      } catch {
-        /* the stub may have gone */
-      }
+      // The stub's exit ends its background shells too; /bg-stop first.
+      await say(ctx, s.id, "/bg-stop").catch(() => null);
       a.remove();
     }
   } catch {
@@ -267,7 +280,7 @@ export function expect(res) {
   if (!r.seen)
     return skipAll(
       "needs-background-job",
-      `Den saw no job under the stub's session (restart after its turn answered ${JSON.stringify(r.probe)}): the stub's command didn't keep a background shell under it`,
+      `Den saw no job under the stub's session (/bg answered ${JSON.stringify(r.bg ?? null)}; restart after its turn answered ${JSON.stringify(r.probe)}): the bed's stub kept no background shell under it`,
     );
   const c3 =
     r.probe.status === 409 &&
