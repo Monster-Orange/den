@@ -259,6 +259,13 @@ async function hubHeld(ctx, s) {
   );
   const after = (await typedOf(h, answered)) ?? "";
   r.typedTimes = after.split(token).length - 1;
+  // Den acks once it has typed it: Hub then says delivered (when it can say).
+  if (r.stateWhileOpen)
+    await ctx.until(
+      async () =>
+        (await ctx.hub.delivery(r.id).catch(() => null))?.state === "delivered",
+      15000,
+    );
   r.stateAfter = (await ctx.hub.delivery?.(r.id).catch(() => null)) ?? null;
   return r;
 }
@@ -325,7 +332,10 @@ function hubRow(h) {
     !!h.id &&
     h.typedWhileOpen === "" &&
     h.toldMs != null &&
-    h.typedTimes === 1;
+    h.typedTimes === 1 &&
+    // Hub's own view, when the hook can read it: held, then delivered.
+    (h.stateWhileOpen == null || h.stateWhileOpen.state === "held") &&
+    (h.stateWhileOpen == null || h.stateAfter?.state === "delivered");
   const detail = !h.running
     ? `the ${HUB} stub did not run in ${HUB_WS}`
     : h.postThrew

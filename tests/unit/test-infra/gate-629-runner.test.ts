@@ -143,7 +143,10 @@ function runGate(
           hubQueue.push({ agent: a, text, at: clock, done: false });
           return { id: "c" + hubQueue.length };
         },
-        async delivery() { return null; },
+        async delivery(id) {
+          const c = hubQueue[Number(String(id).slice(1)) - 1];
+          return c ? { state: c.done ? "delivered" : "held", ackedAt: null } : null;
+        },
       };
     const out = await runLikeBed("629.mjs", g, ctx);
     console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, serverAfter: states.server, stops }));`;
