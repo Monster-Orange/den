@@ -577,6 +577,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/workspaces/:ws/agents/:id/defer",
+    "issue 765 Put off rotation until a time ({ until }: ISO date-time, or null to clear); a person's only (an agent asks with agent_rotation_defer)",
+  ),
+  M(
+    ["POST"],
     "/api/workspaces/:ws/agents/:id/settings",
     "D59 an agent's own settings (resumeOnRestart: on, off, or null for its persona's); a person's only",
   ),
@@ -1047,6 +1052,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/file",
     "/api/workspaces/:ws/agents/:id/persona",
     "/api/workspaces/:ws/agents/:id/keep",
+    "/api/workspaces/:ws/agents/:id/defer",
     "/api/workspaces/:ws/agents/:id/settings",
     "/api/workspaces/:ws/agents/:id/mode",
     "/api/workspaces/:ws/agents/:id/handoff",

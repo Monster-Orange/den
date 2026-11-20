@@ -117,6 +117,8 @@ describe("a session that rotated after 3 compactions", () => {
       conversation: token,
       compactions: 0,
       after: 3,
+      // Issue 765: the session Den launched; a fork's is not counted.
+      pinned: true,
     });
     compact(r, "be-dev", 2);
     const [row] = await listRows(r);
@@ -260,6 +262,7 @@ describe("a session that rotated after 3 compactions", () => {
       conversation: t2,
       compactions: 0,
       after: 3,
+      pinned: true,
     });
     const [after] = await listRows(r);
     expect(after.state).toBe("running");

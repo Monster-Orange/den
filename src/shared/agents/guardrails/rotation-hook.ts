@@ -20,12 +20,25 @@
  *     which Claude Code adds to the context: write handoff.md, then end
  *     the turn.
  *
+ *   - PreToolUse (Write, Edit, MultiEdit), issue 765: a helper
+ *     sub-agent (a fork: rotation.ts forkOf) that writes handoff.md is
+ *     refused (`permissionDecision` "deny"), and told to write its own
+ *     handoff to handoffs/<its session>.md instead. The agent's own session
+ *     writes it as usual.
+ *
+ * Issue 765: compactions and notices are the agent's own session's only:
+ * a fork's PreCompact and SessionStart count nothing and print nothing.
+ *
  * The parser is tolerant: a field it doesn't find is left out, never an
  * error. Any error lets Claude Code carry on (exit 0, nothing printed):
  * the hook never blocks a compaction.
  */
+import * as path from "path";
 import {
   dueFor,
+  forkHandoffFile,
+  forkOf,
+  handoffFile,
   noteCompaction,
   notePendingCompaction,
   readHandoff,
@@ -68,6 +81,11 @@ export function rotationHookOutput(
   const event = i.hook_event_name;
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
+  // Issue 765: a fork's events are not the agent's.
+  const fork = forkOf(stored, i);
+  if (event === "PreToolUse" || (event === undefined && "tool_input" in i))
+    return fork === undefined ? "" : forkHandoffGuard(i, args.files, fork);
+  if (fork !== undefined) return "";
   if (event === "PreCompact" || (event === undefined && "trigger" in i)) {
     // Not counted here: the compaction may not happen.
     const prev = readRotation(args.files);
@@ -109,6 +127,33 @@ export function rotationHookOutput(
     });
   }
   return "";
+}
+
+/**
+ * Issue 765: a fork's write to the agent's handoff.md, refused, with where
+ * its own goes; "" for any other file.
+ */
+function forkHandoffGuard(
+  i: Record<string, unknown>,
+  files: string,
+  fork: string,
+): string {
+  const ti = i.tool_input;
+  if (!ti || typeof ti !== "object") return "";
+  const file = (ti as Record<string, unknown>).file_path;
+  if (typeof file !== "string" || !file) return "";
+  const cwd = typeof i.cwd === "string" ? i.cwd : files;
+  if (path.resolve(cwd, file) !== path.resolve(handoffFile(files))) return "";
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: [
+        `Den: ${handoffFile(files)} is the agent's own handoff; a helper sub-agent never writes it.`,
+        `Write your handoff to ${forkHandoffFile(files, fork)} instead.`,
+      ].join("\n"),
+    },
+  });
 }
 
 async function main(): Promise<void> {

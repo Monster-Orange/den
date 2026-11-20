@@ -1315,6 +1315,18 @@
     "ag.rc.keep": "この会話を続ける",
     "ag.rc.keepName": "{id} の会話を続ける",
     "ag.rc.never": "このエージェントには今後たずねない",
+    "ag.rc.defer": "交代を延期…",
+    "ag.rc.deferName": "{id} の交代を指定の時刻まで延期",
+    "ag.rc.deferred":
+      "交代は {at} まで延期中です。その後は通常のルールに戻ります。",
+    "ag.df.title": "{id} の交代を延期",
+    "ag.df.until": "延期する時刻",
+    "ag.df.help":
+      "それまでは、圧縮やプルリクエストのマージがあっても交代しません。その時刻になると通常のルールに戻ります。",
+    "ag.df.go": "延期",
+    "ag.df.clear": "延期をやめる",
+    "ag.df.cancel": "キャンセル",
+    "ag.df.past": "まだ来ていない時刻を選んでください。",
     "ag.rc.settings": "設定",
     "ag.rc.from": "圧縮 {n} 回で交代（{src}）。時期が来たら: {mode}（{src2}）",
     "ag.rc.fellBackBad":
@@ -1577,6 +1589,11 @@
       "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
     "ap.det.embed_key_revoke.held":
       "送信済みでエージェントのターンを待っているメッセージは、そのまま入力されます。",
+    "ap.do.agent_rotation_defer": "{agent} の交代を {until} まで延期",
+    "ap.det.agent_rotation_defer.keep":
+      "それまでは、何度圧縮してもプルリクエストがマージされても会話を続けます。",
+    "ap.det.agent_rotation_defer.then":
+      "その時刻になると、通常の交代ルールに戻ります。",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
@@ -2226,6 +2243,9 @@
     "busy.ordW": "{id} を移動しています…",
     "busy.ordS": "完了: {id} を移動しました。",
     "busy.ordF": "{id} を移動できませんでした。",
+    "busy.dfW": "{id} の交代を保存しています…",
+    "busy.dfS": "完了: {id} の交代を保存しました。",
+    "busy.dfF": "{id} の交代を変更できませんでした。",
     "busy.delProjW": "{name} を削除しています…",
     "busy.delProjS": "{name} を削除しました。",
     "busy.delProjF": "{name} を削除できませんでした。",

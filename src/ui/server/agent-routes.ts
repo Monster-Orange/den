@@ -177,6 +177,8 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  deferAgentRotation,
+  parseDeferTime,
   setAgentPermission,
   setAgentResumeOnRestart,
   clearAgentHelpers,
@@ -268,7 +270,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|file|say|order))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|defer|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|file|say|order))?$/;
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
@@ -797,6 +799,7 @@ export async function handleAgentRoutes(
     | "paths"
     | "persona"
     | "keep"
+    | "defer"
     | "settings"
     | "mode"
     | "handoff"
@@ -978,6 +981,13 @@ export async function handleAgentRoutes(
         "only a person can keep an agent's conversation past its rotation",
         { status: 403 },
       );
+    // Issue 765: an agent could keep itself past its rotation (it asks
+    // with the held write agent_rotation_defer).
+    if (verb === "defer" && (agent || actor))
+      throw new AgentError(
+        "only a person can put an agent's rotation off (an agent asks with agent_rotation_defer)",
+        { status: 403 },
+      );
     // D59: an agent could keep itself running across every restart.
     if (verb === "settings" && (agent || actor))
       throw new AgentError("only a person can change an agent's settings", {
@@ -1140,6 +1150,34 @@ export async function handleAgentRoutes(
       what = `keep ${rec.id}'s conversation in ${ws}${body.never ? " (never rotate)" : ""}`;
       audit(what);
       sendJson(res, { ok: true, agent: rec.id, never: body.never === true });
+    } else if (verb === "defer") {
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "until")
+          throw new AgentError(`${k}: unknown field (defer takes until)`, {
+            usage: true,
+          });
+      const raw = body.until;
+      if (raw !== null && typeof raw !== "string")
+        throw new AgentError(
+          "until must be an ISO date-time, or null to clear it",
+          { usage: true },
+        );
+      const r = deferAgentRotation(
+        d,
+        id!,
+        ws,
+        raw === null ? null : parseDeferTime(raw),
+      );
+      what = r.until
+        ? `put off ${r.rec.id}'s rotation in ${ws} until ${r.until}`
+        : `no longer put off ${r.rec.id}'s rotation in ${ws}`;
+      audit(what);
+      sendJson(res, {
+        ok: true,
+        agent: r.rec.id,
+        ...(r.until ? { until: r.until } : { until: null }),
+      });
     } else if (verb === "settings") {
       const body = await jsonBody(req);
       for (const k of Object.keys(body))

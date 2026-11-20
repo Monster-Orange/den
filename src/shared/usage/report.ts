@@ -128,7 +128,9 @@ async function mergeVerified(
 ): Promise<string | undefined> {
   if (!prState) return undefined;
   const seen = new Set<string>();
-  for (const c of stats.flatMap((s) => s.prMerges)) {
+  // Issue 765: the agent's own merges only; a helper sub-agent's (a fork's
+  // lane) never rotates it.
+  for (const c of stats.filter((s) => !s.subagent).flatMap((s) => s.prMerges)) {
     const ref = c.ref || outcome.prOpened || "";
     const key = `${c.repo ?? ""} ${ref}`;
     if (seen.has(key)) continue;

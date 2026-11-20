@@ -139,6 +139,33 @@ describe("usage checks the claim with gh", () => {
     expect(asked).toEqual(["https://github.com/acme/notes/pull/101"]);
   });
 
+  it("issue 765: a pull request a helper sub-agent (fork) merged is not the agent's", async () => {
+    const f = fixture();
+    // Agent 2's fork merges its own lane's PR, in its subagents/ transcript.
+    fs.writeFileSync(
+      path.join(
+        f.projects,
+        "-work-north",
+        "00000000-0000-4000-8000-000000000002",
+        "subagents",
+        "agent-fork.jsonl",
+      ),
+      fs.readFileSync(transcriptWith("gh pr merge 55 --squash"), "utf-8"),
+    );
+    const asked: string[] = [];
+    const rows = await agentUsage(listRecords(f.stateDir), {
+      env: f.env,
+      prState: async (ref) => {
+        asked.push(ref);
+        return "MERGED";
+      },
+    });
+    expect(
+      rows.find((r) => r.agent === "agent-2")!.outcome!.prMerged,
+    ).toBeUndefined();
+    expect(asked).not.toContain("55");
+  });
+
   it("OPEN, an error, or no check at all: not marked", async () => {
     expect((await agent1(async () => "OPEN")).prMerged).toBeUndefined();
     expect(

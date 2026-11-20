@@ -157,6 +157,9 @@ Held (each waits for the person's Allow):
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
+- `agent_rotation_defer`: put an agent's session rotation off until a time,
+  say while its helper sub-agents still run. Only the person's own Allow
+  runs it; at that time the normal rule applies again.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.

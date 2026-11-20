@@ -1269,6 +1269,7 @@ import {
   checkAgentCreate,
   checkAgentFolder,
   checkAgentMode,
+  checkRotationDefer,
   checkPersonaCreate,
   checkPersonaUpdate,
   checkProjectMode,
@@ -1281,6 +1282,7 @@ import {
   createAgent,
   runAgentFolder,
   runAgentMode,
+  runRotationDefer,
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
@@ -3306,6 +3308,11 @@ function approvalDeps(): ApprovalDeps {
           apply: () =>
             import("./agent-routes.js").then((m) => m.applyModesNow()),
         }),
+    },
+    // Issue 765: put an agent's rotation off until a time.
+    rotationDefer: {
+      check: (a, who) => checkRotationDefer(agentWebDeps(), a, who),
+      run: (a) => runRotationDefer(agentWebDeps(), a),
     },
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),

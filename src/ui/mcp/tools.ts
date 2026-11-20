@@ -481,7 +481,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_rotation_defer, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2353,6 +2353,50 @@ const APPROVAL_TOOLS: DenTool[] = [
       const agent = needArg("agent_mode", a, "agent", "the agent's id");
       const project = ctx.scope ? ctx.scope.workspace : str(a.project);
       return askPerson("agent_mode", "agent_mode", { agent, project }, a, ctx);
+    },
+  },
+  {
+    name: "agent_rotation_defer",
+    title: "Put off an agent's rotation until a time",
+    description:
+      "Issue 765: put off an agent's rotation (`agent`, its id) until `until` (an ISO 8601 date-time ahead, or +2h, +90m, +1d), say while its helper sub-agents still run. Until then its compactions and merged pull requests don't make it rotate; at that time the normal rule applies again. Always the person's own Allow. A project's agent asks for its own project's agents; Den's own agent for any." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      until: z
+        .string()
+        .describe(
+          "When the normal rule applies again: an ISO date-time, or +2h",
+        ),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg(
+        "agent_rotation_defer",
+        a,
+        "agent",
+        "the agent's id",
+      );
+      const until = needArg(
+        "agent_rotation_defer",
+        a,
+        "until",
+        "an ISO date-time ahead, or +2h",
+      );
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_rotation_defer",
+        "agent_rotation_defer",
+        { agent, project, until },
+        a,
+        ctx,
+      );
     },
   },
   {

@@ -23,7 +23,8 @@
  * flagged as bare IDs.
  *
  * Session rotation (den#4): run with `--files <agent files dir> --after
- * <n>`, while a rotation is due (rotation.ts) and handoff.md is missing or
+ * <n>`, in the agent's own session (issue 765: never a fork's), while a
+ * rotation is due (rotation.ts) and handoff.md is missing or
  * fails the handoff check, it blocks once with what to write. Once the
  * handoff passes, the turn ends as usual.
  *
@@ -35,6 +36,7 @@
 import { bareIds, checkHandback, looksLikeHandback } from "../handback.js";
 import {
   dueFor,
+  forkOf,
   readHandoff,
   readRotation,
   rotationInstruction,
@@ -49,6 +51,8 @@ function rotationBlock(
   args: RotationHookArgs,
 ): string {
   const s = readRotation(args.files);
+  // Issue 765: a fork's Stop is never asked for the agent's handoff.
+  if (forkOf(s, input) !== undefined) return "";
   const conversation =
     typeof input.session_id === "string" ? input.session_id : undefined;
   const due = dueFor(s, conversation);

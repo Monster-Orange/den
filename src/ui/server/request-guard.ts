@@ -925,6 +925,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/name",
   "/api/workspaces/:ws/agents/:id/remove",
   "/api/workspaces/:ws/agents/:id/keep",
+  // Issue 765: an agent could keep itself past its rotation (it asks with
+  // agent_rotation_defer).
+  "/api/workspaces/:ws/agents/:id/defer",
   "/api/workspaces/:ws/agents/:id/settings",
   // Issue 199: what an agent may do without asking (agent_mode asks).
   "/api/workspaces/:ws/agents/:id/mode",

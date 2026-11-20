@@ -111,6 +111,8 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  deferAgentRotation,
+  parseDeferTime,
   setAgentResumeOnRestart,
   askForHandoff,
   rotationSettings,
@@ -213,6 +215,7 @@ export const AGENTS_HELP = {
     "    newest kept one), or <file> (a path with a / or ending .md)",
     "{cli} agents rotate [--agent|--persona|--workspace|--service <x>] [-w <ws>] <key> <value>",
     "{cli} agents rotate [scope] --unset <key>   ·   {cli} agents rotate   ·   {cli} agents rotate <id> --show",
+    "{cli} agents rotate <id> --defer <+2h|+90m|+1d|ISO time|none>   (put off its rotation until then)",
     "    rotation settings: after_compactions <n>|never (default 3), on_due",
     "    auto|ask|off (default auto: Den asks for the handoff at idle and",
     "    relaunches by itself), on_pr_merged true|false. No scope: this install.",
@@ -1027,10 +1030,42 @@ const ROTATE_SCOPE_FLAGS: Record<string, OverrideScope> = {
  * `[--agent|--persona|--workspace|--service <x>] [-w <ws>] <key> <value>`
  * sets one (no scope flag: this install's), `--unset` clears it. `--persona
  * <p> -w <ws>`: the persona in that workspace. `agents rotate <id> --show`:
- * that agent's effective values and where each comes from.
+ * that agent's effective values and where each comes from. Issue 765:
+ * `agents rotate <id> --defer <time>`: put its rotation off until then.
  */
 async function rotate(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents rotate";
+  const deferAt = args.indexOf("--defer");
+  if (deferAt >= 0) {
+    // Issue 765: put an agent's rotation off until a time. A person's; an
+    // agent asks with the held write agent_rotation_defer.
+    if (isAgentTokenEnv(d.env))
+      throw new AgentError(
+        `${where}: only a person can put a rotation off (this is an agent: ask with agent_rotation_defer, for the person's Allow)`,
+      );
+    const raw = args[deferAt + 1];
+    if (raw === undefined || raw.startsWith("--"))
+      throw new UsageError(
+        `${where} <id> --defer <+2h|+90m|+1d|ISO date-time|none>`,
+      );
+    const { id, ws } = idAndWorkspace(
+      where,
+      args.filter((_, i) => i !== deferAt && i !== deferAt + 1),
+    );
+    let until: Date | null;
+    try {
+      until = parseDeferTime(raw);
+    } catch (e) {
+      throw new UsageError(`${where}: ${(e as Error).message}`);
+    }
+    const r = deferAgentRotation(d, id, ws, until);
+    d.out(
+      r.until
+        ? `${r.rec.id}'s rotation is put off until ${localDateTime(r.until)}; then the normal rule applies again`
+        : `${r.rec.id}'s rotation is no longer put off`,
+    );
+    return 0;
+  }
   if (args.includes("--show")) {
     const { id, ws } = idAndWorkspace(
       where,

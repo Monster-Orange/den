@@ -789,3 +789,35 @@ describe("issue 647: hub_link", () => {
     expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
   });
 });
+
+describe("issue 765: agent_rotation_defer", () => {
+  it("asks to put an agent's rotation off until a time; a project's agent's ask names its project", async () => {
+    const until = "2026-11-21T08:00:00.000Z";
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, agent: "ana", until },
+    }));
+    const r = await callTool(
+      "agent_rotation_defer",
+      { agent: "ana", until },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "agent_rotation_defer",
+      args: { agent: "ana", until },
+    });
+    const n = calls.length;
+    await callTool(
+      "agent_rotation_defer",
+      { agent: "ana", until },
+      ctx(api, true),
+    );
+    expect(
+      calls.slice(n).find((c) => c.path === "/api/approvals")?.body,
+    ).toMatchObject({ args: { agent: "ana", project: "north", until } });
+    const none = await callTool("agent_rotation_defer", { until }, ctx(api));
+    expect(none.isError).toBe(true);
+  });
+});

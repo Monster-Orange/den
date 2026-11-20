@@ -13,7 +13,8 @@
  * start-agent, restart-agent, agent-mode, fresh-start, report-preview,
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
- * send-message, allow-web-app, ask-allow, agent-order, delete-project,
+ * send-message, allow-web-app, ask-allow, agent-order, rotation-defer,
+ * delete-project,
  * remove-service, remove-mcp, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
@@ -47,6 +48,16 @@ export const DEN_ACTIONS = {
       working: "busy.ordW",
       success: "busy.ordS",
       failure: "busy.ordF",
+    },
+  },
+  // Issue 765: Put off rotation until a time (or stop putting it off).
+  "rotation-defer": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.dfW",
+      success: "busy.dfS",
+      failure: "busy.dfF",
     },
   },
   // Issue 133: the Projects and Services pages' confirm actions.
