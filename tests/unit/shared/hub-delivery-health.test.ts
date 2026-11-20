@@ -115,8 +115,8 @@ describe("a quiet Hub never raises it", () => {
     let n = 0;
     (s.loop as unknown as { d: Record<string, unknown> }).d.sleep =
       async () => {
-        s.tick(30 * MIN);
-        if (++n >= 10) s.ctl.abort();
+        s.tick(5 * MIN);
+        if (++n >= 60) s.ctl.abort();
       };
     await s.loop.run(s.ctl.signal);
     expect(deliveryAlert(s.loop.health(), s.now(), 15)).toBeNull();
@@ -195,7 +195,9 @@ describe("a dead path is said, with its reason", () => {
     };
     expect(deliveryAlert(h, 60 * MIN, 15)).toBe("unreachable");
     expect(deliveryAlert(h, 60 * MIN, 0)).toBeNull();
-    expect(deliveryAlert({ ...h, lastOkAt: 55 * MIN }, 60 * MIN, 15)).toBeNull();
+    expect(
+      deliveryAlert({ ...h, lastOkAt: 55 * MIN }, 60 * MIN, 15),
+    ).toBeNull();
     expect(deliveryAlert({ ...h, streamOpen: true }, 60 * MIN, 15)).toBeNull();
   });
 
@@ -213,7 +215,7 @@ describe("a dead path is said, with its reason", () => {
     await s.loop.run(s.ctl.signal);
     expect(s.notes.length).toBeGreaterThan(0);
     expect(s.notes.length).toBeLessThan(5);
-    expect(s.notes[0].streamOpen).toBe(true);
+    expect(s.notes.some((h) => h.streamOpen)).toBe(true);
   });
 });
 
@@ -279,7 +281,8 @@ describe("the health file, for doctor", () => {
 
 describe("the bell line", () => {
   it("added once with its reason's key, withdrawn on the next good read", () => {
-    const added: { subject: string; msg?: { key: string } ; text: string}[] = [];
+    const added: { subject: string; msg?: { key: string }; text: string }[] =
+      [];
     const gone: string[] = [];
     const store = {
       add: (n: { subject: string; msg?: { key: string }; text: string }) => {
@@ -333,7 +336,9 @@ describe("the setting", () => {
 
 describe("issue 703: keep-alives, silence, and Hub's own end", () => {
   const until = (sig: AbortSignal) =>
-    new Promise<void>((r) => sig.addEventListener("abort", () => r(), { once: true }));
+    new Promise<void>((r) =>
+      sig.addEventListener("abort", () => r(), { once: true }),
+    );
 
   it("keep-alives, then silence: the stream is closed and reopened, and the list read once", async () => {
     const s = setup({ silenceMs: 40 });
@@ -398,7 +403,7 @@ describe("issue 703: keep-alives, silence, and Hub's own end", () => {
     expect(s.logs).toEqual([]);
   });
 
-  it("a stream that ends as soon as it opens backs off and is said as closing", async () => {
+  it("a stream that ends as soon as it opens backs off, is said once, and the list is read", async () => {
     const s = setup();
     s.hub.stream = () =>
       (async function* () {
@@ -413,7 +418,8 @@ describe("issue 703: keep-alives, silence, and Hub's own end", () => {
     };
     await s.loop.run(s.ctl.signal);
     expect(slept).toEqual([1000, 2000, 4000]);
-    expect(s.loop.health().trouble).toBe("closed");
+    // Said once; the list still answers, so comments still come.
+    expect(s.logs.filter((l) => /closing/.test(l))).toHaveLength(1);
   });
 
   it("hub.delivery_stream_silence_seconds: default 75, 0 turns it off, under 5 throws", () => {

@@ -1959,6 +1959,18 @@
       "__DEN_TITLE__ {v}: confirmar su versión fijada espera tu permiso",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubCommentsRejected":
+      "Los comentarios de Hub no llegan: Hub no aceptó el token de esta instalación (Ajustes › Hub: Volver a conectar)",
+    "bell.m.hubCommentsForbidden":
+      "Los comentarios de Hub no llegan: Hub rechazó la entrega de comentarios de esta instalación",
+    "bell.m.hubCommentsRefused":
+      "Los comentarios de Hub no llegan: Hub no tiene entrega de comentarios para esta instalación",
+    "bell.m.hubCommentsUnreachable":
+      "Los comentarios de Hub no llegan: __DEN_TITLE__ no puede conectar con Hub",
+    "bell.m.hubCommentsClosed":
+      "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
+    "bell.m.hubCommentsSilent":
+      "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",

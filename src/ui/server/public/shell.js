@@ -2786,6 +2786,18 @@
       "__DEN_TITLE__ {v}: committing its pin waits for your Allow",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.hubCommentsRejected":
+      "Hub comments aren't arriving: Hub did not accept this install's token (Settings › Hub: Reconnect)",
+    "bell.m.hubCommentsForbidden":
+      "Hub comments aren't arriving: Hub refused this install's comment delivery",
+    "bell.m.hubCommentsRefused":
+      "Hub comments aren't arriving: Hub has no comment delivery for this install",
+    "bell.m.hubCommentsUnreachable":
+      "Hub comments aren't arriving: __DEN_TITLE__ can't reach Hub",
+    "bell.m.hubCommentsClosed":
+      "Hub comments aren't arriving: Hub keeps closing the comment stream",
+    "bell.m.hubCommentsSilent":
+      "Hub comments aren't arriving: the comment stream went silent",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",

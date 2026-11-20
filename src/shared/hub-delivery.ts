@@ -564,3 +564,124 @@ export function ackBody(
   if (state === "done" && typeof o.version === "number") b.version = o.version;
   return b;
 }
+
+/**
+ * Issue 702: why Hub's comments may not be arriving. rejected: Hub didn't
+ * take the token (401); forbidden: Hub refused it (403); refused: Hub has
+ * no delivery path for it (another 4xx); unreachable: Den can't reach Hub;
+ * closed: the stream ends as soon as it opens; silent (issue 703): the
+ * stream sent no bytes, not even Hub's keep-alive.
+ */
+export type DeliveryTrouble =
+  | "rejected"
+  | "forbidden"
+  | "refused"
+  | "unreachable"
+  | "closed"
+  | "silent";
+
+const TROUBLES: readonly DeliveryTrouble[] = [
+  "rejected",
+  "forbidden",
+  "refused",
+  "unreachable",
+  "closed",
+  "silent",
+];
+
+/** A thrown error's trouble: HubCallError's kind, else unreachable. */
+export function troubleOf(e: unknown): DeliveryTrouble {
+  const k = (e as { kind?: unknown })?.kind;
+  return TROUBLES.includes(k as DeliveryTrouble)
+    ? (k as DeliveryTrouble)
+    : "unreachable";
+}
+
+/** Issue 702: what the person reads for each trouble (en: doctor, the log). */
+export const TROUBLE_TEXT: Record<DeliveryTrouble, string> = {
+  rejected:
+    "Hub did not accept this install's token (Settings › Hub: Reconnect)",
+  forbidden: "Hub refused this install's comment delivery",
+  refused: "Hub has no comment delivery for this install",
+  unreachable: "Den can't reach Hub",
+  closed: "Hub keeps closing the comment stream",
+  silent: "the comment stream went silent",
+};
+
+/**
+ * Issue 702: the delivery path's health. A good read (lastOkAt) is a
+ * stream that opened, any bytes on it (Hub's keep-alive too), or a list
+ * answer; never "a delivery came": a quiet Hub is healthy. Times in ms.
+ */
+export interface DeliveryHealth {
+  /** When this run of the loop started reading Hub. */
+  since: number;
+  streamOpen: boolean;
+  lastOkAt: number | null;
+  lastDeliveryAt: number | null;
+  trouble: DeliveryTrouble | null;
+  troubleAt: number | null;
+  /** The Hub it reads (doctor's file only). */
+  url?: string;
+}
+
+/**
+ * Issue 702: the trouble to say, or null. Said only after `minutes`
+ * (hub.delivery_alert_minutes; 0: never) with no good read and no open
+ * stream, counted from the last good read, else from the start.
+ */
+export function deliveryAlert(
+  h: DeliveryHealth,
+  now: number,
+  minutes: number,
+): DeliveryTrouble | null {
+  if (!(minutes > 0) || h.streamOpen) return null;
+  const from = Math.max(h.lastOkAt ?? 0, h.since);
+  if (now - from < minutes * 60_000) return null;
+  return h.trouble ?? "unreachable";
+}
+
+/** Issue 702: hub/deliveries-health.json, for doctor. Best effort. */
+export function writeDeliveryHealth(
+  file: string,
+  h: DeliveryHealth,
+  url: string | null,
+): void {
+  try {
+    writeFileAtomic(file, JSON.stringify({ ...h, ...(url ? { url } : {}) }), {
+      mode: 0o600,
+    });
+  } catch {
+    /* doctor shows the last one written */
+  }
+}
+
+/** The file back, or null (none yet, or broken). */
+export function readDeliveryHealth(file: string): DeliveryHealth | null {
+  let v: Record<string, unknown> | null;
+  try {
+    v = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<
+      string,
+      unknown
+    > | null;
+  } catch {
+    return null;
+  }
+  if (!v || typeof v !== "object") return null;
+  const num = (x: unknown) =>
+    typeof x === "number" && Number.isFinite(x) ? x : null;
+  const since = num(v.since);
+  if (since === null) return null;
+  const t = v.trouble;
+  return {
+    since,
+    streamOpen: v.streamOpen === true,
+    lastOkAt: num(v.lastOkAt),
+    lastDeliveryAt: num(v.lastDeliveryAt),
+    trouble: TROUBLES.includes(t as DeliveryTrouble)
+      ? (t as DeliveryTrouble)
+      : null,
+    troubleAt: num(v.troubleAt),
+    ...(typeof v.url === "string" ? { url: v.url } : {}),
+  };
+}

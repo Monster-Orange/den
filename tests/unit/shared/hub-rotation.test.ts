@@ -126,6 +126,8 @@ const cfgFor = (url: string, file: string): HubConfig => ({
   deliveryHeartbeatSeconds: 15,
   deliveryPollSeconds: 30,
   deliveryHeldNoteSeconds: 60,
+  deliveryAlertMinutes: 15,
+  deliveryStreamSilenceSeconds: 75,
   inboxWatch: true,
   inboxPollSeconds: 30,
   inboxBackoffMaxSeconds: 600,
