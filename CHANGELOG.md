@@ -4,6 +4,18 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.76] - unreleased
+
+### Fixed
+
+- Terminal host restart after an update: every agent that was running is resumed or reported. An agent that relaunched from its handoff resumes in its new conversation. A resume that doesn't hold (checked `sessions.host_restart_check_seconds`, default 30, after) counts as failed. The bell and the agent's row say why, and Resume brings it back. (issue 631)
+- An agent's calls to Den are no longer refused as "from a process Den couldn't place" when Den's process lookup is slow, so its attention marks reach Den again. How long the lookups wait is now a Setting (Settings › Server: 5 s, then 20 s, as before). `doctor` warns about any agent whose attention marks didn't reach Den in the last day: how many, and the last reason. (issue 609)
+
+### Checks
+
+- Every browser test gets its browser from one helper, which uses the shared Playwright server when `DEN_PW_WS` is set and never starts a local browser then. A check fails any test that opens a browser by itself. (issue 463)
+- The live check for issue 629 leaves the bed's server agent as it found it, and checks that a Hub comment for an agent showing a dialog waits for the answer and is typed once.
+
 ## [0.4.75] - 2026-11-19
 
 A security release. Upgrading is recommended.
