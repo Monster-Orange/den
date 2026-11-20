@@ -26,14 +26,8 @@
  * both it and PermissionRequest carry a hash of the tool's input
  * (`input`, never the input itself), so Den clears a wait on its own
  * tool's run however soon it comes, or in whatever order the two land.
- * Issue 771: it also prints the open status sequence (OSC 7501) for the
- * state it posts to its agent's own terminal (/dev/tty), so other tools
- * that read 7501 see Den's agents too. Den itself skips 7501 from a
- * hooked runtime (the post says it). No terminal: nothing printed.
  */
 import { createHash } from "node:crypto";
-import * as fs from "node:fs";
-import type { StatusState } from "../../sessions/bell.js";
 import { actorTokenOf } from "../../actor-token.js";
 import { recordLost } from "./lost-marks.js";
 import {
@@ -193,44 +187,6 @@ export function attentionOf(input: unknown): AttentionEvent | null {
   return null;
 }
 
-/**
- * Issue 771: the OSC 7501 state for what the hook posts: a dialog or a
- * question → blocked; Claude Code's idle notice → idle; a tool run, a
- * prompt, a new session → working; the turn's end → done.
- */
-export function statusOf(ev: AttentionEvent): StatusState {
-  if (ev.event === "resumed") return "working";
-  if (ev.event === "finished") return ev.question ? "blocked" : "done";
-  return ev.why === "input" ? "idle" : "blocked";
-}
-
-/** Issue 771: the ST-terminated OSC 7501 sequence for `ev`. */
-export function statusSequence(ev: AttentionEvent): string {
-  return `\u001b]7501;state=${statusOf(ev)}\u001b\\`;
-}
-
-/** Issue 771: print it with `write`; a write that fails is quiet. */
-export function printStatus(
-  ev: AttentionEvent,
-  write: (s: string) => void,
-): void {
-  try {
-    write(statusSequence(ev));
-  } catch {
-    /* no terminal: other tools just don't hear it */
-  }
-}
-
-/** Issue 771: write to the hook's controlling terminal (its agent's). */
-function toTty(s: string): void {
-  const fd = fs.openSync("/dev/tty", "w");
-  try {
-    fs.writeSync(fd, s);
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
 type FetchFn = (url: string, init: RequestInit) => Promise<Response>;
 
 /** Send it; true when Den took it. Never throws. */
@@ -293,7 +249,6 @@ async function main(): Promise<void> {
   }
   const ev = attentionOf(input);
   if (!ev) return;
-  printStatus(ev, toTty);
   // Issue 609: a mark Den never took, after every try, is recorded for
   // doctor.
   const lost = argOf(argv, "--lost");
