@@ -160,6 +160,17 @@ describe("hub link --suggested (#68)", () => {
     );
   });
 
+  it("issue 649: never offers the catch-all project `default`", async () => {
+    const r = sug({ projects: () => ["back-office", "default"] });
+    expect(await cmdHubLink(["--suggested", "--json"], r.deps)).toBe(0);
+    const j = JSON.parse(r.out[0]) as { projects: { project: string }[] };
+    expect(j.projects.map((p) => p.project)).toEqual(["back-office"]);
+    const t = sug({ projects: () => ["back-office", "default"] });
+    expect(await cmdHubLink(["--suggested"], t.deps)).toBe(0);
+    expect(t.out.join("\n")).toContain("Hub suggests (1):");
+    expect(t.out.join("\n")).not.toContain("default →");
+  });
+
   it("Hub not connected: says so, exit 1; with -p or a Hub project: usage", async () => {
     const r = sug({ choices: async () => null });
     expect(await cmdHubLink(["--suggested"], r.deps)).toBe(1);
