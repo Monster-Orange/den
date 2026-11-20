@@ -4,13 +4,13 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.75] - unreleased
+## [0.4.75] - 2026-11-19
 
 A security release. Upgrading is recommended.
 
 ### Security
 
-- Den no longer types into an agent while the agent shows a dialog for its person (a permission dialog, or its folder-trust question). This covers the note after a restart, Hub comments, the tools note, a lead's question, messages from the page or Hub, and first instructions. The note after a restart is kept until the dialog is answered, and the bell says it is waiting. A message sent while such a dialog is open is refused with a clear reason (409 `dialog_open`). (issue 629)
+- Den no longer types into an agent while the agent shows a dialog for its person (a permission dialog, or its folder-trust question). This covers the note after a restart, Hub comments, the tools note, a lead's question, messages from the page or Hub, and first instructions. The note after a restart is kept until the dialog is answered, and the bell says it is waiting. A message sent while such a dialog is open is refused with a clear reason (409 `dialog_open`). Versions 0.4.72 to 0.4.74 could, after a security self-update, answer the server agent's open permission prompt themselves; see the advisory. Until you upgrade: `server_agent.self_update: ask`, or `server_agent.security_update_skips_questions: false`. (issue 629)
 
 ### Fixed
 
