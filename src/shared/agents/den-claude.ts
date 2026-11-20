@@ -986,11 +986,17 @@ export const denClaude: Runtime = {
     noConversation: /no conversation found/i,
     idInUse: /already in use/i,
   },
-  // SRV-1b: its folder-trust question (two wordings seen), first choice Yes.
+  // SRV-1b: its folder-trust question. Two wordings, two shapes: the
+  // older numbered one ("1. Yes" first and highlighted) and 2.1.329's
+  // ("Quick safety check: … ❯ No, exit / Yes, I trust this folder": No
+  // highlighted first, so Enter alone declines; issues 658, 659).
   trustPrompt: {
     match:
-      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*1\.\s*Yes/i,
+      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*?(?:1\.\s*Yes|Yes, I trust this folder)/i,
     accept: "\r",
+    cursor: "\u276f",
+    yes: /^\s*(?:1\.\s*)?Yes\b/,
+    down: "\x1b[B",
   },
   // Issue 369: its permission dialogs ("Do you want to proceed?", "… make
   // this edit to x?", "… create x?", "… allow Claude to fetch …?"), first

@@ -3,7 +3,8 @@
 Screens captured from Claude Code 2.1.329, 120 columns by 40 rows, with
 `tmux capture-pane -e` (the screen's text with its colour escapes, one line
 per row). Paths, the login, the model and the plan were replaced with
-placeholders. Used by tests/unit/agents/agent-input-state.test.ts.
+placeholders. Used by tests/unit/agents/agent-input-state.test.ts and
+tests/unit/agents/trust-prompt-capture.test.ts.
 
 - `1-trust.raw`: the folder-trust question, first choice "No, exit".
 - `1b-trust-yes-selected.raw`: the same, with "Yes, I trust this folder" selected.
