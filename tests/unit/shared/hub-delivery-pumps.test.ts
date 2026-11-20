@@ -16,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { SeenDeliveries } from "../../../src/shared/hub-delivery";
 import {
+  ACK_WORDS,
   DeliveryLoop,
   HELD_WORDS,
   type AgentState,
@@ -23,12 +24,23 @@ import {
 } from "../../../src/shared/hub-delivery-loop";
 
 describe("issue 701: what Hub is told", () => {
-  it("every held reason is lowercase plain words, no numbers, at most 300 characters", () => {
-    for (const w of Object.values(HELD_WORDS)) {
+  // Hub frames each one ("Waiting at <install>: …", "Picked up by
+  // <install>: …"): no status word in front, lowercase, English, short.
+  const all = [...Object.values(HELD_WORDS), ...Object.values(ACK_WORDS)];
+  it("every reason is lowercase plain words, no numbers, at most 300 characters", () => {
+    for (const w of all) {
       expect(w[0]).toBe(w[0].toLowerCase());
       expect(w).not.toMatch(/\d/);
+      expect(w).not.toMatch(/\.$/);
       expect(w.length).toBeLessThanOrEqual(300);
     }
+  });
+  it("no reason starts with a status word (waiting:, held:, busy:, …)", () => {
+    for (const w of all)
+      expect(w).not.toMatch(
+        /^\s*(waiting|held|holding|busy|queued|delivered|working|done|failed|refused|picked up)\b\s*[:\-–—]/i,
+      );
+    expect(ACK_WORDS.noAnswer).toBe("typed in; no answer yet");
   });
 });
 

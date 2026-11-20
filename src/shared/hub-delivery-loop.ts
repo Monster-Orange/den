@@ -90,6 +90,17 @@ export const HELD_WORDS: Record<HeldCode, string> = {
   unread: "couldn't read the agent's state in time; trying again",
 };
 
+/**
+ * Issue 701: the reasons on Den's other acks. Hub frames every reason
+ * itself ("Waiting at <install>: …", "Picked up by <install>: …"): plain
+ * lowercase words, no status word in front.
+ */
+export const ACK_WORDS = {
+  missing: "this install has no agent with that id",
+  stopped: "the agent stopped before it finished",
+  noAnswer: "typed in; no answer yet",
+} as const;
+
 /** Issue 701: a time limit ran out (never a real value). */
 const LATE = Symbol("late");
 
@@ -478,7 +489,7 @@ export class DeliveryLoop {
     const s = await this.stateOf(dv.agent);
     if (s === "missing") {
       await this.ack(dv.id, "refused", {
-        reason: "This install has no agent with that id.",
+        reason: ACK_WORDS.missing,
       });
       return;
     }
@@ -623,7 +634,7 @@ export class DeliveryLoop {
       const minutes = Math.round((now - act.typedAt) / 60_000);
       for (const id of act.ids)
         await this.ack(id, "delivered", {
-          reason: "typed in; no answer yet",
+          reason: ACK_WORDS.noAnswer,
         });
       this.d.log?.(
         `hub delivery: ${act.ids.length} Hub item${act.ids.length === 1 ? "" : "s"} typed into ${agent} ${minutes} min ago, no answer yet: its next ones go on`,
@@ -668,7 +679,7 @@ export class DeliveryLoop {
         this.active.delete(agent);
         for (const id of act.ids)
           await this.ack(id, "failed", {
-            reason: "The agent stopped before it finished.",
+            reason: ACK_WORDS.stopped,
           });
         return;
       } else return;
