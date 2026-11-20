@@ -87,6 +87,11 @@
  *                     idle (host-restart-held.ts): the web start's refresh,
  *                     its wait, restart, resumes and audit. Doctor's fix,
  *                     never `sessions host --stop`. The person's own Allow
+ *   gate_runner_entry_set
+ *                     issue 642: let a repo's CI jobs run on a test box
+ *                     (gate-routes.ts gateRunnerEntryOp): a runner entry,
+ *                     set or changed. It widens what runs on a box: always
+ *                     the person's own Allow
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -192,6 +197,8 @@ export interface HeldActionDeps {
   gateRunnerToken?: HeldOp;
   /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
   terminalHostRestart?: HeldOp;
+  /** Issue 642: gate_runner_entry_set (gate-routes.ts gateRunnerEntryOp). */
+  gateRunnerEntry?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -254,6 +261,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "embed_key_revoke",
   "gate_runner_token_create",
   "host_restart",
+  "gate_runner_entry_set",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -604,6 +612,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.gateRunnerToken,
     "this Den can't make gate runner tokens here",
   );
+  const gateRunnerEntry = op(
+    d.gateRunnerEntry,
+    "this Den can't set CI runner entries here",
+  );
   const terminalHostRestart = op(
     d.terminalHostRestart,
     "this Den can't restart its terminal host here",
@@ -890,5 +902,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,
     host_restart: terminalHostRestart,
+    gate_runner_entry_set: gateRunnerEntry,
   };
 }

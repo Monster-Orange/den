@@ -14,6 +14,9 @@
  *       (whichever frees first); the run gets DEN_GATE_BOX, DEN_PW_WS
  *   status [--json]          who holds, who waits, overruns, test boxes
  *   box <list|add|remove>    the test boxes (a person changes them)
+ *   runner <list|add|remove> issue 642: CI runner entries, one repo's jobs
+ *                            on one test box (a person changes them; an
+ *                            agent asks with gate_runner_entry_set)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   settings [--cpu-slots N] [--overrun-margin-minutes N]
@@ -42,12 +45,16 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import { boxEnv, checkBox } from "../../shared/gates/boxes.js";
+import {
+  checkRunnerEntry,
+  type RunnerEntry,
+} from "../../shared/gates/runner-entries.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
-  usage: "gate <run|status|end|box|settings> ...",
+  usage: "gate <run|status|end|box|runner|settings> ...",
   lines: [
     "Heavy test runs on this machine, taken in turn: a browser suite runs",
     "alone; unit suites share (2 at a time by default). Every repo and install",
@@ -63,6 +70,9 @@ export const GATE_HELP = {
     "{cli} gate box <list|add|remove> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
     "    [--hold-file <path>] [--time-scale X]   test boxes (a person's)",
+    "{cli} gate runner <list|add|remove> <owner/repo> --box <name>",
+    "    [--labels a,b] [--routing-variable NAME] [--slots N] [--light]",
+    "    [--owner <who>]   CI runner entries: a repo's jobs on a test box",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
@@ -486,6 +496,77 @@ function end(args: string[], d: GateDeps): number {
   return 0;
 }
 
+/** Issue 642: one runner entry, in words. */
+export function runnerEntryLine(e: RunnerEntry): string {
+  return (
+    `${e.repo} on ${e.box}  ${e.heavy ? "heavy" : "light"}, ${e.slots} at a time` +
+    `  labels ${e.labels.join(",")}  routing variable ${e.routing_variable}` +
+    `  owner ${e.owner}`
+  );
+}
+
+/**
+ * Issue 642: CI runner entries. `runner list`; `runner add <owner/repo>
+ * --box <name> --labels a,b --routing-variable NAME --owner <who>
+ * [--slots N] [--light]` (adds, or replaces that repo's entry on that
+ * box); `runner remove <owner/repo> --box <name>`. Settings only: no
+ * runner starts here. An entry widens what runs on a box: a person
+ * changes them; an agent asks with the held write gate_runner_entry_set.
+ */
+function runnerCmd(args: string[], d: GateDeps): number {
+  const [verb, ...rest] = args;
+  if (verb === "list" || verb === undefined) {
+    const list = d.store.runnerEntries();
+    if (!list.length) d.out("No runner entries set (gate runner add).");
+    for (const e of list) d.out(runnerEntryLine(e));
+    return 0;
+  }
+  if (verb !== "add" && verb !== "remove")
+    throw new GateUsage("gate runner <list|add|remove> ...");
+  if (isAgentEnv(d.env))
+    throw new GateUsage(
+      `gate runner ${verb}: only a person changes the runner entries (this is an agent; ask with the held write gate_runner_entry_set)`,
+    );
+  const { f, pos } = flags(rest, {
+    "--box": true,
+    "--labels": true,
+    "--routing-variable": true,
+    "--slots": true,
+    "--light": false,
+    "--owner": true,
+  });
+  const [repo, extra] = pos;
+  if (!repo || extra)
+    throw new GateUsage(`gate runner ${verb} needs one <owner/repo>`);
+  const box = typeof f["--box"] === "string" ? f["--box"] : "";
+  if (!box) throw new GateUsage(`gate runner ${verb} needs --box <name>`);
+  if (verb === "remove") {
+    if (!d.store.removeRunnerEntry(repo, box)) {
+      d.err(`gate runner remove: no entry for ${repo} on ${box}`);
+      return 1;
+    }
+    d.out(`Removed the runner entry for ${repo} on ${box}.`);
+    return 0;
+  }
+  const c = checkRunnerEntry({
+    repo,
+    box,
+    labels: f["--labels"],
+    routing_variable: f["--routing-variable"],
+    slots: typeof f["--slots"] === "string" ? Number(f["--slots"]) : undefined,
+    heavy: f["--light"] === true ? false : undefined,
+    owner: f["--owner"],
+  });
+  if (!c.ok) throw new GateUsage(c.error);
+  try {
+    d.store.setRunnerEntry(c.entry);
+  } catch (e) {
+    throw new GateUsage((e as Error).message);
+  }
+  d.out(`Runner entry set: ${runnerEntryLine(c.entry)}.`);
+  return 0;
+}
+
 function settings(args: string[], d: GateDeps): number {
   const { f } = flags(args, {
     "--cpu-slots": true,
@@ -547,6 +628,8 @@ export async function cmdGate(
         return end(args.slice(1), d);
       case "box":
         return boxCmd(args.slice(1), d);
+      case "runner":
+        return runnerCmd(args.slice(1), d);
       case "settings":
         return settings(args.slice(1), d);
       default:

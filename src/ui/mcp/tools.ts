@@ -481,7 +481,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2401,6 +2401,55 @@ const APPROVAL_TOOLS: DenTool[] = [
     async run(a, ctx) {
       refuseScoped("host_restart", ctx.scope);
       return askPerson("host_restart", "host_restart", {}, a, ctx);
+    },
+  },
+  {
+    name: "gate_runner_entry_set",
+    title: "Let a repo's CI jobs run on a test box",
+    description:
+      "Issue 642: a CI runner entry, set or changed: `repo`'s jobs whose runs-on labels are all in `labels` may run on the test box `box` (one a person set), at most `slots` at a time; `heavy` (default true) means each job takes one of the box's gate slots, so it never runs beside another heavy job there; `routing_variable` is the repo variable that sends its jobs to the box or back to hosted runners; `owner` says who answers for it. Settings only: nothing starts a runner yet. It widens what runs on a box: always the person's own Allow. `gate runner list` shows the entries." +
+      HELD,
+    action: true,
+    shape: {
+      repo: z.string().describe("owner/name"),
+      box: z.string().describe("A test box's name (gate box list)"),
+      labels: z
+        .array(z.string())
+        .describe("The runner labels its jobs ask for (runs-on)"),
+      routing_variable: z
+        .string()
+        .describe("The repo variable that routes its jobs (CI_RUNNER)"),
+      slots: z
+        .number()
+        .int()
+        .optional()
+        .describe("Its jobs on the box at once (default 1)"),
+      heavy: z
+        .boolean()
+        .optional()
+        .describe("Each job takes a box gate slot (default true)"),
+      owner: z.string().describe("Who answers for it, in words"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const repo = needArg("gate_runner_entry_set", a, "repo", "owner/name");
+      const box = needArg("gate_runner_entry_set", a, "box", "a test box");
+      return askPerson(
+        "gate_runner_entry_set",
+        "gate_runner_entry_set",
+        {
+          repo,
+          box,
+          labels: a.labels,
+          routing_variable: a.routing_variable,
+          owner: a.owner,
+          ...(a.slots !== undefined ? { slots: a.slots } : {}),
+          ...(a.heavy !== undefined ? { heavy: a.heavy } : {}),
+        },
+        a,
+        ctx,
+      );
     },
   },
   {

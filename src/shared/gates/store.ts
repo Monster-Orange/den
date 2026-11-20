@@ -41,6 +41,12 @@ import {
   type GateBox,
 } from "./boxes.js";
 import {
+  checkRunnerEntry,
+  entryKey,
+  runnerEntriesOf,
+  type RunnerEntry,
+} from "./runner-entries.js";
+import {
   GATE_DEFAULTS,
   byAsked,
   expectedStart,
@@ -823,6 +829,57 @@ export class GateStore {
         list.filter((b) => b.name !== name),
         name,
       );
+      return true;
+    });
+  }
+
+  // ---- Issue 642: CI runner entries (shared/gates/runner-entries.ts) ----
+
+  /** The runner entries (settings.json `runner_entries`); none by default. */
+  runnerEntries(): RunnerEntry[] {
+    return runnerEntriesOf(this.settingsFile().runner_entries);
+  }
+
+  private writeRunnerEntries(list: RunnerEntry[]): void {
+    const cur = this.settingsFile();
+    if (list.length) cur.runner_entries = list;
+    else delete cur.runner_entries;
+    writeFileAtomic(
+      path.join(this.dir, "settings.json"),
+      JSON.stringify(cur, null, 2) + "\n",
+    );
+  }
+
+  /**
+   * Adds a runner entry, or replaces the one for that repo and box. Its
+   * box must be set. Callers: a person (Settings, `gate runner add`), or
+   * an agent's held write after the person's Allow.
+   */
+  setRunnerEntry(v: unknown): RunnerEntry {
+    const c = checkRunnerEntry(v);
+    if (!c.ok) throw new Error(c.error);
+    const e = c.entry;
+    return this.locked(() => {
+      if (!this.boxes().some((b) => b.name === e.box))
+        throw new Error(`no test box ${e.box}: set the box first`);
+      const k = entryKey(e);
+      const list = this.runnerEntries();
+      const at = list.findIndex((x) => entryKey(x) === k);
+      if (at >= 0) list[at] = e;
+      else list.push(e);
+      this.writeRunnerEntries(list);
+      return e;
+    });
+  }
+
+  /** Removes the runner entry for a repo on a box. */
+  removeRunnerEntry(repo: string, box: string): boolean {
+    return this.locked(() => {
+      const k = entryKey({ repo, box });
+      const list = this.runnerEntries();
+      const left = list.filter((x) => entryKey(x) !== k);
+      if (left.length === list.length) return false;
+      this.writeRunnerEntries(left);
       return true;
     });
   }

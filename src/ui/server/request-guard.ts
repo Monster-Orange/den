@@ -970,6 +970,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Issue 625: the test boxes are a person's to change.
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
+  // Issue 642: CI runner entries; an agent asks with gate_runner_entry_set.
+  "/api/gate-slots/runner-entries",
+  "/api/gate-slots/runner-entries/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */

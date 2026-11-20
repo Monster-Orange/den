@@ -945,6 +945,9 @@
     "set.server.gate_box_check.d":
       "テストマシンにスロットを渡す直前に、Den がその応答を待つ時間です。応答がなければ、そのマシンは飛ばします。__DEN_CLI__ gate settings --box-check-timeout-seconds 8",
     "set.server.gate_box_recheck": "飛ばしたテストマシンを再確認するまで (秒)",
+    "set.server.gate_runner_entries": "CI ランナーのエントリ",
+    "set.server.gate_runner_entries.d":
+      "どのリポジトリの CI ジョブをどのテストマシンで実行できるかです。ジョブが求めるランナーのラベル、振り分けるリポジトリ変数、同時に実行する数、マシンの重いスロットを取るか、責任者を決めます。今は設定だけで、Den はまだランナーを起動しません。エージェントが追加を頼み、あなたが許可します。__DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
     "set.server.gate_box_recheck.d":
       "保留中か応答のなかったマシンはこの時間飛ばし、その後そのマシンのスロットが求められたときに再確認します。タイマーでは確認しません。__DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
@@ -1577,6 +1580,20 @@
       "トークンは頼んだ人に一度だけ渡され、二度と表示されません。Den はハッシュだけを保存します。",
     "ap.det.gate_runner_token_create.revoke":
       "設定の「CI ランナーのトークン」でいつでも取り消せます。",
+    "ap.do.gate_runner_entry_set":
+      "{repo} の CI ジョブをテストマシン {box} で実行できるようにする",
+    "ap.det.gate_runner_entry_set.reach":
+      "ラベル {labels} の付いた {repo} の CI ジョブを、テストマシン {box} で一度に最大 {n} 個まで実行できるようにします。",
+    "ap.det.gate_runner_entry_set.change":
+      "ラベル {labels} の付いた {repo} の CI ジョブをテストマシン {box} で一度に最大 {n} 個まで実行できるようにするエントリを変更します。",
+    "ap.det.gate_runner_entry_set.heavy":
+      "各ジョブは {box} のゲートスロットを 1 つ取るので、そこで他の重いジョブと同時には実行されません。",
+    "ap.det.gate_runner_entry_set.light":
+      "このジョブは軽いため、{box} のゲートスロットを取りません。",
+    "ap.det.gate_runner_entry_set.route":
+      "リポジトリ変数 {variable} がジョブをこのマシンへ、またはホスト型ランナーへ戻します。責任者は {owner} です。",
+    "ap.det.gate_runner_entry_set.remove":
+      "設定の「CI ランナーのエントリ」でいつでも削除できます。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
@@ -2652,6 +2669,22 @@
     "set.ui.boxHoldIs": "保留ファイル {path}",
     "set.ui.boxScaleIs": "時間 ×{n}",
     "set.ui.boxRemove": "削除",
+    "set.ui.reRepo": "リポジトリ (owner/name)",
+    "set.ui.reBox": "テストマシン",
+    "set.ui.reLabels": "ランナーのラベル (カンマ区切り)",
+    "set.ui.reVar": "振り分けの変数",
+    "set.ui.reSlots": "同時に",
+    "set.ui.reHeavy": "マシンの重いスロットを取る",
+    "set.ui.reOwner": "責任者",
+    "set.ui.reSave": "エントリを保存",
+    "set.ui.reNone":
+      "ランナーのエントリはありません。CI ジョブはホスト型ランナーを使います。",
+    "set.ui.reNoBox": "先に「テストマシン」でマシンを設定してください。",
+    "set.ui.reHeavyIs": "重い",
+    "set.ui.reLightIs": "軽い",
+    "set.ui.reSlotsN": "同時に {n} 個",
+    "set.ui.reVarIs": "変数 {v}",
+    "set.ui.reOwnerIs": "責任者 {who}",
     "set.ui.appKeyOnce":
       "このキーを今すぐウェブアプリのバックエンドにコピーしてください。もう表示されません。",
     "set.ui.appKeyNew": "新しいアプリキー",

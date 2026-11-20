@@ -735,6 +735,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 625: a person removes a test box; its running slots finish",
   ),
   R(
+    "/api/gate-slots/runner-entries",
+    "Issue 642: the CI runner entries (a repo's jobs on a test box); a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries",
+    "Issue 642: a person adds or replaces a runner entry; an agent asks with gate_runner_entry_set",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries/remove",
+    "Issue 642: a person removes a runner entry",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
