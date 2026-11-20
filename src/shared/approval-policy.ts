@@ -150,6 +150,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "routine",
     why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
   },
+  hub_link: {
+    risk: "routine",
+    kind: "ask",
+    why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
+  },
   agent_create: {
     risk: "routine",
     why: "starts an agent in the project's mode or a stricter one",
