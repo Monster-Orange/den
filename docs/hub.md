@@ -42,8 +42,8 @@ Everything happens in **Settings › Hub**. Nobody copies a token or edits a fil
 5. Hub sends you back to Settings › Hub, connected. Settings shows your company, your role, who
    signed in and this install's name in Hub (`<cli> on <machine>`).
 
-Connect also links each project here to its Hub project. Where Den can't tell which one fits, it asks
-you. See [Projects and Hub projects](#projects-and-hub-projects).
+Connect also proposes a Hub project for each project here, and you link them all with one press. See
+[Projects and Hub projects](#projects-and-hub-projects).
 
 **The right company.** Connect sends Hub the repos of this Den's projects (`repos=<owner/repo>,…`, at
 most 50). Hub ranks the companies you may connect to by them, with your own sign-in: one that holds
@@ -156,9 +156,10 @@ shows Hub's name for it.
 Den links to a Hub project by its hidden ID, so renaming the project or its short name in Hub doesn't
 break the link.
 
-**Connect links them.** After Connect, Den links each project whose match is clear: one Hub project
-with the same repos, or, when none has its repos, one with the same name. Connect's message says how
-many it linked and how many need your pick.
+**Connect proposes, you link.** After Connect, nothing is linked yet. Settings › Hub's review proposes
+a Hub project for each project: one with the same repos, or, when none has its repos, one with the
+same name. Connect's message, and the bell, say how many wait. Press **Connect and link all** to link
+them.
 
 **"Den can't tell which fits."** When two Hub projects share a project's repos, or its repos and its
 name point to different ones, Den doesn't guess. The bell says "N projects need your pick". Settings ›

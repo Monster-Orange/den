@@ -97,16 +97,16 @@ export interface HubConnectDeps {
    */
   denUrl?: () => string | undefined;
   /**
-   * 0.4.45: once connected, link the projects whose Hub project is clear
-   * (hub-link-all-routes linkClearProjects); absent, none.
+   * Issue 646 (the approved mock, shape B): once connected, nothing is
+   * linked yet. Count the projects Connect's review proposes a Hub project
+   * (or a create) for, and put them in the bell; the person links them all
+   * with Connect and link all in Settings › Hub. Absent: none.
    */
-  linkAfter?: () => Promise<
-    { linked: string[]; unclear: string[] } | { cannot: true }
-  >;
+  reviewAfter?: () => Promise<{ review: number } | { cannot: true }>;
   /**
    * Issue 726: Connect named the Hub and its company: bind this install's
    * Hub state to them (another Hub or company archives the old state and
-   * unlinks the projects, before linkAfter offers them again).
+   * unlinks the projects, before the review offers them again).
    */
   rebind?: (url: string, company: string | undefined) => Promise<unknown>;
   /**
@@ -369,8 +369,8 @@ export function defaultHubConnectDeps(): HubConnectDeps {
       const w = readWebUrl();
       return (w && denUrlOrigin(w.url)) || undefined;
     },
-    linkAfter: async () =>
-      (await import("./hub-link-all-routes.js")).defaultLinkAfter(),
+    reviewAfter: async () =>
+      (await import("./hub-connect-review.js")).defaultReviewAfter(),
     rebind: async (url, company) => {
       const m = await import("./hub-change.js");
       return m.noteHub(await m.defaultHubChangeDeps(), { url, company });
@@ -401,20 +401,13 @@ export type ConnectResult =
   | { ok: true; team?: string; where: string }
   | { ok: false; reason: "denied" | "expired" | "failed"; message: string };
 
-/** What Connect's linking came to, after "Connected to Hub." */
-function linkedWords(
-  l: { linked: string[]; unclear: string[] } | { cannot: true },
-): string {
+/** Issue 646: what waits for the review, after "Connected to Hub." */
+function reviewWords(l: { review: number } | { cannot: true }): string {
   if ("cannot" in l)
-    return " Hub can't link projects yet: link them in Settings › Agents › Unclear matches when it can.";
-  const n = l.linked.length;
-  const m = l.unclear.length;
-  if (!n && !m) return "";
-  const linked = n
-    ? ` Linked ${n} project${n === 1 ? "" : "s"} to Hub`
-    : " Linked no projects";
-  const pick = m ? `; ${m} need${m === 1 ? "s" : ""} your pick` : "";
-  return `${linked}${pick}.`;
+    return " Hub can't list its projects yet: link them in Settings › Hub when it can.";
+  const n = l.review;
+  if (!n) return "";
+  return ` Review ${n} project${n === 1 ? "" : "s"} below, then press Connect and link all.`;
 }
 
 export class HubConnect {
@@ -494,12 +487,12 @@ export class HubConnect {
     let message = r.ok
       ? `Connected to Hub${r.team ? ` (${r.team})` : ""}.`
       : r.message;
-    // 0.4.45: projects follow Connect. Linking never fails the Connect.
-    if (r.ok && this.deps.linkAfter) {
+    // Issue 646: the projects wait for the review. It never fails Connect.
+    if (r.ok && this.deps.reviewAfter) {
       const l = await this.deps
-        .linkAfter()
+        .reviewAfter()
         .catch(() => ({ cannot: true }) as const);
-      message += linkedWords(l);
+      message += reviewWords(l);
     }
     this.last = { ok: r.ok, message, at: this.deps.now() };
     return r;

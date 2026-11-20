@@ -13,6 +13,7 @@ import type { HubCreate } from "../../../src/shared/hub-project-create.js";
 import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
 import {
   applyReview,
+  reviewCount,
   reviewRows,
   type HubReviewDeps,
 } from "../../../src/ui/server/hub-connect-review.js";
@@ -172,6 +173,33 @@ describe("issue 646: the review rows", () => {
   });
 });
 
+describe("issue 646: after Connect, nothing links before the press (the approved mock)", () => {
+  it("clear matches wait as suggested rows; Connect only counts them", async () => {
+    const f = fake();
+    expect(await reviewCount(f.d)).toEqual({ review: 3 });
+    expect(f.links.size).toBe(0);
+    expect(f.asks.size).toBe(0);
+    expect(f.plans).toHaveLength(0);
+    expect(f.changed()).toBe(0);
+    // The clear one is still a proposal, like every other row.
+    expect((await reviewRows(f.d)).rows[0].proposal).toMatchObject({
+      kind: "link",
+      why: "repo",
+    });
+  });
+
+  it("Hub not answering: cannot; every project linked: none to review", async () => {
+    expect(await reviewCount(fake({ choices: async () => null }).d)).toEqual({
+      cannot: true,
+    });
+    const f = fake();
+    f.links.set("north", P.web);
+    f.links.set("south", P.docs);
+    f.links.set("east", P.other);
+    expect(await reviewCount(f.d)).toEqual({ review: 0 });
+  });
+});
+
 describe("issue 646: Connect and link all (clause 6)", () => {
   it("three projects: two linked at once, the third asked of Hub as one plan", async () => {
     const f = fake();
@@ -241,6 +269,20 @@ describe("issue 646: Connect and link all (clause 6)", () => {
       { project: "west", hub: P.other, why: "picked" },
     ]);
     expect(f.picked()).toBe(1);
+  });
+
+  it("the bell counts down every project the press settled: links and creates", async () => {
+    const f = fake();
+    await applyReview(
+      f.d,
+      [
+        { project: "north", hub: P.web.id },
+        { project: "south", hub: P.docs.id },
+        { project: "east", create: "East" },
+      ],
+      "t",
+    );
+    expect(f.picked()).toBe(3);
   });
 
   it("skips, saying why: unknown project, a Hub project not the company's, one already linked the same", async () => {
