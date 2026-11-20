@@ -4169,7 +4169,7 @@ export function hubHtml(b, flash, t = (k) => k) {
       (b.url
         ? ""
         : `<p class="set-note" data-hub-empty>${escR(L("set.ui.hub.empty", "No Hub yet. Type your company's Hub address, then Connect. Save only keeps the address."))}</p>`) +
-      `<p class="set-note" data-hub-connect-does>${escR(L("set.ui.hub.connectLinks", "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you."))}</p>` +
+      `<p class="set-note" data-hub-connect-does>${escR(L("set.ui.hub.connectLinks", "After Connect, each project here shows its suggested Hub project. Check them, then press Connect and link all."))}</p>` +
       `<p class="set-note">${escR(L("set.ui.hub.connectNote", "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown."))}</p>` +
       // 0.4.45: the two editions, until this install is connected, where
       // the distribution says they are. The names stay in English.
