@@ -56,6 +56,20 @@ export interface GateEntry {
    * why. `at`: when it took priority (the store records it once).
    */
   priority?: { for: "release"; reason: string; at?: string };
+  /**
+   * Issue 714: an agent asked over MCP. Its process (the MCP server)
+   * outlives its work, so it holds by claim and lease: granted while it
+   * waited, it is unclaimed until `claimBy`; claimed, it is renewed by
+   * asking again with its id (`renewedAt`). See unclaimed and mcpLapsed.
+   */
+  mcp?: {
+    /** The install whose agent asked (its state dir): only it tells it. */
+    install: string;
+    /** Granted while it waited: claim by then, or it passes on. */
+    claimBy?: string;
+    /** When it was last claimed or renewed (ISO). */
+    renewedAt?: string;
+  };
   remote?: {
     /** The runner token's name (who, in words). */
     runner: string;
@@ -85,6 +99,14 @@ export interface GateSettings {
   priorityPassLimitMinutes: number;
   /** Issue 715: agents may ask for priority (else people only). */
   priorityAgents: boolean;
+  /** Issue 714: an MCP slot granted while it waited: minutes to claim it. */
+  claimMinutes: number;
+  /** Issue 714: how often an MCP holder renews, minutes (it is told). */
+  mcpRenewMinutes: number;
+  /** Issue 714: not renewed this long (and past estimate plus grace): lapses. */
+  mcpLapseMinutes: number;
+  /** Issue 714: past its estimate by this much, an unrenewed slot may lapse. */
+  mcpGraceMinutes: number;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -97,6 +119,10 @@ export const GATE_DEFAULTS: GateSettings = {
   priorityMax: 1,
   priorityPassLimitMinutes: 60,
   priorityAgents: true,
+  claimMinutes: 3,
+  mcpRenewMinutes: 5,
+  mcpLapseMinutes: 15,
+  mcpGraceMinutes: 15,
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
@@ -277,4 +303,27 @@ export function expectedStart(
   );
   for (const w of ahead) free += w.estimateMin * 60_000;
   return free;
+}
+
+/** Issue 714: an MCP slot granted while it waited, not claimed in time. */
+export function unclaimed(e: GateEntry, now: number): boolean {
+  return !!e.grantedAt && !!e.mcp?.claimBy && now > t(e.mcp.claimBy);
+}
+
+/**
+ * Issue 714: a claimed MCP slot whose lease lapsed: not renewed for
+ * mcpLapseMinutes AND past its estimate plus mcpGraceMinutes. A slot that
+ * renews, or still runs within its estimate, keeps holding.
+ */
+export function mcpLapsed(
+  e: GateEntry,
+  s: Pick<GateSettings, "mcpLapseMinutes" | "mcpGraceMinutes">,
+  now: number,
+): boolean {
+  if (!e.mcp || !e.grantedAt || e.mcp.claimBy) return false;
+  const last = t(e.mcp.renewedAt ?? e.grantedAt);
+  return (
+    now - last > s.mcpLapseMinutes * 60_000 &&
+    now > expectedEnd(e) + s.mcpGraceMinutes * 60_000
+  );
 }
