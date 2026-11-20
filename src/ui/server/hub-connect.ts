@@ -47,6 +47,7 @@ import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import { getStateDir } from "../../shared/paths.js";
+import { hubOrigin, recordUnrevoked } from "../../shared/hub-binding.js";
 import { envKey, product } from "../../shared/product.js";
 import {
   getSecretsProvider,
@@ -99,6 +100,17 @@ export interface HubConnectDeps {
   linkAfter?: () => Promise<
     { linked: string[]; unclear: string[] } | { cannot: true }
   >;
+  /**
+   * Issue 726: Connect named the Hub and its company: bind this install's
+   * Hub state to them (another Hub or company archives the old state and
+   * unlinks the projects, before linkAfter offers them again).
+   */
+  rebind?: (url: string, company: string | undefined) => Promise<unknown>;
+  /**
+   * Issue 726: a forced disconnect Hub couldn't hear: keep it on record
+   * (doctor lists it; each start tries the revoke again).
+   */
+  unrevoked?: (u: { url: string; why: string; token: string }) => void;
 }
 
 /** A `<name>.localhost` host: this machine (RFC 6761). */
@@ -319,6 +331,11 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     },
     linkAfter: async () =>
       (await import("./hub-link-all-routes.js")).defaultLinkAfter(),
+    rebind: async (url, company) => {
+      const m = await import("./hub-change.js");
+      return m.noteHub(await m.defaultHubChangeDeps(), { url, company });
+    },
+    unrevoked: (u) => void recordUnrevoked(getStateDir(), u),
   };
 }
 
@@ -491,6 +508,18 @@ export class HubConnect {
     }
     const hubUrl =
       grant.hubUrl && !hubUrlProblem(grant.hubUrl) ? grant.hubUrl : p.hubUrl;
+    // Issue 726: connected before to another Hub: its token is read now
+    // (the new one may take its file or item) and revoked there after.
+    const before = this.deps.config();
+    const leaving =
+      before &&
+      (before.tokenRef || before.tokenSource) &&
+      hubOrigin(before.url) !== hubOrigin(hubUrl)
+        ? before
+        : null;
+    const oldToken = leaving
+      ? await this.deps.readToken(leaving).catch(() => null)
+      : null;
     let stored: StoredToken;
     try {
       stored = await this.deps.store(grant.token);
@@ -515,6 +544,22 @@ export class HubConnect {
     this.deps.writeUser({ ...user, hub });
     // 0.4.47: the token Den keeps in memory is the old one: read anew.
     forgetHubToken(undefined, Date.now(), { now: true });
+    if (leaving && oldToken)
+      await this.deps.revoke(leaving.url, oldToken).catch((e: unknown) => {
+        try {
+          this.deps.unrevoked?.({
+            url: leaving.url,
+            why: (e as Error).message,
+            token: oldToken,
+          });
+        } catch {
+          /* best effort */
+        }
+      });
+    // Issue 726: another Hub or company: the old one's state goes first.
+    await this.deps
+      .rebind?.(hubUrl, grant.company?.slug || grant.company?.name || undefined)
+      .catch(() => undefined);
     return {
       ok: true,
       ...(grant.company?.name ? { team: grant.company.name } : {}),
@@ -552,6 +597,16 @@ export class HubConnect {
           };
         note =
           " Hub couldn't be reached, so the token still works there until an admin revokes this install.";
+        // Issue 726: doctor lists it, and each start tries again.
+        try {
+          this.deps.unrevoked?.({
+            url: cfg.url,
+            why: (e as Error).message,
+            token,
+          });
+        } catch {
+          /* the record is best effort: the message still says so */
+        }
       }
     }
     await this.deps.forget(cfg).catch(() => undefined);

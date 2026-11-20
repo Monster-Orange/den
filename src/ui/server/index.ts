@@ -488,6 +488,7 @@ import {
   patchHubAllowTools,
   patchHubUrl,
   readHubConfig,
+  type HubConfig,
 } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
@@ -3206,6 +3207,11 @@ function approvalDeps(): ApprovalDeps {
             disconnect: async (force) => {
               const m = await import("./hub-connect.js");
               return new m.HubConnect().disconnect(force);
+            },
+            // Issue 726: the old Hub's state is archived, its bell cleared.
+            changed: async (url) => {
+              const m = await import("./hub-change.js");
+              return m.noteHub(await m.defaultHubChangeDeps(), { url });
             },
             // The restart den_restart_server runs (its note, audit, spawn).
             restart: (reason) =>
@@ -7798,9 +7804,20 @@ async function handleRequest(
         }
         // #267: Hub's address (Settings › Hub); "" or null clears it. The
         // page restarts Den after, so every agent and check reads it anew.
+        // Issue 726: the Hub it was on, so the change runs on the server
+        // whatever path called (revoke, archive, bell).
+        let hubSaved: { before: HubConfig | null; url: string | null } | null =
+          null;
         if (body.hub_url !== undefined) {
+          let before: HubConfig | null = null;
+          try {
+            before = readHubConfig();
+          } catch {
+            before = null;
+          }
           const h = patchHubUrl(user as Record<string, unknown>, body.hub_url);
           if (!h.ok) return send400(res, h.error);
+          hubSaved = { before, url: h.url };
         }
         // AG-4b: the Agents tab's layout, a view preference only.
         if (body.agents_layout !== undefined) {
@@ -7950,6 +7967,22 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (hubSaved) {
+          const saved = hubSaved;
+          const m = await import("./hub-change.js");
+          await m
+            .hubUrlSaved(
+              await m.defaultHubChangeDeps(),
+              saved.before,
+              saved.url,
+            )
+            .catch((e: unknown) =>
+              serverLog(
+                `  ⚠ Hub change: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+                "warn",
+              ),
+            );
+        }
         if (gatePatch) gates().writeSettings(gatePatch);
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
@@ -8844,68 +8877,88 @@ void CRASH_GATE.then(() =>
         /* the file unreadable: the agents list heals them later */
       }
     });
+    // Issue 726: a hub.url edited to another Hub is a change: the old
+    // token revoked, its state archived, before any Hub loop reads it.
+    const hubChecked = import("./hub-change.js")
+      .then(async (m) => m.hubChangeAtStart(await m.defaultHubChangeDeps()))
+      .then((r) => {
+        if (r.kind === "change")
+          serverLog("  Hub changed: the earlier Hub's state is archived");
+      })
+      .catch((e: unknown) =>
+        serverLog(
+          `  ⚠ Hub change check: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+          "warn",
+        ),
+      );
     // H5: tell Hub this install's projects now, then whenever they change.
-    void import("./hub-sync-service.js").then((m) => {
-      let every = 30;
-      let names = 300;
-      let retry = 30;
-      try {
-        const c = readHubConfig();
-        every = c?.syncCheckSeconds ?? 30;
-        names = c?.namesCheckSeconds ?? 300;
-        retry = c?.mcpRetrySeconds ?? 30;
-      } catch {
-        /* a bad hub block: doctor says so; the default here */
-      }
-      m.startProjectSync(every);
-      // 0.4.45: a project renamed in Hub shows its new name here.
-      m.startHubNameRefresh(names);
-      // 0.4.46: an agent that started while Hub didn't answer gets its tools
-      // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
-      m.startMcpReconnect(retry, () => {
+    void hubChecked
+      .then(() => import("./hub-sync-service.js"))
+      .then((m) => {
+        let every = 30;
+        let names = 300;
+        let retry = 30;
         try {
-          return readHubConfig()?.mcpRetryAttempts ?? 0;
+          const c = readHubConfig();
+          every = c?.syncCheckSeconds ?? 30;
+          names = c?.namesCheckSeconds ?? 300;
+          retry = c?.mcpRetrySeconds ?? 30;
         } catch {
-          return 0;
+          /* a bad hub block: doctor says so; the default here */
         }
+        m.startProjectSync(every);
+        // 0.4.45: a project renamed in Hub shows its new name here.
+        m.startHubNameRefresh(names);
+        // 0.4.46: an agent that started while Hub didn't answer gets its tools
+        // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
+        m.startMcpReconnect(retry, () => {
+          try {
+            return readHubConfig()?.mcpRetryAttempts ?? 0;
+          } catch {
+            return 0;
+          }
+        });
       });
-    });
     // 0.4.40: Hub comments reach this install's agents.
-    void import("./hub-delivery-service.js").then((m) => {
-      // Always registered: a later Connect starts it (no token: it waits).
-      let cfg: ReturnType<typeof readHubConfig> = null;
-      try {
-        cfg = readHubConfig();
-      } catch {
-        /* a bad hub block: doctor says so; the defaults here */
-      }
-      void m.startDeliveries({
-        heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
-        pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-        heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
-        // Issue 701: one agent's hang holds only itself; a held comment
-        // and a typed one with no answer are said in the bell.
-        stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
-        typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
-        heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
-        answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
-        // Issue 701: an asked question never holds a delivery.
-        waiting: deliveryHeldIds,
-        waitingWhy: (agent) =>
-          pausedAgents().has(agent)
-            ? "paused"
-            : (waitingReasons().get(agent) ?? null),
-        log: (l) => serverLog(`  ${l}`, "warn"),
+    void hubChecked
+      .then(() => import("./hub-delivery-service.js"))
+      .then((m) => {
+        // Always registered: a later Connect starts it (no token: it waits).
+        let cfg: ReturnType<typeof readHubConfig> = null;
+        try {
+          cfg = readHubConfig();
+        } catch {
+          /* a bad hub block: doctor says so; the defaults here */
+        }
+        void m.startDeliveries({
+          heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
+          pollSeconds: cfg?.deliveryPollSeconds ?? 30,
+          heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
+          // Issue 701: one agent's hang holds only itself; a held comment
+          // and a typed one with no answer are said in the bell.
+          stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
+          typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
+          heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
+          answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
+          // Issue 701: an asked question never holds a delivery.
+          waiting: deliveryHeldIds,
+          waitingWhy: (agent) =>
+            pausedAgents().has(agent)
+              ? "paused"
+              : (waitingReasons().get(agent) ?? null),
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        });
       });
-    });
     // Issue 193: an agent resumed on an older Hub tool list is told what
     // changed (hub.tools_check_seconds).
-    void import("./hub-tools-service.js").then((m) =>
-      m.startHubToolsWatch({
-        waiting: typingHeldIds,
-        log: (l) => serverLog(`  ${l}`, "warn"),
-      }),
-    );
+    void hubChecked
+      .then(() => import("./hub-tools-service.js"))
+      .then((m) =>
+        m.startHubToolsWatch({
+          waiting: typingHeldIds,
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
   }),
 );
 
