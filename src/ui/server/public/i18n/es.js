@@ -1924,6 +1924,42 @@
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
     "bell.m.notAtPrompt.one":
       "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente no está en su indicador de entrada",
+    "bell.m.held.busy":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente está ocupado con un turno",
+    "bell.m.held.busy.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente está ocupado con un turno",
+    "bell.m.held.trust":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: hay una pregunta sobre confiar en su carpeta en su pantalla",
+    "bell.m.held.trust.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: hay una pregunta sobre confiar en su carpeta en su pantalla",
+    "bell.m.held.permission":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: hay una pregunta de permiso en su pantalla",
+    "bell.m.held.permission.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: hay una pregunta de permiso en su pantalla",
+    "bell.m.held.approval":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: espera a que permitas un cambio",
+    "bell.m.held.approval.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: espera a que permitas un cambio",
+    "bell.m.held.paused":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: está en pausa tras un bucle de compactación hasta que sigas",
+    "bell.m.held.paused.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: está en pausa tras un bucle de compactación hasta que sigas",
+    "bell.m.held.stopped":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en marcha",
+    "bell.m.held.stopped.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente no está en marcha",
+    "bell.m.held.owner":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den aún pregunta a Hub quién eres",
+    "bell.m.held.owner.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: Den aún pregunta a Hub quién eres",
+    "bell.m.held.unread":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.held.unread.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.hubNoAnswer":
+      "{name}: {n} comentarios de Hub escritos, aún sin respuesta tras {m} min",
+    "bell.m.hubNoAnswer.one":
+      "{name}: {n} comentario de Hub escrito, aún sin respuesta tras {m} min",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":

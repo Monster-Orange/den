@@ -18,7 +18,9 @@ import {
 } from "../../shared/hub-delivery.js";
 import {
   DeliveryLoop,
+  HELD_WORDS,
   type AgentHubWork,
+  type HeldCode,
 } from "../../shared/hub-delivery-loop.js";
 import {
   listRecords,
@@ -62,16 +64,30 @@ interface StartOpts {
    * "approval", "paused"), or null.
    */
   waitingWhy?: (agent: string) => string | null;
+  /**
+   * Issue 701: hub.delivery_state_timeout_seconds (60),
+   * hub.delivery_type_timeout_seconds (120), hub.delivery_held_bell_minutes
+   * (5), hub.delivery_answer_minutes (30).
+   */
+  stateTimeoutSeconds?: number;
+  typeTimeoutSeconds?: number;
+  heldBellMinutes?: number;
+  answerMinutes?: number;
   log: (line: string) => void;
 }
 
-/** Issue 701: Hub's words for why a delivery waits (it shows them). */
-const HELD_WORDS: Record<string, string> = {
-  trust: "a question about trusting its folder is on its screen",
-  permission: "a permission question is on its screen",
-  approval: "it waits for its person to Allow a change",
-  paused: "it is paused after a compaction loop until its person goes on",
-};
+/** Issue 701: the reasons the install's waiting marks give. */
+const MARK_CODES: ReadonlySet<string> = new Set([
+  "permission",
+  "approval",
+  "paused",
+]);
+
+/** Issue 701: how long a held item waits before the bell says so, in s. */
+function heldBellAfter(why: HeldCode | undefined): number {
+  if (!why || why === "not_at_prompt") return lastOpts?.heldNoteSeconds ?? 60;
+  return (lastOpts?.heldBellMinutes ?? 5) * 60;
+}
 let lastOpts: StartOpts | null = null;
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
@@ -205,6 +221,8 @@ type HeldStore = Pick<
  * Issue 664: the bell's item for text held because `agent` isn't at its
  * input prompt: added once it has waited `afterSeconds`, said again each
  * minute while it waits (how long, and why), withdrawn when n is 0.
+ * Issue 701: the same item for every reason it waits (`why`; none: not at
+ * its prompt).
  */
 export function heldBell(
   agent: string,
@@ -215,9 +233,11 @@ export function heldBell(
     store?: HeldStore;
     recOf?: (id: string) => AgentRecord | null;
     now?: number;
+    why?: HeldCode;
   } = {},
 ): void {
   const subject = `record:not-at-prompt:${agent}`;
+  const why = o.why ?? "not_at_prompt";
   const said = heldSaid.get(agent);
   const now = o.now ?? Date.now();
   if (n <= 0) {
@@ -242,8 +262,12 @@ export function heldBell(
       kind: "service",
       subject,
       scope: `workspace/${rec.workspace}`,
-      text: `${name}: ${n} message${n === 1 ? " waits" : "s wait"} for ${m} min. Waiting: the agent isn't at its prompt`,
-      msg: { key: "bell.m.notAtPrompt", vars: { name, n, m } },
+      text: `${name}: ${n} message${n === 1 ? " waits" : "s wait"} for ${m} min. Waiting: ${why === "not_at_prompt" ? "the agent isn't at its prompt" : HELD_WORDS[why]}`,
+      msg: {
+        key:
+          why === "not_at_prompt" ? "bell.m.notAtPrompt" : `bell.m.held.${why}`,
+        vars: { name, n, m },
+      },
       link: `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`,
     });
   };
@@ -300,8 +324,9 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       notAtPrompt: (id) => ops.heldNotAtPrompt(id),
       why: async (id) => {
         const dialog = await ops.agentDialogKind(d, id);
-        const why = dialog ?? o.waitingWhy?.(id) ?? null;
-        return why ? (HELD_WORDS[why] ?? null) : null;
+        if (dialog) return dialog;
+        const why = o.waitingWhy?.(id) ?? null;
+        return why && MARK_CODES.has(why) ? (why as HeldCode) : null;
       },
     },
     // Issue 701: the person's comment answers the agent's question.
@@ -315,8 +340,23 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     // Issue 664: text held because the agent isn't at its prompt: the
     // bell says so once it has waited hub.delivery_held_note_seconds, and
     // keeps saying it (refreshed each minute) until it's typed.
-    heldNote: (agent, n, waitedMs) =>
-      heldBell(agent, n, waitedMs, lastOpts?.heldNoteSeconds ?? 60),
+    // Issue 701: and for every other reason, after
+    // hub.delivery_held_bell_minutes.
+    heldNote: (agent, n, waitedMs, why) =>
+      heldBell(agent, n, waitedMs, heldBellAfter(why), { why }),
+    stateTimeoutMs: (o.stateTimeoutSeconds ?? 60) * 1000,
+    typeTimeoutMs: (o.typeTimeoutSeconds ?? 120) * 1000,
+    answerTimeoutMs: (o.answerMinutes ?? 30) * 60_000,
+    // Issue 701: typed comments with no answer yet: the bell says so.
+    noAnswer: (agent, w) => {
+      void import("./notification-service.js")
+        .then(({ notificationDeps }) => {
+          const rec = readRecord(getStateDir(), agent);
+          if (rec)
+            notificationDeps().attention.hubNoAnswer(agent, rec.workspace, w);
+        })
+        .catch(() => undefined);
+    },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
     seen: new SeenDeliveries(

@@ -55,7 +55,7 @@ type Deps = ConstructorParameters<typeof DeliveryLoop>[0];
 function setup(o: Partial<Deps> = {}) {
   const acks: { id: string; state: string; reason?: unknown }[] = [];
   const typed: { agent: string; text: string }[] = [];
-  const heldLong: { agent: string; count: number; reason: string }[] = [];
+  const notes: [string, number, number, string | undefined][] = [];
   const noAnswer: { agent: string; count: number }[] = [];
   const states: Record<string, AgentState> = {};
   const hang = new Set<string>();
@@ -85,10 +85,9 @@ function setup(o: Partial<Deps> = {}) {
     now: () => clock,
     stateTimeoutMs: 50,
     typeTimeoutMs: 50,
-    heldBellMs: 5 * 60_000,
     answerTimeoutMs: 30 * 60_000,
-    heldLong: (agent: string, w: { count: number; reason: string }) =>
-      heldLong.push({ agent, count: w.count, reason: w.reason }),
+    heldNote: (agent: string, n: number, waited: number, why?: string) =>
+      notes.push([agent, n, waited, why]),
     noAnswer: (agent: string, w: { count: number }) =>
       noAnswer.push({ agent, count: w.count }),
     ...o,
@@ -97,7 +96,7 @@ function setup(o: Partial<Deps> = {}) {
     loop,
     acks,
     typed,
-    heldLong,
+    notes,
     noAnswer,
     states,
     hang,
@@ -135,17 +134,20 @@ describe("issue 701: each agent pumps on its own", () => {
   });
 });
 
-describe("issue 701: a comment held too long is said in the bell", () => {
-  it("once, after the setting, with its reason", async () => {
+describe("issue 701: a held comment's note says why, whatever holds it", () => {
+  it("issue 664's held note carries the reason and how long it has waited", async () => {
     const s = setup();
     s.states["ag-1"] = "busy";
     await s.loop.take(dv("d1", "ag-1"));
+    s.tick(5 * 60_000);
     await s.loop.pump();
-    expect(s.heldLong).toEqual([]);
-    s.tick(5 * 60_000 + 1);
+    expect(s.notes.at(-1)).toEqual(["ag-1", 1, 5 * 60_000, "busy"]);
+    s.states["ag-1"] = "stopped";
     await s.loop.pump();
+    expect(s.notes.at(-1)?.[3]).toBe("stopped");
+    s.states["ag-1"] = "idle";
     await s.loop.pump();
-    expect(s.heldLong).toEqual([{ agent: "ag-1", count: 1, reason: "busy" }]);
+    expect(s.notes.at(-1)).toEqual(["ag-1", 0, 0, undefined]);
   });
 });
 

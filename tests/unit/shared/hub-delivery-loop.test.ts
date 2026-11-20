@@ -441,6 +441,9 @@ describe("the 0.4.40 gate's delivery bugs", () => {
       agents: { state: async () => state, type: async () => true },
       owner: () => ({ ownerId: "u_me" }),
       seen: new SeenDeliveries(t.seenFile),
+      // A minute later on the first loop's clock (issue 701: a turn with
+      // no end after hub.delivery_answer_minutes is settled otherwise).
+      now: () => 1_060_000,
     });
     expect(loop2.work("ag-1")).toMatchObject({ working: 1 });
     await loop2.pump();
@@ -674,7 +677,7 @@ describe("#248: the log says where held comments went", () => {
 
 describe("issue 664: held because the agent isn't at its prompt", () => {
   it("its row says why, the bell hears how long, and both end once it's typed", async () => {
-    const notes: [string, number, number][] = [];
+    const notes: (string | number)[][] = [];
     let away = true;
     const states: Record<string, AgentState> = { "ag-1": "busy" };
     let clock = 1_000_000;
@@ -698,7 +701,8 @@ describe("issue 664: held because the agent isn't at its prompt", () => {
       owner: () => ({ ownerId: "u_me", company: "Acme" }),
       seen: new SeenDeliveries(path.join(dir, "seen.json")),
       now: () => clock,
-      heldNote: (agent, n, waited) => notes.push([agent, n, waited]),
+      heldNote: (agent, n, waited, why) =>
+        notes.push([agent, n, waited, ...(why ? [why] : [])]),
     });
     await loop.take(dv("d1"));
     expect(typed).toEqual([]);
@@ -708,12 +712,13 @@ describe("issue 664: held because the agent isn't at its prompt", () => {
     });
     clock += 90_000;
     await loop.pump();
-    expect(notes.at(-1)).toEqual(["ag-1", 1, 90_000]);
-    // Mid-turn instead: it waits, but not for that reason.
+    expect(notes.at(-1)).toEqual(["ag-1", 1, 90_000, "not_at_prompt"]);
+    // Mid-turn instead: it waits, but not for that reason (issue 701:
+    // the note says the new one).
     away = false;
     await loop.pump();
     expect(loop.work("ag-1")?.held).toBeUndefined();
-    expect(notes.at(-1)).toEqual(["ag-1", 0, 0]);
+    expect(notes.at(-1)).toEqual(["ag-1", 1, 90_000, "busy"]);
     states["ag-1"] = "idle";
     await loop.pump();
     expect(typed).toHaveLength(1);

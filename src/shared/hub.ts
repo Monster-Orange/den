@@ -104,6 +104,29 @@ export interface HubConfig {
    */
   deliveryHeldNoteSeconds: number;
   /**
+   * Issue 701 hub.delivery_state_timeout_seconds (default 60, at least 5):
+   * the longest Den waits to read one agent's state before it holds that
+   * agent's comments and goes on with the others.
+   */
+  deliveryStateTimeoutSeconds: number;
+  /**
+   * Issue 701 hub.delivery_type_timeout_seconds (default 120, at least 5):
+   * the longest one agent's paste holds the others' deliveries.
+   */
+  deliveryTypeTimeoutSeconds: number;
+  /**
+   * Issue 701 hub.delivery_held_bell_minutes (default 5, at least 1): how
+   * long a Hub comment waits for a busy agent (or one with a dialog, a
+   * held Allow, a pause) before the bell says so, and why.
+   */
+  deliveryHeldBellMinutes: number;
+  /**
+   * Issue 701 hub.delivery_answer_minutes (default 30, at least 1): a typed
+   * comment whose turn never shows as ended is "delivered, no answer yet"
+   * after this, and the agent's next comments go on.
+   */
+  deliveryAnswerMinutes: number;
+  /**
    * 0.4.51 hub.inbox_watch (default true): one watcher per install reads
    * Hub's inbox for this install's agents and types each new item into
    * its agent's pane (issue 166). False: no reading at all.
@@ -159,6 +182,10 @@ type RawHub =
       delivery_heartbeat_seconds?: unknown;
       delivery_poll_seconds?: unknown;
       delivery_held_note_seconds?: unknown;
+      delivery_state_timeout_seconds?: unknown;
+      delivery_type_timeout_seconds?: unknown;
+      delivery_held_bell_minutes?: unknown;
+      delivery_answer_minutes?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
       inbox_backoff_max_seconds?: unknown;
@@ -269,6 +296,27 @@ export function readHubConfig(
     "delivery_held_note_seconds",
     60,
   );
+  const stateTimeout = secs(
+    h.delivery_state_timeout_seconds,
+    "delivery_state_timeout_seconds",
+    60,
+  );
+  const typeTimeout = secs(
+    h.delivery_type_timeout_seconds,
+    "delivery_type_timeout_seconds",
+    120,
+  );
+  const mins = (v: unknown, key: string, dflt: number): number => {
+    if (v === undefined || v === null) return dflt;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 1) return v;
+    throw new Error(`hub.${key} must be a number, at least 1`);
+  };
+  const heldBell = mins(
+    h.delivery_held_bell_minutes,
+    "delivery_held_bell_minutes",
+    5,
+  );
+  const answer = mins(h.delivery_answer_minutes, "delivery_answer_minutes", 30);
   const names = secs(h.names_check_seconds, "names_check_seconds", 300);
   const iw = h.inbox_watch;
   if (iw !== undefined && iw !== null && typeof iw !== "boolean")
@@ -306,6 +354,10 @@ export function readHubConfig(
     deliveryHeartbeatSeconds: beat,
     deliveryPollSeconds: poll,
     deliveryHeldNoteSeconds: heldNote,
+    deliveryStateTimeoutSeconds: stateTimeout,
+    deliveryTypeTimeoutSeconds: typeTimeout,
+    deliveryHeldBellMinutes: heldBell,
+    deliveryAnswerMinutes: answer,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
     inboxBackoffMaxSeconds: inboxBackoff,

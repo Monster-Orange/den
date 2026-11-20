@@ -117,7 +117,7 @@ describe("issue 701: a held delivery tells Hub why, once", () => {
   });
 
   it("the reason the install gives is used, and a new reason is acked again", async () => {
-    const s = setup({ why: "a permission question is on its screen" });
+    const s = setup({ why: "permission" });
     await s.loop.take(dv("d1"));
     await s.loop.pump();
     s.st.why = null;

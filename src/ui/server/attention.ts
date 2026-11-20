@@ -465,6 +465,34 @@ export class Attention {
   }
 
   /**
+   * Issue 701: Hub comments typed into the agent had no answer after
+   * hub.delivery_answer_minutes; its next comments go on. One item,
+   * linking to the comment in Hub when known.
+   */
+  hubNoAnswer(
+    agent: string,
+    workspace: string,
+    w: { count: number; minutes: number; artifact?: string; url?: string },
+  ): void {
+    const name = this.d.nameOf(agent);
+    const what = w.count === 1 ? "1 Hub comment" : `${w.count} Hub comments`;
+    this.d.store.add({
+      kind: "answer",
+      subject: `agent:${agent}`,
+      scope: `workspace/${workspace}`,
+      text: `${name}: ${what} typed in, no answer yet after ${w.minutes} min`,
+      msg: {
+        key: "bell.m.hubNoAnswer",
+        vars: { name, n: w.count, m: w.minutes },
+      },
+      link:
+        w.url && /^https?:\/\//.test(w.url)
+          ? w.url
+          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+    });
+  }
+
+  /**
    * NT-1 (3): the sessions' last bells (a bare BEL, OSC 9, OSC 777). A new
    * one marks its agent waiting for input, unless it already waits (it
    * keeps why). A bell first seen more than 10 s old happened before this

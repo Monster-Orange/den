@@ -1869,6 +1869,24 @@
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
     "bell.m.notAtPrompt":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが入力プロンプトにいません",
+    "bell.m.held.busy":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントはターンの途中です",
+    "bell.m.held.trust":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: フォルダーを信頼するかの質問が画面に出ています",
+    "bell.m.held.permission":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: 権限の質問が画面に出ています",
+    "bell.m.held.approval":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: 変更の許可を待っています",
+    "bell.m.held.paused":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: 圧縮のループのあと、続けるまで一時停止しています",
+    "bell.m.held.stopped":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが動いていません",
+    "bell.m.held.owner":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den があなたが誰かを Hub にまだ問い合わせています",
+    "bell.m.held.unread":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den がエージェントの状態を時間内に読めませんでした",
+    "bell.m.hubNoAnswer":
+      "{name}: Hub コメント {n} 件を入力しましたが、{m} 分たってもまだ返事がありません",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":

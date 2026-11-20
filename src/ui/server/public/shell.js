@@ -2751,6 +2751,42 @@
       "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
     "bell.m.notAtPrompt.one":
       "{name}: {n} message waits for {m} min. Waiting: the agent isn't at its prompt",
+    "bell.m.held.busy":
+      "{name}: {n} messages wait for {m} min. Waiting: the agent is busy with a turn",
+    "bell.m.held.busy.one":
+      "{name}: {n} message waits for {m} min. Waiting: the agent is busy with a turn",
+    "bell.m.held.trust":
+      "{name}: {n} messages wait for {m} min. Waiting: a question about trusting its folder is on its screen",
+    "bell.m.held.trust.one":
+      "{name}: {n} message waits for {m} min. Waiting: a question about trusting its folder is on its screen",
+    "bell.m.held.permission":
+      "{name}: {n} messages wait for {m} min. Waiting: a permission question is on its screen",
+    "bell.m.held.permission.one":
+      "{name}: {n} message waits for {m} min. Waiting: a permission question is on its screen",
+    "bell.m.held.approval":
+      "{name}: {n} messages wait for {m} min. Waiting: it waits for you to Allow a change",
+    "bell.m.held.approval.one":
+      "{name}: {n} message waits for {m} min. Waiting: it waits for you to Allow a change",
+    "bell.m.held.paused":
+      "{name}: {n} messages wait for {m} min. Waiting: it is paused after a compaction loop until you go on",
+    "bell.m.held.paused.one":
+      "{name}: {n} message waits for {m} min. Waiting: it is paused after a compaction loop until you go on",
+    "bell.m.held.stopped":
+      "{name}: {n} messages wait for {m} min. Waiting: the agent isn't running",
+    "bell.m.held.stopped.one":
+      "{name}: {n} message waits for {m} min. Waiting: the agent isn't running",
+    "bell.m.held.owner":
+      "{name}: {n} messages wait for {m} min. Waiting: Den is still asking Hub who you are",
+    "bell.m.held.owner.one":
+      "{name}: {n} message waits for {m} min. Waiting: Den is still asking Hub who you are",
+    "bell.m.held.unread":
+      "{name}: {n} messages wait for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.held.unread.one":
+      "{name}: {n} message waits for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.hubNoAnswer":
+      "{name}: {n} Hub comments typed in, no answer yet after {m} min",
+    "bell.m.hubNoAnswer.one":
+      "{name}: {n} Hub comment typed in, no answer yet after {m} min",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
