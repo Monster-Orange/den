@@ -9,6 +9,14 @@
  * holder keeps its slot however long it runs (past its estimate it is
  * flagged, never stopped).
  *
+ * Issue 715: a release run a person waits on (`gate run --priority
+ * release --reason <why>`) goes to the front of its kind's queue. It never
+ * passes a holder (nothing is pre-empted), nor a waiter that has waited
+ * past `priorityPassLimitMinutes`. At most `priorityMax` such runs per kind
+ * hold priority at a time (the first asked); a later one waits in line as
+ * an ordinary run until the one ahead starts, then takes priority. The
+ * store records each jump (who, why, what it passed).
+ *
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
@@ -43,6 +51,11 @@ export interface GateEntry {
    * token. It has no process here: it holds by lease, renewed every
    * remoteRenewSeconds, and is taken back once the lease lapses.
    */
+  /**
+   * Issue 715: a release run a person waits on asked for priority, with
+   * why. `at`: when it took priority (the store records it once).
+   */
+  priority?: { for: "release"; reason: string; at?: string };
   remote?: {
     /** The runner token's name (who, in words). */
     runner: string;
@@ -66,6 +79,12 @@ export interface GateSettings {
   remoteMaxSlots: number;
   /** Issue 621: asks one runner token may have waiting on an answer. */
   remoteMaxAsks: number;
+  /** Issue 715: marked release runs per kind that hold priority at once. */
+  priorityMax: number;
+  /** Issue 715: a waiter that has waited this long is never passed again. */
+  priorityPassLimitMinutes: number;
+  /** Issue 715: agents may ask for priority (else people only). */
+  priorityAgents: boolean;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -75,6 +94,9 @@ export const GATE_DEFAULTS: GateSettings = {
   remoteLapseSeconds: 120,
   remoteMaxSlots: 4,
   remoteMaxAsks: 4,
+  priorityMax: 1,
+  priorityPassLimitMinutes: 60,
+  priorityAgents: true,
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
@@ -84,10 +106,91 @@ export function byAsked(a: GateEntry, b: GateEntry): number {
   return t(a.askedAt) - t(b.askedAt) || a.id.localeCompare(b.id);
 }
 
+type PrioritySettings = Pick<
+  GateSettings,
+  "priorityMax" | "priorityPassLimitMinutes"
+>;
+
+/**
+ * Issue 715: the marked waiters that hold priority now: per kind, the
+ * first `priorityMax` that asked.
+ */
+export function priorityIds(
+  entries: GateEntry[],
+  s: Partial<PrioritySettings> = GATE_DEFAULTS,
+): Set<string> {
+  const max = Math.max(
+    0,
+    Math.floor(s.priorityMax ?? GATE_DEFAULTS.priorityMax),
+  );
+  const out = new Set<string>();
+  const n: Record<string, number> = {};
+  for (const w of entries
+    .filter((e) => !e.grantedAt && e.priority)
+    .sort(byAsked)) {
+    if ((n[w.kind] ?? 0) >= max) continue;
+    n[w.kind] = (n[w.kind] ?? 0) + 1;
+    out.add(w.id);
+  }
+  return out;
+}
+
+/**
+ * The waiters in the order they start: by ask, except that a run holding
+ * priority (issue 715) goes ahead of its kind's other waiters, never
+ * ahead of one that has waited past the pass limit.
+ */
+export function queueOrder(
+  entries: GateEntry[],
+  s: Partial<PrioritySettings> = GATE_DEFAULTS,
+  now: number = Date.now(),
+): GateEntry[] {
+  const q = entries.filter((e) => !e.grantedAt).sort(byAsked);
+  const pri = priorityIds(entries, s);
+  if (!pri.size) return q;
+  const limitMs =
+    (s.priorityPassLimitMinutes ?? GATE_DEFAULTS.priorityPassLimitMinutes) *
+    60_000;
+  for (const p of q.filter((e) => pri.has(e.id))) {
+    const from = q.indexOf(p);
+    q.splice(from, 1);
+    let to = from;
+    for (let i = from - 1; i >= 0; i--) {
+      const w = q[i]!;
+      if (w.kind !== p.kind) continue;
+      if (pri.has(w.id) || now - t(w.askedAt) > limitMs) break;
+      to = i;
+    }
+    q.splice(to, 0, p);
+  }
+  return q;
+}
+
+/** Issue 715: the same-kind waiters a priority run goes ahead of. */
+export function passedBy(
+  entries: GateEntry[],
+  id: string,
+  s: Partial<PrioritySettings> = GATE_DEFAULTS,
+  now: number = Date.now(),
+): string[] {
+  const p = entries.find((e) => e.id === id);
+  if (!p || p.grantedAt) return [];
+  const order = queueOrder(entries, s, now);
+  const at = order.indexOf(p);
+  return order
+    .slice(at + 1)
+    .filter((w) => w.kind === p.kind && byAsked(w, p) < 0)
+    .map((w) => w.id);
+}
+
 /** Which waiters may start now, in order. */
-export function grants(entries: GateEntry[], s: GateSettings): string[] {
+export function grants(
+  entries: GateEntry[],
+  s: Pick<GateSettings, "cpuSlots"> & Partial<PrioritySettings>,
+  now: number = Date.now(),
+): string[] {
   const holders = entries.filter((e) => e.grantedAt);
-  const waiters = entries.filter((e) => !e.grantedAt).sort(byAsked);
+  const waiters = queueOrder(entries, s, now);
   const out: string[] = [];
   let browserHeld = holders.some((e) => e.kind === "browser");
   let cpuHeld = holders.filter((e) => e.kind === "cpu").length;
@@ -121,11 +224,16 @@ export function lapsed(e: GateEntry, now: number): boolean {
 }
 
 /** 0 for a holder; a waiter's place in line (1 is next); -1 if absent. */
-export function queuePlace(entries: GateEntry[], id: string): number {
+export function queuePlace(
+  entries: GateEntry[],
+  id: string,
+  s: Partial<PrioritySettings> = GATE_DEFAULTS,
+  now: number = Date.now(),
+): number {
   const e = entries.find((x) => x.id === id);
   if (!e) return -1;
   if (e.grantedAt) return 0;
-  const queue = entries.filter((x) => !x.grantedAt).sort(byAsked);
+  const queue = queueOrder(entries, s, now);
   return queue.findIndex((x) => x.id === id) + 1;
 }
 
@@ -153,8 +261,9 @@ export function expectedStart(
   entries: GateEntry[],
   id: string,
   now: number,
+  s: Partial<PrioritySettings> = GATE_DEFAULTS,
 ): number {
-  const queue = entries.filter((e) => !e.grantedAt).sort(byAsked);
+  const queue = queueOrder(entries, s, now);
   const ahead = queue.slice(
     0,
     Math.max(

@@ -55,7 +55,9 @@ const entry = (
   askedAt: iso(askedMin),
   estimateMin: 10,
   ...(o.granted !== undefined ? { grantedAt: iso(o.granted) } : {}),
-  ...(o.reason ? { priority: { for: "release" as const, reason: o.reason } } : {}),
+  ...(o.reason
+    ? { priority: { for: "release" as const, reason: o.reason } }
+    : {}),
 });
 const ids = (es: GateEntry[]) => es.map((e) => e.id);
 
@@ -126,7 +128,11 @@ describe("the queue rules (issue 715)", () => {
     ]);
     expect(
       ids(
-        queueOrder(q, { ...GATE_DEFAULTS, priorityPassLimitMinutes: 120 }, at(61)),
+        queueOrder(
+          q,
+          { ...GATE_DEFAULTS, priorityPassLimitMinutes: 120 },
+          at(61),
+        ),
       ),
     ).toEqual(["p", "old", "a"]);
   });
@@ -151,8 +157,15 @@ describe("the queue rules (issue 715)", () => {
 });
 
 describe("the store's audit (issue 715)", () => {
-  const store = (now = at(10)) =>
-    new GateStore({ dir: tmp(), alive: () => true, now: () => now });
+  // A clock that moves a second per look: asks keep their order.
+  const store = () => {
+    let now = at(10);
+    return new GateStore({
+      dir: tmp(),
+      alive: () => true,
+      now: () => (now += 1000),
+    });
+  };
   const ask = (
     s: GateStore,
     label: string,
@@ -198,7 +211,11 @@ describe("the store's audit (issue 715)", () => {
     const p1 = ask(s, "rc1", { reason: "first" });
     const p2 = ask(s, "rc2", { reason: "second" });
     const waits = s.events().find((e) => e.event === "priority-waits");
-    expect(waits).toMatchObject({ id: p2.id, behind: [p1.id], reason: "second" });
+    expect(waits).toMatchObject({
+      id: p2.id,
+      behind: [p1.id],
+      reason: "second",
+    });
     expect(s.events().filter((e) => e.event === "priority")).toHaveLength(1);
     expect(s.list().map((e) => e.id)).toEqual([h.id, p1.id, a.id, p2.id]);
     s.release(h.id);
@@ -338,7 +355,13 @@ describe("gate run --priority (issue 715)", () => {
   it("gate status shows the priority holder and why", async () => {
     const t = deps();
     const s = t.d.store;
-    s.ask({ kind: "browser", who: "h", label: "holder", pid: 1, estimateMin: 10 });
+    s.ask({
+      kind: "browser",
+      who: "h",
+      label: "holder",
+      pid: 1,
+      estimateMin: 10,
+    });
     s.ask({ kind: "browser", who: "a", label: "a", pid: 1, estimateMin: 10 });
     s.ask({
       kind: "browser",
@@ -391,8 +414,10 @@ describe("gate run --priority (issue 715)", () => {
 describe("gate_slot_request with priority (issue 715)", () => {
   const api = {
     baseUrl: "http://localhost:47003",
-    async get() {
-      throw new Error("no API call expected");
+    async get(p: string) {
+      if (p === "/api/workspaces")
+        return { active: ["north"], workspaces: { north: {} } };
+      throw new Error(`no API call expected: ${p}`);
     },
   } as unknown as DenApi;
   const ctx = (store: GateStore): ToolContext => ({
@@ -410,7 +435,13 @@ describe("gate_slot_request with priority (issue 715)", () => {
 
   it("takes priority with a reason, and refuses one without", async () => {
     const store = new GateStore({ dir: tmp(), alive: () => true });
-    store.ask({ kind: "browser", who: "h", label: "h", pid: 1, estimateMin: 10 });
+    store.ask({
+      kind: "browser",
+      who: "h",
+      label: "h",
+      pid: 1,
+      estimateMin: 10,
+    });
     const no = await callTool(
       "gate_slot_request",
       { kind: "browser", priority: "release" },
@@ -419,11 +450,18 @@ describe("gate_slot_request with priority (issue 715)", () => {
     expect(no.isError).toBe(true);
     const r = await callTool(
       "gate_slot_request",
-      { kind: "browser", priority: "release", reason: "the person reported it" },
+      {
+        kind: "browser",
+        priority: "release",
+        reason: "the person reported it",
+      },
       ctx(store),
     );
     const v = JSON.parse(r.text) as { priority?: unknown };
-    expect(v.priority).toEqual({ reason: "the person reported it", holds: true });
+    expect(v.priority).toEqual({
+      reason: "the person reported it",
+      holds: true,
+    });
     expect(store.events().find((e) => e.event === "priority")).toMatchObject({
       by: "agent:coder",
       reason: "the person reported it",

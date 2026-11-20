@@ -2301,6 +2301,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { remote_max_asks: v } }),
   },
   {
+    // Issue 715: release runs a person waits on (`gate run --priority
+    // release --reason <why>`) go to the front of their kind's queue.
+    id: "server.gate_priority_max",
+    category: "server",
+    label: "Release runs that may jump the queue at once, per kind",
+    description:
+      "A release run a person waits on (`gate run --priority release --reason <why>`) goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
+    keywords: ["gate", "slot", "priority", "release", "queue", "jump"],
+    scope: "user",
+    keys: ["gate_slots.priority_max"],
+    control: { type: "number", min: 0, max: 16, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.priorityMax ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { priority_max: v } }),
+  },
+  {
+    id: "server.gate_priority_pass",
+    category: "server",
+    label: "A run waiting this long is never passed, in minutes",
+    description:
+      "A release run with priority goes ahead of other waiting runs, but never ahead of one that has waited this long. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    keywords: ["gate", "slot", "priority", "release", "starvation", "wait"],
+    scope: "user",
+    keys: ["gate_slots.priority_pass_limit_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 60,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
+  },
+  {
+    id: "server.gate_priority_agents",
+    category: "server",
+    label: "Agents may ask for release priority",
+    description:
+      "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
+    keywords: ["gate", "slot", "priority", "release", "agent", "person"],
+    scope: "user",
+    keys: ["gate_slots.priority_agents"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.priorityAgents !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { priority_agents: v ? 1 : 0 } }),
+  },
+  {
     // Issue 621: the gate-only runner tokens; an agent asks for one (a
     // held write the person allows), and the person revokes one here.
     id: "server.gate_runners",

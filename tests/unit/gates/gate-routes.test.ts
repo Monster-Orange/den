@@ -89,6 +89,9 @@ describe("gate-slot routes", () => {
     expect(r.json.settings).toEqual({
       cpuSlots: 2,
       overrunMarginMinutes: 15,
+      priorityMax: 1,
+      priorityPassLimitMinutes: 60,
+      priorityAgents: true,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
