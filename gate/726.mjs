@@ -1,12 +1,15 @@
-// gate/726.mjs: changing a Den's Hub is clean (issue 726), run for real on
-// the bed, in two legs, then put back as it was.
+// gate/726.mjs: changing a Den's Hub is clean (issue 726), run for real on a
+// throwaway second Den (ctx.den2()), never the bed's own: the bed's Den is
+// never repointed. d2.hubs.a and d2.hubs.b are the two Postgres test Hubs.
 //
-// Leg 1, the address: the bed Den moves from test Hub A (ctx.hubs.a) to
-// test Hub B (ctx.hubs.b) through POST /api/settings, the path that used
-// to skip the revoke. Then it connects to B.
-// Then back from B to A (B's token gets 401 on B), so the gate ends on A.
-// Leg 2, the company: on A, the bed connects again for the second test
-// company (ctx.hubs.a.companies, two gate-726* entries), then for the first.
+// Leg 1, the address: d2 moves from test Hub A (d2.hubs.a) to test Hub B
+// (d2.hubs.b) through POST /api/settings, the path that used to skip the
+// revoke. Then it connects to B.
+// Then back from B to A (B's token gets 401 on B).
+// Leg 2, the company: on A, d2 connects again for the second test company
+// (d2.hubs.a.companies, two gate-726* entries), then for the first.
+// d2.close() (teardown) disconnects it, checks its last token answers 401
+// and removes the throwaway Den.
 //
 // Allowed by test fixture (Vision's ruling): the harness's fixture Connect
 // presses Allow as the fixture person, and comments are posted by the
@@ -25,8 +28,7 @@
 //   - the bell has no items from before; doctor shows hub:previous ok and
 //     hub:unrevoked ok.
 //
-// Without the fixture Connect every clause skips: a change revokes the
-// bed's own token, and only Connect can put the bed back.
+// Without ctx.den2 or the fixture Connect every clause skips.
 export const issue = 726;
 export const clauses = [
   "address change: a comment on Hub A is typed once, and after the change no old comment is typed again (A's seen file archived, its cursor not sent to B)",
@@ -34,7 +36,7 @@ export const clauses = [
   "address change: no project keeps an A id, the bell offers the picks, and after linking on B the count drops",
   "address change: the old token is revoked on A (a call with it gets 401)",
   "address change: the bell has no A items, and doctor shows hub:previous with no hub:unrevoked",
-  "moving back to A: the token B issued gets 401 on B, and the bed is connected to A again",
+  "moving back to A: the token B issued gets 401 on B, and the Den is connected to A again",
   "company change: a comment before is typed once and never again after, and a comment in the second company is typed once",
   "company change: no project keeps the first company's id, the bell offers the picks, and after linking the count drops",
   "company change: the first company's token gets 401",
@@ -73,9 +75,10 @@ const saveHub = (ctx, url) =>
     body: JSON.stringify({ hub_url: url }),
   });
 
+/** The Hub address the Den uses now (GET /api/hub's url). */
 async function hubUrlNow(ctx) {
-  const s = await ctx.api("/api/settings").catch(() => null);
-  return s?.hub_url ?? null;
+  const h = await ctx.api("/api/hub?rail=1").catch(() => null);
+  return h?.url ?? null;
 }
 
 async function connected(ctx) {
@@ -95,7 +98,7 @@ async function connect(ctx, key, company) {
     : { ok: true, company: c.company ?? company ?? null };
 }
 
-/** Point the bed at `key`'s Hub and connect. */
+/** Point the Den at `key`'s Hub and connect. */
 async function moveTo(ctx, key, company) {
   const url = ctx.hubs[key].url;
   if (origin((await hubUrlNow(ctx)) ?? "") !== origin(url)) {
@@ -258,17 +261,28 @@ async function leg(ctx, s, a, o) {
 }
 
 export async function setup(ctx) {
-  if (!ctx.hubs?.a?.url || !ctx.hubs?.b?.url) return { skip: "needs-two-hubs" };
-  if (!ctx.hubConnect) return { skip: NO_CONNECT };
-  if (!ctx.hubTokenSnapshot || !ctx.hubTokenStatus)
-    return { skip: "needs-token-check" };
-  const was = await hubUrlNow(ctx);
-  const link = (await linkOf(ctx))?.hub?.slug ?? null;
-  return { was, link, agent: fresh("gate-726") };
+  if (!ctx.den2) return { skip: "needs ctx.den2" };
+  let d2;
+  try {
+    d2 = await ctx.den2();
+  } catch (e) {
+    return {
+      skip: "needs ctx.den2",
+      why: String(e?.message ?? e).slice(0, 200),
+    };
+  }
+  const s = { d2, agent: fresh("gate-726") };
+  if (!d2.hubs?.a?.url || !d2.hubs?.b?.url) s.skip = "needs-two-hubs";
+  else if (!d2.hubConnect) s.skip = NO_CONNECT;
+  else if (!d2.hubTokenSnapshot || !d2.hubTokenStatus)
+    s.skip = "needs-token-check";
+  return s;
 }
 
-export async function run(ctx, s) {
-  if (s.skip) return s;
+export async function run(_bed, s) {
+  if (s.skip) return { skip: s.skip, ...(s.why ? { why: s.why } : {}) };
+  // Every step runs on the throwaway Den.
+  const ctx = s.d2;
   const { a: A, b: B } = ctx.hubs;
   const out = { fixture: FIXTURE };
   const sameOrigin = origin(A.url) === origin(B.url);
@@ -317,7 +331,7 @@ export async function run(ctx, s) {
   // Leg 2: on A, company a1 -> a2 (Connect again), then back to a1.
   if (!a2) out.company = { skip: "needs a second test company" };
   else if (!(await connected(ctx)))
-    out.company = { skip: "the bed is not connected to Hub A" };
+    out.company = { skip: "the Den is not connected to Hub A" };
   else {
     out.company = await leg(ctx, s, stub, {
       fromKey: "a",
@@ -336,19 +350,16 @@ export async function run(ctx, s) {
 }
 
 export async function teardown(ctx, s) {
-  if (!s || s.skip) return;
+  const d2 = s?.d2;
+  if (!d2) return;
   try {
-    ctx.agent(s.agent, { workspace: WS }).remove();
+    d2.agent(s.agent, { workspace: WS }).remove();
   } catch {
-    /* gone */
+    /* gone, or never started */
   }
-  // The gate ends bound to A, on its first test company, with the link.
-  const a1 = (ctx.hubs.a.companies ?? []).find((c) =>
-    /^gate-726/.test(String(c)),
-  );
-  const m = await moveTo(ctx, "a", a1).catch(() => ({ ok: false }));
-  if (m.ok && a1) await connect(ctx, "a", a1).catch(() => undefined);
-  if (s.link) await linkTo(ctx, s.link).catch(() => undefined);
+  // Disconnects (Hub revokes), checks its last token answers 401, and
+  // removes the throwaway Den.
+  await d2.close();
 }
 
 /** The rows for one leg: [typed, links, token, bell+doctor] (+ new comment). */
@@ -424,9 +435,14 @@ function legRows(r, names, base) {
 export function expect(r) {
   const res = r ?? {};
   if (res.skip)
-    return clauses.map((clause) => ({ clause, ok: null, skip: res.skip }));
+    return clauses.map((clause) => ({
+      clause,
+      ok: null,
+      skip: res.skip,
+      ...(res.why ? { detail: res.why } : {}),
+    }));
   const base = !res.start?.ok
-    ? `could not connect the bed to the first Hub: ${res.start?.why}`
+    ? `could not connect the Den to the first Hub: ${res.start?.why}`
     : !res.running
       ? `the stub did not run in ${WS}`
       : null;
