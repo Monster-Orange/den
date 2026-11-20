@@ -452,6 +452,17 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "gate_slot_cancel",
+    "Withdraw your gate slot",
+    "Issue 585: withdraw a gate slot you asked for, also one a `<cli> gate run` in your terminal asked for (its id is in `gate status` and in what gate run printed). Waiting: it is removed and its command never starts. Running: its command's whole process group gets TERM, then KILL after the machine's grace, and the slot frees once it is gone; that gate run exits non-zero, saying who cancelled it. Only your own slots: anyone else's is refused.",
+    { id: z.string().describe("Your slot's id") },
+    async (a, { api }) => {
+      const id = str(a.id) ?? "";
+      mySlots.delete(id);
+      return api.get("/api/gate-slots/cancel", {}, "POST", { id });
+    },
+  ),
+  read(
     "approval_check",
     "Check an approval",
     "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",

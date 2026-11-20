@@ -895,6 +895,33 @@
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_release_slots": "このマシンで同時に動くリリース候補の実行",
+    "set.server.gate_release_slots.d":
+      "リリース候補のテスト実行のために取っておく順番です。ほかのどの実行よりも先に進み、ほかの実行がこれを使うことはありません。__DEN_CLI__ gate settings --release-slots 1",
+    "set.server.gate_release_quiet":
+      "リリース実行がマシンが静かになるのを待つ時間 (分)",
+    "set.server.gate_release_quiet.d":
+      "リリース候補の実行が待っている間と動いている間は、新しいテスト実行は始まりません。すでに動いている実行が終わるのをこの時間だけ待ち、そのあとは負荷を記録して始めます。__DEN_CLI__ gate settings --release-quiet-wait-minutes 10",
+    "set.server.gate_release_tag_age": "リリース候補のタグが有効な時間 (時間)",
+    "set.server.gate_release_tag_age.d":
+      "リリース実行はタグで自分を証明します。これより古いタグは数えません。__DEN_CLI__ gate settings --release-tag-max-age-hours 168",
+    "set.server.gate_cancel_grace": "止めたテスト実行の KILL までの猶予",
+    "set.server.gate_cancel_grace.d":
+      "テスト実行を止めると (エージェント画面の「止める」)、TERM を送り、この時間だけ待ってから KILL します。終わってから順番が空きます。__DEN_CLI__ gate settings --cancel-grace-seconds 60",
+    "set.server.gate_idle_after":
+      "止まっているテスト実行を調べるまで、見込みを過ぎた分",
+    "set.server.gate_idle_after.d":
+      "見込みをこの時間過ぎても順番を持っているテスト実行は CPU を測ります。動いていなければ gate status とエージェントのベルで印が付きます。印が付いても止められることはありません。__DEN_CLI__ gate settings --idle-flag-after-minutes 15",
+    "set.server.gate_idle_cpu": "止まっているテスト実行: CPU がこれ未満 (%)",
+    "set.server.gate_idle_cpu.d":
+      "測る時間の間、プロセス全体で CPU 1 つ分のこの割合より少なければ、止まっているとみなします。__DEN_CLI__ gate settings --idle-cpu-percent 2",
+    "set.server.gate_idle_window": "止まっているテスト実行: 測る時間 (秒)",
+    "set.server.gate_idle_window.d":
+      "テスト実行の CPU をどれだけの時間測ってから、止まっているか動いているかを決めるか。__DEN_CLI__ gate settings --idle-sample-seconds 60",
+    "set.server.gate_idle_grace":
+      "止まっているテスト実行: リリース実行が止められるまで印が付いている時間 (分)",
+    "set.server.gate_idle_grace.d":
+      "リリース候補の待っている実行は、この時間止まっている印が付いたテスト実行を止められます。記録には誰がなぜ止めたかが残ります。印のないテスト実行がこの方法で止められることはありません。__DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1814,6 +1841,10 @@
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.gateIdle":
+      "テスト実行 {label} は見込みを {n} 分過ぎても止まったまま、順番を持っています",
+    "bell.m.gateSurvivors":
+      "テスト実行 {label} は終わりましたが、まだ動いています: {pids}",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":
@@ -2093,6 +2124,7 @@
     "gate.chipWaiting": " · {n} 件待ち",
     "gate.kind.browser": "ブラウザーテスト",
     "gate.kind.cpu": "単体テスト",
+    "gate.kind.release": "リリース候補のテスト {tag}",
     "gate.popH": "このマシンのテスト実行",
     "gate.holds": "{kind} を実行中、{at} ごろまで",
     "gate.waits": "{kind} の実行待ち、{at} ごろから",
@@ -2108,6 +2140,15 @@
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
+    "gate.cancel": "止める",
+    "gate.cancelT": "このテスト実行を止めますか?",
+    "gate.cancelQ":
+      "{label} を止めて順番を取り下げますか?待機中なら始まりません。実行中なら TERM を送り、猶予のあと KILL します。終わってから順番が空きます。",
+    "gate.cancelGo": "実行を止める",
+    "gate.stopping": "停止中",
+    "busy.gateCancelW": "{name} を止めています…",
+    "busy.gateCancelS": "{name} を取り消しました。",
+    "busy.gateCancelF": "{name} を止められませんでした。",
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",

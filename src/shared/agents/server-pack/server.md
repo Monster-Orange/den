@@ -129,6 +129,14 @@ Reads (they change nothing):
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
   test commands, and give it back (your own only). For one command, run it
   as `<cli> gate run -- <command>` instead.
+- `gate_slot_cancel`: withdraw your own slot. A waiting run never starts;
+  a running one is stopped, and its slot frees once it has ended.
+  A slot whose run sits idle well past its estimate is flagged ("idle N
+  min past its estimate" in `gate_slot_status`, and a Needs-you bell for
+  its agent). The flag stops nothing; cancel your own if it is stuck.
+  When a `gate run` slot ends, its command's whole process group is
+  ended too; anything that outlives it is listed as survivors in
+  `gate_slot_status` and your bell.
 
 Hub files (through Den, as you; when Hub is connected):
 

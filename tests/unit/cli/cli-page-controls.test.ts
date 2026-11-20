@@ -127,6 +127,8 @@ const LISTING: Record<string, Entry> = {
   "gate run": script("wraps a test command, in a terminal or a gate script"),
   "gate status": page("agents.html", 'id="ag-gate"'),
   "gate end": page("gate-chip.js", "/api/gate-slots/end"),
+  // Issue 585: Stop in the gate chip.
+  "gate cancel": page("gate-chip.js", "/api/gate-slots/cancel"),
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
 
   "repo detect": R,

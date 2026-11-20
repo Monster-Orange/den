@@ -2096,6 +2096,118 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
   },
   {
+    // Issue 498: the release slot, reserved for a release candidate's run.
+    id: "server.gate_release_slots",
+    category: "server",
+    label: "Release candidate runs at once, on this machine",
+    description:
+      "Slots kept for a release candidate's test run. It goes ahead of every other run, and other runs never take it. __DEN_CLI__ gate settings --release-slots 1",
+    keywords: ["gate", "slot", "release", "candidate", "tag", "tests"],
+    scope: "user",
+    keys: ["gate_slots.release_slots"],
+    control: { type: "number", min: 1, max: 16, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.releaseSlots ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { release_slots: v } }),
+  },
+  {
+    id: "server.gate_release_quiet",
+    category: "server",
+    label: "Release run waits for a quiet machine, in minutes",
+    description:
+      "While a release candidate's run waits or runs, no new test run starts. It waits this long for the runs already going to finish, then starts anyway and records the load. __DEN_CLI__ gate settings --release-quiet-wait-minutes 10",
+    keywords: ["gate", "slot", "release", "quiet", "wait", "load"],
+    scope: "user",
+    keys: ["gate_slots.release_quiet_wait_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.releaseQuietWaitMinutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { release_quiet_wait_minutes: v } }),
+  },
+  {
+    id: "server.gate_release_tag_age",
+    category: "server",
+    label: "Release candidate tag counts for, in hours",
+    description:
+      "A release run proves itself with its tag. A tag older than this no longer counts. __DEN_CLI__ gate settings --release-tag-max-age-hours 168",
+    keywords: ["gate", "slot", "release", "tag", "age"],
+    scope: "user",
+    keys: ["gate_slots.release_tag_max_age_hours"],
+    control: { type: "number", min: 1, max: 8784, step: 1, unit: "h" },
+    read: (ctx) => ctx.data.gate_slots?.releaseTagMaxAgeHours ?? 168,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { release_tag_max_age_hours: v } }),
+  },
+  {
+    // Issue 585: gate cancel's grace before KILL.
+    id: "server.gate_cancel_grace",
+    category: "server",
+    label: "Stopped test run's grace before KILL",
+    description:
+      "When a test run is stopped (Stop on the Agents page), it gets TERM and this long to end, then KILL. Its slot frees once it has ended. __DEN_CLI__ gate settings --cancel-grace-seconds 60",
+    keywords: ["gate", "slot", "cancel", "stop", "grace", "kill"],
+    scope: "user",
+    keys: ["gate_slots.cancel_grace_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.gate_slots?.cancelGraceSeconds ?? 60,
+    write: (v, ctx) => ctx.post({ gate_slots: { cancel_grace_seconds: v } }),
+  },
+  {
+    // Gate slots: a run idle past its estimate is flagged (never stopped).
+    id: "server.gate_idle_after",
+    category: "server",
+    label: "Idle test run looked at, minutes past its estimate",
+    description:
+      "A test run still holding its slot this long after its estimate has its CPU measured. If it is idle, it is flagged in gate status and in its agent's bell. It is never stopped by the flag. __DEN_CLI__ gate settings --idle-flag-after-minutes 15",
+    keywords: ["gate", "slot", "idle", "estimate", "flag"],
+    scope: "user",
+    keys: ["gate_slots.idle_flag_after_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.idleFlagAfterMinutes ?? 15,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { idle_flag_after_minutes: v } }),
+  },
+  {
+    id: "server.gate_idle_cpu",
+    category: "server",
+    label: "Idle test run: CPU below, in percent",
+    description:
+      "A test run whose processes together use less than this share of one CPU over the window counts as idle. __DEN_CLI__ gate settings --idle-cpu-percent 2",
+    keywords: ["gate", "slot", "idle", "cpu"],
+    scope: "user",
+    keys: ["gate_slots.idle_cpu_percent"],
+    control: { type: "number", min: 0, max: 100, step: 0.5, unit: "%" },
+    read: (ctx) => ctx.data.gate_slots?.idleCpuPercent ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { idle_cpu_percent: v } }),
+  },
+  {
+    id: "server.gate_idle_window",
+    category: "server",
+    label: "Idle test run: measured over, in seconds",
+    description:
+      "How long a test run's CPU is measured over before it counts as idle or busy. __DEN_CLI__ gate settings --idle-sample-seconds 60",
+    keywords: ["gate", "slot", "idle", "sample", "window"],
+    scope: "user",
+    keys: ["gate_slots.idle_sample_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.gate_slots?.idleSampleSeconds ?? 60,
+    write: (v, ctx) => ctx.post({ gate_slots: { idle_sample_seconds: v } }),
+  },
+  {
+    id: "server.gate_idle_grace",
+    category: "server",
+    label:
+      "Idle test run: grace before a release run may cancel it, in minutes",
+    description:
+      "A release candidate's waiting run may stop a test run flagged idle for this long, and the record says who and why. A test run that isn't flagged is never stopped this way. __DEN_CLI__ gate settings --idle-cancel-grace-minutes 10",
+    keywords: ["gate", "slot", "idle", "release", "cancel", "grace"],
+    scope: "user",
+    keys: ["gate_slots.idle_cancel_grace_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.gate_slots?.idleCancelGraceMinutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { idle_cancel_grace_minutes: v } }),
+  },
+  {
     // SRV-P6 (0.4.48): how this install takes a new version
     // (user.yml server_agent.self_update). A person's only.
     id: "server.self_update",

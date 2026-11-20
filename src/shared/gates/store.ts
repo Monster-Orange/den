@@ -6,15 +6,20 @@
  * ~/Library/Application Support/den/gate-slots (macOS), else
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
- *   settings.json     cpu_slots, overrun_margin_minutes
+ *   settings.json     cpu_slots, overrun_margin_minutes, release_slots,
+ *                     release_quiet_wait_minutes, release_tag_max_age_hours,
+ *                     cancel_grace_seconds
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
- *                     back, overdue, ended early (Coach reads time lost)
+ *                     back, overdue, ended early, cancelled (Coach reads
+ *                     time lost)
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone, at once, and
  * records it; it flags (once) a holder past its estimate plus the margin.
- * Nothing here kills a process or takes a live holder's slot.
+ * Nothing here kills a process or takes a live holder's slot: stopping a
+ * cancelled run is cancel.ts's, and the slot is freed only after it.
  */
+import { execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -22,10 +27,12 @@ import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
   GATE_DEFAULTS,
-  byAsked,
+  byQueue,
   expectedStart,
   gone,
   grants,
+  idleDue,
+  minutesPast,
   overrun,
   type GateEntry,
   type GateKind,
@@ -55,20 +62,71 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
 export type GateSettingsPatch = {
   cpu_slots?: number | null;
   overrun_margin_minutes?: number | null;
+  release_slots?: number | null;
+  release_quiet_wait_minutes?: number | null;
+  release_tag_max_age_hours?: number | null;
+  cancel_grace_seconds?: number | null;
+  idle_flag_after_minutes?: number | null;
+  idle_cpu_percent?: number | null;
+  idle_sample_seconds?: number | null;
+  idle_cancel_grace_minutes?: number | null;
 };
 
-/** Each setting: its least and most, and whether it is whole. */
+/** Each setting: its least and most, whether it is whole, and its field. */
 export const GATE_LIMITS: Record<
   keyof GateSettingsPatch,
-  { min: number; max: number; int: boolean }
+  { min: number; max: number; int: boolean; field: keyof GateSettings }
 > = {
-  cpu_slots: { min: 1, max: 64, int: true },
-  overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  cpu_slots: { min: 1, max: 64, int: true, field: "cpuSlots" },
+  overrun_margin_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "overrunMarginMinutes",
+  },
+  release_slots: { min: 1, max: 16, int: true, field: "releaseSlots" },
+  release_quiet_wait_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "releaseQuietWaitMinutes",
+  },
+  release_tag_max_age_hours: {
+    min: 1,
+    max: 24 * 366,
+    int: false,
+    field: "releaseTagMaxAgeHours",
+  },
+  cancel_grace_seconds: {
+    min: 0,
+    max: 3600,
+    int: false,
+    field: "cancelGraceSeconds",
+  },
+  idle_flag_after_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "idleFlagAfterMinutes",
+  },
+  idle_cpu_percent: { min: 0, max: 100, int: false, field: "idleCpuPercent" },
+  idle_sample_seconds: {
+    min: 1,
+    max: 3600,
+    int: false,
+    field: "idleSampleSeconds",
+  },
+  idle_cancel_grace_minutes: {
+    min: 0,
+    max: 24 * 60,
+    int: false,
+    field: "idleCancelGraceMinutes",
+  },
 };
 
 /**
- * A settings change as the web sends it ({cpu_slots,
- * overrun_margin_minutes}, null clears), checked; or what is wrong.
+ * A settings change as the web sends it ({cpu_slots, …}, null clears),
+ * checked; or what is wrong.
  */
 export function checkGatePatch(
   v: unknown,
@@ -108,7 +166,18 @@ export type GateEvent =
   | "released"
   | "taken-back-gone"
   | "overdue"
-  | "ended-early";
+  | "ended-early"
+  | "cancelled"
+  | "idle"
+  | "idle-cleared"
+  | "survivors";
+
+/** Issue 498: another holder, as a release run's record names it. */
+export interface GateAlongside {
+  id: string;
+  kind: GateKind;
+  label: string;
+}
 
 export interface GateEventRow {
   at: string;
@@ -123,9 +192,40 @@ export interface GateEventRow {
   behind?: string[];
   /** waits: when it may expect to start (ISO). */
   expectedStart?: string;
-  /** ended-early: who ended it. */
+  /** ended-early, cancelled: who did it. */
   by?: string;
+  /** cancelled: whether it was waiting or running. */
+  was?: "queued" | "running";
+  /** Issue 498, a release run: its candidate tag and commit. */
+  tag?: string;
+  commit?: string;
+  /** Issue 498, a release run's start and end: the machine's load (1, 5, 15 min). */
+  load?: number[];
+  /** Issue 498, a release run's start and end: the other runs holding. */
+  alongside?: GateAlongside[];
+  /** Issue 498: it started past the quiet wait, beside ordinary runs. */
+  ranAnyway?: boolean;
+  /** cancelled: why, when not its owner's or a person's own choice. */
+  reason?: string;
+  /** idle: minutes past its estimate, and its tree's CPU share (%). */
+  minutesPast?: number;
+  cpuPercent?: number;
+  /** survivors: what outlived its group's end (pid, command name), and the holder. */
+  survivors?: { pid: number; comm: string }[];
+  actor?: string;
 }
+
+/** What `cancel` did (issue 585). */
+export type GateCancel =
+  | { was: "queued"; row: GateEventRow }
+  | {
+      was: "running";
+      row: GateEventRow;
+      /** The run to stop before the slot frees, when gate run started one. */
+      runPid?: number;
+      /** runPid leads its own process group. */
+      group: boolean;
+    };
 
 const isAlive = (pid: number): boolean => {
   try {
@@ -139,22 +239,185 @@ const isAlive = (pid: number): boolean => {
 export interface GateStoreOpts {
   dir?: string;
   now?: () => number;
+  /** Whether a pid is alive; a negative pid asks for a process group. */
   alive?: (pid: number) => boolean;
   /** How long to wait for the lock before giving up, ms. */
   lockWaitMs?: number;
+  /** Issue 498: the machine's load average (os.loadavg). */
+  load?: () => number[];
+  /**
+   * Idle flag: a holder's run tree's CPU seconds so far, or null when it
+   * can't be read. Default: its process group's (groupCpuSeconds), only
+   * on a store with real liveness; a store with a stubbed `alive` reads
+   * nothing unless given one.
+   */
+  cpu?: (e: GateEntry) => number | null;
+  /**
+   * Group end: signals a pid (negative: a process group), and lists the
+   * machine's processes. Default: the real ones, only on a store with real
+   * liveness; a store with a stubbed `alive` signals and lists nothing
+   * unless given these.
+   */
+  kill?: (pid: number, s: NodeJS.Signals) => void;
+  procs?: () => ProcRow[];
 }
+
+/** How far back cancelledBy reads the slot log. */
+const LOG_TAIL_BYTES = 256 * 1024;
 
 export class GateStore {
   readonly dir: string;
   private readonly now: () => number;
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
+  private readonly load: () => number[];
+  private readonly cpu: (e: GateEntry) => number | null;
+  private readonly kill: (pid: number, s: NodeJS.Signals) => void;
+  private readonly listProcs: () => ProcRow[];
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
+    this.load = o.load ?? (() => os.loadavg());
+    this.cpu =
+      o.cpu ??
+      (o.alive
+        ? () => null
+        : (e) =>
+            e.runPid === undefined
+              ? null
+              : e.runGroup
+                ? groupCpuSeconds(e.runPid)
+                : pidCpuSeconds(e.runPid));
+    this.kill =
+      o.kill ??
+      (o.alive
+        ? () => {}
+        : (p, s) => {
+            try {
+              process.kill(p, s);
+            } catch {
+              /* already gone */
+            }
+          });
+    this.listProcs = o.procs ?? (o.alive ? () => [] : listProcs);
+  }
+
+  /** Group end: the machine's processes, as ps lists them. */
+  procs(): ProcRow[] {
+    try {
+      return this.listProcs();
+    } catch {
+      return [];
+    }
+  }
+
+  /** Group end: how long the run has been going, in seconds. */
+  private runAge(e: GateEntry, now: number): number {
+    const t = Date.parse(e.runStartedAt ?? e.grantedAt ?? e.askedAt);
+    return Math.max(0, (now - t) / 1000);
+  }
+
+  /**
+   * Group end, by the sweep: gate run (e.pid) is gone but its run's group
+   * may not be. TERM to the group (once), KILL after cancel_grace_seconds,
+   * then the slot is taken back, listing what outlived it. A group with a
+   * member older than the run is someone else's (its id was reused): it is
+   * never signalled. Returns the survivors once the slot can go, or null
+   * while it holds.
+   */
+  private sweep(
+    e: GateEntry,
+    s: GateSettings,
+    now: number,
+  ): { pid: number; comm: string }[] | null {
+    const pgid = e.pgid!;
+    const graceMs = s.cancelGraceSeconds * 1000;
+    const at = new Date(now).toISOString();
+    const left = (xs: { pid: number; comm: string }[]) =>
+      xs.filter((x) => this.alive(x.pid));
+    const survey = groupSurvey(this.procs(), pgid, this.runAge(e, now));
+    if (!e.ending) {
+      if (!survey || survey.members.length === 0 || !this.alive(-pgid))
+        return survey ? left(pick(survey.escaped)) : [];
+      this.kill(-pgid, "SIGTERM");
+      e.ending = { at, escaped: pick(survey.escaped) };
+      this.write(e);
+      return null;
+    }
+    if (!survey || !this.alive(-pgid)) return left(e.ending.escaped);
+    if (!e.ending.killedAt) {
+      if (now - Date.parse(e.ending.at) < graceMs) return null;
+      this.kill(-pgid, "SIGKILL");
+      e.ending.killedAt = at;
+      this.write(e);
+      return null;
+    }
+    if (now - Date.parse(e.ending.killedAt) < Math.max(graceMs, 1000))
+      return null;
+    return dedupe([...pick(survey.members), ...left(e.ending.escaped)]);
+  }
+
+  /** Group end: records what outlived a slot's run (once per end). */
+  recordSurvivors(e: GateEntry, survivors: { pid: number; comm: string }[]) {
+    if (!survivors.length) return;
+    this.record(e, {
+      event: "survivors",
+      survivors: survivors.slice(0, 50),
+      ...(e.actor ? { actor: e.actor } : {}),
+    });
+  }
+
+  /**
+   * Idle flag: a holder due a look (idleDue) gets a CPU reading at most
+   * once a window. A window later, below idle_cpu_percent of one CPU, it
+   * is flagged (recorded `idle`, once); busy again, the flag is cleared.
+   * Only a flag: nothing is stopped here. Returns whether it changed.
+   */
+  private sampleIdle(e: GateEntry, s: GateSettings, now: number): boolean {
+    if (!idleDue(e, s, now)) return false;
+    const prev = e.cpuSample;
+    const windowMs = s.idleSampleSeconds * 1000;
+    if (prev && now - Date.parse(prev.at) < windowMs) return false;
+    let cpu: number | null = null;
+    try {
+      cpu = this.cpu(e);
+    } catch {
+      cpu = null;
+    }
+    if (cpu === null) return false;
+    const at = new Date(now).toISOString();
+    e.cpuSample = { at, cpu };
+    if (!prev) return true;
+    const secs = (now - Date.parse(prev.at)) / 1000;
+    const pct = secs > 0 ? (Math.max(0, cpu - prev.cpu) / secs) * 100 : 100;
+    if (pct < s.idleCpuPercent && !e.idleAt) {
+      e.idleAt = at;
+      this.record(e, {
+        event: "idle",
+        minutesPast: minutesPast(e, now),
+        cpuPercent: Math.round(pct * 100) / 100,
+      });
+    } else if (pct >= s.idleCpuPercent && e.idleAt) {
+      delete e.idleAt;
+      this.record(e, {
+        event: "idle-cleared",
+        cpuPercent: Math.round(pct * 100) / 100,
+      });
+    }
+    return true;
+  }
+
+  /** The store's clock (ms). */
+  time(): number {
+    return this.now();
+  }
+
+  /** Whether a pid (or, negative, a process group) is still running. */
+  isAlive(pid: number): boolean {
+    return this.alive(pid);
   }
 
   private get slots() {
@@ -162,30 +425,26 @@ export class GateStore {
   }
 
   settings(): GateSettings {
+    let v: Record<string, unknown> = {};
     try {
-      const v = JSON.parse(
+      v = JSON.parse(
         fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
       ) as Record<string, unknown>;
-      const num = (k: keyof GateSettingsPatch, d: number) => {
-        const n = v[k];
-        const l = GATE_LIMITS[k];
-        return typeof n === "number" &&
-          Number.isFinite(n) &&
-          n >= l.min &&
-          n <= l.max
-          ? n
-          : d;
-      };
-      return {
-        cpuSlots: Math.floor(num("cpu_slots", GATE_DEFAULTS.cpuSlots)),
-        overrunMarginMinutes: num(
-          "overrun_margin_minutes",
-          GATE_DEFAULTS.overrunMarginMinutes,
-        ),
-      };
     } catch {
       return { ...GATE_DEFAULTS };
     }
+    const out: GateSettings = { ...GATE_DEFAULTS };
+    for (const [k, l] of Object.entries(GATE_LIMITS)) {
+      const n = v[k];
+      if (
+        typeof n === "number" &&
+        Number.isFinite(n) &&
+        n >= l.min &&
+        n <= l.max
+      )
+        out[l.field] = l.int ? Math.floor(n) : n;
+    }
+    return out;
   }
 
   /** Writes the machine's settings; null clears a key (default again). */
@@ -238,6 +497,87 @@ export class GateStore {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Issue 585: who cancelled a slot that is gone, from the slot log's
+   * recent rows; null when it wasn't cancelled.
+   */
+  cancelledBy(id: string): string | null {
+    let text = "";
+    try {
+      const fd = fs.openSync(this.eventsFile, "r");
+      try {
+        const size = fs.fstatSync(fd).size;
+        const len = Math.min(size, LOG_TAIL_BYTES);
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, size - len);
+        text = buf.toString("utf-8");
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return null;
+    }
+    const lines = text.split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const l = lines[i]!;
+      if (!l.includes(id) || !l.includes('"cancelled"')) continue;
+      try {
+        const r = JSON.parse(l) as GateEventRow;
+        if (r.id === id && r.event === "cancelled") return r.by ?? "someone";
+      } catch {
+        /* a cut line at the tail's start */
+      }
+    }
+    return null;
+  }
+
+  /** The slot log's recent rows of one kind (its last LOG_TAIL_BYTES). */
+  recentEvents(event: GateEvent): GateEventRow[] {
+    let text = "";
+    try {
+      const fd = fs.openSync(this.eventsFile, "r");
+      try {
+        const size = fs.fstatSync(fd).size;
+        const len = Math.min(size, LOG_TAIL_BYTES);
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, size - len);
+        text = buf.toString("utf-8");
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return [];
+    }
+    const out: GateEventRow[] = [];
+    for (const l of text.split("\n")) {
+      if (!l.includes(`"${event}"`)) continue;
+      try {
+        const r = JSON.parse(l) as GateEventRow;
+        if (r.event === event) out.push(r);
+      } catch {
+        /* a cut line at the tail's start */
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Group end: survivors of ended runs that still live (from the slot
+   * log's recent rows), each with only its living pids.
+   */
+  livingSurvivors(): (GateEventRow & {
+    survivors: { pid: number; comm: string }[];
+  })[] {
+    const out: (GateEventRow & {
+      survivors: { pid: number; comm: string }[];
+    })[] = [];
+    for (const r of this.recentEvents("survivors")) {
+      const live = (r.survivors ?? []).filter((x) => this.alive(x.pid));
+      if (live.length) out.push({ ...r, survivors: live });
+    }
+    return out;
   }
 
   /**
@@ -341,6 +681,24 @@ export class GateStore {
       : {};
   }
 
+  /** Issue 498: a release run's record: the load and the runs beside it. */
+  private loadNow(e: GateEntry, all: GateEntry[]): Partial<GateEventRow> {
+    if (e.kind !== "release") return {};
+    let load: number[] = [];
+    try {
+      load = this.load().map((n) => Math.round(n * 100) / 100);
+    } catch {
+      /* no load on this platform */
+    }
+    return {
+      tag: e.tag,
+      load,
+      alongside: all
+        .filter((x) => x.id !== e.id && x.grantedAt)
+        .map((x) => ({ id: x.id, kind: x.kind, label: x.label })),
+    };
+  }
+
   /**
    * Takes back the gone, grants who may start, flags the overdue, and
    * returns the queue as it now stands. Call under the lock.
@@ -351,20 +709,35 @@ export class GateStore {
     const at = new Date(now).toISOString();
     const entries: GateEntry[] = [];
     for (const e of this.readAll()) {
-      if (!gone(e, this.alive)) {
+      // Group end: gate run died; its run's group is ended here.
+      let survivors: { pid: number; comm: string }[] = [];
+      if (e.pgid !== undefined && !this.alive(e.pid)) {
+        const done = this.sweep(e, s, now);
+        if (!done) {
+          entries.push(e);
+          continue;
+        }
+        survivors = done;
+      } else if (!gone(e, this.alive)) {
         entries.push(e);
         continue;
       }
       this.remove(e.id);
+      this.recordSurvivors(e, survivors);
       this.record(e, { event: "taken-back-gone", ...this.heldFor(e, now) });
     }
-    for (const id of grants(entries, s)) {
+    const ordinaryHeld = entries.some(
+      (e) => e.grantedAt && e.kind !== "release",
+    );
+    for (const id of grants(entries, s, now)) {
       const e = entries.find((x) => x.id === id)!;
       e.grantedAt = at;
       this.write(e);
       this.record(e, {
         event: "granted",
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
+        ...this.loadNow(e, entries),
+        ...(e.kind === "release" && ordinaryHeld ? { ranAnyway: true } : {}),
       });
     }
     for (const e of entries) {
@@ -373,12 +746,13 @@ export class GateStore {
       this.write(e);
       this.record(e, { event: "overdue", ...this.heldFor(e, now) });
     }
+    for (const e of entries) if (this.sampleIdle(e, s, now)) this.write(e);
     return entries.sort(
-      (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt) || byAsked(a, b),
+      (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt) || byQueue(a, b),
     );
   }
 
-  /** The queue now: holders first, then the waiters in the order they asked. */
+  /** The queue now: holders first, then the waiters in the order they go. */
   list(): GateEntry[] {
     return this.locked(() => this.settle());
   }
@@ -388,7 +762,11 @@ export class GateStore {
     return this.list().find((e) => e.id === id) ?? null;
   }
 
-  /** Asks for a slot; returns the entry (granted at once if it may start). */
+  /**
+   * Asks for a slot; returns the entry (granted at once if it may start).
+   * Issue 498: a release ask names its candidate tag, proven by the caller
+   * (release-proof.ts), and one tag asks once at a time.
+   */
   ask(o: {
     kind: GateKind;
     who: string;
@@ -397,8 +775,17 @@ export class GateStore {
     estimateMin: number;
     agent?: boolean;
     actor?: string;
+    tag?: string;
+    commit?: string;
   }): GateEntry {
+    if (o.kind === "release" && (!o.tag || !o.commit))
+      throw new Error("a release slot needs its candidate's proven tag");
     return this.locked(() => {
+      if (
+        o.kind === "release" &&
+        this.readAll().some((x) => x.kind === "release" && x.tag === o.tag)
+      )
+        throw new Error(`a release run for ${o.tag} already holds or waits`);
       const e: GateEntry = {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
@@ -411,11 +798,17 @@ export class GateStore {
         ...(o.actor && /^agent:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(o.actor)
           ? { actor: o.actor }
           : {}),
+        ...(o.kind === "release"
+          ? { tag: o.tag!.slice(0, 80), commit: o.commit!.slice(0, 64) }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
       writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
-      this.record(e, { event: "asked" });
+      this.record(e, {
+        event: "asked",
+        ...(e.tag ? { tag: e.tag, commit: e.commit } : {}),
+      });
       const all = this.settle();
       const now = all.find((x) => x.id === e.id) ?? e;
       if (!now.grantedAt)
@@ -430,23 +823,47 @@ export class GateStore {
     });
   }
 
-  /** gate run's command: the slot stays while it runs. */
-  setRunPid(id: string, runPid: number): void {
-    this.locked(() => {
+  /**
+   * gate run's command: the slot stays while it runs. `group`: it leads
+   * its own process group. Returns the slot as it now stands, or null when
+   * it is gone (cancelled while it started: the caller stops its run).
+   */
+  setRunPid(
+    id: string,
+    runPid: number,
+    group = false,
+    startedAt?: number,
+  ): GateEntry | null {
+    return this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
-      if (!e) return;
+      if (!e) return null;
       e.runPid = runPid;
+      e.runStartedAt = new Date(startedAt ?? this.now()).toISOString();
+      if (group) {
+        e.runGroup = true;
+        e.pgid = runPid;
+      }
       this.write(e);
+      return e;
     });
   }
 
-  /** The holder is done (or the waiter gives up). */
-  release(id: string): boolean {
+  /**
+   * The holder is done (or the waiter gives up). `survivors`: what outlived
+   * its run's group end, recorded first.
+   */
+  release(id: string, survivors: { pid: number; comm: string }[] = []): boolean {
     return this.locked(() => {
-      const e = this.readAll().find((x) => x.id === id);
+      const all = this.readAll();
+      const e = all.find((x) => x.id === id);
       if (!e) return false;
       this.remove(id);
-      this.record(e, { event: "released", ...this.heldFor(e, this.now()) });
+      this.recordSurvivors(e, survivors);
+      this.record(e, {
+        event: "released",
+        ...this.heldFor(e, this.now()),
+        ...this.loadNow(e, all),
+      });
       this.settle();
       return true;
     });
@@ -475,4 +892,201 @@ export class GateStore {
       return { at, ...row };
     });
   }
+
+  /** The slot as stored, without settling (a cancel checks it first). */
+  peek(id: string): GateEntry | null {
+    if (!/^[a-z0-9-]{1,64}$/.test(id)) return null;
+    return this.locked(() => this.readAll().find((x) => x.id === id) ?? null);
+  }
+
+  /**
+   * Issue 585: withdraws a slot; recorded `cancelled` with who and whether
+   * it was queued or running. A queued ask, or a holder with no run of its
+   * own (an MCP hold), is gone at once. A running `gate run` slot is
+   * marked cancelled and stays held: the caller stops its run (cancel.ts)
+   * and frees it with releaseCancelled once the run's group is gone.
+   * Who may cancel is the caller's to check (rules.ts mayCancel).
+   */
+  cancel(id: string, by: string, reason?: string): GateCancel | null {
+    return this.locked(() => {
+      const e = this.readAll().find((x) => x.id === id);
+      if (!e) return null;
+      const was = e.grantedAt ? ("running" as const) : ("queued" as const);
+      const base = {
+        event: "cancelled" as const,
+        id,
+        kind: e.kind,
+        who: e.who,
+        label: e.label,
+        by: (e.cancelled?.by ?? by).slice(0, 200),
+        was,
+        ...(reason ? { reason: reason.slice(0, 200) } : {}),
+      };
+      if (was === "running" && e.runPid !== undefined) {
+        let at = e.cancelled?.at;
+        if (!at) {
+          at = this.record(e, base);
+          e.cancelled = { by: base.by, at };
+          this.write(e);
+        }
+        return {
+          was,
+          row: { at, ...base },
+          runPid: e.runPid,
+          group: e.runGroup === true,
+        };
+      }
+      this.remove(id);
+      const at = this.record(e, base);
+      this.settle();
+      return was === "queued"
+        ? { was, row: { at, ...base } }
+        : { was, row: { at, ...base }, runPid: undefined, group: false };
+    });
+  }
+
+  /** Issue 585: frees a cancelled slot once its run is gone (once). */
+  releaseCancelled(id: string): boolean {
+    return this.release(id);
+  }
+}
+
+/**
+ * Idle flag: CPU time as ps prints it, in seconds: Linux's
+ * `[dd-]hh:mm:ss`, macOS's `[hh:]mm:ss.cc`. Null when it isn't one.
+ */
+export function parseCpuTime(s: string): number | null {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(s.trim());
+  if (!m) return null;
+  const [, d, h, mm, ss] = m;
+  return (
+    Number(d ?? 0) * 86400 +
+    Number(h ?? 0) * 3600 +
+    Number(mm) * 60 +
+    Number(ss)
+  );
+}
+
+/**
+ * Idle flag: the CPU seconds of every process ps lists that matches `pick`
+ * (its process group, or its pid), summed; null when ps can't say (no ps,
+ * Windows, nothing matched).
+ */
+function psCpuSeconds(pick: (pgid: number, pid: number) => boolean) {
+  if (process.platform === "win32") return null;
+  let out = "";
+  try {
+    out = execFileSync("ps", ["-A", "-o", "pgid=,pid=,time="], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+  let sum = 0;
+  let seen = false;
+  for (const line of out.split("\n")) {
+    const [g, p, time] = line.trim().split(/\s+/);
+    if (!g || !p || !time || !pick(Number(g), Number(p))) continue;
+    const s = parseCpuTime(time);
+    if (s === null) continue;
+    sum += s;
+    seen = true;
+  }
+  return seen ? sum : null;
+}
+
+/** Idle flag: a process group's summed CPU seconds, or null. */
+export function groupCpuSeconds(pgid: number): number | null {
+  return psCpuSeconds((g) => g === pgid);
+}
+
+/** Idle flag: one process's CPU seconds, or null. */
+export function pidCpuSeconds(pid: number): number | null {
+  return psCpuSeconds((_g, p) => p === pid);
+}
+
+/** Group end: one process, as ps lists it. */
+export interface ProcRow {
+  pid: number;
+  ppid: number;
+  pgid: number;
+  /** Seconds since it started. */
+  ageSec: number;
+  comm: string;
+}
+
+/** A member may look this much older than its run (ps counts whole seconds). */
+const AGE_SLACK_SEC = 5;
+
+/**
+ * Group end: a run's group (`members`) and what left it while a member's
+ * child or later descendant (`escaped`: setsid, a new group). A process
+ * that left and was already adopted by PID 1 can't be traced back: it is
+ * not here. Null when a member is older than the run: the group id was
+ * reused, and the group is someone else's.
+ */
+export function groupSurvey(
+  rows: ProcRow[],
+  pgid: number,
+  runAgeSec: number,
+): { members: ProcRow[]; escaped: ProcRow[] } | null {
+  const members = rows.filter((r) => r.pgid === pgid);
+  if (members.some((r) => r.ageSec > runAgeSec + AGE_SLACK_SEC)) return null;
+  const kids = new Map<number, ProcRow[]>();
+  for (const r of rows) {
+    const l = kids.get(r.ppid);
+    if (l) l.push(r);
+    else kids.set(r.ppid, [r]);
+  }
+  const escaped: ProcRow[] = [];
+  const seen = new Set(members.map((r) => r.pid));
+  const todo = [...members];
+  while (todo.length) {
+    const r = todo.pop()!;
+    for (const k of kids.get(r.pid) ?? []) {
+      if (seen.has(k.pid) || k.pid <= 1) continue;
+      seen.add(k.pid);
+      todo.push(k);
+      if (k.pgid !== pgid) escaped.push(k);
+    }
+  }
+  return { members, escaped };
+}
+
+/** Group end: just pid and command name, for the record. */
+const pick = (xs: ProcRow[]) => xs.map((x) => ({ pid: x.pid, comm: x.comm }));
+
+const dedupe = (xs: { pid: number; comm: string }[]) => [
+  ...new Map(xs.map((x) => [x.pid, x])).values(),
+];
+
+/** Group end: the machine's processes (empty where ps can't say). */
+export function listProcs(): ProcRow[] {
+  if (process.platform === "win32") return [];
+  let out = "";
+  try {
+    out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,etime=,args="], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    return [];
+  }
+  const rows: ProcRow[] = [];
+  for (const line of out.split("\n")) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/.exec(line);
+    if (!m) continue;
+    const age = parseCpuTime(m[4]!);
+    rows.push({
+      pid: Number(m[1]),
+      ppid: Number(m[2]),
+      pgid: Number(m[3]),
+      ageSec: age ?? 0,
+      // The command name: argv[0]'s base name (comm can be a thread name).
+      comm: path.basename(m[5]!.trim().split(/\s+/)[0] ?? "").slice(0, 64),
+    });
+  }
+  return rows;
 }

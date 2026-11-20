@@ -14,7 +14,7 @@
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
- * remove-service, remove-mcp, gate-end. Waits for
+ * remove-service, remove-mcp, gate-end, gate-cancel. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -67,6 +67,16 @@ export const DEN_ACTIONS = {
       working: "busy.gateEndW",
       success: "busy.gateEndS",
       failure: "busy.gateEndF",
+    },
+  },
+  // Issue 585: the slot's owner or a person withdraws it (its run stops).
+  "gate-cancel": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.gateCancelW",
+      success: "busy.gateCancelS",
+      failure: "busy.gateCancelF",
     },
   },
   "remove-service": {
