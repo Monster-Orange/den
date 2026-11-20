@@ -59,8 +59,11 @@
  *   addMessages(lang, { key: text }), t(key, vars)
  *   setState(partial): health { repo|address: state }, openLogs, …
  *   pin(id), unpin(id), isPinned(id): pins are user prefs (/api/settings
- *   `shell.pins`), nothing else. Any change fires `den:pins` on window
- *   (detail { pins }), and every [data-pin-toggle] repaints from it.
+ *   `shell.pins`), nothing else. Issue 402: a pin is (project or none,
+ *   item), made for the project in view (none under All); these read and
+ *   change the pins of the project in view, or every pin under All. Any
+ *   change fires `den:pins` on window (detail { pins }: the items in
+ *   view), and every [data-pin-toggle] repaints from it.
  *   setOrg({ id, title })            one org: a static label, no menu (C4)
  *   setOrgs([{ id, title, workspaces? }], currentId, onSelect?)
  *                                    two or more: the Org ▾ menu; a pick
@@ -1168,6 +1171,9 @@
     "act.unpinX": "Unpin {s}",
     "toast.pinned": "Pinned {s}",
     "toast.unpinned": "Unpinned {s}",
+    // Issue 402: ★ under All unpins the item in every project.
+    "toast.unpinnedAll": "Unpinned {s} in every project",
+    "toast.undo": "Undo",
     // 0.4.18: the service panel (svc-panel.js) and Start's Folder.
     "svp.label": "{s}: quick panel",
     "svp.more": "Quick panel for {s}",
@@ -3991,15 +3997,29 @@
     pinUrls: {},
     pinOff: {},
     svpOpen: null,
-    // Issue 402: with the view filtered to one project, its repos (the
-    // Workspace menu's model, header.js); the rail shows only their pins.
-    // null: no filter, every pin. It never changes the pins themselves.
-    pinRepos: null,
+    // Issue 402 (the model set on 11-18): a pin is (company, project or
+    // none, person, item). pinList is this person's pins in this install
+    // ({ item, project }, project null: none), in pin order; pinProject the
+    // project picked (the Workspace menu's model, header.js), null under
+    // All. `pins` is derived: the items in view, each once: the pins made
+    // for the project picked, or every pin under All. pinsLoaded: the
+    // server's copy has arrived.
+    pinList: [],
+    pinProject: null,
+    // Issue 402: pinProject is only the one active project, never picked
+    // by the person: no project selected, so pins of none show too.
+    pinImplicit: false,
+    pinsLoaded: false,
+    // Whether the Workspace menu's model has said which project is picked.
+    pinViewKnown: false,
   };
+  // Pins made before the page knew the project picked: they take it when
+  // the menu's model arrives (issue 402, clause 2).
+  var unplacedPins = [];
   try {
     var cached = JSON.parse(localStorage.getItem(LS) || "{}");
     if (typeof cached.edge === "boolean") state.edge = cached.edge;
-    if (Array.isArray(cached.pins)) state.pins = cached.pins;
+    if (Array.isArray(cached.pins)) state.pinList = pinTuples(cached.pins);
     state.collapsed = cached.collapsed === true;
     if (Array.isArray(cached.hidden)) state.hidden = cached.hidden;
     if (Array.isArray(cached.order)) state.order = cached.order;
@@ -4014,7 +4034,7 @@
       localStorage.setItem(
         LS,
         JSON.stringify({
-          pins: state.pins,
+          pins: state.pinList,
           collapsed: state.collapsed,
           hidden: state.hidden,
           order: state.order,
@@ -4028,13 +4048,26 @@
     }
   }
   function setState(partial) {
-    var before = state.pins.join("\n");
+    var before = JSON.stringify([
+      state.pins,
+      state.pinProject,
+      state.pinImplicit,
+    ]);
     for (var k in partial)
       if (Object.prototype.hasOwnProperty.call(partial, k))
         state[k] = partial[k];
+    // Issue 402: a list of bare ids (an older caller) is pins for the
+    // project in view; the items in view follow the list and the project.
+    if (partial && partial.pins !== undefined && partial.pinList === undefined)
+      state.pinList = pinsForView(ids(partial.pins));
+    state.pins = pinsInView();
     applyState();
     renderRail();
-    if (state.pins.join("\n") !== before) pinsChanged();
+    if (
+      JSON.stringify([state.pins, state.pinProject, state.pinImplicit]) !==
+      before
+    )
+      pinsChanged();
   }
   /**
    * Any pin change (the rail's ×, Delete, a page's toggle, the server's
@@ -4075,37 +4108,145 @@
         return false;
       });
   }
+  /**
+   * Issue 402: pins as the server and older copies hold them: { item,
+   * project } (project null: none); a bare id (this browser's copy from
+   * before the tuple) is none until the server's migrated copy arrives.
+   */
+  function pinTuples(list) {
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (p) {
+      var pin =
+        typeof p === "string"
+          ? { item: p, project: null }
+          : p && typeof p.item === "string"
+            ? {
+                item: p.item,
+                project: typeof p.project === "string" ? p.project : null,
+              }
+            : null;
+      if (!pin) return;
+      for (var i = 0; i < out.length; i++)
+        if (out[i].item === pin.item && out[i].project === pin.project) return;
+      out.push(pin);
+    });
+    return out;
+  }
+  /** Whether pin `p` is one of the view's: the project picked's, or any under All. */
+  function inView(p) {
+    return (
+      state.pinProject === null ||
+      p.project === state.pinProject ||
+      (state.pinImplicit && p.project === null)
+    );
+  }
+  /** The project a pin made now is for: none unless the person picked one. */
+  function pinFor() {
+    return state.pinImplicit ? null : state.pinProject;
+  }
+  /** The items in view, each once, in pin order (issue 402, clauses 3 and 4). */
+  function pinsInView() {
+    var out = [];
+    state.pinList.forEach(function (p) {
+      if (inView(p) && out.indexOf(p.item) < 0) out.push(p.item);
+    });
+    return out;
+  }
+  /**
+   * The pins once the view's items are `items`, in that order (the
+   * Settings page's Pinned row): the view's pins of an item no longer
+   * listed go (under All, every pin of it), a new item is pinned for the
+   * project in view (none under All), and the other projects' pins stay
+   * where they were.
+   */
+  function pinsForView(items) {
+    var view = [];
+    items.forEach(function (item) {
+      var mine = state.pinList.filter(function (p) {
+        return inView(p) && p.item === item;
+      });
+      view = view.concat(
+        mine.length ? mine : [{ item: item, project: pinFor() }],
+      );
+    });
+    var out = [];
+    state.pinList.forEach(function (p) {
+      if (!inView(p)) out.push(p);
+      else if (view.length) out.push(view.shift());
+    });
+    return pinTuples(out.concat(view));
+  }
   function isPinned(id) {
     return state.pins.indexOf(id) >= 0;
   }
-  /**
-   * Issue 402: the pins the rail shows. Filtered to one project, a pin
-   * ("repo" or "repo/service") shows when its repo is one of the
-   * project's (workspace-picker.js projectRepos); with no filter, every
-   * pin.
-   */
-  function pinsShown() {
-    var repos = state.pinRepos;
-    if (!Array.isArray(repos)) return state.pins.slice();
-    return state.pins.filter(function (p) {
-      return repos.indexOf(String(p).split("/")[0]) >= 0;
+  /** Pins made before the project picked was known take it now. */
+  function placePins() {
+    var made = unplacedPins;
+    unplacedPins = [];
+    if (pinFor() === null || !made.length) return;
+    var moved = false;
+    var list = state.pinList.map(function (p) {
+      var mine = made.some(function (m) {
+        return m.item === p.item && p.project === null;
+      });
+      if (!mine) return p;
+      moved = true;
+      return { item: p.item, project: pinFor() };
     });
+    if (!moved) return;
+    setState({ pinList: pinTuples(list) });
+    savePins();
   }
+  function savePins() {
+    return saveShell({ pins: state.pinList });
+  }
+  /** Issue 402, clause 2: a pin made now is for the project in view, none under All. */
   function pin(id) {
     if (isPinned(id)) return;
-    setState({ pins: state.pins.concat([id]) });
-    saveShell({ pins: state.pins });
+    var made = { item: id, project: pinFor() };
+    if (!state.pinViewKnown) unplacedPins.push(made);
+    setState({ pinList: state.pinList.concat([made]) });
+    savePins();
     toast(t("toast.pinned", { s: id }));
   }
+  /**
+   * Issue 402, clause 5: under a project, unpinning removes that project's
+   * pin only. Under All (★ is "pinned anywhere"), it removes every pin of
+   * the item, so the toggle reads ☆, and the toast's Undo puts back
+   * exactly the pins removed.
+   */
   function unpin(id) {
     if (!isPinned(id)) return;
+    var was = state.pinList.slice();
+    var removed = was.filter(function (p) {
+      return p.item === id && inView(p);
+    });
     setState({
-      pins: state.pins.filter(function (p) {
-        return p !== id;
+      pinList: was.filter(function (p) {
+        return removed.indexOf(p) < 0;
       }),
     });
-    saveShell({ pins: state.pins });
-    toast(t("toast.unpinned", { s: id }));
+    savePins();
+    if (pinFor() !== null) {
+      toast(t("toast.unpinned", { s: id }));
+      return;
+    }
+    toastAction(
+      t("toast.unpinnedAll", { s: id }),
+      t("toast.undo"),
+      function () {
+        // Each removed pin back where it was, unless it is pinned again.
+        var list = state.pinList.slice();
+        removed.forEach(function (p) {
+          var there = list.some(function (q) {
+            return q.item === p.item && q.project === p.project;
+          });
+          if (!there) list.splice(Math.min(was.indexOf(p), list.length), 0, p);
+        });
+        setState({ pinList: pinTuples(list) });
+        savePins();
+      },
+    );
   }
   function ids(list) {
     return (Array.isArray(list) ? list : []).filter(function (x, i, all) {
@@ -4120,10 +4261,13 @@
     setState(patch);
     return saveShell(patch);
   }
-  /** The pins, in this order (the Settings page's Pinned row). */
+  /**
+   * The pins in view, in this order (the Settings page's Pinned row): the
+   * view's pins follow the list (issue 402), the other projects' stay.
+   */
   function setPins(list) {
-    setState({ pins: ids(list) });
-    return saveShell({ pins: state.pins });
+    setState({ pinList: pinsForView(ids(list)) });
+    return savePins();
   }
   function setCollapsed(on) {
     setState({ collapsed: !!on });
@@ -5035,11 +5179,23 @@
   function setWorkspaces(model) {
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
-    // Issue 402: the pins follow the project filter (a repaint only).
-    var pinRepos =
-      model && Array.isArray(model.pinRepos) ? model.pinRepos.slice() : null;
-    if (JSON.stringify(pinRepos) !== JSON.stringify(state.pinRepos))
-      setState({ pinRepos: pinRepos });
+    // Issue 402: the project picked (null under All): the rail and every
+    // ☆/★ read its pins, and a pin made now is for it (a repaint only).
+    var pinProject =
+      model && typeof model.pinProject === "string" ? model.pinProject : null;
+    var pinImplicit = !!(model && model.pinImplicit === true && pinProject);
+    var first = model && !state.pinViewKnown;
+    if (
+      first ||
+      pinProject !== state.pinProject ||
+      pinImplicit !== state.pinImplicit
+    )
+      setState({
+        pinProject: pinProject,
+        pinImplicit: pinImplicit,
+        pinViewKnown: !!model || state.pinViewKnown,
+      });
+    if (first) placePins();
     var btn = document.getElementById("ws-pill");
     if (!btn) return;
     var sep = btn.nextElementSibling;
@@ -5157,7 +5313,7 @@
   function railModel() {
     var groups = [];
     var entries = [];
-    var shown = pinsShown();
+    var shown = state.pins;
     if (shown.length) {
       groups.push({ id: "pinned", label: t("g.pinned") });
       shown.forEach(function (p) {
@@ -8319,7 +8475,8 @@
         if (s && s.feedback_enabled === false) setState({ reportOff: true });
         if (!s || !s.shell) return;
         setState({
-          pins: Array.isArray(s.shell.pins) ? s.shell.pins : [],
+          pinList: pinTuples(s.shell.pins),
+          pinsLoaded: true,
           collapsed: s.shell.collapsed === true,
           hidden: Array.isArray(s.shell.hidden) ? s.shell.hidden : [],
           order: Array.isArray(s.shell.order) ? s.shell.order : [],

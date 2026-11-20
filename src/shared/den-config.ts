@@ -462,7 +462,11 @@ export interface UserConfig {
    * and their order (src/ui/server/shell-prefs.ts).
    */
   shell?: {
-    pins?: string[];
+    /**
+     * Issue 402: { item, project } (no project: none); a bare id is a pin
+     * saved before the tuple, migrated on read and write.
+     */
+    pins?: (string | { item: string; project?: string | null })[];
     collapsed?: boolean;
     hidden?: string[];
     order?: string[];

@@ -481,7 +481,13 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
-import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
+import {
+  mergeShellPrefs,
+  pinnedItems,
+  shellPrefs,
+  storedShell,
+  type PinProjects,
+} from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
   appearancePrefs,
@@ -950,6 +956,32 @@ const STATIC_EXTS = new Set([
   ".woff",
   ".woff2",
 ]);
+
+/**
+ * Issue 402, clause 6: the projects (active or not) whose repos include an
+ * item's repo, from their services and managed clones: an old id-only pin
+ * takes the one project, else none.
+ */
+function pinProjects(): PinProjects {
+  let all: Record<string, { services?: object; repos?: object }> = {};
+  try {
+    all = readWorkspacesFile().workspaces ?? {};
+  } catch {
+    /* no projects readable: old pins become none */
+  }
+  return (item) => {
+    const repo = item.split("/")[0];
+    return Object.entries(all)
+      .filter(([, ws]) => {
+        const repos = new Set(
+          Object.keys(ws?.services ?? {}).map((k) => k.split("/")[0]),
+        );
+        for (const r of Object.keys(ws?.repos ?? {})) repos.add(r);
+        return repos.has(repo);
+      })
+      .map(([name]) => name);
+  };
+}
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
 /** A message's first line: a parser's code frame quotes the file. */
@@ -3141,7 +3173,7 @@ function approvalDeps(): ApprovalDeps {
         install: readPolicySetting(user.approvals),
         project: project ? projectPolicy(project) : undefined,
         targets: writeTargets(action, ask?.args ?? {}, project),
-        pins: pinsAsWatched(shellPrefs(user.shell).pins),
+        pins: pinsAsWatched(pinnedItems(shellPrefs(user.shell).pins)),
       });
     },
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
@@ -7340,7 +7372,7 @@ async function handleRequest(
         ...cliRowSettings(user),
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
-        shell: shellPrefs(user.shell),
+        shell: shellPrefs(user.shell, pinProjects()),
         agents_layout: agentsLayout(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
@@ -7619,10 +7651,17 @@ async function handleRequest(
         // The rail's pins and collapse (R14): a view preference only.
         if (body.shell === null) delete user.shell;
         else if (body.shell !== undefined) {
-          const sh = mergeShellPrefs(shellPrefs(user.shell), body.shell);
+          // Issue 402: old id-only pins (stored, or posted by an older
+          // page) migrate on the way through.
+          const projectsOf = pinProjects();
+          const sh = mergeShellPrefs(
+            shellPrefs(user.shell, projectsOf),
+            body.shell,
+            projectsOf,
+          );
           if (!sh.ok) return send400(res, sh.error);
           const stored = storedShell(sh.value);
-          if (stored) user.shell = stored;
+          if (stored) user.shell = stored as UserConfig["shell"];
           else delete user.shell;
         }
         if (body.graph === null) delete user.graph;
@@ -7721,7 +7760,7 @@ async function handleRequest(
           editor_overrides: user.editor_overrides ?? {},
           graph: graphPrefs(user.graph),
           appearance: appearancePrefs(user.appearance),
-          shell: shellPrefs(user.shell),
+          shell: shellPrefs(user.shell, pinProjects()),
           language: uiLanguage(user.language),
           time_zone: timeZonePref(user.time_zone),
           machine_name: machineNameSetting(user),
