@@ -506,6 +506,7 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
+import { terminalLinkRedirect, terminalsPageHtml } from "./terminals-page.js";
 import {
   mergeShellPrefs,
   pinnedItems,
@@ -4451,6 +4452,26 @@ async function handleRequest(
     })
   )
     return;
+
+  // Issue 482: an older Terminal link goes to the Terminals page.
+  {
+    const to = terminalLinkRedirect(pathname, url.searchParams);
+    if (to) {
+      res.writeHead(302, { Location: to });
+      res.end();
+      return;
+    }
+  }
+  // Issue 482: the Terminals page, agents.html with its own page id.
+  if (pathname === "/terminals") {
+    const bad = sectionConfigError("agents");
+    if (bad && wantsHtmlPage(req, pathname)) throw bad;
+    return serveFile(
+      res,
+      path.join(PUBLIC_DIR, "agents.html"),
+      terminalsPageHtml,
+    );
+  }
 
   // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
   if (pathname === "/agents" || pathname === "/agents.html") {

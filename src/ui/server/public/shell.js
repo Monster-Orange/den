@@ -2720,16 +2720,35 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agents",
-    "n.terminal": "Terminal",
-    "n.terminalTip": "Open a shell in this project's folder, in Den",
+    "n.terminal": "Terminals",
+    "n.terminalTip": "Your terminals in one list, each in a project's folder",
     "ag.term.started": "Terminal opened in {w}",
     "ag.term.failed": "Den couldn't open a terminal: {e}",
     // Issue 503: the machine gave no PTY (the reason in {e}).
     "ag.term.ptyFailed":
       "Den couldn't open a terminal: this machine gave it no PTY ({e}). Close terminals you no longer need, or run doctor.",
     "ag.term.noWs": "no project is active. Activate one first.",
-    "ws.termHere": "Terminal here",
+    "ws.termHere": "New terminal",
+    // Issue 482: the Terminals page (its own list; never "shell").
+    "ws.termHereTip": "Open a new terminal in this project's folder, in Den",
+    "tm.count": "{n} terminals",
+    "tm.count1": "{n} terminal",
+    "tm.running": "Running ({n})",
+    "tm.exited": "Exited ({n})",
+    "tm.lastUsed": "Last used {when}",
+    "tm.restart": "Restart",
+    "tm.restartName": "Restart {id} in the same folder",
+    "tm.none": "No terminals yet",
+    "tm.noneP": "Press New terminal to open one in {scope}.",
+    "tm.empty":
+      "Pick a terminal on the left to open it. Open more to tile them (up to 4).",
+    "tm.pick": "New terminal in…",
+    "tm.moved": "{n} terminals moved to Terminals. Nothing was closed.",
+    "tm.moved1": "{n} terminal moved to Terminals. Nothing was closed.",
+    "tm.openList": "Open Terminals",
+    "tm.dismiss": "Dismiss",
     "kind.agent": "Agent",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agents",
     "ag.sub.agent": "{n} agent",
     "ag.sub.shells": "{n} shells",
@@ -2973,8 +2992,8 @@
       "Hub's address isn't https, so Den won't open it. See Settings › Hub.",
     "ag.session": "shell",
     "ag.empty":
-      "Pick an agent or shell on the left to open its terminal. Open more to tile them (up to 4).",
-    "ag.none.scope": "No agents or shells in {scope} yet",
+      "Pick an agent on the left to open its terminal. Open more to tile them (up to 4).",
+    "ag.none.scope": "No agents in {scope} yet",
     "ag.detach": "Close pane",
     "ag.to": "To {name} · {ws}",
     "ag.toName": "To {name}",
@@ -3027,6 +3046,7 @@
     "ag.noHost": "No session host is running: nothing has started yet",
     "ag.ws": "Project",
     "ag.pal": "Agents › {ws} / {name}",
+    "tm.pal": "Terminals › {ws} / {name}",
     "ag.palStart": "Start agent…",
     // ON-6: the __DEN_TITLE__ agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ agent",
@@ -3834,8 +3854,8 @@
   if (!host || host.dataset.mounted) return;
   host.dataset.mounted = "1";
   var page = host.dataset.page || "";
-  // 0.4.45: the rail item lit; a page may light another of its own (the
-  // Agents page lights Terminal while a shell is in front).
+  // 0.4.45: the rail item lit; a page may light another of its own.
+  // Issue 482: the Terminals page's id is its rail item's ("terminal").
   var railLit = page;
   // The page id on the body (den-page-<id>), for CSS from first paint: the
   // Graph page is the Workspaces page's file at /graph (R22, 0.3.0-dev.32).
@@ -4968,15 +4988,18 @@
     },
     // D73: a plain shell in the project's folder, the same terminal pane
     // agents use with no agent in it: a person's, signed in like the page.
+    // Issue 482: Terminals, a page of their own (/terminals), never rows
+    // in the Agents list. A click opens the one used last in the project
+    // in view, or starts one (terminalHref).
     {
       id: "terminal",
       label: "n.terminal",
       tip: "n.terminalTip",
       icon: "terminal",
       group: "develop",
-      // 0.4.45: right under Agents (a view of the same pane).
+      // 0.4.45: right under Agents.
       order: 17.5,
-      href: "/agents?terminal=1",
+      href: "/terminals",
       keywords: ["terminal", "shell", "console", "command line"],
     },
     // 0.4.45: the __DEN_TITLE__ agent is off the rail: one door, the SERVER row
@@ -5456,7 +5479,10 @@
     var repo = id.split("/")[0];
     return "/services#repo-" + encodeURIComponent(repo);
   }
-  /** D73: the rail's Terminal, in the project in view when there is one. */
+  /**
+   * D73: the rail's Terminals, in the project in view when there is one.
+   * Issue 482: on the Terminals page itself (/terminals?terminal=1).
+   */
   function terminalHref() {
     var ws = "";
     try {
@@ -5466,7 +5492,7 @@
       ws = "";
     }
     return (
-      "/agents?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
+      "/terminals?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
     );
   }
   /**
@@ -8266,7 +8292,13 @@
   // (GET /api/sessions/helpers, a count). The Agents page sets it itself
   // from its own list. Quiet on any failure: the badge just isn't there.
   (function () {
-    if (page === "agents" || typeof rawFetch !== "function") return;
+    // Issue 482: the Terminals page is the same page (agents-page.js).
+    if (
+      page === "agents" ||
+      page === "terminal" ||
+      typeof rawFetch !== "function"
+    )
+      return;
     function poll() {
       // A refusal page or a bad config: no polls (each would be refused).
       if (configInvalid()) return;

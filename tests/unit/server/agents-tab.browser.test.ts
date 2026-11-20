@@ -216,17 +216,18 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
-  it("lists sessions and agents by workspace: plain ones labelled shell, the count says agents and shells, the revoked token marked; ?ws= narrows it", async () => {
+  it("issue 482: Agents lists agents only (the revoked token marked), Terminals the shells; each count says its own; ?ws= narrows it", async () => {
     if (skip()) return;
     const p = await page("/agents");
     expect(
       await p.$$eval(".wsg", (gs) =>
         gs.map((g) => (g as HTMLElement).dataset.ws),
       ),
-    ).toEqual(["north", "south"]);
-    const shell = p.locator(`.agr[data-id="${id("shell")}"]`);
-    expect(await shell.locator(".sbdg").textContent()).toBe("shell");
-    expect(await shell.locator(".st").textContent()).toBe("running");
+    ).toEqual(["north"]);
+    expect(await p.locator(`.agr[data-kind="session"]`).count()).toBe(0);
+    expect(await p.textContent('#agl [data-note="moved"]')).toContain(
+      "4 terminals moved to Terminals. Nothing was closed.",
+    );
     const scout = p.locator(`.agr[data-id="${id("scout")}"]`);
     expect(await scout.getAttribute("data-kind")).toBe("agent");
     expect((await scout.locator(".nm").textContent())?.trim()).toBe(
@@ -236,25 +237,35 @@ describe("the Agents tab", () => {
       "token revoked",
     );
     expect(await p.textContent("#ag-count")).toBe(
-      "1 agent · 4 shells · 0 waiting · all projects",
+      "1 agent · 0 waiting · all projects",
     );
-    await p.goto(`${s!.base}/agents?ws=south`);
+    // Dismiss: the note goes, and stays gone in this browser.
+    await p.click('#agl [data-act="dismiss-moved"]');
+    await p.waitForSelector('#agl [data-note="moved"]', { state: "detached" });
+    await p.goto(`${s!.base}/terminals`);
     await p.waitForSelector("#agl:not([aria-busy]) .agr");
+    expect((await p.textContent("#ag-h"))?.trim()).toBe("Terminals");
     expect(
-      await p.$$eval(".wsg", (gs) =>
-        gs.map((g) => (g as HTMLElement).dataset.ws),
-      ),
-    ).toEqual(["south"]);
-    expect(await p.textContent("#ag-count")).toBe(
-      "2 shells · 0 waiting · south",
-    );
+      await p.getAttribute('.den-rail [data-nav="terminal"]', "aria-current"),
+    ).toBe("page");
+    const shell = p.locator(`.agr[data-id="${id("shell")}"]`);
+    expect(await shell.locator(".st").textContent()).toBe("running");
+    expect(await p.locator(`.agr[data-kind="agent"]`).count()).toBe(0);
+    expect(await p.textContent("#ag-count")).toBe("4 terminals · all projects");
+    await p.goto(`${s!.base}/terminals?ws=south`);
+    await p.waitForSelector("#agl:not([aria-busy]) .agr");
+    expect(await p.textContent("#ag-count")).toBe("2 terminals · south");
+    await p.goto(`${s!.base}/agents`);
+    await p.waitForSelector("#agl:not([aria-busy]) .agr");
+    expect(await p.locator('#agl [data-note="moved"]').count()).toBe(0);
     await p.context().close();
   }, 45_000);
 
   it("a pane: scrollback, then live output; keys reach the session; up to four tile in the URL, a fifth closes the oldest; Close detaches", async () => {
     if (skip()) return;
-    // Tile (AG-4b): each click adds a pane.
-    const p = await page("/agents?layout=tile");
+    // Tile (AG-4b): each click adds a pane. Issue 482: shells are on the
+    // Terminals page.
+    const p = await page("/terminals?layout=tile");
     await p.click(`.agr[data-id="${id("shell")}"]`);
     await waitTerm(p, id("shell"), "hello from north");
     expect(openIds(p)).toEqual([id("shell")]);
@@ -301,32 +312,23 @@ describe("the Agents tab", () => {
       await p.screenshot({ path: path.join(SHOTS, "agents-light.png") });
 
     // A fifth: the oldest pane closes (its session keeps running).
-    await p.click(`.agr[data-id="${id("scout")}"]`);
-    await p.waitForSelector(`.pane[data-id="${id("scout")}"]`);
+    (await start("south", "tail")).emit("$ ");
+    await p.click(`.agr[data-id="${id("tail")}"]`);
+    await p.waitForSelector(`.pane[data-id="${id("tail")}"]`);
     expect(openIds(p)).toEqual([
       id("logs"),
       id("build"),
       id("watch"),
-      id("scout"),
+      id("tail"),
     ]);
     expect(await p.locator(`.pane[data-id="${id("shell")}"]`).count()).toBe(0);
-    // Its title and Close name the agent (its id until AG-10's display
-    // name), never its persona ("reviewer"); the list row keeps the persona.
-    expect(
-      (await p.textContent(`.pane[data-id="${id("scout")}"] .bar2 b`))?.trim(),
-    ).toBe("scout");
     expect(
       await p.getAttribute(
-        `.pane[data-id="${id("scout")}"] [data-act="close"]`,
+        `.pane[data-id="${id("tail")}"] [data-act="close"]`,
         "aria-label",
       ),
-    ).toBe("Close scout's pane (it keeps running)");
-    // The agent's pane has Stop; a plain session's doesn't.
-    expect(
-      await p
-        .locator(`.pane[data-id="${id("scout")}"] [data-act="stop"]`)
-        .count(),
-    ).toBe(1);
+    ).toBe("Close tail's pane (it keeps running)");
+    // A plain session's pane has no Stop (an agent's has: its own page).
     expect(
       await p
         .locator(`.pane[data-id="${id("logs")}"] [data-act="stop"]`)
@@ -337,7 +339,7 @@ describe("the Agents tab", () => {
     await p
       .getByRole("button", { name: "Close logs's pane (it keeps running)" })
       .click();
-    expect(openIds(p)).toEqual([id("build"), id("watch"), id("scout")]);
+    expect(openIds(p)).toEqual([id("build"), id("watch"), id("tail")]);
     expect(await p.getAttribute("#agr", "class")).toBe("agp n3");
     await new Promise((r) => setTimeout(r, 200));
     expect(pty("logs").signals).toEqual([]);
@@ -351,7 +353,7 @@ describe("the Agents tab", () => {
 
   it("leaving the page detaches; coming back reattaches from ?open= with what was missed", async () => {
     if (skip()) return;
-    const p = await page(`/agents?open=${id("shell")}`);
+    const p = await page(`/terminals?open=${id("shell")}`);
     await waitTerm(p, id("shell"), "hello from north");
     await p.goto(`${s!.base}/edge`);
     pty("shell").emit("while you were away\r\n");
@@ -365,7 +367,7 @@ describe("the Agents tab", () => {
 
   it("at 390px: one column, the pane under the list, no sideways scroll", async () => {
     if (skip()) return;
-    const p = await page(`/agents?open=${id("shell")}`, {
+    const p = await page(`/terminals?open=${id("shell")}`, {
       width: 390,
       height: 844,
     });
@@ -395,7 +397,7 @@ describe("the Agents tab", () => {
   it("in dark mode the terminal takes the theme's colours", async () => {
     if (skip()) return;
     const p = await page(
-      `/agents?open=${id("shell")},${id("scout")}&layout=tile`,
+      `/terminals?open=${id("shell")},${id("logs")}&layout=tile`,
       {
         dark: true,
       },
@@ -424,28 +426,41 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
-  it("⌘K offers each session as Agents › <ws> / <name>, and Start agent…", async () => {
+  it("⌘K offers each agent as Agents › <ws> / <name>, each terminal as Terminals › <ws> / <folder>, and Start agent…", async () => {
     if (skip()) return;
     const p = await page("/agents");
     await p.click("#den-search");
-    await p.fill("#den-pal-q", "north / shell");
+    await p.fill("#den-pal-q", "scout");
+    const agentOpt = p
+      .locator('#den-pal-list li[role="option"]')
+      .filter({ hasText: "Agents › north /" })
+      .first();
+    await agentOpt.waitFor();
+    expect(await agentOpt.locator(".den-kind").textContent()).toBe("Agent");
+    // Issue 482: a terminal is named by its folder, and is a Terminal.
+    const folder = path.basename(s!.wsDir("north"));
+    await p.fill("#den-pal-q", `north / ${folder}`);
     await p.waitForSelector('#den-pal-list li[role="option"]');
     const first = p.locator('#den-pal-list li[role="option"]').first();
     expect(await first.locator(".den-pal-l").textContent()).toBe(
-      "Agents › north / shell",
+      `Terminals › north / ${folder}`,
     );
-    expect(await first.locator(".den-kind").textContent()).toBe("Agent");
+    expect(await first.locator(".den-kind").textContent()).toBe("Terminal");
     await p.fill("#den-pal-q", "start agent");
     await p.waitForFunction(() =>
       [...document.querySelectorAll("#den-pal-list .den-pal-l")].some(
         (e) => e.textContent === "Start agent…",
       ),
     );
-    await p.fill("#den-pal-q", "north / shell");
+    await p.fill("#den-pal-q", `north / ${folder}`);
     await p.waitForSelector('#den-pal-list li[role="option"]');
     await p.keyboard.press("Enter");
-    await p.waitForURL((u) => u.searchParams.get("open") === id("shell"));
-    await waitTerm(p, id("shell"), "hello from north");
+    // North runs two (shell, build): the first listed opens, on Terminals.
+    await p.waitForURL(
+      (u) =>
+        u.pathname === "/terminals" &&
+        [id("shell"), id("build")].includes(u.searchParams.get("open") ?? ""),
+    );
     await p.context().close();
   }, 45_000);
 
@@ -656,7 +671,7 @@ describe("the Agents tab", () => {
 
   it("0.4.17: ⌘K Go to workspace lists every workspace, the front agent's first", async () => {
     if (skip()) return;
-    const p = await page(`/agents?open=${id("logs")}`);
+    const p = await page(`/terminals?open=${id("logs")}`);
     await p.waitForSelector(
       `.pane[data-id="${id("logs")}"] .bar2 .where a.wslink`,
     );
@@ -686,12 +701,12 @@ describe("the Agents tab", () => {
     if (skip()) return;
     fs.mkdirSync(s!.wsDir("west"), { recursive: true });
     (await start("west", "night")).emit("from west\r\n");
-    const p = await page(`/agents?ws=west&open=${id("night")}`);
+    const p = await page(`/terminals?ws=west&open=${id("night")}`);
     await waitTerm(p, id("night"), "from west");
     await p.context().close();
 
     // A session the list shows but the io route refuses: its real reason.
-    const url = "/agents?open=gone1";
+    const url = "/terminals?open=gone1";
     const q = await page(url);
     await q.route("**/api/sessions", async (r) => {
       // The goto below navigates away from a page whose own list call may

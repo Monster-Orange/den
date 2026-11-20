@@ -1846,14 +1846,37 @@
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "エージェント",
     "n.terminal": "ターミナル",
-    "n.terminalTip": "このプロジェクトのフォルダーでシェルを Den 内に開く",
+    "n.terminalTip":
+      "ターミナルの一覧。それぞれプロジェクトのフォルダーで開きます",
     "ag.term.started": "{w} でターミナルを開きました",
     "ag.term.failed": "Den はターミナルを開けませんでした: {e}",
     "ag.term.ptyFailed":
       "Den はターミナルを開けませんでした: このマシンが PTY を割り当てませんでした ({e})。不要なターミナルを閉じるか、doctor を実行してください。",
     "ag.term.noWs": "有効なプロジェクトがありません。先に有効にしてください。",
-    "ws.termHere": "ここでターミナル",
+    "ws.termHere": "新しいターミナル",
+    // Issue 482: ターミナルのページ。
+    "ws.termHereTip":
+      "このプロジェクトのフォルダーで新しいターミナルを Den 内に開く",
+    "tm.count": "ターミナル {n}",
+    "tm.count1": "ターミナル {n}",
+    "tm.running": "実行中 ({n})",
+    "tm.exited": "終了 ({n})",
+    "tm.lastUsed": "最終使用 {when}",
+    "tm.restart": "再起動",
+    "tm.restartName": "{id} を同じフォルダーで再起動",
+    "tm.none": "まだターミナルはありません",
+    "tm.noneP": "「新しいターミナル」を押すと {scope} で開きます。",
+    "tm.empty":
+      "左のターミナルを選ぶと開きます。複数開くと並べて表示します（最大 4）。",
+    "tm.pick": "新しいターミナルを開くプロジェクト…",
+    "tm.moved":
+      "{n} 個のターミナルを「ターミナル」に移しました。閉じたものはありません。",
+    "tm.moved1":
+      "{n} 個のターミナルを「ターミナル」に移しました。閉じたものはありません。",
+    "tm.openList": "ターミナルを開く",
+    "tm.dismiss": "閉じる",
     "kind.agent": "エージェント",
+    "kind.terminal": "ターミナル",
     "ag.sub.agents": "エージェント {n}",
     "ag.sub.agent": "エージェント {n}",
     "ag.sub.shells": "シェル {n}",
@@ -2066,8 +2089,8 @@
       "Hub のアドレスが https ではないため、Den は開きません。設定 › Hub を確認してください。",
     "ag.session": "シェル",
     "ag.empty":
-      "左のエージェントかシェルを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
-    "ag.none.scope": "{scope} にはまだエージェントもシェルもありません",
+      "左のエージェントを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
+    "ag.none.scope": "{scope} にはまだエージェントはありません",
     "ag.detach": "ペインを閉じる",
     "ag.to": "宛先: {name} · {ws}",
     "ag.toName": "宛先: {name}",
@@ -2120,6 +2143,7 @@
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
     "ag.ws": "プロジェクト",
     "ag.pal": "エージェント › {ws} / {name}",
+    "tm.pal": "ターミナル › {ws} / {name}",
     "ag.palStart": "エージェントを開始…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ エージェント",
