@@ -717,6 +717,12 @@ The top bar's search sits in the same place in every product (issue 303).
   two lines, `login` or `local` on one: `ACCOUNT_SHAPES`), the old fields
   fail (`legacy`), and the search's box is pinned. `navWarnings(snap)` lists host HTML where the kit's account
   or search should be: a warning in 0.7.1, a failure in 0.7.2.
+- **A page with no rail** (issue 694). `topBarHtml({ rail: false })`
+  draws the same bar without ☰ and without `aria-controls` for the rail;
+  `shellHtml({ rail: false })` draws no rail either. The header is stamped
+  `data-nav-shape="no-rail"` (`TOP_SHAPES`). `railShapeDiffs(snap)`, run
+  by `compareNav`, fails a top bar shape the kit doesn't draw, and a
+  no-rail page that holds ☰ or a rail, drawn or hidden.
 
 - **Three parts.** The bar is a grid: the left part (`div.den-left`: ☰,
   the brand, and what `start` holds before the search, the crumbs), the
