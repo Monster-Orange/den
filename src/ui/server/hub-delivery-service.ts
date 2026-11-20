@@ -12,10 +12,14 @@
  */
 import path from "node:path";
 import {
+  deliveryAlert,
+  readDeliveryHealth,
   SeenDeliveries,
+  writeDeliveryHealth,
   type Delivery,
   type DeliveryOwner,
 } from "../../shared/hub-delivery.js";
+import { hubCommentsBell } from "./hub-comments-bell.js";
 import {
   DeliveryLoop,
   type AgentHubWork,
@@ -34,6 +38,15 @@ import {
 import { getStateDir } from "../../shared/paths.js";
 
 const PUMP_MS = 2000;
+/** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
+const ALERT_CHECK_MS = 30_000;
+/** Issue 702: doctor's copy of the delivery path's health. */
+const healthFile = () =>
+  path.join(getStateDir(), "hub", "deliveries-health.json");
+/** Issue 702: the Hub the stream last opened to (doctor shows it). */
+let streamUrl: string | null = null;
+let alertTimer: NodeJS.Timeout | null = null;
+let bell: ReturnType<typeof hubCommentsBell> | null = null;
 
 let loop: DeliveryLoop | null = null;
 let ctl: AbortController | null = null;
@@ -116,6 +129,39 @@ export function stopDeliveries(): void {
   notesTimer = null;
   if (inboxTimer) clearInterval(inboxTimer);
   inboxTimer = null;
+  if (alertTimer) clearInterval(alertTimer);
+  alertTimer = null;
+  // Issue 702: not reading Hub (disconnected): nothing to say.
+  bell?.(null);
+}
+
+/** hub.delivery_alert_minutes, read each time (a bad hub block: 15). */
+async function alertMinutes(): Promise<number> {
+  const hub = await import("../../shared/hub.js");
+  try {
+    return hub.readHubConfig()?.deliveryAlertMinutes ?? 15;
+  } catch {
+    return 15;
+  }
+}
+
+/**
+ * Issue 702: say "Hub comments aren't arriving" in the bell after
+ * hub.delivery_alert_minutes with no good read; withdrawn on the next.
+ */
+function startDeliveryAlert(l: DeliveryLoop): void {
+  if (alertTimer) clearInterval(alertTimer);
+  const check = async () => {
+    const reason = deliveryAlert(l.health(), Date.now(), await alertMinutes());
+    const { notificationDeps } = await import("./notification-service.js");
+    bell ??= hubCommentsBell(notificationDeps().store);
+    bell(reason);
+  };
+  alertTimer = setInterval(
+    () => void check().catch(() => undefined),
+    ALERT_CHECK_MS,
+  );
+  alertTimer.unref();
 }
 
 /** hub.inbox_* read each time (a bad hub block: the defaults). */
@@ -280,9 +326,12 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
             throw Object.assign(new Error("not connected"), {
               kind: "refused",
             });
+          streamUrl = a.url;
           const res = await hub.hubOpenDeliveryStream(a.url, a.token, lastId, {
             signal,
           });
+          // Issue 702: the stream opened: a good read before any bytes.
+          yield "";
           yield* chunks(res);
         })(),
       list: async (after) => {
@@ -325,6 +374,19 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     heartbeatMs: o.heartbeatSeconds * 1000,
     pollMs: o.pollSeconds * 1000,
     log: o.log,
+    // Issue 702: doctor reads the path's health from a file.
+    onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
+    health0: {
+      lastDeliveryAt: readDeliveryHealth(healthFile())?.lastDeliveryAt ?? null,
+    },
+    // Issue 703: hub.delivery_stream_silence_seconds, read at each open.
+    silenceMs: () => {
+      try {
+        return (hub.readHubConfig()?.deliveryStreamSilenceSeconds ?? 75) * 1000;
+      } catch {
+        return 75_000;
+      }
+    },
     // Issue 271: an owner decided a held change an agent asked for: read
     // the waiting new-project asks again now (one links on its own).
     held: () => {
@@ -423,6 +485,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
   }, PUMP_MS);
   inboxTimer.unref();
   const c = (ctl = new AbortController());
+  startDeliveryAlert(l);
   void l
     .run(c.signal)
     .catch((e) =>

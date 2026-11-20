@@ -1916,6 +1916,18 @@
       "__DEN_TITLE__ {v}: 固定バージョンのコミットはあなたの許可を待っています",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubCommentsRejected":
+      "Hub のコメントが届いていません: Hub がこのインストールのトークンを受け付けませんでした (設定 › Hub: 再接続)",
+    "bell.m.hubCommentsForbidden":
+      "Hub のコメントが届いていません: Hub がこのインストールへのコメント配信を拒否しました",
+    "bell.m.hubCommentsRefused":
+      "Hub のコメントが届いていません: Hub にこのインストール向けのコメント配信がありません",
+    "bell.m.hubCommentsUnreachable":
+      "Hub のコメントが届いていません: __DEN_TITLE__ から Hub に接続できません",
+    "bell.m.hubCommentsClosed":
+      "Hub のコメントが届いていません: Hub がコメントのストリームを何度も閉じています",
+    "bell.m.hubCommentsSilent":
+      "Hub のコメントが届いていません: コメントのストリームが途絶えました",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",

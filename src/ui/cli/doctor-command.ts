@@ -52,6 +52,11 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
+  deliveryAlert,
+  readDeliveryHealth,
+  TROUBLE_TEXT,
+} from "../../shared/hub-delivery.js";
+import {
   lostFiles,
   lostMarkLines,
 } from "../../shared/agents/guardrails/lost-marks.js";
@@ -665,6 +670,67 @@ export function hubLines(
     problem: false, // a Hub that is down never fails doctor: agents still run
     check: { id: "hub", status: good ? "ok" : "warn", detail },
   };
+}
+
+/** Issue 702: "3 min ago", "2 h ago", "4 d ago". */
+function agoText(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  if (m < 120) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+
+/**
+ * Issue 702: doctor's "Hub comments" row, from the server's
+ * hub/deliveries-health.json: the URL it reads, whether the stream is
+ * open, its last good read and the last comment. Warns, with the reason,
+ * after hub.delivery_alert_minutes with no good read; a quiet Hub is ok.
+ * None when the server hasn't written it.
+ */
+export function hubDeliveryLines(
+  h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
+  now: number,
+  minutes: number,
+): { lines: string[]; problem: boolean; check?: OnboardCheck } {
+  if (!h) return { lines: [], problem: false };
+  const alert = deliveryAlert(h, now, minutes);
+  const parts = [
+    `${h.url ?? "Hub"}: ${h.streamOpen ? "stream open" : "stream not open"}`,
+    h.lastOkAt === null
+      ? "no good read yet"
+      : `last good read ${agoText(now - h.lastOkAt)}`,
+    h.lastDeliveryAt === null
+      ? "no comment yet"
+      : `last comment ${agoText(now - h.lastDeliveryAt)}`,
+  ];
+  const detail = alert
+    ? `Hub comments aren't arriving: ${TROUBLE_TEXT[alert]} (${parts.join("; ")})`
+    : parts.join("; ");
+  return {
+    lines: [`  hub comments  ${alert ? "⚠" : "✓"}  ${detail}`],
+    problem: false, // like the Hub row: agents still run
+    check: { id: "hub:comments", status: alert ? "warn" : "ok", detail },
+  };
+}
+
+/** Issue 702: the row for this install (hub.delivery_alert_minutes). */
+async function hubDeliveryDoctor(): Promise<
+  ReturnType<typeof hubDeliveryLines>
+> {
+  const { readHubConfig } = await import("../../shared/hub.js");
+  let minutes = 15;
+  try {
+    minutes = readHubConfig()?.deliveryAlertMinutes ?? 15;
+  } catch {
+    /* the Hub row says what's wrong with the hub block */
+  }
+  return hubDeliveryLines(
+    readDeliveryHealth(
+      path.join(getStateDir(), "hub", "deliveries-health.json"),
+    ),
+    Date.now(),
+    minutes,
+  );
 }
 
 /**
@@ -1620,6 +1686,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const st = await hubStatus();
       const h = hubLines(st, readBrand().name);
       if (h.check) r.checks.push(h.check);
+      if (st.configured) {
+        const dl = await hubDeliveryDoctor();
+        if (dl.check) r.checks.push(dl.check);
+      }
       r.checks.push(
         ...hubProjectLines(
           st.configured && st.connected,
@@ -1722,6 +1792,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
+    if (st.configured)
+      for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
     for (const l of hubProjectLines(
       st.configured && st.connected,
       await projectsWithHubProject(),
