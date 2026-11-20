@@ -127,7 +127,7 @@ function runGate(
       },
     };
     // The page: what each selector finds, from the fake Den's state.
-    const ui = { view: "", dlg: false, copied: false, pop: null };
+    const ui = { view: "", dlg: false, copied: false, pop: null, foldOpen: false };
     const stopped = () => [...agents].find(([id, a]) => id.includes("stopped") && !a.running)?.[0];
     const find = (sel) => {
       const q = RIGHT && quarantinedCopy();
@@ -150,8 +150,15 @@ function runGate(
       if (sel === "#ag-ws" || sel === "#ag-runtime") return [{}];
       if (sel === "#ag-go") return [{ disabled: !!q }];
       const b = stopped();
+      // The "Stopped (n)" fold: closed, as the bed's is with more than 3
+      // stopped agents; its summary opens it, as a person's click does.
+      if (has("details[data-stopped]")) {
+        if (!b) return [];
+        if (has("summary")) return [{ click: () => (ui.foldOpen = true) }];
+        return [{ open: ui.foldOpen ? "" : null }];
+      }
       if (b && has('data-agent="' + b + '"') && has('data-act="resume"'))
-        return [{ click: async () => {
+        return [{ hidden: !ui.foldOpen, click: async () => {
           const r = launch(b);
           ui.pop = r.status === 409
             ? { text: r.body.error, href: "/settings?runtime=" + RT + "&project=" + WS + "#agents.runtimes" }
@@ -166,12 +173,13 @@ function runGate(
         first: () => l,
         locator: (s) => loc(sel + " " + s),
         count: async () => all().length,
-        waitFor: async () => { if (!all().length) throw new Error("timeout: " + sel); },
-        click: async () => { const e = one(); if (!e) throw new Error("no " + sel); await e.click?.(); },
+        // Playwright's waitFor and click wait for a shown element.
+        waitFor: async (o) => { const e = one(); if (!e || (e.hidden && o?.state !== "attached")) throw new Error("timeout: " + sel); },
+        click: async () => { const e = one(); if (!e || e.hidden) throw new Error("locator.click: Timeout 30000ms exceeded: " + sel); await e.click?.(); },
         selectOption: async () => {},
         textContent: async () => one()?.text ?? "",
         isDisabled: async () => !!one()?.disabled,
-        getAttribute: async (a) => (a === "href" ? one()?.href ?? null : null),
+        getAttribute: async (a) => (a === "href" ? one()?.href ?? null : a === "open" ? one()?.open ?? null : null),
       };
       return l;
     };

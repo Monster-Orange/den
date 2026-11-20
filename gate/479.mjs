@@ -288,13 +288,30 @@ async function startDialog(ctx, page, s) {
 async function resume(ctx, page, s) {
   const out = { button: false, href: null, said: null, row: false };
   await ctx.goto(page, "/agents");
+  // Stopped agents sit in the "Stopped (n)" fold, closed when it holds more
+  // than 3 (or as a person left it). Open it as a person does: its summary.
+  const fold = page.locator("#agl details[data-stopped]").first();
+  await fold.waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
+  out.fold = (await fold.count()) > 0;
+  if (out.fold && (await fold.getAttribute("open")) === null) {
+    await fold.locator(":scope > summary").click();
+    out.foldOpened = true;
+  }
   const btn = page
     .locator(
       `.agst[data-agent="${s.b}"][data-ws="${s.ws}"] button[data-act="resume"], .agst[data-agent="${s.b}"][data-ws="${s.ws}"] button[data-act="fresh"]`,
     )
     .first();
-  await btn.waitFor({ timeout: 15000 }).catch(() => {});
-  if (!(await btn.count())) return out;
+  const shown = await btn
+    .waitFor({ timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  // On the page but not shown (a fold still closed): say so, never wait on
+  // a click a person couldn't make.
+  if (!shown) {
+    out.hidden = (await btn.count()) > 0;
+    return out;
+  }
   out.button = true;
   await btn.click();
   const dlg = page.locator(".bz-dlg").first();
@@ -419,7 +436,9 @@ function rows(r, cell) {
         (rs.error
           ? rs.error
           : !rs.button
-            ? `no Resume for ${r.b}`
+            ? rs.hidden
+              ? `Resume for ${r.b} is on the page but not shown (the Stopped fold ${rs.fold ? (rs.foldOpened ? "was opened" : "was open") : "wasn't found"})`
+              : `no Resume for ${r.b}`
             : rs.href
               ? `"${rs.label}" → ${rs.href}; ${rs.row ? "Settings at its row" : "no runtime row in Settings"}; the pop-up ${String(rs.said ?? "").includes(r.file) ? "shows" : "doesn't show"} the path`
               : `no Settings action in the pop-up: "${rs.said}"`),

@@ -63,6 +63,28 @@ export function checkGateModule(file, mod) {
   return out;
 }
 
+/**
+ * A module's own plain `fetch` runs on the host, where the browser's
+ * address (ctx.url) reaches the live edge; the harness refuses it there.
+ * Host-side fetches use ctx.hostUrl (or ctx.fetch / ctx.api). Flags a
+ * plain fetch whose address is built from ctx.url: `fetch(ctx.url…)`,
+ * `fetch(\`${ctx.url}…\`)` and `fetch(new URL(…, ctx.url))`. A fetch
+ * inside page.evaluate takes a relative path, so it never matches.
+ */
+const HOST_FETCH_AT_URL =
+  /(?<![\w.$])fetch\(\s*(?:ctx\.url\b|`\$\{\s*ctx\.url\s*\}|new URL\([^()]*?,\s*ctx\.url\s*\))/g;
+
+export function checkGateSource(file, src) {
+  const out = [];
+  for (const m of String(src).matchAll(HOST_FETCH_AT_URL)) {
+    const line = src.slice(0, m.index).split("\n").length;
+    out.push(
+      `${file}: line ${line}: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)`,
+    );
+  }
+  return out;
+}
+
 const BROWSERS = ["chromium", "webkit"];
 const SKIP = /^(person|needs-[a-z0-9][a-z0-9-]*)$/;
 
@@ -114,6 +136,10 @@ export async function checkGateDir(dir) {
           await import(pathToFileURL(path.resolve(dir, f)).href),
         ),
       );
+      if (/^\d+\.mjs$/.test(f))
+        out.push(
+          ...checkGateSource(f, fs.readFileSync(path.resolve(dir, f), "utf-8")),
+        );
     } catch (e) {
       out.push(
         `${f}: does not load (${String(e?.message ?? e).split("\n")[0]})`,
