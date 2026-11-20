@@ -228,6 +228,7 @@ user file wins.
 | `hub.mcp_retry_attempts`              | `0` (no limit)     | How many times Den restarts one agent for Hub's tools before it leaves it to you.                                                         |
 | `hub.tools_check_seconds`             | `300` (at least 5) | How often Den reads Hub's tool list, to tell agents what changed.                                                                         |
 | `hub.tools_restart`                   | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.             |
+| `hub.groups_cache_seconds`            | `30` (at least 5)  | How long the Agents page keeps Hub's groups in memory before it reads them again. Den stores no groups.                                   |
 
 Two more keys touch Hub:
 

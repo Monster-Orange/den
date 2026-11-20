@@ -176,6 +176,9 @@ export const KIT_FILES: readonly string[] = [
   "button.css",
   "setting-row.js",
   "setting-row.css",
+  // Issue 750: the group header (the agents page's By group view).
+  "group-header.js",
+  "group-header.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.
@@ -369,6 +372,8 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/busy.css",
   // den-ui 0.6.2: the ask-and-tell dialogs' look, likewise.
   "/kit/dialog.css",
+  // Issue 750: the group header's look (the agents page's By group view).
+  "/kit/group-header.css",
 ];
 
 /**

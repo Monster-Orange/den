@@ -180,6 +180,12 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
+  /**
+   * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
+   * the agents page's copy of Hub's groups is kept in memory before Den
+   * reads them again. Den stores no groups.
+   */
+  groupsCacheSeconds: number;
 }
 
 type RawHub =
@@ -207,6 +213,7 @@ type RawHub =
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
+      groups_cache_seconds?: unknown;
     }
   | undefined;
 
@@ -365,6 +372,7 @@ export function readHubConfig(
   );
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
+  const groupsCache = secs(h.groups_cache_seconds, "groups_cache_seconds", 30);
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
@@ -403,6 +411,7 @@ export function readHubConfig(
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
+    groupsCacheSeconds: groupsCache,
   };
 }
 
@@ -828,7 +837,7 @@ const personName = (v: unknown): string | undefined => {
 };
 
 /** One JSON call to Hub, bounded; its answer, or a HubCallError. */
-async function hubCall(
+export async function hubCall(
   url: string,
   init: RequestInit,
   opts: { timeoutMs?: number; fetch?: FetchFn },
@@ -871,6 +880,9 @@ async function hubCall(
       "forbidden",
       `${said ?? "Hub refused this install"}: ask an admin of the company on Hub`,
       str(body.error),
+      // Issue 750: Hub's answer too (its `code`, e.g. groups_not_in_plan).
+      403,
+      body,
     );
   if (res.status >= 400 && res.status < 500)
     throw new HubCallError(

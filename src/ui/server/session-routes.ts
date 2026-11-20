@@ -116,6 +116,10 @@ import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
+import {
+  hubToolsLoaded,
+  readHubMcpInit,
+} from "../../shared/agents/hub-mcp-connect.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
   agentPrincipalOf,
@@ -444,6 +448,11 @@ export interface ListedSession {
   /** Issue 193: Den is restarting it to load Hub's new tools. */
   toolsRestarting?: true;
   /**
+   * Issue 750 (and 749's page part): running, and its Hub tools failed to
+   * load at its start: "Can't reach Hub" on its row, with Restart.
+   */
+  hubUnreachable?: true;
+  /**
    * Issue 278: it is compacting repeatedly (active), or its deliveries
    * wait for a person after a loop (paused): its row's tag and callout.
    */
@@ -713,6 +722,13 @@ export function listedSessions(
       })(),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
+        : {}),
+      ...(r.state === "running" &&
+      s &&
+      !s.exited &&
+      hubToolsLoaded(readHubMcpInit(d.stateDir(), rec.id), rec.startedAt) ===
+        false
+        ? { hubUnreachable: true as const }
         : {}),
       // Issue 278: compacting repeatedly, and instructions over the share.
       ...contextFields(d.stateDir(), rec.id, isStoppedState(r.state)),

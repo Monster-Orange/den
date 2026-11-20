@@ -1531,6 +1531,32 @@
       "Hub se desconectó después de que este agente empezó; sus herramientas de Hub ya no funcionan. Reiniciar mantiene su conversación y espera a que termine su turno.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
+    "ag.by.label": "Mostrar la lista",
+    "ag.by.project": "Por proyecto",
+    "ag.by.group": "Por grupo",
+    "ag.grp.noHub": "Los grupos vienen con Den Hub.",
+    "ag.grp.connect": "Conectar Den Hub",
+    "ag.grp.notInPlan":
+      "Los grupos no están en el plan de Den Hub de esta empresa.",
+    "ag.grp.openHub": "Abrir Hub",
+    "ag.grp.guest":
+      "Eres invitado en esta empresa de Hub, así que sus grupos no se muestran aquí.",
+    "ag.grp.unreachable":
+      "No se puede contactar con Den Hub, así que los grupos no se muestran.",
+    "ag.grp.retry": "Intentar de nuevo",
+    "ag.grp.noGroups": "Aún no hay grupos",
+    "ag.grp.openGroups": "Abrir Grupos en Hub",
+    "ag.grp.lead": "Responsable: {name}",
+    "ag.grp.open": "Abrir {group} en Hub",
+    "ag.grp.message": "Escribir al grupo",
+    "ag.grp.messageName": "Escribir a {group} en Hub",
+    "ag.grp.empty": "Ninguno de sus miembros se ejecuta en este Den.",
+    "ag.grp.notIn": "Sin grupo",
+    "ag.hub.unreach": "No llega a Hub",
+    "ag.hub.unreachTip":
+      "Sus herramientas de Hub no se cargaron al iniciar, así que no puede leer ni responder en Hub. Reiniciar conserva la conversación.",
+    "ag.hub.restart": "Reiniciar",
+    "ag.hub.restartName": "Reiniciar {id} para cargar sus herramientas de Hub",
     "ag.mcp.restarting":
       "{id} se reinicia cuando quede libre, en la misma conversación.",
     "ag.det.label": "Detalles de {id}",
@@ -2015,6 +2041,10 @@
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
     "bell.m.held.unread.one":
       "{name}: {n} mensaje espera desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.held.hub_tools":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: sus herramientas de Hub no se cargaron; reinícialo",
+    "bell.m.held.hub_tools.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: sus herramientas de Hub no se cargaron; reinícialo",
     "bell.m.hubNoAnswer":
       "{name}: {n} comentarios de Hub escritos, aún sin respuesta tras {m} min",
     "bell.m.hubNoAnswer.one":

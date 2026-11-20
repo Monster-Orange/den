@@ -96,6 +96,14 @@ import {
   wireQuarantine,
 } from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
+import {
+  groupsLineHtml,
+  groupsOffered,
+  groupsViewHtml,
+  hubUnreachActHtml,
+  hubUnreachTagHtml,
+  viewSwitchHtml,
+} from "/agent-groups.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
@@ -203,6 +211,11 @@ const st = {
   projects: null,
   projectsAt: 0,
   scope: "all",
+  /** Issue 750: Hub's groups (GET /api/hub/groups), or null until read. */
+  groupsRead: null,
+  groupsAt: 0,
+  /** Issue 750: the list by project (as before) or by group. */
+  by: savedBy(),
   scopeLabel: "",
   data: null,
   signedOut: false,
@@ -946,7 +959,10 @@ function rowHtml(r) {
     : "";
   // Issue 278: compacting repeatedly; instruction files over the share.
   const ctxTags = compactingTag(r) + instructionsTag(r);
+  // Issue 750 (749): its Hub tools didn't load: Can't reach Hub.
+  const hubTag = hubUnreachTagHtml(r, t);
   const tags =
+    hubTag ||
     rotTag ||
     revokedTag ||
     ovTags ||
@@ -955,7 +971,7 @@ function rowHtml(r) {
     modeTag ||
     gateTag ||
     ctxTags
-      ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
+      ? `<span class="agtags">${hubTag}${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
     `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
@@ -977,7 +993,10 @@ function rowHtml(r) {
   // Issue 278: compacting repeatedly: why, Stop, and Clear.
   const callout =
     r.kind === "agent"
-      ? rotCalloutHtml(r) + modeApplyHtml(r) + compactingHtml(r)
+      ? hubUnreachActHtml(r, t) +
+        rotCalloutHtml(r) +
+        modeApplyHtml(r) +
+        compactingHtml(r)
       : "";
   // D32: the helpers it started in its own session, under it. #80: only
   // once its badge is opened (closed by default, the agent in front too).
@@ -1153,8 +1172,18 @@ function paintList() {
       rows: inView.filter((s) => s.workspace === ws && !inStopped(s)),
     }))
     .filter((g) => g.rows.length > 0);
-  const body =
-    groups.length || stopped.length
+  // Issue 750: without Hub's groups, one line says why (By project as
+  // before); with them, By project or By group.
+  const gLine = groupsLineHtml(st.groupsRead, t);
+  if (gLine) notes.push(gLine);
+  const byGroup = st.by === "group" && groupsOffered(st.groupsRead);
+  const body = byGroup
+    ? groupsViewHtml(inView, st.groupsRead.groups, {
+        t,
+        rowHtml,
+        groupsUrl: st.groupsRead.groupsUrl,
+      })
+    : groups.length || stopped.length
       ? groups
           .map(
             (g) =>
@@ -1167,6 +1196,7 @@ function paintList() {
   setList(
     el,
     notes.join("") +
+      viewSwitchHtml(st.groupsRead, st.by, t) +
       body +
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
@@ -1175,6 +1205,48 @@ function paintList() {
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
+}
+
+/** Issue 750: the person's By project or By group, kept in this browser. */
+function savedBy() {
+  try {
+    return localStorage.getItem("den-agents-by") === "group"
+      ? "group"
+      : "project";
+  } catch {
+    return "project";
+  }
+}
+
+function setBy(by) {
+  st.by = by === "group" ? "group" : "project";
+  try {
+    localStorage.setItem("den-agents-by", st.by);
+  } catch {
+    /* this page only */
+  }
+  paintList();
+}
+
+/** Issue 750: how often the page asks Den for Hub's groups again (ms). */
+const GROUPS_EVERY_MS = 30_000;
+
+/**
+ * Issue 750: Hub's groups for the By group view (Den reads them from Hub,
+ * keeps them in memory only). `fresh`: Try again, past Den's copy.
+ */
+async function loadGroups(fresh = false) {
+  st.groupsAt = Date.now();
+  try {
+    const r = await fetch(`/api/hub/groups${fresh ? "?fresh=1" : ""}`, {
+      headers: { accept: "json" },
+    });
+    const b = r.ok ? await r.json() : null;
+    st.groupsRead = b?.state ? b : { state: "unreachable" };
+  } catch {
+    st.groupsRead = { state: "unreachable" };
+  }
+  if (st.data) paintList();
 }
 
 const STOPPED_OPEN_KEY = "den-agents-stopped-open";
@@ -1492,6 +1564,9 @@ async function refreshOnce() {
           if (changed) repaintNames();
         });
     }
+    // Issue 750: Hub's groups, now and then (Den keeps its own copy too).
+    if (!st.groupsAt || Date.now() - st.groupsAt > GROUPS_EVERY_MS)
+      void loadGroups();
     if (r.status === 401) {
       st.signedOut = true;
     } else if (r.ok) {
@@ -5506,9 +5581,14 @@ export async function mountAgentsPage(root) {
       saveStoppedOpen(!sum.parentElement.open);
       return;
     }
+    // Issue 750: By project or By group.
+    const by = e.target.closest("[data-by-switch] button[data-by]");
+    if (by) return void setBy(by.dataset.by);
     const act = e.target.closest("button[data-act]");
     if (act) {
       const which = act.dataset.act;
+      // Issue 750: Hub didn't answer for its groups: ask again now.
+      if (which === "groups-retry") return void loadGroups(true);
       if (which === "resume-all") return void resumeAll(act);
       if (which === "review") return review();
       if (which === "switch-ws") return void switchWorkspace(act);
@@ -5556,6 +5636,8 @@ export async function mountAgentsPage(root) {
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
       else if (which === "mode-apply") void applyMode(r, act);
+      // Issue 750: Can't reach Hub: Restart loads its Hub tools.
+      else if (which === "tools-restart") void restartForTools(r, act);
       // Issue 278: the row's Stop is its pane's Stop; Clear ends the hold.
       else if (which === "stop")
         void oneAtATime(r, "stop", () => stopAgentNow(r, act));

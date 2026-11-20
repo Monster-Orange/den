@@ -110,3 +110,19 @@ export function readHubMcpInit(
     ? (v as HubMcpInit)
     : null;
 }
+
+/**
+ * Issue 750: whether an agent's Hub tools loaded in the run that began at
+ * `startedAt`: false for a failed connect noted since then (it has no
+ * hub_* tools until a restart), true for a good one, null when Den doesn't
+ * know (no note, or one from an earlier run).
+ */
+export function hubToolsLoaded(
+  init: HubMcpInit | null,
+  startedAt: string | undefined,
+): boolean | null {
+  if (!init) return null;
+  if (init.ok) return true;
+  const start = startedAt ? Date.parse(startedAt) : NaN;
+  return Number.isFinite(start) && Date.parse(init.at) >= start ? false : null;
+}

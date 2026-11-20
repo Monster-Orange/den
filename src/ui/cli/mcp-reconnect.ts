@@ -9,7 +9,10 @@
  * `hub.mcp_retry_attempts` restarts per agent (0: no limit), counted only
  * when Hub answered, so a long outage spends none.
  */
-import { readHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
+import {
+  hubToolsLoaded,
+  readHubMcpInit,
+} from "../../shared/agents/hub-mcp-connect.js";
 import { listRecords } from "../../shared/agents/records.js";
 import {
   AgentError,
@@ -38,8 +41,10 @@ export async function hubToolsMissing(
   const out: { id: string; workspace: string }[] = [];
   for (const rec of listRecords(d.stateDir())) {
     if (!live.some((s) => s.ref.id === rec.session.id)) continue;
-    const init = readHubMcpInit(d.stateDir(), rec.id);
-    if (init && !init.ok && Date.parse(init.at) >= Date.parse(rec.startedAt))
+    if (
+      hubToolsLoaded(readHubMcpInit(d.stateDir(), rec.id), rec.startedAt) ===
+      false
+    )
       out.push({ id: rec.id, workspace: rec.workspace });
   }
   return out;

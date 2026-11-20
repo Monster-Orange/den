@@ -14,6 +14,7 @@ import path from "node:path";
 import {
   deliveryAlert,
   readDeliveryHealth,
+  toolsHeldAck,
   SeenDeliveries,
   writeDeliveryHealth,
   type Delivery,
@@ -32,6 +33,10 @@ import {
   type AgentRecord,
 } from "../../shared/agents/records.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import {
+  hubToolsLoaded,
+  readHubMcpInit,
+} from "../../shared/agents/hub-mcp-connect.js";
 import {
   feedKinds,
   InboxWatcher,
@@ -66,6 +71,8 @@ let ownerAskedAt = 0;
 let ownerWanted: () => void = () => undefined;
 /** #65: the inbox kinds Hub's feed carries (whoami features). */
 let feedCarries: ReadonlySet<string> = new Set();
+/** Issue 750: Hub takes the `held` ack (whoami lists deliveries.ack_held). */
+let ackHeldOn = false;
 interface StartOpts {
   heartbeatSeconds: number;
   pollSeconds: number;
@@ -388,6 +395,13 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
       type: (id, text) => ops.typeIntoAgent(d, id, text),
       notAtPrompt: (id) => ops.heldNotAtPrompt(id),
+      // Issue 750: its Hub tools failed to load since it started.
+      hubTools: (id) => {
+        const rec = readRecord(getStateDir(), id);
+        return rec
+          ? hubToolsLoaded(readHubMcpInit(getStateDir(), id), rec.startedAt)
+          : null;
+      },
       why: async (id) => {
         const dialog = await ops.agentDialogKind(d, id);
         if (dialog) return dialog;
@@ -425,6 +439,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
+    ackHeld: () => ackHeldOn,
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
     ),
@@ -499,6 +514,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
       feedCarries = feedKinds(w.features);
+      ackHeldOn = toolsHeldAck(w.features).state === "held";
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {
@@ -509,7 +525,9 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
     if (Date.now() - ownerAskedAt >= o.pollSeconds * 1000) void askOwner();
   };
   // A new connection may be a different person: never keep the old one.
+  // Issue 750: nor the old Hub's features (until it says, `queued`).
   owner = null;
+  ackHeldOn = false;
   ownerAskedAt = 0;
   await askOwner();
   startHubNotes(o.log);
