@@ -71,7 +71,7 @@ export interface HubReviewDeps {
   /** After any change: send the project list to Hub again. */
   changed: () => void;
   audit: (line: string) => void;
-  /** `n` projects Den couldn't match were picked (the bell counts down). */
+  /** `n` projects waiting for the review were settled (the bell counts down). */
   picked?: (n: number) => void;
   now?: () => Date;
 }
@@ -254,7 +254,8 @@ export async function applyReview(
     d.write(project, plain(hub), by);
     d.audit(`${project} → ${hub.slug} (Connect's review)`);
     linked.push({ project, hub: plain(hub), why });
-    if (!now && "unclear" in m) picks++;
+    // The bell counts the projects waiting for this review: one less.
+    if (!now) picks++;
   }
   const creating: { project: string; name: string; slug: string }[] = [];
   let plan: { url?: string } | null = null;
@@ -278,6 +279,7 @@ export async function applyReview(
         d.keepCreate(c.project, ask, by);
         d.audit(`${c.project}: asked Hub for ${made.slug} (Connect's review)`);
         creating.push({ project: c.project, name: made.name, slug: made.slug });
+        picks++;
       });
       plan = p.url ? { url: p.url } : {};
     } catch (e) {
@@ -411,4 +413,48 @@ export async function defaultHubReviewDeps(
     audit,
     picked: all.picked,
   };
+}
+
+/**
+ * Issue 646: how many rows wait for Connect and link all (a proposal, or
+ * a pick); `cannot` when Hub didn't list its projects.
+ */
+export async function reviewCount(
+  d: HubReviewDeps,
+): Promise<{ review: number } | { cannot: true }> {
+  const r = await reviewRows(d);
+  if (!r.connected && r.rows.length) return { cannot: true };
+  return { review: r.rows.filter((x) => x.proposal).length };
+}
+
+/** Where the bell's pick item opens: Settings › Hub, Connect's review. */
+export const HUB_REVIEW_LINK = "/settings#agents.hub";
+
+/**
+ * Issue 646: what Connect runs once connected. Nothing is linked: the bell
+ * says "N projects need your pick", opening Settings › Hub's review; none
+ * waiting, it goes. Hub's names for projects linked before are read again.
+ */
+export async function defaultReviewAfter(): Promise<
+  { review: number } | { cannot: true }
+> {
+  const { recordAction } = await import("./audit.js");
+  const d = await defaultHubReviewDeps((line) =>
+    recordAction(null, { verb: "hub-link", detail: line.slice(0, 400) }),
+  );
+  const r = await reviewCount(d);
+  void import("./hub-sync-service.js")
+    .then((m) => m.refreshHubNamesNow())
+    .catch(() => undefined);
+  if ("review" in r) {
+    const [{ notificationDeps }, la] = await Promise.all([
+      import("./notification-service.js"),
+      import("./hub-link-all-routes.js"),
+    ]);
+    const store = notificationDeps().store;
+    if (r.review)
+      store.add({ ...la.pickNote(r.review), link: HUB_REVIEW_LINK });
+    else store.withdraw("record:hub-pick", "decision");
+  }
+  return r;
 }

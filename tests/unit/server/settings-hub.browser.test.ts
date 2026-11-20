@@ -115,6 +115,18 @@ function startHub(): Promise<void> {
         mcp_url: `${hub.url}/mcp`,
       });
     }
+    // Issue 646: Connect's review asks Hub for each project's suggestions
+    // and the company's projects; this Hub has one project, none suggested.
+    if (u.pathname === "/api/projects/suggest") {
+      if (!bearer || hub.revoked)
+        return json(res, 401, { error: "unauthorized" });
+      return json(res, 200, {
+        suggestions: [],
+        projects: [
+          { project_id: "proj_acme1", slug: "acme-web", name: "Acme Web" },
+        ],
+      });
+    }
     if (u.pathname === "/connect/revoke" && req.method === "POST") {
       if (!bearer || hub.revoked)
         return json(res, 401, { error: "unauthorized" });
