@@ -5,6 +5,10 @@
  * good read and no open stream, doctor warns and the bell says why. A
  * quiet Hub with no comments never raises it: a good read is a stream
  * that opened, any bytes on it, or a list answer, never "a delivery came".
+ * Issue 703: Hub sends a keep-alive every 25 s and ends the stream itself
+ * after a while. A keep-alive is a good read; no bytes for
+ * hub.delivery_stream_silence_seconds closes and reopens the stream (and
+ * reads the list once); a clean end after a long stream reopens at once.
  * A fake Hub only; invented names.
  */
 import fs from "node:fs";
@@ -52,7 +56,7 @@ const dv = (id: string) => ({
   created_at: "2026-11-12T18:00:00Z",
 });
 
-function setup() {
+function setup(o: { silenceMs?: number } = {}) {
   let clock = 10_000_000;
   const logs: string[] = [];
   const notes: DeliveryHealth[] = [];
@@ -74,6 +78,7 @@ function setup() {
     pollMs: 30_000,
     log: (l) => logs.push(l),
     onHealth: (h) => notes.push(h),
+    ...(o.silenceMs !== undefined ? { silenceMs: () => o.silenceMs! } : {}),
   });
   return {
     loop,
@@ -323,5 +328,109 @@ describe("the setting", () => {
     expect(cfg(0)?.deliveryAlertMinutes).toBe(0);
     expect(cfg(120)?.deliveryAlertMinutes).toBe(120);
     expect(() => cfg(-1)).toThrow(/hub.delivery_alert_minutes/);
+  });
+});
+
+describe("issue 703: keep-alives, silence, and Hub's own end", () => {
+  const until = (sig: AbortSignal) =>
+    new Promise<void>((r) => sig.addEventListener("abort", () => r(), { once: true }));
+
+  it("keep-alives, then silence: the stream is closed and reopened, and the list read once", async () => {
+    const s = setup({ silenceMs: 40 });
+    let opened = 0;
+    let polled = 0;
+    const okAt: (number | null)[] = [];
+    s.hub.list = async () => {
+      polled++;
+      return [];
+    };
+    s.hub.stream = (_last, sig) => {
+      opened++;
+      if (opened === 2) {
+        s.ctl.abort();
+        return (async function* () {})();
+      }
+      return (async function* () {
+        yield "";
+        s.tick(25_000);
+        yield ": keep-alive\n\n";
+        okAt.push(s.loop.health().lastOkAt);
+        await until(sig); // silent from here: Den gives up on it
+        throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      })();
+    };
+    const slept: number[] = [];
+    (s.loop as unknown as { d: Record<string, unknown> }).d.sleep = async (
+      ms: number,
+    ) => {
+      slept.push(ms);
+    };
+    await s.loop.run(s.ctl.signal);
+    expect(opened).toBe(2);
+    expect(polled).toBe(1);
+    expect(slept).toEqual([]); // reopened at once
+    expect(okAt[0]).toBe(s.now()); // the keep-alive counted as a read
+    expect(s.logs.some((l) => /no bytes/.test(l))).toBe(true);
+  });
+
+  it("Hub ends the stream after 10 minutes: reopened at once, not a failure", async () => {
+    const s = setup();
+    let opened = 0;
+    s.hub.stream = () => {
+      opened++;
+      if (opened === 2) s.ctl.abort();
+      return (async function* () {
+        yield "";
+        s.tick(10 * MIN);
+        yield ": keep-alive\n\n";
+      })();
+    };
+    const slept: number[] = [];
+    (s.loop as unknown as { d: Record<string, unknown> }).d.sleep = async (
+      ms: number,
+    ) => {
+      slept.push(ms);
+    };
+    await s.loop.run(s.ctl.signal);
+    expect(opened).toBe(2);
+    expect(slept).toEqual([]);
+    expect(s.loop.health().trouble).toBeNull();
+    expect(s.logs).toEqual([]);
+  });
+
+  it("a stream that ends as soon as it opens backs off and is said as closing", async () => {
+    const s = setup();
+    s.hub.stream = () =>
+      (async function* () {
+        yield "";
+      })();
+    const slept: number[] = [];
+    (s.loop as unknown as { d: Record<string, unknown> }).d.sleep = async (
+      ms: number,
+    ) => {
+      slept.push(ms);
+      if (slept.length >= 3) s.ctl.abort();
+    };
+    await s.loop.run(s.ctl.signal);
+    expect(slept).toEqual([1000, 2000, 4000]);
+    expect(s.loop.health().trouble).toBe("closed");
+  });
+
+  it("hub.delivery_stream_silence_seconds: default 75, 0 turns it off, under 5 throws", () => {
+    const cfg = (v: unknown) =>
+      readHubConfig(
+        {
+          hub: {
+            url: "https://hub.example.test",
+            delivery_stream_silence_seconds: v,
+          },
+        },
+        {},
+        () => ({}) as never,
+      );
+    expect(cfg(undefined)?.deliveryStreamSilenceSeconds).toBe(75);
+    expect(cfg(0)?.deliveryStreamSilenceSeconds).toBe(0);
+    expect(cfg(300)?.deliveryStreamSilenceSeconds).toBe(300);
+    expect(() => cfg(2)).toThrow(/hub.delivery_stream_silence_seconds/);
   });
 });
