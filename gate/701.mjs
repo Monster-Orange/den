@@ -26,6 +26,12 @@
 // needs-dialog), nothing is posted. Without a Hub on the bed, every
 // clause skips (needs-hub). Stub names are new each run, so a comment an
 // earlier run left can't reach them.
+// Hub's delivery list doesn't show a delivery's answer yet: `ack` reads null
+// whatever Hub stored. A delivery that has left Hub's unanswered list
+// (`acked: true`) was answered; Den's side (row, reason, doctor) says how.
+// When Hub shows the answer, the answer itself is checked.
+const answered = (d) => d != null && d.ack == null && d.acked === true;
+
 export const issue = 701;
 export const clauses = [
   "a Hub comment for an agent that asked its person a question (ask_human) is typed into the agent, once",
@@ -225,11 +231,10 @@ async function held(ctx, s) {
     return r;
   }
   r.queuedMs = r.id
-    ? await ctx.until(
-        async () =>
-          (await ctx.hub.delivery(r.id).catch(() => null))?.ack === "queued",
-        20000,
-      )
+    ? await ctx.until(async () => {
+        const d = await ctx.hub.delivery(r.id).catch(() => null);
+        return d?.ack === "queued" || answered(d);
+      }, 20000)
     : null;
   r.delivery = r.id ? await ctx.hub.delivery(r.id).catch(() => null) : null;
   r.reasonMs = await ctx.until(() => !!heldReason(ctx, s.held), 20000);
@@ -333,7 +338,7 @@ export function expect(r) {
       h.running === true &&
       !!h.id &&
       h.typedWhileHeld === "" &&
-      h.delivery?.ack === "queued" &&
+      (h.delivery?.ack === "queued" || answered(h.delivery)) &&
       h.reason === REASON &&
       (h.row?.queued ?? 0) > 0 &&
       h.row?.waitingWhy === "permission" &&

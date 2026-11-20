@@ -28,6 +28,9 @@ function runGate(
   serverWas: "stopped" | "running" = "stopped",
   hub = false,
   noDialog = false,
+  // Hub's list as the bed reads it today: no answer field, state held, but
+  // `acked` once Den has answered (it left the unanswered list).
+  hubBlind = false,
 ) {
   const js = `
     const g = await import("./gate/629.mjs");
@@ -178,6 +181,8 @@ function runGate(
         },
         async delivery(id) {
           const c = hubQueue[Number(String(id).slice(1)) - 1];
+          if (c && ${JSON.stringify(hubBlind)})
+            return { state: "held", ack: null, ackedAt: null, acked: true };
           return c ? { state: c.done ? "delivered" : "held", ackedAt: null } : null;
         },
       };
@@ -246,6 +251,18 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(h).toEqual([
       { id: r.hubIds[0], event: "PostToolUse", input: { tool_name: "Bash" } },
     ]);
+  });
+
+  it("Hub's list without the answer field: a fixed Den passes clause 2 on Den's side", () => {
+    const r = runGate("fixed", "stopped", true, false, true);
+    expect(r.error).toBeUndefined();
+    expect(row(r, 1)?.ok).toBe(true);
+  });
+
+  it("Hub's list without the answer field: a Den that types into the dialog still fails clause 2", () => {
+    const r = runGate("unfixed", "stopped", true, false, true);
+    expect(r.error).toBeUndefined();
+    expect(row(r, 1)?.ok).toBe(false);
   });
 
   it("with Hub, a Den that types the comment into the dialog fails clause 2", () => {
