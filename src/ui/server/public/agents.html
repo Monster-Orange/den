@@ -195,6 +195,47 @@
         color: var(--text);
         font-weight: 500;
       }
+      /* Issue 302: on a touch screen or a phone, the layout switch is a
+         44px target each way. A project's heading in the list keeps its
+         height (the panes need the room above the runs dock): its link
+         and Reorder take the kit's 44px tap (.den-hit's), a transparent
+         area centred on each, with no change to the layout. */
+      @media (pointer: coarse), (max-width: 767.98px) {
+        .seg button {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        .agl .wslink,
+        .agl .agord-t {
+          position: relative;
+        }
+        .agl .agord-t {
+          min-height: 0;
+          min-width: 0;
+        }
+        .agl .wslink::after,
+        .agl .agord-t::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 100%;
+          height: 100%;
+          min-width: 44px;
+          min-height: 44px;
+          transform: translate(-50%, -50%);
+          background: transparent;
+        }
+        /* An open agent's view (its tabs, its bar's buttons) keeps its
+           sizes here: that view on a phone is issue 302's first slice
+           (the phone's agent screen), and 44px rows in it put the To line
+           under an open runs dock (issue 170). */
+        #agr .den-btn,
+        #agr .agtabs [role="tab"] {
+          min-height: 0;
+          min-width: 0;
+        }
+      }
       .agl .aghint {
         padding: 10px 12px;
         font-size: 12px;
@@ -1250,7 +1291,7 @@
         border-top: 1px solid var(--border);
         min-width: 0;
       }
-      .pane .agkeys > button {
+      #agr .pane .agkeys > button {
         flex: none;
         min-height: 44px;
         min-width: 44px;
@@ -1288,7 +1329,7 @@
           padding-inline: 12px;
           column-gap: 6px;
         }
-        body[data-phone-agent] .pane .bar2 .agback {
+        body[data-phone-agent] #agr .pane .bar2 .agback {
           display: inline-grid;
           place-items: center;
           min-width: 44px;
@@ -1299,7 +1340,7 @@
           font-size: 26px;
           line-height: 1;
         }
-        body[data-phone-agent] .pane .bar2 .x > .den-btn {
+        body[data-phone-agent] #agr .pane .bar2 .x > .den-btn {
           min-height: 44px;
           min-width: 44px;
         }

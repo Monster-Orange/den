@@ -506,7 +506,8 @@ function drawPush(host, ctx, io) {
   };
   const draw = (on, note) => {
     host.innerHTML =
-      `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
+      // Issue 302: in a label, so a 44px tap on a touch screen reaches it.
+      `<label class="set-chk"><input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}></label>` +
       (note ? `<p class="set-warn" role="status">${escHtml(note)}</p>` : "");
     host
       .querySelector("input")
