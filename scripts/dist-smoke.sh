@@ -100,13 +100,22 @@ TARBALL="$WORK/$(tail -1 "$WORK/pack.out")"
 ok "$(basename "$TARBALL") ($(du -k "$TARBALL" | cut -f1) KB)"
 # The README's screenshots (docs/images/, DOC-1) live in the repo, never in
 # the package: package.json `files` has !docs/images/. Images anywhere else
-# in the tarball are a size regression too.
+# in the tarball are a size regression too. Issue 644: but the kit's tab
+# and home-screen icons (packages/den-ui/src/site/, named here one by one),
+# which Den serves; together under 64 KB.
 tar -tzf "$TARBALL" >"$WORK/tarball.list"
-if grep -qE '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list"; then
+SITE_ICONS='^package/packages/den-ui/src/site/(apple-touch-icon|icon-192|icon-512|icon-maskable-512)\.png$'
+if grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | grep -qvE "$SITE_ICONS"; then
   bad "images in the tarball (package.json files needs !docs/images/):"
-  grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | head -5 | sed 's/^/       /'
+  grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | grep -vE "$SITE_ICONS" | head -5 | sed 's/^/       /'
 else
-  ok "no images in the tarball"
+  ok "no images in the tarball but the kit's site icons"
+fi
+site_bytes=$(cat "$DEN"/packages/den-ui/src/site/*.png | wc -c | tr -d ' ')
+if [ "$site_bytes" -le 65536 ]; then
+  ok "the kit's site icons: $site_bytes bytes"
+else
+  bad "the kit's site icons are $site_bytes bytes (at most 65536)"
 fi
 
 # The install-den agent skill (ON-1) ships in the package, next to the
@@ -307,7 +316,7 @@ if [ -f "$ACME_HOME/web.secret" ] && [ "$(stat -c %a "$ACME_HOME/web.secret" 2>/
 else bad "no 0600 web.secret in ACME_HOME"; fi
 code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
   --data '{"editor":null}' "http://localhost:$PORT/api/settings")"
-[ "$code" = "403" ] && ok "POST /api/settings without a token: 403" || bad "POST /api/settings without a token answered $code"
+[ "$code" = "401" ] && ok "POST /api/settings without a token: 401" || bad "POST /api/settings without a token answered $code"
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: evil.example" "http://localhost:$PORT/api/health")"
 [ "$code" = "421" ] && ok "a rebinding Host: 421" || bad "a rebinding Host answered $code"
 SEC_TOKEN="$(cd "$DIST" && ./bin/acme web token --print 2>/dev/null)"
@@ -329,8 +338,10 @@ if [[ "$SEC_HDR" == HTTP/*" 303"* ]] &&
   ok "\`acme web login\`'s link signs in once (303 and a session cookie; 401 the second time)"
 else bad "\`acme web login\`'s link didn't sign in once (second use answered $again)"; fi
 SEC_HDR=""
-# SEC-1 (Ward, 2026-11-06): no sign-in on loopback, shell-grade included:
-# the page's Origin and CSRF token (never echoed) reach an agent start.
+# 0.4.71: on this machine too, a write needs a sign-in (a session or a
+# bearer). A caller with neither gets no CSRF token from /api/session, and
+# with the page's Origin and any token an agent start is refused:
+# 401 signin_required. With the CLI's token it gets past the checks.
 # The edge counts as local when its X-Forwarded-For says this machine; a
 # client it can't place (none, 0.4.5) or another machine signs in.
 # H1 (0.4.48): only with the edge's proof, which only a real edge has (its
@@ -339,14 +350,23 @@ SEC_HDR=""
 # peer on the Docker network could send, and signs in.
 SEC_CSRF="$(curl -sS -H 'Sec-Fetch-Site: same-origin' "http://localhost:$PORT/api/session" |
   node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).csrf||""))}catch{}})')"
+[ -z "$SEC_CSRF" ] && ok "/api/session hands no CSRF token without a sign-in" || bad "/api/session handed a CSRF token without a sign-in"
 SEC_BODY="$WORK/agent-start.json"
 code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -X POST -H "Origin: http://localhost:$PORT" \
-  -H "X-Den-CSRF: $SEC_CSRF" -H 'Content-Type: application/json' --data '{}' \
+  -H "X-Den-CSRF: ${SEC_CSRF:-none}" -H 'Content-Type: application/json' --data '{}' \
   "http://localhost:$PORT/api/workspaces/main/agents")"
 SEC_CSRF=""
+if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then
+  ok "agent start on localhost without a sign-in: 401 signin_required"
+else bad "agent start on localhost without a sign-in answered $code"; fi
+SEC_TOKEN="$(cd "$DIST" && ./bin/acme web token --print 2>/dev/null)"
+code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -X POST -H "Authorization: Bearer $SEC_TOKEN" \
+  -H 'Content-Type: application/json' --data '{}' \
+  "http://localhost:$PORT/api/workspaces/main/agents")"
+SEC_TOKEN=""
 if [ -n "$code" ] && [ "$code" != "401" ] && [ "$code" != "403" ] && ! grep -q signin_required "$SEC_BODY"; then
-  ok "agent start on localhost needs no sign-in (past the checks: $code)"
-else bad "agent start on localhost answered $code (a sign-in or a refused check)"; fi
+  ok "agent start on localhost with \`acme web token --print\` gets past the checks ($code)"
+else bad "agent start on localhost with the CLI token answered $code"; fi
 code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -H "Host: acme.acme.localhost" \
   -H "X-Forwarded-For: 127.0.0.1" "http://localhost:$PORT/api/settings")"
 if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then

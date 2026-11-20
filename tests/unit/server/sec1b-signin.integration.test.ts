@@ -298,21 +298,40 @@ describe("the login link", () => {
     expect([r.status, setCookie(r)]).toEqual([403, ""]);
   });
 
-  it("Secure only over HTTPS from the edge: X-Forwarded-Proto counts on the edge Host only", async () => {
+  it("Secure only over HTTPS from the edge: X-Forwarded-Proto counts on the edge Host, with the edge's proof, only", async () => {
+    // The edge's header counts only with its proof now: sent as the edge sends it.
     const edge = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
       ...nav,
       host: EDGE,
       "x-forwarded-proto": "https",
+      ...EDGE_PROOF,
     });
     expect(edge.status).toBe(303);
-    expect(flags(setCookie(edge))).toContain("secure");
+    // Over https the cookie is the __Host- one (host-only, Secure): where the session lives.
+    const line =
+      ([] as string[])
+        .concat(edge.headers["set-cookie"] ?? [])
+        .find((c) => c.startsWith(`__Host-${cookieName()}=`)) ?? "";
+    expect(flags(line)).toContain("secure");
     // A spoofed header from loopback with a localhost Host: no Secure.
     const spoof = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
       ...nav,
       "x-forwarded-proto": "https",
     });
     expect(spoof.status).toBe(303);
+    // A cookie was set (so "no Secure" can't pass on no cookie at all).
+    expect(setCookie(spoof).length).toBeGreaterThan(0);
     expect(flags(setCookie(spoof))).not.toContain("secure");
+    // The edge Host with the header but without the edge's proof: not https,
+    // so the plain cookie, no Secure.
+    const unproved = await call(
+      "GET",
+      `/auth?c=${encodeURIComponent(code())}`,
+      { ...nav, host: EDGE, "x-forwarded-proto": "https" },
+    );
+    expect(unproved.status).toBe(303);
+    expect(setCookie(unproved).length).toBeGreaterThan(0);
+    expect(flags(setCookie(unproved))).not.toContain("secure");
   });
 });
 
@@ -416,15 +435,17 @@ describe("the setup link (0.4.12: /auth?claim=)", () => {
       403,
       "signin_to_approve",
     ]);
-    // Anonymous loopback with the page's CSRF token (any agent's curl): refused.
+    // No sign-in on loopback (any agent's curl): a write needs a sign-in on
+    // this machine too (0.4.71), and /api/session hands out no token.
     const anon = json(await call("GET", "/api/session"));
+    expect(anon.csrf).toBeNull();
     const a = await call(
       "POST",
       "/api/web/pair",
-      { origin: `http://localhost:${port}`, "x-den-csrf": String(anon.csrf) },
+      { origin: `http://localhost:${port}`, "x-den-csrf": "" },
       body,
     );
-    expect([a.status, json(a).code]).toEqual([403, "signin_to_approve"]);
+    expect([a.status, json(a).code]).toEqual([401, "signin_required"]);
     // With the key the page holds: past the gate (to the route's own answer).
     const withKey = await call(
       "POST",
@@ -441,14 +462,14 @@ describe("the setup link (0.4.12: /auth?claim=)", () => {
 });
 
 describe("/api/session", () => {
-  it("signed in: the session's own CSRF token and actor person-browser; signed out on loopback: SEC-1a's", async () => {
+  it("signed in: the session's own CSRF token and actor person-browser; signed out on loopback: no token, and why (a write needs a sign-in on this machine too, 0.4.71)", async () => {
     const anon = await sessionCsrf({});
     expect(view(anon)).toEqual({
-      csrf: "<token>",
+      csrf: null,
       actor: null,
       signedIn: false,
     });
-    expect(typeof anon.csrf).toBe("string");
+    expect(typeof anon.reason).toBe("string");
     const c = await signIn();
     const mine = await sessionCsrf(c);
     expect(view(mine)).toEqual({
@@ -456,7 +477,9 @@ describe("/api/session", () => {
       actor: "person-browser",
       signedIn: true,
     });
-    expect(hash(String(mine.csrf))).not.toBe(hash(String(anon.csrf)));
+    // Each session its own token.
+    const other = await sessionCsrf(await signIn());
+    expect(hash(String(mine.csrf))).not.toBe(hash(String(other.csrf)));
   });
 
   it("beyond loopback without a session: no CSRF token at all", async () => {
@@ -464,9 +487,9 @@ describe("/api/session", () => {
     expect(view(r)).toEqual({ csrf: null, actor: null, signedIn: false });
   });
 
-  it("the edge from this machine (X-Forwarded-For loopback's): the start's token, as on loopback", async () => {
+  it("the edge from this machine (X-Forwarded-For loopback's): no token without a session, as on loopback", async () => {
     expect(view(await sessionCsrf(HERE, EDGE))).toEqual({
-      csrf: "<token>",
+      csrf: null,
       actor: null,
       signedIn: false,
     });
@@ -493,25 +516,25 @@ describe("the route classes", () => {
     ).toBe(200);
   });
 
-  it("shell-grade on loopback needs no sign-in (Ward, 2026-11-06): with Origin and the page's CSRF an agent start reaches the route", async () => {
-    const csrf = String((await sessionCsrf({})).csrf);
+  it("shell-grade needs a sign-in on this machine too (0.4.71): with no session or bearer an agent start is 401 signin_required", async () => {
     const r = await call(
       "POST",
       start,
-      { origin: `http://localhost:${port}`, "x-den-csrf": csrf },
+      { origin: `http://localhost:${port}`, "x-den-csrf": "" },
       startBody,
     );
-    // Past the checks: whatever the route says (no such workspace here).
-    expect([r.status, json(r).code === "signin_required"]).not.toEqual([
-      401,
-      true,
-    ]);
-    expect([401, 403].includes(r.status)).toBe(false);
-    // The browser-session admin route too, from this server's own page.
+    expect([r.status, json(r).code]).toEqual([401, "signin_required"]);
+    // The browser-session admin route too, from this server's own page:
+    // signed out, refused; signed in, it answers.
     const list = await call("GET", "/api/web/sessions", {
       "sec-fetch-site": "same-origin",
     });
-    expect(list.status).toBe(200);
+    expect([list.status, json(list).code]).toEqual([401, "signin_required"]);
+    const signed = await call("GET", "/api/web/sessions", {
+      "sec-fetch-site": "same-origin",
+      ...(await signIn()),
+    });
+    expect(signed.status).toBe(200);
   });
 
   it("shell-grade with a session, Origin and its CSRF reaches the route", async () => {
@@ -525,13 +548,13 @@ describe("the route classes", () => {
     );
     // Past the checks: whatever the route says (no such workspace here).
     expect([401, 403].includes(r.status)).toBe(false);
-    // The start's token isn't the session's: refused.
+    // Another session's token isn't this session's: refused.
     const start0 = await call(
       "POST",
       start,
       {
         origin: `http://localhost:${port}`,
-        "x-den-csrf": String((await sessionCsrf({})).csrf),
+        "x-den-csrf": String((await sessionCsrf(await signIn())).csrf),
         ...c,
       },
       startBody,
@@ -581,7 +604,7 @@ describe("the route classes", () => {
     ).toBe(200);
   });
 
-  it("the edge from this machine (0.4.3; the edge attests it): no sign-in on any route, shell-grade included; Origin and CSRF still apply", async () => {
+  it("the edge from this machine (0.4.3; the edge attests it): reads need no sign-in; a write needs one, as on loopback (0.4.71); Origin and CSRF still apply", async () => {
     for (const p of ["/api/settings", "/api/server-info"]) {
       const r = await call("GET", p, { host: EDGE, ...HERE });
       expect([p, r.status]).toEqual([p, 200]);
@@ -592,30 +615,58 @@ describe("the route classes", () => {
       ...HERE,
     });
     expect(page.status).toBe(200);
-    const tok = String((await sessionCsrf(HERE, EDGE)).csrf);
+    const unsigned = await call(
+      "POST",
+      start,
+      { host: EDGE, origin: `http://${EDGE}`, ...HERE },
+      startBody,
+    );
+    expect([unsigned.status, json(unsigned).code]).toEqual([
+      401,
+      "signin_required",
+    ]);
+    const c = await signIn({ host: EDGE, ...HERE });
+    const tok = String((await sessionCsrf({ ...HERE, ...c }, EDGE)).csrf);
     const ok = await call(
       "POST",
       start,
-      { host: EDGE, origin: `http://${EDGE}`, "x-den-csrf": tok, ...HERE },
+      {
+        host: EDGE,
+        origin: `http://${EDGE}`,
+        "x-den-csrf": tok,
+        ...HERE,
+        ...c,
+      },
       startBody,
     );
     expect([401, 403].includes(ok.status)).toBe(false);
     const noCsrf = await call(
       "POST",
       start,
-      { host: EDGE, origin: `http://${EDGE}`, ...HERE },
+      { host: EDGE, origin: `http://${EDGE}`, ...HERE, ...c },
       startBody,
     );
     expect([noCsrf.status, json(noCsrf).code]).toEqual([403, "csrf"]);
   });
 
-  it("/signin is read-only (§6b.3): on loopback it goes straight on to next, signed in or not; signed out through the edge it renders the signed-out page itself", async () => {
+  it("/signin is read-only (§6b.3): signed in it goes straight on to next; signed out it renders the signed-out page itself, on this machine too (0.4.71)", async () => {
+    const c0 = await signIn();
     for (const headers of [
       { ...nav },
       { ...nav, "sec-fetch-site": "cross-site" },
       { ...nav, host: `127.0.0.1:${port}` },
     ]) {
-      const r = await call("GET", "/signin?next=%2Fsettings", headers);
+      const out = await call("GET", "/signin?next=%2Fsettings", headers);
+      expect([headers.host ?? "localhost", out.status]).toEqual([
+        headers.host ?? "localhost",
+        401,
+      ]);
+      expect(out.body).toContain('"code":"signin_required"');
+      expect(out.body).toContain("web login");
+      const r = await call("GET", "/signin?next=%2Fsettings", {
+        ...headers,
+        ...c0,
+      });
       expect([
         headers.host ?? "localhost",
         r.status,
@@ -661,13 +712,17 @@ describe("the route classes", () => {
 });
 
 describe("the CLI: web login, web sessions, web logout", () => {
-  it("`web login --no-wait` prints one link on stdout (the install's address, /auth, a code) that signs a browser in once", async () => {
+  it("`web login --no-wait` prints one link on stdout (the origin asked for, /auth, a code) that signs a browser in once", async () => {
+    // Issue 666: this install's only edge name is a loopback one, which is
+    // never its address, so it has none: the link names its origin.
     const r = cli([
       "web",
       "login",
       "--no-wait",
       "--port",
       String(port),
+      "--origin",
+      `http://localhost:${port}`,
       "--next",
       "/settings",
     ]);
@@ -676,10 +731,8 @@ describe("the CLI: web login, web sessions, web logout", () => {
     minted.push(link);
     expect(link.split("\n").length).toBe(1);
     const u = new URL(link);
-    // D80: on the install's address. This one had none: the server took
-    // its edge route's once at start (the migration), never localhost.
     expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
-      "http://den.acme.localhost",
+      `http://localhost:${port}`,
       "/auth",
       "/settings",
     ]);

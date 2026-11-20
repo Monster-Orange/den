@@ -12,6 +12,8 @@
  * The host only ever sees PtyFactory, so tests run a scripted or piped
  * stand-in and never need the module.
  */
+import { createHash } from "crypto";
+import * as fs from "fs";
 import { createRequire } from "module";
 import * as path from "path";
 import { getEngineRoot } from "../paths.js";
@@ -39,6 +41,11 @@ export interface PtyProcess {
   resize(cols: number, rows: number): void;
   /** `signal` is a Node signal name ("SIGTERM"). */
   kill(signal: string): void;
+  /**
+   * Issue 503: close the master once the process has exited. Safe to call
+   * more than once. Optional: a stand-in without a master has none.
+   */
+  close?(): void;
 }
 
 export type PtyFactory = (
@@ -54,6 +61,8 @@ export type PtyLoad =
 /** The subset of the module's API that is used. */
 interface NativePty {
   pid: number;
+  /** The module's read stream over the master (unix; internal). */
+  _socket?: { destroyed?: boolean; destroy(): void };
   onData(fn: (d: string | Buffer) => void): unknown;
   onExit(fn: (e: { exitCode: number; signal?: number }) => void): unknown;
   write(d: string | Buffer): void;
@@ -101,11 +110,151 @@ function wrap(mod: NativeModule): PtyFactory {
           }
         }
       },
+      // Issue 503: the module destroys its stream over the master at the
+      // exit (or 200 ms after); this makes sure, and never signals (the pid
+      // may be another process's by now).
+      close: () => {
+        const sock = p._socket;
+        if (sock && !sock.destroyed)
+          try {
+            sock.destroy();
+          } catch {
+            /* gone */
+          }
+      },
     };
   };
 }
 
+/** A device number's major, as the platform packs it. */
+function major(rdev: number, platform: NodeJS.Platform): number {
+  if (platform === "darwin") return Math.floor(rdev / 2 ** 24) & 0xff;
+  // Linux: glibc's gnu_dev_major.
+  return (
+    (Math.floor(rdev / 2 ** 8) & 0xfff) | (Math.floor(rdev / 2 ** 32) & ~0xfff)
+  );
+}
+
+/**
+ * Issue 503: how many PTY masters this process holds: its open fds that
+ * are character devices with /dev/ptmx's major (on macOS each master has
+ * its own minor; on Linux they share /dev/ptmx's). Read only, never a
+ * close. null where it can't be told (no /dev/ptmx or /dev/fd).
+ */
+export function countPtyMasters(
+  platform: NodeJS.Platform = process.platform,
+): number | null {
+  let want: number;
+  let fds: string[];
+  try {
+    want = major(fs.statSync("/dev/ptmx").rdev, platform);
+    fds = fs.readdirSync("/dev/fd");
+  } catch {
+    return null;
+  }
+  let n = 0;
+  for (const f of fds) {
+    const fd = Number(f);
+    if (!Number.isInteger(fd)) continue;
+    try {
+      const st = fs.fstatSync(fd);
+      if (st.isCharacterDevice() && major(st.rdev, platform) === want) n++;
+    } catch {
+      /* the listing's own fd, closed since */
+    }
+  }
+  return n;
+}
+
 let memo: PtyLoad | null = null;
+
+/**
+ * Issue 563: the native module file a process loaded (or would load): its
+ * path, the module's version, and the file's identity: a hash of its
+ * contents. npm replaces a package by moving its folder aside and deleting
+ * it, so the file at the same path may since be another one.
+ */
+export interface PtyModuleInfo {
+  path: string;
+  version: string | null;
+  id: string | null;
+}
+
+/** The identity of `file`: "sha256:<hex>" of its contents, or null (gone). */
+export function fileIdentity(file: string): string | null {
+  try {
+    return `sha256:${createHash("sha256").update(fs.readFileSync(file)).digest("hex")}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Issue 563: the native module file of the PTY module installed under
+ * `root` now (its platform package's pty.node, else its own build), or
+ * null when it isn't installed. Read only.
+ */
+export function installedPtyModule(
+  root: string = getEngineRoot(),
+  platform: string = process.platform,
+  arch: string = process.arch,
+): PtyModuleInfo | null {
+  // Found through Node's search folders, not require.resolve of
+  // "<pkg>/package.json": the 1.2.0 betas don't export their package.json.
+  const dir = packageDir(path.join(root, "package.json"), PTY_MODULE);
+  if (!dir) return null;
+  let version: string | null = null;
+  try {
+    const v = (
+      JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8")) as {
+        version?: unknown;
+      }
+    ).version;
+    version = typeof v === "string" ? v : null;
+  } catch {
+    /* unreadable: no version */
+  }
+  const prebuilt = path.join("prebuilds", `${platform}-${arch}`, "pty.node");
+  const candidates: string[] = [];
+  const plat = packageDir(
+    path.join(dir, "package.json"),
+    `${PTY_MODULE}-${platform}-${arch}`,
+  );
+  if (plat)
+    candidates.push(path.join(plat, prebuilt), path.join(plat, "pty.node"));
+  candidates.push(
+    path.join(dir, prebuilt),
+    path.join(dir, "build", "Release", "pty.node"),
+  );
+  for (const c of candidates) {
+    const id = fileIdentity(c);
+    if (id) return { path: c, version, id };
+  }
+  return null;
+}
+
+/** The folder of package `name` as Node would find it from `from`, or null. */
+function packageDir(from: string, name: string): string | null {
+  let dirs: string[] | null = null;
+  try {
+    dirs = createRequire(from).resolve.paths(name);
+  } catch {
+    return null;
+  }
+  for (const d of dirs ?? []) {
+    const dir = path.join(d, name);
+    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
+  }
+  return null;
+}
+
+/** What this process loaded, at the moment it loaded it (issue 563). */
+let loaded: PtyModuleInfo | null = null;
+
+/** Issue 563: the native module this process loaded, or null (none yet). */
+export function loadedPtyModule(): PtyModuleInfo | null {
+  return loaded;
+}
 
 /**
  * The PTY module, or why it can't be used. `req` is for tests; the default
@@ -136,6 +285,14 @@ export function loadPty(req?: (id: string) => unknown): PtyLoad {
         : String(err.message).split("\n")[0].trim(),
     };
   }
-  if (!req) memo = result;
+  if (!req) {
+    memo = result;
+    if (result.available)
+      try {
+        loaded = installedPtyModule();
+      } catch {
+        /* not known: the host says none */
+      }
+  }
   return result;
 }

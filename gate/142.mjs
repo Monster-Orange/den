@@ -16,6 +16,7 @@ export const clauses = [
   "a plain idle agent goes to Updates (no badge)",
   "Den's Allow-the-update ask counts",
   "opening the agent removes its Updates items and the count drops",
+  "a held write waiting on the person's Allow counts, and its item goes when it is withdrawn",
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 180000;
@@ -158,11 +159,86 @@ async function stub(ctx, state, role) {
   return a;
 }
 
+/** POST through the bed's signed-in API, keeping the status. */
+async function postStatus(ctx, path, body) {
+  const r = await ctx.api(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  let b = null;
+  try {
+    b = await r.json();
+  } catch {
+    /* no body */
+  }
+  return { status: r.status, body: b };
+}
+
+/** The bell's item for held request `id`: where it is, and whether read. */
+async function heldItem(ctx, id) {
+  const b = await json(ctx, "/api/notifications");
+  const is = (n) => n.subject === `record:held-${id}`;
+  const needs = itemsOf(b.groups).filter(is);
+  return {
+    unread: b.unread ?? 0,
+    needs: needs.length,
+    needsUnread: needs.filter((n) => !n.read).length,
+    kind: needs[0]?.kind ?? null,
+    updates: itemsOf(b.updates?.groups).filter(is).length,
+  };
+}
+
+/** Polls the held item until `ok(view)` or WAIT_MS; the last view. */
+async function untilHeld(ctx, id, ok) {
+  const end = Date.now() + WAIT_MS;
+  let v = await heldItem(ctx, id);
+  while (!ok(v) && Date.now() < end) {
+    await sleep(500);
+    v = await heldItem(ctx, id);
+  }
+  return v;
+}
+
+/** Clause 4's held write: raise, read the bell, withdraw, read again. */
+async function heldWrite(ctx, state) {
+  const before = (await json(ctx, "/api/notifications")).unread ?? 0;
+  const asked = await postStatus(ctx, "/api/approvals", {
+    action: "workspace_create",
+    args: { name: `gate142-held-${state.tag}` },
+    note: "Issue 142 live check: withdrawn by the check at once; never Allow it.",
+  });
+  const id = asked.body?.id ?? null;
+  if (!id)
+    return {
+      asked: asked.status,
+      code: asked.body?.code ?? null,
+      off: asked.body?.code === "approvals_off",
+    };
+  state.held.push(id);
+  const waiting = await untilHeld(ctx, id, (v) => v.needsUnread > 0);
+  const badge = await pageBadge(ctx);
+  const wd = await postStatus(ctx, `/api/approvals/${id}/withdraw`, {});
+  if (wd.status === 200) state.held = state.held.filter((x) => x !== id);
+  const gone = await untilHeld(ctx, id, (v) => v.needs + v.updates === 0);
+  return {
+    asked: asked.status,
+    before,
+    waiting,
+    badge,
+    withdraw: wd.status,
+    withdrawnState: wd.body?.state ?? null,
+    gone,
+  };
+}
+
 export async function setup(ctx) {
   const settings = await json(ctx, "/api/settings");
   return {
     tag: Date.now().toString(36),
     made: [],
+    // Held requests this check raised and has not withdrawn yet.
+    held: [],
     // Turn-finished items are off by default; clause 3 needs them shown.
     finishedWasOn: settings?.bell_kinds?.finished === true,
   };
@@ -251,7 +327,18 @@ export async function run(ctx, state) {
       updates: itemsOf(b.updates?.groups).filter(isAsk).length,
       older: itemsOf(b.older?.groups).filter(isAsk).length,
     };
+    // Why there is none, if none: the bed's last update check.
+    const uc = (await json(ctx, "/api/settings").catch(() => null))
+      ?.update_check;
+    seen.updateCheck = uc
+      ? { everyMinutes: uc.everyMinutes ?? null, last: uc.last ?? null }
+      : null;
   }
+
+  // 4b. A held write waiting on the person's Allow, raised as the person
+  // (a gate holds no agent's token): counted while it waits; withdrawn by
+  // its asker (never a person's decision), its item goes.
+  seen.held = await heldWrite(ctx, state);
 
   // 5. Open the idle agent: its Updates items go, and the count drops.
   {
@@ -290,6 +377,9 @@ export async function run(ctx, state) {
 }
 
 export async function teardown(ctx, state) {
+  // A held write the check raised never sits over later checks' pages.
+  for (const id of state?.held ?? [])
+    await postStatus(ctx, `/api/approvals/${id}/withdraw`, {}).catch(() => {});
   for (const a of state?.made ?? []) {
     try {
       const v = await bellFor(ctx, a);
@@ -346,7 +436,12 @@ function rows(s) {
   const any = u ? u.needs + u.updates + u.older : 0;
   out.push(
     !u || any === 0
-      ? { clause: clauses[3], ok: null, skip: "needs-pending-update" }
+      ? {
+          clause: clauses[3],
+          ok: null,
+          skip: "needs-pending-update",
+          detail: lastCheck(s?.updateCheck),
+        }
       : {
           clause: clauses[3],
           ok: u.needs > 0 && u.updates === 0 && u.needsUnread > 0,
@@ -363,7 +458,42 @@ function rows(s) {
       o.afterCount < o.beforeCount,
     detail: JSON.stringify(o ?? null),
   });
+  const h = s?.held;
+  out.push(
+    h?.off
+      ? {
+          clause: clauses[5],
+          ok: null,
+          skip: "needs-held-writes-on",
+          detail: "the bed turned held writes off (mcp.approvals: false)",
+        }
+      : {
+          clause: clauses[5],
+          ok:
+            !!h?.waiting &&
+            h.waiting.needsUnread === 1 &&
+            h.waiting.kind === "decision" &&
+            h.waiting.updates === 0 &&
+            h.waiting.unread > h.before &&
+            (h.badge === null || h.badge === String(h.waiting.unread)) &&
+            h.withdraw === 200 &&
+            h.withdrawnState === "withdrawn" &&
+            h.gone.needs + h.gone.updates === 0 &&
+            h.gone.unread < h.waiting.unread,
+          detail: JSON.stringify(h ?? null),
+        },
+  );
   return out;
+}
+
+/** The bed's last update check, in words, for a skip. */
+function lastCheck(uc) {
+  if (!uc?.last)
+    return uc
+      ? `no update check has run yet (every ${uc.everyMinutes} min)`
+      : "no update check has run on this bed";
+  const l = uc.last;
+  return `last update check (${l.at}): ${l.did}${l.version ? ` ${l.version}` : ""}${l.why ? `: ${l.why}` : ""}`;
 }
 
 export function expect(cells) {

@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import {
   githubUrlOk,
   projectList,
@@ -63,6 +65,13 @@ describe("H5 sync: the project list Den sends", () => {
       (ws) => a.get(ws) ?? [],
     );
     expect(p.agents.map((x) => x.handle)).toEqual(["web/planner", "web/rev"]);
+  });
+
+  it("issue 649: marks the catch-all project `default` with catch_all, and only it; still sends it", () => {
+    const list = projectList(file({ default: {}, web: {} }), () => []);
+    expect(list.map((p) => p.workspace)).toEqual(["default", "web"]);
+    expect(list[0]).toMatchObject({ workspace: "default", catch_all: true });
+    expect("catch_all" in list[1]).toBe(false);
   });
 
   it("stays under Hub's limits (50 repos)", () => {
@@ -289,5 +298,122 @@ describe("H5 sync: the loop", () => {
     await s.run();
     expect(s.last()).toBeNull();
     expect(timers).toHaveLength(0);
+  });
+});
+
+// Issue 526: Hub's own sample answers (tests/fixtures/hub-coverage).
+const fixture = (f: string) =>
+  JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "..", "..", "fixtures", "hub-coverage", f),
+      "utf-8",
+    ),
+  ) as Record<string, unknown>;
+
+describe("issue 526: an org Hub couldn't check", () => {
+  it("keeps access error with Hub's reason, and never a link", () => {
+    const orgs = readCoverage(fixture("github.json"));
+    expect(orgs.map((o) => [o.org, o.access])).toEqual([
+      ["acme", "all"],
+      ["acme-labs", "some"],
+      ["globex", "none"],
+      ["initech", "error"],
+    ]);
+    const e = orgs.find((o) => o.org === "initech")!;
+    expect(e.error).toBe("GitHub answered 503");
+    expect(e.installUrl).toBeUndefined();
+    expect(e.manageUrl).toBeUndefined();
+  });
+
+  it("an error org that carries links still has none", () => {
+    const [e] = readCoverage({
+      orgs: [
+        {
+          org: "initech",
+          access: "error",
+          error: "Hub couldn't ask GitHub (GitHub didn't answer)",
+          install_url: "https://github.com/apps/den-hub/installations/new",
+          manage_url:
+            "https://github.com/organizations/initech/settings/installations/9",
+        },
+      ],
+    });
+    expect(e).toEqual({
+      org: "initech",
+      access: "error",
+      covered: 0,
+      total: 0,
+      error: "GitHub didn't answer",
+    });
+  });
+
+  it.each([
+    ["two\nlines", "two"],
+    ["bell\u0007 and \u001b[31mred", "bell and [31mred"],
+    ["x".repeat(500), "x".repeat(200)],
+    ["see https://evil.example/x", ""],
+    ["go to www.evil.example", ""],
+    ["<a href=x>y</a>", "<a href=x>y</a>"],
+    [42, ""],
+  ])("Hub's error text %j is one plain bounded line: %j", (raw, want) => {
+    const [e] = readCoverage({
+      orgs: [{ org: "initech", access: "error", error: raw }],
+    });
+    expect(e.access).toBe("error");
+    expect(e.error ?? "").toBe(want);
+  });
+
+  it("none may carry manage_url (an installation that leaves these repos out)", () => {
+    const [o] = readCoverage({
+      orgs: [
+        {
+          org: "globex",
+          access: "none",
+          covered: 0,
+          total: 2,
+          manage_url:
+            "https://github.com/organizations/Globex/settings/installations/7",
+        },
+      ],
+    });
+    expect(o.manageUrl).toBe(
+      "https://github.com/organizations/Globex/settings/installations/7",
+    );
+  });
+
+  it("a user account's change-repos link is accepted", () => {
+    expect(githubUrlOk("https://github.com/settings/installations/<id>")).toBe(
+      true,
+    );
+    expect(githubUrlOk("https://github.com/settings/installations/42")).toBe(
+      true,
+    );
+  });
+
+  it("Den matches its own Acme-Labs/Widget-API to Hub's lowercased repo, and shows its own spelling", async () => {
+    const s = new ProjectSync({
+      list: () => [
+        {
+          workspace: "<workspace>",
+          name: "w",
+          repos: ["acme-labs/widget-api", "globex/portal"],
+          hub_project: null,
+          agents: [],
+        },
+      ],
+      send: async () => fixture("projects-reply.json"),
+      spelling: () => ["Acme-Labs/Widget-API", "globex/portal"],
+      setTimer: () => 0,
+      clearTimer: () => undefined,
+    });
+    await s.run();
+    expect(s.uncoveredFor("<workspace>").map((u) => [u.repo, u.org])).toEqual([
+      ["Acme-Labs/Widget-API", "Acme-Labs"],
+      ["globex/portal", "globex"],
+    ]);
+    // The link is Hub's, kept as sent: never derived from or matched on the URL.
+    expect(s.uncoveredFor("<workspace>")[0].installUrl).toBe(
+      "https://github.com/organizations/acme-labs/settings/installations/<id>",
+    );
   });
 });

@@ -209,6 +209,11 @@ export interface WebAuthConfig {
   /** `web.bridge_probe_seconds`: how long the bridge probe waits (default 10). */
   bridgeProbeSeconds: number;
   /**
+   * `web.owner_name_timeout_seconds` (issue 406): how long the start waits
+   * for the owner's public GitHub profile (default 10).
+   */
+  ownerNameTimeoutSeconds: number;
+  /**
    * `web.ready_probe_seconds` (den#143; user.yml over the distribution's):
    * how long one readiness probe of `web up` (and of every "is Den
    * running here" check) waits for the server's answer. Default 10: a busy
@@ -414,6 +419,17 @@ export function readWebAuthConfig(
     throw new Error(
       `web.bridge_probe_seconds must be a number of seconds above 0, got ${JSON.stringify(probe)}`,
     );
+  const nameWait =
+    user.owner_name_timeout_seconds ?? team.owner_name_timeout_seconds;
+  if (
+    nameWait !== undefined &&
+    (typeof nameWait !== "number" ||
+      !Number.isFinite(nameWait) ||
+      nameWait <= 0)
+  )
+    throw new Error(
+      `web.owner_name_timeout_seconds must be a number of seconds above 0, got ${JSON.stringify(nameWait)}`,
+    );
   const readyProbe = waitSeconds(user, team, "ready_probe_seconds");
   const startWait = waitSeconds(user, team, "start_wait_seconds");
   const clientId =
@@ -460,6 +476,7 @@ export function readWebAuthConfig(
     edgeUnattested: unattested ?? "signin",
     bridgeListen: bridge ?? "auto",
     bridgeProbeSeconds: probe ?? 10,
+    ownerNameTimeoutSeconds: nameWait ?? 10,
     readyProbeSeconds: readyProbe ?? WEB_READY_PROBE_SECONDS,
     startWaitSeconds: startWait ?? WEB_START_WAIT_SECONDS,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
@@ -563,6 +580,17 @@ export interface SessionRecord {
   csrf: string;
   /** The Host it was issued on. */
   host: string;
+  /**
+   * How the sign-in reached Den (request-guard's via): a loopback name, the
+   * edge, or a LAN name. Unset before 0.4.72: read from `host`.
+   */
+  reach?: "loopback" | "edge" | "lan";
+  /**
+   * Minted over https through the edge with its proof (its cookie is
+   * `__Host-`). Once Den's own address is proven, only such a session
+   * counts. Unset: minted elsewhere, or before 0.4.72.
+   */
+  secure?: true;
   /** SEC-2a: how it signed in: a GitHub sign-in, a one-time link, a code (pairing), or the install's setup link (claim, 0.4.15). Unset: a link (before 0.4.5). */
   via?: "github" | "link" | "code" | "claim";
   /** SEC-2a: the client's address when Den could attest it. */
@@ -707,6 +735,8 @@ export class WebSessionStore {
   create(meta: {
     userAgent?: string;
     host?: string;
+    reach?: "loopback" | "edge" | "lan";
+    secure?: boolean;
     via?: "github" | "link" | "code" | "claim";
     client?: string;
     login?: string;
@@ -730,6 +760,8 @@ export class WebSessionStore {
       host: String(meta.host ?? "")
         .toLowerCase()
         .slice(0, 255),
+      ...(meta.reach ? { reach: meta.reach } : {}),
+      ...(meta.secure ? { secure: true as const } : {}),
       ...(meta.via ? { via: meta.via } : {}),
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
       ...(meta.login ? { login: String(meta.login).slice(0, 64) } : {}),
@@ -803,6 +835,18 @@ export class WebSessionStore {
     delete data.sessions[key];
     this.save(data);
     return true;
+  }
+
+  /** End every session `which` picks, in one write. Returns their keys. */
+  endWhere(which: (s: SessionView) => boolean): string[] {
+    const data = structuredClone(this.load());
+    const keys = Object.entries(data.sessions)
+      .filter(([key, r]) => which({ key, ...r }))
+      .map(([key]) => key);
+    if (keys.length === 0) return [];
+    for (const k of keys) delete data.sessions[k];
+    this.save(data);
+    return keys;
   }
 
   /**

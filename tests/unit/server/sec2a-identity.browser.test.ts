@@ -19,8 +19,10 @@ import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 /** The edge folder, with the invented proof in it (H1). */
 const edgeProofDir = (d: string) => (writeTestEdgeProof(d), d);
 
@@ -42,12 +44,9 @@ beforeAll(async () => {
     const { chromium } = await import("playwright");
     // DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a Playwright
     // run-server; its localhost and *.localhost are this machine's.
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await chromium.connect(ws, { exposeNetwork: "<loopback>" })
-      : await chromium.launch({
-          args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-        });
+    browser = await launchBrowser(chromium, {
+      args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
+    });
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -146,6 +145,9 @@ describe("the identity chip", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    // The person's browser on this machine, signed in as `web up` does
+    // (0.4.71): a signed-out one has no identity to show.
+    await signIn(ctx, stateDir, `http://localhost:${port}`);
     const p = await ctx.newPage();
     // Not on /settings: its item there is the current page (bolder).
     await p.goto(`http://localhost:${port}/`);

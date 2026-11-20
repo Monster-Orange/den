@@ -64,6 +64,36 @@
  *
  * Its look is busy.css (linked from beside this file).
  *
+ * Issue 699, the held button: every button the kit holds (opts.button,
+ * pending()'s button, a plain POST form's submitter) shows three pulsing
+ * dots in place of its label at once, at the same size, disabled with
+ * aria-busy="true". The label stays (in .bz-lbl, hidden) and stays the
+ * accessible name. The working pop-up then opens only after dotsMs
+ * (configureBusy({ dotsMs }), default DOTS_MS, 3 s), the dots behind it;
+ * an answer before that gives the label back. The button never shows an
+ * error itself: a quick failure gives the label back and the error goes
+ * where it goes today (the caller, or the failure pop-up); after the
+ * pop-up, the pop-up shows it, Try again holds the button again and
+ * Close gives the label back. opts.dots: false holds it the old way.
+ *
+ *   pending(button, (headers) => fetch(url, { method: "POST", headers }),
+ *           opts?) → Promise<answer | null>
+ *     A fetch-driven button. An answer that is not ok (a Response with
+ *     ok false) or no answer at all is the failure pop-up with Try again;
+ *     null after Close, or at once for a button already held. opts are
+ *     busyAction's, plus action (a registered name; default the kit's own
+ *     "send": Sending…, Sent., Not sent.) and who (default: the server).
+ *
+ *   watchForms(root = document) → stop()
+ *     One submit listener for plain POST forms: the submitter is held
+ *     until the next page comes (or the page shows again from the back
+ *     button). A form the page sends itself (its submit handler called
+ *     preventDefault) is left alone.
+ *
+ * A button that never waits opts out with a reason, data-instant="<why>":
+ * held without dots, its pop-up at OPEN_MS. An empty reason doesn't count
+ * (instantProblems(html) is the check).
+ *
  * Reconnect mode: the request may get no answer (the product stopped
  * first); that counts as going down, and the pop-up waits for it to come
  * back. busyAction then resolves with the new answer from reconnect.url.
@@ -88,6 +118,8 @@ export const SUCCESS_CLOSE_MS = 1200;
 export const POLL_MS = 1000;
 export const POLL_MAX_MS = 3000;
 export const ASK_MS = 3000;
+/** Issue 699: the working pop-up's wait once a button shows dots. */
+export const DOTS_MS = 3000;
 
 const hook = {
   lang: () =>
@@ -102,6 +134,7 @@ const hook = {
   open: (url) => window.location.assign(url),
   logUrl: null,
   reconnect: null,
+  dotsMs: DOTS_MS,
 };
 const actions = new Map();
 
@@ -134,7 +167,9 @@ function word(key, vars) {
     hook.words?.en?.[key] ??
     BUSY_WORDS.en[key] ??
     key;
-  return fill(s, vars);
+  const out = fill(s, vars);
+  // A sentence that starts with who it waits for starts with a capital.
+  return /^\{who\}/.test(s) ? out.charAt(0).toUpperCase() + out.slice(1) : out;
 }
 
 /** One of the action's own words (working, success, failure, …). */
@@ -253,6 +288,81 @@ function detailsText(err, id, at) {
   return said ? `${bits.join(" · ")}\n${said}` : bits.join(" · ");
 }
 
+/**
+ * Issue 699: the reason a button never waits (data-instant="<why>"), or
+ * null. An empty reason doesn't count.
+ */
+function instantReason(b) {
+  const why = b?.getAttribute?.("data-instant");
+  if (why == null) return null;
+  if (String(why).trim()) return String(why).trim();
+  console.warn("data-instant needs a reason (issue 699)", b);
+  return null;
+}
+
+/** Each data-instant in a page's markup with no reason (the kit's check). */
+export function instantProblems(html) {
+  const out = [];
+  const re =
+    /<[a-zA-Z][^<>]*?\sdata-instant(?![\w-])(\s*=\s*("([^"]*)"|'([^']*)'|([^\s>"']+)))?/g;
+  for (const m of String(html ?? "").matchAll(re)) {
+    const why = m[3] ?? m[4] ?? m[5] ?? "";
+    if (!why.trim()) out.push(m[0].slice(0, 120));
+  }
+  return out;
+}
+
+/** The buttons held with dots now, with what to give back. */
+const held = new Map();
+
+/**
+ * Holds a button (disabled, aria-busy) or lets it go. dots: the label goes
+ * into .bz-lbl (hidden, so the size stays) and three dots go over it; the
+ * accessible name stays the label. later: disabled on the next turn (a
+ * form's submitter, once the browser took its name and value).
+ */
+function holdButton(b, on, dots, later = false) {
+  if (!b) return;
+  if (!on) {
+    b.disabled = false;
+    b.removeAttribute("aria-busy");
+    const h = held.get(b);
+    if (!h) return;
+    held.delete(b);
+    clearTimeout(h.timer);
+    if (h.dots.parentNode === b) h.dots.remove();
+    // The page may have drawn the button again while it waited: its own
+    // label then stays as it drew it.
+    if (h.lbl.parentNode === b) {
+      const at = h.lbl.nextSibling;
+      while (h.lbl.firstChild) b.insertBefore(h.lbl.firstChild, at);
+      h.lbl.remove();
+    }
+    if (h.name == null) b.removeAttribute("aria-label");
+    return;
+  }
+  b.setAttribute("aria-busy", "true");
+  let timer = 0;
+  if (later) timer = setTimeout(() => held.has(b) && (b.disabled = true), 0);
+  else b.disabled = true;
+  if (!dots || held.has(b)) return;
+  ensureCss();
+  const name = b.getAttribute("aria-label");
+  const text = String(b.textContent ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const lbl = document.createElement("span");
+  lbl.className = "bz-lbl";
+  while (b.firstChild) lbl.append(b.firstChild);
+  const d = document.createElement("span");
+  d.className = "bz-dots";
+  d.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 3; i++) d.append(document.createElement("i"));
+  b.append(lbl, d);
+  if (name == null && text) b.setAttribute("aria-label", text);
+  held.set(b, { lbl, dots: d, name, timer });
+}
+
 export function busyAction(name, run, opts = {}) {
   const a = actions.get(name);
   if (!a) throw new Error(`busyAction: no action named "${name}"`);
@@ -279,12 +389,15 @@ export function busyAction(name, run, opts = {}) {
     fail = rej;
   });
 
-  const hold = (on) => {
-    if (!button) return;
-    button.disabled = on;
-    if (on) button.setAttribute("aria-busy", "true");
-    else button.removeAttribute("aria-busy");
-  };
+  // Issue 699: a held button shows dots (unless it never waits), and the
+  // pop-up then waits dotsMs instead of OPEN_MS.
+  const dots = !!button && opts.dots !== false && !instantReason(button);
+  const openMs = !dots
+    ? OPEN_MS
+    : Number.isFinite(Number(hook.dotsMs)) && hook.dotsMs !== null
+      ? Number(hook.dotsMs)
+      : DOTS_MS;
+  const hold = (on) => holdButton(button, on, dots);
 
   function ensureDialog() {
     if (d) return d;
@@ -567,6 +680,9 @@ export function busyAction(name, run, opts = {}) {
     }
     // Reconnect: no answer is the product going down; wait for it.
     if (reconnect && !answeredWithError(err)) return waitBack(Date.now());
+    // Issue 699: the button never shows an error; before the pop-up, its
+    // label comes back and the failure pop-up says it.
+    if (!d?.open) hold(false);
     paintFailure(err);
   }
 
@@ -587,7 +703,7 @@ export function busyAction(name, run, opts = {}) {
         paintWorking(0);
         tick(startedAt);
       }
-    }, OPEN_MS);
+    }, openMs);
     Promise.resolve()
       .then(() => run({ [hook.idHeader]: id }, progress))
       .then(
@@ -668,4 +784,104 @@ export function busyAction(name, run, opts = {}) {
     });
   else attempt();
   return result;
+}
+
+/** The kit's own action for pending(): Sending…, Sent., Not sent. */
+const SEND = "send";
+function sendAction(who) {
+  const w = {};
+  for (const l of Object.keys(BUSY_WORDS))
+    w[l] = {
+      working: BUSY_WORDS[l].send_working,
+      success: BUSY_WORDS[l].send_success,
+      failure: BUSY_WORDS[l].send_failure,
+    };
+  return {
+    // The server, in the page's language, unless the caller names it.
+    get who() {
+      return who || word("server");
+    },
+    words: w,
+  };
+}
+
+const isResponse = (r) =>
+  !!r &&
+  typeof r === "object" &&
+  typeof r.ok === "boolean" &&
+  typeof r.status === "number";
+
+/** Issue 699: a fetch-driven button (see the top of this file). */
+export function pending(button, run, opts = {}) {
+  if (button?.getAttribute?.("aria-busy") === "true")
+    return Promise.resolve(null);
+  const { action, who, ...rest } = opts;
+  let name = action;
+  if (!name) {
+    name = who ? `${SEND}:${who}` : SEND;
+    if (!actions.has(name)) actions.set(name, sendAction(who));
+  }
+  return busyAction(
+    name,
+    async (headers, progress) => {
+      let r;
+      try {
+        r = await run(headers, progress);
+      } catch (e) {
+        // fetch's own failure: no answer at all.
+        throw e instanceof TypeError ? { network: true } : e;
+      }
+      if (isResponse(r) && !r.ok) {
+        let body = null;
+        try {
+          body = await (r.clone ? r.clone() : r).json();
+        } catch {
+          body = null;
+        }
+        throw { status: r.status, body };
+      }
+      return r;
+    },
+    { toastFast: false, ...rest, button },
+  );
+}
+
+/** Issue 699: plain POST forms' submitters (see the top of this file). */
+export function watchForms(root = document) {
+  const mine = new Set();
+  const onSubmit = (e) => {
+    const form = e.target;
+    const b = e.submitter;
+    if (!form || !b || e.defaultPrevented) return;
+    const method = String(
+      b.getAttribute?.("formmethod") ||
+        form.getAttribute?.("method") ||
+        form.method ||
+        "",
+    ).toLowerCase();
+    if (method !== "post") return;
+    const target = String(
+      b.getAttribute?.("formtarget") || form.target || "",
+    ).toLowerCase();
+    if (target && target !== "_self") return;
+    // A second submit while the first waits: stopped.
+    if (b.getAttribute?.("aria-busy") === "true") {
+      e.preventDefault?.();
+      return;
+    }
+    if (instantReason(b)) return;
+    holdButton(b, true, true, true);
+    mine.add(b);
+  };
+  // Back from the next page (the back-forward cache): the label is back.
+  const onShow = () => {
+    for (const b of mine) holdButton(b, false, true);
+    mine.clear();
+  };
+  root.addEventListener("submit", onSubmit);
+  window.addEventListener("pageshow", onShow);
+  return () => {
+    root.removeEventListener("submit", onSubmit);
+    window.removeEventListener("pageshow", onShow);
+  };
 }

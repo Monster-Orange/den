@@ -6,7 +6,8 @@
  *
  *   - discovery: AG-0.1's search for every entry, installed first, each
  *     with its version; the interactive shell (`$SHELL -ilc`) asked once,
- *     only while a runtime is still missing, and named as the source;
+ *     first (issue 456: its PATH is the first choice), and named as the
+ *     source;
  *   - paths, this machine's only: the workspace's wins over user.yml's,
  *     which wins over what the search finds;
  *   - Set path runs the version command and refuses a path that isn't
@@ -275,7 +276,7 @@ describe("discovery", () => {
     );
   });
 
-  it("nothing missing: the interactive shell is never asked", async () => {
+  it("issue 456: nothing missing, the interactive shell is still asked once (its PATH is the first choice)", async () => {
     const r = await rig();
     const asked = path.join(r.dir, "shell-asked");
     const shell = write(
@@ -284,6 +285,28 @@ describe("discovery", () => {
     );
     for (const b of ["codex", "gemini", "grok"])
       write(path.join(path.dirname(r.claude), b), fakeCli(r.ran, `${b} 1.0.0`));
+    r.deps.env = { ...r.deps.env, DEN_LOGIN_SHELL: shell };
+    const d = resolveAgentsDeps(r.deps);
+    await listRuntimes(d);
+    await listRuntimes(d);
+    expect(fs.readFileSync(asked, "utf-8").trim().split("\n")).toEqual([
+      "-ilc",
+    ]);
+  });
+
+  it("every catalog runtime's path set: the interactive shell is never asked", async () => {
+    const r = await rig();
+    const asked = path.join(r.dir, "shell-asked");
+    const shell = write(
+      path.join(r.dir, "fake-shell"),
+      `#!/bin/sh\necho "$1" >> "${asked}"\n`,
+    );
+    for (const b of ["codex", "gemini", "grok"])
+      r.runtimeBins[b] = write(
+        path.join(path.dirname(r.claude), b),
+        fakeCli(r.ran, `${b} 1.0.0`),
+      );
+    r.runtimeBins["den-claude"] = r.claude;
     r.deps.env = { ...r.deps.env, DEN_LOGIN_SHELL: shell };
     await listRuntimes(resolveAgentsDeps(r.deps));
     expect(fs.existsSync(asked)).toBe(false);

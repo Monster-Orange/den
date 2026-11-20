@@ -368,7 +368,9 @@ describe("gate end and settings: a person's only", () => {
     expect(await cmdGate(["settings", "--cpu-slots", "4"], agent)).toBe(2);
     expect(t.d.store.settings().cpuSlots).toBe(2);
     expect(await cmdGate(["settings", "--cpu-slots", "4"], t.d)).toBe(0);
-    expect(t.out.at(-1)).toBe("cpu slots 4 · flagged 15 min past its estimate");
+    expect(t.out.at(-1)).toBe(
+      "cpu slots 4 · flagged 15 min past its estimate · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past a run waiting 60 min, agents and people may ask",
+    );
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });
 });

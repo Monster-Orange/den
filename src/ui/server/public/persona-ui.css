@@ -569,10 +569,6 @@ dialog.pe-dlg::backdrop {
     justify-content: flex-start;
   }
 }
-.den-btn.sm {
-  padding: 2px 9px;
-  font-size: 12.5px;
-}
 
 /* AG-17.1, Bring in: a conversation that can't be picked (open elsewhere,
    or an agent already continues it). */

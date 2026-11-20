@@ -390,7 +390,24 @@ export async function mountSettings(deps) {
       "</section>"
     );
   }
+  /**
+   * A row's value while its save is out: { v }. A redraw then (a plugin's
+   * rows, the appearance, the hash) draws what was just chosen, not the
+   * old value, so a switch doesn't flip back and get a second save
+   * (issue 424). Only single-value controls: a list row saves a part.
+   */
+  const pending = new Map();
+  const PENDING_TYPES = [
+    "toggle",
+    "number",
+    "select",
+    "text",
+    "seg",
+    "theme",
+    "radio",
+  ];
   function value(r) {
+    if (pending.has(r.id)) return pending.get(r.id).v;
     try {
       return r.read(ctx);
     } catch {
@@ -613,10 +630,15 @@ export async function mountSettings(deps) {
   async function save(r, v) {
     const el = $(`s-${slug(r.id)}`);
     let ok = false;
+    const mine = { v };
+    if (PENDING_TYPES.includes(r.control?.type)) pending.set(r.id, mine);
     try {
       ok = (await r.write(v, ctx)) !== false;
     } catch {
       ok = false;
+    } finally {
+      // A later save of the same row keeps its own.
+      if (pending.get(r.id) === mine) pending.delete(r.id);
     }
     draw();
     const again = $(`s-${slug(r.id)}`) || el;

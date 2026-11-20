@@ -47,6 +47,19 @@ export class HostClient extends EventEmitter {
   hostStartedAt = "";
   /** D20: the host's launchd session (null off macOS or an older host). */
   hostLaunchd: string | null = null;
+  /**
+   * Issue 563: the Den version the host runs (null: it can't tell), or
+   * undefined when the host is too old to say.
+   */
+  hostDen: string | null | undefined = undefined;
+  /**
+   * Issue 597: the id of the host's code (null: it can't tell), or
+   * undefined when the host is too old to say.
+   */
+  hostCode: string | null | undefined = undefined;
+  /** Issue 563: the native PTY module the host loaded (null: none yet). */
+  hostPty: { path: string; version: string | null; id: string | null } | null =
+    null;
 
   constructor(private readonly socket: net.Socket) {
     super();
@@ -163,11 +176,58 @@ export class HostClient extends EventEmitter {
     }
   }
 
+  /**
+   * Issue 503: how many PTY masters the host holds (open null: it can't
+   * count them there). null from a host older than this request.
+   */
+  async ptys(): Promise<{ open: number | null } | null> {
+    try {
+      const r = await this.request("ptys");
+      return {
+        open:
+          typeof r.open === "number" && Number.isInteger(r.open)
+            ? r.open
+            : null,
+      };
+    } catch (e) {
+      if (e instanceof HostError && e.code === "bad-request") return null;
+      throw e;
+    }
+  }
+
+  /**
+   * Issue 597: tell the host it runs Den `den` now (an update that left its
+   * code and module alone). False from a host without the op.
+   */
+  async adopt(den: string): Promise<boolean> {
+    try {
+      await this.request("adopt", { den });
+      this.hostDen = den;
+      return true;
+    } catch (e) {
+      if (e instanceof HostError && e.code === "bad-request") return false;
+      throw e;
+    }
+  }
+
   async hello(): Promise<void> {
     const r = await this.request("hello");
     this.hostPid = Number(r.pid);
     this.hostStartedAt = String(r.startedAt ?? "");
     this.hostLaunchd = typeof r.launchd === "string" ? r.launchd : null;
+    this.hostDen =
+      "den" in r ? (typeof r.den === "string" ? r.den : null) : undefined;
+    this.hostCode =
+      "code" in r ? (typeof r.code === "string" ? r.code : null) : undefined;
+    const p = r.pty as { path?: unknown; version?: unknown; id?: unknown };
+    this.hostPty =
+      p && typeof p === "object" && typeof p.path === "string"
+        ? {
+            path: p.path,
+            version: typeof p.version === "string" ? p.version : null,
+            id: typeof p.id === "string" ? p.id : null,
+          }
+        : null;
   }
 
   async start(

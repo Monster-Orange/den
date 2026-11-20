@@ -16,7 +16,7 @@
  * The page's table styles (table.svc, .tablewrap, .tbl-*) and the shell's
  * (.den-sec, .den-btn, .den-dot) are reused as they are.
  */
-import { fillStartForm } from "/agent-start.js";
+import { fillStartForm, quarantineNext, wireQuarantine } from "/agent-start.js";
 import { timeHtml } from "/kit/time.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
@@ -28,7 +28,8 @@ const esc = (s) =>
         c
       ],
   );
-const api = (method, url, body) => window.denShell.api(method, url, body);
+const api = (method, url, body, opts) =>
+  window.denShell.api(method, url, body, opts);
 const base = (ws) => `/api/workspaces/${encodeURIComponent(ws)}/agents`;
 
 /** How often the list is asked again (faster while one is stopping). */
@@ -195,6 +196,18 @@ async function refresh(ws) {
 
 function fillForm(form, data) {
   fillStartForm(form, data, t);
+  // Issue 479: a quarantined runtime's choices (Use this, open its folder).
+  wireQuarantine(form.querySelector("[data-runtime-ready]"), {
+    api,
+    t,
+    reload: async () => {
+      personasAsked = api("GET", "/api/personas").catch((err) => {
+        personasAsked = null;
+        throw err;
+      });
+      fillForm(form, await personasAsked);
+    },
+  });
 }
 
 async function openForm(sec) {
@@ -242,7 +255,16 @@ async function act(ws, verb, id, button) {
       ),
     );
   } catch (err) {
-    window.denShell?.errorToast?.(err);
+    // Issue 479: a quarantined runtime: one action, Settings at its row.
+    const next = quarantineNext(err, t, ws);
+    if (next && window.denShell?.toastAction)
+      window.denShell.toastAction(
+        err.message,
+        next.label,
+        () => location.assign(next.href),
+        20_000,
+      );
+    else window.denShell?.errorToast?.(err);
   }
   await refresh(ws);
 }

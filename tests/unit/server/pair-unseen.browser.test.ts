@@ -28,6 +28,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -43,15 +44,13 @@ const contexts: BrowserContext[] = [];
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
     for (const name of ENGINES)
-      browsers[name] = ws
-        ? await pw[name].connect(ws, { exposeNetwork: "<loopback>" })
-        : name === "chromium"
-          ? await pw.chromium.launch({
-              args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-            })
-          : await pw[name].launch();
+      browsers[name] = await launchBrowser(
+        pw[name],
+        name === "chromium"
+          ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
+          : undefined,
+      );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

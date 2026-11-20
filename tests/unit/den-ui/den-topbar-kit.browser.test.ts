@@ -32,6 +32,7 @@ import {
   type AgentsPageServer,
 } from "../server/helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const BROWSERS = ["chromium", "webkit"] as const;
 type BrowserName = (typeof BROWSERS)[number];
@@ -42,12 +43,7 @@ const browsers: Partial<Record<BrowserName, Browser>> = {};
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    for (const b of BROWSERS)
-      browsers[b] = process.env.DEN_PW_WS
-        ? await pw[b].connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await pw[b].launch();
+    for (const b of BROWSERS) browsers[b] = await launchBrowser(pw[b]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

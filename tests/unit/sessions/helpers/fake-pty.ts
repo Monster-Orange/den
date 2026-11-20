@@ -50,6 +50,11 @@ export class ScriptedPty implements PtyProcess {
   kill(signal: string): void {
     this.signals.push(signal);
   }
+  /** Issue 503: how many times the host closed its master. */
+  closed = 0;
+  close(): void {
+    this.closed++;
+  }
 
   /** The program printed `text`. */
   emit(text: string | Buffer): void {

@@ -30,6 +30,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -47,7 +48,7 @@ const files = (id: string) => path.join(s!.stateDir, "agent-files", id);
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -249,8 +250,9 @@ describe("rotated agents on the Agents page (den#4)", () => {
     expect(args[1]).not.toBe(TOKEN.relay);
     expect(args).not.toContain("--resume");
     expect(args[args.length - 1]).toContain(GOOD_HANDOFF);
-    // A new conversation: in north's repo (gap 7), not the folder above it.
-    expect(made[0].opts.cwd).toBe(path.join(s!.tmp, "repos", "notes"));
+    // Issue 658: a new conversation in the folder it ran in (the one its
+    // runtime knows and trusts), never moved to a repo by a relaunch.
+    expect(made[0].opts.cwd).toBe(path.join(s!.tmp, "workspaces", "north"));
     await p.waitForSelector(
       '#agl .agr[data-kind="agent"][data-state="running"]',
     );

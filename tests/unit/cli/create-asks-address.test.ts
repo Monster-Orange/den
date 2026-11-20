@@ -112,13 +112,15 @@ describe("create asks for the address", () => {
     );
   });
 
-  it("else the distribution's edge domain, and never a literal .local", async () => {
+  it("else the distribution's edge domain, never a literal .local, and never a loopback one (issue 666)", async () => {
     const first = path.join(tmp, "acme");
     await quiet(() => runCreate(["acme", first, "--yes"], tmp, FREE));
-    // The first install has no address; its edge is acme.localhost.
+    // The first install has no address; its edge is acme.localhost, which
+    // only that machine opens: it is no domain for an address.
     const def = await askedFor(path.join(tmp, "acme-2"));
-    expect(def).toBe("https://acme.box2.localhost");
+    expect(def).toBe("https://acme.box2");
     expect(def).not.toMatch(/\.local$/);
+    expect(def).not.toMatch(/localhost/);
   });
 
   it("never asks with --url, --yes, --json or when not interactive", async () => {

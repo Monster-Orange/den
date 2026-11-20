@@ -20,6 +20,10 @@
  *   hub_project_create issue 271: ask Hub for a new project to link a
  *                     project to (hub-create-routes.ts, the code Settings
  *                     runs); an owner decides it in Hub, Den links it
+ *   hub_link          issue 647: link a project to an existing Hub project
+ *                     by its id or slug, as `hub link` does
+ *                     (hub-link-held.ts); one the connected Hub doesn't
+ *                     list is refused before anyone is asked
  *   den_restart       SRV-1a: restart this Den's web server, in place
  *                     (server-restart.ts); the agent that asked is told
  *                     when it is back
@@ -73,6 +77,16 @@
  *   pr_close          issue 160: close a stale or superseded pull request
  *                     after a Hub note, with a comment saying why (gh
  *                     pr close). Auto unless the repo is watched or pinned
+ *   gate_runner_token_create
+ *                     issue 621: a gate-only token for a CI runner VM
+ *                     (gate-routes.ts gateRunnerTokenOp): it only asks
+ *                     for, renews and gives back gate slots. Always the
+ *                     person's own Allow; the token goes once to the asker
+ *   host_restart
+ *                     issue 731: restart the terminal host when agents are
+ *                     idle (host-restart-held.ts): the web start's refresh,
+ *                     its wait, restart, resumes and audit. Doctor's fix,
+ *                     never `sessions host --stop`. The person's own Allow
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -155,6 +169,11 @@ export interface HeldActionDeps {
   hubAddress?: HeldOp;
   /** Issue 271: ask Hub for a new project to link a project to. */
   hubCreate?: HeldOp;
+  /**
+   * Issue 647: link a project to an existing Hub project (hub-link-held.ts);
+   * its check asks the connected Hub, so it is async.
+   */
+  hubLink?: HeldAction;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
@@ -169,6 +188,10 @@ export interface HeldActionDeps {
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
   verifyRun?: HeldOp;
+  /** Issue 621: gate_runner_token_create (gate-routes.ts gateRunnerTokenOp). */
+  gateRunnerToken?: HeldOp;
+  /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
+  terminalHostRestart?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -229,6 +252,8 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "verify_run",
   "embed_key_create",
   "embed_key_revoke",
+  "gate_runner_token_create",
+  "host_restart",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -553,6 +578,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   );
   const hubConnect = op(d.hubAddress, "this Den can't set Hub's address here");
   const hubCreate = op(d.hubCreate, "this Den can't ask Hub for projects here");
+  const hubLink: HeldAction = {
+    check: (a, who) =>
+      d.hubLink
+        ? d.hubLink.check(a, who)
+        : { ok: false, error: "this Den can't link projects to Hub here" },
+    run: (a, asked) => d.hubLink!.run(a, asked),
+  };
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
     d.agentMode,
@@ -568,6 +600,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const gateRunnerToken = op(
+    d.gateRunnerToken,
+    "this Den can't make gate runner tokens here",
+  );
+  const terminalHostRestart = op(
+    d.terminalHostRestart,
+    "this Den can't restart its terminal host here",
+  );
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -838,6 +878,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     project_mcp_update: projectMcpUpdate,
     hub_connect: hubConnect,
     hub_project_create: hubCreate,
+    hub_link: hubLink,
     agent_folder: agentFolder,
     agent_mode: agentMode,
     verify_run: verifyRun,
@@ -847,5 +888,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     den_pin_commit: pinCommit,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
+    gate_runner_token_create: gateRunnerToken,
+    host_restart: terminalHostRestart,
   };
 }

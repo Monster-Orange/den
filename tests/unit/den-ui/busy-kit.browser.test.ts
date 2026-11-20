@@ -23,6 +23,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -31,7 +32,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -55,6 +56,10 @@ const PAGE = (lang: string) => `<!doctype html>
 import * as kit from "/busy.js";
 window.seen = { toasts: [], opened: [], reports: [], reloads: 0 };
 kit.configureBusy({
+  // Issue 699: a held button's pop-up waits dotsMs (3 s by default); these
+  // tests are about the pop-up, so it waits 300 ms here (the default is
+  // busy-dots.test.ts's).
+  dotsMs: 300,
   idHeader: "X-Probe-Id",
   statusUrl: (id) => "/status/" + id,
   toast: (t) => seen.toasts.push(t),
@@ -137,10 +142,19 @@ async function open(
         contentType: "text/css",
         body: fs.readFileSync(path.join(SRC, "busy.css"), "utf-8"),
       });
-    if (u.pathname === "/busy.js" || u.pathname === "/busy-words.js")
+    if (
+      u.pathname === "/busy.js" ||
+      u.pathname === "/busy-words.js" ||
+      u.pathname === "/dialog.js"
+    )
       return r.fulfill({
         contentType: "text/javascript",
         body: fs.readFileSync(path.join(SRC, u.pathname.slice(1)), "utf-8"),
+      });
+    if (u.pathname === "/dialog.css")
+      return r.fulfill({
+        contentType: "text/css",
+        body: fs.readFileSync(path.join(SRC, "dialog.css"), "utf-8"),
       });
     if (u.pathname === "/tokens.css")
       return r.fulfill({
@@ -205,6 +219,130 @@ const seen = (p: Page) =>
   );
 const go = (p: Page, name: string, opts = "{}") =>
   p.evaluate(`window.go(${JSON.stringify(name)}, ${opts})`);
+
+describe("issue 699: the held button in a browser", () => {
+  it("dots at once at the same size, still under reduced motion, the label back on the answer", async () => {
+    if (skip()) return;
+    const { p } = await open([[1500, 200]]);
+    await p.evaluate(() => {
+      const l = document.createElement("link");
+      l.rel = "stylesheet";
+      l.href = "/busy.css";
+      document.head.append(l);
+    });
+    await p.waitForFunction(() =>
+      [...document.styleSheets].some((s) => /busy\.css/.test(s.href ?? "")),
+    );
+    const before = await p
+      .locator("#go")
+      .evaluate((b) => [b.offsetWidth, b.offsetHeight]);
+    await go(p, "save");
+    const b = p.locator("#go");
+    expect(await b.isDisabled()).toBe(true);
+    expect(await b.getAttribute("aria-busy")).toBe("true");
+    expect(await b.locator(".bz-dots > i").count()).toBe(3);
+    expect(
+      await b.evaluate((el) => [
+        (el as HTMLElement).offsetWidth,
+        (el as HTMLElement).offsetHeight,
+      ]),
+    ).toEqual(before);
+    // The label is hidden, not gone, and stays the accessible name.
+    expect(
+      await b
+        .locator(".bz-lbl")
+        .evaluate((l) => getComputedStyle(l).visibility),
+    ).toBe("hidden");
+    expect(await b.getAttribute("aria-label")).toBe("Go");
+    // Held, not off: full opacity; reduced motion (this context): still.
+    expect(await b.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    expect(
+      await b
+        .locator(".bz-dots > i")
+        .first()
+        .evaluate((i) => getComputedStyle(i).animationName),
+    ).toBe("none");
+    expect(await out(p)).toEqual({ ok: { ok: true } });
+    expect(await b.locator(".bz-dots").count()).toBe(0);
+    expect(await b.textContent()).toBe("Go");
+    expect(await b.isDisabled()).toBe(false);
+    await p.context().close();
+  });
+
+  it("inside the kit's dialog frame: the dots stay behind the pop-up, Try again holds again, and the frame's Report still opens", async () => {
+    if (skip()) return;
+    const { p, probe } = await open([
+      [1000, 500],
+      [1000, 200],
+    ]);
+    // A string: compiled, an import() in a function becomes a helper the
+    // page hasn't got.
+    await p.evaluate(`(async () => {
+      const dk = await import("/dialog.js");
+      window.reports = 0;
+      dk.configureDialog({
+        css: "/dialog.css",
+        report: () =>
+          '<button type="button" class="dk-btn" data-probe-report>Report</button>',
+      });
+      document.addEventListener("click", (e) => {
+        if (e.target.closest && e.target.closest("[data-probe-report]"))
+          window.reports++;
+      });
+      dk.mountDialog(
+        '<dialog class="dk-dlg" id="frame"><div class="dk-b"><h2>Frame</h2>' +
+          '<div class="dk-ft"><button type="button" id="inner">Send it</button></div></div></dialog>',
+      );
+      const b = document.getElementById("inner");
+      window.inner = window.kit.busyAction(
+        "save",
+        (headers) =>
+          fetch("/probe", { method: "POST", headers }).then(async (r) => {
+            if (!r.ok) throw { status: r.status };
+            return r.json();
+          }),
+        { button: b },
+      );
+      return true;
+    })()`);
+    const inner = p.locator("#inner");
+    expect(await inner.getAttribute("aria-busy")).toBe("true");
+    expect(await inner.locator(".bz-dots > i").count()).toBe(3);
+    // The pop-up (dotsMs is 300 ms in this suite) opens over the frame;
+    // both are open, the dots still on the button behind it.
+    await dlg(p).waitFor({ state: "visible", timeout: 2000 });
+    expect(
+      await p.locator("#frame").evaluate((d) => (d as HTMLDialogElement).open),
+    ).toBe(true);
+    expect(await inner.locator(".bz-dots").count()).toBe(1);
+    // The failure shows in the pop-up; the button stays held behind it.
+    await dlg(p).locator('[data-bz="retry"]').waitFor({ timeout: 5000 });
+    expect(await inner.getAttribute("aria-busy")).toBe("true");
+    await dlg(p).locator('[data-bz="retry"]').click();
+    // Try again holds it again, then the answer gives the label back.
+    expect(await inner.getAttribute("aria-busy")).toBe("true");
+    expect(await inner.locator(".bz-dots").count()).toBe(1);
+    await p.waitForFunction(
+      () => !document.querySelector("#inner")?.hasAttribute("aria-busy"),
+      undefined,
+      { timeout: 5000 },
+    );
+    expect(probe.ids).toHaveLength(2);
+    expect(await inner.textContent()).toBe("Send it");
+    expect(await dlg(p).count()).toBe(0);
+    // The frame is still open and its Report (first in the footer) opens.
+    expect(
+      await p.locator("#frame").evaluate((d) => (d as HTMLDialogElement).open),
+    ).toBe(true);
+    await p.locator("#frame [data-probe-report]").click();
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { reports: number }).reports,
+      ),
+    ).toBe(1);
+    await p.context().close();
+  });
+});
 
 describe("UK-2 kit: the working pop-up", () => {
   it("a fast success opens nothing; an auto-close action says so in a toast", async () => {

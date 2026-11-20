@@ -24,6 +24,8 @@ export const generic: Runtime = {
   // The CLI is the persona's; there is nothing to look for until launch.
   detect: () => ({ available: true }),
   scrubEnv: [],
+  // Issue 664: any CLI, so no input prompt Den could know.
+  inputPrompt: undefined, // unproven: today's rule
   launch(input): LaunchOutput {
     const template = input.persona.argv;
     if (!template?.length)

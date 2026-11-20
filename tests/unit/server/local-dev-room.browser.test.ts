@@ -25,6 +25,8 @@ import type { Browser, Page } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 /** SEC-1a: the CLI's credential for the test server. */
 const auth = () => denAuth(path.join(tmp, "home", ".den"));
@@ -120,7 +122,7 @@ beforeAll(async () => {
     )[0]?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -153,6 +155,7 @@ async function open(
   const ctx = await browser!.newContext({
     viewport: { width: o.width ?? 1280, height: o.height ?? 800 },
   });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);
@@ -373,6 +376,11 @@ describe("R20 page headers (0.3.0-dev.32)", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1440, height: 900 },
       });
+      await signIn(
+        ctx,
+        path.join(tmp, "home", ".den"),
+        `http://localhost:${port}`,
+      );
       await ctx.addInitScript((v) => {
         try {
           localStorage.setItem("den-changelog-seen", v);
@@ -502,6 +510,7 @@ describe("R22: the Graph page (Ward 2026-11-05)", () => {
 /** A page at 1440×900, the changelog seen. */
 async function page(url: string, w = 1440, h = 900): Promise<Page> {
   const ctx = await browser!.newContext({ viewport: { width: w, height: h } });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);

@@ -210,8 +210,12 @@ describe("CI's self-hosted runner guard", () => {
     expect(evaluate(GUARD, push("24.13.0"))).toBe("ubuntu-latest");
   });
 
-  it("release.yml never names a self-hosted variable", () => {
-    expect(text("release.yml")).not.toMatch(/DEN_SELF_HOSTED|self-hosted/);
+  it("the release's workflows never name a self-hosted variable", () => {
+    for (const f of ["release.yml", "release-gates.yml", "release-dry-run.yml"])
+      expect([f, /DEN_SELF_HOSTED|self-hosted/.test(text(f))]).toEqual([
+        f,
+        false,
+      ]);
   });
 
   it("repeat.yml: run by hand only, read-only, on its own night variable", () => {

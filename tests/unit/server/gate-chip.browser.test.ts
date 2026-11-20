@@ -18,6 +18,7 @@ import {
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -26,11 +27,7 @@ let sid = "";
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -132,13 +129,12 @@ describe("issue 144: the gate chip on Agents", () => {
     await p.goto(signInUrl(s!.stateDir, s!.base, `/agents`));
     const chip = p.locator("#ag-gate");
     await chip.waitFor({ state: "visible", timeout: 20_000 });
-    const at = await p.evaluate(
-      (iso) =>
-        new Date(iso).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      end.toISOString(),
+    // The kit's time in the page (issue 668): the same text the chip draws.
+    // A string, so the test's transform never rewrites the page's import().
+    const at = await p.evaluate<string>(
+      `import("/kit/time.js").then((m) => m.formatTime(${JSON.stringify(
+        end.toISOString(),
+      )}, { style: "time" }))`,
     );
     expect(await chip.textContent()).toBe(
       `Gate: browser tests · Acme · north · agent:scout · until ${at} · 1 waiting`,

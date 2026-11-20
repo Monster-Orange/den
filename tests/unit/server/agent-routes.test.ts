@@ -1270,7 +1270,8 @@ describe("POST …/agents start: the Start dialog's choices (AG-10.1, AG-12, AG-
     const a = await api();
     await start(a, "north", { persona: "planner", instruction: "a\nb" });
     const p = a.r.made[0];
-    p.emit("ready> ");
+    // Issue 664: its input prompt.
+    p.emit("> ");
     await until(() => typed(p).endsWith("\r") && typed(p).length > 2);
     expect(typed(p)).toBe("a\x1b\rb\r");
   });
@@ -1552,5 +1553,21 @@ describe("POST /api/workspaces/<ws>/sessions (Plain session, AG-10.1)", () => {
     expect(
       (await a.call("POST", "/api/workspaces/nowhere/sessions")).status,
     ).toBe(404);
+  });
+
+  it("issue 503: no PTY to open is a 503 with code pty_open and the reason, audited", async () => {
+    const a = await api();
+    a.r.deps.env = { ...a.r.deps.env, SHELL: "/bin/sh" };
+    a.r.pty.factory = () => {
+      throw new Error("posix_openpt failed: no PTY left");
+    };
+    const r = await a.call("POST", "/api/workspaces/north/sessions");
+    expect(r.status).toBe(503);
+    expect(r.json).toMatchObject({ ok: false, code: "pty_open" });
+    expect(String(r.json.error)).toMatch(/posix_openpt failed: no PTY left/);
+    expect(recentActions().at(-1)).toMatchObject({
+      verb: "sessions",
+      outcome: "refused",
+    });
   });
 });

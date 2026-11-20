@@ -40,6 +40,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -67,11 +69,7 @@ beforeAll(async () => {
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await pw[engine].connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -128,6 +126,7 @@ async function page(
     viewport: { width: opts.width ?? 1440, height: opts.height ?? 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -742,6 +741,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
               colorScheme: scheme,
               reducedMotion: "reduce",
             });
+            await signIn(ctx, s!.stateDir, s!.base);
             await ctx.addInitScript((v) => {
               try {
                 for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -847,6 +847,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     });
+    await signIn(ctx, s!.stateDir, s!.base);
     await ctx.addInitScript((v) => {
       try {
         for (const k of ["den-changelog-seen", "acme-changelog-seen"])

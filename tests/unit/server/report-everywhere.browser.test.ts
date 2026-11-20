@@ -26,6 +26,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { pageImport } from "./helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
 
@@ -49,14 +50,12 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     n: 3,
     how: "approval and pair dialogs: .btns footer",
   },
-  "ws-delete-agents.js": {
-    n: 1,
-    how: "deleting a project's agents: .wsd-acts",
-  },
-  "server-agent-page.js": { n: 2, how: "start fresh: .sa-fresh-acts" },
-  "restart-den.js": { n: 1, how: "restart: .rd-acts, or a footer of its own" },
-  "agent-helpers.js": { n: 1, how: "helpers list: a footer of its own" },
-  "transcript-view.js": { n: 2, how: "transcript: a footer of its own" },
+  // Issues 669, 670: deleting a project's agents (ws-delete-agents.js),
+  // start fresh (server-agent-page.js), restart (restart-den.js), Unlink
+  // from a Hub project (settings-registry.js), the helpers list
+  // (agent-helpers.js), the transcript (transcript-view.js) and My reports
+  // (report-den.js) are the kit's dialog frame now: no construct of their
+  // own, and mountDialog puts Report first in the frame's .dk-ft.
   // Issue 95: What's new is the UI kit's (whatsnew.js: Report in its
   // .cl-footer, from den-kit.js's reportButton).
   "topbar.js": {
@@ -82,15 +81,6 @@ const KNOWN: Record<string, { n: number; how: string }> = {
   "graph.js": {
     n: 1,
     how: "the popped detail panel: reportFoot() drawn with it (panel.js, den#143)",
-  },
-  // Issue 95: the form itself is the UI kit's now (den-ui report.js).
-  "report-den.js": {
-    n: 1,
-    how: "My reports (part of Report: its own way to it)",
-  },
-  "settings-registry.js": {
-    n: 1,
-    how: "Unlink from a Hub project (issue 167): reportButton(true) in .hubp-dlg-acts",
   },
   "popover.js": { n: 3, how: "not a pop-up: how pop-ups close" },
   "report-inject.js": { n: 2, how: "not a pop-up: the injector's own list" },
@@ -128,11 +118,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

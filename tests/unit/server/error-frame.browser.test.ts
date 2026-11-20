@@ -17,6 +17,7 @@
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import * as path from "path";
 import type { Browser, Page } from "playwright";
 import {
   removeFrameTmp,
@@ -24,6 +25,8 @@ import {
   type FrameServer,
 } from "./helpers/error-frame-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
@@ -32,11 +35,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -53,7 +52,9 @@ afterAll(async () => {
 });
 
 async function open(p: string): Promise<Page> {
-  const page = await browser!.newPage();
+  const context = await browser!.newContext();
+  await signIn(context, path.join(s!.tmp, "den-home"), s!.base);
+  const page = await context.newPage();
   await page.goto(`${s!.base}${p}`);
   await page.waitForSelector(".den-top");
   return page;
@@ -79,7 +80,7 @@ describe("the error pages", () => {
     ).toBeGreaterThan(0);
     expect(await page.locator("#den-err-search").count()).toBe(1);
     expect(await page.locator("ul.pages li").count()).toBeGreaterThan(5);
-    await page.close();
+    await page.context().close();
   });
 
   it("a 400 (/attest with no return of this Den's own) says why, not 'Something went wrong' (den#145)", async () => {
@@ -92,7 +93,7 @@ describe("the error pages", () => {
     expect(await page.textContent("#den-error-page .lead")).toContain(
       "isn't one of this Den's own",
     );
-    await page.close();
+    await page.context().close();
   });
 
   it("a near-miss suggests the page it misses", async () => {
@@ -100,7 +101,7 @@ describe("the error pages", () => {
     const page = await open("/servics");
     await page.waitForSelector(".den-err-mean a");
     expect(await page.textContent(".den-err-mean a")).toBe("Services");
-    await page.close();
+    await page.context().close();
   });
 
   it("a route that throws: the 500 page with the log's request id", async () => {
@@ -116,7 +117,7 @@ describe("the error pages", () => {
     expect(await page.locator("#den-err-retry").count()).toBe(1);
     expect(await page.locator("#den-err-copy").count()).toBe(1);
     expect(await page.content()).not.toContain("debug route threw");
-    await page.close();
+    await page.context().close();
   });
 });
 
@@ -142,7 +143,7 @@ describe("a failed action", () => {
     );
     expect(await toast.locator('[data-te="retry"]').count()).toBe(1);
     expect(await toast.locator('[data-te="copy"]').count()).toBe(1);
-    await page.close();
+    await page.context().close();
   });
 });
 
@@ -159,7 +160,7 @@ describe("the stale engine and the unreachable server", () => {
     );
     expect(await page.locator(".den-upd .upd-go").textContent()).toBe("Reload");
     expect(await page.locator('[data-banner="engine"]').count()).toBe(0);
-    await page.close();
+    await page.context().close();
   }, 20_000);
 
   it("the server stops: the banner and an unknown chip; it clears on restart", async () => {
@@ -179,6 +180,6 @@ describe("the stale engine and the unreachable server", () => {
     expect(await page.textContent("#den-status")).not.toContain(
       "Status unknown",
     );
-    await page.close();
+    await page.context().close();
   }, 60_000);
 });
