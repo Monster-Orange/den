@@ -16,6 +16,7 @@
  * (HTML from that JSON), so tests need no server. Words come from the
  * shell's catalog ("v.*"); environment and module names stay as they are.
  */
+import { formatTime } from "/kit/time.js";
 
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
 
@@ -80,20 +81,9 @@ function badge(answer, word) {
   return `<span class="vf-badge vf-${a.tone}"><span class="vf-dot" aria-hidden="true"></span>${esc(t(word ?? a.word))}</span>`;
 }
 
+/** In the person's chosen zone and the page's language (issue 668). */
 function when(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  try {
-    return d.toLocaleString(
-      globalThis.document?.documentElement?.lang || undefined,
-      {
-        dateStyle: "medium",
-        timeStyle: "short",
-      },
-    );
-  } catch {
-    return d.toISOString();
-  }
+  return formatTime(iso);
 }
 
 /** The one sentence on an environment's card. */
