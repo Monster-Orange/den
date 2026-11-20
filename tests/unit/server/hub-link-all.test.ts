@@ -184,11 +184,15 @@ describe("#68: /api/hub/link-suggestions", () => {
       projects: { project: string }[];
     };
     expect(j.projects.map((p) => p.project)).toEqual(["back-office"]);
-    const r = await post(url, { links: [{ project: "default", hub: SITE.id }] });
+    const r = await post(url, {
+      links: [{ project: "default", hub: SITE.id }],
+    });
     expect(await r.json()).toEqual({
       ok: true,
       linked: [],
-      skipped: [{ project: "default", code: "unknown", why: "no such project" }],
+      skipped: [
+        { project: "default", code: "unknown", why: "no such project" },
+      ],
     });
     expect(store.get("default")).toBeUndefined();
     expect(sent.n).toBe(0);
