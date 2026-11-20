@@ -8,7 +8,8 @@
 // wrote it: "(your person · …)" for the install's own person. Only that
 // comment answers the question, so clause 2 (the question leaves the
 // bell) runs only when the bed's Hub comments as the install's person;
-// otherwise it skips (needs-owner-comment) and says who Den saw.
+// otherwise it skips (needs-owner-comment): Hub refuses a person's
+// sign-in link in an agent session, so the clause is the person's to check.
 //
 // Clause 3: a second stub shows a permission dialog (proven on screen,
 // with its hook), then a Hub comment comes for it. Nothing is typed. Hub
@@ -309,7 +310,8 @@ export function expect(r) {
     row2 = {
       ok: null,
       skip: "needs-owner-comment",
-      detail: `the bed's Hub comments as ${q.by}, and Den typed it as from ${JSON.stringify(q.from)}, not "your person": only the install's own person's comment answers the question`,
+      detail:
+        "Hub refuses a person's sign-in link in an agent session, so the bed can't comment as the install's own person; this clause goes to the person's check list.",
     };
   else
     row2 = {
