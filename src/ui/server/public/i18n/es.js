@@ -871,6 +871,12 @@
     "set.server.crash_loop_minutes": "Ventana de la protección, en minutos",
     "set.server.crash_loop_minutes.d":
       "Los minutos en los que se cuentan los cierres no limpios de arriba. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "Espera de la búsqueda de procesos",
+    "set.server.lookup_first.d":
+      "Cuánto espera __DEN_TITLE__ en su primer intento cuando pregunta al sistema qué proceso tiene una conexión (lsof, ps). Así se ubican las llamadas de un agente. __DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "Espera del reintento de la búsqueda",
+    "set.server.lookup_retry.d":
+      "Cuánto espera el segundo intento cuando el primero se quedó sin tiempo. Una máquina ocupada puede tardar en responder. __DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout":
       "Espera de la comprobación de dirección",
     "set.server.address_check_timeout.d":
@@ -941,7 +947,7 @@
     "set.server.report_visibility_wait":
       "Informe: espera de la visibilidad del repositorio",
     "set.server.report_visibility_wait.d":
-      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice público, y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice que no se sabe (con el aviso), y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     "set.server.report_visibility_retry":
       "Informe: reintento de la visibilidad del repositorio",
     "set.server.report_visibility_retry.d":
@@ -958,6 +964,15 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.hook_wait": "Espera de los hooks de agente",
+    "set.agents.hook_wait.d":
+      "Cuánto esperan los hooks de un agente a __DEN_TITLE__ en cada intento cuando le avisan de que el agente te necesita o revisan la bandeja de Hub. Una máquina ocupada puede tardar en responder. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    "set.agents.hook_retries": "Reintentos de los hooks de agente",
+    "set.agents.hook_retries.d":
+      "Cuántas veces más lo intenta el hook de un agente cuando __DEN_TITLE__ no respondió a tiempo o rechazó la llamada. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.retries=2",
+    "set.agents.hook_backoff": "Pausa de los hooks de agente",
+    "set.agents.hook_backoff.d":
+      "Cuánto espera el hook de un agente antes de su primer reintento. Cada pausa siguiente se duplica. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "Compactación repetida: compactaciones",
     "set.agents.compaction_loop.d":
       "Cuántas compactaciones automáticas puede tener un agente dentro de los minutos de abajo antes de que la campana avise de que se compacta una y otra vez. Una campana por episodio. __DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -1245,6 +1260,7 @@
     "ag.state.interrupted": "interrumpido",
     "ag.why.stopped": "Lo detuviste a las {time}",
     "ag.why.interrupted": "Interrumpido: {name} se reinició",
+    "ag.why.restartFailed": "No volvió tras un reinicio: {why}",
     "ag.why.exited": "Salió",
     "ag.why.exitedCode": "Salió (código {code})",
     "ag.fresh": "Empezar de cero",
@@ -1871,6 +1887,8 @@
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
+    "bell.m.heldAllow": "{name} espera tu permiso: {what}",
+    "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
@@ -1890,6 +1908,8 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.backNoteHeld":
+      "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":
       "__DEN_TITLE__ se reinició para terminar una actualización mientras {agent} trabajaba",
     "bell.m.updateWaitsAskedWhat":

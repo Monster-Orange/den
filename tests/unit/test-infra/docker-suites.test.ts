@@ -51,7 +51,8 @@ describe("test files that start Docker containers (issue 296)", () => {
   });
 
   it("run after the rest in CI's and the release's test jobs", () => {
-    for (const f of ["ci.yml", "release.yml"]) {
+    // the release's tests: release-gates.yml, which release.yml and its dry run call (issue 615)
+    for (const f of ["ci.yml", "release-gates.yml"]) {
       const doc = yaml.parse(
         fs.readFileSync(path.join(ROOT, ".github", "workflows", f), "utf-8"),
       ) as {
@@ -91,10 +92,20 @@ describe("test files that start Docker containers (issue 296)", () => {
         }
       return seen;
     };
-    // A failed step fails the tests job, and every publishing job waits on it.
+    // A failed step fails the tests job (in release-gates.yml, the gates
+    // job here), and every publishing job waits on it.
     for (const j of ["publish", "den-ui"])
-      expect([j, upstream(j).has("tests")]).toEqual([j, true]);
-    const t = doc.jobs.tests;
+      expect([j, upstream(j).has("gates")]).toEqual([j, true]);
+    expect((doc.jobs.gates as { uses?: string } | undefined)?.uses).toBe(
+      "./.github/workflows/release-gates.yml",
+    );
+    const gates = yaml.parse(
+      fs.readFileSync(
+        path.join(ROOT, ".github", "workflows", "release-gates.yml"),
+        "utf-8",
+      ),
+    ) as { jobs: Record<string, Job> };
+    const t = gates.jobs.tests;
     expect(t["continue-on-error"]).toBeUndefined();
     for (const s of (t.steps ?? []).filter((x) =>
       x.run?.startsWith("npm test"),

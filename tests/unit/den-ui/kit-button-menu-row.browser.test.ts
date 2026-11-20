@@ -29,6 +29,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const POPOVERS = path.join(__dirname, "fixtures", "kit-menu-popovers.json");
@@ -39,7 +40,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

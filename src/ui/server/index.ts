@@ -26,6 +26,8 @@ import type { UpdateWait } from "./update-check.js";
 import {
   isUpdateAsk,
   securityUpdateNote,
+  backNoteHeldNote,
+  BACK_NOTE_HELD_SUBJECT,
   staleUpdateAsk,
   updateWaitNotes,
 } from "./update-check.js";
@@ -338,7 +340,13 @@ import {
   sessionSetCookie as sessionCookieLine,
 } from "./session-cookie.js";
 import { NamedAddressWatch, type NamedAnswer } from "./named-address.js";
-import { kitPage, serveUiAsset } from "./ui-assets.js";
+import {
+  kitPage,
+  kitSiteDir,
+  serveSiteFile,
+  serveUiAsset,
+  sitePage,
+} from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
 import {
   migrateWebUrl,
@@ -394,6 +402,7 @@ import {
   runGh,
   shotReaderOf,
 } from "./report-routes.js";
+import { publicRepoVisibility } from "./report-visibility.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -781,7 +790,8 @@ const themeDeps: ThemeRouteDeps = {
   prefs: () => appearancePrefs(readUserConfig().appearance),
   distributionTheme: () => readBrand().theme,
   warn: (line) => serverLog(line, "warn"),
-  denFavicon: path.join(PUBLIC_DIR, "favicon.ico"),
+  // Issue 644: the kit's tab icon, for a theme with a text mark.
+  denFavicon: path.join(kitSiteDir(), "favicon.ico"),
 };
 // The pre-paint script in each page reads the user's mode and the theme's
 // default mode from these placeholders, so the first paint is right.
@@ -802,7 +812,8 @@ setHtmlFill((html) => {
     /* defaults */
   }
   // issue 206: the person's time zone, when picked, for the first paint.
-  let out = zonePage(kitPage(localizePage(html, lang)), zone)
+  // Issue 644: the kit's head snippet (tab icons, manifest, theme colour).
+  let out = zonePage(sitePage(kitPage(localizePage(html, lang))), zone)
     .split("@@DEN_MODE@@")
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")
@@ -1133,6 +1144,8 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
+import { syncHeldBell } from "./held-bell.js";
+import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1161,9 +1174,12 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
   callerPid,
+  callerMiss,
   peerSettled,
   refusalDetail,
   tokenCaller,
@@ -1903,6 +1919,11 @@ const GUARD: GuardContext = {
           : null;
         const from = tokenCaller(req, root);
         if (from !== "ok") {
+          // Issue 609: why it wasn't placed. A caller that had already
+          // closed its connection is refused all the same, but nothing is
+          // there to answer: audited as gone, not as a refused agent.
+          const why = from === "unknown" ? callerMiss(req) : null;
+          const gone = why === "gone";
           recordAction(
             null,
             {
@@ -1914,9 +1935,10 @@ const GUARD: GuardContext = {
                 root,
                 method: req.method ?? "GET",
                 path: new URL(req.url ?? "/", "http://x").pathname,
+                why,
               }),
-              outcome: "refused",
-              reason: `token_${from}`,
+              ...(gone ? {} : { outcome: "refused" as const }),
+              reason: gone ? "token_caller_gone" : `token_${from}`,
             },
             rec.actor,
           );
@@ -2758,6 +2780,7 @@ type ApprovalDeps = {
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
+  changed: () => void;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -3139,8 +3162,47 @@ function approvalDeps(): ApprovalDeps {
     // Issue 172: a write held for the person's Allow alerts them.
     held: (agent, project) =>
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
+    // Issue 142: a held write counts in the bell while it waits.
+    changed: syncHeldWrites,
   };
   return approvals;
+}
+/**
+ * Issue 142: the bell's held-write items made to match what waits now
+ * (held-bell.ts). Best effort: the queue and the Allow dialog have it.
+ */
+function syncHeldWrites(): void {
+  try {
+    syncHeldBell(
+      notificationDeps().store,
+      approvals ? approvals.queue.pending() : [],
+      {
+        projectOf: (a) =>
+          typeof a.args.project === "string"
+            ? a.args.project
+            : a.agent
+              ? (readAgentRecord(getStateDir(), a.agent)?.workspace ??
+                undefined)
+              : undefined,
+      },
+    );
+  } catch {
+    /* the bell is best effort */
+  }
+}
+/**
+ * Issue 142: at the start (a restart ended every request: their items go)
+ * and every few seconds while any wait (one that expired: its item goes).
+ */
+function startHeldWritesBell(): void {
+  let shown = true;
+  syncHeldWrites();
+  setInterval(() => {
+    const n = approvals ? approvals.queue.pending().length : 0;
+    if (!n && !shown) return;
+    syncHeldWrites();
+    shown = n > 0;
+  }, 5000).unref();
 }
 /** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
 export function approvalsSettings(raw: unknown): {
@@ -3648,6 +3710,20 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         pause_after_loop: c.pause,
         instruction_share_percent: c.sharePercent,
         context_tokens: c.contextTokens,
+      };
+    })(),
+    // Issue 609: how long Den's process lookups wait (process_lookup.*).
+    process_lookup: (() => {
+      const [first, retry] = lookupTimeouts({}, () => user);
+      return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
+    })(),
+    // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
+    agent_hooks: (() => {
+      const c = hookCallSettings(() => user);
+      return {
+        timeout_seconds: c.timeoutMs / 1000,
+        retries: c.retries,
+        backoff_seconds: c.backoffMs / 1000,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
@@ -4410,6 +4486,7 @@ async function handleRequest(
       // Issue 403: a kept screenshot is the person's (proved, as approvals
       // ask) or this install's own agent's; never an anonymous request.
       shotReader: (r) => shotReaderOf(r, guard),
+      publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -4428,26 +4505,25 @@ async function handleRequest(
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
   }
 
-  if (pathname === "/favicon.ico") {
-    return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
-  }
+  // Issue 644: the kit's site files at the root (/favicon.ico,
+  // /favicon.svg, /apple-touch-icon.png, the icons, /site.webmanifest).
   // Issue 172 S2: the app manifest, so a phone can add Den to its home
-  // screen (an iPhone gets push only from there).
+  // screen (an iPhone gets push only from there); /manifest.webmanifest is
+  // its older URL.
+  if (
+    pathname === "/favicon.ico" ||
+    pathname === "/favicon.svg" ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname === "/icon-192.png" ||
+    pathname === "/icon-512.png" ||
+    pathname === "/icon-maskable-512.png" ||
+    pathname === "/site.webmanifest"
+  ) {
+    serveSiteFile(res, pathname, product().title);
+    return;
+  }
   if (pathname === "/manifest.webmanifest") {
-    res.writeHead(200, {
-      "Content-Type": "application/manifest+json",
-      "Cache-Control": "no-store",
-    });
-    res.end(
-      JSON.stringify({
-        name: product().title,
-        short_name: product().title,
-        start_url: "/agents",
-        scope: "/",
-        display: "standalone",
-        icons: [{ src: "/favicon.ico", sizes: "48x48" }],
-      }),
-    );
+    serveSiteFile(res, "/site.webmanifest", product().title);
     return;
   }
 
@@ -7405,6 +7481,8 @@ async function handleRequest(
           reports?: unknown;
           feedback?: unknown;
           address_check?: unknown;
+          process_lookup?: unknown;
+          agent_hooks?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -7441,6 +7519,8 @@ async function handleRequest(
             reports: body.reports,
             feedback: body.feedback,
             address_check: body.address_check,
+            process_lookup: body.process_lookup,
+            agent_hooks: body.agent_hooks,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -8055,6 +8135,34 @@ server.on(
   },
 );
 
+/**
+ * An upgrade refused for want of a sign-in (a terminal that can't attach):
+ * an audit row and a WS line on stderr, which is web.log even when `web
+ * up` starts this --silent. The route's template, the status and the
+ * code only: never a cookie, a header or the session's id.
+ */
+function traceUpgradeSignin(
+  pathname: string,
+  g: Extract<GuardResult, { ok: false }>,
+): void {
+  const route = isSessionIoPath(pathname)
+    ? "/api/sessions/:id/io"
+    : routeTemplate(pathname);
+  try {
+    recordAction(null, {
+      verb: "request",
+      detail: `WS ${route} ${g.status}`,
+      outcome: "refused",
+      reason: g.code,
+    });
+  } catch {
+    /* the audit is best-effort here */
+  }
+  const line = `  ⚠ WS ${route} → ${g.status} ${g.code}`;
+  if (!SILENT) return; // serverLog's request line is on stdout then
+  if (!outputLost()) process.stderr.write(line + "\n");
+}
+
 function handleUpgrade(
   req: http.IncomingMessage,
   socket: net.Socket,
@@ -8078,6 +8186,7 @@ function handleUpgrade(
       "request",
     );
     auditGuardRefusal(req, pathname, guard);
+    if (guard.code === "signin_required") traceUpgradeSignin(pathname, guard);
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
@@ -8464,6 +8573,8 @@ void CRASH_GATE.then(() =>
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
+    // Issue 142: a held write counts in the bell while it waits.
+    startHeldWritesBell();
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
     // web.owner_name_timeout_seconds: how long it waits.
@@ -8596,9 +8707,36 @@ async function serverBack(): Promise<void> {
       const ops = await import("../cli/agent-ops.js");
       const { webDeps } = await import("./agent-routes.js");
       const d = webDeps();
+      const agentName = serverAgentName(product().title);
       told = await tellBack(text, {
         state: () => ops.serverAgentInputState(d),
         type: (t) => ops.typeIntoAgent(d, SERVER_AGENT_ID, t),
+        // Issue 629: never into a dialog for its person; kept until answered.
+        dialog: () => ops.serverAgentDialogOpen(d),
+        held: () => {
+          serverLog(
+            `  Back from a restart: the note to ${agentName} waits for its person's dialog`,
+            "lifecycle",
+          );
+          try {
+            backNoteHeldNote(
+              notificationDeps().store,
+              product().title,
+              agentName,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
+        cleared: () => {
+          try {
+            notificationDeps().store.remove(
+              (x) => x.subject === BACK_NOTE_HELD_SUBJECT,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitMs: restartWaitSeconds() * 1000,
       });
     } catch (e) {

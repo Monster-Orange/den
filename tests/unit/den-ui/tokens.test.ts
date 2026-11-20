@@ -171,8 +171,11 @@ describe("den-ui tokens (UK-1)", () => {
     const walk = (d: string) => {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         const p = path.join(d, e.name);
-        if (e.isDirectory()) walk(p);
-        else if (/\.(css|js|mjs|html)$/.test(e.name)) files.push(p);
+        // site/ is the kit's tab icons and head snippet (issue 644): the
+        // brand's own colours (the theme colour), not a component's.
+        if (e.isDirectory()) {
+          if (path.relative(SRC, p) !== "site") walk(p);
+        } else if (/\.(css|js|mjs|html)$/.test(e.name)) files.push(p);
       }
     };
     walk(SRC);

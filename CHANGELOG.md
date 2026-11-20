@@ -4,11 +4,44 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.74] - unreleased
+## [0.4.76] - 2026-11-19
+
+### Fixed
+
+- Agents' terminals attach again when Den is opened on its named https address; in 0.4.75 every terminal pane there showed "Reconnecting…". A terminal attach refused for want of a sign-in is now recorded in the activity trail and the web log, even when the server runs quietly. (issue 653)
+- Terminal host restart after an update: every agent that was running is resumed or reported. An agent that relaunched from its handoff resumes in its new conversation. A resume that doesn't hold (checked `sessions.host_restart_check_seconds`, default 30, after) counts as failed. The bell and the agent's row say why, and Resume brings it back. (issue 631)
+- An agent's calls to Den are no longer refused as "from a process Den couldn't place" when Den's process lookup is slow, so its attention marks reach Den again. How long the lookups wait is now a Setting (Settings › Server: 5 s, then 20 s, as before). `doctor` warns about any agent whose attention marks didn't reach Den in the last day: how many, and the last reason. (issue 609)
+
+### Checks
+
+- Every browser test gets its browser from one helper, which uses the shared Playwright server when `DEN_PW_WS` is set and never starts a local browser then. A check fails any test that opens a browser by itself. (issue 463)
+- The live check for issue 629 leaves the bed's server agent as it found it, and checks that a Hub comment for an agent showing a dialog waits for the answer and is typed once.
+
+## [0.4.75] - 2026-11-19
+
+A security release. Upgrading is recommended.
 
 ### Security
 
-- Sign-in: once Den's own https address works, the browser sign-in lives only there, and sign-in on any other name goes to it. Installs without a working https address keep signing in as before, and `den doctor` says how to set the address up. If the address stops answering, sign-in where the browser is comes back after `web.address_unknown_keep_seconds` (new, default 300). New setting `web.address_check_drop_after` (default 2). Upgrading is recommended. (issue 601)
+- Den no longer types into an agent while the agent shows a dialog for its person (a permission dialog, or its folder-trust question). This covers the note after a restart, Hub comments, the tools note, a lead's question, messages from the page or Hub, and first instructions. The note after a restart is kept until the dialog is answered, and the bell says it is waiting. A message sent while such a dialog is open is refused with a clear reason (409 `dialog_open`). Versions 0.4.72 to 0.4.74 could, after a security self-update, answer the server agent's open permission prompt themselves; see the advisory. Until you upgrade: `server_agent.self_update: ask`, or `server_agent.security_update_skips_questions: false`. (issue 629)
+
+### Fixed
+
+- A held write waiting on your Allow counts in the bell, as one item under Needs you. It goes when the request is allowed, denied, expired or withdrawn. New: `POST /api/approvals/<id>/withdraw` lets the asker take back its own held write before anyone decides; the activity trail records it as withdrawn. (issue 142)
+
+### Changed
+
+- Every dev tag runs a dry run of the release: the release's own checks, tests and pack with the versions it will carry, and nothing published. (issue 615)
+
+### Checks
+
+- The live checks for the rail's Terminal (issue 448) and the Report form's visibility pill (issue 415) prove their en, es and ja words and the remaining cases. A new live check proves that Den types nothing into an agent while its dialog is open (issue 629).
+
+## [0.4.74] - 2026-11-19
+
+### Security
+
+- Sign-in: once Den's own https address works, the browser sign-in lives only there, and sign-in on any other name goes to it. Installs without a working https address keep signing in as before, and `den doctor` says how to set the address up. When the address is first proven, browsers signed in on this machine's own name (127.0.0.1 or localhost) are signed out and sign in once more at the address; scripts that keep a browser session should sign in there. If the address stops answering, sign-in where the browser is comes back once `web.address_check_drop_after` checks in a row fail (new, default 2; the check runs every `web.address_check_cache_seconds`, default 60, so about two minutes). A check that can't tell, a timeout, keeps the address for `web.address_unknown_keep_seconds` (new, default 300) from its last answer. Upgrading is recommended. (issue 601)
 - A security release no longer waits for a busy agent before installing; the restart still waits for turns to end. New setting `server_agent.security_update_skips_busy` (default on). (issue 603)
 
 ### Fixed

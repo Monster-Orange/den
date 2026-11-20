@@ -64,7 +64,7 @@ import {
   type ReportKind,
 } from "../../shared/feedback.js";
 import type { Decision, FlowView } from "./device-flows.js";
-import { repoVisibilities } from "./report-visibility.js";
+import { repoVisibilities, type PublicLookup } from "./report-visibility.js";
 import {
   draftStore,
   sentLog,
@@ -123,6 +123,12 @@ export interface ReportRouteDeps {
    * (shotReaderOf with the request's guard). Absent: nobody may.
    */
   shotReader?: (req: http.IncomingMessage) => ShotReader;
+  /**
+   * Issue 415: GitHub's tokenless answer for a repo's visibility, the
+   * fallback when the person's `gh` can't say ("public" or null). None:
+   * not asked.
+   */
+  publicRepo?: PublicLookup;
   /** An open issue with this title, read without a token (F5), or null. */
   searchOpen?: (
     repo: string,
@@ -625,23 +631,26 @@ export function handleReportRoutes(
       const who = d.personOf(req);
       const signedIn = await ghSignedIn(d);
       // Issue 415: each destination's visibility, so the form says who can
-      // see it, read with the person's `gh` (none signed in: no access, so
-      // no lookup). Unknown reads as public; the wait is short and bounded.
-      const vis = signedIn
-        ? await repoVisibilities(d.stateDir(), s.repos, {
-            gh: (a) => d.gh(a),
-            ttlMs: s.visibilityCacheHours * 3_600_000,
-            timeoutMs: s.visibilityTimeoutSeconds * 1000,
-            retryMs: s.visibilityRetrySeconds * 1000,
-            now,
-          })
-        : {};
+      // see it: the person's `gh` first, GitHub's tokenless answer after.
+      // Still not known: "unknown", never "public" (the form then says not
+      // known, with the caution). The wait is short and bounded.
+      const vis =
+        signedIn || d.publicRepo
+          ? await repoVisibilities(d.stateDir(), s.repos, {
+              gh: signedIn ? (a) => d.gh(a) : null,
+              anon: d.publicRepo,
+              ttlMs: s.visibilityCacheHours * 3_600_000,
+              timeoutMs: s.visibilityTimeoutSeconds * 1000,
+              retryMs: s.visibilityRetrySeconds * 1000,
+              now,
+            })
+          : {};
       d.sendJson(res, {
         ok: true,
         enabled: s.enabled,
         repos: s.repos.map((repo) => ({
           repo,
-          visibility: vis[repo] ?? "public",
+          visibility: vis[repo] ?? "unknown",
         })),
         github: { signedIn, deviceFlow: !!d.flows },
         maxPerHour: s.maxPerHour,

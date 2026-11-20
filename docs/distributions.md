@@ -261,7 +261,15 @@ with "If you didn't ask an agent to do this, Deny." under it.
   token: its own), `GET /api/approvals/<id>` (the asking agent's own, the
   ticket holder's, or the person's) and
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
-  Every ask and decision is in the activity trail.
+  `POST /api/approvals/<id>/withdraw` (from 0.4.73) takes a request back
+  before anyone decides: only its asker may (the same agent token, or the
+  same person's bearer or session); anyone else gets 403, a decided
+  request 409, an unknown one 404. It reads `withdrawn` after, and nothing
+  runs. Every ask, decision and withdrawal is in the activity trail.
+- **A held write counts in the bell** (from 0.4.73): while it waits, it is
+  one item under Needs you, linked to the asking agent. It goes when the
+  request is allowed, denied, expired or withdrawn. Den's own "update to
+  X" ask has its one item.
 - **The server agent restarts its own Den** (`den_restart_server
 { reason }`, the held action `den_restart`). Den restarts in place on
   the version installed now, as Settings › Restart Den does; agents and
@@ -396,7 +404,8 @@ service:api/web"`).
   to re-run: `web down` answers `stopped: false` when the server wasn't
   running, and `ok` is true once nothing answers on its port. On a busy
   machine, where `lsof` or `ps` can't say which process holds the port
-  (each lookup gets 5 s, then 20 s; `DEN_LOOKUP_TIMEOUTS_MS` sets them),
+  (each lookup gets 5 s, then 20 s: the Settings `process_lookup.first_seconds`
+  and `retry_seconds`; `DEN_LOOKUP_TIMEOUTS_MS` overrides both),
   `web down` and `web restart` exit 1 saying they couldn't tell, and
   their `--json` answers `ok: false` with `stopped: false` (and `running:
 null` when the server doesn't answer either). Run them again.
@@ -3356,10 +3365,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
   "current", or "restart needed: host code changed" / "terminal module
   changed" with the restart command.
 
+  Issue 631: every agent running before the restart is in the audit
+  row's resumed, failed or cut list. The list is taken once more right
+  before the stop, and every agent whose terminal the host still ran
+  then is added, so an agent between the stop and the start of its
+  relaunch from a handoff isn't missed. No relaunch from a handoff starts
+  while the restart runs. An agent that relaunched from its handoff
+  resumes in its new conversation. Den looks again
+  `sessions.host_restart_check_seconds` (default 30; 0: no look) after
+  the resumes: an agent that ended since counts as failed, with its state
+  and last line. Each failed agent shows as interrupted, with Resume, and
+  its row says it didn't come back after a restart, and why. The bell has
+  a "needs you" item for it.
+
   ```yaml
   sessions:
     host_restart_wait_seconds: 900
     host_restart_note: true
+    host_restart_check_seconds: 30
   ```
 
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
@@ -4676,6 +4699,40 @@ process Den couldn't place. The audit row names both pids: the caller's
 ```yaml
 agents:
   token_peer_wait_ms: 30000 # ms, 0 to 600000
+```
+
+Den finds an agent's caller with the same lookups, so their limits
+(Settings › Server, `config process_lookup.*`) count here too:
+
+```yaml
+process_lookup:
+  first_seconds: 5 # the first try, 0.5 to 600
+  retry_seconds: 20 # the try after it ran out of time, 1 to 600
+```
+
+An attention mark Den never took (no answer, or a refusal) is written to
+the agent's own files folder (`agent-hooks-lost.jsonl`), and `doctor`
+shows a warning per agent with marks lost in the last day: how many, and
+the last reason.
+
+When Den can't place a caller, the audit row says why: the lookup timed
+out, failed, found no matching connection or more than one, or was
+still running when the wait ended. A caller that had already closed its
+connection is refused all the same, but nothing is there to answer, so
+its row says "the caller had gone" (reason `token_caller_gone`) and it
+isn't counted as a refused agent.
+
+An agent's hooks (its attention mark for the bell, the Hub inbox check)
+stay connected long enough for a busy machine to place them, and try
+again when a call fails or is turned away. These are Settings
+(Settings › Agents, or `config agent_hooks.*`, in user.yml), read when
+an agent starts:
+
+```yaml
+agent_hooks:
+  timeout_seconds: 20 # each try's wait, 1 to 600
+  retries: 2 # tries after the first, 0 to 10
+  backoff_seconds: 1 # the first pause, doubling, 0 to 60
 ```
 
 An agent's token reaches only its own session's routes, and never a

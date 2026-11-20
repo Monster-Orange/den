@@ -14,8 +14,10 @@
  *                 Copy report only.
  *       info()           → { repos: [{ repo }], maxPerHour, captureSeconds }
  *                 each repo may say its visibility ("public" | "private" |
- *                 "internal"; missing or anything else reads as public)
- *                 and an audience (who can see it, plain text)
+ *                 "internal" | "unknown"; missing or anything else is
+ *                 "unknown": a "Visibility not known" pill and a caution,
+ *                 never the public pill nor a private claim) and an
+ *                 audience (who can see it, plain text)
  *       diagnostics()    → { sections: { name: text } }  shown on Include
  *       preview(form, headers)  → { status, data: { title, body } }
  *                 the text the product will post (its redactor's); else
@@ -66,6 +68,36 @@ const esc = kitEsc;
 
 export function configureReport(o = {}) {
   Object.assign(cfg, o);
+}
+
+const VIS = ["public", "private", "internal"];
+
+/**
+ * Who can see a report sent to `repo`, one of the host's info().repos[]
+ * (issue 415). Public, private and internal only when the host says so;
+ * anything else is "unknown": the form then neither says public nor claims
+ * private, and keeps the caution (mask anything private). The audience
+ * shows only on private and internal. Gives the pill (after the
+ * destination) and the note (above Send) as markup, every word escaped.
+ */
+export function reportVisibility(repo, lng) {
+  const r = repo || {};
+  const l = lng ?? lang();
+  const say = (key, vars) => esc(kitT(l, key, vars));
+  const visibility = VIS.includes(r.visibility) ? r.visibility : "unknown";
+  const closed = visibility === "private" || visibility === "internal";
+  const audience = closed ? String(r.audience || "").trim() : "";
+  const key = { public: "pub", private: "priv", internal: "int" }[visibility];
+  const pill = `<span class="fb-pill" data-vis="${visibility}">${say(
+    `kit.report.${key || "unk"}`,
+  )}</span>${audience ? `<span class="fb-fine">${esc(audience)}</span>` : ""}`;
+  const note =
+    visibility === "public"
+      ? `<div class="fb-warn" role="note"><b>${say("kit.report.pub")}.</b> ${say("kit.report.pubW")}</div>`
+      : closed
+        ? `<p class="fb-fine" role="note" data-vis-note>${audience ? say("kit.report.privW", { who: audience }) : say("kit.report.privN")}</p>`
+        : `<div class="fb-warn" role="note" data-vis-unknown>${say("kit.report.unkW")}</div>`;
+  return { visibility, audience, pill, note };
 }
 
 /** The report as text, from the form alone (no product preview). */
@@ -309,32 +341,10 @@ export async function openReport(opts = {}) {
   function allSections() {
     return { ...st.diag, ...st.client };
   }
-  /**
-   * Who can see the selected repo (issue 415): public unless the host says
-   * private or internal, with the host's audience words then.
-   */
-  function vis(repos) {
-    const r = repos.find((x) => x.repo === st.repo) || {};
-    const v =
-      r.visibility === "private" || r.visibility === "internal"
-        ? r.visibility
-        : "public";
-    const who = v === "public" ? "" : String(r.audience || "").trim();
-    return { v, who };
-  }
-  /** The pill after the destination, then the audience when not public. */
-  function visPill(repos) {
-    const { v, who } = vis(repos);
-    const key = { public: "pub", private: "priv", internal: "int" }[v];
-    return `<span class="fb-pill" data-vis="${v}">${esc(t(`kit.report.${key}`))}</span>${who ? `<span class="fb-fine">${esc(who)}</span>` : ""}`;
-  }
-  /** Above Send: the public warning, or a quiet line for a private repo. */
-  function visNote(repos) {
-    const { v, who } = vis(repos);
-    if (v === "public")
-      return `<div class="fb-warn" role="note"><b>${esc(t("kit.report.pub"))}.</b> ${esc(t("kit.report.pubW"))}</div>`;
-    return `<p class="fb-fine" role="note" data-vis-note>${esc(who ? t("kit.report.privW", { who }) : t("kit.report.privN"))}</p>`;
-  }
+  /** Who can see the selected repo (issue 415): see reportVisibility. */
+  const selected = (repos) => repos.find((x) => x.repo === st.repo) || {};
+  const visPill = (repos) => reportVisibility(selected(repos), lang()).pill;
+  const visNote = (repos) => reportVisibility(selected(repos), lang()).note;
   /** Whether a screenshot goes with the report. */
   function shotOn() {
     return !!st.shot && !st.noShot;

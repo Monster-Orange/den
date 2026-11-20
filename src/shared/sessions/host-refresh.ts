@@ -29,6 +29,7 @@
 import * as fs from "fs";
 import type { HostClient } from "./client.js";
 import { fileIdentity, type PtyModuleInfo } from "./pty.js";
+import type { SessionInfo } from "./types.js";
 
 /**
  * Issue 597: the line an agent the restart cut mid-turn gets as its next
@@ -128,11 +129,13 @@ export async function stopHost(
   c: HostClient,
   socket: string,
   waitMs = 5000,
-): Promise<{ pid: number; ended: number }> {
+): Promise<{ pid: number; ended: number; live: SessionInfo[] }> {
   const pid = c.hostPid;
-  const ended = (await c.list().catch(() => [])).filter(
+  // Issue 631: the sessions it ran at its stop, so no agent goes missing.
+  const live = (await c.list().catch(() => [] as SessionInfo[])).filter(
     (s) => !s.exited,
-  ).length;
+  );
+  const ended = live.length;
   const closed = new Promise<void>((r) => c.once("close", () => r()));
   await c.shutdown();
   // The host drops every connection, then removes its socket.
@@ -141,7 +144,7 @@ export async function stopHost(
   while (fs.existsSync(socket) && Date.now() < deadline)
     await new Promise((r) => setTimeout(r, 50));
   c.close();
-  return { pid, ended };
+  return { pid, ended, live };
 }
 
 export interface RefreshDeps {
@@ -155,6 +158,22 @@ export interface RefreshDeps {
   running(): Promise<string[]>;
   /** Of those, the ones mid-turn now. */
   busy(running: string[]): Promise<string[]>;
+  /**
+   * Issue 631: the agents the host's sessions at its stop belong to (by
+   * their record's session, or their session's name), so an agent the
+   * last look missed (mid-relaunch, say) is resumed too.
+   */
+  agentsOf?(sessions: SessionInfo[]): Promise<string[]>;
+  /**
+   * Issue 631: of the agents resumed, those whose session has ended since,
+   * each with why ("exited (1) after its resume: <its last line>").
+   */
+  ended?(ids: readonly string[]): Promise<{ agent: string; why: string }[]>;
+  /**
+   * Issue 631: how long after the resumes to look for ones that ended
+   * (sessions.host_restart_check_seconds, in ms). 0 or unset: no look.
+   */
+  checkMs?: number;
   /** sessions.host_restart_wait_seconds, in ms. */
   waitMs: number;
   pollMs?: number;
@@ -256,12 +275,27 @@ export async function refreshSessionHost(
       `terminal host: agents still mid-turn after ${Math.round(waitedMs / 1000)} s (sessions.host_restart_wait_seconds): ${busy.join(", ")}; restarting anyway`,
     );
 
-  let stopped: { pid: number; ended: number } = { pid: 0, ended: 0 };
+  let stopped: { pid: number; ended: number; live: SessionInfo[] } = {
+    pid: 0,
+    ended: 0,
+    live: [],
+  };
   let to = 0;
+  // Issue 631: one more look right before the stop. An agent that wasn't
+  // running at the last look (between the stop and the start of its
+  // relaunch from a handoff) is on the list too: none goes missing.
+  running = [...running];
+  const add = (ids: readonly string[]) => {
+    for (const id of ids) if (!running.includes(id)) running.push(id);
+  };
+  add(await d.running().catch(() => [] as string[]));
   try {
     const now = await d.connectExisting();
     if (!now) return { did: "failed", why: "the terminal host went away" };
     stopped = await stopHost(now, d.socket);
+    // And every agent whose session the host still ran at its stop.
+    if (d.agentsOf)
+      add(await d.agentsOf(stopped.live).catch(() => [] as string[]));
     const back = await d.connect();
     to = back.hostPid;
     const after = hostStale(hostRuns(back), d.installed());
@@ -288,6 +322,19 @@ export async function refreshSessionHost(
     } catch (e) {
       failed.push({ agent: id, why: (e as Error).message });
     }
+  // Issue 631: a resume that started but didn't hold (the runtime exited
+  // after its first moments: a conversation it couldn't continue) is a
+  // failed one, with its reason, never a resumed one.
+  if (d.ended && d.checkMs && resumed.length) {
+    await new Promise((r) => setTimeout(r, d.checkMs));
+    const gone = await d.ended([...resumed]).catch(() => []);
+    for (const g of gone) {
+      const i = resumed.indexOf(g.agent);
+      if (i < 0) continue;
+      resumed.splice(i, 1);
+      failed.push(g);
+    }
+  }
   return {
     did: "restarted",
     why,

@@ -2,13 +2,15 @@
  * den-ui: the Report form says who can see the report (issue 415).
  *
  * Each of the host's info.repos[] may say its `visibility` ("public",
- * "private" or "internal"; missing or anything else reads as public) and
- * an `audience` (who can see it, as the host's own words).
+ * "private", "internal" or "unknown"; missing or anything else is unknown)
+ * and an `audience` (who can see it, as the host's own words).
  *
  * - Public: the "Public repository" pill and the "visible to everyone"
  *   warning above Send, as before.
  * - Private or Internal: that pill, then the audience, and no public
  *   warning: a quiet line instead, saying only people with access see it.
+ * - Unknown: a "Visibility not known" pill and a caution (mask anything
+ *   private): never "Public repository", never a private claim.
  * - With two targets, changing the select changes the pill and the line.
  * - en, es and ja.
  *
@@ -21,6 +23,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://vis.test";
@@ -33,11 +36,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -146,6 +145,8 @@ const seen = (p: Page) =>
 
 const PUB_W =
   "Screenshots and text are visible to everyone. Mask anything private.";
+const UNK_W =
+  "Treat it as public: screenshots and text may be visible to everyone. Mask anything private.";
 const ONLY = "Only people with access to this repository can see it";
 
 describe.each(["chromium", "webkit"])(
@@ -200,17 +201,20 @@ describe.each(["chromium", "webkit"])(
       await p.context().close();
     }, 60_000);
 
-    it("no visibility, or an unknown one: public", async () => {
+    it("no visibility, or an unknown one: not known, with the caution", async () => {
       const b = browsers[name];
       if (!b) return;
       for (const r of [
         { repo: "acme-eng/engine" },
+        { repo: "acme-eng/engine", visibility: "unknown" },
         { repo: "acme-eng/engine", visibility: "secret" },
       ]) {
         const p = await review(b, "en", [r]);
         const s = await seen(p);
-        expect(s.pills).toEqual(["Public repository"]);
-        expect(s.warn).toEqual([`Public repository. ${PUB_W}`]);
+        expect(s.pills).toEqual(["Visibility not known"]);
+        expect(s.warn).toEqual([UNK_W]);
+        expect(s.dest).not.toContain("Public repository");
+        expect(s.dest).not.toContain("Private repository");
         expect(s.note).toEqual([]);
         await p.context().close();
       }
@@ -226,6 +230,7 @@ describe.each(["chromium", "webkit"])(
           visibility: "private",
           audience: "the engine team",
         },
+        { repo: "acme-eng/misc" },
       ]);
       let s = await seen(p);
       expect(s.pills).toEqual(["Public repository"]);
@@ -251,6 +256,16 @@ describe.each(["chromium", "webkit"])(
       );
       s = await seen(p);
       expect(s.warn).toEqual([`Public repository. ${PUB_W}`]);
+      expect(s.note).toEqual([]);
+      // A target the host couldn't learn: not known, the caution kept.
+      await sel.selectOption("acme-eng/misc");
+      await p.waitForFunction(
+        () =>
+          document.querySelector(".fb-dest .fb-pill")?.textContent ===
+          "Visibility not known",
+      );
+      s = await seen(p);
+      expect(s.warn).toEqual([UNK_W]);
       expect(s.note).toEqual([]);
       await p.context().close();
     }, 60_000);

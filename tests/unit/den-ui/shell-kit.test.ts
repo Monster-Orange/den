@@ -168,12 +168,14 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(login).toContain('data-nav-shape="login"');
     // The role is never in the rail's entry: its shape is name, login.
     const role = accountHtml({
-      name: "Ada",
+      name: "Ada Lovelace",
       login: "ada",
       role: "Owner",
       href: "/me",
     });
-    expect(lines(role)).toEqual(["n:Ada", "l:@ada"]);
+    // (Issue 656: a name that is just the login, "Ada" for "ada", is no
+    // name; account-name-parity.test.ts has those.)
+    expect(lines(role)).toEqual(["n:Ada Lovelace", "l:@ada"]);
     expect(role).toContain('data-nav-shape="name,login"');
     expect(role).not.toContain("Owner");
     expect(

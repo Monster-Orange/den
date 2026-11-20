@@ -17,6 +17,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const errors: string[] = [];
 
@@ -29,11 +30,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     try {
       const pw = await import("playwright");
       const kind = pw[name];
-      browser = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browser = await launchBrowser(kind);
     } catch (err) {
       if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
       throw err;

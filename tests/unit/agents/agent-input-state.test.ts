@@ -11,8 +11,10 @@ import {
   agentInputState,
   busyAgentIds,
   resolveAgentsDeps,
+  sendFirstInstruction,
   typeIntoAgent,
 } from "../../../src/ui/cli/agent-ops.js";
+import { typeMessage } from "../../../src/ui/server/agent-say.js";
 import type { SessionInfo } from "../../../src/shared/sessions/types.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
@@ -103,6 +105,21 @@ async function sessionStart(r: Rig): Promise<number> {
     c.close();
   }
 }
+
+/**
+ * The runtime's permission dialog, as its screen ends while it waits for
+ * its person (the first choice highlighted).
+ */
+const DIALOG =
+  "Bash command\r\n\r\n  npm run build\r\n  Build it\r\n\r\n" +
+  "Do you want to proceed?\r\n❯ 1. Yes\r\n" +
+  "  2. Yes, and don't ask again for npm run build commands in /work\r\n" +
+  "  3. No, and tell Claude what to do differently (esc)\r\n";
+
+/** Its folder-trust question, as the screen ends with it. */
+const TRUST =
+  "Do you trust the files in this folder?\r\n\r\n/work\r\n\r\n" +
+  "❯ 1. Yes, proceed\r\n  2. No, exit\r\n";
 
 describe("agentInputState", () => {
   it("no such agent: missing", async () => {
@@ -259,4 +276,106 @@ describe("typeIntoAgent", () => {
       false,
     );
   });
+});
+
+describe("a dialog waiting for the person: Den never types into it", () => {
+  it("a permission dialog on screen: nothing typed, false", async () => {
+    const r = await rig();
+    await started(r, ask);
+    r.made[0].emit(DIALOG);
+    const before = r.made[0].writes.length;
+    const ok = await typeIntoAgent(
+      resolveAgentsDeps(r.deps),
+      "planner",
+      "Den is back on 0.4.74",
+    );
+    expect(ok).toBe(false);
+    await settle();
+    expect(r.made[0].writes.length).toBe(before);
+  }, 30_000);
+
+  it("its trust question on screen: nothing typed, false", async () => {
+    const r = await rig();
+    await started(r, null);
+    r.made[0].emit(TRUST);
+    const before = r.made[0].writes.length;
+    expect(
+      await typeIntoAgent(resolveAgentsDeps(r.deps), "planner", "hello"),
+    ).toBe(false);
+    await settle();
+    expect(r.made[0].writes.length).toBe(before);
+  }, 30_000);
+
+  it("the dialog answered and gone: typed as before", async () => {
+    const r = await rig();
+    await started(r, ask + answer);
+    r.made[0].emit(DIALOG);
+    r.made[0].emit("\x1b[2J\x1b[H> ");
+    expect(
+      await typeIntoAgent(resolveAgentsDeps(r.deps), "planner", "hello"),
+    ).toBe(true);
+    await settle();
+    expect(Buffer.concat(r.made[0].writes).toString()).toContain("hello");
+  }, 30_000);
+
+  it("a permission dialog on screen: busy, even when its turn reads ended or output is quiet", async () => {
+    const r = await rig();
+    await started(r, ask + answer);
+    r.made[0].emit(DIALOG);
+    await settle();
+    const d = resolveAgentsDeps(r.deps);
+    expect(await agentInputState(d, "planner")).toBe("busy");
+    const q = await rig();
+    await started(q, null);
+    q.made[0].emit(DIALOG);
+    await settle();
+    expect(
+      await agentInputState(
+        resolveAgentsDeps(q.deps),
+        "planner",
+        new Set(),
+        200,
+      ),
+    ).toBe("busy");
+  }, 30_000);
+
+  it("a message from the page or Hub with a dialog open: refused 409 dialog_open, nothing typed", async () => {
+    const r = await rig();
+    await started(r, ask);
+    r.made[0].emit(DIALOG);
+    await settle();
+    const before = r.made[0].writes.length;
+    const d = resolveAgentsDeps(r.deps);
+    const rec = JSON.parse(
+      fs.readFileSync(path.join(r.stateDir, "agents", "planner.json"), "utf-8"),
+    );
+    await expect(typeMessage(d, rec, "hello")).rejects.toMatchObject({
+      status: 409,
+      code: "dialog_open",
+    });
+    await settle();
+    expect(r.made[0].writes.length).toBe(before);
+  }, 30_000);
+
+  it("a first instruction (no quiet wait) with a dialog open: not typed, and its caller hears why", async () => {
+    const r = await rig();
+    await started(r, null);
+    r.made[0].emit(TRUST);
+    await settle();
+    const before = r.made[0].writes.length;
+    const d = resolveAgentsDeps(r.deps);
+    const sid = (record(r, "planner").session as { id: string }).id;
+    let held = false;
+    const rt = record(r, "planner").runtime as string;
+    const sent = await sendFirstInstruction(d, sid, rt, "go", {
+      quietMs: 0,
+      maxMs: 0,
+      onDialog: () => {
+        held = true;
+      },
+    });
+    expect([sent, held]).toEqual([false, true]);
+    await settle();
+    expect(r.made[0].writes.length).toBe(before);
+  }, 30_000);
 });

@@ -865,7 +865,27 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   `mark: { src: "<served path>/marks/den.svg", label }` (Den serves it at
   `/kit/marks/den.svg`). An image runs no script. `markHtml(mark)` draws
   it alone; Den's own theme mark is drawn by it. `{ text }` and `{ svg }`
-  work as before.
+  work as before. Issue 644: the mark has two drawings of one design.
+  `marks/den.svg` is for 22px and up. `marks/den-16.svg` is drawn for
+  16-18px: at the kit's 18px brand pass `marks/den-16.svg` (Den serves it
+  at `/kit/marks/den-16.svg`). Both are exported (`./marks/*`).
+- **Mark edge in dark mode**: in dark mode (`data-mode="dark"`, or the
+  system's dark with no mode set) a mark gets a 1px cream edge
+  (`--den-mark-edge`, `shell.css`) so its dark tile keeps its outline on a
+  dark bar. Never in light. One mark file serves both modes.
+- **Tab icons and the head snippet** (issue 644): `src/site/` holds one
+  head snippet, `site/head.html` (the favicon as .ico and .svg, the touch
+  icon, the manifest link and `<meta name="theme-color">`), and every file
+  it names: `favicon.ico`, `favicon.svg`, `apple-touch-icon.png`,
+  `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` and
+  `site.webmanifest`. Exported as `./site/*`
+  (`@monster-orange/den-ui/site/head.html`). A host puts the snippet in
+  every page's `<head>` as it is, and serves each other file in the folder
+  at the root (`/favicon.ico`, `/site.webmanifest`, …) with its type
+  (`image/x-icon`, `image/svg+xml`, `image/png`,
+  `application/manifest+json`). It may fill the manifest's `name`,
+  `short_name` and `start_url` with its own. Den does all of this, so Den
+  and every other product on the kit emit the same tags.
 - **Mark layout**: `.den-mark` (a centred flex box, its image a block)
   and the text and raster forms are in `shell.css`. A host deletes its
   own copy.

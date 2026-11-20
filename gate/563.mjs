@@ -79,7 +79,7 @@ export async function run(ctx, s) {
   }
   const n = await ctx.api("/api/notifications").catch(() => null);
   out.bell = JSON.stringify(n ?? "").includes("record:terminal-host-restarted");
-  const audit = ctx.readBed("audit.jsonl") ?? "";
+  const audit = ctx.readBed("state:audit.jsonl") ?? "";
   out.audit = /"verb":"terminal-host","detail":"terminal host restarted/.test(
     audit,
   );

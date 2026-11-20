@@ -67,6 +67,13 @@ describe("H5 sync: the project list Den sends", () => {
     expect(p.agents.map((x) => x.handle)).toEqual(["web/planner", "web/rev"]);
   });
 
+  it("issue 649: marks the catch-all project `default` with catch_all, and only it; still sends it", () => {
+    const list = projectList(file({ default: {}, web: {} }), () => []);
+    expect(list.map((p) => p.workspace)).toEqual(["default", "web"]);
+    expect(list[0]).toMatchObject({ workspace: "default", catch_all: true });
+    expect("catch_all" in list[1]).toBe(false);
+  });
+
   it("stays under Hub's limits (50 repos)", () => {
     const repos = Array.from({ length: 60 }, (_, i) => `acme-co/r${i}`);
     const [p] = projectList(file({ a: {} }), () => repos);

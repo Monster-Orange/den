@@ -511,6 +511,26 @@ export interface UserConfig {
     hub_timeout_seconds?: unknown;
   };
   /**
+   * Issue 609: how long Den's process lookups (lsof, ps) wait:
+   * first_seconds (5) the first try, retry_seconds (20) the one after
+   * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
+   */
+  process_lookup?: {
+    first_seconds?: unknown;
+    retry_seconds?: unknown;
+  };
+  /**
+   * Issue 609: how an agent's hooks (its attention mark, the Hub inbox
+   * check) call Den: timeout_seconds (20) a try, retries (2) after a
+   * failed or refused try, backoff_seconds (1) the first pause, doubling
+   * (agents/guardrails/hook-call.ts). Read at the agent's launch.
+   */
+  agent_hooks?: {
+    timeout_seconds?: unknown;
+    retries?: unknown;
+    backoff_seconds?: unknown;
+  };
+  /**
    * Issue 278: agents stuck compacting and instruction files that eat the
    * context (context-watch.ts): compaction_loop_count (3) automatic
    * compactions within compaction_loop_minutes (10) ring the bell;
@@ -2113,10 +2133,17 @@ export interface SessionsConfig {
    * line on resume, to check its last step and carry on (default true).
    */
   host_restart_note?: boolean;
+  /**
+   * Issue 631: how long after a terminal host restart's resumes Den looks
+   * for agents that ended since (a resume that didn't hold counts as
+   * failed, and the bell says so) (default 30; 0: no look).
+   */
+  host_restart_check_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
 export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
+export const DEFAULT_HOST_RESTART_CHECK_SECONDS = 30;
 export const DEFAULT_PTY_WARN_ABOVE = 400;
 export const DEFAULT_PTY_MACHINE_WARN_PERCENT = 90;
 
@@ -2129,6 +2156,7 @@ export interface ResolvedSessionsConfig {
   ptyMachineWarnPercent: number;
   hostRestartWaitSeconds: number;
   hostRestartNote: boolean;
+  hostRestartCheckSeconds: number;
 }
 
 const SESSIONS_KEYS = [
@@ -2139,6 +2167,7 @@ const SESSIONS_KEYS = [
   "pty_machine_warn_percent",
   "host_restart_wait_seconds",
   "host_restart_note",
+  "host_restart_check_seconds",
 ];
 
 /**
@@ -2168,7 +2197,21 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     ptyMachineWarnPercent: DEFAULT_PTY_MACHINE_WARN_PERCENT,
     hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
     hostRestartNote: true,
+    hostRestartCheckSeconds: DEFAULT_HOST_RESTART_CHECK_SECONDS,
   };
+  const check = raw.host_restart_check_seconds;
+  if (check !== undefined) {
+    if (
+      typeof check !== "number" ||
+      !Number.isFinite(check) ||
+      check < 0 ||
+      check > 3600
+    )
+      throw new Error(
+        `sessions.host_restart_check_seconds: must be a number of seconds, 0 to 3600 (got ${JSON.stringify(check)})`,
+      );
+    out.hostRestartCheckSeconds = check;
+  }
   const note = raw.host_restart_note;
   if (note !== undefined) {
     if (typeof note !== "boolean")

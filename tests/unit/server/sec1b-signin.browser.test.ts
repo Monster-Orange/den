@@ -25,6 +25,7 @@ import type { Browser, Page } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -39,7 +40,7 @@ let server: ChildProcess;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch({
+    browser = await launchBrowser(chromium, {
       args: [
         `--host-resolver-rules=MAP evil.test 127.0.0.1, MAP ${EDGE} 127.0.0.1`,
       ],
