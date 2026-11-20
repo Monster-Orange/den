@@ -21,7 +21,8 @@ where it came from and whether Den changed it):
   src/shared/agents/detect/rules/claude.toml
       from src/detect/manifests/claude.toml; not modified (header added)
   src/shared/agents/detect/rules/codex.toml
-      from src/detect/manifests/codex.toml; not modified (header added)
+      from src/detect/manifests/codex.toml; modified by Den (one rule
+      added, marked in the file)
   src/shared/agents/detect/rules/grok.toml
       from src/detect/manifests/grok.toml; not modified (header added)
   src/shared/agents/detect/rules/gemini.toml

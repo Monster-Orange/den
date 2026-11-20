@@ -4,7 +4,7 @@
 # Copyright (c) the herdr authors. Licensed under the Apache License,
 # Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0); see
 # THIRD_PARTY_NOTICES at the root of this repository.
-# Not modified by Den: herdr's file as it is, below this header.
+# Modified by Den: one rule added at the end (input_prompt_idle, marked).
 # Den ships this file with each release and never fetches rules at run time.
 
 id = "codex"
@@ -135,4 +135,23 @@ regex = ['\S']
 not = [
   { regex = ['(?:^| )[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?: |$)'] },
   { contains = ["Action Required"] },
+]
+
+# Added by Den (not in herdr's file): herdr calls a known agent that no
+# rule matches "idle", and its Codex idle comes from the window title.
+# Den keeps its own bell and output signals for an unmatched screen, so a
+# Codex with no title needs this: its `›` composer among the last lines,
+# with no live turn ("to interrupt") and no dialog footer. Working (500)
+# and blocked (900+) rules outrank it.
+[[rules]]
+id = "input_prompt_idle"
+state = "idle"
+priority = 50
+region = "bottom_non_empty_lines(3)"
+visible_idle = true
+line_regex = ['^›(?: |$)']
+not = [
+  { contains = ["to interrupt"] },
+  { contains = ["esc to cancel"] },
+  { contains = ["press enter to confirm"] },
 ]

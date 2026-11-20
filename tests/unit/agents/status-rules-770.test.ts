@@ -64,6 +64,18 @@ describe("1. Codex", () => {
   ])("%s is %s", (rel, want) => {
     expect(stateOf("codex", rel)).toBe(want);
   });
+
+  it("idle at its prompt with no window title: Den's own rule (input_prompt_idle)", () => {
+    const d = screenStatus(
+      "codex",
+      screen("agent-screens/codex/idle-no-title.raw"),
+    );
+    expect(d).toMatchObject({ state: "idle", rule: "input_prompt_idle" });
+    // Its approval dialog has a "› 1. Yes" line too: still Blocked.
+    expect(
+      stateOf("codex", "agent-screens/codex/blocked-approval-no-title.raw"),
+    ).toBe("blocked");
+  });
 });
 
 describe("2. Gemini and Grok", () => {
