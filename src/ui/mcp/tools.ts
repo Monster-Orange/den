@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2358,6 +2358,22 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  {
+    name: "host_restart",
+    title: "Restart the terminal host when agents are idle",
+    description:
+      "Issue 731: doctor's fix when its terminal host row says a restart is needed and Den's own restart of it failed or is not known to have run. On the person's Allow, Den waits until no agent is mid-turn (at most sessions.host_restart_wait_seconds), restarts the terminal host on the installed Den, resumes the agents it ran and records it in the activity trail (terminal-host). Open terminals end. Never stop the terminal host any other way: that stops every agent at once. Refused while Den is already waiting to restart it (doctor says since when). Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("host_restart", ctx.scope);
+      return askPerson("host_restart", "host_restart", {}, a, ctx);
     },
   },
   {
