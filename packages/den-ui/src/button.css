@@ -1,7 +1,8 @@
 /* den-ui: the general button (issue 556), for any page, inside the frame or
    not. Tokens only. Secondary is the base; `.primary` is the accent fill;
    `.sm` is the small size. A link drawn as a button is `a.den-btn`.
-   The values are the ones Den's frame drew, value for value. */
+   The values are the ones Den's frame drew, value for value. A held
+   button (aria-busy, issue 699) keeps its look: no hover change. */
 .den-btn {
   border: 1px solid var(--border);
   background: var(--surface);
@@ -13,7 +14,7 @@
   white-space: nowrap;
   color: var(--text);
 }
-.den-btn:hover {
+.den-btn:not([aria-busy="true"]):hover {
   border-color: var(--border-strong);
 }
 .den-btn.primary {
@@ -25,7 +26,8 @@
   padding: 2px 9px;
   font-size: 12.5px;
 }
-.den-btn:disabled, a.den-btn[aria-disabled="true"] {
+.den-btn:disabled,
+a.den-btn[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
 }

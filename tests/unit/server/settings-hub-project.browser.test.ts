@@ -22,6 +22,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
+import { shortDots } from "./helpers/short-dots.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -111,6 +112,8 @@ async function page(
     await p.reload();
   }
   await p.waitForSelector('[data-setting="workspace.hub"] [data-hubp]');
+  // Issue 699: the pop-up after a held button's dots, at 300 ms here.
+  await shortDots(p);
   return { p, puts };
 }
 

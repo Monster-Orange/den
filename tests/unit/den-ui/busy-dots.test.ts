@@ -114,6 +114,18 @@ class El {
       this.childNodes.push(el);
     }
   }
+  get nextSibling(): El | null {
+    const sibs = this.parentNode?.childNodes ?? [];
+    return sibs[sibs.indexOf(this) + 1] ?? null;
+  }
+  insertBefore(n: El, ref: El | null) {
+    n.parentNode?.removeChild(n);
+    n.parentNode = this;
+    const i = ref ? this.childNodes.indexOf(ref) : -1;
+    if (i < 0) this.childNodes.push(n);
+    else this.childNodes.splice(i, 0, n);
+    return n;
+  }
   appendChild(n: El) {
     this.append(n);
     return n;
@@ -133,6 +145,7 @@ class El {
       : this.childNodes.map((c) => c.textContent).join("");
   }
   set textContent(v: string) {
+    for (const c of this.childNodes) c.parentNode = null;
     this.childNodes = [];
     this.html = "";
     if (this.tagName === "#TEXT") this.text = v;
@@ -176,7 +189,8 @@ class El {
     return { width: 120, height: 34 };
   }
   matches(sel: string) {
-    if (sel.startsWith(".")) return this.className.split(/\s+/).includes(sel.slice(1));
+    if (sel.startsWith("."))
+      return this.className.split(/\s+/).includes(sel.slice(1));
     if (sel.startsWith("#")) return this.id === sel.slice(1);
     return this.tagName === sel.toUpperCase();
   }
@@ -291,10 +305,9 @@ function loadKit(): Kit {
     .replace(/^import .*$/gm, "")
     .replace(/import\.meta\.url/g, JSON.stringify("http://kit.test/busy.js"))
     .replace(/^export\s+/gm, "");
-  return new Function(
-    "BUSY_WORDS",
-    `${src}\nreturn { ${names.join(", ")} };`,
-  )(words) as Kit;
+  return new Function("BUSY_WORDS", `${src}\nreturn { ${names.join(", ")} };`)(
+    words,
+  ) as Kit;
 }
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -311,8 +324,7 @@ async function tick(ms: number) {
 const answer = (ms: number, status = 200) =>
   new Promise((res, rej) =>
     setTimeout(
-      () =>
-        status < 400 ? res({ ok: true }) : rej({ status, message: "no" }),
+      () => (status < 400 ? res({ ok: true }) : rej({ status, message: "no" })),
       ms,
     ),
   );
@@ -453,6 +465,14 @@ describe("issue 699, 3: the label stays; the name stays the label", () => {
     expect(b.textContent).toBe("Save changes");
     expect(b.getAttribute("aria-label")).toBeNull();
   });
+  it("a page that draws the button again while it waits keeps its own label", async () => {
+    const b = button("Start");
+    void kit.busyAction("save", () => answer(500), { button: b });
+    b.textContent = "Working…";
+    await tick(500);
+    expect(b.textContent).toBe("Working…");
+    expect(b.disabled).toBe(false);
+  });
   it("a button's own aria-label is kept as it was", async () => {
     const b = button();
     b.setAttribute("aria-label", "Save the plan");
@@ -506,7 +526,9 @@ describe("issue 699, 4 and 5: the dots and their pulse", () => {
     expect(k).toMatch(
       /0%,\s*80%,\s*100%\s*\{\s*opacity:\s*0?\.3;\s*transform:\s*scale\(0?\.85\);?\s*\}/,
     );
-    expect(k).toMatch(/40%\s*\{\s*opacity:\s*1;\s*transform:\s*scale\(1\);?\s*\}/);
+    expect(k).toMatch(
+      /40%\s*\{\s*opacity:\s*1;\s*transform:\s*scale\(1\);?\s*\}/,
+    );
   });
   it("no colour of its own: no hex, rgb or hsl in the dots' rules", () => {
     const css = CSS();
@@ -598,7 +620,10 @@ describe("issue 699, 8: the working pop-up at 3 s, a setting", () => {
   it("pending(): resolves with the answer and gives the label back", async () => {
     const b = button();
     const res = { ok: true, status: 200 };
-    const out = kit.pending(b, () => new Promise((r) => setTimeout(() => r(res), 500)));
+    const out = kit.pending(
+      b,
+      () => new Promise((r) => setTimeout(() => r(res), 500)),
+    );
     await tick(500);
     await expect(out).resolves.toBe(res);
     expect(b.disabled).toBe(false);
@@ -611,6 +636,8 @@ describe("issue 699, 8: the working pop-up at 3 s, a setting", () => {
       seen = h;
       return answer(10);
     });
+    // The request starts on the next turn (as busyAction's always has).
+    await tick(0);
     expect(Object.keys(seen)).toEqual(["X-Request-Id"]);
   });
 });
@@ -640,7 +667,11 @@ describe("issue 699, 9: the button never shows an error", () => {
   it("pending(): an error answer (a Response that isn't ok) is the failure pop-up with Try again", async () => {
     const b = button();
     void kit.pending(b, () =>
-      Promise.resolve({ ok: false, status: 502, clone: () => ({ json: () => Promise.resolve({ error: "down" }) }) }),
+      Promise.resolve({
+        ok: false,
+        status: 502,
+        clone: () => ({ json: () => Promise.resolve({ error: "down" }) }),
+      }),
     );
     await tick(0);
     expect(dialog()?.open).toBe(true);
@@ -670,6 +701,7 @@ describe("issue 699, 9: the button never shows an error", () => {
     expect(held(b)).toBe(true);
     dialog()!.querySelector('[data-bz="retry"]')!.click();
     expect(held(b)).toBe(true);
+    await tick(0);
     expect(n).toBe(2);
     expect(dialog()?.dataset.state).toBe("working");
     await tick(10_000);
@@ -714,9 +746,9 @@ describe('issue 699: data-instant="<reason>"', () => {
     expect(
       kit.instantProblems('<button data-instant="">Go</button>'),
     ).toHaveLength(1);
-    expect(kit.instantProblems("<button data-instant>Go</button>")).toHaveLength(
-      1,
-    );
+    expect(
+      kit.instantProblems("<button data-instant>Go</button>"),
+    ).toHaveLength(1);
     expect(
       kit.instantProblems('<button data-instant="  ">Go</button>'),
     ).toHaveLength(1);
@@ -731,10 +763,7 @@ describe('issue 699: data-instant="<reason>"', () => {
     expect(held(b)).toBe(true);
   });
   it("no kit file and no page Den serves has a data-instant with no reason", () => {
-    const dirs = [
-      SRC,
-      path.join(__dirname, "../../../src/ui/server/public"),
-    ];
+    const dirs = [SRC, path.join(__dirname, "../../../src/ui/server/public")];
     const bad: string[] = [];
     const walk = (d: string) => {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {

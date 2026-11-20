@@ -388,6 +388,47 @@ browser test, on the image (Den's real server on the demo distribution,
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
 
+## A button that waits shows pulsing dots (issue 699)
+
+Every button the kit holds shows three pulsing dots in place of its
+label at once, until the server answers: busyAction's `opts.button`,
+`pending()`'s button, and a plain POST form's submitter. The button keeps
+its size (the label stays, hidden, and stays its accessible name), is
+disabled with `aria-busy="true"`, and keeps its own colours. The working
+pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
+
+    import { pending, watchForms, configureBusy } from "@monster-orange/den-ui/busy";
+
+    // A fetch-driven button: dots until the answer. A Response that
+    // isn't ok, or no answer, is the failure pop-up with Try again.
+    button.addEventListener("click", () =>
+      pending(button, (headers) =>
+        fetch("/api/save", { method: "POST", headers }),
+      ),
+    );
+
+    // Plain POST forms: one listener; the submitter shows dots until the
+    // next page comes.
+    watchForms();
+
+    // The wait before the pop-up (a setting; default 3000 ms).
+    configureBusy({ dotsMs: 3000 });
+
+- The button never shows an error itself. A failure before the pop-up
+  gives the label back, and the error goes where it goes today (the
+  caller for an `inline` action, else the failure pop-up). After the
+  pop-up, the pop-up shows it; Try again holds the button again; Close
+  gives the label back.
+- A button that never waits opts out with a reason:
+  `data-instant="opens a menu"`. An empty reason doesn't count;
+  `instantProblems(html)` lists each one (a kit test runs it over the
+  kit and its first product's pages).
+- `opts.dots: false` on busyAction holds a button the old way (no dots,
+  the pop-up at `OPEN_MS`).
+- The look is in `src/busy.css`, under "issue 699: the held button"
+  (`.bz-lbl`, `.bz-dots`, `@keyframes bz-dot`). Reduced motion: still
+  dots.
+
 ## The Markdown editor (0.7.5)
 
 `src/markdown-editor.js` and `src/markdown-editor.css` (exports

@@ -56,6 +56,10 @@ const PAGE = (lang: string) => `<!doctype html>
 import * as kit from "/busy.js";
 window.seen = { toasts: [], opened: [], reports: [], reloads: 0 };
 kit.configureBusy({
+  // Issue 699: a held button's pop-up waits dotsMs (3 s by default); these
+  // tests are about the pop-up, so it waits 300 ms here (the default is
+  // busy-dots.test.ts's).
+  dotsMs: 300,
   idHeader: "X-Probe-Id",
   statusUrl: (id) => "/status/" + id,
   toast: (t) => seen.toasts.push(t),
@@ -206,6 +210,56 @@ const seen = (p: Page) =>
   );
 const go = (p: Page, name: string, opts = "{}") =>
   p.evaluate(`window.go(${JSON.stringify(name)}, ${opts})`);
+
+describe("issue 699: the held button in a browser", () => {
+  it("dots at once at the same size, still under reduced motion, the label back on the answer", async () => {
+    if (skip()) return;
+    const { p } = await open([[1500, 200]]);
+    await p.evaluate(() => {
+      const l = document.createElement("link");
+      l.rel = "stylesheet";
+      l.href = "/busy.css";
+      document.head.append(l);
+    });
+    await p.waitForFunction(() =>
+      [...document.styleSheets].some((s) => /busy\.css/.test(s.href ?? "")),
+    );
+    const before = await p
+      .locator("#go")
+      .evaluate((b) => [b.offsetWidth, b.offsetHeight]);
+    await go(p, "save");
+    const b = p.locator("#go");
+    expect(await b.isDisabled()).toBe(true);
+    expect(await b.getAttribute("aria-busy")).toBe("true");
+    expect(await b.locator(".bz-dots > i").count()).toBe(3);
+    expect(
+      await b.evaluate((el) => [
+        (el as HTMLElement).offsetWidth,
+        (el as HTMLElement).offsetHeight,
+      ]),
+    ).toEqual(before);
+    // The label is hidden, not gone, and stays the accessible name.
+    expect(
+      await b
+        .locator(".bz-lbl")
+        .evaluate((l) => getComputedStyle(l).visibility),
+    ).toBe("hidden");
+    expect(await b.getAttribute("aria-label")).toBe("Go");
+    // Held, not off: full opacity; reduced motion (this context): still.
+    expect(await b.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    expect(
+      await b
+        .locator(".bz-dots > i")
+        .first()
+        .evaluate((i) => getComputedStyle(i).animationName),
+    ).toBe("none");
+    expect(await out(p)).toEqual({ ok: { ok: true } });
+    expect(await b.locator(".bz-dots").count()).toBe(0);
+    expect(await b.textContent()).toBe("Go");
+    expect(await b.isDisabled()).toBe(false);
+    await p.context().close();
+  });
+});
 
 describe("UK-2 kit: the working pop-up", () => {
   it("a fast success opens nothing; an auto-close action says so in a toast", async () => {

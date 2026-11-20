@@ -79,3 +79,40 @@ export declare function busyAction<T = unknown>(
   run: (headers: Record<string, string>, progress: Progress) => Promise<T> | T,
   opts?: BusyOptions<T>,
 ): Promise<T | null>;
+
+/** Issue 699: the working pop-up's wait once a button shows dots (3000). */
+export declare const DOTS_MS: number;
+export interface BusyHooks {
+  /**
+   * Issue 699: how long a held button shows dots before the working
+   * pop-up opens (ms; default DOTS_MS, 3000).
+   */
+  dotsMs?: number;
+}
+export interface BusyOptions<T = unknown> {
+  /** Issue 699: false holds the button without dots (and OPEN_MS). */
+  dots?: boolean;
+}
+export interface PendingOptions<T = unknown> extends BusyOptions<T> {
+  /** A registered action's name; default the kit's own (Sending…). */
+  action?: string;
+  /** Who the kit's own action waits for; default "the server". */
+  who?: string;
+}
+/**
+ * Issue 699: a fetch-driven button. Dots at once; the answer (a Response
+ * that isn't ok, or no answer, is the failure pop-up with Try again); null
+ * after Close, or at once for a button already held.
+ */
+export declare function pending<T = unknown>(
+  button: HTMLElement,
+  run: (headers: Record<string, string>, progress: Progress) => Promise<T> | T,
+  opts?: PendingOptions<T>,
+): Promise<T | null>;
+/**
+ * Issue 699: one submit listener for plain POST forms; the submitter
+ * shows dots until the next page. Returns stop().
+ */
+export declare function watchForms(root?: Document | HTMLElement): () => void;
+/** Issue 699: each data-instant in the markup with no reason. */
+export declare function instantProblems(html: string): string[];
