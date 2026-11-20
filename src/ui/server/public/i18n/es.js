@@ -1590,7 +1590,7 @@
     "ap.det.gate_runner_token_create.once":
       "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
     "ap.det.gate_runner_token_create.revoke":
-      "Puedes revocarlo cuando quieras en Ajustes › Servidor.",
+      "Puedes revocarlo cuando quieras en Ajustes, en Tokens de runners de CI.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":

@@ -2424,7 +2424,7 @@
     "ap.det.gate_runner_token_create.once":
       "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
     "ap.det.gate_runner_token_create.revoke":
-      "You can revoke it any time in Settings › Server.",
+      "You can revoke it any time in Settings, under CI runner tokens.",
     "ap.det.embed_key_revoke.reach":
       "{origin} can no longer message {agent} or read its state with this key.",
     "ap.det.embed_key_revoke.held":

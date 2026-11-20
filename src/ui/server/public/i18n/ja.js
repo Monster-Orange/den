@@ -1549,7 +1549,7 @@
     "ap.det.gate_runner_token_create.once":
       "トークンは頼んだ人に一度だけ渡され、二度と表示されません。Den はハッシュだけを保存します。",
     "ap.det.gate_runner_token_create.revoke":
-      "設定 › サーバー でいつでも取り消せます。",
+      "設定の「CI ランナーのトークン」でいつでも取り消せます。",
     "ap.det.embed_key_revoke.reach":
       "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
     "ap.det.embed_key_revoke.held":

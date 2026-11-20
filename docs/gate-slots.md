@@ -40,7 +40,7 @@ The agent then stores the token as a secret of the CI system (for example
 `GATE_TOKEN`), with Den's address (`DEN_URL`, the address the VM reaches
 Den on).
 
-Settings › Server › CI runner tokens lists the tokens (names and dates,
+Settings › CI runner tokens lists the tokens (names and dates,
 never a token). Revoke one there; it answers 401 at once.
 
 ### 2. The job: ask, run, release
@@ -48,7 +48,7 @@ never a token). Revoke one there; it answers 401 at once.
 The job holds its slot by **lease**. It renews every `renew_seconds` (the
 ask's answer says how often; 30 by default). A lease not renewed for
 `remote_lapse_seconds` (120 by default) is taken back, and the next in line
-starts. Both are Settings › Server rows, or
+starts. Both are Settings rows, or
 `den gate settings --remote-renew-seconds N --remote-lapse-seconds N`.
 
 Copy this into the job. It needs only `curl` and `sed`:

@@ -291,7 +291,7 @@ export function gateRunnerTokenOp(d: {
           asker
             ? `The token goes once to ${asker}, the agent that asked, and is never shown again. Den keeps only its hash.`
             : "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
-          "You can revoke it any time in Settings › Server.",
+          "You can revoke it any time in Settings, under CI runner tokens.",
         ],
         detailKeys: [
           { key: "ap.det.gate_runner_token_create.reach", vars: { name } },

@@ -649,8 +649,7 @@ export function checkRequest(
         ok: false,
         status: 401,
         code: "token_revoked",
-        error:
-          "This runner token was revoked. Ask the person for a new one (Settings › Server).",
+        error: "This runner token was revoked. Ask the person for a new one.",
       };
     if (!r)
       return {
