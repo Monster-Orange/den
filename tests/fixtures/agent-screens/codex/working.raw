@@ -1,0 +1,20 @@
+]0;⠙ demo[H[2J╭──────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.128.0)                       │
+│                                                  │
+│ model:     gpt-5-codex high   /model to change   │
+│ directory: ~/work/demo                           │
+╰──────────────────────────────────────────────────╯
+
+› Fix the failing test in src/sum.ts
+
+• I'll run the tests first to see the failure.
+
+• Ran npm test -- sum
+  └ FAIL src/sum.test.ts
+      expected 4, received 5
+
+• Working ([1m14s[0m • esc to interrupt)
+
+› [2mImplement {feature}[0m
+
+  [2m? for shortcuts[0m                                 97% context left

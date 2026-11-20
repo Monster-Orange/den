@@ -1,0 +1,15 @@
+[H[2J> Fix the failing test in src/sum.ts
+
+╭──────────────────────────────────────────────────────────────╮
+│ ?  Edit src/sum.ts: return a + b + 1; => return a + b;       │
+│                                                              │
+│ 3 -   return a + b + 1;                                      │
+│ 3 +   return a + b;                                          │
+│                                                              │
+│ Apply this change?                                           │
+│                                                              │
+│ ● 1. Yes, allow once                                         │
+│   2. Yes, allow always                                       │
+│   3. Modify with external editor                             │
+│   4. No, suggest changes (esc)                               │
+╰──────────────────────────────────────────────────────────────╯

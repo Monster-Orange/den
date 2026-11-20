@@ -1,0 +1,8 @@
+[H[2J> Fix the failing test in src/sum.ts
+
+  Fixed the off-by-one in sum(); the tests pass.
+
+╭──────────────────────────────────────────────────────────╮
+│ >                                                        │
+╰──────────────────────────────────────────────────────────╯
+  Tab:mode │ Ctrl+.:shortcuts

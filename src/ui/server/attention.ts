@@ -27,6 +27,15 @@
  *   At start and on the checks after it (until each is decided), its
  *   agent stopped, removed or exited, or no dialog on its screen: the row
  *   goes; still showing it: the row stays and is a live wait again.
+ * - Issue 770: an agent whose runtime has no hooks (Codex, Gemini, Grok;
+ *   Claude Code with its hooks off) has its screen read by its runtime's
+ *   rules (shared/agents/detect): Blocked marks it waiting on a permission
+ *   dialog (its output moving doesn't end that: the screen does), Working
+ *   or Idle end it, Working ends a bell's wait too (after SETTLE_MS), and
+ *   each is listed
+ *   (activityNow). A viewer on screen changes nothing; a screen no rule
+ *   matches leaves the bell and the output mark to decide, as before. A
+ *   hooked agent's screen is never read here: its hooks win.
  * Texts are kept in English and as a key with values (`msg`), for the
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
@@ -38,6 +47,17 @@ import type {
 } from "../../shared/notifications.js";
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 import { leadAskText } from "./lead-routing.js";
+import type { Detection } from "../../shared/agents/detect/engine.js";
+
+/** Issue 770: what an agent's screen showed (its runtime's rules). */
+export type ScreenActivity = "working" | "blocked" | "idle";
+
+/** Issue 770: one running agent's screen, as its rules read it (null: no rule matched). */
+export interface ScreenReport {
+  agent: string;
+  workspace: string;
+  status: Pick<Detection, "state" | "skipStateUpdate" | "rule"> | null;
+}
 
 export type WaitingWhy = "permission" | "input" | "asked";
 
@@ -188,6 +208,8 @@ interface Waiting {
   input?: string;
   /** Issue 101: the lead its question went to, instead of its person. */
   lead?: string;
+  /** Issue 770: made by its screen's rules; the screen ends it, not its output. */
+  byScreen?: boolean;
 }
 
 export class Attention {
@@ -197,6 +219,8 @@ export class Attention {
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
+  /** Issue 770: each unhooked agent's last screen status. */
+  private readonly activity = new Map<string, ScreenActivity>();
   /** Issue 369: rows from before this server still to decide. */
   private orphansLeft = true;
   /** Issue 609: events in the order they came (a set's awaits aside). */
@@ -219,6 +243,51 @@ export class Attention {
   /** The agents waiting now, and why (the sessions list, the bell). */
   waitingNow(): Map<string, WaitingWhy> {
     return new Map([...this.waiting].map(([a, w]) => [a, w.why]));
+  }
+
+  /** Issue 770: what each unhooked agent's screen showed last. */
+  activityNow(): Map<string, ScreenActivity> {
+    return new Map(this.activity);
+  }
+
+  /**
+   * Issue 770: the running unhooked agents' screens, as their rules read
+   * them (see the header). A hooked agent's report is ignored.
+   */
+  async screens(list: readonly ScreenReport[]): Promise<void> {
+    for (const r of list) {
+      if (this.d.hooked?.(r.agent)) {
+        this.activity.delete(r.agent);
+        continue;
+      }
+      const st = r.status;
+      // No rule matched: today's bell and output mark decide.
+      if (!st || st.state === "unknown") {
+        if (!st?.skipStateUpdate) this.activity.delete(r.agent);
+        continue;
+      }
+      if (st.skipStateUpdate) continue;
+      this.activity.set(r.agent, st.state);
+      const w = this.waiting.get(r.agent);
+      if (st.state === "blocked") {
+        if (w && w.why !== "input") continue;
+        await this.event(r.agent, r.workspace, {
+          event: "waiting",
+          why: "permission",
+        });
+        const now = this.waiting.get(r.agent);
+        if (now?.why === "permission") now.byScreen = true;
+        continue;
+      }
+      if (!w || w.byHook || w.why === "asked") continue;
+      // The dialog its screen showed is gone: answered (working), or
+      // declined (idle).
+      if (w.byScreen) this.clear(r.agent);
+      // A bell's "waiting for you": working again after SETTLE_MS (as its
+      // output moving would). Idle keeps it: that is what the bell said.
+      else if (st.state === "working" && this.now() - w.at >= SETTLE_MS)
+        this.clear(r.agent);
+    }
   }
 
   /** Issue 327: what `agent` waits on and since when, or undefined. */
@@ -594,7 +663,7 @@ export class Attention {
     await this.reconcile();
     await this.sweepEnded();
     for (const [agent, w] of [...this.waiting]) {
-      if (w.byHook) continue;
+      if (w.byHook || w.byScreen) continue;
       const m = await this.d.outputMark(agent);
       if (m === null || m === w.mark) continue;
       if (w.mark === null || this.now() - w.at < SETTLE_MS) {
@@ -685,6 +754,7 @@ export class Attention {
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
     this.lastRun.delete(agent);
+    this.activity.delete(agent);
     this.clear(agent);
   }
 

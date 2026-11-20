@@ -1,0 +1,14 @@
+[H[2J> Fix the failing test in src/sum.ts
+
+✦ I'll start by reading the test and the code it covers.
+
+ ╭──────────────────────────────────────────────╮
+ │ ✔  ReadFile src/sum.test.ts                   │
+ ╰──────────────────────────────────────────────╯
+
+⠏ Analyzing the test failure (esc to cancel, 7s)
+
+╭────────────────────────────────────────────────────────╮
+│ >   [2mType your message or @path/to/file[0m                 │
+╰────────────────────────────────────────────────────────╯
+~/work/demo (main*)     no sandbox (see /docs)     gemini-2.5-pro (98% context left)

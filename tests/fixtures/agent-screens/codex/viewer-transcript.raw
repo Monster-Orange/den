@@ -1,0 +1,10 @@
+[H[2J/ T R A N S C R I P T / / / / / / / / / / / / / / / / / / /
+user
+Fix the failing test in src/sum.ts
+
+codex
+I'll run the tests first to see the failure.
+
+─────────────────────────────────────────────── 100% ─
+  ↑/↓ to scroll   pgup/pgdn to page   home/end to jump
+  q to quit   esc to edit prev

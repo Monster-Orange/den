@@ -1,0 +1,9 @@
+[H[2J> Fix the failing test in src/sum.ts
+
+  Reading the test and the code it covers.
+
+  ⠴ Explore src/… + 1 more… 5.6s   19s ⇣29.7k [stop]
+╭──────────────────────────────────────────────────────────╮
+│ >                                                        │
+╰──────────────────────────────────────────────────────────╯
+  Esc:cancel │ Tab:mode │ Ctrl+.:shortcuts
