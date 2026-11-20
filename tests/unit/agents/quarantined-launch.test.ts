@@ -50,6 +50,7 @@ import {
   quarantineNext,
   readiness,
   runtimeSettingsUrl,
+  wireQuarantine,
 } from "../../../src/ui/server/public/agent-start.js";
 import { runtimeFocusFrom } from "../../../src/ui/server/public/settings-registry.js";
 import {
@@ -433,5 +434,106 @@ describe("issue 479 (1): a refused resume is not a dead end", () => {
       ws: "",
     });
     expect(runtimeFocusFrom("", ["north"])).toEqual({ runtime: "", ws: "" });
+  });
+});
+
+describe("issue 479 (1): Open a terminal there, in Den's own terminal", () => {
+  const q = {
+    runtime: "den-claude",
+    name: "Claude Code",
+    path: "/opt/a/claude",
+    dir: "/opt/a",
+    scope: "global",
+    setting: "agents.runtimes.den-claude.bin",
+    others: [],
+  };
+
+  async function serve(r: Rig): Promise<number> {
+    const server = http.createServer((req, res) => {
+      jsonApiErrors(res, newRequestId());
+      const p = new URL(req.url ?? "/", "http://localhost").pathname;
+      void handleAgentRoutes(req, res, p, { agents: r.deps });
+    });
+    servers.push(server);
+    await new Promise<void>((res) => server.listen(0, "localhost", res));
+    return (server.address() as AddressInfo).port;
+  }
+
+  const post = (port: number, body?: unknown) =>
+    fetch(`http://localhost:${port}/api/workspaces/north/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+  it("quarantinedHtml offers it, with the copy's folder", () => {
+    const html = quarantinedHtml(q, t);
+    expect(html).toContain('data-q-term="/opt/a"');
+    expect(html).toContain("ag.rt.openTerminal");
+  });
+
+  it("the terminal-start route takes a cwd: the shell starts in that folder", async () => {
+    const c = await copies();
+    c.r.deps.env = { ...c.r.deps.env, SHELL: "/bin/sh" };
+    const dir = path.dirname(c.r.claude);
+    const port = await serve(c.r);
+    const res = await post(port, { cwd: dir });
+    expect(res.status).toBe(200);
+    expect(c.r.made).toHaveLength(1);
+    expect(c.r.made[0].opts.cwd).toBe(dir);
+    // No cwd: the project's folder, as before.
+    const again = await post(port);
+    expect(again.status).toBe(200);
+    expect(c.r.made[1].opts.cwd).toBe(c.r.wsDir("north"));
+  });
+
+  it("a cwd that isn't an absolute path to a folder is refused; nothing starts", async () => {
+    const c = await copies();
+    c.r.deps.env = { ...c.r.deps.env, SHELL: "/bin/sh" };
+    const port = await serve(c.r);
+    for (const cwd of ["relative/dir", c.r.claude, "/no/such/folder", 7]) {
+      const res = await post(port, { cwd });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.status).toBeLessThan(500);
+    }
+    expect(c.r.made).toHaveLength(0);
+  });
+
+  it("the button starts that terminal in the project shown and opens its pane", async () => {
+    let onClick: ((e: unknown) => Promise<void>) | undefined;
+    const host = {
+      dataset: {} as Record<string, string>,
+      addEventListener: (_: string, fn: (e: unknown) => Promise<void>) => {
+        onClick = fn;
+      },
+      contains: () => true,
+    };
+    const b = {
+      dataset: { qTerm: "/opt/a" } as Record<string, string>,
+      disabled: false,
+      closest(sel: string) {
+        return sel.includes("data-quarantined") ? null : b;
+      },
+    };
+    const calls: unknown[][] = [];
+    const opened: string[] = [];
+    wireQuarantine(host, {
+      api: async (...a: unknown[]) => {
+        calls.push(a);
+        return { ok: true, session: { id: "s-1", workspace: "north" } };
+      },
+      reload: async () => {},
+      ws: () => "north",
+      t,
+      open: (u: string) => opened.push(u),
+    });
+    await onClick!({ target: b, preventDefault() {} });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].slice(0, 3)).toEqual([
+      "POST",
+      "/api/workspaces/north/sessions",
+      { cwd: "/opt/a" },
+    ]);
+    expect(opened).toEqual(["/agents?ws=north&open=s-1"]);
   });
 });
