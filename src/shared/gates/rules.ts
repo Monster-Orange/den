@@ -62,6 +62,10 @@ export interface GateSettings {
   remoteRenewSeconds: number;
   /** Issue 621: a runner's lease not renewed this long is taken back. */
   remoteLapseSeconds: number;
+  /** Issue 621: live slots (held or waiting) one runner token may have. */
+  remoteMaxSlots: number;
+  /** Issue 621: asks one runner token may have waiting on an answer. */
+  remoteMaxAsks: number;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -69,6 +73,8 @@ export const GATE_DEFAULTS: GateSettings = {
   overrunMarginMinutes: 15,
   remoteRenewSeconds: 30,
   remoteLapseSeconds: 120,
+  remoteMaxSlots: 4,
+  remoteMaxAsks: 4,
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);

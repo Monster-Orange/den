@@ -189,14 +189,30 @@ export class RunnerTokens {
     if (!rec || !same) return { ok: false, code: "bad_token" };
     if (rec.revokedAt) return { ok: false, code: "token_revoked" };
     const t = this.now();
-    if (!rec.lastUsedAt || t - Date.parse(rec.lastUsedAt) > TOUCH_MS) {
-      rec.lastUsedAt = new Date(t).toISOString();
-      try {
-        this.write(tokens);
-      } catch {
-        /* last-used is best effort */
-      }
-    }
+    if (!rec.lastUsedAt || t - Date.parse(rec.lastUsedAt) > TOUCH_MS)
+      this.touch(rec.id, t);
     return { ok: true, runner: view(rec) };
+  }
+
+  /**
+   * Last used, written from a fresh read right before the write: it sets
+   * that one field on a live token and never writes back a stale copy (a
+   * revoke made meanwhile stays). Best effort.
+   */
+  private touch(id: string, t: number): void {
+    try {
+      const fresh = this.read();
+      const r = fresh.find((x) => x.id === id);
+      if (!r || r.revokedAt) return;
+      r.lastUsedAt = new Date(t).toISOString();
+      this.write(fresh);
+    } catch {
+      /* last-used is best effort */
+    }
+  }
+
+  /** Whether token `id` is still live (not revoked, not gone). */
+  live(id: string): boolean {
+    return this.read().some((t) => t.id === id && !t.revokedAt);
   }
 }

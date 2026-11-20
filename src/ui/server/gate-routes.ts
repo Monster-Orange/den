@@ -38,11 +38,11 @@ import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
-import type { GateStore } from "../../shared/gates/store.js";
+import { GateFullError, type GateStore } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
 import type { HeldOp } from "./held-actions.js";
-import { readBody, sendJson } from "./http-helpers.js";
+import { readBodyCapped, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -75,12 +75,17 @@ export interface GateRouteDeps {
   pollMs?: number;
 }
 
+/** The largest body a gate route reads, bytes. */
+const BODY_MAX = 4096;
+
+/** A JSON body, {} when it isn't one; null when it is over BODY_MAX. */
 async function bodyOf(
   req: http.IncomingMessage,
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, unknown> | null> {
   try {
-    const raw = await readBody(req);
-    const v: unknown = JSON.parse(raw.length > 4096 ? "{}" : raw || "{}");
+    const raw = await readBodyCapped(req, BODY_MAX);
+    if (raw === null) return null;
+    const v: unknown = JSON.parse(raw || "{}");
     return v && typeof v === "object" && !Array.isArray(v)
       ? (v as Record<string, unknown>)
       : {};
@@ -88,6 +93,42 @@ async function bodyOf(
     return {};
   }
 }
+
+const TOO_BIG = { ok: false, error: `the body is at most ${BODY_MAX} bytes` };
+
+/** C0 and C1 control characters (after whitespace became plain spaces). */
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
+
+/** Issue 621: asks waiting on an answer, per runner token (this process). */
+const ASKING = new Map<string, number>();
+
+/**
+ * Issue 621: a person revokes a runner token. Its slots, held or waiting,
+ * are taken back at once (the slot log says so), and an ask in flight
+ * answers 401 at its next look.
+ */
+export function revokeRunner(
+  d: Pick<GateRouteDeps, "store" | "runners">,
+  id: unknown,
+) {
+  const v = d.runners?.().revoke(id) ?? null;
+  if (v) d.store().takeBackToken(v.id);
+  return v;
+}
+
+const REVOKED = {
+  ok: false,
+  code: "token_revoked",
+  error: "This runner token was revoked. Ask the person for a new one.",
+};
+
+/** Whether the runner's token is still live (unset: no store to ask). */
+const tokenLive = (d: GateRouteDeps, id: string) =>
+  d.runners ? d.runners().live(id) : true;
+
+/** How many cheap looks between two locked renews of a waiting ask. */
+const LOOKS_PER_RENEW = 5;
 
 /** Issue 621: where a runner's slot stands, as the runner reads it. */
 function standing(store: GateStore, e: GateEntry): Record<string, unknown> {
@@ -120,6 +161,66 @@ const NO_SLOT = {
     "No such slot for this runner: it was released, ended early, or its lease lapsed. Ask again.",
 };
 
+async function askAndWait(
+  res: http.ServerResponse,
+  d: GateRouteDeps,
+  store: GateStore,
+  runner: { id: string; name: string },
+  a: { kind: "browser" | "cpu"; label: string; est: number; waitMs: number },
+): Promise<void> {
+  let e: GateEntry | null;
+  try {
+    e = store.askRemote({
+      kind: a.kind,
+      who: `${d.title} · runner ${runner.name}`,
+      label: a.label,
+      estimateMin: a.est,
+      runner: runner.name,
+      tokenId: runner.id,
+    });
+  } catch (err) {
+    if (err instanceof GateFullError)
+      return sendJson(
+        res,
+        { ok: false, code: "too_many_slots", error: err.message },
+        429,
+      );
+    throw err;
+  }
+  // Waits a bounded time for the slot, keeping the lease while it does.
+  // Each tick is a cheap look at the slot's own file; a locked renew (the
+  // queue settled) comes every few looks. The token is checked each tick:
+  // a revoke ends the wait with 401, never a grant.
+  const until = Date.now() + a.waitMs;
+  let closed = false;
+  res.on("close", () => (closed = true));
+  let looks = 0;
+  while (e && !e.grantedAt && Date.now() < until && !closed) {
+    await new Promise((r) => setTimeout(r, d.pollMs ?? 1000));
+    if (closed || !tokenLive(d, runner.id)) break;
+    looks++;
+    e =
+      looks % LOOKS_PER_RENEW === 0
+        ? store.renew(e.id, runner.id)
+        : (store.peek(e.id) ?? store.renew(e.id, runner.id));
+  }
+  if (!tokenLive(d, runner.id)) {
+    store.takeBackToken(runner.id);
+    if (!closed) sendJson(res, REVOKED, 401);
+    return;
+  }
+  // A caller that hung up never hears the slot's id: give it back.
+  if (closed) {
+    if (e) store.releaseRemote(e.id, runner.id);
+    return;
+  }
+  if (!e) return sendJson(res, NO_SLOT, 410);
+  // A cheap look may be stale: renew under the lock before answering.
+  const now = store.renew(e.id, runner.id);
+  if (!now) return sendJson(res, NO_SLOT, 410);
+  return sendJson(res, standing(store, now));
+}
+
 async function handleRunnerRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -142,6 +243,7 @@ async function handleRunnerRoute(
     );
   const store = d.store();
   const body = await bodyOf(req);
+  if (!body) return sendJson(res, TOO_BIG, 400);
   if (pathname === "/api/gate-slots/ask") {
     const kind = body.kind;
     if (kind !== "browser" && kind !== "cpu")
@@ -164,7 +266,11 @@ async function handleRunnerRoute(
       );
     const label =
       typeof body.label === "string" && body.label.trim()
-        ? body.label.trim().replace(/\s+/g, " ").slice(0, 120)
+        ? body.label
+            .replace(/\s+/g, " ")
+            .replace(CONTROL, "")
+            .trim()
+            .slice(0, 120) || "CI job"
         : "CI job";
     const waitRaw = body.wait_seconds ?? 20;
     if (typeof waitRaw !== "number" || !Number.isFinite(waitRaw) || waitRaw < 0)
@@ -176,25 +282,32 @@ async function handleRunnerRoute(
     // At most the lapse time (a Setting): the caller hears back in time.
     const waitMs =
       Math.min(waitRaw, store.settings().remoteLapseSeconds) * 1000;
-    let e: GateEntry | null = store.askRemote({
-      kind,
-      who: `${d.title} · runner ${runner.name}`,
-      label,
-      estimateMin: est,
-      runner: runner.name,
-      tokenId: runner.id,
-    });
-    // Waits a bounded time for the slot, keeping the lease while it does;
-    // a caller that went away stops the wait (its lease then lapses).
-    const until = Date.now() + waitMs;
-    let closed = false;
-    res.on("close", () => (closed = true));
-    while (e && !e.grantedAt && Date.now() < until && !closed) {
-      await new Promise((r) => setTimeout(r, d.pollMs ?? 1000));
-      e = store.renew(e.id, runner.id);
+    // Asks waiting on an answer are capped per token (a Setting).
+    const s = store.settings();
+    const asking = ASKING.get(runner.id) ?? 0;
+    if (asking >= s.remoteMaxAsks)
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: "too_many_asks",
+          error: `this runner has ${s.remoteMaxAsks} asks waiting already; wait for one to answer, or raise the limit in Settings`,
+        },
+        429,
+      );
+    ASKING.set(runner.id, asking + 1);
+    try {
+      return await askAndWait(res, d, store, runner, {
+        kind,
+        label,
+        est,
+        waitMs,
+      });
+    } finally {
+      const n = (ASKING.get(runner.id) ?? 1) - 1;
+      if (n > 0) ASKING.set(runner.id, n);
+      else ASKING.delete(runner.id);
     }
-    if (!e) return sendJson(res, NO_SLOT, 410);
-    return sendJson(res, standing(store, e));
   }
   const id = typeof body.id === "string" ? body.id : "";
   if (!/^[a-z0-9-]{1,64}$/.test(id))
@@ -246,7 +359,7 @@ async function handleRunnerTokens(
   if (req.method !== "POST")
     return sendJson(res, { ok: false, error: "POST only" }, 405);
   const body = await bodyOf(req);
-  const v = d.runners().revoke(body.id);
+  const v = revokeRunner(d, body?.id);
   if (!v)
     return sendJson(res, { ok: false, error: "no such runner token" }, 404);
   (d.audit ?? recordAction)(
@@ -367,16 +480,8 @@ export async function handleGateRoutes(
       },
       403,
     );
-  let id = "";
-  try {
-    const raw = await readBody(req);
-    const v = JSON.parse(raw.length > 4096 ? "{}" : raw || "{}") as {
-      id?: unknown;
-    };
-    id = typeof v.id === "string" ? v.id : "";
-  } catch {
-    /* id stays empty */
-  }
+  const body = await bodyOf(req);
+  const id = typeof body?.id === "string" ? body.id : "";
   if (!/^[a-z0-9-]{1,64}$/.test(id))
     return sendJson(res, { ok: false, error: "give the slot's id" }, 400);
   const by = `${d.title} · ${principalOf(req) ?? "a person in the browser"}`;

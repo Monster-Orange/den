@@ -51,6 +51,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     overrun_margin_minutes: true,
     remote_renew_seconds: true,
     remote_lapse_seconds: true,
+    remote_max_slots: true,
+    remote_max_asks: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -203,6 +205,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.remote_lapse_seconds",
+        "gate_slots.remote_max_asks",
+        "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",

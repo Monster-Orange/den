@@ -944,6 +944,14 @@
       "El turno de un runner de CI se recupera tras, en segundos",
     "set.server.gate_remote_lapse.d":
       "Un runner de CI que no renueva su turno en este tiempo lo pierde, y empieza el siguiente en la cola. Al menos el doble del tiempo de renovación. __DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_remote_slots":
+      "Turnos de pruebas que un runner de CI puede tener a la vez",
+    "set.server.gate_remote_slots.d":
+      "Ocupados o en espera. Otra petición se rechaza, diciendo por qué, hasta que el runner devuelva uno. __DEN_CLI__ gate settings --remote-max-slots 4",
+    "set.server.gate_remote_asks":
+      "Peticiones que un runner de CI puede tener esperando a la vez",
+    "set.server.gate_remote_asks.d":
+      "Peticiones de turno que aún esperan respuesta. Otra se rechaza, diciendo por qué, hasta que una responda. __DEN_CLI__ gate settings --remote-max-asks 4",
     "set.server.gate_runners": "Tokens de runners de CI",
     "set.server.gate_runners.d":
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",

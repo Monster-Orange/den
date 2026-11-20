@@ -136,6 +136,8 @@ describe("gate slots over MCP", () => {
       overrunMarginMinutes: 15,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
+      remoteMaxSlots: 4,
+      remoteMaxAsks: 4,
     });
   });
 

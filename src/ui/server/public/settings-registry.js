@@ -2275,6 +2275,32 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { remote_lapse_seconds: v } }),
   },
   {
+    id: "server.gate_remote_slots",
+    category: "server",
+    label: "Gate slots one CI runner may have at once",
+    description:
+      "Held or waiting. One more ask is refused, saying why, until the runner gives one back. __DEN_CLI__ gate settings --remote-max-slots 4",
+    keywords: ["gate", "slot", "ci", "runner", "limit"],
+    scope: "user",
+    keys: ["gate_slots.remote_max_slots"],
+    control: { type: "number", min: 1, max: 256, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.remoteMaxSlots ?? 4,
+    write: (v, ctx) => ctx.post({ gate_slots: { remote_max_slots: v } }),
+  },
+  {
+    id: "server.gate_remote_asks",
+    category: "server",
+    label: "Asks one CI runner may have waiting at once",
+    description:
+      "Asks for a gate slot still waiting on an answer. One more is refused, saying why, until one answers. __DEN_CLI__ gate settings --remote-max-asks 4",
+    keywords: ["gate", "slot", "ci", "runner", "limit", "ask"],
+    scope: "user",
+    keys: ["gate_slots.remote_max_asks"],
+    control: { type: "number", min: 1, max: 256, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.remoteMaxAsks ?? 4,
+    write: (v, ctx) => ctx.post({ gate_slots: { remote_max_asks: v } }),
+  },
+  {
     // Issue 621: the gate-only runner tokens; an agent asks for one (a
     // held write the person allows), and the person revokes one here.
     id: "server.gate_runners",

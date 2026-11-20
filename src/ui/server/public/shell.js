@@ -1922,6 +1922,13 @@
       "CI runner's gate slot taken back after, in seconds",
     "set.server.gate_remote_lapse.d":
       "A CI runner that hasn't renewed its gate slot for this long loses it, and the next in line starts. At least twice the renew time. __DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_remote_slots": "Gate slots one CI runner may have at once",
+    "set.server.gate_remote_slots.d":
+      "Held or waiting. One more ask is refused, saying why, until the runner gives one back. __DEN_CLI__ gate settings --remote-max-slots 4",
+    "set.server.gate_remote_asks":
+      "Asks one CI runner may have waiting at once",
+    "set.server.gate_remote_asks.d":
+      "Asks for a gate slot still waiting on an answer. One more is refused, saying why, until one answers. __DEN_CLI__ gate settings --remote-max-asks 4",
     "set.server.gate_runners": "CI runner tokens",
     "set.server.gate_runners.d":
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",

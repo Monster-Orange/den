@@ -38,10 +38,11 @@ allowed it. Deny makes nothing.
 
 The agent then stores the token as a secret of the CI system (for example
 `GATE_TOKEN`), with Den's address (`DEN_URL`, the address the VM reaches
-Den on).
+Den on). Beyond this machine, that address is https.
 
 Settings › CI runner tokens lists the tokens (names and dates,
-never a token). Revoke one there; it answers 401 at once.
+never a token). Revoke one there: it answers 401 at once, and its slots,
+held or waiting, are given back at once, so the next in line starts.
 
 ### 2. The job: ask, run, release
 
@@ -62,9 +63,14 @@ KIND=${GATE_KIND:-browser}          # browser or cpu
 ESTIMATE=${GATE_ESTIMATE_MIN:-10}   # minutes the run expects to take
 LABEL=${GATE_LABEL:-ci}
 
+# The token goes in a header file only this job reads, never on a
+# command line (where ps shows it). printf is the shell's own.
+HDR=$(mktemp)
+chmod 600 "$HDR"
+printf 'Authorization: Bearer %s\n' "$GATE_TOKEN" > "$HDR"
+
 gate() {  # gate <ask|renew|release> <json>
-  curl -fsS -X POST "$DEN_URL/api/gate-slots/$1" \
-    -H "Authorization: Bearer $GATE_TOKEN" \
+  curl -fsS -X POST "$DEN_URL/api/gate-slots/$1" -H @"$HDR" \
     -H "Content-Type: application/json" -d "$2"
 }
 field() { sed -n "s/.*\"$1\":\\([^,}]*\\).*/\\1/p" | tr -d '"'; }
@@ -76,7 +82,7 @@ RENEW=$(printf '%s' "$answer" | field renew_seconds)
 # Give the slot back however the job ends.
 RENEWER=""
 release() { gate release "{\"id\":\"$SLOT\"}" >/dev/null 2>&1 || true; }
-trap 'release; [ -n "$RENEWER" ] && kill "$RENEWER" 2>/dev/null; true' EXIT INT TERM
+trap 'release; [ -n "$RENEWER" ] && kill "$RENEWER" 2>/dev/null; rm -f "$HDR"' EXIT INT TERM
 
 # Wait in line: each renew keeps the place and says where it stands.
 while [ "$(printf '%s' "$answer" | field granted)" != "true" ]; do
@@ -102,6 +108,11 @@ The answers:
   same. 404 when the slot is gone (released, ended early, or lapsed): ask
   again.
 - `release` `{id}`: gives it back. `{ok: true, released: true}`.
+- 401 `token_revoked`: the person revoked the token; its slots are free.
+- 429 `too_many_slots` or `too_many_asks`: one runner may have 4 slots
+  (held or waiting) and 4 asks waiting at once, by default (Settings, or
+  `den gate settings --remote-max-slots N --remote-max-asks N`).
+- An ask whose caller hangs up before the answer gives its slot back.
 
 A person can still end a runner's slot early on the Agents page or with
 `den gate end <id>`, as for any holder.

@@ -61,6 +61,8 @@ export type GateSettingsPatch = {
   overrun_margin_minutes?: number | null;
   remote_renew_seconds?: number | null;
   remote_lapse_seconds?: number | null;
+  remote_max_slots?: number | null;
+  remote_max_asks?: number | null;
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -72,6 +74,8 @@ export const GATE_LIMITS: Record<
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   remote_renew_seconds: { min: 5, max: 3600, int: true },
   remote_lapse_seconds: { min: 10, max: 24 * 3600, int: true },
+  remote_max_slots: { min: 1, max: 256, int: true },
+  remote_max_asks: { min: 1, max: 256, int: true },
 };
 
 /**
@@ -116,6 +120,7 @@ export type GateEvent =
   | "released"
   | "taken-back-gone"
   | "taken-back-lapsed"
+  | "taken-back-revoked"
   | "overdue"
   | "ended-early";
 
@@ -167,6 +172,9 @@ function leaseTimes(renew: number, lapse: number) {
   };
 }
 
+/** Issue 621: a runner token has as many slots as it may. */
+export class GateFullError extends Error {}
+
 export class GateStore {
   readonly dir: string;
   private readonly now: () => number;
@@ -208,6 +216,12 @@ export class GateStore {
         ...leaseTimes(
           num("remote_renew_seconds", GATE_DEFAULTS.remoteRenewSeconds),
           num("remote_lapse_seconds", GATE_DEFAULTS.remoteLapseSeconds),
+        ),
+        remoteMaxSlots: Math.floor(
+          num("remote_max_slots", GATE_DEFAULTS.remoteMaxSlots),
+        ),
+        remoteMaxAsks: Math.floor(
+          num("remote_max_asks", GATE_DEFAULTS.remoteMaxAsks),
         ),
       };
     } catch {
@@ -476,6 +490,16 @@ export class GateStore {
     tokenId: string;
   }): GateEntry {
     return this.locked(() => {
+      // One token's live slots are capped (a Setting): a retrying or
+      // runaway runner can't fill the queue.
+      const max = this.settings().remoteMaxSlots;
+      if (
+        this.readAll().filter((x) => x.remote?.tokenId === o.tokenId).length >=
+        max
+      )
+        throw new GateFullError(
+          `this runner has ${max} gate slots already (held or waiting); release one, or raise the limit in Settings`,
+        );
       const e: GateEntry = {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
@@ -527,6 +551,38 @@ export class GateStore {
       this.write(e);
       return e;
     });
+  }
+
+  /**
+   * Issue 621: a runner token was revoked: its slots, held or waiting, are
+   * taken back at once (logged), and the next in line starts.
+   */
+  takeBackToken(tokenId: string): number {
+    return this.locked(() => {
+      const mine = this.readAll().filter((x) => x.remote?.tokenId === tokenId);
+      const now = this.now();
+      for (const e of mine) {
+        this.remove(e.id);
+        this.record(e, {
+          event: "taken-back-revoked",
+          ...this.heldFor(e, now),
+        });
+      }
+      if (mine.length) this.settle();
+      return mine.length;
+    });
+  }
+
+  /**
+   * Issue 621: one slot as its file stands, with no lock and no settle: a
+   * waiting ask's cheap look between its locked renews.
+   */
+  peek(id: string): GateEntry | null {
+    try {
+      return JSON.parse(fs.readFileSync(this.file(id), "utf-8")) as GateEntry;
+    } catch {
+      return null;
+    }
   }
 
   /** Issue 621: a runner gives back its own slot. */

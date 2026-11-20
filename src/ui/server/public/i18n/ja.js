@@ -917,6 +917,13 @@
     "set.server.gate_remote_lapse": "CI ランナーのスロットを取り戻すまで (秒)",
     "set.server.gate_remote_lapse.d":
       "この時間スロットを更新しなかった CI ランナーはスロットを失い、次の順番が始まります。更新間隔の 2 倍以上です。__DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_remote_slots":
+      "1 つの CI ランナーが同時に持てるゲートスロット",
+    "set.server.gate_remote_slots.d":
+      "使用中と待機中の合計です。超えた依頼は理由を添えて断られ、ランナーが 1 つ返すまで続きます。__DEN_CLI__ gate settings --remote-max-slots 4",
+    "set.server.gate_remote_asks": "1 つの CI ランナーが同時に待てる依頼",
+    "set.server.gate_remote_asks.d":
+      "まだ返事を待っているスロットの依頼です。超えた依頼は理由を添えて断られ、1 つが返事を受けるまで続きます。__DEN_CLI__ gate settings --remote-max-asks 4",
     "set.server.gate_runners": "CI ランナーのトークン",
     "set.server.gate_runners.d":
       "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",

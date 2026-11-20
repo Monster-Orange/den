@@ -91,6 +91,8 @@ describe("gate-slot routes", () => {
       overrunMarginMinutes: 15,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
+      remoteMaxSlots: 4,
+      remoteMaxAsks: 4,
     });
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),
