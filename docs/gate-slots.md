@@ -14,6 +14,12 @@ den gate status            # who holds a slot, who waits
 `gate status`, the Agents page and `GET /api/gate-slots` show every holder,
 local or remote.
 
+`gate run` follows the process that started it. If that process is gone
+(a test run stopped under `make`, say), a waiting `gate run` gives its place
+back and exits; a holding one stops its command, whose end frees the slot.
+An agent can give back any slot its own `gate run` made, with the MCP tool
+`gate_slot_release`; another agent's slot stays a person's to end.
+
 ## A release run a person waits on
 
 ```sh

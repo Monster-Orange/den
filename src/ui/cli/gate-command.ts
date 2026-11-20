@@ -87,6 +87,11 @@ export interface GateDeps {
   onSignal: (h: (signal: NodeJS.Signals) => void) => () => void;
   /** Leaves at once with `code` (a signal while waiting). */
   exit: (code: number) => void;
+  /**
+   * Issue 752: whether the process that started gate run is still there.
+   * Absent: always (no parent to follow).
+   */
+  parentAlive?: () => boolean;
   pid: number;
   cwd: string;
 }
@@ -116,6 +121,30 @@ const realOnSignal = (h: (s: NodeJS.Signals) => void) => {
   };
 };
 
+/**
+ * Issue 752: a parent that dies doesn't signal gate run; the orphan is
+ * handed to another process (its parent pid changes). Started under pid 1
+ * there is no parent to follow.
+ */
+export function realParentAlive(
+  start: number = process.ppid,
+  ppid: () => number = () => process.ppid,
+): () => boolean {
+  if (start <= 1) return () => true;
+  return () => {
+    if (ppid() !== start) return false;
+    try {
+      process.kill(start, 0);
+      return true;
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === "EPERM";
+    }
+  };
+}
+
+/** Issue 752: how often gate run looks for its parent, ms. */
+const PARENT_CHECK_MS = 2_000;
+
 export function realGateDeps(): GateDeps {
   return {
     store: new GateStore(),
@@ -132,6 +161,7 @@ export function realGateDeps(): GateDeps {
     },
     onSignal: realOnSignal,
     exit: (code) => process.exit(code),
+    parentAlive: realParentAlive(),
     pid: process.pid,
     cwd: process.cwd(),
   };
@@ -281,6 +311,14 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     cancelled = signalCode(sig);
     d.exit(cancelled);
   });
+  // Issue 752: an orphan follows its parent out. Waiting, it gives its
+  // place back; holding, it stops its command, whose end frees the slot.
+  const parentAlive = d.parentAlive ?? (() => true);
+  const orphaned = (): boolean => {
+    if (parentAlive()) return false;
+    d.err(`gate: the process that started ${id} is gone; leaving the queue`);
+    return true;
+  };
   try {
     let said = 0;
     while (!e.grantedAt) {
@@ -291,8 +329,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           d.err(`waiting: ${slotLine(h, all, d.now(), set)}`);
         said = d.now();
       }
-      await d.sleep(2_000);
+      await d.sleep(PARENT_CHECK_MS);
       if (cancelled !== undefined) return cancelled;
+      if (orphaned()) return signalCode("SIGHUP");
       e = s.get(id);
       if (!e) throw new Error(`the slot ${id} was ended while waiting`);
     }
@@ -309,10 +348,17 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         `gate: ${label} is past its estimate (${now.estimateMin} min); it is not stopped, and the slot stays its own until it ends`,
       );
     });
+    let left = false;
+    const watch = d.every(PARENT_CHECK_MS, () => {
+      if (left || !orphaned()) return;
+      left = true;
+      child?.kill("SIGTERM");
+    });
     try {
       return await child.done;
     } finally {
       stop();
+      watch();
     }
   } finally {
     off();
