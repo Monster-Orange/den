@@ -56,7 +56,12 @@ const answering = async (ctx) => {
 /** The bell: the held-note item, and the agent's waiting row. */
 async function bellOf(ctx, id) {
   const n = await ctx.api("/api/notifications").catch(() => ({}));
-  const subjects = (n?.groups ?? []).flatMap((g) => g?.subjects ?? []);
+  // A "service" item (the held note) is listed under updates, not groups.
+  const subjects = [
+    ...(n?.groups ?? []),
+    ...(n?.updates?.groups ?? []),
+    ...(n?.older?.groups ?? []),
+  ].flatMap((g) => g?.subjects ?? []);
   const items = (s) =>
     subjects.filter((x) => x?.subject === s).flatMap((x) => x?.items ?? []);
   return {
@@ -161,10 +166,13 @@ async function restartNote(ctx) {
     async () => !(await bellOf(ctx, SERVER)).held,
     30000,
   );
-  const audit = ctx.readBed("state:audit.jsonl") ?? "";
-  r.auditTold = /"verb":"server-back","detail":"[^"]*agent:server told/.test(
-    audit,
-  );
+  // Its audit row is written once the note is typed: look until it lands.
+  const told = /"verb":"server-back","detail":"[^"]*agent:server told/;
+  r.auditTold =
+    (await ctx.until(
+      () => told.test(ctx.readBed("state:audit.jsonl") ?? ""),
+      15000,
+    )) !== null;
   return r;
 }
 

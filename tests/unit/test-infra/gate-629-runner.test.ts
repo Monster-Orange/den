@@ -27,11 +27,17 @@ function runGate(kind: Kind) {
     const yml = { closed: false, set: null };
     let started = "2026-11-19T00:00:00.000Z";
     let selfUpdate = "ask";
-    let restartAt = null, upAt = null, held = false, told = false;
+    let restartAt = null, upAt = null, held = false, told = false, auditAt = null;
     const audit = [];
     const WAIT = 10_000;
     // The fake Den's back-note loop, as server-restart.ts's tellBack runs.
     function tick() {
+      // As Den: the server-back row is written once tellBack returns, a
+      // little after the note is typed.
+      if (auditAt !== null && clock >= auditAt) {
+        audit.push('{"verb":"server-back","detail":"on x: y; agent:server told"}');
+        auditAt = null;
+      }
       if (restartAt !== null && upAt === null && clock >= restartAt + 2000) {
         upAt = clock; started = new Date(clock).toISOString();
       }
@@ -39,16 +45,21 @@ function runGate(kind: Kind) {
       const past = clock >= upAt + WAIT;
       if (kind === "unfixed" ? past : !dialog.server && past) {
         typed.server.push({ t: clock, text: "Den is back", enter: true });
-        told = true; held = false;
-        audit.push('{"verb":"server-back","detail":"on x: y; agent:server told"}');
+        told = true; held = false; auditAt = clock + 2000;
       } else if (kind !== "unfixed" && dialog.server && past) held = true;
     }
     const bell = () => {
       tick();
-      const subjects = [];
-      if (held) subjects.push({ subject: "record:den-back-note-held", items: [{ kind: "service" }] });
+      // As Den's /api/notifications: a "service" item (the held note) is
+      // under updates, never in groups.
+      const subjects = [], service = [];
+      if (held) service.push({ subject: "record:den-back-note-held", items: [{ kind: "service" }] });
       if (dialog.server) subjects.push({ subject: "agent:server", items: [{ kind: "waiting" }] });
-      return { groups: [{ subjects }], waiting: dialog.server ? [{ agent: "server" }] : [] };
+      return {
+        groups: [{ subjects }],
+        updates: { count: service.length, groups: [{ subjects: service }] },
+        waiting: dialog.server ? [{ agent: "server" }] : [],
+      };
     };
     const agent = (id) => ({
       start() { return { code: 0 }; },
