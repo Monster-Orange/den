@@ -5332,7 +5332,8 @@
    * data: this browser's GitHub sign-in ({ name, login }), else, on a
    * local browser on this machine only, the install owner's GitHub
    * identity (/api/session's identity.owner) with its role. A browser
-   * signed in with a link or a code is never shown as the owner. The kit draws the name over @login (a role only in an
+   * signed in with a link or a code is never shown as the owner. The kit draws the name over @login, and @login alone when the name is
+   * just the login (issue 656; a role only in an
    * account menu's header). With no GitHub identity at all, the kit's own
    * word for this computer. Never device words.
    */
@@ -5357,10 +5358,15 @@
       h.login.toLowerCase() === String(gh.login).toLowerCase()
         ? h.name
         : undefined;
+    // Issue 656: a name that is just the login is no name (the kit's
+    // rule): the entry is @login alone, never the login twice.
+    var realName = function (n) {
+      return n && !DUI.sameAsLogin(n, gh.login) ? n : undefined;
+    };
     var who = gh
       ? {
           login: gh.login,
-          name: gh.name || hubName || undefined,
+          name: realName(gh.name) || realName(hubName),
           role:
             gh.role === "owner" ? t("acct.roleOwner") : gh.role || undefined,
         }

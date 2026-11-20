@@ -268,6 +268,8 @@ const KIT_SHELL_NAMES = [
   "bellCount",
   "accountHtml",
   "accountMenuHtml",
+  // Issue 656: a name that is just the login is no name.
+  "sameAsLogin",
   "menuHasFilter",
   "menuFilterParts",
   "settingsHtml",

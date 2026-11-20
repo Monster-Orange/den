@@ -877,7 +877,8 @@ function bellSectionsHtml(s, lang) {
  */
 /**
  * Who is signed in, as the kit draws it (0.7.1): the name on the first
- * line, @login on the second; @login alone when no name is known. The
+ * line, @login on the second; @login alone when no name is known, or when
+ * the name is just the login (sameAsLogin, issue 656). The
  * role is shown in the account menu's header only ({ menu: true }), on
  * its own line. From data: { name?, login?, role? }; with no
  * identity, { local: true } draws the kit's word for this computer. The old
@@ -885,10 +886,27 @@ function bellSectionsHtml(s, lang) {
  * release, as they were given, marked data-nav-legacy for the nav
  * inventory. Returns { lines: [first, second?], shape, legacy, full }.
  */
+/**
+ * Issue 656: whether a display name is just the login: the same once
+ * trimmed, a leading "@" dropped and case ignored. Such a name is no name.
+ */
+export function sameAsLogin(name, login) {
+  const norm = (v) =>
+    String(v ?? "")
+      .trim()
+      .replace(/^@/, "")
+      .toLowerCase();
+  return !!norm(login) && norm(name) === norm(login);
+}
+
 export function accountWho(a, { menu = false } = {}) {
   if (!a) return null;
   const legacy = a.label != null || a.detail != null;
-  const name = a.name ?? a.label ?? "";
+  // Issue 656: a name that is just the login is no name (@login alone).
+  const name =
+    a.name != null && !a.label && a.login && sameAsLogin(a.name, a.login)
+      ? ""
+      : (a.name ?? a.label ?? "");
   const login = a.login
     ? String(a.login).startsWith("@")
       ? String(a.login)
