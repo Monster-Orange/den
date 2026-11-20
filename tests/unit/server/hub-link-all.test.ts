@@ -161,6 +161,40 @@ describe("#68: /api/hub/link-suggestions", () => {
     expect(picks).toEqual([1]);
   });
 
+  it("issue 649: Unclear matches never offer the catch-all project `default`, and a pick of it links nothing", async () => {
+    const picks: number[] = [];
+    const { url, store, sent } = await serve({
+      projects: () => ["back-office", "default"],
+      choices: async (ws) =>
+        ws === "default"
+          ? {
+              suggestions: [
+                { ...BACK, why: "repo" as const },
+                { ...SITE, why: "name" as const },
+              ],
+              projects: [BACK, SITE],
+            }
+          : {
+              suggestions: [{ ...BACK, why: "repo" as const }],
+              projects: [BACK, SITE],
+            },
+      picked: (n) => void picks.push(n),
+    });
+    const j = (await (await fetch(url)).json()) as {
+      projects: { project: string }[];
+    };
+    expect(j.projects.map((p) => p.project)).toEqual(["back-office"]);
+    const r = await post(url, { links: [{ project: "default", hub: SITE.id }] });
+    expect(await r.json()).toEqual({
+      ok: true,
+      linked: [],
+      skipped: [{ project: "default", code: "unknown", why: "no such project" }],
+    });
+    expect(store.get("default")).toBeUndefined();
+    expect(sent.n).toBe(0);
+    expect(picks).toEqual([]);
+  });
+
   it("POST nothing to link: no sync", async () => {
     const { url, sent } = await serve();
     expect((await post(url, { links: [] })).status).toBe(200);
