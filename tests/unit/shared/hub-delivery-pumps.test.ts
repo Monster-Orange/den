@@ -17,9 +17,20 @@ import path from "node:path";
 import { SeenDeliveries } from "../../../src/shared/hub-delivery";
 import {
   DeliveryLoop,
+  HELD_WORDS,
   type AgentState,
   type DeliveryHub,
 } from "../../../src/shared/hub-delivery-loop";
+
+describe("issue 701: what Hub is told", () => {
+  it("every held reason is lowercase plain words, no numbers, at most 300 characters", () => {
+    for (const w of Object.values(HELD_WORDS)) {
+      expect(w[0]).toBe(w[0].toLowerCase());
+      expect(w).not.toMatch(/\d/);
+      expect(w.length).toBeLessThanOrEqual(300);
+    }
+  });
+});
 
 let dir = "";
 beforeEach(() => {
@@ -164,7 +175,7 @@ describe("issue 701: a typed comment's turn that never ends", () => {
     expect(s.noAnswer).toEqual([{ agent: "ag-1", count: 1 }]);
     const last = s.acks.filter((a) => a.id === "d1").pop();
     expect(last?.state).toBe("delivered");
-    expect(String(last?.reason)).toMatch(/no answer yet/);
+    expect(last?.reason).toBe("typed in; no answer yet");
     expect(s.loop.work("ag-1")?.working ?? 0).toBe(0);
     s.states["ag-1"] = "idle";
     await s.loop.pump();

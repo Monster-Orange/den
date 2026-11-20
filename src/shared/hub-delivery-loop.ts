@@ -86,8 +86,8 @@ export const HELD_WORDS: Record<HeldCode, string> = {
   approval: "it waits for its person to Allow a change",
   paused: "it is paused after a compaction loop until its person goes on",
   stopped: "the agent isn't running; typed when it next runs",
-  owner: "Den is still asking Hub who its person is; typed once Hub answers",
-  unread: "Den couldn't read the agent's state in time; it tries again",
+  owner: "still asking Hub who its person is; typed once Hub answers",
+  unread: "couldn't read the agent's state in time; trying again",
 };
 
 /** Issue 701: a time limit ran out (never a real value). */
@@ -623,7 +623,7 @@ export class DeliveryLoop {
       const minutes = Math.round((now - act.typedAt) / 60_000);
       for (const id of act.ids)
         await this.ack(id, "delivered", {
-          reason: `typed in ${minutes} min ago; no answer yet`,
+          reason: "typed in; no answer yet",
         });
       this.d.log?.(
         `hub delivery: ${act.ids.length} Hub item${act.ids.length === 1 ? "" : "s"} typed into ${agent} ${minutes} min ago, no answer yet: its next ones go on`,
