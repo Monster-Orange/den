@@ -3,11 +3,18 @@
  *
  * One machine runs gates for many repos and installs. Browser suites hold
  * the machine alone; cpu runs (unit suites) share up to `cpuSlots`, never
- * beside a browser run. First come, first served: a waiter never jumps the
- * one ahead of it, so a waiting browser run stops new cpu grants and can't
- * starve. Nothing is ever pre-empted: a later ask only waits, and a live
- * holder keeps its slot however long it runs (past its estimate it is
- * flagged, never stopped).
+ * beside a browser run. Within a kind, first come, first served. Nothing
+ * is ever pre-empted: a later ask only waits, and a live holder keeps its
+ * slot however long it runs (past its estimate it is flagged, never
+ * stopped).
+ *
+ * Issue 751: a cpu run waits for the browser run holding the machine, not
+ * for every browser run queued before it. Waiting cpu runs go ahead of
+ * waiting browser runs (filling up to `cpuSlots` when a browser run ends),
+ * but never ahead of a browser waiter that has waited past
+ * `priorityPassLimitMinutes` (issue 715's setting): past it, no new cpu
+ * run starts until that browser run has had the machine, so it can't
+ * starve.
  *
  * Issue 715: a release run a person waits on (`gate run --priority
  * release --reason <why>`) goes to the front of its kind's queue. It never
@@ -137,8 +144,9 @@ export function priorityIds(
 
 /**
  * The waiters in the order they start: by ask, except that a run holding
- * priority (issue 715) goes ahead of its kind's other waiters, never
- * ahead of one that has waited past the pass limit.
+ * priority (issue 715) goes ahead of its kind's other waiters, and a cpu
+ * waiter goes ahead of browser waiters (issue 751); neither goes ahead of
+ * one that has waited past the pass limit.
  */
 export function queueOrder(
   entries: GateEntry[],
@@ -146,11 +154,11 @@ export function queueOrder(
   now: number = Date.now(),
 ): GateEntry[] {
   const q = entries.filter((e) => !e.grantedAt).sort(byAsked);
-  const pri = priorityIds(entries, s);
-  if (!pri.size) return q;
   const limitMs =
     (s.priorityPassLimitMinutes ?? GATE_DEFAULTS.priorityPassLimitMinutes) *
     60_000;
+  const pastLimit = (w: GateEntry) => now - t(w.askedAt) > limitMs;
+  const pri = priorityIds(entries, s);
   for (const p of q.filter((e) => pri.has(e.id))) {
     const from = q.indexOf(p);
     q.splice(from, 1);
@@ -158,10 +166,26 @@ export function queueOrder(
     for (let i = from - 1; i >= 0; i--) {
       const w = q[i]!;
       if (w.kind !== p.kind) continue;
-      if (pri.has(w.id) || now - t(w.askedAt) > limitMs) break;
+      if (pri.has(w.id) || pastLimit(w)) break;
       to = i;
     }
     q.splice(to, 0, p);
+  }
+  // Issue 751: each cpu waiter, in turn, moves ahead of the browser
+  // waiters just before it, stopping at a cpu waiter (its kind keeps its
+  // order) or a browser waiter past the pass limit (it can't starve).
+  for (let from = 0; from < q.length; from++) {
+    const c = q[from]!;
+    if (c.kind !== "cpu") continue;
+    let to = from;
+    while (to > 0) {
+      const w = q[to - 1]!;
+      if (w.kind !== "browser" || pastLimit(w)) break;
+      to--;
+    }
+    if (to === from) continue;
+    q.splice(from, 1);
+    q.splice(to, 0, c);
   }
   return q;
 }

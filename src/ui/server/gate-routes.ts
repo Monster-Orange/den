@@ -140,12 +140,12 @@ function standing(store: GateStore, e: GateEntry): Record<string, unknown> {
     id: now.id,
     kind: now.kind,
     granted: !!now.grantedAt,
-    place: queuePlace(all, now.id),
+    place: queuePlace(all, now.id, s),
     ...(now.grantedAt
       ? { expected_end: new Date(expectedEnd(now)).toISOString() }
       : {
           expected_start: new Date(
-            expectedStart(all, now.id, Date.now()),
+            expectedStart(all, now.id, Date.now(), s),
           ).toISOString(),
         }),
     ...(now.remote ? { lease_until: now.remote.leaseUntil } : {}),
