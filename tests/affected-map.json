@@ -388,6 +388,7 @@
         "src/ui/server/public/panel.js"
       ],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -562,6 +563,7 @@
         "src/ui/server/public/settings.html"
       ],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
@@ -714,6 +716,7 @@
     {
       "when": ["src/ui/server/public/agent-start.js"],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -900,6 +903,7 @@
     {
       "when": ["src/ui/server/public/persona-ui.css"],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
@@ -1030,6 +1034,7 @@
     {
       "when": ["src/ui/server/public/ws-delete-agents.js"],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1135,6 +1140,7 @@
         "src/ui/server/public/workspace-picker.js"
       ],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1335,6 +1341,7 @@
       "run": [
         "tests/unit/agents/quarantined-launch.test.ts",
         "tests/unit/agents/uploads.test.ts",
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/button-kit.test.ts",
         "tests/unit/den-ui/dialog-frame-guard.test.ts",
         "tests/unit/den-ui/kit-route.test.ts",
@@ -1396,10 +1403,12 @@
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
+        "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
@@ -1490,6 +1499,7 @@
     {
       "when": ["scripts/words.js"],
       "run": [
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
@@ -1614,6 +1624,13 @@
     {
       "when": ["src/shared/web-session.ts"],
       "run": ["tests/unit/server/i18n-pages.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/index.ts", "src/ui/server/named-address.ts"],
+      "run": [
+        "tests/unit/server/issue-601-loopback-address.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {

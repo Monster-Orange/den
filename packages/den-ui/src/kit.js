@@ -50,6 +50,8 @@
  *   DenUI.filterBar(el, { facets, selected, onChange, start, end })
  *                               a list's Filters button, chosen chips
  *                               and facet panel (filter-bar.js)
+ *   DenUI.account.open({ profile, access, devices, notifications,
+ *                        onAction })  the Account area (issue 310)
  *   DenUI.bulkBar(el, { count, actions, onAction, onClear })
  *                               a list's bar while rows are selected
  *                               (bulk-bar.js)
@@ -115,6 +117,7 @@ import { busyAction, configureBusy, pending, watchForms } from "./busy.js";
 import { createSaveState } from "./savestate.js";
 import { mountFilterBar } from "./filter-bar.js";
 import { mountBulkBar } from "./bulk-bar.js";
+import { mountAccountArea, openAccountArea } from "./account-area.js";
 import { buttonHtml } from "./button.js";
 import {
   hydrateSettingRow,
@@ -228,6 +231,15 @@ export function filterBar(el, opts = {}) {
 export function bulkBar(el, opts = {}) {
   return mountBulkBar(el, { lang, ...opts });
 }
+
+/**
+ * Issue 310: the Account area, in the kit's language: open({ ...data,
+ * onAction }) is the pop-up; mount(el, …) draws it into a page.
+ */
+export const account = {
+  open: (opts = {}) => openAccountArea({ lang: lang(), ...opts }),
+  mount: (el, opts = {}) => mountAccountArea(el, { lang: lang(), ...opts }),
+};
 
 /**
  * The page action menu (issue 555) on a drawn More ▾ button, in the
@@ -361,6 +373,7 @@ const DenUI = {
   saveState,
   filterBar,
   bulkBar,
+  account,
   buttonHtml,
   menuRowHtml,
   pageMenuButtonHtml,
