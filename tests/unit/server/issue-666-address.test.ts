@@ -75,7 +75,7 @@ describe("issue 666: the writer", () => {
     // doctor's own fix (`web url <it>`, setWebUrl) confirmed it.
     const s = store();
     const w = migrateWebUrl(
-      () => ({ url: LOOP, from: "the edge route to this server" }),
+      () => ({ url: LOOP, from: "the edge route to this install" }),
       s.merge,
       s.read,
     );
@@ -90,8 +90,8 @@ describe("issue 666 clause 1: no path writes a loopback address", () => {
     const s = store();
     const w = migrateWebUrl(
       () => [
-        { url: LOOP, from: "the edge route to this server" },
-        { url: ALIAS, from: "the edge route to this server" },
+        { url: LOOP, from: "the edge route to this install" },
+        { url: ALIAS, from: "the edge route to this install" },
       ],
       s.merge,
       s.read,
@@ -99,14 +99,14 @@ describe("issue 666 clause 1: no path writes a loopback address", () => {
     expect(w).toEqual({
       url: ALIAS,
       confirmed: false,
-      from: "the edge route to this server",
+      from: "the edge route to this install",
     });
   });
 
   it("a loopback web.url already there is replaced by the alias, unconfirmed", () => {
     const s = store({ web: { url: LOOP } } as UserConfig);
     const w = migrateWebUrl(
-      () => [{ url: ALIAS, from: "the edge route to this server" }],
+      () => [{ url: ALIAS, from: "the edge route to this install" }],
       s.merge,
       s.read,
     );
@@ -375,7 +375,7 @@ describe("issue 666 clause 4: every web.url change is an activity row", () => {
   it("the migration too", () => {
     const s = store({ web: { url: LOOP } } as UserConfig);
     migrateWebUrl(
-      () => [{ url: ALIAS, from: "the edge route to this server" }],
+      () => [{ url: ALIAS, from: "the edge route to this install" }],
       s.merge,
       s.read,
     );

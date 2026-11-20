@@ -8535,7 +8535,7 @@ const ADDRESS = migrateWebUrl(() => {
     const ports = new Set([readWebPort(), PORT]);
     return webRouteHosts(readEdgeConfig(), ports).map((r) => ({
       url: r.url,
-      from: "the edge route to this server",
+      from: "the edge route to this install",
     }));
   } catch {
     return undefined; // no edge config: nothing to take
