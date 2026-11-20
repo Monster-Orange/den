@@ -279,10 +279,16 @@ export function gateRunnerTokenOp(d: {
           error: `the runner ${name} has a token already: revoke it in Settings first`,
         };
       const asker = who?.agent ?? "";
+      const once: { key: string; vars?: Record<string, string> } = asker
+        ? {
+            key: "ap.det.gate_runner_token_create.onceAgent",
+            vars: { agent: asker },
+          }
+        : { key: "ap.det.gate_runner_token_create.once" };
+      // Critical by its name (a token) and its placement (approval-policy.ts).
       return {
         ok: true,
         personOnly: true,
-        areas: ["secrets"],
         args: { name },
         summary: `make a gate-only token for the CI runner "${name}"`,
         params: { name },
@@ -295,12 +301,7 @@ export function gateRunnerTokenOp(d: {
         ],
         detailKeys: [
           { key: "ap.det.gate_runner_token_create.reach", vars: { name } },
-          asker
-            ? {
-                key: "ap.det.gate_runner_token_create.onceAgent",
-                vars: { agent: asker },
-              }
-            : { key: "ap.det.gate_runner_token_create.once" },
+          once,
           { key: "ap.det.gate_runner_token_create.revoke" },
         ],
       };
