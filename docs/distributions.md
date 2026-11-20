@@ -3364,10 +3364,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
   "current", or "restart needed: host code changed" / "terminal module
   changed" with the restart command.
 
+  Issue 631: every agent running before the restart is in the audit
+  row's resumed, failed or cut list. The list is taken once more right
+  before the stop, and every agent whose terminal the host still ran
+  then is added, so an agent between the stop and the start of its
+  relaunch from a handoff isn't missed. No relaunch from a handoff starts
+  while the restart runs. An agent that relaunched from its handoff
+  resumes in its new conversation. Den looks again
+  `sessions.host_restart_check_seconds` (default 30; 0: no look) after
+  the resumes: an agent that ended since counts as failed, with its state
+  and last line. Each failed agent shows as interrupted, with Resume, and
+  its row says it didn't come back after a restart, and why. The bell has
+  a "needs you" item for it.
+
   ```yaml
   sessions:
     host_restart_wait_seconds: 900
     host_restart_note: true
+    host_restart_check_seconds: 30
   ```
 
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an

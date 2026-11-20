@@ -2072,6 +2072,7 @@
     "ag.state.interrupted": "interrupted",
     "ag.why.stopped": "Stopped by you {time}",
     "ag.why.interrupted": "Interrupted: {name} restarted",
+    "ag.why.restartFailed": "Didn't come back after a restart: {why}",
     "ag.why.exited": "Exited",
     "ag.why.exitedCode": "Exited (code {code})",
     "ag.fresh": "Start fresh",

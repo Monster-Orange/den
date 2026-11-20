@@ -19,10 +19,7 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import {
-  readRecord,
-  writeRecord,
-} from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import {
   noteCompaction,
   readRotation,
@@ -181,9 +178,9 @@ describe("issue 631, clauses 3 and 4: a resume that didn't hold", () => {
     // Clause 4: the row has it, and `agents list` says it.
     const [row] = await rows(r);
     expect(row).toMatchObject({ state: "interrupted", resumable: true });
-    expect(
-      (row.restartFailed as { why: string } | undefined)?.why,
-    ).toMatch(/exited \(1\) after its resume/);
+    expect((row.restartFailed as { why: string } | undefined)?.why).toMatch(
+      /exited \(1\) after its resume/,
+    );
     r.out.length = 0;
     expect(await agents(r, "list", "-w", "north")).toBe(0);
     expect(r.out.join("\n")).toMatch(

@@ -1234,6 +1234,7 @@
     "ag.state.interrupted": "interrumpido",
     "ag.why.stopped": "Lo detuviste a las {time}",
     "ag.why.interrupted": "Interrumpido: {name} se reinició",
+    "ag.why.restartFailed": "No volvió tras un reinicio: {why}",
     "ag.why.exited": "Salió",
     "ag.why.exitedCode": "Salió (código {code})",
     "ag.fresh": "Empezar de cero",

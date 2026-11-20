@@ -146,6 +146,9 @@ import {
   runningAgentIds,
   busyAgentIds,
   resumeAfterHostRestart,
+  agentsOfSessions,
+  endedAfterHostRestart,
+  noteNotBackAfterHostRestart,
   modeCheck,
   modeRestartDetail,
   cancelStalePersonaChanges,
@@ -2030,24 +2033,46 @@ export async function refreshTerminalHost(
   d: AgentsResolved,
   log: (line: string) => void,
 ): Promise<void> {
-  const { refreshSessionHost } =
-    await import("../../shared/sessions/host-refresh.js");
-  const { sessionPaths } = await import("../../shared/sessions/paths.js");
-  const { installedPtyModule } = await import("../../shared/sessions/pty.js");
-  const { engineVersion } = await import("../../shared/paths.js");
-  const { hostCodeId } = await import("../../shared/sessions/host-code.js");
-  const { HOST_RESTART_NOTE } =
-    await import("../../shared/sessions/host-refresh.js");
   let waitS = 900;
   let note = true;
+  let checkS = 30;
   try {
     const cfg = await import("../../shared/den-config.js");
     const s = cfg.readSessionsConfig();
     waitS = s.hostRestartWaitSeconds;
     note = s.hostRestartNote;
+    checkS = s.hostRestartCheckSeconds;
   } catch {
     /* the defaults; validate names a bad value */
   }
+  // Issue 631: no relaunch from a handoff starts while the host restarts
+  // (it would race the list of agents to resume).
+  hostRefreshing = true;
+  try {
+    await refreshAndReport(d, log, { waitS, note, checkS });
+  } finally {
+    hostRefreshing = false;
+  }
+}
+
+/**
+ * Issue 631: a terminal host restart is under way: the rotation tick
+ * leaves every agent as it is until it ends.
+ */
+let hostRefreshing = false;
+
+async function refreshAndReport(
+  d: AgentsResolved,
+  log: (line: string) => void,
+  o: { waitS: number; note: boolean; checkS: number },
+): Promise<void> {
+  const { refreshSessionHost, HOST_RESTART_NOTE } =
+    await import("../../shared/sessions/host-refresh.js");
+  const { sessionPaths } = await import("../../shared/sessions/paths.js");
+  const { installedPtyModule } = await import("../../shared/sessions/pty.js");
+  const { engineVersion } = await import("../../shared/paths.js");
+  const { hostCodeId } = await import("../../shared/sessions/host-code.js");
+  const { waitS, note, checkS } = o;
   const r = await refreshSessionHost({
     connectExisting: () => d.connectExisting(),
     connect: () => d.connect(),
@@ -2062,6 +2087,10 @@ export async function refreshTerminalHost(
     waitMs: waitS * 1000,
     cutNote: note ? HOST_RESTART_NOTE : null,
     resume: (id, n) => resumeAfterHostRestart(d, id, n),
+    // Issue 631: none missing, and a resume that didn't hold is failed.
+    agentsOf: async (sessions) => agentsOfSessions(d, sessions),
+    ended: (ids) => endedAfterHostRestart(d, ids),
+    checkMs: checkS * 1000,
     log: (l) => log(`  ${l}`),
   });
   if (r.did === "failed") {
@@ -2093,6 +2122,14 @@ export async function refreshTerminalHost(
     detail: a.detail,
     agents: a.agents,
   });
+  // Issue 631: each agent that didn't come back is marked, and the bell
+  // says so, with why.
+  for (const f of r.failed)
+    try {
+      noteNotBackAfterHostRestart(d, f.agent, f.why);
+    } catch (e) {
+      log(`  ⚠ agent ${f.agent}: ${(e as Error).message}`);
+    }
   try {
     const { notificationDeps } = await import("./notification-service.js");
     noteHostRestarted(
@@ -2265,7 +2302,8 @@ export function startAgentUpkeep(
   // then relaunched from it. One look at a time.
   let looking = false;
   const rotate = async () => {
-    if (looking) return;
+    // Issue 631: never during a terminal host restart.
+    if (looking || hostRefreshing) return;
     looking = true;
     try {
       for (const e of await rotationTick(d)) {
