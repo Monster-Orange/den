@@ -5948,9 +5948,11 @@ export async function resumeAgent(
             ? { firstPrompt: resumeHandoffPrompt(handoff.text) }
             : {}),
         };
-        const out = launchOrThrow(() =>
-          asFresh ? rt.launch(fresh) : rt.resume!(at),
-        );
+        // A fresh launch says its conversation id (resumeToken); a resume
+        // keeps the one it had.
+        const out = launchOrThrow<
+          (Omit<LaunchOutput, "resumeToken"> & { resumeToken?: string }) | null
+        >(() => (asFresh ? rt.launch(fresh) : rt.resume!(at)));
         if (!out) throw refused(`agent ${rec.id} has nothing to resume`);
         usedHandoff = asFresh && handoff ? handoff.file : undefined;
         writeRuntimeFiles(input.filesDir, out.files);
