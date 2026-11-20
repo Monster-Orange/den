@@ -451,7 +451,8 @@ describe("issue 103: the pop-up for a browser on another computer", () => {
 async function connected(): Promise<{ p: Page; f: Frame }> {
   // The agent's program takes pastes (as Claude Code does): a message is
   // one bracketed paste, its newlines kept, then Enter.
-  pty.emit("\x1b[?2004h");
+  // Issue 664: at its input prompt, so a message is typed in.
+  pty.emit("\x1b[?2004h> ");
   const p = await newPage();
   await frame(p, LISTED, "/embed/p/north/agents/scout");
   const f = await denFrame(p, 15_000);

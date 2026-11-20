@@ -66,6 +66,8 @@ beforeAll(async () => {
     session: { backend: "den-pty", id: sid },
     sessionName: "acme-north:scout",
   });
+  // Issue 664: at its input prompt, so a message is typed in.
+  pty.emit("> ");
 }, 90_000);
 
 afterAll(async () => {
