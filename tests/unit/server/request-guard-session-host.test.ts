@@ -219,6 +219,17 @@ describe("X-Forwarded-Proto counts only with the edge's proof", () => {
   it("with it: https", () => {
     expect(requestIsHttps(r, "edge", true)).toBe(true);
   });
+  // The edge says wss for a WebSocket upgrade over TLS (the terminal pane).
+  const up = req("GET", "/api/sessions/x/io", {
+    host: NAMED,
+    "x-forwarded-proto": "wss",
+  });
+  it("a WebSocket upgrade's wss, with it: https", () => {
+    expect(requestIsHttps(up, "edge", true)).toBe(true);
+  });
+  it("a WebSocket upgrade's wss, without it: not https", () => {
+    expect(requestIsHttps(up, "edge", false)).toBe(false);
+  });
 });
 
 describe("no working https address (no lockout)", () => {

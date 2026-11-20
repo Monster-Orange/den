@@ -8093,6 +8093,34 @@ server.on(
   },
 );
 
+/**
+ * An upgrade refused for want of a sign-in (a terminal that can't attach):
+ * an audit row and a WS line on stderr, which is web.log even when `web
+ * up` starts this --silent. The route's template, the status and the
+ * code only: never a cookie, a header or the session's id.
+ */
+function traceUpgradeSignin(
+  pathname: string,
+  g: Extract<GuardResult, { ok: false }>,
+): void {
+  const route = isSessionIoPath(pathname)
+    ? "/api/sessions/:id/io"
+    : routeTemplate(pathname);
+  try {
+    recordAction(null, {
+      verb: "request",
+      detail: `WS ${route} ${g.status}`,
+      outcome: "refused",
+      reason: g.code,
+    });
+  } catch {
+    /* the audit is best-effort here */
+  }
+  const line = `  ⚠ WS ${route} → ${g.status} ${g.code}`;
+  if (!SILENT) return; // serverLog's request line is on stdout then
+  if (!outputLost()) process.stderr.write(line + "\n");
+}
+
 function handleUpgrade(
   req: http.IncomingMessage,
   socket: net.Socket,
@@ -8116,6 +8144,7 @@ function handleUpgrade(
       "request",
     );
     auditGuardRefusal(req, pathname, guard);
+    if (guard.code === "signin_required") traceUpgradeSignin(pathname, guard);
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
