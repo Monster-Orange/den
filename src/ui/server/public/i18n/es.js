@@ -1549,6 +1549,13 @@
     "ap.hc.name": "Nombre en Hub: {name}",
     "ap.hc.owner":
       "Un propietario en Hub lo permite allí; Den vincula el proyecto en cuanto lo haga.",
+    "ap.do.hub_link": "Vincular el proyecto {project} al proyecto de Hub {hub}",
+    "ap.hl.project": "Proyecto: {project}",
+    "ap.hl.now": "Ahora: {hub}",
+    "ap.hl.nowNone": "Ahora: sin vincular a un proyecto de Hub",
+    "ap.hl.then": "Después: {hub}",
+    "ap.hl.filed":
+      "El trabajo de sus agentes en Hub se archiva allí desde su próxima llamada.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":

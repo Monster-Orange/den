@@ -2374,6 +2374,13 @@
     "ap.hc.name": "Name in Hub: {name}",
     "ap.hc.owner":
       "An owner in Hub allows it there; Den links the project to it once they do.",
+    // Issue 647: hub_link's Allow.
+    "ap.do.hub_link": "Link project {project} to the Hub project {hub}",
+    "ap.hl.project": "Project: {project}",
+    "ap.hl.now": "Now: {hub}",
+    "ap.hl.nowNone": "Now: not linked to a Hub project",
+    "ap.hl.then": "Then: {hub}",
+    "ap.hl.filed": "Its agents' Hub work is filed there from their next call.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":

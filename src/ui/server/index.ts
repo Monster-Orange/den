@@ -1160,6 +1160,11 @@ import {
   hubCreateLook,
   runHubCreateHeld,
 } from "./hub-create-routes.js";
+import {
+  checkHubLinkHeld,
+  defaultHubLinkHeldDeps,
+  runHubLinkHeld,
+} from "./hub-link-held.js";
 import { checkHubAddress, runHubAddress } from "./hub-address.js";
 import {
   checkVerifyRun,
@@ -3052,6 +3057,13 @@ function approvalDeps(): ApprovalDeps {
       },
       run: async (a, asked) =>
         runHubCreateHeld(await defaultHubCreateDeps(), a, asked, agentNameOf),
+    },
+    // Issue 647: an agent asks to link a project to an existing Hub project.
+    hubLink: {
+      check: async (a, who) =>
+        checkHubLinkHeld(await defaultHubLinkHeldDeps(), a, who),
+      run: async (a, asked) =>
+        runHubLinkHeld(await defaultHubLinkHeldDeps(), a, asked),
     },
     // SRV-P4: an agent asks to set a project's mode, or move an agent.
     projectMode: {

@@ -1510,6 +1510,14 @@
     "ap.hc.name": "Hub での名前: {name}",
     "ap.hc.owner":
       "Hub のオーナーが Hub で許可します。許可されると Den がプロジェクトをリンクします。",
+    "ap.do.hub_link":
+      "プロジェクト {project} を Hub プロジェクト {hub} にリンク",
+    "ap.hl.project": "プロジェクト: {project}",
+    "ap.hl.now": "現在: {hub}",
+    "ap.hl.nowNone": "現在: Hub プロジェクトにリンクされていません",
+    "ap.hl.then": "変更後: {hub}",
+    "ap.hl.filed":
+      "エージェントの Hub での作業は、次の呼び出しからそこに記録されます。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":

@@ -13,6 +13,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
+import { mintActorToken } from "../../../src/shared/actor-token.js";
 import { hubProjectChoices } from "../../../src/shared/hub.js";
 import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
 import {
@@ -56,8 +57,7 @@ async function rig(
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
   const links = new Map(Object.entries(o.links ?? {}));
-  const writes: { ws: string; link: HubProjectLink | null; by?: string }[] =
-    [];
+  const writes: { ws: string; link: HubProjectLink | null; by?: string }[] = [];
   let changed = 0;
   const d: HubLinkHeldDeps = {
     exists: (ws) => ["north", "south"].includes(ws),
@@ -79,6 +79,12 @@ async function rig(
 /** The held-write queue as the server runs it, with hub_link's deps. */
 function queueFor(d: HubLinkHeldDeps) {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-hub-link-"));
+  // The asking agent is live: a stopped one's asks end unrun.
+  mintActorToken(stateDir, {
+    agentId: "agt_den1",
+    workspace: "den-server",
+    sessionName: "acme-den:den",
+  });
   const actions = heldActions({
     hubLink: {
       check: (a, who) => checkHubLinkHeld(d, a, who),
@@ -225,9 +231,9 @@ describe("issue 647 clause 3: a Hub project the connected Hub doesn't list is re
       ok: false,
       error: expect.stringMatching(/no project "east"/),
     });
-    expect(await no({ project: "den-server", hub: "proj_n1" })).toMatchObject(
-      { ok: false },
-    );
+    expect(await no({ project: "den-server", hub: "proj_n1" })).toMatchObject({
+      ok: false,
+    });
     expect(await no({ project: "north" })).toMatchObject({
       ok: false,
       error: expect.stringMatching(/hub:/),
