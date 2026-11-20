@@ -17,7 +17,16 @@
 // showing the dialog answers 409 dialog_open and types nothing.
 //
 // Clauses 2 (a Hub comment) and 3 (the tools note): the bed has no Hub and
-// can't change a tool list, so both skip.
+// can't change a tool list, so both skip. With a Hub, clause 2's stub
+// answers its dialog as a real agent does: its screen clears, then its
+// PostToolUse hook (the waiting mark Den holds the comment on clears only
+// on a hook). Its name is new each run, so a comment an earlier run left
+// held can't reach it.
+//
+// Clauses 2 and 4 first wait (DIALOG_MS) for the stub's waiting mark in
+// the bell. A stub mid-turn draws no dialog: then the clause is not run
+// (skip needs-dialog, "the dialog never came up"), nothing is posted, and
+// it is never a FAIL.
 export const issue = 629;
 export const clauses = [
   "after a restart, Den's note to its agent is not typed while the agent shows a dialog for its person; the bell says the note waits, the agent's waiting row stays, and the note is typed once the dialog is answered",
@@ -30,9 +39,13 @@ export const timeoutMs = 420000;
 const SERVER = "server";
 const SAY = "gate-629-say";
 // Clause 2's stub: in the bed's workspace linked to Hub's e2e project.
+// A prefix: each run adds its own suffix (setup).
 const HUB = "gate-629-hub";
 const HUB_WS = "proj-gate";
 const HUB_QUIET_MS = 20000;
+// How long a stub's dialog has to show in the bell before a clause.
+const DIALOG_MS = 10000;
+const NO_DIALOG = `the dialog never came up: no waiting mark in the bell within ${DIALOG_MS} ms (the stub mid-turn?)`;
 const HELD = "record:den-back-note-held";
 const WAIT_S = 10;
 const MARGIN_MS = 20000;
@@ -87,6 +100,16 @@ async function typedOf(a, since) {
 }
 
 const recordOf = (ctx, id) => parse(ctx.readBed(`state:agents/${id}.json`));
+
+/** Raise the stub's dialog and wait for its waiting mark: ms, or null. */
+async function raise(ctx, a, id) {
+  a.permissionRequest("Bash", { command: "npm test" });
+  return ctx.until(async () => (await bellOf(ctx, id)).waitingRow, DIALOG_MS);
+}
+
+/** This run's Hub stub name: new each run. */
+const hubName = () =>
+  `${HUB}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const server = (ctx) => ctx.agent(SERVER, { workspace: "den-server" });
 
 export async function setup(ctx) {
@@ -105,7 +128,8 @@ export async function setup(ctx) {
   s.sayStart = b.start("tester")?.code ?? null;
   s.sayRunningMs = await b.running(30000);
   if (ctx.hub) {
-    const h = ctx.agent(HUB, { workspace: HUB_WS });
+    s.hub = hubName();
+    const h = ctx.agent(s.hub, { workspace: HUB_WS });
     s.hubStart = h.start("tester")?.code ?? null;
     s.hubRunningMs = await h.running(30000);
   }
@@ -200,7 +224,11 @@ async function sayRefused(ctx, s) {
   r.ws = rec?.workspace ?? null;
   r.runtime = rec?.runtime ?? null;
   if (!r.running || !r.ws) return r;
-  b.permissionRequest("Bash", { command: "npm test" });
+  r.raisedMs = await raise(ctx, b, SAY);
+  if (r.raisedMs === null) {
+    r.noDialog = true;
+    return r;
+  }
   await ctx.sleep(1500);
   const since = Date.now();
   const res = await ctx.fetch(
@@ -225,12 +253,17 @@ async function sayRefused(ctx, s) {
 /** Clause 2: a Hub comment for an agent showing a dialog waits for it. */
 async function hubHeld(ctx, s) {
   if (!ctx.hub) return { skip: true };
-  const h = ctx.agent(HUB, { workspace: HUB_WS });
+  const h = ctx.agent(s.hub, { workspace: HUB_WS });
   const r = {
+    agent: s.hub,
     running: s.hubRunningMs !== null && s.hubRunningMs !== undefined,
   };
   if (!r.running) return r;
-  h.permissionRequest("Bash", { command: "npm test" });
+  r.raisedMs = await raise(ctx, h, s.hub);
+  if (r.raisedMs === null) {
+    r.noDialog = true;
+    return r;
+  }
   await ctx.sleep(1500);
   const token = `g629hub-${Date.now()}`;
   const since = Date.now();
@@ -238,7 +271,7 @@ async function hubHeld(ctx, s) {
     r.id =
       (
         await ctx.hub.comment({
-          agent: HUB,
+          agent: s.hub,
           workspace: HUB_WS,
           text: `gate 629: a Hub comment while a dialog is open (${token})`,
         })
@@ -251,8 +284,13 @@ async function hubHeld(ctx, s) {
   await ctx.sleep(HUB_QUIET_MS);
   r.typedWhileOpen = await typedOf(h, since);
   r.stateWhileOpen = (await ctx.hub.delivery?.(r.id).catch(() => null)) ?? null;
+  // The stub answers its dialog as a real agent does: its screen goes
+  // back to its prompt, then the allowed tool runs and its PostToolUse
+  // hook says it went on ("resumed"). Den's waiting mark is set by a hook
+  // and clears only on one, never on the screen.
   const answered = Date.now();
   h.print(PROMPT);
+  await h.hook("PostToolUse", { tool_name: "Bash" });
   r.toldMs = await ctx.until(
     async () => ((await typedOf(h, answered)) ?? "").includes(token),
     60000,
@@ -312,8 +350,8 @@ export async function teardown(ctx, s) {
   }
   try {
     if (ctx.agent(SAY).state()) ctx.agent(SAY).remove();
-    if (ctx.hub && ctx.agent(HUB, { workspace: HUB_WS }).state())
-      ctx.agent(HUB, { workspace: HUB_WS }).remove();
+    if (ctx.hub && s?.hub && ctx.agent(s.hub, { workspace: HUB_WS }).state())
+      ctx.agent(s.hub, { workspace: HUB_WS }).remove();
   } catch {
     /* none */
   }
@@ -327,6 +365,13 @@ function hubRow(h) {
       skip: "needs-hub",
       detail: "the bed has no Hub and no way to queue a comment for an agent",
     };
+  if (h.running && h.noDialog)
+    return {
+      clause: clauses[1],
+      ok: null,
+      skip: "needs-dialog",
+      detail: `${h.agent}: ${NO_DIALOG}; no comment posted`,
+    };
   const ok =
     h.running === true &&
     !!h.id &&
@@ -337,7 +382,7 @@ function hubRow(h) {
     (h.stateWhileOpen == null || h.stateWhileOpen.state === "held") &&
     (h.stateWhileOpen == null || h.stateAfter?.state === "delivered");
   const detail = !h.running
-    ? `the ${HUB} stub did not run in ${HUB_WS}`
+    ? `the ${h.agent} stub did not run in ${HUB_WS}`
     : h.postThrew
       ? `the comment could not be posted: ${h.postThrew}`
       : `comment ${h.id}; typed while open ${JSON.stringify((h.typedWhileOpen ?? "(the stub can't say)").slice(0, 80))} after ${HUB_QUIET_MS} ms; Hub state then ${JSON.stringify(h.stateWhileOpen)}; typed after the answer ${h.toldMs} ms, ${h.typedTimes} time(s); Hub state after ${JSON.stringify(h.stateAfter)}`;
@@ -385,6 +430,13 @@ export function expect(r) {
       detail:
         "the bed can't change an agent's tool list, so no tools note is sent",
     },
-    { clause: clauses[3], ok: c4, detail: d4 },
+    y.running === true && y.noDialog
+      ? {
+          clause: clauses[3],
+          ok: null,
+          skip: "needs-dialog",
+          detail: `${SAY}: ${NO_DIALOG}; no message sent`,
+        }
+      : { clause: clauses[3], ok: c4, detail: d4 },
   ];
 }
