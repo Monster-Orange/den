@@ -21,6 +21,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ROOT = path.join(__dirname, "../../..");
 const SRC = path.join(ROOT, "packages/den-ui/src");
@@ -32,7 +33,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

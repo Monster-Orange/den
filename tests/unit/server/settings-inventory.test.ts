@@ -41,12 +41,34 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   crash_loop: Object.fromEntries(PAGE_LIMITS.crash_loop.map((k) => [k, true])),
   // 0.4.48: Den on the Docker bridge for the edge.
   web_bridge: { listen: true, probe_seconds: true },
+  // Issue 406: how long the start waits for the owner's GitHub name.
+  web_github: { owner_name_timeout_seconds: true },
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
   // Issue 144: the machine's gate slots.
-  gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
+  gate_slots: {
+    cpu_slots: true,
+    overrun_margin_minutes: true,
+    remote_renew_seconds: true,
+    remote_lapse_seconds: true,
+    remote_max_slots: true,
+    remote_max_asks: true,
+    // Issue 715: release priority.
+    priority_max: true,
+    priority_pass_limit_minutes: true,
+    priority_agents: true,
+  },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
+  // Issue 403: how long a filed report's screenshot is kept.
+  reports: {
+    screenshot_keep_days: true,
+    screenshot_max_mb: true,
+    hub_screenshot_max_mb: true,
+    hub_timeout_seconds: true,
+  },
+  // Issue 456: how long Den waits for the shell's PATH.
+  agents_shell: { path_timeout_seconds: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -78,6 +100,18 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     timeout_seconds: true,
     retries: true,
     cache_seconds: true,
+    // Failures in a row before the sign-in moves back off a proven address.
+    drop_after: true,
+    // How long can't-tell keeps it proven (web.address_unknown_keep_seconds).
+    unknown_keep_seconds: true,
+  },
+  // Issue 609: how long Den's process lookups wait.
+  process_lookup: { first_seconds: true, retry_seconds: true },
+  // Issue 609: how agents' hooks wait for Den, and retry.
+  agent_hooks: {
+    timeout_seconds: true,
+    retries: true,
+    backoff_seconds: true,
   },
 };
 
@@ -167,14 +201,30 @@ describe("the settings inventory (R21)", () => {
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
         "web_bridge.listen",
         "web_bridge.probe_seconds",
+        // Issue 406: the owner's GitHub name at start, its wait.
+        "web_github.owner_name_timeout_seconds",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
+        "gate_slots.priority_agents",
+        "gate_slots.priority_max",
+        "gate_slots.priority_pass_limit_minutes",
+        "gate_slots.remote_lapse_seconds",
+        "gate_slots.remote_max_asks",
+        "gate_slots.remote_max_slots",
+        "gate_slots.remote_renew_seconds",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",
+        // Issue 403: how long a filed report's screenshot is kept.
+        "reports.screenshot_keep_days",
+        "reports.screenshot_max_mb",
+        "reports.hub_screenshot_max_mb",
+        "reports.hub_timeout_seconds",
+        // Issue 456: how long Den waits for the shell's PATH.
+        "agents_shell.path_timeout_seconds",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",
@@ -208,6 +258,15 @@ describe("the settings inventory (R21)", () => {
         "address_check.timeout_seconds",
         "address_check.retries",
         "address_check.cache_seconds",
+        "address_check.drop_after",
+        "address_check.unknown_keep_seconds",
+        // Issue 609: how long Den's process lookups wait.
+        "process_lookup.first_seconds",
+        "process_lookup.retry_seconds",
+        // Issue 609: how agents' hooks wait for Den, and retry.
+        "agent_hooks.timeout_seconds",
+        "agent_hooks.retries",
+        "agent_hooks.backoff_seconds",
       ].sort(),
     );
   });

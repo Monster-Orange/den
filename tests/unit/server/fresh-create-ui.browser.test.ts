@@ -24,6 +24,8 @@ import {
 import { startDenServer } from "../../child-servers.js";
 import { pageImport } from "./helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const FAKES = ["gh", "op", "doppler", "mkcert"];
@@ -90,7 +92,7 @@ beforeAll(async () => {
   port = started.port;
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -108,6 +110,7 @@ async function page() {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  await signIn(ctx, path.join(tmp, "acme-home"), `http://localhost:${port}`);
   const latest = (
     JSON.parse((await getBody("/api/changelog")).body) as {
       version: string;

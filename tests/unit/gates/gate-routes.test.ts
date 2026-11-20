@@ -86,7 +86,17 @@ describe("gate-slot routes", () => {
     });
     const r = await call("GET", "/api/gate-slots");
     expect(r.status).toBe(200);
-    expect(r.json.settings).toEqual({ cpuSlots: 2, overrunMarginMinutes: 15 });
+    expect(r.json.settings).toEqual({
+      cpuSlots: 2,
+      overrunMarginMinutes: 15,
+      priorityMax: 1,
+      priorityPassLimitMinutes: 60,
+      priorityAgents: true,
+      remoteRenewSeconds: 30,
+      remoteLapseSeconds: 120,
+      remoteMaxSlots: 4,
+      remoteMaxAsks: 4,
+    });
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),
     ]);

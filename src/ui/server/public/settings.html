@@ -96,38 +96,31 @@
       .hubp-pair b {
         overflow-wrap: anywhere;
       }
+      /* Issue 651: the list and its buttons (Link or Create; linked, Switch
+         and Unlink) in one row, wrapping only where the row runs out. The
+         new name, when it shows, takes a line of its own. */
+      .hubp-pick {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 8px;
+        margin: 0 0 6px;
+      }
+      .hubp-pick select {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .hubp-pick .hubp-new {
+        flex: 1 0 100%;
+      }
+      .hubp-pick .hubp-new[hidden] {
+        display: none;
+      }
       .hubp-more summary {
         cursor: pointer;
         min-height: 34px;
         display: flex;
         align-items: center;
-      }
-      .hubp-dlg {
-        width: min(440px, calc(100vw - 32px));
-        padding: 0;
-        border: 1px solid var(--border-strong, var(--border));
-        border-radius: 10px;
-        background: var(--raised, var(--surface, var(--bg)));
-        color: var(--text);
-      }
-      .hubp-dlg::backdrop {
-        background: rgba(0, 0, 0, 0.25);
-      }
-      .hubp-dlg-b {
-        padding: 16px 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .hubp-dlg-b h2 {
-        font-size: 15px;
-        margin: 0;
-      }
-      .hubp-dlg-acts {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: flex-end;
       }
       /* Issue 167 (mock v6 B): Unclear matches, one group per project;
          40px touch targets; at 600px and under the rows stack. */
@@ -605,6 +598,25 @@
       .rt-f[hidden],
       .rt-err[hidden] {
         display: none;
+      }
+      /* Issue 456: the other copies found, under the one used. */
+      .rt-o {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 4px;
+        font-size: 12.5px;
+      }
+      .rt-oh,
+      .rt-ov {
+        color: var(--muted);
+      }
+      .rt-oi {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
       /* D28: Settings › Agents › Rotation. */
       .rot-inst {

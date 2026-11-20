@@ -23,6 +23,7 @@
  * (HTML from /api/edge's JSON), so tests need no server.
  */
 import { dockerState, tlsStrategy } from "./value-words.js";
+import { cardShown } from "./address-card.js";
 
 /**
  * A word in the page's language (issue 171): shell.js's catalog, "edge.*".
@@ -241,14 +242,29 @@ export function edgeView(st) {
   );
 }
 
-/** The header's sub line: org / container · state. */
-export function edgeSub(st) {
+/**
+ * The header's sub line: org / container · state. When the address card is
+ * shown (issue 455), the state is the card's: what answers at Den's address,
+ * not only the container's own state, so the two never disagree.
+ */
+export function edgeSub(st, addr = null) {
   if (!st || st.configured === false) return t("edge.notConfigured");
-  return `${st.org} / ${st.container} · ${dockerState(st.state)}`;
+  const state = !cardShown(addr)
+    ? dockerState(st.state)
+    : addr.wantedAnswer === "other"
+      ? t("edgeAddr.sub.held", { port: addr.port })
+      : t("edgeAddr.sub.none");
+  return `${st.org} / ${st.container} · ${state}`;
 }
 
-/** Fetch /api/edge and draw the page into `root` (the header's sub line too). */
-export async function mountEdge(root, sub, fetchFn = fetch) {
+/**
+ * Fetch /api/edge and draw the page into `root` (the header's sub line too).
+ * `address`: the address card's state (a promise of /api/edge/address's
+ * answer). The check behind it can take a while, so the page doesn't wait
+ * for it: the sub line gives the container's state until the card is drawn,
+ * then the card's (issue 455), so the two never disagree on screen.
+ */
+export async function mountEdge(root, sub, fetchFn = fetch, address = null) {
   let st;
   try {
     const r = await fetchFn("/api/edge");
@@ -261,5 +277,9 @@ export async function mountEdge(root, sub, fetchFn = fetch) {
     sub.textContent = st.unreachable ? t("edge.unreachable") : edgeSub(st);
   root.innerHTML = edgeView(st);
   root.removeAttribute("aria-busy");
+  if (address && sub && !st.unreachable) {
+    const addr = await Promise.resolve(address).catch(() => null);
+    sub.textContent = edgeSub(st, addr);
+  }
   return st;
 }

@@ -15,6 +15,7 @@
  * addressCardView(state) is pure (HTML from /api/edge/address's JSON), so a
  * test needs no server.
  */
+import { formatTime } from "/kit/time.js";
 import { dockerState } from "./value-words.js";
 
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
@@ -52,27 +53,33 @@ export function tHtml(key, vars, marks = {}) {
   return s;
 }
 
-/** "21:48", in the viewer's own time. */
+/**
+ * The time of a check, in the person's chosen zone (else the browser's)
+ * and the page's language: the kit's (issue 668).
+ */
 export function clock(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
+  return formatTime(iso, { style: "time" });
 }
 
-/** Whether the card has anything to say: Den works, just not at its address. */
+/**
+ * Whether the card has anything to say: Den works, just not at its address.
+ * Another server answers there, or nothing does (issue 455: "Not reachable
+ * yet", as the command line says it). No answer in time counts as nothing
+ * only for a name on this machine: one only other machines resolve can't be
+ * asked from here.
+ */
 export function cardShown(s) {
-  return !!(
-    s &&
-    s.ok !== false &&
-    s.wanted &&
-    s.address &&
-    s.wantedAnswer === "other" &&
-    s.address !== s.wanted
+  if (!s || s.ok === false || !s.wanted || !s.address) return false;
+  if (s.address === s.wanted) return false;
+  if (s.wantedAnswer === "other" || s.wantedAnswer === "nothing") return true;
+  return (
+    s.wantedAnswer === "unknown" && s.directOk === true && localName(s.wanted)
   );
+}
+
+function localName(url) {
+  const h = hostOf(url).toLowerCase();
+  return h === "localhost" || h.endsWith(".localhost");
 }
 
 const PROXY_LABELS = { nginx: "nginx", caddy: "Caddy", traefik: "Traefik" };
@@ -274,11 +281,13 @@ export function checkResult(s) {
 
 /**
  * Draw the card into `host` and wire it. `shell` is window.denShell (api,
- * busyAction). Resolves with the state it drew.
+ * busyAction). `onState` gets each state it draws (the Edge page's sub line
+ * follows it). Resolves with the state it drew.
  */
 export async function mountAddressCard(
   host,
   shell = globalThis.window?.denShell,
+  onState = null,
 ) {
   if (!host) return null;
   let s = null;
@@ -296,6 +305,7 @@ export async function mountAddressCard(
   const draw = () => {
     host.innerHTML = addressCardView(s, view);
     host.hidden = !host.innerHTML;
+    onState?.(s);
   };
   draw();
   host.addEventListener("click", (e) => {
@@ -339,6 +349,7 @@ export async function mountAddressCard(
           view.result = checkResult(s);
           if (s?.wantedAnswer === "den") {
             host.innerHTML = `<p class="addr-done" role="status">${esc(view.result)}</p>`;
+            onState?.(s);
             globalThis.window?.dispatchEvent?.(
               new CustomEvent("den:address-changed", { detail: s }),
             );

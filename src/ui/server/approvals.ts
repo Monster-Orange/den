@@ -116,9 +116,8 @@ function same(a: string, b: string): boolean {
 
 /**
  * Routes that let another browser in (pair a device, a sign-in link for
- * an edge hostname, link or unlink the GitHub owner). On loopback an
- * anonymous request counts as the person, and an agent with a shell can
- * send one, so these need more: the person's bearer (the CLI, which
+ * an edge hostname, link or unlink the GitHub owner). These need more
+ * than a sign-in: the person's bearer (the CLI, which
  * refuses inside an agent's session), or what may approve (a signed-in
  * browser holding its approval key).
  */
@@ -153,7 +152,9 @@ export type ApprovalState =
   | "running"
   | "done"
   | "denied"
-  | "expired";
+  | "expired"
+  /** Issue 142: its asker took it back before anyone decided. */
+  | "withdrawn";
 
 /** A Review line as a message key and its words, for the page's t(). */
 export interface DetailKeyRec {
@@ -209,6 +210,15 @@ export type DecideResult =
   | {
       ok: false;
       code: "not_found" | "already_decided" | "expired" | "actor_gone";
+      error: string;
+    };
+
+/** Issue 142: what the asker's withdraw got. */
+export type WithdrawResult =
+  | { ok: true; approval: Approval }
+  | {
+      ok: false;
+      code: "not_found" | "not_asker" | "already_decided" | "expired";
       error: string;
     };
 
@@ -442,6 +452,42 @@ export class ApprovalQueue {
       if (a.state === "pending") out.push({ ...a });
     }
     return out;
+  }
+
+  /**
+   * Issue 142: `actor` (the credential's, never a claim) takes back its
+   * own pending request. Not a decision: nothing runs, nobody decided.
+   */
+  withdraw(id: string, actor: string): WithdrawResult {
+    const a = this.items.get(id);
+    if (!a)
+      return {
+        ok: false,
+        code: "not_found",
+        error: "No such request (it may have ended at a restart).",
+      };
+    if (a.actor !== actor)
+      return {
+        ok: false,
+        code: "not_asker",
+        error: "Only the one that asked may withdraw a request.",
+      };
+    this.settle(a);
+    if (a.state === "expired")
+      return {
+        ok: false,
+        code: "expired",
+        error: "This request already waited too long; it has ended.",
+      };
+    if (a.state !== "pending" || this.deciding.has(id))
+      return {
+        ok: false,
+        code: "already_decided",
+        error: "This request was already decided.",
+      };
+    a.state = "withdrawn";
+    a.decidedAt = this.now();
+    return { ok: true, approval: { ...a } };
   }
 
   async decide(

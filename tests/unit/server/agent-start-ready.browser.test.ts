@@ -24,11 +24,13 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const PTY = loadPty().available;
 const SHOTS = process.env.DEN_AGENTS_SHOTS;
@@ -43,7 +45,7 @@ let latest = "";
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -90,6 +92,8 @@ async function page(s: AgentsPageServer, url: string): Promise<Page> {
       /* none */
     }
   }, latest);
+  // The person's browser, signed in as `web up` does (0.4.71).
+  await signIn(ctx, s.stateDir, s.base);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
   await p.goto(url.startsWith("http") ? url : `${s.base}${url}`);

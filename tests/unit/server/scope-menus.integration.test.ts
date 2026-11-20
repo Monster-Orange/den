@@ -24,6 +24,8 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { signIn, signedIn, type SignedIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -36,11 +38,17 @@ function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
 }
-/** A change from a page of this server: its Origin and the loopback CSRF token. */
+const base = () => `http://127.0.0.1:${port}`;
+const stateDir = () => path.join(tmp, "home");
+let session: SignedIn | null = null;
+/**
+ * A change from a signed-in page of this server: its cookie, Origin and
+ * that session's CSRF token (a write needs a sign-in on this machine too,
+ * 0.4.71).
+ */
 async function pageHeaders(): Promise<Record<string, string>> {
-  const r = await request("GET", "/api/session");
-  const csrf = (JSON.parse(r.body) as { csrf?: string }).csrf ?? "";
-  return { Origin: `http://127.0.0.1:${port}`, "X-Den-CSRF": csrf };
+  session ??= await signedIn(stateDir(), base());
+  return session.headers;
 }
 /** A POST as the page sends it; throws unless it is 2xx. */
 async function post(p: string, body: unknown): Promise<void> {
@@ -170,7 +178,7 @@ beforeAll(async () => {
   port = started.port;
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -188,6 +196,9 @@ async function open(
   size = { width: 1440, height: 800 },
 ): Promise<{ p: Page; writes: string[] }> {
   const ctx = await browser!.newContext({ viewport: size });
+  // A signed-in browser: its picks write (a write needs a sign-in on this
+  // machine too, 0.4.71).
+  await signIn(ctx, stateDir(), base());
   // No first-visit changelog pop-up over the page: the latest is seen.
   const latest = (await getJson<{ version: string }[]>("/api/changelog"))[0]
     ?.version;

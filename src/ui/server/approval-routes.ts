@@ -147,14 +147,26 @@ export function createApprovalQueue(
 
 const ONE_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})$/;
 const DECIDE_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})\/decide$/;
+/** Issue 142: the asker takes back its own request. */
+const WITHDRAW_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})\/withdraw$/;
 
 /** Whether `pathname` is one of the routes above. */
 export function isApprovalPath(pathname: string): boolean {
   return (
     pathname === "/api/approvals" ||
     ONE_PATH.test(pathname) ||
-    DECIDE_PATH.test(pathname)
+    DECIDE_PATH.test(pathname) ||
+    WITHDRAW_PATH.test(pathname)
   );
+}
+
+/** Issue 142: tell the bell what waits changed; best effort. */
+function changed(deps: { changed?: () => void }): void {
+  try {
+    deps.changed?.();
+  } catch {
+    /* the bell is best effort: the queue and the trail have it */
+  }
 }
 
 /** Who asked: the credential's actor, else this machine's anonymous caller. */
@@ -162,8 +174,34 @@ function askerOf(req: http.IncomingMessage): string {
   return principalOf(req) ?? "loopback";
 }
 
-/** What a page or the asking agent sees of one request. */
-export function approvalView(a: Approval): Record<string, unknown> {
+/**
+ * Issue 621: a run result's part for its asker only (a new runner token),
+ * `forAsker`. Every view leaves it out; the asker's own read of the
+ * request has it once, merged into the result (forgetForAsker after).
+ */
+function resultFor(a: Approval, asker: boolean): unknown {
+  const r = a.result as Record<string, unknown> | undefined;
+  if (!r || typeof r !== "object" || !("forAsker" in r)) return a.result;
+  const { forAsker, ...rest } = r;
+  return asker && forAsker && typeof forAsker === "object"
+    ? { ...rest, ...(forAsker as Record<string, unknown>) }
+    : rest;
+}
+
+/** Issue 621: drop a run result's `forAsker` part, once its asker has it. */
+export function forgetForAsker(a: Pick<Approval, "result">): void {
+  const r = a.result as Record<string, unknown> | undefined;
+  if (r && typeof r === "object" && "forAsker" in r) delete r.forAsker;
+}
+
+/**
+ * What a page or the asking agent sees of one request. `asker`: the
+ * asker's own read (issue 621: it holds the run's forAsker part).
+ */
+export function approvalView(
+  a: Approval,
+  o: { asker?: boolean } = {},
+): Record<string, unknown> {
   return {
     id: a.id,
     action: a.action,
@@ -180,7 +218,9 @@ export function approvalView(a: Approval): Record<string, unknown> {
     requestedAt: new Date(a.requestedAt).toISOString(),
     expiresAt: new Date(a.expiresAt).toISOString(),
     ...(a.decidedAt ? { decidedAt: new Date(a.decidedAt).toISOString() } : {}),
-    ...(a.result !== undefined ? { result: a.result } : {}),
+    ...(a.result !== undefined
+      ? { result: resultFor(a, o.asker === true) }
+      : {}),
     ...(a.endedBecause ? { endedBecause: a.endedBecause } : {}),
   };
 }
@@ -249,6 +289,11 @@ export async function handleApprovalRoutes(
      * the policy or a setting): alert them outside the bell.
      */
     held?: (agent: string, project: string | undefined) => void;
+    /**
+     * Issue 142: what waits changed (asked, decided, withdrawn): the bell's
+     * held-write items follow the queue (held-bell.ts).
+     */
+    changed?: () => void;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -453,6 +498,7 @@ export async function handleApprovalRoutes(
       } catch {
         /* an alert is best effort: the Allow dialog still asks */
       }
+    changed(deps);
     sendJson(
       res,
       {
@@ -485,7 +531,7 @@ export async function handleApprovalRoutes(
     if (agent) {
       sendJson(res, {
         ok: true,
-        mine: deps.queue.ofActor(agent.actor).map(approvalView),
+        mine: deps.queue.ofActor(agent.actor).map((x) => approvalView(x)),
       });
       return true;
     }
@@ -515,7 +561,7 @@ export async function handleApprovalRoutes(
     }
     sendJson(res, {
       ok: true,
-      pending: deps.queue.pending().map(approvalView),
+      pending: deps.queue.pending().map((x) => approvalView(x)),
     });
     return true;
   }
@@ -543,7 +589,16 @@ export async function handleApprovalRoutes(
       );
       return true;
     }
-    sendJson(res, { ok: true, ...approvalView(a) });
+    // Issue 621: the asker's own read (its agent token, or its ticket)
+    // carries what the run left for it, once; nobody else ever sees it.
+    const asker = agent
+      ? a.actor === agent.actor
+      : deps.queue.ticketMatches(
+          a.id,
+          typeof ticket === "string" ? ticket : undefined,
+        );
+    sendJson(res, { ok: true, ...approvalView(a, { asker }) });
+    if (asker && a.state === "done" && method === "GET") forgetForAsker(a);
     return true;
   }
 
@@ -603,6 +658,7 @@ export async function handleApprovalRoutes(
             },
         principalOf(req),
       );
+    changed(deps);
     if (r.ok) {
       sendJson(res, { ok: true, ...approvalView(r.approval) });
       // Issue 334: what a run shows once (a new app key) went to this
@@ -615,6 +671,58 @@ export async function handleApprovalRoutes(
         r.code,
         r.error,
       );
+    return true;
+  }
+
+  // Issue 142: the asker withdraws its own request: the same agent token,
+  // or the same person's bearer or session. Never a decision: nothing
+  // runs, and the trail says who withdrew it.
+  const wd = WITHDRAW_PATH.exec(pathname);
+  if (wd && method === "POST") {
+    const asker = agent ? agent.actor : principalOf(req);
+    const refused = (status: number, code: string, error: string) => {
+      recordAction(
+        auditActorOf(req),
+        {
+          verb: "approval-withdraw",
+          detail: wd[1],
+          outcome: "refused",
+          reason: code,
+        },
+        principalOf(req),
+      );
+      refuse(res, status, code, error);
+      return true;
+    };
+    if (!asker)
+      return refused(
+        403,
+        "not_asker",
+        "Only the one that asked may withdraw a request: sign in, or use the asking agent's token.",
+      );
+    const r = deps.queue.withdraw(wd[1], asker);
+    if (!r.ok)
+      return refused(
+        r.code === "not_found"
+          ? 404
+          : r.code === "not_asker"
+            ? 403
+            : r.code === "expired"
+              ? 410
+              : 409,
+        r.code,
+        r.error,
+      );
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "approval-withdraw",
+        detail: `withdrawn by ${asker}: ${r.approval.action}: ${r.approval.summary} [${wd[1]}]`,
+      },
+      principalOf(req),
+    );
+    changed(deps);
+    sendJson(res, { ok: true, ...approvalView(r.approval) });
     return true;
   }
 

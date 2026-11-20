@@ -19,8 +19,8 @@
  *
  * The demo distribution (acme; north, south) with a session host in this
  * process and a scripted PTY (helpers/agents-page-server.ts): nothing
- * really runs. On localhost nothing asks to sign in. No token, cookie or
- * CSRF value is printed. DEN_AGENTS_SHOTS=<dir> writes screenshots.
+ * really runs. The page signs in through the one-time link first, as
+ * `web up` does. No token, cookie or CSRF value is printed. DEN_AGENTS_SHOTS=<dir> writes screenshots.
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -44,6 +44,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -76,11 +78,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -135,6 +133,7 @@ async function page(
     reducedMotion: "reduce",
     colorScheme: opts.dark ? "dark" : "light",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])

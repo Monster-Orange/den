@@ -38,7 +38,7 @@ export interface DecideContext {
   id: string;
   /** FB: one REST call as the approving person, with the flow's token. */
   api(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PATCH",
     path: string,
     body?: unknown,
   ): Promise<{ status: number; body: Record<string, unknown> }>;

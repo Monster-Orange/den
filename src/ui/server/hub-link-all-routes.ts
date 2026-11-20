@@ -20,6 +20,7 @@ import type {
   HubProjectChoice,
   HubProjectLink,
 } from "../../shared/hub-project-link.js";
+import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf, auditActorOf } from "./request-guard.js";
@@ -50,6 +51,13 @@ export interface HubLinkAllDeps {
 }
 
 const MAX_LINKS = 200;
+
+/**
+ * Issue 649: the projects Den may link on Hub's suggestion. Never the
+ * catch-all project: a person links it by hand in Project setup.
+ */
+const linkable = (d: HubLinkAllDeps) =>
+  d.projects().filter((p) => !isCatchAllProject(p));
 
 /**
  * 0.4.45: which Hub project fits a project, from Hub's suggestions. Clear:
@@ -89,7 +97,7 @@ export function unclearReason(
 export async function linkClearProjects(
   d: HubLinkAllDeps,
 ): Promise<{ linked: string[]; unclear: string[] } | { cannot: true }> {
-  const todo = d.projects().filter((p) => !d.read(p));
+  const todo = linkable(d).filter((p) => !d.read(p));
   const found: { project: string; m: ReturnType<typeof hubMatchOf> }[] = [];
   for (const project of todo) {
     const c = await d.choices(project).catch(() => null);
@@ -116,7 +124,7 @@ export async function hubLinkAllRoute(
   d: HubLinkAllDeps,
 ): Promise<true> {
   const method = (req.method ?? "GET").toUpperCase();
-  const projects = d.projects();
+  const projects = linkable(d);
 
   if (method === "GET" || method === "HEAD") {
     let connected = true;
@@ -342,9 +350,13 @@ export async function defaultLinkAfter(): Promise<
   void import("./hub-sync-service.js")
     .then((m) => m.refreshHubNamesNow())
     .catch(() => undefined);
-  if ("unclear" in r && r.unclear.length) {
+  if ("unclear" in r) {
     const { notificationDeps } = await import("./notification-service.js");
-    notificationDeps().store.add(pickNote(r.unclear.length));
+    const store = notificationDeps().store;
+    // Issue 726: after a Hub change the bell offered every project that
+    // had a link; now the count is what still needs a pick (none: it goes).
+    if (r.unclear.length) store.add(pickNote(r.unclear.length));
+    else store.withdraw(PICK_SUBJECT, "decision");
   }
   return r;
 }

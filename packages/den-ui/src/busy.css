@@ -153,3 +153,61 @@ a.bz-btn {
   text-decoration: none;
   box-sizing: border-box;
 }
+
+/* issue 699: the held button. busy.js's hold() sets disabled and
+   aria-busy, wraps the label in .bz-lbl and adds three dots. The label is
+   hidden, not removed, so the button keeps its size; the dots take the
+   label's colour (currentColor). Tokens only: no colour of its own. */
+[aria-busy="true"]:is(button, .btn, a) {
+  position: relative;
+  cursor: progress;
+}
+[aria-busy="true"] > .bz-lbl {
+  visibility: hidden;
+}
+[aria-busy="true"] > .bz-dots {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.bz-dots > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: bz-dot 1.2s ease-in-out infinite;
+}
+.bz-dots > i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.bz-dots > i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+@keyframes bz-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.85);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bz-dots > i {
+    animation: none;
+    opacity: 0.75;
+    transform: none;
+  }
+}
+/* Held is not "off": it keeps its own colours (over the kit button's own
+   disabled look, whichever stylesheet comes first). */
+[aria-busy="true"]:disabled,
+.den-btn[aria-busy="true"]:disabled {
+  opacity: 1;
+}

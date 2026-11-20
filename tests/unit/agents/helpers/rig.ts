@@ -11,8 +11,11 @@ import * as path from "path";
 import { connectHost } from "../../../../src/shared/sessions/client.js";
 import { SessionHost } from "../../../../src/shared/sessions/host.js";
 import { sessionPaths } from "../../../../src/shared/sessions/paths.js";
-import type { PtyLoad } from "../../../../src/shared/sessions/pty.js";
-import type { ResolvedAgentsConfig } from "../../../../src/shared/den-config.js";
+import type { PtyFactory } from "../../../../src/shared/sessions/pty.js";
+import {
+  SHELL_PATH_TIMEOUT,
+  type ResolvedAgentsConfig,
+} from "../../../../src/shared/den-config.js";
 import { validateCatalog } from "../../../../src/shared/agents/catalog.js";
 import type { AgentsDeps } from "../../../../src/ui/cli/agents-command.js";
 import {
@@ -25,6 +28,8 @@ export interface Rig {
   stateDir: string;
   deps: AgentsDeps;
   made: ScriptedPty[];
+  /** Issue 503: the PTY module the host asks at each start (a test may swap its factory). */
+  pty: { available: true; factory: PtyFactory };
   out: string[];
   err: string[];
   /** The `claude` shim's record of any run (must never exist). */
@@ -102,7 +107,10 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     fs.mkdirSync(wsDir(ws), { recursive: true });
 
   const { factory, made } = scriptedFactory();
-  const load: PtyLoad = { available: true, factory };
+  const load: { available: true; factory: PtyFactory } = {
+    available: true,
+    factory,
+  };
   const newHost = async () => {
     const h = new SessionHost({
       stateDir,
@@ -120,6 +128,7 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     dir,
     stateDir,
     made,
+    pty: load,
     out: [],
     err: [],
     ran,
@@ -175,6 +184,8 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     exitWatchMs: 0,
     // Stop doesn't wait for the session to end unless a test asks (0.4.8).
     stopWaitMs: 0,
+    // Never this machine's user.yml: the shell PATH wait's default (10 s).
+    shellPathTimeoutSeconds: () => SHELL_PATH_TIMEOUT.default,
     // Never this machine's user.yml.
     runtimeBin: (id) => r.runtimeBins[id],
     workspaceRuntimeBin: (ws, id) => r.wsBins[ws]?.[id],

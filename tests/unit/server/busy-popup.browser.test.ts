@@ -16,7 +16,9 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { pageImport } from "./helpers/page-import.js";
+import { shortDots } from "./helpers/short-dots.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -25,7 +27,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -59,6 +61,9 @@ async function page(width = 1280, clock = false): Promise<Page> {
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
+  // Issue 699: these tests are about the pop-up; its wait after a held
+  // button's dots is set to the old 300 ms here.
+  await shortDots(p);
   return p;
 }
 

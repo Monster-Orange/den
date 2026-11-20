@@ -43,24 +43,31 @@ interface Case {
 }
 
 /**
- * Runs ES-module code in a child Node, `input` as JSON on its stdin (read
+ * Runs ES-module code in a child Node, `input` as JSON in a temp file (read
  * with `ARGS()`): never in the environment, where Linux caps one variable
- * at 128 KB (E2BIG; the replay's cases are bigger). A failure comes back
- * as a plain Error: a child-process error refers to itself (`.error`), and
- * jest's worker can't send that to the parent.
+ * at 128 KB (E2BIG; the replay's cases are bigger), and never on stdin,
+ * where an input over 64 KB sometimes left the child waiting for the rest
+ * and the parent for the child, until jest's timeout (issue 708: the map
+ * passed 64 KB). A failure comes back as a plain Error: a child-process
+ * error refers to itself (`.error`), and jest's worker can't send that to
+ * the parent.
  */
 function child(code: string, input: unknown): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-affected-"));
+  const file = path.join(dir, "args.json");
+  fs.writeFileSync(file, JSON.stringify(input));
   try {
     return execFileSync(
       process.execPath,
       [
         "--input-type=module",
         "-e",
-        `import { readFileSync as readStdin } from "node:fs"; const ARGS = () => JSON.parse(readStdin(0, "utf-8"));\n${code}`,
+        `import { readFileSync as readArgs } from "node:fs"; const ARGS = () => JSON.parse(readArgs(process.argv[1], "utf-8"));\n${code}`,
+        file,
       ],
       {
         encoding: "utf-8",
-        input: JSON.stringify(input),
+        stdio: ["ignore", "pipe", "pipe"],
         maxBuffer: 64 * 1024 * 1024,
       },
     );
@@ -69,6 +76,8 @@ function child(code: string, input: unknown): string {
     throw new Error(
       `child node failed: ${err.message ?? e}\n${err.stderr ?? ""}`,
     );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -316,6 +325,83 @@ describe("the map (tests/affected-map.json)", () => {
     expect(s.all).toBe(true);
     expect(s.allBecause).toEqual(["src/ui/server/request-guard.ts"]);
     expect(Object.keys(s.files)).toHaveLength(TESTS.length);
+  });
+});
+
+describe("tests that start Den as a process (issue 708)", () => {
+  // Pull request 704's change: the server process sends the acks, and the
+  // integration test reaches it over HTTP, never by an import.
+  const PR_704 = [
+    "src/shared/hub-delivery-loop.ts",
+    "src/shared/hub-delivery.ts",
+    "src/ui/cli/agent-ops.ts",
+    "src/ui/server/attention.ts",
+    "src/ui/server/hub-delivery-service.ts",
+    "src/ui/server/index.ts",
+    "tests/unit/server/attention-answered.test.ts",
+    "tests/unit/server/delivery-idle-input.test.ts",
+    "tests/unit/shared/hub-delivery-held-ack.test.ts",
+    "tests/unit/shared/hub-delivery-loop.test.ts",
+  ];
+
+  it("a change to its subject runs it, with no import edge (704's change)", () => {
+    const s = select({
+      changed: PR_704,
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(s.all).toBe(false);
+    expect(Object.keys(s.files)).toContain(
+      "tests/unit/server/hub-delivery.integration.test.ts",
+    );
+    // Its subject only: not every test that starts Den.
+    const starters = Object.entries(s.files).filter(([, why]) =>
+      why.some((w) => /starts Den/.test(w)),
+    );
+    expect(starters.length).toBeGreaterThan(0);
+    expect(starters.length).toBeLessThan(15);
+  });
+
+  it("finds them: by a helper, bin/den, or tsx on an entry", () => {
+    const starts = call<string[]>(MAP_GEN, "startsDen", [
+      "tests/unit/server/hub-delivery.integration.test.ts",
+      "tests/unit/cli/validate-all.integration.test.ts",
+      "tests/unit/mcp/stdio-integration.test.ts",
+      "tests/unit/shared/hub-delivery-loop.test.ts",
+    ]);
+    expect(starts).toEqual([
+      "tests/unit/server/hub-delivery.integration.test.ts",
+      "tests/unit/cli/validate-all.integration.test.ts",
+      "tests/unit/mcp/stdio-integration.test.ts",
+    ]);
+  });
+
+  it("a subject: source files named like it, or named in it", () => {
+    const subj = (t: string, text = "") =>
+      call<string[]>(MAP_GEN, "subjectOf", t, text, {});
+    expect(subj("tests/unit/server/hub-delivery.integration.test.ts")).toEqual(
+      [
+        "src/shared/hub-delivery-loop.ts",
+        "src/shared/hub-delivery.ts",
+        "src/ui/server/hub-delivery-service.ts",
+      ].sort(),
+    );
+    expect(
+      subj("tests/unit/x/odd-name.integration.test.ts", "see crash-loop.ts"),
+    ).toEqual(["src/shared/crash-loop.ts"]);
+    expect(subj("tests/unit/x/odd-name.integration.test.ts")).toEqual([]);
+  });
+
+  it("each one has a subject, or is on the map's shrink-only list", () => {
+    const r = call<{ missing: string[]; stale: string[] }>(
+      MAP_GEN,
+      "subjectGaps",
+      MAP,
+    );
+    // missing: starts Den, no subject, not listed (add `subjects` for it).
+    // stale: listed, but it has a subject now or starts no Den (drop it).
+    expect(r).toEqual({ missing: [], stale: [] });
   });
 });
 

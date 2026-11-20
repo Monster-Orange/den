@@ -26,6 +26,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -49,10 +51,7 @@ beforeAll(async () => {
     // DEN_HUB_RAIL_BROWSER=webkit (Safari's engine) runs the same tests
     // there. DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a
     // Playwright run-server; its localhost is this machine's.
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -82,6 +81,7 @@ async function open(
     viewport: { width: opts.width ?? 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])

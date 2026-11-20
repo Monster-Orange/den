@@ -25,11 +25,14 @@ import type { UpdateWait } from "./update-check.js";
 
 import {
   isUpdateAsk,
+  securityUpdateNote,
+  backNoteHeldNote,
+  BACK_NOTE_HELD_SUBJECT,
   staleUpdateAsk,
   updateWaitNotes,
 } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
-import { typingHeld } from "./attention.js";
+import { deliveryHeld, typingHeld } from "./attention.js";
 import { pausedAgents, startContextWatch } from "./context-watch-service.js";
 import { contextWatchSettings } from "../../shared/agents/context-watch.js";
 import {
@@ -132,6 +135,7 @@ import {
   searchSystemHistory,
   pruneDeadSnapshots,
   isSafeServiceName,
+  tailArgv,
 } from "./log-history.js";
 import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import {
@@ -198,6 +202,9 @@ import {
   type ReleaseConfig,
   readWebKeepAliveSeconds,
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
+  shellPathTimeoutMs,
+  agentsShellPathTimeoutSeconds,
+  readSessionsConfig,
 } from "../../shared/den-config.js";
 import {
   CONFIG_ERROR_STATUS,
@@ -258,7 +265,12 @@ import {
   checkGatePatch,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
-import { handleGateRoutes, isGatePath } from "./gate-routes.js";
+import {
+  gateRunnerTokenOp,
+  handleGateRoutes,
+  isGatePath,
+} from "./gate-routes.js";
+import { RunnerTokens } from "../../shared/gates/runner-tokens.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
@@ -287,7 +299,6 @@ import {
   isLoopbackAddress,
   isLoopbackBind,
   localNet,
-  newCsrfToken,
   principalOf,
   requestIsHttps,
   sessionRequestAllowed,
@@ -295,6 +306,7 @@ import {
   signinMessage,
   type GuardContext,
   type GuardResult,
+  type Via,
 } from "./request-guard.js";
 import {
   clientRequestId,
@@ -325,14 +337,28 @@ import {
   mintLoginCode,
   readWebAuthConfig,
   safeNext,
-  SESSION_COOKIE_MAX_AGE_S,
-  sessionCookieName,
   sessionIdPrefix,
   WebSessionStore,
   withApproveKey,
   type WebAuthConfig,
 } from "../../shared/web-session.js";
-import { kitPage, serveUiAsset } from "./ui-assets.js";
+import {
+  clearSessionCookies,
+  readSessionCookie,
+  sessionSetCookie as sessionCookieLine,
+} from "./session-cookie.js";
+import {
+  localHttpsAddress,
+  NamedAddressWatch,
+  type NamedAnswer,
+} from "./named-address.js";
+import {
+  kitPage,
+  kitSiteDir,
+  serveSiteFile,
+  serveUiAsset,
+  sitePage,
+} from "./ui-assets.js";
 import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
 import {
   migrateWebUrl,
@@ -340,7 +366,12 @@ import {
   readWebUrl,
   setWebUrl,
 } from "../../shared/web-url.js";
-import { handleWebUrlRoutes } from "./web-url-routes.js";
+import {
+  adoptAllowed,
+  handleWebUrlRoutes,
+  offeredAlias,
+} from "./web-url-routes.js";
+import { aliasCandidates, isLoopbackUrl } from "../../shared/web-url-check.js";
 import {
   handleAccountsRoute,
   handleKeepRunningRoutes,
@@ -353,7 +384,11 @@ import { identityKey } from "../../shared/den-identity.js";
 import {
   addressCheckSettings,
   checkAddress,
+  cliLanguage,
+  edgeUncheckedLine,
+  isEdgeAddress,
   portState,
+  statedAddress,
 } from "../../shared/edge/address-check.js";
 import { containerState } from "../../shared/edge/runtime.js";
 import { sh as edgeSh } from "../../shared/edge/exec.js";
@@ -382,11 +417,19 @@ import {
   machineSection,
   publicSearchOpen,
   runGh,
+  shotReaderOf,
 } from "./report-routes.js";
+import { publicRepoVisibility } from "./report-visibility.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
 } from "../../shared/report-store.js";
+import { reportShotHub } from "./report-shot-hub.js";
+import {
+  shotKeepDays,
+  shotLimits,
+  shotStore,
+} from "../../shared/report-shots.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -405,6 +448,7 @@ import {
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
+import { ownerNameFromGithub } from "../../shared/owner-github.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
 import { DeviceFlows, type Decide } from "./device-flows.js";
 import {
@@ -445,6 +489,7 @@ import {
   patchHubAllowTools,
   patchHubUrl,
   readHubConfig,
+  type HubConfig,
 } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
@@ -461,7 +506,13 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
-import { mergeShellPrefs, shellPrefs, storedShell } from "./shell-prefs.js";
+import {
+  mergeShellPrefs,
+  pinnedItems,
+  shellPrefs,
+  storedShell,
+  type PinProjects,
+} from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
 import {
   appearancePrefs,
@@ -763,7 +814,8 @@ const themeDeps: ThemeRouteDeps = {
   prefs: () => appearancePrefs(readUserConfig().appearance),
   distributionTheme: () => readBrand().theme,
   warn: (line) => serverLog(line, "warn"),
-  denFavicon: path.join(PUBLIC_DIR, "favicon.ico"),
+  // Issue 644: the kit's tab icon, for a theme with a text mark.
+  denFavicon: path.join(kitSiteDir(), "favicon.ico"),
 };
 // The pre-paint script in each page reads the user's mode and the theme's
 // default mode from these placeholders, so the first paint is right.
@@ -784,7 +836,8 @@ setHtmlFill((html) => {
     /* defaults */
   }
   // issue 206: the person's time zone, when picked, for the first paint.
-  let out = zonePage(kitPage(localizePage(html, lang)), zone)
+  // Issue 644: the kit's head snippet (tab icons, manifest, theme colour).
+  let out = zonePage(sitePage(kitPage(localizePage(html, lang))), zone)
     .split("@@DEN_MODE@@")
     .join(mode)
     .split("@@DEN_DEFAULT_MODE@@")
@@ -929,7 +982,79 @@ const STATIC_EXTS = new Set([
   ".woff2",
 ]);
 
+/**
+ * Issue 402, clause 6: the projects (active or not) whose repos include an
+ * item's repo, from their services and managed clones: an old id-only pin
+ * takes the one project, else none.
+ */
+function pinProjects(): PinProjects {
+  let all: Record<string, { services?: object; repos?: object }> = {};
+  try {
+    all = readWorkspacesFile().workspaces ?? {};
+  } catch {
+    /* no projects readable: old pins become none */
+  }
+  return (item) => {
+    const repo = item.split("/")[0];
+    return Object.entries(all)
+      .filter(([, ws]) => {
+        const repos = new Set(
+          Object.keys(ws?.services ?? {}).map((k) => k.split("/")[0]),
+        );
+        for (const r of Object.keys(ws?.repos ?? {})) repos.add(r);
+        return repos.has(repo);
+      })
+      .map(([name]) => name);
+  };
+}
+
 /** Every workspace's checkouts (active or not), for repoAtPath. */
+/** A message's first line: a parser's code frame quotes the file. */
+function firstLine(m: string): string {
+  return String(m).split("\n")[0].replace(/:\s*$/, "");
+}
+
+/**
+ * Where `p` really is, when it is a project repo's checkout or inside one,
+ * both as written and after resolving every symlink; else null.
+ */
+function manifestPathInRepo(p: string): string | null {
+  if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
+  let roots: string[];
+  try {
+    roots = allWorkspaceCheckouts()
+      .map((c) => c.repoPath)
+      .filter((r): r is string => !!r && path.isAbsolute(r));
+  } catch {
+    return null;
+  }
+  const within = (x: string, rs: string[]) =>
+    rs.some(
+      (r) => x === r || x.startsWith(r.endsWith(path.sep) ? r : r + path.sep),
+    );
+  if (
+    !within(
+      path.resolve(p),
+      roots.map((r) => path.resolve(r)),
+    )
+  )
+    return null;
+  let real: string;
+  try {
+    real = fs.realpathSync(p);
+  } catch {
+    return null;
+  }
+  const realRoots = roots.flatMap((r) => {
+    try {
+      return [fs.realpathSync(r)];
+    } catch {
+      return [];
+    }
+  });
+  return within(real, realRoots) ? real : null;
+}
+
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
   return Object.entries(readWorkspacesFile().workspaces).flatMap(
@@ -963,6 +1088,7 @@ const CONFIG_FREE_ROUTES = new Set([
   // MODE-5: the address row fixes what the config holds.
   "/api/web-url",
   "/api/web-url/probe",
+  "/api/web-url/adopt",
   "/api/themes",
   "/api/scope",
   "/api/workspaces/settings",
@@ -1015,7 +1141,10 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readMethodOnly,
   sendJson,
+  sendMethodNotAllowed,
+  SERVED_METHODS,
   serveFile,
   serveUntrustedFile,
   UNTRUSTED_FILE_HEADERS,
@@ -1066,6 +1195,8 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
+import { syncHeldBell } from "./held-bell.js";
+import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1075,7 +1206,10 @@ import {
   writeTargets,
 } from "../../shared/approval-policy.js";
 import { alertSettings, patchAlerts } from "./alerts.js";
-import { SERVER_AGENT_ID } from "../../shared/agents/server-agent.js";
+import {
+  SERVER_AGENT_ID,
+  serverAgentName,
+} from "../../shared/agents/server-agent.js";
 import { heldActions } from "./held-actions.js";
 import {
   agentNameOf,
@@ -1084,6 +1218,11 @@ import {
   hubCreateLook,
   runHubCreateHeld,
 } from "./hub-create-routes.js";
+import {
+  checkHubLinkHeld,
+  defaultHubLinkHeldDeps,
+  runHubLinkHeld,
+} from "./hub-link-held.js";
 import { checkHubAddress, runHubAddress } from "./hub-address.js";
 import {
   checkVerifyRun,
@@ -1091,9 +1230,12 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
   callerPid,
+  callerMiss,
   peerSettled,
   refusalDetail,
   tokenCaller,
@@ -1116,9 +1258,12 @@ import {
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
+  refreshTerminalHost,
   startAgentUpkeep,
+  terminalHostRefreshing,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
+import { hostRestartOp } from "./host-restart-held.js";
 import {
   agentInputState,
   checkAgentCreate,
@@ -1187,6 +1332,7 @@ import { sweepAccessLog } from "../../shared/edge/access-sweep.js";
 /** #63: how often the edge's raw access log is masked and emptied. */
 const EDGE_ACCESS_SWEEP_MS = 1000;
 import {
+  edgeDomains,
   edgeHttps,
   edgeNames,
   webRouteHosts,
@@ -1415,7 +1561,16 @@ function spendAttest(req: http.IncomingMessage, code: string): boolean {
  * browser on this machine reaches it there). A 303 back to `return`, one of
  * this server's own edge hosts, with a short-lived code in the fragment.
  * Anything else: an error page, and no code.
+ *
+ * Once Den's own named https address works, the sign-in lives there, so
+ * loopback /attest sends the browser there (sendToNamedAddress). On the
+ * address, a signed-in browser the edge places on this machine gets its
+ * code at once; one it can't place goes to localhost once with a hop (a
+ * code minted for ATTEST_HOP, 2 minutes, used once), which proves the
+ * browser is here. A browser not signed in gets the sign-in page there:
+ * never a redirect back, so no loop.
  */
+const ATTEST_HOP = "den-attest-hop";
 function handleAttest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -1433,11 +1588,86 @@ function handleAttest(
       code: status === 403 ? "not_this_computer" : "bad_return",
       requestId,
     });
+  const named = NAMED.address();
+  const onNamed =
+    guard.ok &&
+    guard.via === "edge" &&
+    !!named &&
+    new URL(named).hostname === hostNameOf(req);
+  if (onNamed) {
+    if (!guard.session && guard.principal?.kind !== "person")
+      return sendSignedOut(req, res, {
+        pathname: "/attest",
+        search: url.search,
+        scope: "den",
+        requestId,
+        message: signinMessage("den", product().cli, product().title),
+      });
+    const raw = url.searchParams.get("return");
+    const ret = attestReturn(raw, denEdgeHosts());
+    const secret = webSecret.current();
+    if (!ret || !raw || !secret)
+      return refuse(
+        400,
+        "That address isn't one of this Den's own. Open this Den at its own address and try again.",
+      );
+    // The edge places the browser on this machine: the code at once.
+    if (!guard.beyond) {
+      res.writeHead(303, {
+        Location: attestRedirect(ret, mintAttestCode(secret, ret.host)),
+      });
+      res.end();
+      return;
+    }
+    // It can't: through localhost once, which only this machine reaches.
+    const hop = new URLSearchParams({
+      return: raw,
+      hop: mintAttestCode(secret, ATTEST_HOP),
+    });
+    res.writeHead(303, {
+      Location: `${localhostOrigin(PORT)}/attest?${hop.toString()}`,
+    });
+    res.end();
+    return;
+  }
   if (!guard.ok || guard.via !== "loopback" || guard.beyond)
     return refuse(
       403,
       "This works only on the computer this Den runs on, at localhost.",
     );
+  // The hop from the named address: it proves a browser signed in there
+  // asked, and this request proves the browser is here. Once, in its time.
+  const hop = url.searchParams.get("hop");
+  if (hop !== null) {
+    const secret = webSecret.current();
+    const c = secret ? checkAttestCode(hop, secret, ATTEST_HOP) : null;
+    if (!c?.ok || !ATTEST_NONCES.consume(c.nonce, c.expiresAt))
+      return refuse(
+        403,
+        `That link was used or has expired. Open ${product().title} at its own address and press This is my computer again.`,
+      );
+    const ret = attestReturn(url.searchParams.get("return"), denEdgeHosts());
+    if (!ret || !secret)
+      return refuse(
+        400,
+        "That address isn't one of this Den's own. Open this Den at its own address and try again.",
+      );
+    res.writeHead(303, {
+      Location: attestRedirect(ret, mintAttestCode(secret, ret.host)),
+    });
+    res.end();
+    return;
+  }
+  // 0.4.71: and only for a browser signed in there (or the person's CLI):
+  // the code it hands out may make its holder the owner.
+  if (!guard.session && guard.principal?.kind !== "person")
+    return sendSignedOut(req, res, {
+      pathname: "/attest",
+      search: url.search,
+      scope: "den",
+      requestId,
+      message: signinMessage("den", product().cli, product().title),
+    });
   const ret = attestReturn(url.searchParams.get("return"), denEdgeHosts());
   const secret = webSecret.current();
   if (!ret || !secret)
@@ -1558,23 +1788,189 @@ const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
 });
-const SESSION_COOKIE = sessionCookieName(PORT);
-
-/** The request's `den_session_<port>` cookie value, if any. */
-function sessionCookie(req: http.IncomingMessage): string | undefined {
-  const raw = req.headers.cookie;
-  if (!raw) return undefined;
-  for (const part of raw.split(";")) {
-    const i = part.indexOf("=");
-    if (i > 0 && part.slice(0, i).trim() === SESSION_COOKIE)
-      return part.slice(i + 1).trim();
-  }
-  return undefined;
+/**
+ * The request's session cookie value, if any: over https the
+ * `__Host-den_session_<port>` one (or the plain one a browser signed in
+ * there before kept), over http the plain `den_session_<port>`.
+ */
+function sessionCookie(
+  req: http.IncomingMessage,
+  secure: boolean,
+): string | undefined {
+  return readSessionCookie(req.headers.cookie, PORT, secure);
 }
+
+/** web.url, re-read at most every 5 s (the request checks ask often). */
+let WEB_URL_NOW = { at: 0, url: null as string | null };
+function webUrlNow(): string | null {
+  if (Date.now() - WEB_URL_NOW.at > 5_000)
+    WEB_URL_NOW = { at: Date.now(), url: readWebUrl()?.url ?? null };
+  return WEB_URL_NOW.url;
+}
+/**
+ * Whether Den's own named https address works (named-address.ts): then
+ * the session lives only there. Browsers share a host's cookies across
+ * its ports, so a loopback name gets no session, and its sign-in goes
+ * there. Before the first check, the config's word: the address is an
+ * https edge route to this server.
+ */
+/** How both address watches check web.url (NAMED, LOCAL_NAMED). */
+const ADDRESS_WATCH = {
+  webUrl: webUrlNow,
+  probe: async (url: string): Promise<NamedAnswer> => {
+    const s = webSecret.current();
+    const st = await checkAddress({
+      webPort: PORT,
+      wanted: url,
+      key: s ? identityKey(s) : null,
+      cli: product().cli,
+      settings: addressCheckSettings(),
+    });
+    return st.wantedAnswer;
+  },
+  cacheMs: () => addressCheckSettings().cacheMs,
+  dropAfter: () => addressCheckSettings().dropAfter ?? 2,
+  unknownKeepMs: () => addressCheckSettings().unknownKeepMs ?? 300_000,
+};
+const NAMED = new NamedAddressWatch({
+  ...ADDRESS_WATCH,
+  // Proven: sessions count only when minted on the address; every other
+  // session ends now, its terminals with it.
+  onProven: () => {
+    try {
+      const ended = webSessions.endWhere((x) => x.secure !== true);
+      closeSessionSockets(ended);
+      if (ended.length)
+        serverLog(
+          `  ${product().title}'s address is proven: sign-in lives there now; ${ended.length} other sign-in(s) ended`,
+          "lifecycle",
+        );
+    } catch (e) {
+      serverLog(
+        `  ⚠ sign-ins not made on ${product().title}'s address could not be ended: ${(e as Error).message}`,
+        "warn",
+      );
+    }
+  },
+  // For doctor: whether it is proven, and when it last answered as this Den.
+  onChange: (st) => {
+    try {
+      fs.writeFileSync(
+        path.join(getStateDir(), ADDRESS_PROOF_FILE),
+        JSON.stringify({
+          proven: st.proven,
+          lastAnswered: st.lastAnswered
+            ? new Date(st.lastAnswered).toISOString()
+            : null,
+        }),
+        { mode: 0o600 },
+      );
+    } catch {
+      /* doctor says nothing then */
+    }
+  },
+});
+
+/**
+ * Issue 601: an https web.url on a loopback name (kept from before issue
+ * 666, with no alias to take its place) is never Den's named address
+ * (NAMED): every other device is never sent to it, and no session ends
+ * for it. Once it is proven, only a browser on this machine that opens
+ * the loopback sign-in page is sent there (sendToNamedAddress), as before
+ * issue 666: there it means this Den.
+ */
+const LOCAL_NAMED = new NamedAddressWatch({
+  ...ADDRESS_WATCH,
+  pick: localHttpsAddress,
+});
 
 const LAN_HOSTS = lanHosts();
 /** H1: the edge's state folder (its proof's), re-read at most every 10 s. */
 let EDGE_DIR = { at: 0, dir: null as string | null };
+/** Doctor's view of the address's proof (named-address.ts), in the state dir. */
+const ADDRESS_PROOF_FILE = "address-proof.json";
+
+/**
+ * Whether the request reached Den on its proven https address: through the
+ * edge with its proof, on the address's own name.
+ */
+function onTheAddress(req: http.IncomingMessage, there: string): boolean {
+  return (
+    httpsOf(req, "edge") &&
+    hostNameOf(req).replace(/\.$/, "") === new URL(there).hostname
+  );
+}
+
+/**
+ * Issue 666: this install's own aliases that may be its address (its edge
+ * routes to this server, never a loopback name, https first).
+ */
+function addressAliases(): string[] {
+  return aliasCandidates(denEdgeRoutes().map((r) => r.url));
+}
+
+/**
+ * The alias the request came in on: through the edge with its proof, over
+ * https, on one of addressAliases. Null otherwise (a spoofed Host from a
+ * peer that isn't the edge never counts).
+ */
+function aliasHere(req: http.IncomingMessage): string | null {
+  if (!httpsOf(req, "edge")) return null;
+  const h = hostNameOf(req).replace(/\.$/, "");
+  return addressAliases().find((a) => new URL(a).hostname === h) ?? null;
+}
+
+/** The signed-out page's issue 666 offer, when the request is on an alias. */
+function adoptOffer(req: http.IncomingMessage): {
+  offer?: { alias: string; current: string | null; loopback: boolean };
+} {
+  const here = aliasHere(req);
+  if (!here) return {};
+  const w = readWebUrl();
+  const alias = offeredAlias(w, here, [], NAMED.works());
+  return alias
+    ? {
+        offer: {
+          alias,
+          current: w?.url ?? null,
+          loopback: isLoopbackUrl(w?.url),
+        },
+      }
+    : {};
+}
+
+/** Whether the request is the owner's (web-url-routes adoptAllowed). */
+function adoptOwner(
+  req: http.IncomingMessage,
+): { ok: true; who: string } | { ok: false; why: string } {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  if (!g.ok) return { ok: false, why: g.error };
+  const p = g.principal;
+  const browser = p?.kind === "person-browser" && g.session ? g.session : null;
+  const rec = browser
+    ? webSessions.list().find((s) => s.key === browser.key)
+    : undefined;
+  const a = adoptAllowed({
+    agent: p?.kind === "agent" || !!auditActorOf(req),
+    personToken: p?.kind === "person",
+    beyond: g.beyond,
+    session: browser
+      ? {
+          ...(rec?.via ? { via: rec.via } : {}),
+          ...(rec?.login ? { login: rec.login } : {}),
+        }
+      : null,
+    ownerLogin: ownerIdentity()?.login ?? null,
+  });
+  return a.ok
+    ? { ok: true, who: `${principalOf(req) ?? "person"} (${a.how})` }
+    : a;
+}
+
+/** HTTPS: the edge's X-Forwarded-Proto counts only with its proof (H1). */
+function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
+  return requestIsHttps(req, via, EDGE_PROVED(req));
+}
 const EDGE_PROVED = edgeProofChecker(() => {
   if (Date.now() - EDGE_DIR.at > 10_000) {
     let dir: string | null = null;
@@ -1665,6 +2061,11 @@ const GUARD: GuardContext = {
           : null;
         const from = tokenCaller(req, root);
         if (from !== "ok") {
+          // Issue 609: why it wasn't placed. A caller that had already
+          // closed its connection is refused all the same, but nothing is
+          // there to answer: audited as gone, not as a refused agent.
+          const why = from === "unknown" ? callerMiss(req) : null;
+          const gone = why === "gone";
           recordAction(
             null,
             {
@@ -1676,9 +2077,10 @@ const GUARD: GuardContext = {
                 root,
                 method: req.method ?? "GET",
                 path: new URL(req.url ?? "/", "http://x").pathname,
+                why,
               }),
-              outcome: "refused",
-              reason: `token_${from}`,
+              ...(gone ? {} : { outcome: "refused" as const }),
+              reason: gone ? "token_caller_gone" : `token_${from}`,
             },
             rec.actor,
           );
@@ -1698,8 +2100,21 @@ const GUARD: GuardContext = {
     const secret = webSecret.current();
     return secret ? verifyPersonToken(token, secret) : null;
   },
-  csrfToken: newCsrfToken(),
-  session: (req) => webSessions.lookup(sessionCookie(req)),
+  // Issue 621: a gate-only runner token (it reaches RUNNER_ROUTES only).
+  verifyRunner: (token) => {
+    const c = RunnerTokens.at(getStateDir()).check(token);
+    return c.ok
+      ? { id: c.runner.id, name: c.runner.name }
+      : c.code === "token_revoked"
+        ? "revoked"
+        : null;
+  },
+  session: (req, via) => {
+    const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
+    return s ? { ...s, secure: s.secure === true } : null;
+  },
+  // Once Den's own named https address works, the session lives there.
+  loopbackSessions: () => !NAMED.works(),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
   // The edge hostname only from the edge's own peers (loopback, Docker).
   peerIsEdge: (req) => isEdgePeer(req.socket?.remoteAddress),
@@ -1722,6 +2137,13 @@ function reportOrSignin(signin: Decide): Decide {
 }
 const GITHUB_CLIENT_ID = githubClientId(WEB_AUTH.githubClientId);
 const GITHUB = githubEndpoints();
+/** Issue 403: Hub, for a report's screenshot (every Hub call is in there). */
+const REPORT_SHOT_HUB = reportShotHub({
+  hub: async () => (await import("./hub-sync-service.js")).hubAndToken(),
+  // Settings (reports.*), read at each call.
+  maxBytes: () => shotLimits(readUserConfig()).hubBytes,
+  timeoutMs: () => shotLimits(readUserConfig()).hubTimeoutMs,
+});
 const DEVICE_FLOWS = new DeviceFlows({
   client: githubDeviceClient(GITHUB),
   clientId: () => GITHUB_CLIENT_ID,
@@ -1866,16 +2288,21 @@ function startSession(
 ): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
+  // Minted over the edge's proven https: the only kind that counts once
+  // the address is proven.
+  const secure = httpsOf(req, named);
   const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
+    ...(named ? { reach: named } : {}),
+    secure,
     via,
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
     ...(login && name ? { name } : {}),
   });
   return {
-    cookie: sessionSetCookie(id, requestIsHttps(req, named)),
+    cookie: sessionSetCookie(id, secure),
     approveKey,
   };
 }
@@ -1906,6 +2333,24 @@ function ownerIdentity(): {
     ...(w.ownerGithubName ? { name: w.ownerGithubName } : {}),
     role: "owner",
   };
+}
+
+/**
+ * Issue 406: a GitHub sign-in's display name: the session's own, else (a
+ * session from before names were kept) the linked owner's, when it is the
+ * owner's login (only the owner signs in with GitHub). Undefined: none.
+ */
+function githubSessionName(rec: {
+  login?: string;
+  name?: string;
+}): string | undefined {
+  if (rec.name) return rec.name;
+  const owner = readWebOwner(getStateDir());
+  return owner?.name &&
+    rec.login &&
+    owner.login.toLowerCase() === rec.login.toLowerCase()
+    ? owner.name
+    : undefined;
 }
 
 /** A local browser's identity (GET /api/session): local, with the owner's when known. */
@@ -1996,28 +2441,76 @@ function checkEdgeExposure(): void {
 }
 
 /**
- * The Set-Cookie for a session: HttpOnly, SameSite=Lax, Path=/, Secure
- * when the request came over HTTPS (requestIsHttps: the edge's own header
- * only from the edge), for as long as a browser keeps a cookie: the
- * session itself never expires.
- *
- * Lax (0.4.45, was Strict): a person's click on a link to Den from another
- * site (Hub's sidebar) carries the session, so it lands signed in. What
- * another site sends on its own (a POST, a fetch, an <img>) still doesn't,
- * every write needs this page's X-Den-CSRF besides, and a GET that runs
- * something refuses a cross-site Sec-Fetch-Site (request-guard.ts).
+ * The Set-Cookie for a session (session-cookie.ts): over HTTPS
+ * (requestIsHttps: the edge's own header only from the edge) the
+ * `__Host-` cookie, host-only and Secure; else the plain host-only one.
+ * HttpOnly, SameSite=Lax, Path=/; a GET that runs something refuses a
+ * cross-site Sec-Fetch-Site besides (request-guard.ts).
  */
 function sessionSetCookie(id: string, secure: boolean): string {
-  return (
-    `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Lax; ` +
-    `Max-Age=${SESSION_COOKIE_MAX_AGE_S}${secure ? "; Secure" : ""}`
-  );
+  return sessionCookieLine(PORT, id, secure);
 }
-function clearSessionCookie(secure: boolean): string {
-  return (
-    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` +
-    (secure ? "; Secure" : "")
+
+/**
+ * Sign-in's routes on a loopback name, once Den's own named https address
+ * works (NAMED): the session lives only there. A page (GET /auth, /signin)
+ * gets a plain 303 to the same path and query there (a one-time code is
+ * spent there, not here); a sign-in API call is refused with the address.
+ * True when it answered.
+ */
+const SIGNIN_PAGES = new Set(["/auth", "/signin"]);
+const SIGNIN_APIS = /^\/api\/(?:github\/signin|signin\/code)(?:\/|$)/;
+function sendToNamedAddress(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  guard: GuardResult,
+): boolean {
+  // Once proven, sign-in on every other host goes to the address.
+  if (!guard.ok) return false;
+  const method = (req.method ?? "GET").toUpperCase();
+  const get = method === "GET" || method === "HEAD";
+  // /auth on every method it answers (a code's POST too: it mints a
+  // session); /signin; /attest unless it carries the address's hop
+  // (handleAttest), which it answers itself.
+  const page =
+    (url.pathname === "/auth" && (get || method === "POST")) ||
+    (SIGNIN_PAGES.has(url.pathname) && get) ||
+    (url.pathname === "/attest" && get && !url.searchParams.has("hop"));
+  if (!page && !SIGNIN_APIS.test(url.pathname)) return false;
+  // Issue 601: an address only this machine opens (LOCAL_NAMED), for a
+  // browser on this machine opening a sign-in page (/signin, /auth) only.
+  // Issue 666: never for another device; its sign-in APIs and /attest stay
+  // where they are, and so does every session.
+  const there =
+    NAMED.address() ??
+    (SIGNIN_PAGES.has(url.pathname) &&
+    get &&
+    guard.via === "loopback" &&
+    !guard.beyond
+      ? LOCAL_NAMED.address()
+      : null);
+  if (!there || onTheAddress(req, there)) return false;
+  if (page) {
+    res.writeHead(303, {
+      Location: `${there}${url.pathname}${url.search}`,
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end();
+    return true;
+  }
+  sendJson(
+    res,
+    {
+      ok: false,
+      code: "signin_elsewhere",
+      error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
+      address: there,
+    },
+    403,
   );
+  return true;
 }
 
 /** The loopback names that aren't localhost: their signed-out page links there. */
@@ -2053,11 +2546,20 @@ function sendSignedOut(
   const via = GUARD.edgeHosts().includes(host.replace(/:\d+$/, ""))
     ? "edge"
     : "other";
-  const origin = `${requestIsHttps(req, via === "edge" ? "edge" : null) ? "https" : "http"}://${host}`;
+  const origin = `${httpsOf(req, via === "edge" ? "edge" : null) ? "https" : "http"}://${host}`;
   const bin = printedCli();
   const loginArgs =
     toLocal || host === `localhost:${PORT}` ? [] : ["--origin", origin];
-  const cmd = cliCommand(bin, "web", "login", ...loginArgs);
+  // Once the address is proven, sign-in happens there.
+  const there = NAMED.address();
+  const cmd = there
+    ? cliCommand(bin, "web", "login", "--origin", there)
+    : cliCommand(bin, "web", "login", ...loginArgs);
+  // 0.4.71: a browser on this machine (localhost, from a loopback peer):
+  // the page words it for here, and its fallback is `web up`.
+  const local =
+    host === `localhost:${PORT}` &&
+    isLoopbackAddress(req.socket?.remoteAddress);
   const ssh = sshTargetOf(req);
   const user = sshUserNow();
   const gh = githubSignin();
@@ -2072,6 +2574,13 @@ function sendSignedOut(
       scope: opts.scope,
       name: product().title,
       cmd,
+      // Off the address once it is proven: the page names where to sign in.
+      ...(there && !onTheAddress(req, there) ? { address: there } : {}),
+      // Issue 666: on this install's own alias while the address is
+      // unset, loopback or not working: "Make <alias> its address", for
+      // the owner to confirm once signed in (POST /api/web-url/adopt).
+      ...adoptOffer(req),
+      ...(local ? { local: true, up: cliCommand(bin, "web", "up") } : {}),
       // SEC-2a: which machine runs the commands, and how to reach it.
       machine: machineName(),
       ssh: {
@@ -2103,7 +2612,7 @@ function sendSignedOut(
       },
       ...(opts.expired ? { expired: true } : {}),
       ...(opts.confirm ? { confirm: true } : {}),
-      ...(toLocal && !opts.expired
+      ...(toLocal && !opts.expired && !there
         ? {
             localhost: `${localhostOrigin(PORT)}${opts.pathname}${opts.search}`,
           }
@@ -2306,6 +2815,20 @@ async function handleAuth(
         r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
       );
     }
+    // The address may have been proven while the body was read: sign-in on
+    // a loopback name then goes there, and nothing is minted here.
+    const there = NAMED.address();
+    if (there && !onTheAddress(req, there))
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: "signin_elsewhere",
+          error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
+          address: there,
+        },
+        403,
+      );
     if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
     const g = checkRequest(req, GUARD, product().cli, product().title);
     LOGIN_WAITS.used(nonce, {
@@ -2325,6 +2848,19 @@ async function handleAuth(
   // server running): it signs in when opened, once, as before.
   if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
     return gone();
+  // 0.4.71: `web up` sends an open tab here each time; a browser already
+  // signed in keeps its session (the code is spent), so Linked devices
+  // doesn't fill with one per run.
+  const already = checkRequest(req, GUARD, product().cli, product().title);
+  if (already.ok && already.session) {
+    res.writeHead(303, {
+      Location: safeNext(url.searchParams.get("next")),
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end();
+    return;
+  }
   const s = startSession(req, "link");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -2410,6 +2946,7 @@ type ApprovalDeps = {
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
+  changed: () => void;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -2587,6 +3124,8 @@ function approvalDeps(): ApprovalDeps {
           writeRestartMarker(stateDir, marker);
           return { path: restartMarkerPath(stateDir), marker };
         },
+        // Issue 562 review: Den's own auto update reads the wait again.
+        ...(auto && autoRestartHold ? { beforeRestart: autoRestartHold } : {}),
         restart: () => {
           serverLog(`↻ update restart asked by ${by}: ${reason}`, "lifecycle");
           setTimeout(() => {
@@ -2673,6 +3212,11 @@ function approvalDeps(): ApprovalDeps {
               const m = await import("./hub-connect.js");
               return new m.HubConnect().disconnect(force);
             },
+            // Issue 726: the old Hub's state is archived, its bell cleared.
+            changed: async (url) => {
+              const m = await import("./hub-change.js");
+              return m.noteHub(await m.defaultHubChangeDeps(), { url });
+            },
             // The restart den_restart_server runs (its note, audit, spawn).
             restart: (reason) =>
               actions.den_restart.run({ reason }) as Promise<{
@@ -2693,6 +3237,13 @@ function approvalDeps(): ApprovalDeps {
       },
       run: async (a, asked) =>
         runHubCreateHeld(await defaultHubCreateDeps(), a, asked, agentNameOf),
+    },
+    // Issue 647: an agent asks to link a project to an existing Hub project.
+    hubLink: {
+      check: async (a, who) =>
+        checkHubLinkHeld(await defaultHubLinkHeldDeps(), a, who),
+      run: async (a, asked) =>
+        runHubLinkHeld(await defaultHubLinkHeldDeps(), a, asked),
     },
     // SRV-P4: an agent asks to set a project's mode, or move an agent.
     projectMode: {
@@ -2724,6 +3275,29 @@ function approvalDeps(): ApprovalDeps {
       settings: () => embedSettings(readUserConfig()),
       stateDir: () => getStateDir(),
       serverKeys: () => ServerKeys.at(getStateDir()),
+    }),
+    // Issue 621: a gate-only token for a CI runner, on the person's Allow.
+    gateRunnerToken: gateRunnerTokenOp({
+      runners: () => RunnerTokens.at(getStateDir()),
+    }),
+    // Issue 731: doctor's fix for a terminal host Den couldn't restart:
+    // the web start's refresh (wait for idle, restart, resume, audit).
+    terminalHostRestart: hostRestartOp({
+      refreshing: terminalHostRefreshing,
+      waitSeconds: () => {
+        try {
+          return readSessionsConfig().hostRestartWaitSeconds;
+        } catch {
+          return 900;
+        }
+      },
+      start: () =>
+        refreshTerminalHost(
+          agentWebDeps(),
+          (line) => serverLog(line, "lifecycle"),
+          "held",
+        ),
+      log: (line) => serverLog(line, "lifecycle"),
     }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
@@ -2797,15 +3371,54 @@ function approvalDeps(): ApprovalDeps {
         install: readPolicySetting(user.approvals),
         project: project ? projectPolicy(project) : undefined,
         targets: writeTargets(action, ask?.args ?? {}, project),
-        pins: pinsAsWatched(shellPrefs(user.shell).pins),
+        pins: pinsAsWatched(pinnedItems(shellPrefs(user.shell).pins)),
       });
     },
     notify: (a, project) => notePolicyRun(notificationDeps().store, a, project),
     // Issue 172: a write held for the person's Allow alerts them.
     held: (agent, project) =>
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
+    // Issue 142: a held write counts in the bell while it waits.
+    changed: syncHeldWrites,
   };
   return approvals;
+}
+/**
+ * Issue 142: the bell's held-write items made to match what waits now
+ * (held-bell.ts). Best effort: the queue and the Allow dialog have it.
+ */
+function syncHeldWrites(): void {
+  try {
+    syncHeldBell(
+      notificationDeps().store,
+      approvals ? approvals.queue.pending() : [],
+      {
+        projectOf: (a) =>
+          typeof a.args.project === "string"
+            ? a.args.project
+            : a.agent
+              ? (readAgentRecord(getStateDir(), a.agent)?.workspace ??
+                undefined)
+              : undefined,
+      },
+    );
+  } catch {
+    /* the bell is best effort */
+  }
+}
+/**
+ * Issue 142: at the start (a restart ended every request: their items go)
+ * and every few seconds while any wait (one that expired: its item goes).
+ */
+function startHeldWritesBell(): void {
+  let shown = true;
+  syncHeldWrites();
+  setInterval(() => {
+    const n = approvals ? approvals.queue.pending().length : 0;
+    if (!n && !shown) return;
+    syncHeldWrites();
+    shown = n > 0;
+  }, 5000).unref();
 }
 /** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
 export function approvalsSettings(raw: unknown): {
@@ -3111,6 +3724,15 @@ function typingHeldIds(): Set<string> {
   );
 }
 
+/** Issue 701: the agents Hub deliveries wait for (an asked question isn't one). */
+function deliveryHeldIds(): Set<string> {
+  return deliveryHeld(
+    attentionWaiting(),
+    approvals ? approvals.queue.waitingActors() : [],
+    pausedAgents(),
+  );
+}
+
 /** NT-3b: why each one waits; a held Allow over what the hooks said. */
 function waitingReasons(): Map<string, string> {
   const out = new Map<string, string>(attentionWaiting());
@@ -3275,6 +3897,137 @@ function installedServiceMode(): "login" | "always" | null {
   }
 }
 
+/**
+ * MODE-5: the Settings rows that were the command line's, as GET
+ * /api/settings shows them. A save answers them too, so the page redraws
+ * a saved row with its new value, not the old one (issue 424).
+ */
+function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
+  return {
+    log_window_lines: user.log_window_lines ?? 20_000,
+    local_dev: user.local_dev !== false,
+    cli_tabs: user.cli_tabs === true,
+    // den#85: the crash-loop guard's settings (web.crash_loop_*).
+    crash_loop: crashLoopSettings(user.web),
+    // 0.4.48: Den on the Docker bridge for the edge (Linux).
+    web_bridge: (() => {
+      const w = (user.web ?? {}) as Record<string, unknown>;
+      return {
+        listen: w.bridge_listen === "off" ? "off" : "auto",
+        probeSeconds:
+          typeof w.bridge_probe_seconds === "number"
+            ? w.bridge_probe_seconds
+            : 10,
+      };
+    })(),
+    // Issue 406: the start's wait for the owner's GitHub name.
+    web_github: (() => {
+      const w = (user.web ?? {}) as Record<string, unknown>;
+      return {
+        ownerNameTimeoutSeconds:
+          typeof w.owner_name_timeout_seconds === "number"
+            ? w.owner_name_timeout_seconds
+            : 10,
+      };
+    })(),
+    // den#143: how long `web up` waits for the server.
+    web_ready: (() => {
+      try {
+        const c = readWebAuthConfig(getDistRoot(), product().configFile);
+        return {
+          probeSeconds: c.readyProbeSeconds,
+          startSeconds: c.startWaitSeconds,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 278: agents stuck compacting; instruction size (agent_context.*).
+    agent_context: (() => {
+      const c = contextWatchSettings(user.agent_context);
+      return {
+        compaction_loop_count: c.loopCount,
+        compaction_loop_minutes: c.loopMinutes,
+        pause_after_loop: c.pause,
+        instruction_share_percent: c.sharePercent,
+        context_tokens: c.contextTokens,
+      };
+    })(),
+    // Issue 609: how long Den's process lookups wait (process_lookup.*).
+    process_lookup: (() => {
+      const [first, retry] = lookupTimeouts({}, () => user);
+      return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
+    })(),
+    // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
+    agent_hooks: (() => {
+      const c = hookCallSettings(() => user);
+      return {
+        timeout_seconds: c.timeoutMs / 1000,
+        retries: c.retries,
+        backoff_seconds: c.backoffMs / 1000,
+      };
+    })(),
+    // den#156: the Agents list's waits (agents_list.*).
+    agents_list: (() => {
+      try {
+        return agentsListWaits(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 456: how long Den waits for the shell's PATH.
+    agents_shell: (() => {
+      try {
+        return {
+          path_timeout_seconds: agentsShellPathTimeoutSeconds(() => user),
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 415: how long Report keeps, and waits for, a repo's
+    // visibility (feedback.*), their defaults when unset.
+    feedback: (() => {
+      const f = feedbackSettings(null, {}, user.feedback);
+      return {
+        visibility_cache_hours: f.visibilityCacheHours,
+        visibility_timeout_seconds: f.visibilityTimeoutSeconds,
+        visibility_retry_seconds: f.visibilityRetrySeconds,
+      };
+    })(),
+    // Issue 455: the address check's limits (web.address_check_*).
+    address_check: (() => {
+      const a = addressCheckSettings(() => user);
+      return {
+        timeout_seconds: a.timeoutMs / 1000,
+        retries: a.retries,
+        cache_seconds: a.cacheMs / 1000,
+        drop_after: a.dropAfter,
+        unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
+      };
+    })(),
+    // Issue 403: how long a filed report's screenshot is kept (reports.*).
+    reports: (() => {
+      const l = shotLimits(user);
+      const MB = 1024 * 1024;
+      return {
+        screenshot_keep_days: shotKeepDays(user),
+        screenshot_max_mb: l.keptBytes / MB,
+        hub_screenshot_max_mb: l.hubBytes / MB,
+        hub_timeout_seconds: l.hubTimeoutMs / 1000,
+      };
+    })(),
+    // 0.4.46: how a terminal pane reconnects on its own (panes.*).
+    panes_reconnect: (() => {
+      try {
+        return panesReconnect(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+  };
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -3329,6 +4082,11 @@ async function handleRequest(
     }
   }
 
+  // Only the six methods Den serves reach the checks and the routes; any
+  // other (OPTIONS included: Den serves no cross-origin requests) is 405.
+  if (!SERVED_METHODS.has((req.method ?? "GET").toUpperCase()))
+    return sendMethodNotAllowed(res);
+
   // ── Request checks (SEC-1a): Host, credential, Origin, CSRF ────────────────
   // Before any route, and before a refused request can clear a cache.
   const guard = checkRequest(req, GUARD, product().cli, product().title);
@@ -3359,13 +4117,17 @@ async function handleRequest(
     req.headers["sec-fetch-dest"] === "document" &&
     !res.headersSent
   ) {
-    const id = sessionCookie(req);
-    if (id)
-      res.setHeader(
-        "Set-Cookie",
-        sessionSetCookie(id, requestIsHttps(req, guard.via)),
-      );
+    const https = httpsOf(req, guard.via);
+    const id = sessionCookie(req, https);
+    if (id) res.setHeader("Set-Cookie", sessionSetCookie(id, https));
   }
+  // The edge brought a proven https request for Den's own address: it
+  // works now, so the session lives only there (NAMED).
+  if (guard.ok && guard.via === "edge" && httpsOf(req, "edge")) {
+    NAMED.saw(hostNameOf(req));
+    LOCAL_NAMED.saw(hostNameOf(req));
+  }
+  if (sendToNamedAddress(req, res, url, guard)) return;
   // SEC-1c (R8): an agent's request never passes the lock.
   if (guard.ok && guard.principal?.kind === "agent") closeLockForThisRequest();
   // BUSY-1: the working pop-up's Check again, and its Try again: a write
@@ -3439,15 +4201,19 @@ async function handleRequest(
     (req.method === "GET" || req.method === "HEAD")
   ) {
     // Read-only and sign-in free (§6b.3): it checks the session itself.
-    // Signed in, or on loopback (no sign-in there), it goes on to a
-    // same-origin `next`; signed out beyond loopback, it is the signed-out
-    // page (the `web login` hint, never a form for the secret).
+    // Signed in, it goes on to a same-origin `next`; signed out, here on
+    // this machine too (0.4.71), it is the signed-out page (never a form
+    // for the secret).
     // D67: `again=1` (the approvals banner's Sign in): the sign-in page
     // even with a session, or on loopback: approving needs a signed-in
     // browser with an approval key, which a browser without one (signed
     // in before 0.4.15, its storage cleared, or never) gets here.
     const again = url.searchParams.get("again") === "1";
-    if (guard.ok && (guard.session || !guard.beyond) && !again) {
+    if (
+      guard.ok &&
+      (guard.session || guard.principal?.kind === "person") &&
+      !again
+    ) {
       res.writeHead(303, {
         Location: safeNext(url.searchParams.get("next")),
         "Cache-Control": "no-store",
@@ -3480,6 +4246,7 @@ async function handleRequest(
     await handleGateRoutes(req, res, pathname, {
       store: gates,
       title: product().title,
+      runners: () => RunnerTokens.at(getStateDir()),
     });
     return;
   }
@@ -3769,11 +4536,20 @@ async function handleRequest(
     handleWebUrlRoutes(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       read: () => readWebUrl(),
-      set: (url) => setWebUrl(url),
+      set: (url, how) => {
+        const saved = setWebUrl(url, undefined, undefined, how);
+        WEB_URL_NOW = { at: 0, url: null }; // re-read at once
+        return saved;
+      },
+      who: (r) => principalOf(r),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
+      aliases: addressAliases,
+      here: aliasHere,
+      works: () => NAMED.works(),
+      owner: adoptOwner,
     })
   )
     return;
@@ -3967,6 +4743,13 @@ async function handleRequest(
       personOf: () => "person",
       flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
       searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+      // Issue 403: a report's screenshot to Hub, with the install's Bearer.
+      shotHub: REPORT_SHOT_HUB,
+      shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+      // Issue 403: a kept screenshot is the person's (proved, as approvals
+      // ask) or this install's own agent's; never an anonymous request.
+      shotReader: (r) => shotReaderOf(r, guard),
+      publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -3985,26 +4768,25 @@ async function handleRequest(
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
   }
 
-  if (pathname === "/favicon.ico") {
-    return serveFile(res, path.join(PUBLIC_DIR, "favicon.ico"));
-  }
+  // Issue 644: the kit's site files at the root (/favicon.ico,
+  // /favicon.svg, /apple-touch-icon.png, the icons, /site.webmanifest).
   // Issue 172 S2: the app manifest, so a phone can add Den to its home
-  // screen (an iPhone gets push only from there).
+  // screen (an iPhone gets push only from there); /manifest.webmanifest is
+  // its older URL.
+  if (
+    pathname === "/favicon.ico" ||
+    pathname === "/favicon.svg" ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname === "/icon-192.png" ||
+    pathname === "/icon-512.png" ||
+    pathname === "/icon-maskable-512.png" ||
+    pathname === "/site.webmanifest"
+  ) {
+    serveSiteFile(res, pathname, product().title);
+    return;
+  }
   if (pathname === "/manifest.webmanifest") {
-    res.writeHead(200, {
-      "Content-Type": "application/manifest+json",
-      "Cache-Control": "no-store",
-    });
-    res.end(
-      JSON.stringify({
-        name: product().title,
-        short_name: product().title,
-        start_url: "/agents",
-        scope: "/",
-        display: "standalone",
-        icons: [{ src: "/favicon.ico", sizes: "48x48" }],
-      }),
-    );
+    serveSiteFile(res, "/site.webmanifest", product().title);
     return;
   }
 
@@ -4788,6 +5570,7 @@ async function handleRequest(
 
   // ── API: service exec (SSE) — catalog-aware ────────────────────────────────
   if (pathname === "/api/service/exec") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const cmdName = url.searchParams.get("cmd");
@@ -5090,6 +5873,7 @@ async function handleRequest(
 
   // ── API: service logs (SSE) ───────────────────────────────────────────────
   if (pathname === "/api/service/logs") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5320,6 +6104,7 @@ async function handleRequest(
   // — see log-history.ts). env=local only in v1; other envs return
   // { unsupported: true } so the client renders a friendly notice.
   if (pathname === "/api/service/history") {
+    if (!readMethodOnly(req, res)) return;
     // This handler sits ABOVE the blanket /api/service* local-dev guard
     // (later in this function), so it must enforce the guard itself.
     if (!isLocalEnabled()) {
@@ -5373,6 +6158,7 @@ async function handleRequest(
   // Greps the FULL history of each requested system (targets = the /logs
   // toolbar's list, computed client-side so scoping lives in one place).
   if (pathname === "/api/logs/search") {
+    if (!readMethodOnly(req, res)) return;
     // /api/logs is not covered by the downstream /api/service* local-dev
     // guard — enforce it here.
     if (!isLocalEnabled()) {
@@ -5408,10 +6194,15 @@ async function handleRequest(
   }
 
   if (pathname === "/api/service/taillog") {
+    if (!readMethodOnly(req, res)) return;
     const repoName = url.searchParams.get("repo");
     const svcName = url.searchParams.get("service");
     if (!repoName || !svcName)
       return send400(res, "repo and service are required");
+    // The same names the history and search routes take: they reach a
+    // log path (a folder is made for it) and the tail's arguments.
+    if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
+      return send400(res, "invalid repo/service name");
 
     // Resolve manifest log source. The client names an exact service, so
     // when the manifest has that key, use it directly — resolveService's
@@ -5436,7 +6227,7 @@ async function handleRequest(
     ] as LogSource | undefined;
 
     const daemonLogPath = getServiceLogPath(repoName, svcName);
-    const fallbackCmd = `tail -F -n ${LIVE_TAIL_LINES} "${daemonLogPath}"`;
+    const [tailCmd, tailArgs] = tailArgv(daemonLogPath, LIVE_TAIL_LINES);
 
     const manifestCmd =
       logSource?.type === "shell" && logSource.cmd ? logSource.cmd : null;
@@ -5483,8 +6274,8 @@ async function handleRequest(
         text: `── streaming container logs: ${container} ──`,
       });
       currentProc = spawnStreaming(
-        `docker logs -f --tail ${LIVE_TAIL_LINES} ${container}`,
-        [],
+        "docker",
+        ["logs", "-f", "--tail", String(LIVE_TAIL_LINES), container],
         { ...process.env },
         (line) => emit({ type: "line", text: line }),
         (exitCode) => {
@@ -5511,8 +6302,8 @@ async function handleRequest(
         text: "── container log unavailable — watching startup log ──",
       });
       currentProc = spawnStreaming(
-        fallbackCmd,
-        [],
+        tailCmd,
+        tailArgs,
         { ...process.env },
         (line) => emit({ type: "line", text: line }),
         () => {
@@ -5619,6 +6410,7 @@ async function handleRequest(
 
   // ── API: run tests (SSE) ───────────────────────────────────────────────────
   if (pathname === "/api/run") {
+    if (!readMethodOnly(req, res)) return;
     const pillar = url.searchParams.get("pillar") as Pillar | null;
     const modules = url.searchParams.getAll("module").filter(Boolean);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -5877,6 +6669,7 @@ async function handleRequest(
 
   // ── API: AWS re-authenticate (SSE) ───────────────────────────────────────
   if (pathname === "/api/aws/login") {
+    if (!readMethodOnly(req, res)) return;
     const env = (url.searchParams.get("env") ?? "local") as Environment;
     const profiles = loadAwsProfiles();
     const profile = profiles[env];
@@ -5978,18 +6771,25 @@ async function handleRequest(
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
       const github = rec?.via === "github" && !!rec.login;
+      const name = github ? githubSessionName(rec) : undefined;
       return sendJson(res, {
         csrf: g.session.csrf,
         actor: "person-browser",
         signedIn: true,
-        identity: {
-          kind: github ? "github" : "device",
-          via: rec?.via ?? "link",
-          ...(github ? { login: rec.login } : {}),
-          ...(github && rec.name ? { name: rec.name } : {}),
-          // A link or a code (no GitHub sign-in of its own): no GitHub
-          // identity, never the owner's. It may be someone else's device.
-        },
+        // 0.4.71: a browser on this machine, signed in with a link or a
+        // code, is the local browser it always was (the owner's chip).
+        identity:
+          !github && !g.beyond
+            ? localIdentity()
+            : {
+                kind: github ? "github" : "device",
+                via: rec?.via ?? "link",
+                ...(github ? { login: rec.login } : {}),
+                ...(name ? { name } : {}),
+                // A link or a code (no GitHub sign-in of its own): no
+                // GitHub identity, never the owner's. It may be someone
+                // else's device.
+              },
         ...(webSessions.takeWelcome(g.session.key)
           ? {
               justSignedIn: true,
@@ -5999,28 +6799,31 @@ async function handleRequest(
           : {}),
       });
     }
+    // 0.4.71: no session, no token, here too: a browser on this machine
+    // signs in (`web up` opens the one-time link) before it changes
+    // anything. It reads as before.
     return sendJson(res, {
-      csrf: g?.beyond ? null : GUARD.csrfToken,
+      csrf: null,
       actor: null,
       signedIn: false,
-      // A browser on this machine: the install owner's GitHub identity
-      // (the account entry), when Den knows it.
-      ...(g && !g.beyond ? { identity: localIdentity() } : {}),
+      reason: `Sign in to make changes here: run \`${product().cli} web up\` (it opens a one-time sign-in link), or open /signin.`,
+      signin: `/signin?next=${encodeURIComponent("/")}`,
       // SEC-2a-UX: the signed-out page watches this, so Sign in with
       // GitHub appears once an owner is linked, with no reload. The
       // owner's login is what that page shows anyway.
-      ...(g?.beyond || !g ? { github: githubSignin() } : {}),
+      github: githubSignin(),
     });
   }
   // Sign out: this browser's session ends and its cookie is cleared.
   if (pathname === "/api/session/logout" && req.method === "POST") {
     const g = guard.ok ? guard : null;
-    const ended = g?.session ? webSessions.end(g.session.key) : false;
-    if (g?.session) closeSessionSockets([g.session.key]);
-    res.setHeader(
-      "Set-Cookie",
-      clearSessionCookie(requestIsHttps(req, g?.via ?? null)),
-    );
+    const https = httpsOf(req, g?.via ?? null);
+    // Its session, or (one that no longer counts) the one its cookie names,
+    // proved by that session's own CSRF token: it ends on the server.
+    const named = g?.session ?? g?.ending ?? null;
+    const ended = named ? webSessions.end(named.key) : false;
+    if (named) closeSessionSockets([named.key]);
+    res.setHeader("Set-Cookie", clearSessionCookies(PORT, https));
     return sendJson(res, { ok: true, ended });
   }
   // `<cli> web sessions` (shell-grade: the person's bearer, or a session).
@@ -6497,36 +7300,70 @@ async function handleRequest(
         return send400(res, `Invalid request: ${(e as Error).message}`);
       }
     }
-    if (req.method === "GET") {
+    if (req.method === "GET" || req.method === "HEAD") {
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
+      // Only inside a project's repo: the path as written and, after every
+      // symlink, where it really is. Any other path is refused the same way,
+      // there or not.
+      const real = manifestPathInRepo(filePath);
+      if (!real)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            code: "outside_repos",
+            error:
+              "Validate reads only a repo folder (or a file in one) of a project here.",
+          },
+          403,
+        );
+      // Errors name the file's line and column, never its text.
+      const plain = (r: ReturnType<typeof validateManifest>) => ({
+        ...r,
+        errors: r.errors.map((e) => ({ ...e, message: firstLine(e.message) })),
+        warnings: r.warnings.map((w) => ({
+          ...w,
+          message: firstLine(w.message),
+        })),
+      });
       try {
-        const isDir =
-          fs.existsSync(filePath) && fs.lstatSync(filePath).isDirectory();
+        const isDir = fs.statSync(real).isDirectory();
         // A repo folder: every layer that applies (repo or held, override,
         // merged), flattened into the usual shape; each error names its file.
         if (isDir) {
-          const layered = validateManifestLayers(filePath);
+          const layered = validateManifestLayers(real);
           if (layered.layers.length > 0)
             return sendJson(res, {
               valid: layered.valid,
               version: layered.layers[0].result.version,
-              errors: layered.layers.flatMap((l) => l.result.errors),
-              warnings: layered.layers.flatMap((l) => l.result.warnings),
-              manifestLayers: loadManifest(filePath).layers,
-              layers: layered.layers,
+              errors: layered.layers.flatMap((l) => plain(l.result).errors),
+              warnings: layered.layers.flatMap((l) => plain(l.result).warnings),
+              manifestLayers: loadManifest(real).layers,
+              layers: layered.layers.map((l) => ({
+                ...l,
+                result: plain(l.result),
+              })),
             });
         }
         const denYml = isDir
-          ? path.join(filePath, `${product().manifestYml}`)
-          : filePath;
+          ? path.join(real, `${product().manifestYml}`)
+          : real;
         const content = fs.readFileSync(denYml, "utf-8");
-        return sendJson(res, validateManifest(content));
+        return sendJson(res, plain(validateManifest(content)));
       } catch (e) {
         return sendJson(res, {
           valid: false,
           version: 1,
-          errors: [{ path: "", message: (e as Error).message }],
+          errors: [
+            {
+              path: "",
+              message:
+                (e as NodeJS.ErrnoException).code === "ENOENT"
+                  ? "No manifest there."
+                  : "The manifest couldn't be read.",
+            },
+          ],
           warnings: [],
         });
       }
@@ -6793,10 +7630,11 @@ async function handleRequest(
         terminals: terminalList,
         editor_overrides: user.editor_overrides ?? {},
         languages: SUPPORTED_LANGUAGES,
-        log_window_lines: user.log_window_lines ?? 20_000,
+        // MODE-5: the rows that were the command line's (a save answers them too).
+        ...cliRowSettings(user),
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
-        shell: shellPrefs(user.shell),
+        shell: shellPrefs(user.shell, pinProjects()),
         agents_layout: agentsLayout(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
@@ -6807,8 +7645,6 @@ async function handleRequest(
         distribution: distributionSettings(getDistRoot()),
         // Set from the command line (`<cli> config`), shown read-only.
         user_web_port: userWebPort(user as Record<string, unknown>),
-        local_dev: user.local_dev !== false,
-        cli_tabs: user.cli_tabs === true,
         // The UI's language (R19), and the ones it has catalogs for.
         language: uiLanguage(user.language),
         ui_languages: UI_LANGUAGES,
@@ -6835,33 +7671,8 @@ async function handleRequest(
             return true;
           }
         })(),
-        // den#85: the crash-loop guard's settings (web.crash_loop_*).
-        crash_loop: crashLoopSettings(user.web),
         // Issue 144: the machine's gate slots, not this install's.
         gate_slots: gates().settings(),
-        // 0.4.48: Den on the Docker bridge for the edge (Linux).
-        web_bridge: (() => {
-          const w = (user.web ?? {}) as Record<string, unknown>;
-          return {
-            listen: w.bridge_listen === "off" ? "off" : "auto",
-            probeSeconds:
-              typeof w.bridge_probe_seconds === "number"
-                ? w.bridge_probe_seconds
-                : 10,
-          };
-        })(),
-        // den#143: how long `web up` waits for the server.
-        web_ready: (() => {
-          try {
-            const c = readWebAuthConfig(getDistRoot(), product().configFile);
-            return {
-              probeSeconds: c.readyProbeSeconds,
-              startSeconds: c.startWaitSeconds,
-            };
-          } catch {
-            return null;
-          }
-        })(),
         // Issue 163: the launchd job's mode now (null: not a service).
         service_mode: installedServiceMode(),
         // Issue 163: Keep agents running after logout. Unset: on for a new
@@ -6887,54 +7698,8 @@ async function handleRequest(
         agent_signin: await agentSigninView(),
         // Issue 339: the sign-in accounts per vendor (never a token).
         agent_accounts: agentAccountsView(),
-        // Issue 278: agents stuck compacting; instruction size (agent_context.*).
-        agent_context: (() => {
-          const c = contextWatchSettings(user.agent_context);
-          return {
-            compaction_loop_count: c.loopCount,
-            compaction_loop_minutes: c.loopMinutes,
-            pause_after_loop: c.pause,
-            instruction_share_percent: c.sharePercent,
-            context_tokens: c.contextTokens,
-          };
-        })(),
-        // den#156: the Agents list's waits (agents_list.*).
-        agents_list: (() => {
-          try {
-            return agentsListWaits(() => user);
-          } catch {
-            return null;
-          }
-        })(),
-        // Issue 415: how long Report keeps, and waits for, a repo's
-        // visibility (feedback.*), their defaults when unset.
-        feedback: (() => {
-          const f = feedbackSettings(null, {}, user.feedback);
-          return {
-            visibility_cache_hours: f.visibilityCacheHours,
-            visibility_timeout_seconds: f.visibilityTimeoutSeconds,
-            visibility_retry_seconds: f.visibilityRetrySeconds,
-          };
-        })(),
-        // Issue 455: the address check's limits (web.address_check_*).
-        address_check: (() => {
-          const a = addressCheckSettings(() => user);
-          return {
-            timeout_seconds: a.timeoutMs / 1000,
-            retries: a.retries,
-            cache_seconds: a.cacheMs / 1000,
-          };
-        })(),
         // Issue 103: Settings › Embedding (embed.*).
         embed: embedSettings(user),
-        // 0.4.46: how a terminal pane reconnects on its own (panes.*).
-        panes_reconnect: (() => {
-          try {
-            return panesReconnect(() => user);
-          } catch {
-            return null;
-          }
-        })(),
         // SEC-2a: the name the signed-out page gives this machine, and
         // what it is when unset (the short hostname).
         machine_name: machineNameSetting(user),
@@ -6971,12 +7736,17 @@ async function handleRequest(
           panes_reconnect?: unknown;
           crash_loop?: unknown;
           web_bridge?: unknown;
+          web_github?: unknown;
           web_ready?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
+          agents_shell?: unknown;
           agent_context?: unknown;
+          reports?: unknown;
           feedback?: unknown;
           address_check?: unknown;
+          process_lookup?: unknown;
+          agent_hooks?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -7006,11 +7776,16 @@ async function handleRequest(
             panes_reconnect: body.panes_reconnect,
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
+            web_github: body.web_github,
             web_ready: body.web_ready,
             agents_list: body.agents_list,
+            agents_shell: body.agents_shell,
             agent_context: body.agent_context,
+            reports: body.reports,
             feedback: body.feedback,
             address_check: body.address_check,
+            process_lookup: body.process_lookup,
+            agent_hooks: body.agent_hooks,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -7083,9 +7858,20 @@ async function handleRequest(
         }
         // #267: Hub's address (Settings › Hub); "" or null clears it. The
         // page restarts Den after, so every agent and check reads it anew.
+        // Issue 726: the Hub it was on, so the change runs on the server
+        // whatever path called (revoke, archive, bell).
+        let hubSaved: { before: HubConfig | null; url: string | null } | null =
+          null;
         if (body.hub_url !== undefined) {
+          let before: HubConfig | null = null;
+          try {
+            before = readHubConfig();
+          } catch {
+            before = null;
+          }
           const h = patchHubUrl(user as Record<string, unknown>, body.hub_url);
           if (!h.ok) return send400(res, h.error);
+          hubSaved = { before, url: h.url };
         }
         // AG-4b: the Agents tab's layout, a view preference only.
         if (body.agents_layout !== undefined) {
@@ -7142,10 +7928,17 @@ async function handleRequest(
         // The rail's pins and collapse (R14): a view preference only.
         if (body.shell === null) delete user.shell;
         else if (body.shell !== undefined) {
-          const sh = mergeShellPrefs(shellPrefs(user.shell), body.shell);
+          // Issue 402: old id-only pins (stored, or posted by an older
+          // page) migrate on the way through.
+          const projectsOf = pinProjects();
+          const sh = mergeShellPrefs(
+            shellPrefs(user.shell, projectsOf),
+            body.shell,
+            projectsOf,
+          );
           if (!sh.ok) return send400(res, sh.error);
           const stored = storedShell(sh.value);
-          if (stored) user.shell = stored;
+          if (stored) user.shell = stored as UserConfig["shell"];
           else delete user.shell;
         }
         if (body.graph === null) delete user.graph;
@@ -7228,11 +8021,30 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (hubSaved) {
+          const saved = hubSaved;
+          const m = await import("./hub-change.js");
+          await m
+            .hubUrlSaved(
+              await m.defaultHubChangeDeps(),
+              saved.before,
+              saved.url,
+            )
+            .catch((e: unknown) =>
+              serverLog(
+                `  ⚠ Hub change: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+                "warn",
+              ),
+            );
+        }
         if (gatePatch) gates().writeSettings(gatePatch);
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
+          ...cliRowSettings(user),
+          // Issue 144: the gate slots, as GET shows them (issue 424).
+          gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals),
@@ -7241,7 +8053,7 @@ async function handleRequest(
           editor_overrides: user.editor_overrides ?? {},
           graph: graphPrefs(user.graph),
           appearance: appearancePrefs(user.appearance),
-          shell: shellPrefs(user.shell),
+          shell: shellPrefs(user.shell, pinProjects()),
           language: uiLanguage(user.language),
           time_zone: timeZonePref(user.time_zone),
           machine_name: machineNameSetting(user),
@@ -7622,6 +8434,34 @@ server.on(
   },
 );
 
+/**
+ * An upgrade refused for want of a sign-in (a terminal that can't attach):
+ * an audit row and a WS line on stderr, which is web.log even when `web
+ * up` starts this --silent. The route's template, the status and the
+ * code only: never a cookie, a header or the session's id.
+ */
+function traceUpgradeSignin(
+  pathname: string,
+  g: Extract<GuardResult, { ok: false }>,
+): void {
+  const route = isSessionIoPath(pathname)
+    ? "/api/sessions/:id/io"
+    : routeTemplate(pathname);
+  try {
+    recordAction(null, {
+      verb: "request",
+      detail: `WS ${route} ${g.status}`,
+      outcome: "refused",
+      reason: g.code,
+    });
+  } catch {
+    /* the audit is best-effort here */
+  }
+  const line = `  ⚠ WS ${route} → ${g.status} ${g.code}`;
+  if (!SILENT) return; // serverLog's request line is on stdout then
+  if (!outputLost()) process.stderr.write(line + "\n");
+}
+
 function handleUpgrade(
   req: http.IncomingMessage,
   socket: net.Socket,
@@ -7645,6 +8485,7 @@ function handleUpgrade(
       "request",
     );
     auditGuardRefusal(req, pathname, guard);
+    if (guard.code === "signin_required") traceUpgradeSignin(pathname, guard);
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
@@ -7879,7 +8720,22 @@ function sweepServiceLogs(): void {
   }
 }
 sweepServiceLogs();
-setInterval(sweepServiceLogs, LOG_SWEEP_INTERVAL_MS).unref();
+
+// Issue 403: a filed report's kept screenshot is deleted after
+// reports.screenshot_keep_days (30), on the log sweep's beat.
+function sweepReportShots(): void {
+  try {
+    const n = shotStore(getStateDir()).sweep(shotKeepDays(readUserConfig()));
+    if (n) serverLog(`Report screenshots: deleted ${n} past their days`);
+  } catch (e) {
+    serverLog(`Report screenshot sweep failed: ${(e as Error).message}`);
+  }
+}
+sweepReportShots();
+setInterval(() => {
+  sweepServiceLogs();
+  sweepReportShots();
+}, LOG_SWEEP_INTERVAL_MS).unref();
 
 // Last-resort guards: an uncaught throw in an async callback (spawn handlers,
 // timers — code the per-request catch can't see) would kill the whole
@@ -7935,23 +8791,24 @@ try {
 } catch (e) {
   serverLog(`  ⚠ web.secret could not be created: ${(e as Error).message}`);
 }
-// AG-0.1: the login shell's PATH, once, in the background (3 s at most),
+// AG-0.1: the login shell's PATH, once, in the background (at most
+// agents.shell_path_timeout_seconds, 10 s unset: issue 456),
 // so agents find their CLI as the person's terminal would: a launchd
 // service's PATH leaves out ~/.local/bin. Until (or unless) it answers, the
 // search is this PATH and the runtimes' install directories.
-void initLoginPath();
+void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // D80: the install's address (web.url), the one people are given. An
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
-// localhost.
+// localhost (issue 666: migrateWebUrl takes the first alias that isn't,
+// and puts it in place of a loopback one).
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
-    const urls = webRouteHosts(readEdgeConfig(), ports).map((r) => r.url);
-    const url =
-      urls.find((u) => u.startsWith("https:")) ??
-      urls.find((u) => /^http:\/\/[^/]+\.localhost(:\d+)?$/i.test(u));
-    return url ? { url, from: "the edge route to this server" } : undefined;
+    return webRouteHosts(readEdgeConfig(), ports).map((r) => ({
+      url: r.url,
+      from: "the edge route to this install",
+    }));
   } catch {
     return undefined; // no edge config: nothing to take
   }
@@ -8011,11 +8868,23 @@ void CRASH_GATE.then(() =>
 );
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
-    printBanner(ADDRESS ?? readWebUrl());
+    void printBanner(ADDRESS ?? readWebUrl());
     // SRV-1a: back from a restart the server agent asked for: tell it.
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
+    // Issue 142: a held write counts in the bell while it waits.
+    startHeldWritesBell();
+    // Issue 406: an owner linked before names were kept: GitHub's public
+    // profile name, once (the account entry's first line).
+    // web.owner_name_timeout_seconds: how long it waits.
+    void ownerNameFromGithub({
+      api: GITHUB.api,
+      fake: GITHUB.fake,
+      timeoutMs: WEB_AUTH.ownerNameTimeoutSeconds * 1000,
+    }).then((n) => {
+      if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
+    });
     // 0.4.48: on Linux, the Docker bridge too, for the edge.
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),
@@ -8062,56 +8931,88 @@ void CRASH_GATE.then(() =>
         /* the file unreadable: the agents list heals them later */
       }
     });
+    // Issue 726: a hub.url edited to another Hub is a change: the old
+    // token revoked, its state archived, before any Hub loop reads it.
+    const hubChecked = import("./hub-change.js")
+      .then(async (m) => m.hubChangeAtStart(await m.defaultHubChangeDeps()))
+      .then((r) => {
+        if (r.kind === "change")
+          serverLog("  Hub changed: the earlier Hub's state is archived");
+      })
+      .catch((e: unknown) =>
+        serverLog(
+          `  ⚠ Hub change check: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+          "warn",
+        ),
+      );
     // H5: tell Hub this install's projects now, then whenever they change.
-    void import("./hub-sync-service.js").then((m) => {
-      let every = 30;
-      let names = 300;
-      let retry = 30;
-      try {
-        const c = readHubConfig();
-        every = c?.syncCheckSeconds ?? 30;
-        names = c?.namesCheckSeconds ?? 300;
-        retry = c?.mcpRetrySeconds ?? 30;
-      } catch {
-        /* a bad hub block: doctor says so; the default here */
-      }
-      m.startProjectSync(every);
-      // 0.4.45: a project renamed in Hub shows its new name here.
-      m.startHubNameRefresh(names);
-      // 0.4.46: an agent that started while Hub didn't answer gets its tools
-      // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
-      m.startMcpReconnect(retry, () => {
+    void hubChecked
+      .then(() => import("./hub-sync-service.js"))
+      .then((m) => {
+        let every = 30;
+        let names = 300;
+        let retry = 30;
         try {
-          return readHubConfig()?.mcpRetryAttempts ?? 0;
+          const c = readHubConfig();
+          every = c?.syncCheckSeconds ?? 30;
+          names = c?.namesCheckSeconds ?? 300;
+          retry = c?.mcpRetrySeconds ?? 30;
         } catch {
-          return 0;
+          /* a bad hub block: doctor says so; the default here */
         }
+        m.startProjectSync(every);
+        // 0.4.45: a project renamed in Hub shows its new name here.
+        m.startHubNameRefresh(names);
+        // 0.4.46: an agent that started while Hub didn't answer gets its tools
+        // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
+        m.startMcpReconnect(retry, () => {
+          try {
+            return readHubConfig()?.mcpRetryAttempts ?? 0;
+          } catch {
+            return 0;
+          }
+        });
       });
-    });
     // 0.4.40: Hub comments reach this install's agents.
-    void import("./hub-delivery-service.js").then((m) => {
-      // Always registered: a later Connect starts it (no token: it waits).
-      let cfg: ReturnType<typeof readHubConfig> = null;
-      try {
-        cfg = readHubConfig();
-      } catch {
-        /* a bad hub block: doctor says so; the defaults here */
-      }
-      void m.startDeliveries({
-        heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
-        pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-        waiting: typingHeldIds,
-        log: (l) => serverLog(`  ${l}`, "warn"),
+    void hubChecked
+      .then(() => import("./hub-delivery-service.js"))
+      .then((m) => {
+        // Always registered: a later Connect starts it (no token: it waits).
+        let cfg: ReturnType<typeof readHubConfig> = null;
+        try {
+          cfg = readHubConfig();
+        } catch {
+          /* a bad hub block: doctor says so; the defaults here */
+        }
+        void m.startDeliveries({
+          heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
+          pollSeconds: cfg?.deliveryPollSeconds ?? 30,
+          heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
+          // Issue 701: one agent's hang holds only itself; a held comment
+          // and a typed one with no answer are said in the bell.
+          stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
+          typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
+          heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
+          answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
+          // Issue 701: an asked question never holds a delivery.
+          waiting: deliveryHeldIds,
+          waitingWhy: (agent) =>
+            pausedAgents().has(agent)
+              ? "paused"
+              : (waitingReasons().get(agent) ?? null),
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        });
       });
-    });
     // Issue 193: an agent resumed on an older Hub tool list is told what
     // changed (hub.tools_check_seconds).
-    void import("./hub-tools-service.js").then((m) =>
-      m.startHubToolsWatch({
-        waiting: typingHeldIds,
-        log: (l) => serverLog(`  ${l}`, "warn"),
-      }),
-    );
+    void hubChecked
+      .then(() => import("./hub-tools-service.js"))
+      .then((m) =>
+        m.startHubToolsWatch({
+          waiting: typingHeldIds,
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
   }),
 );
 
@@ -8138,9 +9039,36 @@ async function serverBack(): Promise<void> {
       const ops = await import("../cli/agent-ops.js");
       const { webDeps } = await import("./agent-routes.js");
       const d = webDeps();
+      const agentName = serverAgentName(product().title);
       told = await tellBack(text, {
         state: () => ops.serverAgentInputState(d),
         type: (t) => ops.typeIntoAgent(d, SERVER_AGENT_ID, t),
+        // Issue 629: never into a dialog for its person; kept until answered.
+        dialog: () => ops.serverAgentDialogOpen(d),
+        held: () => {
+          serverLog(
+            `  Back from a restart: the note to ${agentName} waits for its person's dialog`,
+            "lifecycle",
+          );
+          try {
+            backNoteHeldNote(
+              notificationDeps().store,
+              product().title,
+              agentName,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
+        cleared: () => {
+          try {
+            notificationDeps().store.remove(
+              (x) => x.subject === BACK_NOTE_HELD_SUBJECT,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitMs: restartWaitSeconds() * 1000,
       });
     } catch (e) {
@@ -8198,6 +9126,13 @@ const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
 const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
 
 /**
+ * Issue 562 review: set by the update check while its auto update runs:
+ * den_update awaits it after the install, before the watch and restart
+ * (holdRestart). A den_update the person or an agent asked for has none.
+ */
+let autoRestartHold: ((keepAlive: () => void) => Promise<void>) | null = null;
+
+/**
  * SRV-P6 (0.4.48): every server_agent.update_check_minutes (0: never),
  * one updateCheck tick (update-check.ts). Read once at start: a changed
  * interval takes effect at the next restart; self_update is read per tick.
@@ -8238,8 +9173,35 @@ function startUpdateCheck(): void {
   if (!every) return;
   let busy = false;
   let updating = false;
-  /** #251: why an auto update would wait now; null: a quiet moment. */
-  const updateWaitWhy = async (): Promise<UpdateWait | null> => {
+  /**
+   * Issue 562 review: the wait again once the install is done, leaving
+   * out "updating" (this update is the one under way).
+   */
+  const agentWaitWhy = async (
+    pastPerson: boolean,
+  ): Promise<UpdateWait | null> => {
+    const w = attentionWaiting().get(SERVER_AGENT_ID);
+    const onPerson = w === "permission" || w === "asked";
+    if (onPerson && !pastPerson) return w;
+    if (approvals?.queue.pending().length) return "approval";
+    if (onPerson) return null;
+    const ops = await import("../cli/agent-ops.js");
+    const { webDeps } = await import("./agent-routes.js");
+    return (await ops.serverAgentInputState(webDeps())) === "busy"
+      ? "busy"
+      : null;
+  };
+  /**
+   * #251: why an auto update would wait now; null: a quiet moment.
+   * Issue 562: `pastPerson` leaves out the server agent's own question or
+   * permission prompt (a security release): a pending Allow still holds
+   * it, and so does a turn that is working. A turn paused on its person
+   * isn't working (its transcript's open tool call reads busy): it
+   * resumes after the restart.
+   */
+  const updateWaitWhy = async (
+    pastPerson = false,
+  ): Promise<UpdateWait | null> => {
     if (updating) return "updating";
     const u = await import("./den-update.js");
     const last = u.readUpdateState(getStateDir());
@@ -8250,14 +9212,7 @@ function startUpdateCheck(): void {
     )
       return "updating";
     // The server agent's own wait first: it is what the person can end.
-    const w = attentionWaiting().get(SERVER_AGENT_ID);
-    if (w === "permission" || w === "asked") return w;
-    if (approvals?.queue.pending().length) return "approval";
-    const ops = await import("../cli/agent-ops.js");
-    const { webDeps } = await import("./agent-routes.js");
-    return (await ops.serverAgentInputState(webDeps())) === "busy"
-      ? "busy"
-      : null;
+    return agentWaitWhy(pastPerson);
   };
   const tick = async (): Promise<void> => {
     if (busy) return;
@@ -8292,7 +9247,43 @@ function startUpdateCheck(): void {
         last: () => u.readUpdateState(getStateDir()),
         idle: async () => (await updateWaitWhy()) === null,
         // #251: why it waits, so the log and the bell can say so.
-        waitWhy: updateWaitWhy,
+        waitWhy: () => updateWaitWhy(),
+        // Issue 562: a security release: npm's version data marks it.
+        waitPast: () => updateWaitWhy(true),
+        security: (version) =>
+          u.npmViewSecurity(
+            u.npmCommand(),
+            ENGINE_PACKAGE,
+            version,
+            getDistRoot(),
+          ),
+        securitySkipsQuestions: () => {
+          try {
+            return readServerAgentConfig().securityUpdateSkipsQuestions;
+          } catch {
+            return true;
+          }
+        },
+        // Issue 603: past a working turn too; the restart holds for it.
+        securitySkipsBusy: () => {
+          try {
+            return readServerAgentConfig().securityUpdateSkipsBusy;
+          } catch {
+            return true;
+          }
+        },
+        securityNote: (version) => {
+          try {
+            securityUpdateNote(
+              notificationDeps().store,
+              product().title,
+              serverAgentName(product().title),
+              version,
+            );
+          } catch {
+            /* the bell is best effort */
+          }
+        },
         waitChecks: () => {
           try {
             return readServerAgentConfig().updateWaitChecks;
@@ -8378,12 +9369,44 @@ function startUpdateCheck(): void {
         // approval policy (issue 160) may hold it for the person.
         pinCommit: (version) => runPinCommit(version, true),
         pinNotice: pinBellNotice,
-        update: async (version, reason) => {
+        update: async (version, reason, opts) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
           const ok = await a.check({ version, reason });
           if (!ok.ok) return { ok: false, error: ok.error };
           updating = true;
+          // Issue 562 review: read the wait again after the install.
+          autoRestartHold = async (keepAlive) => {
+            const { holdRestart, restartedWhileWorkingNote } =
+              await import("./update-check.js");
+            let maxMs = 900_000;
+            try {
+              maxMs = readServerAgentConfig().updateRestartWaitMs;
+            } catch {
+              /* the default */
+            }
+            await holdRestart({
+              waitWhy: () => agentWaitWhy(!!opts?.security),
+              maxMs,
+              keepAlive,
+              log: (line) => {
+                serverLog(`  ${line}`, "lifecycle");
+                recordAction(null, { verb: "den-update-check", detail: line });
+              },
+              timedOut: () => {
+                try {
+                  restartedWhileWorkingNote(
+                    notificationDeps().store,
+                    product().title,
+                    serverAgentName(product().title),
+                    version,
+                  );
+                } catch {
+                  /* the bell is best effort */
+                }
+              },
+            });
+          };
           try {
             const r = (await a.run(ok.args, {
               id: "update-check",
@@ -8394,6 +9417,7 @@ function startUpdateCheck(): void {
               : { ok: false, error: String(r.error ?? "not updated") };
           } finally {
             updating = false;
+            autoRestartHold = null;
           }
         },
         ask: async (version, reason) => {
@@ -8484,8 +9508,58 @@ function startUpdateCheck(): void {
   });
 }
 
+/**
+ * The start line's address (issue 455, after 0.4.68: no address is shown
+ * before it is checked). web.url (D80), once it answers as this Den. When
+ * it is the edge address and it doesn't yet, the address that was checked
+ * (Den's own port), and a line that says the edge one isn't checked yet.
+ * An address that isn't the edge's is given as it is (D80).
+ */
+async function bannerAddressLines(
+  address: { url: string } | null,
+): Promise<string[]> {
+  if (!address) return [`  Web UI  →  ${notSetLine(product().cli)}`];
+  let domains: string[] = [];
+  try {
+    domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+  } catch {
+    domains = [];
+  }
+  if (!isEdgeAddress(address.url, domains))
+    return [`  Web UI  →  ${address.url}`];
+  const words = {
+    lang: cliLanguage(),
+    title: readBrand().name,
+    cli: product().cli,
+  };
+  let said: ReturnType<typeof statedAddress> = {
+    address: null,
+    unchecked: address.url,
+  };
+  try {
+    const secret = webSecret.current();
+    said = statedAddress(
+      await checkAddress({
+        webPort: PORT,
+        wanted: address.url,
+        key: secret ? identityKey(secret) : null,
+        cli: product().cli,
+        settings: addressCheckSettings(),
+      }),
+      true,
+    );
+  } catch {
+    /* not checked: said so below */
+  }
+  if (!said.unchecked) return [`  Web UI  →  ${said.address ?? address.url}`];
+  const why = edgeUncheckedLine(said.unchecked, words);
+  return said.address
+    ? [`  Web UI  →  ${said.address}`, `  ${why}`]
+    : [`  Web UI  →  ${why}`];
+}
+
 /** The start banner: the install's address (D80), never localhost. */
-function printBanner(address: { url: string } | null): void {
+async function printBanner(address: { url: string } | null): Promise<void> {
   const pkgVersion = engineVersion() ?? "?";
 
   console.log();
@@ -8496,9 +9570,7 @@ function printBanner(address: { url: string } | null): void {
   console.log(`  ${DEN_SUBTITLE.trim()}`);
   console.log(`  v${pkgVersion}`);
   console.log();
-  console.log(
-    `  Web UI  →  ${address ? address.url : notSetLine(product().cli)}`,
-  );
+  for (const line of await bannerAddressLines(address)) console.log(line);
   console.log();
   // Once per start: a secrets config that leaves Den's own features off.
   for (const w of secretsConfigWarnings()) serverLog(`  ⚠ ${w}`);

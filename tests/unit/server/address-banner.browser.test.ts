@@ -22,6 +22,8 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { proxyRoutes } from "../../../src/shared/edge/proxy-route.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(90_000);
 
@@ -34,11 +36,7 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    for (const e of ENGINES)
-      browsers[e] = ws
-        ? await pw[e].connect(ws, { exposeNetwork: "<loopback>" })
-        : await pw[e].launch();
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -111,6 +109,7 @@ async function open(e: (typeof ENGINES)[number], width: number): Promise<Page> {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript(() => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])

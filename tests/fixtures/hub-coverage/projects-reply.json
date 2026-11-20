@@ -1,0 +1,5 @@
+{"ok":true,"setups":[],"errors":[],
+ "uncovered":[
+  {"workspace":"<workspace>","repo":"acme-labs/widget-api","org":"acme-labs","install_url":"https://github.com/organizations/acme-labs/settings/installations/<id>"},
+  {"workspace":"<workspace>","repo":"globex/portal","org":"globex","install_url":"https://github.com/apps/<app-slug>/installations/new?state=<state>"}
+ ]}

@@ -12,6 +12,7 @@ export const clauses = [
   "every new string has en/es/ja text",
   "when the edge can't start, every place uses the address that works, and says why once",
   "the route for nginx, Caddy and Traefik is ready to paste (doctor and Edge)",
+  "when nothing answers at the address, doctor and the Edge page say Not reachable yet",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1440, 390] };
 // Quiet, a cell took ~9 s (the /edge page 0.8–2.5 s on the remote browser, the 1.5 s settle, the CLI calls ~4 s): 4× that is under the 300 s floor.
@@ -50,7 +51,7 @@ export async function setup(ctx) {
     lines: (d.out || "")
       .split("\n")
       .filter((l) =>
-        /checked just now|is held by|in use by something|no address was checked|Options: free port|edge route --for/.test(
+        /checked just now|is held by|in use by something|no address was checked|Options: free port|edge route --for|Not reachable yet|isn't checked yet/.test(
           l,
         ),
       )
@@ -81,6 +82,8 @@ export async function run(ctx, state) {
   await ctx.sleep(1500);
   const r = await ctx.page.evaluate(() => ({
     card: !!document.querySelector("[data-address-card]"),
+    cardText: document.querySelector("[data-address-card]")?.textContent ?? "",
+    sub: document.getElementById("edge-sub")?.textContent?.trim() ?? "",
     banner: !!document.querySelector('[data-banner="den-address"]'),
     hScroll:
       document.documentElement.scrollWidth >
@@ -95,7 +98,13 @@ export async function run(ctx, state) {
 export function expect(cells) {
   const s = cells.find((c) => c.result?.setup)?.result.setup ?? {};
   const st = s.address ?? {};
-  const held = st.wantedAnswer && st.wantedAnswer !== "den";
+  const held = st.wantedAnswer === "other";
+  // Asked, and no answer: nothing listens, or nothing answered in time.
+  const unreachable =
+    !!st.wanted &&
+    st.directOk === true &&
+    (st.wantedAnswer === "nothing" || st.wantedAnswer === "unknown");
+  const NOT_REACHABLE = /Not reachable yet/;
   const d = (f) =>
     cells
       .map(({ cell, result }) => `${cell.browser}@${cell.width}: ${f(result)}`)
@@ -144,10 +153,14 @@ export function expect(cells) {
     held
       ? {
           clause: clauses[4],
-          ok: cells.every(({ result }) => result.card && !result.hScroll),
+          // The sub line follows the card: never "· running" above it.
+          ok: cells.every(
+            ({ result }) =>
+              result.card && !result.hScroll && !/· running$/.test(result.sub),
+          ),
           detail: d(
             (r) =>
-              `card ${r.card}, banner ${r.banner}, side scroll ${r.hScroll}`,
+              `card ${r.card}, banner ${r.banner}, side scroll ${r.hScroll}, sub "${r.sub}"`,
           ),
           evidence: shots,
         }
@@ -159,7 +172,7 @@ export function expect(cells) {
             d(
               (r) =>
                 `no card ${!r.card}, no banner ${!r.banner}, side scroll ${r.hScroll}`,
-            ) + " (the address works here, so both rightly say nothing)",
+            ) + " (another server doesn't hold the address here)",
           evidence: shots,
         },
     {
@@ -193,5 +206,28 @@ export function expect(cells) {
         )
         .join("; "),
     },
+    unreachable
+      ? {
+          clause: clauses[8],
+          ok:
+            (s.doctor?.lines ?? []).some((l) => NOT_REACHABLE.test(l)) &&
+            cells.every(
+              ({ result }) =>
+                result.card && NOT_REACHABLE.test(result.cardText ?? ""),
+            ),
+          detail:
+            `doctor: ${(s.doctor?.lines ?? []).filter((l) => NOT_REACHABLE.test(l)).join(" | ") || "no Not reachable yet line"}; ` +
+            d(
+              (r) =>
+                `card ${r.card}, says it ${NOT_REACHABLE.test(r.cardText ?? "")}`,
+            ),
+          evidence: shots,
+        }
+      : {
+          clause: clauses[8],
+          ok: null,
+          skip: "needs-unreachable-address",
+          detail: `the address answers here (${st.wantedAnswer ?? "not checked"})`,
+        },
   ];
 }

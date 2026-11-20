@@ -323,11 +323,16 @@ describe("the check", () => {
     const d = doctorAddressLines(s, { lang: "en", title: "Den", cli: "den" });
     expect(d.status).toBe("warn");
     expect(d.lines).toEqual([
-      "Edge: not running. Port 80 is held by nginx (container web-proxy-1).",
+      // The Edge card's words for it (after 0.4.68: not "container").
+      "Edge: not running. Port 80 is held by nginx (Docker container web-proxy-1).",
       "Den answers at http://localhost:7777. That address was checked just now: it is this Den.",
       "Options: free port 80, or add Den to that proxy (route below).",
       "Route for nginx / Caddy / Traefik:  den edge route --for nginx",
     ]);
+    for (const lang of ["es", "ja"] as const)
+      expect(
+        doctorAddressLines(s, { lang, title: "Den", cli: "den" }).lines[0],
+      ).toContain(addressWord(lang, "kind.container"));
   });
   it("Den's server not answering: nothing is proven, nothing claimed", async () => {
     const s = await checkAddress({
@@ -365,6 +370,9 @@ describe("the check", () => {
       timeoutMs: 5000,
       retries: 2,
       cacheMs: 60_000,
+      // How many definite failures move a proven address back (the sign-in's).
+      dropAfter: 2,
+      unknownKeepMs: 300_000,
     });
     expect(
       addressCheckSettings(() => ({
@@ -374,7 +382,13 @@ describe("the check", () => {
           address_check_cache_seconds: 0,
         },
       })),
-    ).toEqual({ timeoutMs: 30_000, retries: 0, cacheMs: 0 });
+    ).toEqual({
+      timeoutMs: 30_000,
+      retries: 0,
+      cacheMs: 0,
+      dropAfter: 2,
+      unknownKeepMs: 300_000,
+    });
   });
 });
 

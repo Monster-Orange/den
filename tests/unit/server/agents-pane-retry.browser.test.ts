@@ -17,12 +17,14 @@ import type { Browser, Route } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import type { ScriptedPty } from "../sessions/helpers/fake-pty.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -37,10 +39,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -91,6 +90,9 @@ describe("a pane whose terminal code failed to load (issue 128)", () => {
       }
       (window as unknown as { __loaded: number }).__loaded = Date.now();
     });
+    // The person's browser, signed in as `web up` does (0.4.71): a pane's
+    // socket needs the session.
+    await signIn(ctx, s.stateDir, s.base);
     const p = await ctx.newPage();
     // The first load of the terminal code fails, as when Den restarts.
     let aborted = 0;

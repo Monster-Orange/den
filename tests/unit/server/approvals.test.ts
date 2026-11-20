@@ -57,7 +57,6 @@ function ctx(): GuardContext {
               session: { name: "server" },
             }
           : null,
-    csrfToken: SERVER_CSRF,
     session: (req) => {
       const c = String(req.headers.cookie ?? "");
       return c.includes(`den_session_${PORT}=good`)
@@ -157,10 +156,12 @@ describe("approverAllowed: only a signed-in browser session", () => {
     ).toEqual({ guard: false, approver: null });
   });
 
-  it("an agent's curl with no credential and the server-start CSRF token (the loopback page's): refused", () => {
+  it("an agent's curl with no credential and a CSRF token it got hold of: refused by the guard (0.4.71: a sign-in on loopback too)", () => {
     const r = allowed({ ...ORIGIN, "x-den-csrf": SERVER_CSRF });
-    expect(r.guard).toBe(true); // loopback lets it through the guard...
-    expect(r.approver).toMatchObject({ ok: false, code: "signin_to_approve" }); // ...but it can't approve
+    expect(r).toEqual({ guard: false, approver: null });
+    expect(
+      checkRequest(req({ ...ORIGIN, "x-den-csrf": SERVER_CSRF }), ctx()),
+    ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
   });
 
   it("an agent's curl with no credential and no Origin: refused before it gets here", () => {

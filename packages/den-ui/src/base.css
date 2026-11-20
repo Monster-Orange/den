@@ -28,6 +28,23 @@
   }
 }
 
+/* Issue 651: no pop-up or form control falls back to the browser's font.
+   A modal dialog is put in <body>, but a page may set its font on a
+   wrapper (Den's #den-content), so a dialog that set no font of its own
+   drew in the browser's serif. Every dialog gets the kit's sans and its
+   parent's colour; form controls take their parent's font instead of the
+   browser's control font. Zero specificity: a dialog's own font wins. */
+:where(dialog) {
+  font-family: var(--sans);
+  color: inherit;
+}
+:where(button),
+:where(input),
+:where(select),
+:where(textarea) {
+  font: inherit;
+}
+
 /* An open modal dialog is as tall as its content, and centred. The
    browser's own box (inset-block 0, height fit-content) is not enough: on
    an iPad a pop-up still ran the window's full height, even with height:

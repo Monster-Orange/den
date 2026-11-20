@@ -19,6 +19,8 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -67,7 +69,7 @@ beforeAll(async () => {
   port = started.port;
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -85,6 +87,11 @@ async function open(url: string): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 800 },
   });
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   // No first-visit changelog pop-up over the page: the latest is seen.
   const latest = (
     (await (await fetch(`http://localhost:${port}/api/changelog`)).json()) as {
@@ -153,8 +160,11 @@ describe("the Edge page (PL-SPEC §10)", () => {
       /^TLSnoneset in edge\.tls$/,
     );
     expect(tiles.find((t) => t.startsWith("CA trust"))).toMatch(/no CA/);
-    // Read-only: no buttons on the page.
-    expect(await p.$$("#den-content button")).toEqual([]);
+    // Read-only: no buttons in the edge's view. (The address card above it
+    // has Check again when Den's address doesn't answer: issue 455. Here
+    // nothing serves the edge address, so it is shown.) A count, not the
+    // handles: a failure must not crash the worker serializing them.
+    expect(await p.locator("#edge-body button").count()).toBe(0);
     // Nothing started or written: no edge state dir.
     expect(fs.existsSync(path.join(tmp, "edge-state"))).toBe(false);
     await p.context().close();
@@ -163,6 +173,11 @@ describe("the Edge page (PL-SPEC §10)", () => {
   it("is not in the rail when /api/edge says no edge is configured", async () => {
     if (!browser) return;
     const ctx = await browser.newContext();
+    await signIn(
+      ctx,
+      path.join(tmp, "home", ".acme"),
+      `http://localhost:${port}`,
+    );
     await ctx.route(/\/api\/edge\?probe=1$/, (r) =>
       r.fulfill({ json: { configured: false, error: "no edge block" } }),
     );

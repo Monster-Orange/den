@@ -68,6 +68,13 @@ async function started(r: Rig, id = "be-dev"): Promise<string> {
   c.write(rec(r, id).session.id, Buffer.from("build the export\r"));
   await settle();
   c.close();
+  // Issue 658: prompted, its runtime wrote the conversation (a temp
+  // projects folder): only the runtime's own record makes one to resume.
+  const cc = path.join(r.dir, "claude-config");
+  const dir = path.join(cc, "projects", "-work-north");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${rec(r, id).resumeToken!}.jsonl`), "{}\n");
+  r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: cc };
   return rec(r, id).resumeToken!;
 }
 
@@ -238,6 +245,8 @@ describe("a session that rotated after 3 compactions", () => {
         reason: "compactions",
         compactions: 3,
         conversation: t1,
+        // Issue 658: the conversation it started.
+        next: t2,
       },
     ]);
     // The handoff is kept aside; the new conversation counts from 0.

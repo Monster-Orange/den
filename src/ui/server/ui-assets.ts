@@ -87,6 +87,8 @@ export const UI_MODULES: readonly string[] = [
   "/term-pane.js",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
+  // Issue 503: the words for a terminal that got no PTY.
+  "/pty-refusal.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
@@ -157,6 +159,23 @@ export const KIT_FILES: readonly string[] = [
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",
+  // Issues 548, 549, 551: the panel fold toggle and its edge strip, and the
+  // switch, with their looks.
+  "panel-fold.js",
+  "panel-fold.css",
+  "switch.js",
+  "switch.css",
+  // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
+  "filter-bar.js",
+  "filter-bar.css",
+  "bulk-bar.js",
+  "bulk-bar.css",
+  // den-ui: the general button (issue 556; Den's own .den-btn moved into
+  // the kit) and the settings on/off row (issue 554).
+  "button.js",
+  "button.css",
+  "setting-row.js",
+  "setting-row.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.
@@ -186,6 +205,8 @@ export const KIT_FILES: readonly string[] = [
   // den-ui 0.7.0: the default theme's mark, for a host's brand
   // (markHtml({ src: "/kit/marks/den.svg", label })).
   "marks/den.svg",
+  // Issue 644: the same mark drawn for 16-18px (the kit's 18px brand).
+  "marks/den-16.svg",
 ];
 
 /** The kit's file for a /kit/ path, or null. */
@@ -249,6 +270,8 @@ const KIT_SHELL_NAMES = [
   "bellCount",
   "accountHtml",
   "accountMenuHtml",
+  // Issue 656: a name that is just the login is no name.
+  "sameAsLogin",
   "menuHasFilter",
   "menuFilterParts",
   "settingsHtml",
@@ -335,6 +358,9 @@ export function kitShellScript(
 
 /** The kit's stylesheets every page with the shell links, in this order. */
 export const KIT_PAGE_CSS: readonly string[] = [
+  // den-ui: the general button, .den-btn (issue 556). First, where Den's own
+  // rules for it came from (the frame's sheet, after the page's own).
+  "/kit/button.css",
   "/kit/shell.css",
   "/kit/whatsnew.css",
   "/kit/report.css",
@@ -432,5 +458,109 @@ export function serveUiAsset(
     "Cache-Control": "public, max-age=86400",
   });
   res.end(fs.readFileSync(file));
+  return true;
+}
+
+// ── The kit's site files (issue 644) ─────────────────────────────────────────
+// One head snippet (packages/den-ui/src/site/head.html: the favicon, the
+// touch icon, the manifest, the theme colour) and the files it names, in
+// one kit folder, so every product on the kit emits the same tags. Each
+// file is served at the root (/favicon.ico, /site.webmanifest, …).
+
+/** The kit's site folder, in Den's own install. */
+export function kitSiteDir(engineRoot: string = getEngineRoot()): string {
+  return path.join(engineRoot, "packages", "den-ui", "src", "site");
+}
+
+/** The root paths the kit's site folder serves: every file but the snippet. */
+export const SITE_FILES: readonly string[] = [
+  "/favicon.ico",
+  "/favicon.svg",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/site.webmanifest",
+];
+
+let headSnippet: string | null = null;
+/** The kit's head snippet, read once. Empty when the kit lacks it. */
+export function kitHeadSnippet(): string {
+  if (headSnippet === null) {
+    try {
+      headSnippet = fs
+        .readFileSync(path.join(kitSiteDir(), "head.html"), "utf-8")
+        .trim();
+    } catch {
+      headSnippet = "";
+    }
+  }
+  return headSnippet;
+}
+
+/**
+ * A page with the kit's head snippet right after its <head> (once: a page
+ * that has it comes back unchanged). A page without a <head> is unchanged.
+ */
+export function sitePage(html: string): string {
+  const snip = kitHeadSnippet();
+  if (!snip || html.includes(snip)) return html;
+  const head = /<head(\s[^>]*)?>/i.exec(html);
+  if (!head) return html;
+  const at = head.index + head[0].length;
+  return html.slice(0, at) + snip + html.slice(at);
+}
+
+const SITE_TYPES: Record<string, string> = {
+  ".ico": "image/x-icon",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webmanifest": "application/manifest+json",
+};
+
+/**
+ * Serves one of the kit's site files at its root path; false for any
+ * other path. The manifest is the kit's, with this product's name and
+ * where a phone's home screen opens (issue 172 S2: the agents).
+ */
+export function serveSiteFile(
+  res: http.ServerResponse,
+  pathname: string,
+  productTitle: string,
+): boolean {
+  if (!SITE_FILES.includes(pathname)) return false;
+  const file = path.join(kitSiteDir(), pathname.slice(1));
+  let bytes: Buffer;
+  try {
+    bytes = fs.readFileSync(file);
+  } catch {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not found");
+    return true;
+  }
+  if (pathname === "/site.webmanifest") {
+    const m = JSON.parse(bytes.toString("utf-8")) as Record<string, unknown>;
+    res.writeHead(200, {
+      "Content-Type": SITE_TYPES[".webmanifest"],
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        ...m,
+        name: productTitle,
+        short_name: productTitle,
+        start_url: "/agents",
+        scope: "/",
+      }),
+    );
+    return true;
+  }
+  res.writeHead(200, {
+    "Content-Type":
+      SITE_TYPES[path.extname(file)] ?? "application/octet-stream",
+    // The bytes change only with Den itself.
+    "Cache-Control": "public, max-age=86400",
+  });
+  res.end(bytes);
   return true;
 }

@@ -17,7 +17,7 @@ import { getStateDir } from "./paths.js";
 
 export interface ConfigAuditRow {
   /** issue 216: "agents" is a restart, stop or resume from the CLI. */
-  verb: "config-write" | "hub-link" | "agents";
+  verb: "config-write" | "hub-link" | "agents" | "web-url";
   detail: string;
   /** Set when it never happened: refused, or still busy. */
   outcome?: "refused";

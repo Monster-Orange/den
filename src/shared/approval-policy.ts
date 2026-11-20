@@ -150,6 +150,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "routine",
     why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
   },
+  hub_link: {
+    risk: "routine",
+    kind: "ask",
+    why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
+  },
   agent_create: {
     risk: "routine",
     why: "starts an agent in the project's mode or a stricter one",
@@ -177,6 +182,15 @@ export const HELD_WRITE_RISK: Readonly<
   embed_key_revoke: {
     risk: "critical",
     why: "a person's own ask, from Settings › Embedding",
+  },
+  gate_runner_token_create: {
+    risk: "critical",
+    areas: ["secrets"],
+    why: "makes a token a CI runner uses to take gate slots on this machine",
+  },
+  host_restart: {
+    risk: "critical",
+    why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
   },
   approval_policy: {
     risk: "critical",

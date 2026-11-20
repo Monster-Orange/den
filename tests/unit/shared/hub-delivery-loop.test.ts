@@ -139,7 +139,8 @@ describe("who gets a delivery, and when", () => {
     expect(s.typed[0].text).toContain(
       "This is an edit request from your person",
     );
-    expect(s.of("d1")).toEqual(["delivered", "working"]);
+    // Issue 701: Hub was told why it waited.
+    expect(s.of("d1")).toEqual(["queued", "delivered", "working"]);
   });
 
   it("no such agent here: refused, nothing typed", async () => {
@@ -162,7 +163,8 @@ describe("who gets a delivery, and when", () => {
     s.states["ag-1"] = "idle";
     await s.loop.pump();
     expect(s.typed).toHaveLength(1);
-    expect(s.of("d1")).toEqual(["queued", "delivered", "working"]);
+    // Issue 701: queued again when the reason changed (stopped, then busy).
+    expect(s.of("d1")).toEqual(["queued", "queued", "delivered", "working"]);
   });
 
   it("mid-turn: kept until the turn ends; two waiting go in together", async () => {
@@ -170,7 +172,11 @@ describe("who gets a delivery, and when", () => {
     await s.loop.take(dv("d1"));
     await s.loop.take(dv("d2"));
     expect(s.typed).toEqual([]);
-    expect(s.acks).toEqual([]);
+    // Issue 701: Hub is told why, once each.
+    expect(s.acks).toEqual([
+      { id: "d1", state: "queued", reason: "the agent is busy with a turn" },
+      { id: "d2", state: "queued", reason: "the agent is busy with a turn" },
+    ]);
     s.states["ag-1"] = "idle";
     await s.loop.pump();
     expect(s.typed).toHaveLength(1);
@@ -435,6 +441,9 @@ describe("the 0.4.40 gate's delivery bugs", () => {
       agents: { state: async () => state, type: async () => true },
       owner: () => ({ ownerId: "u_me" }),
       seen: new SeenDeliveries(t.seenFile),
+      // A minute later on the first loop's clock (issue 701: a turn with
+      // no end after hub.delivery_answer_minutes is settled otherwise).
+      now: () => 1_060_000,
     });
     expect(loop2.work("ag-1")).toMatchObject({ working: 1 });
     await loop2.pump();
@@ -663,5 +672,55 @@ describe("#248: the log says where held comments went", () => {
     expect(s.logs.some((l) => /d1b: repeats held d1 for ag-1/.test(l))).toBe(
       true,
     );
+  });
+});
+
+describe("issue 664: held because the agent isn't at its prompt", () => {
+  it("its row says why, the bell hears how long, and both end once it's typed", async () => {
+    const notes: (string | number)[][] = [];
+    let away = true;
+    const states: Record<string, AgentState> = { "ag-1": "busy" };
+    let clock = 1_000_000;
+    const typed: string[] = [];
+    const loop = new DeliveryLoop({
+      hub: {
+        stream: () => {
+          throw Object.assign(new Error("no stream"), { kind: "refused" });
+        },
+        list: async () => [],
+        ack: async () => undefined,
+      },
+      agents: {
+        state: async (a) => states[a] ?? "missing",
+        type: async (_a, text) => {
+          typed.push(text);
+          return true;
+        },
+        notAtPrompt: () => away,
+      },
+      owner: () => ({ ownerId: "u_me", company: "Acme" }),
+      seen: new SeenDeliveries(path.join(dir, "seen.json")),
+      now: () => clock,
+      heldNote: (agent, n, waited, why) =>
+        notes.push([agent, n, waited, ...(why ? [why] : [])]),
+    });
+    await loop.take(dv("d1"));
+    expect(typed).toEqual([]);
+    expect(loop.work("ag-1")).toMatchObject({
+      queued: 1,
+      held: "not_at_prompt",
+    });
+    clock += 90_000;
+    await loop.pump();
+    expect(notes.at(-1)).toEqual(["ag-1", 1, 90_000, "not_at_prompt"]);
+    // Mid-turn instead: it waits, but not for that reason (issue 701:
+    // the note says the new one).
+    away = false;
+    await loop.pump();
+    expect(loop.work("ag-1")?.held).toBeUndefined();
+    expect(notes.at(-1)).toEqual(["ag-1", 1, 90_000, "busy"]);
+    states["ag-1"] = "idle";
+    await loop.pump();
+    expect(typed).toHaveLength(1);
   });
 });

@@ -14,27 +14,49 @@
  *   web_bridge: { listen?: auto | off, probe_seconds? }
  *                                     user.yml web.bridge_listen,
  *                                     web.bridge_probe_seconds (0.4.48)
+ *   web_github: { owner_name_timeout_seconds? }
+ *                                     user.yml web.owner_name_timeout_seconds
+ *                                     (issue 406)
  *   web_ready: { probe_seconds?, start_seconds? }
  *                                     user.yml web.ready_probe_seconds,
  *                                     web.start_wait_seconds (den#143)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
+ *   agents_shell: { path_timeout_seconds? }
+ *                                     user.yml agents.shell_path_timeout_seconds
+ *                                     (issue 456)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
- *   address_check: { timeout_seconds?, retries?, cache_seconds? }
+ *   reports: { screenshot_keep_days?, screenshot_max_mb?,
+ *              hub_screenshot_max_mb?, hub_timeout_seconds? }
+ *                                     user.yml reports.* (issue 403)
+ *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
+ *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
+ *   process_lookup: { first_seconds?, retry_seconds? }
+ *                                     user.yml process_lookup.* (issue 609)
+ *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
+ *                                     user.yml agent_hooks.* (issue 609)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
+import {
+  SHOT_KEEP_DAYS_MAX,
+  SHOT_KEEP_DAYS_MIN,
+  SHOT_LIMITS,
+} from "./report-shots.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
+import { SHELL_PATH_TIMEOUT } from "./den-config.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
+import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
+import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -46,12 +68,18 @@ export const PERSON_ONLY_SETTINGS = [
   "crash_loop",
   // 0.4.48: whether Den listens on the Docker bridge for the edge (Linux).
   "web_bridge",
+  // Issue 406: how long the start waits for the owner's GitHub name.
+  "web_github",
   // den#143: how long `web up` waits for the server, on a busy machine too.
   "web_ready",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
   "agents_list",
+  // Issue 403: how long a filed report's screenshot is kept here.
+  "reports",
+  // Issue 456: how long Den waits for the shell's PATH.
+  "agents_shell",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
   // then holds its deliveries.
   "agent_context",
@@ -79,6 +107,10 @@ export const PERSON_ONLY_SETTINGS = [
   "feedback",
   // Issue 455: how long, and how often, Den checks its own address.
   "address_check",
+  // Issue 609: how long Den's process lookups wait.
+  "process_lookup",
+  // Issue 609: how agents' hooks wait for Den, and retry.
+  "agent_hooks",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -153,6 +185,47 @@ const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
 };
 
+/**
+ * Issue 403: how long a filed report's kept screenshot stays (days), the
+ * largest kept and sent to Hub (MB), and how long Den waits for Hub (s).
+ */
+const REPORTS: Record<string, Limit> = {
+  screenshot_keep_days: {
+    key: "screenshot_keep_days",
+    min: SHOT_KEEP_DAYS_MIN,
+    max: SHOT_KEEP_DAYS_MAX,
+    int: true,
+  },
+  screenshot_max_mb: {
+    key: "screenshot_max_mb",
+    min: SHOT_LIMITS.screenshot_max_mb.min,
+    max: SHOT_LIMITS.screenshot_max_mb.max,
+    int: false,
+  },
+  hub_screenshot_max_mb: {
+    key: "hub_screenshot_max_mb",
+    min: SHOT_LIMITS.hub_screenshot_max_mb.min,
+    max: SHOT_LIMITS.hub_screenshot_max_mb.max,
+    int: false,
+  },
+  hub_timeout_seconds: {
+    key: "hub_timeout_seconds",
+    min: SHOT_LIMITS.hub_timeout_seconds.min,
+    max: SHOT_LIMITS.hub_timeout_seconds.max,
+    int: false,
+  },
+};
+
+/** Issue 406: the start's wait for the owner's public GitHub profile. */
+const WEB_GITHUB: Record<string, Limit> = {
+  owner_name_timeout_seconds: {
+    key: "owner_name_timeout_seconds",
+    min: 1,
+    max: 600,
+    int: false,
+  },
+};
+
 /** den#143: `web up`'s waits (web-session.ts WEB_WAIT_RANGE). */
 const WEB_READY: Record<string, Limit> = {
   probe_seconds: {
@@ -182,11 +255,46 @@ const AGENTS_LIST: Record<string, Limit> = {
   },
 };
 
+/** Issue 456: user.yml agents.shell_path_timeout_seconds (den-config.ts). */
+const AGENTS_SHELL: Record<string, Limit> = {
+  path_timeout_seconds: {
+    key: "shell_path_timeout_seconds",
+    min: SHELL_PATH_TIMEOUT.min,
+    max: SHELL_PATH_TIMEOUT.max,
+    int: false,
+  },
+};
+
 /** Issue 455: the address check's limits (address-check.ts), in user.yml web. */
 const ADDRESS_CHECK: Record<string, Limit> = Object.fromEntries(
   Object.entries(ADDRESS_CHECK_LIMITS).map(([k, l]) => [
     k,
-    { key: `address_check_${k}`, min: l.min, max: l.max, int: k === "retries" },
+    {
+      // The sign-in's window has its own name in user.yml web.
+      key:
+        k === "unknown_keep_seconds"
+          ? "address_unknown_keep_seconds"
+          : `address_check_${k}`,
+      min: l.min,
+      max: l.max,
+      int: k === "retries" || k === "drop_after",
+    },
+  ]),
+);
+
+/** Issue 609: user.yml process_lookup.* (proc-lookup.ts). */
+const PROCESS_LOOKUP: Record<string, Limit> = Object.fromEntries(
+  Object.entries(LOOKUP_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: false },
+  ]),
+);
+
+/** Issue 609: user.yml agent_hooks.* (hook-call.ts). */
+const AGENT_HOOKS: Record<string, Limit> = Object.fromEntries(
+  Object.entries(HOOK_CALL_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: k === "retries" },
   ]),
 );
 
@@ -388,6 +496,7 @@ export function patchCliRows(
       apply,
     ) ??
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
+    patchBlock(user, "web_github", "web", WEB_GITHUB, body.web_github, apply) ??
     patchBlock(user, "web_ready", "web", WEB_READY, body.web_ready, apply) ??
     patchBlock(
       user,
@@ -406,6 +515,15 @@ export function patchCliRows(
       body.agents_list,
       apply,
     ) ??
+    patchBlock(user, "reports", "reports", REPORTS, body.reports, apply) ??
+    patchBlock(
+      user,
+      "agents_shell",
+      "agents",
+      AGENTS_SHELL,
+      body.agents_shell,
+      apply,
+    ) ??
     patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply) ??
     patchBlock(
       user,
@@ -413,6 +531,22 @@ export function patchCliRows(
       "web",
       ADDRESS_CHECK,
       body.address_check,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "process_lookup",
+      "process_lookup",
+      PROCESS_LOOKUP,
+      body.process_lookup,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agent_hooks",
+      "agent_hooks",
+      AGENT_HOOKS,
+      body.agent_hooks,
       apply,
     );
   if (e) return { ok: false, error: e };

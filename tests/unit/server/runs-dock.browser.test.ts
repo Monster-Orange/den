@@ -27,6 +27,8 @@ import type { Browser, Page } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -97,7 +99,7 @@ beforeAll(async () => {
     )[0]?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -140,6 +142,11 @@ async function open(
     viewport: { width, height: 800 },
     permissions: ["clipboard-read", "clipboard-write"],
   });
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("acme-changelog-seen", v);

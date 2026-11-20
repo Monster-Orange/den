@@ -9,7 +9,7 @@
  */
 import * as path from "path";
 import { z } from "zod";
-import { GateStore } from "../../shared/gates/store.js";
+import { GatePriorityRefused, GateStore } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import {
   MCP_ACTIONS,
@@ -390,7 +390,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_request",
     "Ask for a gate slot",
-    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Never stops anyone's run; a later ask only waits.",
+    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Never stops anyone's run; a later ask only waits. Issue 715: `priority: \"release\"` with a `reason` (required) is for a release run a person waits on (marked by the person, or for an issue the person reported): it goes to the front of its kind's queue, never ahead of a holder, one at a time per kind (a second waits behind the first), and the slot log records who, why and which runs it passed. Never use it for routine runs.",
     {
       kind: z
         .enum(["browser", "cpu"])
@@ -409,10 +409,27 @@ const READ_TOOLS: DenTool[] = [
         .string()
         .optional()
         .describe("Your slot's id: ask again to see where you stand"),
+      priority: z
+        .enum(["release"])
+        .optional()
+        .describe(
+          "release: a release run a person waits on goes to the front of its kind's queue (needs reason)",
+        ),
+      reason: z
+        .string()
+        .optional()
+        .describe(
+          "With priority: why, in a few words (who waits on it, which issue)",
+        ),
     },
     async (a, ctx) => {
       const store = gatesOf(ctx);
       const id = str(a.id);
+      const reason = str(a.reason)?.trim();
+      if (a.priority === "release" && !reason)
+        throw new Refusal(
+          "gate_slot_request: priority release needs a reason (who waits on it).",
+        );
       if (id) {
         if (!mySlots.has(id))
           throw new Refusal("gate_slot_request: that slot isn't yours.");
@@ -424,16 +441,26 @@ const READ_TOOLS: DenTool[] = [
         }
         return slotView(store, id);
       }
-      const e = store.ask({
-        kind: a.kind === "browser" ? "browser" : "cpu",
-        who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
-        label: (str(a.label) ?? "tests").slice(0, 120),
-        pid: process.pid,
-        estimateMin:
-          typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
-        agent: true,
-        ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
-      });
+      let e;
+      try {
+        e = store.ask({
+          kind: a.kind === "browser" ? "browser" : "cpu",
+          who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
+          label: (str(a.label) ?? "tests").slice(0, 120),
+          pid: process.pid,
+          estimateMin:
+            typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
+          agent: true,
+          ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
+          ...(a.priority === "release" && reason
+            ? { priority: { reason } }
+            : {}),
+        });
+      } catch (err) {
+        if (err instanceof GatePriorityRefused)
+          throw new Refusal(`gate_slot_request: ${err.message}.`);
+        throw err;
+      }
       mySlots.add(e.id);
       return slotView(store, e.id);
     },
@@ -454,7 +481,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -919,6 +946,26 @@ const READ_TOOLS: DenTool[] = [
             "whether Den minted the cert itself (mkcert); false under tls strategy files, where the distribution supplies it, even while HTTPS serves. Restart the web server for https.serving.",
         };
       return edge;
+    },
+  ),
+  read(
+    "report_screenshot",
+    "A filed report's screenshot",
+    "Issue 403: the masked screenshot a person filed with a report from this install, kept here for reports.screenshot_keep_days (30): `base64` (the PNG) and `mime`, with the repo it was filed on, when, and Hub's record when Hub took it too. `id` is the report id the issue's \"Screenshot:\" line names. Only the person who runs this install (the CLI) or this install's own agent may read it; a project agent is refused.",
+    {
+      id: z
+        .string()
+        .describe("The report id from the issue's Screenshot line (16 hex)"),
+    },
+    async (a, { api, scope }) => {
+      if (scope)
+        throw new ScopeRefusal(
+          `report_screenshot: a report's screenshot is read by the person who runs this install, or by this install's own agent; ${scope.actor} (project "${scope.workspace}") is neither. Ask that agent for it.`,
+        );
+      const id = str(a.id);
+      if (!id || !/^[a-f0-9]{16}$/.test(id))
+        throw new Refusal("report_screenshot: id must be a report id (16 hex)");
+      return api.get(`/api/report/shots/${id}`);
     },
   ),
 ];
@@ -1543,7 +1590,7 @@ async function waitForPerson(
     w.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const until = Date.now() + w.waitMs;
   // SRV-1a: a request the setting allowed at once answers in the ask.
-  let first: unknown = ["done", "denied", "expired"].includes(
+  let first: unknown = ["done", "denied", "expired", "withdrawn"].includes(
     String((asked as { state?: unknown })?.state),
   )
     ? asked
@@ -1570,6 +1617,11 @@ async function waitForPerson(
     if (a.state === "expired")
       throw new Refusal(
         `${tool}: nobody answered in time (request ${id}); nothing ran. Ask again when the person is at Den.`,
+      );
+    // Issue 142: its asker took it back.
+    if (a.state === "withdrawn")
+      throw new Refusal(
+        `${tool}: the request was withdrawn by the one that asked (request ${id}); nothing ran.`,
       );
     if (Date.now() >= until) break;
     await sleep(w.intervalMs);
@@ -2091,6 +2143,39 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    // Issue 647: the same link as `hub link` and Settings › Project setup.
+    name: "hub_link",
+    title: "Link a project to an existing Hub project",
+    description:
+      "Link a project to an existing Hub project, named by its id or slug as the connected Hub lists it (never its name), as `hub link` does. A project already linked to another is relinked: the Allow shows what it is now and what it will be. One the connected Hub doesn't list (an id from another Hub, say) is refused, saying so. Hub's own tools list its projects and their ids. A project's agent links its own project; Den's own agent any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      hub: z
+        .string()
+        .describe(
+          "The Hub project's id (or its slug), as the connected Hub lists it",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("hub_link", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `hub_link: you work in project "${ctx.scope.workspace}" and can link it only, not project "${project}"; nothing was asked.`,
+        );
+      const hub = needArg("hub_link", a, "hub", "the Hub project's id or slug");
+      return askPerson("hub_link", "hub_link", { project, hub }, a, ctx);
+    },
+  },
+  {
     name: "project_mcp_add",
     title: "Add an HTTP MCP server to a project",
     description:
@@ -2268,6 +2353,54 @@ const APPROVAL_TOOLS: DenTool[] = [
       const agent = needArg("agent_mode", a, "agent", "the agent's id");
       const project = ctx.scope ? ctx.scope.workspace : str(a.project);
       return askPerson("agent_mode", "agent_mode", { agent, project }, a, ctx);
+    },
+  },
+  {
+    name: "gate_runner_token_create",
+    title: "Make a gate-only token for a CI runner",
+    description:
+      "Issue 621: a token a CI job in a runner VM uses to take this machine's gate slots over HTTP (ask, renew, release; docs/gate-slots.md). It can do nothing else in Den. `name`: the runner's name, as `gate status` will show it. Always the person's own Allow; on Allow the token is in this tool's result (or approval_check's) once, and never again: store it as the CI system's secret at once, and never print it or put it in a file, a log or a message. Deny makes nothing." +
+      HELD,
+    action: true,
+    shape: {
+      name: z
+        .string()
+        .describe(
+          "The runner's name: letters, digits, dot, dash or underscore (ci-linux)",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const name = needArg(
+        "gate_runner_token_create",
+        a,
+        "name",
+        "the CI runner's name",
+      );
+      return askPerson(
+        "gate_runner_token_create",
+        "gate_runner_token_create",
+        { name },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "host_restart",
+    title: "Restart the terminal host when agents are idle",
+    description:
+      "Issue 731: doctor's fix when its terminal host row says a restart is needed and Den's own restart of it failed or is not known to have run. On the person's Allow, Den waits until no agent is mid-turn (at most sessions.host_restart_wait_seconds), restarts the terminal host on the installed Den, resumes the agents it ran and records it in the activity trail (terminal-host). Open terminals end. Never stop the terminal host any other way: that stops every agent at once. Refused while Den is already waiting to restart it (doctor says since when). Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("host_restart", ctx.scope);
+      return askPerson("host_restart", "host_restart", {}, a, ctx);
     },
   },
   {
