@@ -14,11 +14,14 @@ const ROOT = path.resolve(__dirname, "../../..");
 
 type Kind = "fixed" | "unfixed" | "held-for-allow";
 
-function runGate(kind: Kind) {
+function runGate(kind: Kind, serverWas: "stopped" | "running" = "stopped") {
   const js = `
     const g = await import("./gate/629.mjs");
     const { runLikeBed } = await import("./tests/fixtures/gate-runner-like.mjs");
     const kind = ${JSON.stringify(kind)};
+    // The bed's server agent, as the bed had it before the check.
+    const states = { server: ${JSON.stringify(serverWas)}, "gate-629-say": null };
+    const stops = [];
     let clock = 1_700_000_000_000;
     const now = () => clock;
     Date.now = now;
@@ -62,9 +65,10 @@ function runGate(kind: Kind) {
       };
     };
     const agent = (id) => ({
-      start() { return { code: 0 }; },
-      async running() { return 300; },
-      state() { return "running"; },
+      start() { states[id] = "running"; return { code: 0 }; },
+      async running() { states[id] = "running"; return 300; },
+      state() { return states[id]; },
+      stop() { stops.push(id); states[id] = "stopped"; return { code: 0 }; },
       remove() {},
       permissionRequest() { dialog[id] = true; },
       print(t) { if (/\\[2J/.test(t)) dialog[id] = false; },
@@ -118,7 +122,7 @@ function runGate(kind: Kind) {
     };
     ctx.agent = agent;
     const out = await runLikeBed("629.mjs", g, ctx);
-    console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate }));`;
+    console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, serverAfter: states.server, stops }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
     cwd: ROOT,
     encoding: "utf-8",
@@ -136,6 +140,8 @@ function runGate(kind: Kind) {
     error?: string;
     yml: { closed: boolean; set: unknown };
     selfUpdate: string;
+    serverAfter: string | null;
+    stops: string[];
   };
 }
 
@@ -178,5 +184,17 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(r.yml.set).toEqual({ ui: { restart_wait_seconds: 10 } });
     expect(r.yml.closed).toBe(true);
     expect(r.selfUpdate).toBe("ask");
+  });
+
+  it("leaves the bed's server agent as it found it: stopped stays stopped", () => {
+    const r = runGate("fixed", "stopped");
+    expect(r.serverAfter).toBe("stopped");
+    expect(r.stops).toContain("server");
+  });
+
+  it("leaves the bed's server agent as it found it: running stays running", () => {
+    const r = runGate("fixed", "running");
+    expect(r.serverAfter).toBe("running");
+    expect(r.stops).not.toContain("server");
   });
 });
