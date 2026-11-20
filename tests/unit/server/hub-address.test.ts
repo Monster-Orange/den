@@ -98,7 +98,8 @@ describe("issue 726: hub_connect archives the old Hub's state", () => {
     const r = await runHubAddress(
       {
         ...d,
-        changed: async (url: string | null) => void calls.push(`changed ${url}`),
+        changed: async (url: string | null) =>
+          void calls.push(`changed ${url}`),
       },
       { url: "https://other.example.com" },
     );

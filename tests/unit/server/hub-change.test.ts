@@ -102,10 +102,10 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("issue 726 clause 4: no bell item from the old Hub remains", () => {
   it("Hub's own items and Den's Hub items go; Den's other items stay", async () => {
-    bindHub(
-      { ...deps(), stateDir: dir } as never,
-      { url: OLD, company: "one" },
-    );
+    bindHub({ ...deps(), stateDir: dir } as never, {
+      url: OLD,
+      company: "one",
+    });
     store.add({
       source: "hub",
       kind: "mention",
@@ -131,13 +131,16 @@ describe("issue 726 clause 4: no bell item from the old Hub remains", () => {
       msg: { key: "bell.m.hubNoAnswer", vars: { n: 1 } },
     });
     add({ subject: "agent:a4", kind: "waiting" });
-    for (const n of store.list().slice(0, 6))
-      expect(isHubBellItem(n)).toBe(true);
+    // list() is newest first: every item but the agent's own is Hub's.
+    for (const n of store.list())
+      expect(isHubBellItem(n)).toBe(n.subject !== "agent:a4");
 
     const r = await noteHub(deps(), { url: NEW });
     expect(r.kind).toBe("change");
     const left = store.list();
-    expect(left.filter((n) => isHubBellItem(n) && n.subject !== "record:hub-pick")).toEqual([]);
+    expect(
+      left.filter((n) => isHubBellItem(n) && n.subject !== "record:hub-pick"),
+    ).toEqual([]);
     expect(left.some((n) => n.subject === "agent:a4")).toBe(true);
   });
 

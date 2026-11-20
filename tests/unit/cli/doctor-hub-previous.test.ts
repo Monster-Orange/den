@@ -68,7 +68,12 @@ describe("issue 726: doctor, state from an earlier Hub", () => {
       bound,
       previous: [],
       unrevoked: [
-        { id: "u1", url: OLD, at: "2026-11-20T10:00:00Z", why: "Hub didn't answer" },
+        {
+          id: "u1",
+          url: OLD,
+          at: "2026-11-20T10:00:00Z",
+          why: "Hub didn't answer",
+        },
       ],
     });
     const c = r.checks.find((x) => x.id === "hub:unrevoked")!;

@@ -506,7 +506,8 @@ describe("issue 726: a Hub change, from Connect and Disconnect", () => {
   it("clause 1: Connect binds the Hub and its company before projects are linked", async () => {
     const order: string[] = [];
     const h = harness({
-      rebind: async (url, company) => void order.push(`rebind ${url} ${company}`),
+      rebind: async (url, company) =>
+        void order.push(`rebind ${url} ${company}`),
       linkAfter: async () => {
         order.push("link");
         return { linked: [], unclear: ["web", "api"] };

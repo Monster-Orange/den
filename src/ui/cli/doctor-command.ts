@@ -1692,6 +1692,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         const dl = await hubDeliveryDoctor();
         if (dl.check) r.checks.push(dl.check);
       }
+      // Issue 726: state and tokens from an earlier Hub.
+      r.checks.push(...(await previousHubRows()).checks);
       r.checks.push(
         ...hubProjectLines(
           st.configured && st.connected,
@@ -1798,6 +1800,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
     if (st.configured)
       for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
+    // Issue 726: state and tokens from an earlier Hub.
+    for (const l of (await previousHubRows()).lines) console.log(l);
     for (const l of hubProjectLines(
       st.configured && st.connected,
       await projectsWithHubProject(),
@@ -1899,6 +1903,21 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     found
     ? 1
     : 0;
+}
+
+/** Issue 726: doctor's rows for state from an earlier Hub. */
+async function previousHubRows(): Promise<
+  ReturnType<typeof import("./doctor-hub-previous.js").previousHubLines>
+> {
+  const { previousHubDoctor } = await import("./doctor-hub-previous.js");
+  let url: string | null = null;
+  try {
+    const { readHubConfig } = await import("../../shared/hub.js");
+    url = readHubConfig()?.url ?? null;
+  } catch {
+    /* a bad hub block: its own row says so */
+  }
+  return previousHubDoctor(getStateDir(), url);
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */
