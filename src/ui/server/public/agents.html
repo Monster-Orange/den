@@ -1298,7 +1298,9 @@
         padding-inline: 10px;
         font: 15px var(--mono);
       }
-      @media (max-width: 480px) {
+      /* (A phone: a touch screen 480px wide or less, as TWO_SCREENS in
+         agents-page.js. A narrow desktop window keeps the list above.) */
+      @media (pointer: coarse) and (max-width: 480px) {
         /* Frame 2, an agent opened: the list, the page's header and the
            tab strip go; the agent takes the screen under the top bar. */
         body[data-phone-agent] #den-content > .ph,

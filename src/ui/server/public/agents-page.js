@@ -186,10 +186,12 @@ export const LAYOUTS = ["focus", "tabs", "tile"];
 /** At or below this width Focus and Tile are Tabs (the shell's phone width). */
 const PHONE = "(max-width: 720px)";
 /**
- * Issue 302, the mock's "for the build": at or below this width the page
- * is two screens, the list and the agent (agents.html draws them).
+ * Issue 302, the mock's "for the build": a phone (a touch screen 480px
+ * wide or less) sees the page as two screens, the list and the agent
+ * (agents.html draws them). A narrow window on a desktop keeps the list
+ * above the panes, as before.
  */
-const TWO_SCREENS = "(max-width: 480px)";
+const TWO_SCREENS = "(pointer: coarse) and (max-width: 480px)";
 /** The longest name a tab takes (records.ts MAX_DISPLAY_NAME). */
 const MAX_NAME = 40;
 const REFRESH_MS = 5_000;

@@ -35,6 +35,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { signInUrl } from "./helpers/den-auth.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINES = ["chromium", "webkit"] as const;
 type Engine = (typeof ENGINES)[number];
@@ -70,12 +71,8 @@ f.src = C.target;
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    for (const e of ENGINES)
-      browsers[e] = process.env.DEN_PW_WS
-        ? await pw[e].connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await pw[e].launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -101,7 +98,8 @@ beforeAll(async () => {
       session: { backend: "den-pty", id: info.ref.id },
       sessionName: `acme-north:${id}`,
     });
-    pty[id].emit(`${id} ready\r\n$ `);
+    // At its input prompt: a message is typed only there (issue 664).
+    pty[id].emit(`${id} ready\r\n> `);
   }
   host.close();
   hostServer = http.createServer((req, res) => {
@@ -183,6 +181,17 @@ async function openAgent(p: Page, id: string): Promise<void> {
   const res = await p.goto(`${s.base}/p/north/agents/${id}`);
   expect(res?.status()).toBe(200);
   await box(p, id).waitFor({ timeout: 20_000 });
+  // The terminal is connected (its output drawn): a key typed before
+  // that goes nowhere.
+  await p.waitForFunction(
+    ([i, t]) =>
+      (
+        document.querySelector(`.pane[data-id="${i}"] .xterm-rows`)
+          ?.textContent ?? ""
+      ).includes(t),
+    [sid[id], `${id} ready`],
+    { timeout: 20_000 },
+  );
 }
 
 describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {

@@ -25,6 +25,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -35,12 +36,8 @@ const browsers: Partial<Record<Engine, Browser>> = {};
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    for (const e of ENGINES)
-      browsers[e] = process.env.DEN_PW_WS
-        ? await pw[e].connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await pw[e].launch();
+    // DEN_PW_WS: Den's own Playwright server instead of a local browser.
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
