@@ -48,6 +48,9 @@ import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import { getStateDir } from "../../shared/paths.js";
 import { recordUnrevoked } from "../../shared/hub-binding.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import { projectRepos } from "../../shared/project-repos.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import { envKey, product } from "../../shared/product.js";
 import {
   getSecretsProvider,
@@ -111,6 +114,43 @@ export interface HubConnectDeps {
    * (doctor lists it; each start tries the revoke again).
    */
   unrevoked?: (u: { url: string; why: string; token: string }) => void;
+  /**
+   * Issue 646: this Den's projects' repos (owner/repo), sent to Hub's
+   * Connect page so Hub ranks the person's companies by them.
+   */
+  repos?: () => string[];
+}
+
+/** Issue 646: at most this many repos go to Hub's Connect page. */
+export const CONNECT_REPOS_MAX = 50;
+const REPO_RE = /^[a-z0-9_.-]{1,100}\/[a-z0-9_.-]{1,100}$/;
+
+/**
+ * Issue 646: every project's repos, lower case, once each, in project
+ * order (the server agent's scope never): what Connect sends Hub.
+ */
+export function connectRepos(
+  projects: readonly string[],
+  reposOf: (ws: string) => string[],
+  isServer: (ws: string) => boolean = () => false,
+): string[] {
+  const out = new Set<string>();
+  for (const ws of projects) {
+    if (isServer(ws)) continue;
+    for (const r of reposOf(ws)) {
+      const x = r.toLowerCase();
+      if (REPO_RE.test(x)) out.add(x);
+    }
+  }
+  return [...out];
+}
+
+function defaultRepos(): string[] {
+  return connectRepos(
+    Object.keys(readWorkspacesFile().workspaces ?? {}).sort(),
+    projectRepos,
+    isServerScope,
+  );
 }
 
 /** A `<name>.localhost` host: this machine (RFC 6761). */
@@ -336,6 +376,7 @@ export function defaultHubConnectDeps(): HubConnectDeps {
       return m.noteHub(await m.defaultHubChangeDeps(), { url, company });
     },
     unrevoked: (u) => void recordUnrevoked(getStateDir(), u),
+    repos: defaultRepos,
   };
 }
 
@@ -430,6 +471,16 @@ export class HubConnect {
     // reconnect sends it again.
     const denUrl = denUrlOrigin(this.deps.denUrl?.() ?? "");
     if (denUrl) q.set("den_url", denUrl);
+    // Issue 646: the projects' repos, so Hub ranks the person's companies
+    // (its own session; an older Hub ignores it). Never stops Connect.
+    let repos: string[] = [];
+    try {
+      repos = connectRepos(["all"], () => this.deps.repos?.() ?? []);
+    } catch {
+      repos = [];
+    }
+    if (repos.length)
+      q.set("repos", repos.slice(0, CONNECT_REPOS_MAX).join(","));
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }
 

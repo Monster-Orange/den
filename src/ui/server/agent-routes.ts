@@ -667,6 +667,26 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 646: Connect's one review: a row per project, Connect and link all.
+  if (pathname === "/api/hub/connect-review") {
+    const [rv, audit, guard] = await Promise.all([
+      import("./hub-connect-review.js"),
+      import("./audit.js"),
+      import("./request-guard.js"),
+    ]);
+    return rv.hubReviewRoute(
+      req,
+      res,
+      await rv.defaultHubReviewDeps((line) =>
+        audit.recordAction(
+          guard.auditActorOf(req),
+          { verb: "hub-link", detail: line.slice(0, 400) },
+          guard.principalOf(req),
+        ),
+      ),
+      `Settings › Hub, Connect's review (${guard.principalOf(req) ?? "person"})`,
+    );
+  }
   // Issue 167: when Hub last answered a check of its names; Try again.
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");

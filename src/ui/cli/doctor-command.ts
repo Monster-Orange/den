@@ -840,11 +840,27 @@ export function hubProjectLines(
     link: { slug: string; name: string } | null;
     /** 0.4.44: the link it had, when it lost it with no unlink asked. */
     lost?: { slug: string; at: string };
+    /** Issue 646: its link points at another Hub or company. */
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
   }[],
   cli: string,
 ): { lines: string[]; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
+  // Issue 646: a link to another Hub fails, connected or not.
+  for (const { ws, link, elsewhere: e } of projects) {
+    if (link || !e) continue;
+    const where = `${e.origin.replace(/^https?:\/\//, "")}${e.company ? ` (company ${e.company})` : ""}`;
+    const detail = `${ws}: linked to Hub project ${e.name} on ${where}, not the connected Hub, so Den sends Hub no project for it. Link it again: Settings › Hub, Connect's project review`;
+    lines.push(`  hub project  ✗  ${detail}`);
+    checks.push({ id: `hub:project:${ws}`, status: "fail", detail });
+  }
+  projects = projects.filter((p) => p.link || !p.elsewhere);
   // 0.4.44: a lost link warns even with Hub down: the config lost it.
   for (const { ws, link, lost } of projects) {
     if (link || !lost) continue;
@@ -1020,22 +1036,41 @@ async function projectsWithHubProject(): Promise<
     ws: string;
     link: { slug: string; name: string } | null;
     lost?: { slug: string; at: string };
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
   }[]
 > {
   const { readWorkspacesFile } =
     await import("../../shared/environment-manager/workspaces.js");
-  const { parseHubProjectLink } =
+  const { hubProjectOf, hubLinkElsewhere } =
     await import("../../shared/hub-project-link.js");
   const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
   try {
-    const all = readWorkspacesFile().workspaces;
+    const file = readWorkspacesFile();
+    const all = file.workspaces;
     const lost = new Map(lostHubLinks(all).map((l) => [l.ws, l.was]));
-    return Object.entries(all).map(([ws, c]) => {
+    return Object.keys(all).map((ws) => {
       const was = lost.get(ws);
+      // Issue 646: a link to another Hub or company isn't this one's.
+      const e = hubLinkElsewhere(ws, () => file);
       return {
         ws,
-        link: parseHubProjectLink(c?.hub_project),
+        link: hubProjectOf(ws, () => file),
         ...(was ? { lost: { slug: was.slug, at: was.at } } : {}),
+        ...(e?.hub
+          ? {
+              elsewhere: {
+                slug: e.slug,
+                name: e.name,
+                origin: e.hub.origin,
+                ...(e.hub.company ? { company: e.hub.company } : {}),
+              },
+            }
+          : {}),
       };
     });
   } catch {
