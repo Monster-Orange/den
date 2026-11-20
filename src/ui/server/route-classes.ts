@@ -769,6 +769,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
   ),
   R(
+    "/api/hub/connect-review",
+    "issue 646: Connect's review: each project, its Hub project or the proposed one and why (names only)",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/connect-review",
+    "issue 646: Connect and link all: link the rows at once, ask Hub for the new projects as one plan; a person's only",
+  ),
+  R(
     "/api/hub/names-check",
     "issue 167: when Hub last answered Den's check of its project names, and when it last didn't (times only)",
   ),

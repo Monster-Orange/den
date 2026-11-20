@@ -45,6 +45,19 @@ Everything happens in **Settings › Hub**. Nobody copies a token or edits a fil
 Connect also links each project here to its Hub project. Where Den can't tell which one fits, it asks
 you. See [Projects and Hub projects](#projects-and-hub-projects).
 
+**The right company.** Connect sends Hub the repos of this Den's projects (`repos=<owner/repo>,…`, at
+most 50). Hub ranks the companies you may connect to by them, with your own sign-in: one that holds
+those repos first. When one company clearly fits, Hub picks it for you to confirm. Nothing about which
+company holds which repos reaches anyone but you. An older Hub ignores the list. Connected, Settings ›
+Hub shows the company. **Switch company** runs the same Connect to pick another one.
+
+**One review.** Back from Hub, Settings › Hub shows a row per project: the Hub project it gets and why
+(the same repo, then the same name), or "Create <name>" when none fits. A project that was linked on
+another Hub says so on its row. **Change** opens a list of the company's Hub projects in the row, with
+a search and the suggestion on top. **Connect and link all** links every row at once. All the new
+projects go to Hub as one plan: an owner presses Apply once in Hub, and Den links each one by itself.
+The review then says what was linked, and opens Hub's plan page for the new ones.
+
 The token Hub gives this install is kept in this install's secrets store (a 1Password item or a
 Doppler key, when the install keeps secrets there). Otherwise it is kept in a file only you can read,
 `<state dir>/hub/token`. It is never shown, never logged and never sent to the browser.
@@ -252,6 +265,10 @@ with no good read.
 
 When connected, it also has a row per project (linked to which Hub project, or not linked) and a row
 on Den Hub's GitHub access. A Hub that is down never fails doctor: agents still run.
+
+Each link records the Hub and company it was made on. A link to another Hub, or to another company on
+this one, counts as not linked: Den sends Hub no project for it, and doctor fails its row (`✗`),
+naming where it points. Link it again in Settings › Hub's review.
 
 ## Troubleshooting
 

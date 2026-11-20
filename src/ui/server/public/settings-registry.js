@@ -4243,7 +4243,10 @@ export function hubHtml(b, flash, t = (k) => k) {
     `<div class="hub-acts">` +
     (state === "rejected" || b.legacy
       ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
-      : "") +
+      : // Issue 646: the same Connect flow, to pick another company.
+        state === "connected"
+        ? `<button type="button" class="btn sm" data-hub-action="connect" data-hub-switch>${escR(t("hubrv.switch"))}</button> `
+        : "") +
     `<button type="button" class="btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
     `</div>` +
     // Disconnect asks first, saying what it does (Hub revokes the key).
@@ -5799,6 +5802,24 @@ function drawHub(host, ctx, back, flash) {
         f = { ok: HUB_FLASH[back][0], message: HUB_FLASH[back][1] };
       host.innerHTML = hubHtml(b, f, (k, v) => ctx.shell.t(k, v));
       wireHub(host, ctx);
+      // Issue 646: connected: Connect's review, a row per project.
+      if (
+        b &&
+        b.configured &&
+        (b.state || (b.connected ? "connected" : "")) === "connected"
+      ) {
+        const rv = document.createElement("div");
+        rv.dataset.hubReviewHost = "";
+        host.querySelector(".rt-err")?.after(rv);
+        void drawHubReview(rv, ctx, {
+          sel: {},
+          open: null,
+          picked: "",
+          company: b.team || "",
+          owner: b.role ? b.role === "owner" : null,
+          result: null,
+        });
+      }
       // D44: agents started before Hub changed keep their old tools.
       return offerRestart(host, ctx, Boolean(f || back));
     })
@@ -5921,6 +5942,374 @@ function wireHub(host, ctx) {
           box.disabled = false;
         });
     });
+}
+
+/**
+ * Issue 646: what Connect and link all sends for each row: the person's
+ * choice (sel), else the proposal (a pick waits for a choice). A linked row
+ * goes only when the person changed it.
+ */
+export function hubReviewAsks(rows, sel) {
+  const out = [];
+  for (const r of rows || []) {
+    const c = sel?.[r.project];
+    if (c && c.hub && c.hub !== r.linked?.id)
+      out.push({ project: r.project, hub: c.hub });
+    else if (c && c.create && !r.linked)
+      out.push({ project: r.project, create: c.create });
+    else if (!c && r.proposal?.kind === "link")
+      out.push({ project: r.project, hub: r.proposal.hub.id });
+    else if (!c && r.proposal?.kind === "create")
+      out.push({ project: r.project, create: r.proposal.name });
+  }
+  return out;
+}
+
+const hostOf = (u) => String(u || "").replace(/^https?:\/\//, "");
+
+/** Issue 646: the words under a row's target: why it is proposed or linked. */
+function reviewWhy(r, c, projects, t) {
+  if (c?.hub) {
+    const s = (r.proposal?.choices || []).find((x) => x.id === c.hub);
+    if (r.proposal?.kind === "link" && r.proposal.hub.id === c.hub)
+      return [t(`hubrv.why.${r.proposal.why}`), ""];
+    return [s?.why ? t(`hubrv.why.${s.why}`) : t("hubrv.why.picked"), ""];
+  }
+  if (c?.create) return [t("hubrv.why.new"), "new"];
+  if (r.waiting) return [t("hubrv.waiting"), "warn"];
+  if (r.linked)
+    return [
+      r.linked.why ? t(`hubrv.why.${r.linked.why}`) : t("hubrv.why.linked"),
+      "",
+    ];
+  if (r.proposal?.kind === "link") {
+    const why = t(`hubrv.why.${r.proposal.why}`);
+    const away = r.elsewhere || r.was;
+    return away
+      ? [
+          t(away.company ? "hubrv.wasCo" : "hubrv.was", {
+            name: away.name,
+            host: hostOf(away.origin),
+            company: away.company || "",
+            why,
+          }),
+          "warn",
+        ]
+      : [why, ""];
+  }
+  if (r.proposal?.kind === "create") return [t("hubrv.why.new"), "new"];
+  if (r.proposal?.kind === "pick") return [t("hubrv.why.pick"), "warn"];
+  if (!projects) return [t("hubrv.offlineRow"), "warn"];
+  return ["", ""];
+}
+
+/** Issue 646: a row's target: the Hub project it gets, or Create <name>. */
+function reviewTarget(r, c, projects, t) {
+  const named = (id) =>
+    (projects || []).find((p) => p.id === id)?.name ||
+    (r.proposal?.choices || []).find((p) => p.id === id)?.name ||
+    id;
+  if (c?.hub) return escR(named(c.hub));
+  if (c?.create) return escR(t("hubrv.create", { name: c.create }));
+  if (r.waiting) return escR(r.waiting.name);
+  if (r.linked) return escR(r.linked.name);
+  if (r.proposal?.kind === "link") return escR(r.proposal.hub.name);
+  if (r.proposal?.kind === "create")
+    return escR(t("hubrv.create", { name: r.proposal.name }));
+  return "—";
+}
+
+/**
+ * Issue 646 (point 7, mock v3 picker): choose a Hub project for one
+ * project, as a list to pick from: a search, the suggestion(s) on top, a
+ * whole-row choice, then Use, Create instead and Cancel. `pickedId`: the
+ * row chosen in the list so far.
+ */
+export function hubPickerHtml(o, t) {
+  const sugg = (o.suggestions || []).filter((s) => s && s.id);
+  const sIds = new Set(sugg.map((s) => s.id));
+  const rest = (o.projects || []).filter((p) => p && !sIds.has(p.id));
+  const list = [...sugg.map((s) => ({ ...s, top: true })), ...rest];
+  const picked = list.find((p) => p.id === o.pickedId) || null;
+  const rows = list
+    .map(
+      (p) =>
+        `<button type="button" class="hub-pick-row${p.id === o.pickedId ? " sel" : ""}" role="option" aria-selected="${p.id === o.pickedId}" data-hub-pick-id="${escR(p.id)}" data-hub-pick-text="${escR(`${p.name} ${p.slug}`.toLowerCase())}">` +
+        `<b>${escR(p.name)}</b>${p.top ? ` <span class="hub-pick-tag">${escR(t("hubrv.suggested"))}</span>` : ""}` +
+        (p.why ? `<small>${escR(t(`hubrv.why.${p.why}`))}</small>` : "") +
+        `</button>`,
+    )
+    .join("");
+  return (
+    `<div class="hub-pick" data-hub-pick="${escR(o.project)}">` +
+    `<h4>${escR(t("hubrv.choose", { project: o.project }))}</h4>` +
+    (list.length
+      ? `<input type="search" class="hub-pick-q" data-hub-pick-q aria-label="${escR(t("hubrv.search", { n: list.length }))}" placeholder="${escR(t("hubrv.search", { n: list.length }))}">` +
+        `<div class="hub-pick-list" role="listbox" aria-label="${escR(t("hubrv.choose", { project: o.project }))}">${rows}</div>` +
+        `<p class="set-note" data-hub-pick-none hidden>${escR(t("hubrv.noMatch"))}</p>`
+      : `<p class="set-note" data-hub-pick-empty>${escR(t("hubrv.noProjects"))}</p>`) +
+    `<div class="hub-pick-acts">` +
+    (picked
+      ? `<button type="button" class="btn sm primary" data-hub-pick-use>${escR(t("hubrv.use", { name: picked.name }))}</button> `
+      : "") +
+    (o.createName
+      ? `<button type="button" class="btn sm" data-hub-pick-create>${escR(t("hubrv.createInstead", { name: o.createName }))}</button> `
+      : "") +
+    `<button type="button" class="btn sm" data-hub-pick-cancel>${escR(t("hubrv.cancel"))}</button>` +
+    `</div></div>`
+  );
+}
+
+/**
+ * Issue 646: Connect's review in Settings › Hub (shape B): a row per
+ * project with its Hub project or the proposal and why, Change on each
+ * (the picker opens in the row), and one button, Connect and link all.
+ * `v`: { data (GET /api/hub/connect-review), sel, open, picked, company,
+ * owner, result }.
+ */
+export function hubReviewHtml(v, t) {
+  const d = v.data || {};
+  const rows = Array.isArray(d.rows) ? d.rows : [];
+  if (!rows.length) return "";
+  const sel = v.sel || {};
+  const company = v.company || "";
+  const asks = hubReviewAsks(rows, sel);
+  const todo = rows.some((r) => r.proposal || sel[r.project]);
+  const creates = asks.filter((a) => a.create).length;
+  const head =
+    `<h3 class="hub-rv-h">${escR(company ? t("hubrv.title", { company }) : t("hubrv.titleNo"))}</h3>` +
+    (d.connected === false
+      ? `<p class="set-note set-warn" data-hub-rv-offline>${escR(t("hubrv.offline"))} <button type="button" class="btn sm" data-hub-rv-retry>${escR(t("hubrv.retry"))}</button></p>`
+      : !todo
+        ? `<p class="set-note ok" data-hub-rv-all>${escR(t("hubrv.allMatch", { n: rows.length }))}</p>`
+        : "");
+  const body = rows
+    .map((r) => {
+      const c = sel[r.project];
+      const [why, cls] = reviewWhy(r, c, d.projects, t);
+      const open = v.open === r.project;
+      const shown =
+        r.name && r.name !== r.project
+          ? `${escR(r.name)} <span class="den-mono hub-rv-key">${escR(r.project)}</span>`
+          : escR(r.project);
+      const canChange = d.connected !== false && !r.waiting;
+      return (
+        `<div class="hub-rv-row${c ? " chg" : ""}" data-hub-rv-row="${escR(r.project)}" data-hub-rv-kind="${escR(c ? (c.create ? "create" : "link") : r.linked ? "linked" : r.waiting ? "waiting" : r.proposal?.kind || "none")}">` +
+        `<div class="hub-rv-pj">${shown}</div>` +
+        (open
+          ? `<div class="hub-rv-pp">${hubPickerHtml(
+              {
+                project: r.project,
+                suggestions:
+                  r.proposal?.kind === "pick"
+                    ? r.proposal.choices
+                    : r.proposal?.kind === "link"
+                      ? [{ ...r.proposal.hub, why: r.proposal.why }]
+                      : [],
+                projects: d.projects,
+                pickedId: v.picked,
+                createName: r.linked ? "" : r.name || r.project,
+              },
+              t,
+            )}</div>`
+          : `<div class="hub-rv-pp"><span>${reviewTarget(r, c, d.projects, t)}</span>` +
+            (why ? `<span class="hub-rv-why ${cls}">${escR(why)}</span>` : "") +
+            (r.waiting?.url && /^https?:\/\//.test(r.waiting.url)
+              ? `<a class="btn sm" href="${escR(r.waiting.url)}" target="_blank" rel="noopener">${escR(t("hubrv.openPlan"))}</a>`
+              : "") +
+            `</div>` +
+            (canChange
+              ? `<button type="button" class="btn sm" data-hub-rv-change="${escR(r.project)}">${escR(t("hubrv.change"))}</button>`
+              : "")) +
+        `</div>`
+      );
+    })
+    .join("");
+  const bar =
+    d.connected === false || !todo
+      ? ""
+      : `<div class="hub-rv-bar">` +
+        `<button type="button" class="btn primary" data-hub-rv-apply${asks.length ? "" : " disabled"}>${escR(t("hubrv.apply"))}</button>` +
+        `<span class="set-note">${escR(t("hubrv.applyNote"))}</span></div>` +
+        (creates && v.owner === false
+          ? `<p class="set-note set-warn" data-hub-rv-member>${escR(t("hubrv.member", { n: creates }))}</p>`
+          : "");
+  return (
+    `<div class="hub-rv" data-hub-review>` +
+    head +
+    (v.result ? hubReviewResultHtml(v.result, company, t) : "") +
+    `<div class="hub-rv-rows">${body}</div>` +
+    bar +
+    `<div class="rt-err" role="alert" hidden></div>` +
+    `</div>`
+  );
+}
+
+/** Issue 646: Done: what Connect and link all came to, a line per project. */
+export function hubReviewResultHtml(r, company, t) {
+  const lines = [
+    ...(r.linked || []).map(
+      (x) =>
+        `<div><span class="ok">✓</span> ${escR(t("hubrv.linkedLine", { project: x.project, name: x.hub?.name || "", why: t(`hubrv.why.${x.why}`) }))}</div>`,
+    ),
+    ...(r.creating || []).map(
+      (x) =>
+        `<div><span class="wt">…</span> ${escR(t("hubrv.creatingLine", { project: x.project, name: x.name }))}</div>`,
+    ),
+    ...(r.skipped || [])
+      .filter((x) => x.code !== "linked")
+      .map(
+        (x) =>
+          `<div><span class="set-warn">⚠</span> ${escR(t(`hubrv.skip.${["unknown", "offline", "stale", "waiting", "hub", "name"].includes(x.code) ? x.code : "hub"}`, { project: x.project, why: x.why || "" }))}</div>`,
+      ),
+  ];
+  const plan =
+    r.plan?.url && /^https?:\/\//.test(r.plan.url)
+      ? `<a class="btn sm primary" data-hub-rv-plan href="${escR(r.plan.url)}" target="_blank" rel="noopener">${escR(t("hubrv.openPlan"))}</a>`
+      : "";
+  return (
+    `<div class="hub-rv-done" role="status" data-hub-rv-done>` +
+    `<p class="ok"><b>${escR(company ? t("hubrv.doneTitle", { company }) : t("hubrv.doneTitleNo"))}</b></p>` +
+    `<div class="hub-rv-prog">${lines.join("")}</div>` +
+    plan +
+    `</div>`
+  );
+}
+
+/** Issue 646: draw and wire Connect's review under the Hub row. */
+function drawHubReview(host, ctx, v) {
+  const t = (k, x) => ctx.shell.t(k, x);
+  const paint = () => {
+    host.innerHTML = hubReviewHtml(v, t);
+    wire();
+  };
+  const load = () =>
+    ctx.shell
+      .api("GET", "/api/hub/connect-review")
+      .then((data) => {
+        v.data = data;
+        paint();
+      })
+      .catch(() => {
+        host.innerHTML = "";
+      });
+  const wire = () => {
+    host.querySelectorAll("[data-hub-rv-change]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const p = b.dataset.hubRvChange;
+        v.open = p;
+        const c = v.sel[p];
+        const row = (v.data.rows || []).find((x) => x.project === p);
+        v.picked =
+          c?.hub ||
+          (row?.proposal?.kind === "link" ? row.proposal.hub.id : "") ||
+          row?.linked?.id ||
+          "";
+        paint();
+        host.querySelector("[data-hub-pick-q]")?.focus();
+      }),
+    );
+    const pick = host.querySelector("[data-hub-pick]");
+    if (pick) {
+      const p = pick.dataset.hubPick;
+      const q = pick.querySelector("[data-hub-pick-q]");
+      q?.addEventListener("input", () => {
+        const s = q.value.trim().toLowerCase();
+        let shown = 0;
+        pick.querySelectorAll("[data-hub-pick-id]").forEach((r) => {
+          r.hidden = !!s && !r.dataset.hubPickText.includes(s);
+          if (!r.hidden) shown++;
+        });
+        const none = pick.querySelector("[data-hub-pick-none]");
+        if (none) none.hidden = shown > 0;
+      });
+      pick.querySelectorAll("[data-hub-pick-id]").forEach((r) =>
+        r.addEventListener("click", () => {
+          v.picked = r.dataset.hubPickId;
+          const typed = q?.value || "";
+          paint();
+          const q2 = host.querySelector("[data-hub-pick-q]");
+          if (q2 && typed) {
+            q2.value = typed;
+            q2.dispatchEvent(new Event("input"));
+          }
+          host.querySelector("[data-hub-pick-use]")?.focus();
+        }),
+      );
+      pick
+        .querySelector("[data-hub-pick-use]")
+        ?.addEventListener("click", () => {
+          if (v.picked) v.sel[p] = { hub: v.picked };
+          v.open = null;
+          paint();
+        });
+      pick
+        .querySelector("[data-hub-pick-create]")
+        ?.addEventListener("click", () => {
+          const row = (v.data.rows || []).find((x) => x.project === p);
+          v.sel[p] = { create: row?.name || p };
+          v.open = null;
+          paint();
+        });
+      pick
+        .querySelector("[data-hub-pick-cancel]")
+        ?.addEventListener("click", () => {
+          v.open = null;
+          paint();
+        });
+    }
+    host
+      .querySelector("[data-hub-rv-retry]")
+      ?.addEventListener("click", () => void load());
+    const apply = host.querySelector("[data-hub-rv-apply]");
+    apply?.addEventListener("click", () => {
+      const rows = hubReviewAsks(v.data.rows, v.sel);
+      if (!rows.length) return;
+      host
+        .querySelectorAll("button, input")
+        .forEach((x) => (x.disabled = true));
+      // BUSY-1: the working pop-up says it is linking, then what happened.
+      ctx.shell
+        .busyAction(
+          "link",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              "/api/hub/connect-review",
+              { rows },
+              { headers },
+            ),
+          {
+            button: apply,
+            success: (r) => {
+              const names = (r?.linked ?? []).map((x) => x?.project);
+              return names.length
+                ? t("busy.linkS", { n: names.length, names: listWords(names) })
+                : t("hubrv.asked");
+            },
+            onFail: (e) => {
+              const err = host.querySelector(".rt-err");
+              if (err) {
+                err.hidden = false;
+                err.textContent = e?.message || t("busy.linkF");
+              }
+            },
+          },
+        )
+        .then((r) => {
+          if (r) {
+            v.result = r;
+            v.sel = {};
+            v.open = null;
+            void load();
+          } else
+            host
+              .querySelectorAll("button, input")
+              .forEach((x) => (x.disabled = false));
+        });
+    });
+  };
+  return load();
 }
 
 /** The Rotation row: this install's values, the overrides, + Add override. */
