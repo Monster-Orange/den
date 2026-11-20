@@ -56,6 +56,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     hub_screenshot_max_mb: true,
     hub_timeout_seconds: true,
   },
+  // Issue 456: how long Den waits for the shell's PATH.
+  agents_shell: { path_timeout_seconds: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -203,6 +205,8 @@ describe("the settings inventory (R21)", () => {
         "reports.screenshot_max_mb",
         "reports.hub_screenshot_max_mb",
         "reports.hub_timeout_seconds",
+        // Issue 456: how long Den waits for the shell's PATH.
+        "agents_shell.path_timeout_seconds",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",

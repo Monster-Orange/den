@@ -365,6 +365,8 @@
     "act.unpinX": "Quitar {s}",
     "toast.pinned": "{s} fijado",
     "toast.unpinned": "{s} ya no está fijado",
+    "toast.unpinnedAll": "{s} ya no está fijado en ningún proyecto",
+    "toast.undo": "Deshacer",
     collapse: "Contraer",
     expand: "Expandir",
     menu: "Menú",
@@ -961,6 +963,9 @@
     "set.agents.pane_reconnect_wait": "Espera máxima entre intentos",
     "set.agents.pane_reconnect_wait.d":
       "El primer intento espera 1 s y cada espera se duplica, hasta este valor. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.shell_path_wait": "Espera al PATH del shell",
+    "set.agents.shell_path_wait.d":
+      "Cuánto espera __DEN_TITLE__ a que tu shell diga su PATH al buscar las CLI de agentes: el PATH que recibe un shell nuevo, con sus archivos de inicio. Pasado este tiempo, busca en los lugares habituales. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -1560,6 +1565,13 @@
     "ap.hc.name": "Nombre en Hub: {name}",
     "ap.hc.owner":
       "Un propietario en Hub lo permite allí; Den vincula el proyecto en cuanto lo haga.",
+    "ap.do.hub_link": "Vincular el proyecto {project} al proyecto de Hub {hub}",
+    "ap.hl.project": "Proyecto: {project}",
+    "ap.hl.now": "Ahora: {hub}",
+    "ap.hl.nowNone": "Ahora: sin vincular a un proyecto de Hub",
+    "ap.hl.then": "Después: {hub}",
+    "ap.hl.filed":
+      "El trabajo de sus agentes en Hub se archiva allí desde su próxima llamada.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":
@@ -2985,6 +2997,11 @@
     "set.ui.rt.src.well-known": "detectado · carpeta de instalación",
     "set.ui.rt.src.interactive-shell": "detectado · shell interactivo",
     "set.ui.rt.setPath": "Definir ruta…",
+    "set.ui.rt.quarantined": "en cuarentena, no se ejecutó",
+    "set.ui.rt.alsoFound": "También encontrado:",
+    "set.ui.rt.versionUnknown": "versión desconocida",
+    "set.ui.rt.useThis": "Usar este",
+    "set.ui.rt.useThisFor": "Usar {path} para {name}",
     "set.ui.rt.clear": "Quitar",
     "set.ui.rt.pathToIn": "Ruta de {name} para {ws}",
     "set.ui.rt.pathToAll": "Ruta de {name} (todos los proyectos)",

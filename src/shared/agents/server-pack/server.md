@@ -169,6 +169,10 @@ Held (each waits for the person's Allow):
   isn't linked to one (named as the project, unless you give a name). An
   owner in Hub allows it there; Den links the project by itself once they
   do, and Hub tells you what they decided. Don't link it again yourself.
+- `hub_link`: link a project to an existing Hub project, by its id or slug
+  as the connected Hub lists it (never its name), for instance after the
+  install moves to another Hub. It waits for the person's Allow. One the
+  connected Hub doesn't list is refused, saying why.
 - `den_restart_server`, `den_update`: restart or update Den.
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It

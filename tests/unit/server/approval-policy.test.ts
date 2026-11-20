@@ -372,6 +372,8 @@ describe("issue 160: the approval policy", () => {
     expect(names).toContain("pr_close");
     // Issue 271: asking Hub for a new project is a held write too.
     expect(names).toContain("hub_project_create");
+    // Issue 647: linking a project to an existing Hub project too.
+    expect(names).toContain("hub_link");
     expect(Object.keys(HELD_WRITE_RISK).sort()).toEqual([...names].sort());
   });
 

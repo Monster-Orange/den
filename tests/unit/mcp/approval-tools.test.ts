@@ -750,3 +750,42 @@ describe("issue 160: pr_close", () => {
     expect(calls.filter((c) => c.path === "/api/approvals")).toEqual([]);
   });
 });
+
+describe("issue 647: hub_link", () => {
+  it("asks with the project and the Hub project's id or slug", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, project: "north" },
+    }));
+    const r = await callTool(
+      "hub_link",
+      { project: "north", hub: "proj_n1" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "hub_link",
+      args: { project: "north", hub: "proj_n1" },
+    });
+    const own = await callTool("hub_link", { hub: "comet" }, ctx(api, true));
+    expect(own.isError).toBe(false);
+    expect(
+      calls.filter((c) => c.path === "/api/approvals").pop()?.body,
+    ).toEqual({ action: "hub_link", args: { project: "north", hub: "comet" } });
+  });
+
+  it("needs the Hub project; a project's agent can't ask for another project; nothing is asked", async () => {
+    const { api, calls } = fakeApi([]);
+    const none = await callTool("hub_link", { project: "north" }, ctx(api));
+    expect(none.isError).toBe(true);
+    const r = await callTool(
+      "hub_link",
+      { project: "elsewhere", hub: "proj_n1" },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/project "north".*not project "elsewhere"/);
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+});

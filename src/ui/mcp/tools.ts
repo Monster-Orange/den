@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2113,6 +2113,39 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  {
+    // Issue 647: the same link as `hub link` and Settings › Project setup.
+    name: "hub_link",
+    title: "Link a project to an existing Hub project",
+    description:
+      "Link a project to an existing Hub project, named by its id or slug as the connected Hub lists it (never its name), as `hub link` does. A project already linked to another is relinked: the Allow shows what it is now and what it will be. One the connected Hub doesn't list (an id from another Hub, say) is refused, saying so. Hub's own tools list its projects and their ids. A project's agent links its own project; Den's own agent any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      hub: z
+        .string()
+        .describe(
+          "The Hub project's id (or its slug), as the connected Hub lists it",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("hub_link", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `hub_link: you work in project "${ctx.scope.workspace}" and can link it only, not project "${project}"; nothing was asked.`,
+        );
+      const hub = needArg("hub_link", a, "hub", "the Hub project's id or slug");
+      return askPerson("hub_link", "hub_link", { project, hub }, a, ctx);
     },
   },
   {

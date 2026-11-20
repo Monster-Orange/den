@@ -37,7 +37,11 @@ describe("shellPrefs", () => {
         order: ["logs", "services"],
       }),
     ).toEqual({
-      pins: ["shop", "a/b"],
+      // Issue 402: an old id-only pin with no project map is none.
+      pins: [
+        { item: "shop", project: null },
+        { item: "a/b", project: null },
+      ],
       collapsed: true,
       hidden: ["tests"],
       order: ["logs", "services"],
@@ -60,7 +64,7 @@ describe("shellPrefs", () => {
 
 describe("mergeShellPrefs", () => {
   const cur = {
-    pins: ["shop"],
+    pins: [{ item: "shop", project: "alpha" as string | null }],
     collapsed: false,
     hidden: [],
     order: [],
@@ -73,9 +77,13 @@ describe("mergeShellPrefs", () => {
       ok: true,
       value: { ...cur, collapsed: true },
     });
-    expect(mergeShellPrefs(cur, { pins: ["billing/api"] })).toEqual({
+    expect(
+      mergeShellPrefs(cur, {
+        pins: [{ item: "billing/api", project: "beta" }],
+      }),
+    ).toEqual({
       ok: true,
-      value: { ...cur, pins: ["billing/api"] },
+      value: { ...cur, pins: [{ item: "billing/api", project: "beta" }] },
     });
   });
   it("sets the runs dock open and its height (R16a), rounded; 0 is the default", () => {
@@ -134,8 +142,14 @@ describe("mergeShellPrefs", () => {
     expect(
       storedShell({ pins: [], collapsed: false, ...none }),
     ).toBeUndefined();
-    expect(storedShell({ pins: ["shop"], collapsed: false, ...none })).toEqual({
-      pins: ["shop"],
+    expect(
+      storedShell({
+        pins: [{ item: "shop", project: "alpha" }],
+        collapsed: false,
+        ...none,
+      }),
+    ).toEqual({
+      pins: [{ item: "shop", project: "alpha" }],
     });
     expect(
       storedShell({

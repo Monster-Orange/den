@@ -46,6 +46,10 @@ if (!process.env.DEN_GATE_DIR)
 // env a test builds. A suite that tests the search sets its own (a fake
 // shell script, temp dirs).
 process.env.DEN_LOGIN_SHELL ??= "off";
+// Issue 456: no test runs this machine's xattr to read a file's macOS
+// quarantine; a suite that tests it injects its own reader
+// (setQuarantineReader).
+process.env.DEN_QUARANTINE_CHECK ??= "off";
 
 // 0.4.48: no test opens a real browser (a person's browser filled with
 // sign-in tabs from test runs). `web up` and every opener honour it; the

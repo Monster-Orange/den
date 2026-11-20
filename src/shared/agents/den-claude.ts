@@ -91,7 +91,11 @@ import {
 import { PERMISSION_INTENTS, type PermissionIntent } from "./permissions.js";
 import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
-import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
+import {
+  isQuarantined,
+  locateRuntime,
+  type RuntimeFind,
+} from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
 import {
   cleanName,
@@ -269,6 +273,8 @@ export function permissionModesOf(
   bin: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] | null {
+  // Issue 456: a quarantined file is never run (macOS would warn).
+  if (isQuarantined(bin)) return null;
   let key: string;
   try {
     const real = fs.realpathSync(bin);
@@ -386,6 +392,8 @@ function detect(
     ...(version ? { version } : {}),
     path: found.path,
     ...(found.source ? { source: found.source } : {}),
+    ...(found.quarantined ? { quarantined: true as const } : {}),
+    ...(found.others ? { others: found.others } : {}),
     searched: found.searched,
   };
 }
