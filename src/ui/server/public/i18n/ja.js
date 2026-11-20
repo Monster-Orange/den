@@ -911,6 +911,22 @@
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_remote_renew": "CI ランナーがスロットを更新する間隔 (秒)",
+    "set.server.gate_remote_renew.d":
+      "ランナー VM の CI ジョブは、この間隔で更新してゲートスロットを保ちます (頼んだときに数を伝えます)。__DEN_CLI__ gate settings --remote-renew-seconds 30",
+    "set.server.gate_remote_lapse": "CI ランナーのスロットを取り戻すまで (秒)",
+    "set.server.gate_remote_lapse.d":
+      "この時間スロットを更新しなかった CI ランナーはスロットを失い、次の順番が始まります。更新間隔の 2 倍以上です。__DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_remote_slots":
+      "1 つの CI ランナーが同時に持てるゲートスロット",
+    "set.server.gate_remote_slots.d":
+      "使用中と待機中の合計です。超えた依頼は理由を添えて断られ、ランナーが 1 つ返すまで続きます。__DEN_CLI__ gate settings --remote-max-slots 4",
+    "set.server.gate_remote_asks": "1 つの CI ランナーが同時に待てる依頼",
+    "set.server.gate_remote_asks.d":
+      "まだ返事を待っているスロットの依頼です。超えた依頼は理由を添えて断られ、1 つが返事を受けるまで続きます。__DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_runners": "CI ランナーのトークン",
+    "set.server.gate_runners.d":
+      "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1531,6 +1547,16 @@
       "キーは許可した後に、ここで一度だけ表示されます。Den はハッシュだけを保存します。",
     "ap.det.embed_key_create.revoke":
       "設定 › 埋め込み でいつでも取り消せます。",
+    "ap.do.gate_runner_token_create":
+      "CI ランナー {name} 用のゲート専用トークンを作る",
+    "ap.det.gate_runner_token_create.reach":
+      "CI ランナー {name} 用のトークンを作ります。このマシンのゲートスロットを頼み、更新し、返すことしかできません。Den のほかのことはできません。",
+    "ap.det.gate_runner_token_create.onceAgent":
+      "トークンは頼んだエージェント {agent} に一度だけ渡され、二度と表示されません。Den はハッシュだけを保存します。",
+    "ap.det.gate_runner_token_create.once":
+      "トークンは頼んだ人に一度だけ渡され、二度と表示されません。Den はハッシュだけを保存します。",
+    "ap.det.gate_runner_token_create.revoke":
+      "設定の「CI ランナーのトークン」でいつでも取り消せます。",
     "ap.det.embed_key_revoke.reach":
       "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
     "ap.det.embed_key_revoke.held":
@@ -2576,6 +2602,7 @@
     "set.ui.appKeyUnused": "未使用",
     "set.ui.appKeyRevoked": "取り消し済み {when}",
     "set.ui.appKeyRevoke": "取り消す",
+    "set.ui.runnerNone": "ランナーのトークンはまだありません。",
     "set.ui.appKeyOnce":
       "このキーを今すぐウェブアプリのバックエンドにコピーしてください。もう表示されません。",
     "set.ui.appKeyNew": "新しいアプリキー",

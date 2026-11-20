@@ -79,8 +79,10 @@ import {
   type AgentActor,
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
+import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
+  RUNNER_ROUTES,
   isMutatingGet,
   pathMatches,
   routeClass,
@@ -108,11 +110,24 @@ export interface AgentPrincipal {
   session: { name: string; id?: string };
 }
 
+/**
+ * Issue 621: a gate-only runner token (a CI job in a runner VM). It
+ * reaches RUNNER_ROUTES only; it is never a person and never an agent.
+ */
+export interface RunnerPrincipal {
+  kind: "gate-runner";
+  /** The token's id (only it renews or releases its slots). */
+  id: string;
+  /** The runner's name, as the person allowed it. */
+  name: string;
+}
+
 /** Who a request proved itself to be. */
 export type Principal =
   | { kind: "person"; actor: `person:${string}` }
   | AgentPrincipal
-  | { kind: "person-browser"; session?: string };
+  | { kind: "person-browser"; session?: string }
+  | RunnerPrincipal;
 
 /** What the request checks need of a signed-in browser session. */
 export interface GuardSession {
@@ -156,6 +171,13 @@ export interface GuardContext {
     token: string,
     req: http.IncomingMessage,
   ) => `person:${string}` | AgentPrincipal | "revoked" | "elsewhere" | null;
+  /**
+   * Issue 621: what a gate-only runner token (`den_gr_`) proves: its id
+   * and name, `"revoked"`, or null. Unset: no runner token verifies.
+   */
+  verifyRunner?: (
+    token: string,
+  ) => { id: string; name: string } | "revoked" | null;
   /**
    * The live session the request's cookie names (SEC-1b), or null. `via`:
    * how it reached Den (which cookie name counts: session-cookie.ts).
@@ -237,7 +259,8 @@ export type GuardResult =
         | "csrf"
         | "cross_site"
         | "agent_forbidden"
-        | "embed_key_scope";
+        | "embed_key_scope"
+        | "runner_scope";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
@@ -607,7 +630,36 @@ export function checkRequest(
   let principal: Principal | null = null;
   const auth = header(req, "authorization");
   const bearer = auth ? /^Bearer\s+(\S+)\s*$/i.exec(auth) : null;
-  if (bearer) {
+  // Issue 621: a gate-only runner token reaches the runner routes only
+  // (ask, renew, release a gate slot), and nothing else, whatever else
+  // the request carries.
+  if (bearer?.[1].startsWith(RUNNER_TOKEN_PREFIX)) {
+    const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (!RUNNER_ROUTES.includes(p))
+      return {
+        ok: false,
+        status: 403,
+        code: "runner_scope",
+        error:
+          "A runner token reaches only the gate-slot ask, renew and release routes. Nothing ran.",
+      };
+    const r = ctx.verifyRunner?.(bearer[1]) ?? null;
+    if (r === "revoked")
+      return {
+        ok: false,
+        status: 401,
+        code: "token_revoked",
+        error: "This runner token was revoked. Ask the person for a new one.",
+      };
+    if (!r)
+      return {
+        ok: false,
+        status: 401,
+        code: "unauthorized",
+        error: "This runner token is not valid here.",
+      };
+    principal = { kind: "gate-runner", id: r.id, name: r.name };
+  } else if (bearer) {
     const proved = ctx.verifyBearer(bearer[1], req);
     if (proved === "elsewhere")
       return {
@@ -909,6 +961,12 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/hub/names-check",
   // Issue 144: ending a gate slot early is a person's.
   "/api/gate-slots/end",
+  // Issue 621: a CI runner's slot routes take its runner token only (an
+  // agent asks with gate_slot_request); revoking one is a person's.
+  "/api/gate-slots/ask",
+  "/api/gate-slots/renew",
+  "/api/gate-slots/release",
+  "/api/gate-slots/runners/revoke",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -1097,6 +1155,14 @@ export function setPrincipal(
   p: Principal | null,
 ): void {
   if (p) PRINCIPALS.set(req, p);
+}
+
+/** Issue 621: the gate-only runner a request's token proves, if any. */
+export function runnerPrincipalOf(
+  req: http.IncomingMessage,
+): RunnerPrincipal | null {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "gate-runner" ? p : null;
 }
 
 /** The agent a request's actor token proves (SEC-1c), if any. */

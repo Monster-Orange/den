@@ -13,6 +13,8 @@ export interface GateSlotView {
   granted: boolean;
   agent: boolean;
   actor?: string;
+  /** Issue 621: a CI runner's slot (held by lease): the runner's name. */
+  runner?: string;
   grantedAt?: string;
   expectedEnd?: string;
   overrun?: boolean;
@@ -31,6 +33,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     granted: !!e.grantedAt,
     agent: e.agent === true,
     ...(e.actor ? { actor: e.actor } : {}),
+    ...(e.remote ? { runner: e.remote.runner } : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,

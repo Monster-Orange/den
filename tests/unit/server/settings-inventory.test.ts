@@ -46,7 +46,14 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
   // Issue 144: the machine's gate slots.
-  gate_slots: { cpu_slots: true, overrun_margin_minutes: true },
+  gate_slots: {
+    cpu_slots: true,
+    overrun_margin_minutes: true,
+    remote_renew_seconds: true,
+    remote_lapse_seconds: true,
+    remote_max_slots: true,
+    remote_max_asks: true,
+  },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
   // Issue 403: how long a filed report's screenshot is kept.
@@ -197,6 +204,10 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
+        "gate_slots.remote_lapse_seconds",
+        "gate_slots.remote_max_asks",
+        "gate_slots.remote_max_slots",
+        "gate_slots.remote_renew_seconds",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",

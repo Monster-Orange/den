@@ -131,7 +131,14 @@ describe("gate slots over MCP", () => {
       other.id,
       mine.id,
     ]);
-    expect(status.settings).toEqual({ cpuSlots: 2, overrunMarginMinutes: 15 });
+    expect(status.settings).toEqual({
+      cpuSlots: 2,
+      overrunMarginMinutes: 15,
+      remoteRenewSeconds: 30,
+      remoteLapseSeconds: 120,
+      remoteMaxSlots: 4,
+      remoteMaxAsks: 4,
+    });
   });
 
   it("an agent can't wait on or give back a slot that isn't its own", async () => {
