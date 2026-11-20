@@ -2025,6 +2025,8 @@
     "hub.quiet.line":
       "この Den が Hub に接続されると、Hub の作業がここに表示されます。",
     "hub.quiet.connect": "Hub に接続",
+    "hub.quiet.plan": "会社の Hub プランにはまだ含まれていません。",
+    "hub.quiet.refused": "Hub が拒否しました: {error}",
     "tx.asked": "依頼",
     "tx.result": "結果",
     "tx.error": "エラー",

@@ -95,6 +95,7 @@ export async function run(ctx, state) {
             : null,
         quiet: !!quiet,
         quietHref: quiet?.querySelector("a")?.getAttribute("href") ?? null,
+        quietKind: quiet?.getAttribute("data-hub-quiet") ?? null,
       };
     });
     await ctx.shot(`home-${tag}`);
@@ -191,7 +192,11 @@ function rows(r) {
             !!r.card &&
             r.card.quiet &&
             !r.card.card &&
-            r.card.quietHref === "/settings#agents.hub",
+            // No Hub: the line links to Connect. A 403: the plan line,
+            // or "Hub refused: <error>".
+            (r.hub === "refused"
+              ? r.card.quietKind === "plan" || r.card.quietKind === "refused"
+              : r.card.quietHref === "/settings#agents.hub"),
           detail: `${r.tag}: ${JSON.stringify(r.card ?? null)}`,
           evidence: r.homeShot ? [r.homeShot] : [],
         };

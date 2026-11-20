@@ -12,9 +12,11 @@
  *   hubCurrentHtml(current, t)  → under an agent's row: "Working on …" or
  *                                 "Last on …", a Kind chip and its vision.
  *                                 Nothing when it has no item.
- *   hubQuietLineHtml(t)         → no Hub connected, or Hub said no (403):
- *                                 one quiet line to Connect, no card. The
- *                                 Groups work (issue 750) shares it.
+ *   hubQuietLineHtml(t)         → no Hub connected: one quiet line to
+ *                                 Connect, no card. The Groups work (issue
+ *                                 750) shares it.
+ *   hubRefusedLineHtml(a, t)    → Hub's 403: a plan code is the quiet plan
+ *                                 line; any other, "Hub refused: <error>".
  *   loadHubWork(names)          → the answer for those projects.
  *   loadAgentsCurrent(ids)      → the answer for those agents.
  *   ensureHubWorkCss()          → the card's and the line's styles, once.
@@ -50,6 +52,21 @@ export function hubQuietLineHtml(t = tDefault) {
     `<p class="note hub-quiet" data-hub-quiet>${esc(t("hub.quiet.line"))} ` +
     `<a href="${HUB_CONNECT_HREF}">${esc(t("hub.quiet.connect"))}</a></p>`
   );
+}
+
+/**
+ * Hub's 403 (shared with issue 750): a plan code (Hub's machine `code`,
+ * never its `error` words) is the quiet plan line; any other is
+ * "Hub refused: <error>". No card either way.
+ */
+export function hubRefusedLineHtml(answer, t = tDefault) {
+  if (answer?.plan === true)
+    return `<p class="note hub-quiet" data-hub-quiet="plan">${esc(t("hub.quiet.plan"))}</p>`;
+  const why =
+    typeof answer?.error === "string" && answer.error
+      ? answer.error
+      : (answer?.code ?? "403");
+  return `<p class="note hub-quiet" data-hub-quiet="refused">${esc(t("hub.quiet.refused", { error: why }))}</p>`;
 }
 
 const COUNTS = [
@@ -99,8 +116,8 @@ function visionsHtml(w, t) {
 /** The home page's card; the quiet line without Hub; "" with nothing. */
 export function hubWorkCardHtml(answer, t = tDefault) {
   if (!answer || typeof answer !== "object") return "";
-  if (answer.hub === "none" || answer.hub === "refused")
-    return hubQuietLineHtml(t);
+  if (answer.hub === "none") return hubQuietLineHtml(t);
+  if (answer.hub === "refused") return hubRefusedLineHtml(answer, t);
   if (answer.hub !== "ok" || !Array.isArray(answer.projects)) return "";
   const shown = answer.projects.filter((p) => p && p.work);
   if (!shown.length) return "";

@@ -2109,6 +2109,8 @@
     "hub.quiet.line":
       "El trabajo de Hub aparece aquí cuando este Den está conectado a Hub.",
     "hub.quiet.connect": "Conectar a Hub",
+    "hub.quiet.plan": "El plan de Hub de tu empresa aún no incluye esto.",
+    "hub.quiet.refused": "Hub lo rechazó: {error}",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
     "tx.error": "Error",

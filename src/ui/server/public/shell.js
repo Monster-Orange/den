@@ -2932,6 +2932,8 @@
     "hub.quiet.line":
       "Hub's work shows here once this Den is connected to Hub.",
     "hub.quiet.connect": "Connect to Hub",
+    "hub.quiet.plan": "Your company's Hub plan doesn't include this yet.",
+    "hub.quiet.refused": "Hub refused: {error}",
     "tx.asked": "Asked",
     "tx.result": "Result",
     "tx.error": "Error",

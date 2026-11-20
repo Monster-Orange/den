@@ -74,16 +74,45 @@ describe("hubWorkCardHtml", () => {
     expect(html).not.toContain('data-project="off"');
   });
 
-  it("no Hub, or Hub refused: the quiet line to Connect, no card", async () => {
+  it("no Hub: the quiet line to Connect, no card", async () => {
     const { hubWorkCardHtml, hubQuietLineHtml } = await mod();
-    for (const b of [{ hub: "none" }, { hub: "refused", code: "x" }]) {
-      const html = hubWorkCardHtml(b, tt);
-      expect(html).not.toContain("hub-work-card");
-      expect(html).toBe(hubQuietLineHtml(tt));
-    }
+    const html = hubWorkCardHtml({ hub: "none" }, tt);
+    expect(html).not.toContain("hub-work-card");
+    expect(html).toBe(hubQuietLineHtml(tt));
     expect(hubQuietLineHtml(tt)).toMatch(
       /<p class="[^"]*hub-quiet[^"]*"[^>]*>[^]*<a href="\/settings#agents.hub">\[hub.quiet.connect\]<\/a>/,
     );
+  });
+
+  it("a 403 with a plan code: the quiet plan line, no card", async () => {
+    const { hubWorkCardHtml } = await mod();
+    const html = hubWorkCardHtml(
+      {
+        hub: "refused",
+        plan: true,
+        code: "groups_not_in_plan",
+        error: "Groups aren't in your plan",
+      },
+      tt,
+    );
+    expect(html).not.toContain("hub-work-card");
+    expect(html).toMatch(
+      /<p class="[^"]*hub-quiet[^"]*"[^>]*data-hub-quiet="plan"/,
+    );
+    expect(html).toContain("[hub.quiet.plan]");
+    expect(html).not.toContain("hub.quiet.refused");
+  });
+
+  it("any other 403: Hub refused: <error> (escaped), no card", async () => {
+    const { hubWorkCardHtml } = await mod();
+    const html = hubWorkCardHtml(
+      { hub: "refused", plan: false, code: "forbidden", error: "No <b>" },
+      tt,
+    );
+    expect(html).not.toContain("hub-work-card");
+    expect(html).toMatch(/data-hub-quiet="refused"/);
+    expect(html).toContain("[hub.quiet.refused:No &lt;b&gt;]");
+    expect(html).not.toContain("hub.quiet.plan");
   });
 
   it("Hub has nothing for any project: nothing at all", async () => {

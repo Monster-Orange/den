@@ -18,9 +18,11 @@
  *          source: "working" | "recent", since }]
  *       (or { agents: [...] }).
  *
- * A 403 (a plan refusal such as "groups_not_in_plan", or any other) means
- * no card: the page shows one quiet line to Connect. A 404 is a Hub that
- * hasn't the route yet: nothing shows, and it isn't a refusal.
+ * Hub's refusals are { error, code }: `code` is the machine's word,
+ * `error` is text for people. A 403 means no card: a plan code (such as
+ * "groups_not_in_plan") shows the quiet plan line; any other 403 shows
+ * "Hub refused: <error>". No Hub connected: the quiet line to Connect. A
+ * 404 is a Hub that hasn't the route yet: nothing shows.
  */
 import {
   HubCallError,
@@ -66,10 +68,26 @@ export interface AgentCurrent {
   since: string | null;
 }
 
+/**
+ * Hub's 403, as Den's page is told it: `plan` when Hub's machine `code`
+ * says the plan doesn't include it (the quiet plan line); otherwise Hub's
+ * `error` words ("Hub refused: …"). No card either way.
+ */
+export interface HubRefused {
+  hub: "refused";
+  plan: boolean;
+  code?: string;
+  error?: string;
+}
+
+/** A plan refusal's code, as Hub writes them ("groups_not_in_plan"). */
+export const isPlanCode = (code: string): boolean =>
+  /(^|_)plan(_|$)/.test(code);
+
 /** What Den's page is told: no Hub, Hub said no, or Hub's answer. */
 export type HubWorkAnswer =
   | { hub: "none" }
-  | { hub: "refused"; code?: string }
+  | HubRefused
   | {
       hub: "ok";
       projects: { project: string; work: ProjectWork | null; linked?: false }[];
@@ -77,7 +95,7 @@ export type HubWorkAnswer =
 
 export type AgentsCurrentAnswer =
   | { hub: "none" }
-  | { hub: "refused"; code?: string }
+  | HubRefused
   | { hub: "ok"; agents: Record<string, AgentCurrent> };
 
 /** At most this many projects or agents per ask (a page's worth). */
@@ -187,10 +205,19 @@ async function connectedHub(): Promise<{ url: string; token: string } | null> {
 }
 
 /** Hub's 403 (a plan refusal, or any other): no card, the quiet line. */
-const refusedOf = (e: unknown): { hub: "refused"; code?: string } | null =>
-  e instanceof HubCallError && e.kind === "forbidden"
-    ? { hub: "refused", ...(e.code ? { code: e.code } : {}) }
-    : null;
+const refusedOf = (e: unknown): HubRefused | null => {
+  if (!(e instanceof HubCallError && e.kind === "forbidden")) return null;
+  // Hub's refusals are { error, code }: `code` is the machine's word,
+  // `error` is text for people. Never read a code from `error`.
+  const code = text(e.body?.code, 80);
+  const error = text(e.body?.error, 300);
+  return {
+    hub: "refused",
+    plan: isPlanCode(code),
+    ...(code ? { code } : {}),
+    ...(error ? { error } : {}),
+  };
+};
 /** Hub's 404: a Hub without the route yet. */
 const missing = (e: unknown) => e instanceof HubCallError && e.status === 404;
 

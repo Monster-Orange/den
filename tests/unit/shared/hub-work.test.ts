@@ -158,23 +158,45 @@ describe("HubWorkReader against a stub Hub", () => {
     ]);
   });
 
-  it("a 403 plan refusal: state refused, no card", async () => {
+  it("a 403 plan refusal: the machine code is Hub's `code`, never `error`", async () => {
     const hub = await stubHub(() => ({
       status: 403,
-      body: { error: "groups_not_in_plan", message: "Not in your plan" },
+      body: {
+        error: "Groups aren't in your plan",
+        code: "groups_not_in_plan",
+      },
     }));
     const r = new HubWorkReader({
       hub: async () => ({ url: hub.url, token: "t" }),
       projectOf: () => ({ id: "proj_a", slug: "a", name: "A" }),
     });
-    expect(await r.projectWork(["a"])).toEqual({
+    const want = {
       hub: "refused",
+      plan: true,
       code: "groups_not_in_plan",
+      error: "Groups aren't in your plan",
+    };
+    expect(await r.projectWork(["a"])).toEqual(want);
+    expect(await r.agentsCurrent(["ag-1"])).toEqual(want);
+  });
+
+  it("any other 403: refused, not a plan refusal, with Hub's words", async () => {
+    const hub = await stubHub(() => ({
+      status: 403,
+      body: { error: "This install may not read projects", code: "forbidden" },
+    }));
+    const r = new HubWorkReader({
+      hub: async () => ({ url: hub.url, token: "t" }),
+      projectOf: () => ({ id: "proj_a", slug: "a", name: "A" }),
     });
-    expect(await r.agentsCurrent(["ag-1"])).toEqual({
+    const want = {
       hub: "refused",
-      code: "groups_not_in_plan",
-    });
+      plan: false,
+      code: "forbidden",
+      error: "This install may not read projects",
+    };
+    expect(await r.projectWork(["a"])).toEqual(want);
+    expect(await r.agentsCurrent(["ag-1"])).toEqual(want);
   });
 
   it("asks GET /api/agents/current once for the page's agents", async () => {
