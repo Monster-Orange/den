@@ -25,10 +25,14 @@ export const clauses = [
   "the tools note is not typed while the agent shows a dialog for its person",
   "a message from the page to an agent showing a dialog for its person answers 409 dialog_open and types nothing",
 ];
-export const timeoutMs = 360000;
+export const timeoutMs = 420000;
 
 const SERVER = "server";
 const SAY = "gate-629-say";
+// Clause 2's stub: in the bed's workspace linked to Hub's e2e project.
+const HUB = "gate-629-hub";
+const HUB_WS = "proj-gate";
+const HUB_QUIET_MS = 20000;
 const HELD = "record:den-back-note-held";
 const WAIT_S = 10;
 const MARGIN_MS = 20000;
@@ -89,11 +93,22 @@ export async function setup(ctx) {
   const s = {};
   const set = await ctx.api("/api/settings").catch(() => null);
   s.selfUpdateWas = set?.server_agent_self_update ?? null;
+  // The bed's server agent: put back as found (running, or not) in teardown.
+  try {
+    s.serverWasRunning = server(ctx).state() === "running";
+  } catch {
+    s.serverWasRunning = null;
+  }
   // A short restart wait for this check; put back byte for byte after.
   s.yml = ctx.userYml({ ui: { restart_wait_seconds: WAIT_S } });
   const b = ctx.agent(SAY);
   s.sayStart = b.start("tester")?.code ?? null;
   s.sayRunningMs = await b.running(30000);
+  if (ctx.hub) {
+    const h = ctx.agent(HUB, { workspace: HUB_WS });
+    s.hubStart = h.start("tester")?.code ?? null;
+    s.hubRunningMs = await h.running(30000);
+  }
   await ctx.sleep(2500);
   return s;
 }
@@ -207,10 +222,59 @@ async function sayRefused(ctx, s) {
   return r;
 }
 
+/** Clause 2: a Hub comment for an agent showing a dialog waits for it. */
+async function hubHeld(ctx, s) {
+  if (!ctx.hub) return { skip: true };
+  const h = ctx.agent(HUB, { workspace: HUB_WS });
+  const r = {
+    running: s.hubRunningMs !== null && s.hubRunningMs !== undefined,
+  };
+  if (!r.running) return r;
+  h.permissionRequest("Bash", { command: "npm test" });
+  await ctx.sleep(1500);
+  const token = `g629hub-${Date.now()}`;
+  const since = Date.now();
+  try {
+    r.id =
+      (
+        await ctx.hub.comment({
+          agent: HUB,
+          workspace: HUB_WS,
+          text: `gate 629: a Hub comment while a dialog is open (${token})`,
+        })
+      )?.id ?? null;
+  } catch (e) {
+    r.postThrew = String(e?.message ?? e).slice(0, 200);
+    return r;
+  }
+  // Well past Den's 2 s pump: nothing typed while the dialog is open.
+  await ctx.sleep(HUB_QUIET_MS);
+  r.typedWhileOpen = await typedOf(h, since);
+  r.stateWhileOpen = (await ctx.hub.delivery?.(r.id).catch(() => null)) ?? null;
+  const answered = Date.now();
+  h.print(PROMPT);
+  r.toldMs = await ctx.until(
+    async () => ((await typedOf(h, answered)) ?? "").includes(token),
+    60000,
+  );
+  const after = (await typedOf(h, answered)) ?? "";
+  r.typedTimes = after.split(token).length - 1;
+  // Den acks once it has typed it: Hub then says delivered (when it can say).
+  if (r.stateWhileOpen)
+    await ctx.until(
+      async () =>
+        (await ctx.hub.delivery(r.id).catch(() => null))?.state === "delivered",
+      15000,
+    );
+  r.stateAfter = (await ctx.hub.delivery?.(r.id).catch(() => null)) ?? null;
+  return r;
+}
+
 export async function run(ctx, s) {
   const { yml, ...rest } = s ?? {};
   const out = { setup: { ...rest, yml: !!yml } };
   out.say = await sayRefused(ctx, s);
+  out.hub = await hubHeld(ctx, s);
   out.back = await restartNote(ctx);
   ctx.log?.(`629: ${JSON.stringify(out)}`);
   return out;
@@ -238,16 +302,46 @@ export async function teardown(ctx, s) {
     /* none */
   }
   try {
-    // The bed's server agent stays; its screen goes back to its prompt.
+    // The bed's server agent: its screen goes back to its prompt, and it is
+    // left as found. Stopped before the check, stopped again after (a running
+    // one would hold one of the bed's agent slots for the next modules).
     server(ctx).print(PROMPT);
+    if (s?.serverWasRunning === false) server(ctx).stop();
   } catch {
     /* none */
   }
   try {
     if (ctx.agent(SAY).state()) ctx.agent(SAY).remove();
+    if (ctx.hub && ctx.agent(HUB, { workspace: HUB_WS }).state())
+      ctx.agent(HUB, { workspace: HUB_WS }).remove();
   } catch {
     /* none */
   }
+}
+
+function hubRow(h) {
+  if (!h || h.skip)
+    return {
+      clause: clauses[1],
+      ok: null,
+      skip: "needs-hub",
+      detail: "the bed has no Hub and no way to queue a comment for an agent",
+    };
+  const ok =
+    h.running === true &&
+    !!h.id &&
+    h.typedWhileOpen === "" &&
+    h.toldMs != null &&
+    h.typedTimes === 1 &&
+    // Hub's own view, when the hook can read it: held, then delivered.
+    (h.stateWhileOpen == null || h.stateWhileOpen.state === "held") &&
+    (h.stateWhileOpen == null || h.stateAfter?.state === "delivered");
+  const detail = !h.running
+    ? `the ${HUB} stub did not run in ${HUB_WS}`
+    : h.postThrew
+      ? `the comment could not be posted: ${h.postThrew}`
+      : `comment ${h.id}; typed while open ${JSON.stringify((h.typedWhileOpen ?? "(the stub can't say)").slice(0, 80))} after ${HUB_QUIET_MS} ms; Hub state then ${JSON.stringify(h.stateWhileOpen)}; typed after the answer ${h.toldMs} ms, ${h.typedTimes} time(s); Hub state after ${JSON.stringify(h.stateAfter)}`;
+  return { clause: clauses[1], ok, detail };
 }
 
 export function expect(r) {
@@ -283,12 +377,7 @@ export function expect(r) {
   const d4 = `runtime ${y.runtime}; ws ${y.ws}; status ${y.status} ${y.code}: ${y.error}; typed ${y.typed === null ? "(the stub can't say)" : JSON.stringify(y.typed)}; audit sent ${y.auditSent}`;
   return [
     { clause: clauses[0], ok: c1, detail: d1 },
-    {
-      clause: clauses[1],
-      ok: null,
-      skip: "needs-hub",
-      detail: "the bed has no Hub and no way to queue a comment for an agent",
-    },
+    hubRow(r?.hub),
     {
       clause: clauses[2],
       ok: null,
