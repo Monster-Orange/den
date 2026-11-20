@@ -43,8 +43,10 @@ export async function run(ctx) {
   // An agent that leaves its token off (loopback, no credential, a claimed
   // name only) and one with a token this install never minted: both refused
   // before any lookup (401), so the unknown id never answers 404 to them.
+  // A plain fetch runs on the host: the bed's host address (ctx.hostUrl),
+  // never the browser's (ctx.url), which reaches the live edge from here.
   const bare = await fetch(
-    new URL("/api/report/shots/ffffffffffffffff", ctx.url),
+    new URL("/api/report/shots/ffffffffffffffff", ctx.hostUrl),
     { headers: { "x-den-actor": "agent:gate-403-probe" } },
   );
   r.noTokenStatus = bare.status;
