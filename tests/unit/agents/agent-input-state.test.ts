@@ -379,3 +379,110 @@ describe("a dialog waiting for the person: Den never types into it", () => {
     expect(r.made[0].writes.length).toBe(before);
   }, 30_000);
 });
+
+/**
+ * Issue 664: Den types into an agent only when its screen shows the
+ * runtime's input prompt, with nothing after it but its footer, no
+ * dialog anywhere on the screen, no waiting mark and a quiet transcript.
+ */
+describe("issue 664: typed only at the agent's input prompt", () => {
+  /** Its turn ended: the transcript reads idle. */
+  const idle = ask + answer;
+
+  /** Whether `screen`, drawn after its turn ended, gets text typed. */
+  async function typedInto(screen: string | string[]): Promise<{
+    typed: boolean;
+    state: string;
+  }> {
+    const r = await rig();
+    await started(r, idle);
+    for (const s of Array.isArray(screen) ? screen : [screen])
+      r.made[0].emit(s);
+    await settle();
+    const d = resolveAgentsDeps(r.deps);
+    const state = await agentInputState(d, "planner", new Set(), 200);
+    const before = r.made[0].writes.length;
+    const ok = await typeIntoAgent(d, "planner", "a comment from Hub");
+    await settle();
+    const wrote = Buffer.concat(r.made[0].writes.slice(before)).toString();
+    expect(ok).toBe(wrote.includes("a comment from Hub"));
+    return { typed: ok, state };
+  }
+
+  it("(a) a dialog followed by more output: nothing typed", async () => {
+    const more =
+      "\r\n⏺ Reading the rest of the build log while it waits\r\n" +
+      Array.from(
+        { length: 20 },
+        (_, i) => `  ⎿ step ${i}: compiled module number ${i} of the bundle\r\n`,
+      ).join("");
+    expect(await typedInto([DIALOG, more])).toEqual({
+      typed: false,
+      state: "busy",
+    });
+  }, 30_000);
+
+  it("(b) a dialog redrawn in place, with no clear: nothing typed", async () => {
+    // The line above the dialog ticks: up, erase, redraw, back down.
+    const ticks = Array.from(
+      { length: 60 },
+      (_, i) =>
+        `\x1b[8A\x1b[2K\x1b[G✻ Waiting for your answer (${i}s elapsed)\x1b[8B\x1b[G`,
+    ).join("");
+    expect(
+      await typedInto(["✻ Waiting for your answer (0s)\r\n", DIALOG, ticks]),
+    ).toEqual({ typed: false, state: "busy" });
+  }, 30_000);
+
+  it("(c) a dialog in a form Den doesn't know: nothing typed", async () => {
+    const odd =
+      "Run this tool?\r\n\r\n  deploy --all\r\n\r\n" +
+      "❯ 1. Allow once\r\n  2. Allow always\r\n  3. Deny\r\n";
+    expect(await typedInto(odd)).toEqual({ typed: false, state: "busy" });
+  }, 30_000);
+
+  it("(d) a whole screen drawn as Claude Code draws its dialog: nothing typed", async () => {
+    // Not a capture: drawn after its layout (Ink frame, rounded box, SGR
+    // colour, a timer in the header repainted by cursor position).
+    const frame =
+      "\x1b[2J\x1b[H\x1b[?25l" +
+      "\x1b[1m⏺\x1b[22m Bash(npm run build)\r\n" +
+      "\x1b[38;5;174m╭──────────────────────────────────────────────╮\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m \x1b[1mBash command\x1b[22m \x1b[2m(0s)\x1b[22m                     \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m                                              \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m   npm run build                              \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m   \x1b[2mBuild the bundle\x1b[22m                         \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m                                              \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m Do you want to proceed?                      \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m \x1b[36m❯\x1b[39m \x1b[36m1. Yes\x1b[39m                                     \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m   2. Yes, and don't ask again for npm run build \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m│\x1b[39m   3. No, and tell Claude what to do differently (\x1b[1mesc\x1b[22m) \x1b[38;5;174m│\x1b[39m\r\n" +
+      "\x1b[38;5;174m╰──────────────────────────────────────────────╯\x1b[39m\r\n";
+    // Five minutes waiting: the header's timer repainted each second.
+    const timer = Array.from(
+      { length: 300 },
+      (_, i) =>
+        `\x1b[3;16H\x1b[2m(${Math.floor(i / 60)}m ${i % 60}s)\x1b[22m`,
+    ).join("");
+    expect(await typedInto([frame, timer])).toEqual({
+      typed: false,
+      state: "busy",
+    });
+  }, 30_000);
+
+  it("at its input prompt (Claude Code's box and footer): typed at once, as today", async () => {
+    const box =
+      "\x1b[2J\x1b[H⏺ Done: the build passes.\r\n\r\n" +
+      "\x1b[2m────────────────────────────────────────\x1b[22m\r\n" +
+      "> \r\n" +
+      "\x1b[2m────────────────────────────────────────\x1b[22m\r\n" +
+      "  \x1b[2m? for shortcuts\x1b[22m                ⏵⏵ accept edits on (shift+tab to cycle)\r\n";
+    expect(await typedInto(box)).toEqual({ typed: true, state: "idle" });
+    const old =
+      "\x1b[2J\x1b[H╭──────────────────────────────╮\r\n" +
+      "│ > Try \"fix the lint errors\"  │\r\n" +
+      "╰──────────────────────────────╯\r\n" +
+      "  ? for shortcuts\r\n";
+    expect(await typedInto(old)).toEqual({ typed: true, state: "idle" });
+  }, 60_000);
+});
