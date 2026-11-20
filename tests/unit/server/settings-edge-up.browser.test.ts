@@ -20,6 +20,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
+import { shortDots } from "./helpers/short-dots.js";
 import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
@@ -91,6 +92,8 @@ async function open(
 const dialog = (p: Page) => p.locator("dialog.bz-dlg[open]");
 
 async function press(p: Page): Promise<string> {
+  // Issue 699: the pop-up after a held button's dots, at 300 ms here.
+  await shortDots(p);
   await p.locator("#set-edge-up").click();
   await dialog(p).waitFor({ timeout: 5000 });
   expect(await dialog(p).locator("h2").textContent()).toContain(

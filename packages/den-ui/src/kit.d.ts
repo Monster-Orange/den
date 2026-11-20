@@ -5,6 +5,8 @@ import type {
   BusyOptions,
   Progress,
   configureBusy,
+  pending,
+  watchForms,
 } from "./busy.js";
 import type {
   AccountHydrateOptions,
@@ -170,6 +172,10 @@ export declare const busy: {
     ) => Promise<T> | T,
     opts?: BusyOptions<T>,
   ): Promise<T | null>;
+  /** Issue 699: a fetch-driven button shows dots until the answer. */
+  pending: typeof pending;
+  /** Issue 699: plain POST forms' submitters show dots. Returns stop(). */
+  watchForms: typeof watchForms;
   configure: typeof configureBusy;
 };
 /** An autosaving editor's save-state line, in the kit's language. */
