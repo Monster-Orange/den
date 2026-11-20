@@ -152,9 +152,7 @@ describe("issue 601 clause 2 with an address only this machine opens", () => {
       ...nav,
     });
     expect(r.status).toBe(303);
-    expect(sessionLine(r).startsWith(`__Host-den_session_${port}=`)).toBe(
-      true,
-    );
+    expect(sessionLine(r).startsWith(`__Host-den_session_${port}=`)).toBe(true);
   });
 
   it("a loopback /signin sends the browser to the address (303) and sets no cookie", async () => {
@@ -179,6 +177,17 @@ describe("issue 601 clause 2 with an address only this machine opens", () => {
       303,
       `https://${LOOP_NAMED}/signin?next=%2Fsettings`,
     ]);
+  });
+
+  it("issue 666: a request through the edge (not this machine's loopback) is never sent there", async () => {
+    const r = await call("/signin", {
+      host: LOOP_NAMED,
+      ...EDGE_PROOF,
+      "x-forwarded-for": "192.0.2.7",
+      "x-forwarded-proto": "http",
+      ...nav,
+    });
+    expect([r.status, String(r.headers.location ?? "")]).toEqual([401, ""]);
   });
 
   it("on the address itself, /signin is answered there (no loop)", async () => {

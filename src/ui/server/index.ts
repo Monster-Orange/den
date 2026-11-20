@@ -341,7 +341,11 @@ import {
   readSessionCookie,
   sessionSetCookie as sessionCookieLine,
 } from "./session-cookie.js";
-import { NamedAddressWatch, type NamedAnswer } from "./named-address.js";
+import {
+  localHttpsAddress,
+  NamedAddressWatch,
+  type NamedAnswer,
+} from "./named-address.js";
 import {
   kitPage,
   kitSiteDir,
@@ -1800,9 +1804,10 @@ function webUrlNow(): string | null {
  * there. Before the first check, the config's word: the address is an
  * https edge route to this server.
  */
-const NAMED = new NamedAddressWatch({
+/** How both address watches check web.url (NAMED, LOCAL_NAMED). */
+const ADDRESS_WATCH = {
   webUrl: webUrlNow,
-  probe: async (url): Promise<NamedAnswer> => {
+  probe: async (url: string): Promise<NamedAnswer> => {
     const s = webSecret.current();
     const st = await checkAddress({
       webPort: PORT,
@@ -1816,6 +1821,9 @@ const NAMED = new NamedAddressWatch({
   cacheMs: () => addressCheckSettings().cacheMs,
   dropAfter: () => addressCheckSettings().dropAfter ?? 2,
   unknownKeepMs: () => addressCheckSettings().unknownKeepMs ?? 300_000,
+};
+const NAMED = new NamedAddressWatch({
+  ...ADDRESS_WATCH,
   // Proven: sessions count only when minted on the address; every other
   // session ends now, its terminals with it.
   onProven: () => {
@@ -1851,6 +1859,19 @@ const NAMED = new NamedAddressWatch({
       /* doctor says nothing then */
     }
   },
+});
+
+/**
+ * Issue 601: an https web.url on a loopback name (kept from before issue
+ * 666, with no alias to take its place) is never Den's named address
+ * (NAMED): every other device is never sent to it, and no session ends
+ * for it. Once it is proven, only a browser on this machine that opens
+ * the loopback sign-in page is sent there (sendToNamedAddress), as before
+ * issue 666: there it means this Den.
+ */
+const LOCAL_NAMED = new NamedAddressWatch({
+  ...ADDRESS_WATCH,
+  pick: localHttpsAddress,
 });
 
 const LAN_HOSTS = lanHosts();
@@ -2438,7 +2459,18 @@ function sendToNamedAddress(
     (SIGNIN_PAGES.has(url.pathname) && get) ||
     (url.pathname === "/attest" && get && !url.searchParams.has("hop"));
   if (!page && !SIGNIN_APIS.test(url.pathname)) return false;
-  const there = NAMED.address();
+  // Issue 601: an address only this machine opens (LOCAL_NAMED), for a
+  // browser on this machine opening a sign-in page (/signin, /auth) only.
+  // Issue 666: never for another device; its sign-in APIs and /attest stay
+  // where they are, and so does every session.
+  const there =
+    NAMED.address() ??
+    (SIGNIN_PAGES.has(url.pathname) &&
+    get &&
+    guard.via === "loopback" &&
+    !guard.beyond
+      ? LOCAL_NAMED.address()
+      : null);
   if (!there || onTheAddress(req, there)) return false;
   if (page) {
     res.writeHead(303, {
@@ -4013,8 +4045,10 @@ async function handleRequest(
   }
   // The edge brought a proven https request for Den's own address: it
   // works now, so the session lives only there (NAMED).
-  if (guard.ok && guard.via === "edge" && httpsOf(req, "edge"))
+  if (guard.ok && guard.via === "edge" && httpsOf(req, "edge")) {
     NAMED.saw(hostNameOf(req));
+    LOCAL_NAMED.saw(hostNameOf(req));
+  }
   if (sendToNamedAddress(req, res, url, guard)) return;
   // SEC-1c (R8): an agent's request never passes the lock.
   if (guard.ok && guard.principal?.kind === "agent") closeLockForThisRequest();
