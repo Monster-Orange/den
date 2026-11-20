@@ -409,6 +409,7 @@
         "src/ui/server/public/panel.js"
       ],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -588,6 +589,7 @@
         "src/ui/server/public/settings.html"
       ],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
@@ -745,6 +747,7 @@
     {
       "when": ["src/ui/server/public/agent-start.js"],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -935,6 +938,7 @@
     {
       "when": ["src/ui/server/public/persona-ui.css"],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
@@ -1068,6 +1072,7 @@
     {
       "when": ["src/ui/server/public/ws-delete-agents.js"],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1174,6 +1179,7 @@
         "src/ui/server/public/workspace-picker.js"
       ],
       "run": [
+        "tests/unit/den-ui/account-area-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
