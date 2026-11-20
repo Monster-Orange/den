@@ -475,3 +475,52 @@ describe("the pieces", () => {
     expect(hubTokenFile(tmp)).toBe(path.join(tmp, "hub", "token"));
   });
 });
+
+describe("issue 726: a Hub change, from Connect and Disconnect", () => {
+  const cfg = {
+    url: HUB,
+    tokenRef: null,
+    tokenSource: { kind: "file", path: "/state/hub/token" },
+    tokenFrom: "hub.token",
+    allowTools: true,
+  } as unknown as HubConfig;
+
+  it("clause 3: a forced disconnect Hub couldn't hear is kept on record for doctor", async () => {
+    const kept: { url: string; why: string; token: string }[] = [];
+    const h = harness({
+      config: () => cfg,
+      revoke: async () => {
+        throw new HubCallError("unreachable", "Hub did not answer in 5000 ms");
+      },
+      unrevoked: (u) => void kept.push(u),
+    });
+    h.setUser({ hub: { url: HUB, token: "file:/state/hub/token" } });
+    await h.hc.disconnect();
+    expect(kept).toEqual([]);
+    await h.hc.disconnect(true);
+    expect(kept).toEqual([
+      { url: HUB, why: "Hub did not answer in 5000 ms", token: TOKEN },
+    ]);
+  });
+
+  it("clause 1: Connect binds the Hub and its company before projects are linked", async () => {
+    const order: string[] = [];
+    const h = harness({
+      rebind: async (url, company) => void order.push(`rebind ${url} ${company}`),
+      linkAfter: async () => {
+        order.push("link");
+        return { linked: [], unclear: ["web", "api"] };
+      },
+      exchange: async () => ({
+        token: TOKEN,
+        company: { slug: "acme", name: "Acme Co" },
+        hubUrl: HUB,
+      }),
+    });
+    const { q } = start(h);
+    const r = await h.hc.finish(back({ code: "c1", state: q.state }));
+    expect(r.ok).toBe(true);
+    expect(order).toEqual([`rebind ${HUB} acme`, "link"]);
+    expect(h.hc.lastResult()?.message).toMatch(/2 need your pick/);
+  });
+});
