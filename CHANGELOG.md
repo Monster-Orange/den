@@ -4,6 +4,27 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.78] - unreleased
+
+### Fixed
+
+- Agents: an agent's permission mark in the bell clears as soon as the tool it asked about runs, even when the run comes within a second of the dialog. (issue 609)
+- Hub comments reach an agent that has a background job running. An agent that started a background shell (a log watcher, a test run) and then ended its turn now gets its Hub comments at once. Before, Den held them for as long as the shell ran, sometimes for hours, saying "the agent is busy with a turn". Restarts still wait for such a job, and a person's Restart still asks first. The page, the CLI and the restart's error now say "a background job it started is still running (N min)". (issue 732)
+- Changing a Den's Hub (a new address, or another company) is clean. The comment delivery state and each project's Hub link are archived under `hub/previous/`. The old cursor and held comments never reach the new Hub, the old Hub's bell items go, and the bell says how many projects need a pick again. The old Hub token is revoked on every path: Settings, `POST /api/settings`, `hub_connect`, Connect to another Hub, Connect again for another company, and a `hub.url` edited in the config file (seen at start). A token the old Hub couldn't hear is listed in doctor (`hub:unrevoked`), and Den retries the revoke at each start. Doctor has a new `hub:previous` row. (issue 726)
+- Doctor's terminal host row no longer tells you to run a command that stops every agent. Right after an update it says Den restarts the host when agents are idle, since when, and for at most how long. If Den's restart failed, or none ran, the fix is a held write, "Restart the terminal host when agents are idle": after one Allow it waits for agents mid-turn, restarts the host and resumes them. (issue 731)
+
+### Added
+
+- Gate slots: `gate run --priority release --reason "<why>"` lets a release run that a person waits on go ahead of the other waiting runs of its kind. The MCP tool `gate_slot_request` takes `priority` and `reason` too. It never stops a running slot. One such run per kind has priority at a time, and it never passes a run that has waited `priority_pass_limit_minutes` (60). Each jump is in the slot log with who, why and the runs it passed; `gate status` and the Agents page show it. New settings: `priority_max` (1), `priority_pass_limit_minutes` (60), `priority_agents` (on). (issue 715)
+
+### Checks
+
+- Live checks for 726 (a throwaway second Den changes Hub by address, back, and by company), 732 (a background shell under the agent, from the stub's `/bg`), 731 and 715.
+
+### Migrations
+
+- None.
+
 ## [0.4.77] - 2026-11-20
 
 Fixes for issues reported by the person running Den, plus the 0.4.78 items that were ready.
