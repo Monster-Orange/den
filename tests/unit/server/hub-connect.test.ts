@@ -525,3 +525,47 @@ describe("issue 726: a Hub change, from Connect and Disconnect", () => {
     expect(h.hc.lastResult()?.message).toMatch(/2 need your pick/);
   });
 });
+
+describe("issue 726: Connect again for another company on the same Hub", () => {
+  const cfg = {
+    url: HUB,
+    tokenRef: null,
+    tokenSource: { kind: "file", path: "/state/hub/token" },
+    tokenFrom: "hub.token",
+    allowTools: true,
+  } as unknown as HubConfig;
+
+  it("clause 3: the old company's token is revoked on that Hub after the new one is kept", async () => {
+    const order: string[] = [];
+    const h = harness({
+      config: () => cfg,
+      readToken: async () => "hubi_TESTONLY_old_company",
+      exchange: async () => ({
+        token: TOKEN,
+        company: { slug: "two" },
+        hubUrl: HUB,
+      }),
+      store: async () => {
+        order.push("store");
+        return { kind: "file", source: "file:/state/hub/token", where: "x" };
+      },
+      revoke: async (url, t) => {
+        order.push(`revoke ${url} ${t === TOKEN ? "NEW" : "OLD"}`);
+        return true;
+      },
+      rebind: async (_u, c) => void order.push(`rebind ${c}`),
+    });
+    const { q } = start(h);
+    expect((await h.hc.finish(back({ code: "c", state: q.state }))).ok).toBe(
+      true,
+    );
+    expect(order).toEqual(["store", `revoke ${HUB} OLD`, "rebind two"]);
+  });
+
+  it("the same token back (nothing new): nothing is revoked", async () => {
+    const h = harness({ config: () => cfg });
+    const { q } = start(h);
+    await h.hc.finish(back({ code: "c", state: q.state }));
+    expect(h.revoked).toEqual([]);
+  });
+});
