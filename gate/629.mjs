@@ -89,6 +89,12 @@ export async function setup(ctx) {
   const s = {};
   const set = await ctx.api("/api/settings").catch(() => null);
   s.selfUpdateWas = set?.server_agent_self_update ?? null;
+  // The bed's server agent: put back as found (running, or not) in teardown.
+  try {
+    s.serverWasRunning = server(ctx).state() === "running";
+  } catch {
+    s.serverWasRunning = null;
+  }
   // A short restart wait for this check; put back byte for byte after.
   s.yml = ctx.userYml({ ui: { restart_wait_seconds: WAIT_S } });
   const b = ctx.agent(SAY);
@@ -238,8 +244,11 @@ export async function teardown(ctx, s) {
     /* none */
   }
   try {
-    // The bed's server agent stays; its screen goes back to its prompt.
+    // The bed's server agent: its screen goes back to its prompt, and it is
+    // left as found. Stopped before the check, stopped again after (a running
+    // one would hold one of the bed's agent slots for the next modules).
     server(ctx).print(PROMPT);
+    if (s?.serverWasRunning === false) server(ctx).stop();
   } catch {
     /* none */
   }
