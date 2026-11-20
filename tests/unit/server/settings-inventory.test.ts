@@ -53,6 +53,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     remote_lapse_seconds: true,
     remote_max_slots: true,
     remote_max_asks: true,
+    // Issue 715: release priority.
+    priority_max: true,
+    priority_pass_limit_minutes: true,
+    priority_agents: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -204,6 +208,9 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.cpu_slots",
         "gate_slots.overrun_margin_minutes",
+        "gate_slots.priority_agents",
+        "gate_slots.priority_max",
+        "gate_slots.priority_pass_limit_minutes",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
