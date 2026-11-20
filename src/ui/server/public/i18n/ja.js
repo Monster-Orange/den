@@ -1218,6 +1218,7 @@
     "ag.state.interrupted": "中断",
     "ag.why.stopped": "{time} に停止しました",
     "ag.why.interrupted": "中断: {name} が再起動しました",
+    "ag.why.restartFailed": "再起動後に戻りませんでした: {why}",
     "ag.why.exited": "終了しました",
     "ag.why.exitedCode": "終了しました（コード {code}）",
     "ag.fresh": "新しく始める",

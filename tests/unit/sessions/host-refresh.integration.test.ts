@@ -411,6 +411,57 @@ describe("issue 597: the host restarts only when its code or module changed", ()
 });
 
 /**
+ * Issue 631: every agent running before the restart is in the row's
+ * resumed, failed or cut list; a resume that ended counts as failed.
+ */
+describe("issue 631: no agent goes missing from the restart's lists", () => {
+  it("an agent running at the stop, though not at the last look (a relaunch in between), is resumed", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    let looks = 0;
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      // The first look misses a2: it is between its stop and its start.
+      running: async () => (++looks === 1 ? ["a1"] : ["a1", "a2"]),
+    });
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted", resumed: ["a1", "a2"] });
+  }, 60_000);
+
+  it("an agent whose session the host had at its stop is resumed, though no look listed it", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      running: async () => ["a1"],
+      agentsOf: async () => ["a1", "a3"],
+    } as Partial<RefreshDeps>);
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted", resumed: ["a1", "a3"] });
+  }, 60_000);
+
+  it("a resume that ended within sessions.host_restart_check_seconds is failed, with its reason", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      running: async () => ["a1", "a2"],
+      checkMs: 200,
+      ended: async (ids: readonly string[]) =>
+        ids.includes("a2")
+          ? [{ agent: "a2", why: "exited (1) after its resume" }]
+          : [],
+    } as Partial<RefreshDeps>);
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({
+      did: "restarted",
+      resumed: ["a1"],
+      failed: [{ agent: "a2", why: "exited (1) after its resume" }],
+    });
+  }, 60_000);
+});
+
+/**
  * Issue 603: a security release installs while the Den agent is mid-turn.
  * Its turn lives in the terminal host, a process of its own. The whole
  * path runs here: the update check's pass, den_update (fake npm and

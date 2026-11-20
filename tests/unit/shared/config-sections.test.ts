@@ -132,4 +132,20 @@ describe("agents: and sessions: problems are ConfigErrors", () => {
       } as unknown as DenConfig),
     ).toThrow(/sessions.host_restart_note/);
   });
+
+  it("issue 631: sessions.host_restart_check_seconds, 30 by default", () => {
+    expect(readSessionsConfig({} as DenConfig).hostRestartCheckSeconds).toBe(
+      30,
+    );
+    expect(
+      readSessionsConfig({
+        sessions: { host_restart_check_seconds: 0 },
+      } as unknown as DenConfig).hostRestartCheckSeconds,
+    ).toBe(0);
+    expect(() =>
+      readSessionsConfig({
+        sessions: { host_restart_check_seconds: -5 },
+      } as unknown as DenConfig),
+    ).toThrow(/sessions.host_restart_check_seconds/);
+  });
 });

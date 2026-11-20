@@ -1087,6 +1087,11 @@ export interface AgentRow {
   endedAt?: string;
   /** When Den found it interrupted by a restart. */
   interruptedAt?: string;
+  /**
+   * Issues 124, 631: Den restarted it (or its terminal host) and it
+   * didn't come back: when, and why.
+   */
+  restartFailed?: { at: string; why: string };
   /** Its persona resumes on its own after a restart (AG-14.3). */
   autoResume?: boolean;
   /** D59: this agent's own "Resume after a restart" (unset: its persona's). */
@@ -1220,6 +1225,10 @@ export function agentRows(
       ...(rec.stoppedAt ? { stoppedAt: rec.stoppedAt } : {}),
       ...(rec.endedAt ? { endedAt: rec.endedAt } : {}),
       ...(rec.interruptedAt ? { interruptedAt: rec.interruptedAt } : {}),
+      // Issue 631: why it didn't come back, while it hasn't since.
+      ...(rec.restartFailed && isStoppedState(st)
+        ? { restartFailed: { ...rec.restartFailed } }
+        : {}),
       ...(rec.outcome ? { outcome: rec.outcome } : {}),
       ...(rec.usage ? { usage: rec.usage } : {}),
       ...(rot ? { rotation: rot } : {}),
@@ -2786,6 +2795,32 @@ function sessionOf(
   rec: AgentRecord,
 ): SessionInfo | undefined {
   return sessions.find((s) => s.ref.id === rec.session.id);
+}
+
+/**
+ * Issue 631: the session `rec` runs in now: its record's, else a live one
+ * under its own session name (the name is the agent's alone), when its
+ * record still names an earlier session of its own.
+ */
+function liveSessionOf(
+  sessions: SessionInfo[],
+  rec: AgentRecord,
+): SessionInfo | undefined {
+  const own = sessionOf(sessions, rec);
+  if (own && !own.exited) return own;
+  return sessions.find((s) => !s.exited && s.name === rec.sessionName) ?? own;
+}
+
+/**
+ * Issue 631: whether `rec`'s conversation was launched with a first prompt
+ * (a relaunch from its handoff, den#4): it began then, so it is always
+ * resumed, never started afresh under its id. The record keeps the
+ * conversation each relaunch ended; the current one is none of them.
+ */
+export function launchedFromHandoff(rec: AgentRecord): boolean {
+  const token = rec.resumeToken;
+  if (!token || !rec.launched || !rec.rotations?.length) return false;
+  return rec.rotations.every((x) => x.conversation !== token);
 }
 
 /**
@@ -5847,10 +5882,14 @@ export async function resumeAgent(
       // launching: a conversation on disk, or a last session someone typed
       // into, resumes; neither starts fresh at once. Without that, the record
       // decides: launched on this token, or a session the host lost.
-      const known = rt.conversationExists
-        ? Boolean(token && rt.conversationExists(token, d.env)) ||
-          Boolean(old?.prompted)
-        : Boolean(rec.launched) || !old || Boolean(old.prompted);
+      // Issue 631: a conversation relaunched from a handoff began with it
+      // (its first prompt, an argument: nobody typed it), so it resumes.
+      const known =
+        launchedFromHandoff(rec) ||
+        (rt.conversationExists
+          ? Boolean(token && rt.conversationExists(token, d.env)) ||
+            Boolean(old?.prompted)
+          : Boolean(rec.launched) || !old || Boolean(old.prompted));
       const launchAs = (asFresh: boolean) => {
         const out = launchOrThrow(() =>
           asFresh ? rt.launch(at) : rt.resume!(at),
@@ -7327,9 +7366,105 @@ export async function markInterrupted(
 /** Issue 563: the agents whose session runs now (ids). */
 export async function runningAgentIds(d: AgentsResolved): Promise<string[]> {
   const sessions = await hostSessions(d);
+  // Issue 631: by the session it runs in, its record's or its name's.
   return listRecords(d.stateDir())
-    .filter((rec) => rowState(rec, sessionOf(sessions, rec)) === "running")
+    .filter((rec) => rowState(rec, liveSessionOf(sessions, rec)) === "running")
     .map((rec) => rec.id);
+}
+
+/**
+ * Issue 631: the agents `sessions` (a host's, at its stop) belong to: a
+ * live session that is a record's, or carries its session name.
+ */
+export function agentsOfSessions(
+  d: AgentsResolved,
+  sessions: readonly SessionInfo[],
+): string[] {
+  const live = sessions.filter((s) => !s.exited);
+  return listRecords(d.stateDir())
+    .filter((rec) =>
+      live.some(
+        (s) => s.ref.id === rec.session.id || s.name === rec.sessionName,
+      ),
+    )
+    .map((rec) => rec.id);
+}
+
+/**
+ * Issue 631: of `ids` (resumed after a terminal host restart), the agents
+ * whose session ended since, each with why: its state ("exited (1)") and
+ * its last printed line (secret-shaped values redacted).
+ */
+export async function endedAfterHostRestart(
+  d: AgentsResolved,
+  ids: readonly string[],
+): Promise<{ agent: string; why: string }[]> {
+  const c = await d.connectExisting();
+  if (!c) return [];
+  try {
+    const sessions = await c.list();
+    const out: { agent: string; why: string }[] = [];
+    for (const id of ids) {
+      const rec = readRecord(d.stateDir(), id);
+      if (!rec) continue;
+      const s = sessionOf(sessions, rec);
+      const st = rowState(rec, s);
+      // Running, or stopped by someone since: not a resume that failed.
+      if (!isStoppedState(st) || st === "stopped") continue;
+      let last = "";
+      if (s)
+        try {
+          const lines = plainLines(
+            (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8"),
+          );
+          last = lines.length ? redactSecrets(lines[lines.length - 1]) : "";
+        } catch {
+          /* its output is gone: its state says enough */
+        }
+      out.push({
+        agent: id,
+        why: `${st} after its resume${last ? `: ${last}` : ""}`,
+      });
+    }
+    return out;
+  } finally {
+    c.close();
+  }
+}
+
+/**
+ * Issue 631: agent `id` didn't come back after the terminal host
+ * restarted. Marked (Resume brings it back; Den's own restore after the
+ * restart doesn't try it again unasked) and a "needs you" item in the
+ * bell says why, as for a restart Den made (issue 124).
+ */
+export function noteNotBackAfterHostRestart(
+  d: AgentsResolved,
+  id: string,
+  why: string,
+): void {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec) return;
+  const now = new Date().toISOString();
+  const said = `the terminal host restarted; ${why}`;
+  writeRecord(d.stateDir(), {
+    ...rec,
+    restartFailed: { at: now, why: said },
+    interruptedAt: rec.interruptedAt ?? now,
+  });
+  const name = rec.displayName || rec.persona || id;
+  try {
+    new NotificationStore(d.stateDir()).add({
+      kind: "waiting",
+      subject: `agent:${id}`,
+      scope: `workspace/${rec.workspace}`,
+      text: `${name} didn't come back after a restart: ${said}`,
+      msg: { key: "bell.m.restartFailed", vars: { name, why: said } },
+      link: `/agents?ws=${encodeURIComponent(rec.workspace)}`,
+    });
+  } catch {
+    /* best effort: the audit row and the row's state still say so */
+  }
 }
 
 /** Issue 563: of `ids`, the agents mid-turn now (in doubt: mid-turn). */
@@ -7365,7 +7500,13 @@ export async function resumeAfterHostRestart(
   const r = rotated
     ? await relaunchAgent(d, rec.id)
     : await resumeAgent(d, rec.id);
-  if (r.early) throw new Error("exited at once");
+  // Issue 631: with its code and last line, for the row and the bell.
+  if (r.early) {
+    const code =
+      r.early.exitCode === undefined ? "" : ` (exit ${r.early.exitCode})`;
+    const last = r.early.tail[r.early.tail.length - 1];
+    throw new Error(`exited at once${code}${last ? `: ${last}` : ""}`);
+  }
   if (note && !rotated)
     void send(d, r.info.ref.id, r.rec.runtime, note).catch(() => false);
 }

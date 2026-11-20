@@ -2121,10 +2121,17 @@ export interface SessionsConfig {
    * line on resume, to check its last step and carry on (default true).
    */
   host_restart_note?: boolean;
+  /**
+   * Issue 631: how long after a terminal host restart's resumes Den looks
+   * for agents that ended since (a resume that didn't hold counts as
+   * failed, and the bell says so) (default 30; 0: no look).
+   */
+  host_restart_check_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
 export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
+export const DEFAULT_HOST_RESTART_CHECK_SECONDS = 30;
 export const DEFAULT_PTY_WARN_ABOVE = 400;
 export const DEFAULT_PTY_MACHINE_WARN_PERCENT = 90;
 
@@ -2137,6 +2144,7 @@ export interface ResolvedSessionsConfig {
   ptyMachineWarnPercent: number;
   hostRestartWaitSeconds: number;
   hostRestartNote: boolean;
+  hostRestartCheckSeconds: number;
 }
 
 const SESSIONS_KEYS = [
@@ -2147,6 +2155,7 @@ const SESSIONS_KEYS = [
   "pty_machine_warn_percent",
   "host_restart_wait_seconds",
   "host_restart_note",
+  "host_restart_check_seconds",
 ];
 
 /**
@@ -2176,7 +2185,21 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     ptyMachineWarnPercent: DEFAULT_PTY_MACHINE_WARN_PERCENT,
     hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
     hostRestartNote: true,
+    hostRestartCheckSeconds: DEFAULT_HOST_RESTART_CHECK_SECONDS,
   };
+  const check = raw.host_restart_check_seconds;
+  if (check !== undefined) {
+    if (
+      typeof check !== "number" ||
+      !Number.isFinite(check) ||
+      check < 0 ||
+      check > 3600
+    )
+      throw new Error(
+        `sessions.host_restart_check_seconds: must be a number of seconds, 0 to 3600 (got ${JSON.stringify(check)})`,
+      );
+    out.hostRestartCheckSeconds = check;
+  }
   const note = raw.host_restart_note;
   if (note !== undefined) {
     if (typeof note !== "boolean")
