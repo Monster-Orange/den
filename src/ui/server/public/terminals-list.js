@@ -50,7 +50,9 @@ function tone(r) {
  * One row: a single button over the whole row opens the terminal; an
  * exited one is dimmed, with Restart and Remove beside it (never inside
  * it, so they don't open it). A running one has no Remove (Stop first).
- * `o`: { t, when(iso) → HTML, showProject, open, current, used }.
+ * `o`: { t, when(iso) → plain text, showProject, open, current, used }.
+ * The time is text inside the words (one translated string, never split
+ * by a <time> element).
  */
 export function terminalRowHtml(r, o) {
   const t = o.t;
@@ -73,7 +75,7 @@ export function terminalRowHtml(r, o) {
     `<span class="nm">${esc(name)}</span><span class="st">${esc(state)}</span>` +
     (meta ? `<span class="meta">${meta}</span>` : "") +
     (when
-      ? `<span class="meta when">${t("tm.lastUsed", { when })}</span>`
+      ? `<span class="meta when">${esc(t("tm.lastUsed", { when }))}</span>`
       : "") +
     `</button>`;
   const acts = exited

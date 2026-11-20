@@ -155,9 +155,16 @@ async function open(next: string): Promise<Page> {
   return p;
 }
 
-/** The projects of the list's groups, and the tabs' ids. */
+/**
+ * The projects the list shows (its running groups' and its stopped rows'),
+ * and the tabs' ids. Issue 482: a project whose only running session was
+ * a shell has no running group on Agents now; its stopped agents still
+ * show, in Stopped.
+ */
 const listed = (p: Page) =>
-  p.$$eval("#agl .wsg", (xs) => xs.map((x) => (x as HTMLElement).dataset.ws));
+  p.$$eval("#agl .wsg[data-ws], #agl [data-stopped] .agst[data-ws]", (xs) => [
+    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
+  ]);
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),
@@ -314,8 +321,12 @@ describe("#80: scope wins", () => {
     await p.waitForSelector(`.pane[data-id="${sid.ada}"]`);
     // A project switch …
     await chooseInTopBar(p, "south");
+    await p.waitForSelector(
+      `.pane[data-id="${sid.bo}"]:not([hidden]), .pane[data-id="${sid.cy}"]:not([hidden])`,
+    );
+    // … a tab switch (bo, south's other agent, then bo again) …
+    await p.click(`#agl .agr[data-id="${sid.bo}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
-    // … a tab switch (south's other agent, then bo again) …
     await p.click(`#agl .agr[data-id="${sid.cy}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.cy}"]:not([hidden])`);
     await p.click(`.agtab[data-id="${sid.bo}"]`);

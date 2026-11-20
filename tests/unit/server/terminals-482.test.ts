@@ -119,12 +119,15 @@ describe("clause 2: the rows, by project filter", () => {
   });
 
   it("a row says its folder, running or exited, and when it was last used; All projects adds the project", () => {
-    const o = { t: tr, when: (iso: string) => `<time>${iso}</time>` };
+    const o = { t: tr, when: (iso: string) => `at ${iso}` };
     const all = terminalRowHtml(rows[1], { ...o, showProject: true });
     expect(all).toContain("~/north/api");
     expect(all).toContain("north");
     expect(all).toContain("ag.state.running");
-    expect(all).toContain(`tm.lastUsed{"when":"<time>${at("10:00")}</time>"}`);
+    // Escaped, one string: the time is text inside the words.
+    expect(all).toContain(
+      `tm.lastUsed{&quot;when&quot;:&quot;at ${at("10:00")}&quot;}`,
+    );
     const one = terminalRowHtml(rows[1], { ...o, showProject: false });
     expect(one).not.toMatch(/class="proj"/);
     expect(all).toMatch(/class="proj"/);

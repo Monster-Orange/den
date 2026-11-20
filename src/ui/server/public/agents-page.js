@@ -1223,7 +1223,7 @@ function terminalsBodyHtml() {
   const row = (r) =>
     terminalRowHtml(r, {
       t,
-      when: agoText,
+      when: agoPlain,
       showProject,
       open: st.open.includes(r.id),
       current: r.id === st.cur,
@@ -3808,18 +3808,12 @@ async function removeShell(r, button) {
 async function restartShell(r, button) {
   if (!exitedShell(r)) return;
   const url = `/api/workspaces/${encodeURIComponent(r.workspace)}/sessions`;
-  const close = `/api/sessions/${encodeURIComponent(r.id)}/close`;
+  // One request (the pop-up's id runs once): the server starts the new
+  // one, then forgets the exited one it replaces.
+  const body = { ...(r.cwd ? { cwd: r.cwd } : {}), replaces: r.id };
   const out = await window.denShell.busyAction(
     "open-terminal",
-    async (headers) => {
-      const o = await api("POST", url, r.cwd ? { cwd: r.cwd } : {}, {
-        headers,
-      });
-      // The exited one goes once the new one runs; if that fails, its row
-      // stays, with its own Remove.
-      await api("POST", close, undefined, { headers }).catch(() => {});
-      return o;
-    },
+    (headers) => api("POST", url, body, { headers }),
     { button },
   );
   const id = out?.session?.id;
@@ -4039,6 +4033,16 @@ function agoText(iso) {
   const ms = Date.now() - Date.parse(iso);
   if (!Number.isFinite(ms)) return "";
   return timeHtml(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
+}
+
+/**
+ * Issue 482: agoText as plain text, for a time inside a translated
+ * sentence ("Last used 3 minutes ago"), in the person's zone.
+ */
+function agoPlain(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  return formatTime(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
 }
 
 /** The folder a conversation ran in, inside the workspace's when it is. */
