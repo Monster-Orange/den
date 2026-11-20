@@ -3555,9 +3555,23 @@ function otherCopiesHtml(r) {
 }
 
 /** The Runtimes row: the list, a workspace selector, Set path… and Clear. */
+/**
+ * Issue 479: the runtime row a link opens (?runtime=<id>), and the project
+ * whose paths to show (?project=<ws>, when it is one; else every project).
+ */
+export function runtimeFocusFrom(search, wss) {
+  const p = new URLSearchParams(search || "");
+  const ws = p.get("project") || "";
+  return {
+    runtime: p.get("runtime") || "",
+    ws: (wss || []).includes(ws) ? ws : "",
+  };
+}
+
 function renderRuntimes(host, ctx) {
   const wss = ctx.workspaces || [];
-  let ws = "";
+  const focus = runtimeFocusFrom(globalThis.location?.search, wss);
+  let ws = focus.ws;
   const draw = (rows, note) => {
     host.innerHTML =
       `<div class="rt-scope"><label for="rt-ws">${escR(L("set.ui.rt.pathsFor", "Paths for"))}</label> <select id="rt-ws" data-focus-key="rt-ws">` +
@@ -3587,10 +3601,11 @@ function renderRuntimes(host, ctx) {
         "GET",
         `/api/agents/runtimes${ws ? `?workspace=${encodeURIComponent(ws)}` : ""}`,
       )
-      .then((b) =>
+      .then((b) => {
         // Only what has a CLI to find: generic is the persona's argv.
-        draw((b?.runtimes || []).filter((r) => r.setting)),
-      )
+        draw((b?.runtimes || []).filter((r) => r.setting));
+        showFocused();
+      })
       .catch((e) =>
         draw(
           [],
@@ -3598,6 +3613,20 @@ function renderRuntimes(host, ctx) {
         ),
       );
   };
+  // Issue 479: a link to a runtime's row (a refused start): scrolled to
+  // and marked once.
+  function showFocused() {
+    if (!focus.runtime) return;
+    const row = [...host.querySelectorAll(".rt[data-runtime]")].find(
+      (x) => x.dataset.runtime === focus.runtime,
+    );
+    focus.runtime = "";
+    if (!row) return;
+    row.dataset.focused = "true";
+    row.setAttribute("tabindex", "-1");
+    row.scrollIntoView?.({ block: "center" });
+    row.focus?.({ preventScroll: true });
+  }
   host.addEventListener("change", (e) => {
     if (e.target.id !== "rt-ws") return;
     ws = e.target.value;

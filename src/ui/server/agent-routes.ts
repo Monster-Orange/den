@@ -355,6 +355,8 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
         ...(e.hints.length ? { hints: e.hints } : {}),
         ...(e.running ? { running: e.running } : {}),
         ...(e.job ? { job: e.job } : {}),
+        // Issue 479: the quarantined copy and the choices, for the page.
+        ...(e.quarantined ? { quarantined: e.quarantined } : {}),
       },
       e.status,
     );
@@ -1801,8 +1803,23 @@ async function plainSession(
       throw new AgentError("an agent can't start a session from the page", {
         status: 403,
       });
-    const { info } = await startPlainSession(d, ws);
-    what = `plain session ${info.name} in ${ws}`;
+    // Issue 479: an optional { cwd } (Open a terminal there). No body,
+    // or none of it: the project's folder, as before.
+    const raw = await readBody(req).catch(() => "");
+    if (raw.length > MAX_BODY)
+      throw new AgentError("request too large", { status: 413, usage: true });
+    let v: unknown;
+    try {
+      v = JSON.parse(raw || "{}");
+    } catch {
+      throw new AgentError("invalid JSON", { usage: true });
+    }
+    const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    if (b.cwd !== undefined && typeof b.cwd !== "string")
+      throw new AgentError("cwd must be a string", { usage: true });
+    const cwd = b.cwd as string | undefined;
+    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {
       ok: true,

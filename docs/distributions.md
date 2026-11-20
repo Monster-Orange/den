@@ -5347,6 +5347,27 @@ copy in use gets its version command. On macOS a copy carrying the
 makes macOS warn; it shows "quarantined, not run" instead. The attribute
 is read with `xattr`, never by running the file.
 
+Starting an agent on a quarantined copy stops before anything runs
+(issue 479): start, resume, restart, move, persona change and relaunch
+are refused with `runtime_quarantined` (409), and an agent already
+running is never stopped for a restart that couldn't start it again.
+The refusal names the path and the choices: another copy found that
+isn't quarantined (set `agents.runtimes.<id>.bin` to it), or clear this
+one yourself (run it once from a terminal and allow it when macOS asks).
+The Start dialog says so before Start, with the path as selectable
+text and **Copy path** (the page may be a browser on another machine,
+so nothing opens a folder on the Den machine), **Open a terminal
+there** (Den's own terminal, in this browser: a shell in the project
+shown, started in the copy's folder, through
+`POST /api/workspaces/<ws>/sessions` with `{ "cwd": "<folder>" }`; a
+person only), **Use this** for each
+such copy, and **Check again**. A refused resume from an agent's row
+offers **Open Settings › Runtimes**, which opens
+`/settings?runtime=<id>#agents.runtimes` at that runtime's row (with
+`&project=<ws>` when a project's setting chose the copy). An agent
+starting another (the CLI, or MCP) gets the same refusal as its error;
+nothing retries it. Den never removes the attribute itself.
+
 Paths are this machine's only: Den reads them from `config/local` files,
 never from the distribution's config. **Settings › Agents › Runtimes**
 shows each runtime's status, version, the path in use and its source,
