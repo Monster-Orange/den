@@ -183,6 +183,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "a person's own ask, from Settings › Embedding",
   },
+  gate_runner_token_create: {
+    risk: "critical",
+    areas: ["secrets"],
+    why: "makes a token a CI runner uses to take gate slots on this machine",
+  },
   approval_policy: {
     risk: "critical",
     why: "changes the approval policy itself: a person's only",

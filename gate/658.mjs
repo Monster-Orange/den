@@ -3,12 +3,15 @@
 //
 // Clauses 1 and 2: a stub agent runs and writes its handoff (as an agent
 // does: from inside its own session, into its files folder, with the five
-// headings and a token new each run). It is stopped, and relaunched from
-// that handoff (POST .../relaunch {fromHandoff: true}, as the ⋯ menu
-// does), with the stub's next start in mode "unwritten"
+// headings and a token new each run). It is stopped and, when its
+// rotation counts compactions, rotated (rotation.json at its limit, as
+// Den's hook writes it) and relaunched (POST .../relaunch); otherwise
+// relaunched from that handoff ({fromHandoff: true}, as the ⋯ menu does).
+// Either way the stub's next start is in mode "unwritten"
 // (ctx.stub.nextStart): it exits 1 before writing any conversation.
 // Clause 2: handoff.md comes back (with the token) and the rotation is
-// due again (Den's look, or its Resume). Clause 1: Resume (POST
+// due again; from a handoff with none due, it is as it was before (a
+// relaunch from a handoff never makes one due). Clause 1: Resume (POST
 // .../resume) then answers 200, never 502, and starts the agent from the
 // handoff: the answer says it relaunched or used the handoff, the agent
 // runs, its new conversation is written, and handoff.md is kept aside
@@ -122,24 +125,58 @@ async function withHandoff(ctx, id) {
   if (!r.onFile) return r;
   a.stop();
   await ctx.until(() => a.state() !== "running", 30000);
-  // The relaunch's start writes nothing and exits 1.
   r.firstToken = recordOf(ctx, id)?.resumeToken ?? null;
+  // Rotate it, as Den's compaction hook does (the count reaches its
+  // limit), when its rotation counts at all (after > 0). Otherwise none
+  // can be due: it relaunches from its handoff ({ fromHandoff: true }) and
+  // its rotation must come back as it was before.
+  const pre = parse(ctx.readBed(files(id, "rotation.json")));
+  if (pre && pre.after > 0 && pre.conversation === r.firstToken) {
+    const due = JSON.stringify({
+      ...pre,
+      compactions: Math.max(pre.compactions ?? 0, pre.after),
+      due: "compactions",
+      dueAt: new Date().toISOString(),
+    });
+    await a.sh(`printf '%s' '${due}' > '${dir}/rotation.json'`, 30000);
+    r.rotated = !!parse(ctx.readBed(files(id, "rotation.json")))?.due;
+  }
+  const was = parse(ctx.readBed(files(id, "rotation.json")));
+  r.rotationBefore = was
+    ? { due: was.due ?? null, relaunchWanted: was.relaunchWanted ?? null }
+    : null;
+  const rotOk = (rot) =>
+    r.rotated
+      ? !!rot?.due
+      : !!rot === !!was &&
+        (rot?.due ?? null) === (r.rotationBefore?.due ?? null) &&
+        (rot?.relaunchWanted ?? null) ===
+          (r.rotationBefore?.relaunchWanted ?? null);
+  // The relaunch's start writes nothing and exits 1.
   ctx.stub.nextStart({ mode: "unwritten" });
-  r.relaunch = await verb(ctx, r.ws, id, "relaunch", { fromHandoff: true });
+  r.relaunch = await verb(
+    ctx,
+    r.ws,
+    id,
+    "relaunch",
+    r.rotated ? {} : { fromHandoff: true },
+  );
   r.relaunchToken = recordOf(ctx, id)?.resumeToken ?? null;
   r.relaunchExit = JSON.stringify(
     (ctx.stubLog(id, { k: "exit" }) ?? []).map((x) => x?.v),
   ).slice(0, 120);
-  // Clause 2: handoff.md back, the rotation due again.
+  // Clause 2: handoff.md back, the rotation due again (or, from a
+  // handoff with none due, as it was).
   r.backMs = await ctx.until(() => {
     const h = ctx.readBed(files(id, "handoff.md")) ?? "";
     const rot = parse(ctx.readBed(files(id, "rotation.json")));
-    return h.includes(r.token) && !!rot?.due;
+    return h.includes(r.token) && rotOk(rot);
   }, BACK_MS);
   r.handoffBack = (ctx.readBed(files(id, "handoff.md")) ?? "").includes(
     r.token,
   );
   const rot = parse(ctx.readBed(files(id, "rotation.json")));
+  r.rotationOk = rotOk(rot);
   r.rotation = rot
     ? { due: rot.due ?? null, relaunchWanted: rot.relaunchWanted ?? null }
     : null;
@@ -243,7 +280,7 @@ export function expect(r) {
         : null;
   const relaunchSaid = `relaunch ${JSON.stringify(h.relaunch)}, stub exit ${h.relaunchExit} (conversation ${h.firstToken} → ${h.relaunchToken})`;
   const c2 =
-    !pre && h.backMs != null && h.handoffBack === true && !!h.rotation?.due;
+    !pre && h.backMs != null && h.handoffBack === true && h.rotationOk === true;
   const c1 =
     !pre &&
     h.backMs != null &&
@@ -276,7 +313,7 @@ export function expect(r) {
       ok: c2,
       detail:
         pre ??
-        `${relaunchSaid}; handoff.md back ${h.handoffBack} (${h.backMs} ms); rotation ${JSON.stringify(h.rotation)}`,
+        `${relaunchSaid}; ${h.rotated ? "rotated first (due on compactions)" : `none due (from its handoff), rotation before ${JSON.stringify(h.rotationBefore)}`}; handoff.md back ${h.handoffBack} (${h.backMs} ms); rotation ${JSON.stringify(h.rotation)}`,
     },
     {
       clause: clauses[2],

@@ -97,6 +97,9 @@ const refuse = (
 
 const str = (v: unknown, max = 300) =>
   typeof v === "string" && v ? v.slice(0, max) : undefined;
+/** Issue 609: a tool input's hash (attention-hook.ts inputKey), or undefined. */
+const inputKeyOf = (v: unknown) =>
+  typeof v === "string" && /^[0-9a-f]{16}$/.test(v) ? v : undefined;
 
 function whichOf(b: Record<string, unknown>): Which | null {
   if (b.all === true) return { all: true };
@@ -179,6 +182,8 @@ export async function handleNotificationRoutes(
             // Issue 327: what the wait saw (a tool, a notice), and the
             // idle notice that says no dialog is open.
             what: str(b?.what, 80),
+            // Issue 609: which tool use a dialog is for (its input's hash).
+            input: inputKeyOf(b?.input),
             idle: b?.idle === true,
             hooked: b?.hooked === true,
           }
@@ -187,6 +192,9 @@ export async function handleNotificationRoutes(
               event: "resumed",
               from:
                 b?.from === "prompt" || b?.from === "session" ? b.from : "tool",
+              // Issue 609: the tool that ran, so its own dialog clears.
+              what: str(b?.what, 80),
+              input: inputKeyOf(b?.input),
             }
           : {
               event: "finished",

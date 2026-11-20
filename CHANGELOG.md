@@ -4,7 +4,7 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.77] - unreleased
+## [0.4.77] - 2026-11-20
 
 Fixes for issues reported by the person running Den, plus the 0.4.78 items that were ready.
 
@@ -48,10 +48,15 @@ Fixes for issues reported by the person running Den, plus the 0.4.78 items that 
 - Live checks for issues 701, 658, 659, 666 and 699. The 403 check reaches the bed from the host; the 479 check opens the Stopped fold. A check that fetches the browser's address from the host fails the shape check.
 - The live check for issue 631 skips, with its reason, when the kept terminal host already ran the installed version. A live check that answers a clause twice is refused.
 - The live check for issue 629 answers the dialog with a hook, and waits for it.
+- Tested: the bed's checks on 0.4.77-dev.3 passed for every Den clause (bed report v0.4.77-dev.3-shadow). Two clauses (701's third, 629's second) could not read the comment's "queued" answer, because Hub's delivery list doesn't show it yet. The held comments did leave Hub's unanswered list, which shows Den answered them. The check is being changed to read that.
 
 ### Migrations
 
 - None required. Every new setting has a default.
+
+### Known issues
+
+- Bell: on a busy machine, a permission dialog answered within a second can leave its bell item up for a minute, and the agent's next dialog may not show in the bell until it clears. This was already in 0.4.76; the fix is in 0.4.78. (issue 609)
 
 ## [0.4.76] - 2026-11-19
 

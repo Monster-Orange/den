@@ -6,13 +6,15 @@
  * ~/Library/Application Support/den/gate-slots (macOS), else
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
- *   settings.json     cpu_slots, overrun_margin_minutes
+ *   settings.json     cpu_slots, overrun_margin_minutes,
+ *                     remote_renew_seconds, remote_lapse_seconds
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
- *                     back, overdue, ended early (Coach reads time lost)
+ *                     back (process gone, or lease lapsed), overdue, ended
+ *                     early (Coach reads time lost)
  *   lock/             held while the grant decision is made
  *
- * Every read takes back a holder whose processes are gone, at once, and
- * records it; it flags (once) a holder past its estimate plus the margin.
+ * Every read takes back a holder whose processes are gone (or, issue 621,
+ * a runner whose lease lapsed), at once, and records it; it flags (once) a holder past its estimate plus the margin.
  * Nothing here kills a process or takes a live holder's slot.
  */
 import { randomBytes } from "crypto";
@@ -26,7 +28,9 @@ import {
   expectedStart,
   gone,
   grants,
+  lapsed,
   overrun,
+  queuePlace,
   type GateEntry,
   type GateKind,
   type GateSettings,
@@ -55,6 +59,10 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
 export type GateSettingsPatch = {
   cpu_slots?: number | null;
   overrun_margin_minutes?: number | null;
+  remote_renew_seconds?: number | null;
+  remote_lapse_seconds?: number | null;
+  remote_max_slots?: number | null;
+  remote_max_asks?: number | null;
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -64,6 +72,10 @@ export const GATE_LIMITS: Record<
 > = {
   cpu_slots: { min: 1, max: 64, int: true },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  remote_renew_seconds: { min: 5, max: 3600, int: true },
+  remote_lapse_seconds: { min: 10, max: 24 * 3600, int: true },
+  remote_max_slots: { min: 1, max: 256, int: true },
+  remote_max_asks: { min: 1, max: 256, int: true },
 };
 
 /**
@@ -107,6 +119,8 @@ export type GateEvent =
   | "granted"
   | "released"
   | "taken-back-gone"
+  | "taken-back-lapsed"
+  | "taken-back-revoked"
   | "overdue"
   | "ended-early";
 
@@ -125,6 +139,8 @@ export interface GateEventRow {
   expectedStart?: string;
   /** ended-early: who ended it. */
   by?: string;
+  /** Issue 621: a runner's slot: the runner token's name. */
+  runner?: string;
 }
 
 const isAlive = (pid: number): boolean => {
@@ -143,6 +159,21 @@ export interface GateStoreOpts {
   /** How long to wait for the lock before giving up, ms. */
   lockWaitMs?: number;
 }
+
+/**
+ * Issue 621: renew and lapse, seconds. A lapse shorter than two renews
+ * would take back a runner that renews on time: it is read as two.
+ */
+function leaseTimes(renew: number, lapse: number) {
+  const r = Math.floor(renew);
+  return {
+    remoteRenewSeconds: r,
+    remoteLapseSeconds: Math.max(Math.floor(lapse), 2 * r),
+  };
+}
+
+/** Issue 621: a runner token has as many slots as it may. */
+export class GateFullError extends Error {}
 
 export class GateStore {
   readonly dir: string;
@@ -181,6 +212,16 @@ export class GateStore {
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
+        ),
+        ...leaseTimes(
+          num("remote_renew_seconds", GATE_DEFAULTS.remoteRenewSeconds),
+          num("remote_lapse_seconds", GATE_DEFAULTS.remoteLapseSeconds),
+        ),
+        remoteMaxSlots: Math.floor(
+          num("remote_max_slots", GATE_DEFAULTS.remoteMaxSlots),
+        ),
+        remoteMaxAsks: Math.floor(
+          num("remote_max_asks", GATE_DEFAULTS.remoteMaxAsks),
         ),
       };
     } catch {
@@ -222,6 +263,7 @@ export class GateStore {
       kind: e.kind,
       who: e.who,
       label: e.label,
+      ...(e.remote ? { runner: e.remote.runner } : {}),
       ...row,
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
@@ -351,12 +393,16 @@ export class GateStore {
     const at = new Date(now).toISOString();
     const entries: GateEntry[] = [];
     for (const e of this.readAll()) {
-      if (!gone(e, this.alive)) {
+      const lapse = lapsed(e, now);
+      if (!lapse && !gone(e, this.alive)) {
         entries.push(e);
         continue;
       }
       this.remove(e.id);
-      this.record(e, { event: "taken-back-gone", ...this.heldFor(e, now) });
+      this.record(e, {
+        event: lapse ? "taken-back-lapsed" : "taken-back-gone",
+        ...this.heldFor(e, now),
+      });
     }
     for (const id of grants(entries, s)) {
       const e = entries.find((x) => x.id === id)!;
@@ -428,6 +474,132 @@ export class GateStore {
         });
       return now;
     });
+  }
+
+  /**
+   * Issue 621: a runner (a CI job in a VM, over HTTP) asks. It holds by
+   * lease: renew() within remoteLapseSeconds, or it is taken back. Same
+   * queue, kinds and slot log as a local ask.
+   */
+  askRemote(o: {
+    kind: GateKind;
+    who: string;
+    label: string;
+    estimateMin: number;
+    runner: string;
+    tokenId: string;
+  }): GateEntry {
+    return this.locked(() => {
+      // One token's live slots are capped (a Setting): a retrying or
+      // runaway runner can't fill the queue.
+      const max = this.settings().remoteMaxSlots;
+      if (
+        this.readAll().filter((x) => x.remote?.tokenId === o.tokenId).length >=
+        max
+      )
+        throw new GateFullError(
+          `this runner has ${max} gate slots already (held or waiting); release one, or raise the limit in Settings`,
+        );
+      const e: GateEntry = {
+        id: `${o.kind}-${randomBytes(5).toString("hex")}`,
+        kind: o.kind,
+        who: o.who.slice(0, 200),
+        label: o.label.slice(0, 120),
+        pid: 0,
+        askedAt: new Date(this.now()).toISOString(),
+        estimateMin: o.estimateMin,
+        remote: {
+          runner: o.runner.slice(0, 64),
+          tokenId: o.tokenId,
+          leaseUntil: this.leaseEnd(),
+        },
+      };
+      fs.mkdirSync(this.slots, { recursive: true });
+      writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
+      this.record(e, { event: "asked" });
+      const all = this.settle();
+      const now = all.find((x) => x.id === e.id) ?? e;
+      if (!now.grantedAt)
+        this.record(now, {
+          event: "waits",
+          behind: all.filter((x) => x.grantedAt).map((x) => x.id),
+          expectedStart: new Date(
+            expectedStart(all, e.id, this.now()),
+          ).toISOString(),
+        });
+      return now;
+    });
+  }
+
+  private leaseEnd(): string {
+    return new Date(
+      this.now() + this.settings().remoteLapseSeconds * 1000,
+    ).toISOString();
+  }
+
+  /**
+   * Issue 621: a runner renews its lease (holding or still waiting), and
+   * hears where it stands. Null when the slot is gone (lapsed, ended,
+   * released) or isn't this token's.
+   */
+  renew(id: string, tokenId: string): GateEntry | null {
+    return this.locked(() => {
+      const all = this.settle();
+      const e = all.find((x) => x.id === id);
+      if (!e?.remote || e.remote.tokenId !== tokenId) return null;
+      e.remote = { ...e.remote, leaseUntil: this.leaseEnd() };
+      this.write(e);
+      return e;
+    });
+  }
+
+  /**
+   * Issue 621: a runner token was revoked: its slots, held or waiting, are
+   * taken back at once (logged), and the next in line starts.
+   */
+  takeBackToken(tokenId: string): number {
+    return this.locked(() => {
+      const mine = this.readAll().filter((x) => x.remote?.tokenId === tokenId);
+      const now = this.now();
+      for (const e of mine) {
+        this.remove(e.id);
+        this.record(e, {
+          event: "taken-back-revoked",
+          ...this.heldFor(e, now),
+        });
+      }
+      if (mine.length) this.settle();
+      return mine.length;
+    });
+  }
+
+  /**
+   * Issue 621: one slot as its file stands, with no lock and no settle: a
+   * waiting ask's cheap look between its locked renews.
+   */
+  peek(id: string): GateEntry | null {
+    try {
+      return JSON.parse(fs.readFileSync(this.file(id), "utf-8")) as GateEntry;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Issue 621: a runner gives back its own slot. */
+  releaseRemote(id: string, tokenId: string): boolean {
+    return this.locked(() => {
+      const e = this.readAll().find((x) => x.id === id);
+      if (!e?.remote || e.remote.tokenId !== tokenId) return false;
+      this.remove(id);
+      this.record(e, { event: "released", ...this.heldFor(e, this.now()) });
+      this.settle();
+      return true;
+    });
+  }
+
+  /** 0 holding; a waiter's place in line (1 is next); -1 when gone. */
+  place(id: string): number {
+    return queuePlace(this.list(), id);
   }
 
   /** gate run's command: the slot stays while it runs. */

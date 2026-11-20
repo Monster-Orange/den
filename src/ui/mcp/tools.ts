@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2326,6 +2326,38 @@ const APPROVAL_TOOLS: DenTool[] = [
       const agent = needArg("agent_mode", a, "agent", "the agent's id");
       const project = ctx.scope ? ctx.scope.workspace : str(a.project);
       return askPerson("agent_mode", "agent_mode", { agent, project }, a, ctx);
+    },
+  },
+  {
+    name: "gate_runner_token_create",
+    title: "Make a gate-only token for a CI runner",
+    description:
+      "Issue 621: a token a CI job in a runner VM uses to take this machine's gate slots over HTTP (ask, renew, release; docs/gate-slots.md). It can do nothing else in Den. `name`: the runner's name, as `gate status` will show it. Always the person's own Allow; on Allow the token is in this tool's result (or approval_check's) once, and never again: store it as the CI system's secret at once, and never print it or put it in a file, a log or a message. Deny makes nothing." +
+      HELD,
+    action: true,
+    shape: {
+      name: z
+        .string()
+        .describe(
+          "The runner's name: letters, digits, dot, dash or underscore (ci-linux)",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const name = needArg(
+        "gate_runner_token_create",
+        a,
+        "name",
+        "the CI runner's name",
+      );
+      return askPerson(
+        "gate_runner_token_create",
+        "gate_runner_token_create",
+        { name },
+        a,
+        ctx,
+      );
     },
   },
   {

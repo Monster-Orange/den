@@ -22,7 +22,12 @@
  * failed or refused try is tried again (agent_hooks.retries, 2), so a
  * busy Den still places the call and the mark reaches the bell
  * (hook-call.ts; the flags come at launch).
+ * Issue 609 (the 0.4.77 bed): PostToolUse names the tool that ran, and
+ * both it and PermissionRequest carry a hash of the tool's input
+ * (`input`, never the input itself), so Den clears a wait on its own
+ * tool's run however soon it comes, or in whatever order the two land.
  */
+import { createHash } from "node:crypto";
 import { actorTokenOf } from "../../actor-token.js";
 import { recordLost } from "./lost-marks.js";
 import {
@@ -39,11 +44,20 @@ export type AttentionEvent =
       text: string;
       /** Issue 327: the tool asked about, or the notice, ≤ WHAT_MAX chars. */
       what: string;
+      /** Issue 609: inputKey of the tool's input, for a permission dialog. */
+      input?: string;
       /** Claude Code's idle notice: no dialog is open now. */
       idle?: true;
       hooked: true;
     }
-  | { event: "resumed"; from: "tool" | "prompt" | "session"; hooked: true }
+  | {
+      event: "resumed";
+      from: "tool" | "prompt" | "session";
+      /** Issue 609: the tool that ran, and inputKey of its input. */
+      what?: string;
+      input?: string;
+      hooked: true;
+    }
   | {
       event: "finished";
       text: string;
@@ -88,6 +102,23 @@ export function endingQuestion(text: string): string | null {
   return /[?？]$/u.test(bare) ? last.trim().slice(0, 300) : null;
 }
 
+/**
+ * Issue 609: a short hash of a tool's input (16 hex chars), the same for
+ * the same input in PermissionRequest and PostToolUse; undefined when the
+ * hook gave none. The input itself never leaves the agent's machine.
+ */
+export function inputKey(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined;
+  let s: string | undefined;
+  try {
+    s = JSON.stringify(input);
+  } catch {
+    return undefined;
+  }
+  if (s === undefined) return undefined;
+  return createHash("sha256").update(s).digest("hex").slice(0, 16);
+}
+
 /** What Den is told for one hook input, or null for nothing. */
 export function attentionOf(input: unknown): AttentionEvent | null {
   if (!input || typeof input !== "object") return null;
@@ -96,13 +127,15 @@ export function attentionOf(input: unknown): AttentionEvent | null {
     message?: unknown;
     stop_hook_active?: unknown;
     tool_name?: unknown;
+    tool_input?: unknown;
     notification_type?: unknown;
     source?: unknown;
     last_assistant_message?: unknown;
   };
   const msg = typeof i.message === "string" ? i.message.slice(0, 300) : "";
+  const tool = typeof i.tool_name === "string" ? trimWhat(i.tool_name) : "";
+  const key = inputKey(i.tool_input);
   if (i.hook_event_name === "PermissionRequest") {
-    const tool = typeof i.tool_name === "string" ? trimWhat(i.tool_name) : "";
     return {
       event: "waiting",
       why: "permission",
@@ -110,6 +143,7 @@ export function attentionOf(input: unknown): AttentionEvent | null {
         ? `Claude needs your permission to use ${tool}`
         : "Claude needs your permission",
       what: tool,
+      ...(key ? { input: key } : {}),
       hooked: true,
     };
   }
@@ -126,7 +160,13 @@ export function attentionOf(input: unknown): AttentionEvent | null {
   if (i.hook_event_name === "SessionStart" && i.source !== "compact")
     return { event: "resumed", from: "session", hooked: true };
   if (i.hook_event_name === "PostToolUse")
-    return { event: "resumed", from: "tool", hooked: true };
+    return {
+      event: "resumed",
+      from: "tool",
+      ...(tool ? { what: tool } : {}),
+      ...(key ? { input: key } : {}),
+      hooked: true,
+    };
   if (i.hook_event_name === "UserPromptSubmit")
     return { event: "resumed", from: "prompt", hooked: true };
   // A Stop a Stop hook kept going (D41's nudge) isn't the turn's end yet.

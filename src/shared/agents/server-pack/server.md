@@ -180,6 +180,10 @@ Held (each waits for the person's Allow):
 - `pr_close`: close a stale or superseded pull request after a Hub note,
   with a comment saying why. It runs at once unless the person watches or
   pinned the repo.
+- `gate_runner_token_create`: a token a CI job in a runner VM uses to take
+  this machine's gate slots over HTTP, and nothing else. It waits for the
+  person's Allow; the token comes back once, in the result: store it as
+  the CI system's secret at once, and never print it.
 
 Only when Den's config turns them on (`mcp.actions`):
 

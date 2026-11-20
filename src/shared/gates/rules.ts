@@ -38,6 +38,19 @@ export interface GateEntry {
   agent?: boolean;
   /** Which agent (`agent:<id>`), when it said; its row on Agents shows it. */
   actor?: string;
+  /**
+   * Issue 621: a CI job in a runner VM asked over HTTP with a runner
+   * token. It has no process here: it holds by lease, renewed every
+   * remoteRenewSeconds, and is taken back once the lease lapses.
+   */
+  remote?: {
+    /** The runner token's name (who, in words). */
+    runner: string;
+    /** The runner token's id: only it renews or releases the slot. */
+    tokenId: string;
+    /** When the lease lapses (ISO). */
+    leaseUntil: string;
+  };
 }
 
 export interface GateSettings {
@@ -45,11 +58,23 @@ export interface GateSettings {
   cpuSlots: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
+  /** Issue 621: how often a runner renews its lease, seconds (it is told). */
+  remoteRenewSeconds: number;
+  /** Issue 621: a runner's lease not renewed this long is taken back. */
+  remoteLapseSeconds: number;
+  /** Issue 621: live slots (held or waiting) one runner token may have. */
+  remoteMaxSlots: number;
+  /** Issue 621: asks one runner token may have waiting on an answer. */
+  remoteMaxAsks: number;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
   cpuSlots: 2,
   overrunMarginMinutes: 15,
+  remoteRenewSeconds: 30,
+  remoteLapseSeconds: 120,
+  remoteMaxSlots: 4,
+  remoteMaxAsks: 4,
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
@@ -86,7 +111,22 @@ export function grants(entries: GateEntry[], s: GateSettings): string[] {
  * the run keeps the slot until it ends.
  */
 export function gone(e: GateEntry, alive: (pid: number) => boolean): boolean {
+  if (e.remote) return false; // a lease holder: see lapsed
   return !alive(e.pid) && (e.runPid === undefined || !alive(e.runPid));
+}
+
+/** Issue 621: a runner's lease ran out (its slot is free at once). */
+export function lapsed(e: GateEntry, now: number): boolean {
+  return !!e.remote && !(Date.parse(e.remote.leaseUntil) > now);
+}
+
+/** 0 for a holder; a waiter's place in line (1 is next); -1 if absent. */
+export function queuePlace(entries: GateEntry[], id: string): number {
+  const e = entries.find((x) => x.id === id);
+  if (!e) return -1;
+  if (e.grantedAt) return 0;
+  const queue = entries.filter((x) => !x.grantedAt).sort(byAsked);
+  return queue.findIndex((x) => x.id === id) + 1;
 }
 
 /** When a holder is expected to end (ms), from its grant and estimate. */

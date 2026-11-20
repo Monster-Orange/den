@@ -174,8 +174,34 @@ function askerOf(req: http.IncomingMessage): string {
   return principalOf(req) ?? "loopback";
 }
 
-/** What a page or the asking agent sees of one request. */
-export function approvalView(a: Approval): Record<string, unknown> {
+/**
+ * Issue 621: a run result's part for its asker only (a new runner token),
+ * `forAsker`. Every view leaves it out; the asker's own read of the
+ * request has it once, merged into the result (forgetForAsker after).
+ */
+function resultFor(a: Approval, asker: boolean): unknown {
+  const r = a.result as Record<string, unknown> | undefined;
+  if (!r || typeof r !== "object" || !("forAsker" in r)) return a.result;
+  const { forAsker, ...rest } = r;
+  return asker && forAsker && typeof forAsker === "object"
+    ? { ...rest, ...(forAsker as Record<string, unknown>) }
+    : rest;
+}
+
+/** Issue 621: drop a run result's `forAsker` part, once its asker has it. */
+export function forgetForAsker(a: Pick<Approval, "result">): void {
+  const r = a.result as Record<string, unknown> | undefined;
+  if (r && typeof r === "object" && "forAsker" in r) delete r.forAsker;
+}
+
+/**
+ * What a page or the asking agent sees of one request. `asker`: the
+ * asker's own read (issue 621: it holds the run's forAsker part).
+ */
+export function approvalView(
+  a: Approval,
+  o: { asker?: boolean } = {},
+): Record<string, unknown> {
   return {
     id: a.id,
     action: a.action,
@@ -192,7 +218,9 @@ export function approvalView(a: Approval): Record<string, unknown> {
     requestedAt: new Date(a.requestedAt).toISOString(),
     expiresAt: new Date(a.expiresAt).toISOString(),
     ...(a.decidedAt ? { decidedAt: new Date(a.decidedAt).toISOString() } : {}),
-    ...(a.result !== undefined ? { result: a.result } : {}),
+    ...(a.result !== undefined
+      ? { result: resultFor(a, o.asker === true) }
+      : {}),
     ...(a.endedBecause ? { endedBecause: a.endedBecause } : {}),
   };
 }
@@ -503,7 +531,7 @@ export async function handleApprovalRoutes(
     if (agent) {
       sendJson(res, {
         ok: true,
-        mine: deps.queue.ofActor(agent.actor).map(approvalView),
+        mine: deps.queue.ofActor(agent.actor).map((x) => approvalView(x)),
       });
       return true;
     }
@@ -533,7 +561,7 @@ export async function handleApprovalRoutes(
     }
     sendJson(res, {
       ok: true,
-      pending: deps.queue.pending().map(approvalView),
+      pending: deps.queue.pending().map((x) => approvalView(x)),
     });
     return true;
   }
@@ -561,7 +589,16 @@ export async function handleApprovalRoutes(
       );
       return true;
     }
-    sendJson(res, { ok: true, ...approvalView(a) });
+    // Issue 621: the asker's own read (its agent token, or its ticket)
+    // carries what the run left for it, once; nobody else ever sees it.
+    const asker = agent
+      ? a.actor === agent.actor
+      : deps.queue.ticketMatches(
+          a.id,
+          typeof ticket === "string" ? ticket : undefined,
+        );
+    sendJson(res, { ok: true, ...approvalView(a, { asker }) });
+    if (asker && a.state === "done" && method === "GET") forgetForAsker(a);
     return true;
   }
 

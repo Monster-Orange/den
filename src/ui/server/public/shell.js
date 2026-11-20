@@ -789,6 +789,7 @@
     "set.ui.appKeyUnused": "never used",
     "set.ui.appKeyRevoked": "revoked {when}",
     "set.ui.appKeyRevoke": "Revoke",
+    "set.ui.runnerNone": "No runner tokens yet.",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -1959,6 +1960,24 @@
     "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
     "set.server.gate_overrun.d":
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_remote_renew":
+      "CI runner renews its gate slot every, in seconds",
+    "set.server.gate_remote_renew.d":
+      "A CI job in a runner VM holds its gate slot by renewing it this often (it is told the number when it asks). __DEN_CLI__ gate settings --remote-renew-seconds 30",
+    "set.server.gate_remote_lapse":
+      "CI runner's gate slot taken back after, in seconds",
+    "set.server.gate_remote_lapse.d":
+      "A CI runner that hasn't renewed its gate slot for this long loses it, and the next in line starts. At least twice the renew time. __DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_remote_slots": "Gate slots one CI runner may have at once",
+    "set.server.gate_remote_slots.d":
+      "Held or waiting. One more ask is refused, saying why, until the runner gives one back. __DEN_CLI__ gate settings --remote-max-slots 4",
+    "set.server.gate_remote_asks":
+      "Asks one CI runner may have waiting at once",
+    "set.server.gate_remote_asks.d":
+      "Asks for a gate slot still waiting on an answer. One more is refused, saying why, until one answers. __DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_runners": "CI runner tokens",
+    "set.server.gate_runners.d":
+      "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2449,6 +2468,16 @@
       "The key is shown once, here, after you allow. Den keeps only its hash.",
     "ap.det.embed_key_create.revoke":
       "You can revoke it any time in Settings › Embedding.",
+    "ap.do.gate_runner_token_create":
+      "Make a gate-only token for the CI runner {name}",
+    "ap.det.gate_runner_token_create.reach":
+      "Makes a token for the CI runner {name}. It can only ask for, renew and give back gate slots on this machine: nothing else in Den.",
+    "ap.det.gate_runner_token_create.onceAgent":
+      "The token goes once to {agent}, the agent that asked, and is never shown again. Den keeps only its hash.",
+    "ap.det.gate_runner_token_create.once":
+      "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
+    "ap.det.gate_runner_token_create.revoke":
+      "You can revoke it any time in Settings, under CI runner tokens.",
     "ap.det.embed_key_revoke.reach":
       "{origin} can no longer message {agent} or read its state with this key.",
     "ap.det.embed_key_revoke.held":
