@@ -368,41 +368,45 @@ async function post(path, body) {
 async function decideHeld(el, decision) {
   const id = el.dataset.ap;
   if (!id) return;
-  for (const b of el
+  const btns = el
     .closest(".den-bell-row")
-    ?.querySelectorAll("button[data-ap]") ?? [el])
-    b.disabled = true;
+    ?.querySelectorAll("button[data-ap]") ?? [el];
+  for (const b of btns) b.disabled = true;
+  const again = () => {
+    for (const b of btns) b.disabled = false;
+  };
   const shell = window.denShell;
+  // BUSY-1: the write goes through the working pop-up, which shows a
+  // refusal itself and resolves null then.
+  const path = `/api/approvals/${encodeURIComponent(id)}/decide`;
+  const run = (headers) => shell.api("POST", path, { decision }, { headers });
+  let j = null;
   try {
-    const r = await fetch(`/api/approvals/${encodeURIComponent(id)}/decide`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ decision }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      shell?.toast?.(j.error || tr("bell.ap.failed", { error: j.code || "?" }));
-      return;
-    }
-    const res = j.result;
-    if (decision === "allow" && res && res.ok === false)
-      shell?.toast?.(tr("bell.ap.failed", { error: res.error || "?" }));
-    else
-      shell?.toast?.(
-        tr(decision === "allow" ? "bell.ap.done" : "bell.ap.denied", {
-          what: j.summary ?? "",
-        }),
-      );
-    // The page that asked hears what ran, as from the Allow dialog.
-    if (decision === "allow" && res && res.ok !== false)
-      window.dispatchEvent(
-        new CustomEvent("den:approval-done", {
-          detail: { id, action: j.action, result: res },
-        }),
-      );
+    j = shell?.busyAction
+      ? await shell.busyAction(`decide-${decision}`, run, { button: el })
+      : await run({});
   } catch (err) {
     shell?.errorToast?.(err);
+    again();
+    return;
   }
+  if (!j) return again();
+  const res = j.result;
+  if (decision === "allow" && res && res.ok === false)
+    shell?.toast?.(tr("bell.ap.failed", { error: res.error || "?" }));
+  else
+    shell?.toast?.(
+      tr(decision === "allow" ? "bell.ap.done" : "bell.ap.denied", {
+        what: j.summary ?? "",
+      }),
+    );
+  // The page that asked hears what ran, as from the Allow dialog.
+  if (decision === "allow" && res && res.ok !== false)
+    window.dispatchEvent(
+      new CustomEvent("den:approval-done", {
+        detail: { id, action: j.action, result: res },
+      }),
+    );
 }
 
 /** Wire the bell on this page; a page without #den-bell does nothing. */
