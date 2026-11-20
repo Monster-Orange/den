@@ -47,7 +47,7 @@ import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import { getStateDir } from "../../shared/paths.js";
-import { hubOrigin, recordUnrevoked } from "../../shared/hub-binding.js";
+import { recordUnrevoked } from "../../shared/hub-binding.js";
 import { envKey, product } from "../../shared/product.js";
 import {
   getSecretsProvider,
@@ -508,18 +508,17 @@ export class HubConnect {
     }
     const hubUrl =
       grant.hubUrl && !hubUrlProblem(grant.hubUrl) ? grant.hubUrl : p.hubUrl;
-    // Issue 726: connected before to another Hub: its token is read now
-    // (the new one may take its file or item) and revoked there after.
+    // Issue 726: connected before (to another Hub, or for another company
+    // on this one): the old token is read now (the new one may take its
+    // file or item) and revoked on its Hub after, so a token for a company
+    // this install left never stays valid there.
     const before = this.deps.config();
     const leaving =
-      before &&
-      (before.tokenRef || before.tokenSource) &&
-      hubOrigin(before.url) !== hubOrigin(hubUrl)
-        ? before
-        : null;
-    const oldToken = leaving
+      before && (before.tokenRef || before.tokenSource) ? before : null;
+    const read = leaving
       ? await this.deps.readToken(leaving).catch(() => null)
       : null;
+    const oldToken = read && read !== grant.token ? read : null;
     let stored: StoredToken;
     try {
       stored = await this.deps.store(grant.token);
