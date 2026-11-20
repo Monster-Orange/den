@@ -639,6 +639,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1020,6 +1021,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1290,6 +1292,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1439,11 +1442,14 @@
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
         "tests/unit/server/hub-change.test.ts",
+        "tests/unit/server/hub-connect-review.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
+        "tests/unit/server/settings-hub-review.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
         "tests/unit/shared/hub-binding.test.ts",
+        "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
@@ -1785,6 +1791,11 @@
     {
       "when": ["src/shared/fixture-person.ts"],
       "run": ["tests/unit/server/shell-poll-in-flight.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/hub-connect-review.ts"],
+      "run": ["tests/unit/server/settings-hub-review.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

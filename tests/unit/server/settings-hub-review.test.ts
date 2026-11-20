@@ -286,7 +286,7 @@ describe("issue 646: done, and Switch company", () => {
       tt,
     );
     expect(html).toMatch(
-      /data-hub-action="connect" data-hub-switch>\[hubrv.switch\]/,
+      /data-hub-action="switch" data-hub-switch>\[hubrv.switch\]/,
     );
   });
 });
