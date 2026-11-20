@@ -36,6 +36,14 @@ export const HANDOFFS_DIR = "handoffs";
 /** Why a session rotates. */
 export type RotateReason = "compactions" | "pr-merged";
 
+/**
+ * Why Den relaunched an agent from a handoff: a rotation's reason, or
+ * (issue 658) a person's relaunch from its last handoff when none was due
+ * ("manual"), or a resume whose conversation was never written
+ * ("resume_failed").
+ */
+export type RelaunchReason = RotateReason | "manual" | "resume_failed";
+
 export interface RotationState {
   /**
    * The conversation counted: Claude Code's session_id, which is the
@@ -82,11 +90,16 @@ export const DEFAULT_ROTATE: RotateSettings = {
 export interface RotationEntry {
   /** When it relaunched (ISO 8601). */
   at: string;
-  reason: RotateReason;
+  reason: RelaunchReason;
   /** Compactions of the conversation that ended. */
   compactions: number;
   /** The conversation that ended (its resume token). */
   conversation?: string;
+  /**
+   * Issue 658: the conversation the relaunch started (its resume token),
+   * so a relaunch that never began is known as one.
+   */
+  next?: string;
   /** D28: Den relaunched it by itself (on_due auto). */
   auto?: boolean;
 }
@@ -436,10 +449,77 @@ export function archiveHandoff(filesDir: string, tag: string): string {
 }
 
 /** Why, in words: "3 compactions", "PR merged". */
-export function reasonText(reason: RotateReason, compactions: number): string {
+export function reasonText(
+  reason: RelaunchReason,
+  compactions: number,
+): string {
+  if (reason === "manual") return "a relaunch from its last handoff";
+  if (reason === "resume_failed")
+    return "a resume with no conversation to continue";
   return reason === "pr-merged"
     ? "PR merged"
     : `${compactions} ${compactions === 1 ? "compaction" : "compactions"}`;
+}
+
+/**
+ * Issue 658: the newest handoff on file for an agent: handoff.md when it
+ * passes the check, else the newest kept one (handoffs/) that passes.
+ * Null when there is none. `kept`: it is one of handoffs/ (already aside).
+ */
+export function newestHandoff(
+  filesDir: string,
+): { text: string; file: string; kept: boolean } | null {
+  const h = readHandoff(filesDir);
+  if (h.status === "ok")
+    return { text: h.text!, file: handoffFile(filesDir), kept: false };
+  const dir = path.join(filesDir, HANDOFFS_DIR);
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir).filter((n) => n.endsWith(".md"));
+  } catch {
+    return null;
+  }
+  const dated: { file: string; n: string; at: number }[] = [];
+  for (const n of names) {
+    const file = path.join(dir, n);
+    try {
+      dated.push({ file, n, at: fs.statSync(file).mtimeMs });
+    } catch {
+      /* gone meanwhile */
+    }
+  }
+  dated.sort((a, b) => b.at - a.at || (a.n < b.n ? 1 : -1));
+  for (const x of dated) {
+    let text: string;
+    try {
+      text = fs.readFileSync(x.file, "utf-8");
+    } catch {
+      continue;
+    }
+    if (checkHandoff(text).ok) return { text, file: x.file, kept: true };
+  }
+  return null;
+}
+
+/**
+ * Issue 658: the kept handoff a relaunch ended `conversation` with
+ * (archiveHandoff's tag ends with it), the newest when several.
+ */
+export function keptHandoffOf(
+  filesDir: string,
+  conversation: string | undefined,
+): string | null {
+  const dir = path.join(filesDir, HANDOFFS_DIR);
+  const end = `-${(conversation ?? "conversation").replace(/[^A-Za-z0-9._-]/g, "-")}.md`;
+  try {
+    const hits = fs
+      .readdirSync(dir)
+      .filter((n) => n.endsWith(end))
+      .sort();
+    return hits.length ? path.join(dir, hits[hits.length - 1]) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** What the hooks tell a session whose rotation is due. */
@@ -464,12 +544,29 @@ export function rotationInstruction(
 /** The first prompt of a session relaunched from `handoff`. */
 export function handoffPrompt(
   handoff: string,
-  reason: RotateReason,
+  reason: RelaunchReason,
   compactions: number,
 ): string {
+  const why =
+    reason === "manual" || reason === "resume_failed"
+      ? "Den relaunched you from the last handoff your role wrote."
+      : `Den relaunched you from the handoff your last session wrote. That session ended after ${reasonText(reason, compactions)} (session rotation).`; // words-ok: unchanged wording from before issue 658 (an agent's own prompt)
   return [
-    `Den relaunched you from the handoff your last session wrote. That session ended after ${reasonText(reason, compactions)} (session rotation).`,
+    why,
     "Read it, then carry on from its Next step.",
+    "",
+    handoff.trim(),
+  ].join("\n");
+}
+
+/**
+ * Issue 658: the first prompt of a Resume that started fresh because its
+ * conversation was never written, when a handoff is on file.
+ */
+export function resumeHandoffPrompt(handoff: string): string {
+  return [
+    "Den started you fresh: your last conversation was never written, so it could not be continued.",
+    "Here is the last handoff your role wrote. Read it, then carry on from its Next step.",
     "",
     handoff.trim(),
   ].join("\n");

@@ -163,7 +163,13 @@ function claudeAnswers(r: Rig, inUse: string[] = []): () => void {
         const p = r.made[seen];
         const [flag, id] = p.args;
         const written = fs.existsSync(
-          path.join(r.dir, "claude-config", "projects", "-work-north", `${id}.jsonl`),
+          path.join(
+            r.dir,
+            "claude-config",
+            "projects",
+            "-work-north",
+            `${id}.jsonl`,
+          ),
         );
         if (flag === "--resume" && !written) {
           p.emit(`No conversation found with session ID: ${id}\r\n`);
@@ -219,9 +225,7 @@ describe("issue 658, clause 1: a relaunch that never began, then Resume", () => 
     r.out.length = 0;
     expect(await agents(r, "resume", ID)).toBe(0);
     expect(r.made.length).toBeGreaterThan(n);
-    expect(last(r).args).not.toEqual(
-      expect.arrayContaining(["--resume", t2]),
-    );
+    expect(last(r).args).not.toEqual(expect.arrayContaining(["--resume", t2]));
     expect(r.made.slice(n).some((p) => p.args[0] === "--resume")).toBe(false);
     expect(lastArg(r)).toContain(GOOD_HANDOFF);
     expect(r.out.join("\n")).toMatch(/handoff/);

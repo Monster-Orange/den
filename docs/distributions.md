@@ -4551,7 +4551,28 @@ conversation, in the new mode.
 agents:
   default_mode: auto # ask, edits, auto or all; unset: each persona's
   mode_check_seconds: 30 # how often Den looks for a changed mode
+  trust_check_seconds: 5 # how often Den looks for a folder-trust question
 ```
+
+**The folder-trust question.** Claude Code asks once per folder whether
+to trust it. While an agent's start waits on that question, its row, its
+pane and the bell say "Waiting: trust this folder?". The answer is the
+person's: Den never types it. After a No, the agent ends, and its row and
+the bell say "Didn't start: this folder isn't trusted. Resume and choose
+Yes." A relaunch from a handoff keeps the folder the agent ran in, so a
+folder it was trusted in is never asked about again.
+
+**A conversation that was never written.** Resume asks the runtime
+whether the conversation exists (its transcript). One that was never
+written (its start ended at the trust question, say) starts fresh under
+the same id, never `--resume`. If the agent has a handoff on file
+(handoff.md, or the newest kept one that passes the check), that handoff
+is the new conversation's first prompt. If the runtime refuses the id
+both ways, a new conversation starts. A relaunch that ends before its
+conversation exists is undone: handoff.md comes back and the rotation is
+due again. `agents relaunch <id> --from-handoff [<file>]` (and Relaunch
+from its last handoff in a stopped agent's ⋯ menu) relaunches from the
+newest handoff when no rotation is due.
 
 **Back after the machine restarts.** Every agent that was running comes
 back on its own conversation, project and mode, not only standing

@@ -482,6 +482,8 @@ function when(iso) {
 
 /** Why a stopped agent stopped (AG-14.1). */
 export function stopReason(r) {
+  // Issue 659: its folder-trust question was declined: it never started.
+  if (r.trustDeclined) return t("ag.why.trustDeclined");
   // Issue 631: it didn't come back after a restart (its terminal host's
   // too), and why.
   if (r.restartFailed?.why)
@@ -3454,18 +3456,18 @@ function paintBusy() {
  * (den#4: a new conversation that starts from handoff.md); its pane opens
  * on it.
  */
-function restartRow(r, verb, button) {
-  return oneAtATime(r, verb, () => restartRowNow(r, verb, button));
+function restartRow(r, verb, button, body) {
+  return oneAtATime(r, verb, () => restartRowNow(r, verb, button, body));
 }
 
-async function restartRowNow(r, verb, button) {
+async function restartRowNow(r, verb, button, body) {
   if (button) button.disabled = true;
   const name = { name: r.agent };
   // BUSY-1: the working pop-up while Den starts it, then what happened.
   let opened;
   const out = await window.denShell.busyAction(
     "start-agent",
-    (headers) => api("POST", agentPath(r, verb), undefined, { headers }),
+    (headers) => api("POST", agentPath(r, verb), body, { headers }),
     {
       button,
       vars: name,
@@ -3475,9 +3477,12 @@ async function restartRowNow(r, verb, button) {
             ? "ag.relaunched"
             : verb !== "resume"
               ? "ag.startedFresh"
-              : o?.fresh
-                ? "ag.resumedFresh"
-                : "ag.resumed",
+              : o?.handoff
+                ? // Issue 658: never written; its last handoff began it.
+                  "ag.resumedHandoff"
+                : o?.fresh
+                  ? "ag.resumedFresh"
+                  : "ag.resumed",
           { id: r.agent },
         ),
       // Its open pane follows it to the new session (followAgents, in
@@ -5124,6 +5129,16 @@ function stoppedMenuItems(r, opener) {
           {
             label: t("ag.fresh"),
             onSelect: () => void restartRow(r, "fresh", opener),
+          },
+        ]
+      : []),
+    // Issue 658: a handoff on file while no rotation is ready.
+    ...(r.handoffOnFile
+      ? [
+          {
+            label: t("ag.relaunchHandoff"),
+            onSelect: () =>
+              void restartRow(r, "relaunch", opener, { fromHandoff: true }),
           },
         ]
       : []),

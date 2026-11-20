@@ -2074,6 +2074,8 @@
     "ag.stopped": "Stopped agent {id}",
     "ag.stillStopping": "{id} is still stopping",
     "ag.resumedFresh": "{id}: nothing to resume yet; started fresh",
+    "ag.resumedHandoff":
+      "{id}: its conversation was never written; started fresh from its last handoff",
     "ag.inactive": "Project {ws} isn't active",
     "ag.otherTabs.one": "{n} tab from other projects hidden",
     "ag.otherTabs": "{n} tabs from other projects hidden",
@@ -2088,6 +2090,8 @@
     "ag.why.stopped": "Stopped by you {time}",
     "ag.why.interrupted": "Interrupted: {name} restarted",
     "ag.why.restartFailed": "Didn't come back after a restart: {why}",
+    "ag.why.trustDeclined":
+      "Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "ag.why.exited": "Exited",
     "ag.why.exitedCode": "Exited (code {code})",
     "ag.fresh": "Start fresh",
@@ -2117,6 +2121,7 @@
     "ag.relaunch": "Relaunch now",
     "ag.relaunchName": "Relaunch {id} now",
     "ag.relaunched": "Relaunched {id} from its handoff",
+    "ag.relaunchHandoff": "Relaunch from its last handoff",
     "ag.rc.autoAsk":
       "Due ({why}). Den asks it for its handoff when it is idle, then relaunches it.",
     "ag.rc.autoReady":
@@ -2645,6 +2650,7 @@
     "ag.waiting.permission": "needs permission",
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
+    "ag.waiting.trust": "Waiting: trust this folder?",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
@@ -2694,6 +2700,9 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
+    "bell.m.trust": "{name}: Waiting: trust this folder?",
+    "bell.m.trustDeclined":
+      "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
