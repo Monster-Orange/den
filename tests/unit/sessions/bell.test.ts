@@ -59,3 +59,73 @@ describe("BellScanner", () => {
     ]);
   });
 });
+
+/**
+ * Issue 771: the open status protocol, OSC 7501
+ * (`ESC ] 7501 ; state=<idle|working|done|blocked|error>[;id=...] ST`):
+ * read from the same scan, kept until taken. Never a bell.
+ */
+describe("BellScanner: OSC 7501 status (issue 771)", () => {
+  const ST = `${ESC}\\`;
+  it.each(["idle", "working", "done", "blocked", "error"])(
+    "state=%s, ST-terminated, is read (and isn't a bell)",
+    (state) => {
+      const s = new BellScanner();
+      expect(feed(s, `a${ESC}]7501;state=${state}${ST}b`)).toEqual([false]);
+      expect(s.takeStatus()).toEqual({ state });
+      expect(s.takeStatus()).toBeNull();
+    },
+  );
+
+  it("the BEL-terminated form reads the same, with its id; the BEL isn't a bell", () => {
+    const s = new BellScanner();
+    expect(feed(s, `${ESC}]7501;state=blocked;id=job-1${BEL}`)).toEqual([
+      false,
+    ]);
+    expect(s.takeStatus()).toEqual({ state: "blocked", id: "job-1" });
+  });
+
+  it("split across chunks: read once", () => {
+    const s = new BellScanner();
+    feed(s, `x${ESC}]75`, `01;state=wor`);
+    expect(s.takeStatus()).toBeNull();
+    feed(s, `king${ESC}`, `\\y`);
+    expect(s.takeStatus()).toEqual({ state: "working" });
+    feed(s, "more output");
+    expect(s.takeStatus()).toBeNull();
+  });
+
+  it("the last of several in one chunk wins", () => {
+    const s = new BellScanner();
+    feed(s, `${ESC}]7501;state=working${ST}${ESC}]7501;state=done${BEL}`);
+    expect(s.takeStatus()).toEqual({ state: "done" });
+  });
+
+  it("an unknown state or a malformed sequence is ignored and keeps the last one", () => {
+    const s = new BellScanner();
+    feed(s, `${ESC}]7501;state=working${ST}`);
+    for (const bad of [
+      `${ESC}]7501;state=sleeping${ST}`,
+      `${ESC}]7501;state=${ST}`,
+      `${ESC}]7501;${ST}`,
+      `${ESC}]7501${BEL}`,
+      `${ESC}]7501;id=x${BEL}`,
+      `${ESC}]75010;state=idle${BEL}`,
+      `${ESC}]7501;State=idle${BEL}`,
+      `${ESC}]7501;state=idle;state=done${BEL}`,
+      `${ESC}]7501;state=idle;id=${"x".repeat(200)}${BEL}`,
+      `${ESC}]7501;state=idle;id=a b${BEL}`,
+      `${ESC}]7501;state=idle${ESC}[0m`,
+    ])
+      expect(() => feed(s, bad)).not.toThrow();
+    expect(s.takeStatus()).toEqual({ state: "working" });
+  });
+
+  it("other keys are skipped; bells around it still ring", () => {
+    const s = new BellScanner();
+    expect(
+      feed(s, `${BEL}${ESC}]7501;v=1;state=idle;x=y${ST}${ESC}]9;hi${BEL}`),
+    ).toEqual([true]);
+    expect(s.takeStatus()).toEqual({ state: "idle" });
+  });
+});
