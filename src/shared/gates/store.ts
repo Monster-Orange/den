@@ -70,6 +70,7 @@ export type GateSettingsPatch = {
   priority_max?: number | null;
   priority_pass_limit_minutes?: number | null;
   priority_agents?: number | null;
+  priority_runners?: number | null;
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -87,6 +88,8 @@ export const GATE_LIMITS: Record<
   priority_max: { min: 0, max: 16, int: true },
   priority_pass_limit_minutes: { min: 1, max: 24 * 60, int: false },
   priority_agents: { min: 0, max: 1, int: true },
+  // Issue 739: CI runners may ask for priority; 1 yes, 0 no.
+  priority_runners: { min: 0, max: 1, int: true },
 };
 
 /**
@@ -160,9 +163,15 @@ export interface GateEventRow {
   runner?: string;
 }
 
-/** Issue 715: who asked for priority, for the record. */
+/** Issue 715: who asked for priority, for the record (739: a runner). */
 const byOf = (e: GateEntry): string =>
-  e.actor ?? (e.agent ? "an agent" : "a person");
+  e.remote
+    ? `runner:${e.remote.runner}`
+    : (e.actor ?? (e.agent ? "an agent" : "a person"));
+
+/** Issue 715: a priority reason, one line, at most 200 characters. */
+const reasonOf = (r: string | undefined) =>
+  r?.replace(/\s+/g, " ").trim().slice(0, 200);
 
 const isAlive = (pid: number): boolean => {
   try {
@@ -254,6 +263,8 @@ export class GateStore {
         ),
         priorityAgents:
           num("priority_agents", GATE_DEFAULTS.priorityAgents ? 1 : 0) === 1,
+        priorityRunners:
+          num("priority_runners", GATE_DEFAULTS.priorityRunners ? 1 : 0) === 1,
       };
     } catch {
       return { ...GATE_DEFAULTS };
@@ -492,7 +503,7 @@ export class GateStore {
     /** Issue 715: a release run a person waits on, and why. */
     priority?: { reason: string };
   }): GateEntry {
-    const reason = o.priority?.reason.replace(/\s+/g, " ").trim().slice(0, 200);
+    const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
       throw new GatePriorityRefused("a priority ask needs a reason");
     return this.locked(() => {
@@ -517,30 +528,37 @@ export class GateStore {
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
       writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
-      this.record(e, { event: "asked" });
-      const all = this.settle();
-      const now = all.find((x) => x.id === e.id) ?? e;
-      // Issue 715: marked, but another holds priority: it waits behind it.
-      if (now.priority && !now.priority.at && !now.grantedAt)
-        this.record(now, {
-          event: "priority-waits",
-          reason: now.priority.reason,
-          behind: all
-            .filter(
-              (x) => x.kind === now.kind && !x.grantedAt && x.priority?.at,
-            )
-            .map((x) => x.id),
-        });
-      if (!now.grantedAt)
-        this.record(now, {
-          event: "waits",
-          behind: all.filter((x) => x.grantedAt).map((x) => x.id),
-          expectedStart: new Date(
-            expectedStart(all, e.id, this.now(), this.settings()),
-          ).toISOString(),
-        });
-      return now;
+      return this.afterAsk(e);
     });
+  }
+
+  /**
+   * A new entry is written: log the ask, settle, and log where it waits
+   * (issue 715: behind another priority run, if it is marked). Call under
+   * the lock.
+   */
+  private afterAsk(e: GateEntry): GateEntry {
+    this.record(e, { event: "asked" });
+    const all = this.settle();
+    const now = all.find((x) => x.id === e.id) ?? e;
+    // Issue 715: marked, but another holds priority: it waits behind it.
+    if (now.priority && !now.priority.at && !now.grantedAt)
+      this.record(now, {
+        event: "priority-waits",
+        reason: now.priority.reason,
+        behind: all
+          .filter((x) => x.kind === now.kind && !x.grantedAt && x.priority?.at)
+          .map((x) => x.id),
+      });
+    if (!now.grantedAt)
+      this.record(now, {
+        event: "waits",
+        behind: all.filter((x) => x.grantedAt).map((x) => x.id),
+        expectedStart: new Date(
+          expectedStart(all, e.id, this.now(), this.settings()),
+        ).toISOString(),
+      });
+    return now;
   }
 
   /**
@@ -555,8 +573,17 @@ export class GateStore {
     estimateMin: number;
     runner: string;
     tokenId: string;
+    /** Issue 739: a release run a person waits on, and why. */
+    priority?: { reason: string };
   }): GateEntry {
+    const reason = reasonOf(o.priority?.reason);
+    if (o.priority && !reason)
+      throw new GatePriorityRefused("a priority ask needs a reason");
     return this.locked(() => {
+      if (reason && !this.settings().priorityRunners)
+        throw new GatePriorityRefused(
+          "CI runners may not ask for release priority on this machine (Settings, gate priority); ask without it to wait in the normal queue",
+        );
       // One token's live slots are capped (a Setting): a retrying or
       // runaway runner can't fill the queue.
       const max = this.settings().remoteMaxSlots;
@@ -580,21 +607,11 @@ export class GateStore {
           tokenId: o.tokenId,
           leaseUntil: this.leaseEnd(),
         },
+        ...(reason ? { priority: { for: "release" as const, reason } } : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
-      this.record(e, { event: "asked" });
-      const all = this.settle();
-      const now = all.find((x) => x.id === e.id) ?? e;
-      if (!now.grantedAt)
-        this.record(now, {
-          event: "waits",
-          behind: all.filter((x) => x.grantedAt).map((x) => x.id),
-          expectedStart: new Date(
-            expectedStart(all, e.id, this.now(), this.settings()),
-          ).toISOString(),
-        });
-      return now;
+      return this.afterAsk(e);
     });
   }
 

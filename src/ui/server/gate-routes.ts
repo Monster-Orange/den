@@ -13,9 +13,14 @@
  * a slot with a gate-only runner token (shared/gates/runner-tokens.ts).
  * request-guard.ts lets that token reach these three routes only:
  *   POST /api/gate-slots/ask      {kind, estimate_minutes, label?,
- *                                 wait_seconds?}: waits up to wait_seconds
- *                                 (at most the lapse time) for the slot,
- *                                 then answers granted, or its place in line
+ *                                 wait_seconds?, priority?, reason?}: waits
+ *                                 up to wait_seconds (at most the lapse
+ *                                 time) for the slot, then answers granted,
+ *                                 or its place in line. Issue 739:
+ *                                 priority "release" with a reason goes
+ *                                 ahead of its kind's plain waiting runs
+ *                                 (issue 715's rules), if the machine lets
+ *                                 runners ask (priority_runners).
  *   POST /api/gate-slots/renew    {id}: renews the lease (holding or
  *                                 waiting) and says where it stands: the poll
  *   POST /api/gate-slots/release  {id}: gives it back
@@ -31,14 +36,17 @@ import type * as http from "http";
 import {
   expectedEnd,
   expectedStart,
-  queuePlace,
   type GateEntry,
 } from "../../shared/gates/rules.js";
 import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
-import { GateFullError, type GateStore } from "../../shared/gates/store.js";
+import {
+  GateFullError,
+  GatePriorityRefused,
+  type GateStore,
+} from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
 import type { HeldOp } from "./held-actions.js";
@@ -140,7 +148,8 @@ function standing(store: GateStore, e: GateEntry): Record<string, unknown> {
     id: now.id,
     kind: now.kind,
     granted: !!now.grantedAt,
-    place: queuePlace(all, now.id),
+    // The machine's priority settings and clock (issue 739).
+    place: store.place(now.id),
     ...(now.grantedAt
       ? { expected_end: new Date(expectedEnd(now)).toISOString() }
       : {
@@ -166,7 +175,13 @@ async function askAndWait(
   d: GateRouteDeps,
   store: GateStore,
   runner: { id: string; name: string },
-  a: { kind: "browser" | "cpu"; label: string; est: number; waitMs: number },
+  a: {
+    kind: "browser" | "cpu";
+    label: string;
+    est: number;
+    waitMs: number;
+    reason?: string;
+  },
 ): Promise<void> {
   let e: GateEntry | null;
   try {
@@ -177,8 +192,15 @@ async function askAndWait(
       estimateMin: a.est,
       runner: runner.name,
       tokenId: runner.id,
+      ...(a.reason !== undefined ? { priority: { reason: a.reason } } : {}),
     });
   } catch (err) {
+    if (err instanceof GatePriorityRefused)
+      return sendJson(
+        res,
+        { ok: false, code: "priority_refused", error: err.message },
+        403,
+      );
     if (err instanceof GateFullError)
       return sendJson(
         res,
@@ -272,6 +294,31 @@ async function handleRunnerRoute(
             .trim()
             .slice(0, 120) || "CI job"
         : "CI job";
+    // Issue 739: release priority, as `gate run --priority release`.
+    let reason: string | undefined;
+    if (body.priority !== undefined) {
+      if (body.priority !== "release")
+        return sendJson(
+          res,
+          { ok: false, error: 'priority is "release", or left out' },
+          400,
+        );
+      reason =
+        typeof body.reason === "string"
+          ? body.reason.replace(/\s+/g, " ").replace(CONTROL, "").trim()
+          : "";
+      if (!reason)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            code: "reason_required",
+            error:
+              "priority release needs a reason: who waits on this run, and why",
+          },
+          400,
+        );
+    }
     const waitRaw = body.wait_seconds ?? 20;
     if (typeof waitRaw !== "number" || !Number.isFinite(waitRaw) || waitRaw < 0)
       return sendJson(
@@ -302,6 +349,7 @@ async function handleRunnerRoute(
         label,
         est,
         waitMs,
+        ...(reason !== undefined ? { reason } : {}),
       });
     } finally {
       const n = (ASKING.get(runner.id) ?? 1) - 1;

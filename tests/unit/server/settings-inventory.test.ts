@@ -57,6 +57,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     priority_max: true,
     priority_pass_limit_minutes: true,
     priority_agents: true,
+    // Issue 739: CI runners may ask for priority.
+    priority_runners: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -211,6 +213,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.priority_agents",
         "gate_slots.priority_max",
         "gate_slots.priority_pass_limit_minutes",
+        "gate_slots.priority_runners",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
