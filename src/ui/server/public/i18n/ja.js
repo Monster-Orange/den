@@ -361,6 +361,8 @@
     "act.unpinX": "{s} のピン留めを外す",
     "toast.pinned": "{s} をピン留めしました",
     "toast.unpinned": "{s} のピン留めを外しました",
+    "toast.unpinnedAll": "すべてのプロジェクトで {s} のピン留めを外しました",
+    "toast.undo": "元に戻す",
     collapse: "折りたたむ",
     expand: "展開する",
     menu: "メニュー",

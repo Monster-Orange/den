@@ -499,10 +499,18 @@ describe("the status drawer (R15)", () => {
     expect(await text(p, '.den-prob-card [data-pin="billing/billing"]')).toBe(
       "Unpin",
     );
-    expect(posts).toContainEqual({
-      path: "/api/settings",
-      body: { shell: { pins: ["billing/billing"] } },
-    });
+    // Issue 402: a pin is { item, project } (the project in view, or none).
+    expect(
+      posts
+        .filter((x) => x.path === "/api/settings")
+        .map(
+          (x) =>
+            (x.body as { shell?: { pins?: { item: string }[] } }).shell?.pins,
+        )
+        .some(
+          (pins) => pins?.length === 1 && pins[0].item === "billing/billing",
+        ),
+    ).toBe(true);
     await p.click('.den-prob-card [data-start="billing/billing"]');
     expect(await p.$(".den-drawer")).toBeNull();
     expect(

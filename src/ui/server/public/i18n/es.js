@@ -369,6 +369,8 @@
     "act.unpinX": "Quitar {s}",
     "toast.pinned": "{s} fijado",
     "toast.unpinned": "{s} ya no está fijado",
+    "toast.unpinnedAll": "{s} ya no está fijado en ningún proyecto",
+    "toast.undo": "Deshacer",
     collapse: "Contraer",
     expand: "Expandir",
     menu: "Menú",
