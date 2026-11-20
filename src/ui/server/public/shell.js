@@ -913,7 +913,7 @@
     "set.ui.hub.address": "Hub's address",
     "set.ui.hub.connect": "Connect",
     "set.ui.hub.connectLinks":
-      "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you.",
+      "After Connect, each project here shows its suggested Hub project. Check them, then press Connect and link all.",
     "set.ui.hub.connectNote":
       "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
     "set.ui.hub.teams": "a shared Hub at {host}.",

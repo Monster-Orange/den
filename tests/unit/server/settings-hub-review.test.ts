@@ -237,6 +237,21 @@ describe("issue 646 point 7: Choose a Hub project, a list to pick from", () => {
   });
 });
 
+describe("issue 646: what Settings says Connect does", () => {
+  it("not connected: Connect shows each project's suggestion, and the press links them (never 'Connect links')", async () => {
+    const { hubHtml } = await mod();
+    const html = hubHtml(
+      { configured: true, state: "no_token", url: "https://hub.example.test" },
+      null,
+      tt,
+    );
+    const line = /data-hub-connect-does>([^<]*)</.exec(html)?.[1];
+    expect(line).toBe(
+      "After Connect, each project here shows its suggested Hub project. Check them, then press Connect and link all.",
+    );
+  });
+});
+
 describe("issue 646: done, and Switch company", () => {
   it("the summary: a line per link with why, the creates waiting, Hub's plan page", async () => {
     const { hubReviewResultHtml } = await mod();

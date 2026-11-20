@@ -188,6 +188,22 @@ describe("issue 646: after Connect, nothing links before the press (the approved
     });
   });
 
+  it("issue 649: the catch-all project `default` is never a row, never counted, never linked", async () => {
+    const f = fake({ projects: () => ["default", "north"] });
+    f.suggest.default = [{ ...P.web, why: "name" }];
+    expect((await reviewRows(f.d)).rows.map((r) => r.project)).toEqual([
+      "north",
+    ]);
+    expect(await reviewCount(f.d)).toEqual({ review: 1 });
+    const r = await applyReview(
+      f.d,
+      [{ project: "default", hub: P.web.id }],
+      "t",
+    );
+    expect(r.skipped.map((s) => s.code)).toEqual(["unknown"]);
+    expect(f.links.size).toBe(0);
+  });
+
   it("Hub not answering: cannot; every project linked: none to review", async () => {
     expect(await reviewCount(fake({ choices: async () => null }).d)).toEqual({
       cannot: true,
