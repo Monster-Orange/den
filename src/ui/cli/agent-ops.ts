@@ -65,6 +65,8 @@ import {
 import {
   promptOnScreen,
   trustPromptIn,
+  typingCheck,
+  type TypingCheck,
 } from "../../shared/agents/trust-prompt.js";
 import {
   resolveMode,
@@ -7505,7 +7507,11 @@ export async function busyAgentIds(
   for (const id of ids) {
     const rec = readRecord(d.stateDir(), id);
     if (!rec) continue;
-    if ((await inputState(d, rec, new Set(), 3000)) === "busy") out.push(id);
+    if (
+      (await inputState(d, rec, new Set(), 3000, { promptCheck: false })) ===
+      "busy"
+    )
+      out.push(id);
   }
   return out;
 }
@@ -7643,13 +7649,34 @@ export function personDialogOnScreen(runtime: string, screen: string): boolean {
 }
 
 /**
+ * Issue 664: the one screen check every path that types into an agent
+ * uses (typingCheck): "ok" only when `runtime`'s input prompt ends the
+ * screen and no dialog shows on it.
+ */
+export function agentScreenCheck(runtime: string, screen: string): TypingCheck {
+  return typingCheck(screen, getRuntime(runtime));
+}
+
+/**
+ * Issue 664: agents whose last look found them not at their input prompt
+ * (with no dialog and an idle turn): their held text says why.
+ */
+const notAtPrompt = new Set<string>();
+
+/** Issue 664: whether agent `id`'s text waits because it isn't at its prompt. */
+export function heldNotAtPrompt(id: string): boolean {
+  return notAtPrompt.has(id);
+}
+
+/**
  * Send an agent its first instruction once it is ready (AG-10.1): it has
  * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
  * waiting), or READY_MAX_MS passed. Typed into its session over the host's
  * write path (the same as a keystroke from the pane), never as an argument
  * or through a shell. False when the session ended first or there is no
- * host, or its screen ends with a dialog for its person (never typed
- * into; `onDialog` says so).
+ * host, or its screen shows a dialog for its person (never typed into;
+ * `onDialog` says so), or (issue 664) it isn't at its input prompt by
+ * READY_MAX_MS (`onNotAtPrompt` says so): agentScreenCheck.
  * Never throws.
  */
 export async function sendFirstInstruction(
@@ -7662,6 +7689,8 @@ export async function sendFirstInstruction(
     maxMs?: number;
     /** Called when a dialog for its person held the text back. */
     onDialog?: () => void;
+    /** Issue 664: called when it wasn't at its input prompt (text held). */
+    onNotAtPrompt?: () => void;
   } = {},
 ): Promise<boolean> {
   const quiet = o.quietMs ?? READY_QUIET_MS;
@@ -7674,6 +7703,7 @@ export async function sendFirstInstruction(
     let last = "";
     let changedAt = Date.now();
     let said = "";
+    let check: TypingCheck = "not_at_prompt";
     for (;;) {
       const s = (await c.list()).find((x) => x.ref.id === sessionId);
       if (!s || s.exited) return false;
@@ -7681,14 +7711,26 @@ export async function sendFirstInstruction(
       if (said !== last) {
         last = said;
         changedAt = Date.now();
-      } else if (said && Date.now() - changedAt >= quiet) break;
-      if (Date.now() >= deadline) break;
+      } else if (said && Date.now() - changedAt >= quiet) {
+        // Quiet: ready once its input prompt shows (issue 664).
+        check = agentScreenCheck(runtime, said);
+        if (check !== "not_at_prompt") break;
+      }
+      if (Date.now() >= deadline) {
+        check = agentScreenCheck(runtime, said);
+        break;
+      }
       await new Promise((r) => setTimeout(r, READY_POLL_MS));
     }
     // A dialog waiting for its person: nothing typed. Its answer is
     // theirs, and Enter would pick its first choice.
-    if (personDialogOnScreen(runtime, said)) {
+    if (check === "dialog") {
       o.onDialog?.();
+      return false;
+    }
+    // Issue 664: typed only when its input prompt shows; any doubt holds.
+    if (check !== "ok") {
+      o.onNotAtPrompt?.();
       return false;
     }
     const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
@@ -7797,6 +7839,8 @@ async function inputState(
   rec: AgentRecord,
   waiting: ReadonlySet<string>,
   quietMs: number,
+  /** promptCheck false: idle by its turn alone (the restart waits). */
+  o: { promptCheck?: boolean } = {},
 ): Promise<"missing" | "stopped" | "busy" | "idle"> {
   const id = rec.id;
   try {
@@ -7805,28 +7849,38 @@ async function inputState(
     const c = await d.connectExisting();
     if (!c) return "stopped";
     let live = false;
-    let dialog = false;
+    let screen: TypingCheck = "not_at_prompt";
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
       // A dialog waiting for the person: not at its prompt, whatever its
       // transcript or quiet output says.
       if (live && s)
-        dialog = personDialogOnScreen(
+        screen = agentScreenCheck(
           rec.runtime,
-          (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8"),
+          (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
         );
     } finally {
       c.close();
     }
+    if (o.promptCheck !== false) notAtPrompt.delete(id);
     if (!live) return "stopped";
-    if (dialog) return "busy";
+    if (screen === "dialog") return "busy";
     if (waiting.has(id)) return "busy";
     const busy = await agentBusy(d, rec);
-    if (busy !== null) return busy ? "busy" : "idle";
+    if (busy === true) return "busy";
     // A runtime that can't say: quiet output for quietMs is waiting (a
     // working TUI redraws its spinner; a waiting one is still).
-    return (await outputQuiet(d, rec.session.id, quietMs)) ? "idle" : "busy";
+    if (busy === null && !(await outputQuiet(d, rec.session.id, quietMs)))
+      return "busy";
+    // Issue 664: its turn is over, but idle only at its input prompt.
+    // Anything else holds what Den would type; the bell and its row say
+    // why. (Not for the restart waits: busyAgentIds asks for "busy".)
+    if (screen !== "ok" && o.promptCheck !== false) {
+      notAtPrompt.add(id);
+      return "busy";
+    }
+    return "idle";
   } catch {
     return "busy";
   }

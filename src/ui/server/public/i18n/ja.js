@@ -134,10 +134,6 @@
     "fb.rmMask": "削除",
     "fb.area": "左から {x}%、上から {y}%、{w}% × {h}%",
     "fb.revShot": "マスク後のスクリーンショット({n} か所を非表示)",
-    "fb.sentShot":
-      "スクリーンショットは保存してコピーしました。issue に貼り付けてください。",
-    "fb.sentShotSaved":
-      "スクリーンショットはファイルとして保存しました。issue に追加してください。",
     "fb.mine": "自分の報告",
     "fb.myS":
       "GitHub からそのまま表示します。GitHub にサインインしている間は使えます。",
@@ -499,6 +495,7 @@
     // prompt() and alert().
     "dlg.ok": "OK",
     "dlg.cancel": "キャンセル",
+    "dlg.close": "閉じる",
     "dlg.keep": "残す",
     "dlg.delete": "削除",
     "dlg.remove": "外す",
@@ -914,6 +911,21 @@
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_screenshot_days": "報告のスクリーンショットの保存期間",
+    "set.server.report_screenshot_days.d":
+      "ここから送った報告のマスク済みスクリーンショットを __DEN_TITLE__ が保存する日数です。あなたとこのインストール自身のエージェントが読めます(report_screenshot)。過ぎると削除されます。__DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max":
+      "報告のスクリーンショットの最大サイズ（保存）",
+    "set.server.report_screenshot_max.d":
+      "__DEN_TITLE__ が報告と一緒に保存するマスク済みスクリーンショットの最大サイズです。これより大きいものは、何も送る前に断られます。__DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "報告のスクリーンショットの最大サイズ（Hub へ送信）",
+    "set.server.report_screenshot_hub_max.d":
+      "__DEN_TITLE__ が Hub に送るマスク済みスクリーンショットの最大サイズです。これより大きいものもここには保存され、報告は送られます。__DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait":
+      "報告のスクリーンショット、Hub を待つ時間",
+    "set.server.report_screenshot_hub_wait.d":
+      "__DEN_TITLE__ が報告のスクリーンショットを Hub が受け取るのを待つ時間です。過ぎるとスクリーンショットはここに保存され、報告はすでに送られています。__DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "報告：リポジトリの公開範囲を保持する時間",
     "set.server.report_visibility_cache.d":
@@ -1855,6 +1867,8 @@
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.notAtPrompt":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが入力プロンプトにいません",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":
@@ -1916,6 +1930,7 @@
     "ag.ins.tip":
       "指示ファイルが {size} あり、コンテキストの {share}% を超えています。最も大きいのは {path} ({big}) です。",
     "ag.hub.queued": "Hub のコメント {n} 件が待っています",
+    "ag.hub.notAtPrompt": "待機中: エージェントが入力プロンプトにいません",
     "tx.asked": "依頼",
     "tx.result": "結果",
     "tx.error": "エラー",

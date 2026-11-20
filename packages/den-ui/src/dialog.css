@@ -1,5 +1,8 @@
-/* den-ui: the ask-and-tell dialogs' look (dialog.js). Tokens only (UK-1):
-   no colour of its own. Linked, never injected: clean under style-src 'self'. */
+/* den-ui: the dialog frame's look (dialog.js: dialogHtml, mountDialog,
+   askConfirm, askText, tell). Issues 669, 670: one look for every
+   product's Yes/No questions and large dialogs. Tokens only (UK-1): the
+   theme's radius, backdrop and font, no number of its own for them.
+   Linked, never injected: clean under style-src 'self'. */
 .dk-dlg {
   font-family: var(--sans);
   position: fixed;
@@ -23,30 +26,59 @@
   box-sizing: border-box;
 }
 .dk-dlg::backdrop {
-  background: color-mix(in srgb, var(--sunken) 70%, transparent);
+  background: var(--kit-scrim);
 }
+/* Issue 651: fields and buttons in the dialog's font, never the browser's. */
+.dk-dlg :where(button, input, select, textarea) {
+  font: inherit;
+}
+.dk-dlg [hidden] {
+  display: none;
+}
+
+/* A Yes/No question (kind "confirm"). */
 .dk-b {
   padding: var(--space-4) calc(var(--space-4) + 2px);
   display: grid;
   gap: 10px;
   margin: 0;
 }
-.dk-b h2 {
+.dk-dlg h2 {
   font-size: var(--fs-l);
   margin: 0;
   overflow-wrap: anywhere;
+  outline: none;
 }
 .dk-msg {
+  display: grid;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-s);
   line-height: 1.5;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 50dvh;
   overflow: auto;
 }
+.dk-msg :where(p, ul, ol) {
+  margin: 0;
+}
+.dk-msg :where(ul) {
+  padding-left: 18px;
+  color: var(--muted);
+}
+.dk-text {
+  white-space: pre-wrap;
+}
+/* One choice of several (a radio and its words). */
+.dk-opt {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.dk-opt select {
+  margin-left: var(--space-1);
+}
 .dk-in {
-  font: inherit;
   font-size: var(--fs-s);
   min-height: var(--tap-min);
   padding: 0 var(--space-2);
@@ -61,6 +93,67 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* A large dialog (kind "panel"): the header and footer stay, the body
+   scrolls. */
+.dk-panel {
+  width: min(820px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dk-panel:not([open]) {
+  display: none;
+}
+.dk-hd {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.dk-hd h2 {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.dk-sub {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dk-acts {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex: none;
+  margin-inline-start: auto;
+}
+.dk-x-f {
+  display: contents;
+}
+.dk-body {
+  padding: var(--space-2) var(--space-4);
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dk-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+.dk-panel > .dk-ft {
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+
+/* The footer: the product's Report first, on the left; the actions after. */
 .dk-ft {
   display: flex;
   flex-wrap: wrap;
@@ -72,7 +165,6 @@
   margin-right: auto;
 }
 .dk-btn {
-  font: inherit;
   font-size: var(--fs-s);
   min-height: var(--tap-min);
   padding: 0 var(--space-3);
@@ -81,6 +173,12 @@
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.dk-btn[hidden] {
+  display: none;
 }
 .dk-btn:focus-visible {
   outline: 2px solid var(--accent);
