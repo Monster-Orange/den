@@ -4245,7 +4245,7 @@ export function hubHtml(b, flash, t = (k) => k) {
       ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
       : // Issue 646: the same Connect flow, to pick another company.
         state === "connected"
-        ? `<button type="button" class="btn sm" data-hub-action="connect" data-hub-switch>${escR(t("hubrv.switch"))}</button> `
+        ? `<button type="button" class="btn sm" data-hub-action="switch" data-hub-switch>${escR(t("hubrv.switch"))}</button> `
         : "") +
     `<button type="button" class="btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
     `</div>` +
@@ -5846,7 +5846,7 @@ function wireHub(host, ctx) {
   };
   const busy = (on) =>
     host.querySelectorAll("button, input").forEach((x) => (x.disabled = on));
-  const connect = () => {
+  const connect = (button) => {
     const typed = host.querySelector("#hub-url");
     busy(true);
     err("");
@@ -5863,7 +5863,8 @@ function wireHub(host, ctx) {
             { headers },
           ),
         {
-          button: host.querySelector('button[data-hub-action="connect"]'),
+          button:
+            button || host.querySelector('button[data-hub-action="connect"]'),
           // Off to Hub: sign in and approve there; Hub sends the person back.
           onDone: (r) => location.assign(r.location),
           onFail: (e) => err(e?.message || t("busy.connF")),
@@ -5892,10 +5893,14 @@ function wireHub(host, ctx) {
       connect();
     });
   wireHubAddress(host, ctx, err, busy);
+  // Issue 646: Switch company runs the same Connect flow from a connected card.
   host
-    .querySelectorAll('button[data-hub-action="connect"]')
+    .querySelectorAll(
+      'button[data-hub-action="connect"], button[data-hub-action="switch"]',
+    )
     .forEach(
-      (x) => x.type === "button" && x.addEventListener("click", connect),
+      (x) =>
+        x.type === "button" && x.addEventListener("click", () => connect(x)),
     );
   const acts = host.querySelector(".hub-acts");
   const ask = host.querySelector("[data-hub-confirm]");

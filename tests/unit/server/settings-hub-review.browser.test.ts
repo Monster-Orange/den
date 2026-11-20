@@ -6,6 +6,9 @@
  * then the summary says what happened, with Hub's plan page for the new
  * project. Switch company is there. Fits a phone.
  *
+ * Subject: src/ui/server/hub-connect-review.ts (the review's rows and
+ * apply) and the review drawn by settings-registry.js.
+ *
  * The demo distribution (helpers/agents-page-server.ts); /api/hub and
  * /api/hub/connect-review answered by the test. Needs Playwright's
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names only.
