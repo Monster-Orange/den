@@ -442,12 +442,16 @@ const SEARCH_AT = '<button type="button" class="den-search"';
  * (☰, the brand, and what `start` holds before the search: the crumbs),
  * the search in a fixed slot, and the chips (the host's `end`, then
  * Report, the bell, the version and ◐ ▾, pinned to the right edge).
+ * `rail: false` (issue 694): a page with no rail. No ☰ (it would open
+ * nothing) and nothing that points at the rail; the header is stamped
+ * data-nav-shape="no-rail" for the parity gate. The rest is the same bar.
  */
 export function topBarHtml({
   product = {},
   lang,
   slots = {},
   report = true,
+  rail = true,
 } = {}) {
   const name = product.name ?? "";
   const start = slots.start || "";
@@ -455,11 +459,15 @@ export function topBarHtml({
   const before = at < 0 ? start : start.slice(0, at);
   const search = at < 0 ? "" : start.slice(at);
   return (
-    '<header class="den-top">' +
+    (rail === false
+      ? '<header class="den-top" data-nav-shape="no-rail">'
+      : '<header class="den-top">') +
     '<div class="den-left">' +
-    '<button class="den-ib den-menu-btn" id="den-menu-btn" aria-label="' +
-    esc(kitT(lang, "kit.menu")) +
-    '" aria-expanded="false" aria-controls="den-rail">☰</button>' +
+    (rail === false
+      ? ""
+      : '<button class="den-ib den-menu-btn" id="den-menu-btn" aria-label="' +
+        esc(kitT(lang, "kit.menu")) +
+        '" aria-expanded="false" aria-controls="den-rail">☰</button>') +
     '<a class="den-brand" href="' +
     esc(product.href || "/") +
     '" title="' +
@@ -491,7 +499,8 @@ export function topBarHtml({
 /**
  * The whole shell: the skip link, the top bar and the rail (in its box:
  * no box of its own, display: contents; as ☰'s drawer it is the modal
- * dialog the rail sits in, so the rail stays a nav).
+ * dialog the rail sits in, so the rail stays a nav). `rail: false`
+ * (issue 694): the skip link and the bar without ☰, and no rail.
  */
 export function shellHtml(o = {}) {
   const lang = o.lang;
@@ -500,6 +509,13 @@ export function shellHtml(o = {}) {
     esc(kitT(lang, "kit.skip")) +
     "</a>" +
     topBarHtml(o) +
+    (o.rail === false ? "" : railBoxHtml(o))
+  );
+}
+
+function railBoxHtml(o) {
+  const lang = o.lang;
+  return (
     '<div class="den-rail-box" id="den-rail-box">' +
     '<nav class="den-rail" id="den-rail" aria-label="' +
     esc(kitT(lang, "kit.pages")) +
@@ -877,7 +893,8 @@ function bellSectionsHtml(s, lang) {
  */
 /**
  * Who is signed in, as the kit draws it (0.7.1): the name on the first
- * line, @login on the second; @login alone when no name is known. The
+ * line, @login on the second; @login alone when no name is known, or when
+ * the name is just the login (sameAsLogin, issue 656). The
  * role is shown in the account menu's header only ({ menu: true }), on
  * its own line. From data: { name?, login?, role? }; with no
  * identity, { local: true } draws the kit's word for this computer. The old
@@ -885,10 +902,27 @@ function bellSectionsHtml(s, lang) {
  * release, as they were given, marked data-nav-legacy for the nav
  * inventory. Returns { lines: [first, second?], shape, legacy, full }.
  */
+/**
+ * Issue 656: whether a display name is just the login: the same once
+ * trimmed, a leading "@" dropped and case ignored. Such a name is no name.
+ */
+export function sameAsLogin(name, login) {
+  const norm = (v) =>
+    String(v ?? "")
+      .trim()
+      .replace(/^@/, "")
+      .toLowerCase();
+  return !!norm(login) && norm(name) === norm(login);
+}
+
 export function accountWho(a, { menu = false } = {}) {
   if (!a) return null;
   const legacy = a.label != null || a.detail != null;
-  const name = a.name ?? a.label ?? "";
+  // Issue 656: a name that is just the login is no name (@login alone).
+  const name =
+    a.name != null && !a.label && a.login && sameAsLogin(a.name, a.login)
+      ? ""
+      : (a.name ?? a.label ?? "");
   const login = a.login
     ? String(a.login).startsWith("@")
       ? String(a.login)

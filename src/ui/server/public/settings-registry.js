@@ -1174,7 +1174,7 @@ function drawAppKeys(host, ctx) {
     const key = d.result && d.result.once && d.result.once.key;
     if (key) {
       out.innerHTML =
-        `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's server now. It is not shown again."))}</p>` +
+        `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's backend now. It is not shown again."))}</p>` +
         `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:var(--mono)" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
         `<button type="button" class="btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
       const box = out.querySelector("#set-appkey-new");
@@ -1868,7 +1868,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Report: repository visibility wait",
     description:
-      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says not known (with the caution), and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     keywords: ["report", "feedback", "visibility", "timeout", "wait"],
     scope: "user",
     keys: ["feedback.visibility_timeout_seconds"],
@@ -2827,6 +2827,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_list: { host_timeout_seconds: v } }),
   },
   {
+    // Issue 456: how long Den waits for your shell's PATH (-lc and -ilc).
+    id: "agents.shell_path_wait",
+    category: "agents",
+    label: "Shell PATH wait",
+    description:
+      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    keywords: ["timeout", "shell", "path", "zshrc", "cli", "runtime", "wait"],
+    scope: "user",
+    keys: ["agents_shell.path_timeout_seconds"],
+    control: { type: "number", min: 1, max: 120, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_shell?.path_timeout_seconds ?? 10,
+    write: (v, ctx) => ctx.post({ agents_shell: { path_timeout_seconds: v } }),
+  },
+  {
     id: "agents.list_refresh_wait",
     category: "agents",
     label: "Agents list wait",
@@ -3417,8 +3431,11 @@ export function runtimeRowHtml(r, scopeWs) {
       ? ` <span class="set-tag" data-den-tools="coming">${escR(L("set.ui.rt.toolsComing", "Den tools: coming"))}</span>`
       : "");
   const set = r.source === "workspace" || r.source === "setting";
+  // Issue 456: a quarantined CLI is never run, so it has no checked version.
   const status = r.available
-    ? `<span class="rt-ok">✓ ${escR(r.version ? r.version : L("set.ui.rt.installed", "installed"))}</span>`
+    ? r.quarantined
+      ? `<span class="rt-bad" data-quarantined="true">${escR(r.version ? `${r.version} · ` : "")}${escR(rtQuarantined())}</span>`
+      : `<span class="rt-ok">✓ ${escR(r.version ? r.version : L("set.ui.rt.installed", "installed"))}</span>`
     : `<span class="rt-bad">${escR(set ? r.why : L("set.ui.rt.notInstalled", "Not installed"))}</span>`;
   const where = r.path
     ? `<span class="den-mono rt-p">${escR(r.path)}</span> <span class="set-tag" data-src="${escR(r.source || "")}">${escR(rtSource(r.source))}</span>`
@@ -3442,6 +3459,42 @@ export function runtimeRowHtml(r, scopeWs) {
     `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +
     `<button type="submit" class="btn sm primary">${escR(L("set.ui.rt.save", "Save"))}</button> <button type="button" class="btn sm" data-cancel-path>${escR(L("set.ui.rt.cancel", "Cancel"))}</button>` +
     `<div class="rt-err" role="alert" hidden></div></form>` +
+    otherCopiesHtml(r) +
+    `</div>`
+  );
+}
+
+const rtQuarantined = () => L("set.ui.rt.quarantined", "quarantined, not run");
+
+/**
+ * Issue 456: the other copies of a runtime Den found, each with the
+ * version its install says (never run) and a button that pins it
+ * (agents.runtimes.<id>.bin at the scope shown).
+ */
+function otherCopiesHtml(r) {
+  const others = r.others || [];
+  if (!others.length) return "";
+  const name = r.label || r.id;
+  return (
+    `<div class="rt-o" data-others="${escR(r.id)}">` +
+    `<div class="rt-oh">${escR(L("set.ui.rt.alsoFound", "Also found:"))}</div>` +
+    `<div role="list">` +
+    others
+      .map(
+        (o) =>
+          `<div class="rt-oi" role="listitem" data-copy="${escR(o.path)}">` +
+          `<span class="den-mono rt-p">${escR(o.path)}</span> ` +
+          `<span class="rt-ov">${escR(o.version || L("set.ui.rt.versionUnknown", "version unknown"))}</span> ` +
+          `<span class="set-tag" data-src="${escR(o.source)}">${escR(rtSource(o.source))}</span>` +
+          (o.quarantined
+            ? ` <span class="rt-bad" data-quarantined="true">${escR(rtQuarantined())}</span>`
+            : "") +
+          ` <button type="button" class="btn sm" data-pin-path="${escR(r.id)}" data-bin="${escR(o.path)}" aria-label="${escR(L("set.ui.rt.useThisFor", "Use {path} for {name}", { path: o.path, name }))}">${escR(L("set.ui.rt.useThis", "Use this"))}</button>` +
+          `</div>`,
+      )
+      .join("") +
+    `</div>` +
+    `<div class="rt-err" role="alert" hidden></div>` +
     `</div>`
   );
 }
@@ -3507,6 +3560,9 @@ function renderRuntimes(host, ctx) {
       form.hidden = true;
     } else if (b.dataset.clearPath) {
       await savePath(b.dataset.clearPath, null, form);
+    } else if (b.dataset.pinPath && b.dataset.bin) {
+      // Issue 456: one click pins that copy; a refusal shows under the list.
+      await savePath(b.dataset.pinPath, b.dataset.bin, b.closest(".rt-o"));
     }
   });
   host.addEventListener("submit", async (e) => {
@@ -4895,6 +4951,11 @@ export function hubProjectHtml(b, t, name) {
     `<div class="hubp-new" data-hubp-newrow${on ? "" : " hidden"}>` +
     `<label for="hubp-new">${escR(t("hubp.newName"))}</label> ` +
     `<input id="hubp-new" type="text" value="${escR(own)}" maxlength="${HUBP_NAME_MAX}" autocomplete="off"></div>`;
+  // Issue 651: linked, Unlink rides in the Switch row (one row beside the
+  // list, wrapping only on a narrow screen).
+  const unlinkBtn = linked
+    ? `<button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
+    : "";
   const picker = (label, btn, primary) =>
     !linked
       ? `<form class="hubp-pick" data-hubp-form>` +
@@ -4908,8 +4969,10 @@ export function hubProjectHtml(b, t, name) {
           `<label for="hubp-sel">${escR(label)}</label> ` +
           `<select id="hubp-sel">${opts}</select> ` +
           `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+          unlinkBtn +
           `</form>`
-        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
+        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>` +
+          (unlinkBtn ? `<p>${unlinkBtn}</p>` : "");
   const tail =
     hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
@@ -4928,7 +4991,6 @@ export function hubProjectHtml(b, t, name) {
       `<details class="hubp-more" data-hubp-more><summary>${escR(t("hubp.more"))}</summary>` +
       `<p class="set-note">${escR(t("hubp.moreNote"))}</p>` +
       picker(t("hubp.switchL"), t("hubp.switch"), false) +
-      `<p><button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button></p>` +
       `<p class="set-note">${escR(t("hubp.unlinkDoes", { project: ws, hub: hubName }))}</p>` +
       `<p class="set-note">${escR(t("hubp.cliL"))} <code>__DEN_CLI__ hub link -p ${escR(ws)}</code></p>` +
       `</details>` +

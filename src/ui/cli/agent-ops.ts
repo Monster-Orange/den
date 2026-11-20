@@ -108,6 +108,7 @@ import * as path from "path";
 import {
   AGENTS_RESERVED_KEYS,
   configuredRuntimeBin,
+  shellPathTimeoutMs,
   configuredRuntimeCatalog,
   readAgentsConfig,
   readDenConfig,
@@ -277,10 +278,12 @@ import {
 import {
   binSettingKey,
   ensureInteractivePath,
+  installVersion,
   interactivePathAsked,
   runtimeVersion,
   type BinSetting,
   type BinSource,
+  type RuntimeCopy,
 } from "../../shared/agents/runtime-search.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 import {
@@ -365,6 +368,11 @@ export interface AgentsDeps extends SessionsDeps {
    * 5000 ms; 0: it doesn't wait, as `--no-wait`).
    */
   stopWaitMs?: number;
+  /**
+   * Issue 456: agents.shell_path_timeout_seconds, how long the shell is
+   * given to say its PATH (default: user.yml's, 10 when unset).
+   */
+  shellPathTimeoutSeconds?: () => number;
   /** `agents.runtimes.<id>.bin` (default: user.yml's; undefined: unset). */
   runtimeBin?: (id: string) => unknown;
   /**
@@ -467,6 +475,7 @@ export interface AgentsResolved extends Resolved {
   mcpServer: () => { command: string[] | string; env: Record<string, string> };
   exitWatchMs: number;
   stopWaitMs: number;
+  shellPathTimeoutSeconds: () => number;
   runtimeBin: (id: string) => unknown;
   workspaceRuntimeBin: (ws: string, id: string) => unknown;
   workspacePermission: (ws: string) => unknown;
@@ -762,6 +771,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     mcpServer: d.mcpServer ?? (() => defaultMcpServer(base.cli)),
     exitWatchMs: d.exitWatchMs ?? EXIT_WATCH_MS,
     stopWaitMs: d.stopWaitMs ?? STOP_WAIT_MS,
+    shellPathTimeoutSeconds:
+      d.shellPathTimeoutSeconds ?? (() => shellPathTimeoutMs() / 1000),
     runtimeBin: d.runtimeBin ?? ((id) => configuredRuntimeBin(id)),
     workspaceRuntimeBin:
       d.workspaceRuntimeBin ?? ((ws, id) => workspaceRuntimeBin(ws, id)),
@@ -2604,6 +2615,16 @@ export interface RuntimeChoice {
   source?: BinSource;
   /** The directories searched, in order (a runtime with a CLI to find). */
   searched?: string[];
+  /**
+   * Issue 456: the CLI it runs carries com.apple.quarantine, so Den runs
+   * nothing of it ("quarantined, not run"; no version asked).
+   */
+  quarantined?: true;
+  /**
+   * Issue 456: the other copies found, with what their installs say of
+   * their version (never run); one is pinned with `setting`.
+   */
+  others?: RuntimeCopy[];
   /** The user.yml key that sets its path (a runtime with a CLI to find). */
   setting?: string;
   /** The workspace's key for it, when listed for a workspace. */
@@ -2672,23 +2693,24 @@ export function syncCatalog(d: AgentsResolved): void {
 }
 
 /**
- * When a catalog runtime is still missing (nothing set, not found on the
- * login PATH, PATH or its install directories), ask the interactive shell
- * for its PATH: once per process, then kept (AG-0.5).
+ * Issue 456: before a catalog runtime is searched for (nothing set at this
+ * scope), ask the interactive shell for its PATH, the first place looked:
+ * the PATH the person's terminal has. Once per process, then kept.
  */
-async function fallbackSearch(
+async function interactiveSearch(
   d: AgentsResolved,
   rts: Runtime[],
   ws?: string,
 ): Promise<void> {
   if (interactivePathAsked()) return;
-  const missing = rts.some(
-    (rt) =>
-      rt.catalog &&
-      !runtimeSetting(d, rt.id, ws) &&
-      !detectRuntime(d, rt, ws).available,
+  const searched = rts.some(
+    (rt) => rt.catalog && !runtimeSetting(d, rt.id, ws),
   );
-  if (missing) await ensureInteractivePath({ env: d.env });
+  if (searched)
+    await ensureInteractivePath({
+      env: d.env,
+      timeoutMs: d.shellPathTimeoutSeconds() * 1000,
+    });
 }
 
 /**
@@ -2712,7 +2734,7 @@ export async function listRuntimes(
 ): Promise<RuntimeChoice[]> {
   syncCatalog(d);
   const ids = runtimeIds();
-  await fallbackSearch(
+  await interactiveSearch(
     d,
     ids.map((id) => getRuntime(id)!),
     ws,
@@ -2721,11 +2743,16 @@ export async function listRuntimes(
     ids.map(async (id) => {
       const rt = getRuntime(id)!;
       const det = detectRuntime(d, rt, ws);
+      // Issue 456: only the chosen copy is asked, and never a quarantined
+      // one (its install's files say its version instead).
       const asked =
-        det.available && det.path && rt.find?.versionArgs
+        det.available && det.path && rt.find?.versionArgs && !det.quarantined
           ? await runtimeVersion(det.path, rt.find.versionArgs, d.env)
           : undefined;
-      const version = asked ?? det.version;
+      const version =
+        asked ??
+        det.version ??
+        (det.quarantined && det.path ? installVersion(det.path) : undefined);
       return {
         id,
         ...(rt.label ? { label: rt.label } : {}),
@@ -2736,6 +2763,8 @@ export async function listRuntimes(
         ...(version ? { version } : {}),
         ...(det.path ? { path: det.path } : {}),
         ...(det.source ? { source: det.source } : {}),
+        ...(det.quarantined ? { quarantined: true as const } : {}),
+        ...(det.others?.length ? { others: det.others } : {}),
         ...(rt.find
           ? {
               searched: det.searched ?? [],
@@ -2795,7 +2824,7 @@ async function availableOrRefuse(
   rt: Runtime,
   ws?: string,
 ): Promise<RuntimeDetect> {
-  await fallbackSearch(d, [rt], ws);
+  await interactiveSearch(d, [rt], ws);
   const det = detectRuntime(d, rt, ws);
   if (!det.available)
     throw refused(

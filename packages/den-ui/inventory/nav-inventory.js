@@ -290,6 +290,16 @@ export async function collectNav(page, opts = {}) {
             ...(el.hasAttribute("data-nav-shape")
               ? { shape: el.getAttribute("data-nav-shape") }
               : {}),
+            // Issue 694: on the top bar, whether the page holds ☰ or a
+            // rail at all, drawn or hidden (a no-rail page has neither).
+            ...(el.matches("header.den-top") &&
+            document.querySelector(".den-menu-btn")
+              ? { menu: true }
+              : {}),
+            ...(el.matches("header.den-top") &&
+            document.querySelector("nav.den-rail, .den-rail")
+              ? { rail: true }
+              : {}),
             ...(el.hasAttribute("data-nav-legacy") ? { legacy: true } : {}),
             ...(el.hasAttribute("data-den-account")
               ? {
@@ -638,6 +648,36 @@ export function searchSlotDiffs(snap, tolerance = 2) {
 /** The account entry's shapes the kit draws, and their line counts. */
 export const ACCOUNT_SHAPES = { "name,login": 2, login: 1, local: 1 };
 
+/**
+ * Issue 694: the top bar's shapes the kit draws besides its default (no
+ * data-nav-shape: ☰ and a rail). "no-rail": topBarHtml({ rail: false }).
+ */
+export const TOP_SHAPES = ["no-rail"];
+
+/**
+ * Issue 694: the top bar's shape, checked on what the page holds (no
+ * reference needed). A shape the kit doesn't draw fails; a "no-rail" page
+ * that holds ☰ or a rail (drawn or hidden) fails, once for each.
+ */
+export function railShapeDiffs(snap) {
+  const out = [];
+  const top = snap.elements.find(
+    (e) => e.slot === "top" && e.tag === "header" && e.parent == null,
+  );
+  if (!top || top.shape == null) return out;
+  const diff = (property, reference, actual) =>
+    out.push({ key: top.key, slot: top.slot, property, reference, actual });
+  if (!TOP_SHAPES.includes(top.shape)) {
+    diff("shape", `(default) | ${TOP_SHAPES.join(" | ")}`, top.shape);
+    return out;
+  }
+  if (top.menu || snap.elements.some((e) => e.classes.includes("den-menu-btn")))
+    diff("menu", "absent (no-rail)", "☰ drawn");
+  if (top.rail || snap.elements.some((e) => e.slot !== "top"))
+    diff("rail", "absent (no-rail)", "rail drawn");
+  return out;
+}
+
 /** The version's fixed slot for a viewport width (none on a phone). */
 export function versionSlotW(viewportW) {
   return viewportW > 1100 ? 96 : viewportW > 720 ? 64 : 0;
@@ -901,6 +941,8 @@ export function compareNav(actual, reference, opts = {}) {
   );
   // Issue 303: the search's slot, from the viewport alone.
   diffs.push(...topSlotDiffs(actual, tol));
+  // Issue 694: the top bar's shape, from what the page holds alone.
+  diffs.push(...railShapeDiffs(actual));
   // Issue 307: an entry both sides draw (host content too: its key is its
   // data-nav id) has the same kind tag, or none on both. The tag's look is
   // the "kind" role's, compared below with the first of each role.

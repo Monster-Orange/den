@@ -110,6 +110,12 @@ export interface ShellModel extends RailModel {
   slots?: Slots;
   /** false: no Report button (reports off). */
   report?: boolean;
+  /**
+   * Issue 694: false for a page with no rail. The top bar draws no ☰ and
+   * no aria-controls for the rail (stamped data-nav-shape="no-rail");
+   * shellHtml draws no rail. Default true.
+   */
+  rail?: boolean;
 }
 export declare function navItemHtml(
   n: NavItem,
@@ -285,6 +291,14 @@ export declare function bellButtonHtml(o?: BellButtonOptions): string;
 export declare function bellPanelHtml(o?: BellPanelOptions): string;
 /** The rail's account entry; nobody known, "". */
 export declare function accountHtml(a: Account | null | undefined): string;
+/**
+ * Issue 656: whether a display name is just the login (trimmed, a leading
+ * "@" dropped, case ignored). The kit draws such a name as no name.
+ */
+export declare function sameAsLogin(
+  name: string | null | undefined,
+  login: string | null | undefined,
+): boolean;
 /** Who is signed in, as the kit draws it: its lines and its shape. */
 export declare function accountWho(
   a: Account | null | undefined,

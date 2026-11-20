@@ -233,6 +233,7 @@ import {
   agentResumeRefusal,
 } from "./agent-resume-grant.js";
 import { readBody, sendJson } from "./http-helpers.js";
+import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
 
@@ -2526,14 +2527,17 @@ async function hubConnectRoute(
       "Referrer-Policy": "no-referrer",
       "Cache-Control": "no-store",
     });
+    // Issue 644: a page made in code carries the kit's head snippet too.
     res.end(
-      m.callbackPage(product().title, {
-        ok: r.ok,
-        ...(r.ok ? {} : { reason: r.reason }),
-        message: r.ok
-          ? `Connected to Hub${r.team ? ` (${r.team})` : ""}. Going back to Settings…`
-          : r.message,
-      }),
+      sitePage(
+        m.callbackPage(product().title, {
+          ok: r.ok,
+          ...(r.ok ? {} : { reason: r.reason }),
+          message: r.ok
+            ? `Connected to Hub${r.team ? ` (${r.team})` : ""}. Going back to Settings…`
+            : r.message,
+        }),
+      ),
     );
     return true;
   }

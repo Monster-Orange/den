@@ -14,6 +14,7 @@
  * on github.com: anything else is dropped and never shown as a link.
  */
 import { SERVER_SCOPE } from "./agents/server-agent.js";
+import { isCatchAllProject } from "./catch-all-project.js";
 import { parseHubProjectLink } from "./hub-project-link.js";
 import type { WorkspacesFile } from "./types/index.js";
 import { workspaceDisplayName } from "./workspace-name.js";
@@ -55,6 +56,11 @@ export interface SyncProject {
   repos: string[];
   hub_project: string | null;
   agents: SyncAgent[];
+  /**
+   * Issue 649: set (true) on Den's catch-all project only, so Hub never
+   * proposes a Hub project for it.
+   */
+  catch_all?: true;
 }
 
 /** A project's agents from their records: id, the name people see, the handle. */
@@ -102,6 +108,7 @@ export function projectList(
         repos,
         hub_project: parseHubProjectLink(cfg?.hub_project)?.id ?? null,
         agents: agentsOf(ws),
+        ...(isCatchAllProject(ws) ? { catch_all: true as const } : {}),
       };
     });
 }

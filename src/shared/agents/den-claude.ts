@@ -91,7 +91,11 @@ import {
 import { PERMISSION_INTENTS, type PermissionIntent } from "./permissions.js";
 import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
-import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
+import {
+  isQuarantined,
+  locateRuntime,
+  type RuntimeFind,
+} from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
 import {
   cleanName,
@@ -269,6 +273,8 @@ export function permissionModesOf(
   bin: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] | null {
+  // Issue 456: a quarantined file is never run (macOS would warn).
+  if (isQuarantined(bin)) return null;
   let key: string;
   try {
     const real = fs.realpathSync(bin);
@@ -386,6 +392,8 @@ function detect(
     ...(version ? { version } : {}),
     path: found.path,
     ...(found.source ? { source: found.source } : {}),
+    ...(found.quarantined ? { quarantined: true as const } : {}),
+    ...(found.others ? { others: found.others } : {}),
     searched: found.searched,
   };
 }
@@ -447,14 +455,16 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 }
 
 /**
- * Review M4 (0.4.46): Edit and Write denied under the person's own config
- * folder (config/local: user.yml holds self_update and the person's
- * settings). The team file beside it stays editable. A cooperating
- * agent's boundary only; the server's token rules are the real one.
+ * Review M4 (0.4.46): edits denied under the person's own config folder
+ * (config/local: user.yml holds self_update and the person's settings).
+ * The team file beside it stays editable. A cooperating agent's boundary
+ * only; the server's token rules are the real one. Issue 660: Claude Code
+ * covers file writes under Edit(path) rules and warns that a Write(path)
+ * rule never matches, so Den writes the Edit rule only.
  */
 export function personConfigDenyRules(dir: string): string[] {
   const abs = path.resolve(dir);
-  return [`Edit(/${abs}/**)`, `Write(/${abs}/**)`];
+  return [`Edit(/${abs}/**)`];
 }
 
 /** The readers named in the Bash deny rules (stateDirDenyRules). */

@@ -5,7 +5,9 @@
 // GitHub sign-in), and Review must show the matching pill: the public pill
 // and the visible-to-everyone warning for a public repo, the private or
 // internal pill and its audience note otherwise; a target whose visibility
-// Den couldn't learn (its cache, read only, says unknown) as public. Each
+// Den couldn't learn (its cache, read only, says unknown; the API says
+// "unknown") as not known: a "Visibility not known" pill and the caution,
+// never the Public repository pill and never a private claim. Each
 // target is chosen in turn in the drop-down, in en, es and ja (Den's
 // language setting, put back). Nothing is sent: Report closes with Esc and
 // Discard.
@@ -14,7 +16,7 @@ export const clauses = [
   "Den gives each report target its real visibility on GitHub",
   "a public target shows the Public repository pill and the visible-to-everyone warning",
   "a private or internal target shows its own pill and no public warning",
-  "unknown visibility is treated as public: the pill and the warning show",
+  "unknown visibility shows a not-known pill and the caution: never the Public repository pill, never a private claim",
   "with several repos in the drop-down, the pill and note follow the selected repo",
   "the pill, the warning and the audience note have en, es and ja text",
 ];
@@ -23,6 +25,12 @@ export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 240000;
 
 const LANGS = ["en", "es", "ja"];
+
+/** As the kit reads it: public, private, internal, else unknown. */
+const norm = (v) =>
+  v === "public" || v === "private" || v === "internal" ? v : "unknown";
+/** The warning box shows for public, and (as a caution) for unknown. */
+const warns = (v) => v === "public" || v === "unknown";
 
 /** What GitHub says without a token: public, or not (private, internal). */
 async function realVisibility(repo) {
@@ -198,14 +206,12 @@ export function expect(cells) {
     }));
   // The page's rows (the same targets and API answers in every cell).
   const rows = ran.flatMap((c) => c.result.seen.filter((s) => !s.back));
-  const pub = rows.filter(
-    (s) => !s.unknown && (s.visibility ?? "public") === "public",
-  );
-  const priv = rows.filter((s) => (s.visibility ?? "public") !== "public");
-  const unk = rows.filter((s) => s.unknown);
+  const pub = rows.filter((s) => !s.unknown && norm(s.visibility) === "public");
+  const priv = rows.filter((s) => !s.unknown && !warns(norm(s.visibility)));
+  const unk = rows.filter((s) => s.unknown || norm(s.visibility) === "unknown");
   const pageMatches = (s) =>
-    s.vis === (s.visibility ?? "public") &&
-    (s.vis === "public"
+    s.vis === norm(s.visibility) &&
+    (warns(s.vis)
       ? s.warn === 1 && s.note === 0
       : s.warn === 0 && s.note === 1);
   return [
@@ -229,8 +235,8 @@ export function expect(cells) {
           clause: clauses[3],
           ok: unk.every(
             (s) =>
-              s.visibility === "public" &&
-              s.vis === "public" &&
+              s.visibility === "unknown" &&
+              s.vis === "unknown" &&
               s.warn === 1 &&
               s.note === 0,
           ),
@@ -265,9 +271,7 @@ function follows(ran, pageMatches) {
       c.result.select &&
       c.result.seen.filter((s) => !s.back).length > 1 &&
       new Set(
-        c.result.seen
-          .filter((s) => !s.back)
-          .map((s) => s.visibility ?? "public"),
+        c.result.seen.filter((s) => !s.back).map((s) => norm(s.visibility)),
       ).size > 1,
   );
   if (!many.length)
@@ -275,10 +279,7 @@ function follows(ran, pageMatches) {
   return {
     clause: clauses[4],
     ok: many.every(
-      (c) =>
-        c.result.seen.every((s) =>
-          s.unknown ? s.vis === "public" && s.warn === 1 : pageMatches(s),
-        ) && kinds(c).size > 1,
+      (c) => c.result.seen.every(pageMatches) && kinds(c).size > 1,
     ),
     detail: many
       .map((c) =>
@@ -307,7 +308,7 @@ function words(ran) {
       if (!list.length) bad.push(`${lang}: no Review read`);
       for (const [i, s] of list.entries()) {
         shown.add(s.vis);
-        const text = s.vis === "public" ? s.warnText : s.noteText;
+        const text = warns(s.vis) ? s.warnText : s.noteText;
         if (s.html !== lang) bad.push(`${lang} ${s.repo}: page in ${s.html}`);
         if (key.test(s.pill) || key.test(text))
           bad.push(`${lang} ${s.repo}: "${s.pill}" / "${text}"`);
@@ -316,7 +317,7 @@ function words(ran) {
           lang !== "en" &&
           en &&
           (s.pill === en.pill ||
-            text === (en.vis === "public" ? en.warnText : en.noteText))
+            text === (warns(en.vis) ? en.warnText : en.noteText))
         )
           bad.push(`${lang} ${s.repo}: same words as en ("${s.pill}")`);
       }

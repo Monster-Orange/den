@@ -9,7 +9,8 @@
 //            "stuck" (they stay as first drawn, the bug clause 5 names);
 //   words:   "good" (en, es and ja), "english" (English in es and ja) or
 //            "keys" (the catalog key where es or ja has no text);
-//   cache:   false: the bed has no visibility cache file.
+//   cache:   false: the bed has no visibility cache file;
+//   unknownWarn: false: an unknown target loses its caution (a bug).
 // Also `fetch`: a stand-in for GitHub's API (no network). Invented names.
 
 const WORDS = {
@@ -18,18 +19,24 @@ const WORDS = {
     priv: "Private repository",
     pubW: "Screenshots and text are visible to everyone.",
     privN: "Only people with access to this repository can see it.",
+    unk: "Visibility not known",
+    unkW: "Treat it as public: mask anything private.",
   },
   es: {
     pub: "Repositorio público",
     priv: "Repositorio privado",
     pubW: "Las capturas y el texto son visibles para todos.",
     privN: "Solo quienes tienen acceso a este repositorio pueden verlo.",
+    unk: "Visibilidad desconocida",
+    unkW: "Trátalo como público: tapa lo privado.",
   },
   ja: {
     pub: "公開リポジトリ",
     priv: "非公開リポジトリ",
     pubW: "スクリーンショットとテキストは誰でも見られます。",
     privN: "このリポジトリにアクセスできる人だけが見られます。",
+    unk: "公開範囲は不明",
+    unkW: "公開として扱い、見せたくない部分は隠してください。",
   },
 };
 
@@ -38,6 +45,7 @@ export function fakeBed({
   pill = "follows",
   words = "good",
   cache = true,
+  unknownWarn = true,
 } = {}) {
   const settings = { language: "en" };
   let lang = "en";
@@ -55,18 +63,24 @@ export function fakeBed({
 
   const view = () => {
     const t = targets.find((x) => x.repo === drawn) ?? {};
-    const v =
-      t.visibility === "private" || t.visibility === "internal"
-        ? t.visibility
-        : "public";
+    // The kit: public, private and internal as said; anything else unknown.
+    const v = ["public", "private", "internal"].includes(t.visibility)
+      ? t.visibility
+      : "unknown";
+    const warns = v === "public" || (v === "unknown" && unknownWarn);
     return {
       html: lang,
-      pill: say(v === "public" ? "pub" : "priv"),
+      pill: say({ public: "pub", unknown: "unk" }[v] ?? "priv"),
       vis: v,
-      warn: v === "public" ? 1 : 0,
-      note: v === "public" ? 0 : 1,
-      warnText: v === "public" ? `${say("pub")}. ${say("pubW")}` : "",
-      noteText: v === "public" ? "" : say("privN"),
+      warn: warns ? 1 : 0,
+      note: v === "public" || v === "unknown" ? 0 : 1,
+      warnText:
+        v === "public"
+          ? `${say("pub")}. ${say("pubW")}`
+          : warns
+            ? say("unkW")
+            : "",
+      noteText: v === "public" || v === "unknown" ? "" : say("privN"),
     };
   };
 

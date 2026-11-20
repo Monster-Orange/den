@@ -2,7 +2,8 @@
  * Issue 415: a Den whose Report destination is private says so. Den's own
  * GET /api/report (report-routes.ts, with a fake `gh`: no network) feeds
  * the kit's Report form, as den-kit.js does; Review shows the private pill
- * and no public warning. A failed lookup reads as public.
+ * and no public warning. A failed lookup reads as not known, with the
+ * caution kept (never "Public repository").
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
@@ -207,7 +208,7 @@ describe.each(["chromium", "webkit"])(
         () => t,
       );
       let p = await review(b, d);
-      expect((await seen(p)).pill).toBe("Public repository");
+      expect((await seen(p)).pill).toBe("Visibility not known");
       await p.context().close();
       t += 2 * 60_000;
       p = await review(b, d);
@@ -219,7 +220,7 @@ describe.each(["chromium", "webkit"])(
       await p.context().close();
     }, 60_000);
 
-    it("a failed lookup: public, as before", async () => {
+    it("a failed lookup: not known, with the caution", async () => {
       const b = browsers[name];
       if (!b) return;
       const p = await review(
@@ -227,7 +228,7 @@ describe.each(["chromium", "webkit"])(
         den({ code: 1, stdout: "", stderr: "HTTP 404: Not Found" }),
       );
       expect(await seen(p)).toEqual({
-        pill: "Public repository",
+        pill: "Visibility not known",
         warn: 1,
         note: 0,
       });

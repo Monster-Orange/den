@@ -54,6 +54,8 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
+  // Issue 456: how long Den waits for the shell's PATH.
+  "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",

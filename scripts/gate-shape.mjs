@@ -70,10 +70,15 @@ const SKIP = /^(person|needs-[a-z0-9][a-z0-9-]*)$/;
 export function checkRows(rows, clauses) {
   if (!Array.isArray(rows)) return ["expect did not return a list"];
   const out = [];
+  // CONTRIBUTING.md: expect answers each clause once.
+  const seen = new Set();
   for (const [i, r] of rows.entries()) {
     const at = `row ${i + 1}`;
     if (!clauses.includes(r?.clause))
       out.push(`${at}: clause "${r?.clause}" is not one of clauses`);
+    else if (seen.has(r.clause))
+      out.push(`${at}: clause "${r.clause}" is answered more than once`);
+    else seen.add(r.clause);
     if (r?.ok === null) {
       if (!SKIP.test(String(r.skip ?? "")))
         out.push(`${at}: ok null needs skip "person" or "needs-<thing>"`);

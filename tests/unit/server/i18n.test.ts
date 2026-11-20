@@ -318,6 +318,20 @@ describe("the Settings page in every language (0.4.45)", () => {
     }
     expect(off).toEqual([]);
   });
+  // Issue 456: the registry's own rows look their words up as
+  // L("key", "English"); each is en's, word for word, so the parity test
+  // above holds es and ja to it.
+  it("every L(key, English) settings-registry.js draws is en's, word for word", () => {
+    const src = read("settings-registry.js");
+    const found = [
+      ...src.matchAll(/\bL\(\s*"([\w.-]+)",\s*"((?:[^"\\]|\\.)*)"/g),
+    ];
+    expect(found.length).toBeGreaterThan(20);
+    const off = found
+      .filter(([, k, en]) => EN[k] !== JSON.parse(`"${en}"`))
+      .map(([, k]) => k);
+    expect([...new Set(off)]).toEqual([]);
+  });
   it("every category's label and description are in en", () => {
     const off: string[] = [];
     for (const c of DEN_SETTING_CATEGORIES as {

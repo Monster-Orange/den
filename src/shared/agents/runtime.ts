@@ -21,7 +21,7 @@ import type { CatalogEntry } from "./catalog.js";
 import type { HookCall } from "./guardrails/hook-call.js";
 import type { AgentRecord } from "./records.js";
 import type { Persona } from "./personas.js";
-import type { BinSource, RuntimeFind } from "./runtime-search.js";
+import type { BinSource, RuntimeCopy, RuntimeFind } from "./runtime-search.js";
 import type { PermissionIntent } from "./permissions.js";
 import type { RuntimeConversation } from "./conversations.js";
 
@@ -41,6 +41,10 @@ export interface RuntimeDetect {
   source?: BinSource;
   /** The directories searched, in order (names only, never values). */
   searched?: string[];
+  /** Issue 456: the found copy carries com.apple.quarantine (never run). */
+  quarantined?: true;
+  /** Issue 456: the other copies found, never run. */
+  others?: RuntimeCopy[];
 }
 
 export interface DetectOptions {

@@ -25,12 +25,13 @@ import { png, webp } from "../../fixtures/images.js";
 
 const ENGINE = process.cwd();
 const DEN_DIR = path.join(ENGINE, "themes", "den");
+// Issue 644: Den's own tab icon is the kit's.
 const DEN_ICON = path.join(
   ENGINE,
+  "packages",
+  "den-ui",
   "src",
-  "ui",
-  "server",
-  "public",
+  "site",
   "favicon.ico",
 );
 
