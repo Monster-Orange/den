@@ -148,6 +148,13 @@ are an owner, **Allow in Hub** is right there in the row. If you aren't, the row
 allow it. Either way, Den links the project by itself once the new Hub project is made. Den's own
 agent can ask the same with its held write `hub_project_create`.
 
+**An agent links it for you.** An agent can ask to link a project to an existing Hub project with its
+held write `hub_link`, for instance after this install moves to another Hub. It names the Hub project
+by its id or slug, never its name. The Allow shows the project, its Hub project now, and the one it
+will be. You press **Allow** and Den links it, as `hub link` does; **Deny** leaves it as it was. A Hub
+project the connected Hub doesn't list, such as an id from another Hub, is refused before you're
+asked. The audit trail records who asked and who allowed.
+
 Den never links on its own beyond the clear matches and a new Hub project you asked for. Each link is
 recorded in the audit trail.
 

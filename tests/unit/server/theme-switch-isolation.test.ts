@@ -399,10 +399,16 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
     const before = snapshot();
 
     for (const shell of [
-      { pins: ["shop"] },
-      { pins: ["shop", "billing/api"] },
+      // Issue 402: a pin is { item, project } (null: none).
+      { pins: [{ item: "shop", project: null }] },
+      {
+        pins: [
+          { item: "shop", project: null },
+          { item: "billing/api", project: null },
+        ],
+      },
       { collapsed: true },
-      { pins: ["billing/api"], collapsed: false },
+      { pins: [{ item: "billing/api", project: null }], collapsed: false },
       // Navigation (R21): hide a page, reorder pages.
       { hidden: ["tests", "release"] },
       { order: ["logs", "services", "local-dev"] },
@@ -415,7 +421,7 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       shell: unknown;
     };
     expect(got.shell).toEqual({
-      pins: ["billing/api"],
+      pins: [{ item: "billing/api", project: null }],
       collapsed: false,
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
@@ -445,7 +451,7 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
     ) as Record<string, unknown>;
     expect(shell).toEqual({
-      pins: ["billing/api"],
+      pins: [{ item: "billing/api" }],
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
     });

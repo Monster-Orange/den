@@ -361,6 +361,8 @@
     "act.unpinX": "{s} のピン留めを外す",
     "toast.pinned": "{s} をピン留めしました",
     "toast.unpinned": "{s} のピン留めを外しました",
+    "toast.unpinnedAll": "すべてのプロジェクトで {s} のピン留めを外しました",
+    "toast.undo": "元に戻す",
     collapse: "折りたたむ",
     expand: "展開する",
     menu: "メニュー",
@@ -924,6 +926,9 @@
     "set.agents.pane_reconnect_wait": "試行の間の最長の待ち時間",
     "set.agents.pane_reconnect_wait.d":
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.shell_path_wait": "シェルの PATH の待ち時間",
+    "set.agents.shell_path_wait.d":
+      "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH の応答を待つ時間です。起動ファイルも含め、新しいシェルと同じ PATH です。これを過ぎると、通常の場所を探します。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -1511,6 +1516,14 @@
     "ap.hc.name": "Hub での名前: {name}",
     "ap.hc.owner":
       "Hub のオーナーが Hub で許可します。許可されると Den がプロジェクトをリンクします。",
+    "ap.do.hub_link":
+      "プロジェクト {project} を Hub プロジェクト {hub} にリンク",
+    "ap.hl.project": "プロジェクト: {project}",
+    "ap.hl.now": "現在: {hub}",
+    "ap.hl.nowNone": "現在: Hub プロジェクトにリンクされていません",
+    "ap.hl.then": "変更後: {hub}",
+    "ap.hl.filed":
+      "エージェントの Hub での作業は、次の呼び出しからそこに記録されます。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
@@ -2903,6 +2916,11 @@
     "set.ui.rt.src.well-known": "検出 · インストール先",
     "set.ui.rt.src.interactive-shell": "検出 · 対話シェル",
     "set.ui.rt.setPath": "パスを設定…",
+    "set.ui.rt.quarantined": "隔離済み、実行していません",
+    "set.ui.rt.alsoFound": "ほかに見つかったもの:",
+    "set.ui.rt.versionUnknown": "バージョン不明",
+    "set.ui.rt.useThis": "これを使う",
+    "set.ui.rt.useThisFor": "{name} に {path} を使う",
     "set.ui.rt.clear": "解除",
     "set.ui.rt.pathToIn": "{ws} での {name} のパス",
     "set.ui.rt.pathToAll": "{name} のパス (すべてのプロジェクト)",

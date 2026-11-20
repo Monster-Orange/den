@@ -360,8 +360,9 @@ describe("the rail", () => {
     await p.keyboard.press("Delete");
     expect(await p.$$('[data-pin="shop"]')).toHaveLength(0);
     await postsAtLeast(p, posts, 2);
+    // Issue 402: a pin is { item, project }; no project picked here: none.
     expect(posts).toEqual([
-      { shell: { pins: ["shop"] } },
+      { shell: { pins: [{ item: "shop", project: null }] } },
       { shell: { pins: [] } },
     ]);
     await p.context().close();
@@ -1102,7 +1103,15 @@ describe("Navigation prefs (R21)", () => {
       expect.arrayContaining([
         { shell: { hidden: ["release"] } },
         { shell: { hidden: [], order: ["environments"] } },
-        { shell: { pins: ["shop", "billing/api"] } },
+        {
+          shell: {
+            // Issue 402: no project picked here, so pins of none.
+            pins: [
+              { item: "shop", project: null },
+              { item: "billing/api", project: null },
+            ],
+          },
+        },
       ]),
     );
     expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(1);
