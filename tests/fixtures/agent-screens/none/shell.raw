@@ -1,0 +1,9 @@
+[H[2J$ npm test
+
+> demo@1.0.0 test
+> vitest run
+
+ ✓ src/sum.test.ts (12 tests) 4ms
+
+ Test Files  1 passed (1)
+$ 

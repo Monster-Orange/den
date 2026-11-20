@@ -146,6 +146,11 @@ export interface SessionRouteDeps {
    * "permission", "input" or "asked" (its hooks, ask_human).
    */
   waitingWhy?: () => ReadonlyMap<string, string>;
+  /**
+   * Issue 770: what each unhooked agent's screen shows by its runtime's
+   * rules: "working", "blocked" or "idle" (attention.ts activityNow).
+   */
+  activity?: () => ReadonlyMap<string, string>;
   /** The person typed into session `id` (its pane): its agent's wait ends. */
   typed?: (id: string) => void;
   /** D28: each agent's effective rotation settings (one resolver per list). */
@@ -200,6 +205,7 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   waitingWhy: () => ReadonlyMap<string, string>;
+  activity: () => ReadonlyMap<string, string>;
   typed: (id: string) => void;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
@@ -262,6 +268,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
+    activity: d.activity ?? (() => new Map<string, string>()),
     typed:
       d.typed ??
       ((id) =>
@@ -422,6 +429,11 @@ export interface ListedSession {
    * 659's "trust": its folder-trust question), when known.
    */
   waitingWhy?: string;
+  /**
+   * Issue 770: Working or Idle, as its screen shows by its runtime's
+   * rules (an agent without hooks). Blocked is a waiting mark instead.
+   */
+  activity?: "working" | "idle";
   /** Issue 659: it ended because its folder-trust question was declined. */
   trustDeclined?: true;
   /** Issue 658: Relaunch from its last handoff is offered (none ready). */
@@ -529,7 +541,10 @@ export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<
-      Pick<Resolved, "waitingAgents" | "waitingWhy" | "workspaceExists">
+      Pick<
+        Resolved,
+        "waitingAgents" | "waitingWhy" | "activity" | "workspaceExists"
+      >
     > &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume" | "modeOf"> & {
@@ -591,6 +606,7 @@ export function listedSessions(
   const toolsRestarting = hubToolsRestarting();
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const why = d.waitingWhy?.() ?? new Map<string, string>();
+  const act = d.activity?.() ?? new Map<string, string>();
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
@@ -691,6 +707,12 @@ export function listedSessions(
             waiting: true,
             ...(why.has(rec.id) ? { waitingWhy: why.get(rec.id) } : {}),
           }
+        : {}),
+      // Issue 770: Working / Idle from its screen's rules.
+      ...(s &&
+      !s.exited &&
+      (act.get(rec.id) === "working" || act.get(rec.id) === "idle")
+        ? { activity: act.get(rec.id) as "working" | "idle" }
         : {}),
       // Issue 659: its folder-trust question waits for its person (its
       // record says so: trustTick), over any other wait.

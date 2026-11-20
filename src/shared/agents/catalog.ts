@@ -46,6 +46,10 @@
  *                               a cap in the agent's output
  *                 None: its agents cannot sign in after logout, and doctor
  *                 says so. Nothing is guessed.
+ *   statusRules   issue 770: the screen rule set (src/shared/agents/detect,
+ *                 RULE_SET_IDS) that says whether its agent is working,
+ *                 blocked or idle when its hooks don't. Only Den's shipped
+ *                 sets: a config entry can name one, never bring its own.
  *   accountName   what the vendor itself calls the account a person signs
  *                 in with ("Claude" for Claude Code: "Claude account A";
  *                 issue 339). An account is the vendor's, not the CLI's.
@@ -62,6 +66,7 @@
  * built-in one: a path is set with agents.runtimes.<id>.bin instead.
  */
 import * as path from "path";
+import { RULE_SET_IDS } from "./detect/rule-sets.js";
 
 export interface CatalogIdentity {
   /** A case-insensitive pattern the version command's output matches. */
@@ -120,6 +125,8 @@ export interface CatalogEntry {
    * entry's name (accountNameOf).
    */
   accountName?: string;
+  /** Issue 770: its screen rule set (detect/RULE_SET_IDS). Unset: none. */
+  statusRules?: string;
 }
 
 /** Issue 339: whose account it is, in the vendor's words: "<this> account A". */
@@ -150,6 +157,7 @@ const ENTRY_KEYS = [
   "titleFromOsc",
   "signIn",
   "accountName",
+  "statusRules",
 ] as const;
 
 /** The keys `signIn` takes. */
@@ -205,6 +213,8 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // claude.ai account"; setup-token "authenticates with your Claude
     // subscription".
     accountName: "Claude",
+    // Issue 770: its screen rules (herdr's claude.toml) when its hooks are off.
+    statusRules: "claude",
   },
   // Codex CLI. https://github.com/openai/codex: binary `codex`, npm
   // @openai/codex, Homebrew cask codex. The standalone installer
@@ -231,6 +241,7 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // API key is an "OpenAI Platform account"; the subscription sign-in is
     // ChatGPT's).
     accountName: "ChatGPT",
+    statusRules: "codex",
   },
   // Gemini CLI. https://github.com/google-gemini/gemini-cli: binary
   // `gemini`, npm @google/gemini-cli, Homebrew formula gemini-cli;
@@ -254,6 +265,7 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/authentication.mdx:
     // "Sign in with Google", "your personal Google account".
     accountName: "Google",
+    statusRules: "gemini",
   },
   // Grok Build. https://docs.x.ai/build/overview: install with
   // https://x.ai/cli/install.sh, run `grok` in a project directory. The
@@ -276,6 +288,7 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // authentication" (or XAI_API_KEY) and never names the account, so the
     // vendor's company name.
     accountName: "xAI",
+    statusRules: "grok",
   },
 ];
 
@@ -555,6 +568,17 @@ export function validateCatalogEntry(
       );
     accountName = a.trim();
   }
+  let statusRules: string | undefined;
+  if (raw.statusRules !== undefined) {
+    if (
+      typeof raw.statusRules !== "string" ||
+      !(RULE_SET_IDS as readonly string[]).includes(raw.statusRules)
+    )
+      throw new Error(
+        `${where}.statusRules: ${shown(raw.statusRules)} must be one of ${RULE_SET_IDS.join(", ")}`,
+      );
+    statusRules = raw.statusRules;
+  }
   return {
     id,
     vendor: text(`${where}.vendor`, raw.vendor),
@@ -566,6 +590,7 @@ export function validateCatalogEntry(
     ...traits,
     ...(signIn ? { signIn } : {}),
     ...(accountName ? { accountName } : {}),
+    ...(statusRules ? { statusRules } : {}),
   };
 }
 

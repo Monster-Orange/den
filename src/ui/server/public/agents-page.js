@@ -915,9 +915,12 @@ function rowHtml(r) {
     r.kind === "agent"
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
+  // Issue 770: a running agent's Working / Idle, from its screen's rules.
   const right = r.waiting
     ? `<span class="wbdg">${esc(waitingText(r))}</span>`
-    : `<span class="st">${esc(stateText(r.state))}</span>`;
+    : r.activity && r.state === "running"
+      ? `<span class="st" data-activity="${esc(r.activity)}">${esc(t(`ag.activity.${r.activity}`))}</span>`
+      : `<span class="st">${esc(stateText(r.state))}</span>`;
   const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
   // column (it pushed this row's name right of the others').

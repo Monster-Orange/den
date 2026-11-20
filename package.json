@@ -26,6 +26,7 @@
     "scripts/setup-secrets.ts",
     "scripts/view-results.js",
     "LICENSE",
+    "THIRD_PARTY_NOTICES",
     "README.md",
     "CHANGELOG.md",
     "docs/",

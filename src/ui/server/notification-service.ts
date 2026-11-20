@@ -2,7 +2,8 @@
  * NT: the server's one notification store and attention tracker. An
  * agent's output mark is a hash of its session's last 4 KB on the session
  * host (never starts one); a check every 2 s clears a waiting mark whose
- * agent's output moved.
+ * agent's output moved. Issue 770: the same tick reads each running
+ * unhooked agent's screen by its runtime's rules (shared/agents/detect).
  */
 import crypto from "node:crypto";
 import {
@@ -19,7 +20,7 @@ import {
   readNotificationConfig,
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
-import { Attention } from "./attention.js";
+import { Attention, type ScreenReport } from "./attention.js";
 import { AlertFeed } from "./alert-feed.js";
 import { alertPrefs } from "./alerts.js";
 import { uiLanguage } from "./ui-language.js";
@@ -139,7 +140,9 @@ async function dialogOpen(agent: string): Promise<boolean | null> {
     import("../../shared/agents/trust-prompt.js"),
   ]);
   const p = getRuntime(rec.runtime)?.permissionPrompt;
-  if (!p) return true;
+  // Issue 770: a runtime with screen rules says it by them.
+  const rules = p ? undefined : await screenRulesOf(rec.runtime);
+  if (!p && !rules) return true;
   try {
     const { webDeps } = await import("./agent-routes.js");
     const c = await webDeps().connectExisting();
@@ -150,7 +153,12 @@ async function dialogOpen(agent: string): Promise<boolean | null> {
       const out = (await c.scrollback(rec.session.id, 16 * 1024)).toString(
         "utf-8",
       );
-      return promptOnScreen(out, p);
+      if (p) return promptOnScreen(out, p);
+      const st = (
+        await import("../../shared/agents/detect/index.js")
+      ).screenStatus(rules, out);
+      // No rule matched, or a viewer: Den can't tell, so the wait stays.
+      return !st || st.state === "unknown" ? true : st.state === "blocked";
     } finally {
       c.close();
     }
@@ -161,6 +169,55 @@ async function dialogOpen(agent: string): Promise<boolean | null> {
 
 /** The runtimes whose hooks say when they wait: their bells add nothing. */
 const HOOKED_RUNTIMES = new Set(["den-claude"]);
+
+/** Issue 770: runtime `runtime`'s screen rule set, when it has one. */
+async function screenRulesOf(runtime: string): Promise<string | undefined> {
+  const { statusRulesOf } = await import("../../shared/agents/runtimes.js");
+  return statusRulesOf(runtime);
+}
+
+/**
+ * Issue 770: each running agent whose runtime has no hooks and has screen
+ * rules, with what its screen shows now (the last 16 KB of its session).
+ * The session host not answering: none (the next tick looks again).
+ */
+async function screenReports(): Promise<ScreenReport[]> {
+  try {
+    const recs = listRecords(getStateDir()).filter(
+      (r) => !HOOKED_RUNTIMES.has(r.runtime) && !r.stoppedAt,
+    );
+    if (!recs.length) return [];
+    const [{ webDeps }, { screenStatus }] = await Promise.all([
+      import("./agent-routes.js"),
+      import("../../shared/agents/detect/index.js"),
+    ]);
+    const c = await webDeps().connectExisting();
+    if (!c) return [];
+    try {
+      const live = new Set(
+        (await c.list()).filter((x) => !x.exited).map((x) => x.ref.id),
+      );
+      const out: ScreenReport[] = [];
+      for (const r of recs) {
+        const rules = await screenRulesOf(r.runtime);
+        if (!rules || !live.has(r.session.id)) continue;
+        const tail = (await c.scrollback(r.session.id, 16 * 1024)).toString(
+          "utf-8",
+        );
+        out.push({
+          agent: r.id,
+          workspace: r.workspace,
+          status: screenStatus(rules, tail),
+        });
+      }
+      return out;
+    } finally {
+      c.close();
+    }
+  } catch {
+    return [];
+  }
+}
 
 /** NT-1 (3): which running agents' sessions rang, and when. */
 export function bellsOf(
@@ -294,6 +351,7 @@ export function notificationDeps(): {
       void attention!
         .check()
         .then(async () => attention!.bells(await sessionBells()))
+        .then(async () => attention!.screens(await screenReports()))
         .catch(() => undefined)
         .finally(() => (busy = false));
     }, 2000);
@@ -365,6 +423,11 @@ export async function reconcileKeptWaits(): Promise<void> {
 /** NT-3b: the agents the hooks say wait for their person, and why. */
 export function attentionWaiting(): Map<string, string> {
   return attention ? attention.waitingNow() : new Map();
+}
+
+/** Issue 770: what each unhooked agent's screen showed last (its rules). */
+export function attentionActivity(): Map<string, string> {
+  return attention ? attention.activityNow() : new Map();
 }
 
 /** Issue 327: what `agent` waits on and since when, or null. */

@@ -1,0 +1,8 @@
+[H[2J> Fix the failing test in src/sum.ts
+
+✦ Fixed the off-by-one in sum(); npm test now passes.
+
+╭────────────────────────────────────────────────────────╮
+│ >   [2mType your message or @path/to/file[0m                 │
+╰────────────────────────────────────────────────────────╯
+~/work/demo (main*)     no sandbox (see /docs)     gemini-2.5-pro (98% context left)

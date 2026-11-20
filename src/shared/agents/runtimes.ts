@@ -54,6 +54,19 @@ export {
   type Runtime,
 } from "./runtime.js";
 
+/**
+ * Issue 770: the screen rule set (shared/agents/detect) runtime `id`'s
+ * catalog entry names, or undefined: no catalog entry, or none named.
+ * Claude Code's built-in runtime isn't a catalog runtime, so its entry is
+ * read from the built-in catalog.
+ */
+export function statusRulesOf(id: string): string | undefined {
+  return (
+    getRuntime(id)?.catalog?.statusRules ??
+    BUILTIN_CATALOG.find((e) => e.id === id)?.statusRules
+  );
+}
+
 /** Every registered runtime's find (its well-known directories). */
 export function allRuntimeFinds(): (RuntimeFind | undefined)[] {
   return runtimeIds().map((id) => getRuntime(id)?.find);

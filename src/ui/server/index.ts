@@ -19,6 +19,7 @@ import {
   alertFeed,
   attentionDetail,
   attentionWaiting,
+  attentionActivity,
   notificationDeps,
 } from "./notification-service.js";
 import type { UpdateWait } from "./update-check.js";
@@ -7242,6 +7243,8 @@ async function handleRequest(
       {
         waitingAgents: waitingAgentIds,
         waitingWhy: waitingReasons,
+        // Issue 770: Working / Idle from unhooked agents' screens.
+        activity: attentionActivity,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),

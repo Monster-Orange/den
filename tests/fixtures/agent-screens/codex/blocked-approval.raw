@@ -1,0 +1,23 @@
+]0;Action Required · demo[H[2J╭──────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.128.0)                       │
+│                                                  │
+│ model:     gpt-5-codex high   /model to change   │
+│ directory: ~/work/demo                           │
+╰──────────────────────────────────────────────────╯
+
+› Fix the failing test in src/sum.ts
+
+• Ran npm test -- sum
+  └ FAIL src/sum.test.ts
+
+  Would you like to run the following command?
+
+  Reason: install the missing test dependency
+
+  $ npm install --save-dev vitest
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for this command (a)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

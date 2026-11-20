@@ -1,0 +1,16 @@
+]0;demo[H[2J╭──────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.128.0)                       │
+│                                                  │
+│ model:     gpt-5-codex high   /model to change   │
+│ directory: ~/work/demo                           │
+╰──────────────────────────────────────────────────╯
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /model - choose what model and reasoning effort to use
+
+› [2mExplain this codebase[0m
+
+  [2m? for shortcuts[0m                                100% context left
