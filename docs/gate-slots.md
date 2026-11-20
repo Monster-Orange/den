@@ -143,3 +143,72 @@ The answers:
 
 A person can still end a runner's slot early on the Agents page or with
 `den gate end <id>`, as for any holder.
+
+## Test boxes: browser slots on other machines
+
+A team often has idle machines that can run browser tests. Set each one
+up as a **test box**, and it brings its own browser slots. With no boxes
+set (the default), nothing changes.
+
+Set a box in Settings › Server › Test boxes, or:
+
+```sh
+den gate box add box1 --ssh ci@box1.example --slots 1 --hold-file heavy.hold
+den gate box add box2 --playwright ws://box2.example:3000 --slots 2 --time-scale 1.5
+den gate box list
+den gate box remove box2
+```
+
+- `--ssh user@host` (with `--ssh-port`, `--ssh-identity <key file>`): how
+  Den reads the box. Keys only; Den names the key file and never reads it.
+- `--playwright ws://…`: the box's Playwright server. A run that gets the
+  box is given it as `DEN_PW_WS`.
+- `--slots N`: browser runs the box takes at once (its "one heavy job at a
+  time" rule is 1).
+- `--hold-file <path>` (needs ssh; relative to the box user's home): while
+  this file is on the box, the box takes no new runs. Its running slots
+  finish.
+- `--time-scale X`: the box's browsers take X times as long as this
+  machine's. Its runs' expected ends stretch by it, and the run gets
+  `DEN_GATE_TIME_SCALE` to stretch its own timeouts.
+
+### Which runs go to a box
+
+A browser run says where it may go:
+
+```sh
+den gate run --kind browser --box any -- npm run test:e2e   # here or any box
+den gate run --kind browser -- npm run test:e2e             # this machine only
+```
+
+`--box any` takes whichever slot frees first: this machine's, then the
+first box with a free slot. A run that needs a local browser leaves `--box`
+out and takes only this machine's slot. The run is told what it got:
+`DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its Playwright server, when
+set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
+
+A CI runner that runs on a box asks for that box's slot by name
+(`"where": "box1"` in its `ask`), so the app, the browser and the tests
+all run on the box. The answer says `box` once it holds the slot.
+
+The queue stays first come, first served: a run that waits keeps the slots
+it waits for from the runs behind it, and never blocks a slot it can't use.
+
+### Checking a box
+
+A box is checked only when a slot on it is about to be given, never on a
+timer. The check is a read: over ssh, an sftp `ls` of the hold file (the
+box runs nothing for it); with only a Playwright address, a TCP connect.
+
+- **Held** (its hold file is there): no new slot. The next assignment
+  after the file is placed sees it.
+- **Unreachable** (no answer within `box_check_timeout_seconds`, 8 by
+  default): skipped, with why, and the run goes to another box or waits.
+- A held or unreachable box is passed over for `box_recheck_seconds` (30
+  by default), then checked again the next time a slot on it is wanted.
+
+`gate status`, the queue on the Agents page and `den doctor` show each
+slot's box and each box's state, with why a box is skipped. The slot log
+(`events.jsonl`) names the box on each grant and release. Both settings
+are in Settings › Server, or
+`den gate settings --box-check-timeout-seconds N --box-recheck-seconds N`.
