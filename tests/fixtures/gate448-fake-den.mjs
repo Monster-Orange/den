@@ -5,13 +5,36 @@
 //             else a new one;
 //   "first":  the first running shell listed in view (the live bug under
 //             All projects), else a new one;
-//   "exited": the shell used last in view, exited or not.
+//   "exited": the shell used last in view, exited or not;
+//   "new":    always a new shell (the bug the issue was filed for).
+// `words` is what the shell bar's New terminal says, per language:
+//   "good":    en, es and ja words; "english": English in every language;
+//   "keys":    the catalog key where es or ja has no text.
+// The language is Den's setting (GET/POST /api/settings through ctx.api,
+// the person's token); <html lang> follows it on the next page.
 // Invented names only.
 
 export function fakeBed({
   policy = "good",
   projects = ["north", "south"],
+  words = "good",
 } = {}) {
+  const WORDS = {
+    en: ["New terminal", "Start another shell in this project's folder"],
+    es: ["Nueva terminal", "Inicia otro shell en la carpeta de este proyecto"],
+    ja: [
+      "新しいターミナル",
+      "このプロジェクトのフォルダーで別のシェルを開始します",
+    ],
+  };
+  const settings = { language: "en" };
+  let lang = "en";
+  const say = (i) =>
+    words === "english" || lang === "en"
+      ? WORDS.en[i]
+      : words === "keys"
+        ? ["ag.newShell", "ag.newShellTip"][i]
+        : WORDS[lang][i];
   let n = 0;
   let clock = 1000;
   const sessions = []; // { id, workspace, kind, startedAt, usedAt, exited }
@@ -62,6 +85,7 @@ export function fakeBed({
     async evaluate(fn, arg) {
       const src = String(fn);
       if (src.includes("activeElement")) return page.keyed;
+      if (src.includes("documentElement.lang")) return lang;
       if (src.includes("denShell.api")) {
         const [p, b] = arg;
         if (p === "/api/scope") {
@@ -130,7 +154,10 @@ export function fakeBed({
           return this;
         },
         async textContent() {
-          return "New terminal";
+          return say(0);
+        },
+        async getAttribute(name) {
+          return name === "title" ? say(1) : null;
         },
       };
     },
@@ -147,7 +174,8 @@ export function fakeBed({
     const ws = asked || (scope !== "all" ? scope : null);
     const inView = listed().filter((s) => ws === null || s.workspace === ws);
     let pick = null;
-    if (policy === "first") pick = inView.find((s) => !s.exited) ?? null;
+    if (policy === "new") pick = null;
+    else if (policy === "first") pick = inView.find((s) => !s.exited) ?? null;
     else
       for (const s of inView)
         if (
@@ -166,7 +194,20 @@ export function fakeBed({
     browser: "chromium",
     width: 1280,
     url: "http://bed.invalid",
+    newPage() {
+      return page;
+    },
+    async api(path, init) {
+      if (path !== "/api/settings")
+        return { ok: false, status: 404, json: async () => null };
+      if (init?.method === "POST") {
+        const b = JSON.parse(init.body);
+        if ("language" in b) settings.language = b.language ?? "en";
+      }
+      return { ok: true, status: 200, json: async () => ({ ...settings }) };
+    },
     async goto(p, path) {
+      lang = settings.language || "en";
       p.url = path;
       p.keyed = null;
       p.focused = null;
@@ -179,5 +220,5 @@ export function fakeBed({
     async sleep() {},
     async shot() {},
   };
-  return { ctx, den, scope: () => scope };
+  return { ctx, den, scope: () => scope, language: () => settings.language };
 }

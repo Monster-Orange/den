@@ -118,8 +118,8 @@ describe("a security release while the server agent waits on its person (issue 5
     expect(f.updates()).toBe(0);
   });
 
-  it("marked, mid-turn: it waits for idle, then updates", async () => {
-    const f = fake();
+  it("marked, mid-turn with server_agent.security_update_skips_busy off: it waits for idle, then updates", async () => {
+    const f = fake({ securitySkipsBusy: () => false });
     f.setWait("busy");
     const c = updateCheck(f.d);
     expect(await c.tick()).toMatchObject({ did: "waiting", wait: "busy" });
@@ -153,6 +153,122 @@ describe("a security release while the server agent waits on its person (issue 5
     expect(await updateCheck(f.d).tick()).toMatchObject({ did: "updating" });
     expect(f.asked).toEqual([]);
     expect(f.notes.some((n) => n.startsWith("security"))).toBe(false);
+  });
+});
+
+describe("issue 603: a security release doesn't wait for a busy agent", () => {
+  /** The update's calls, and the log lines. */
+  function rig(over: Partial<UpdateCheckDeps> = {}) {
+    const calls: { v: string; security: boolean }[] = [];
+    const logs: string[] = [];
+    const f = fake({
+      update: async (v, _reason, o) => {
+        calls.push({ v, security: !!o?.security });
+        return { ok: true };
+      },
+      log: (l) => void logs.push(l),
+      ...over,
+    });
+    f.setWait("busy");
+    return { ...f, calls, logs };
+  }
+
+  it("marked, mid-turn: it installs at this pass, on the security path", async () => {
+    const f = rig();
+    const t = await updateCheck(f.d).tick();
+    expect(t).toMatchObject({
+      did: "updating",
+      version: "1.3.0",
+      security: true,
+    });
+    // The security path: the restart reads waitPast again and holds for
+    // the turn's end (holdRestart).
+    expect(f.calls).toEqual([{ v: "1.3.0", security: true }]);
+    expect(f.logs.some((l) => /waits:/.test(l))).toBe(false);
+    // The audit line says it went ahead while the agent was busy.
+    expect(
+      f.logs.filter((l) =>
+        /Den 1\.3\.0 is a security release: it updates while the Den agent is in the middle of a turn; the restart waits for the turn to end/.test(
+          l,
+        ),
+      ),
+    ).toHaveLength(1);
+    // No "question still open" bell: there is no question.
+    expect(f.notes.some((n) => n.startsWith("security"))).toBe(false);
+  });
+
+  it("marked, the agent asked a question and is working past it: it installs too", async () => {
+    const f = rig();
+    f.setWait("asked");
+    f.setPast("busy");
+    expect(await updateCheck(f.d).tick()).toMatchObject({
+      did: "updating",
+      security: true,
+    });
+    expect(f.calls).toEqual([{ v: "1.3.0", security: true }]);
+  });
+
+  it("unmarked, mid-turn: it waits, as today", async () => {
+    const f = rig({ security: async () => false });
+    const t = await updateCheck(f.d).tick();
+    expect(t).toMatchObject({ did: "waiting", wait: "busy" });
+    expect(f.calls).toEqual([]);
+    expect(f.logs).toEqual([
+      "update check: Den 1.3.0 waits: the Den agent is in the middle of a turn",
+    ]);
+  });
+
+  it("server_agent.security_update_skips_busy off: a security release waits on a busy agent", async () => {
+    const f = rig({ securitySkipsBusy: () => false });
+    expect(await updateCheck(f.d).tick()).toMatchObject({
+      did: "waiting",
+      wait: "busy",
+    });
+    expect(f.calls).toEqual([]);
+  });
+
+  it("the setting unreadable: it waits (never guesses past a turn)", async () => {
+    const f = rig({
+      securitySkipsBusy: () => {
+        throw new Error("bad config");
+      },
+    });
+    expect(await updateCheck(f.d).tick()).toMatchObject({ did: "waiting" });
+    expect(f.calls).toEqual([]);
+  });
+
+  it("the mark unreadable (null): unmarked, it waits", async () => {
+    const f = rig({ security: async () => null });
+    expect(await updateCheck(f.d).tick()).toMatchObject({ did: "waiting" });
+    expect(f.calls).toEqual([]);
+  });
+
+  it("a wait read that fails is not a turn: it waits", async () => {
+    const f = rig({
+      waitWhy: async () => {
+        throw new Error("no answer");
+      },
+    });
+    expect(await updateCheck(f.d).tick()).toMatchObject({ did: "waiting" });
+    expect(f.calls).toEqual([]);
+  });
+
+  it("only idle() to ask (no reason): it waits", async () => {
+    const f = rig({ waitWhy: undefined, idle: async () => false });
+    expect(await updateCheck(f.d).tick()).toMatchObject({ did: "waiting" });
+    expect(f.calls).toEqual([]);
+  });
+
+  it("an Allow pending or an update under way still holds it", async () => {
+    for (const w of ["approval", "updating"] as const) {
+      const f = rig();
+      f.setWait(w);
+      expect(await updateCheck(f.d).tick()).toMatchObject({
+        did: "waiting",
+        wait: w,
+      });
+      expect(f.calls).toEqual([]);
+    }
   });
 });
 
@@ -247,6 +363,41 @@ describe("the mark, from npm's version data only", () => {
       await npmViewSecurity(f.npm, "@scope/pkg", "latest", f.dir),
     ).toBeNull();
     expect(fs.existsSync(f.log)).toBe(false);
+  });
+});
+
+describe("server_agent.security_update_skips_busy (issue 603)", () => {
+  it("defaults to true; false turns it off; anything else names the key", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-603c-"));
+    try {
+      expect(readServerAgentConfig({}, root, {}).securityUpdateSkipsBusy).toBe(
+        true,
+      );
+      expect(
+        readServerAgentConfig(
+          { server_agent: { security_update_skips_busy: false } },
+          root,
+          {},
+        ).securityUpdateSkipsBusy,
+      ).toBe(false);
+      expect(() =>
+        readServerAgentConfig(
+          { server_agent: { security_update_skips_busy: "no" as never } },
+          root,
+          {},
+        ),
+      ).toThrow(/server_agent\.security_update_skips_busy/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("is in the docs beside security_update_skips_questions", () => {
+    const doc = fs.readFileSync(
+      path.join(process.cwd(), "docs", "distributions.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/`server_agent\.security_update_skips_busy`/);
   });
 });
 

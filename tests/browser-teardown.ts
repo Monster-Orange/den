@@ -131,7 +131,10 @@ export function bareTeardowns(source: string): string[] {
     if (/\.(close|stop|destroy)\s*\(|\bstopServer\s*\(/.test(text))
       found.push(`line ${line}: an afterAll closes without closeBrowserSuite`);
   }
-  if (!helped && /\.(launch|connect)\s*\(/.test(src))
+  if (
+    !helped &&
+    /\.(launch|connect)\s*\(|\b(launchBrowser|openBrowser)\s*\(/.test(src)
+  )
     found.push("it opens a browser and no afterAll calls closeBrowserSuite");
   return found;
 }

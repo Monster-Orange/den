@@ -244,10 +244,20 @@ export const TURN_READ_MAX_BYTES = 8 * 1024 * 1024;
 /** A turn's verdict from the file: "quiet" is busy until it has been quiet. */
 type TurnVerdict = boolean | "quiet" | null;
 
+/**
+ * A verdict and, issue 607, when the record it came from was written (ms;
+ * none when it carries no time). The time is kept, not weighed: the
+ * session start it is weighed against is the caller's.
+ */
+interface TurnRead {
+  v: TurnVerdict;
+  at?: number;
+}
+
 /** The last verdicts, by file, while its size and mtime stay the same. */
 const turnCache = new Map<
   string,
-  { size: number; mtimeMs: number; bytes: number; max: number; v: TurnVerdict }
+  { size: number; mtimeMs: number; bytes: number; max: number; r: TurnRead }
 >();
 const TURN_CACHE_MAX = 256;
 
@@ -270,12 +280,19 @@ export function resetTurnCache(): void {
  * each try, until a turn's record shows; never the file's start (that is
  * the conversation's first turn). None in the last `maxBytes`: null, can't
  * tell. A verdict is kept while the file's size and mtime stay the same.
+ *
+ * Issue 607: `since` is when the agent's live session started (ms). A turn
+ * whose last record was written before it is no running turn: the session
+ * that made it is gone (a terminal host restart cut it), and a resumed
+ * runtime never carries on a turn by itself. It reads idle. A record with
+ * no time, or no `since`: as before.
  */
 export function transcriptBusy(
   file: string | null,
   now = Date.now(),
   bytes = ENDS_BYTES,
   maxBytes = TURN_READ_MAX_BYTES,
+  since?: number,
 ): boolean | null {
   if (!file) return false;
   let st: fs.Stats;
@@ -285,17 +302,18 @@ export function transcriptBusy(
     return false;
   }
   const hit = turnCache.get(file);
-  const v =
+  const r =
     hit &&
     hit.size === st.size &&
     hit.mtimeMs === st.mtimeMs &&
     hit.bytes === bytes &&
     hit.max === maxBytes
-      ? hit.v
+      ? hit.r
       : turnVerdict(file, bytes, maxBytes);
+  const { v, at } = r;
   if (
     !hit ||
-    hit.v !== v ||
+    hit.r !== r ||
     hit.size !== st.size ||
     hit.mtimeMs !== st.mtimeMs
   ) {
@@ -305,26 +323,30 @@ export function transcriptBusy(
       mtimeMs: st.mtimeMs,
       bytes,
       max: maxBytes,
-      v,
+      r,
     });
     if (turnCache.size > TURN_CACHE_MAX)
       turnCache.delete(turnCache.keys().next().value as string);
   }
+  if (
+    (v === true || v === "quiet") &&
+    since !== undefined &&
+    Number.isFinite(since) &&
+    at !== undefined &&
+    at < since
+  )
+    return false;
   return v === "quiet" ? now - st.mtimeMs < TURN_QUIET_MS : v;
 }
 
 /** The verdict from the file, reading back at most `maxBytes`. */
-function turnVerdict(
-  file: string,
-  bytes: number,
-  maxBytes: number,
-): TurnVerdict {
+function turnVerdict(file: string, bytes: number, maxBytes: number): TurnRead {
   for (let want = Math.max(1, Math.min(bytes, maxBytes)); ; want *= 4) {
     const { lines, whole } = readTail(file, Math.min(want, maxBytes));
-    const v = lastTurnBusy(lines);
-    if (v !== null) return v;
-    if (whole) return false;
-    if (want >= maxBytes) return null;
+    const r = lastTurnBusy(lines);
+    if (r.v !== null) return r;
+    if (whole) return { v: false };
+    if (want >= maxBytes) return { v: null };
   }
 }
 
@@ -357,7 +379,7 @@ function readTail(
  * The verdict from the last turn's record in `lines`, or null when they
  * hold none.
  */
-function lastTurnBusy(lines: string[]): TurnVerdict {
+function lastTurnBusy(lines: string[]): TurnRead {
   // A local command's output was passed over: its `<command-name>` is next.
   let localCommand = false;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -379,21 +401,28 @@ function lastTurnBusy(lines: string[]): TurnVerdict {
       continue;
     }
     localCommand = false;
-    if (r.type === "assistant") {
-      const msg = r.message as { stop_reason?: unknown } | undefined;
-      const stop = msg?.stop_reason;
-      if (stop === "tool_use" || toolNames(r).length) return true;
-      if (
-        stop === "end_turn" ||
-        stop === "stop_sequence" ||
-        stop === "max_tokens"
-      )
-        return false;
-      return "quiet";
-    }
-    return !userText(r).startsWith("[Request interrupted");
+    const t =
+      typeof r.timestamp === "string" ? Date.parse(r.timestamp) : Number.NaN;
+    return { v: turnRecordBusy(r), ...(Number.isFinite(t) ? { at: t } : {}) };
   }
-  return null;
+  return { v: null };
+}
+
+/** The verdict from a turn's record (lastTurnBusy's pick). */
+function turnRecordBusy(r: Record<string, unknown>): TurnVerdict {
+  if (r.type === "assistant") {
+    const msg = r.message as { stop_reason?: unknown } | undefined;
+    const stop = msg?.stop_reason;
+    if (stop === "tool_use" || toolNames(r).length) return true;
+    if (
+      stop === "end_turn" ||
+      stop === "stop_sequence" ||
+      stop === "max_tokens"
+    )
+      return false;
+    return "quiet";
+  }
+  return !userText(r).startsWith("[Request interrupted");
 }
 
 /**

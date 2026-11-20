@@ -16,7 +16,11 @@ export const clauses = [
   "with several shells running, Terminal opens the one used most recently",
   "under All projects, Terminal opens the running shell used most recently, across projects",
   "Terminal never opens an exited shell; with none running in scope, it starts one",
+  "every new string (New terminal and its tip) has en, es and ja text",
+  "the e2e case: the rail's Terminal clicked twice gives one shell session and the same pane focused",
 ];
+/** The page's languages, English first: its words are what es and ja must not be. */
+const LANGS = ["en", "es", "ja"];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 // Per cell. Unloaded, a cell takes 70–85 s; on a busy machine more than 180 s.
 export const timeoutMs = 360000;
@@ -44,6 +48,54 @@ const post = (page, path, body) =>
     },
     [path, body],
   );
+
+/** Den's settings through the bed's signed-in API (the person's token). */
+async function settings(ctx, body) {
+  const r = await ctx.api(
+    "/api/settings",
+    body
+      ? {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : undefined,
+  );
+  if (!r.ok) throw new Error(`/api/settings: HTTP ${r.status}`);
+  return r.json();
+}
+
+/**
+ * The New terminal button of shell `id`, in each language: the page's
+ * <html lang>, the button's words and its tip. The language is put back.
+ */
+async function wordsIn(ctx, page, ws, id, cell) {
+  const was = (await settings(ctx))?.language ?? null;
+  const seen = {};
+  try {
+    for (const lang of LANGS) {
+      await settings(ctx, { language: lang });
+      await visit(
+        ctx,
+        page,
+        `/agents?project=${encodeURIComponent(ws)}&open=${encodeURIComponent(id)}`,
+      );
+      const btn = page
+        .locator(`.pane[data-id="${id}"] [data-act="new-shell"]`)
+        .first();
+      await btn.waitFor({ timeout: 30000 }).catch(() => {});
+      seen[lang] = {
+        html: await page.evaluate(() => document.documentElement.lang),
+        text: ((await btn.textContent().catch(() => "")) || "").trim(),
+        tip: ((await btn.getAttribute("title").catch(() => "")) || "").trim(),
+      };
+      await ctx.shot(`words-${lang}-${cell}`);
+    }
+  } finally {
+    await settings(ctx, { language: was });
+  }
+  return seen;
+}
 
 /** Project `ws`'s running plain shells, by id. */
 async function shells(page, ws) {
@@ -196,6 +248,12 @@ export async function run(ctx) {
     const newer = three.find((x) => !two.includes(x)) ?? null;
     out.steps.fresh = { count: three.length, id: newer };
     await ctx.shot(`new-terminal-${cell}`);
+    // Clause 7: the button and its tip in en, es and ja. A refused
+    // settings call fails this clause only, with its reason.
+    if (front)
+      out.steps.words = await wordsIn(ctx, page, ws, front, cell).catch(
+        (e) => ({ error: String(e?.message ?? e) }),
+      );
     // Use the older shell, then the rail's Terminal: that one again.
     if (front && newer) {
       await visit(
@@ -427,7 +485,59 @@ export function expect(cells) {
     },
     allProjects(rows),
     exitedShells(rows, ev),
+    words(rows),
+    {
+      clause: clauses[7],
+      ok: rows.every(
+        (r) =>
+          r.steps.first?.count >= 1 &&
+          r.steps.second?.count === r.steps.first.count &&
+          Boolean(r.steps.first.keyed) &&
+          r.steps.second.keyed === r.steps.first.keyed,
+      ),
+      detail: said(
+        (r) =>
+          `two clicks: shells ${r.steps.first?.count} then ${r.steps.second?.count}; pane ${r.steps.first?.keyed} then ${r.steps.second?.keyed}`,
+      ),
+      evidence: [...ev("first"), ...ev("second")],
+    },
   ];
+}
+
+/**
+ * Clause 7: in each language the page is in that language, the button and
+ * its tip have words, never a catalog key, and es and ja are not English.
+ */
+function words(rows) {
+  const seen = rows.map((r) => [r.cell, r.steps.words]).filter(([, w]) => w);
+  if (seen.length < rows.length)
+    return {
+      clause: clauses[6],
+      ok: false,
+      detail: `the button was read in ${seen.length} of ${rows.length} cells`,
+    };
+  const key = /^ag\.|^\s*$/;
+  const good = (w) =>
+    LANGS.every(
+      (l) =>
+        w[l] && w[l].html === l && !key.test(w[l].text) && !key.test(w[l].tip),
+    ) &&
+    ["es", "ja"].every((l) => w[l].text !== w.en.text && w[l].tip !== w.en.tip);
+  return {
+    clause: clauses[6],
+    ok: seen.every(([, w]) => good(w)),
+    detail: seen
+      .map(
+        ([c, w]) =>
+          `${c}: ` +
+          (w.error ? `${w.error}; ` : "") +
+          LANGS.map(
+            (l) => `${l} (html ${w[l]?.html}) "${w[l]?.text}" / "${w[l]?.tip}"`,
+          ).join("; "),
+      )
+      .join(" | "),
+    evidence: seen.flatMap(([c]) => LANGS.map((l) => `words-${l}-${c}`)),
+  };
 }
 
 /** Clause 5: under All projects, each round's Terminal opened the shell used last. */

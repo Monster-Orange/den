@@ -6,6 +6,8 @@
 #   check. No human step, after the package's first publish (by hand, once: until then the check stops here too).
 # - By hand (workflow_dispatch): a dry run. The same gates and the same tarball, kept with SHA256SUMS as an artifact:
 #   the one-time first publish of a package (which trusted publishing can't do) is that tarball, from a maintainer's machine.
+# - Every dev tag (v<version>-dev.N): release-dry-run.yml runs the same gates and tarball (release-gates.yml, called
+#   by both) with the versions the release will carry, and publishes nothing (issue 615).
 # A prerelease version (0.1.0-dev.0) never publishes: main can carry work toward a
 # version without releasing it.
 # There is no tag trigger: a version is released from main, once (npm refuses to publish a version twice).
@@ -88,122 +90,16 @@ jobs:
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "$name@$version: release=$release ($GITHUB_EVENT_NAME)"
 
-  # The gates, on both ends of the supported Node range (as ci.yml): the
-  # lowest that package.json's engines allows, and the Node installs run.
-  # Both block: nothing publishes that wasn't checked on either (den#84).
-  # The fast checks are one job per Node; the unit suite is split in four
-  # parts that run side by side (jest --shard), every test once per Node.
-  checks:
+  # The gates and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615).
+  gates:
     needs: check
     if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ["22.13.0", "24.13.0"]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - run: node --version
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - name: Org-name gate
-        env:
-          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
-        run: node scripts/org-name-gate.mjs
-
-  tests:
-    needs: check
-    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ["22.13.0", "24.13.0"]
-        shard: [1, 2, 3, 4, 5, 6]
-    # Two jest workers per shard, as in ci.yml (issues 195-198).
-    env:
-      DEN_TEST_WORKERS: "2"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      # the browser tests (the What's new dialog) need Chromium, as in ci.yml
-      # Playwright's browsers (cached by OS and Playwright's version) and their
-      # system packages, each part with a time limit and one retry
-      # (scripts/ci-pw-install.sh): the one-line install hung on a slow apt
-      # mirror until the job's timeout.
-      - id: pw
-        run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/ms-playwright
-            ~/.cache/den-apt
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
-          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
-      - name: Playwright's browsers and system packages
-        timeout-minutes: 15
-        run: bash scripts/ci-pw-install.sh
-      # Issue 296: the files that start Docker containers run after the
-      # rest, never beside the browser tests (tests/docker-suites.mjs).
-      - run: npm test -- --shard=${{ matrix.shard }}/6
-        env:
-          DEN_TEST_DOCKER: skip
-      - run: npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests
-        env:
-          DEN_TEST_DOCKER: only
-
-  # The tarball, built on the lowest supported Node (the safe direction),
-  # once the gates have passed on both.
-  pack:
-    needs: [check, checks, tests]
-    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      tarball: ${{ steps.pack.outputs.tarball }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22.13.0
-          cache: npm
-      - run: npm ci
-      - name: Every dependency from npm (no git or file dependency ships)
-        run: |
-          node -e '
-            const deps = require("./package.json").dependencies ?? {};
-            const bad = Object.entries(deps).filter(([, v]) => /^(github:|git[+:]|file:|https?:)/.test(v));
-            if (bad.length) { console.error("::error::not from npm: " + bad.map(([k, v]) => k + "@" + v).join(", ")); process.exit(1); }
-          '
-      - name: Pack, and the checksums
-        id: pack
-        run: |
-          mkdir -p release
-          # Never parse npm pack's stdout: lifecycle scripts can print into it.
-          npm pack --ignore-scripts --pack-destination release >/dev/null
-          tarball=$(cd release && ls -1 -- *.tgz)
-          [ "$(printf '%s\n' "$tarball" | wc -l)" -eq 1 ] || { echo "::error::expected one tarball, got: $tarball"; exit 1; }
-          (cd release && sha256sum "$tarball" > SHA256SUMS && cat SHA256SUMS)
-          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release
-          path: release/
-          if-no-files-found: error
+    uses: ./.github/workflows/release-gates.yml
+    secrets:
+      DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
 
   tag:
-    needs: [check, checks, tests, pack]
+    needs: [check, gates]
     if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -236,7 +132,7 @@ jobs:
           fi
 
   publish:
-    needs: [check, pack, tag]
+    needs: [check, gates, tag]
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45 # npm can take ~20 min to serve an accepted (202) upload
     permissions:
@@ -257,7 +153,7 @@ jobs:
         run: cd release && sha256sum -c SHA256SUMS
       # "./": without it, npm reads `release/<file>` as a GitHub repository (owner/name) and tries git over ssh
       - name: Publish it on npm
-        run: npm publish "./release/${{ needs.pack.outputs.tarball }}" --access public --loglevel verbose
+        run: npm publish "./release/${{ needs.gates.outputs.tarball }}" --access public --loglevel verbose
       # npm answers 202 and processes the upload before serving it (seen: ~20 min). Until then the version is
       # "staged": another publish gets 409, and a later run's check would not see it. So this job ends only when npm
       # serves the version, and nobody reruns publish in that window.
@@ -275,7 +171,7 @@ jobs:
           exit 1
 
   github-release:
-    needs: [check, pack, publish]
+    needs: [check, gates, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -286,7 +182,7 @@ jobs:
           name: release
           path: release
       - name: The GitHub release, with the tarball and SHA256SUMS
-        run: gh release create "$TAG" "release/${{ needs.pack.outputs.tarball }}" release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --title "@monster-orange/den $TAG" --generate-notes --verify-tag
+        run: gh release create "$TAG" "release/${{ needs.gates.outputs.tarball }}" release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --title "@monster-orange/den $TAG" --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ needs.check.outputs.version }}
@@ -296,7 +192,7 @@ jobs:
   # publisher for this file is set on it. Until then, and for a version already on npm or a prerelease, it skips.
   den-ui:
     # Issue 296: the kit ships only once both test halves pass, as Den does.
-    needs: [checks, tests]
+    needs: [gates]
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45
     permissions:

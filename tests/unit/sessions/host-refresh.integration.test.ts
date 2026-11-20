@@ -5,7 +5,7 @@
  * service manager that brings a stopped host back is a stand-in that
  * starts a new one (ensureHost's spawnHost seam). Never launchctl.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as net from "net";
@@ -31,6 +31,12 @@ import {
 } from "../../../src/shared/sessions/pty.js";
 import { frame, LineReader } from "../../../src/shared/sessions/protocol.js";
 import { hostModuleLines } from "../../../src/ui/cli/doctor-ptys.js";
+import {
+  holdRestart,
+  updateCheck,
+  type UpdateWait,
+} from "../../../src/ui/server/update-check.js";
+import { updateDen } from "../../../src/ui/server/den-update.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const LOADER = path.join(ENGINE, "node_modules/tsx/dist/loader.mjs");
@@ -401,6 +407,283 @@ describe("issue 597: the host restarts only when its code or module changed", ()
     });
     await refreshSessionHost(r.deps);
     expect(r.notes).toEqual([["a1", null]]);
+  }, 60_000);
+});
+
+/**
+ * Issue 631: every agent running before the restart is in the row's
+ * resumed, failed or cut list; a resume that ended counts as failed.
+ */
+describe("issue 631: no agent goes missing from the restart's lists", () => {
+  it("an agent running at the stop, though not at the last look (a relaunch in between), is resumed", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    let looks = 0;
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      // The first look misses a2: it is between its stop and its start.
+      running: async () => (++looks === 1 ? ["a1"] : ["a1", "a2"]),
+    });
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted", resumed: ["a1", "a2"] });
+  }, 60_000);
+
+  it("an agent whose session the host had at its stop is resumed, though no look listed it", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      running: async () => ["a1"],
+      agentsOf: async () => ["a1", "a3"],
+    } as Partial<RefreshDeps>);
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({ did: "restarted", resumed: ["a1", "a3"] });
+  }, 60_000);
+
+  it("a resume that ended within sessions.host_restart_check_seconds is failed, with its reason", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    (await connectWithin(socket)).close();
+    const r = rig(state, socket, () => ({ den: "1.0.1", code: "c2", pty: null }), {
+      running: async () => ["a1", "a2"],
+      checkMs: 200,
+      ended: async (ids: readonly string[]) =>
+        ids.includes("a2")
+          ? [{ agent: "a2", why: "exited (1) after its resume" }]
+          : [],
+    } as Partial<RefreshDeps>);
+    const res = await refreshSessionHost(r.deps);
+    expect(res).toMatchObject({
+      did: "restarted",
+      resumed: ["a1"],
+      failed: [{ agent: "a2", why: "exited (1) after its resume" }],
+    });
+  }, 60_000);
+});
+
+/**
+ * Issue 603: a security release installs while the Den agent is mid-turn.
+ * Its turn lives in the terminal host, a process of its own. The whole
+ * path runs here: the update check's pass, den_update (fake npm and
+ * doctor, temp dirs), the restart's hold, then what the web server's
+ * start does with the host (refreshSessionHost). The agent is a real
+ * session in a real host; nothing signals, stops or restarts either.
+ */
+describe("issue 603: a security update while the Den agent works keeps its turn", () => {
+  it("installs at once, holds the restart until the turn ends, and the web start keeps the host and the agent's session", async () => {
+    const { state, socket } = setup();
+    startHost(state, { den: "1.0.0", code: "c1" });
+    const c0 = await connectWithin(socket);
+    const hostPid = c0.hostPid;
+    // The Den agent's session: it answers each line it is sent.
+    const agent = await c0.start({
+      name: "acme-den:server",
+      cwd: tmp,
+      argv: [
+        process.execPath,
+        "-e",
+        'process.stdin.on("data",(b)=>process.stdout.write("ack:"+String(b)));setInterval(()=>{},1000);',
+      ],
+      env: { PATH: "/usr/bin:/bin" },
+      cols: 80,
+      rows: 24,
+    });
+    const exits: (number | undefined)[] = [];
+    const watch = c0.attach(agent.ref.id, {
+      onData: () => undefined,
+      onExit: (code) => void exits.push(code),
+    });
+    await watch.ready;
+
+    // Nothing may end, signal or stop the host or the agent's session.
+    const killed: [number, unknown][] = [];
+    const kill = jest
+      .spyOn(process, "kill")
+      .mockImplementation((pid: number, sig?: string | number) => {
+        killed.push([pid, sig]);
+        return true;
+      });
+    const proto = Object.getPrototypeOf(c0) as Record<string, unknown>;
+    const stops = ["shutdown", "kill", "signal", "forget"].map((m) =>
+      jest.spyOn(proto as never, m as never),
+    );
+
+    // The engine as npm lays it out in a distribution (den_update's input).
+    const dist = path.join(tmp, "dist");
+    const engine = path.join(dist, "node_modules", "@example", "den");
+    fs.mkdirSync(path.join(engine, "src/ui/server"), { recursive: true });
+    fs.writeFileSync(
+      path.join(engine, "src/ui/server/update-watch.mjs"),
+      "// the watch\n",
+    );
+    fs.writeFileSync(
+      path.join(dist, "package.json"),
+      JSON.stringify({ dependencies: { "@example/den": "1.0.0" } }),
+    );
+
+    let turn = true;
+    const working = async (): Promise<UpdateWait | null> =>
+      turn ? "busy" : null;
+    const order: string[] = [];
+    const logs: string[] = [];
+    let plan = "";
+    let webStart: ReturnType<typeof refreshSessionHost> | null = null;
+    const check = updateCheck({
+      running: () => "1.0.0",
+      latest: async () => "1.0.1",
+      pinned: () => "1.0.0",
+      role: () => "lead",
+      mode: () => "auto",
+      cantUpdate: () => null,
+      last: () => null,
+      idle: async () => !turn,
+      waitWhy: working,
+      waitPast: working,
+      security: async () => true,
+      log: (l) => void logs.push(l),
+      update: async (v, _reason, opts) => {
+        const r = await updateDen(v, {
+          root: dist,
+          engine,
+          stateDir: path.join(tmp, "update-state"),
+          pkg: { name: "@example/den", version: "1.0.0" },
+          npmView: async (spec) => spec.split("@").pop()!,
+          npm: ["npm"],
+          cli: ["den"],
+          run: async (argv) => {
+            order.push(argv[1] === "install" ? "install" : "doctor");
+            return { code: 0, out: JSON.stringify({ checks: [] }) };
+          },
+          // The server's hold (index.ts): the security path reads past
+          // the agent's question, never past a working turn.
+          beforeRestart: async (keepAlive) => {
+            order.push("hold");
+            const h = await holdRestart({
+              waitWhy: async () => {
+                const w = await working();
+                if (w) order.push(`held: ${w} (security ${!!opts?.security})`);
+                return w;
+              },
+              maxMs: 60_000,
+              everyMs: 50,
+              keepAlive,
+            });
+            expect(h.timedOut).toBeNull();
+          },
+          watch: (_script, p) => {
+            plan = p;
+            order.push("watch");
+            return 1;
+          },
+          note: (reason) => ({
+            path: path.join(tmp, "restart-note.json"),
+            marker: { reason },
+          }),
+          // The web server restarts; its start looks at the terminal
+          // host (agent-routes refreshTerminalHost). The host's code is
+          // the same in both versions.
+          restart: () => {
+            order.push("restart");
+            webStart = refreshSessionHost(
+              rig(
+                state,
+                socket,
+                () => ({ den: "1.0.1", code: "c1", pty: null }),
+                {
+                  running: async () => ["server"],
+                  busy: async () => (turn ? ["server"] : []),
+                },
+              ).deps,
+            );
+          },
+          port: 7000,
+          pid: 1,
+          waitMs: 180_000,
+        });
+        return r.ok ? { ok: true } : { ok: false, error: r.error };
+      },
+      ask: () => true,
+      notice: () => undefined,
+    });
+
+    // The turn ends a while after the install starts.
+    const ends = setTimeout(() => {
+      order.push("turn ended");
+      turn = false;
+    }, 600);
+    try {
+      const t = await check.tick();
+      // It installed at this pass, on the security path.
+      expect(t).toMatchObject({
+        did: "updating",
+        version: "1.0.1",
+        security: true,
+      });
+      expect(logs.some((l) => /waits:/.test(l))).toBe(false);
+      expect(logs.join("\n")).toMatch(
+        /security release: it updates while the Den agent is in the middle of a turn/,
+      );
+      // The restart waited, through the hold, for the turn's end.
+      const held = order.filter((o) => o.startsWith("held:"));
+      expect(held.length).toBeGreaterThan(0);
+      expect(new Set(held)).toEqual(new Set(["held: busy (security true)"]));
+      expect(order.filter((o) => !o.startsWith("held:"))).toEqual([
+        "install",
+        "doctor",
+        "hold",
+        "turn ended",
+        "watch",
+        "restart",
+      ]);
+      // The restart is the web server's alone, never the host's.
+      const p = JSON.parse(fs.readFileSync(plan, "utf8")) as {
+        restart: string[];
+      };
+      expect(p.restart.slice(0, 3)).toEqual(["den", "web", "restart"]);
+      expect(p.restart).not.toContain("sessions");
+      expect(p.restart).not.toContain("host");
+
+      // The web start keeps the host: its code is unchanged.
+      expect(webStart).not.toBeNull();
+      expect(await webStart!).toEqual({
+        did: "kept",
+        from: "1.0.0",
+        to: "1.0.1",
+      });
+      for (const s of stops) expect(s).not.toHaveBeenCalled();
+      expect(
+        killed.filter(([pid]) => pid === hostPid || pid === agent.pid),
+      ).toEqual([]);
+    } finally {
+      clearTimeout(ends);
+      kill.mockRestore();
+      for (const s of stops) s.mockRestore();
+    }
+
+    // The same host, and the same session, still running and answering.
+    const c1 = await connectHost(socket);
+    try {
+      expect(c1.hostPid).toBe(hostPid);
+      const mine = (await c1.list()).find((s) => s.ref.id === agent.ref.id);
+      expect(mine).toMatchObject({ pid: agent.pid });
+      expect(mine?.exited).toBeFalsy();
+      let out = "";
+      const a = c1.attach(agent.ref.id, {
+        onData: (b) => void (out += b.toString()),
+      });
+      await a.ready;
+      c1.write(agent.ref.id, Buffer.from("still-here\n"));
+      const end = Date.now() + 10_000;
+      while (!out.includes("ack:still-here") && Date.now() < end)
+        await new Promise((r) => setTimeout(r, 50));
+      expect(out).toContain("ack:still-here");
+      a.detach();
+    } finally {
+      c1.close();
+    }
+    expect(exits).toEqual([]);
+    watch.detach();
+    c0.close();
   }, 60_000);
 });
 

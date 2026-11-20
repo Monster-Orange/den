@@ -53,6 +53,7 @@ import {
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
 import { DEN_HOST_SLOTS, referenceFile } from "./nav-inventory-helpers.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const CAPTURE = process.env.DEN_UI_NAV_CAPTURE === "1";
 /** Only the pinned image's run-server can match the reference. */
@@ -76,10 +77,8 @@ beforeAll(async () => {
   }
   try {
     const pw = await import("playwright");
-    for (const b of BROWSERS)
-      browsers[b] = await pw[b].connect(process.env.DEN_PW_WS!, {
-        exposeNetwork: "<loopback>",
-      });
+    // PINNED: DEN_PW_WS is set, so this connects and never launches.
+    for (const b of BROWSERS) browsers[b] = await launchBrowser(pw[b]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

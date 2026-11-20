@@ -100,13 +100,22 @@ TARBALL="$WORK/$(tail -1 "$WORK/pack.out")"
 ok "$(basename "$TARBALL") ($(du -k "$TARBALL" | cut -f1) KB)"
 # The README's screenshots (docs/images/, DOC-1) live in the repo, never in
 # the package: package.json `files` has !docs/images/. Images anywhere else
-# in the tarball are a size regression too.
+# in the tarball are a size regression too. Issue 644: but the kit's tab
+# and home-screen icons (packages/den-ui/src/site/, named here one by one),
+# which Den serves; together under 64 KB.
 tar -tzf "$TARBALL" >"$WORK/tarball.list"
-if grep -qE '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list"; then
+SITE_ICONS='^package/packages/den-ui/src/site/(apple-touch-icon|icon-192|icon-512|icon-maskable-512)\.png$'
+if grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | grep -qvE "$SITE_ICONS"; then
   bad "images in the tarball (package.json files needs !docs/images/):"
-  grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | head -5 | sed 's/^/       /'
+  grep -E '^package/docs/images/|\.(png|gif|webp|jpe?g)$' "$WORK/tarball.list" | grep -vE "$SITE_ICONS" | head -5 | sed 's/^/       /'
 else
-  ok "no images in the tarball"
+  ok "no images in the tarball but the kit's site icons"
+fi
+site_bytes=$(cat "$DEN"/packages/den-ui/src/site/*.png | wc -c | tr -d ' ')
+if [ "$site_bytes" -le 65536 ]; then
+  ok "the kit's site icons: $site_bytes bytes"
+else
+  bad "the kit's site icons are $site_bytes bytes (at most 65536)"
 fi
 
 # The install-den agent skill (ON-1) ships in the package, next to the

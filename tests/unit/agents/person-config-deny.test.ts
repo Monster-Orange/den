@@ -9,14 +9,9 @@ import { describe, expect, it } from "@jest/globals";
 import { personConfigDenyRules } from "../../../src/shared/agents/den-claude.js";
 
 describe("the person's config folder is denied to agents' edits", () => {
-  it("Edit and Write on everything under config/local, as an absolute path", () => {
+  it("Edit on everything under config/local, as an absolute path (Edit covers writes, issue 660)", () => {
     const rules = personConfigDenyRules("/home/someone/acme/config/local");
-    expect(rules).toEqual(
-      expect.arrayContaining([
-        "Edit(//home/someone/acme/config/local/**)",
-        "Write(//home/someone/acme/config/local/**)",
-      ]),
-    );
+    expect(rules).toEqual(["Edit(//home/someone/acme/config/local/**)"]);
     expect(rules.some((r) => /den\.yml|acme\.yml/.test(r))).toBe(false);
   });
 });

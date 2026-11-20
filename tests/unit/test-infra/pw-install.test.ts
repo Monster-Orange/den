@@ -74,7 +74,7 @@ describe("CI installs Playwright only through scripts/ci-pw-install.sh", () => {
     expect(users).toEqual(
       expect.arrayContaining([
         "ci.yml:tests",
-        "release.yml:tests",
+        "release-gates.yml:tests",
         "repeat.yml:repeat",
       ]),
     );
