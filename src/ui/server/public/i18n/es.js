@@ -936,7 +936,7 @@
     "set.server.report_visibility_wait":
       "Informe: espera de la visibilidad del repositorio",
     "set.server.report_visibility_wait.d":
-      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice público, y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice que no se sabe (con el aviso), y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     "set.server.report_visibility_retry":
       "Informe: reintento de la visibilidad del repositorio",
     "set.server.report_visibility_retry.d":

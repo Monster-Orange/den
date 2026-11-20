@@ -1868,7 +1868,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Report: repository visibility wait",
     description:
-      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says not known (with the caution), and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     keywords: ["report", "feedback", "visibility", "timeout", "wait"],
     scope: "user",
     keys: ["feedback.visibility_timeout_seconds"],

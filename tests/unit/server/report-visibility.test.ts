@@ -31,7 +31,10 @@ import {
   type ReportRouteDeps,
 } from "../../../src/ui/server/report-routes.js";
 import { feedbackSettings } from "../../../src/shared/report-store.js";
-import { visibilityOf } from "../../../src/ui/server/report-visibility.js";
+import {
+  publicRepoVisibility,
+  visibilityOf,
+} from "../../../src/ui/server/report-visibility.js";
 
 /** What GitHub says for each repo: its JSON, a failure, or a wait. */
 let answers: Record<string, GhResult | (() => Promise<GhResult>)> = {};
@@ -286,5 +289,76 @@ describe("visibilityOf: GitHub's repo answer", () => {
     expect(visibilityOf('{"private":false}')).toBe("public");
     expect(visibilityOf('{"visibility":"secret"}')).toBeNull();
     expect(visibilityOf("not json")).toBeNull();
+  });
+});
+
+describe("publicRepoVisibility: GitHub's tokenless answer (a stubbed fetch, no network)", () => {
+  /** A fetch that answers `status` with `body`, or throws. */
+  const stub = (status: number | "throw", body: unknown = {}) => {
+    const calls: { url: string; signal?: AbortSignal }[] = [];
+    const f = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, signal: init?.signal ?? undefined });
+      if (status === "throw") throw new Error("offline");
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+    return { f, calls };
+  };
+
+  it("only a 200 with private: false is public", async () => {
+    const { f, calls } = stub(200, { private: false });
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("acme-eng/engine", 3000),
+    ).toBe("public");
+    expect(calls[0]!.url).toBe("https://gh.test/repos/acme-eng/engine");
+    expect(calls[0]!.signal).toBeDefined();
+  });
+
+  it.each([
+    ["a 404 (private, gone or renamed)", 404, {}],
+    ["a rate limit", 403, { message: "API rate limit exceeded" }],
+    ["a 500", 500, {}],
+    ["a 200 that doesn't say", 200, { name: "engine" }],
+    ["a 200 that says private", 200, { private: true }],
+  ])("%s: not known, never private", async (_n, status, body) => {
+    const { f } = stub(status as number, body);
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("acme-eng/engine", 3000),
+    ).toBeNull();
+  });
+
+  it("a timeout or no network: not known", async () => {
+    const { f } = stub("throw");
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("acme-eng/engine", 3000),
+    ).toBeNull();
+  });
+
+  it("not an owner/name: not asked", async () => {
+    const { f, calls } = stub(200, { private: false });
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("../x?y", 3000),
+    ).toBeNull();
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("GET /api/report: GitHub's tokenless answer is kept (issue 415)", () => {
+  it("a second open within the hours asks GitHub nothing", async () => {
+    signedIn = false;
+    anon = { "acme-eng/engine": "public" };
+    await info();
+    await info();
+    expect(anonLookups.filter((r) => r === "acme-eng/engine")).toHaveLength(1);
+  });
+
+  it("a not-known answer is held feedback.visibility_retry_seconds, then asked again", async () => {
+    signedIn = false;
+    await info();
+    clock += 30_000;
+    await info();
+    expect(anonLookups.filter((r) => r === "acme-eng/notes")).toHaveLength(1);
+    clock += 31_000;
+    await info();
+    expect(anonLookups.filter((r) => r === "acme-eng/notes")).toHaveLength(2);
   });
 });
