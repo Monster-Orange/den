@@ -4895,6 +4895,11 @@ export function hubProjectHtml(b, t, name) {
     `<div class="hubp-new" data-hubp-newrow${on ? "" : " hidden"}>` +
     `<label for="hubp-new">${escR(t("hubp.newName"))}</label> ` +
     `<input id="hubp-new" type="text" value="${escR(own)}" maxlength="${HUBP_NAME_MAX}" autocomplete="off"></div>`;
+  // Issue 651: linked, Unlink rides in the Switch row (one row beside the
+  // list, wrapping only on a narrow screen).
+  const unlinkBtn = linked
+    ? `<button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
+    : "";
   const picker = (label, btn, primary) =>
     !linked
       ? `<form class="hubp-pick" data-hubp-form>` +
@@ -4908,8 +4913,10 @@ export function hubProjectHtml(b, t, name) {
           `<label for="hubp-sel">${escR(label)}</label> ` +
           `<select id="hubp-sel">${opts}</select> ` +
           `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+          unlinkBtn +
           `</form>`
-        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
+        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>` +
+          (unlinkBtn ? `<p>${unlinkBtn}</p>` : "");
   const tail =
     hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
@@ -4928,7 +4935,6 @@ export function hubProjectHtml(b, t, name) {
       `<details class="hubp-more" data-hubp-more><summary>${escR(t("hubp.more"))}</summary>` +
       `<p class="set-note">${escR(t("hubp.moreNote"))}</p>` +
       picker(t("hubp.switchL"), t("hubp.switch"), false) +
-      `<p><button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button></p>` +
       `<p class="set-note">${escR(t("hubp.unlinkDoes", { project: ws, hub: hubName }))}</p>` +
       `<p class="set-note">${escR(t("hubp.cliL"))} <code>__DEN_CLI__ hub link -p ${escR(ws)}</code></p>` +
       `</details>` +
