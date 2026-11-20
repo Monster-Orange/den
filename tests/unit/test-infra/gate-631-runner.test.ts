@@ -13,13 +13,13 @@ import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
-type Kind = "fixed" | "missing" | "unmarked" | "kept" | "no-env";
+type Kind = "fixed" | "missing" | "unmarked" | "kept" | "no-env" | "current";
 
 function runGate(kind: Kind) {
   const js = `
     const kind = ${JSON.stringify(kind)};
     if (kind === "no-env") delete process.env.BG_HOST_BEFORE;
-    else process.env.BG_HOST_BEFORE = "4242 1700000000 0.0.1";
+    else process.env.BG_HOST_BEFORE = kind === "current" ? "4242 1700000000 0.0.2" : "4242 1700000000 0.0.1";
     const g = await import("./gate/631.mjs");
     const { runLikeBed } = await import("./tests/fixtures/gate-runner-like.mjs");
     const T = "2026-11-19T10:00:00.000Z";
@@ -50,7 +50,8 @@ function runGate(kind: Kind) {
       async until(fn) { return (await fn()) ? 0 : null; },
       cli() { return { code: 0, out: "", err: "" }; },
       readBed(rel) {
-        if (rel === "state:audit.jsonl") return JSON.stringify(row) + "\\n";
+        if (rel === "state:audit.jsonl") return kind === "current" ? "" : JSON.stringify(row) + "\\n";
+        if (rel === "node_modules/@monster-orange/den/package.json") return JSON.stringify({ version: "0.0.2" });
         const m = /^state:agents\\/(.+)\\.json$/.exec(rel);
         if (m && records[m[1]]) return JSON.stringify(records[m[1]]);
         return null;
@@ -88,8 +89,13 @@ function runGate(kind: Kind) {
   };
 }
 
-const row = (r: ReturnType<typeof runGate>, i: number) =>
-  (r.rows ?? []).find((x) => x.clause === r.clauses[i]);
+// Clause i's one row: a clause answered twice (or never) fails here, so
+// a duplicate can't hide behind the first match.
+const row = (r: ReturnType<typeof runGate>, i: number) => {
+  const got = (r.rows ?? []).filter((x) => x.clause === r.clauses[i]);
+  expect(got).toHaveLength(1);
+  return got[0];
+};
 
 describe("gate/631.mjs as the bed runs it", () => {
   it("a Den that lists every agent and marks the failed one passes clauses 1, 3 and 4", () => {
@@ -126,6 +132,18 @@ describe("gate/631.mjs as the bed runs it", () => {
     for (let i = 0; i < 4; i++) {
       expect(row(r, i)?.ok).toBeNull();
       expect(row(r, i)?.skip).toBe("needs-host-restart");
+    }
+  });
+
+  it("a kept host that already ran the installed version skips every clause, without waiting on a row", () => {
+    // The web start has nothing to do then (no restart, no "kept"), so it
+    // writes no row: waiting for one and failing was the bed's 11-19 miss.
+    const r = runGate("current");
+    expect(r.error).toBeUndefined();
+    for (let i = 0; i < 4; i++) {
+      expect(row(r, i)?.ok).toBeNull();
+      expect(row(r, i)?.skip).toBe("needs-older-host");
+      expect(row(r, i)?.detail).toMatch(/already ran 0\.0\.2/);
     }
   });
 

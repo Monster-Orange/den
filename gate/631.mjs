@@ -80,12 +80,29 @@ async function pageRow(ctx, ws, id) {
 export async function setup() {
   const raw = (process.env.BG_HOST_BEFORE ?? "").trim();
   if (!raw) return { skip: "needs-keep-host" };
-  return { before: raw };
+  // "<pid> <start epoch> <den version>" (as gate/563 reads it).
+  return { before: raw, beforeDen: raw.split(/\s+/)[2] ?? null };
 }
 
 export async function run(ctx, s) {
   if (s?.skip) return { skip: s.skip };
   const out = { before: s.before };
+  // A kept host that already ran the installed version: the web start has
+  // nothing to do (no restart, no "kept") and writes no row, so there is
+  // nothing to wait for and nothing to check.
+  let pkg = null;
+  try {
+    pkg = JSON.parse(
+      ctx.readBed("node_modules/@monster-orange/den/package.json") ?? "null",
+    );
+  } catch {
+    pkg = null;
+  }
+  out.installed = pkg?.version ?? null;
+  if (s.beforeDen && out.installed && s.beforeDen === out.installed) {
+    out.current = true;
+    return out;
+  }
   // The web start may wait out agents mid-turn, then look again after its
   // resumes (sessions.host_restart_check_seconds): give it time.
   await ctx.until(() => hostRow(ctx) !== null, 200000);
@@ -152,6 +169,13 @@ export function expect(r) {
   const res = r ?? {};
   if (res.skip)
     return clauses.map((clause) => ({ clause, ok: null, skip: res.skip }));
+  if (res.current)
+    return clauses.map((clause) => ({
+      clause,
+      ok: null,
+      skip: "needs-older-host",
+      detail: `the kept terminal host already ran ${res.installed}: nothing to restart (keep a host from an earlier version)`,
+    }));
   if (!res.restarted) {
     const why = res.kept
       ? "the web start kept the terminal host (its code unchanged): no restart to check"
