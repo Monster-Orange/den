@@ -7,8 +7,10 @@
  *   link and `web up --json`'s url all start with it; none says localhost;
  *   doctor's Address row is ok.
  * - web.url unset (and nothing to take it from): the banner says "address
- *   not set", no link is printed, nothing says localhost, and doctor fails
- *   with the fix.
+ *   not set", no sign-in link is printed, nothing says localhost, and
+ *   doctor fails with the fix. Issue 666's one exception: claim-link, a
+ *   link for this machine's own browser, gives this machine's origin and
+ *   says the address isn't set.
  *
  * And the one-time migration: an install with an edge route and no web.url
  * takes the route's address once, unconfirmed, for doctor to show.
@@ -163,16 +165,18 @@ describe("D80: web.url unset", () => {
     expect(bannerLine(unset)).not.toMatch(/localhost/);
   });
 
-  it("no sign-in link: each says how to set it", () => {
-    for (const args of [
-      ["web", "login", "--no-wait"],
-      ["web", "claim-link"],
-    ]) {
-      const r = cli(unset, args);
-      expect([args.join(" "), r.code, r.out]).toEqual([args.join(" "), 1, ""]);
-      expect(r.err).toMatch(/address not set: run `den web url <address>`/);
-      expect(r.err).not.toMatch(/localhost/);
-    }
+  it("no sign-in link: it says how to set it", () => {
+    const r = cli(unset, ["web", "login", "--no-wait"]);
+    expect([r.code, r.out]).toEqual([1, ""]);
+    expect(r.err).toMatch(/address not set: run `den web url <address>`/);
+    expect(r.err).not.toMatch(/localhost/);
+  }, 90_000);
+
+  it("issue 666, D80's one exception: claim-link is for this machine's browser, so it gives this machine's link and says the address isn't set", () => {
+    const r = cli(unset, ["web", "claim-link"]);
+    expect(r.code).toBe(0);
+    expect(new URL(r.out.trim()).hostname).toBe("localhost");
+    expect(r.err).toMatch(/address not set: run `den web url <address>`/);
   }, 90_000);
 
   it("doctor fails, with the fix; web up --json has no url", () => {

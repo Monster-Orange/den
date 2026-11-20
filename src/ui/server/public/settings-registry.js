@@ -4730,8 +4730,19 @@ export function addressHtml(w, t) {
   const now = w?.url
     ? `<p class="set-status" data-addr-now>${escR(t("addr.now", { url: w.url }))}</p>`
     : `<p class="set-status" data-addr-now><span class="rt-dot warn"></span> ${escR(t("addr.unset"))}</p>`;
+  // Issue 666: a loopback address is said as a problem, and this install's
+  // own alias is offered in one click (the owner's only, server-checked).
+  const loop =
+    w?.url && w.loopback
+      ? `<p class="set-status" data-addr-loopback><span class="rt-dot bad"></span> ${escR(t("addr.loopback", { url: w.url }))}</p>`
+      : "";
+  const offer = w?.offer
+    ? `<div class="set-inline"><button type="button" class="den-btn sm primary" data-addr-adopt="${escR(w.offer)}">${escR(t("addr.adopt", { alias: w.offer }))}</button></div>`
+    : "";
   return (
     now +
+    loop +
+    offer +
     `<form data-addr class="set-inline" novalidate>` +
     `<label class="sr-only" for="addr-in">${escR(t("addr.label"))}</label>` +
     `<input id="addr-in" type="url" data-addr-in value="${escR(w?.url ?? "")}" placeholder="https://__DEN_CLI__.local.example.com" autocomplete="off" spellcheck="false">` +
@@ -4756,6 +4767,33 @@ function renderAddress(host, ctx) {
         note.textContent = msg || "";
         note.classList.toggle("bad", !!bad);
       };
+      const adoptBtn = host.querySelector("[data-addr-adopt]");
+      adoptBtn?.addEventListener("click", () => {
+        const url = adoptBtn.getAttribute("data-addr-adopt");
+        say("");
+        ctx.shell
+          .busyAction(
+            "check-address",
+            (headers) =>
+              ctx.shell.api("POST", "/api/web-url/adopt", { url }, { headers }),
+            {
+              button: adoptBtn,
+              vars: { url },
+              success: (r) => t("addr.adopted", { url: r?.url ?? url }),
+              onFail: (x) => say(x?.message || t("addr.notSaved"), true),
+            },
+          )
+          .then((r) => {
+            if (r === undefined) return;
+            return renderAddress(host, ctx).then(() => {
+              const n = host.querySelector("[data-addr-note]");
+              if (n) {
+                n.hidden = false;
+                n.textContent = t("addr.adopted", { url: r?.url ?? url });
+              }
+            });
+          });
+      });
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const url = input.value.trim();

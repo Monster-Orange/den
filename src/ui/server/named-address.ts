@@ -23,6 +23,8 @@
  * session made on a loopback name then.
  */
 
+import { isLoopbackName } from "../../shared/web-url-check.js";
+
 /** How the address answered the check (address-check.ts's WantedAnswer). */
 export type NamedAnswer = "den" | "other" | "nothing" | "unknown";
 
@@ -44,12 +46,17 @@ export interface NamedWatchDeps {
   now?: () => number;
 }
 
-/** `url` when it is an https origin; else null (unset, http, not a URL). */
+/**
+ * `url` when it is an https origin; else null (unset, http, not a URL).
+ * Issue 666: never a loopback name. This machine's own probe reaches one,
+ * so it would "work" here while every other device is sent to a name that
+ * means itself: sign-in then stays where the person is.
+ */
 export function httpsAddress(url: string | null): URL | null {
   if (!url) return null;
   try {
     const u = new URL(url);
-    return u.protocol === "https:" ? u : null;
+    return u.protocol === "https:" && !isLoopbackName(u.hostname) ? u : null;
   } catch {
     return null;
   }

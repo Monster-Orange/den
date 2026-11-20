@@ -266,7 +266,7 @@ function goSignedIn(url) {
   const go = () => {
     if (done) return;
     done = true;
-    location.replace(url);
+    location.replace(landingOverride || url);
   };
   setTimeout(go, LEAVE_WAIT_MS);
   let left;
@@ -819,6 +819,31 @@ function atAddress(s, t, name) {
   );
 }
 
+/**
+ * Issue 666: on this Den's own alias while its address is unset, loopback
+ * or not working, the page leads with "Make <alias> its address": the
+ * owner signs in below, then confirms it in Settings (the landing).
+ */
+export function offerBlock(s, t, name) {
+  const o = s.offer;
+  if (!o || !o.alias) return "";
+  const why = !o.current
+    ? t("err.signin.offerUnset", { name })
+    : o.loopback
+      ? t("err.signin.offerLoop", { name, url: o.current })
+      : t("err.signin.offerWrong", { name, url: o.current });
+  return (
+    `<div id="den-signin-offer">` +
+    `<h2 class="den-h" id="den-offer-title">${esc(t("err.signin.offerTitle", { alias: o.alias, name }))}</h2>` +
+    `<p class="lead" id="den-offer-why">${esc(why)}</p>` +
+    `<p class="lead" id="den-offer-how">${esc(t("err.signin.offerHow", { alias: o.alias, name }))}</p>` +
+    `</div>`
+  );
+}
+
+/** Where a sign-in lands instead of its own next (issue 666's offer). */
+let landingOverride = null;
+
 function mountSignedOut(root, sh, d) {
   const t = sh.t;
   const s = d.signin;
@@ -910,9 +935,12 @@ function mountSignedOut(root, sh, d) {
   }
   const claim = claimBlock(s, t);
   const gh = claim || githubBlock(s, t);
+  const offer = offerBlock(s, t, name);
+  if (offer) landingOverride = "/settings?q=web.url";
   root.innerHTML =
     head +
     `<div class="empty" id="den-signin">` +
+    offer +
     atAddress(s, t, name) +
     (s.expired
       ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`

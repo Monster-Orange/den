@@ -348,7 +348,12 @@ import {
   readWebUrl,
   setWebUrl,
 } from "../../shared/web-url.js";
-import { handleWebUrlRoutes } from "./web-url-routes.js";
+import {
+  adoptAllowed,
+  handleWebUrlRoutes,
+  offeredAlias,
+} from "./web-url-routes.js";
+import { aliasCandidates, isLoopbackUrl } from "../../shared/web-url-check.js";
 import {
   handleAccountsRoute,
   handleKeepRunningRoutes,
@@ -1022,6 +1027,7 @@ const CONFIG_FREE_ROUTES = new Set([
   // MODE-5: the address row fixes what the config holds.
   "/api/web-url",
   "/api/web-url/probe",
+  "/api/web-url/adopt",
   "/api/themes",
   "/api/scope",
   "/api/workspaces/settings",
@@ -1809,6 +1815,72 @@ function onTheAddress(req: http.IncomingMessage, there: string): boolean {
   );
 }
 
+/**
+ * Issue 666: this install's own aliases that may be its address (its edge
+ * routes to this server, never a loopback name, https first).
+ */
+function addressAliases(): string[] {
+  return aliasCandidates(denEdgeRoutes().map((r) => r.url));
+}
+
+/**
+ * The alias the request came in on: through the edge with its proof, over
+ * https, on one of addressAliases. Null otherwise (a spoofed Host from a
+ * peer that isn't the edge never counts).
+ */
+function aliasHere(req: http.IncomingMessage): string | null {
+  if (!httpsOf(req, "edge")) return null;
+  const h = hostNameOf(req).replace(/\.$/, "");
+  return addressAliases().find((a) => new URL(a).hostname === h) ?? null;
+}
+
+/** The signed-out page's issue 666 offer, when the request is on an alias. */
+function adoptOffer(req: http.IncomingMessage): {
+  offer?: { alias: string; current: string | null; loopback: boolean };
+} {
+  const here = aliasHere(req);
+  if (!here) return {};
+  const w = readWebUrl();
+  const alias = offeredAlias(w, here, [], NAMED.works());
+  return alias
+    ? {
+        offer: {
+          alias,
+          current: w?.url ?? null,
+          loopback: isLoopbackUrl(w?.url),
+        },
+      }
+    : {};
+}
+
+/** Whether the request is the owner's (web-url-routes adoptAllowed). */
+function adoptOwner(
+  req: http.IncomingMessage,
+): { ok: true; who: string } | { ok: false; why: string } {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  if (!g.ok) return { ok: false, why: g.error };
+  const p = g.principal;
+  const browser = p?.kind === "person-browser" && g.session ? g.session : null;
+  const rec = browser
+    ? webSessions.list().find((s) => s.key === browser.key)
+    : undefined;
+  const a = adoptAllowed({
+    agent: p?.kind === "agent" || !!auditActorOf(req),
+    personToken: p?.kind === "person",
+    beyond: g.beyond,
+    session: browser
+      ? {
+          ...(rec?.via ? { via: rec.via } : {}),
+          ...(rec?.login ? { login: rec.login } : {}),
+        }
+      : null,
+    ownerLogin: ownerIdentity()?.login ?? null,
+  });
+  return a.ok
+    ? { ok: true, who: `${principalOf(req) ?? "person"} (${a.how})` }
+    : a;
+}
+
 /** HTTPS: the edge's X-Forwarded-Proto counts only with its proof (H1). */
 function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
   return requestIsHttps(req, via, EDGE_PROVED(req));
@@ -2391,6 +2463,10 @@ function sendSignedOut(
       cmd,
       // Off the address once it is proven: the page names where to sign in.
       ...(there && !onTheAddress(req, there) ? { address: there } : {}),
+      // Issue 666: on this install's own alias while the address is
+      // unset, loopback or not working: "Make <alias> its address", for
+      // the owner to confirm once signed in (POST /api/web-url/adopt).
+      ...adoptOffer(req),
       ...(local ? { local: true, up: cliCommand(bin, "web", "up") } : {}),
       // SEC-2a: which machine runs the commands, and how to reach it.
       machine: machineName(),
@@ -4248,11 +4324,20 @@ async function handleRequest(
     handleWebUrlRoutes(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       read: () => readWebUrl(),
-      set: (url) => setWebUrl(url),
+      set: (url, how) => {
+        const saved = setWebUrl(url, undefined, undefined, how);
+        WEB_URL_NOW = { at: 0, url: null }; // re-read at once
+        return saved;
+      },
+      who: (r) => principalOf(r),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
+      aliases: addressAliases,
+      here: aliasHere,
+      works: () => NAMED.works(),
+      owner: adoptOwner,
     })
   )
     return;
@@ -8443,15 +8528,15 @@ void initLoginPath();
 // D80: the install's address (web.url), the one people are given. An
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
-// localhost.
+// localhost (issue 666: migrateWebUrl takes the first alias that isn't,
+// and puts it in place of a loopback one).
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
-    const urls = webRouteHosts(readEdgeConfig(), ports).map((r) => r.url);
-    const url =
-      urls.find((u) => u.startsWith("https:")) ??
-      urls.find((u) => /^http:\/\/[^/]+\.localhost(:\d+)?$/i.test(u));
-    return url ? { url, from: "the edge route to this server" } : undefined;
+    return webRouteHosts(readEdgeConfig(), ports).map((r) => ({
+      url: r.url,
+      from: "the edge route to this server",
+    }));
   } catch {
     return undefined; // no edge config: nothing to take
   }

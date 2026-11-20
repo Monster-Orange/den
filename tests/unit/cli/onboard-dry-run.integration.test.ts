@@ -354,10 +354,12 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
       if (onV6) await new Promise<void>((r) => other.close(() => r()));
     }
     for (const w of [w1, w2])
-      // D80: the install's address. This one had none; the server took
-      // its edge route's at start (the one-time migration).
+      // D80: the install's address. This one has none: its only edge
+      // route is a loopback name (acme.acme.localhost), which issue 666
+      // never writes as the address. It says how to set one.
       expect(w.json).toMatchObject({
-        url: "http://acme.acme.localhost",
+        url: null,
+        address: expect.stringMatching(/address not set/),
         port: webPort,
       });
 
@@ -365,8 +367,10 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
     const cl = acme("web", "claim-link", "--json");
     expect(cl.code).toBe(0);
     const link = new URL(String(cl.json.url));
-    // D80: on the install's address (taken from its edge route).
-    expect(link.origin).toBe("http://acme.acme.localhost");
+    // Issue 666, D80's one exception: with no address, the link for this
+    // machine's browser is on this machine's own origin, and says so.
+    expect(link.origin).toBe(`http://localhost:${webPort}`);
+    expect(String(cl.json.address)).toMatch(/address not set/);
     expect(link.searchParams.has("claim")).toBe(true);
 
     // The person opens it: a session cookie, and the approval key in the

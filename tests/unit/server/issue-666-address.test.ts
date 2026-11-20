@@ -15,9 +15,20 @@
  *
  * Invented names only (acme.localhost, acme.internal).
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
+import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
+import * as os from "os";
+import * as path from "path";
+import { cmdWebClaimLink } from "../../../src/ui/cli/web-command.js";
 import {
   migrateWebUrl,
   readWebUrl,
@@ -117,7 +128,9 @@ describe("issue 666 clause 1: no path writes a loopback address", () => {
       "http://[::1]:7000",
     ]) {
       const s = store();
-      expect(() => setWebUrl(bad, s.merge, s.read)).toThrow(/this machine only/);
+      expect(() => setWebUrl(bad, s.merge, s.read)).toThrow(
+        /this machine only/,
+      );
     }
   });
 
@@ -125,18 +138,12 @@ describe("issue 666 clause 1: no path writes a loopback address", () => {
     expect(() =>
       parseCreateArgs(["acme", "--url", "https://acme.localhost"], "/tmp"),
     ).toThrow(/this machine only/);
-    expect(
-      parseCreateArgs(["acme", "--url", ALIAS], "/tmp").url,
-    ).toBe(ALIAS);
+    expect(parseCreateArgs(["acme", "--url", ALIAS], "/tmp").url).toBe(ALIAS);
   });
 
   it("edge route never builds on a loopback web.url", () => {
     expect(
-      denRouteTarget(
-        { url: LOOP, confirmed: true },
-        "acme.internal",
-        80,
-      ),
+      denRouteTarget({ url: LOOP, confirmed: true }, "acme.internal", 80),
     ).toEqual({ host: "acme.internal", listen: 80, loopback: true });
   });
 });
@@ -215,9 +222,9 @@ describe("issue 666 clause 3: never locked out on a known alias", () => {
       expect(
         adoptAllowed({ ...base, session: { via: "claim", login: "x" } }).ok,
       ).toBe(false);
-      expect(
-        adoptAllowed({ ...base, agent: true, personToken: true }).ok,
-      ).toBe(false);
+      expect(adoptAllowed({ ...base, agent: true, personToken: true }).ok).toBe(
+        false,
+      );
     });
   });
 
@@ -386,5 +393,52 @@ describe("issue 666 clause 4: every web.url change is an activity row", () => {
     const s = store();
     expect(() => setWebUrl(LOOP, s.merge, s.read)).toThrow();
     expect(rows[0]).toMatchObject({ verb: "web-url", outcome: "refused" });
+  });
+});
+
+describe("issue 666: claim-link while the address is unset (D80's one exception)", () => {
+  const run = (w: WebUrl | null, json = false) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-666-claim-"));
+    let out = "";
+    let err = "";
+    try {
+      const code = cmdWebClaimLink(
+        ["--port", "4321", ...(json ? ["--json"] : [])],
+        {
+          out: (s) => (out += s),
+          err: (s) => (err += s),
+          stateDir: dir,
+          webUrl: () => w,
+        },
+      );
+      return { code, out, err };
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("unset: a link on this machine's own origin, and a note that the address isn't set", () => {
+    const r = run(null);
+    expect(r.code).toBe(0);
+    expect(new URL(r.out.trim()).origin).toBe("http://localhost:4321");
+    expect(r.err).toMatch(/address not set: run `\S+ web url <address>`/);
+    expect(r.err).toMatch(/split-DNS name or edge alias/);
+    const j = JSON.parse(run(null, true).out) as {
+      url: string;
+      address?: string;
+    };
+    expect(new URL(j.url).origin).toBe("http://localhost:4321");
+    expect(j.address).toMatch(/address not set/);
+  });
+
+  it("set: on the address, as before, with no note", () => {
+    const set = { url: ALIAS, confirmed: true };
+    const r = run(set);
+    expect(r.code).toBe(0);
+    expect(new URL(r.out.trim()).origin).toBe(ALIAS);
+    expect(r.err).not.toMatch(/address not set/);
+    expect(
+      (JSON.parse(run(set, true).out) as { address?: string }).address,
+    ).toBeUndefined();
   });
 });

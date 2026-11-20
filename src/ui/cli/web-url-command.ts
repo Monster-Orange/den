@@ -83,7 +83,8 @@ const stdIo: Io = {
   err: (s) => process.stderr.write(s),
   env: process.env,
   read: () => readWebUrl(),
-  set: (a) => setWebUrl(a),
+  set: (a) =>
+    setWebUrl(a, undefined, undefined, { path: "web url --no-check" }),
   checkAndSave: serverCheckAndSave,
 };
 

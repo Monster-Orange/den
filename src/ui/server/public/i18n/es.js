@@ -731,6 +731,14 @@
     "err.signin.local":
       "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
     "err.signin.atAddress": "{name} inicia sesión en {address}",
+    "err.signin.offerTitle": "Hacer de {alias} la dirección de {name}",
+    "err.signin.offerLoop":
+      "La dirección de {name} es {url}, que solo se abre en su propia máquina, así que el inicio de sesión no puede llevarte allí.",
+    "err.signin.offerWrong":
+      "La dirección de {name} es {url}, y no funciona desde aquí.",
+    "err.signin.offerUnset": "{name} aún no tiene dirección.",
+    "err.signin.offerHow":
+      "Inicia sesión abajo como propietario de {name}: con GitHub o con un código que apruebes en su máquina. Luego haz de {alias} su dirección y el inicio de sesión funcionará aquí.",
     "err.signin.copy": "Copiar comando",
     "err.signin.title": "Inicia sesión en {name}",
     "err.signin.where":
@@ -994,6 +1002,10 @@
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
     "addr.empty": "Escribe primero una dirección.",
+    "addr.loopback":
+      "{url} solo se abre en esta máquina: otros dispositivos no llegan a ella.",
+    "addr.adopt": "Hacer de {alias} la dirección de __DEN_TITLE__",
+    "addr.adopted": "Guardada: {url} es ahora la dirección.",
     "set.workspace.approvals_policy": "Escrituras de los agentes aquí",
     "set.workspace.approvals_policy.d":
       "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
