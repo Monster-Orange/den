@@ -952,6 +952,18 @@
       "Peticiones que un runner de CI puede tener esperando a la vez",
     "set.server.gate_remote_asks.d":
       "Peticiones de turno que aún esperan respuesta. Otra se rechaza, diciendo por qué, hasta que una responda. __DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_priority_max":
+      "Ejecuciones de versión con prioridad a la vez, por tipo",
+    "set.server.gate_priority_max.d":
+      "Una ejecución de versión que una persona espera, marcada con prioridad de versión, pasa delante de las demás que esperan de su tipo. Nunca detiene una que ya se ejecuta. Una segunda espera detrás de la primera. 0 lo desactiva. __DEN_CLI__ gate settings --priority-max 1",
+    "set.server.gate_priority_pass":
+      "Una ejecución que espera tanto nunca se adelanta, en minutos",
+    "set.server.gate_priority_pass.d":
+      "Una ejecución de versión con prioridad pasa delante de las demás que esperan, pero nunca de una que lleva esperando este tiempo. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    "set.server.gate_priority_agents":
+      "Los agentes pueden pedir prioridad de versión",
+    "set.server.gate_priority_agents.d":
+      "Activado, un agente puede marcar una ejecución de versión para un problema que tú informaste. Desactivado, solo tú puedes. Cada adelanto queda en el registro de turnos, con quién y por qué. __DEN_CLI__ gate settings --priority-agents 1",
     "set.server.gate_runners": "Tokens de runners de CI",
     "set.server.gate_runners.d":
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
@@ -1599,6 +1611,12 @@
       "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
     "ap.det.gate_runner_token_create.revoke":
       "Puedes revocarlo cuando quieras en Ajustes, en Tokens de runners de CI.",
+    "ap.do.host_restart":
+      "Reiniciar el host de terminales cuando los agentes estén libres",
+    "ap.det.host_restart.wait":
+      "Espera a que ningún agente esté a mitad de turno (como máximo {min} min) y reinicia el host de terminales con el Den instalado.",
+    "ap.det.host_restart.resume":
+      "Los agentes que ejecutaba continúan donde estaban; los terminales abiertos se cierran. El registro de actividad dice cómo fue.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
@@ -2317,6 +2335,9 @@
     "gate.endGo": "Terminar turno",
     "gate.rowHolds": "turno: {kind}",
     "gate.rowWaits": "espera turno: {kind}",
+    "gate.priority": "prioridad de versión: {reason}",
+    "gate.priorityWaits":
+      "prioridad de versión, después de la anterior: {reason}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

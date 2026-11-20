@@ -18,6 +18,13 @@ import type { OnboardCheck } from "./doctor-onboard.js";
 import { engineVersion } from "../../shared/paths.js";
 import { installedPtyModule } from "../../shared/sessions/pty.js";
 import { hostCodeId } from "../../shared/sessions/host-code.js";
+import {
+  HOST_RESTART_ACTION,
+  HOST_RESTART_TITLE,
+  readHostRefreshState,
+} from "../../shared/sessions/host-refresh-state.js";
+import { readUserConfig } from "../../shared/den-config.js";
+import { localDateTime } from "../../shared/local-time.js";
 
 export interface PtySettings {
   warnAbove: number;
@@ -172,6 +179,15 @@ export interface HostModuleDeps {
     | null
   >;
   installed: () => import("../../shared/sessions/host-refresh.js").Installed;
+  /**
+   * Issue 731: Den's own refresh of the host (host-refresh-state.ts): null
+   * or absent when none is known.
+   */
+  refresh?: () =>
+    | import("../../shared/sessions/host-refresh-state.js").HostRefreshState
+    | null;
+  /** Issue 731: the person's chosen time zone (user.yml time_zone), if any. */
+  zone?: () => string | undefined;
 }
 
 export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
@@ -198,11 +214,24 @@ export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
       code: hostCodeId(),
       pty: installedPtyModule(),
     }),
+    refresh: () => readHostRefreshState(stateDir),
+    zone: () => {
+      try {
+        // user.yml time_zone, as time-zone-pref.ts reads it (the CLI
+        // imports no server module): a zone Intl can't use is the machine's.
+        const z = readUserConfig().time_zone;
+        if (typeof z !== "string" || !z || z.length > 64) return undefined;
+        new Intl.DateTimeFormat("en", { timeZone: z });
+        return z;
+      } catch {
+        return undefined; // the machine's own zone
+      }
+    },
   };
 }
 
 export async function hostModuleLines(
-  cli: string,
+  _cli: string,
   d: HostModuleDeps,
 ): Promise<{ lines: string[]; check: OnboardCheck; problem: boolean }> {
   const { hostCheck } = await import("../../shared/sessions/host-refresh.js");
@@ -212,29 +241,79 @@ export async function hostModuleLines(
   } catch {
     h = null;
   }
-  const fix = `${cli} sessions host --stop`; // words-ok: the CLI command itself
+  // Issue 731: never `sessions host --stop` (it stops every agent): Den
+  // restarts the host itself when agents are idle, or the held write does.
   let detail: string;
-  let fail = false;
+  let status: "ok" | "warn" | "fail" = "ok";
+  let refresh: OnboardCheck["refresh"];
+  let held: OnboardCheck["held"];
   if (!h)
     detail =
       "no terminal host runs (it starts with the first agent or terminal)";
   else {
     const need = hostCheck(h, d.installed());
     if (need) {
-      fail = true;
-      detail = `restart needed: ${need.restart === "code" ? "host code changed" : "terminal module changed"} (${need.why}): new agents and terminals may fail to start; restart the terminal host: ${fix}`;
+      const head = `restart needed: ${need.restart === "code" ? "host code changed" : "terminal module changed"} (${need.why}): new agents and terminals may fail to start`;
+      let r: ReturnType<NonNullable<HostModuleDeps["refresh"]>> = null;
+      try {
+        r = d.refresh?.() ?? null;
+      } catch {
+        r = null;
+      }
+      if (r?.state === "waiting") {
+        // The common case: right after an update, Den's own refresh waits
+        // for agents mid-turn. Den is on it: nothing for a person to do.
+        status = "warn";
+        let zone: string | undefined;
+        try {
+          zone = d.zone?.();
+        } catch {
+          zone = undefined;
+        }
+        const min = Math.max(1, Math.ceil(r.waitSeconds / 60));
+        detail = `${head}; Den restarts it when agents are idle (waiting since ${localDateTime(r.startedAt, zone)}, at most ${min} min)`;
+        refresh = {
+          state: "waiting",
+          since: r.startedAt,
+          waitSeconds: r.waitSeconds,
+        };
+      } else {
+        status = "fail";
+        held = { action: HOST_RESTART_ACTION, title: HOST_RESTART_TITLE };
+        const failed =
+          r?.state === "failed"
+            ? `; Den's restart of it failed: ${r.why ?? "no reason recorded"}`
+            : "";
+        if (r?.state === "failed")
+          refresh = {
+            state: "failed",
+            since: r.startedAt,
+            waitSeconds: r.waitSeconds,
+            ...(r.endedAt ? { endedAt: r.endedAt } : {}),
+            ...(r.why ? { why: r.why } : {}),
+          };
+        detail = `${head}${failed}; fix: ask for "${HOST_RESTART_TITLE}" (the held write ${HOST_RESTART_ACTION}, one Allow): it waits for agents mid-turn, restarts the host and resumes them`;
+      }
     } else
       detail = h.pty
         ? `current: the terminal host runs the installed code and terminal module (${h.pty.path})`
         : "current: the terminal host runs the installed code (no terminal module loaded yet)";
   }
+  const fail = status === "fail";
+  const mark = status === "ok" ? "✓" : status === "warn" ? "⚠" : "✗";
   return {
-    lines: [`  Host  ${fail ? "✗" : "✓"}  ${detail}`],
+    lines: [`  Host  ${mark}  ${detail}`],
     check: {
       id: "terminal_host_module",
-      status: fail ? "fail" : "ok",
+      status,
       detail,
-      ...(fail ? { fix } : {}),
+      ...(held
+        ? {
+            fix: `${HOST_RESTART_ACTION}: ${HOST_RESTART_TITLE} (a held write, one Allow)`,
+            held,
+          }
+        : {}),
+      ...(refresh ? { refresh } : {}),
       // What the host says it runs, for a live check (no secret in it).
       ...(h
         ? {

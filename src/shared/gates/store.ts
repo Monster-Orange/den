@@ -10,7 +10,8 @@
  *                     remote_renew_seconds, remote_lapse_seconds
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
  *                     back (process gone, or lease lapsed), overdue, ended
- *                     early (Coach reads time lost)
+ *                     early (Coach reads time lost); issue 715: priority
+ *                     (who, why, what it passed) and priority-waits
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone (or, issue 621,
@@ -30,6 +31,9 @@ import {
   grants,
   lapsed,
   overrun,
+  passedBy,
+  priorityIds,
+  queueOrder,
   queuePlace,
   type GateEntry,
   type GateKind,
@@ -63,6 +67,9 @@ export type GateSettingsPatch = {
   remote_lapse_seconds?: number | null;
   remote_max_slots?: number | null;
   remote_max_asks?: number | null;
+  priority_max?: number | null;
+  priority_pass_limit_minutes?: number | null;
+  priority_agents?: number | null;
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -76,6 +83,10 @@ export const GATE_LIMITS: Record<
   remote_lapse_seconds: { min: 10, max: 24 * 3600, int: true },
   remote_max_slots: { min: 1, max: 256, int: true },
   remote_max_asks: { min: 1, max: 256, int: true },
+  // Issue 715: release priority. 0 turns it off; agents 1 yes, 0 no.
+  priority_max: { min: 0, max: 16, int: true },
+  priority_pass_limit_minutes: { min: 1, max: 24 * 60, int: false },
+  priority_agents: { min: 0, max: 1, int: true },
 };
 
 /**
@@ -122,7 +133,9 @@ export type GateEvent =
   | "taken-back-lapsed"
   | "taken-back-revoked"
   | "overdue"
-  | "ended-early";
+  | "ended-early"
+  | "priority"
+  | "priority-waits";
 
 export interface GateEventRow {
   at: string;
@@ -133,15 +146,23 @@ export interface GateEventRow {
   label: string;
   /** granted: minutes waited. released, taken back: minutes held. */
   minutes?: number;
-  /** waits: the slots it waits behind. */
+  /** waits: the slots it waits behind; priority-waits: the priority runs. */
   behind?: string[];
+  /** Issue 715: priority, priority-waits: why the run asked for it. */
+  reason?: string;
+  /** Issue 715: priority: the waiters it went ahead of. */
+  passed?: string[];
   /** waits: when it may expect to start (ISO). */
   expectedStart?: string;
-  /** ended-early: who ended it. */
+  /** ended-early: who ended it; priority: who asked (agent or person). */
   by?: string;
   /** Issue 621: a runner's slot: the runner token's name. */
   runner?: string;
 }
+
+/** Issue 715: who asked for priority, for the record. */
+const byOf = (e: GateEntry): string =>
+  e.actor ?? (e.agent ? "an agent" : "a person");
 
 const isAlive = (pid: number): boolean => {
   try {
@@ -171,6 +192,9 @@ function leaseTimes(renew: number, lapse: number) {
     remoteLapseSeconds: Math.max(Math.floor(lapse), 2 * r),
   };
 }
+
+/** Issue 715: priority asked for by an agent where only people may. */
+export class GatePriorityRefused extends Error {}
 
 /** Issue 621: a runner token has as many slots as it may. */
 export class GateFullError extends Error {}
@@ -223,6 +247,13 @@ export class GateStore {
         remoteMaxAsks: Math.floor(
           num("remote_max_asks", GATE_DEFAULTS.remoteMaxAsks),
         ),
+        priorityMax: Math.floor(num("priority_max", GATE_DEFAULTS.priorityMax)),
+        priorityPassLimitMinutes: num(
+          "priority_pass_limit_minutes",
+          GATE_DEFAULTS.priorityPassLimitMinutes,
+        ),
+        priorityAgents:
+          num("priority_agents", GATE_DEFAULTS.priorityAgents ? 1 : 0) === 1,
       };
     } catch {
       return { ...GATE_DEFAULTS };
@@ -404,7 +435,21 @@ export class GateStore {
         ...this.heldFor(e, now),
       });
     }
-    for (const id of grants(entries, s)) {
+    // Issue 715: a run that takes priority is recorded once: who, why,
+    // and the waiters it goes ahead of.
+    for (const id of priorityIds(entries, s)) {
+      const e = entries.find((x) => x.id === id)!;
+      if (!e.priority || e.priority.at) continue;
+      e.priority = { ...e.priority, at };
+      this.write(e);
+      this.record(e, {
+        event: "priority",
+        by: byOf(e),
+        reason: e.priority.reason,
+        passed: passedBy(entries, e.id, s, now),
+      });
+    }
+    for (const id of grants(entries, s, now)) {
       const e = entries.find((x) => x.id === id)!;
       e.grantedAt = at;
       this.write(e);
@@ -419,12 +464,13 @@ export class GateStore {
       this.write(e);
       this.record(e, { event: "overdue", ...this.heldFor(e, now) });
     }
-    return entries.sort(
-      (a, b) => Number(!a.grantedAt) - Number(!b.grantedAt) || byAsked(a, b),
-    );
+    return [
+      ...entries.filter((e) => e.grantedAt).sort(byAsked),
+      ...queueOrder(entries, s, now),
+    ];
   }
 
-  /** The queue now: holders first, then the waiters in the order they asked. */
+  /** The queue now: holders first, then the waiters in the order they start. */
   list(): GateEntry[] {
     return this.locked(() => this.settle());
   }
@@ -443,8 +489,17 @@ export class GateStore {
     estimateMin: number;
     agent?: boolean;
     actor?: string;
+    /** Issue 715: a release run a person waits on, and why. */
+    priority?: { reason: string };
   }): GateEntry {
+    const reason = o.priority?.reason.replace(/\s+/g, " ").trim().slice(0, 200);
+    if (o.priority && !reason)
+      throw new GatePriorityRefused("a priority ask needs a reason");
     return this.locked(() => {
+      if (reason && o.agent && !this.settings().priorityAgents)
+        throw new GatePriorityRefused(
+          "only a person may ask for release priority on this machine (Settings, gate priority)",
+        );
       const e: GateEntry = {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
@@ -457,6 +512,7 @@ export class GateStore {
         ...(o.actor && /^agent:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(o.actor)
           ? { actor: o.actor }
           : {}),
+        ...(reason ? { priority: { for: "release" as const, reason } } : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -464,12 +520,23 @@ export class GateStore {
       this.record(e, { event: "asked" });
       const all = this.settle();
       const now = all.find((x) => x.id === e.id) ?? e;
+      // Issue 715: marked, but another holds priority: it waits behind it.
+      if (now.priority && !now.priority.at && !now.grantedAt)
+        this.record(now, {
+          event: "priority-waits",
+          reason: now.priority.reason,
+          behind: all
+            .filter(
+              (x) => x.kind === now.kind && !x.grantedAt && x.priority?.at,
+            )
+            .map((x) => x.id),
+        });
       if (!now.grantedAt)
         this.record(now, {
           event: "waits",
           behind: all.filter((x) => x.grantedAt).map((x) => x.id),
           expectedStart: new Date(
-            expectedStart(all, e.id, this.now()),
+            expectedStart(all, e.id, this.now(), this.settings()),
           ).toISOString(),
         });
       return now;
@@ -524,7 +591,7 @@ export class GateStore {
           event: "waits",
           behind: all.filter((x) => x.grantedAt).map((x) => x.id),
           expectedStart: new Date(
-            expectedStart(all, e.id, this.now()),
+            expectedStart(all, e.id, this.now(), this.settings()),
           ).toISOString(),
         });
       return now;
@@ -599,7 +666,7 @@ export class GateStore {
 
   /** 0 holding; a waiter's place in line (1 is next); -1 when gone. */
   place(id: string): number {
-    return queuePlace(this.list(), id);
+    return queuePlace(this.list(), id, this.settings(), this.now());
   }
 
   /** gate run's command: the slot stays while it runs. */

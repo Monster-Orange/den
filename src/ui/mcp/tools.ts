@@ -9,7 +9,7 @@
  */
 import * as path from "path";
 import { z } from "zod";
-import { GateStore } from "../../shared/gates/store.js";
+import { GatePriorityRefused, GateStore } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import {
   MCP_ACTIONS,
@@ -390,7 +390,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_request",
     "Ask for a gate slot",
-    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Never stops anyone's run; a later ask only waits.",
+    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Never stops anyone's run; a later ask only waits. Issue 715: `priority: \"release\"` with a `reason` (required) is for a release run a person waits on (marked by the person, or for an issue the person reported): it goes to the front of its kind's queue, never ahead of a holder, one at a time per kind (a second waits behind the first), and the slot log records who, why and which runs it passed. Never use it for routine runs.",
     {
       kind: z
         .enum(["browser", "cpu"])
@@ -409,10 +409,27 @@ const READ_TOOLS: DenTool[] = [
         .string()
         .optional()
         .describe("Your slot's id: ask again to see where you stand"),
+      priority: z
+        .enum(["release"])
+        .optional()
+        .describe(
+          "release: a release run a person waits on goes to the front of its kind's queue (needs reason)",
+        ),
+      reason: z
+        .string()
+        .optional()
+        .describe(
+          "With priority: why, in a few words (who waits on it, which issue)",
+        ),
     },
     async (a, ctx) => {
       const store = gatesOf(ctx);
       const id = str(a.id);
+      const reason = str(a.reason)?.trim();
+      if (a.priority === "release" && !reason)
+        throw new Refusal(
+          "gate_slot_request: priority release needs a reason (who waits on it).",
+        );
       if (id) {
         if (!mySlots.has(id))
           throw new Refusal("gate_slot_request: that slot isn't yours.");
@@ -424,16 +441,26 @@ const READ_TOOLS: DenTool[] = [
         }
         return slotView(store, id);
       }
-      const e = store.ask({
-        kind: a.kind === "browser" ? "browser" : "cpu",
-        who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
-        label: (str(a.label) ?? "tests").slice(0, 120),
-        pid: process.pid,
-        estimateMin:
-          typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
-        agent: true,
-        ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
-      });
+      let e;
+      try {
+        e = store.ask({
+          kind: a.kind === "browser" ? "browser" : "cpu",
+          who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
+          label: (str(a.label) ?? "tests").slice(0, 120),
+          pid: process.pid,
+          estimateMin:
+            typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
+          agent: true,
+          ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
+          ...(a.priority === "release" && reason
+            ? { priority: { reason } }
+            : {}),
+        });
+      } catch (err) {
+        if (err instanceof GatePriorityRefused)
+          throw new Refusal(`gate_slot_request: ${err.message}.`);
+        throw err;
+      }
       mySlots.add(e.id);
       return slotView(store, e.id);
     },
@@ -454,7 +481,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2358,6 +2385,22 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  {
+    name: "host_restart",
+    title: "Restart the terminal host when agents are idle",
+    description:
+      "Issue 731: doctor's fix when its terminal host row says a restart is needed and Den's own restart of it failed or is not known to have run. On the person's Allow, Den waits until no agent is mid-turn (at most sessions.host_restart_wait_seconds), restarts the terminal host on the installed Den, resumes the agents it ran and records it in the activity trail (terminal-host). Open terminals end. Never stop the terminal host any other way: that stops every agent at once. Refused while Den is already waiting to restart it (doctor says since when). Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("host_restart", ctx.scope);
+      return askPerson("host_restart", "host_restart", {}, a, ctx);
     },
   },
   {

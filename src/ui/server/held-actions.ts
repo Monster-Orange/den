@@ -82,6 +82,11 @@
  *                     (gate-routes.ts gateRunnerTokenOp): it only asks
  *                     for, renews and gives back gate slots. Always the
  *                     person's own Allow; the token goes once to the asker
+ *   host_restart
+ *                     issue 731: restart the terminal host when agents are
+ *                     idle (host-restart-held.ts): the web start's refresh,
+ *                     its wait, restart, resumes and audit. Doctor's fix,
+ *                     never `sessions host --stop`. The person's own Allow
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -185,6 +190,8 @@ export interface HeldActionDeps {
   verifyRun?: HeldOp;
   /** Issue 621: gate_runner_token_create (gate-routes.ts gateRunnerTokenOp). */
   gateRunnerToken?: HeldOp;
+  /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
+  terminalHostRestart?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -246,6 +253,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "embed_key_create",
   "embed_key_revoke",
   "gate_runner_token_create",
+  "host_restart",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -596,6 +604,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.gateRunnerToken,
     "this Den can't make gate runner tokens here",
   );
+  const terminalHostRestart = op(
+    d.terminalHostRestart,
+    "this Den can't restart its terminal host here",
+  );
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -877,5 +889,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,
+    host_restart: terminalHostRestart,
   };
 }

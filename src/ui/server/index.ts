@@ -204,6 +204,7 @@ import {
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
   agentsShellPathTimeoutSeconds,
+  readSessionsConfig,
 } from "../../shared/den-config.js";
 import {
   CONFIG_ERROR_STATUS,
@@ -1257,9 +1258,12 @@ import {
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
+  refreshTerminalHost,
   startAgentUpkeep,
+  terminalHostRefreshing,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
+import { hostRestartOp } from "./host-restart-held.js";
 import {
   agentInputState,
   checkAgentCreate,
@@ -3275,6 +3279,25 @@ function approvalDeps(): ApprovalDeps {
     // Issue 621: a gate-only token for a CI runner, on the person's Allow.
     gateRunnerToken: gateRunnerTokenOp({
       runners: () => RunnerTokens.at(getStateDir()),
+    }),
+    // Issue 731: doctor's fix for a terminal host Den couldn't restart:
+    // the web start's refresh (wait for idle, restart, resume, audit).
+    terminalHostRestart: hostRestartOp({
+      refreshing: terminalHostRefreshing,
+      waitSeconds: () => {
+        try {
+          return readSessionsConfig().hostRestartWaitSeconds;
+        } catch {
+          return 900;
+        }
+      },
+      start: () =>
+        refreshTerminalHost(
+          agentWebDeps(),
+          (line) => serverLog(line, "lifecycle"),
+          "held",
+        ),
+      log: (line) => serverLog(line, "lifecycle"),
     }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),

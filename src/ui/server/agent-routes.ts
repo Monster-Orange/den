@@ -236,6 +236,12 @@ import { readBody, sendJson } from "./http-helpers.js";
 import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import {
+  HOST_RESTART_ACTION,
+  HOST_RESTART_TITLE,
+  writeHostRefreshState,
+  type HostRefreshState,
+} from "../../shared/sessions/host-refresh-state.js";
 
 export interface AgentRouteDeps {
   /** The operations' deps (tests: an in-process host, a temp state dir). */
@@ -2089,7 +2095,10 @@ export function hostKeptAudit(r: {
 export async function refreshTerminalHost(
   d: AgentsResolved,
   log: (line: string) => void,
-): Promise<void> {
+  by: "start" | "held" = "start",
+): Promise<
+  import("../../shared/sessions/host-refresh.js").RefreshResult | null
+> {
   let waitS = 900;
   let note = true;
   let checkS = 30;
@@ -2104,9 +2113,10 @@ export async function refreshTerminalHost(
   }
   // Issue 631: no relaunch from a handoff starts while the host restarts
   // (it would race the list of agents to resume).
+  if (hostRefreshing) return null; // Issue 731: one at a time
   hostRefreshing = true;
   try {
-    await refreshAndReport(d, log, { waitS, note, checkS });
+    return await refreshAndReport(d, log, { waitS, note, checkS, by });
   } finally {
     hostRefreshing = false;
   }
@@ -2118,19 +2128,44 @@ export async function refreshTerminalHost(
  */
 let hostRefreshing = false;
 
+/** Issue 731: whether a terminal host refresh runs now (the held write's check). */
+export const terminalHostRefreshing = (): boolean => hostRefreshing;
+
+/**
+ * Issue 731: the server's line when its refresh failed. It names the held
+ * write, never `sessions host --stop` (that stops every agent).
+ */
+export function hostRefreshFailedLine(why: string): string {
+  return `terminal host not restarted: ${why}; ask for "${HOST_RESTART_TITLE}" (the held write ${HOST_RESTART_ACTION}; doctor offers it)`;
+}
+
 async function refreshAndReport(
   d: AgentsResolved,
   log: (line: string) => void,
-  o: { waitS: number; note: boolean; checkS: number },
-): Promise<void> {
+  o: { waitS: number; note: boolean; checkS: number; by: "start" | "held" },
+): Promise<import("../../shared/sessions/host-refresh.js").RefreshResult> {
   const { refreshSessionHost, HOST_RESTART_NOTE } =
     await import("../../shared/sessions/host-refresh.js");
   const { sessionPaths } = await import("../../shared/sessions/paths.js");
   const { installedPtyModule } = await import("../../shared/sessions/pty.js");
   const { engineVersion } = await import("../../shared/paths.js");
   const { hostCodeId } = await import("../../shared/sessions/host-code.js");
-  const { waitS, note, checkS } = o;
+  const { waitS, note, checkS, by } = o;
+  // Issue 731: what the refresh does, for doctor to read.
+  const stateDir = d.stateDir();
+  const startedAt = new Date().toISOString();
+  const state = (
+    s: Pick<HostRefreshState, "state"> & Partial<HostRefreshState>,
+  ) =>
+    writeHostRefreshState(stateDir, {
+      startedAt,
+      waitSeconds: waitS,
+      pid: process.pid,
+      by,
+      ...s,
+    });
   const r = await refreshSessionHost({
+    onWait: ({ why }) => state({ state: "waiting", why }),
     connectExisting: () => d.connectExisting(),
     connect: () => d.connect(),
     socket: sessionPaths(d.stateDir()).socket,
@@ -2150,20 +2185,27 @@ async function refreshAndReport(
     checkMs: checkS * 1000,
     log: (l) => log(`  ${l}`),
   });
+  const endedAt = new Date().toISOString();
   if (r.did === "failed") {
-    const line = `terminal host not restarted: ${r.why}; restart it: ${product().cli} sessions host --stop`; // words-ok: the CLI command itself
+    state({ state: "failed", why: r.why, endedAt });
+    const line = hostRefreshFailedLine(r.why);
     log(`  ⚠ ${line}`);
     recordAction(null, { verb: "terminal-host", detail: line.slice(0, 400) });
-    return;
+    return r;
   }
+  state({
+    state: r.did,
+    endedAt,
+    ...(r.did === "restarted" ? { why: r.why } : {}),
+  });
   if (r.did === "kept") {
     // Issue 597: no restart, no bell line.
     const line = hostKeptAudit(r);
     log(`  terminal ${line}`);
     recordAction(null, { verb: "terminal-host", detail: line });
-    return;
+    return r;
   }
-  if (r.did !== "restarted") return;
+  if (r.did !== "restarted") return r;
   const a = hostRestartAudit(r);
   // The server log has the lists in full; the audit row in `agents`.
   log(
@@ -2199,6 +2241,7 @@ async function refreshAndReport(
   } catch {
     /* the bell is best effort: the audit has it */
   }
+  return r;
 }
 
 /**

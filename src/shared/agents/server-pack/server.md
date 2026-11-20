@@ -131,7 +131,9 @@ Reads (they change nothing):
 - `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
   test commands, and give it back (your own only). For one command, run it
-  as `<cli> gate run -- <command>` instead.
+  as `<cli> gate run -- <command>` instead. A release run your person
+  waits on (they marked it, or it's for an issue they reported) may ask
+  with `priority: "release"` and a `reason`; never a routine run.
 
 Hub files (through Den, as you; when Hub is connected):
 
@@ -184,6 +186,11 @@ Held (each waits for the person's Allow):
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as
   the CI system's secret at once, and never print it.
+- `host_restart`: when doctor's terminal host row says a restart
+  is needed and offers it (Den's own restart failed or never ran). It
+  waits for the person's Allow, then for no agent mid-turn, restarts the
+  host and resumes the agents. Never stop the terminal host another way:
+  that stops every agent. While doctor says Den is waiting, do nothing.
 
 Only when Den's config turns them on (`mcp.actions`):
 
