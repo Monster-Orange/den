@@ -70,11 +70,11 @@
     "letter-spacing": "normal",
     "text-transform": "none",
     "padding-top": "0px",
-    "padding-right": "12px",
+    "padding-right": "8px",
     "padding-bottom": "0px",
-    "padding-left": "12px",
+    "padding-left": "8px",
     "row-gap": "normal",
-    "column-gap": "8px",
+    "column-gap": "6px",
     "color": "rgb(36, 30, 24)",
     "opacity": "1",
     "box-shadow": "none"
@@ -91,15 +91,15 @@
     "den-left"
    ],
    "box": {
-    "x": 12,
-    "y": 7.5,
-    "w": 62,
-    "h": 32
+    "x": 8,
+    "y": 1.5,
+    "w": 94,
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -147,15 +147,15 @@
     "den-menu-btn"
    ],
    "box": {
-    "x": 12,
-    "y": 7.5,
-    "w": 32,
-    "h": 32
+    "x": 8,
+    "y": 1.5,
+    "w": 44,
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "6px",
     "border-top-right-radius": "6px",
     "border-bottom-right-radius": "6px",
@@ -202,15 +202,15 @@
     "den-brand"
    ],
    "box": {
-    "x": 52,
-    "y": 12.5,
-    "w": 22,
-    "h": 22
+    "x": 60,
+    "y": 1.5,
+    "w": 44,
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "22px",
+    "height": "44px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -258,7 +258,7 @@
     "den-mark-svg"
    ],
    "box": {
-    "x": 52,
+    "x": 71,
     "y": 12.5,
     "w": 22,
     "h": 22
@@ -311,7 +311,7 @@
    "name": "",
    "classes": [],
    "box": {
-    "x": 52,
+    "x": 71,
     "y": 12.5,
     "w": 22,
     "h": 22
@@ -426,15 +426,15 @@
     "den-search"
    ],
    "box": {
-    "x": 82,
+    "x": 108,
     "y": 1.5,
-    "w": 54,
+    "w": 44,
     "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "6px",
     "border-top-right-radius": "6px",
     "border-bottom-right-radius": "6px",
@@ -482,7 +482,7 @@
     "den-search-ic"
    ],
    "box": {
-    "x": 93,
+    "x": 119,
     "y": 13.34,
     "w": 8,
     "h": 20.3
@@ -537,15 +537,15 @@
     "den-chips"
    ],
    "box": {
-    "x": 144,
-    "y": 7.5,
-    "w": 234,
-    "h": 32
+    "x": 158,
+    "y": 1.5,
+    "w": 224,
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -592,15 +592,15 @@
     "den-end"
    ],
    "box": {
-    "x": 144,
-    "y": 7.5,
-    "w": 68.53,
-    "h": 32
+    "x": 158,
+    "y": 1.5,
+    "w": 41,
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "0px",
     "border-top-right-radius": "0px",
     "border-bottom-right-radius": "0px",
@@ -629,8 +629,8 @@
     "padding-right": "0px",
     "padding-bottom": "0px",
     "padding-left": "0px",
-    "row-gap": "4px",
-    "column-gap": "4px",
+    "row-gap": "6px",
+    "column-gap": "6px",
     "color": "rgb(36, 30, 24)",
     "opacity": "1",
     "box-shadow": "none"
@@ -814,15 +814,15 @@
     "den-rb-top"
    ],
    "box": {
-    "x": 216.53,
-    "y": 7.5,
+    "x": 203,
+    "y": 1.5,
     "w": 83,
-    "h": 32
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "6px",
     "border-top-right-radius": "6px",
     "border-bottom-right-radius": "6px",
@@ -867,7 +867,7 @@
    "name": "",
    "classes": [],
    "box": {
-    "x": 227.53,
+    "x": 214,
     "y": 15.5,
     "w": 16,
     "h": 16
@@ -920,7 +920,7 @@
    "name": "Report",
    "classes": [],
    "box": {
-    "x": 249.53,
+    "x": 236,
     "y": 14.8,
     "w": 39,
     "h": 17.39
@@ -976,15 +976,15 @@
     "den-bell"
    ],
    "box": {
-    "x": 303.53,
-    "y": 7.5,
-    "w": 34,
-    "h": 32
+    "x": 290,
+    "y": 1.5,
+    "w": 44,
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "6px",
     "border-top-right-radius": "6px",
     "border-bottom-right-radius": "6px",
@@ -1029,7 +1029,7 @@
    "name": "",
    "classes": [],
    "box": {
-    "x": 312.53,
+    "x": 299,
     "y": 15.5,
     "w": 16,
     "h": 16
@@ -1085,15 +1085,15 @@
     "appearance-btn"
    ],
    "box": {
-    "x": 341.53,
-    "y": 7.5,
-    "w": 36.47,
-    "h": 32
+    "x": 338,
+    "y": 1.5,
+    "w": 44,
+    "h": 44
    },
    "style": {
     "display": "flex",
     "visibility": "visible",
-    "height": "32px",
+    "height": "44px",
     "border-top-left-radius": "6px",
     "border-top-right-radius": "6px",
     "border-bottom-right-radius": "6px",
@@ -1138,7 +1138,7 @@
    "name": "◐ ▾",
    "classes": [],
    "box": {
-    "x": 350.53,
+    "x": 347,
     "y": 13.34,
     "w": 18.47,
     "h": 20.3
