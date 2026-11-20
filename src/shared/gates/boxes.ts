@@ -100,7 +100,7 @@ export function checkBox(
     if (!SSH_DEST.test(ssh))
       return {
         ok: false,
-        error: `box ${name}: ssh is user@host or host (no options)`,
+        error: `box ${name}: ssh is login@host or host (no options)`,
       };
     box.ssh = ssh;
   }
@@ -120,7 +120,7 @@ export function checkBox(
     if (u.username || u.password)
       return {
         ok: false,
-        error: `box ${name}: playwright carries no user or password`,
+        error: `box ${name}: playwright address carries no login or password`,
       };
     box.playwright = pw;
   }
