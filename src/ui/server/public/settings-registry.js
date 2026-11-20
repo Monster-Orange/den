@@ -2305,9 +2305,9 @@ export const DEN_SETTINGS = [
     // release --reason <why>`) go to the front of their kind's queue.
     id: "server.gate_priority_max",
     category: "server",
-    label: "Release runs that may jump the queue at once, per kind",
+    label: "Release priority runs at a time, per kind",
     description:
-      "A release run a person waits on (`gate run --priority release --reason <why>`) goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
+      "A release run a person waits on, marked for release priority, goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
     keywords: ["gate", "slot", "priority", "release", "queue", "jump"],
     scope: "user",
     keys: ["gate_slots.priority_max"],

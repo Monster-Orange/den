@@ -1929,10 +1929,9 @@
       "Asks one CI runner may have waiting at once",
     "set.server.gate_remote_asks.d":
       "Asks for a gate slot still waiting on an answer. One more is refused, saying why, until one answers. __DEN_CLI__ gate settings --remote-max-asks 4",
-    "set.server.gate_priority_max":
-      "Release runs that may jump the queue at once, per kind",
+    "set.server.gate_priority_max": "Release priority runs at a time, per kind",
     "set.server.gate_priority_max.d":
-      "A release run a person waits on (`gate run --priority release --reason <why>`) goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
+      "A release run a person waits on, marked for release priority, goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
     "set.server.gate_priority_pass":
       "A run waiting this long is never passed, in minutes",
     "set.server.gate_priority_pass.d":
