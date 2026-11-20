@@ -1929,6 +1929,16 @@
       "Asks one CI runner may have waiting at once",
     "set.server.gate_remote_asks.d":
       "Asks for a gate slot still waiting on an answer. One more is refused, saying why, until one answers. __DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_priority_max": "Release priority runs at a time, per kind",
+    "set.server.gate_priority_max.d":
+      "A release run a person waits on, marked for release priority, goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
+    "set.server.gate_priority_pass":
+      "A run waiting this long is never passed, in minutes",
+    "set.server.gate_priority_pass.d":
+      "A release run with priority goes ahead of other waiting runs, but never ahead of one that has waited this long. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    "set.server.gate_priority_agents": "Agents may ask for release priority",
+    "set.server.gate_priority_agents.d":
+      "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
     "set.server.gate_runners": "CI runner tokens",
     "set.server.gate_runners.d":
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
@@ -3143,6 +3153,9 @@
     "gate.endGo": "End slot",
     "gate.rowHolds": "gate: {kind}",
     "gate.rowWaits": "waits for gate: {kind}",
+    // Issue 715: a release run a person waits on, and why.
+    "gate.priority": "release priority: {reason}",
+    "gate.priorityWaits": "release priority, after the one ahead: {reason}",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

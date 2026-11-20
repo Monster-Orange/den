@@ -924,6 +924,17 @@
     "set.server.gate_remote_asks": "1 つの CI ランナーが同時に待てる依頼",
     "set.server.gate_remote_asks.d":
       "まだ返事を待っているスロットの依頼です。超えた依頼は理由を添えて断られ、1 つが返事を受けるまで続きます。__DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_priority_max":
+      "種類ごとに同時に順番を飛ばせるリリース実行",
+    "set.server.gate_priority_max.d":
+      "人が待っていて、リリース優先の印が付いたリリース実行は、同じ種類の待機中の実行より先に進みます。実行中のものを止めることはありません。2 つ目は 1 つ目の後ろで待ちます。0 でオフになります。__DEN_CLI__ gate settings --priority-max 1",
+    "set.server.gate_priority_pass": "この時間待った実行は追い越されない（分）",
+    "set.server.gate_priority_pass.d":
+      "優先されたリリース実行は他の待機中の実行より先に進みますが、この時間待っている実行は追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    "set.server.gate_priority_agents":
+      "エージェントもリリースの優先を依頼できる",
+    "set.server.gate_priority_agents.d":
+      "オンなら、あなたが報告した問題のリリース実行をエージェントが優先にできます。オフなら、あなただけができます。追い越しはすべて、誰がなぜ行ったかとともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-agents 1",
     "set.server.gate_runners": "CI ランナーのトークン",
     "set.server.gate_runners.d":
       "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",
@@ -2235,6 +2246,8 @@
     "gate.endGo": "順番を終える",
     "gate.rowHolds": "順番: {kind}",
     "gate.rowWaits": "順番待ち: {kind}",
+    "gate.priority": "リリース優先: {reason}",
+    "gate.priorityWaits": "リリース優先、前の実行の後: {reason}",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",

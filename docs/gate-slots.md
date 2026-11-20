@@ -14,6 +14,33 @@ den gate status            # who holds a slot, who waits
 `gate status`, the Agents page and `GET /api/gate-slots` show every holder,
 local or remote.
 
+## A release run a person waits on
+
+```sh
+den gate run --kind browser --priority release --reason "the person waits on the candidate" -- npm run test:e2e
+```
+
+Use it only for a release run that the person marked, or that is for an
+issue the person reported. It goes to the front of its kind's waiting runs.
+
+- It never stops a run that holds a slot. It waits for that run to end.
+- One such run per kind has priority at a time (`priority_max`, default 1).
+  A second waits behind the first, then takes priority once the first
+  starts.
+- It never passes a run that has waited `priority_pass_limit_minutes`
+  (default 60).
+- `priority_agents` (default 1) lets agents ask for it. At 0, only a person
+  may. The MCP tool `gate_slot_request` takes `priority: "release"` and a
+  `reason` too.
+- The slot log (`events.jsonl`) has a `priority` row for each jump: who
+  asked (`by`), why (`reason`), and the runs it went ahead of (`passed`).
+  A second marked run gets a `priority-waits` row naming the one ahead.
+- `gate status` (text and `--json`), and the queue on the Agents page, show
+  the priority and its reason.
+
+Change the three settings in Settings › Server, or with
+`den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
+
 ## A CI job in a runner VM
 
 A CI job running in a VM on this machine has no Den and no process Den can
