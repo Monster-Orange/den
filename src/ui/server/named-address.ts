@@ -31,6 +31,11 @@ export type NamedAnswer = "den" | "other" | "nothing" | "unknown";
 export interface NamedWatchDeps {
   /** web.url now, or null. */
   webUrl: () => string | null;
+  /**
+   * Which addresses this watch is about (default httpsAddress). Issue 601:
+   * localHttpsAddress watches the one only this machine opens.
+   */
+  pick?: (url: string | null) => URL | null;
   /** Check the address now. */
   probe: (url: string) => Promise<NamedAnswer>;
   /** web.address_check_cache_seconds, in ms. */
@@ -62,6 +67,22 @@ export function httpsAddress(url: string | null): URL | null {
   }
 }
 
+/**
+ * Issue 601: `url` when it is an https origin on a loopback name (an
+ * address only this machine opens, kept from before issue 666); else null.
+ * Never Den's named address: only a browser on this machine is sent there
+ * to sign in, since there it means this Den.
+ */
+export function localHttpsAddress(url: string | null): URL | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && isLoopbackName(u.hostname) ? u : null;
+  } catch {
+    return null;
+  }
+}
+
 export class NamedAddressWatch {
   /** The address this state is about (a new web.url starts over). */
   private url: string | null = null;
@@ -83,7 +104,7 @@ export class NamedAddressWatch {
 
   /** The current https address, its state reset when it changed. */
   private current(): URL | null {
-    const u = httpsAddress(this.d.webUrl());
+    const u = (this.d.pick ?? httpsAddress)(this.d.webUrl());
     const url = u?.origin ?? null;
     if (url !== this.url) {
       this.url = url;
