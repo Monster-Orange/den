@@ -49,6 +49,8 @@ export const UI_MODULES: readonly string[] = [
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
+  // Issue 750: the agents page's By group view.
+  "/agent-groups.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
