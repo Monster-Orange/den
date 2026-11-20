@@ -32,7 +32,7 @@ import {
   updateWaitNotes,
 } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
-import { typingHeld } from "./attention.js";
+import { deliveryHeld, typingHeld } from "./attention.js";
 import { pausedAgents, startContextWatch } from "./context-watch-service.js";
 import { contextWatchSettings } from "../../shared/agents/context-watch.js";
 import {
@@ -3610,6 +3610,15 @@ function typingHeldIds(): Set<string> {
     attentionWaiting(),
     approvals ? approvals.queue.waitingActors() : [],
     // Issue 278: held after a compaction loop (agent_context.pause_after_loop).
+    pausedAgents(),
+  );
+}
+
+/** Issue 701: the agents Hub deliveries wait for (an asked question isn't one). */
+function deliveryHeldIds(): Set<string> {
+  return deliveryHeld(
+    attentionWaiting(),
+    approvals ? approvals.queue.waitingActors() : [],
     pausedAgents(),
   );
 }
@@ -8821,7 +8830,12 @@ void CRASH_GATE.then(() =>
         heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
         pollSeconds: cfg?.deliveryPollSeconds ?? 30,
         heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
-        waiting: typingHeldIds,
+        // Issue 701: an asked question never holds a delivery.
+        waiting: deliveryHeldIds,
+        waitingWhy: (agent) =>
+          pausedAgents().has(agent)
+            ? "paused"
+            : (waitingReasons().get(agent) ?? null),
         log: (l) => serverLog(`  ${l}`, "warn"),
       });
     });

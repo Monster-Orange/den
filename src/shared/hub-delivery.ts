@@ -264,7 +264,8 @@ export function stripLookalikes(body: string): string {
     .join("\n");
 }
 
-function isOwner(a: DeliveryAuthor, o: DeliveryOwner): boolean {
+/** Whether `a` is the install's own person in Hub. */
+export function isOwner(a: DeliveryAuthor, o: DeliveryOwner): boolean {
   if (a.kind !== "person") return false;
   if (o.ownerId) return a.id === o.ownerId;
   return (
