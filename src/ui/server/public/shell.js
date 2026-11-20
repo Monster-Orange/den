@@ -8772,10 +8772,11 @@
     // its rows 44px).
     "@media (pointer: coarse), (max-width: 767.98px) {",
     "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 44px; min-width: 44px; } }",
-    // Issue 302: Den's buttons on every page (.den-btn, .den-btn.sm), the
-    // bell's "Mark all read" and its folds, 44px each way there too.
+    // Issue 302: the bell's "Mark all read" and its folds, 44px each way
+    // there too. (A .den-btn's 44px tap on a touch screen is the kit's
+    // button.css.)
     "@media (pointer: coarse), (max-width: 767.98px) {",
-    "  .den-btn, .den-bell-sc button, .den-bell-older { min-height: 44px; min-width: 44px; } }",
+    "  .den-bell-sc button, .den-bell-older { min-height: 44px; min-width: 44px; } }",
     "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
