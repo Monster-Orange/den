@@ -63,6 +63,8 @@ export interface GateEntry {
    * time scale (its estimate stretches by it).
    */
   where?: string;
+  /** Issue 625 clause 11: the run's Playwright client version. */
+  pwVersion?: string;
   box?: string;
   boxTimeScale?: number;
   remote?: {

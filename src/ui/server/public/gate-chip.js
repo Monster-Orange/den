@@ -75,6 +75,10 @@ export function startGateChip(o) {
           : s.where
             ? " · " + t("gate.onBox", { box: s.where })
             : "");
+    // Issue 625 clause 11: a box this run can't use, and why.
+    const skips = (s.skips || [])
+      .map((x) => t("gate.boxSkip", { box: x.box, reason: x.reason }))
+      .join(" · ");
     // Issue 715: a release run a person waits on, and why.
     const pri = s.priority
       ? t(
@@ -95,6 +99,7 @@ export function startGateChip(o) {
       esc(when) +
       "</div>" +
       (pri ? '<div class="gate-pri">' + esc(pri) + "</div>" : "") +
+      (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"
@@ -104,11 +109,15 @@ export function startGateChip(o) {
   /** Issue 625: a test box: its slots held, or why it is skipped. */
   function boxHtml(b) {
     const text =
-      b.state === "held" || b.state === "unreachable"
-        ? t(b.state === "held" ? "gate.boxHeld" : "gate.boxDown", {
-            box: b.name,
-            reason: b.reason || "",
-          })
+      b.state === "held" || b.state === "unreachable" || b.state === "low"
+        ? t(
+            b.state === "held"
+              ? "gate.boxHeld"
+              : b.state === "low"
+                ? "gate.boxLow"
+                : "gate.boxDown",
+            { box: b.name, reason: b.reason || "" },
+          )
         : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });
     return (
       '<li class="gate-box" data-gate-box="' +

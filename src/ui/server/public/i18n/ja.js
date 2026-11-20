@@ -2263,6 +2263,8 @@
     "gate.boxSlots": "{box}: ブラウザスロット {n} 個中 {held} 個使用中",
     "gate.boxHeld": "{box}: 保留中のため飛ばします ({reason})",
     "gate.boxDown": "{box}: 応答がないため飛ばします ({reason})",
+    "gate.boxLow": "{box}: 空きメモリが少ないため飛ばします ({reason})",
+    "gate.boxSkip": "{box} は使えません: {reason}",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
@@ -2646,6 +2648,8 @@
     "set.ui.boxHold": "保留ファイル (マシン上)",
     "set.ui.boxScale": "時間の倍率",
     "set.ui.boxSave": "マシンを保存",
+    "set.ui.boxMem": "残しておく空きメモリ (MB)",
+    "set.ui.boxPwv": "マシン上の Playwright のバージョン",
     "set.ui.boxNone":
       "テストマシンはありません。ブラウザ実行はこのマシンだけを使います。",
     "set.ui.boxSlotsN": "ブラウザスロット {n} 個",

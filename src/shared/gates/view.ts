@@ -3,6 +3,7 @@
  * `gate status --json` show it.
  */
 import { expectedEnd, expectedStart, overrun, priorityIds } from "./rules.js";
+import { boxSkipReason } from "./boxes.js";
 import type { GateStore } from "./store.js";
 
 export interface GateSlotView {
@@ -19,6 +20,8 @@ export interface GateSlotView {
   box?: string;
   /** Issue 625: a waiter that may go to a box: "any", or the box's name. */
   where?: string;
+  /** Issue 625 clause 11: boxes this waiter can't use, and why. */
+  skips?: { box: string; reason: string }[];
   grantedAt?: string;
   expectedEnd?: string;
   overrun?: boolean;
@@ -40,7 +43,7 @@ export interface GateBoxView {
   name: string;
   slots: number;
   held: number;
-  state: "open" | "held" | "unreachable" | "unchecked";
+  state: "open" | "held" | "unreachable" | "low" | "unchecked";
   reason?: string;
   checkedAt?: string;
 }
@@ -67,6 +70,14 @@ export function gateView(store: GateStore, now = Date.now()) {
   const all = store.list();
   const settings = store.settings();
   const pri = priorityIds(all, settings);
+  const boxes = store.boxes();
+  const skipsOf = (e: (typeof all)[number]) => {
+    if (e.grantedAt || !e.where) return [];
+    return boxes
+      .filter((b) => e.where === "any" || e.where === b.name)
+      .map((b) => ({ box: b.name, reason: boxSkipReason(e, b) }))
+      .filter((x) => x.reason);
+  };
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -78,6 +89,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(e.remote ? { runner: e.remote.runner } : {}),
     ...(e.box ? { box: e.box } : {}),
     ...(!e.grantedAt && e.where ? { where: e.where } : {}),
+    ...(skipsOf(e).length ? { skips: skipsOf(e) } : {}),
     ...(e.priority
       ? { priority: { reason: e.priority.reason, holds: pri.has(e.id) } }
       : {}),

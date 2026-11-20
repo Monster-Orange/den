@@ -177,7 +177,7 @@ den gate box remove box2
 A browser run says where it may go:
 
 ```sh
-den gate run --kind browser --box any -- npm run test:e2e   # here or any box
+den gate run --kind browser --box any --base-url http://app.localhost:4100 -- npm run test:e2e
 den gate run --kind browser -- npm run test:e2e             # this machine only
 ```
 
@@ -197,13 +197,41 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 ### Checking a box
 
 A box is checked only when a slot on it is about to be given, never on a
-timer. The check is a read: over ssh, an sftp `ls` of the hold file (the
-box runs nothing for it); with only a Playwright address, a TCP connect.
+timer. The check is a read: over ssh, one sftp session that lists the
+hold file and reads the box's `/proc/meminfo` (the box runs nothing for
+it); with only a Playwright address, a TCP connect.
 
 - **Held** (its hold file is there): no new slot. The next assignment
   after the file is placed sees it.
+- **Low on memory**: the box has less available memory than its
+  `min_free_mem_mb` (2048 by default; `--min-free-mem-mb`). No new slot,
+  and the queue says "box low on memory".
 - **Unreachable** (no answer within `box_check_timeout_seconds`, 8 by
-  default): skipped, with why, and the run goes to another box or waits.
+  default, never more than 25): skipped, with why, and the run goes to
+  another box or waits. An ssh that connects but stalls before its banner
+  is killed at that time and counts as unreachable.
+- **Version mismatch**: a box set with `--playwright-version` takes only
+  runs whose Playwright client is that version (`gate run` reads it from
+  the run's `node_modules`, or `--pw-version`). Any other run skips the
+  box, and the queue says "client X ≠ server Y".
+
+A box slot is one heavy job at a time unless `--slots` says more.
+
+### A box run never reaches this machine's live services
+
+A browser on a box, driving an app here through a tunnel, sees this
+machine as its loopback, where ports 80 and 443 may be live services. So:
+
+- `gate run --box …` needs `--base-url`: the app's loopback addresses
+  (`localhost`, `*.localhost` or `127.0.0.1`), each with an explicit port
+  other than 80 or 443. Anything else is refused.
+- The run gets `DEN_GATE_ALLOW` (the allowed `host:port` list). Its
+  Playwright setup guards every browser context with Den's
+  `shared/gates/pw-guard` module (`guardBrowser`), so only those
+  host:ports load, and each blocked request is reported.
+- The setup calls `pinLoopbackNames()` too: `localhost` and
+  `*.localhost` resolve to 127.0.0.1 in the client, never ::1 (the
+  tunnel's forwarders listen on IPv4).
 - A held or unreachable box is passed over for `box_recheck_seconds` (30
   by default), then checked again the next time a slot on it is wanted.
 

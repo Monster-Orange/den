@@ -52,13 +52,41 @@ export interface GateBox {
   hold_file?: string;
   /** Its browsers take this many times as long as this machine's. */
   time_scale?: number;
+  /** Clause 8: no slot while the box has less free memory (MB). */
+  min_free_mem_mb?: number;
+  /** Clause 11: the box's Playwright server version; a client must match. */
+  playwright_version?: string;
 }
 
 export const BOX_LIMITS = {
   browser_slots: { min: 1, max: 64 },
   ssh_port: { min: 1, max: 65535 },
   time_scale: { min: 1, max: 10 },
+  min_free_mem_mb: { min: 0, max: 1024 * 1024 },
 } as const;
+
+/** Clause 8: free memory a box keeps by default (MB). */
+export const BOX_MIN_FREE_MEM_MB = 2048;
+
+/** Clause 12: a box check never takes longer than this, whatever is set. */
+export const BOX_CHECK_CAP_MS = 25_000;
+
+const PW_VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[A-Za-z0-9.-]{1,40})?$/;
+
+/**
+ * Clause 11: why a run can't use a box's browser (its Playwright client
+ * isn't the box server's version), or "" when it can.
+ */
+export function boxSkipReason(
+  e: { pwVersion?: string },
+  b: Pick<GateBox, "playwright_version">,
+): string {
+  return e.pwVersion &&
+    b.playwright_version &&
+    e.pwVersion !== b.playwright_version
+    ? `client ${e.pwVersion} ≠ server ${b.playwright_version}`
+    : "";
+}
 
 /** Box settings: how long a check may take, and how long a no is kept. */
 export interface BoxSettings {
@@ -144,7 +172,21 @@ export function checkBox(
       ok: false,
       error: `box ${name}: a hold file is read over ssh; set ssh too`,
     };
-  for (const k of ["browser_slots", "ssh_port", "time_scale"] as const) {
+  const pv = str("playwright_version");
+  if (pv !== undefined) {
+    if (!PW_VERSION.test(pv))
+      return {
+        ok: false,
+        error: `box ${name}: playwright_version is a version like 1.48.0`,
+      };
+    box.playwright_version = pv;
+  }
+  for (const k of [
+    "browser_slots",
+    "ssh_port",
+    "time_scale",
+    "min_free_mem_mb",
+  ] as const) {
     const x = o[k];
     if (x === undefined || x === null) continue;
     const l = BOX_LIMITS[k];
@@ -180,7 +222,8 @@ export function boxesOf(raw: unknown): GateBox[] {
 
 /** What the last check of a box found. */
 export interface BoxState {
-  state: "open" | "held" | "unreachable";
+  /** Clause 8: "low", the box has less free memory than it keeps. */
+  state: "open" | "held" | "unreachable" | "low";
   /** Why it takes no slot (held, unreachable), in words. */
   reason?: string;
   /** When it was checked (ISO). */
@@ -193,15 +236,24 @@ export interface BoxCap {
   slots: number;
   /** Checked just now and open: a slot on it may be given. */
   open: boolean;
+  /** Clause 11: its Playwright server's version, when set. */
+  version?: string;
 }
 
-/** Where a waiter may run: "local", or the boxes it may take. */
+/**
+ * Where a waiter may run: "local", or the boxes it may take. A box whose
+ * Playwright server isn't the run's client version is never one (clause
+ * 11), and the waiter doesn't hold it from the runs behind it.
+ */
 function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
   if (e.kind !== "browser") return ["local"];
   const w = e.where ?? "local";
   if (w === "local") return ["local"];
-  if (w === "any") return ["local", ...boxes.map((b) => b.name)];
-  return boxes.some((b) => b.name === w) ? [w] : [];
+  const fits = boxes.filter(
+    (b) => !boxSkipReason(e, { playwright_version: b.version }),
+  );
+  if (w === "any") return ["local", ...fits.map((b) => b.name)];
+  return fits.some((b) => b.name === w) ? [w] : [];
 }
 
 /**
@@ -276,7 +328,30 @@ export function boxesWanted(
 export type BoxProbe = (
   box: GateBox,
   timeoutMs: number,
-) => Promise<{ state: BoxState["state"]; reason?: string }>;
+) => Promise<{
+  state: BoxState["state"];
+  reason?: string;
+  /** Clause 8: the box's available memory (MB), when it could be read. */
+  freeMemMb?: number;
+}>;
+
+/**
+ * Clause 8: an open answer with less free memory than the box keeps is
+ * "low", and gives no slot.
+ */
+export function withMemory(
+  box: GateBox,
+  r: Awaited<ReturnType<BoxProbe>>,
+): Awaited<ReturnType<BoxProbe>> {
+  const min = box.min_free_mem_mb ?? BOX_MIN_FREE_MEM_MB;
+  if (r.state !== "open" || r.freeMemMb === undefined || r.freeMemMb >= min)
+    return r;
+  return {
+    state: "low",
+    reason: `box low on memory: ${Math.floor(r.freeMemMb)} MB free, needs ${min} MB`,
+    freeMemMb: r.freeMemMb,
+  };
+}
 
 const oneLine = (s: string) =>
   s
@@ -313,73 +388,98 @@ function tcpReach(
   });
 }
 
+/** Clause 8: MemAvailable (MB) from a /proc/meminfo text, if there. */
+export function memAvailableMb(text: string): number | undefined {
+  const m = /^MemAvailable:\s+(\d+)\s*kB/m.exec(text);
+  return m ? Number(m[1]) / 1024 : undefined;
+}
+
 /**
- * The real check. Over ssh it is an sftp read (`ls` of the hold file, or
- * `pwd` with no hold file): the box runs nothing for it. Keys only
- * (BatchMode): a box that asks for a password is unreachable.
+ * The check over ssh, with the process starter given (tests pass a
+ * stub). It is one sftp read: `ls` of the hold file, and the box's
+ * /proc/meminfo (clause 8); the box runs nothing for it. Keys only
+ * (BatchMode): a box that asks for a password is unreachable. Clause 12:
+ * the whole check is killed at the time given, and never later than
+ * BOX_CHECK_CAP_MS, so an ssh that connects but stalls at the banner is
+ * unreachable and never hangs its callers.
  */
-export const realBoxProbe: BoxProbe = (box, timeoutMs) => {
-  if (!box.ssh) return tcpReach(new URL(box.playwright!), timeoutMs);
-  const secs = Math.max(1, Math.round(timeoutMs / 1000));
-  const args = [
-    "-q",
-    "-b",
-    "-",
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    `ConnectTimeout=${secs}`,
-    ...(box.ssh_port ? ["-P", String(box.ssh_port)] : []),
-    ...(box.ssh_identity ? ["-i", box.ssh_identity] : []),
-    "--",
-    box.ssh,
-  ];
-  return new Promise((resolve) => {
-    let err = "";
-    let settled = false;
-    const finish = (v: { state: BoxState["state"]; reason?: string }) => {
-      if (settled) return;
-      settled = true;
-      resolve(v);
-    };
-    const k = spawn("sftp", args, { stdio: ["pipe", "ignore", "pipe"] });
-    const timer = setTimeout(() => {
-      k.kill("SIGKILL");
-      finish({
-        state: "unreachable",
-        reason: `no answer over ssh in ${secs} s`,
+export function sftpProbe(start: typeof spawn): BoxProbe {
+  return (box, timeoutMs) => {
+    if (!box.ssh) return tcpReach(new URL(box.playwright!), timeoutMs);
+    const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
+    const secs = Math.max(1, Math.round(capMs / 1000));
+    const args = [
+      "-q",
+      "-b",
+      "-",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      `ConnectTimeout=${secs}`,
+      ...(box.ssh_port ? ["-P", String(box.ssh_port)] : []),
+      ...(box.ssh_identity ? ["-i", box.ssh_identity] : []),
+      "--",
+      box.ssh,
+    ];
+    return new Promise((resolve) => {
+      let err = "";
+      let out = "";
+      let settled = false;
+      const finish = (v: Awaited<ReturnType<BoxProbe>>) => {
+        if (settled) return;
+        settled = true;
+        resolve(v);
+      };
+      const k = start("sftp", args, { stdio: ["pipe", "pipe", "pipe"] });
+      const timer = setTimeout(() => {
+        k.kill("SIGKILL");
+        finish({
+          state: "unreachable",
+          reason: `no answer over ssh in ${secs} s`,
+        });
+      }, capMs);
+      k.stdout?.on("data", (d: Buffer) => {
+        if (out.length < 65536) out += d.toString("utf-8");
       });
-    }, timeoutMs + 2000);
-    k.stderr.on("data", (d: Buffer) => {
-      if (err.length < 4096) err += d.toString("utf-8");
-    });
-    k.on("error", (e) => {
-      clearTimeout(timer);
-      finish({ state: "unreachable", reason: oneLine(`sftp: ${e.message}`) });
-    });
-    k.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0)
-        return finish(
-          box.hold_file
-            ? {
-                state: "held",
-                reason: `its hold file (${box.hold_file}) is there`,
-              }
-            : { state: "open" },
-        );
-      if (box.hold_file && /not found|no such file/i.test(err))
-        return finish({ state: "open" });
-      finish({
-        state: "unreachable",
-        reason:
-          oneLine(err.split("\n").filter(Boolean).pop() ?? "") ||
-          `ssh to ${box.ssh} failed (exit ${code})`,
+      k.stderr?.on("data", (d: Buffer) => {
+        if (err.length < 4096) err += d.toString("utf-8");
       });
+      k.on("error", (e: Error) => {
+        clearTimeout(timer);
+        finish({
+          state: "unreachable",
+          reason: oneLine(`sftp: ${e.message}`),
+        });
+      });
+      k.on("close", (code: number | null) => {
+        clearTimeout(timer);
+        if (code !== 0)
+          return finish({
+            state: "unreachable",
+            reason:
+              oneLine(err.split("\n").filter(Boolean).pop() ?? "") ||
+              `ssh to ${box.ssh} failed (exit ${code})`,
+          });
+        const freeMemMb = memAvailableMb(out);
+        const mem = freeMemMb === undefined ? {} : { freeMemMb };
+        if (box.hold_file && !/not found|no such file/i.test(err))
+          return finish({
+            state: "held",
+            reason: `its hold file (${box.hold_file}) is there`,
+            ...mem,
+          });
+        finish({ state: "open", ...mem });
+      });
+      // A leading "-" lets the batch go on when the hold file is absent.
+      k.stdin?.end(
+        (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+          "-get /proc/meminfo /dev/stdout\n",
+      );
     });
-    k.stdin.end(box.hold_file ? `ls "${box.hold_file}"\n` : "pwd\n");
-  });
-};
+  };
+}
+
+export const realBoxProbe: BoxProbe = sftpProbe(spawn);
 
 /** The box states file (in the gate directory). */
 export function readBoxStates(dir: string): Record<string, BoxState> {

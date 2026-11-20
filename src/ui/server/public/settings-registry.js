@@ -1324,6 +1324,20 @@ function drawGateBoxes(host, ctx) {
       "number",
       'min="1" max="10" step="0.1" value="1"',
     ) +
+    field(
+      "set-box-mem",
+      "set.ui.boxMem",
+      "Keep free memory (MB)",
+      "number",
+      'min="0" step="256" placeholder="2048"',
+    ) +
+    field(
+      "set-box-pwv",
+      "set.ui.boxPwv",
+      "Playwright version on the box",
+      "text",
+      'maxlength="48" placeholder="1.48.0"',
+    ) +
     `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
     `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
@@ -1402,6 +1416,8 @@ function drawGateBoxes(host, ctx) {
       browser_slots: num("#set-box-slots"),
       hold_file: val("#set-box-hold") || undefined,
       time_scale: num("#set-box-scale"),
+      min_free_mem_mb: num("#set-box-mem"),
+      playwright_version: val("#set-box-pwv") || undefined,
     };
     post("/api/gate-slots/boxes", { box }, save).catch(warn);
   });

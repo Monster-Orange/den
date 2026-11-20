@@ -367,7 +367,18 @@ describe("gate run and status with boxes", () => {
     const t = deps(s.store);
     expect(
       await cmdGate(
-        ["run", "--kind", "browser", "--box", "any", "--", "npm", "test"],
+        [
+          "run",
+          "--kind",
+          "browser",
+          "--box",
+          "any",
+          "--base-url",
+          "http://den.localhost:4100",
+          "--",
+          "npm",
+          "test",
+        ],
         t.d,
       ),
     ).toBe(0);

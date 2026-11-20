@@ -41,7 +41,9 @@ import {
   checkGatePatch,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
+import * as fs from "fs";
 import { boxEnv, checkBox } from "../../shared/gates/boxes.js";
+import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
@@ -62,7 +64,9 @@ export const GATE_HELP = {
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
-    "    [--hold-file <path>] [--time-scale X]   test boxes (a person's)",
+    "    [--hold-file <path>] [--time-scale X] [--min-free-mem-mb N]",
+    "    [--playwright-version X.Y.Z]   test boxes (a person's)",
+    "    a box run: --base-url http://<name>.localhost:<port> (never 80/443)",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
@@ -156,6 +160,25 @@ export function realGateDeps(): GateDeps {
 
 class GateUsage extends Error {}
 
+/** Clause 11: the Playwright client version installed where the run is. */
+export function playwrightVersion(cwd: string): string | undefined {
+  for (const p of ["playwright-core", "@playwright/test", "playwright"])
+    try {
+      const v = (
+        JSON.parse(
+          fs.readFileSync(
+            path.join(cwd, "node_modules", p, "package.json"),
+            "utf-8",
+          ),
+        ) as { version?: unknown }
+      ).version;
+      if (typeof v === "string") return v;
+    } catch {
+      /* not this one */
+    }
+  return undefined;
+}
+
 /** "6m", "90s", "1h", "10" (minutes) → minutes. */
 export function parseEstimate(v: string): number {
   const m = /^(\d+(?:\.\d+)?)(s|m|h)?$/.exec(v.trim());
@@ -228,7 +251,7 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
     all.map((e) => ({ granted: !!e.grantedAt, box: e.box })),
   ).map((b) => {
     const base = `box ${b.name}: ${b.held} of ${b.slots} browser slots held`;
-    if (b.state === "held" || b.state === "unreachable")
+    if (b.state === "held" || b.state === "unreachable" || b.state === "low")
       return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}`;
     return b.state === "unchecked" ? `${base}, not checked yet` : base;
   });
@@ -263,6 +286,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     "--priority": true,
     "--reason": true,
     "--box": true,
+    "--base-url": true,
+    "--pw-version": true,
   });
   if (!rest || pos.length === 0)
     throw new GateUsage("gate run needs -- <command> [args]");
@@ -288,6 +313,34 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         })`,
       );
   }
+  // Clause 9: a run that may use a box's browser declares its base URLs,
+  // each loopback with an explicit port other than 80 or 443. The run is
+  // handed them (DEN_GATE_ALLOW) to guard every browser context.
+  const allow: string[] = [];
+  if (where && where !== "local") {
+    const raw = typeof f["--base-url"] === "string" ? f["--base-url"] : "";
+    const urls = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!urls.length)
+      throw new GateUsage(
+        "a box run needs --base-url http://<name>.localhost:<port>[,…]: the app's loopback addresses, never port 80 or 443",
+      );
+    for (const u of urls) {
+      const bad = checkBaseUrl(u);
+      if (bad) throw new GateUsage(`--base-url ${bad}`);
+      allow.push(allowOf(u));
+    }
+  }
+  // Clause 11: the run's Playwright client version (a box whose server
+  // differs is skipped, saying why).
+  const pwVersion =
+    typeof f["--pw-version"] === "string"
+      ? f["--pw-version"]
+      : where && where !== "local"
+        ? playwrightVersion(d.cwd)
+        : undefined;
   const estimateMin = parseEstimate(
     typeof f["--estimate"] === "string" ? f["--estimate"] : "10m",
   );
@@ -318,6 +371,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(actor ? { actor } : {}),
       ...(priority ? { priority: { reason } } : {}),
       ...(where ? { where } : {}),
+      ...(pwVersion ? { pwVersion } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
@@ -362,7 +416,10 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       `gate: ${id} holds ${kind}${e.box ? ` on box ${e.box}` : ""}; running ${label}`,
     );
     child = box
-      ? d.exec(pos[0]!, pos.slice(1), boxEnv(box))
+      ? d.exec(pos[0]!, pos.slice(1), {
+          ...boxEnv(box),
+          DEN_GATE_ALLOW: allow.join(","),
+        })
       : d.exec(pos[0]!, pos.slice(1));
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
     // Past its estimate plus the margin, it says so once; never stopped.
@@ -437,6 +494,8 @@ function boxCmd(args: string[], d: GateDeps): number {
     "--slots": true,
     "--hold-file": true,
     "--time-scale": true,
+    "--min-free-mem-mb": true,
+    "--playwright-version": true,
   });
   const [name, extra] = pos;
   if (!name || extra) throw new GateUsage(`gate box ${verb} needs one <name>`);
@@ -459,6 +518,8 @@ function boxCmd(args: string[], d: GateDeps): number {
     browser_slots: num("--slots"),
     hold_file: f["--hold-file"],
     time_scale: num("--time-scale"),
+    min_free_mem_mb: num("--min-free-mem-mb"),
+    playwright_version: f["--playwright-version"],
   });
   if (!c.ok) throw new GateUsage(c.error);
   d.store.setBox(c.box);

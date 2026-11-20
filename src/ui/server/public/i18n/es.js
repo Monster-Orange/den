@@ -2355,6 +2355,8 @@
     "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
     "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
     "gate.boxDown": "{box}: omitida, no responde ({reason})",
+    "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
+    "gate.boxSkip": "no puede usar {box}: {reason}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
@@ -2741,6 +2743,8 @@
     "set.ui.boxHold": "Archivo de pausa (en la máquina)",
     "set.ui.boxScale": "Escala de tiempo",
     "set.ui.boxSave": "Guardar máquina",
+    "set.ui.boxMem": "Memoria libre a mantener (MB)",
+    "set.ui.boxPwv": "Versión de Playwright en la máquina",
     "set.ui.boxNone":
       "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
     "set.ui.boxSlotsN": "{n} turnos de navegador",

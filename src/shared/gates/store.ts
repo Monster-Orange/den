@@ -31,6 +31,7 @@ import {
   checkBox,
   freshNo,
   freshYes,
+  withMemory,
   readBoxStates,
   realBoxProbe,
   writeBoxStates,
@@ -107,7 +108,8 @@ export const GATE_LIMITS: Record<
   priority_agents: { min: 0, max: 1, int: true },
   // Issue 625: a test box's check, and how long a no from it is kept.
   // The check runs outside the lock, so it may take its time.
-  box_check_timeout_seconds: { min: 1, max: 120, int: true },
+  // Clause 12: never more than 25 s (BOX_CHECK_CAP_MS).
+  box_check_timeout_seconds: { min: 1, max: 25, int: true },
   box_recheck_seconds: { min: 1, max: 24 * 3600, int: true },
 };
 
@@ -534,6 +536,8 @@ export class GateStore {
     priority?: { reason: string };
     /** Issue 625: "local" (default), "any", or a test box's name. */
     where?: string;
+    /** Issue 625 clause 11: the run's Playwright client version. */
+    pwVersion?: string;
   }): GateEntry {
     const reason = o.priority?.reason.replace(/\s+/g, " ").trim().slice(0, 200);
     if (o.priority && !reason)
@@ -557,6 +561,9 @@ export class GateStore {
           : {}),
         ...(reason ? { priority: { for: "release" as const, reason } } : {}),
         ...whereOf(o.kind, o.where),
+        ...(o.pwVersion && /^[0-9A-Za-z.-]{1,48}$/.test(o.pwVersion)
+          ? { pwVersion: o.pwVersion }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -841,6 +848,7 @@ export class GateStore {
       name: b.name,
       slots: b.browser_slots,
       open: freshYes(states[b.name], now, s.boxCheckTimeoutSeconds),
+      ...(b.playwright_version ? { version: b.playwright_version } : {}),
     }));
     return { boxes, states, caps, used: false };
   }
@@ -876,7 +884,12 @@ export class GateStore {
       const states = readBoxStates(this.dir);
       const caps = boxes
         .filter((b) => !freshNo(states[b.name], now, s.boxRecheckSeconds))
-        .map((b) => ({ name: b.name, slots: b.browser_slots, open: true }));
+        .map((b) => ({
+          name: b.name,
+          slots: b.browser_slots,
+          open: true,
+          ...(b.playwright_version ? { version: b.playwright_version } : {}),
+        }));
       const want = boxesWanted(this.readAll(), s, now, caps).filter(
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),
       );
@@ -890,7 +903,10 @@ export class GateStore {
           try {
             return {
               n,
-              r: await this.probe(b, s.boxCheckTimeoutSeconds * 1000),
+              r: withMemory(
+                b,
+                await this.probe(b, s.boxCheckTimeoutSeconds * 1000),
+              ),
             };
           } catch (e) {
             return {
