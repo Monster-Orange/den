@@ -156,6 +156,8 @@ import {
   linkOpen,
   imeOnce,
   softNewlineKey,
+  TERM_KEYS,
+  termKeySeq,
 } from "/term-input.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
@@ -183,6 +185,11 @@ export const MAX_PANES = 4;
 export const LAYOUTS = ["focus", "tabs", "tile"];
 /** At or below this width Focus and Tile are Tabs (the shell's phone width). */
 const PHONE = "(max-width: 720px)";
+/**
+ * Issue 302, the mock's "for the build": at or below this width the page
+ * is two screens, the list and the agent (agents.html draws them).
+ */
+const TWO_SCREENS = "(max-width: 480px)";
 /** The longest name a tab takes (records.ts MAX_DISPLAY_NAME). */
 const MAX_NAME = 40;
 const REFRESH_MS = 5_000;
@@ -197,6 +204,13 @@ const st = {
   reorderWs: null,
   /** Issue 226: on a phone, whether the Stopped group's agents show them. */
   reorderStopped: false,
+  /**
+   * Issue 302: on a phone's two screens, the person pressed Back: the
+   * list shows, and the agents stay open (?open= is kept).
+   */
+  phoneList: false,
+  /** Issue 302: where the list was scrolled when an agent took the screen. */
+  listTop: 0,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
   reconnect: reconnectOptions(undefined),
   /** 0.4.45: /api/workspaces, for the projects' names (projName). */
@@ -1785,15 +1799,98 @@ function paintPhoneDock() {
   const onPhone = !!window.matchMedia?.(KIT_PHONE).matches;
   // An agent open, or one the address names that is still opening (the
   // shell hid the dock for it from the first paint).
-  const agent =
+  const open =
     onPhone && (!!st.deep || st.open.some((id) => rowOf(id)?.kind === "agent"));
+  // Issue 302, two screens (480px and under): after Back the list is the
+  // screen, with the dock as on frame 1, and the agents stay open.
+  const list =
+    open && st.phoneList && !!window.matchMedia?.(TWO_SCREENS).matches;
+  const agent = open && !list;
   if (agent) document.body.dataset.phoneAgent = "";
   else delete document.body.dataset.phoneAgent;
+  if (list) document.body.dataset.phoneList = "";
+  else delete document.body.dataset.phoneList;
   // Only as the view becomes a phone's or stops being one: the person's
   // own Show runs on the list then stays open.
   if (paintPhoneDock.was === onPhone) return;
   paintPhoneDock.was = onPhone;
   window.denShell?.runs?.shutHere?.(onPhone);
+}
+
+/**
+ * Issue 302, the mock's frame 6: Back (‹) on a phone's agent screen is the
+ * switch. The list comes back where it was, with the agent's row in focus;
+ * the agent stays open and the address keeps it (?open=).
+ */
+function phoneBack(id) {
+  st.phoneList = true;
+  document.activeElement?.blur?.();
+  paintPhoneDock();
+  const list = st.root.querySelector("#agl");
+  if (!list) return;
+  list.scrollTop = st.listTop;
+  list
+    .querySelector(`.agr[data-id="${CSS.escape(id)}"]`)
+    ?.focus({ preventScroll: true });
+}
+
+/**
+ * Issue 302: a phone's terminal is for reading. Its own hidden input asks
+ * for no on-screen keyboard (the message box is how a person types; ⋯ →
+ * Terminal keys sends the keys a message can't), so a tap on it puts the
+ * keyboard down instead of bringing it up.
+ */
+function phoneTermInput(p) {
+  const ta = p.term?.textarea;
+  if (!ta) return;
+  if (phone() && window.matchMedia?.("(pointer: coarse)").matches)
+    ta.setAttribute("inputmode", "none");
+  else ta.removeAttribute("inputmode");
+}
+
+/** Issue 302: ⋯ → Terminal keys: a row of 44px keys above the box. */
+function toggleTermKeys(p) {
+  if (p.keys) {
+    p.keys.remove();
+    p.keys = null;
+    refit(p);
+    return;
+  }
+  const row = document.createElement("div");
+  row.className = "agkeys";
+  row.setAttribute("role", "group");
+  row.setAttribute("aria-label", t("ag.keys.show"));
+  const face = {
+    esc: t("ag.keys.escKey"),
+    ctrlc: t("ag.keys.ctrlcKey"),
+    up: "↑",
+    down: "↓",
+    left: "←",
+    right: "→",
+  };
+  row.innerHTML = TERM_KEYS.map(
+    (k) =>
+      `<button type="button" class="den-btn" data-key="${k}" aria-label="${esc(t(`ag.keys.${k}`))}">${esc(face[k])}</button>`,
+  ).join("");
+  // A key never takes the focus: the message box keeps it (and the
+  // keyboard stays where it was).
+  row.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button")) e.preventDefault();
+  });
+  row.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-key]");
+    if (!b) return;
+    const seq = termKeySeq(
+      b.dataset.key,
+      !!p.term?.modes?.applicationCursorKeysMode,
+    );
+    if (!seq) return;
+    p.inputAt = performance.now();
+    p.typeIn?.(seq);
+  });
+  p.keys = row;
+  p.el.insertBefore(row, p.composer?.el ?? p.el.querySelector(".agto") ?? null);
+  refit(p);
 }
 
 function paintLayout() {
@@ -1934,6 +2031,11 @@ document.addEventListener("keydown", dropStalePick, true);
  * that pane is still in sight.
  */
 async function pick(id, add) {
+  // Issue 302: on a phone's two screens a row opens its agent full
+  // screen; the list keeps where it was scrolled for Back.
+  if (st.phoneList || !document.body.hasAttribute("data-phone-agent"))
+    st.listTop = st.root.querySelector("#agl")?.scrollTop ?? 0;
+  st.phoneList = false;
   const layout = shownLayout();
   if (layout === "focus" && !add) {
     st.side.clear();
@@ -2296,7 +2398,14 @@ function paintBar(p) {
     linkTag(r) +
     subagentTag(r) +
     signInTag(r);
+  // Issue 302, the mock's frame 2: a phone's agent screen starts with Back
+  // (‹) to the list; agents.html shows it at 480px and under only.
+  const back =
+    r?.kind === "agent"
+      ? `<button type="button" class="den-btn agback" data-act="back" aria-label="${esc(t("ag.back"))}" title="${esc(t("ag.back"))}">‹</button>`
+      : "";
   const html =
+    back +
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
     (r && isStopped(r)
@@ -2906,7 +3015,7 @@ async function openPane(id, { front = true } = {}) {
   // xterm opens in .tbox, the .term's content box: the fit measures its
   // parent's height and width as they are, so the .term's padding must
   // not be in it (AG-4b: every terminal fits its pane).
-  el.innerHTML = `<div class="bar2"></div><div class="term"><div class="tbox"></div></div><div class="agto" data-to data-toast-clear></div>`;
+  el.innerHTML = `<div class="bar2"></div><div class="term" data-kbd-dismiss><div class="tbox"></div></div><div class="agto" data-to data-toast-clear></div>`;
   const p = {
     id,
     el,
@@ -2965,6 +3074,7 @@ async function openPane(id, { front = true } = {}) {
   term.open(el.querySelector(".term .tbox"));
   p.term = term;
   p.fit = fit;
+  phoneTermInput(p);
   const enc = new TextEncoder();
   const typeIn = (d) => {
     if (p.sock?.readyState !== WebSocket.OPEN) return;
@@ -5668,6 +5778,7 @@ export async function mountAgentsPage(root) {
       return;
     }
     if (b.dataset.act === "close") closePane(id);
+    else if (b.dataset.act === "back") phoneBack(id);
     else if (b.dataset.act === "relaunch" || b.dataset.act.startsWith("rot-")) {
       // D28: the callout's buttons in the pane bar.
       const r = rowOf(id);
@@ -5742,6 +5853,16 @@ export async function mountAgentsPage(root) {
                 },
               ]
             : []),
+          // Issue 302: a phone's keys a message can't send (Esc, Ctrl-C,
+          // the arrows), as a row above the message box.
+          ...(phone() && !isStopped(r) && p.term
+            ? [
+                {
+                  label: t(p.keys ? "ag.keys.hide" : "ag.keys.show"),
+                  onSelect: () => toggleTermKeys(p),
+                },
+              ]
+            : []),
         ],
       });
     }
@@ -5807,8 +5928,10 @@ export async function mountAgentsPage(root) {
   window.matchMedia?.(PHONE).addEventListener?.("change", () => {
     paintLayout();
     paintList();
+    for (const p of st.panes.values()) phoneTermInput(p);
   });
   window.matchMedia?.(KIT_PHONE).addEventListener?.("change", paintPhoneDock);
+  window.matchMedia?.(TWO_SCREENS).addEventListener?.("change", paintPhoneDock);
 
   // NT-2: while this tab is visible and focused, the agents in its panes
   // don't notify (the bell); Den forgets it 10 s after the last word.

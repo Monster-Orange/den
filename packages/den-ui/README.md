@@ -738,7 +738,9 @@ Three pieces, data in, the kit's words out (en, es, ja).
   height). The top bar, the rail, the update pill and anything marked
   `data-kbd-hide` step aside, and the page doesn't scroll. A host sizes
   what stays to `--vv-h`. A tap inside `data-kbd-dismiss` that isn't on a
-  control puts the keyboard down.
+  control puts the keyboard down. A field with `inputmode="none"` (a
+  terminal's own hidden input on a phone) never raises the keyboard, so
+  focus there doesn't count as typing.
 - The safe area: `--safe-top`, `--safe-right`, `--safe-bottom` and
   `--safe-left` (from `env(safe-area-inset-*)`). Read these, never
   `env()`, so a test can fake an inset. The top bar starts below

@@ -1234,6 +1234,87 @@
       body[data-phone-agent] #den-dock {
         display: none !important;
       }
+      /* Issue 302, slice 2: the mock's two screens at 480px and under.
+         Back (‹) is the agent screen's own; wider, the list is beside or
+         above the panes, so there is none. */
+      .pane .bar2 .agback {
+        display: none;
+      }
+      /* ⋯ → Terminal keys: a row of 44px keys above the message box. */
+      .pane .agkeys {
+        display: flex;
+        gap: 8px;
+        padding: 8px 16px 0;
+        overflow-x: auto;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        min-width: 0;
+      }
+      .pane .agkeys > button {
+        flex: none;
+        min-height: 44px;
+        min-width: 44px;
+        padding-inline: 10px;
+        font: 15px var(--mono);
+      }
+      @media (max-width: 480px) {
+        /* Frame 2, an agent opened: the list, the page's header and the
+           tab strip go; the agent takes the screen under the top bar. */
+        body[data-phone-agent] #den-content > .ph,
+        body[data-phone-agent] #agl,
+        body[data-phone-agent] #agr > .agtabs {
+          display: none;
+        }
+        html body.den-has-shell[data-phone-agent] > #den-content {
+          padding: 0;
+          overflow: hidden;
+        }
+        body[data-phone-agent] .agx,
+        body[data-phone-agent] #agr.agp {
+          grid-template-rows: minmax(0, 1fr);
+          gap: 0;
+        }
+        /* (An id, so it beats the open dock's give-way rule above.) */
+        body[data-phone-agent] #agr .pane {
+          min-height: 0;
+          border-width: 0;
+          border-radius: 0;
+        }
+        /* The bar: 52px, 12px sides, 6px between; Back, the name and
+           state, then Stop and ⋯, each a 44px target. A pane's ×
+           (detach) gives way to Back. */
+        body[data-phone-agent] .pane .bar2 {
+          min-height: 52px;
+          padding-inline: 12px;
+          column-gap: 6px;
+        }
+        body[data-phone-agent] .pane .bar2 .agback {
+          display: inline-grid;
+          place-items: center;
+          min-width: 44px;
+          min-height: 44px;
+          padding: 0;
+          border-color: transparent;
+          background: none;
+          font-size: 26px;
+          line-height: 1;
+        }
+        body[data-phone-agent] .pane .bar2 .x > .den-btn {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        body[data-phone-agent] .pane .bar2 [data-act="close"] {
+          display: none;
+        }
+        /* Frame 1 after Back: the list is the screen; the agents stay
+           open behind it (the address keeps them). */
+        body[data-phone-list] #agr {
+          display: none;
+        }
+        body[data-phone-list] .agl {
+          max-height: none;
+        }
+      }
       .pane .agc.agc-phone .agc-send {
         min-height: 44px;
         min-width: 44px;

@@ -19,9 +19,10 @@
  *   KEYBOARD_MIN    120: the browser's own bars are under it
  */
 
-/** A field the on-screen keyboard types into. */
+/** A field the on-screen keyboard types into. One that says inputmode="none" (a terminal's own hidden input on a phone) never raises it. */
 export function typesText(el) {
   if (!el) return false;
+  if (el.getAttribute?.("inputmode") === "none") return false;
   if (el.isContentEditable) return true;
   if (el.tagName === "TEXTAREA") return true;
   if (el.tagName !== "INPUT") return false;

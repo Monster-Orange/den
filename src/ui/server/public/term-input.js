@@ -15,6 +15,8 @@
  *                          "!" on a US keyboard): 0-2, else -1. ⌘1-9 and
  *                          Ctrl+1-9 are the browser's (its tabs), never ours
  *   imeOnce(el, typeIn)    an IME key's text goes to the agent once (den#165)
+ *   TERM_KEYS, termKeySeq  a phone's Terminal keys row (issue 302): Esc,
+ *                          Ctrl-C and the arrows, as the terminal's bytes
  */
 
 /** The editors a path link opens in, by URL scheme (Settings › editor.open). */
@@ -182,4 +184,22 @@ export function imeOnce(el, typeIn) {
     },
     true,
   );
+}
+
+/** Issue 302: a phone's Terminal keys row, in the mock's order. */
+export const TERM_KEYS = ["esc", "ctrlc", "up", "down", "left", "right"];
+
+const ARROWS = { up: "A", down: "B", right: "C", left: "D" };
+
+/**
+ * A Terminal key's bytes. The arrows follow the terminal's cursor mode:
+ * CSI (ESC [) normally, SS3 (ESC O) when a full-screen program asked for
+ * application cursor keys. An unknown key: nothing.
+ */
+export function termKeySeq(key, appCursor = false) {
+  if (key === "esc") return "\x1b";
+  if (key === "ctrlc") return "\x03";
+  const a = ARROWS[key];
+  if (!a) return "";
+  return (appCursor ? "\x1bO" : "\x1b[") + a;
 }
