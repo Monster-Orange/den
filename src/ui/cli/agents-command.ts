@@ -1183,12 +1183,16 @@ async function relaunch(args: string[], d: AgentsResolved): Promise<number> {
   const s = await relaunchAgent(d, id, ws, {
     ...(fromHandoff ? { fromHandoff } : {}),
   });
+  if (s.reason === "manual" || s.reason === "resume_failed")
+    return report(
+      d,
+      s,
+      `relaunched agent ${s.rec.id} from its last handoff (${s.handoff}) as ${s.rec.sessionName} in ${s.rec.cwd}`,
+    );
   return report(
     d,
     s,
-    s.reason === "manual" || s.reason === "resume_failed"
-      ? `relaunched agent ${s.rec.id} from its last handoff (${s.handoff}) as ${s.rec.sessionName} in ${s.rec.cwd}`
-      : `relaunched agent ${s.rec.id} from its handoff (the last session ended after ${s.why}) as ${s.rec.sessionName} in ${s.rec.cwd}`, // words-ok: unchanged wording from before issue 658
+    `relaunched agent ${s.rec.id} from its handoff (the last session ended after ${s.why}) as ${s.rec.sessionName} in ${s.rec.cwd}`,
   );
 }
 

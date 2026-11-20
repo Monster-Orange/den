@@ -247,13 +247,31 @@ describe("issue 658, clause 1: a relaunch that never began, then Resume", () => 
     expect(lastArg(r)).toContain(GOOD_HANDOFF);
   }, 30_000);
 
-  it("the runtime's own record decides: a session typed into (a No) is no conversation; a relaunched record neither", async () => {
+  it("typing that was the answer to the folder-trust question (Den saw it) is no conversation: fresh at once", async () => {
     const r = await base();
     const t1 = await started(r);
-    // Typed into, but its runtime never wrote it.
+    // Typed into, but its runtime never wrote it: the typing was a No.
     fs.rmSync(path.join(r.dir, "claude-config"), { recursive: true });
     await stop(r);
+    writeRecord(r.stateDir, {
+      ...rec(r),
+      trustDeclined: new Date().toISOString(),
+    });
+    const n = r.made.length;
     expect(await agents(r, "resume", ID)).toBe(0);
+    expect(r.made[n].args.slice(0, 2)).toEqual(["--session-id", t1]);
+  }, 30_000);
+
+  it("typed into, never written, and Den didn't see why: the runtime's own answer starts it fresh, exit 0", async () => {
+    const r = await base();
+    r.deps.exitWatchMs = 300;
+    const t1 = await started(r);
+    fs.rmSync(path.join(r.dir, "claude-config"), { recursive: true });
+    await stop(r);
+    const done = claudeAnswers(r);
+    const code = await agents(r, "resume", ID);
+    done();
+    expect(code).toBe(0);
     expect(last(r).args.slice(0, 2)).toEqual(["--session-id", t1]);
   }, 30_000);
 });
@@ -266,6 +284,10 @@ describe("issue 658, clause 3: nothing on file", () => {
     rotated(r);
     await stop(r);
     const t2 = await relaunchAnsweredNo(r);
+    // Den's look saw the trust question declined (its server's tick).
+    expect(
+      (await ops.trustTick(ops.resolveAgentsDeps(r.deps))).map((e) => e.kind),
+    ).toEqual(["declined"]);
     fs.rmSync(kept(r), { recursive: true, force: true });
     r.out.length = 0;
     expect(await agents(r, "resume", ID)).toBe(0);

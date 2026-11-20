@@ -5920,23 +5920,28 @@ export async function resumeAgent(
       // from before 0.4.8 whose session nobody prompted starts afresh under
       // the same id.
       const token = rec.resumeToken;
-      // Issue 658: a runtime that can tell (den-claude: its transcript)
-      // decides alone: a conversation it wrote resumes; one it never wrote
-      // starts fresh at once. Den's own record (launched, relaunched from
-      // a handoff, a session someone typed into, say a No to the folder-
-      // trust question) never makes one that isn't there. Without that,
-      // the record decides: launched on this token, a relaunch from a
-      // handoff (issue 631), or a session the host lost.
+      // A runtime that can tell (den-claude: its transcript) decides first:
+      // a conversation on disk resumes. Else a last session someone typed
+      // into resumes, unless what was typed was the answer to its folder-
+      // trust question (issue 659 noted it): nothing was written then.
+      // Issue 658: a relaunch from a handoff the runtime never wrote is no
+      // conversation (issue 631's rule holds only where the runtime can't
+      // tell). Without that, the record decides: launched on this token, a
+      // relaunch from a handoff, or a session the host lost. Whatever is
+      // chosen, the runtime's own answer ("no conversation found") is the
+      // backstop below, and a conversation never written is never a 502.
       const onDisk =
         rt.conversationExists && token
           ? rt.conversationExists(token, d.env)
           : undefined;
       const known =
-        onDisk ??
-        (launchedFromHandoff(rec) ||
-          Boolean(rec.launched) ||
-          !old ||
-          Boolean(old.prompted));
+        onDisk === undefined
+          ? launchedFromHandoff(rec) ||
+            Boolean(rec.launched) ||
+            !old ||
+            Boolean(old.prompted)
+          : onDisk ||
+            (Boolean(old?.prompted) && !rec.trustAsked && !rec.trustDeclined);
       // Issue 658: a fresh start carries the agent's last handoff, when one
       // is on file, as its first prompt.
       const handoff = rt.firstPrompt ? newestHandoff(input.filesDir) : null;

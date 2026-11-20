@@ -547,12 +547,16 @@ export function handoffPrompt(
   reason: RelaunchReason,
   compactions: number,
 ): string {
-  const why =
-    reason === "manual" || reason === "resume_failed"
-      ? "Den relaunched you from the last handoff your role wrote."
-      : `Den relaunched you from the handoff your last session wrote. That session ended after ${reasonText(reason, compactions)} (session rotation).`; // words-ok: unchanged wording from before issue 658 (an agent's own prompt)
+  // Issue 658: a person's relaunch, or a resume with nothing written.
+  if (reason === "manual" || reason === "resume_failed")
+    return [
+      "Den relaunched you from the last handoff your role wrote.",
+      "Read it, then carry on from its Next step.",
+      "",
+      handoff.trim(),
+    ].join("\n");
   return [
-    why,
+    `Den relaunched you from the handoff your last session wrote. That session ended after ${reasonText(reason, compactions)} (session rotation).`,
     "Read it, then carry on from its Next step.",
     "",
     handoff.trim(),
