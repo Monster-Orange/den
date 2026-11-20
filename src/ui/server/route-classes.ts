@@ -760,6 +760,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 172: a person stops push alerts to a device",
   ),
   R(
+    "/api/alerts/devices",
+    "Issue 172: the person's devices that get push (what each is, its push service, when added); never an endpoint, never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/test",
+    "Issue 172: a person sends a test alert to each device that gets push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/forget",
+    "Issue 172: a person stops push alerts to one device, by its id",
+  ),
+  R(
     "/api/hub/link-suggestions",
     "#68: each project, its Hub project, and Hub's first suggestion for an unlinked one (names only)",
   ),
