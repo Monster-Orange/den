@@ -138,18 +138,9 @@ export function metaLine(run) {
   return parts.join(" ");
 }
 
-/** A time of day alone (the end of an imported run's span). */
+/** A time of day alone (the end of an imported run's span), in the chosen zone (issue 668). */
 function clock(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  try {
-    return d.toLocaleTimeString(
-      globalThis.document?.documentElement?.lang || undefined,
-      { timeStyle: "short" },
-    );
-  } catch {
-    return d.toISOString().slice(11, 16);
-  }
+  return formatTime(iso, { style: "time" });
 }
 
 /** Issue 441: an import's line: its commit, when it ran, where it came from. */
