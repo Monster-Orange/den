@@ -534,6 +534,6 @@ describe("issue 479 (1): Open a terminal there, in Den's own terminal", () => {
       "/api/workspaces/north/sessions",
       { cwd: "/opt/a" },
     ]);
-    expect(opened).toEqual(["/agents?ws=north&open=s-1"]);
+    expect(opened).toEqual(["/agents?project=north&open=s-1"]);
   });
 });

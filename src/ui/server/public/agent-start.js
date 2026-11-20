@@ -325,7 +325,7 @@ export function wireQuarantine(
         const id = r?.session?.id;
         if (id)
           open(
-            `/agents?ws=${encodeURIComponent(w)}&open=${encodeURIComponent(id)}`,
+            `/agents?project=${encodeURIComponent(w)}&open=${encodeURIComponent(id)}`,
           );
       } else if (b.dataset.qCopy) {
         b.textContent = (await copyPath(b))
