@@ -5,6 +5,10 @@
  * 409 dialog_open, passes; a Den that types the note once its wait runs
  * out, and types the message, fails; a restart held for an Allow fails
  * clause 1 (never skipped). The Hub clauses skip with their reason.
+ *
+ * Clause 2's fake Den holds a Hub comment on its hook-set waiting mark,
+ * as Den does: the screen clearing doesn't clear it; a hook a real agent
+ * sends once its dialog is answered (a tool ran) does.
  */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
@@ -35,6 +39,10 @@ function runGate(
     Date.now = now;
     const typed = { server: [], "gate-629-say": [], "gate-629-hub": [] };
     const dialog = { server: false, "gate-629-say": false, "gate-629-hub": false };
+    // Den's waiting mark, set by the permission hook: cleared only by a
+    // hook that says the agent went on (attention.ts), never by its screen.
+    const mark = { server: null, "gate-629-say": null, "gate-629-hub": null };
+    const hooks = [];
     const yml = { closed: false, set: null };
     let started = "2026-11-19T00:00:00.000Z";
     let selfUpdate = "ask";
@@ -54,7 +62,7 @@ function runGate(
       }
       for (const c of hubQueue) {
         if (c.done || clock < c.at + 2000) continue;
-        if (kind === "unfixed" || !dialog[c.agent]) {
+        if (kind === "unfixed" || mark[c.agent] === null) {
           typed[c.agent].push({ t: clock, text: "Hub comment: " + c.text, enter: true });
           c.done = true;
         }
@@ -85,7 +93,16 @@ function runGate(
       state() { return states[id]; },
       stop() { stops.push(id); states[id] = "stopped"; return { code: 0 }; },
       remove() {},
-      permissionRequest() { dialog[id] = true; },
+      permissionRequest() { dialog[id] = true; mark[id] = clock; },
+      hook(event, input) {
+        hooks.push({ id, event, input });
+        // As Den's attention hook: PostToolUse / UserPromptSubmit say
+        // "resumed", Stop says "finished"; a resume within 1 s of the wait
+        // is from before it.
+        if (mark[id] === null) return;
+        if (event === "Stop" || (/^(PostToolUse|UserPromptSubmit)$/.test(event) && clock - mark[id] >= 1000))
+          mark[id] = null;
+      },
       print(t) { if (/\\[2J/.test(t)) dialog[id] = false; },
       async typed({ since }) {
         tick();
@@ -149,7 +166,7 @@ function runGate(
         },
       };
     const out = await runLikeBed("629.mjs", g, ctx);
-    console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, serverAfter: states.server, stops }));`;
+    console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, serverAfter: states.server, stops, hooks }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
     cwd: ROOT,
     encoding: "utf-8",
@@ -169,6 +186,7 @@ function runGate(
     selfUpdate: string;
     serverAfter: string | null;
     stops: string[];
+    hooks: { id: string; event: string; input: Record<string, unknown> }[];
   };
 }
 
@@ -202,6 +220,14 @@ describe("gate/629.mjs as the bed runs it", () => {
     const r = runGate("fixed", "stopped", true);
     expect(r.error).toBeUndefined();
     expect(row(r, 1)?.ok).toBe(true);
+  });
+
+  it("with Hub, the stub answers its dialog as a real agent does: a resumed hook after its screen clears", () => {
+    const r = runGate("fixed", "stopped", true);
+    const h = r.hooks.filter((x) => x.id === "gate-629-hub");
+    expect(h).toEqual([
+      { id: "gate-629-hub", event: "PostToolUse", input: { tool_name: "Bash" } },
+    ]);
   });
 
   it("with Hub, a Den that types the comment into the dialog fails clause 2", () => {
