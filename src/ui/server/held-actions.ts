@@ -101,6 +101,11 @@
  *                     address (web-url-held.ts); it must answer as this
  *                     Den at the ask and at the Allow, and saves as
  *                     Settings does. The person's own Allow
+ *   gate_runner_entry_set
+ *                     issue 642: let a repo's CI jobs run on a test box
+ *                     (gate-routes.ts gateRunnerEntryOp): a runner entry,
+ *                     set or changed. It widens what runs on a box: always
+ *                     the person's own Allow
  */
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { UPDATE_SPEC_RE } from "./den-update.js";
@@ -213,6 +218,8 @@ export interface HeldActionDeps {
   terminalHostRestart?: HeldOp;
   /** Issue 869: web_url_set (web-url-held.ts webUrlSetAction). */
   webUrlSet?: HeldAction;
+  /** Issue 642: gate_runner_entry_set (gate-routes.ts gateRunnerEntryOp). */
+  gateRunnerEntry?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -282,6 +289,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_remove",
   "host_restart",
   "web_url_set",
+  "gate_runner_entry_set",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -678,6 +686,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.gateBoxRemove,
     "this Den can't remove test boxes here",
   );
+  const gateRunnerEntry = op(
+    d.gateRunnerEntry,
+    "this Den can't set CI runner entries here",
+  );
   const terminalHostRestart = op(
     d.terminalHostRestart,
     "this Den can't restart its terminal host here",
@@ -1048,5 +1060,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           error: "this Den can't set its address here",
         }),
     },
+    gate_runner_entry_set: gateRunnerEntry,
   };
 }

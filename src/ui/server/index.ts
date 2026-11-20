@@ -312,6 +312,7 @@ import {
 } from "../../shared/gates/store.js";
 import {
   gateBoxOps,
+  gateRunnerEntryOp,
   gateRunnerTokenOp,
   handleGateRoutes,
   isGatePath,
@@ -4780,6 +4781,9 @@ function approvalDeps(): ApprovalDeps {
     })(),
     // Issue 869: Den's own agent proposes the address; the person Allows.
     webUrlSet: webUrlSetAction(webUrlSetDeps()),
+    // Issue 642: a runner entry (a repo's CI jobs on a test box), on the
+    // person's Allow. Settings only: nothing starts a runner yet.
+    gateRunnerEntry: gateRunnerEntryOp({ store: () => gates() }),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
