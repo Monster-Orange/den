@@ -161,7 +161,9 @@ export async function run(ctx) {
     after,
     tries,
     cli,
-    row: row ? { status: row.status, detail: String(row.detail ?? "").slice(0, 200) } : null,
+    // The whole detail is tested; only the line shown is cut (doctor leads with
+    // other words, so the fix can sit past 200 characters).
+    row: row ? { status: row.status, detail: String(row.detail ?? "").slice(0, 2000) } : null,
     origin,
     here: here
       ? { url: here.url ?? null, loopback: !!here.loopback, offer: here.offer ?? null }
@@ -217,7 +219,7 @@ export function expect(cells) {
             SAYS.test(r.row.detail) &&
             /web url |Settings/.test(r.row.detail),
           detail: r.row
-            ? `${r.row.status}: ${r.row.detail}`
+            ? `${r.row.status}: ${r.row.detail.slice(0, 200)}`
             : "no address row in doctor --json",
         },
   );
