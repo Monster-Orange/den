@@ -999,7 +999,7 @@ export const denClaude: Runtime = {
   // the conversation has a blank line under it, so it never counts.
   inputPrompt: {
     match:
-      /(?:^|\n)[ \t]*(?:│[ \t]*)?[>❯](?![ \t ]*\d+[.)])(?:[ \t ][^\n]*)?(?=\n[ \t]*[─━╰]|$)/u,
+      /(?:^|\n)[ \t]*(?:│[ \t]*)?[>❯](?![\t\p{Zs}]*\d+[.)])(?:[\t\p{Zs}][^\n]*)?(?=\n[ \t]*[─━╰]|$)/u,
     afterMax: 400,
   },
   approvals: "terminal",
