@@ -11,6 +11,7 @@
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import * as path from "path";
 import type { Browser, Page, Request } from "playwright";
 import {
   removeFrameTmp,
@@ -18,6 +19,8 @@ import {
   type FrameServer,
 } from "./helpers/error-frame-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
@@ -37,11 +40,7 @@ beforeAll(async () => {
     const { chromium } = await import("playwright");
     // DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a Playwright
     // run-server (its localhost is this machine's: exposeNetwork).
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -69,9 +68,11 @@ async function open(
   errors: string[];
   settled: () => Promise<void>;
 }> {
-  const page = await browser!.newPage({
+  const context = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  await signIn(context, path.join(s!.tmp, "den-home"), s!.base);
+  const page = await context.newPage();
   if (before) await before(page);
   const refused: string[] = [];
   // Uncaught exceptions on the page: messages only.
@@ -165,7 +166,7 @@ describe("a page navigation with an invalid config", () => {
     expect(await page.locator('#den-error-page a[href="/logs"]').count()).toBe(
       1,
     );
-    await page.close();
+    await page.context().close();
   });
 
   it.each(["/settings", "/logs"])(
@@ -197,7 +198,7 @@ describe("a page navigation with an invalid config", () => {
           )
           .count(),
       ).toBeGreaterThan(0);
-      await page.close();
+      await page.context().close();
     },
   );
 
@@ -222,7 +223,7 @@ describe("a page navigation with an invalid config", () => {
     expect(errors).toEqual([]);
     const free = p === "/settings" || p === "/logs";
     expect(await page.locator("#den-error-page").count()).toBe(free ? 0 : 1);
-    await page.close();
+    await page.context().close();
   });
 
   // Issue 195: "settled" waits for what the page asked, however long that
@@ -249,7 +250,7 @@ describe("a page navigation with an invalid config", () => {
     });
     await settled();
     expect(errors).toEqual(["late throw"]);
-    await page.close();
+    await page.context().close();
   });
 
   // 0.4.1 (the config-poll fix): once the shell knows the config is
@@ -283,7 +284,7 @@ describe("a page navigation with an invalid config", () => {
       // the shell starts later may answer 422 either.
       await page.waitForTimeout(6_000);
       expect(refused).toEqual([]);
-      await page.close();
+      await page.context().close();
     },
     30_000,
   );
@@ -303,7 +304,7 @@ describe("a page navigation with an invalid config", () => {
       await page.waitForSelector("#den-err-issues");
       expect(await page.textContent("#den-error-page h1")).toBe(title);
       expect(await page.textContent("#den-err-retry")).toBe(reload);
-      await page.close();
+      await page.context().close();
     } finally {
       await s!.req("POST", "/api/settings", {
         headers: { "content-type": "application/json" },

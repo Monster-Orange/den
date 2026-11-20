@@ -12,15 +12,25 @@
  */
 import path from "node:path";
 import {
+  deliveryAlert,
+  readDeliveryHealth,
   SeenDeliveries,
+  writeDeliveryHealth,
   type Delivery,
   type DeliveryOwner,
 } from "../../shared/hub-delivery.js";
+import { hubCommentsBell } from "./hub-comments-bell.js";
 import {
   DeliveryLoop,
+  HELD_WORDS,
   type AgentHubWork,
+  type HeldCode,
 } from "../../shared/hub-delivery-loop.js";
-import { listRecords, readRecord } from "../../shared/agents/records.js";
+import {
+  listRecords,
+  readRecord,
+  type AgentRecord,
+} from "../../shared/agents/records.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
   feedKinds,
@@ -30,6 +40,15 @@ import {
 import { getStateDir } from "../../shared/paths.js";
 
 const PUMP_MS = 2000;
+/** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
+const ALERT_CHECK_MS = 30_000;
+/** Issue 702: doctor's copy of the delivery path's health. */
+const healthFile = () =>
+  path.join(getStateDir(), "hub", "deliveries-health.json");
+/** Issue 702: the Hub the stream last opened to (doctor shows it). */
+let streamUrl: string | null = null;
+let alertTimer: NodeJS.Timeout | null = null;
+let bell: ReturnType<typeof hubCommentsBell> | null = null;
 
 let loop: DeliveryLoop | null = null;
 let ctl: AbortController | null = null;
@@ -50,8 +69,37 @@ let feedCarries: ReadonlySet<string> = new Set();
 interface StartOpts {
   heartbeatSeconds: number;
   pollSeconds: number;
+  /** Issue 664: hub.delivery_held_note_seconds (default 60). */
+  heldNoteSeconds?: number;
   waiting: () => ReadonlySet<string>;
+  /**
+   * Issue 701: what `agent` waits on for its person ("permission",
+   * "approval", "paused"), or null.
+   */
+  waitingWhy?: (agent: string) => string | null;
+  /**
+   * Issue 701: hub.delivery_state_timeout_seconds (60),
+   * hub.delivery_type_timeout_seconds (120), hub.delivery_held_bell_minutes
+   * (5), hub.delivery_answer_minutes (30).
+   */
+  stateTimeoutSeconds?: number;
+  typeTimeoutSeconds?: number;
+  heldBellMinutes?: number;
+  answerMinutes?: number;
   log: (line: string) => void;
+}
+
+/** Issue 701: the reasons the install's waiting marks give. */
+const MARK_CODES: ReadonlySet<string> = new Set([
+  "permission",
+  "approval",
+  "paused",
+]);
+
+/** Issue 701: how long a held item waits before the bell says so, in s. */
+function heldBellAfter(why: HeldCode | undefined): number {
+  if (!why || why === "not_at_prompt") return lastOpts?.heldNoteSeconds ?? 60;
+  return (lastOpts?.heldBellMinutes ?? 5) * 60;
 }
 let lastOpts: StartOpts | null = null;
 /** Issue 166: Hub's inbox, read for this install's agents. */
@@ -97,6 +145,39 @@ export function stopDeliveries(): void {
   notesTimer = null;
   if (inboxTimer) clearInterval(inboxTimer);
   inboxTimer = null;
+  if (alertTimer) clearInterval(alertTimer);
+  alertTimer = null;
+  // Issue 702: not reading Hub (disconnected): nothing to say.
+  bell?.(null);
+}
+
+/** hub.delivery_alert_minutes, read each time (a bad hub block: 15). */
+async function alertMinutes(): Promise<number> {
+  const hub = await import("../../shared/hub.js");
+  try {
+    return hub.readHubConfig()?.deliveryAlertMinutes ?? 15;
+  } catch {
+    return 15;
+  }
+}
+
+/**
+ * Issue 702: say "Hub comments aren't arriving" in the bell after
+ * hub.delivery_alert_minutes with no good read; withdrawn on the next.
+ */
+function startDeliveryAlert(l: DeliveryLoop): void {
+  if (alertTimer) clearInterval(alertTimer);
+  const check = async () => {
+    const reason = deliveryAlert(l.health(), Date.now(), await alertMinutes());
+    const { notificationDeps } = await import("./notification-service.js");
+    bell ??= hubCommentsBell(notificationDeps().store);
+    bell(reason);
+  };
+  alertTimer = setInterval(
+    () => void check().catch(() => undefined),
+    ALERT_CHECK_MS,
+  );
+  alertTimer.unref();
 }
 
 /** hub.inbox_* read each time (a bad hub block: the defaults). */
@@ -174,6 +255,81 @@ function startHubNotes(log: (line: string) => void): void {
   notesTimer.unref();
 }
 
+/** Issue 664: when each agent's held-text bell item was last said. */
+const heldSaid = new Map<string, number>();
+
+type HeldStore = Pick<
+  import("../../shared/notifications.js").NotificationStore,
+  "add" | "withdraw"
+>;
+
+/**
+ * Issue 664: the bell's item for text held because `agent` isn't at its
+ * input prompt: added once it has waited `afterSeconds`, said again each
+ * minute while it waits (how long, and why), withdrawn when n is 0.
+ * Issue 701: the same item for every reason it waits (`why`; none: not at
+ * its prompt).
+ */
+export function heldBell(
+  agent: string,
+  n: number,
+  waitedMs: number,
+  afterSeconds: number,
+  o: {
+    store?: HeldStore;
+    recOf?: (id: string) => AgentRecord | null;
+    now?: number;
+    why?: HeldCode;
+  } = {},
+): void {
+  const subject = `record:not-at-prompt:${agent}`;
+  const why = o.why ?? "not_at_prompt";
+  const said = heldSaid.get(agent);
+  const now = o.now ?? Date.now();
+  if (n <= 0) {
+    if (said === undefined) return;
+    heldSaid.delete(agent);
+  } else if (
+    waitedMs < afterSeconds * 1000 ||
+    (said !== undefined && now - said < 60_000)
+  )
+    return;
+  else heldSaid.set(agent, now);
+  const go = (s: HeldStore) => {
+    if (n <= 0) {
+      s.withdraw(subject, "service");
+      return;
+    }
+    const rec = (o.recOf ?? ((id) => readRecord(getStateDir(), id)))(agent);
+    if (!rec) return;
+    const name = rec.displayName || rec.persona || rec.id;
+    const m = Math.max(1, Math.round(waitedMs / 60_000));
+    s.add({
+      kind: "service",
+      subject,
+      scope: `workspace/${rec.workspace}`,
+      text: `${name}: ${n} message${n === 1 ? " waits" : "s wait"} for ${m} min. Waiting: ${why === "not_at_prompt" ? "the agent isn't at its prompt" : HELD_WORDS[why]}`,
+      msg: {
+        key:
+          why === "not_at_prompt" ? "bell.m.notAtPrompt" : `bell.m.held.${why}`,
+        vars: { name, n, m },
+      },
+      link: `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`,
+    });
+  };
+  if (o.store) {
+    try {
+      go(o.store);
+    } catch {
+      /* the bell is best effort: the row still says it */
+    }
+    return;
+  }
+  void import("./notification-service.js")
+    .then(({ notificationDeps }) => go(notificationDeps().store))
+    .catch(() => undefined);
+}
+
 /**
  * The loop and its pump, made once (issue 334: with or without Hub). Hub's
  * calls look Hub up each time: no Hub, nothing is read or acked.
@@ -194,9 +350,12 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
             throw Object.assign(new Error("not connected"), {
               kind: "refused",
             });
+          streamUrl = a.url;
           const res = await hub.hubOpenDeliveryStream(a.url, a.token, lastId, {
             signal,
           });
+          // Issue 702: the stream opened: a good read before any bytes.
+          yield "";
           yield* chunks(res);
         })(),
       list: async (after) => {
@@ -211,6 +370,41 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     agents: {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
       type: (id, text) => ops.typeIntoAgent(d, id, text),
+      notAtPrompt: (id) => ops.heldNotAtPrompt(id),
+      why: async (id) => {
+        const dialog = await ops.agentDialogKind(d, id);
+        if (dialog) return dialog;
+        const why = o.waitingWhy?.(id) ?? null;
+        return why && MARK_CODES.has(why) ? (why as HeldCode) : null;
+      },
+    },
+    // Issue 701: the person's comment answers the agent's question.
+    answered: (agent) => {
+      void import("./notification-service.js")
+        .then(({ notificationDeps }) =>
+          notificationDeps().attention.answered(agent),
+        )
+        .catch(() => undefined);
+    },
+    // Issue 664: text held because the agent isn't at its prompt: the
+    // bell says so once it has waited hub.delivery_held_note_seconds, and
+    // keeps saying it (refreshed each minute) until it's typed.
+    // Issue 701: and for every other reason, after
+    // hub.delivery_held_bell_minutes.
+    heldNote: (agent, n, waitedMs, why) =>
+      heldBell(agent, n, waitedMs, heldBellAfter(why), { why }),
+    stateTimeoutMs: (o.stateTimeoutSeconds ?? 60) * 1000,
+    typeTimeoutMs: (o.typeTimeoutSeconds ?? 120) * 1000,
+    answerTimeoutMs: (o.answerMinutes ?? 30) * 60_000,
+    // Issue 701: typed comments with no answer yet: the bell says so.
+    noAnswer: (agent, w) => {
+      void import("./notification-service.js")
+        .then(({ notificationDeps }) => {
+          const rec = readRecord(getStateDir(), agent);
+          if (rec)
+            notificationDeps().attention.hubNoAnswer(agent, rec.workspace, w);
+        })
+        .catch(() => undefined);
     },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
@@ -220,6 +414,19 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     heartbeatMs: o.heartbeatSeconds * 1000,
     pollMs: o.pollSeconds * 1000,
     log: o.log,
+    // Issue 702: doctor reads the path's health from a file.
+    onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
+    health0: {
+      lastDeliveryAt: readDeliveryHealth(healthFile())?.lastDeliveryAt ?? null,
+    },
+    // Issue 703: hub.delivery_stream_silence_seconds, read at each open.
+    silenceMs: () => {
+      try {
+        return (hub.readHubConfig()?.deliveryStreamSilenceSeconds ?? 75) * 1000;
+      } catch {
+        return 75_000;
+      }
+    },
     // Issue 271: an owner decided a held change an agent asked for: read
     // the waiting new-project asks again now (one links on its own).
     held: () => {
@@ -318,6 +525,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
   }, PUMP_MS);
   inboxTimer.unref();
   const c = (ctl = new AbortController());
+  startDeliveryAlert(l);
   void l
     .run(c.signal)
     .catch((e) =>

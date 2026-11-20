@@ -18,6 +18,8 @@ import * as path from "path";
 import {
   compareNav,
   navWarnings,
+  railShapeDiffs,
+  TOP_SHAPES,
   searchSlot,
   topSlotDiffs,
   NAV_BROWSER_IMAGE,
@@ -335,5 +337,82 @@ describe("nav inventory: red cases on the reference", () => {
     n.name = "3 of 4 up";
     n.style.color = "rgb(200, 0, 0)";
     expect(ids(s, ref)).toEqual([]);
+  });
+});
+
+// Issue 694: a page drawn with topBarHtml({ rail: false }) (the header's
+// data-nav-shape "no-rail") has no rail and no ☰, at any width.
+describe("nav inventory: the top bar's no-rail shape (issue 694)", () => {
+  const ref = read("chromium", 390);
+  const TOP = "header.den-top";
+  const head = (s: NavSnapshot) => s.elements.find((e) => e.key === TOP)!;
+  // The bar as rail: false draws it: no ☰, no rail, the shape stamped.
+  const noRail = () => {
+    const s = copy(ref);
+    s.elements = s.elements.filter(
+      (e) => e.slot === "top" && !e.key.startsWith("#den-menu-btn"),
+    );
+    head(s).shape = "no-rail";
+    delete head(s).menu;
+    delete head(s).rail;
+    return s;
+  };
+
+  it("no-rail is a shape the kit draws", () => {
+    expect(TOP_SHAPES).toContain("no-rail");
+  });
+
+  it("the default shape (☰ and a rail) passes, as before", () => {
+    expect(railShapeDiffs(ref)).toEqual([]);
+    expect(ids(copy(ref), ref)).toEqual([]);
+  });
+
+  it("a no-rail page with neither a rail nor ☰ passes, against its own shape", () => {
+    const s = noRail();
+    expect(railShapeDiffs(s)).toEqual([]);
+    expect(ids(s, noRail())).toEqual([]);
+  });
+
+  it("a no-rail page that draws ☰ fails", () => {
+    const s = noRail();
+    const menu = ref.elements.find((e) => e.key === "#den-menu-btn")!;
+    s.elements.splice(1, 0, JSON.parse(JSON.stringify(menu)));
+    expect(railShapeDiffs(s).map((d) => `${d.key} ${d.property}`)).toEqual([
+      `${TOP} menu`,
+    ]);
+    expect(ids(s, noRail())).toContain(`${TOP} menu`);
+  });
+
+  it("a no-rail page with ☰ in the page but hidden fails all the same", () => {
+    const s = noRail();
+    head(s).menu = true;
+    expect(railShapeDiffs(s).map((d) => d.property)).toEqual(["menu"]);
+  });
+
+  it("a no-rail page that draws a rail fails", () => {
+    const s = noRail();
+    s.elements.push(
+      ...ref.elements
+        .filter((e) => e.slot !== "top")
+        .map((e) => JSON.parse(JSON.stringify(e))),
+    );
+    expect(railShapeDiffs(s).map((d) => `${d.key} ${d.property}`)).toEqual([
+      `${TOP} rail`,
+    ]);
+    const hidden = noRail();
+    head(hidden).rail = true;
+    expect(railShapeDiffs(hidden).map((d) => d.property)).toEqual(["rail"]);
+  });
+
+  it("a top bar shape the kit doesn't draw fails", () => {
+    const s = noRail();
+    head(s).shape = "no-menu";
+    expect(railShapeDiffs(s).map((d) => `${d.key} ${d.property}`)).toEqual([
+      `${TOP} shape`,
+    ]);
+  });
+
+  it("a no-rail page against the default reference fails on the shape", () => {
+    expect(ids(noRail(), ref)).toContain(`${TOP} shape`);
   });
 });

@@ -62,6 +62,13 @@ describe("readHubConfig", () => {
       mcpRetryAttempts: 0,
       deliveryHeartbeatSeconds: 15,
       deliveryPollSeconds: 30,
+      deliveryHeldNoteSeconds: 60,
+      deliveryStateTimeoutSeconds: 60,
+      deliveryTypeTimeoutSeconds: 120,
+      deliveryHeldBellMinutes: 5,
+      deliveryAnswerMinutes: 30,
+      deliveryAlertMinutes: 15,
+      deliveryStreamSilenceSeconds: 75,
       inboxWatch: true,
       inboxPollSeconds: 30,
       inboxBackoffMaxSeconds: 600,
@@ -449,6 +456,26 @@ describe("hubWhoami (GET /connect/whoami)", () => {
     ]);
   });
 
+  it("issue 406: the person's name (person.name): kept trimmed, else left out", async () => {
+    const base = { install: "north-box", login: "pat" };
+    for (const [v, want] of [
+      ["  Pat Example ", "Pat Example"],
+      ["", undefined],
+      ["   ", undefined],
+      [7, undefined],
+      [null, undefined],
+      ["x".repeat(300), undefined],
+      ["Pat\nExample", undefined],
+      ["Pat\u007fExample", undefined],
+    ] as const) {
+      const h = await fakeHub({ ...base, person: { id: "p_1", name: v } });
+      expect([v, (await hubWhoami(h.url, TOKEN)).personName]).toEqual([
+        v,
+        want,
+      ]);
+    }
+  });
+
   it("unread (threads waiting on the person): a whole number of at least 0, else left out", async () => {
     const base = {
       install: "north-box",
@@ -641,6 +668,25 @@ describe("hubStatus", () => {
     });
   });
 
+  it("issue 406: carries the person's Hub name for the rail's account entry", async () => {
+    const st = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({ login: "pat", personName: "Pat Example" }),
+    });
+    expect(st).toMatchObject({
+      state: "connected",
+      login: "pat",
+      name: "Pat Example",
+    });
+    const none = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({ login: "pat" }),
+    });
+    expect("name" in none).toBe(false);
+  });
+
   it("carries whoami's unread for the rail's badge", async () => {
     const st = await hubStatus({
       config: () => cfg,
@@ -806,5 +852,52 @@ describe("#267: Hub's address from Settings", () => {
     };
     expect(patch?.(kept, null)).toEqual({ ok: true, url: null });
     expect(kept.hub).toEqual({ allow_tools: true });
+  });
+});
+
+describe("issue 701: the delivery time limits", () => {
+  const url = "https://hub.example.test";
+  const limits = (c: unknown) => {
+    const r = c as Record<string, unknown>;
+    return [
+      r.deliveryStateTimeoutSeconds,
+      r.deliveryTypeTimeoutSeconds,
+      r.deliveryHeldBellMinutes,
+      r.deliveryAnswerMinutes,
+    ];
+  };
+  it("permissive defaults; set per install; bad values throw", () => {
+    expect(limits(readHubConfig({ hub: { url } }, {}, noSecrets))).toEqual([
+      60, 120, 5, 30,
+    ]);
+    const d = readHubConfig(
+      { hub: { url } },
+      {
+        hub: {
+          delivery_state_timeout_seconds: 90,
+          delivery_type_timeout_seconds: 300,
+          delivery_held_bell_minutes: 10,
+          delivery_answer_minutes: 120,
+        },
+      },
+      noSecrets,
+    );
+    expect(limits(d)).toEqual([90, 300, 10, 120]);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_held_bell_minutes: 0 } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(/hub\.delivery_held_bell_minutes must be a number, at least 1/);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_type_timeout_seconds: 1 } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(
+      /hub\.delivery_type_timeout_seconds must be a number, at least 5/,
+    );
   });
 });

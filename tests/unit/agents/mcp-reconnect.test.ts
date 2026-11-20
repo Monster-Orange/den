@@ -118,6 +118,10 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     // Hub answers again: Den restarts it, with no person.
     hub.up = true;
     expect(await rc.tick()).toEqual(["planner"]);
+    // Issue 664: its line is typed once its input prompt shows.
+    for (let i = 0; i < 250 && r.made.length < 2; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    r.made[1]?.emit("> ");
     await rc.pending();
     expect(r.made).toHaveLength(2);
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);

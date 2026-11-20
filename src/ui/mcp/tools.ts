@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -919,6 +919,26 @@ const READ_TOOLS: DenTool[] = [
             "whether Den minted the cert itself (mkcert); false under tls strategy files, where the distribution supplies it, even while HTTPS serves. Restart the web server for https.serving.",
         };
       return edge;
+    },
+  ),
+  read(
+    "report_screenshot",
+    "A filed report's screenshot",
+    "Issue 403: the masked screenshot a person filed with a report from this install, kept here for reports.screenshot_keep_days (30): `base64` (the PNG) and `mime`, with the repo it was filed on, when, and Hub's record when Hub took it too. `id` is the report id the issue's \"Screenshot:\" line names. Only the person who runs this install (the CLI) or this install's own agent may read it; a project agent is refused.",
+    {
+      id: z
+        .string()
+        .describe("The report id from the issue's Screenshot line (16 hex)"),
+    },
+    async (a, { api, scope }) => {
+      if (scope)
+        throw new ScopeRefusal(
+          `report_screenshot: a report's screenshot is read by the person who runs this install, or by this install's own agent; ${scope.actor} (project "${scope.workspace}") is neither. Ask that agent for it.`,
+        );
+      const id = str(a.id);
+      if (!id || !/^[a-f0-9]{16}$/.test(id))
+        throw new Refusal("report_screenshot: id must be a report id (16 hex)");
+      return api.get(`/api/report/shots/${id}`);
     },
   ),
 ];
@@ -1543,7 +1563,7 @@ async function waitForPerson(
     w.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const until = Date.now() + w.waitMs;
   // SRV-1a: a request the setting allowed at once answers in the ask.
-  let first: unknown = ["done", "denied", "expired"].includes(
+  let first: unknown = ["done", "denied", "expired", "withdrawn"].includes(
     String((asked as { state?: unknown })?.state),
   )
     ? asked
@@ -1570,6 +1590,11 @@ async function waitForPerson(
     if (a.state === "expired")
       throw new Refusal(
         `${tool}: nobody answered in time (request ${id}); nothing ran. Ask again when the person is at Den.`,
+      );
+    // Issue 142: its asker took it back.
+    if (a.state === "withdrawn")
+      throw new Refusal(
+        `${tool}: the request was withdrawn by the one that asked (request ${id}); nothing ran.`,
       );
     if (Date.now() >= until) break;
     await sleep(w.intervalMs);
@@ -2088,6 +2113,39 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  {
+    // Issue 647: the same link as `hub link` and Settings › Project setup.
+    name: "hub_link",
+    title: "Link a project to an existing Hub project",
+    description:
+      "Link a project to an existing Hub project, named by its id or slug as the connected Hub lists it (never its name), as `hub link` does. A project already linked to another is relinked: the Allow shows what it is now and what it will be. One the connected Hub doesn't list (an id from another Hub, say) is refused, saying so. Hub's own tools list its projects and their ids. A project's agent links its own project; Den's own agent any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      hub: z
+        .string()
+        .describe(
+          "The Hub project's id (or its slug), as the connected Hub lists it",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("hub_link", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `hub_link: you work in project "${ctx.scope.workspace}" and can link it only, not project "${project}"; nothing was asked.`,
+        );
+      const hub = needArg("hub_link", a, "hub", "the Hub project's id or slug");
+      return askPerson("hub_link", "hub_link", { project, hub }, a, ctx);
     },
   },
   {

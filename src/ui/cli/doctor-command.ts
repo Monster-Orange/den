@@ -25,6 +25,10 @@ import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readWebUrl } from "../../shared/web-url.js";
+import {
+  aliasCandidates,
+  loopbackRefusal,
+} from "../../shared/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
@@ -48,6 +52,15 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
+  deliveryAlert,
+  readDeliveryHealth,
+  TROUBLE_TEXT,
+} from "../../shared/hub-delivery.js";
+import {
+  lostFiles,
+  lostMarkLines,
+} from "../../shared/agents/guardrails/lost-marks.js";
+import {
   readCheckState,
   selfUpdateSummary,
   type CheckState,
@@ -67,8 +80,14 @@ import { eventsFile } from "../../shared/dev-metrics/emit.js";
 import { pollingWarnings } from "../../shared/dev-metrics/polling.js";
 import { readBrand } from "../../shared/brand.js";
 import { hasEdgeBlock, readEdgeConfig } from "../../shared/edge/config.js";
+import {
+  cliLanguage,
+  edgeUncheckedLine,
+  isEdgeAddress,
+  statedAddress,
+} from "../../shared/edge/address-check.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
-import { edgeImageCheck } from "../../shared/edge/render.js";
+import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
   readBridgeState,
@@ -653,6 +672,67 @@ export function hubLines(
   };
 }
 
+/** Issue 702: "3 min ago", "2 h ago", "4 d ago". */
+function agoText(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  if (m < 120) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+
+/**
+ * Issue 702: doctor's "Hub comments" row, from the server's
+ * hub/deliveries-health.json: the URL it reads, whether the stream is
+ * open, its last good read and the last comment. Warns, with the reason,
+ * after hub.delivery_alert_minutes with no good read; a quiet Hub is ok.
+ * None when the server hasn't written it.
+ */
+export function hubDeliveryLines(
+  h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
+  now: number,
+  minutes: number,
+): { lines: string[]; problem: boolean; check?: OnboardCheck } {
+  if (!h) return { lines: [], problem: false };
+  const alert = deliveryAlert(h, now, minutes);
+  const parts = [
+    `${h.url ?? "Hub"}: ${h.streamOpen ? "stream open" : "stream not open"}`,
+    h.lastOkAt === null
+      ? "no good read yet"
+      : `last good read ${agoText(now - h.lastOkAt)}`,
+    h.lastDeliveryAt === null
+      ? "no comment yet"
+      : `last comment ${agoText(now - h.lastDeliveryAt)}`,
+  ];
+  const detail = alert
+    ? `Hub comments aren't arriving: ${TROUBLE_TEXT[alert]} (${parts.join("; ")})`
+    : parts.join("; ");
+  return {
+    lines: [`  hub comments  ${alert ? "⚠" : "✓"}  ${detail}`],
+    problem: false, // like the Hub row: agents still run
+    check: { id: "hub:comments", status: alert ? "warn" : "ok", detail },
+  };
+}
+
+/** Issue 702: the row for this install (hub.delivery_alert_minutes). */
+async function hubDeliveryDoctor(): Promise<
+  ReturnType<typeof hubDeliveryLines>
+> {
+  const { readHubConfig } = await import("../../shared/hub.js");
+  let minutes = 15;
+  try {
+    minutes = readHubConfig()?.deliveryAlertMinutes ?? 15;
+  } catch {
+    /* the Hub row says what's wrong with the hub block */
+  }
+  return hubDeliveryLines(
+    readDeliveryHealth(
+      path.join(getStateDir(), "hub", "deliveries-health.json"),
+    ),
+    Date.now(),
+    minutes,
+  );
+}
+
 /**
  * H5: with Hub connected, each project's Hub project. Linked is ok; not
  * linked warns (Hub files that project's agents' work in Unfiled), with
@@ -800,20 +880,36 @@ export function hubGithubLines(
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
   for (const o of cov.orgs) {
+    // Issue 526: Hub couldn't ask GitHub. Access may be fine: say so, and
+    // never a link, even when Hub sends one.
+    if (o.access === "error") {
+      const detail = o.error
+        ? `Den Hub couldn't check ${o.org} on GitHub: ${o.error}. Try again later.`
+        : `Den Hub couldn't check ${o.org} on GitHub. Try again later.`;
+      lines.push(`  hub github   ⚠  ${detail}`);
+      checks.push({ id: `hub:github:${o.org}`, status: "warn", detail });
+      continue;
+    }
     const what =
       o.access === "all"
         ? "all repos"
         : o.access === "some"
           ? `${o.covered} of ${o.total} repos`
           : "no repos (no access)";
+    // some: change repos (manage, else install). none: give access when
+    // there's no installation; one that leaves these repos out sends only
+    // manage_url, and that's Change repos.
+    const give = o.access === "none" && !!o.installUrl;
     const url =
       o.access === "all"
         ? undefined
-        : ((o.access === "some" ? o.manageUrl : undefined) ?? o.installUrl);
+        : o.access === "some"
+          ? (o.manageUrl ?? o.installUrl)
+          : (o.installUrl ?? o.manageUrl);
     const detail = `${o.org}: Den Hub can read ${what}`;
     const ok = o.access === "all";
     lines.push(
-      `  hub github   ${ok ? "✓" : "⚠"}  ${detail}${url ? `. ${o.access === "none" ? "Give Den Hub access" : "Change repos"}: ${url}` : ""}`,
+      `  hub github   ${ok ? "✓" : "⚠"}  ${detail}${url ? `. ${give ? "Give Den Hub access" : "Change repos"}: ${url}` : ""}`,
     );
     checks.push({
       id: `hub:github:${o.org}`,
@@ -854,17 +950,74 @@ async function projectsWithHubProject(): Promise<
   }
 }
 
+/** What doctor's two address sections read: one check, done once. */
+export interface DoctorAddress {
+  state: import("../../shared/edge/address-check.js").AddressState;
+  /** Whether web.url is the edge address (served here by Den's edge). */
+  edge: boolean;
+}
+
 /**
  * D80: doctor's Address row. The install's address (web.url) is the one
  * people are given; unset fails doctor with its one-line fix. One a
  * migration took from what the install had is shown for the person to
  * confirm.
+ *
+ * Issue 455 (after 0.4.68): no address is shown before it is checked. When
+ * web.url is the edge address and it hasn't answered as this Den, the row
+ * gives the address that was checked (Den's own port), and says the edge
+ * one isn't checked yet. It is never offered to confirm.
  */
 export function addressLines(
   w: import("../../shared/web-url.js").WebUrl | null,
   title: string,
   cli: string,
+  checked: DoctorAddress | null = null,
+  /** Issue 666: this install's edge alias (aliasCandidates), if any. */
+  alias: string | null = null,
 ): { lines: string[]; problem: boolean; check: OnboardCheck } {
+  // Issue 666: a loopback address is a problem, never ✓ and never one to
+  // confirm: other devices can't open it. The fix is the alias, if any.
+  const loop = w ? loopbackRefusal(w.url) : null;
+  if (w && loop) {
+    // Issue 455 still holds: the address that was checked comes first,
+    // and an edge address not checked yet is said as such.
+    let lead = "";
+    let url: string | undefined;
+    if (checked && checked.state.wanted === w.url) {
+      const said = statedAddress(checked.state, checked.edge);
+      if (said.unchecked) {
+        const why = edgeUncheckedLine(said.unchecked, {
+          lang: cliLanguage(),
+          title,
+          cli,
+        });
+        lead = said.address ? `${said.address}. ${why} ` : `${why} `;
+        url = said.address ?? undefined;
+      }
+    }
+    const detail =
+      lead +
+      (alias
+        ? `${loop}. Make ${alias} the address: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url ${alias}\``
+        : `${loop}. Set the address other devices open: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url <address>\``);
+    return {
+      lines: ["", `${title} doctor: Address`, "", `  address  ✗  ${detail}`],
+      problem: true,
+      check: {
+        id: "address",
+        status: "fail",
+        detail,
+        ...(url ? { url } : {}),
+        settings: ADDRESS_SETTINGS_LINK,
+        ...(alias
+          ? { fix: `${cli} web url ${alias}` }
+          : {
+              ask: `${w.url} only opens on this machine. What address do people open this ${title} at (for example https://${cli}.local.example.com)? Then run \`${cli} web url <address>\`.`,
+            }),
+      },
+    };
+  }
   if (!w) {
     const detail = `not set: set it in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url <address>\` (for example https://${cli}.local.example.com)`;
     return {
@@ -880,6 +1033,24 @@ export function addressLines(
       },
     };
   }
+  if (checked && checked.state.wanted === w.url) {
+    const said = statedAddress(checked.state, checked.edge);
+    if (said.unchecked) {
+      const words = { lang: cliLanguage(), title, cli };
+      const why = edgeUncheckedLine(said.unchecked, words);
+      const detail = said.address ? `${said.address}. ${why}` : why;
+      return {
+        lines: ["", `${title} doctor: Address`, "", `  address  ⚠  ${detail}`],
+        problem: false,
+        check: {
+          id: "address",
+          status: "warn",
+          detail,
+          ...(said.address ? { url: said.address } : {}),
+        },
+      };
+    }
+  }
   const detail = w.confirmed
     ? w.url
     : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\``;
@@ -893,6 +1064,156 @@ export function addressLines(
     problem: false,
     check: { id: "address", status: w.confirmed ? "ok" : "warn", detail },
   };
+}
+
+/**
+ * Issue 455: whether the install's address reaches THIS Den right now (an
+ * identity probe, den-identity.ts), and when it doesn't, what holds its
+ * port, the address that does work, and the two ways out (mock v3's doctor
+ * lines). Always said here: doctor is one of the two quiet places the fact
+ * lives (Edge is the other).
+ */
+export async function addressCheckLines(
+  title: string,
+  cli: string,
+  deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
+  checked?: DoctorAddress | null,
+): Promise<{
+  lines: string[];
+  check: OnboardCheck | null;
+  /** Whether the install's https address reaches this Den now. */
+  works: boolean;
+}> {
+  const { doctorAddressLines, cliLanguage } =
+    await import("../../shared/edge/address-check.js");
+  const w = readWebUrl();
+  const st = (checked ?? (await doctorAddress(cli, deps)))?.state;
+  if (!w || !st) return { lines: [], check: null, works: false };
+  const d = doctorAddressLines(st, { lang: cliLanguage(), title, cli });
+  const [head, ...rest] = d.lines;
+  return {
+    lines: [
+      `  ${d.status === "ok" ? "✓" : "!"} ${head}`,
+      ...rest.map((l) => `      ${l}`),
+    ],
+    check: {
+      id: "address_reaches",
+      status: d.status,
+      detail: d.lines.join(" "),
+      ...(st.address ? { url: st.address } : {}),
+    },
+    works: w.url.startsWith("https:") && st.wantedAnswer === "den",
+  };
+}
+
+/**
+ * When the running server last saw its https address answer as this Den
+ * (its state dir's address-proof.json), or null.
+ */
+function addressLastAnswered(): string | null {
+  try {
+    const j = JSON.parse(
+      fs.readFileSync(path.join(getStateDir(), "address-proof.json"), "utf8"),
+    ) as { lastAnswered?: unknown };
+    return typeof j.lastAnswered === "string" ? j.lastAnswered : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where the browser sign-in lives. With a working https address (web.url,
+ * through the edge) the session cookie lives only there, host-only and
+ * Secure. Without one it lives on the host the person uses (localhost
+ * here), and browsers share a host's cookies across its ports: other apps
+ * opened on that host could see it. A warning, with what to set.
+ */
+export function sessionHostLines(
+  w: import("../../shared/web-url.js").WebUrl | null,
+  works: boolean,
+  title: string,
+  cli: string,
+  lastAnswered: string | null = null,
+): { lines: string[]; check: OnboardCheck } {
+  const named = w && w.url.startsWith("https:") && works ? w.url : null;
+  // When an https address stopped answering as this Den, say when.
+  const since =
+    !named && w?.url.startsWith("https:") && lastAnswered
+      ? `${w.url} last answered as this ${title} at ${new Date(lastAnswered).toLocaleString()}; `
+      : "";
+  const detail = named
+    ? `the sign-in lives only on ${named}`
+    : `${since}the sign-in lives on the address the browser uses (localhost here), so other apps you open on it could see the sign-in. Set up the https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\` and \`${cli} edge up\``;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Sign-in`,
+      "",
+      // An https address that doesn't reach this Den yet: "!", as the
+      // address check beside it says it (not an install-wide ⚠).
+      `  sign-in  ${named ? "✓" : w?.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
+    ],
+    check: {
+      id: "signin_host",
+      status: named ? "ok" : "warn",
+      detail,
+      ...(named ? {} : { settings: ADDRESS_SETTINGS_LINK }),
+    },
+  };
+}
+
+/**
+ * The address check doctor's Address sections share (issue 455): null when
+ * web.url isn't set or the web port can't be read.
+ */
+/**
+ * Issue 666: this install's edge alias, the address doctor offers when
+ * web.url names this machine only: the first edge route to Den's web port
+ * that isn't loopback (https first), or null.
+ */
+export async function edgeAlias(): Promise<string | null> {
+  try {
+    const { readWebPort } = await import("../../shared/edge/config.js");
+    const { webRouteHosts } = await import("../../shared/edge/render.js");
+    if (!hasEdgeBlock()) return null;
+    const urls = webRouteHosts(readEdgeConfig(), new Set([readWebPort()])).map(
+      (r) => r.url,
+    );
+    return aliasCandidates(urls)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function doctorAddress(
+  cli: string,
+  deps: Partial<import("../../shared/edge/address-check.js").CheckDeps> = {},
+): Promise<DoctorAddress | null> {
+  const { checkAddress, localIdentityKey } =
+    await import("../../shared/edge/address-check.js");
+  const { readWebPort } = await import("../../shared/edge/config.js");
+  const w = readWebUrl();
+  if (!w) return null;
+  let port: number;
+  try {
+    port = readWebPort();
+  } catch {
+    return null;
+  }
+  const state = await checkAddress({
+    webPort: port,
+    wanted: w.url,
+    key: localIdentityKey(getStateDir()),
+    cli,
+    ...deps,
+  });
+  let domains: string[] = [];
+  try {
+    domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+  } catch {
+    domains = [];
+  }
+  return { state, edge: isEdgeAddress(w.url, domains) };
 }
 
 /**
@@ -1028,6 +1349,27 @@ export function selfUpdateLines(
     ],
     check: { id: "self_update", status: r.status, detail: r.detail },
   };
+}
+
+/**
+ * Issue 609: each agent whose attention marks Den never took in the last
+ * day (after the hook's tries): how many, and the last reason. A warning.
+ */
+export function attentionLostLines(
+  title: string,
+  stateDir: string = getStateDir(),
+  read: () => { language?: unknown } = readUserConfig,
+): ReturnType<typeof lostMarkLines> {
+  let lang: unknown;
+  try {
+    lang = read().language;
+  } catch {
+    lang = undefined;
+  }
+  return lostMarkLines(lostFiles(stateDir), {
+    lang,
+    title,
+  });
 }
 
 /**
@@ -1321,10 +1663,35 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ...(await whereRows(await defaultWhereDeps())).map(whereCheck),
     );
     {
+      // Issue 503: the terminal host's PTYs, and the machine's.
+      const { ptyLines, defaultPtyDeps } = await import("./doctor-ptys.js");
+      const pt = await ptyLines(
+        readBrand().name,
+        defaultPtyDeps(getStateDir()),
+      );
+      r.checks.push(pt.check);
+      if (pt.problem) r.ok = false;
+      // Issue 563: the terminal host runs what is installed.
+      const { hostModuleLines, defaultHostModuleDeps } =
+        await import("./doctor-ptys.js");
+      const hm = await hostModuleLines(
+        product().cli,
+        defaultHostModuleDeps(getStateDir()),
+      );
+      r.checks.push(hm.check);
+      if (hm.problem) r.ok = false;
+      // Issue 701: the Hub comments this install holds.
+      r.checks.push((await heldHubLines()).check);
+    }
+    {
       const { hubStatus } = await import("../../shared/hub.js");
       const st = await hubStatus();
       const h = hubLines(st, readBrand().name);
       if (h.check) r.checks.push(h.check);
+      if (st.configured) {
+        const dl = await hubDeliveryDoctor();
+        if (dl.check) r.checks.push(dl.check);
+      }
       r.checks.push(
         ...hubProjectLines(
           st.configured && st.connected,
@@ -1344,9 +1711,34 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const sign = signingLines(readBrand().name);
     r.checks.push(...sign.checks);
     if (sign.problem) r.ok = false;
-    const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
+    const checked = await doctorAddress(product().cli);
+    const addr = addressLines(
+      readWebUrl(),
+      readBrand().name,
+      product().cli,
+      checked,
+      await edgeAlias(),
+    );
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
+    {
+      const ac = await addressCheckLines(
+        readBrand().name,
+        product().cli,
+        {},
+        checked,
+      );
+      if (ac.check) r.checks.push(ac.check);
+      r.checks.push(
+        sessionHostLines(
+          readWebUrl(),
+          ac.works,
+          readBrand().name,
+          product().cli,
+          addressLastAnswered(),
+        ).check,
+      );
+    }
     r.checks.push(
       pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
     );
@@ -1365,6 +1757,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
+    // Issue 609: attention marks Den never took, per agent.
+    r.checks.push(...attentionLostLines(readBrand().name).checks);
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1383,11 +1777,27 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     readBrand().name,
   ))
     console.log(l);
+  // Issue 503: the terminal host's PTYs, and the machine's.
+  const { ptyLines, defaultPtyDeps } = await import("./doctor-ptys.js");
+  const pty = await ptyLines(readBrand().name, defaultPtyDeps(getStateDir()));
+  for (const l of pty.lines) console.log(l);
+  // Issue 563: the terminal host runs what is installed.
+  const { hostModuleLines, defaultHostModuleDeps } =
+    await import("./doctor-ptys.js");
+  const hm = await hostModuleLines(
+    product().cli,
+    defaultHostModuleDeps(getStateDir()),
+  );
+  for (const l of hm.lines) console.log(l);
+  // Issue 701: the Hub comments this install holds.
+  for (const l of (await heldHubLines()).lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
+    if (st.configured)
+      for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
     for (const l of hubProjectLines(
       st.configured && st.connected,
       await projectsWithHubProject(),
@@ -1405,8 +1815,32 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
-  const addr = addressLines(readWebUrl(), readBrand().name, product().cli);
+  const checked = await doctorAddress(product().cli);
+  const addr = addressLines(
+    readWebUrl(),
+    readBrand().name,
+    product().cli,
+    checked,
+    await edgeAlias(),
+  );
   for (const l of addr.lines) console.log(l);
+  {
+    const ac = await addressCheckLines(
+      readBrand().name,
+      product().cli,
+      {},
+      checked,
+    );
+    for (const l of ac.lines) console.log(l);
+    for (const l of sessionHostLines(
+      readWebUrl(),
+      ac.works,
+      readBrand().name,
+      product().cli,
+      addressLastAnswered(),
+    ).lines)
+      console.log(l);
+  }
   for (const l of pushContactLines(
     readWebUrl(),
     readBrand().name,
@@ -1419,6 +1853,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
+  for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
@@ -1430,6 +1865,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     return rows.some((r) => r.problem) ||
       held.problem ||
       ownerProblem ||
+      pty.problem ||
+      hm.problem ||
       cfg.problem ||
       sign.problem ||
       addr.problem
@@ -1456,8 +1893,28 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   return rows.some((r) => r.problem) ||
     held.problem ||
     ownerProblem ||
+    pty.problem ||
+    hm.problem ||
     cfg.problem ||
     found
     ? 1
     : 0;
+}
+
+/** Issue 701: doctor's held Hub comments, from Den's held file. */
+async function heldHubLines(): Promise<
+  ReturnType<typeof import("./doctor-hub-held.js").heldLines>
+> {
+  const { heldLines, readHeldFile } = await import("./doctor-hub-held.js");
+  let bellMinutes = 5;
+  try {
+    const { readHubConfig } = await import("../../shared/hub.js");
+    bellMinutes = readHubConfig()?.deliveryHeldBellMinutes ?? 5;
+  } catch {
+    /* a bad hub block: its own row says so; the default here */
+  }
+  return heldLines(readBrand().name, readHeldFile(getStateDir()), {
+    now: Date.now(),
+    bellMinutes,
+  });
 }

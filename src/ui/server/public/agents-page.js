@@ -87,13 +87,22 @@
  * and Start fresh. A running one says "Handoff due" or "Ready to relaunch"
  * as a tag.
  */
-import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
+import {
+  quarantinedHtml,
+  quarantineNext,
+  readiness,
+  runtimeName,
+  runtimeOptions,
+  wireQuarantine,
+} from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
+import { latestShell } from "/shell-pick.js";
+import { startFailText, terminalFailText } from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -123,6 +132,7 @@ import {
   overrideTagsHtml,
   ownModeLabel,
   modeLabel,
+  openAgentModeMenu,
   permBlockHtml,
   personaDetail,
   personaDetailHtml,
@@ -306,6 +316,41 @@ function rememberedOpen() {
   }
 }
 
+/**
+ * Issue 448: when this browser last used each shell (a person clicked or
+ * typed in its pane), so the rail's Terminal opens the one used last. The
+ * server keeps when each was last typed in from any browser (inputAt);
+ * this adds a click here. A shell never used counts from its start.
+ */
+const SHELL_USED_KEY = "den-shell-used";
+
+function shellUsed() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SHELL_USED_KEY) ?? "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function markShellUsed(id) {
+  const r = rowOf(id);
+  if (r?.kind !== "session") return;
+  const was = shellUsed();
+  // Every key calls here: once a second is enough.
+  if (typeof was[id] === "number" && Date.now() - was[id] < 1000) return;
+  const live = new Set((st.data?.sessions ?? []).map((x) => x.id));
+  const used = {};
+  for (const [k, v] of Object.entries(was))
+    if (live.has(k) && typeof v === "number") used[k] = v;
+  used[id] = Date.now();
+  try {
+    localStorage.setItem(SHELL_USED_KEY, JSON.stringify(used));
+  } catch {
+    /* none: the newest shell instead */
+  }
+}
+
 function writeUrl() {
   try {
     // #80: the browser's tabs, every project's: a project's view only
@@ -444,6 +489,12 @@ function when(iso) {
 
 /** Why a stopped agent stopped (AG-14.1). */
 export function stopReason(r) {
+  // Issue 659: its folder-trust question was declined: it never started.
+  if (r.trustDeclined) return t("ag.why.trustDeclined");
+  // Issue 631: it didn't come back after a restart (its terminal host's
+  // too), and why.
+  if (r.restartFailed?.why)
+    return t("ag.why.restartFailed", { why: r.restartFailed.why });
   if (r.state === "interrupted")
     return t("ag.why.interrupted", { name: TITLE });
   if (r.state === "stopped")
@@ -759,10 +810,15 @@ export function hubWorkHtml(r, tr = t) {
       ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(w.artifact)}</a>`
       : ` · ${esc(w.artifact)}`
     : "";
+  // Issue 664: why the queued ones wait, when Den knows.
+  const why =
+    w.working > 0 || w.held !== "not_at_prompt"
+      ? ""
+      : ` · <span data-held="not_at_prompt">${esc(tr("ag.hub.notAtPrompt"))}</span>`;
   return (
     `<div class="aghub" data-hubwork="${w.working > 0 ? "working" : "queued"}">` +
     `<span class="den-dot ${w.working > 0 ? "ok" : "warn"}" aria-hidden="true"></span> ` +
-    `${esc(tr(key, { n }))}${art}</div>`
+    `${esc(tr(key, { n }))}${art}${why}</div>`
   );
 }
 
@@ -2176,6 +2232,11 @@ function paintBar(p) {
     r?.kind === "session" && !r.exited
       ? `<button type="button" class="den-btn sm" data-act="close-shell" title="${esc(t("ag.closeShellTip"))}">${esc(t("ag.closeShell"))}</button>`
       : "";
+  // Issue 448: a second shell on purpose (the rail's Terminal reopens this).
+  const newShell =
+    r?.kind === "session"
+      ? `<button type="button" class="den-btn sm" data-act="new-shell" title="${esc(t("ag.newShellTip"))}">${esc(t("ag.newShell"))}</button>`
+      : "";
   // The mock's pane bar: Resume (primary) on an ended agent that can.
   const resume =
     r && isStopped(r) && r.resumable
@@ -2223,7 +2284,7 @@ function paintBar(p) {
     (r?.kind === "agent" && compactingHtml(r, t, { withStop: false })
       ? `<span class="agctx" data-compacting-bar>${compactingHtml(r, t, { withStop: false })}</span>`
       : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
+    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${newShell}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
   // A refresh (a helper's update, the list's poll) redraws only what
   // changed, and never takes the keyboard off the bar: a button there that
   // had focus has it again after a redraw.
@@ -2901,7 +2962,9 @@ async function openPane(id, { front = true } = {}) {
     el.addEventListener(
       ev,
       (e) => {
-        if (e.isTrusted) p.inputAt = performance.now();
+        if (!e.isTrusted) return;
+        p.inputAt = performance.now();
+        markShellUsed(p.id);
       },
       true,
     );
@@ -2943,6 +3006,16 @@ async function openPane(id, { front = true } = {}) {
     if (!p.following) claimSize(p);
     st.keyPane = p.id;
   });
+  // Issue 448: used means a person's click or key here, never the focus
+  // the page gives a pane itself (a load puts the front tab's terminal in
+  // focus, which must not make it the one used last).
+  el.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.isTrusted) markShellUsed(p.id);
+    },
+    true,
+  );
   p.ro = new ResizeObserver(() => refit(p));
   p.ro.observe(el.querySelector(".term"));
   refit(p);
@@ -3063,6 +3136,16 @@ async function closeShell(p, button) {
     window.denShell?.errorToast?.(err);
   }
   await refresh();
+}
+
+/** Issue 448: the shell bar's New terminal: another shell in its project. */
+async function newShell(r, button) {
+  button.disabled = true;
+  try {
+    await openTerminal(r.workspace, { fresh: true });
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ── Stopped agents (AG-14) ──────────────────────────────────────────────
@@ -3385,18 +3468,18 @@ function paintBusy() {
  * (den#4: a new conversation that starts from handoff.md); its pane opens
  * on it.
  */
-function restartRow(r, verb, button) {
-  return oneAtATime(r, verb, () => restartRowNow(r, verb, button));
+function restartRow(r, verb, button, body) {
+  return oneAtATime(r, verb, () => restartRowNow(r, verb, button, body));
 }
 
-async function restartRowNow(r, verb, button) {
+async function restartRowNow(r, verb, button, body) {
   if (button) button.disabled = true;
   const name = { name: r.agent };
   // BUSY-1: the working pop-up while Den starts it, then what happened.
   let opened;
   const out = await window.denShell.busyAction(
     "start-agent",
-    (headers) => api("POST", agentPath(r, verb), undefined, { headers }),
+    (headers) => api("POST", agentPath(r, verb), body, { headers }),
     {
       button,
       vars: name,
@@ -3406,14 +3489,20 @@ async function restartRowNow(r, verb, button) {
             ? "ag.relaunched"
             : verb !== "resume"
               ? "ag.startedFresh"
-              : o?.fresh
-                ? "ag.resumedFresh"
-                : "ag.resumed",
+              : o?.handoff
+                ? // Issue 658: never written; its last handoff began it.
+                  "ag.resumedHandoff"
+                : o?.fresh
+                  ? "ag.resumedFresh"
+                  : "ag.resumed",
           { id: r.agent },
         ),
       // Its open pane follows it to the new session (followAgents, in
       // refresh); one that couldn't (not running yet) is closed for it.
       onDone: (o) => (opened = follow(o)),
+      // Issue 479: a quarantined runtime: Settings at its row, not a
+      // dead end (Try again would refuse the same way).
+      next: (err) => quarantineNext(err, t, r.workspace),
     },
   );
   await (out ? opened : refresh());
@@ -4073,6 +4162,7 @@ function paintRuntimeFields(reset) {
   ready.innerHTML = r.html;
   ready.hidden = !r.html;
   ready.dataset.tone = r.tone;
+  wireStartQuarantine(ready);
   go.disabled = !r.ok;
   go.dataset.blocked = r.ok ? "" : "runtime";
 }
@@ -4518,7 +4608,16 @@ function startBody() {
 
 function showStartError(err) {
   const el = $d("#ag-err");
-  el.textContent = err?.message || String(err);
+  // Issue 479: its runtime's copy is quarantined: why, the path and the
+  // choices (Use this, Copy path), not only the message.
+  const q = err?.data?.quarantined;
+  if (q?.path) {
+    el.innerHTML = quarantinedHtml(q, t);
+    wireStartQuarantine(el);
+    el.hidden = false;
+    return;
+  }
+  el.textContent = startFailText(err, t);
   // AG-10.10: that agent is running: offer to open it.
   const running = err?.data?.running;
   if (running?.sessionId) {
@@ -4534,6 +4633,25 @@ function showStartError(err) {
     el.append(" ", b);
   }
   el.hidden = false;
+}
+
+/**
+ * Issue 479: the quarantine line's buttons in the Start dialog (its
+ * readiness line, or the refusal after Start). A pin or Check again asks
+ * the runtimes again and repaints; the person presses Start.
+ */
+function wireStartQuarantine(host) {
+  wireQuarantine(host, {
+    api,
+    t,
+    ws: () => $d("#ag-ws")?.value || viewWorkspaces()[0],
+    reload: async () => {
+      const ws = $d("#ag-ws")?.value || viewWorkspaces()[0];
+      personasAsked.delete(ws || "");
+      $d("#ag-err").hidden = true;
+      await fillForWorkspace(ws);
+    },
+  });
 }
 
 /**
@@ -5022,6 +5140,31 @@ function translateStatic(root) {
     ?.setAttribute("aria-label", t("ag.layout"));
 }
 
+/**
+ * Issue 252: a running agent's Mode, in its ⋯: the four modes and Follow
+ * project, the one in effect checked. None for a runtime without modes.
+ */
+function modeItems(r, opener) {
+  if (r?.kind !== "agent" || !r.mode) return [];
+  return [
+    {
+      label: t("ag.mode.item", { m: t(`pm.name.${r.mode}`) }),
+      onSelect: () =>
+        openAgentModeMenu(
+          opener,
+          {
+            workspace: r.workspace,
+            agent: r.agent,
+            ...(r.displayName ? { name: r.displayName } : {}),
+            ...(r.modeOwn ? { own: r.mode } : {}),
+            project: r.modeOwn ? r.modeFollowed : r.mode,
+          },
+          () => void refresh(),
+        ),
+    },
+  ];
+}
+
 /** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
 function stoppedMenuItems(r, opener) {
   return [
@@ -5030,6 +5173,16 @@ function stoppedMenuItems(r, opener) {
           {
             label: t("ag.fresh"),
             onSelect: () => void restartRow(r, "fresh", opener),
+          },
+        ]
+      : []),
+    // Issue 658: a handoff on file while no rotation is ready.
+    ...(r.handoffOnFile
+      ? [
+          {
+            label: t("ag.relaunchHandoff"),
+            onSelect: () =>
+              void restartRow(r, "relaunch", opener, { fromHandoff: true }),
           },
         ]
       : []),
@@ -5501,7 +5654,10 @@ export async function mountAgentsPage(root) {
       if (r) void openLink(r, b);
     } else if (b.dataset.act === "stop") void stopAgent(p, b);
     else if (b.dataset.act === "close-shell") void closeShell(p, b);
-    else if (b.dataset.act === "tools-restart") {
+    else if (b.dataset.act === "new-shell") {
+      const r = rowOf(id);
+      if (r?.kind === "session") void newShell(r, b);
+    } else if (b.dataset.act === "tools-restart") {
       const r = rowOf(id);
       if (r) void restartForTools(r, b);
     } else if (b.dataset.act === "mode-apply") {
@@ -5535,6 +5691,7 @@ export async function mountAgentsPage(root) {
             ? stoppedMenuItems(r, b)
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
+                ...modeItems(r, b),
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),
@@ -5694,17 +5851,34 @@ export async function mountAgentsPage(root) {
  * view), in a pane like an agent's. The pane is in ?open=, so a reload
  * keeps it, and the shell outlives a Den restart (the sessions host).
  * Used once: the URL drops ?terminal=.
+ *
+ * Issue 448: a shell already running in that project opens again (the
+ * one used last) and takes the keyboard; a new one starts only when none
+ * runs, or with `fresh` (the shell bar's New terminal).
  */
-async function openTerminal(asked = "") {
+async function openTerminal(asked = "", { fresh = false } = {}) {
+  // Issue 448: decide on the server's list as it is now (a shell may have
+  // ended since this page's last list), and on when each was last typed in.
+  if (!fresh) await refresh().catch(() => {});
   const all = st.data?.workspaces ?? [];
+  const used = shellUsed();
+  // Issue 448: no project named or in view (every project shows): the
+  // shell used last, in any of them, before the first project.
   const ws =
     asked ||
     urlWorkspace() ||
     (st.scope && st.scope !== "all" && all.includes(st.scope)
       ? st.scope
-      : all[0]);
+      : (fresh ? null : latestShell(visibleRows(), null, used)?.workspace) ||
+        all[0]);
   if (!ws) {
     window.denShell?.toast?.(t("ag.term.failed", { e: t("ag.term.noWs") }));
+    return;
+  }
+  const running = fresh ? null : latestShell(st.data?.sessions ?? [], ws, used);
+  if (running) {
+    await switchToProjectOf(running);
+    await bringShell(running.id);
     return;
   }
   try {
@@ -5716,12 +5890,25 @@ async function openTerminal(asked = "") {
     await refresh();
     // #80: a shell in another project: this page switches to it first.
     if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
-    if (r?.session?.id) await openPane(r.session.id);
+    if (r?.session?.id) await bringShell(r.session.id);
   } catch (err) {
-    window.denShell?.toast?.(
-      t("ag.term.failed", { e: err?.message || String(err) }),
-    );
+    // Issue 503: never silent; no PTY has its own words.
+    window.denShell?.toast?.(terminalFailText(err, t));
   }
+}
+
+/**
+ * Issue 448: shell `id`'s pane in front (opened as a tab when it is not
+ * open), with the keyboard once its terminal can take keys.
+ */
+async function bringShell(id) {
+  if (st.panes.has(id)) {
+    st.cur = id;
+    paintLayout();
+    paintList();
+    writeUrl();
+  } else await openPane(id);
+  focusTerm(id);
 }
 
 /**

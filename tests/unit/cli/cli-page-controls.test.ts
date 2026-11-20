@@ -90,6 +90,8 @@ const LISTING: Record<string, Entry> = {
   "edge untrust": slot("0.4.47", "untrust the local certificate"),
   "edge status": R,
   "edge routes": R,
+  // Issue 455: prints a route; the Edge page shows the same (it reads).
+  "edge route": R,
 
   "service install": slot("0.4.47", "start at login (launchd)"),
   "service uninstall": slot("0.4.47", "stop starting at login"),

@@ -53,6 +53,12 @@ DenUI.configure({
     githubPoll: (id) => api("GET", `/api/report/github-send/${id}`),
     saveDraft: (form, headers) =>
       api("POST", "/api/report/drafts", form, { headers }),
+    // Issue 403: whether the masked screenshot goes on to Hub (null: no).
+    shotShare: (repo) =>
+      api(
+        "GET",
+        `/api/report/shot-share?repo=${encodeURIComponent(repo || "")}`,
+      ).then((r) => (r.status === 200 ? r.data : null)),
   },
   whatsNew: {
     // FB (den#81): Report, as in every pop-up ("" when reports are off).

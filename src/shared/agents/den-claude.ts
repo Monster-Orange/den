@@ -57,10 +57,16 @@ import * as fs from "fs";
 import * as path from "path";
 import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
+import { LOST_FILE } from "./guardrails/lost-marks.js";
+import {
+  HOOK_CALL_DEFAULT,
+  hookCallBudgetSeconds,
+} from "./guardrails/hook-call.js";
 import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
   attentionHooks,
+  widenHookTimeouts,
   GUARDRAILS_DIR,
   guardrailHooks,
   hookCommands,
@@ -85,7 +91,11 @@ import {
 import { PERMISSION_INTENTS, type PermissionIntent } from "./permissions.js";
 import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
-import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
+import {
+  isQuarantined,
+  locateRuntime,
+  type RuntimeFind,
+} from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
 import {
   cleanName,
@@ -263,6 +273,8 @@ export function permissionModesOf(
   bin: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] | null {
+  // Issue 456: a quarantined file is never run (macOS would warn).
+  if (isQuarantined(bin)) return null;
   let key: string;
   try {
     const real = fs.realpathSync(bin);
@@ -380,6 +392,8 @@ function detect(
     ...(version ? { version } : {}),
     path: found.path,
     ...(found.source ? { source: found.source } : {}),
+    ...(found.quarantined ? { quarantined: true as const } : {}),
+    ...(found.others ? { others: found.others } : {}),
     searched: found.searched,
   };
 }
@@ -441,14 +455,16 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 }
 
 /**
- * Review M4 (0.4.46): Edit and Write denied under the person's own config
- * folder (config/local: user.yml holds self_update and the person's
- * settings). The team file beside it stays editable. A cooperating
- * agent's boundary only; the server's token rules are the real one.
+ * Review M4 (0.4.46): edits denied under the person's own config folder
+ * (config/local: user.yml holds self_update and the person's settings).
+ * The team file beside it stays editable. A cooperating agent's boundary
+ * only; the server's token rules are the real one. Issue 660: Claude Code
+ * covers file writes under Edit(path) rules and warns that a Write(path)
+ * rule never matches, so Den writes the Edit rule only.
  */
 export function personConfigDenyRules(dir: string): string[] {
   const abs = path.resolve(dir);
-  return [`Edit(/${abs}/**)`, `Write(/${abs}/**)`];
+  return [`Edit(/${abs}/**)`];
 }
 
 /** The readers named in the Bash deny rules (stateDirDenyRules). */
@@ -542,7 +558,11 @@ function common(input: LaunchInput): {
   const mode = permissionMode(input);
   // D41: the Stop hook asks Hub for comments waiting on this agent.
   const inboxBase = input.mcp.hub?.inboxBase;
-  const inbox = inboxBase ? { base: inboxBase } : undefined;
+  // Issue 609: its call to Den waits and retries as the attention hook's.
+  const call = input.attention?.call;
+  const inbox = inboxBase
+    ? { base: inboxBase, ...(call ? { call } : {}) }
+    : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -573,9 +593,23 @@ function common(input: LaunchInput): {
         )
       : null;
   // NT-1: every agent tells Den when it waits for its person.
+  if (inbox && baseHooks)
+    widenHookTimeouts(
+      baseHooks,
+      "Stop",
+      hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
+    );
   const hooks = mergeHooks(
     baseHooks,
-    input.attention ? attentionHooks(input.attention.base) : null,
+    input.attention
+      ? attentionHooks(
+          input.attention.base,
+          input.attention.call,
+          // Issue 609: where a mark Den never took (after its last try)
+          // is recorded: its own files dir, which doctor reads.
+          { file: path.join(input.filesDir, LOST_FILE), agent: input.agentId },
+        )
+      : null,
   );
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
@@ -861,7 +895,13 @@ export const denClaude: Runtime = {
     try {
       const file = transcriptFile(token, env);
       if (!file) return null;
-      return transcriptBusy(file, Date.now(), undefined, opts.readMaxBytes);
+      return transcriptBusy(
+        file,
+        Date.now(),
+        undefined,
+        opts.readMaxBytes,
+        opts.since,
+      );
     } catch {
       return null;
     }
@@ -946,11 +986,17 @@ export const denClaude: Runtime = {
     noConversation: /no conversation found/i,
     idInUse: /already in use/i,
   },
-  // SRV-1b: its folder-trust question (two wordings seen), first choice Yes.
+  // SRV-1b: its folder-trust question. Two wordings, two shapes: the
+  // older numbered one ("1. Yes" first and highlighted) and 2.1.329's
+  // ("Quick safety check: … ❯ No, exit / Yes, I trust this folder": No
+  // highlighted first, so Enter alone declines; issues 658, 659).
   trustPrompt: {
     match:
-      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*1\.\s*Yes/i,
+      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*?(?:1\.\s*Yes|Yes, I trust this folder)/i,
     accept: "\r",
+    cursor: "\u276f",
+    yes: /^\s*(?:1\.\s*)?Yes\b/,
+    down: "\x1b[B",
   },
   // Issue 369: its permission dialogs ("Do you want to proceed?", "… make
   // this edit to x?", "… create x?", "… allow Claude to fetch …?"), first
@@ -958,6 +1004,17 @@ export const denClaude: Runtime = {
   permissionPrompt: {
     match: /Do you want to [^?\n]{0,300}\?[\s\S]{0,400}?1\.\s*Yes/i,
     afterMax: 600,
+  },
+  // Issue 664: its input box: a prompt line starting ">" or "❯" (then a
+  // space or a no-break space; inside a box's "│" in older versions),
+  // never a numbered choice, with the box's lower edge ("─", "╰") right
+  // under it or nothing at all; after it only its footer ("? for
+  // shortcuts", the mode) and status line. An earlier prompt echoed in
+  // the conversation has a blank line under it, so it never counts.
+  inputPrompt: {
+    match:
+      /(?:^|\n)[ \t]*(?:│[ \t]*)?[>❯](?![\t\p{Zs}]*\d+[.)])(?:[\t\p{Zs}][^\n]*)?(?=\n[ \t]*[─━╰]|$)/u,
+    afterMax: 400,
   },
   approvals: "terminal",
   envPassthrough: ["CLAUDE_CONFIG_DIR"],

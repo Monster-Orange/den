@@ -106,3 +106,48 @@ describe("ownersLabel", () => {
     expect(ownersLabel(undefined)).toBe("");
   });
 });
+
+describe("issue 402: the project the pins are made for", () => {
+  const data = {
+    workspaces: {
+      alpha: { services: { shop: {}, "shop/db": {} } },
+      beta: { services: { "billing/api": {} } },
+    },
+    active: ["alpha", "beta"],
+    focus: "alpha",
+  };
+  it("a project picked names it; All active (or none known), null", () => {
+    expect(buildScopeMenuModel({ scope: "beta" }, data).pinProject).toBe(
+      "beta",
+    );
+    expect(buildScopeMenuModel({ scope: "all" }, data).pinProject).toBeNull();
+    expect(buildScopeMenuModel(null, data).pinProject).toBeNull();
+    expect(
+      buildScopeMenuModel({ scope: "all" }, { workspaces: {}, active: [] })
+        .pinProject,
+    ).toBeNull();
+  });
+  it("one active project the person never picked: implicit, so pins of no project show too", () => {
+    const m = buildScopeMenuModel(
+      { scope: "all" },
+      { ...data, active: ["alpha"] },
+    );
+    expect(m.pinProject).toBe("alpha");
+    expect(m.pinImplicit).toBe(true);
+  });
+  it("a project the person picked is explicit, also when it is the only one active", () => {
+    expect(buildScopeMenuModel({ scope: "beta" }, data).pinImplicit).toBe(
+      false,
+    );
+    expect(
+      buildScopeMenuModel({ scope: "alpha" }, { ...data, active: ["alpha"] })
+        .pinImplicit,
+    ).toBe(false);
+    expect(buildScopeMenuModel({ scope: "all" }, data).pinImplicit).toBe(false);
+  });
+  it("the 0.4.66 repo filter is gone", () => {
+    expect("pinRepos" in buildScopeMenuModel({ scope: "beta" }, data)).toBe(
+      false,
+    );
+  });
+});

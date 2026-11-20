@@ -34,6 +34,8 @@ import {
 } from "./helpers/agents-page-server.js";
 import { pageImport } from "./helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -129,10 +131,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -174,6 +173,7 @@ async function open(width = 1280) {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s.stateDir, s.base);
   await ctx.addInitScript(() => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -335,6 +335,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    await signIn(ctx, s.stateDir, s.base);
     const p = await ctx.newPage();
     const errors: string[] = [];
     p.on("pageerror", (e) => errors.push(e.message));
@@ -834,10 +835,10 @@ describe("an agent's helpers on the agents page (D32)", () => {
           const r = e.getBoundingClientRect();
           return { l: r.left, r: r.right, t: r.top };
         });
-      const hd = await box("#hp-dlg .hp-hd");
+      const hd = await box("#hp-dlg .dk-hd");
       const clear = await box("#hp-dlg [data-hp-clear]");
       const close = await box("#hp-dlg [data-hp-close]");
-      const pad = await p.$eval("#hp-dlg .hp-hd", (e) =>
+      const pad = await p.$eval("#hp-dlg .dk-hd", (e) =>
         parseFloat(getComputedStyle(e).paddingRight),
       );
       // Close at the end, Clear done just before it, both on the right.

@@ -110,6 +110,17 @@ export interface AgentRecord {
    * restore-on-boot bring it back; cleared by a resume or a start.
    */
   restartFailed?: { at: string; why: string };
+  /**
+   * Issue 659: when Den saw its runtime ask whether to trust its folder
+   * (the question on its screen, waiting for its person); cleared once
+   * answered, or by its next start.
+   */
+  trustAsked?: string;
+  /**
+   * Issue 659: when it ended after that question was declined (it never
+   * started); cleared by a resume or a start.
+   */
+  trustDeclined?: string;
   /** What its run came to (den#6), filled in by `<cli> usage`. */
   outcome?: AgentOutcome;
   /** Its tokens, from the runtime's own transcript (den#6). */
@@ -146,6 +157,12 @@ export interface AgentRecord {
   version?: string;
   /** The permission intent it was started with (AG-13), when one was set. */
   permission?: PermissionIntent;
+  /**
+   * Issue 252: the mode its running session was started in, when a mode
+   * set for it since (`permission`, its own setting) hasn't reached it
+   * yet. Cleared at its next launch.
+   */
+  startedIn?: PermissionIntent;
   /**
    * The extra allowed commands it was started with (AG-13.4: plain
    * prefixes; its role's preset comes on top), when set for it.

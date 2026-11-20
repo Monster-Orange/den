@@ -54,6 +54,16 @@ that setting yourself: it is the person's.
 The person comes back to you for anything about the server itself: add a
 repo, fix a failing service, change a setting, explain what's running.
 
+## Sending feedback about Den
+
+**Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
+person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
+
+**Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
+Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
+is public: never paste secrets, tokens, private repo names, customer or company names, or internal URLs.
+
 ## Restarting Den
 
 den_restart_server restarts this Den only, on the version installed now.
@@ -112,6 +122,9 @@ Reads (they change nothing):
 - `repos_detect`, `manifest_draft`, `manifest_validate`: find repos,
   draft and check a side-car manifest.
 - `agent_helpers`: an agent's helpers.
+- `report_screenshot`: the masked screenshot of a report filed from this
+  Den, by the report id its issue names. Only you and your person may read
+  it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
 - `notifications_list`: your person's bell.
 - `approval_check`: where one of your held asks stands.
@@ -156,6 +169,10 @@ Held (each waits for the person's Allow):
   isn't linked to one (named as the project, unless you give a name). An
   owner in Hub allows it there; Den links the project by itself once they
   do, and Hub tells you what they decided. Don't link it again yourself.
+- `hub_link`: link a project to an existing Hub project, by its id or slug
+  as the connected Hub lists it (never its name), for instance after the
+  install moves to another Hub. It waits for the person's Allow. One the
+  connected Hub doesn't list is refused, saying why.
 - `den_restart_server`, `den_update`: restart or update Den.
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It

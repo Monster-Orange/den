@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
+import { denAuth } from "./helpers/den-auth.js";
 import {
   removeFrameTmp,
   startFrameServer,
@@ -116,7 +117,11 @@ function tail(
     const lines: string[] = [];
     const req = http.get(
       `${s!.base}/api/service/taillog?${new URLSearchParams(query)}`,
-      { agent: false },
+      {
+        agent: false,
+        // 0.4.71: a log route runs a command: the CLI's token.
+        headers: denAuth(path.join(s!.tmp, "den-home")),
+      },
       (res) => {
         let buf = "";
         let body = "";
@@ -167,6 +172,7 @@ async function search(
   const r = await s!.req(
     "GET",
     `/api/logs/search?${new URLSearchParams({ q: "needle", targets: targets.join(","), ...extra })}`,
+    { headers: denAuth(path.join(s!.tmp, "den-home")) },
   );
   expect(r.status).toBe(200);
   return (JSON.parse(r.body) as { results: never[] }).results;

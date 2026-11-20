@@ -63,6 +63,8 @@ export function detectEntry(
     available: true,
     path: found.path,
     ...(found.source ? { source: found.source } : {}),
+    ...(found.quarantined ? { quarantined: true as const } : {}),
+    ...(found.others ? { others: found.others } : {}),
     searched: found.searched,
   };
 }
@@ -105,6 +107,10 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
     },
     approvals: "terminal",
     scrubEnv: [],
+    // Issue 664: the repo has no capture of what these draw at their
+    // input prompt, so none is declared: today's rule (no dialog on
+    // screen, no waiting mark, an idle turn or quiet output).
+    inputPrompt: undefined, // unproven: today's rule
     // Issue 338: its sign-in data's variable, set from the install's
     // secrets store under the always-on service, for its agents only.
     ...(e.signIn ? { signInTokenEnv: e.signIn.env } : {}),
@@ -159,6 +165,11 @@ export async function checkRuntimeBin(
   }
   const cmd = `${path.basename(p)} ${e.version.args.join(" ")}`;
   const r = await versionOutput(p, e.version.args, env);
+  if (r.quarantined)
+    return {
+      ok: false,
+      why: `${shown} is quarantined, not run (macOS com.apple.quarantine): pick another copy, or run it once yourself to clear it`,
+    };
   if (!r.ok) return { ok: false, why: `\`${cmd}\` failed: not ${e.name}` };
   const version = parseVersion(r.out);
   if (!version)

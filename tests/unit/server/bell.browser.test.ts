@@ -18,6 +18,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -28,7 +29,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -199,7 +200,7 @@ describe("NT-3: the bell", () => {
     await p.context().close();
   }, 90_000);
 
-  it("NT-2: the agent open on screen doesn't notify", async () => {
+  it("NT-2 / issue 142: the agent open on screen: no alert, but its need counts", async () => {
     if (skip()) return;
     // Clear what's there.
     await fetch(`${s!.base}/api/notifications/clear`, {
@@ -238,8 +239,9 @@ describe("NT-3: the bell", () => {
         headers: denAuth(s!.stateDir),
       })
     ).json()) as { unread: number; waiting: { agent: string }[] };
-    expect(b.unread).toBe(0);
-    // Still marked waiting: just not a notification.
+    // Issue 142: a need counts even while shown (a page closed within
+    // NT-2's 10 s would otherwise lose it); only the alert waits.
+    expect(b.unread).toBe(1);
     expect(b.waiting.map((w) => w.agent)).toContain("planner");
     await p.context().close();
   }, 60_000);

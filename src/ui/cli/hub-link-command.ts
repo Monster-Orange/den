@@ -17,6 +17,7 @@ import {
   type HubProjectChoice,
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
+import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import { product } from "../../shared/product.js";
 
 export const HUB_LINK_USAGE =
@@ -231,7 +232,10 @@ async function suggestedAll(
   const { cli, where, out, err } = io;
   const read = deps.read ?? ((w: string) => hubProjectOf(w));
   const choicesOf = deps.choices ?? defaultChoices;
-  const projects = await (deps.projects ?? defaultProjects)();
+  // Issue 649: never the catch-all project; a person links it by hand.
+  const projects = (await (deps.projects ?? defaultProjects)()).filter(
+    (p) => !isCatchAllProject(p),
+  );
   const rows: {
     project: string;
     hub: HubProjectLink | null;

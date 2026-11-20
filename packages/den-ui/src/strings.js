@@ -108,10 +108,22 @@ export const en = {
   "kit.report.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
   "kit.report.revShot": "Screenshot after masking ({n} areas hidden)",
   "kit.report.revShot.one": "Screenshot after masking ({n} area hidden)",
-  "kit.report.sentShot":
-    "The screenshot is saved and copied: paste it into the issue.",
-  "kit.report.sentShotSaved":
-    "The screenshot is saved as a file: add it to the issue.",
+  "kit.report.shareTo": "Your masked screenshot goes to {recipient}",
+  "kit.report.shareNo": "Text only; the screenshot stays on your machine.",
+  "kit.report.shotWent": "The masked screenshot went to {recipient}.",
+  "kit.report.shotStayed": "The screenshot stays on your machine: {why}.",
+  "kit.report.why.off": "sharing screenshots is turned off",
+  "kit.report.why.not-maintained": "no one maintains that repo on Hub",
+  "kit.report.why.not-a-person":
+    "Hub takes screenshots from a person's connection only",
+  "kit.report.why.conflict":
+    "Hub already has a different screenshot for this report",
+  "kit.report.why.too-big": "it is larger than Hub takes",
+  "kit.report.why.not-png": "it isn't a PNG image",
+  "kit.report.why.limit": "Hub's hourly limit is reached",
+  "kit.report.why.unreachable": "Hub couldn't be reached",
+  "kit.report.why.not-connected": "this computer isn't connected to Hub",
+  "kit.report.why.refused": "Hub didn't take it",
   "kit.report.mine": "My reports",
   "kit.report.next": "Next: Include",
   "kit.report.back": "Back",
@@ -122,6 +134,9 @@ export const en = {
   "kit.report.pub": "Public repository",
   "kit.report.priv": "Private repository",
   "kit.report.int": "Internal repository",
+  "kit.report.unk": "Visibility not known",
+  "kit.report.unkW":
+    "Treat it as public: screenshots and text may be visible to everyone. Mask anything private.",
   "kit.report.privN": "Only people with access to this repository can see it.",
   "kit.report.privW":
     "Only people with access to this repository can see it: {who}.",
@@ -187,6 +202,52 @@ export const en = {
   "kit.report.copyFailed":
     "Could not copy. Select the text and copy it yourself.",
   "kit.report.copyH": "Copy the report",
+  // The Markdown editor (markdown-editor.js, 0.7.5): its toolbar.
+  "kit.md.toolbar": "Formatting",
+  "kit.md.toolKey": "{name} ({key})",
+  "kit.md.bold": "Bold",
+  "kit.md.italic": "Italic",
+  "kit.md.code": "Code",
+  "kit.md.link": "Link",
+  "kit.md.heading": "Heading",
+  "kit.md.bulleted": "Bulleted list",
+  "kit.md.numbered": "Numbered list",
+  "kit.md.quote": "Quote",
+  "kit.md.linkText": "text",
+  // The save-state line (savestate.js). "Saved" has no closing stop.
+  "kit.savestate.saving": "Saving…",
+  "kit.savestate.saved": "Saved",
+  "kit.savestate.error": "Not saved. Retrying…",
+  "kit.savestate.copy": "Copy text",
+  "kit.savestate.savedAt": "Saved at {time}",
+  // The panel fold toggle and its edge strip (panel-fold.js). The strip's
+  // count is worded by kit.badge.*.
+  "kit.fold.panel": "Panel",
+  "kit.fold.show": "Show panel",
+  "kit.fold.hidden": "Panel, hidden",
+  // The filter bar (filter-bar.js). A facet's and an option's labels are
+  // the host's; {facet} and {value} are those.
+  "kit.filter.button": "Filters",
+  "kit.filter.buttonN": "Filters ({n})",
+  "kit.filter.chosen": "Chosen filters",
+  "kit.filter.chip": "{facet}:",
+  "kit.filter.remove": "Remove {facet}: {value}",
+  "kit.filter.clear": "Clear",
+  "kit.filter.clearFacet": "Clear {facet}",
+  "kit.filter.clearAll": "Clear all",
+  // The bulk bar (bulk-bar.js). {label} is the host's action.
+  "kit.bulk.selected": "{n} selected",
+  "kit.bulk.clear": "Clear",
+  "kit.bulk.cleared": "Selection cleared",
+  "kit.bulk.action": "{label} {n}",
+  // The page action menu (issue 555) and the settings row (issue 554).
+  "kit.pmenu.more": "More",
+  "kit.setrow.save": "Save",
+  "kit.setrow.who": "{who} can change this",
+  "kit.setrow.nobody": "Nobody can change this",
+  "kit.setrow.last": "Last changed {time} by {who}",
+  "kit.setrow.never": "No changes yet",
+  "kit.setrow.error": "Not saved. Try again.",
 };
 
 export const es = {
@@ -289,10 +350,21 @@ export const es = {
   "kit.report.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
   "kit.report.revShot": "Captura tras ocultar ({n} zonas tapadas)",
   "kit.report.revShot.one": "Captura tras ocultar ({n} zona tapada)",
-  "kit.report.sentShot":
-    "La captura está guardada y copiada: pégala en la incidencia.",
-  "kit.report.sentShotSaved":
-    "La captura está guardada como archivo: añádela a la incidencia.",
+  "kit.report.shareTo": "Tu captura con las zonas tapadas va a {recipient}",
+  "kit.report.shareNo": "Solo texto; la captura se queda en tu equipo.",
+  "kit.report.shotWent": "La captura con las zonas tapadas fue a {recipient}.",
+  "kit.report.shotStayed": "La captura se queda en tu equipo: {why}.",
+  "kit.report.why.off": "compartir capturas está desactivado",
+  "kit.report.why.not-maintained": "nadie mantiene ese repositorio en Hub",
+  "kit.report.why.not-a-person":
+    "Hub solo acepta capturas desde la conexión de una persona",
+  "kit.report.why.conflict": "Hub ya tiene otra captura para este informe",
+  "kit.report.why.too-big": "es más grande de lo que Hub acepta",
+  "kit.report.why.not-png": "no es una imagen PNG",
+  "kit.report.why.limit": "se alcanzó el límite por hora de Hub",
+  "kit.report.why.unreachable": "no se pudo contactar con Hub",
+  "kit.report.why.not-connected": "este equipo no está conectado a Hub",
+  "kit.report.why.refused": "Hub no la aceptó",
   "kit.report.mine": "Mis informes",
   "kit.report.next": "Siguiente: Incluir",
   "kit.report.back": "Atrás",
@@ -303,6 +375,9 @@ export const es = {
   "kit.report.pub": "Repositorio público",
   "kit.report.priv": "Repositorio privado",
   "kit.report.int": "Repositorio interno",
+  "kit.report.unk": "Visibilidad desconocida",
+  "kit.report.unkW":
+    "Trátalo como público: puede que todo el mundo vea las capturas y el texto. Tapa lo que sea privado.",
   "kit.report.privN": "Solo lo ve quien tiene acceso a este repositorio.",
   "kit.report.privW":
     "Solo lo ve quien tiene acceso a este repositorio: {who}.",
@@ -372,6 +447,45 @@ export const es = {
   "kit.report.copyFailed":
     "No se pudo copiar. Selecciona el texto y cópialo tú.",
   "kit.report.copyH": "Copia el informe",
+  "kit.md.toolbar": "Formato",
+  "kit.md.toolKey": "{name} ({key})",
+  "kit.md.bold": "Negrita",
+  "kit.md.italic": "Cursiva",
+  "kit.md.code": "Código",
+  "kit.md.link": "Enlace",
+  "kit.md.heading": "Encabezado",
+  "kit.md.bulleted": "Lista con viñetas",
+  "kit.md.numbered": "Lista numerada",
+  "kit.md.quote": "Cita",
+  "kit.md.linkText": "texto",
+  "kit.savestate.saving": "Guardando…",
+  "kit.savestate.saved": "Guardado",
+  "kit.savestate.error": "No se guardó. Reintentando…",
+  "kit.savestate.copy": "Copiar texto",
+  "kit.savestate.savedAt": "Guardado a las {time}",
+  "kit.fold.panel": "Panel",
+  "kit.fold.show": "Mostrar panel",
+  "kit.fold.hidden": "Panel, oculto",
+  "kit.filter.button": "Filtros",
+  "kit.filter.buttonN": "Filtros ({n})",
+  "kit.filter.chosen": "Filtros elegidos",
+  "kit.filter.chip": "{facet}:",
+  "kit.filter.remove": "Quitar {facet}: {value}",
+  "kit.filter.clear": "Quitar",
+  "kit.filter.clearFacet": "Quitar {facet}",
+  "kit.filter.clearAll": "Quitar todos",
+  "kit.bulk.selected": "{n} seleccionados",
+  "kit.bulk.selected.one": "{n} seleccionado",
+  "kit.bulk.clear": "Quitar selección",
+  "kit.bulk.cleared": "Selección quitada",
+  "kit.bulk.action": "{label} {n}",
+  "kit.pmenu.more": "Más",
+  "kit.setrow.save": "Guardar",
+  "kit.setrow.who": "{who} pueden cambiar esto",
+  "kit.setrow.nobody": "Nadie puede cambiar esto",
+  "kit.setrow.last": "Último cambio: {time}, por {who}",
+  "kit.setrow.never": "Sin cambios todavía",
+  "kit.setrow.error": "No se guardó. Inténtalo de nuevo.",
 };
 
 export const ja = {
@@ -469,10 +583,27 @@ export const ja = {
   "kit.report.rmMask": "削除",
   "kit.report.area": "左から {x}%、上から {y}%、{w}% × {h}%",
   "kit.report.revShot": "マスク後のスクリーンショット({n} か所を非表示)",
-  "kit.report.sentShot":
-    "スクリーンショットは保存してコピーしました。issue に貼り付けてください。",
-  "kit.report.sentShotSaved":
-    "スクリーンショットはファイルとして保存しました。issue に追加してください。",
+  "kit.report.shareTo": "マスクしたスクリーンショットは {recipient} に届きます",
+  "kit.report.shareNo":
+    "テキストのみです。スクリーンショットはこのコンピューターに残ります。",
+  "kit.report.shotWent":
+    "マスクしたスクリーンショットは {recipient} に届きました。",
+  "kit.report.shotStayed":
+    "スクリーンショットはこのコンピューターに残ります: {why}。",
+  "kit.report.why.off": "スクリーンショットの共有がオフです",
+  "kit.report.why.not-maintained":
+    "そのリポジトリを Hub で管理している人がいません",
+  "kit.report.why.not-a-person":
+    "Hub は人の接続からのスクリーンショットだけを受け付けます",
+  "kit.report.why.conflict":
+    "Hub にはこの報告の別のスクリーンショットがあります",
+  "kit.report.why.too-big": "Hub が受け付ける大きさを超えています",
+  "kit.report.why.not-png": "PNG 画像ではありません",
+  "kit.report.why.limit": "Hub の 1 時間あたりの上限に達しました",
+  "kit.report.why.unreachable": "Hub に接続できませんでした",
+  "kit.report.why.not-connected":
+    "このコンピューターは Hub に接続されていません",
+  "kit.report.why.refused": "Hub が受け付けませんでした",
   "kit.report.mine": "自分の報告",
   "kit.report.next": "次へ: 含める",
   "kit.report.back": "戻る",
@@ -483,6 +614,9 @@ export const ja = {
   "kit.report.pub": "公開リポジトリ",
   "kit.report.priv": "非公開リポジトリ",
   "kit.report.int": "内部リポジトリ",
+  "kit.report.unk": "公開範囲は不明",
+  "kit.report.unkW":
+    "公開として扱ってください。スクリーンショットとテキストは誰でも見られるかもしれません。見せたくない部分は隠してください。",
   "kit.report.privN": "このリポジトリにアクセスできる人だけが見られます。",
   "kit.report.privW":
     "このリポジトリにアクセスできる人だけが見られます（{who}）。",
@@ -552,6 +686,44 @@ export const ja = {
   "kit.report.copyFailed":
     "コピーできませんでした。テキストを選んでコピーしてください。",
   "kit.report.copyH": "報告をコピー",
+  "kit.md.toolbar": "書式",
+  "kit.md.toolKey": "{name}（{key}）",
+  "kit.md.bold": "太字",
+  "kit.md.italic": "斜体",
+  "kit.md.code": "コード",
+  "kit.md.link": "リンク",
+  "kit.md.heading": "見出し",
+  "kit.md.bulleted": "箇条書き",
+  "kit.md.numbered": "番号付きリスト",
+  "kit.md.quote": "引用",
+  "kit.md.linkText": "テキスト",
+  "kit.savestate.saving": "保存しています…",
+  "kit.savestate.saved": "保存しました",
+  "kit.savestate.error": "保存できていません。再試行しています…",
+  "kit.savestate.copy": "テキストをコピー",
+  "kit.savestate.savedAt": "{time} に保存しました",
+  "kit.fold.panel": "パネル",
+  "kit.fold.show": "パネルを表示",
+  "kit.fold.hidden": "パネル（非表示）",
+  "kit.filter.button": "絞り込み",
+  "kit.filter.buttonN": "絞り込み（{n}）",
+  "kit.filter.chosen": "選んだ条件",
+  "kit.filter.chip": "{facet}：",
+  "kit.filter.remove": "{facet}：{value} を外す",
+  "kit.filter.clear": "解除",
+  "kit.filter.clearFacet": "{facet} を解除",
+  "kit.filter.clearAll": "すべて解除",
+  "kit.bulk.selected": "{n} 件を選択中",
+  "kit.bulk.clear": "選択を解除",
+  "kit.bulk.cleared": "選択を解除しました",
+  "kit.bulk.action": "{label}（{n}）",
+  "kit.pmenu.more": "その他",
+  "kit.setrow.save": "保存",
+  "kit.setrow.who": "{who}が変更できます",
+  "kit.setrow.nobody": "誰も変更できません",
+  "kit.setrow.last": "最終変更: {time}（{who}）",
+  "kit.setrow.never": "まだ変更はありません",
+  "kit.setrow.error": "保存できませんでした。もう一度お試しください。",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */

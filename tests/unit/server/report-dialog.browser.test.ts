@@ -10,9 +10,6 @@
  * The demo distribution (helpers/agents-page-server.ts). Invented names.
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import type { Browser, Locator, Page, Route } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
@@ -20,6 +17,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 // A page load, then the dialog: the first warms the browser up.
 jest.setTimeout(30_000);
@@ -30,13 +28,12 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    // DEN_HELPERS_BROWSER=webkit runs it there; DEN_PW_WS connects to a
+    // Linux browser (the Playwright image), as on CI.
+    const pw = await import("playwright");
+    const engine =
+      process.env.DEN_HELPERS_BROWSER === "webkit" ? "webkit" : "chromium";
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -84,7 +81,20 @@ const PREVIEW = {
   repo: "acme-eng/engine",
 };
 
-async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
+/**
+ * A page in `lang` (English unless named). The language is the server's
+ * setting, shared by every test in the file, so each page sets its own
+ * just before it loads and checks the page came in it: a test never runs
+ * in a language a test before it left behind (issue 424: a timed-out
+ * test's loop set ja after it, and the next test read 報告).
+ */
+async function page(
+  fake: Fake,
+  width = 1440,
+  whatsNew = false,
+  lang: "en" | "es" | "ja" = "en",
+): Promise<Page> {
+  expect(await s!.settings({ language: lang })).toBe(200);
   const ctx = await browser!.newContext({
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
@@ -154,6 +164,7 @@ async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
     });
   await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
+  expect(await p.evaluate(() => document.documentElement.lang)).toBe(lang);
   return p;
 }
 
@@ -560,36 +571,31 @@ describe("FB: Report an issue, the dialog", () => {
     await p.context().close();
   });
 
-  it("in es and ja (1440 and 390)", async () => {
+  // One test per language and width (issue 424): each opens the form
+  // once, and each open takes the page's screenshot first, so four in one
+  // test came near the 30 s limit on a busy CI runner.
+  it.each([
+    ["es", 1440, "Informar de un problema", "Siguiente: Incluir"],
+    ["es", 390, "Informar de un problema", "Siguiente: Incluir"],
+    ["ja", 1440, "問題を報告", "次へ: 含める"],
+    ["ja", 390, "問題を報告", "次へ: 含める"],
+  ] as const)("in %s at %i px", async (lang, w, title, send) => {
     if (skip()) return;
-    for (const [lang, title, send] of [
-      ["es", "Informar de un problema", "Siguiente: Incluir"],
-      ["ja", "問題を報告", "次へ: 含める"],
-    ] as const) {
-      await s!.settings({ language: lang });
-      for (const w of [1440, 390]) {
-        const p = await page(fresh(), w);
-        await p.waitForFunction(
-          (l) => document.documentElement.lang === l,
-          lang,
-        );
-        await p.evaluate(() =>
-          (
-            window as unknown as { denShell: { report(): Promise<unknown> } }
-          ).denShell.report(),
-        );
-        await dlg(p).waitFor();
-        expect(await dlg(p).getAttribute("aria-label")).toBe(title);
-        expect(
-          (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
-        ).toBe(send);
-        expect(
-          await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
-        ).toBe(true);
-        await p.context().close();
-      }
-    }
-    await s!.settings({ language: "en" });
+    const p = await page(fresh(), w, false, lang);
+    await p.evaluate(() =>
+      (
+        window as unknown as { denShell: { report(): Promise<unknown> } }
+      ).denShell.report(),
+    );
+    await dlg(p).waitFor();
+    expect(await dlg(p).getAttribute("aria-label")).toBe(title);
+    expect(
+      (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
+    ).toBe(send);
+    expect(
+      await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
+    ).toBe(true);
+    await p.context().close();
   });
 
   it("What's new on a first visit carries its own Report; Report opens over it and keeps it; Esc closes What's new", async () => {
@@ -714,9 +720,10 @@ describe("FB: the screenshot and its mask", () => {
     await p.context().close();
   });
 
-  it("drag to black out; Undo; Review shows the masked image; Sent saves and copies it", async () => {
+  it("drag to black out; Undo; Review shows the masked image; the send carries it masked and saves nothing here", async () => {
     if (skip()) return;
-    const p = await page(fresh());
+    const f = fresh();
+    const p = await page(f);
     const mark = await drawerWithMark(p);
     const vw = await p.evaluate(() => innerWidth);
     const vh = await p.evaluate(() => innerHeight);
@@ -757,23 +764,21 @@ describe("FB: the screenshot and its mask", () => {
         [0, 0, 0],
       ),
     ).toBe(true);
-    const download = p.waitForEvent("download");
+    // Issue 403: filing never saves it to this computer.
+    let downloads = 0;
+    p.on("download", () => downloads++);
     await dlg(p).locator('[data-act="send"]').click();
-    const saved = await download;
-    expect(saved.suggestedFilename()).toBe("report-screenshot.png");
-    // The file itself: the mask is in its pixels (drawn in, not laid over),
-    // and what is outside it is the page.
-    // saveAs: a remote browser (DEN_PW_WS) has no local path for it.
-    const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "den-fb-shot-")),
-      "shot.png",
-    );
-    await saved.saveAs(file);
-    const png = fs.readFileSync(file).toString("base64");
-    fs.rmSync(path.dirname(file), { recursive: true, force: true });
-    const inFile = (x: number, y: number) =>
+    await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
+    await p.waitForTimeout(300);
+    expect(downloads).toBe(0);
+    expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
+    // Issue 403: the PNG the send carries has the mask in its pixels
+    // (drawn in, not laid over); what is outside it is the page.
+    const shot = String(f.sent[0]!.shot);
+    expect(shot).toMatch(/^data:image\/png;base64,/);
+    const inShot = (x: number, y: number) =>
       p.evaluate(
-        ([b64, px, py]) =>
+        ([src, px, py]) =>
           new Promise<number[]>((ok) => {
             const img = new Image();
             img.onload = () => {
@@ -788,15 +793,14 @@ describe("FB: the screenshot and its mask", () => {
                   .data.slice(0, 3),
               ]);
             };
-            img.src = `data:image/png;base64,${b64}`;
+            img.src = src as string;
           }),
-        [png, Math.round(x), Math.round(y)],
+        [shot, Math.round(x), Math.round(y)],
       );
-    expect(near(await inFile(mark.x, mark.y), [0, 0, 0])).toBe(true);
-    expect(near(await inFile(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
+    expect(near(await inShot(mark.x, mark.y), [0, 0, 0])).toBe(true);
+    expect(near(await inShot(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
       true,
     );
-    await dlg(p).locator("[data-saved]").waitFor();
     await p.context().close();
   });
 

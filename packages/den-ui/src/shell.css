@@ -208,6 +208,23 @@ body.den-has-shell > #den-content {
 #den-shell .den-mark-rounded {
   border-radius: 6px;
 }
+/* Issue 644: dark mode only, a faint cream edge so the mark's dark tile
+   keeps its outline on a dark bar. One mark file for both modes. The svg
+   mark's corners follow the tile's (14 of 64). An empty slot draws none. */
+:root[data-mode="dark"] .den-mark:not(:empty) {
+  box-shadow: 0 0 0 1px var(--den-mark-edge);
+}
+:root[data-mode="dark"] .den-mark-svg {
+  border-radius: 22%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode]) .den-mark:not(:empty) {
+    box-shadow: 0 0 0 1px var(--den-mark-edge);
+  }
+  :root:not([data-mode]) .den-mark-svg {
+    border-radius: 22%;
+  }
+}
 .den-ib {
   background: none;
   border: 1px solid transparent;
@@ -1232,6 +1249,43 @@ body.den-has-shell .den-upd {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+/* The page action menu (issue 555). A disabled item is faint and
+   doesn't light up; its note sits right under it, wraps, and is a row to
+   follow when it links to where to turn it on. */
+.den-pop .den-mi[aria-disabled="true"] {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+.den-pop .den-mi[aria-disabled="true"]:hover {
+  background: none;
+}
+.den-pop .den-mwhy {
+  display: block;
+  max-width: 260px;
+  padding: 0 8px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.den-pop .den-mwhy .den-mi-l {
+  white-space: normal;
+}
+.den-pop a.den-mwhy .den-mi-l {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* A phone: More and every row a 44px target. */
+@media (max-width: 720px), (pointer: coarse) {
+  .den-pmenu-btn,
+  .den-pmenu .den-mi {
+    min-height: var(--tap);
+  }
+  .den-pmenu .den-mwhy {
+    display: flex;
+    padding: 4px 8px 8px;
+    font-size: 13px;
+  }
 }
 /* ◐ ▾'s menu, on <body> above everything, placed under the button. */
 .den-um {

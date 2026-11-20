@@ -78,11 +78,34 @@ async function itemsFor(ctx, a, ok = (l) => l.length > 0) {
   }
 }
 
+/**
+ * A turn's end as Claude Code sends it: the answer on screen, then its
+ * Stop hook with the answer as `last_assistant_message`. Not
+ * `ctl.stop()`: that stops the agent, and no turn ends.
+ */
+async function turnEnd(a, answer) {
+  await a.ctl.print(answer);
+  await a.ctl.hook("Stop", {
+    stop_hook_active: false,
+    last_assistant_message: answer,
+  });
+}
+
 async function stub(ctx, state, role) {
   const name = `gate93-${role}-${state.tag}`;
   const ctl = await ctx.agent(name);
   const a = { name, id: ctl?.id ?? name, ctl };
   state.made.push(a);
+  // A handle creates nothing: start the agent and wait until it runs,
+  // so its session (and its file) exist before sessionStart. A refused
+  // start (agents.max_concurrent reached) says so here, not later as a
+  // missing file.
+  const r = await ctl.start("tester");
+  if (r && typeof r.code === "number" && r.code !== 0)
+    throw new Error(
+      `${name}: the bed refused to start it (agents.max_concurrent?): ${String(r.all ?? r.err ?? r.out ?? "").slice(0, 200)}`,
+    );
+  a.runMs = await ctl.running(20000);
   await ctl.sessionStart?.();
   return a;
 }
@@ -105,8 +128,8 @@ export async function setup(ctx) {
   // Two turn ends: an unread item takes the next of its kind in, so the
   // first is read (as the person would have) and the second folds under ×2.
   for (let i = 0; i < 2; i++) {
-    await turns.ctl.print(`Turn ${i + 1} done.`);
-    await turns.ctl.stop();
+    // The agent runs on between them; teardown stops it.
+    await turnEnd(turns, `Turn ${i + 1} done.`);
     const got = await itemsFor(ctx, turns, (l) => l.some((n) => !n.read));
     if (i === 0)
       for (const n of got.filter((n) => !n.read))
@@ -156,6 +179,56 @@ async function leftWithin(p, ms = 5000) {
   return left(p);
 }
 
+/** How long an element may take to show after the bell draws again. */
+const BOX_WAIT_MS = 10000;
+
+/**
+ * An element's box, once it is visible: the bell may draw its rows again
+ * between finding one and measuring it. Never throws: no box gives
+ * `detail` (the row's HTML, trimmed, the bell's row count, a screenshot),
+ * and that cell's clause fails with it.
+ */
+async function boxOf(ctx, row, el, tag) {
+  try {
+    await el.waitFor({ state: "visible", timeout: BOX_WAIT_MS });
+  } catch {
+    /* measured below all the same */
+  }
+  let box = await el.boundingBox().catch(() => null);
+  if (!box) {
+    // Drawn again since the wait: wait once more, then measure again.
+    try {
+      await el.waitFor({ state: "visible", timeout: BOX_WAIT_MS });
+    } catch {
+      /* measured below all the same */
+    }
+    box = await el.boundingBox().catch(() => null);
+  }
+  if (box) return { box };
+  const html = await row
+    .first()
+    .evaluate((e) => e.outerHTML)
+    .catch(() => null);
+  const rows = await ctx.page
+    .locator("#den-bell-pop .den-bell-row")
+    .count()
+    .catch(() => null);
+  const shot = `nobox-${tag}-${browserName(ctx)}-${ctx.width}`;
+  try {
+    await ctx.shot?.(shot);
+  } catch {
+    /* the detail says what it can */
+  }
+  return {
+    box: null,
+    detail: {
+      html: html === null ? null : String(html).slice(0, 500),
+      rows,
+      shot,
+    },
+  };
+}
+
 export async function run(ctx, state) {
   const p = ctx.page;
   const seen = { width: ctx.width };
@@ -172,13 +245,17 @@ export async function run(ctx, state) {
     const r = rowOf(p, link);
     const n = await r.count();
     let opened = false;
+    let noBox;
     if (n === 1) {
       // The question's text: its two-line span, or the link that holds it.
-      const box = await r.locator(".den-bell-t, a").first().boundingBox();
-      await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-      opened = (await leftWithin(p)) && p.url().includes(link);
+      const m = await boxOf(ctx, r, r.locator(".den-bell-t, a").first(), k);
+      if (m.box) {
+        const { box } = m;
+        await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        opened = (await leftWithin(p)) && p.url().includes(link);
+      } else noBox = m.detail;
     }
-    seen.click[k] = { link, rows: n, opened };
+    seen.click[k] = { link, rows: n, opened, ...(noBox ? { noBox } : {}) };
   }
   await ctx.shot?.(`bell-${browserName(ctx)}-${ctx.width}`);
 

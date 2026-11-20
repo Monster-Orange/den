@@ -9,9 +9,27 @@
  */
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 
+/**
+ * Issue 402 (the model set on 11-18): a pin is (company, project or none,
+ * person, item). This store is one person's (user.yml), in one install of
+ * one company, so a stored pin carries the rest: the item (`repo` or
+ * `repo/service`) and the project picked when it was made, or null (none:
+ * pinned under All projects). One item pinned in two projects is two pins.
+ */
+export interface Pin {
+  item: string;
+  project: string | null;
+}
+
+/**
+ * The projects whose repos include an item's repo (index.ts builds it from
+ * workspaces.yml): an old id-only pin takes the one project, else none.
+ */
+export type PinProjects = (item: string) => readonly string[];
+
 export interface ShellPrefs {
-  /** Pinned repos or services (`repo` or `repo/service`), in pin order. */
-  pins: string[];
+  /** Pinned repos or services, with the project each was pinned in, in pin order. */
+  pins: Pin[];
   /** The rail shows icons only. */
   collapsed: boolean;
   /** NAV page ids the rail leaves out (Settings is never one). */
@@ -91,31 +109,71 @@ function checkProjectOrder(
   return { ok: true, value: out };
 }
 
-/** How many pins the rail keeps. */
-export const MAX_PINS = 24;
+/** How many pins the rail keeps (an item in two projects is two). */
+export const MAX_PINS = 96;
 const PIN =
   /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$/;
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * Issue 402, clause 6: a pin saved before the tuple (a bare id) takes the
+ * item's own project when exactly one project has its repo, else none.
+ */
+function migratePin(item: string, projectsOf?: PinProjects): Pin {
+  const owners = projectsOf ? [...new Set(projectsOf(item))] : [];
+  return { item, project: owners.length === 1 ? owners[0] : null };
+}
+
 function checkPins(
   v: unknown,
-): { ok: true; value: string[] } | { ok: false; error: string } {
+  projectsOf?: PinProjects,
+): { ok: true; value: Pin[] } | { ok: false; error: string } {
   if (!Array.isArray(v))
     return { ok: false, error: "shell.pins must be a list" };
-  const out: string[] = [];
+  const out: Pin[] = [];
   for (const p of v) {
-    if (typeof p !== "string" || !PIN.test(p))
+    let pin: Pin;
+    if (typeof p === "string") {
+      if (!PIN.test(p))
+        return {
+          ok: false,
+          error: `shell.pins: "${p}" is not a repo or repo/service name`,
+        };
+      pin = migratePin(p, projectsOf);
+    } else if (isObject(p)) {
+      if (typeof p.item !== "string" || !PIN.test(p.item))
+        return {
+          ok: false,
+          error: `shell.pins: "${String(p.item)}" is not a repo or repo/service name`,
+        };
+      const project = p.project ?? null;
+      if (
+        project !== null &&
+        (typeof project !== "string" || !WORKSPACE_NAME_RE.test(project))
+      )
+        return {
+          ok: false,
+          error: `shell.pins: "${String(project)}" is not a project`,
+        };
+      pin = { item: p.item, project };
+    } else
       return {
         ok: false,
-        error: `shell.pins: "${String(p)}" is not a repo or repo/service name`,
+        error: `shell.pins: "${String(p)}" is not a pin`,
       };
-    if (!out.includes(p)) out.push(p);
+    if (!out.some((q) => q.item === pin.item && q.project === pin.project))
+      out.push(pin);
   }
   if (out.length > MAX_PINS)
     return { ok: false, error: `shell.pins: at most ${MAX_PINS}` };
   return { ok: true, value: out };
+}
+
+/** Issue 402: the items pinned, each once, whatever their project. */
+export function pinnedItems(pins: readonly Pin[]): string[] {
+  return [...new Set(pins.map((p) => p.item))];
 }
 
 function checkNavIds(
@@ -138,8 +196,14 @@ function checkNavIds(
   return { ok: true, value: out };
 }
 
-/** The stored block, normalised: a missing or hand-broken field is its default. */
-export function shellPrefs(stored: unknown): ShellPrefs {
+/**
+ * The stored block, normalised: a missing or hand-broken field is its
+ * default. Old id-only pins migrate (issue 402, clause 6) by `projectsOf`.
+ */
+export function shellPrefs(
+  stored: unknown,
+  projectsOf?: PinProjects,
+): ShellPrefs {
   const out: ShellPrefs = {
     pins: [],
     collapsed: false,
@@ -159,7 +223,7 @@ export function shellPrefs(stored: unknown): ShellPrefs {
     const h = checkDockHeight(stored.dockHeight);
     if (h.ok) out.dockHeight = h.value;
   }
-  const pins = checkPins(stored.pins);
+  const pins = checkPins(stored.pins, projectsOf);
   if (pins.ok) out.pins = pins.value;
   if (typeof stored.collapsed === "boolean") out.collapsed = stored.collapsed;
   for (const key of ["hidden", "order"] as const) {
@@ -173,11 +237,12 @@ export function shellPrefs(stored: unknown): ShellPrefs {
 export function mergeShellPrefs(
   current: ShellPrefs,
   patch: unknown,
+  projectsOf?: PinProjects,
 ): { ok: true; value: ShellPrefs } | { ok: false; error: string } {
   if (!isObject(patch)) return { ok: false, error: "shell must be an object" };
   const out: ShellPrefs = {
     ...current,
-    pins: [...current.pins],
+    pins: current.pins.map((p) => ({ ...p })),
     hidden: [...current.hidden],
     order: [...current.order],
     projectOrder: [...(current.projectOrder ?? [])],
@@ -193,7 +258,7 @@ export function mergeShellPrefs(
       continue;
     }
     if (key === "pins") {
-      const p = checkPins(patch.pins);
+      const p = checkPins(patch.pins, projectsOf);
       if (!p.ok) return p;
       out.pins = p.value;
     } else if (key === "collapsed") {
@@ -221,10 +286,22 @@ export function mergeShellPrefs(
   return { ok: true, value: out };
 }
 
+/** A pin as user.yml keeps it: no `project` for none. */
+export type StoredPin = { item: string; project?: string };
+/** The shell block as user.yml keeps it. */
+export type StoredShell = Omit<Partial<ShellPrefs>, "pins"> & {
+  pins?: StoredPin[];
+};
+
 /** The block to store: none for the defaults, so user.yml stays lean. */
-export function storedShell(p: ShellPrefs): Partial<ShellPrefs> | undefined {
-  const out: Partial<ShellPrefs> = {};
-  if (p.pins.length) out.pins = p.pins;
+export function storedShell(p: ShellPrefs): StoredShell | undefined {
+  const out: StoredShell = {};
+  if (p.pins.length)
+    out.pins = p.pins.map((x) =>
+      x.project === null
+        ? { item: x.item }
+        : { item: x.item, project: x.project },
+    );
   if (p.collapsed) out.collapsed = true;
   if (p.hidden.length) out.hidden = p.hidden;
   if (p.order.length) out.order = p.order;

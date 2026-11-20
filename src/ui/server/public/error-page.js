@@ -266,7 +266,7 @@ function goSignedIn(url) {
   const go = () => {
     if (done) return;
     done = true;
-    location.replace(url);
+    location.replace(landingOverride || url);
   };
   setTimeout(go, LEAVE_WAIT_MS);
   let left;
@@ -350,7 +350,9 @@ function githubBlock(s, t) {
  */
 function claimBlock(s, t) {
   const g = s.github;
-  if (!g || g.state !== "claim" || s.localhost) return "";
+  // On this computer (0.4.71) the button would only come back here: the
+  // page signs in first (the code, or `web up`), then the claim goes on.
+  if (!g || g.state !== "claim" || s.localhost || s.local) return "";
   const host = s.machine || "";
   const back = location.origin + location.pathname + location.search;
   const here = g.attest ? `${g.attest}?return=${encodeURIComponent(back)}` : "";
@@ -670,29 +672,33 @@ function wirePair(root, t, s) {
       `<p class="den-pair-wait" id="den-pair-status">${esc(t("err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p>` +
       `<details class="den-other" id="den-pair-other"><summary>${esc(t("err.signin.pairOther"))}</summary>` +
       `<ol class="den-steps">` +
-      `<li><p>${withHost(t, "err.signin.step1", { host })}</p>` +
+      `<li><p>${s.local ? esc(t("err.signin.step1Local")) : withHost(t, "err.signin.step1", { host })}</p>` +
       cmdLine("den-pair-cmd", b.approve, t) +
       `<p>${withHost(t, "err.signin.step1Or", { name: s.name, host })}</p></li>` +
       `</ol>` +
-      `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
-      (windows && b.ssh
-        ? `<p class="den-pair-win" id="den-pair-win">${esc(t("err.signin.windowsSteps"))}</p>`
-        : "") +
-      cmdLine("den-pair-ssh", b.ssh, t, term) +
-      (term
-        ? `<p class="den-pair-nothing" id="den-pair-nothing" role="status" hidden>${esc(t("err.signin.nothingOpened"))}</p>`
-        : "") +
-      (term || (windows && b.ssh && target)
-        ? `<p class="den-pair-note" id="den-pair-note">${
-            user
-              ? withHost(t, "err.signin.sshUserNote", { host, user })
-              : withHost(t, "err.signin.sshNote", { target })
-          }</p>`
-        : "") +
+      // 0.4.71: on this machine there is no other machine to ssh from.
+      (s.local ? "" : sshWay(b, term)) +
       `</details>`;
     wireCopy(box, t);
     wireNothingOpened(box);
   };
+  // The ssh way in, from another machine (SEC-2a-UX).
+  const sshWay = (b, term) =>
+    `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
+    (windows && b.ssh
+      ? `<p class="den-pair-win" id="den-pair-win">${esc(t("err.signin.windowsSteps"))}</p>`
+      : "") +
+    cmdLine("den-pair-ssh", b.ssh, t, term) +
+    (term
+      ? `<p class="den-pair-nothing" id="den-pair-nothing" role="status" hidden>${esc(t("err.signin.nothingOpened"))}</p>`
+      : "") +
+    (term || (windows && b.ssh && target)
+      ? `<p class="den-pair-note" id="den-pair-note">${
+          user
+            ? withHost(t, "err.signin.sshUserNote", { host, user })
+            : withHost(t, "err.signin.sshNote", { target })
+        }</p>`
+      : "");
   function begin() {
     stop();
     withdraw();
@@ -795,6 +801,49 @@ function wirePair(root, t, s) {
  * asked same-origin, does carry it, so a signed-in browser reloads the page
  * from here (same-origin) and is let through.
  */
+/**
+ * Once the install's https address is proven, sign-in happens only there:
+ * off it, one line names the address, as a link to the same page there.
+ */
+function atAddress(s, t, name) {
+  if (!s.address) return "";
+  const mark = "\u0000";
+  const [before, after = ""] = t("err.signin.atAddress", {
+    name,
+    address: mark,
+  }).split(mark);
+  const href = `${s.address}${location.pathname}${location.search}`;
+  return (
+    `<p class="lead" id="den-signin-address">${esc(before)}` +
+    `<a href="${esc(href)}">${esc(s.address)}</a>${esc(after)}</p>`
+  );
+}
+
+/**
+ * Issue 666: on this Den's own alias while its address is unset, loopback
+ * or not working, the page leads with "Make <alias> its address": the
+ * owner signs in below, then confirms it in Settings (the landing).
+ */
+export function offerBlock(s, t, name) {
+  const o = s.offer;
+  if (!o || !o.alias) return "";
+  const why = !o.current
+    ? t("err.signin.offerUnset", { name })
+    : o.loopback
+      ? t("err.signin.offerLoop", { name, url: o.current })
+      : t("err.signin.offerWrong", { name, url: o.current });
+  return (
+    `<div id="den-signin-offer">` +
+    `<h2 class="den-h" id="den-offer-title">${esc(t("err.signin.offerTitle", { alias: o.alias, name }))}</h2>` +
+    `<p class="lead" id="den-offer-why">${esc(why)}</p>` +
+    `<p class="lead" id="den-offer-how">${esc(t("err.signin.offerHow", { alias: o.alias, name }))}</p>` +
+    `</div>`
+  );
+}
+
+/** Where a sign-in lands instead of its own next (issue 666's offer). */
+let landingOverride = null;
+
 function mountSignedOut(root, sh, d) {
   const t = sh.t;
   const s = d.signin;
@@ -886,9 +935,13 @@ function mountSignedOut(root, sh, d) {
   }
   const claim = claimBlock(s, t);
   const gh = claim || githubBlock(s, t);
+  const offer = offerBlock(s, t, name);
+  if (offer) landingOverride = "/settings?q=web.url";
   root.innerHTML =
     head +
     `<div class="empty" id="den-signin">` +
+    offer +
+    atAddress(s, t, name) +
     (s.expired
       ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`
       : "") +
@@ -896,15 +949,25 @@ function mountSignedOut(root, sh, d) {
     // D17: with the claim first, "from another computer" may not be true.
     (claim
       ? ""
-      : `<p class="lead" id="den-signin-where">${withHost(t, "err.signin.where", { name, host })}</p>`) +
+      : `<p class="lead" id="den-signin-where">${
+          s.local
+            ? esc(t("err.signin.whereLocal", { name }))
+            : withHost(t, "err.signin.where", { name, host })
+        }</p>`) +
     (claim ? "" : gh) +
     `<h2 class="den-h" id="den-pair-title">${esc(t(gh ? "err.signin.approveOr" : "err.signin.approve"))}</h2>` +
     `<div id="den-pair" aria-live="polite"></div>` +
     `<p class="den-signin-why"><b>${esc(t("err.signin.whyTitle"))}</b> ${withHost(t, "err.signin.whyText", { name, host })}</p>` +
-    `<details class="den-other" id="den-signin-other"><summary>${withCmd(t("err.signin.other", { cmd: "\u0000" }), "web login --origin")}</summary>` +
-    `<p>${withHost(t, "err.signin.otherStep", { host })}</p>` +
-    cmdLine("den-signin-cmd", s.cmd, t) +
-    (s.ssh?.login
+    // 0.4.71: on this machine the one-time link comes from `web up`, last,
+    // as the fallback; the ways above come first.
+    (s.local && s.up
+      ? `<details class="den-other" id="den-signin-other"><summary>${withCmd(t("err.signin.otherLocal", { cmd: "\u0000" }), "web up")}</summary>` +
+        `<p>${esc(t("err.signin.otherStepLocal"))}</p>` +
+        cmdLine("den-signin-cmd", s.up, t)
+      : `<details class="den-other" id="den-signin-other"><summary>${withCmd(t("err.signin.other", { cmd: "\u0000" }), "web login --origin")}</summary>` +
+        `<p>${withHost(t, "err.signin.otherStep", { host })}</p>` +
+        cmdLine("den-signin-cmd", s.cmd, t)) +
+    (s.ssh?.login && !s.local
       ? `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
         cmdLine("den-signin-ssh", s.ssh.login, t)
       : "") +

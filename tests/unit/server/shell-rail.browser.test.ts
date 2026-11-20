@@ -22,6 +22,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SHELL = fs.readFileSync(
   path.join(process.cwd(), "src", "ui", "server", "public", "shell.js"),
@@ -32,7 +33,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -84,6 +85,21 @@ async function mount(
   await p.goto("http://den.test/x");
   await p.waitForSelector(".den-rail .den-ni");
   return { p, posts, warnings };
+}
+
+/**
+ * Waits until `posts` holds `n` saves (each is a request the page sends on
+ * its own time), or `ms` pass. A fixed short wait raced them on a busy
+ * runner (issue 424).
+ */
+async function postsAtLeast(
+  p: Page,
+  posts: unknown[],
+  n: number,
+  ms = 5000,
+): Promise<void> {
+  const until = Date.now() + ms;
+  while (posts.length < n && Date.now() < until) await p.waitForTimeout(25);
 }
 
 const rail = (p: Page) =>
@@ -324,7 +340,7 @@ describe("the rail", () => {
     expect(
       await p.$eval(".den-rail", (e) => e.getBoundingClientRect().width),
     ).toBeGreaterThanOrEqual(72);
-    await p.waitForTimeout(50);
+    await postsAtLeast(p, posts, 1);
     expect(posts).toContainEqual({ shell: { collapsed: true } });
     await p.context().close();
   });
@@ -343,9 +359,10 @@ describe("the rail", () => {
     await p.focus('[data-pin="shop"]');
     await p.keyboard.press("Delete");
     expect(await p.$$('[data-pin="shop"]')).toHaveLength(0);
-    await p.waitForTimeout(50);
+    await postsAtLeast(p, posts, 2);
+    // Issue 402: a pin is { item, project }; no project picked here: none.
     expect(posts).toEqual([
-      { shell: { pins: ["shop"] } },
+      { shell: { pins: [{ item: "shop", project: null }] } },
       { shell: { pins: [] } },
     ]);
     await p.context().close();
@@ -1081,12 +1098,20 @@ describe("Navigation prefs (R21)", () => {
     expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(0);
     await shell(p, "setNavPrefs", { hidden: [], order: ["environments"] });
     await shell(p, "setPins", ["shop", "billing/api"]);
-    await p.waitForTimeout(50);
+    await postsAtLeast(p, posts, 3);
     expect(posts).toEqual(
       expect.arrayContaining([
         { shell: { hidden: ["release"] } },
         { shell: { hidden: [], order: ["environments"] } },
-        { shell: { pins: ["shop", "billing/api"] } },
+        {
+          shell: {
+            // Issue 402: no project picked here, so pins of none.
+            pins: [
+              { item: "shop", project: null },
+              { item: "billing/api", project: null },
+            ],
+          },
+        },
       ]),
     );
     expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(1);

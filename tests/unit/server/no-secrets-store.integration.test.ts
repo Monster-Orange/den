@@ -375,9 +375,13 @@ describe.each([
     }
     const health = await get(port, "/api/health");
     expect(health.code).toBe(200);
-    // What Local Dev asks on load: no github_org, so no GitHub listing.
+    // The repo list runs gh as the person: with no sign-in it is refused,
+    // and nothing is listed.
     const repos = await get(port, "/api/github/repos");
-    expect([repos.code, JSON.parse(repos.out)]).toEqual([200, []]);
+    expect([repos.code, JSON.parse(repos.out).code]).toEqual([
+      401,
+      "signin_required",
+    ]);
     for (const page of ["/", "/services", "/local-dev", "/settings"]) {
       const r = await get(port, page);
       expect([page, r.code]).toEqual([page, 200]);

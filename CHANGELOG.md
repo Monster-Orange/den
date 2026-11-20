@@ -4,6 +4,622 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.77] - unreleased
+
+Fixes for issues reported by the person running Den, plus the 0.4.78 items that were ready.
+
+### Fixed
+
+- Hub comments reach an agent that asked its person a question. The person's comment is often the answer, and it now clears the question in the bell. Hub shows why a comment is waiting on a Den install. (issue 701)
+- Hub comments: one agent that hangs no longer holds other agents' comments. The bell says why a comment is waiting, for every reason, after `hub.delivery_held_bell_minutes` (default 5). A typed comment with no answer after `hub.delivery_answer_minutes` (default 30) is marked "delivered, no answer yet", and the agent's next comments go on. `doctor` lists held comments per agent, with their age and reason. (issue 701)
+- Hub comments: Den says when they aren't arriving. `doctor` has a "hub comments" row (the Hub it reads, stream open, last good read, last comment). After `hub.delivery_alert_minutes` (default 15; 0 turns it off) with no good read, the bell says "Hub comments aren't arriving" with the reason. A quiet Hub never raises it. (issue 702)
+- Hub comments: a stream with no bytes for `hub.delivery_stream_silence_seconds` (default 75) is reopened, and the list is read once. Hub's own end of a long stream reopens at once, and a list failure is no longer silent. (issue 703)
+- Agents: Resume never fails on a conversation that was never written. It starts the agent fresh under the same id, with its last handoff as the first prompt, and never returns a 502. A relaunch keeps the agent's folder. (issue 658)
+- Agents: Claude Code 2.1.329's folder-trust question is recognised. Den never answers it with Enter alone, which picked "No, exit". While an agent waits on it, its row, pane and bell say "Waiting: trust this folder?". After a No, they say "Didn't start: this folder isn't trusted. Resume and choose Yes." New setting: `agents.trust_check_seconds` (default 5). (issue 659)
+- Agents: Den types into a Claude Code agent only when it is at its input prompt, and into any agent only when no dialog shows on its screen. Text that waits shows why on the agent's row, and the bell says how long after `hub.delivery_held_note_seconds` (default 60). (issue 664)
+- Address: Den never sets its address to a name that only opens on its own machine (`localhost`, `*.localhost`, 127.x, ::1). An install that had one takes its edge alias, for you to confirm. Doctor fails such an address and gives the fix. Opening Den on its alias while the address is wrong no longer locks you out: sign in as the owner, then click "Make <alias> Den's address". Every address change is in the activity trail. With no address set yet, `web claim-link` gives a link for the browser on this machine. (issue 666)
+- Account entry: a person with no display name sees "@login" alone, in the rail and the account menu. (issue 656)
+- Agents: Den no longer writes `Write(path)` deny rules, so Claude Code stops warning that the rule never matches. `Edit(path)` still denies edits under the person's config folder. (issue 660)
+- Report: a repository whose visibility Den can't tell reads "Visibility not known", never "Public repository". (issue 415)
+- Connect never links the default project to a Hub project on its own. (issue 649)
+- Pop-ups use Den's font, never the browser's serif. Switch and Unlink sit in one row in Settings › Project setup. (issue 651)
+- Sign-in: on the Den machine, a sign-in page opened on a loopback address goes to Den's https address once it is proven, even when that address is itself a loopback name kept from before. Other devices are never sent there. (issue 601)
+
+### Added
+
+- Times: dates and times on the Edge card, gate chip, bell, Verify page and Settings show in the time zone you chose, in the page's language. (issue 668)
+- Pins belong to the project you pinned them in. The rail shows the picked project's pins, or all of them under All projects. (issue 402)
+- Agents: Den finds the agent CLI your terminal runs, with your interactive shell's PATH first. Other copies are listed under "Also found:". Den never runs a copy it didn't choose, or one macOS has quarantined. For a quarantined copy it offers Copy path, Open a terminal there, and Open Settings › Runtimes. New setting: `agents.shell_path_timeout_seconds` (default 10). (issues 456, 479)
+- Agents: a held write, `hub_link`, links a project to an existing Hub project after your Allow. (issue 647)
+- Reports: when you tick the box, a filed report's screenshot reaches whoever fixes it. It is kept locally (`reports.screenshot_keep_days`, default 30) and sent to Hub when Hub is connected. The issue names the tool that reads it, never a URL. (issue 403)
+- Den's new mark, with one head snippet in the kit for the tab icons. (issue 644)
+
+### UI kit (den-ui)
+
+- One dialog frame: `dialogHtml({ kind: "confirm" | "panel" })` works with no script, and `mountDialog()` adds focus, Esc and Report. Den's confirms and large dialogs use it. (issues 669, 670)
+- `topBarHtml({ rail: false })` and `shellHtml({ rail: false })` for pages with no rail. (issue 694)
+- `reportVisibility()`; a missing visibility reads as unknown. (issue 415)
+- Report: `shotShare(repo)`. Filing no longer downloads or copies the screenshot. (issue 403)
+- A held button shows three pulsing dots in place of its label until the answer, and the working pop-up opens after 3 s (`configureBusy({ dotsMs })`). `pending()` for fetch buttons, `watchForms()` for plain POST forms, and `data-instant="<why>"` to opt out. Every busy button in Den gets the dots. (issue 699)
+- den-ui 0.9.0 ships with this release.
+
+### Checks
+
+- Live checks for issues 701, 658, 659, 666 and 699. The 403 check reaches the bed from the host; the 479 check opens the Stopped fold. A check that fetches the browser's address from the host fails the shape check.
+- The live check for issue 631 skips, with its reason, when the kept terminal host already ran the installed version. A live check that answers a clause twice is refused.
+- The live check for issue 629 answers the dialog with a hook, and waits for it.
+
+### Migrations
+
+- None required. Every new setting has a default.
+
+## [0.4.76] - 2026-11-19
+
+### Fixed
+
+- Agents' terminals attach again when Den is opened on its named https address; in 0.4.75 every terminal pane there showed "Reconnecting…". A terminal attach refused for want of a sign-in is now recorded in the activity trail and the web log, even when the server runs quietly. (issue 653)
+- Terminal host restart after an update: every agent that was running is resumed or reported. An agent that relaunched from its handoff resumes in its new conversation. A resume that doesn't hold (checked `sessions.host_restart_check_seconds`, default 30, after) counts as failed. The bell and the agent's row say why, and Resume brings it back. (issue 631)
+- An agent's calls to Den are no longer refused as "from a process Den couldn't place" when Den's process lookup is slow, so its attention marks reach Den again. How long the lookups wait is now a Setting (Settings › Server: 5 s, then 20 s, as before). `doctor` warns about any agent whose attention marks didn't reach Den in the last day: how many, and the last reason. (issue 609)
+
+### Checks
+
+- Every browser test gets its browser from one helper, which uses the shared Playwright server when `DEN_PW_WS` is set and never starts a local browser then. A check fails any test that opens a browser by itself. (issue 463)
+- The live check for issue 629 leaves the bed's server agent as it found it, and checks that a Hub comment for an agent showing a dialog waits for the answer and is typed once.
+
+## [0.4.75] - 2026-11-19
+
+A security release. Upgrading is recommended.
+
+### Security
+
+- Den no longer types into an agent while the agent shows a dialog for its person (a permission dialog, or its folder-trust question). This covers the note after a restart, Hub comments, the tools note, a lead's question, messages from the page or Hub, and first instructions. The note after a restart is kept until the dialog is answered, and the bell says it is waiting. A message sent while such a dialog is open is refused with a clear reason (409 `dialog_open`). Versions 0.4.72 to 0.4.74 could, after a security self-update, answer the server agent's open permission prompt themselves; see the advisory. Until you upgrade: `server_agent.self_update: ask`, or `server_agent.security_update_skips_questions: false`. (issue 629)
+
+### Fixed
+
+- A held write waiting on your Allow counts in the bell, as one item under Needs you. It goes when the request is allowed, denied, expired or withdrawn. New: `POST /api/approvals/<id>/withdraw` lets the asker take back its own held write before anyone decides; the activity trail records it as withdrawn. (issue 142)
+
+### Changed
+
+- Every dev tag runs a dry run of the release: the release's own checks, tests and pack with the versions it will carry, and nothing published. (issue 615)
+
+### Checks
+
+- The live checks for the rail's Terminal (issue 448) and the Report form's visibility pill (issue 415) prove their en, es and ja words and the remaining cases. A new live check proves that Den types nothing into an agent while its dialog is open (issue 629).
+
+## [0.4.74] - 2026-11-19
+
+### Security
+
+- Sign-in: once Den's own https address works, the browser sign-in lives only there, and sign-in on any other name goes to it. Installs without a working https address keep signing in as before, and `den doctor` says how to set the address up. When the address is first proven, browsers signed in on this machine's own name (127.0.0.1 or localhost) are signed out and sign in once more at the address; scripts that keep a browser session should sign in there. If the address stops answering, sign-in where the browser is comes back once `web.address_check_drop_after` checks in a row fail (new, default 2; the check runs every `web.address_check_cache_seconds`, default 60, so about two minutes). A check that can't tell, a timeout, keeps the address for `web.address_unknown_keep_seconds` (new, default 300) from its last answer. Upgrading is recommended. (issue 601)
+- A security release no longer waits for a busy agent before installing; the restart still waits for turns to end. New setting `server_agent.security_update_skips_busy` (default on). (issue 603)
+
+### Fixed
+
+- An agent whose turn was cut by a terminal host restart no longer reads as mid-turn after it resumes, so updates and restarts don't wait on it. (issue 607)
+
+### Added
+
+- Live check `gate/601.mjs`.
+
+## [0.4.73] - 2026-11-19
+
+### Fixed
+
+- **Issue 455: no address is shown before it is checked.** `den doctor`'s Address row and the server's start line give the address that was checked, Den's own port, and say the edge address isn't checked yet until it answers as this Den. When something holds port 80 and never answers, `den web up` says "Not reachable yet" once instead of going quiet; until the edge address is proven, its "Visit:" line and the page it opens use the checked address. The Edge page's sub line follows the address card, shows "Not reachable yet" when nothing answers, and doctor names a container "Docker container" as the Edge page does.
+- The rail's account entry shows two lines again, the name and then @login (issue 406). A browser signed in with GitHub before names were kept shows the owner's name; a GitHub sign-in by the owner keeps GitHub's current display name. An owner linked before names were kept gets the name once, on start, from their public GitHub profile (no token). With no name anywhere, the entry stays one line, @login.
+- Den Hub's GitHub access (Settings and `den doctor`): when Hub couldn't check an org on GitHub, Den says so and gives Hub's reason with a Check again button, instead of the install prompt. The "Den Hub can't see" list keeps your own spelling and matches whatever the case. (issue 526)
+
+### Added
+
+- New setting: Settings › Server › "GitHub name check at start, in seconds" (`web.owner_name_timeout_seconds`, default 10, 1 to 600). It never delays the start.
+- den-ui: the panel fold toggle (`./panel-fold`), the folded panel's 40px edge strip with "Show panel" and an optional count, and a labelled switch (`./switch`), in en, es and ja. Den serves them at /kit/.
+- den-ui: a list's filter bar and bulk bar, a general button, a page action menu, and a settings on/off row, in en, es and ja. Den serves them at /kit/.
+- New setting: `sessions.host_restart_note` (default on): agents whose turn was cut by a terminal host restart get one line asking them to check their last step and carry on.
+
+### Changed
+
+- The terminal host restarts on an update only when its own code or the terminal module changed; otherwise it keeps running and adopts the new version (issue 597). The first update to this version still restarts it once. The bell names agents cut mid-turn, and the audit row keeps every resumed, failed and cut agent. `den doctor`'s Host row says whether a restart is needed.
+- Live check: gate 542's host-side requests go to the bed's own loopback address.
+- den-ui 0.8.0: the kit pieces above are published with this release.
+
+### Checks
+
+- Full bed run: 85 pass, 0 fail. Gate 327's four clauses timed out under machine load (LOAD, not FAIL) and were released on an exception: they passed on the five earlier beds, nothing in this release touches the bell's permission rows they check, and a security release was waiting behind this one. Its rerun stays queued; a failure there gets a same-day patch.
+
+## [0.4.72] - 2026-11-19
+
+### Security
+
+- **Sign-in on this machine too.** Every browser signs in once, on the computer Den runs on too, and stays signed in. `den web up` and `den web open` sign the browser in, including a tab that's already open. A browser that isn't signed in can look and change nothing: it shows "Sign in to make changes here." with a Sign in button. Scripts send `den web token --print` as a bearer. `GET /api/session` gives a CSRF token only to a signed-in session. Routes that run a command for their output now need a sign-in or the token: the service log routes, log search, the GitHub repo and branch lists, and My reports. Upgrading is recommended. Live check `gate/542.mjs`.
+
+### Changed
+
+- Self-update: a release marked as a security release (`"den": {"security": true}` in its package.json, read from npm) now updates while the server agent waits on your question or permission prompt. It still never goes past a pending Allow or restarts mid-turn, and the bell tells you the question is still open. Turn it off with `server_agent.security_update_skips_questions: false`. (issue 562)
+- Self-update: once an auto update is installed, Den checks again before it restarts. If the server agent started working, or an Allow is pending, the restart waits up to `server_agent.update_restart_wait_seconds` (default 900), keeping the update marked under way. It then restarts anyway and tells you in the bell. (issue 562)
+
+## [0.4.71] - 2026-11-19
+
+### Fixed
+
+- **Issue 563: after an update, Den restarts its terminal host when that host still runs the old version or holds a terminal module the update replaced.** Before this, new agents and terminals failed to start with `posix_spawnp failed`. Agents mid-turn are waited for, up to `sessions.host_restart_wait_seconds` (default 900). Running agents resume and open terminals end. The bell says so, in a sentence that fits what ran.
+- `doctor` has a Host row: ✗ with `<cli> sessions host --stop` when the terminal host isn't current. It finds the terminal module in the layout the current terminal library ships (its binary under `prebuilds/`).
+- Live check `gate/503.mjs` judges the terminal host's own PTY count; the machine's count is logged only. Live check `gate/563.mjs`.
+
+## [0.4.70] - 2026-11-18
+
+### Fixed
+
+- The live log view handles repo and service names the way log history and search do. Live check `gate/536.mjs`.
+- Stricter request method handling. Live check `gate/573.mjs`.
+- Settings: a saved row shows its saved value after one click and one save (issue 424).
+
+### Docs
+
+- Agent instructions say how to send feedback: the Report button first, a GitHub issue as the fallback.
+
+## [0.4.69] - 2026-11-18
+
+### Fixed
+
+- **Issue 503: the terminal host no longer keeps a PTY for each exited terminal.** Before, a long-running host could use up every PTY on the machine. The terminal library `@lydell/node-pty` is now 1.2.0-beta.18, pinned with integrity hashes. The stable 1.2.0 follows when it ships (issue 513).
+
+### Added
+
+- When the machine gives no PTY, Terminal and the start dialog say so, with the reason, and the terminal host logs it.
+- `den doctor` shows the terminal host's PTYs and the machine's. It fails above `sessions.pty_warn_above` (400) or at `sessions.pty_machine_warn_percent` (90%) of the machine's limit.
+- **New config key** `sessions.pty_close_seconds` (default 0, den.yml or user.yml): how long after a terminal exits its PTY closes. Settings rows for the terminal limits follow in issue 532.
+- **Live check:** `gate/503.mjs` opens terminals up to `sessions.max_concurrent` (at most 20) and closes them, and checks the PTY count returns to where it started and that one past the cap is refused with its reason, plus doctor's rows, the config keys and the pinned node-pty.
+
+## [0.4.68] - 2026-11-18
+
+### Fixed
+
+- **Issue 455: Den no longer gives an address that reaches another server.**
+  - When port 80 (the edge's http port) is held by something else, `den up`, `den open`, the sign-in link and `den doctor` use Den's own port. They name what holds port 80 and say so once.
+  - Every address is checked first with an identity challenge that only this Den can answer.
+  - The port check now covers IPv6 and the wildcard addresses, as Docker publishes them.
+  - `edge up` checks on every run.
+  - When nothing answers at the address Den gives, `den web up`, `den web open` and the sign-in link say "Not reachable yet: nothing answers at <address>." next to it, and name the next step when Den knows the edge is down.
+
+### Added
+
+- **The Edge page shows a status card when port 80 is held.** It names the owner and offers two choices: "Add Den to that proxy" (a route for nginx, Caddy or Traefik, with Copy) and "Free port 80". It also has Check again, and Take over for an old Den edge.
+- **Every page shows a one-time banner** with the working address.
+- **`den edge route --for nginx|caddy|traefik`** prints the route. (`--for=<proxy>` works too; in 0.4.68-dev.1 and dev.2 the command refused `--for` as an unknown flag.)
+- **Three new Settings** (Settings › Server, user.yml `web.`): `address_check_timeout_seconds` (default 5), `address_check_retries` (default 2), `address_check_cache_seconds` (default 60).
+
+### Changed
+
+- **Live checks: `scripts/gate-shape.mjs` refuses an `expect` that declares more than one parameter.** The harness calls `expect(result)` alone, so a second parameter is always undefined there.
+
+## [0.4.67] - 2026-11-18
+
+den-ui 0.7.6 ships with this release.
+
+### Added
+
+- den-ui 0.7.6 (#467): the save-state line for autosaving editors
+  (`./savestate`, `./savestate.css`, `DenUI.saveState`). It saves 800 ms
+  after the last change and at once on blur or when the page is hidden,
+  shows "Saving…" only past 400 ms, and on failure says "Not saved.
+  Retrying…" with Copy text and retries at 2, 4 and 8 s, then every
+  30 s, and when the browser is back online. Only the error and its
+  recovery are announced. Words in en, es and ja.
+
+### Fixed
+
+- Bell: a question an agent ends its turn on now always counts on the
+  badge, even if its page was open when the turn ended. A finished turn
+  always shows under Updates. Opening the agent clears it there (issue
+  142, #468).
+- Bell: just opening an agent's pane no longer counts as answering its
+  question (#468).
+- The rail's Terminal opens the shell used most recently. With All
+  projects selected, that is across every project, not the first one
+  listed; with one project, that project's (issue 448, #484).
+- "Used" means a person typed in it, from any browser or machine: Den now
+  remembers when each shell last had input, so a reload or another
+  computer gets the same answer (#484).
+- The rail's Terminal never opens a shell that has exited, even one that
+  ended while the page was open. With no running shell, it starts a new
+  one (#484).
+
+## [0.4.66] - 2026-11-18
+
+den-ui 0.7.5 ships with this release (the shared Markdown editor). It
+did not publish on its own: the kit's publish rides Den's release (issue
+464 decouples them).
+
+### Fixed
+
+- Pinned services follow the project filter (issue 402). With the view
+  filtered to one project, the rail's Pinned list shows only that
+  project's services; All active shows every pin again. Filtering never
+  changes or deletes a pin. (#461)
+
+### Added
+
+- den-ui 0.7.5: a shared Markdown editor (`./markdown-editor`,
+  `./markdown-editor.css`). CodeMirror 6 on the Markdown text, the live
+  preview drawn in place, IME-safe Enter, loaded lazily behind a plain
+  textarea; toolbar words in en, es and ja. Den's own pages don't load
+  it.
+
+## [0.4.65] - 2026-11-18
+
+0.4.65-dev.1 was skipped: its commit failed CI and was never handed to a
+gate.
+
+The first 0.4.65 commit (115c3404) was not published: release.yml failed on
+a slow test (issue 424). 0.4.65 ships from 0.4.65-dev.5, which adds only that
+test's fix.
+
+### Added
+
+- Agents: a runtime catalog entry can carry its sign-in data (`signIn`:
+  the variable its CLI signs in from, the command that makes the
+  credential, how long it lasts, and how the CLI words a usage limit).
+  Claude Code moves onto it with no change. A vendor added in
+  `agents.runtime_catalog` (user.yml or the distribution's config) with
+  `signIn` gets its own token under the always-on service, from
+  `secrets.refs.agent_signin_token_<id>`, in its own agents' environment
+  only. An entry with none is allowed; `doctor` says its agents cannot
+  sign in after logout and will stop. Codex CLI, Gemini CLI and Grok
+  Build ship with none (issue 338). (#347)
+- An agent's write on something you watch asks you first, whatever its
+  kind (issue 160). So does one on a repo or service you pinned. Set
+  what you watch in Settings, for every project or for one. (#348)
+- Secrets, deletes of data and money always ask you, by name. The
+  approval says which, for example "critical: deletes". (#348)
+- A project can set its own critical list: those kinds of write always
+  ask there. (#348)
+- Settings has rows for the approval policy, for every project and for
+  one: what runs without asking, what you watch, what is critical. In
+  English, Spanish and Japanese. The defaults stay permissive. (#348)
+- Only you change the approval policy without an Allow. An agent asks
+  with `approval_policy`, and it always waits for you. (#348)
+- Agents can close a stale or superseded pull request after a Hub note
+  (`pr_close`), with a comment saying why. It runs at once unless you
+  watch or pinned the repo. (#348)
+- A project's agents can use extra HTTP MCP servers. List them in the
+  project's `agents.mcp_servers` (workspaces.yml) as `{ name, url,
+  bearer }`. The bearer is optional and names a `secrets.refs` entry,
+  never a value. Den adds each server to the MCP config it writes for
+  that project's agents only. Like Hub's entry, a server with a bearer
+  gets a headers helper, `<cli> mcp headers <name>`, which reads the
+  bearer from the install's store at each connect. The helper takes the
+  project from the agent's own token, so another project's agent can't
+  read it. The bearer is never in the MCP file, the agent's env or a log
+  (issue 335). (#350)
+- Settings › Project lists a project's extra MCP servers by name and
+  address, and doctor has a line for each (a bad entry, or a bearer
+  whose `secrets.refs` entry isn't set, warns). An agent adds one with
+  the held write `project_mcp_add`, which always waits for the person's
+  own Allow (issue 335). (#350)
+- A web app on this computer can read one project agent's state from its
+  own server, with a server key: `GET
+  /api/embed/p/<project>/agents/<id>/state` answers running or not, and
+  stopped, busy, idle or waiting (with what it waits on). Only the key's
+  hash is kept; a revoked key gets 401 at once. An embed key reaches
+  only its agent's embed routes: anywhere else it is refused (issue
+  334). (#351)
+- A web app's server can relay its person's message to that agent with
+  the same key: `POST /api/embed/say` holds it in the delivery loop
+  Hub's inbox uses. It is typed after the agent's turn, at its next
+  start when it's stopped, and held while it waits on its person; never
+  mid-turn. The audit keeps its length, never its text (issue 334).
+  (#351)
+- Settings › Embedding › App keys: pick an agent and a listed web app,
+  press Make key, and allow it in Den's dialog. The key is shown once,
+  then only its hash is kept. The list shows each key's agent, web app
+  and last use; Revoke asks the same way. An agent can't ask for a key.
+  In English, Spanish and Japanese. docs/embedding.md says how a web
+  app's backend relays its person's messages (issue 334). (#351)
+- An app key's state reads are in the activity trail: the key's id, the
+  route, when, and whether it was refused, as one line per key and route
+  per window with the count of reads, so a polling web app doesn't flood
+  it. The window is Settings › Embedding › App key reads in one activity
+  line (`embed.app_key_audit_window_seconds`, 60 by default) (issue
+  334). (#351)
+- The bell opens on "Needs you": an agent waiting on you, a pick or a
+  mention, with no Mark read (a row stays while the agent waits). Below
+  it, "Earlier" holds Updates and Older, as before. den-ui draws both
+  headings in English, Spanish and Japanese; Den passes only the rows
+  (`bellPanelHtml({ sections })`, issue 101). (#364)
+- An agent's question goes to its project's lead (a running agent of
+  role lead or orchestrator) instead of to you; the lead asks you only
+  what needs you. `ask_human` tells the agent so, and the bell lists it
+  under Earlier. Permission prompts, and projects with no lead, still
+  come to you (issue 101). (#364)
+- When an agent needs you (a permission prompt, a question, or a write
+  held for your Allow), an open Den tab in the background shows a
+  desktop notification, in the bell's words: who, and what it waits on,
+  never the details. A click opens the agent. Settings › Notifications ›
+  Desktop alerts asks the browser once; quiet hours (a start and an end,
+  in your time zone) hold alerts back. The bell still has everything
+  (issue 172). (#366)
+- A phone, or a computer with every Den tab closed, gets the same alerts
+  by Web Push: open Den there and turn on Settings › Notifications ›
+  Alerts on this device by push. On an iPhone, add Den to the Home
+  Screen first. The push is encrypted for the device and signed with
+  this install's own key, made on first use in its state folder (issue
+  172). (#366)
+- An agent's mode can be set in the page (issue 252). A running agent's
+  ⋯ has Mode: the four modes and Follow project, with the one in effect
+  checked. In Settings › Project › Agents' mode, a click anywhere on an
+  agent's row opens the same choices. The working pop-up shows while it
+  applies, then the result: Den restarts the agent at its next idle, on
+  the same conversation, in that mode. No CLI needed. (#368)
+- Each restart Den makes on its own to apply a mode is an audit row, by
+  Den itself: "restarted lead in north at idle to take mode edits, from
+  its own setting, by Den itself". (#368)
+- Settings › Project › Hub project can create the Hub project to link
+  to. The link picker's first option is "Create a Hub project named
+  <this project's name>", and the name can be changed. Den asks Hub with
+  its project plan path, which an owner decides in Hub. Den proposes the
+  short name from the name and picks another when Hub says one is taken,
+  before anyone is asked. Den keeps the ask next to the project and
+  links it, by the new Hub project's hidden id, once an owner allows it.
+  One Hub project per project: a linked project, or one with an ask
+  waiting, isn't asked again (issue 271). (#370)
+- While Hub holds the ask, an owner sees Hub's Allow in the row; anyone
+  else is told an owner of the company must allow it. Den links the
+  project by itself once it is allowed: when Settings reads it again, on
+  the project sync's beat, and when Hub pushes the decision. A declined
+  ask is said, and Create is offered again. English, Spanish, Japanese
+  (issue 271). (#370)
+- Den's own agent can ask the same with the held write
+  `hub_project_create` (routine under the approval policy: Hub's owner
+  still decides). Hub's push about a held change it asked for now has
+  its own words for the agent (issue 271). (#370)
+- Agents' sign-in: each vendor (a runtime with sign-in data) has a list
+  of accounts for Keep agents running after logout. Each account has a
+  name ("Claude Code account A", "B" and so on unless you name it), its
+  own sign-in token, and an order you can change. Each token is its own
+  item in your install's secrets store and is never shown again once
+  set. Settings › Agents lists them per vendor, with Add {vendor}
+  account, Set sign-in token (the same hidden field as before) and Move
+  up / Move down, in English, Spanish and Japanese. On the command line:
+  `agents accounts list | add [--name] | set-token <n> | order <n>... |
+  remove <n> [--yes]`, with `--runtime <id>` (default Claude Code).
+  Issue 339. (#374)
+- The token you have today becomes Claude Code account A, so an install
+  with one account works exactly as before. Until each agent picks its
+  own account (issue 340), agents sign in with the first account in your
+  order. No email appears in an item name, a log or the page, and a name
+  with "@" is refused. (#374)
+- Under the always-on service, each agent's start picks the vendor
+  account whose token it gets: the one a sign-in source maps to the
+  agent's folder (if Den has its token), else the one the source reports
+  active, else the first in your order that is not capped. The token
+  goes into that agent's environment only. With no source and no cap,
+  the first account in your order is used, as before. (#379)
+- The agent's pane shows the account it runs on ("on Claude account B"),
+  by its label, never an email. `agents list --json` carries it too, and
+  the agent's start, resume and restart audit lines end "; on <label>".
+  (#379)
+- When no account has a token, the agent starts as today, with the same
+  warning, and `doctor` says why for each account ("not set", "capped",
+  or the store's reason) and how to set one (`agents accounts set-token
+  <id>`). With more than one account, doctor's sign-in row follows the
+  account agents start on, not account one alone. (#379)
+- An agent can ask to remove one of a project's extra MCP servers
+  (project_mcp_remove), or to change its url or bearer reference
+  (project_mcp_update; the bearer is a secrets.refs name, or no_bearer).
+  Both are critical held writes: only the person's own Allow runs them.
+  Agents get the change at their next start or resume. (#352) (#381)
+- Settings › Project › Agents' extra MCP servers: each row has Change
+  (new address, bearer reference, or No bearer) and Remove (confirm
+  first). Only a person can use these; an agent's token is refused.
+  (#352) (#381)
+- Doctor has a line for `edge.image` (#331). Traefik v3 or later is OK.
+  An older Traefik is a warning that names what's missing: the access
+  log has no request ids, since OTLP tracing needs v3. A tag Den can't
+  read a version from (`latest`, a bare digest) is a warning too: Den
+  leaves out the flags only some versions take. Each warning says to set
+  `edge.image` to `traefik:v3.7.17`, Den's default. (#388)
+- After Den updates itself, the line it types to its own agent now says
+  what the new Den's doctor found (each failing or warning check), or
+  that no results were kept. It used to send the agent to
+  release_status, but the agent's Den tools still run the code they
+  started on, and before 0.4.64 that code had no `denUpdate` (#384).
+  (#389)
+- Den's tools say when they're out of date. An agent keeps its tools
+  from when it started, and an update doesn't restart them. Once Den is
+  updated on disk, each tool answer adds one line: which version the
+  tools run, which version is installed, and how to load the new tools.
+  An agent asks the person to restart it from Den, which keeps the
+  conversation. Any other client reconnects the MCP server (#384).
+  (#389)
+- `edge up` says the same line, and before a recreate it names why: the
+  image (a tag, a digest, or a new image behind the same tag), a command
+  flag, a port, a mount or the networks. (#385) (#400)
+- The Settings guard now also catches a command named inline (a vendor
+  sign-in command, a backtick span, or the CLI after "then", make, use
+  and the like) in en, es and ja. A bare CLI-equivalent note at the end
+  of a description is still allowed. (issue 399) (#404)
+- Contributing: pull requests merge without a re-run when only main
+  moved under them, and each closed issue clause ships a live check in
+  `gate/`. (#412)
+- A pull request runs on both Nodes (22 and 24), as main does: the
+  checks and the install smoke, then only the tests its change affects
+  (the tests that import a changed file, the browser specs of a changed
+  page, and a small smoke set), with the reason for each test in the job
+  summary. A change to a shared file (the shell, the kit, the request
+  guard, package.json, jest or test setup, CI) still runs every test,
+  four ways in parallel. Quarantined tests (issue 397) run apart and
+  never block. (#413)
+- Pushes to main and releases still run every test on both Nodes. (#413)
+- scripts/ci-replay.mjs replays 30 days of red CI runs and fails if the
+  pull-request subset would have missed a real failure, per Node: 91
+  real failures, all 91 caught. (#413)
+
+### Changed
+
+- Bringing in a conversation as an agent (`agent_import`) now asks you
+  first. It is a held write, on with the other held writes. Listing the
+  conversations still needs `mcp.actions`. (#348)
+- Settings › Notifications has two new rows for push alerts: **Push
+  wait** (how long Den waits for a push service, default 30 s) and
+  **Push kept for** (how long a push service keeps an alert for a device
+  that is off, default 1 day). Before, these could only be set from the
+  command line. (#367) (#382)
+- Push alerts give the push services this install's https address as the
+  contact. Without an https address, `doctor` now warns that push alerts
+  may not reach phones, and says how to set one. (#367) (#382)
+- Terminal in the rail (and a project's Terminal here) opens the shell
+  already running in that project, in front and ready to type, instead
+  of starting a new one each click. It starts a shell only when none is
+  running there (issue 448). (#450)
+- With several shells running in a project, Terminal opens the one you
+  used last in this browser (else the newest) (issue 448). (#450)
+- New terminal, in a shell's bar, starts another shell in its project in
+  one click (issue 448). (#450)
+
+### Fixed
+
+- Setting one agent's own mode (`agents permission <id> <mode>` or the
+  page) while it ran never reached it: the record lost the mode its
+  session was started in, so Den's mode check saw no change. Den now
+  restarts it at its next idle. (#368)
+- `agents permission <id>` says the agent restarts at its next idle to
+  take the mode, not "from its next start". (#368)
+- A "needs your permission" bell row from before a server restart no
+  longer stays for good (#369). At start, and on the attention check
+  after it, Den looks at each kept waiting row's agent: stopped, removed
+  or exited, or no permission dialog on its screen, and the row goes;
+  still showing the dialog, the row stays and is a live wait again. A
+  stopped agent's question goes too; an agent that didn't come back
+  after a restart keeps its row. (#371)
+- A push to main right after a release no longer publishes that version
+  again. npm takes 20-60 minutes to show a new version, so the release
+  check used to read "not on npm" for any later commit still carrying
+  it. Now only the commit that set the version releases: its parent has
+  another version, and no tag v<version> names another commit. (#373)
+- Edge, Environments, Tests, Release and Logs no longer show English
+  values in Spanish and Japanese (issue 171). The container's state
+  ("running"), the TLS strategy ("none"), a down service's reason
+  ("fetch failed", "connection refused", a timeout), a GitHub deploy
+  state ("failure"), a perf report's status and metric labels, and why a
+  service has no log history now read in the page's language. The same
+  health reasons read in the page's language on Services, Graph and the
+  top bar's status drawer. Names, ports, paths and versions stay as they
+  are. (#375)
+- den#143: `web up` no longer calls a running server "not ready" on a
+  busy machine. Each readiness check waits `web.ready_probe_seconds`
+  (default 10, was a fixed 1.5 s), and `web up` waits
+  `web.start_wait_seconds` for the server to start (default 120, was a
+  fixed 45 s). Both are rows in Settings › Server and `config` keys.
+  (#376)
+- Accessibility test covers every page the rail leads to (issue 297). It
+  reads the list from the running shell (new `denShell.pages()`: the nav
+  registry, hidden and conditional pages too, then Settings), in light
+  and dark, desktop and phone. A registry page without a clean axe run
+  fails, and a page added to the registry is checked with no test
+  change. (#377)
+- Settings: category headings are h2 under the page's h1 (they skipped
+  to h3); each Runtimes row is a list item; the Personas list is a
+  labelled group (category headings sit among its rows); the overrides
+  table's Actions header has visually hidden text. (#377)
+- Graph: a card is a group, not a button, since it holds its own
+  buttons. Enter or Space on it still opens details. (#377)
+- Local Dev and Releases: the agents table and the releases table
+  scroll, so each is now a labelled region the keyboard can reach.
+  (#377)
+- Terminal tabs: the tab strip holds only tabs. × is for the pointer;
+  Delete on a tab closes it. (#377)
+- An allowed project_mcp_add now runs. Before, the Allow checked the
+  stored request again in a form the add check could not read, so it
+  failed. (#352) (#381)
+- Config and state files are now written whole (#380): a temp file
+  beside the file, flushed, then renamed over it. A reader (Den's
+  server, a CLI, an agent's start, a test) could get half of
+  config/local/user.yml while it was written; it now sees the old file
+  or the new one. One shared helper (src/shared/atomic-write.ts)
+  replaces the gate store's private one, and 20 files' writers of config
+  and state (user.yml, the services catalog, service secrets, stack
+  env/override/routes, edge files, sign-in token state, report drafts,
+  the web secret, gate slots and more) go through it. The web secret and
+  gate slots are created whole and only once. (#386)
+- Settings › Browser sign-in: when this browser isn't signed in, the row
+  says "Not signed in" and has a Sign in button. It opens Den's own
+  sign-in page (Sign in with GitHub, or a code another device approves)
+  and comes back to Settings after. The page no longer tells you to run
+  `web login`; that stays in the description as the command-line
+  equivalent. (issue 393) (#396)
+- Settings › Access, with no edge hostname, no longer says "then `edge
+  up`". It has a **Start the edge** button (**Apply** when the edge
+  runs) that runs what `edge up` runs on the server, with Den's working
+  pop-up until it answers, then says what happened: "Edge started",
+  "Edge up to date, nothing restarted", or "Edge recreated because
+  <field>: <old> → <new>; it was unreachable for about N s". en, es, ja.
+  (#395) (#400)
+- Settings › Keep agents running after logout no longer sends you to two
+  terminal commands to make the agents' sign-in token. With no sign-in
+  token, or an old one, the row says the agents' CLI makes it when you
+  sign in to it. It links the vendor's sign-in docs, from the runtime
+  catalog's new signIn.docs. "Sign-in token" in "paste it into Sign-in
+  token below" goes to that field and focuses it. In en, es and ja.
+  (issue 399) (#404)
+- Report: Review says who can see a report. A private or internal
+  destination no longer shows "Public repository" or the "visible to
+  everyone" warning (issue 415). Den's own destinations still read as
+  public: Den doesn't know their visibility without asking GitHub.
+  den-ui (kit) (#416)
+- Report: info().repos entries may carry `visibility` ("public" |
+  "private" | "internal"; missing or unknown = public) and `audience`.
+  Private and internal get their own pill, the audience, and a quiet
+  "Only people with access to this repository can see it." line instead
+  of the public warning; both follow the select. New words
+  kit.report.priv, .int, .privN, .privW in en/es/ja (issue 415). (#416)
+- Gate slots: a slot lock left by a process that was killed is taken
+  back at once, instead of blocking the next gate run for up to 30 s
+  (issue 275). (#437)
+- A message that pops up at the bottom no longer covers a terminal's
+  "To" line that appears after it (issue 448). (#450)
+
+### Tests and CI
+
+- CI: a newer push to a pull request cancels its older run. (#365)
+- CI: a self-hosted runner for this repo's own pushes and pull requests,
+  never for forks. (#372)
+- Tests: a flake quarantine. A quarantined test runs in its own step
+  that never blocks; entries need evidence and expire. (#401)
+- Tests: the kit CSP browser suite blocks pull requests again (its flake
+  was fixed). (#408)
+- Tests: live checks for 21 merged issues run on each dev tag's bed.
+  (#417)
+- Tests: the bell's whole-row open and its Updates items are tested in
+  both browsers and checked live on each dev tag. (#419)
+- Tests: the agent-order test waits for the new order to be saved (it
+  could read the old one on a busy runner). (#423)
+- CI: two day jobs on the self-hosted runners, and a repeat workflow for
+  night runs. (#426)
+- Tests: the bell-row test no longer reads a row's position mid-redraw.
+  (#427)
+- CI: the Playwright system-package install has a time limit and one
+  retry, and browsers are cached, so a slow mirror can't hold a job for
+  20 minutes. (#428)
+- CI: the unit suite runs in six shards with a 30-minute limit, so a
+  slow shard is no longer cut off. (#429)
+- Tests: the bell's "⊘ asks once" test seeds the agent its question
+  belongs to (since issue 369, the server withdraws a question from an
+  agent with no record), and waits for Undo's save in WebKit. The bell
+  test leaves quarantine. (#432)
+- Tests: the MODE-5 Settings test saves each number row once, as a
+  person does, and waits for the category's redraw. (#432)
+- CI: the Playwright cache key names its apt part, so every branch saves
+  apt's packages once and stops fetching them from the mirror. (#447)
+- Tests: the rail's tests wait for its settings saves instead of a fixed
+  50 ms. (#449)
+- Tests: the SIGKILL gate test waits until the slot names its run before
+  killing the wrapper. (#451)
+- Tests: the agent-order test waits for each move's save and its own
+  announcement, not a fixed time (issue 452). (#453)
+- Tests: the Report form's es/ja check is one test per language and width,
+  and every page in that file sets its own language, so a slow CI runner no
+  longer times it out or leaves the next test in Japanese (issue 424). (#470)
+
 ## [0.4.64] - 2026-11-17
 
 den-ui 0.7.4 ships with this release (the rail's plain counts and greyed-entry reasons). den-ui 0.7.2 and 0.7.3 were never published to npm: 0.7.4 supersedes both.

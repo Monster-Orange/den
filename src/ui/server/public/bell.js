@@ -71,22 +71,14 @@ const groupName = (g) =>
   "";
 
 /**
- * Issue 327: a `since` value (an ISO time) reads in the viewer's own time
- * zone and language; anything else as given.
+ * Issue 327: a `since` value (an ISO time) reads in the person's chosen
+ * zone and the page's language, the kit's way (issue 668); anything else
+ * as given.
  */
 function localVars(vars) {
   const since = vars?.since;
   if (typeof since !== "string" || Number.isNaN(Date.parse(since))) return vars;
-  const lang =
-    (typeof document !== "undefined" && document.documentElement?.lang) ||
-    undefined;
-  const when = new Date(since).toLocaleString(lang, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return { ...vars, since: when };
+  return { ...vars, since: formatTime(since) };
 }
 
 /**

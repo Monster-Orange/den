@@ -29,6 +29,8 @@ import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -177,7 +179,7 @@ beforeAll(async () => {
     )[0]?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -199,6 +201,11 @@ async function open(
   before?: (ctx: BrowserContext) => Promise<void>,
 ): Promise<Page> {
   const ctx = await browser!.newContext({ viewport });
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await before?.(ctx);
   await ctx.addInitScript((v) => {
     try {
@@ -1064,6 +1071,11 @@ describe("0.4.17: the Tests module picker", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1440, height: 900 },
     });
+    await signIn(
+      ctx,
+      path.join(tmp, "home", ".acme"),
+      `http://localhost:${port}`,
+    );
     await ctx.addInitScript((v) => {
       try {
         localStorage.setItem("den-changelog-seen", v);

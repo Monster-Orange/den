@@ -25,6 +25,8 @@ import { startDenServer } from "../../child-servers.js";
 import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -38,7 +40,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch({
+    browser = await launchBrowser(chromium, {
       args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
     });
   } catch (err) {
@@ -113,17 +115,12 @@ async function open(): Promise<Page> {
 
 /** What an MCP tool with no agent token does: ask the server to hold a write. */
 async function ask(action: string, args: unknown): Promise<string> {
-  const s = (await (
-    await fetch(`${local()}/api/session`, {
-      headers: { "sec-fetch-site": "same-origin" },
-    })
-  ).json()) as { csrf?: string };
+  // The CLI's credential, as the MCP server sends it (mcp/api.ts).
   const r = await fetch(`${local()}/api/approvals`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      origin: local(),
-      "x-den-csrf": String(s.csrf ?? ""),
+      ...denAuth(stateDir),
     },
     body: JSON.stringify({ action, args }),
   });
@@ -289,6 +286,59 @@ describe("D67: approve from another computer, in browsers only", () => {
     expect(await a.isVisible("#den-pair-deny")).toBe(false);
     expect(await sessions()).toBe(before);
     await a.click("#den-pair-later");
+    await a.context().close();
+    await b.context().close();
+  }, 120_000);
+
+  it("0.4.71: a browser on this machine with no session: one line and Sign in; its code's Allow says it is this computer, via localhost", async () => {
+    if (skip()) return;
+    const a = await open();
+    await a.goto(claimLink(local(), mintClaimCode(readWebSecret(stateDir)!)));
+    await a.waitForFunction(
+      () => localStorage.getItem("den.approveKey")?.length === 43,
+    );
+    await a.goto(`${local()}/settings`);
+    // B: this machine, never signed in. It reads, and says so in one line.
+    const b = await open();
+    expect((await b.goto(`${local()}/settings`))?.status()).toBe(200);
+    const line = b.locator('[data-banner="signin"]');
+    await line.waitFor({ timeout: 15_000 });
+    expect(await line.textContent()).toContain("Sign in to make changes here.");
+    await line.getByRole("button", { name: "Sign in" }).click();
+    await b.waitForURL(/\/signin\?next=/);
+    // Worded for this machine; the code first, `web up` last, folded.
+    expect(await b.textContent("#den-signin-where")).toContain(
+      "runs on this computer",
+    );
+    expect(await b.isVisible("#den-signin-cmd")).toBe(false);
+    const code = await codeOn(b);
+    await a.waitForSelector("#den-pair-dlg[open]", { timeout: 15_000 });
+    expect((await a.textContent("#den-pair-dlg-code"))?.trim()).toBe(code);
+    expect(await a.textContent("#den-pair-what")).toContain(
+      "on this computer, via localhost",
+    );
+    expect(await a.textContent("#den-pair-what")).not.toContain("127.0.0.1");
+    await allowFrom(a, code);
+    // B lands back where it was, signed in: no line, and a write works.
+    await b.waitForURL(`${local()}/settings`, { timeout: 15_000 });
+    await b.waitForFunction(
+      () => !document.querySelector('[data-banner="signin"]'),
+    );
+    const wrote = await b.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: {
+            api(m: string, u: string, b: unknown): Promise<unknown>;
+          };
+        }
+      ).denShell
+        .api("POST", "/api/notifications/read", { all: true })
+        .then(
+          () => "ok",
+          (e: { status?: number }) => String(e?.status),
+        ),
+    );
+    expect(wrote).toBe("ok");
     await a.context().close();
     await b.context().close();
   }, 120_000);

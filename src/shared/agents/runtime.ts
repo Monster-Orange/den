@@ -18,9 +18,10 @@ import {
   type StrategyEntry,
 } from "../strategies/registry.js";
 import type { CatalogEntry } from "./catalog.js";
+import type { HookCall } from "./guardrails/hook-call.js";
 import type { AgentRecord } from "./records.js";
 import type { Persona } from "./personas.js";
-import type { BinSource, RuntimeFind } from "./runtime-search.js";
+import type { BinSource, RuntimeCopy, RuntimeFind } from "./runtime-search.js";
 import type { PermissionIntent } from "./permissions.js";
 import type { RuntimeConversation } from "./conversations.js";
 
@@ -40,6 +41,10 @@ export interface RuntimeDetect {
   source?: BinSource;
   /** The directories searched, in order (names only, never values). */
   searched?: string[];
+  /** Issue 456: the found copy carries com.apple.quarantine (never run). */
+  quarantined?: true;
+  /** Issue 456: the other copies found, never run. */
+  others?: RuntimeCopy[];
 }
 
 export interface DetectOptions {
@@ -121,7 +126,11 @@ export interface LaunchInput {
    * hooks (Notification: waiting; Stop: finished). No token: the hook
    * sends the agent's own, from its env.
    */
-  attention?: { base: string };
+  attention?: {
+    base: string;
+    /** Issue 609: how its hooks call Den (user.yml agent_hooks.*). */
+    call?: HookCall;
+  };
   /**
    * The caller's environment, for finding the runtime's CLI on PATH. The
    * agent does not get it: it starts from an allowlist (sessions/env.ts),
@@ -310,12 +319,14 @@ export interface Runtime {
   /**
    * AG-18: whether conversation `token` is mid-turn (den-claude: its
    * transcript's tail). None, or null: the runtime can't tell. Never
-   * throws. `readMaxBytes`: how far back it may read (D39).
+   * throws. `readMaxBytes`: how far back it may read (D39). `since`
+   * (issue 607): when the agent's live session started (ms); a turn last
+   * written before it was cut with the session that ran it, and is idle.
    */
   turnBusy?(
     token: string,
     env?: NodeJS.ProcessEnv,
-    opts?: { readMaxBytes?: number },
+    opts?: { readMaxBytes?: number; since?: number },
   ): boolean | null;
   /**
    * 0.4.48: the command line of the shell the runtime runs a command in.
@@ -350,6 +361,15 @@ export interface Runtime {
    * stays only while this is on screen. None: Den can't see its dialogs.
    */
   permissionPrompt?: import("./trust-prompt.js").ScreenPrompt;
+  /**
+   * Issue 664: the runtime's input prompt, as its screen ends with it
+   * while it waits for typed text (its prompt line, then only its footer).
+   * Den types into an agent only when this shows (typingCheck). None
+   * (unproven, no capture of what it draws): today's rule, typed when no
+   * dialog shows on its screen, no waiting mark is set and its turn is
+   * idle (or its output quiet).
+   */
+  inputPrompt?: import("./trust-prompt.js").InputPrompt;
   /**
    * The name the runtime gives the agent's conversation (AG-4b: Claude
    * Code's `/rename`), or null when it has none or can't say. Optional:

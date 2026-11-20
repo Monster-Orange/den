@@ -5,9 +5,12 @@
  *
  * - waiting (a permission prompt, or waiting for input): the agent is
  *   marked waiting (every list shows it) and a "waiting" notification is
- *   kept, unless its person is looking at it now (NT-2).
- * - finished (its turn ended): a "finished" notification, unless looked
- *   at; any waiting mark goes.
+ *   kept; it alerts unless its person is looking at it now (NT-2). Issue
+ *   142: kept even then, so a page closed within NT-2's window loses
+ *   nothing.
+ * - finished (its turn ended): a "finished" notification (the page's
+ *   next "looking" takes it out if it still shows the agent); any
+ *   waiting mark goes. A turn ending on a question is "asked".
  * - The mark clears when the agent goes on. For a runtime with hooks
  *   (Claude Code), its hooks say so: a tool ran, a new prompt, its turn
  *   ended ("resumed" / "finished"); its output is ignored, as it redraws
@@ -71,6 +74,22 @@ export function typingHeld(
   for (const actor of approvalActors)
     if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
   return out;
+}
+
+/**
+ * Issue 701: the agents Hub deliveries (and relayed messages) wait for:
+ * as typingHeld, but an ask_human question doesn't hold them. The agent
+ * ended its turn to wait for its person's answer, and the person's
+ * comment is that answer. A permission dialog, a held Allow or a pause
+ * still holds them; so does a dialog on screen (agentInputState).
+ */
+export function deliveryHeld(
+  why: ReadonlyMap<string, string>,
+  approvalActors: Iterable<string>,
+  paused: Iterable<string> = [],
+): Set<string> {
+  const asked = new Map([...why].filter(([, w]) => w !== "asked"));
+  return typingHeld(asked, approvalActors, paused);
 }
 
 export interface AttentionDeps {
@@ -211,7 +230,7 @@ export class Attention {
           idle?: boolean;
           hooked?: boolean;
         }
-      | { event: "finished"; text?: string }
+      | { event: "finished"; text?: string; question?: string }
       | { event: "resumed"; from: "tool" | "prompt" | "session" },
   ): Promise<{ lead: string } | void> {
     const subject = `agent:${agent}`;
@@ -238,10 +257,14 @@ export class Attention {
       // Asked, then ended its turn to wait for the answer: still waiting.
       if (this.waiting.get(agent)?.why === "asked") return;
       this.clear(agent);
-      // #142: a turn that ended on a question to its person needs them.
-      const q = this.d.endedAsking
-        ? await this.d.endedAsking(agent).catch(() => null)
-        : null;
+      // #142: a turn that ended on a question to its person needs them:
+      // the question the hook said (issue 142, Claude Code's last answer),
+      // else the one its transcript ends on.
+      const q =
+        ev.question ||
+        (this.d.endedAsking
+          ? await this.d.endedAsking(agent).catch(() => null)
+          : null);
       if (q)
         return this.event(agent, workspace, {
           event: "waiting",
@@ -249,17 +272,20 @@ export class Attention {
           text: q,
           hooked: true,
         });
-      if (!this.onScreen(agent))
-        this.d.store.add({
-          kind: "finished",
-          subject,
-          scope,
-          text: ev.text ? `${name}: ${ev.text}` : `${name} finished its turn`,
-          msg: ev.text
-            ? { key: "bell.m.said", vars: { name, text: ev.text } }
-            : { key: "bell.m.turn", vars: { name } },
-          link,
-        });
+      // Issue 142: kept even while a page shows the agent. That page's
+      // next "looking" takes it out (opening an agent clears its updates);
+      // a page that closed meanwhile (NT-2 keeps it 10 s) never does, and
+      // the turn's end would be lost.
+      this.d.store.add({
+        kind: "finished",
+        subject,
+        scope,
+        text: ev.text ? `${name}: ${ev.text}` : `${name} finished its turn`,
+        msg: ev.text
+          ? { key: "bell.m.said", vars: { name, text: ev.text } }
+          : { key: "bell.m.turn", vars: { name } },
+        link,
+      });
       return;
     }
     const prev = this.waiting.get(agent);
@@ -351,15 +377,17 @@ export class Attention {
         /* an alert is best effort: the bell has it */
       }
     // #142: without hooks, a bell is all there is: an update, not a need.
-    if (!looking)
-      this.d.store.add({
-        kind: ev.why === "input" ? "finished" : "waiting",
-        subject,
-        scope,
-        text,
-        msg,
-        link,
-      });
+    // Issue 142: kept even while a page shows the agent (only the alert
+    // waits for it to be off screen). A need counts until it is answered;
+    // an update goes on that page's next "looking".
+    this.d.store.add({
+      kind: ev.why === "input" ? "finished" : "waiting",
+      subject,
+      scope,
+      text,
+      msg,
+      link,
+    });
   }
 
   /**
@@ -387,6 +415,15 @@ export class Attention {
   /** Its person typed into its terminal: answered, whatever it waited on. */
   typed(agent: string): void {
     if (this.waiting.has(agent)) this.clear(agent);
+  }
+
+  /**
+   * Issue 701: a comment from the agent's person was typed into it: its
+   * question is answered. A dialog (permission) isn't: only its answer on
+   * screen ends that.
+   */
+  answered(agent: string): void {
+    if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
   }
 
   private clear(agent: string): void {
@@ -420,6 +457,34 @@ export class Attention {
       scope: `workspace/${workspace}`,
       text: `${name} finished ${what}${w.artifact ? ` on ${w.artifact}` : ""}`,
       msg: { key: w.artifact ? "bell.m.hubOn" : "bell.m.hub", vars },
+      link:
+        w.url && /^https?:\/\//.test(w.url)
+          ? w.url
+          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+    });
+  }
+
+  /**
+   * Issue 701: Hub comments typed into the agent had no answer after
+   * hub.delivery_answer_minutes; its next comments go on. One item,
+   * linking to the comment in Hub when known.
+   */
+  hubNoAnswer(
+    agent: string,
+    workspace: string,
+    w: { count: number; minutes: number; artifact?: string; url?: string },
+  ): void {
+    const name = this.d.nameOf(agent);
+    const what = w.count === 1 ? "1 Hub comment" : `${w.count} Hub comments`;
+    this.d.store.add({
+      kind: "answer",
+      subject: `agent:${agent}`,
+      scope: `workspace/${workspace}`,
+      text: `${name}: ${what} typed in, no answer yet after ${w.minutes} min`,
+      msg: {
+        key: "bell.m.hubNoAnswer",
+        vars: { name, n: w.count, m: w.minutes },
+      },
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url

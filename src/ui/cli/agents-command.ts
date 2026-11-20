@@ -133,6 +133,9 @@ import {
   type AgentsResolved,
   type EarlyExit,
   FRESH_NOTE,
+  freshNote,
+  TRUST_DECLINED,
+  TRUST_WAITING,
   type RuntimeChoice,
   type Started,
   subagentsReport,
@@ -201,11 +204,13 @@ export const AGENTS_HELP = {
     "    it starts fresh under the same conversation id. --all-interrupted: every",
     "    agent interrupted when Den or the machine restarted. A rotated agent",
     "    is not resumed: relaunch it",
-    "{cli} agents relaunch <id> [-w <ws>]",
+    "{cli} agents relaunch <id> [-w <ws>] [--from-handoff [<file>]]",
     "    session rotation: once a session ended after agents.rotate.after_compactions",
     "    compactions (default 3) or its pull request merged, and its handoff.md",
     "    passes the check, a fresh conversation (same persona, project, folder,",
-    "    grants) whose first prompt is the handoff",
+    "    grants) whose first prompt is the handoff. --from-handoff: when no",
+    "    rotation is due, from its newest handoff on file (handoff.md, else the",
+    "    newest kept one), or <file> (a path with a / or ending .md)",
     "{cli} agents rotate [--agent|--persona|--workspace|--service <x>] [-w <ws>] <key> <value>",
     "{cli} agents rotate [scope] --unset <key>   ·   {cli} agents rotate   ·   {cli} agents rotate <id> --show",
     "    rotation settings: after_compactions <n>|never (default 3), on_due",
@@ -273,7 +278,9 @@ export const AGENTS_HELP = {
     "    user.yml (never, 1d, 7d) forgets stopped ones on its own",
     "{cli} agents permission <id> [ask|edits|auto|all|--clear]",
     "    one agent's mode: given, it stays through every restart; cleared, it",
-    "    follows its project's mode, else its persona's. A person's only",
+    "    follows its project's mode, else its persona's. A running agent",
+    "    restarts at its next idle, on the same conversation, to take it.",
+    "    A person's only",
     "{cli} agents permission -w <ws> [ask|edits|auto|all|--clear]",
     "    the permission mode the project's agents start with when the start",
     "    names none (over their persona's); none given: shows it. auto: Claude",
@@ -363,7 +370,15 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
       r.runtime ?? "-",
       r.rotation?.due
         ? `${r.state}, ${r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
-        : r.state,
+        : r.restartFailed
+          ? // Issue 631: why it didn't come back.
+            `${r.state}: didn't come back after a restart (${r.restartFailed.why})`
+          : // Issue 659: its folder-trust question, waiting or declined.
+            r.trustWait
+            ? `${r.state}: ${TRUST_WAITING}`
+            : r.trustDeclined
+              ? `${r.state}: ${TRUST_DECLINED}`
+              : r.state,
       r.model ?? "-",
       r.session && !r.session.exited ? String(r.session.pid) : "-",
       r.session?.startedAt ?? "-",
@@ -978,7 +993,7 @@ async function resume(args: string[], d: AgentsResolved): Promise<number> {
         ...early,
       };
     const s = r.s;
-    if (s.fresh) d.out(`agent ${s.rec.id}: ${FRESH_NOTE}`);
+    if (s.fresh) d.out(`agent ${s.rec.id}: ${freshNote(s)}`);
     return {
       code: report(
         d,
@@ -1146,8 +1161,34 @@ async function handoff(args: string[], d: AgentsResolved): Promise<number> {
 }
 
 async function relaunch(args: string[], d: AgentsResolved): Promise<number> {
-  const { id, ws } = idAndWorkspace("agents relaunch", args);
-  const s = await relaunchAgent(d, id, ws);
+  // Issue 658: --from-handoff [<file>]: from the newest handoff (or that
+  // file) when no rotation is due.
+  const at = args.indexOf("--from-handoff");
+  let fromHandoff: { file?: string } | undefined;
+  let rest = args;
+  if (at >= 0) {
+    const next = args[at + 1];
+    const file =
+      next !== undefined &&
+      !next.startsWith("-") &&
+      (next.includes("/") || next.endsWith(".md"))
+        ? next
+        : undefined;
+    fromHandoff = file !== undefined ? { file } : {};
+    rest = args.filter(
+      (_, i) => i !== at && !(file !== undefined && i === at + 1),
+    );
+  }
+  const { id, ws } = idAndWorkspace("agents relaunch", rest);
+  const s = await relaunchAgent(d, id, ws, {
+    ...(fromHandoff ? { fromHandoff } : {}),
+  });
+  if (s.reason === "manual" || s.reason === "resume_failed")
+    return report(
+      d,
+      s,
+      `relaunched agent ${s.rec.id} from its last handoff (${s.handoff}) as ${s.rec.sessionName} in ${s.rec.cwd}`,
+    );
   return report(
     d,
     s,
@@ -1312,7 +1353,8 @@ function isIntent(s: string): boolean {
 /**
  * `agents permission <id> [<mode>|--clear]` (den#48, Vision 11-13): the
  * mode one agent runs with. Given, it stays through every restart; cleared,
- * the agent follows its project's mode, else its persona's.
+ * the agent follows its project's mode, else its persona's. Issue 252: a
+ * running agent takes either at its next idle (Den's mode check).
  */
 function agentPermission(
   where: string,
@@ -1349,11 +1391,19 @@ function agentPermission(
     } catch (e) {
       throw new UsageError((e as Error).message);
     }
-  setAgentPermission(d, id, rec.workspace, intent);
+  const next = setAgentPermission(d, id, rec.workspace, intent);
+  // Issue 252: a running agent takes it at its next idle: the web
+  // server's mode check restarts it on the same conversation.
+  const when = next.stoppedAt
+    ? "It takes it at its next start or resume."
+    : "Den restarts it at its next idle, on the same conversation, to take it.";
+  const proj = intent ? undefined : workspacePermissionOf(d, rec.workspace);
   d.out(
     intent
-      ? `${id}: ${intent} from its next start, resume or restart, whatever its project or persona says`
-      : `${id}: follows its project's mode, else its persona's, from its next start, resume or restart`,
+      ? `${id}: ${intent}, its own setting. ${when}`
+      : proj
+        ? `${id}: follows its project's mode, ${proj}. ${when}`
+        : `${id}: follows the Den-wide default, else its persona's mode. ${when}`,
   );
   return 0;
 }
@@ -2096,7 +2146,17 @@ export function doctorLines(
       `  path      ${r.path}${r.source ? ` (${SOURCE_WORD[r.source] ?? r.source})` : ""}`,
     );
   if (r.available && r.setting)
-    lines.push(`  version   ${r.version ?? "unknown"}`);
+    lines.push(
+      `  version   ${r.version ?? "unknown"}${r.quarantined ? " (quarantined, not run)" : ""}`,
+    );
+  // Issue 456: the other copies found, never run; one is pinned by its path.
+  (r.others ?? []).forEach((o, i) =>
+    lines.push(
+      `  ${i === 0 ? "also      " : "          "}${o.path} (${o.version ?? "version unknown"}, ${SOURCE_WORD[o.source] ?? o.source}${o.quarantined ? ", quarantined, not run" : ""})`,
+    ),
+  );
+  if (r.others?.length && r.setting)
+    lines.push(`            to use one, set ${r.setting} to its path`);
   if (!r.setting) lines.push("  path      none to find (the persona's argv)");
   else if (r.searched?.length) {
     const key = r.searched.join("\0");
@@ -2231,7 +2291,14 @@ async function doctor(
   const ws = workspaceFlag(where, p);
   if (ws && !d.workspaceExists(ws))
     throw new UsageError(`${where}: project "${ws}" does not exist`);
-  await (deps.loginPath ?? (() => initLoginPath({ env: d.env })))();
+  await (
+    deps.loginPath ??
+    (() =>
+      initLoginPath({
+        env: d.env,
+        timeoutMs: d.shellPathTimeoutSeconds() * 1000,
+      }))
+  )();
   const rts = await listRuntimes(d, ws);
   const def = rts.find((r) => r.default);
   const code = def?.available ? 0 : 1;

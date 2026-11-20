@@ -17,10 +17,20 @@
  * agent's output (Claude Code redraws a prompt while it waits).
  * POST <den>/api/agents/self/attention with the agent's own Den token
  * (DEN_ACTOR_TOKEN in its session's env); Den knows which agent from the
- * token, never from anything here. Two seconds at most; it never blocks
- * the agent and prints nothing (fails open).
+ * token, never from anything here. It prints nothing and fails open.
+ * Issue 609: each try waits agent_hooks.timeout_seconds (20 s), and a
+ * failed or refused try is tried again (agent_hooks.retries, 2), so a
+ * busy Den still places the call and the mark reaches the bell
+ * (hook-call.ts; the flags come at launch).
  */
 import { actorTokenOf } from "../../actor-token.js";
+import { recordLost } from "./lost-marks.js";
+import {
+  HOOK_CALL_DEFAULT,
+  callDen,
+  hookCallOf,
+  type HookCall,
+} from "./hook-call.js";
 
 export type AttentionEvent =
   | {
@@ -34,7 +44,16 @@ export type AttentionEvent =
       hooked: true;
     }
   | { event: "resumed"; from: "tool" | "prompt" | "session"; hooked: true }
-  | { event: "finished"; text: string; hooked: true };
+  | {
+      event: "finished";
+      text: string;
+      /**
+       * Issue 142: the question the turn ended on (its answer's last
+       * line), from Claude Code's `last_assistant_message`.
+       */
+      question?: string;
+      hooked: true;
+    };
 
 /** The hook events Den listens to (guardrails.ts registers these). */
 export const ATTENTION_EVENTS = [
@@ -55,6 +74,20 @@ export function trimWhat(s: string): string {
   return one.length > WHAT_MAX ? `${one.slice(0, WHAT_MAX - 1)}…` : one;
 }
 
+/**
+ * Issue 142: an answer's last line when it asks the person something (it
+ * ends with "?", markup and quotes aside), ≤ 300 chars; else null.
+ */
+export function endingQuestion(text: string): string | null {
+  const last =
+    text
+      .split(/\r?\n/)
+      .filter((l) => l.trim())
+      .pop() ?? "";
+  const bare = last.trim().replace(/[\s*_`"'”’)\]]+$/u, "");
+  return /[?？]$/u.test(bare) ? last.trim().slice(0, 300) : null;
+}
+
 /** What Den is told for one hook input, or null for nothing. */
 export function attentionOf(input: unknown): AttentionEvent | null {
   if (!input || typeof input !== "object") return null;
@@ -65,6 +98,7 @@ export function attentionOf(input: unknown): AttentionEvent | null {
     tool_name?: unknown;
     notification_type?: unknown;
     source?: unknown;
+    last_assistant_message?: unknown;
   };
   const msg = typeof i.message === "string" ? i.message.slice(0, 300) : "";
   if (i.hook_event_name === "PermissionRequest") {
@@ -96,8 +130,20 @@ export function attentionOf(input: unknown): AttentionEvent | null {
   if (i.hook_event_name === "UserPromptSubmit")
     return { event: "resumed", from: "prompt", hooked: true };
   // A Stop a Stop hook kept going (D41's nudge) isn't the turn's end yet.
-  if (i.hook_event_name === "Stop" && i.stop_hook_active !== true)
-    return { event: "finished", text: "", hooked: true };
+  // Issue 142: the turn's last answer comes with it; a question there
+  // needs the person.
+  if (i.hook_event_name === "Stop" && i.stop_hook_active !== true) {
+    const q =
+      typeof i.last_assistant_message === "string"
+        ? endingQuestion(i.last_assistant_message)
+        : null;
+    return {
+      event: "finished",
+      text: "",
+      ...(q ? { question: q } : {}),
+      hooked: true,
+    };
+  }
   return null;
 }
 
@@ -110,30 +156,38 @@ export async function sendAttention(
   opts: {
     env?: Record<string, string | undefined>;
     fetch?: FetchFn;
-    timeoutMs?: number;
+    /** Issue 609: each try's wait, the retries, the pause between. */
+    call?: HookCall;
+    sleep?: (ms: number) => Promise<void>;
+    /** Issue 609: why Den didn't take it, after its last try. */
+    onMiss?: (reason: string) => void;
   } = {},
 ): Promise<boolean> {
   const t = actorTokenOf(opts.env ?? process.env);
   if (!t || !/^[\x21-\x7e]+$/.test(t)) return false;
-  try {
-    const r = await (opts.fetch ?? fetch)(
-      `${base.replace(/\/+$/, "")}/api/agents/self/attention`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${t}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(ev),
-        redirect: "error",
-        signal: AbortSignal.timeout(opts.timeoutMs ?? 2000),
+  const r = await callDen(
+    `${base.replace(/\/+$/, "")}/api/agents/self/attention`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${t}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
-    );
-    return r.ok;
-  } catch {
-    return false;
-  }
+      body: JSON.stringify(ev),
+      redirect: "error",
+    },
+    opts.call ?? HOOK_CALL_DEFAULT,
+    { fetch: opts.fetch, sleep: opts.sleep, onMiss: opts.onMiss },
+  );
+  if (r && !r.ok) opts.onMiss?.(`refused (HTTP ${r.status})`);
+  return r?.ok === true;
+}
+
+/** `--<name> <value>`, or "". */
+function argOf(argv: readonly string[], name: string): string {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] ? argv[i + 1] : "";
 }
 
 export function denArg(argv: readonly string[]): string {
@@ -144,7 +198,8 @@ export function denArg(argv: readonly string[]): string {
 async function main(): Promise<void> {
   let text = "";
   for await (const chunk of process.stdin) text += String(chunk);
-  const base = denArg(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const base = denArg(argv);
   if (!base) return;
   let input: unknown;
   try {
@@ -153,7 +208,21 @@ async function main(): Promise<void> {
     return;
   }
   const ev = attentionOf(input);
-  if (ev) await sendAttention(base, ev);
+  if (!ev) return;
+  // Issue 609: a mark Den never took, after every try, is recorded for
+  // doctor.
+  const lost = argOf(argv, "--lost");
+  let why = "";
+  const ok = await sendAttention(base, ev, {
+    call: hookCallOf(argv),
+    onMiss: (r) => (why = r),
+  });
+  if (!ok && why && lost)
+    recordLost(lost, {
+      agent: argOf(argv, "--agent") || "?",
+      event: ev.event,
+      reason: why,
+    });
 }
 
 if (process.argv[1] && /attention-hook\.[jt]s$/.test(process.argv[1]))

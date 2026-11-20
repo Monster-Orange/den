@@ -37,9 +37,10 @@ import {
   upgradeTimes,
 } from "/kit/time.js";
 import { qrSvg } from "./qr.js";
-import { renderPersonasSettings } from "./persona-ui.js";
+import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -1057,7 +1058,7 @@ function drawAppKeys(host, ctx) {
   const origins = Array.isArray(ctx.data?.embed?.origins)
     ? ctx.data.embed.origins
     : [];
-  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+  const when = appKeyWhen;
   let asked = null;
   const ask = (action, args, button) =>
     shell
@@ -1174,7 +1175,7 @@ function drawAppKeys(host, ctx) {
     const key = d.result && d.result.once && d.result.once.key;
     if (key) {
       out.innerHTML =
-        `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's server now. It is not shown again."))}</p>` +
+        `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's backend now. It is not shown again."))}</p>` +
         `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:var(--mono)" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
         `<button type="button" class="btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
       const box = out.querySelector("#set-appkey-new");
@@ -1389,20 +1390,17 @@ export function keepTokenLine(s, t) {
   return { state: "set", text: t("keep.tokenStore", { store: s.store || "" }) };
 }
 
-/** A set date in the reader's language and time zone (the ISO date if not). */
+/**
+ * A set date in the person's chosen zone and the page's language, the
+ * kit's way (issue 668); the ISO date when it can't be read.
+ */
 function localDay(iso) {
-  let date = String(iso).slice(0, 10);
-  try {
-    const tz =
-      document.documentElement.getAttribute("data-den-tz") || undefined;
-    date = new Date(iso).toLocaleDateString(
-      document.documentElement.lang || undefined,
-      { year: "numeric", month: "short", day: "numeric", timeZone: tz },
-    );
-  } catch {
-    /* the ISO date stays */
-  }
-  return date;
+  return formatTime(iso, { style: "date" }) || String(iso ?? "").slice(0, 10);
+}
+
+/** An app key's used or revoked time, the kit's way (issue 668). */
+export function appKeyWhen(iso) {
+  return iso ? formatTime(iso) : "";
 }
 
 /**
@@ -1849,6 +1847,63 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ crash_loop: { max_wait_seconds: v } }),
   },
   {
+    // Issue 403: a filed report's masked screenshot, kept on this install
+    // (user.yml reports.screenshot_keep_days). A person's only.
+    id: "server.report_screenshot_days",
+    category: "server",
+    label: "Report screenshots, kept for",
+    description:
+      "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    keywords: ["report", "screenshot", "feedback", "keep", "days", "issue"],
+    scope: "user",
+    keys: ["reports.screenshot_keep_days"],
+    control: { type: "number", min: 1, max: 3650, step: 1, unit: "d" },
+    read: (ctx) => ctx.data.reports?.screenshot_keep_days ?? 30,
+    write: (v, ctx) => ctx.post({ reports: { screenshot_keep_days: v } }),
+  },
+  {
+    // Issue 403: the largest report screenshot kept here (reports.*).
+    id: "server.report_screenshot_max",
+    category: "server",
+    label: "Report screenshots, largest kept",
+    description:
+      "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    keywords: ["report", "screenshot", "feedback", "size", "limit"],
+    scope: "user",
+    keys: ["reports.screenshot_max_mb"],
+    control: { type: "number", min: 1, max: 64, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.reports?.screenshot_max_mb ?? 8,
+    write: (v, ctx) => ctx.post({ reports: { screenshot_max_mb: v } }),
+  },
+  {
+    // Issue 403: the largest report screenshot sent to Hub.
+    id: "server.report_screenshot_hub_max",
+    category: "server",
+    label: "Report screenshots, largest sent to Hub",
+    description:
+      "The largest masked screenshot __DEN_TITLE__ sends to Hub. A larger one is still kept here, and the report is still filed. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    keywords: ["report", "screenshot", "feedback", "hub", "size", "limit"],
+    scope: "user",
+    keys: ["reports.hub_screenshot_max_mb"],
+    control: { type: "number", min: 1, max: 64, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.reports?.hub_screenshot_max_mb ?? 6,
+    write: (v, ctx) => ctx.post({ reports: { hub_screenshot_max_mb: v } }),
+  },
+  {
+    // Issue 403: how long a report's screenshot waits for Hub.
+    id: "server.report_screenshot_hub_wait",
+    category: "server",
+    label: "Report screenshots, wait for Hub",
+    description:
+      "How long __DEN_TITLE__ waits for Hub to take a report's screenshot. After this, the screenshot is kept here, and the report is already filed. __DEN_CLI__ config reports.hub_timeout_seconds=10",
+    keywords: ["report", "screenshot", "feedback", "hub", "timeout", "wait"],
+    scope: "user",
+    keys: ["reports.hub_timeout_seconds"],
+    control: { type: "number", min: 1, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.reports?.hub_timeout_seconds ?? 10,
+    write: (v, ctx) => ctx.post({ reports: { hub_timeout_seconds: v } }),
+  },
+  {
     // Issue 415: Report says who can see a report: each destination's
     // visibility on GitHub, kept and waited for (user.yml feedback.*).
     id: "server.report_visibility_cache",
@@ -1868,7 +1923,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Report: repository visibility wait",
     description:
-      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says not known (with the caution), and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     keywords: ["report", "feedback", "visibility", "timeout", "wait"],
     scope: "user",
     keys: ["feedback.visibility_timeout_seconds"],
@@ -1889,6 +1944,101 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.feedback?.visibility_retry_seconds ?? 60,
     write: (v, ctx) => ctx.post({ feedback: { visibility_retry_seconds: v } }),
+  },
+  {
+    // Issue 609: how long Den's process lookups wait (user.yml process_lookup.*).
+    id: "server.lookup_first",
+    category: "server",
+    label: "Process lookup wait",
+    description:
+      "How long __DEN_TITLE__ waits on its first try when it asks the system which process holds a connection (lsof, ps). An agent's own calls are placed this way. __DEN_CLI__ config process_lookup.first_seconds=5",
+    keywords: ["timeout", "lookup", "lsof", "process", "agent"],
+    scope: "user",
+    keys: ["process_lookup.first_seconds"],
+    control: { type: "number", min: 0.5, max: 600, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.process_lookup?.first_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ process_lookup: { first_seconds: v } }),
+  },
+  {
+    id: "server.lookup_retry",
+    category: "server",
+    label: "Process lookup retry wait",
+    description:
+      "How long the second try waits when the first ran out of time. A busy machine can be slow to answer. __DEN_CLI__ config process_lookup.retry_seconds=20",
+    keywords: ["timeout", "lookup", "retry", "process"],
+    scope: "user",
+    keys: ["process_lookup.retry_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.process_lookup?.retry_seconds ?? 20,
+    write: (v, ctx) => ctx.post({ process_lookup: { retry_seconds: v } }),
+  },
+  {
+    // Issue 455: the address check's limits (user.yml web.address_check_*).
+    id: "server.address_check_timeout",
+    category: "server",
+    label: "Address check wait",
+    description:
+      "How long __DEN_TITLE__ waits for an address to answer when it checks that the address reaches this __DEN_TITLE__, before it prints or opens it. __DEN_CLI__ config web.address_check_timeout_seconds=5",
+    keywords: ["address", "check", "edge", "port", "timeout", "wait"],
+    scope: "user",
+    keys: ["address_check.timeout_seconds"],
+    control: { type: "number", min: 0.5, max: 600, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.timeout_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ address_check: { timeout_seconds: v } }),
+  },
+  {
+    id: "server.address_check_retries",
+    category: "server",
+    label: "Address check retries",
+    description:
+      "How many more times __DEN_TITLE__ asks an address that didn't answer in time. __DEN_CLI__ config web.address_check_retries=2",
+    keywords: ["address", "check", "edge", "retries"],
+    scope: "user",
+    keys: ["address_check.retries"],
+    control: { type: "number", min: 0, max: 20, step: 1 },
+    read: (ctx) => ctx.data.address_check?.retries ?? 2,
+    write: (v, ctx) => ctx.post({ address_check: { retries: v } }),
+  },
+  {
+    id: "server.address_check_cache",
+    category: "server",
+    label: "Address check kept for",
+    description:
+      "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
+    keywords: ["address", "check", "edge", "cache"],
+    scope: "user",
+    keys: ["address_check.cache_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.cache_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ address_check: { cache_seconds: v } }),
+  },
+  {
+    // The sign-in lives on __DEN_TITLE__'s own address once it is proven:
+    // how many definite failures in a row move it back.
+    id: "server.address_check_drop_after",
+    category: "server",
+    label: "Address failures before sign-in moves back",
+    description:
+      "Once __DEN_TITLE__'s https address is proven, the sign-in lives only there. How many checks in a row must find something else, or nothing, answering at that address before sign-in works on this machine's own name again. A check that can't tell is ignored. __DEN_CLI__ config web.address_check_drop_after=2",
+    keywords: ["address", "check", "edge", "sign-in", "cookie", "failures"],
+    scope: "user",
+    keys: ["address_check.drop_after"],
+    control: { type: "number", min: 1, max: 100, step: 1 },
+    read: (ctx) => ctx.data.address_check?.drop_after ?? 2,
+    write: (v, ctx) => ctx.post({ address_check: { drop_after: v } }),
+  },
+  {
+    id: "server.address_unknown_keep",
+    category: "server",
+    label: "Address held while checks can't tell",
+    description:
+      "Once __DEN_TITLE__'s https address is proven, how long checks that can't tell (no answer in time) keep sign-in there, from its last answer. After that they count as failures, so sign-in comes back on this machine's own name. Keep it short. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    keywords: ["address", "check", "edge", "sign-in", "timeout", "window"],
+    scope: "user",
+    keys: ["address_check.unknown_keep_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.address_check?.unknown_keep_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ address_check: { unknown_keep_seconds: v } }),
   },
   {
     // 0.4.48: on Linux, Den also listens on the Docker bridge for the edge
@@ -1934,6 +2084,28 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_bridge?.probeSeconds ?? 10,
     write: (v, ctx) => ctx.post({ web_bridge: { probe_seconds: v } }),
+  },
+  {
+    // Issue 406: the owner's display name, for the account entry.
+    id: "server.owner_name_timeout",
+    category: "server",
+    label: "GitHub name check at start, in seconds",
+    description:
+      "How long __DEN_TITLE__ waits at its start for the owner's name from their public GitHub profile, when it doesn't have the name yet. It never delays the start. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    keywords: [
+      "github",
+      "name",
+      "owner",
+      "account",
+      "timeout",
+      "web.owner_name_timeout_seconds",
+    ],
+    scope: "user",
+    keys: ["web_github.owner_name_timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_github?.ownerNameTimeoutSeconds ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ web_github: { owner_name_timeout_seconds: v } }),
   },
   {
     // den#143: how long `web up` waits for the server (user.yml
@@ -2710,6 +2882,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_list: { host_timeout_seconds: v } }),
   },
   {
+    // Issue 456: how long Den waits for your shell's PATH (-lc and -ilc).
+    id: "agents.shell_path_wait",
+    category: "agents",
+    label: "Shell PATH wait",
+    description:
+      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    keywords: ["timeout", "shell", "path", "zshrc", "cli", "runtime", "wait"],
+    scope: "user",
+    keys: ["agents_shell.path_timeout_seconds"],
+    control: { type: "number", min: 1, max: 120, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_shell?.path_timeout_seconds ?? 10,
+    write: (v, ctx) => ctx.post({ agents_shell: { path_timeout_seconds: v } }),
+  },
+  {
     id: "agents.list_refresh_wait",
     category: "agents",
     label: "Agents list wait",
@@ -2722,6 +2908,46 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agents_list?.refresh_timeout_seconds ?? 15,
     write: (v, ctx) =>
       ctx.post({ agents_list: { refresh_timeout_seconds: v } }),
+  },
+  {
+    // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
+    id: "agents.hook_wait",
+    category: "agents",
+    label: "Agent hook wait",
+    description:
+      "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    keywords: ["timeout", "hook", "attention", "bell", "wait"],
+    scope: "user",
+    keys: ["agent_hooks.timeout_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agent_hooks?.timeout_seconds ?? 20,
+    write: (v, ctx) => ctx.post({ agent_hooks: { timeout_seconds: v } }),
+  },
+  {
+    id: "agents.hook_retries",
+    category: "agents",
+    label: "Agent hook retries",
+    description:
+      "How many more times an agent's hook tries when __DEN_TITLE__ didn't answer in time or turned the call away. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.retries=2",
+    keywords: ["retry", "hook", "attention", "bell"],
+    scope: "user",
+    keys: ["agent_hooks.retries"],
+    control: { type: "number", min: 0, max: 10, step: 1 },
+    read: (ctx) => ctx.data.agent_hooks?.retries ?? 2,
+    write: (v, ctx) => ctx.post({ agent_hooks: { retries: v } }),
+  },
+  {
+    id: "agents.hook_backoff",
+    category: "agents",
+    label: "Agent hook pause",
+    description:
+      "How long an agent's hook waits before its first retry. Each later pause doubles. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
+    keywords: ["retry", "backoff", "pause", "hook"],
+    scope: "user",
+    keys: ["agent_hooks.backoff_seconds"],
+    control: { type: "number", min: 0, max: 60, step: 0.5, unit: "s" },
+    read: (ctx) => ctx.data.agent_hooks?.backoff_seconds ?? 1,
+    write: (v, ctx) => ctx.post({ agent_hooks: { backoff_seconds: v } }),
   },
   {
     // Issue 278: agents stuck compacting; instruction size (agent_context.*).
@@ -3031,7 +3257,7 @@ export const DEN_SETTINGS = [
     category: "cli",
     label: "Browser sign-in",
     description:
-      "On localhost nothing asks for a sign-in. Through the edge, a browser signs in unless the edge shows it is this machine (web.edge_unattested: local counts one it can't place as local), and from another machine it always does: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
+      "Every browser signs in once, on this machine too, and stays signed in. Here, __DEN_CLI__ web up opens a one-time sign-in link; a browser that isn't signed in can look but change nothing. From another machine: Sign in with GitHub, or a one-time link (__DEN_CLI__ web login). Settings › Access lists the signed-in browsers.",
     keywords: ["sign in", "sign out", "login", "logout", "session", "browser"],
     scope: "user",
     control: {
@@ -3260,8 +3486,11 @@ export function runtimeRowHtml(r, scopeWs) {
       ? ` <span class="set-tag" data-den-tools="coming">${escR(L("set.ui.rt.toolsComing", "Den tools: coming"))}</span>`
       : "");
   const set = r.source === "workspace" || r.source === "setting";
+  // Issue 456: a quarantined CLI is never run, so it has no checked version.
   const status = r.available
-    ? `<span class="rt-ok">✓ ${escR(r.version ? r.version : L("set.ui.rt.installed", "installed"))}</span>`
+    ? r.quarantined
+      ? `<span class="rt-bad" data-quarantined="true">${escR(r.version ? `${r.version} · ` : "")}${escR(rtQuarantined())}</span>`
+      : `<span class="rt-ok">✓ ${escR(r.version ? r.version : L("set.ui.rt.installed", "installed"))}</span>`
     : `<span class="rt-bad">${escR(set ? r.why : L("set.ui.rt.notInstalled", "Not installed"))}</span>`;
   const where = r.path
     ? `<span class="den-mono rt-p">${escR(r.path)}</span> <span class="set-tag" data-src="${escR(r.source || "")}">${escR(rtSource(r.source))}</span>`
@@ -3285,14 +3514,64 @@ export function runtimeRowHtml(r, scopeWs) {
     `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +
     `<button type="submit" class="btn sm primary">${escR(L("set.ui.rt.save", "Save"))}</button> <button type="button" class="btn sm" data-cancel-path>${escR(L("set.ui.rt.cancel", "Cancel"))}</button>` +
     `<div class="rt-err" role="alert" hidden></div></form>` +
+    otherCopiesHtml(r) +
+    `</div>`
+  );
+}
+
+const rtQuarantined = () => L("set.ui.rt.quarantined", "quarantined, not run");
+
+/**
+ * Issue 456: the other copies of a runtime Den found, each with the
+ * version its install says (never run) and a button that pins it
+ * (agents.runtimes.<id>.bin at the scope shown).
+ */
+function otherCopiesHtml(r) {
+  const others = r.others || [];
+  if (!others.length) return "";
+  const name = r.label || r.id;
+  return (
+    `<div class="rt-o" data-others="${escR(r.id)}">` +
+    `<div class="rt-oh">${escR(L("set.ui.rt.alsoFound", "Also found:"))}</div>` +
+    `<div role="list">` +
+    others
+      .map(
+        (o) =>
+          `<div class="rt-oi" role="listitem" data-copy="${escR(o.path)}">` +
+          `<span class="den-mono rt-p">${escR(o.path)}</span> ` +
+          `<span class="rt-ov">${escR(o.version || L("set.ui.rt.versionUnknown", "version unknown"))}</span> ` +
+          `<span class="set-tag" data-src="${escR(o.source)}">${escR(rtSource(o.source))}</span>` +
+          (o.quarantined
+            ? ` <span class="rt-bad" data-quarantined="true">${escR(rtQuarantined())}</span>`
+            : "") +
+          ` <button type="button" class="btn sm" data-pin-path="${escR(r.id)}" data-bin="${escR(o.path)}" aria-label="${escR(L("set.ui.rt.useThisFor", "Use {path} for {name}", { path: o.path, name }))}">${escR(L("set.ui.rt.useThis", "Use this"))}</button>` +
+          `</div>`,
+      )
+      .join("") +
+    `</div>` +
+    `<div class="rt-err" role="alert" hidden></div>` +
     `</div>`
   );
 }
 
 /** The Runtimes row: the list, a workspace selector, Set path… and Clear. */
+/**
+ * Issue 479: the runtime row a link opens (?runtime=<id>), and the project
+ * whose paths to show (?project=<ws>, when it is one; else every project).
+ */
+export function runtimeFocusFrom(search, wss) {
+  const p = new URLSearchParams(search || "");
+  const ws = p.get("project") || "";
+  return {
+    runtime: p.get("runtime") || "",
+    ws: (wss || []).includes(ws) ? ws : "",
+  };
+}
+
 function renderRuntimes(host, ctx) {
   const wss = ctx.workspaces || [];
-  let ws = "";
+  const focus = runtimeFocusFrom(globalThis.location?.search, wss);
+  let ws = focus.ws;
   const draw = (rows, note) => {
     host.innerHTML =
       `<div class="rt-scope"><label for="rt-ws">${escR(L("set.ui.rt.pathsFor", "Paths for"))}</label> <select id="rt-ws" data-focus-key="rt-ws">` +
@@ -3322,10 +3601,11 @@ function renderRuntimes(host, ctx) {
         "GET",
         `/api/agents/runtimes${ws ? `?workspace=${encodeURIComponent(ws)}` : ""}`,
       )
-      .then((b) =>
+      .then((b) => {
         // Only what has a CLI to find: generic is the persona's argv.
-        draw((b?.runtimes || []).filter((r) => r.setting)),
-      )
+        draw((b?.runtimes || []).filter((r) => r.setting));
+        showFocused();
+      })
       .catch((e) =>
         draw(
           [],
@@ -3333,6 +3613,20 @@ function renderRuntimes(host, ctx) {
         ),
       );
   };
+  // Issue 479: a link to a runtime's row (a refused start): scrolled to
+  // and marked once.
+  function showFocused() {
+    if (!focus.runtime) return;
+    const row = [...host.querySelectorAll(".rt[data-runtime]")].find(
+      (x) => x.dataset.runtime === focus.runtime,
+    );
+    focus.runtime = "";
+    if (!row) return;
+    row.dataset.focused = "true";
+    row.setAttribute("tabindex", "-1");
+    row.scrollIntoView?.({ block: "center" });
+    row.focus?.({ preventScroll: true });
+  }
   host.addEventListener("change", (e) => {
     if (e.target.id !== "rt-ws") return;
     ws = e.target.value;
@@ -3350,6 +3644,9 @@ function renderRuntimes(host, ctx) {
       form.hidden = true;
     } else if (b.dataset.clearPath) {
       await savePath(b.dataset.clearPath, null, form);
+    } else if (b.dataset.pinPath && b.dataset.bin) {
+      // Issue 456: one click pins that copy; a refusal shows under the list.
+      await savePath(b.dataset.pinPath, b.dataset.bin, b.closest(".rt-o"));
     }
   });
   host.addEventListener("submit", async (e) => {
@@ -4017,13 +4314,16 @@ export function projectModeHtml(v, t) {
       const line = a.running
         ? t("pmode.runsAs", { ...vars, running: name(a.running) })
         : t("pmode.agent", vars);
+      // Issue 252: the whole row opens its mode (the choices and Follow
+      // project).
       return (
         `<li data-pmode-agent="${escR(a.agent)}" data-pmode-source="${escR(a.source)}"${a.running ? ` data-pmode-running="${escR(a.running)}"` : ""}>` +
+        `<button type="button" class="pmode-row" data-pmode-pick="${escR(a.agent)}" aria-haspopup="menu" aria-expanded="false" aria-label="${escR(`${line}. ${t("ag.mode.pick", { id: a.name || a.agent })}`)}">` +
         escR(line) +
         (a.stopped
           ? ` <span class="faint">${escR(t("pmode.stopped"))}</span>`
           : "") +
-        `</li>`
+        `</button></li>`
       );
     })
     .join("");
@@ -4086,6 +4386,28 @@ function renderProjectMode(host, ctx) {
               if (r !== undefined && r !== null)
                 return renderProjectMode(host, ctx);
             },
+          );
+        }),
+      );
+      host.querySelectorAll("[data-pmode-pick]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const a = (v?.agents ?? []).find(
+            (x) => x.agent === b.getAttribute("data-pmode-pick"),
+          );
+          if (!a) return;
+          openAgentModeMenu(
+            b,
+            {
+              workspace: ws,
+              agent: a.agent,
+              ...(a.name ? { name: a.name } : {}),
+              ...(a.source === "own" ? { own: a.mode } : {}),
+              ...((v?.mode ?? v?.install)
+                ? { project: v.mode ?? v.install }
+                : {}),
+              ...(a.stopped ? { stopped: true } : {}),
+            },
+            () => renderProjectMode(host, ctx),
           );
         }),
       );
@@ -4548,8 +4870,19 @@ export function addressHtml(w, t) {
   const now = w?.url
     ? `<p class="set-status" data-addr-now>${escR(t("addr.now", { url: w.url }))}</p>`
     : `<p class="set-status" data-addr-now><span class="rt-dot warn"></span> ${escR(t("addr.unset"))}</p>`;
+  // Issue 666: a loopback address is said as a problem, and this install's
+  // own alias is offered in one click (the owner's only, server-checked).
+  const loop =
+    w?.url && w.loopback
+      ? `<p class="set-status" data-addr-loopback><span class="rt-dot bad"></span> ${escR(t("addr.loopback", { url: w.url }))}</p>`
+      : "";
+  const offer = w?.offer
+    ? `<div class="set-inline"><button type="button" class="den-btn sm primary" data-addr-adopt="${escR(w.offer)}">${escR(t("addr.adopt", { alias: w.offer }))}</button></div>`
+    : "";
   return (
     now +
+    loop +
+    offer +
     `<form data-addr class="set-inline" novalidate>` +
     `<label class="sr-only" for="addr-in">${escR(t("addr.label"))}</label>` +
     `<input id="addr-in" type="url" data-addr-in value="${escR(w?.url ?? "")}" placeholder="https://__DEN_CLI__.local.example.com" autocomplete="off" spellcheck="false">` +
@@ -4574,6 +4907,33 @@ function renderAddress(host, ctx) {
         note.textContent = msg || "";
         note.classList.toggle("bad", !!bad);
       };
+      const adoptBtn = host.querySelector("[data-addr-adopt]");
+      adoptBtn?.addEventListener("click", () => {
+        const url = adoptBtn.getAttribute("data-addr-adopt");
+        say("");
+        ctx.shell
+          .busyAction(
+            "check-address",
+            (headers) =>
+              ctx.shell.api("POST", "/api/web-url/adopt", { url }, { headers }),
+            {
+              button: adoptBtn,
+              vars: { url },
+              success: (r) => t("addr.adopted", { url: r?.url ?? url }),
+              onFail: (x) => say(x?.message || t("addr.notSaved"), true),
+            },
+          )
+          .then((r) => {
+            if (r === undefined) return;
+            return renderAddress(host, ctx).then(() => {
+              const n = host.querySelector("[data-addr-note]");
+              if (n) {
+                n.hidden = false;
+                n.textContent = t("addr.adopted", { url: r?.url ?? url });
+              }
+            });
+          });
+      });
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const url = input.value.trim();
@@ -4619,7 +4979,14 @@ function renderAddress(host, ctx) {
 export function hubUncoveredHtml(list, t) {
   const un = Array.isArray(list) ? list : [];
   if (!un.length) return "";
-  const orgs = [...new Set(un.map((u) => u.org))];
+  // Issue 526: org names match whatever their case: one button per org.
+  const seen = new Set();
+  const orgs = un
+    .map((u) => u.org)
+    .filter((o) => {
+      const k = String(o).toLowerCase();
+      return seen.has(k) ? false : (seen.add(k), true);
+    });
   return (
     `<div data-hubp-uncovered>` +
     un
@@ -4630,7 +4997,10 @@ export function hubUncoveredHtml(list, t) {
       .join("") +
     orgs
       .map((org) => {
-        const href = un.find((u) => u.org === org && u.installUrl)?.installUrl;
+        const k = String(org).toLowerCase();
+        const href = un.find(
+          (u) => String(u.org).toLowerCase() === k && u.installUrl,
+        )?.installUrl;
         return href && /^https:\/\/github\.com\//.test(href)
           ? `<a class="btn sm primary" data-hubp-give="${escR(org)}" href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(t("hubp.giveAccess", { org }))}</a> `
           : "";
@@ -4703,6 +5073,11 @@ export function hubProjectHtml(b, t, name) {
     `<div class="hubp-new" data-hubp-newrow${on ? "" : " hidden"}>` +
     `<label for="hubp-new">${escR(t("hubp.newName"))}</label> ` +
     `<input id="hubp-new" type="text" value="${escR(own)}" maxlength="${HUBP_NAME_MAX}" autocomplete="off"></div>`;
+  // Issue 651: linked, Unlink rides in the Switch row (one row beside the
+  // list, wrapping only on a narrow screen).
+  const unlinkBtn = linked
+    ? `<button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
+    : "";
   const picker = (label, btn, primary) =>
     !linked
       ? `<form class="hubp-pick" data-hubp-form>` +
@@ -4716,8 +5091,10 @@ export function hubProjectHtml(b, t, name) {
           `<label for="hubp-sel">${escR(label)}</label> ` +
           `<select id="hubp-sel">${opts}</select> ` +
           `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+          unlinkBtn +
           `</form>`
-        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>`;
+        : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>` +
+          (unlinkBtn ? `<p>${unlinkBtn}</p>` : "");
   const tail =
     hubUncoveredHtml(b.uncovered, t) +
     (b.error ? `<p class="set-note">${escR(b.error)}</p>` : "") +
@@ -4736,7 +5113,6 @@ export function hubProjectHtml(b, t, name) {
       `<details class="hubp-more" data-hubp-more><summary>${escR(t("hubp.more"))}</summary>` +
       `<p class="set-note">${escR(t("hubp.moreNote"))}</p>` +
       picker(t("hubp.switchL"), t("hubp.switch"), false) +
-      `<p><button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button></p>` +
       `<p class="set-note">${escR(t("hubp.unlinkDoes", { project: ws, hub: hubName }))}</p>` +
       `<p class="set-note">${escR(t("hubp.cliL"))} <code>__DEN_CLI__ hub link -p ${escR(ws)}</code></p>` +
       `</details>` +
@@ -4796,39 +5172,32 @@ export function hubProjectHtml(b, t, name) {
  * Issue 167 (mock v6 H3): Unlink asks first, in a dialog with its own
  * Report button. Resolves true on "Yes, unlink".
  */
-function askHubUnlink(ctx, t, project, hub) {
-  document.getElementById("hubp-dlg")?.remove();
-  const d = document.createElement("dialog");
-  d.id = "hubp-dlg";
-  d.className = "hubp-dlg";
-  d.setAttribute("aria-labelledby", "hubp-dlg-h");
-  d.innerHTML =
-    `<form method="dialog" class="hubp-dlg-b">` +
-    `<h2 id="hubp-dlg-h">${escR(t("hubp.unlinkAsk", { project, hub }))}</h2>` +
-    `<p class="set-note">${escR(t("hubp.unlinkDoes", { project, hub }))}</p>` +
-    `<div class="hubp-dlg-acts" data-den-foot>${ctx.shell?.reportButton?.(true) ?? ""}` +
-    `<button type="button" class="btn sm" data-hubp-dlg="cancel">${escR(t("hubp.cancel"))}</button>` +
-    `<button type="submit" class="btn sm primary" data-hubp-dlg="yes">${escR(t("hubp.unlinkYes"))}</button>` +
-    `</div></form>`;
-  document.body.append(d);
-  return new Promise((resolve) => {
-    let yes = false;
-    d.addEventListener("close", () => {
-      d.remove();
-      resolve(yes);
-    });
-    d.querySelector('[data-hubp-dlg="cancel"]').addEventListener("click", () =>
-      d.close(),
-    );
-    d.querySelector("form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      yes = true;
-      d.close();
-    });
-    if (typeof d.showModal === "function") d.showModal();
-    else d.setAttribute("open", "");
-    d.querySelector('[data-hubp-dlg="cancel"]').focus();
+async function askHubUnlink(ctx, t, project, hub) {
+  // Issue 669: the kit's confirm frame (its Report too), no dialog of its own.
+  const html = dialogHtml({
+    kind: "confirm",
+    id: "hubp-dlg",
+    ids: { h: "hubp-dlg-h" },
+    className: "hubp-dlg",
+    role: "dialog",
+    title: t("hubp.unlinkAsk", { project, hub }),
+    body: `<p class="set-note">${escR(t("hubp.unlinkDoes", { project, hub }))}</p>`,
+    actions: [
+      {
+        label: t("hubp.cancel"),
+        value: "cancel",
+        attrs: { "data-hubp-dlg": "cancel" },
+      },
+      {
+        label: t("hubp.unlinkYes"),
+        value: "yes",
+        kind: "primary",
+        attrs: { "data-hubp-dlg": "yes" },
+      },
+    ],
   });
+  const h = mountDialog(html, { focus: '[data-hubp-dlg="cancel"]' });
+  return (await h.closed) === "yes";
 }
 
 function wireHubProject(host, ctx, url, t, b) {
@@ -5128,25 +5497,39 @@ export function hubGithubHtml(b, t) {
     `<div data-hubgh data-hubgh-state="orgs">` +
     orgs
       .map((o) => {
+        // Issue 526: Hub couldn't ask GitHub. Its reason as text, Check
+        // again, and never a link, even when Hub sends one.
+        if (o.access === "error") {
+          const reason = typeof o.error === "string" ? o.error : "";
+          return (
+            `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="error">` +
+            `<span class="rt-dot warn"></span> ${escR(reason ? t("hubgh.error", { org: o.org, reason }) : t("hubgh.errorNoReason", { org: o.org }))}` +
+            ` <button type="button" class="btn sm" data-hubgh-retry>${escR(t("hubgh.retry"))}</button>` +
+            `</p>`
+          );
+        }
         const what =
           o.access === "all"
             ? t("hubgh.all")
             : o.access === "some"
               ? t("hubgh.some", { n: o.covered, m: o.total })
               : t("hubgh.none");
+        // none: give access when there's no installation; one that leaves
+        // these repos out sends only manage_url, and that's Change repos.
+        const give = o.access === "none" && !!o.installUrl;
         const href =
           o.access === "some"
             ? o.manageUrl || o.installUrl
             : o.access === "none"
-              ? o.installUrl
+              ? o.installUrl || o.manageUrl
               : null;
-        const label = o.access === "none" ? t("hubgh.give") : t("hubgh.change");
+        const label = give ? t("hubgh.give") : t("hubgh.change");
         const dot = o.access === "all" ? "ok" : "warn";
         return (
           `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="${escR(o.access)}">` +
           `<span class="rt-dot ${dot}"></span> ${escR(t("hubgh.line", { org: o.org, what }))}` +
           (href && /^https:\/\/github\.com\//.test(href)
-            ? ` <a class="btn sm${o.access === "none" ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
+            ? ` <a class="btn sm${give ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
             : "") +
           `</p>`
         );
@@ -5182,6 +5565,13 @@ function renderHubGithub(host, ctx) {
         host.querySelectorAll("[data-hubgh-open]").forEach((a) =>
           a.addEventListener("click", () => {
             host.dataset.hubghAway = "1";
+          }),
+        );
+        // Issue 526: Check again asks Hub once more.
+        host.querySelectorAll("[data-hubgh-retry]").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            btn.disabled = true;
+            draw();
           }),
         );
       })

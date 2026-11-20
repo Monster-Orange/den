@@ -6,6 +6,8 @@
  * - no such agent here: ack `refused`;
  * - stopped: ack `queued`; it goes in when the agent next runs;
  * - mid-turn: kept until the turn ends;
+ * - issue 701: whatever holds it, Hub hears `queued` with the reason in
+ *   plain words, once per reason (kept across a restart);
  * - waiting for its person: typed into its session (the same path as a
  *   keystroke from the pane), then ack `delivered` and `working`.
  * Issue 334: a web app's relayed message (EMBED_PREFIX) takes the same
@@ -21,12 +23,17 @@ import {
   deliveryRaw,
   deliveryText,
   EMBED_PREFIX,
+  isOwner,
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
+  TROUBLE_TEXT,
+  troubleOf,
   type AckState,
   type Delivery,
+  type DeliveryHealth,
   type DeliveryOwner,
+  type DeliveryTrouble,
   type SeenDeliveries,
 } from "./hub-delivery.js";
 
@@ -44,7 +51,62 @@ export interface DeliveryAgents {
   state(agent: string): Promise<AgentState>;
   /** Type `text` into the agent's session, then Enter. False when it couldn't. */
   type(agent: string, text: string): Promise<boolean>;
+  /**
+   * Issue 664: whether the last state() found the agent's turn over but
+   * its input prompt not shown (so "busy"): what waits says why.
+   */
+  notAtPrompt?(agent: string): boolean;
+  /**
+   * Issue 701: why a busy agent holds its deliveries (a dialog on its
+   * screen, a held Allow, a pause), or null: mid-turn.
+   */
+  why?(agent: string): Promise<HeldCode | null>;
 }
+
+/** Issue 664: why an agent's held text waits, when Den knows. */
+export type HeldWhy = "not_at_prompt";
+
+/** Issue 701: every reason a delivery waits. */
+export const HELD_CODES = [
+  "busy",
+  "not_at_prompt",
+  "trust",
+  "permission",
+  "approval",
+  "paused",
+  "stopped",
+  "owner",
+  "unread",
+] as const;
+export type HeldCode = (typeof HELD_CODES)[number];
+
+/** Issue 701: Hub's words for each reason (it shows them on the comment). */
+export const HELD_WORDS: Record<HeldCode, string> = {
+  busy: "the agent is busy with a turn",
+  not_at_prompt:
+    "the agent's turn is over, but its input prompt isn't on its screen yet",
+  trust: "a question about trusting its folder is on its screen",
+  permission: "a permission question is on its screen",
+  approval: "it waits for its person to Allow a change",
+  paused: "it is paused after a compaction loop until its person goes on",
+  stopped: "the agent isn't running; typed when it next runs",
+  owner: "still asking Hub who its person is; typed once Hub answers",
+  unread: "couldn't read the agent's state in time; trying again",
+};
+
+/**
+ * Issue 701: the reasons on Den's other acks. Hub frames every reason
+ * itself ("Waiting at <install>: …", "Picked up by <install>: …"): plain
+ * lowercase words, no status word in front.
+ */
+export const ACK_WORDS = {
+  missing: "this install has no agent with that id",
+  stopped: "the agent stopped before it finished",
+  noAnswer: "typed in; no answer yet",
+} as const;
+
+/** Issue 701: a time limit ran out (never a real value). */
+const LATE = Symbol("late");
 
 export interface DeliveryLoopDeps {
   hub: DeliveryHub;
@@ -73,12 +135,64 @@ export interface DeliveryLoopDeps {
    * links on its own).
    */
   held?: (dv: Delivery) => void;
+  /**
+   * Issue 664: `n` items have waited `waitedMs` for `agent` because it
+   * isn't at its prompt (said every pump while it lasts); n 0: no longer.
+   * Issue 701: for every reason it waits (`why`).
+   */
+  heldNote?: (
+    agent: string,
+    n: number,
+    waitedMs: number,
+    why?: HeldCode,
+  ) => void;
+  /**
+   * Issue 701: hub.delivery_state_timeout_seconds / _type_timeout_seconds
+   * (60 s, 120 s), in ms: the longest one agent's state read or paste
+   * holds the pump. The others never wait on it.
+   */
+  stateTimeoutMs?: number;
+  typeTimeoutMs?: number;
+  /**
+   * Issue 701: hub.delivery_answer_minutes (30), in ms: a typed comment
+   * whose turn never shows as ended is "delivered, no answer yet" after
+   * it, and the agent's next comments go on.
+   */
+  answerTimeoutMs?: number;
+  /** Issue 701: typed comments that had no answer in answerTimeoutMs. */
+  noAnswer?: (
+    agent: string,
+    w: { count: number; minutes: number; artifact?: string; url?: string },
+  ) => void;
+  /**
+   * Issue 701: a comment from the agent's own person was typed into it:
+   * a question it asked that person is answered.
+   */
+  answered?: (agent: string) => void;
   /** NT: the agent finished its Hub comments (done, not failed). */
   finished?: (
     agent: string,
     w: { count: number; artifact?: string; url?: string },
   ) => void;
+  /**
+   * Issue 702: the path's health changed (stream open or not, trouble, a
+   * delivery), or its last good read moved a minute on. Never per byte.
+   */
+  onHealth?: (h: DeliveryHealth) => void;
+  /** Issue 702: what a restart keeps (the last delivery's time). */
+  health0?: { lastDeliveryAt?: number | null };
+  /**
+   * Issue 703: no bytes on an open stream for this long (Hub sends a
+   * keep-alive every 25 s): closed, the list read once, reopened. 0: never.
+   * Read each time a stream opens. Default 75 s.
+   */
+  silenceMs?: () => number;
 }
+
+/** Issue 703: a stream that lived this long ended cleanly: Hub's own end. */
+const SHORT_LIFE_MS = 5_000;
+/** Issue 702: onHealth again when only the last good read moved this far. */
+const HEALTH_EVERY_MS = 60_000;
 
 /** What an agent's card shows: "Working on N Hub comments · <artifact>". */
 export interface AgentHubWork {
@@ -86,6 +200,8 @@ export interface AgentHubWork {
   queued: number;
   artifact?: string;
   url?: string;
+  /** Issue 664: why the queued ones wait, when Den knows. */
+  held?: HeldWhy;
 }
 
 interface Active {
@@ -101,10 +217,15 @@ interface Active {
 /** A turn that never shows as started is over after this long. */
 const NO_START_MS = 2 * 60_000;
 
+/** Issue 701: the reason a restored delivery was last acked held with. */
+const heldWhy = new WeakMap<Delivery, string>();
+
 /** What Den's held file brings back: a delivery, and Den's own text for an inbox item. */
 function parseHeld(r: unknown): Delivery | null {
   const dv = parseDelivery(r);
   if (!dv) return null;
+  const why = (r as { held_reason?: unknown }).held_reason;
+  if (typeof why === "string") heldWhy.set(dv, why.slice(0, 300));
   const text = (r as { text?: unknown }).text;
   if (dv.id.startsWith(LOCAL_PREFIX) && typeof text === "string")
     dv.text = text.slice(0, 40_000);
@@ -118,6 +239,8 @@ export class DeliveryLoop {
   private readonly states = new Map<string, AckState>();
   /** Ids Hub answered 410 for (sent again, or withdrawn): never acked again. */
   private readonly superseded = new Set<string>();
+  /** Issue 701: the reason each held delivery was last acked `queued` with. */
+  private readonly heldReason = new Map<string, string>();
   /**
    * A held delivery a new one repeats (the same agent, thread, author and
    * words: Hub's Try again): new id → the old ids it took the place of.
@@ -137,15 +260,113 @@ export class DeliveryLoop {
    * person), said once until it's typed.
    */
   private readonly waitSaid = new Set<string>();
+  /** Issue 664: agents whose queue waits because they aren't at their prompt, since when. */
+  private readonly notAtPrompt = new Map<string, number>();
+  /** Issue 701: why each agent's queue waits now, and since when. */
+  private readonly heldCode = new Map<string, HeldCode>();
+  private readonly heldSince = new Map<string, number>();
+  /** Issue 701: agents being pumped now (the next tick leaves them be). */
+  private readonly inflight = new Set<string>();
+  /** Issue 701: agents whose last state read ran out of time. */
+  private readonly unread = new Set<string>();
   /** What persist() last wrote. */
   private persisted = "null";
   private readonly hb: number;
+  private readonly stateMs: number;
+  private readonly typeMs: number;
+  private readonly answerMs: number;
   private readonly now: () => number;
+
+  /** Issue 702: the delivery path's health. */
+  private readonly h: DeliveryHealth;
+  /** What onHealth last got (its key) and the good read it carried. */
+  private healthSaid = "";
+  private healthOkSaid = 0;
+  /**
+   * The troubles logged: each is said once until a good read (a list
+   * answer keeps "refused": Hub without a stream reads the list each time).
+   */
+  private readonly troubleSaid = new Set<DeliveryTrouble>();
 
   constructor(private readonly d: DeliveryLoopDeps) {
     this.hb = d.heartbeatMs ?? 15_000;
+    this.stateMs = d.stateTimeoutMs ?? 60_000;
+    this.typeMs = d.typeTimeoutMs ?? 120_000;
+    this.answerMs = d.answerTimeoutMs ?? 30 * 60_000;
     this.now = d.now ?? Date.now;
+    this.h = {
+      since: this.now(),
+      streamOpen: false,
+      lastOkAt: null,
+      lastDeliveryAt: d.health0?.lastDeliveryAt ?? null,
+      trouble: null,
+      troubleAt: null,
+    };
     this.restore();
+  }
+
+  /** Issue 702: the delivery path's health now (a copy). */
+  health(): DeliveryHealth {
+    return { ...this.h };
+  }
+
+  private healthChanged(): void {
+    const key = JSON.stringify([
+      this.h.since,
+      this.h.streamOpen,
+      this.h.trouble,
+      this.h.lastDeliveryAt,
+    ]);
+    const ok = this.h.lastOkAt ?? 0;
+    if (key === this.healthSaid && ok - this.healthOkSaid < HEALTH_EVERY_MS)
+      return;
+    this.healthSaid = key;
+    this.healthOkSaid = ok;
+    try {
+      this.d.onHealth?.(this.health());
+    } catch {
+      /* its trouble never stops delivery */
+    }
+  }
+
+  /**
+   * A good read: the list answered ("list"), the stream opened ("open"),
+   * or bytes came after that ("bytes"). What is said again later: a list
+   * answer keeps what was said about the stream ("refused": Hub without
+   * a stream reads the list each time); an open alone keeps "closed" and
+   * "silent" (a stream that ends or goes quiet at once is said once, not
+   * at every reopen).
+   */
+  private readOk(how: "list" | "open" | "bytes"): void {
+    this.h.lastOkAt = this.now();
+    this.h.trouble = null;
+    this.h.troubleAt = null;
+    const keep: DeliveryTrouble[] =
+      how === "list"
+        ? ["refused", "closed", "silent"]
+        : how === "open"
+          ? ["closed", "silent"]
+          : [];
+    for (const t of [...this.troubleSaid])
+      if (!keep.includes(t)) this.troubleSaid.delete(t);
+    this.healthChanged();
+  }
+
+  /** Something went wrong: kept, and logged once per kind until a good read. */
+  private troubled(t: DeliveryTrouble, why: string): void {
+    this.h.trouble = t;
+    this.h.troubleAt = this.now();
+    if (!this.troubleSaid.has(t)) {
+      this.troubleSaid.add(t);
+      this.d.log?.(`hub deliveries: ${why.slice(0, 200)}`);
+    }
+    this.healthChanged();
+  }
+
+  private streamIs(open: boolean): void {
+    if (this.h.streamOpen === open) return;
+    this.h.streamOpen = open;
+    this.healthChanged();
   }
 
   /**
@@ -165,6 +386,10 @@ export class DeliveryLoop {
       const q = list
         .map((r) => parseHeld(r))
         .filter((x): x is Delivery => !!x && x.agent === agent);
+      for (const dv of q) {
+        const why = heldWhy.get(dv);
+        if (why) this.heldReason.set(dv.id, why);
+      }
       if (q.length) this.queue.set(agent, q);
     }
     for (const [agent, a] of Object.entries(h.active ?? {})) {
@@ -197,7 +422,13 @@ export class DeliveryLoop {
   private persist(): void {
     const queue: Record<string, unknown[]> = {};
     for (const [a, q] of this.queue)
-      if (q.length) queue[a] = q.map(deliveryRaw);
+      if (q.length)
+        queue[a] = q.map((dv) => {
+          const why = this.heldReason.get(dv.id);
+          return why
+            ? { ...deliveryRaw(dv), held_reason: why }
+            : deliveryRaw(dv);
+        });
     const active: Record<string, Active> = {};
     for (const [a, v] of this.active) active[a] = v;
     const empty = !Object.keys(queue).length && !Object.keys(active).length;
@@ -219,6 +450,9 @@ export class DeliveryLoop {
     return {
       working: a?.ids.length ?? 0,
       queued: q,
+      ...(q && this.notAtPrompt.has(agent)
+        ? { held: "not_at_prompt" as const }
+        : {}),
       ...((first?.artifact ?? next?.thread.artifact)
         ? { artifact: first?.artifact ?? next?.thread.artifact }
         : {}),
@@ -260,6 +494,12 @@ export class DeliveryLoop {
         );
         return;
       }
+      // Issue 701: Hub has no such delivery: nothing to type it for.
+      if ((e as { status?: number })?.status === 404) {
+        this.drop(id);
+        this.d.log?.(`hub delivery ${id}: not on Hub (404): dropped`);
+        return;
+      }
       // Unacked: Hub sends it again, and the repeat is re-acked.
       this.d.log?.(
         `hub delivery ${id}: ack ${state} failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
@@ -270,6 +510,7 @@ export class DeliveryLoop {
   /** Forget a delivery Hub superseded: out of every queue and turn. */
   private drop(id: string): void {
     this.superseded.add(id);
+    this.heldReason.delete(id);
     for (const [agent, q] of this.queue) {
       const left = q.filter((dv) => dv.id !== id);
       if (left.length === q.length) continue;
@@ -292,9 +533,17 @@ export class DeliveryLoop {
     if (this.d.seen.has(dv.id) || this.states.has(dv.id)) {
       const st = this.states.get(dv.id);
       // A repeat: Hub didn't get the ack; say it again (never twice to the agent).
-      if (st) await this.ack(dv.id, st);
+      const why = this.heldReason.get(dv.id);
+      if (st)
+        await this.ack(
+          dv.id,
+          st,
+          st === "queued" && why ? { reason: why } : {},
+        );
       return;
     }
+    this.h.lastDeliveryAt = this.now();
+    this.healthChanged();
     if (dv.kind === "held") {
       try {
         this.d.held?.(dv);
@@ -344,10 +593,10 @@ export class DeliveryLoop {
 
   private async hold(dv: Delivery): Promise<void> {
     this.d.seen.add(dv.id);
-    const s = await this.d.agents.state(dv.agent);
+    const s = await this.stateOf(dv.agent);
     if (s === "missing") {
       await this.ack(dv.id, "refused", {
-        reason: "This install has no agent with that id.",
+        reason: ACK_WORDS.missing,
       });
       return;
     }
@@ -373,14 +622,63 @@ export class DeliveryLoop {
     q.push(dv);
     this.queue.set(dv.agent, q);
     this.persist();
-    if (s === "stopped") await this.ack(dv.id, "queued");
-    await this.pumpOne(dv.agent, s);
+    if (s === "stopped") await this.ackHeld([dv], "stopped");
+    await this.pumpAgent(dv.agent, s);
   }
 
   /** Every agent with work: hand over, beat, finish. Run on a tick. */
   async pump(): Promise<void> {
     const agents = new Set([...this.queue.keys(), ...this.active.keys()]);
-    for (const a of agents) await this.pumpOne(a, await this.d.agents.state(a));
+    // Issue 701: each on its own; one that hangs never holds the others.
+    await Promise.all([...agents].map((a) => this.pumpAgent(a)));
+  }
+
+  /** Issue 701: `p`, or LATE once `ms` passed (p goes on unheard). */
+  private within<T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => resolve(LATE), ms);
+      (t as { unref?: () => void }).unref?.();
+      p.then(
+        (v) => (clearTimeout(t), resolve(v)),
+        () => (clearTimeout(t), resolve(LATE)),
+      );
+    });
+  }
+
+  /** Issue 701: the agent's state, "busy" when it can't be read in time. */
+  private async stateOf(agent: string): Promise<AgentState> {
+    const s = await this.within(this.d.agents.state(agent), this.stateMs);
+    if (s !== LATE) {
+      this.unread.delete(agent);
+      return s;
+    }
+    if (!this.unread.has(agent))
+      this.d.log?.(
+        `hub delivery: couldn't read ${agent}'s state in ${Math.round(this.stateMs / 1000)}s; held, tried again`,
+      );
+    this.unread.add(agent);
+    return "busy";
+  }
+
+  /**
+   * Issue 701: pump one agent, unless it is still being pumped. Waits at
+   * most its time limits; a paste still under way goes on, and the agent
+   * waits for it (never typed twice).
+   */
+  private async pumpAgent(agent: string, known?: AgentState): Promise<void> {
+    if (this.inflight.has(agent)) return;
+    this.inflight.add(agent);
+    const run = (async () => {
+      const s = known ?? (await this.stateOf(agent));
+      await this.pumpOne(agent, s);
+    })()
+      .catch((e) =>
+        this.d.log?.(
+          `hub delivery: ${agent}: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+        ),
+      )
+      .finally(() => this.inflight.delete(agent));
+    await this.within(run, this.stateMs * 2 + this.typeMs);
   }
 
   private async pumpOne(agent: string, s: AgentState): Promise<void> {
@@ -389,14 +687,78 @@ export class DeliveryLoop {
     try {
       await this.pumpOneNow(agent, s);
     } finally {
+      this.noteHeld(agent, s);
       this.persist();
+    }
+  }
+
+  /**
+   * Issue 664: an agent's queue waits because its turn is over but its
+   * input prompt doesn't show: its row and the bell say so, for as long
+   * as it lasts.
+   */
+  private noteHeld(agent: string, s: AgentState): void {
+    const q = this.queue.get(agent)?.length ?? 0;
+    // Issue 701: whatever holds it, said with its reason.
+    const code = q > 0 ? this.heldCode.get(agent) : undefined;
+    const away =
+      q > 0 &&
+      s === "busy" &&
+      !this.active.has(agent) &&
+      this.d.agents.notAtPrompt?.(agent) === true;
+    const since = this.notAtPrompt.get(agent);
+    if (away) {
+      if (since === undefined) {
+        this.notAtPrompt.set(agent, this.now());
+        this.d.log?.(
+          `hub delivery: holding ${q} item${q === 1 ? "" : "s"} for ${agent}: it isn't at its prompt`,
+        );
+      }
+    } else if (since !== undefined) this.notAtPrompt.delete(agent);
+    const heldAt = this.heldSince.get(agent);
+    try {
+      if (code && !this.active.has(agent)) {
+        const at = heldAt ?? this.now();
+        if (heldAt === undefined) this.heldSince.set(agent, at);
+        this.d.heldNote?.(agent, q, this.now() - at, code);
+      } else if (heldAt !== undefined) {
+        this.heldSince.delete(agent);
+        this.heldCode.delete(agent);
+        this.d.heldNote?.(agent, 0, 0);
+      }
+    } catch {
+      // The bell's trouble never stops delivery.
     }
   }
 
   private async pumpOneNow(agent: string, s: AgentState): Promise<void> {
     const now = this.now();
     const act = this.active.get(agent);
-    if (act) {
+    if (act && now - act.typedAt >= this.answerMs && s !== "idle") {
+      // Issue 701: a turn that never shows as ended stops holding the
+      // agent's next comments: Hub and the bell hear "no answer yet".
+      this.active.delete(agent);
+      const minutes = Math.round((now - act.typedAt) / 60_000);
+      for (const id of act.ids)
+        await this.ack(id, "delivered", {
+          reason: ACK_WORDS.noAnswer,
+        });
+      this.d.log?.(
+        `hub delivery: ${act.ids.length} Hub item${act.ids.length === 1 ? "" : "s"} typed into ${agent} ${minutes} min ago, no answer yet: its next ones go on`,
+      );
+      const hubIds = act.ids.filter((id) => !id.startsWith(LOCAL_PREFIX));
+      try {
+        if (hubIds.length)
+          this.d.noAnswer?.(agent, {
+            count: hubIds.length,
+            minutes,
+            ...(act.artifact ? { artifact: act.artifact } : {}),
+            ...(act.url ? { url: act.url } : {}),
+          });
+      } catch {
+        // The bell's trouble never stops delivery.
+      }
+    } else if (act) {
       if (s === "busy") {
         act.sawBusy = true;
         if (now - act.lastBeat >= this.hb) {
@@ -424,7 +786,7 @@ export class DeliveryLoop {
         this.active.delete(agent);
         for (const id of act.ids)
           await this.ack(id, "failed", {
-            reason: "The agent stopped before it finished.",
+            reason: ACK_WORDS.stopped,
           });
         return;
       } else return;
@@ -435,12 +797,25 @@ export class DeliveryLoop {
       return;
     }
     if (s === "stopped") {
-      for (const dv of q)
-        if (this.states.get(dv.id) !== "queued")
-          await this.ack(dv.id, "queued");
+      await this.ackHeld(q, "stopped");
       return;
     }
     if (s !== "idle") {
+      let why: HeldCode | null = null;
+      if (this.unread.has(agent)) why = "unread";
+      else {
+        const w = this.d.agents.why
+          ? await this.within(this.d.agents.why(agent), this.stateMs)
+          : null;
+        why = w === LATE ? null : w;
+      }
+      await this.ackHeld(
+        q,
+        why ??
+          (this.d.agents.notAtPrompt?.(agent) === true
+            ? "not_at_prompt"
+            : "busy"),
+      );
       // #248: say once that it waits, and on what.
       if (!this.waitSaid.has(agent)) {
         this.waitSaid.add(agent);
@@ -455,6 +830,7 @@ export class DeliveryLoop {
     const o = this.d.owner();
     if (!o && q.some((dv) => dv.text === undefined)) {
       this.d.ownerWanted?.();
+      await this.ackHeld(q, "owner");
       return;
     }
     const texts = q.map((dv) => dv.text ?? deliveryText(dv, o!));
@@ -484,6 +860,7 @@ export class DeliveryLoop {
       return;
     }
     this.waitSaid.delete(agent);
+    this.heldCode.delete(agent);
     const oldest = Math.min(
       ...q.map((dv) => {
         const t = Date.parse(dv.createdAt);
@@ -503,8 +880,36 @@ export class DeliveryLoop {
       lastBeat: now,
     });
     for (const dv of q) {
+      this.heldReason.delete(dv.id);
       await this.ack(dv.id, "delivered");
       await this.ack(dv.id, "working");
+    }
+    // Issue 701: the person's own comment answers a question the agent
+    // asked them (its waiting mark goes).
+    if (
+      o &&
+      q.some((dv) => !dv.id.startsWith(LOCAL_PREFIX) && isOwner(dv.author, o))
+    ) {
+      try {
+        this.d.answered?.(agent);
+      } catch {
+        // The bell's trouble never stops delivery.
+      }
+    }
+  }
+
+  /**
+   * Issue 701: tell Hub why these wait (`queued`, with the reason in
+   * plain words), once per reason. Den's own items have no ack.
+   */
+  private async ackHeld(q: Delivery[], code: HeldCode): Promise<void> {
+    if (q[0]) this.heldCode.set(q[0].agent, code);
+    const reason = HELD_WORDS[code];
+    for (const dv of [...q]) {
+      if (dv.id.startsWith(LOCAL_PREFIX)) continue;
+      if (this.heldReason.get(dv.id) === reason) continue;
+      this.heldReason.set(dv.id, reason);
+      await this.ack(dv.id, "queued", { reason });
     }
   }
 
@@ -527,12 +932,40 @@ export class DeliveryLoop {
     const first = this.d.retryMs?.first ?? 1000;
     const max = this.d.retryMs?.max ?? 60_000;
     let wait = first;
+    this.h.since = this.now();
+    this.healthChanged();
     while (!signal.aborted) {
-      let refused = false;
+      // Issue 703: one stream's own abort, for the silence watch.
+      const one = new AbortController();
+      const up = () => one.abort();
+      signal.addEventListener("abort", up, { once: true });
+      const silenceMs = this.d.silenceMs?.() ?? 75_000;
+      let silent = false;
+      let watch: ReturnType<typeof setTimeout> | null = null;
+      const arm = () => {
+        if (watch) clearTimeout(watch);
+        if (!(silenceMs > 0)) return;
+        watch = setTimeout(() => {
+          silent = true;
+          one.abort();
+        }, silenceMs);
+        watch.unref?.();
+      };
+      const openedAt = this.now();
+      let outcome: "ended" | "failed" | "refused" = "ended";
+      let chunks = 0;
       try {
+        arm();
         const reader = new SseReader();
-        for await (const chunk of this.d.hub.stream(this.d.seen.last, signal)) {
-          wait = first;
+        for await (const chunk of this.d.hub.stream(
+          this.d.seen.last,
+          one.signal,
+        )) {
+          // Issue 702/703: the stream opened, or sent bytes (Hub's
+          // keep-alive too): a good read.
+          arm();
+          this.streamIs(true);
+          this.readOk(chunks++ === 0 ? "open" : "bytes");
           for (const ev of reader.feed(chunk)) {
             if (ev.event !== "delivery") continue;
             let v: unknown;
@@ -545,21 +978,47 @@ export class DeliveryLoop {
             const id = ev.id ?? parseDelivery(v)?.id;
             if (id) this.d.seen.setLast(id);
           }
-          if (signal.aborted) return;
+          if (signal.aborted || silent) break;
         }
       } catch (e) {
-        if (signal.aborted) return;
-        refused = (e as { kind?: string })?.kind === "refused";
-        if (!refused)
-          this.d.log?.(
-            `hub deliveries: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+        if (!signal.aborted && !silent) {
+          const t = troubleOf(e);
+          outcome = t === "refused" ? "refused" : "failed";
+          this.troubled(
+            t,
+            t === "refused"
+              ? `${String((e as Error)?.message ?? e)}; reading the list instead`
+              : String((e as Error)?.message ?? e),
           );
+        }
+      } finally {
+        if (watch) clearTimeout(watch);
+        signal.removeEventListener("abort", up);
+        this.streamIs(false);
       }
-      if (refused) {
+      if (signal.aborted) return;
+      if (outcome === "refused") {
         await this.poll();
         await sleep(this.d.pollMs ?? 30_000, signal);
         continue;
       }
+      const lived = this.now() - openedAt >= SHORT_LIFE_MS;
+      if (lived) wait = first;
+      if (silent) {
+        // Issue 703: no bytes, not even Hub's keep-alive: a half-dead
+        // connection. Read the list once, then open a new stream at once.
+        this.troubled(
+          "silent",
+          `no bytes on the comment stream for ${Math.round(silenceMs / 1000)}s: reopening it`,
+        );
+        await this.poll();
+        continue;
+      }
+      // Issue 703: Hub ends a long stream itself: reopen at once.
+      if (outcome === "ended" && lived) continue;
+      if (outcome === "ended") this.troubled("closed", TROUBLE_TEXT.closed);
+      // Issue 702: whatever happened to the stream, the list still runs.
+      await this.poll();
       await sleep(wait, signal);
       wait = Math.min(max, wait * 2);
     }
@@ -570,9 +1029,15 @@ export class DeliveryLoop {
     let list: unknown[];
     try {
       list = await this.d.hub.list(this.d.seen.last);
-    } catch {
+    } catch (e) {
+      // Issue 702: never swallowed: kept for doctor and the bell.
+      this.troubled(
+        troubleOf(e),
+        `the comment list: ${String((e as Error)?.message ?? e)}`,
+      );
       return;
     }
+    this.readOk("list");
     for (const v of list) {
       await this.take(v);
       const id = parseDelivery(v)?.id;

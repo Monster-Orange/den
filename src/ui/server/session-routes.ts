@@ -116,6 +116,7 @@ import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
+import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -416,8 +417,17 @@ export interface ListedSession {
   tokenRevoked?: boolean;
   /** An approval is pending (AG-6a; only when the host knows). */
   waiting?: boolean;
-  /** NT-3b: why ("approval", "permission", "input", "asked"), when known. */
+  /**
+   * NT-3b: why ("approval", "permission", "input", "asked", and issue
+   * 659's "trust": its folder-trust question), when known.
+   */
   waitingWhy?: string;
+  /** Issue 659: it ended because its folder-trust question was declined. */
+  trustDeclined?: true;
+  /** Issue 658: Relaunch from its last handoff is offered (none ready). */
+  handoffOnFile?: true;
+  /** Issue 631: it didn't come back after a restart, and why. */
+  restartFailed?: { at: string; why: string };
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
   hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
   /**
@@ -682,6 +692,14 @@ export function listedSessions(
             ...(why.has(rec.id) ? { waitingWhy: why.get(rec.id) } : {}),
           }
         : {}),
+      // Issue 659: its folder-trust question waits for its person (its
+      // record says so: trustTick), over any other wait.
+      ...(r.trustWait && s && !s.exited
+        ? { waiting: true, waitingWhy: "trust" }
+        : {}),
+      ...(r.trustDeclined ? { trustDeclined: true as const } : {}),
+      ...(r.handoffOnFile ? { handoffOnFile: true as const } : {}),
+      ...(r.restartFailed ? { restartFailed: { ...r.restartFailed } } : {}),
       ...(() => {
         const w = (d.hubWork ?? agentHubWork)(rec.id);
         return w ? { hubWork: w } : {};
@@ -730,6 +748,8 @@ export function listedSessions(
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
       ...(s.launchd ? { launchd: s.launchd } : {}),
       startedAt: s.startedAt,
+      // Issue 448: when a person last typed in it (the rail's Terminal).
+      ...(s.inputAt ? { inputAt: s.inputAt } : {}),
       attachable: true,
     });
   }
@@ -1410,7 +1430,8 @@ export async function handleSessionUpgrade(
     if (binary) {
       if (!exited && data.length) {
         client.write(s.ref.id, data);
-        d.typed(s.ref.id);
+        // Issue 142: the terminal's own answers aren't the person.
+        if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
       return;
     }
@@ -1428,8 +1449,9 @@ export async function handleSessionUpgrade(
         client.resize(s.ref.id, msg.cols, msg.rows);
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
-        client.write(s.ref.id, Buffer.from(msg.data, "utf-8"));
-        d.typed(s.ref.id);
+        const data = Buffer.from(msg.data, "utf-8");
+        client.write(s.ref.id, data);
+        if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
     }
   });

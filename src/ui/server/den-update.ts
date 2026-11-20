@@ -49,6 +49,14 @@ export interface UpdateDeps {
   watch: (script: string, plan: string) => number | undefined;
   /** SRV-1a's note for the next server (written): its path and contents. */
   note: (reason: string) => { path: string; marker: Record<string, unknown> };
+  /**
+   * Issue 562 review: after the install and doctor, before the watch
+   * starts and Den restarts: wait for a quiet moment again (the install
+   * takes a while, and a turn may have started). It always resolves.
+   * It calls `keepAlive` as it waits, so a hold longer than the in-flight
+   * hour still marks the update under way (no second one starts).
+   */
+  beforeRestart?: (keepAlive: () => void) => Promise<void>;
   /** Restart this Den (D64's path, after this answer goes out). */
   restart: () => void;
   port: number;
@@ -355,6 +363,21 @@ export async function updateDen(
     );
   }
 
+  let lastMark = now();
+  // Issue 562 review: a turn may have started during the install. The
+  // watch's clock starts after this, so a long hold isn't a rollback.
+  if (d.beforeRestart)
+    await d
+      .beforeRestart(() => {
+        // At most once a minute: the hold passes every few seconds.
+        if (now() - lastMark < 60_000) return;
+        lastMark = now();
+        state("installing");
+      })
+      .catch(() => {
+        /* never stops the update: it restarts */
+      });
+
   // Until the watch starts, a failure here is still this run's to roll back.
   const plan = path.join(dir, "plan.json");
   try {
@@ -455,6 +478,51 @@ export async function npmViewVersion(
   } catch {
     return null;
   }
+}
+
+/**
+ * Issue 562: whether `npm view <pkg>@<version> den --json` (that
+ * version's package.json in npm's registry document) marks it a security
+ * release: `den.security` is exactly true. No `den`, or anything else:
+ * false. Never a tag name or the changelog.
+ */
+export function parseSecurityMark(out: string): boolean {
+  const t = out.trim();
+  if (!t) return false;
+  try {
+    const v = JSON.parse(t) as unknown;
+    return (
+      !!v &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      (v as { security?: unknown }).security === true
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Issue 562: the security mark of `version` from npm's version data;
+ * null when npm can't say (it counts as unmarked, and is asked again).
+ */
+export async function npmViewSecurity(
+  npm: string[],
+  pkg: string,
+  version: string,
+  cwd: string,
+): Promise<boolean | null> {
+  if (!UPDATE_SPEC_RE.test(version) || version === "latest") return null;
+  // stdout only: a warning npm prints on stderr isn't the field.
+  return new Promise((resolve) =>
+    execFile(
+      npm[0],
+      [...npm.slice(1), "view", `${pkg}@${version}`, "den", "--json"],
+      { cwd, timeout: 2 * 60_000, maxBuffer: 1024 * 1024 },
+      (err, stdout) =>
+        resolve(err ? null : parseSecurityMark(String(stdout ?? ""))),
+    ),
+  );
 }
 
 /** Start the watch, detached from this server (it outlives it). */

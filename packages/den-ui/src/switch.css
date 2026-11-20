@@ -1,0 +1,88 @@
+/* den-ui: the switch (issue 551), switch.js. Tokens only: no colour of
+   its own. Linked, never injected: clean under style-src 'self'. The row
+   is 44px tall and all of it is the tap; the track is the accent's fill
+   when on, the strong border when off; the knob slides over --dur-fast. */
+.den-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--tap);
+  font-family: var(--sans);
+  font-size: var(--fs-m);
+  line-height: var(--lh);
+  color: var(--text);
+  cursor: pointer;
+}
+.den-switch[hidden] {
+  display: none;
+}
+.den-switch-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.den-switch-help {
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.den-switch-input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  /* Transparent: seen only in forced colours, where the fills are not. */
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background-color: var(--border-strong);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+.den-switch-input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background-color: var(--surface);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.den-switch-input:checked {
+  background-color: var(--accent-fill);
+}
+.den-switch-input:checked::after {
+  transform: translateX(18px);
+}
+.den-switch-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Disabled: the quiet border for the track, faint words, no pointer. */
+.den-switch[data-disabled] {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+.den-switch-input:disabled {
+  background-color: var(--border);
+  cursor: not-allowed;
+}
+.den-switch-input:disabled:checked {
+  background-color: var(--border-strong);
+}
+.den-switch[data-disabled] .den-switch-help {
+  color: var(--faint);
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-switch-input,
+  .den-switch-input::after {
+    transition: none;
+  }
+}

@@ -10,9 +10,10 @@
  *     reach the PTY; two browsers and the CLI attach at once and each sees
  *     every byte; closing the socket detaches and never kills, and a
  *     reattach replays what was missed; the session's exit is reported;
- *   - the request checks on the upgrade: Host, Origin (a cross-origin
- *     upgrade), the CSRF subprotocol, sign-in beyond loopback, an agent's
- *     token on another session's io; a plain GET is 426;
+ *   - the request checks on the upgrade: a sign-in on this machine too
+ *     (0.4.71: no session and no bearer is 401 signin_required), then Host,
+ *     Origin (a cross-origin upgrade), the session's CSRF subprotocol, an
+ *     agent's token on another session's io; a plain GET is 426;
  *   - the attach and the detach are in the audit trail.
  *
  * The demo distribution (acme; workspaces north and south), a session host
@@ -34,6 +35,7 @@ import {
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { SessionInfo } from "../../../src/shared/sessions/types.js";
 import { denAuth } from "./helpers/den-auth.js";
+import { signedIn } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -44,6 +46,7 @@ import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 let s: AgentsPageServer;
 let host: HostClient;
 let csrf = "";
+let cookie = "";
 const sess: Record<string, SessionInfo> = {};
 let agentToken = "";
 
@@ -96,10 +99,11 @@ beforeAll(async () => {
   });
   bindActorSession(s.stateDir, t.key, sess.planner.ref.id);
   agentToken = t.token;
-  const r = await fetch(`${s.base}/api/session`, {
-    headers: { "sec-fetch-site": "same-origin" },
-  });
-  csrf = String(((await r.json()) as { csrf: unknown }).csrf ?? "");
+  // A signed-in browser: an upgrade needs a sign-in on this machine too
+  // (0.4.71), and its CSRF token is that session's own.
+  const signed = await signedIn(s.stateDir, s.base);
+  csrf = signed.csrf;
+  cookie = signed.cookie;
 }, 60_000);
 
 afterAll(async () => {
@@ -107,12 +111,15 @@ afterAll(async () => {
   await s?.stop();
 });
 
-/** What a page on this server sends: its Origin and the CSRF subprotocol. */
-const browser = (extra: Record<string, string> = {}) => ({
+/** What a page on this server sends with no sign-in: its Origin and the CSRF subprotocol. */
+const unsigned = (extra: Record<string, string> = {}) => ({
   origin: s.base,
   "sec-websocket-protocol": `den.io, den.csrf.${csrf}`,
   ...extra,
 });
+/** What a signed-in page on this server sends: its cookie too. */
+const browser = (extra: Record<string, string> = {}) =>
+  unsigned({ cookie, ...extra });
 const io = (name: string) => `/api/sessions/${sess[name].ref.id}/io`;
 async function attach(
   name: string,
@@ -351,10 +358,15 @@ describe("the io WebSocket", () => {
   });
 
   it("a plain GET is 426 (it is a WebSocket); an unknown session or another distribution's is 404", async () => {
-    // A shell-grade GET: same-origin only (the mutating-GET check), then 426.
-    expect((await fetch(`${s.base}${io("shell")}`)).status).toBe(403);
+    // A shell-grade GET needs a sign-in on this machine too (0.4.71), then
+    // same-origin only (the mutating-GET check), then 426.
+    const none = await fetch(`${s.base}${io("shell")}`);
+    expect([
+      none.status,
+      ((await none.json()) as { code: string }).code,
+    ]).toEqual([401, "signin_required"]);
     const r = await fetch(`${s.base}${io("shell")}`, {
-      headers: { "sec-fetch-site": "same-origin" },
+      headers: { "sec-fetch-site": "same-origin", cookie },
     });
     expect(r.status).toBe(426);
     expect(((await r.json()) as { code: string }).code).toBe(
@@ -391,14 +403,14 @@ describe("a workspace that isn't active (0.4.17)", () => {
     ws.close();
     // A plain GET says what its upgrade would get: 426, it would open.
     const r = await fetch(`${s.base}${io("night")}`, {
-      headers: { "sec-fetch-site": "same-origin" },
+      headers: { "sec-fetch-site": "same-origin", cookie },
     });
     expect(r.status).toBe(426);
   });
 
   it("a plain GET gives an upgrade's real refusal: 404 with why, for a session that isn't here", async () => {
     const r = await fetch(`${s.base}/api/sessions/nope/io`, {
-      headers: { "sec-fetch-site": "same-origin" },
+      headers: { "sec-fetch-site": "same-origin", cookie },
     });
     expect(r.status).toBe(404);
     expect(await r.json()).toMatchObject({
@@ -421,27 +433,43 @@ describe("a workspace that isn't active (0.4.17)", () => {
 });
 
 describe("the request checks on the io upgrade", () => {
-  it("refuses a cross-origin upgrade, one with no Origin and no bearer, and one without the CSRF subprotocol (403)", async () => {
+  it("an upgrade needs a sign-in on this machine too (0.4.71): no session and no bearer is 401 signin_required", async () => {
+    expect(await refusal(io("shell"), unsigned())).toEqual([
+      401,
+      "signin_required",
+    ]);
+    expect(
+      await refusal(io("shell"), { "sec-websocket-protocol": "den.io" }),
+    ).toEqual([401, "signin_required"]);
+  });
+
+  it("signed in, it still refuses a cross-origin upgrade, one with no Origin and no bearer, and one without the CSRF subprotocol (403)", async () => {
     expect(
       await refusal(io("shell"), browser({ origin: "http://evil.example" })),
     ).toEqual([403, "origin_rejected"]);
     expect(
       await refusal(io("shell"), {
+        cookie,
         origin: `http://localhost:${s.port + 1}`,
         "sec-websocket-protocol": `den.io, den.csrf.${csrf}`,
       }),
     ).toEqual([403, "origin_rejected"]);
     expect(
-      await refusal(io("shell"), { "sec-websocket-protocol": "den.io" }),
+      await refusal(io("shell"), {
+        cookie,
+        "sec-websocket-protocol": "den.io",
+      }),
     ).toEqual([403, "origin_rejected"]);
     expect(
       await refusal(io("shell"), {
+        cookie,
         origin: s.base,
         "sec-websocket-protocol": "den.io",
       }),
     ).toEqual([403, "csrf"]);
     expect(
       await refusal(io("shell"), {
+        cookie,
         origin: s.base,
         "sec-websocket-protocol": "den.io, den.csrf.wrong",
       }),
@@ -474,7 +502,7 @@ describe("the request checks on the io upgrade", () => {
     expect(
       await refusal(
         io("shell"),
-        browser({ host: edgeHost, origin: `http://${edgeHost}` }),
+        unsigned({ host: edgeHost, origin: `http://${edgeHost}` }),
       ),
     ).toEqual([401, "signin_required"]);
     // For another machine (its X-Forwarded-For) it is beyond loopback: no
@@ -482,13 +510,42 @@ describe("the request checks on the io upgrade", () => {
     expect(
       await refusal(
         io("shell"),
-        browser({
+        unsigned({
           host: edgeHost,
           origin: `http://${edgeHost}`,
           "x-forwarded-for": "203.0.113.7",
         }),
       ),
     ).toEqual([401, "signin_required"]);
+  });
+
+  it("over https through the edge: a page signed in there opens its terminal (the edge says wss for the upgrade)", async () => {
+    const edgeHost = "acme.acme.localhost";
+    writeTestEdgeProof(path.join(s.tmp, "edge-state"));
+    const edge = {
+      ...EDGE_PROOF,
+      "x-forwarded-for": "127.0.0.1",
+      "x-forwarded-proto": "https",
+    };
+    // Signed in over https there: the session is the __Host- cookie.
+    const there = await signedIn(s.stateDir, s.base, {
+      host: edgeHost,
+      edge,
+    });
+    expect(there.name.startsWith("__Host-")).toBe(true);
+    const pane = (xfp: string) => ({
+      host: edgeHost,
+      origin: `https://${edgeHost}`,
+      cookie: there.cookie,
+      "sec-websocket-protocol": `den.io, den.csrf.${there.csrf}`,
+      ...edge,
+      "x-forwarded-proto": xfp,
+    });
+    expect(await refusal(io("shell"), pane("wss"))).toEqual([101, "upgraded"]);
+    expect(await refusal(io("shell"), pane("https"))).toEqual([
+      101,
+      "upgraded",
+    ]);
   });
 
   it("an agent's token opens its own session's io (by id or name), never another's (403 agent_forbidden)", async () => {
