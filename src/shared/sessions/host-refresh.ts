@@ -272,7 +272,7 @@ export async function refreshSessionHost(
   const waitedMs = Date.now() - started;
   if (busy.length)
     d.log(
-      `terminal host: agents still mid-turn after ${Math.round(waitedMs / 1000)} s (sessions.host_restart_wait_seconds): ${busy.join(", ")}; restarting anyway`,
+      `terminal host: agents still mid-turn or running a background job they started after ${Math.round(waitedMs / 1000)} s (sessions.host_restart_wait_seconds): ${busy.join(", ")}; restarting anyway`,
     );
 
   let stopped: { pid: number; ended: number; live: SessionInfo[] } = {

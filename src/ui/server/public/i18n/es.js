@@ -2275,11 +2275,12 @@
       "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Los demás agentes lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
     "ag.rn.go": "Cambiar el nombre",
     "ag.rn.cancel": "Cancelar",
-    "ag.job.h": "Hay una tarea en curso",
+    "ag.job.h": "Hay una tarea en segundo plano en curso",
     "ag.job.q":
-      "{id} tiene en curso una tarea que inició ({min} min), como una ejecución de pruebas. ¿Reiniciar de todos modos? Eso termina la tarea.",
+      "{id}: una tarea en segundo plano que inició sigue en curso ({min} min), como una ejecución de pruebas. ¿Reiniciar de todos modos? Eso termina la tarea.",
     "ag.job.go": "Reiniciar de todos modos",
-    "ag.job.held": "{id} tiene una tarea en curso: aún no se ha reiniciado",
+    "ag.job.held":
+      "{id}: una tarea en segundo plano que inició sigue en curso: aún no se ha reiniciado",
     "ag.mv.item": "Mover a otro proyecto…",
     "ag.ord.up": "Subir",
     "ag.ord.down": "Bajar",
