@@ -16,7 +16,10 @@ import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 import { RunnerTokens } from "../../../src/shared/gates/runner-tokens.js";
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { gateView } from "../../../src/shared/gates/view.js";
-import { handleGateRoutes } from "../../../src/ui/server/gate-routes.js";
+import {
+  handleGateRoutes,
+  revokeRunner,
+} from "../../../src/ui/server/gate-routes.js";
 import {
   checkRequest,
   setPrincipal,
@@ -239,7 +242,7 @@ async function serve() {
       json: (await r.json()) as Record<string, unknown>,
     };
   };
-  return { ...s, call };
+  return { ...s, call, base };
 }
 
 describe("the runner routes", () => {
@@ -399,5 +402,126 @@ describe("the runner routes", () => {
         })
       ).status,
     ).toBe(400);
+  });
+});
+
+describe("review fixes: revoke, caps, dropped asks", () => {
+  const ask = (
+    call: Awaited<ReturnType<typeof serve>>["call"],
+    token: string,
+    extra: Record<string, unknown> = {},
+  ) =>
+    call("POST", "/api/gate-slots/ask", token, {
+      kind: "browser",
+      estimate_minutes: 6,
+      label: "e2e",
+      wait_seconds: 0,
+      ...extra,
+    });
+  const localHolder = (store: GateStore) =>
+    store.ask({
+      kind: "browser",
+      who: "me",
+      label: "local",
+      pid: 1,
+      estimateMin: 5,
+    });
+
+  it("revoke frees the token's slots at once, logged, and the next in line starts", async () => {
+    const { store, tokens, call } = await serve();
+    const made = tokens.create("ci-linux");
+    const held = await ask(call, made.token);
+    expect(held.json.granted).toBe(true);
+    const next = localHolder(store);
+    expect(next.grantedAt).toBeUndefined();
+    revokeRunner({ store: () => store, runners: () => tokens }, made.view.id);
+    expect(tokens.check(made.token)).toEqual({
+      ok: false,
+      code: "token_revoked",
+    });
+    expect(store.get(String(held.json.id))).toBeNull();
+    expect(store.get(next.id)?.grantedAt).toBeDefined();
+    expect(store.events().map((e) => e.event)).toContain("taken-back-revoked");
+  });
+
+  it("an ask in flight never gets a grant after a revoke: it answers 401", async () => {
+    const { store, tokens, call } = await serve();
+    const made = tokens.create("ci-linux");
+    const local = localHolder(store);
+    const pending = ask(call, made.token, { wait_seconds: 5 });
+    await new Promise((r) => setTimeout(r, 150));
+    revokeRunner({ store: () => store, runners: () => tokens }, made.view.id);
+    store.release(local.id);
+    const r = await pending;
+    expect([r.status, r.json.code]).toEqual([401, "token_revoked"]);
+    expect(store.list()).toEqual([]);
+  });
+
+  it("caps the live slots per token (a Setting); over it answers 429", async () => {
+    const { store, tokens, call } = await serve();
+    expect(GATE_DEFAULTS.remoteMaxSlots).toBe(4);
+    expect(GATE_DEFAULTS.remoteMaxAsks).toBe(4);
+    store.writeSettings({ remote_max_slots: 2 });
+    const { token } = tokens.create("ci-linux");
+    expect((await ask(call, token, { kind: "cpu" })).status).toBe(200);
+    expect((await ask(call, token, { kind: "cpu" })).status).toBe(200);
+    const third = await ask(call, token, { kind: "cpu" });
+    expect([third.status, third.json.code]).toEqual([429, "too_many_slots"]);
+    expect(store.list()).toHaveLength(2);
+  });
+
+  it("caps the asks in flight per token (a Setting); over it answers 429", async () => {
+    const { store, tokens, call } = await serve();
+    store.writeSettings({ remote_max_asks: 1 });
+    const { token } = tokens.create("ci-linux");
+    const local = localHolder(store);
+    const first = ask(call, token, { wait_seconds: 3 });
+    await new Promise((r) => setTimeout(r, 150));
+    const second = await ask(call, token, { wait_seconds: 3 });
+    expect([second.status, second.json.code]).toEqual([429, "too_many_asks"]);
+    store.release(local.id);
+    expect((await first).json.granted).toBe(true);
+  });
+
+  it("an ask whose caller hangs up releases its entry", async () => {
+    const { store, tokens, base } = await serve();
+    const { token } = tokens.create("ci-linux");
+    const local = localHolder(store);
+    const ac = new AbortController();
+    const p = fetch(`${base}/api/gate-slots/ask`, {
+      method: "POST",
+      signal: ac.signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        kind: "browser",
+        estimate_minutes: 6,
+        label: "e2e",
+        wait_seconds: 10,
+      }),
+    }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(store.list()).toHaveLength(2);
+    ac.abort();
+    await p;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(store.list().map((e) => e.id)).toEqual([local.id]);
+  });
+
+  it("strips control characters from the label; refuses a body over the cap", async () => {
+    const { store, tokens, call } = await serve();
+    const { token } = tokens.create("ci-linux");
+    const r = await ask(call, token, {
+      kind: "cpu",
+      label: "e2e\u001b[31m red\u0007",
+    });
+    expect(store.get(String(r.json.id))?.label).toBe("e2e[31m red");
+    const big = await ask(call, token, {
+      kind: "cpu",
+      label: "x".repeat(9000),
+    });
+    expect(big.status).toBe(400);
   });
 });
