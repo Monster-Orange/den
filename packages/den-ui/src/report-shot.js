@@ -305,41 +305,6 @@ export function toBlob(canvas) {
   return new Promise((ok) => canvas.toBlob(ok, "image/png"));
 }
 
-/**
- * After sending: the masked screenshot copied (where the browser allows
- * it) and saved as a file. Which of the two worked.
- */
-export async function saveAndCopy(canvas, name = "report-screenshot.png") {
-  const blob = await toBlob(canvas);
-  const out = { copied: false, saved: false };
-  if (!blob) return out;
-  try {
-    if (navigator.clipboard?.write && typeof ClipboardItem === "function") {
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": blob }),
-      ]);
-      out.copied = true;
-    }
-  } catch {
-    /* not allowed here: the file is still saved */
-  }
-  try {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.hidden = true;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    out.saved = true;
-  } catch {
-    /* no download here */
-  }
-  return out;
-}
-
 /** An image (a Blob or a data: URL) back as a canvas, or null. */
 export async function canvasOf(src) {
   let url = "";
