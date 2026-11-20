@@ -8830,6 +8830,12 @@ void CRASH_GATE.then(() =>
         heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
         pollSeconds: cfg?.deliveryPollSeconds ?? 30,
         heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
+        // Issue 701: one agent's hang holds only itself; a held comment
+        // and a typed one with no answer are said in the bell.
+        stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
+        typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
+        heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
+        answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
         // Issue 701: an asked question never holds a delivery.
         waiting: deliveryHeldIds,
         waitingWhy: (agent) =>

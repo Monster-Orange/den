@@ -1680,6 +1680,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
       r.checks.push(hm.check);
       if (hm.problem) r.ok = false;
+      // Issue 701: the Hub comments this install holds.
+      r.checks.push((await heldHubLines()).check);
     }
     {
       const { hubStatus } = await import("../../shared/hub.js");
@@ -1787,6 +1789,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     defaultHostModuleDeps(getStateDir()),
   );
   for (const l of hm.lines) console.log(l);
+  // Issue 701: the Hub comments this install holds.
+  for (const l of (await heldHubLines()).lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
@@ -1895,4 +1899,22 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     found
     ? 1
     : 0;
+}
+
+/** Issue 701: doctor's held Hub comments, from Den's held file. */
+async function heldHubLines(): Promise<
+  ReturnType<typeof import("./doctor-hub-held.js").heldLines>
+> {
+  const { heldLines, readHeldFile } = await import("./doctor-hub-held.js");
+  let bellMinutes = 5;
+  try {
+    const { readHubConfig } = await import("../../shared/hub.js");
+    bellMinutes = readHubConfig()?.deliveryHeldBellMinutes ?? 5;
+  } catch {
+    /* a bad hub block: its own row says so; the default here */
+  }
+  return heldLines(readBrand().name, readHeldFile(getStateDir()), {
+    now: Date.now(),
+    bellMinutes,
+  });
 }

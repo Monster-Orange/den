@@ -217,6 +217,10 @@ user file wins.
 | `hub.delivery_alert_minutes`          | `15` (`0`: off)    | Minutes with no good read of Hub's comments before doctor warns and the bell says they aren't arriving.                                   |
 | `hub.delivery_stream_silence_seconds` | `75` (`0`: off)    | No bytes on the comment stream this long (three of Hub's 25 s keep-alives), and Den reopens it.                                           |
 | `hub.delivery_held_note_seconds`      | `60` (at least 5)  | How long text waits for an agent that isn't at its prompt before the bell says so.                                                        |
+| `hub.delivery_held_bell_minutes`      | `5` (at least 1)   | How long a Hub comment waits for a busy agent (or one with a dialog, a held Allow, a pause) before the bell says so, and why.             |
+| `hub.delivery_answer_minutes`         | `30` (at least 1)  | A typed comment whose turn never shows as ended is "delivered, no answer yet" after this; the agent's next comments go on.                |
+| `hub.delivery_state_timeout_seconds`  | `60` (at least 5)  | The longest Den waits to read one agent's state; that agent's comments wait, the others go on.                                            |
+| `hub.delivery_type_timeout_seconds`   | `120` (at least 5) | The longest one agent's paste holds the others' comments.                                                                                 |
 | `hub.delivery_heartbeat_seconds`      | `15` (at least 5)  | How often Den tells Hub an agent is still working on a comment.                                                                           |
 | `hub.sync_check_seconds`              | `30` (at least 5)  | How often Den checks whether its project list changed, to send it to Hub.                                                                 |
 | `hub.names_check_seconds`             | `300` (at least 5) | How often Den asks Hub for its projects' names, so a rename in Hub shows here.                                                            |
