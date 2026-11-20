@@ -52,7 +52,7 @@ function rotationBlock(
 ): string {
   const s = readRotation(args.files);
   // Issue 765: a fork's Stop is never asked for the agent's handoff.
-  if (forkOf(s, input) !== undefined) return "";
+  if (forkOf(input) !== undefined) return "";
   const conversation =
     typeof input.session_id === "string" ? input.session_id : undefined;
   const due = dueFor(s, conversation);

@@ -14,10 +14,10 @@
  *                                    sub-agent's own (<its session>.md,
  *                                    issue 765: never relaunched from)
  *
- * Issue 765: the agent's helper sub-agents (forks) share this folder. Only
- * the session Den launched (`pinned`) counts and is told to rotate; a
- * fork's hook input (another session id, an `agent_id`, a transcript under
- * `subagents/`) is left alone (forkOf). A person can put a rotation off
+ * Issue 765: the agent's helper sub-agents (forks) share this folder, and
+ * their hook input carries the agent's own session id. Only the agent's
+ * own input counts and is told to rotate; a fork's (an `agent_id`, or a
+ * transcript under `subagents/`) is left alone (forkOf). A person can put a rotation off
  * until a time (`deferUntil`): until then nothing is due.
  *
  * Triggers (org config `agents.rotate`):
@@ -80,11 +80,6 @@ export interface RotationState {
   fellBack?: boolean;
   /** D28 "Relaunch now" before a handoff: relaunch once it passes, whatever on_due says. */
   relaunchWanted?: boolean;
-  /**
-   * Issue 765: `conversation` is the session Den launched: any other
-   * session's hooks (a fork's) are not this agent's.
-   */
-  pinned?: boolean;
   /** Issue 765: put off until this time (ISO 8601): nothing is due before it. */
   deferUntil?: string;
 }
@@ -161,7 +156,6 @@ export function readRotation(filesDir: string): RotationState | null {
   if (typeof o.askedAt === "string") s.askedAt = o.askedAt;
   if (o.fellBack === true) s.fellBack = true;
   if (o.relaunchWanted === true) s.relaunchWanted = true;
-  if (o.pinned === true) s.pinned = true;
   if (
     typeof o.deferUntil === "string" &&
     Number.isFinite(Date.parse(o.deferUntil))
@@ -176,15 +170,12 @@ export function writeRotation(filesDir: string, s: RotationState): void {
 
 /**
  * Issue 765: the fork a hook's input comes from, or undefined when it is
- * the agent's own session. A sub-agent's input names it (`agent_id`, or a
- * transcript under `subagents/`); a session Den didn't launch (another
- * `session_id` than the pinned one) is a fork too. The key names its
- * handoff: handoffs/<key>.md.
+ * the agent's own session. A fork runs under the agent's own session id,
+ * so only its input tells it apart: an `agent_id`, or a transcript under
+ * `subagents/` (never the session id alone). The key names its handoff:
+ * handoffs/<key>.md.
  */
-export function forkOf(
-  s: RotationState | null,
-  input: unknown,
-): string | undefined {
+export function forkOf(input: unknown): string | undefined {
   if (!input || typeof input !== "object") return undefined;
   const i = input as Record<string, unknown>;
   const text = (v: unknown) =>
@@ -194,9 +185,6 @@ export function forkOf(
   const transcript = text(i.transcript_path);
   if (transcript && /[\\/]subagents[\\/]/.test(transcript))
     return path.basename(transcript).replace(/\.jsonl$/, "");
-  const session = text(i.session_id);
-  if (s?.pinned && s.conversation && session && session !== s.conversation)
-    return session;
   return undefined;
 }
 
@@ -232,8 +220,7 @@ export function deferredUntil(
 
 /**
  * A launch's rotation state. A new conversation starts at 0. A resume of
- * the same one keeps its count and takes the current `after`. Issue 765:
- * the conversation is the one Den launched (pinned).
+ * the same one keeps its count and takes the current `after`.
  */
 export function launchRotation(
   filesDir: string,
@@ -250,7 +237,6 @@ export function launchRotation(
         compactions: 0,
         after,
       };
-  if (conversation !== undefined) s.pinned = true;
   if (after === 0) {
     delete s.due;
     delete s.dueAt;
@@ -279,8 +265,7 @@ export function noteCompaction(
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
   const prev = readRotation(filesDir);
   // Issue 765: a fork's compaction is not this agent's.
-  if (forkOf(prev, input) !== undefined)
-    return prev ?? { compactions: 0, after };
+  if (forkOf(input) !== undefined) return prev ?? { compactions: 0, after };
   const fresh =
     !prev ||
     (conversation !== undefined &&

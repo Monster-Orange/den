@@ -5174,12 +5174,14 @@ itself (default)"). Its buttons:
   says until when, with a button to change it or stop putting it off.
 - **Settings**: Settings › Agents › Rotation.
 
-**Helper sub-agents (forks)** share their agent's files folder. Only the
-session Den launched counts: a fork's compactions, and pull requests a
-fork merges, never make the agent due, and the rotation notice reaches
-the agent's own session only. A fork that tries to write the agent's
-`handoff.md` is refused and told to write `handoffs/<its session>.md`
-instead; a relaunch never reads a fork's handoff.
+**Helper sub-agents (forks)** share their agent's files folder and its
+session id; Den tells a fork apart by its agent id, or its transcript
+under `subagents/`. A fork's compactions, and pull requests a fork
+merges, never make the agent due, and the rotation notice reaches the
+agent's own session only. A fork that tries to write the agent's
+`handoff.md` (a file tool, or a shell `>`, `>>` or `tee`) is refused and
+told to write `handoffs/<its id>.md` instead; a relaunch never reads a
+fork's handoff.
 
 **Resume and Start on a due agent** follow `on_due`. Under `auto`, Resume
 relaunches it from its handoff once the handoff passes. Under `ask`,

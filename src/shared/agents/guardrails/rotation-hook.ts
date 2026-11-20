@@ -20,9 +20,9 @@
  *     which Claude Code adds to the context: write handoff.md, then end
  *     the turn.
  *
- *   - PreToolUse (Write, Edit, MultiEdit), issue 765: a helper
- *     sub-agent (a fork: rotation.ts forkOf) that writes handoff.md is
- *     refused (`permissionDecision` "deny"), and told to write its own
+ *   - PreToolUse (Write, Edit, MultiEdit, Bash), issue 765: a helper
+ *     sub-agent (a fork: rotation.ts forkOf) that writes handoff.md (a
+ *     file tool, or a Bash `>`, `>>` or `tee` to it) is refused (`permissionDecision` "deny"), and told to write its own
  *     handoff to handoffs/<its session>.md instead. The agent's own session
  *     writes it as usual.
  *
@@ -82,7 +82,7 @@ export function rotationHookOutput(
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
   // Issue 765: a fork's events are not the agent's.
-  const fork = forkOf(stored, i);
+  const fork = forkOf(i);
   if (event === "PreToolUse" || (event === undefined && "tool_input" in i))
     return fork === undefined ? "" : forkHandoffGuard(i, args.files, fork);
   if (fork !== undefined) return "";
@@ -130,6 +130,24 @@ export function rotationHookOutput(
 }
 
 /**
+ * Issue 765: the files a Bash command writes with `>`, `>>` or `tee`
+ * (a plain pattern check, quotes stripped), for the handoff.md guard.
+ */
+export function bashWriteTargets(command: string): string[] {
+  const out: string[] = [];
+  const word = `("[^"]+"|'[^']+'|[^\\s;&|<>()]+)`;
+  const unq = (w: string) => w.replace(/^["']|["']$/g, "");
+  for (const m of command.matchAll(new RegExp(`\\d?>>?\\|?\\s*${word}`, "g")))
+    out.push(unq(m[1]));
+  for (const m of command.matchAll(
+    new RegExp(`\\btee\\b((?:\\s+(?:-[a-z]+|${word}))+)`, "g"),
+  ))
+    for (const w of m[1].trim().split(/\s+/))
+      if (!w.startsWith("-")) out.push(unq(w));
+  return out;
+}
+
+/**
  * Issue 765: a fork's write to the agent's handoff.md, refused, with where
  * its own goes; "" for any other file.
  */
@@ -140,10 +158,28 @@ function forkHandoffGuard(
 ): string {
   const ti = i.tool_input;
   if (!ti || typeof ti !== "object") return "";
-  const file = (ti as Record<string, unknown>).file_path;
-  if (typeof file !== "string" || !file) return "";
+  const t = ti as Record<string, unknown>;
   const cwd = typeof i.cwd === "string" ? i.cwd : files;
-  if (path.resolve(cwd, file) !== path.resolve(handoffFile(files))) return "";
+  const own = path.resolve(handoffFile(files));
+  // A Bash `cd <dir> && … > handoff.md` writes there too.
+  const dirs =
+    typeof t.command === "string"
+      ? [
+          cwd,
+          ...[...t.command.matchAll(/\bcd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/g)].map(
+            (m) => path.resolve(cwd, m[1].replace(/^["']|["']$/g, "")),
+          ),
+        ]
+      : [cwd];
+  const hits = (file: string) =>
+    dirs.some((dir) => path.resolve(dir, file) === own);
+  const targets =
+    typeof t.file_path === "string" && t.file_path
+      ? [t.file_path]
+      : typeof t.command === "string"
+        ? bashWriteTargets(t.command)
+        : [];
+  if (!targets.some(hits)) return "";
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
