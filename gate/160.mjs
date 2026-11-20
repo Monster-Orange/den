@@ -11,7 +11,9 @@ export const clauses = [
   "person-only changes to the policy itself always ask",
   "first use: closing a stale or superseded PR after a Hub note (auto unless watched)",
   "first use: agent_import (ask)",
+  "the policy's settings have en, es and ja text",
 ];
+const LANGS = ["en", "es", "ja"];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 90000;
 const INSTALL = [
@@ -85,7 +87,115 @@ export async function run(ctx, s) {
     await ws.scrollIntoViewIfNeeded().catch(() => {});
     await ctx.shot(`project-policy-${ctx.browser}-${ctx.width}`);
   }
-  return { ...s, rows };
+  // The install's three rows in en, es and ja (Den's language, put back).
+  const words = {};
+  let was = null;
+  try {
+    was = (await settingsApi(ctx))?.language ?? null;
+    for (const lang of LANGS) {
+      await settingsApi(ctx, { language: lang });
+      await ctx.goto(ctx.page, "/settings");
+      await ctx.page
+        .waitForSelector('.set-row[data-setting="agents.approvals_policy"]', {
+          timeout: 15000,
+        })
+        .catch(() => {});
+      words[lang] = await ctx.page.evaluate((ids) => {
+        const text = (e) => (e?.textContent || "").trim();
+        return {
+          html: document.documentElement.lang || null,
+          rows: Object.fromEntries(
+            ids.map((id) => {
+              const row = document.querySelector(
+                `.set-row[data-setting="${id}"]`,
+              );
+              return [
+                id,
+                row
+                  ? {
+                      label: text(row.querySelector(".l")),
+                      desc: text(row.querySelector(".d")),
+                      options: [
+                        ...row.querySelectorAll(".seg button[data-v]"),
+                      ].map(text),
+                    }
+                  : null,
+              ];
+            }),
+          ),
+        };
+      }, INSTALL);
+      await ctx.shot(`words-${lang}-${ctx.browser}-${ctx.width}`);
+    }
+  } catch (e) {
+    words.error = String(e?.message ?? e);
+  } finally {
+    await settingsApi(ctx, { language: was }).catch(() => {});
+  }
+  return { ...s, rows, words };
+}
+
+/** Den's settings through the bed's signed-in API (the person's token). */
+async function settingsApi(ctx, body) {
+  const r = await ctx.api(
+    "/api/settings",
+    body
+      ? {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : undefined,
+  );
+  if (r && r.ok === false) throw new Error(`/api/settings: HTTP ${r.status}`);
+  return typeof r?.json === "function" ? r.json() : r;
+}
+
+/**
+ * The words row: in each language the page is in it, each row's label,
+ * description and options have words, and es and ja are not English.
+ */
+function wordsRow(cells) {
+  const bad = [];
+  for (const { cell, result } of cells) {
+    const w = result.words ?? {};
+    if (w.error) bad.push(`${cell.browser}: ${w.error}`);
+    for (const lang of LANGS) {
+      const at = w[lang];
+      if (!at) {
+        bad.push(`${cell.browser} ${lang}: not read`);
+        continue;
+      }
+      if (at.html !== lang)
+        bad.push(`${cell.browser} ${lang}: page in ${at.html}`);
+      for (const id of INSTALL) {
+        const r = at.rows?.[id];
+        const en = w.en?.rows?.[id];
+        if (!r || !r.label || !r.desc) {
+          bad.push(`${cell.browser} ${lang} ${id}: no words`);
+          continue;
+        }
+        if (lang === "en") continue;
+        if (r.label === en?.label || r.desc === en?.desc)
+          bad.push(`${cell.browser} ${lang} ${id}: English ("${r.label}")`);
+        const same = r.options.filter((o, i) => o && o === en?.options?.[i]);
+        if (same.length)
+          bad.push(
+            `${cell.browser} ${lang} ${id}: options ${same.join(", ")} in English`,
+          );
+      }
+    }
+  }
+  return {
+    clause: clauses[7],
+    ok: bad.length === 0,
+    detail: bad.length
+      ? bad.join("; ")
+      : "Agent writes, watched and critical rows: label, description and options in en, es and ja",
+    evidence: cells.flatMap(({ cell }) =>
+      LANGS.map((l) => `words-${l}-${cell.browser}-${cell.width}.png`),
+    ),
+  };
 }
 
 const KINDS = ["auto", "notify", "ask"];
@@ -167,5 +277,6 @@ export function expect(cells) {
       skip: "person",
       detail: "agent_import's held write waits on a person's Allow",
     },
+    wordsRow(cells),
   ];
 }
