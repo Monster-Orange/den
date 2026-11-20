@@ -29,6 +29,7 @@ import { signInUrl } from "./helpers/den-auth.js";
 import { signIn } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -47,12 +48,9 @@ let server: ChildProcess;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await chromium.connect(ws, { exposeNetwork: "<loopback>" })
-      : await chromium.launch({
-          args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-        });
+    browser = await launchBrowser(chromium, {
+      args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
+    });
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

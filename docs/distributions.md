@@ -261,7 +261,15 @@ with "If you didn't ask an agent to do this, Deny." under it.
   token: its own), `GET /api/approvals/<id>` (the asking agent's own, the
   ticket holder's, or the person's) and
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
-  Every ask and decision is in the activity trail.
+  `POST /api/approvals/<id>/withdraw` (from 0.4.73) takes a request back
+  before anyone decides: only its asker may (the same agent token, or the
+  same person's bearer or session); anyone else gets 403, a decided
+  request 409, an unknown one 404. It reads `withdrawn` after, and nothing
+  runs. Every ask, decision and withdrawal is in the activity trail.
+- **A held write counts in the bell** (from 0.4.73): while it waits, it is
+  one item under Needs you, linked to the asking agent. It goes when the
+  request is allowed, denied, expired or withdrawn. Den's own "update to
+  X" ask has its one item.
 - **The server agent restarts its own Den** (`den_restart_server
 { reason }`, the held action `den_restart`). Den restarts in place on
   the version installed now, as Settings › Restart Den does; agents and
@@ -396,7 +404,8 @@ service:api/web"`).
   to re-run: `web down` answers `stopped: false` when the server wasn't
   running, and `ok` is true once nothing answers on its port. On a busy
   machine, where `lsof` or `ps` can't say which process holds the port
-  (each lookup gets 5 s, then 20 s; `DEN_LOOKUP_TIMEOUTS_MS` sets them),
+  (each lookup gets 5 s, then 20 s: the Settings `process_lookup.first_seconds`
+  and `retry_seconds`; `DEN_LOOKUP_TIMEOUTS_MS` overrides both),
   `web down` and `web restart` exit 1 saying they couldn't tell, and
   their `--json` answers `ok: false` with `stopped: false` (and `running:
 null` when the server doesn't answer either). Run them again.
@@ -2145,6 +2154,47 @@ device, sign in with GitHub as the Den's owner, approve the computer with
 the code its page shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
 
+**The sign-in lives on Den's own address (0.4.72).** Browsers share a
+host's cookies across its ports: a cookie set on `localhost` reaches every
+other app you open on `localhost`, a dev server in a container among them.
+So once this install's https address (`web.url`, served by the edge) works,
+the session cookie is set only there, and `localhost`, `127.0.0.1` and
+`[::1]` get none:
+
+- `web up` and `web open` open the https address. `/auth`, `/signin` and
+  `/attest` on any other name (a loopback name, a LAN name, or the
+  address's name on Den's own port) answer with a plain redirect to the
+  same path there, and the sign-in APIs answer `signin_elsewhere`. A
+  signed-out page on another name says where Den signs in, with a link, and
+  its `web login` line names the address. Devices on the mesh reach the
+  address itself, so they are never sent away.
+- Once the address is proven, a session counts only if it was signed in
+  over that https address. Every other one (a loopback name, or plain http
+  on any name) ends at the proof and counts on no host after. Sign-out,
+  with that session's own page, ends the session its cookie names, even
+  one that no longer counts. Plain reads on loopback stay open, and the CLI's token
+  (`web token --print`), the MCP and agents' tokens work on loopback as
+  before.
+- **This is my computer** (`/attest`) on a loopback name goes to the
+  address. There, a signed-in browser the edge places on this machine gets
+  its code at once; one it can't place goes through `localhost` once, with
+  a link that works once for 2 minutes. A browser not signed in gets the
+  sign-in page there.
+- "Proven" means Den's own check of the address found this Den there (the
+  same check `doctor` and `web up` make, every
+  `web.address_check_cache_seconds`), or the edge brought an https request
+  for it with its proof. A check that can't tell (a timeout, no DNS answer)
+  keeps it proven for `web.address_unknown_keep_seconds` after the last
+  answer as this Den (300 unless set; 0 to 3600); past that it counts as a
+  failure. A failure (something else, or nothing, answers),
+  `web.address_check_drop_after` times in a row (2 unless set; 1 to 100),
+  moves sign-in back to the address the browser uses. `doctor` says when
+  the address last answered as this Den. Before it is proven,
+  and on an install with no https address (the edge off, its port taken, a
+  fresh install), sign-in stays where the browser is, so nothing locks you
+  out. `doctor` then warns: other apps you open on that address could see
+  the sign-in, and it says how to set up the https address.
+
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
 user, and the CLI does that for you:
@@ -2187,10 +2237,14 @@ user, and the CLI does that for you:
   its bearer and never logs the code. `--no-wait` prints the link alone and
   returns, as before (no code); with no server running `web login` does
   that too, and says so.
-- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Lax (a
+- **The cookie** is host-only (no Domain), HttpOnly, SameSite=Lax (a
   person's click on a link from another site lands signed in; that site's
-  own requests carry no cookie) and Path=/, and Secure when the request
-  came over HTTPS through the edge. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
+  own requests carry no cookie) and Path=/. Over HTTPS through the edge it
+  is `__Host-den_session_<port>` and Secure, so the browser sends it to
+  that address only, over https only. Over https only that name counts (a
+  browser that signed in there before 0.4.72 signs in once more). Over
+  plain http it is `den_session_<port>`. The edge's `X-Forwarded-Proto`
+  counts only with the edge's proof. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
   browser allows. Each signed-in page load sends it again (the same value),
@@ -3311,10 +3365,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
   "current", or "restart needed: host code changed" / "terminal module
   changed" with the restart command.
 
+  Issue 631: every agent running before the restart is in the audit
+  row's resumed, failed or cut list. The list is taken once more right
+  before the stop, and every agent whose terminal the host still ran
+  then is added, so an agent between the stop and the start of its
+  relaunch from a handoff isn't missed. No relaunch from a handoff starts
+  while the restart runs. An agent that relaunched from its handoff
+  resumes in its new conversation. Den looks again
+  `sessions.host_restart_check_seconds` (default 30; 0: no look) after
+  the resumes: an agent that ended since counts as failed, with its state
+  and last line. Each failed agent shows as interrupted, with Resume, and
+  its row says it didn't come back after a restart, and why. The bell has
+  a "needs you" item for it.
+
   ```yaml
   sessions:
     host_restart_wait_seconds: 900
     host_restart_note: true
+    host_restart_check_seconds: 30
   ```
 
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
@@ -3488,6 +3556,17 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   the server agent was waiting on you; its question is still open".
   `server_agent.security_update_skips_questions` (org config, default
   `true`): `false` makes a security release wait like any other.
+- **A security release doesn't wait for a busy agent** (issue 603). With
+  `self_update: auto`, a security release also installs while the server
+  agent is in the middle of a turn, at the first check that finds it.
+  The restart that follows still waits for the turn to end (below, up to
+  `server_agent.update_restart_wait_seconds`). That restart is the web
+  server's: the server agent's turn runs in the terminal host, which
+  keeps running unless its own code changed. A pending Allow still holds
+  the update. The log and the audit say it went ahead while the agent
+  was busy. `server_agent.security_update_skips_busy` (org config,
+  default `true`): `false` makes a security release wait for the turn
+  before it installs. Other releases wait for the turn as before.
 - **The restart looks again after the install** (issue 562). The install
   takes a while, and a turn may start meanwhile (the person answers the
   question). Once an auto update is installed and its doctor has run,
@@ -4620,6 +4699,40 @@ process Den couldn't place. The audit row names both pids: the caller's
 ```yaml
 agents:
   token_peer_wait_ms: 30000 # ms, 0 to 600000
+```
+
+Den finds an agent's caller with the same lookups, so their limits
+(Settings › Server, `config process_lookup.*`) count here too:
+
+```yaml
+process_lookup:
+  first_seconds: 5 # the first try, 0.5 to 600
+  retry_seconds: 20 # the try after it ran out of time, 1 to 600
+```
+
+An attention mark Den never took (no answer, or a refusal) is written to
+the agent's own files folder (`agent-hooks-lost.jsonl`), and `doctor`
+shows a warning per agent with marks lost in the last day: how many, and
+the last reason.
+
+When Den can't place a caller, the audit row says why: the lookup timed
+out, failed, found no matching connection or more than one, or was
+still running when the wait ended. A caller that had already closed its
+connection is refused all the same, but nothing is there to answer, so
+its row says "the caller had gone" (reason `token_caller_gone`) and it
+isn't counted as a refused agent.
+
+An agent's hooks (its attention mark for the bell, the Hub inbox check)
+stay connected long enough for a busy machine to place them, and try
+again when a call fails or is turned away. These are Settings
+(Settings › Agents, or `config agent_hooks.*`, in user.yml), read when
+an agent starts:
+
+```yaml
+agent_hooks:
+  timeout_seconds: 20 # each try's wait, 1 to 600
+  retries: 2 # tries after the first, 0 to 10
+  backoff_seconds: 1 # the first pause, doubling, 0 to 60
 ```
 
 An agent's token reaches only its own session's routes, and never a

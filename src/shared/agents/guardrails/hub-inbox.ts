@@ -7,13 +7,15 @@
  *
  * D52: it asks through Den's proxy (`<den>/hub`), with the agent's own Den
  * token from its session's env (DEN_ACTOR_TOKEN); Den attaches the install's
- * Hub token, which the agent never holds. Two seconds at most; any failure
- * lets the agent stop (fails open).
+ * Hub token, which the agent never holds. Any failure lets the agent stop
+ * (fails open). Issue 609: each try waits agent_hooks.timeout_seconds
+ * (20 s), with agent_hooks.retries (hook-call.ts), as the attention hook.
  */
 import * as fs from "fs";
 import { writeFileAtomic } from "../../atomic-write.js";
 import * as path from "path";
 import { actorTokenOf } from "../../actor-token.js";
+import { HOOK_CALL_DEFAULT, callDen, type HookCall } from "./hook-call.js";
 
 export interface InboxArgs {
   /** Den's proxy to Hub (`<den>/hub`). */
@@ -76,7 +78,9 @@ export async function inboxBlock(
   a: InboxArgs,
   opts: {
     fetch?: FetchFn;
-    timeoutMs?: number;
+    /** Issue 609: each try's wait, the retries, the pause between. */
+    call?: HookCall;
+    sleep?: (ms: number) => Promise<void>;
     env?: Record<string, string | undefined>;
   } = {},
 ): Promise<string> {
@@ -84,16 +88,17 @@ export async function inboxBlock(
   if (!headers) return "";
   let yours: number;
   try {
-    const r = await (opts.fetch ?? fetch)(
+    const r = await callDen(
       `${a.base.replace(/\/+$/, "")}/api/inbox`,
       {
         method: "GET",
         headers: { ...headers, Accept: "application/json" },
         redirect: "error",
-        signal: AbortSignal.timeout(opts.timeoutMs ?? 2000),
       },
+      opts.call ?? HOOK_CALL_DEFAULT,
+      { fetch: opts.fetch, sleep: opts.sleep },
     );
-    if (!r.ok) return "";
+    if (!r?.ok) return "";
     const b = (await r.json()) as { yours?: unknown };
     if (typeof b.yours !== "number" || !Number.isInteger(b.yours)) return "";
     yours = Math.max(0, Math.min(b.yours, 1_000_000));

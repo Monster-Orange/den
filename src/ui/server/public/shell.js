@@ -1592,6 +1592,7 @@
     "err.signin.expiredTitle": "Sign-in link expired",
     "err.signin.local":
       "A sign-in belongs to one address. This page is on {host}: open the same page on localhost, where this browser is signed in.",
+    "err.signin.atAddress": "{name} signs in at {address}",
     "err.signin.copy": "Copy command",
     "err.signin.title": "Sign in to {name}",
     "err.signin.where":
@@ -1853,6 +1854,12 @@
     "set.server.crash_loop_minutes": "Restart guard window, in minutes",
     "set.server.crash_loop_minutes.d":
       "The minutes the unclean stops above are counted in. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "Process lookup wait",
+    "set.server.lookup_first.d":
+      "How long __DEN_TITLE__ waits on its first try when it asks the system which process holds a connection (lsof, ps). An agent's own calls are placed this way. __DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "Process lookup retry wait",
+    "set.server.lookup_retry.d":
+      "How long the second try waits when the first ran out of time. A busy machine can be slow to answer. __DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout": "Address check wait",
     "set.server.address_check_timeout.d":
       "How long __DEN_TITLE__ waits for an address to answer when it checks that the address reaches this __DEN_TITLE__, before it prints or opens it. __DEN_CLI__ config web.address_check_timeout_seconds=5",
@@ -1862,6 +1869,13 @@
     "set.server.address_check_cache": "Address check kept for",
     "set.server.address_check_cache.d":
       "How long the page banner and Edge reuse the last check of __DEN_TITLE__'s address. 0 checks on every read. __DEN_CLI__ config web.address_check_cache_seconds=60",
+    "set.server.address_check_drop_after":
+      "Address failures before sign-in moves back",
+    "set.server.address_unknown_keep": "Address held while checks can't tell",
+    "set.server.address_unknown_keep.d":
+      "Once __DEN_TITLE__'s https address is proven, how long checks that can't tell (no answer in time) keep sign-in there, from its last answer. After that they count as failures, so sign-in comes back on this machine's own name. Keep it short. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    "set.server.address_check_drop_after.d":
+      "Once __DEN_TITLE__'s https address is proven, the sign-in lives only there. How many checks in a row must find something else, or nothing, answering at that address before sign-in works on this machine's own name again. A check that can't tell is ignored. __DEN_CLI__ config web.address_check_drop_after=2",
     "set.server.bridge_listen": "Docker bridge, for the edge",
     "set.server.bridge_listen.d":
       "Linux only, with an edge set up here: __DEN_TITLE__ also listens on the Docker bridge's address, where the edge reaches this machine. Off: only 127.0.0.1, and the edge can't reach __DEN_TITLE__. Applies at the next start. __DEN_CLI__ config web.bridge_listen=off",
@@ -1894,7 +1908,7 @@
       "How long __DEN_TITLE__ keeps whether each Report repository is public or private. After this, it asks GitHub again. __DEN_CLI__ config feedback.visibility_cache_hours=24",
     "set.server.report_visibility_wait": "Report: repository visibility wait",
     "set.server.report_visibility_wait.d":
-      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says public, and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "How long Report waits for GitHub to say whether a repository is public or private. After this, it says not known (with the caution), and the answer shows the next time. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     "set.server.report_visibility_retry": "Report: repository visibility retry",
     "set.server.report_visibility_retry.d":
       "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
@@ -1910,6 +1924,15 @@
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.hook_wait": "Agent hook wait",
+    "set.agents.hook_wait.d":
+      "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    "set.agents.hook_retries": "Agent hook retries",
+    "set.agents.hook_retries.d":
+      "How many more times an agent's hook tries when __DEN_TITLE__ didn't answer in time or turned the call away. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.retries=2",
+    "set.agents.hook_backoff": "Agent hook pause",
+    "set.agents.hook_backoff.d":
+      "How long an agent's hook waits before its first retry. Each later pause doubles. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "Compacting repeatedly: compactions",
     "set.agents.compaction_loop.d":
       "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -2070,6 +2093,7 @@
     "ag.state.interrupted": "interrupted",
     "ag.why.stopped": "Stopped by you {time}",
     "ag.why.interrupted": "Interrupted: {name} restarted",
+    "ag.why.restartFailed": "Didn't come back after a restart: {why}",
     "ag.why.exited": "Exited",
     "ag.why.exitedCode": "Exited (code {code})",
     "ag.fresh": "Start fresh",
@@ -2677,6 +2701,8 @@
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
+    "bell.m.heldAllow": "{name} waits for your Allow: {what}",
+    "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
@@ -2696,6 +2722,8 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.backNoteHeld":
+      "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":
       "__DEN_TITLE__ restarted to finish an update while {agent} was working",
     "bell.m.updateWaitsAskedWhat":
@@ -5460,7 +5488,8 @@
    * data: this browser's GitHub sign-in ({ name, login }), else, on a
    * local browser on this machine only, the install owner's GitHub
    * identity (/api/session's identity.owner) with its role. A browser
-   * signed in with a link or a code is never shown as the owner. The kit draws the name over @login (a role only in an
+   * signed in with a link or a code is never shown as the owner. The kit draws the name over @login, and @login alone when the name is
+   * just the login (issue 656; a role only in an
    * account menu's header). With no GitHub identity at all, the kit's own
    * word for this computer. Never device words.
    */
@@ -5485,10 +5514,15 @@
       h.login.toLowerCase() === String(gh.login).toLowerCase()
         ? h.name
         : undefined;
+    // Issue 656: a name that is just the login is no name (the kit's
+    // rule): the entry is @login alone, never the login twice.
+    var realName = function (n) {
+      return n && !DUI.sameAsLogin(n, gh.login) ? n : undefined;
+    };
     var who = gh
       ? {
           login: gh.login,
-          name: gh.name || hubName || undefined,
+          name: realName(gh.name) || realName(hubName),
           role:
             gh.role === "owner" ? t("acct.roleOwner") : gh.role || undefined,
         }
@@ -5883,8 +5917,9 @@
       el.focus();
     });
 
-  // The browser-tab icon is the active theme's (dev.22), set here and
-  // nowhere else: no page links one. Until appearance.js knows the theme
+  // The browser-tab icon is the active theme's (dev.22), set here. A page
+  // comes with the kit's icons (issue 644's head snippet: Den's default
+  // theme's own), which this replaces. Until appearance.js knows the theme
   // (it calls setFavicon with the versioned URL for the mode it draws in,
   // again on every theme or mode change), the bare route serves the
   // active theme's, never cached.

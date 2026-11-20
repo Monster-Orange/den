@@ -278,12 +278,13 @@ describe("in CI", () => {
     expect(jobs["pr-shards"]["timeout-minutes"]).toBeGreaterThanOrEqual(30);
   });
   it("the release never sets it", () => {
-    expect(
-      fs.readFileSync(
-        path.join(ROOT, ".github", "workflows", "release.yml"),
-        "utf-8",
-      ),
-    ).not.toMatch(/DEN_TEST_QUARANTINE/);
+    for (const f of ["release.yml", "release-gates.yml", "release-dry-run.yml"])
+      expect([
+        f,
+        /DEN_TEST_QUARANTINE/.test(
+          fs.readFileSync(path.join(ROOT, ".github", "workflows", f), "utf-8"),
+        ),
+      ]).toEqual([f, false]);
   });
 });
 

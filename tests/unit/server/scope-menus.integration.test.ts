@@ -25,6 +25,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { signIn, signedIn, type SignedIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -177,7 +178,7 @@ beforeAll(async () => {
   port = started.port;
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }

@@ -35,6 +35,7 @@ import { denAuth } from "./helpers/den-auth.js";
 import { signIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { pageImport } from "./helpers/page-import.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -478,7 +479,7 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
     let browser: import("playwright").Browser;
     try {
       const { chromium } = await import("playwright");
-      browser = await chromium.launch();
+      browser = await launchBrowser(chromium);
     } catch (err) {
       if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
       throw err;

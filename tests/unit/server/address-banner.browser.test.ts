@@ -23,6 +23,7 @@ import {
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { proxyRoutes } from "../../../src/shared/edge/proxy-route.js";
 import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(90_000);
 
@@ -35,11 +36,7 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    for (const e of ENGINES)
-      browsers[e] = ws
-        ? await pw[e].connect(ws, { exposeNetwork: "<loopback>" })
-        : await pw[e].launch();
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

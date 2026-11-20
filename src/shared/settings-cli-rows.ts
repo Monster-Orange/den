@@ -25,11 +25,16 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
- *   address_check: { timeout_seconds?, retries?, cache_seconds? }
+ *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
+ *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
  *   feedback: { visibility_cache_hours?, visibility_timeout_seconds?,
  *     visibility_retry_seconds? }
  *                                     user.yml feedback.* (issue 415)
+ *   process_lookup: { first_seconds?, retry_seconds? }
+ *                                     user.yml process_lookup.* (issue 609)
+ *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
+ *                                     user.yml agent_hooks.* (issue 609)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -38,6 +43,8 @@ import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
+import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
+import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -84,6 +91,10 @@ export const PERSON_ONLY_SETTINGS = [
   "feedback",
   // Issue 455: how long, and how often, Den checks its own address.
   "address_check",
+  // Issue 609: how long Den's process lookups wait.
+  "process_lookup",
+  // Issue 609: how agents' hooks wait for Den, and retry.
+  "agent_hooks",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -201,7 +212,32 @@ const AGENTS_LIST: Record<string, Limit> = {
 const ADDRESS_CHECK: Record<string, Limit> = Object.fromEntries(
   Object.entries(ADDRESS_CHECK_LIMITS).map(([k, l]) => [
     k,
-    { key: `address_check_${k}`, min: l.min, max: l.max, int: k === "retries" },
+    {
+      // The sign-in's window has its own name in user.yml web.
+      key:
+        k === "unknown_keep_seconds"
+          ? "address_unknown_keep_seconds"
+          : `address_check_${k}`,
+      min: l.min,
+      max: l.max,
+      int: k === "retries" || k === "drop_after",
+    },
+  ]),
+);
+
+/** Issue 609: user.yml process_lookup.* (proc-lookup.ts). */
+const PROCESS_LOOKUP: Record<string, Limit> = Object.fromEntries(
+  Object.entries(LOOKUP_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: false },
+  ]),
+);
+
+/** Issue 609: user.yml agent_hooks.* (hook-call.ts). */
+const AGENT_HOOKS: Record<string, Limit> = Object.fromEntries(
+  Object.entries(HOOK_CALL_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: k === "retries" },
   ]),
 );
 
@@ -429,6 +465,22 @@ export function patchCliRows(
       "web",
       ADDRESS_CHECK,
       body.address_check,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "process_lookup",
+      "process_lookup",
+      PROCESS_LOOKUP,
+      body.process_lookup,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agent_hooks",
+      "agent_hooks",
+      AGENT_HOOKS,
+      body.agent_hooks,
       apply,
     );
   if (e) return { ok: false, error: e };

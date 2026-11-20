@@ -24,6 +24,7 @@ import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
@@ -51,14 +52,12 @@ beforeAll(async () => {
     // run-server instead (the Linux image, when this shell can't start a
     // GUI app: `launchctl managername` isn't Aqua). Its localhost and
     // *.localhost are this machine's (exposeNetwork), as for a local one.
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[ENGINE_NAME].connect(ws, { exposeNetwork: "<loopback>" })
-      : ENGINE_NAME === "chromium"
-        ? await pw.chromium.launch({
-            args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-          })
-        : await pw[ENGINE_NAME].launch();
+    browser = await launchBrowser(
+      pw[ENGINE_NAME],
+      ENGINE_NAME === "chromium"
+        ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
+        : undefined,
+    );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

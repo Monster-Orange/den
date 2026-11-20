@@ -18,7 +18,10 @@ describe("den-ui package exports", () => {
     // The nav inventory (./inventory, its reference files) ships from
     // inventory/, not src/: checked on its own below.
     const srcExports = Object.fromEntries(
-      Object.entries(pkg.exports).filter(([k]) => !k.startsWith("./inventory")),
+      Object.entries(pkg.exports).filter(
+        // The marks and the site folder (issue 644) are folders: below.
+        ([k]) => !k.startsWith("./inventory") && !k.endsWith("/*"),
+      ),
     ) as Record<string, string>;
     const files = fs
       .readdirSync(path.join(PKG, "src"))
@@ -35,6 +38,16 @@ describe("den-ui package exports", () => {
       expect(key).toBe(
         base.endsWith(".css") ? `./${base}` : `./${base.replace(/\.js$/, "")}`,
       );
+    }
+  });
+
+  it("exports the marks and the site folder (issue 644), each a folder in src/", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(PKG, "package.json"), "utf-8"),
+    ) as { exports: Record<string, unknown> };
+    for (const d of ["marks", "site"]) {
+      expect(pkg.exports[`./${d}/*`]).toBe(`./src/${d}/*`);
+      expect(fs.statSync(path.join(PKG, "src", d)).isDirectory()).toBe(true);
     }
   });
 

@@ -41,6 +41,7 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const KIT = path.join(ENGINE, "packages", "den-ui", "src");
@@ -63,15 +64,12 @@ beforeAll(async () => {
   try {
     const pw = await import("playwright");
     for (const b of BROWSERS)
-      browsers[b] = process.env.DEN_PW_WS
-        ? await pw[b].connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await pw[b].launch(
-            b === "chromium"
-              ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
-              : {},
-          );
+      browsers[b] = await launchBrowser(
+        pw[b],
+        b === "chromium"
+          ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
+          : {},
+      );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

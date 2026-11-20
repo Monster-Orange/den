@@ -52,7 +52,8 @@ if (typeof document !== "undefined") initBell();
 // Issue 172: an agent's need, also outside the bell (desktop).
 if (typeof document !== "undefined") initAlerts();
 // Issue 172 S2: the app manifest, so a phone can add this to its home
-// screen (an iPhone gets push only from there).
+// screen (an iPhone gets push only from there). Issue 644: the kit's head
+// snippet links it on every page Den serves; this is for a page without it.
 if (
   typeof document !== "undefined" &&
   document.head &&
@@ -60,7 +61,7 @@ if (
 ) {
   const l = document.createElement("link");
   l.rel = "manifest";
-  l.href = "/manifest.webmanifest";
+  l.href = "/site.webmanifest";
   document.head.appendChild(l);
 }
 if (typeof document !== "undefined")

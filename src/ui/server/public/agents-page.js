@@ -482,6 +482,10 @@ function when(iso) {
 
 /** Why a stopped agent stopped (AG-14.1). */
 export function stopReason(r) {
+  // Issue 631: it didn't come back after a restart (its terminal host's
+  // too), and why.
+  if (r.restartFailed?.why)
+    return t("ag.why.restartFailed", { why: r.restartFailed.why });
   if (r.state === "interrupted")
     return t("ag.why.interrupted", { name: TITLE });
   if (r.state === "stopped")

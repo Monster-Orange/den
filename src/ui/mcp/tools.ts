@@ -454,7 +454,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, or expired. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, agent_folder, agent_mode, agent_import, approval_policy, pr_close): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1543,7 +1543,7 @@ async function waitForPerson(
     w.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const until = Date.now() + w.waitMs;
   // SRV-1a: a request the setting allowed at once answers in the ask.
-  let first: unknown = ["done", "denied", "expired"].includes(
+  let first: unknown = ["done", "denied", "expired", "withdrawn"].includes(
     String((asked as { state?: unknown })?.state),
   )
     ? asked
@@ -1570,6 +1570,11 @@ async function waitForPerson(
     if (a.state === "expired")
       throw new Refusal(
         `${tool}: nobody answered in time (request ${id}); nothing ran. Ask again when the person is at Den.`,
+      );
+    // Issue 142: its asker took it back.
+    if (a.state === "withdrawn")
+      throw new Refusal(
+        `${tool}: the request was withdrawn by the one that asked (request ${id}); nothing ran.`,
       );
     if (Date.now() >= until) break;
     await sleep(w.intervalMs);

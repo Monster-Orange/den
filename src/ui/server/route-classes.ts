@@ -95,6 +95,13 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/favicon.ico",
+    // Issue 644: the kit's site files (its head snippet names them).
+    "/favicon.svg",
+    "/apple-touch-icon.png",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/icon-maskable-512.png",
+    "/site.webmanifest",
     // Issue 172: the app manifest (a phone's home screen, for push).
     "/manifest.webmanifest",
     "/theme.css",
@@ -274,6 +281,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/approvals/:id/decide",
     "the person's Allow runs the held write once; Deny runs nothing",
+  ),
+  M(
+    ["POST"],
+    "/api/approvals/:id/withdraw",
+    "the asker takes back its own held write (issue 142); nothing runs",
   ),
   // 0.4.71: each starts a process for its output (a log command, `tail`,
   // `docker logs`, `grep`): a sign-in, as every GET that runs something.
@@ -968,6 +980,14 @@ export const SIGNIN_ID_BEACONS: readonly string[] = [
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   // UK-2: how a write sent with the working pop-up's id ended.
   "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
+  // Sign-in's API calls on a loopback name, once Den's own address works.
+  "index.ts:SIGNIN_APIS": [
+    "/api/github/signin",
+    "/api/github/signin/:id",
+    "/api/signin/code",
+    "/api/signin/code/:id",
+    "/api/signin/code/:id/withdraw",
+  ],
   "agent-link-routes.ts:LINK_PATH": ["/p/:project/agents/:id"],
   "embed-routes.ts:EMBED_PATH": ["/embed/p/:project/agents/:id"],
   "embed-routes.ts:STATE_PATH": ["/api/embed/p/:project/agents/:id/state"],
@@ -1027,6 +1047,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
   "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
   "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],
+  "approval-routes.ts:WITHDRAW_PATH": ["/api/approvals/:id/withdraw"],
   // Issue 209: a Verify run's record, and a module's kept output.
   "verify-routes.ts:RUN_PATH": [
     "/api/verify/runs/:id",

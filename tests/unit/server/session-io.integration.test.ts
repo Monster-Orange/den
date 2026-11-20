@@ -519,6 +519,35 @@ describe("the request checks on the io upgrade", () => {
     ).toEqual([401, "signin_required"]);
   });
 
+  it("over https through the edge: a page signed in there opens its terminal (the edge says wss for the upgrade)", async () => {
+    const edgeHost = "acme.acme.localhost";
+    writeTestEdgeProof(path.join(s.tmp, "edge-state"));
+    const edge = {
+      ...EDGE_PROOF,
+      "x-forwarded-for": "127.0.0.1",
+      "x-forwarded-proto": "https",
+    };
+    // Signed in over https there: the session is the __Host- cookie.
+    const there = await signedIn(s.stateDir, s.base, {
+      host: edgeHost,
+      edge,
+    });
+    expect(there.name.startsWith("__Host-")).toBe(true);
+    const pane = (xfp: string) => ({
+      host: edgeHost,
+      origin: `https://${edgeHost}`,
+      cookie: there.cookie,
+      "sec-websocket-protocol": `den.io, den.csrf.${there.csrf}`,
+      ...edge,
+      "x-forwarded-proto": xfp,
+    });
+    expect(await refusal(io("shell"), pane("wss"))).toEqual([101, "upgraded"]);
+    expect(await refusal(io("shell"), pane("https"))).toEqual([
+      101,
+      "upgraded",
+    ]);
+  });
+
   it("an agent's token opens its own session's io (by id or name), never another's (403 agent_forbidden)", async () => {
     const bearer = { authorization: `Bearer ${agentToken}` };
     expect(await refusal(io("shell"), bearer)).toEqual([

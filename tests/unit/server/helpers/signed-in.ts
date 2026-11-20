@@ -9,12 +9,15 @@
  *     session cookie, as a browser that opened the link does;
  *   - signedIn(stateDir, base): the cookie and that session's CSRF token,
  *     for a request shaped as the page's own (Origin, X-Den-CSRF).
+ *   - signedIn(stateDir, base, named): the same on Den's named https
+ *     address, through the edge's headers (where the session lives once
+ *     such an address works: a `__Host-` cookie, never on localhost).
  */
 import * as http from "http";
 import { signInUrl } from "./den-auth.js";
 
 export interface SignedIn {
-  /** `den_session_<port>=<id>`, for a Cookie header. */
+  /** `den_session_<port>=<id>` (`__Host-…` on https), for a Cookie header. */
   cookie: string;
   /** The session's id (the cookie's value). */
   value: string;
@@ -61,31 +64,49 @@ function get(
   });
 }
 
-/** A fresh session on the server at `base` (its state dir `stateDir`). */
+/** Den's named https address, reached through the edge (its headers). */
+export interface NamedHost {
+  /** The address's host name, as the edge forwards it. */
+  host: string;
+  /** What the edge adds: its proof, X-Forwarded-For, X-Forwarded-Proto. */
+  edge: Record<string, string>;
+}
+
+/**
+ * A fresh session on the server at `base` (its state dir `stateDir`); on
+ * `named`, through the edge's headers to the same server.
+ */
 export async function signedIn(
   stateDir: string,
   base: string,
+  named?: NamedHost,
 ): Promise<SignedIn> {
-  const origin = new URL(base).origin;
+  const server = new URL(base).origin;
+  const origin = named ? `https://${named.host}` : server;
+  const via: Record<string, string> = named
+    ? { host: named.host, ...named.edge }
+    : {};
   const link = new URL(signInUrl(stateDir, origin, "/api/server-info"));
-  const auth = await get(origin, link.pathname + link.search, {
+  const auth = await get(server, link.pathname + link.search, {
     "sec-fetch-site": "none",
+    ...via,
   });
   if (auth.status !== 303)
     throw new Error(`the one-time link didn't sign in (${auth.status})`);
   const set = ([] as string[]).concat(auth.headers["set-cookie"] ?? []);
   const pair = set
     .map((c) => c.split(";")[0])
-    .find((c) => c.startsWith("den_session_"));
+    .find((c) => /^(__Host-)?den_session_/.test(c));
   if (!pair) throw new Error("the sign-in set no session cookie");
   const i = pair.indexOf("=");
   const name = pair.slice(0, i);
   const value = pair.slice(i + 1);
   // Its CSRF token, when the server answers /api/session (a server whose
   // config doesn't load answers no route but sign-in: "" then).
-  const me = await get(origin, "/api/session", {
+  const me = await get(server, "/api/session", {
     cookie: pair,
     "sec-fetch-site": "same-origin",
+    ...via,
   });
   let csrf = "";
   if (me.status === 200) {
@@ -99,7 +120,7 @@ export async function signedIn(
     name,
     value,
     csrf,
-    headers: { cookie: pair, origin, "x-den-csrf": csrf },
+    headers: { ...via, cookie: pair, origin, "x-den-csrf": csrf },
   };
 }
 
@@ -111,6 +132,7 @@ interface CookieJar {
       value: string;
       url: string;
       httpOnly?: boolean;
+      secure?: boolean;
       sameSite?: "Lax" | "Strict" | "None";
     }[],
   ): Promise<void>;
@@ -134,6 +156,8 @@ export async function signIn(
       value: s.value,
       url: new URL(base).origin,
       httpOnly: true,
+      // A __Host- cookie is Secure (the named https address).
+      ...(s.name.startsWith("__Host-") ? { secure: true } : {}),
       sameSite: "Lax",
     },
   ]);

@@ -801,6 +801,24 @@ function wirePair(root, t, s) {
  * asked same-origin, does carry it, so a signed-in browser reloads the page
  * from here (same-origin) and is let through.
  */
+/**
+ * Once the install's https address is proven, sign-in happens only there:
+ * off it, one line names the address, as a link to the same page there.
+ */
+function atAddress(s, t, name) {
+  if (!s.address) return "";
+  const mark = "\u0000";
+  const [before, after = ""] = t("err.signin.atAddress", {
+    name,
+    address: mark,
+  }).split(mark);
+  const href = `${s.address}${location.pathname}${location.search}`;
+  return (
+    `<p class="lead" id="den-signin-address">${esc(before)}` +
+    `<a href="${esc(href)}">${esc(s.address)}</a>${esc(after)}</p>`
+  );
+}
+
 function mountSignedOut(root, sh, d) {
   const t = sh.t;
   const s = d.signin;
@@ -895,6 +913,7 @@ function mountSignedOut(root, sh, d) {
   root.innerHTML =
     head +
     `<div class="empty" id="den-signin">` +
+    atAddress(s, t, name) +
     (s.expired
       ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`
       : "") +

@@ -334,7 +334,9 @@ describe("beyond loopback", () => {
 
 describe("HTTPS (the cookie's Secure)", () => {
   const xfp = { "x-forwarded-proto": "https" };
-  it("the edge Host from the edge's peer, with X-Forwarded-Proto https: HTTPS", () => {
+  // The edge's header counts only with its proof now (the session's Secure
+  // name is read over https only): the third argument says it was proved.
+  it("the edge Host from the edge's peer, with X-Forwarded-Proto https and the edge's proof: HTTPS", () => {
     for (const peer of [
       "127.0.0.1",
       "172.18.0.5",
@@ -346,8 +348,13 @@ describe("HTTPS (the cookie's Secure)", () => {
         requestIsHttps(
           req("GET", "/auth", { host: EDGE, ...xfp }, peer),
           "edge",
+          true,
         ),
-      ]).toEqual([peer, true]);
+        requestIsHttps(
+          req("GET", "/auth", { host: EDGE, ...xfp }, peer),
+          "edge",
+        ),
+      ]).toEqual([peer, true, false]);
   });
   it("a spoofed X-Forwarded-Proto: a localhost Host from loopback, or the edge Host from elsewhere, is not", () => {
     expect(

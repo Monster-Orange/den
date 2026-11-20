@@ -62,7 +62,10 @@ import {
   runningIntent,
   type CommandLineOf,
 } from "../../shared/agents/running-mode.js";
-import { trustPromptIn } from "../../shared/agents/trust-prompt.js";
+import {
+  promptOnScreen,
+  trustPromptIn,
+} from "../../shared/agents/trust-prompt.js";
 import {
   resolveMode,
   type EffectiveMode,
@@ -76,6 +79,7 @@ import { resolveWorkspaceInput } from "../../shared/environment-manager/workspac
 import { readWebPort } from "../../shared/edge/config.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
+import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   INHERIT,
   SUBAGENT_DEFAULTS,
@@ -1083,6 +1087,11 @@ export interface AgentRow {
   endedAt?: string;
   /** When Den found it interrupted by a restart. */
   interruptedAt?: string;
+  /**
+   * Issues 124, 631: Den restarted it (or its terminal host) and it
+   * didn't come back: when, and why.
+   */
+  restartFailed?: { at: string; why: string };
   /** Its persona resumes on its own after a restart (AG-14.3). */
   autoResume?: boolean;
   /** D59: this agent's own "Resume after a restart" (unset: its persona's). */
@@ -1216,6 +1225,10 @@ export function agentRows(
       ...(rec.stoppedAt ? { stoppedAt: rec.stoppedAt } : {}),
       ...(rec.endedAt ? { endedAt: rec.endedAt } : {}),
       ...(rec.interruptedAt ? { interruptedAt: rec.interruptedAt } : {}),
+      // Issue 631: why it didn't come back, while it hasn't since.
+      ...(rec.restartFailed && isStoppedState(st)
+        ? { restartFailed: { ...rec.restartFailed } }
+        : {}),
       ...(rec.outcome ? { outcome: rec.outcome } : {}),
       ...(rec.usage ? { usage: rec.usage } : {}),
       ...(rot ? { rotation: rot } : {}),
@@ -2785,6 +2798,32 @@ function sessionOf(
 }
 
 /**
+ * Issue 631: the session `rec` runs in now: its record's, else a live one
+ * under its own session name (the name is the agent's alone), when its
+ * record still names an earlier session of its own.
+ */
+function liveSessionOf(
+  sessions: SessionInfo[],
+  rec: AgentRecord,
+): SessionInfo | undefined {
+  const own = sessionOf(sessions, rec);
+  if (own && !own.exited) return own;
+  return sessions.find((s) => !s.exited && s.name === rec.sessionName) ?? own;
+}
+
+/**
+ * Issue 631: whether `rec`'s conversation was launched with a first prompt
+ * (a relaunch from its handoff, den#4): it began then, so it is always
+ * resumed, never started afresh under its id. The record keeps the
+ * conversation each relaunch ended; the current one is none of them.
+ */
+export function launchedFromHandoff(rec: AgentRecord): boolean {
+  const token = rec.resumeToken;
+  if (!token || !rec.launched || !rec.rotations?.length) return false;
+  return rec.rotations.every((x) => x.conversation !== token);
+}
+
+/**
  * The id a new start gets without --id (AG-10.10): the persona's id while
  * no agent has it; `<persona>-<ws>` when another workspace's agent has it;
  * else the first of `<base>-2`, `<base>-3`… no agent has. A stopped agent's
@@ -3138,7 +3177,11 @@ function launchInput(
     // prompt; its writes wait for the person's Allow in the browser.
     ...(isServerScope(ws) ? { denToolsAllowed: true } : {}),
     // NT-1: it tells Den when it waits for its person (the bell).
-    attention: { base: d.denBase() },
+    // Issue 609: its hooks' wait and retries (user.yml agent_hooks.*).
+    attention: {
+      base: d.denBase(),
+      call: hookCallSettings(readUserConfig),
+    },
   };
 }
 
@@ -5839,10 +5882,14 @@ export async function resumeAgent(
       // launching: a conversation on disk, or a last session someone typed
       // into, resumes; neither starts fresh at once. Without that, the record
       // decides: launched on this token, or a session the host lost.
-      const known = rt.conversationExists
-        ? Boolean(token && rt.conversationExists(token, d.env)) ||
-          Boolean(old?.prompted)
-        : Boolean(rec.launched) || !old || Boolean(old.prompted);
+      // Issue 631: a conversation relaunched from a handoff began with it
+      // (its first prompt, an argument: nobody typed it), so it resumes.
+      const known =
+        launchedFromHandoff(rec) ||
+        (rt.conversationExists
+          ? Boolean(token && rt.conversationExists(token, d.env)) ||
+            Boolean(old?.prompted)
+          : Boolean(rec.launched) || !old || Boolean(old.prompted));
       const launchAs = (asFresh: boolean) => {
         const out = launchOrThrow(() =>
           asFresh ? rt.launch(at) : rt.resume!(at),
@@ -5981,16 +6028,20 @@ export const TURN_POLL_MS = 1_000;
  * 0.4.48: a turn that ended with a job it started still running under it
  * (a gate in the background) is busy too, so "after its turn" never
  * kills a running gate.
+ * Issue 607: busy comes from the live session, not the transcript alone:
+ * a turn last written before that session started was cut with the one
+ * that ran it (a terminal host restart), and reads idle.
  */
 async function agentBusy(
   d: AgentsResolved,
   rec: AgentRecord,
 ): Promise<boolean | null> {
-  const pid = await withClient(d, async (c) => {
+  const live = await withClient(d, async (c) => {
     const s = sessionOf(await c.list(), rec);
-    return s && !s.exited ? s.pid : null;
+    return s && !s.exited ? s : null;
   });
-  if (pid === null) return false;
+  if (live === null) return false;
+  const pid = live.pid;
   const rt = getRuntime(rec.runtime);
   if (!rt?.turnBusy || !rec.resumeToken) return null;
   let readMaxBytes: number | undefined;
@@ -5999,9 +6050,25 @@ async function agentBusy(
   } catch {
     /* unreadable config: the default */
   }
-  const busy = rt.turnBusy(rec.resumeToken, d.env, { readMaxBytes });
+  const busy = rt.turnBusy(rec.resumeToken, d.env, {
+    readMaxBytes,
+    since: liveSince(live, rec),
+  });
   if (busy !== false) return busy;
   return (await agentJob(d, rec, pid)) !== null;
+}
+
+/**
+ * Issue 607: when agent `rec`'s live session started (ms): its session
+ * host's own start for it, else the record's (its resume's, else its
+ * start's). Undefined when none reads.
+ */
+function liveSince(s: SessionInfo, rec: AgentRecord): number | undefined {
+  for (const t of [s.startedAt, rec.resumedAt, rec.startedAt]) {
+    const ms = t ? Date.parse(t) : Number.NaN;
+    if (Number.isFinite(ms)) return ms;
+  }
+  return undefined;
 }
 
 /**
@@ -7299,9 +7366,105 @@ export async function markInterrupted(
 /** Issue 563: the agents whose session runs now (ids). */
 export async function runningAgentIds(d: AgentsResolved): Promise<string[]> {
   const sessions = await hostSessions(d);
+  // Issue 631: by the session it runs in, its record's or its name's.
   return listRecords(d.stateDir())
-    .filter((rec) => rowState(rec, sessionOf(sessions, rec)) === "running")
+    .filter((rec) => rowState(rec, liveSessionOf(sessions, rec)) === "running")
     .map((rec) => rec.id);
+}
+
+/**
+ * Issue 631: the agents `sessions` (a host's, at its stop) belong to: a
+ * live session that is a record's, or carries its session name.
+ */
+export function agentsOfSessions(
+  d: AgentsResolved,
+  sessions: readonly SessionInfo[],
+): string[] {
+  const live = sessions.filter((s) => !s.exited);
+  return listRecords(d.stateDir())
+    .filter((rec) =>
+      live.some(
+        (s) => s.ref.id === rec.session.id || s.name === rec.sessionName,
+      ),
+    )
+    .map((rec) => rec.id);
+}
+
+/**
+ * Issue 631: of `ids` (resumed after a terminal host restart), the agents
+ * whose session ended since, each with why: its state ("exited (1)") and
+ * its last printed line (secret-shaped values redacted).
+ */
+export async function endedAfterHostRestart(
+  d: AgentsResolved,
+  ids: readonly string[],
+): Promise<{ agent: string; why: string }[]> {
+  const c = await d.connectExisting();
+  if (!c) return [];
+  try {
+    const sessions = await c.list();
+    const out: { agent: string; why: string }[] = [];
+    for (const id of ids) {
+      const rec = readRecord(d.stateDir(), id);
+      if (!rec) continue;
+      const s = sessionOf(sessions, rec);
+      const st = rowState(rec, s);
+      // Running, or stopped by someone since: not a resume that failed.
+      if (!isStoppedState(st) || st === "stopped") continue;
+      let last = "";
+      if (s)
+        try {
+          const lines = plainLines(
+            (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8"),
+          );
+          last = lines.length ? redactSecrets(lines[lines.length - 1]) : "";
+        } catch {
+          /* its output is gone: its state says enough */
+        }
+      out.push({
+        agent: id,
+        why: `${st} after its resume${last ? `: ${last}` : ""}`,
+      });
+    }
+    return out;
+  } finally {
+    c.close();
+  }
+}
+
+/**
+ * Issue 631: agent `id` didn't come back after the terminal host
+ * restarted. Marked (Resume brings it back; Den's own restore after the
+ * restart doesn't try it again unasked) and a "needs you" item in the
+ * bell says why, as for a restart Den made (issue 124).
+ */
+export function noteNotBackAfterHostRestart(
+  d: AgentsResolved,
+  id: string,
+  why: string,
+): void {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec) return;
+  const now = new Date().toISOString();
+  const said = `the terminal host restarted; ${why}`;
+  writeRecord(d.stateDir(), {
+    ...rec,
+    restartFailed: { at: now, why: said },
+    interruptedAt: rec.interruptedAt ?? now,
+  });
+  const name = rec.displayName || rec.persona || id;
+  try {
+    new NotificationStore(d.stateDir()).add({
+      kind: "waiting",
+      subject: `agent:${id}`,
+      scope: `workspace/${rec.workspace}`,
+      text: `${name} didn't come back after a restart: ${said}`,
+      msg: { key: "bell.m.restartFailed", vars: { name, why: said } },
+      link: `/agents?ws=${encodeURIComponent(rec.workspace)}`,
+    });
+  } catch {
+    /* best effort: the audit row and the row's state still say so */
+  }
 }
 
 /** Issue 563: of `ids`, the agents mid-turn now (in doubt: mid-turn). */
@@ -7337,7 +7500,13 @@ export async function resumeAfterHostRestart(
   const r = rotated
     ? await relaunchAgent(d, rec.id)
     : await resumeAgent(d, rec.id);
-  if (r.early) throw new Error("exited at once");
+  // Issue 631: with its code and last line, for the row and the bell.
+  if (r.early) {
+    const code =
+      r.early.exitCode === undefined ? "" : ` (exit ${r.early.exitCode})`;
+    const last = r.early.tail[r.early.tail.length - 1];
+    throw new Error(`exited at once${code}${last ? `: ${last}` : ""}`);
+  }
   if (note && !rotated)
     void send(d, r.info.ref.id, r.rec.runtime, note).catch(() => false);
 }
@@ -7432,19 +7601,39 @@ export function instructionBytes(
 }
 
 /**
+ * Whether `screen` ends with a dialog of `runtime`'s that only its person
+ * answers: a permission dialog, or its folder-trust question. Den never
+ * types into one: Enter would pick its first choice.
+ */
+export function personDialogOnScreen(runtime: string, screen: string): boolean {
+  const rt = getRuntime(runtime);
+  return (
+    promptOnScreen(screen, rt?.permissionPrompt) ||
+    promptOnScreen(screen, rt?.trustPrompt)
+  );
+}
+
+/**
  * Send an agent its first instruction once it is ready (AG-10.1): it has
  * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
  * waiting), or READY_MAX_MS passed. Typed into its session over the host's
  * write path (the same as a keystroke from the pane), never as an argument
  * or through a shell. False when the session ended first or there is no
- * host. Never throws.
+ * host, or its screen ends with a dialog for its person (never typed
+ * into; `onDialog` says so).
+ * Never throws.
  */
 export async function sendFirstInstruction(
   d: AgentsResolved,
   sessionId: string,
   runtime: string,
   text: string,
-  o: { quietMs?: number; maxMs?: number } = {},
+  o: {
+    quietMs?: number;
+    maxMs?: number;
+    /** Called when a dialog for its person held the text back. */
+    onDialog?: () => void;
+  } = {},
 ): Promise<boolean> {
   const quiet = o.quietMs ?? READY_QUIET_MS;
   const max = o.maxMs ?? READY_MAX_MS;
@@ -7466,6 +7655,12 @@ export async function sendFirstInstruction(
       } else if (said && Date.now() - changedAt >= quiet) break;
       if (Date.now() >= deadline) break;
       await new Promise((r) => setTimeout(r, READY_POLL_MS));
+    }
+    // A dialog waiting for its person: nothing typed. Its answer is
+    // theirs, and Enter would pick its first choice.
+    if (personDialogOnScreen(runtime, said)) {
+      o.onDialog?.();
+      return false;
     }
     const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
     const b = instructionBytes(text, said, soft);
@@ -7512,6 +7707,32 @@ export async function serverAgentInputState(
   return inputState(d, rec, new Set(), quietMs);
 }
 
+/**
+ * Whether the server agent's screen ends with a dialog for its person (a
+ * permission dialog, its trust question). False when it has no live
+ * session; true when Den can't read it (never typed into on a doubt).
+ */
+export async function serverAgentDialogOpen(
+  d: AgentsResolved,
+): Promise<boolean> {
+  const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
+  if (!rec) return false;
+  try {
+    const c = await d.connectExisting();
+    if (!c) return false;
+    try {
+      const s = sessionOf(await c.list(), rec);
+      if (!s || s.exited) return false;
+      const out = (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8");
+      return personDialogOnScreen(rec.runtime, out);
+    } finally {
+      c.close();
+    }
+  } catch {
+    return true;
+  }
+}
+
 async function inputState(
   d: AgentsResolved,
   rec: AgentRecord,
@@ -7525,13 +7746,22 @@ async function inputState(
     const c = await d.connectExisting();
     if (!c) return "stopped";
     let live = false;
+    let dialog = false;
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
+      // A dialog waiting for the person: not at its prompt, whatever its
+      // transcript or quiet output says.
+      if (live && s)
+        dialog = personDialogOnScreen(
+          rec.runtime,
+          (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8"),
+        );
     } finally {
       c.close();
     }
     if (!live) return "stopped";
+    if (dialog) return "busy";
     if (waiting.has(id)) return "busy";
     const busy = await agentBusy(d, rec);
     if (busy !== null) return busy ? "busy" : "idle";
@@ -7616,7 +7846,8 @@ export async function answerServerAgentTrust(
 
 /**
  * 0.4.40: type a Hub comment into agent `id`'s session, once its output is
- * quiet (as a first instruction is, AG-10.1). False when it isn't running.
+ * quiet (as a first instruction is, AG-10.1). False when it isn't running,
+ * or its screen ends with a dialog for its person (never typed into).
  */
 export async function typeIntoAgent(
   d: AgentsResolved,
