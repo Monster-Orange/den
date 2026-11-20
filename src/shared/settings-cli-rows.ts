@@ -28,6 +28,9 @@
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
+ *   reports: { screenshot_keep_days?, screenshot_max_mb?,
+ *              hub_screenshot_max_mb?, hub_timeout_seconds? }
+ *                                     user.yml reports.* (issue 403)
  *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
  *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
@@ -43,6 +46,11 @@
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
+import {
+  SHOT_KEEP_DAYS_MAX,
+  SHOT_KEEP_DAYS_MIN,
+  SHOT_LIMITS,
+} from "./report-shots.js";
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { SHELL_PATH_TIMEOUT } from "./den-config.js";
@@ -68,6 +76,8 @@ export const PERSON_ONLY_SETTINGS = [
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
   "agents_list",
+  // Issue 403: how long a filed report's screenshot is kept here.
+  "reports",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
@@ -173,6 +183,37 @@ const CRASH: Record<string, Limit> = {
 
 const BRIDGE: Record<string, Limit> = {
   probe_seconds: { key: "bridge_probe_seconds", min: 1, max: 600, int: false },
+};
+
+/**
+ * Issue 403: how long a filed report's kept screenshot stays (days), the
+ * largest kept and sent to Hub (MB), and how long Den waits for Hub (s).
+ */
+const REPORTS: Record<string, Limit> = {
+  screenshot_keep_days: {
+    key: "screenshot_keep_days",
+    min: SHOT_KEEP_DAYS_MIN,
+    max: SHOT_KEEP_DAYS_MAX,
+    int: true,
+  },
+  screenshot_max_mb: {
+    key: "screenshot_max_mb",
+    min: SHOT_LIMITS.screenshot_max_mb.min,
+    max: SHOT_LIMITS.screenshot_max_mb.max,
+    int: false,
+  },
+  hub_screenshot_max_mb: {
+    key: "hub_screenshot_max_mb",
+    min: SHOT_LIMITS.hub_screenshot_max_mb.min,
+    max: SHOT_LIMITS.hub_screenshot_max_mb.max,
+    int: false,
+  },
+  hub_timeout_seconds: {
+    key: "hub_timeout_seconds",
+    min: SHOT_LIMITS.hub_timeout_seconds.min,
+    max: SHOT_LIMITS.hub_timeout_seconds.max,
+    int: false,
+  },
 };
 
 /** Issue 406: the start's wait for the owner's public GitHub profile. */
@@ -474,6 +515,7 @@ export function patchCliRows(
       body.agents_list,
       apply,
     ) ??
+    patchBlock(user, "reports", "reports", REPORTS, body.reports, apply) ??
     patchBlock(
       user,
       "agents_shell",

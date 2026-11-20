@@ -712,13 +712,17 @@ describe("the route classes", () => {
 });
 
 describe("the CLI: web login, web sessions, web logout", () => {
-  it("`web login --no-wait` prints one link on stdout (the install's address, /auth, a code) that signs a browser in once", async () => {
+  it("`web login --no-wait` prints one link on stdout (the origin asked for, /auth, a code) that signs a browser in once", async () => {
+    // Issue 666: this install's only edge name is a loopback one, which is
+    // never its address, so it has none: the link names its origin.
     const r = cli([
       "web",
       "login",
       "--no-wait",
       "--port",
       String(port),
+      "--origin",
+      `http://localhost:${port}`,
       "--next",
       "/settings",
     ]);
@@ -727,17 +731,8 @@ describe("the CLI: web login, web sessions, web logout", () => {
     minted.push(link);
     expect(link.split("\n").length).toBe(1);
     const u = new URL(link);
-    // D80: on the install's address. This one had none: the server took
-    // its edge route's once at start (the migration), never localhost.
-    // Issue 455: unless another server answers that address (something on
-    // this machine's port 80): then Den's own port, which it proved.
-    const held = await new Promise<boolean>((done) => {
-      const c = net.connect(80, "127.0.0.1");
-      c.once("connect", () => (c.destroy(), done(true)));
-      c.once("error", () => done(false));
-    });
     expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
-      held ? `http://localhost:${port}` : "http://den.acme.localhost",
+      `http://localhost:${port}`,
       "/auth",
       "/settings",
     ]);

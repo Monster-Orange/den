@@ -13,6 +13,7 @@
  *   chip.tagFor("agent:x")   the row tag's text for an agent holding or
  *                            waiting, or ""
  */
+import { formatTime } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 
 const esc = (s) =>
@@ -24,8 +25,9 @@ const esc = (s) =>
       ],
   );
 
-const hm = (iso) =>
-  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** A slot's time in the person's chosen zone: the kit's (issue 668). */
+export const gateTime = (iso) => formatTime(iso, { style: "time" });
+const hm = gateTime;
 
 export function startGateChip(o) {
   const { button, t } = o;

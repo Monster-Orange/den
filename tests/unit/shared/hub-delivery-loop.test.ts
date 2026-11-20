@@ -665,3 +665,51 @@ describe("#248: the log says where held comments went", () => {
     );
   });
 });
+
+describe("issue 664: held because the agent isn't at its prompt", () => {
+  it("its row says why, the bell hears how long, and both end once it's typed", async () => {
+    const notes: [string, number, number][] = [];
+    let away = true;
+    const states: Record<string, AgentState> = { "ag-1": "busy" };
+    let clock = 1_000_000;
+    const typed: string[] = [];
+    const loop = new DeliveryLoop({
+      hub: {
+        stream: () => {
+          throw Object.assign(new Error("no stream"), { kind: "refused" });
+        },
+        list: async () => [],
+        ack: async () => undefined,
+      },
+      agents: {
+        state: async (a) => states[a] ?? "missing",
+        type: async (_a, text) => {
+          typed.push(text);
+          return true;
+        },
+        notAtPrompt: () => away,
+      },
+      owner: () => ({ ownerId: "u_me", company: "Acme" }),
+      seen: new SeenDeliveries(path.join(dir, "seen.json")),
+      now: () => clock,
+      heldNote: (agent, n, waited) => notes.push([agent, n, waited]),
+    });
+    await loop.take(dv("d1"));
+    expect(typed).toEqual([]);
+    expect(loop.work("ag-1")).toMatchObject({
+      queued: 1,
+      held: "not_at_prompt",
+    });
+    clock += 90_000;
+    await loop.pump();
+    expect(notes.at(-1)).toEqual(["ag-1", 1, 90_000]);
+    // Mid-turn instead: it waits, but not for that reason.
+    away = false;
+    await loop.pump();
+    expect(loop.work("ag-1")?.held).toBeUndefined();
+    expect(notes.at(-1)).toEqual(["ag-1", 0, 0]);
+    states["ag-1"] = "idle";
+    await loop.pump();
+    expect(typed).toHaveLength(1);
+  });
+});

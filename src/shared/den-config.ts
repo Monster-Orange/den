@@ -503,6 +503,18 @@ export interface UserConfig {
     refresh_timeout_seconds?: unknown;
   };
   /**
+   * Issue 403: a filed report's screenshot, kept on this install.
+   * `screenshot_keep_days` (30): how long, then the janitor deletes it.
+   * `screenshot_max_mb` (8) the largest kept, `hub_screenshot_max_mb` (6)
+   * the largest sent to Hub, `hub_timeout_seconds` (10) the wait for Hub.
+   */
+  reports?: {
+    screenshot_keep_days?: unknown;
+    screenshot_max_mb?: unknown;
+    hub_screenshot_max_mb?: unknown;
+    hub_timeout_seconds?: unknown;
+  };
+  /**
    * Issue 609: how long Den's process lookups (lsof, ps) wait:
    * first_seconds (5) the first try, retry_seconds (20) the one after
    * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.

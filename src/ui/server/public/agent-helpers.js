@@ -16,6 +16,7 @@
  */
 import { focusBack, openTranscript, refindKey } from "/transcript-view.js";
 import { dismissable } from "/popover.js";
+import { dialogHtml, mountDialog } from "/dialog-den.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -204,14 +205,8 @@ export function helperBarButtonHtml(r) {
   );
 }
 
+/** The rows' look; the list's dialog is the kit's frame (issue 670). */
 const CSS = `
-.hp-dlg{font-family:var(--sans);width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:10px;background:var(--raised, var(--surface));color:var(--text);box-shadow:var(--shadow)}
-.hp-dlg::backdrop{background:rgba(0,0,0,.35)}
-.hp-hd{display:flex;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
-.hp-hd h2{font-size:15px;margin:0;outline:none;min-width:0;flex:1 1 auto;overflow-wrap:anywhere}
-.hp-acts{display:flex;gap:8px;align-items:center;flex:none;margin-inline-start:auto}
-.hp-body{padding:8px 12px;overflow:auto;max-height:calc(100vh - 200px)}
-.hp-note{margin:0;padding:8px 16px 12px;color:var(--muted);font-size:12px;border-top:1px solid var(--border)}
 .hp-none{color:var(--muted);font-size:13px;padding:8px 4px}
 .hp-earlier{margin-top:8px}
 .hp-earlier summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px}
@@ -255,24 +250,35 @@ function ensureCss() {
   document.head.append(s);
 }
 
+/** The kit's large dialog (issue 670), made once and kept in <body>. */
+let frame = null;
+
 function dialog() {
   ensureCss();
   if (dlg && dlg.isConnected) return dlg;
-  dlg = document.createElement("dialog");
-  dlg.className = "hp-dlg";
-  dlg.id = "hp-dlg";
-  dlg.setAttribute("aria-labelledby", "hp-h");
-  dlg.innerHTML =
-    `<div class="hp-hd"><h2 id="hp-h" tabindex="-1"></h2>` +
-    // D50: Clear done and Close at the end, in the top-right corner.
-    `<span class="hp-acts"><button type="button" class="den-btn sm hp-clear" data-hp-clear hidden></button>` +
-    `<button type="button" class="den-btn sm x" data-hp-close></button></span></div>` +
-    `<div class="hp-body" id="hp-body" aria-live="polite"></div>` +
-    `<p class="hp-note" id="hp-note"></p>`;
-  dlg.querySelector("[data-hp-close]").addEventListener("click", () => {
-    if (dlg.open && typeof dlg.close === "function") dlg.close();
-    else dlg.removeAttribute("open");
-  });
+  frame = mountDialog(
+    dialogHtml({
+      kind: "panel",
+      id: "hp-dlg",
+      className: "hp-dlg",
+      ids: { h: "hp-h", body: "hp-body" },
+      // D50: Clear done and Close at the end, in the top-right corner.
+      headActions: [
+        {
+          label: t("hp.clear"),
+          type: "button",
+          className: "hp-clear",
+          attrs: { "data-hp-clear": true, hidden: true },
+        },
+      ],
+      closeLabel: t("tx.close"),
+      closeAttrs: { "data-hp-close": true },
+      bodyAttrs: { "aria-live": "polite" },
+      foot: `<p class="dk-note" id="hp-note"></p>`,
+    }),
+    { show: false, remove: false },
+  );
+  dlg = frame.dialog;
   // D34: Clear done, from the list: cleared, then the list again.
   dlg.querySelector("[data-hp-clear]").addEventListener("click", async (e) => {
     const b = e.currentTarget;
@@ -314,7 +320,6 @@ function dialog() {
         opener: b,
       });
   });
-  document.body.append(dlg);
   return dlg;
 }
 
@@ -334,16 +339,8 @@ export async function openHelpers({ ws, agent, name, opener: from = null }) {
   d.querySelector("#hp-note").textContent = t("hp.note");
   const body = d.querySelector("#hp-body");
   body.innerHTML = `<p class="hp-none">${esc(t("tx.loading"))}</p>`;
-  if (!d.open) {
-    if (typeof d.showModal === "function") d.showModal();
-    else d.setAttribute("open", "");
-  }
-  release ??= dismissable(d, {
-    close: () => {
-      if (d.open && typeof d.close === "function") d.close();
-      else d.removeAttribute("open");
-    },
-  });
+  if (!d.open) frame.show(opener);
+  release ??= dismissable(d, { close: () => frame.close("close") });
   d.querySelector("#hp-h").focus();
   await loadHelpers(ws, agent);
 }

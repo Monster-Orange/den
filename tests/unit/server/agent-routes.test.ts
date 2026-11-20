@@ -1270,7 +1270,8 @@ describe("POST …/agents start: the Start dialog's choices (AG-10.1, AG-12, AG-
     const a = await api();
     await start(a, "north", { persona: "planner", instruction: "a\nb" });
     const p = a.r.made[0];
-    p.emit("ready> ");
+    // Issue 664: its input prompt.
+    p.emit("> ");
     await until(() => typed(p).endsWith("\r") && typed(p).length > 2);
     expect(typed(p)).toBe("a\x1b\rb\r");
   });

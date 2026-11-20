@@ -10,9 +10,6 @@
  * The demo distribution (helpers/agents-page-server.ts). Invented names.
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import type { Browser, Locator, Page, Route } from "playwright";
 import { signInUrl } from "./helpers/den-auth.js";
 import {
@@ -723,9 +720,10 @@ describe("FB: the screenshot and its mask", () => {
     await p.context().close();
   });
 
-  it("drag to black out; Undo; Review shows the masked image; Sent saves and copies it", async () => {
+  it("drag to black out; Undo; Review shows the masked image; the send carries it masked and saves nothing here", async () => {
     if (skip()) return;
-    const p = await page(fresh());
+    const f = fresh();
+    const p = await page(f);
     const mark = await drawerWithMark(p);
     const vw = await p.evaluate(() => innerWidth);
     const vh = await p.evaluate(() => innerHeight);
@@ -766,23 +764,21 @@ describe("FB: the screenshot and its mask", () => {
         [0, 0, 0],
       ),
     ).toBe(true);
-    const download = p.waitForEvent("download");
+    // Issue 403: filing never saves it to this computer.
+    let downloads = 0;
+    p.on("download", () => downloads++);
     await dlg(p).locator('[data-act="send"]').click();
-    const saved = await download;
-    expect(saved.suggestedFilename()).toBe("report-screenshot.png");
-    // The file itself: the mask is in its pixels (drawn in, not laid over),
-    // and what is outside it is the page.
-    // saveAs: a remote browser (DEN_PW_WS) has no local path for it.
-    const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "den-fb-shot-")),
-      "shot.png",
-    );
-    await saved.saveAs(file);
-    const png = fs.readFileSync(file).toString("base64");
-    fs.rmSync(path.dirname(file), { recursive: true, force: true });
-    const inFile = (x: number, y: number) =>
+    await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
+    await p.waitForTimeout(300);
+    expect(downloads).toBe(0);
+    expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
+    // Issue 403: the PNG the send carries has the mask in its pixels
+    // (drawn in, not laid over); what is outside it is the page.
+    const shot = String(f.sent[0]!.shot);
+    expect(shot).toMatch(/^data:image\/png;base64,/);
+    const inShot = (x: number, y: number) =>
       p.evaluate(
-        ([b64, px, py]) =>
+        ([src, px, py]) =>
           new Promise<number[]>((ok) => {
             const img = new Image();
             img.onload = () => {
@@ -797,15 +793,14 @@ describe("FB: the screenshot and its mask", () => {
                   .data.slice(0, 3),
               ]);
             };
-            img.src = `data:image/png;base64,${b64}`;
+            img.src = src as string;
           }),
-        [png, Math.round(x), Math.round(y)],
+        [shot, Math.round(x), Math.round(y)],
       );
-    expect(near(await inFile(mark.x, mark.y), [0, 0, 0])).toBe(true);
-    expect(near(await inFile(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
+    expect(near(await inShot(mark.x, mark.y), [0, 0, 0])).toBe(true);
+    expect(near(await inShot(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
       true,
     );
-    await dlg(p).locator("[data-saved]").waitFor();
     await p.context().close();
   });
 

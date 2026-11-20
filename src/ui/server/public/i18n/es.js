@@ -142,10 +142,6 @@
     "fb.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
     "fb.revShot": "Captura tras ocultar ({n} zonas tapadas)",
     "fb.revShot.one": "Captura tras ocultar ({n} zona tapada)",
-    "fb.sentShot":
-      "La captura está guardada y copiada: pégala en la incidencia.",
-    "fb.sentShotSaved":
-      "La captura está guardada como archivo: añádela a la incidencia.",
     "fb.mine": "Mis informes",
     "fb.myS":
       "Se muestran en vivo desde GitHub. Funciona mientras tengas la sesión iniciada en GitHub.",
@@ -517,6 +513,7 @@
     // prompt() and alert().
     "dlg.ok": "Aceptar",
     "dlg.cancel": "Cancelar",
+    "dlg.close": "Cerrar",
     "dlg.keep": "Conservar",
     "dlg.delete": "Eliminar",
     "dlg.remove": "Quitar",
@@ -733,6 +730,14 @@
     "err.signin.local":
       "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
     "err.signin.atAddress": "{name} inicia sesión en {address}",
+    "err.signin.offerTitle": "Hacer de {alias} la dirección de {name}",
+    "err.signin.offerLoop":
+      "La dirección de {name} es {url}, que solo se abre en su propia máquina, así que el inicio de sesión no puede llevarte allí.",
+    "err.signin.offerWrong":
+      "La dirección de {name} es {url}, y no funciona desde aquí.",
+    "err.signin.offerUnset": "{name} aún no tiene dirección.",
+    "err.signin.offerHow":
+      "Inicia sesión abajo como propietario de {name}: con GitHub o con un código que apruebes en su máquina. Luego haz de {alias} su dirección y el inicio de sesión funcionará aquí.",
     "err.signin.copy": "Copiar comando",
     "err.signin.title": "Inicia sesión en {name}",
     "err.signin.where":
@@ -931,6 +936,21 @@
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_screenshot_days": "Capturas de informes, se guardan",
+    "set.server.report_screenshot_days.d":
+      "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max":
+      "Capturas de informes, la más grande guardada",
+    "set.server.report_screenshot_max.d":
+      "La captura con las zonas tapadas más grande que __DEN_TITLE__ guarda con un informe. Una mayor se rechaza antes de enviar nada. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "Capturas de informes, la más grande enviada a Hub",
+    "set.server.report_screenshot_hub_max.d":
+      "La captura con las zonas tapadas más grande que __DEN_TITLE__ envía a Hub. Una mayor se guarda aquí igualmente, y el informe se envía igual. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait":
+      "Capturas de informes, espera a Hub",
+    "set.server.report_screenshot_hub_wait.d":
+      "Cuánto espera __DEN_TITLE__ a que Hub reciba la captura de un informe. Pasado ese tiempo, la captura se guarda aquí, y el informe ya está enviado. __DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "Informe: visibilidad del repositorio guardada durante",
     "set.server.report_visibility_cache.d":
@@ -999,6 +1019,10 @@
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
     "addr.empty": "Escribe primero una dirección.",
+    "addr.loopback":
+      "{url} solo se abre en esta máquina: otros dispositivos no llegan a ella.",
+    "addr.adopt": "Hacer de {alias} la dirección de __DEN_TITLE__",
+    "addr.adopted": "Guardada: {url} es ahora la dirección.",
     "set.workspace.approvals_policy": "Escrituras de los agentes aquí",
     "set.workspace.approvals_policy.d":
       "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
@@ -1905,6 +1929,10 @@
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
+    "bell.m.notAtPrompt":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
+    "bell.m.notAtPrompt.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente no está en su indicador de entrada",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
@@ -1971,6 +1999,8 @@
     "ag.ins.tip":
       "Sus archivos de instrucciones ocupan {size}: más del {share}% de su contexto. El más grande es {path} ({big}).",
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
+    "ag.hub.notAtPrompt":
+      "En espera: el agente no está en su indicador de entrada",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
     "tx.error": "Error",

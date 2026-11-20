@@ -255,10 +255,6 @@
     "fb.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
     "fb.revShot": "Screenshot after masking ({n} areas hidden)",
     "fb.revShot.one": "Screenshot after masking ({n} area hidden)",
-    "fb.sentShot":
-      "The screenshot is saved and copied: paste it into the issue.",
-    "fb.sentShotSaved":
-      "The screenshot is saved as a file: add it to the issue.",
     "fb.mine": "My reports",
     "fb.myS":
       "Shown live from GitHub. It works while you are signed in to GitHub.",
@@ -1380,6 +1376,8 @@
     // prompt() and alert().
     "dlg.ok": "OK",
     "dlg.cancel": "Cancel",
+    // Issue 670: a large dialog's Close (the kit's frame).
+    "dlg.close": "Close",
     "dlg.keep": "Keep",
     "dlg.delete": "Delete",
     "dlg.remove": "Remove",
@@ -1598,6 +1596,14 @@
     "err.signin.local":
       "A sign-in belongs to one address. This page is on {host}: open the same page on localhost, where this browser is signed in.",
     "err.signin.atAddress": "{name} signs in at {address}",
+    "err.signin.offerTitle": "Make {alias} {name}'s address",
+    "err.signin.offerLoop":
+      "{name}'s address is {url}, which only opens on its own machine, so sign-in can't send you there.",
+    "err.signin.offerWrong":
+      "{name}'s address is {url}, and it isn't working from here.",
+    "err.signin.offerUnset": "{name} has no address yet.",
+    "err.signin.offerHow":
+      "Sign in below as {name}'s owner: with GitHub, or with a code you approve on its machine. Then make {alias} its address, and sign-in works here.",
     "err.signin.copy": "Copy command",
     "err.signin.title": "Sign in to {name}",
     "err.signin.where":
@@ -1907,6 +1913,19 @@
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_screenshot_days": "Report screenshots, kept for",
+    "set.server.report_screenshot_days.d":
+      "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max": "Report screenshots, largest kept",
+    "set.server.report_screenshot_max.d":
+      "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "Report screenshots, largest sent to Hub",
+    "set.server.report_screenshot_hub_max.d":
+      "The largest masked screenshot __DEN_TITLE__ sends to Hub. A larger one is still kept here, and the report is still filed. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait": "Report screenshots, wait for Hub",
+    "set.server.report_screenshot_hub_wait.d":
+      "How long __DEN_TITLE__ waits for Hub to take a report's screenshot. After this, the screenshot is kept here, and the report is already filed. __DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "Report: repository visibility kept for",
     "set.server.report_visibility_cache.d":
@@ -1971,6 +1990,10 @@
     "addr.saved": "Saved: {url} answered.",
     "addr.notSaved": "Not saved. The old address stays.",
     "addr.empty": "Type an address first.",
+    "addr.loopback":
+      "{url} only opens on this machine: other devices can't reach it.",
+    "addr.adopt": "Make {alias} __DEN_TITLE__'s address",
+    "addr.adopted": "Saved: {url} is the address now.",
     "set.workspace.approvals_policy": "Agents' writes here",
     "set.workspace.approvals_policy.d":
       "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
@@ -2733,6 +2756,10 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.notAtPrompt":
+      "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
+    "bell.m.notAtPrompt.one":
+      "{name}: {n} message waits for {m} min. Waiting: the agent isn't at its prompt",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
@@ -2798,6 +2825,7 @@
     "ag.ins.tip":
       "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
+    "ag.hub.notAtPrompt": "Waiting: the agent isn't at its prompt",
     "tx.asked": "Asked",
     "tx.result": "Result",
     "tx.error": "Error",

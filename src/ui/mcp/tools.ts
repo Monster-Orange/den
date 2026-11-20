@@ -921,6 +921,26 @@ const READ_TOOLS: DenTool[] = [
       return edge;
     },
   ),
+  read(
+    "report_screenshot",
+    "A filed report's screenshot",
+    "Issue 403: the masked screenshot a person filed with a report from this install, kept here for reports.screenshot_keep_days (30): `base64` (the PNG) and `mime`, with the repo it was filed on, when, and Hub's record when Hub took it too. `id` is the report id the issue's \"Screenshot:\" line names. Only the person who runs this install (the CLI) or this install's own agent may read it; a project agent is refused.",
+    {
+      id: z
+        .string()
+        .describe("The report id from the issue's Screenshot line (16 hex)"),
+    },
+    async (a, { api, scope }) => {
+      if (scope)
+        throw new ScopeRefusal(
+          `report_screenshot: a report's screenshot is read by the person who runs this install, or by this install's own agent; ${scope.actor} (project "${scope.workspace}") is neither. Ask that agent for it.`,
+        );
+      const id = str(a.id);
+      if (!id || !/^[a-f0-9]{16}$/.test(id))
+        throw new Refusal("report_screenshot: id must be a report id (16 hex)");
+      return api.get(`/api/report/shots/${id}`);
+    },
+  ),
 ];
 
 /** The `path` argument, or a refusal before anything is asked. */

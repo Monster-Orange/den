@@ -1,6 +1,6 @@
 /**
  * Issues 658 and 659: Claude Code 2.1.329's folder-trust question, from a
- * real capture (tests/fixtures/claude-code-2.1.329, a temp folder only).
+ * real capture (tests/fixtures/claude-code-screens, a temp folder only).
  *
  * It now reads "Quick safety check: Is this a project you created or one
  * you trust?" with two unnumbered choices, and the one highlighted at
@@ -38,11 +38,11 @@ const FIX = path.join(
   process.cwd(),
   "tests",
   "fixtures",
-  "claude-code-2.1.329",
+  "claude-code-screens",
 );
 const raw = (f: string) => fs.readFileSync(path.join(FIX, f), "utf-8");
-const ASKING = raw("trust.raw");
-const YES_SELECTED = raw("trust-yes-selected.raw");
+const ASKING = raw("1-trust.raw");
+const YES_SELECTED = raw("1b-trust-yes-selected.raw");
 const OLD =
   "\x1b[2J Do you trust the files in this folder?\r\n\r\n /work/north\r\n\r\n" +
   " ❯ 1. Yes, proceed\r\n   2. No, exit\r\n\r\n Enter to confirm · Esc to cancel\r\n";

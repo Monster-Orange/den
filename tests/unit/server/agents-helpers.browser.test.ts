@@ -835,10 +835,10 @@ describe("an agent's helpers on the agents page (D32)", () => {
           const r = e.getBoundingClientRect();
           return { l: r.left, r: r.right, t: r.top };
         });
-      const hd = await box("#hp-dlg .hp-hd");
+      const hd = await box("#hp-dlg .dk-hd");
       const clear = await box("#hp-dlg [data-hp-clear]");
       const close = await box("#hp-dlg [data-hp-close]");
-      const pad = await p.$eval("#hp-dlg .hp-hd", (e) =>
+      const pad = await p.$eval("#hp-dlg .dk-hd", (e) =>
         parseFloat(getComputedStyle(e).paddingRight),
       );
       // Close at the end, Clear done just before it, both on the right.

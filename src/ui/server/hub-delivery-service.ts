@@ -20,7 +20,11 @@ import {
   DeliveryLoop,
   type AgentHubWork,
 } from "../../shared/hub-delivery-loop.js";
-import { listRecords, readRecord } from "../../shared/agents/records.js";
+import {
+  listRecords,
+  readRecord,
+  type AgentRecord,
+} from "../../shared/agents/records.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
   feedKinds,
@@ -50,6 +54,8 @@ let feedCarries: ReadonlySet<string> = new Set();
 interface StartOpts {
   heartbeatSeconds: number;
   pollSeconds: number;
+  /** Issue 664: hub.delivery_held_note_seconds (default 60). */
+  heldNoteSeconds?: number;
   waiting: () => ReadonlySet<string>;
   log: (line: string) => void;
 }
@@ -174,6 +180,73 @@ function startHubNotes(log: (line: string) => void): void {
   notesTimer.unref();
 }
 
+/** Issue 664: when each agent's held-text bell item was last said. */
+const heldSaid = new Map<string, number>();
+
+type HeldStore = Pick<
+  import("../../shared/notifications.js").NotificationStore,
+  "add" | "withdraw"
+>;
+
+/**
+ * Issue 664: the bell's item for text held because `agent` isn't at its
+ * input prompt: added once it has waited `afterSeconds`, said again each
+ * minute while it waits (how long, and why), withdrawn when n is 0.
+ */
+export function heldBell(
+  agent: string,
+  n: number,
+  waitedMs: number,
+  afterSeconds: number,
+  o: {
+    store?: HeldStore;
+    recOf?: (id: string) => AgentRecord | null;
+    now?: number;
+  } = {},
+): void {
+  const subject = `record:not-at-prompt:${agent}`;
+  const said = heldSaid.get(agent);
+  const now = o.now ?? Date.now();
+  if (n <= 0) {
+    if (said === undefined) return;
+    heldSaid.delete(agent);
+  } else if (
+    waitedMs < afterSeconds * 1000 ||
+    (said !== undefined && now - said < 60_000)
+  )
+    return;
+  else heldSaid.set(agent, now);
+  const go = (s: HeldStore) => {
+    if (n <= 0) {
+      s.withdraw(subject, "service");
+      return;
+    }
+    const rec = (o.recOf ?? ((id) => readRecord(getStateDir(), id)))(agent);
+    if (!rec) return;
+    const name = rec.displayName || rec.persona || rec.id;
+    const m = Math.max(1, Math.round(waitedMs / 60_000));
+    s.add({
+      kind: "service",
+      subject,
+      scope: `workspace/${rec.workspace}`,
+      text: `${name}: ${n} message${n === 1 ? " waits" : "s wait"} for ${m} min. Waiting: the agent isn't at its prompt`,
+      msg: { key: "bell.m.notAtPrompt", vars: { name, n, m } },
+      link: `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`,
+    });
+  };
+  if (o.store) {
+    try {
+      go(o.store);
+    } catch {
+      /* the bell is best effort: the row still says it */
+    }
+    return;
+  }
+  void import("./notification-service.js")
+    .then(({ notificationDeps }) => go(notificationDeps().store))
+    .catch(() => undefined);
+}
+
 /**
  * The loop and its pump, made once (issue 334: with or without Hub). Hub's
  * calls look Hub up each time: no Hub, nothing is read or acked.
@@ -211,7 +284,13 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     agents: {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
       type: (id, text) => ops.typeIntoAgent(d, id, text),
+      notAtPrompt: (id) => ops.heldNotAtPrompt(id),
     },
+    // Issue 664: text held because the agent isn't at its prompt: the
+    // bell says so once it has waited hub.delivery_held_note_seconds, and
+    // keeps saying it (refreshed each minute) until it's typed.
+    heldNote: (agent, n, waitedMs) =>
+      heldBell(agent, n, waitedMs, lastOpts?.heldNoteSeconds ?? 60),
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
     seen: new SeenDeliveries(
