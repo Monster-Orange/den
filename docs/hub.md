@@ -197,6 +197,7 @@ user file wins.
 | `hub.inbox_poll_seconds`         | `30` (at least 5)  | How often Den reads Hub's inbox.                                                                                                          |
 | `hub.inbox_backoff_max_seconds`  | `600` (at least 5) | The longest wait between inbox reads while Hub doesn't answer.                                                                            |
 | `hub.delivery_poll_seconds`      | `30` (at least 5)  | How often Den reads Hub's comments when Hub has no live stream.                                                                           |
+| `hub.delivery_held_note_seconds` | `60` (at least 5)  | How long text waits for an agent that isn't at its prompt before the bell says so.                                                        |
 | `hub.delivery_heartbeat_seconds` | `15` (at least 5)  | How often Den tells Hub an agent is still working on a comment.                                                                           |
 | `hub.sync_check_seconds`         | `30` (at least 5)  | How often Den checks whether its project list changed, to send it to Hub.                                                                 |
 | `hub.names_check_seconds`        | `300` (at least 5) | How often Den asks Hub for its projects' names, so a rename in Hub shows here.                                                            |

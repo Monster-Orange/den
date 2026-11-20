@@ -1047,6 +1047,7 @@ export async function handleAgentRoutes(
       if (instruction && !s.early) {
         const id = s.rec.id;
         let dialog = false;
+        let notAtPrompt = false;
         void sendFirstInstruction(
           d,
           s.info.ref.id,
@@ -1056,6 +1057,9 @@ export async function handleAgentRoutes(
             ...(deps.instruction ?? {}),
             onDialog: () => {
               dialog = true;
+            },
+            onNotAtPrompt: () => {
+              notAtPrompt = true;
             },
           },
         ).then((sent) =>
@@ -1070,7 +1074,9 @@ export async function handleAgentRoutes(
                     outcome: "refused" as const,
                     reason: dialog
                       ? "not typed: a dialog waits for its person in its terminal"
-                      : "the agent ended, or no terminal host",
+                      : notAtPrompt
+                        ? "not typed: the agent wasn't at its prompt"
+                        : "the agent ended, or no terminal host",
                   }),
             },
             principalOf(req),

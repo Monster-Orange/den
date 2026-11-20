@@ -125,6 +125,7 @@ const cfgFor = (url: string, file: string): HubConfig => ({
   mcpRetryAttempts: 0,
   deliveryHeartbeatSeconds: 15,
   deliveryPollSeconds: 30,
+  deliveryHeldNoteSeconds: 60,
   inboxWatch: true,
   inboxPollSeconds: 30,
   inboxBackoffMaxSeconds: 600,

@@ -132,6 +132,9 @@ describe("agentInputState", () => {
   it("its turn ended: idle; an approval waiting on it: busy", async () => {
     const r = await rig();
     await started(r, ask + answer);
+    // Issue 664: at its input prompt.
+    r.made[0].emit("> ");
+    await settle();
     const d = resolveAgentsDeps(r.deps);
     expect(await agentInputState(d, "planner")).toBe("idle");
     expect(await agentInputState(d, "planner", new Set(["planner"]))).toBe(
@@ -189,6 +192,7 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
   it("cut before its live session started: idle, and no restart waits on it", async () => {
     const r = await rig();
     await started(r, null);
+    r.made[0].emit("> ");
     const since = await sessionStart(r);
     write(r, cutAt(new Date(since - 60_000)));
     const d = resolveAgentsDeps(r.deps);
@@ -210,6 +214,7 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
   it("no session start it can read: the agent record's start", async () => {
     const r = await rig();
     await started(r, null);
+    r.made[0].emit("> ");
     const recAt = Date.parse(record(r, "planner").startedAt as string);
     write(r, cutAt(new Date(recAt - 60_000)));
     const d = resolveAgentsDeps(r.deps);
@@ -414,7 +419,8 @@ describe("issue 664: typed only at the agent's input prompt", () => {
       "\r\n⏺ Reading the rest of the build log while it waits\r\n" +
       Array.from(
         { length: 20 },
-        (_, i) => `  ⎿ step ${i}: compiled module number ${i} of the bundle\r\n`,
+        (_, i) =>
+          `  ⎿ step ${i}: compiled module number ${i} of the bundle\r\n`,
       ).join("");
     expect(await typedInto([DIALOG, more])).toEqual({
       typed: false,
@@ -461,14 +467,59 @@ describe("issue 664: typed only at the agent's input prompt", () => {
     // Five minutes waiting: the header's timer repainted each second.
     const timer = Array.from(
       { length: 300 },
-      (_, i) =>
-        `\x1b[3;16H\x1b[2m(${Math.floor(i / 60)}m ${i % 60}s)\x1b[22m`,
+      (_, i) => `\x1b[3;16H\x1b[2m(${Math.floor(i / 60)}m ${i % 60}s)\x1b[22m`,
     ).join("");
     expect(await typedInto([frame, timer])).toEqual({
       typed: false,
       state: "busy",
     });
   }, 30_000);
+
+  /** A captured Claude Code screen (tests/fixtures/claude-code-screens), as a terminal gets it. */
+  const captured = (name: string) =>
+    fs
+      .readFileSync(
+        path.join(
+          __dirname,
+          "../../fixtures/claude-code-screens",
+          `${name}.raw`,
+        ),
+        "utf-8",
+      )
+      .replace(/\r?\n/g, "\r\n");
+
+  it("(d) captured: Claude Code's dialog for a tool, and its redraw: nothing typed", async () => {
+    expect(await typedInto(captured("3-tool-dialog"))).toEqual({
+      typed: false,
+      state: "busy",
+    });
+    expect(
+      await typedInto([
+        captured("3-tool-dialog"),
+        captured("3b-tool-dialog-redraw"),
+      ]),
+    ).toEqual({ typed: false, state: "busy" });
+  }, 60_000);
+
+  it("captured: its folder-trust question (No first or Yes selected): nothing typed", async () => {
+    for (const name of ["1-trust", "1b-trust-yes-selected"])
+      expect(await typedInto(captured(name))).toEqual({
+        typed: false,
+        state: "busy",
+      });
+  }, 60_000);
+
+  it("captured: at its input prompt (at start, after a turn, after a dialog's Esc): typed at once", async () => {
+    for (const name of [
+      "2-input-prompt",
+      "2b-input-prompt-after-turn",
+      "4-after-no",
+    ])
+      expect(await typedInto(captured(name))).toEqual({
+        typed: true,
+        state: "idle",
+      });
+  }, 90_000);
 
   it("at its input prompt (Claude Code's box and footer): typed at once, as today", async () => {
     const box =
@@ -480,7 +531,7 @@ describe("issue 664: typed only at the agent's input prompt", () => {
     expect(await typedInto(box)).toEqual({ typed: true, state: "idle" });
     const old =
       "\x1b[2J\x1b[H╭──────────────────────────────╮\r\n" +
-      "│ > Try \"fix the lint errors\"  │\r\n" +
+      '│ > Try "fix the lint errors"  │\r\n' +
       "╰──────────────────────────────╯\r\n" +
       "  ? for shortcuts\r\n";
     expect(await typedInto(old)).toEqual({ typed: true, state: "idle" });
