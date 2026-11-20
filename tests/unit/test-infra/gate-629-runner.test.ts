@@ -14,19 +14,27 @@ const ROOT = path.resolve(__dirname, "../../..");
 
 type Kind = "fixed" | "unfixed" | "held-for-allow";
 
-function runGate(kind: Kind, serverWas: "stopped" | "running" = "stopped") {
+function runGate(
+  kind: Kind,
+  serverWas: "stopped" | "running" = "stopped",
+  hub = false,
+) {
   const js = `
     const g = await import("./gate/629.mjs");
     const { runLikeBed } = await import("./tests/fixtures/gate-runner-like.mjs");
     const kind = ${JSON.stringify(kind)};
     // The bed's server agent, as the bed had it before the check.
-    const states = { server: ${JSON.stringify(serverWas)}, "gate-629-say": null };
+    const states = { server: ${JSON.stringify(serverWas)}, "gate-629-say": null, "gate-629-hub": null };
+    const withHub = ${JSON.stringify(hub)};
+    // Hub's queued comments for an agent: Den types one once the agent is
+    // free (a fixed Den), or at once (an unfixed one); by id, once.
+    const hubQueue = [];
     const stops = [];
     let clock = 1_700_000_000_000;
     const now = () => clock;
     Date.now = now;
-    const typed = { server: [], "gate-629-say": [] };
-    const dialog = { server: false, "gate-629-say": false };
+    const typed = { server: [], "gate-629-say": [], "gate-629-hub": [] };
+    const dialog = { server: false, "gate-629-say": false, "gate-629-hub": false };
     const yml = { closed: false, set: null };
     let started = "2026-11-19T00:00:00.000Z";
     let selfUpdate = "ask";
@@ -43,6 +51,13 @@ function runGate(kind: Kind, serverWas: "stopped" | "running" = "stopped") {
       }
       if (restartAt !== null && upAt === null && clock >= restartAt + 2000) {
         upAt = clock; started = new Date(clock).toISOString();
+      }
+      for (const c of hubQueue) {
+        if (c.done || clock < c.at + 2000) continue;
+        if (kind === "unfixed" || !dialog[c.agent]) {
+          typed[c.agent].push({ t: clock, text: "Hub comment: " + c.text, enter: true });
+          c.done = true;
+        }
       }
       if (upAt === null || told) return;
       const past = clock >= upAt + WAIT;
@@ -121,6 +136,15 @@ function runGate(kind: Kind, serverWas: "stopped" | "running" = "stopped") {
       },
     };
     ctx.agent = agent;
+    if (withHub)
+      ctx.hub = {
+        async comment({ agent: a, text, workspace }) {
+          if (workspace !== "proj-gate") throw new Error("not linked");
+          hubQueue.push({ agent: a, text, at: clock, done: false });
+          return { id: "c" + hubQueue.length };
+        },
+        async delivery() { return null; },
+      };
     const out = await runLikeBed("629.mjs", g, ctx);
     console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, serverAfter: states.server, stops }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
@@ -171,7 +195,19 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(row(r, 0)?.detail).toMatch(/Allow/);
   });
 
-  it("the Hub clauses skip with their reason", () => {
+  it("with Hub, a comment for an agent showing a dialog waits, then is typed once (clause 2)", () => {
+    const r = runGate("fixed", "stopped", true);
+    expect(r.error).toBeUndefined();
+    expect(row(r, 1)?.ok).toBe(true);
+  });
+
+  it("with Hub, a Den that types the comment into the dialog fails clause 2", () => {
+    const r = runGate("unfixed", "stopped", true);
+    expect(r.error).toBeUndefined();
+    expect(row(r, 1)?.ok).toBe(false);
+  });
+
+  it("the Hub clauses skip with their reason when the bed has no Hub", () => {
     const r = runGate("fixed");
     for (const i of [1, 2]) {
       expect(row(r, i)?.ok).toBeNull();
