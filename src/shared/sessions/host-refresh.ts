@@ -176,6 +176,11 @@ export interface RefreshDeps {
   checkMs?: number;
   /** sessions.host_restart_wait_seconds, in ms. */
   waitMs: number;
+  /**
+   * Issue 731: the host needs a restart and the wait for agents mid-turn
+   * starts now (at most `waitMs`), so doctor can say Den is on it.
+   */
+  onWait?(w: { why: string; waitMs: number }): void;
   pollMs?: number;
   /**
    * Resume agent `id` (its conversation; a rotated one from its handoff).
@@ -254,6 +259,11 @@ export async function refreshSessionHost(
   c.close();
   const why = need.why;
   d.log(`terminal host: ${why}: it restarts once no agent is mid-turn`);
+  try {
+    d.onWait?.({ why, waitMs: d.waitMs });
+  } catch {
+    /* doctor's note is best effort: the restart goes on */
+  }
 
   // The web restart's rule: never mid-turn, bounded by the setting.
   const started = Date.now();

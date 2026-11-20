@@ -2432,6 +2432,11 @@
       "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
     "ap.det.gate_runner_token_create.revoke":
       "You can revoke it any time in Settings, under CI runner tokens.",
+    "ap.do.host_restart": "Restart the terminal host when agents are idle",
+    "ap.det.host_restart.wait":
+      "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
+    "ap.det.host_restart.resume":
+      "The agents it ran resume where they were; open terminals end. The activity trail says how it went.",
     "ap.det.embed_key_revoke.reach":
       "{origin} can no longer message {agent} or read its state with this key.",
     "ap.det.embed_key_revoke.held":
