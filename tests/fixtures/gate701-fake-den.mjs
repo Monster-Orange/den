@@ -38,6 +38,9 @@ export function fakeBed({
   modes = true,
   rotates = false,
   marksDue = false,
+  // Hub's list as the bed reads it today: no answer field (ack null, state
+  // held), but `acked` once the delivery has left the unanswered list.
+  hubBlind = false,
 } = {}) {
   const fixed = den === "fixed";
   const agents = new Map();
@@ -462,6 +465,14 @@ export function fakeBed({
             pump();
             const d = deliveries.get(id);
             if (!d) return { state: null, ack: null, from: "not found" };
+            if (hubBlind)
+              return {
+                state: "held",
+                ack: null,
+                ackedAt: null,
+                acked: !!d.ack,
+                from: d.ack ? "after" : "unacked",
+              };
             return {
               state: !d.ack || d.ack === "queued" ? "held" : "delivered",
               ack: d.ack,

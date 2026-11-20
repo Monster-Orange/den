@@ -67,6 +67,18 @@ describe("gate/701.mjs as the bed runs it", () => {
     for (let i = 0; i < 3; i++) expect(row(r, i).ok).toBe(true);
   });
 
+  it("Hub's list without the answer field: a fixed Den passes on 'left the unanswered list'", () => {
+    const r = runGate("701.mjs", { den: "fixed", own: true, hubBlind: true });
+    expect(r.error).toBeUndefined();
+    for (let i = 0; i < 3; i++) expect(row(r, i).ok).toBe(true);
+  });
+
+  it("Hub's list without the answer field: the reported Den still fails clause 3", () => {
+    const r = runGate("701.mjs", { den: "unfixed", own: true, hubBlind: true });
+    expect(r.error).toBeUndefined();
+    expect(row(r, 2).ok).toBe(false);
+  });
+
   it("the reported Den (a question holds every comment, Hub hears nothing) fails", () => {
     const r = runGate("701.mjs", { den: "unfixed", own: true });
     expect(r.error).toBeUndefined();

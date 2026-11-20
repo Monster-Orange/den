@@ -27,6 +27,12 @@
 // the bell. A stub mid-turn draws no dialog: then the clause is not run
 // (skip needs-dialog, "the dialog never came up"), nothing is posted, and
 // it is never a FAIL.
+// Hub's delivery list doesn't show a delivery's answer yet: `ack` reads null
+// whatever Hub stored. A delivery that has left Hub's unanswered list
+// (`acked: true`) was answered; Den's side (row, reason, doctor) says how.
+// When Hub shows the answer, the answer itself is checked.
+const hubBlind = (d) => d != null && d.ack == null && d.acked === true;
+
 export const issue = 629;
 export const clauses = [
   "after a restart, Den's note to its agent is not typed while the agent shows a dialog for its person; the bell says the note waits, the agent's waiting row stays, and the note is typed once the dialog is answered",
@@ -299,11 +305,10 @@ async function hubHeld(ctx, s) {
   r.typedTimes = after.split(token).length - 1;
   // Den acks once it has typed it: Hub then says delivered (when it can say).
   if (r.stateWhileOpen)
-    await ctx.until(
-      async () =>
-        (await ctx.hub.delivery(r.id).catch(() => null))?.state === "delivered",
-      15000,
-    );
+    await ctx.until(async () => {
+      const d = await ctx.hub.delivery(r.id).catch(() => null);
+      return d?.state === "delivered" || hubBlind(d);
+    }, 15000);
   r.stateAfter = (await ctx.hub.delivery?.(r.id).catch(() => null)) ?? null;
   return r;
 }
@@ -379,8 +384,13 @@ function hubRow(h) {
     h.toldMs != null &&
     h.typedTimes === 1 &&
     // Hub's own view, when the hook can read it: held, then delivered.
-    (h.stateWhileOpen == null || h.stateWhileOpen.state === "held") &&
-    (h.stateWhileOpen == null || h.stateAfter?.state === "delivered");
+    // A delivery Hub can't show the answer of (see hubBlind) counts on Den's side.
+    (h.stateWhileOpen == null ||
+      h.stateWhileOpen.state === "held" ||
+      hubBlind(h.stateWhileOpen)) &&
+    (h.stateWhileOpen == null ||
+      h.stateAfter?.state === "delivered" ||
+      hubBlind(h.stateAfter));
   const detail = !h.running
     ? `the ${h.agent} stub did not run in ${HUB_WS}`
     : h.postThrew
