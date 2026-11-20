@@ -103,6 +103,8 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "agent_hooks.timeout_seconds": ["agent_hooks", "timeout_seconds"],
   "agent_hooks.retries": ["agent_hooks", "retries"],
   "agent_hooks.backoff_seconds": ["agent_hooks", "backoff_seconds"],
+  // Issue 742: how long a held write waits for the person's Allow.
+  "held_writes.wait_minutes": ["held_writes", "wait_minutes"],
 };
 
 /**

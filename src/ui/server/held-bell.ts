@@ -190,3 +190,75 @@ export async function heldLapsed(a: Approval, d: LapsedDeps): Promise<string> {
     return `not told: ${(e as Error)?.message ?? String(e)}`;
   }
 }
+
+/** Issue 742: a lost request's bell item: `record:held-lost-<id>`. */
+export const LOST_SUBJECT_PREFIX = "record:held-lost-";
+
+/** Issue 742: what the asking agent is told when a restart lost its request. */
+export function lostNotice(
+  a: Pick<Approval, "id" | "action" | "summary">,
+  why: string,
+): string {
+  return (
+    `Den: your request ${a.id} (${a.action}: ${a.summary}) was lost at a restart: ${why} ` +
+    `Nothing ran from it. If it is still needed, ask again (call ${a.action} again).`
+  );
+}
+
+/**
+ * Issue 742: a restart could not bring back a held write (`a`), or, the
+ * queue file being unreadable, any of them (`a` null). The bell says so,
+ * and the agent that asked, when known, is told directly. Never silent.
+ */
+export async function heldLost(
+  a: Approval | null,
+  why: string,
+  d: LapsedDeps & { now?: () => number },
+): Promise<string> {
+  if (!a) {
+    try {
+      d.store.add({
+        kind: "service",
+        subject: `${LOST_SUBJECT_PREFIX}all-${(d.now ?? Date.now)()}`,
+        scope: "workspace/den-server",
+        text: `Requests waiting for your Allow could not be read back after a restart (${why}). They are lost; agents that ask again are shown here.`,
+        msg: { key: "bell.m.heldLostAll", vars: {} },
+        link: heldLink(undefined, undefined),
+      });
+    } catch {
+      /* the bell is best effort */
+    }
+    return "nobody to tell (unreadable queue)";
+  }
+  if (isUpdateAskRequest(a)) return "update ask";
+  let project: string | undefined;
+  try {
+    project = d.projectOf?.(a);
+  } catch {
+    project = undefined;
+  }
+  const what = a.summary;
+  try {
+    d.store.add({
+      kind: "service",
+      subject: `${LOST_SUBJECT_PREFIX}${a.id}`,
+      scope: `workspace/${project || "den-server"}`,
+      text: a.agent
+        ? `${a.agent}'s request was lost at a restart: ${what}. Nothing ran from it; the agent was told to ask again.`
+        : `A request was lost at a restart: ${what}. Nothing ran from it.`,
+      msg: a.agent
+        ? { key: "bell.m.heldLost", vars: { name: a.agent, what } }
+        : { key: "bell.m.heldLostAsk", vars: { what } },
+      link: heldLink(a.agent, project),
+    });
+  } catch {
+    /* the bell is best effort */
+  }
+  if (!a.actor.startsWith("agent:")) return "not an agent";
+  if (!d.tell) return "nobody to tell";
+  try {
+    return await d.tell(a.actor.slice("agent:".length), lostNotice(a, why));
+  } catch (e) {
+    return `not told: ${(e as Error)?.message ?? String(e)}`;
+  }
+}
