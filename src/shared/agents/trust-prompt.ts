@@ -8,8 +8,17 @@
 export interface TrustPrompt {
   /** The prompt's words, in the output with escapes taken out. */
   match: RegExp;
-  /** What answers yes (Claude Code: Enter, on its first choice). */
+  /** What confirms the highlighted choice (Claude Code: Enter). */
   accept: string;
+  /**
+   * Issues 658, 659: how Den tells Yes is the highlighted choice: the
+   * cursor mark, and what a Yes choice starts with after it. Claude Code
+   * 2.1.329 highlights "No, exit" first, so Enter alone would decline.
+   */
+  cursor?: string;
+  yes?: RegExp;
+  /** What moves the highlight to the next choice (Down). */
+  down?: string;
 }
 
 /**
@@ -78,11 +87,7 @@ export function promptOnScreen(
   tp: ScreenPrompt | undefined,
 ): boolean {
   if (!tp || !output) return false;
-  let raw = output.slice(-TAIL * 4);
-  let last = -1;
-  for (const m of raw.matchAll(CLEARS)) last = m.index + m[0].length;
-  if (last >= 0) raw = raw.slice(last);
-  const plain = plainTerminalText(raw).slice(-TAIL);
+  const plain = lastScreen(output);
   // The last copy: a runtime redraws its prompt in place, with no clear.
   const re = new RegExp(tp.match.source, tp.match.flags.replace("g", "") + "g");
   let m: RegExpExecArray | null = null;
@@ -95,4 +100,33 @@ export function promptOnScreen(
   return (
     after.replace(/[^\p{L}\p{N}]/gu, "").length <= (tp.afterMax ?? AFTER_MAX)
   );
+}
+
+/** The output's last screen as plain text: after its last clear, its end. */
+function lastScreen(output: string): string {
+  let raw = output.slice(-TAIL * 4);
+  let last = -1;
+  for (const m of raw.matchAll(CLEARS)) last = m.index + m[0].length;
+  if (last >= 0) raw = raw.slice(last);
+  return plainTerminalText(raw).slice(-TAIL);
+}
+
+/**
+ * Issues 658, 659: the key Den's own answer sends next (the server agent's
+ * Trust, a person's choice made on its page): "enter" when Yes is the
+ * highlighted choice, "down" when another is (move to Yes first; never
+ * a bare Enter on "No, exit"), null when the question isn't on screen.
+ * A runtime that doesn't say how it marks its choice: "enter" (its accept).
+ */
+export function trustAnswerKey(
+  output: string,
+  tp: TrustPrompt | undefined,
+): "enter" | "down" | null {
+  if (!tp || !trustPromptIn(output, tp)) return null;
+  if (!tp.cursor || !tp.yes) return "enter";
+  const plain = lastScreen(output);
+  const at = plain.lastIndexOf(tp.cursor);
+  if (at >= 0 && tp.yes.test(plain.slice(at + tp.cursor.length)))
+    return "enter";
+  return tp.down ? "down" : null;
 }

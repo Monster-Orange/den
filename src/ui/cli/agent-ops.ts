@@ -64,6 +64,7 @@ import {
 } from "../../shared/agents/running-mode.js";
 import {
   plainTerminalText,
+  trustAnswerKey,
   promptOnScreen,
   trustPromptIn,
 } from "../../shared/agents/trust-prompt.js";
@@ -8264,19 +8265,44 @@ export async function answerServerAgentTrust(
 ): Promise<boolean> {
   const p = await serverAgentTrustPrompt(d);
   if (!p) return false;
+  const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
+  const tp = rec ? getRuntime(rec.runtime)?.trustPrompt : undefined;
+  if (!tp) return false;
   const c = await d.connectExisting();
   if (!c) return false;
+  const screen = async () =>
+    (await c.scrollback(p.sessionId, 16 * 1024)).toString("utf-8");
+  const settleMs = () => new Promise((r) => setTimeout(r, TRUST_KEY_WAIT_MS));
   try {
-    c.write(p.sessionId, Buffer.from(p.accept, "utf-8"));
-    // Let the host take the bytes before the connection closes.
-    await c.list();
-    return true;
+    // Issues 658, 659: Yes is chosen explicitly. While another choice is
+    // highlighted ("No, exit", Claude Code 2.1.329's first), Den moves
+    // down and looks again; Enter only once Yes is highlighted. Never a
+    // bare Enter that could decline.
+    for (let i = 0; i < TRUST_MAX_MOVES; i++) {
+      const key = trustAnswerKey(await screen(), tp);
+      if (key === null) return false;
+      if (key === "down") {
+        c.write(p.sessionId, Buffer.from(tp.down!, "utf-8"));
+        await settleMs();
+        continue;
+      }
+      c.write(p.sessionId, Buffer.from(tp.accept, "utf-8"));
+      await settleMs();
+      // Answered: the question went away.
+      return !trustPromptIn(await screen(), tp);
+    }
+    return false;
   } catch {
     return false;
   } finally {
     c.close();
   }
 }
+
+/** How long Den waits for the screen after each key of its trust answer. */
+const TRUST_KEY_WAIT_MS = 250;
+/** How many Down presses Den's trust answer tries before it gives up. */
+const TRUST_MAX_MOVES = 4;
 
 /**
  * 0.4.40: type a Hub comment into agent `id`'s session, once its output is

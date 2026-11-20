@@ -34,7 +34,12 @@ import { cleanupRigs, rig, settle } from "./helpers/rig.js";
 
 afterEach(cleanupRigs);
 
-const FIX = path.join(process.cwd(), "tests", "fixtures", "claude-code-2.1.329");
+const FIX = path.join(
+  process.cwd(),
+  "tests",
+  "fixtures",
+  "claude-code-2.1.329",
+);
 const raw = (f: string) => fs.readFileSync(path.join(FIX, f), "utf-8");
 const ASKING = raw("trust.raw");
 const YES_SELECTED = raw("trust-yes-selected.raw");
