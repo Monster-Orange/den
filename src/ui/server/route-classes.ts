@@ -95,6 +95,13 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/favicon.ico",
+    // Issue 644: the kit's site files (its head snippet names them).
+    "/favicon.svg",
+    "/apple-touch-icon.png",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/icon-maskable-512.png",
+    "/site.webmanifest",
     // Issue 172: the app manifest (a phone's home screen, for push).
     "/manifest.webmanifest",
     "/theme.css",

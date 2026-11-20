@@ -22,6 +22,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { send404, sendJson } from "./http-helpers.js";
+import { kitSiteDir } from "./ui-assets.js";
 import type { AppearancePrefs } from "./appearance-prefs.js";
 import type { ThemeManifest, ThemeMode } from "../../shared/theme/contract.js";
 import {
@@ -43,21 +44,14 @@ export interface ThemeRouteDeps {
   /** The org config's `theme:`. */
   distributionTheme: () => string | null | undefined;
   warn: (line: string) => void;
-  /** Den's own tab icon (public/favicon.ico), for a theme with a text mark. */
+  /** Den's own tab icon (the kit's site/favicon.ico), for a theme with a text mark. */
   denFavicon?: string;
 }
 
 function denFaviconPath(deps: ThemeRouteDeps): string {
   return (
     deps.denFavicon ??
-    path.join(
-      deps.roots().engineRoot,
-      "src",
-      "ui",
-      "server",
-      "public",
-      "favicon.ico",
-    )
+    path.join(kitSiteDir(deps.roots().engineRoot), "favicon.ico")
   );
 }
 

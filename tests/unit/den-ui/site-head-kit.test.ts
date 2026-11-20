@@ -102,8 +102,12 @@ describe("den-ui site head (issue 644)", () => {
   });
 
   it("dark mode only: the mark's cream edge", () => {
+    // The edge's colour is a token (no raw colour outside tokens.css).
+    expect(read(path.join(PKG, "src", "tokens.css"))).toMatch(
+      /--den-mark-edge:\s*rgba\(244,\s*239,\s*232,\s*0?\.18\);/,
+    );
     const css = read(path.join(PKG, "src", "shell.css"));
-    const EDGE = /box-shadow:\s*0 0 0 1px rgba\(244,\s*239,\s*232,\s*0?\.18\)/;
+    const EDGE = /box-shadow:\s*0 0 0 1px var\(--den-mark-edge\)/;
     // Each rule that draws the edge, with its selector and the @media it is in.
     const rules: { media: string; selector: string }[] = [];
     let media = "";

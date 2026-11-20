@@ -137,11 +137,7 @@ describe("the kit's head snippet on every page (issue 644)", () => {
     expect(urls.size).toBeGreaterThanOrEqual(7);
     for (const u of urls) {
       const r = await get(u, "*/*");
-      expect([u, r.status, r.type]).toEqual([
-        u,
-        200,
-        TYPES[path.extname(u)],
-      ]);
+      expect([u, r.status, r.type]).toEqual([u, 200, TYPES[path.extname(u)]]);
       // A file is the kit's own bytes (the manifest is filled in by Den).
       if (u !== "/site.webmanifest")
         expect([u, r.body.equals(fs.readFileSync(path.join(SITE, u)))]).toEqual(
