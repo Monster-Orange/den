@@ -247,7 +247,7 @@ describe("gate run", () => {
     ]);
   }, 30_000);
 
-  it("a real wrapper killed with SIGKILL: the slot stays while its run goes on, then frees at once", async () => {
+  it("a real wrapper killed with SIGKILL: the sweep ends its run's group, then the slot frees", async () => {
     const dir = tmp();
     const store = new GateStore({ dir });
     const k = spawn(
@@ -278,10 +278,12 @@ describe("gate run", () => {
       k.on("exit", () => resolve());
       k.kill("SIGKILL");
     });
+    // The slot stays while the sweep ends the run's group (TERM first):
+    // the run never goes on without its slot.
     expect(store.list().map((e) => e.label)).toEqual(["sleeper"]);
-    process.kill(sleeper, "SIGKILL");
-    for (let i = 0; i < 100 && alive(sleeper); i++)
+    for (let i = 0; i < 250 && alive(sleeper); i++)
       await new Promise((r) => setTimeout(r, 20));
+    expect(alive(sleeper)).toBe(false);
     expect(store.list()).toEqual([]);
     expect(store.events().map((e) => e.event)).toEqual([
       "asked",

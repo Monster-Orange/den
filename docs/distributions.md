@@ -5546,6 +5546,24 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   log's `cancelled` row and the audit name the release run as who and
   "idle N min past its estimate" as why. A slot that isn't flagged is
   never cancelled this way.
+- Every slot end ends the run's whole process group: TERM, then KILL
+  after `cancel_grace_seconds`. That holds whether the command exits 0,
+  fails, is cancelled, or `gate run` gets a signal. A child the command
+  left behind (adopted by PID 1) is still in the group, so it is reached.
+  The slot records the group (`pgid`) when the run starts. If `gate run`
+  itself dies (SIGKILL), the next look at the queue (any `gate` command,
+  the Agents page, or Den's server, about once a minute) does the same
+  for that group, keeping the slot until it is gone. A group with a
+  member older than the run is someone else's (its id was reused), and
+  is never signalled.
+- What outlives the end is listed as survivors, never signalled: anything
+  still in the group after KILL, and any process that left the group
+  (setsid, its own group) while a child of a group member. The slot log
+  records `survivors` (pid and command name), `gate status` (and
+  `--json`) lists those still running, and an agent holder's project bell
+  gets a Needs-you item. A process that left the group and was already
+  adopted by PID 1 before the slot ended can't be traced back to the run,
+  so it isn't listed.
 - The slots are the machine user's, shared by every install and repo, and
   need no running Den: `DEN_GATE_DIR`, else `~/Library/Application
 Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`

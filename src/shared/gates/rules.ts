@@ -60,6 +60,21 @@ export interface GateEntry {
   idleAt?: string;
   /** Idle flag: the last CPU reading of its run's tree (seconds, at ISO). */
   cpuSample?: { at: string; cpu: number };
+  /**
+   * Group end: the process group its run leads (recorded at start), and
+   * when the run started. Every slot end ends this group.
+   */
+  pgid?: number;
+  runStartedAt?: string;
+  /**
+   * Group end, by the store's sweep (gate run itself died): when TERM went
+   * to the group, when KILL did, and what had left the group by then.
+   */
+  ending?: {
+    at: string;
+    killedAt?: string;
+    escaped: { pid: number; comm: string }[];
+  };
 }
 
 export interface GateSettings {

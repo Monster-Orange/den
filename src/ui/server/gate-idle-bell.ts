@@ -16,13 +16,15 @@ import { getStateDir } from "../../shared/paths.js";
 const CHECK_MS = 60_000;
 
 export interface GateIdleBellDeps {
-  store: Pick<GateStore, "list">;
+  store: Pick<GateStore, "list" | "recentEvents">;
   bell: Pick<NotificationStore, "add">;
   /** This install's agents. */
   records: () => { id: string; workspace: string }[];
   /** The flags already rung (slot id and when it was flagged). */
   rung: Set<string>;
   now: () => number;
+  /** Survivors recorded before this (ms) were rung by an earlier server. */
+  since?: number;
 }
 
 /** Rings once for each newly flagged slot an agent here holds. */
@@ -50,6 +52,30 @@ export function ringIdleGates(d: GateIdleBellDeps): string[] {
       /* the bell is best effort: gate status still says it */
     }
   }
+  // Group end: processes that outlived an agent's run's group, rung once
+  // per record (only those recorded since this server started).
+  for (const r of d.store.recentEvents("survivors")) {
+    if (!r.actor || !r.survivors?.length) continue;
+    if (d.since !== undefined && Date.parse(r.at) < d.since) continue;
+    const rec = mine.get(r.actor);
+    const key = `${r.id}:survivors@${r.at}`;
+    if (!rec || d.rung.has(key)) continue;
+    d.rung.add(key);
+    const pids = r.survivors.map((x) => `${x.pid} (${x.comm})`).join(", ");
+    try {
+      d.bell.add({
+        kind: "decision",
+        subject: `gate:${r.id}:survivors`,
+        scope: `workspace/${rec.workspace}`,
+        text: `Test run ${r.label} ended, but these still run: ${pids}`,
+        msg: { key: "bell.m.gateSurvivors", vars: { label: r.label, pids } },
+        link: `/agents?project=${encodeURIComponent(rec.workspace)}`,
+      });
+      rang.push(r.id);
+    } catch {
+      /* best effort: gate status still lists them */
+    }
+  }
   return rang;
 }
 
@@ -58,6 +84,7 @@ let timer: NodeJS.Timeout | undefined;
 export function startGateIdleBell(): void {
   if (timer) return;
   let deps: GateIdleBellDeps | null = null;
+  const started = Date.now();
   const beat = async () => {
     try {
       if (!deps) {
@@ -68,6 +95,7 @@ export function startGateIdleBell(): void {
           records: () => listRecords(getStateDir()),
           rung: new Set(),
           now: Date.now,
+          since: started,
         };
       }
       ringIdleGates(deps);

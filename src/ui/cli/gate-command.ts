@@ -29,6 +29,7 @@ import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import {
   cancelIdleFor,
+  endGroup,
   cancelSlot,
   stopRun,
   type StopDeps,
@@ -321,8 +322,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   let child: GateRun | undefined;
   let released = false;
   let cancelled: number | undefined;
+  let survivors: { pid: number; comm: string }[] = [];
   const release = () => {
-    if (!released) s.release(id);
+    if (!released) s.release(id, survivors);
     released = true;
   };
   // While waiting, a signal gives the place back and leaves. While the
@@ -368,9 +370,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     d.err(`gate: ${id} holds ${kindWords(e)}; running ${label}`);
     if (kind === "release")
       d.err(`gate: release run starts: ${loadLine(lastRow(s, id, "granted"))}`);
+    const startedMs = d.now();
     child = d.exec(pos[0]!, pos.slice(1));
     const group = child.group === true;
-    if (child.pid !== undefined && !s.setRunPid(id, child.pid, group)) {
+    if (
+      child.pid !== undefined &&
+      !s.setRunPid(id, child.pid, group, startedMs)
+    ) {
       // Cancelled between its grant and its start: stop what just started.
       const grace = s.settings().cancelGraceSeconds * 1000;
       const kill = d.kill;
@@ -399,6 +405,22 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     } finally {
       stop();
     }
+    // Group end: whatever way the command ended, its whole group is ended
+    // before the slot frees: a child it left behind (adopted by PID 1, in
+    // the same group) included. What outlives that is listed, not touched.
+    if (group && child.pid !== undefined && d.kill) {
+      const graceMs = s.settings().cancelGraceSeconds * 1000;
+      survivors = await endGroup(
+        child.pid,
+        () => (d.now() - startedMs) / 1000,
+        graceMs,
+        { ...stopDeps(d), procs: () => s.procs() },
+      );
+      if (survivors.length)
+        d.err(
+          `gate: still running after ${label} ended (not in its process group, or not stopped): ${survivors.map((x) => `${x.pid} (${x.comm})`).join(", ")}`,
+        );
+    }
     // Issue 585: cancelled while it ran. The slot frees only when the
     // command's whole group is gone (the canceller stops it, and either
     // of us frees the slot after).
@@ -413,6 +435,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         while (s.isAlive(target) && d.now() < until) await d.sleep(250);
         if (!s.isAlive(target)) s.releaseCancelled(id);
       }
+      if (survivors.length && e) s.recordSurvivors(e, survivors);
       d.err(`gate: ${label} cancelled by ${by}`);
       return code === 0 ? 1 : code;
     }
@@ -435,11 +458,21 @@ function status(args: string[], d: GateDeps): number {
   }
   const all = d.store.list();
   const set = d.store.settings();
+  // Group end: what outlived an ended run's group, while it lives.
+  const left = d.store.livingSurvivors();
+  const sayLeft = () => {
+    for (const r of left)
+      d.out(
+        `Survivors of ${r.id} "${r.label}" (${r.who}): ${r.survivors.map((x) => `${x.pid} (${x.comm})`).join(", ")}; still running, not stopped by gate`,
+      );
+  };
   if (all.length === 0) {
     d.out("No gate runs hold or wait.");
+    sayLeft();
     return 0;
   }
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
+  sayLeft();
   // Issue 498: the release slot, and who holds it.
   if (all.some((e) => e.kind === "release")) {
     const held = all.filter((e) => e.kind === "release" && e.grantedAt);

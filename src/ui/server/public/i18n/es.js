@@ -1898,6 +1898,8 @@
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
     "bell.m.gateIdle":
       "La prueba {label} está inactiva {n} min pasada su estimación y conserva su turno",
+    "bell.m.gateSurvivors":
+      "La prueba {label} terminó, pero estos siguen en marcha: {pids}",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":

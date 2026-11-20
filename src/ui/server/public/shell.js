@@ -2716,6 +2716,8 @@
       "{name} is compacting repeatedly: {n} times in {m} minutes",
     "bell.m.gateIdle":
       "Test run {label} is idle {n} min past its estimate and holds its gate slot",
+    "bell.m.gateSurvivors":
+      "Test run {label} ended, but these still run: {pids}",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":

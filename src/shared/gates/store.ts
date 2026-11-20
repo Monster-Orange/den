@@ -169,7 +169,8 @@ export type GateEvent =
   | "ended-early"
   | "cancelled"
   | "idle"
-  | "idle-cleared";
+  | "idle-cleared"
+  | "survivors";
 
 /** Issue 498: another holder, as a release run's record names it. */
 export interface GateAlongside {
@@ -209,6 +210,9 @@ export interface GateEventRow {
   /** idle: minutes past its estimate, and its tree's CPU share (%). */
   minutesPast?: number;
   cpuPercent?: number;
+  /** survivors: what outlived its group's end (pid, command name), and the holder. */
+  survivors?: { pid: number; comm: string }[];
+  actor?: string;
 }
 
 /** What `cancel` did (issue 585). */
@@ -248,6 +252,14 @@ export interface GateStoreOpts {
    * nothing unless given one.
    */
   cpu?: (e: GateEntry) => number | null;
+  /**
+   * Group end: signals a pid (negative: a process group), and lists the
+   * machine's processes. Default: the real ones, only on a store with real
+   * liveness; a store with a stubbed `alive` signals and lists nothing
+   * unless given these.
+   */
+  kill?: (pid: number, s: NodeJS.Signals) => void;
+  procs?: () => ProcRow[];
 }
 
 /** How far back cancelledBy reads the slot log. */
@@ -260,6 +272,8 @@ export class GateStore {
   private readonly lockWaitMs: number;
   private readonly load: () => number[];
   private readonly cpu: (e: GateEntry) => number | null;
+  private readonly kill: (pid: number, s: NodeJS.Signals) => void;
+  private readonly listProcs: () => ProcRow[];
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
@@ -277,6 +291,83 @@ export class GateStore {
               : e.runGroup
                 ? groupCpuSeconds(e.runPid)
                 : pidCpuSeconds(e.runPid));
+    this.kill =
+      o.kill ??
+      (o.alive
+        ? () => {}
+        : (p, s) => {
+            try {
+              process.kill(p, s);
+            } catch {
+              /* already gone */
+            }
+          });
+    this.listProcs = o.procs ?? (o.alive ? () => [] : listProcs);
+  }
+
+  /** Group end: the machine's processes, as ps lists them. */
+  procs(): ProcRow[] {
+    try {
+      return this.listProcs();
+    } catch {
+      return [];
+    }
+  }
+
+  /** Group end: how long the run has been going, in seconds. */
+  private runAge(e: GateEntry, now: number): number {
+    const t = Date.parse(e.runStartedAt ?? e.grantedAt ?? e.askedAt);
+    return Math.max(0, (now - t) / 1000);
+  }
+
+  /**
+   * Group end, by the sweep: gate run (e.pid) is gone but its run's group
+   * may not be. TERM to the group (once), KILL after cancel_grace_seconds,
+   * then the slot is taken back, listing what outlived it. A group with a
+   * member older than the run is someone else's (its id was reused): it is
+   * never signalled. Returns the survivors once the slot can go, or null
+   * while it holds.
+   */
+  private sweep(
+    e: GateEntry,
+    s: GateSettings,
+    now: number,
+  ): { pid: number; comm: string }[] | null {
+    const pgid = e.pgid!;
+    const graceMs = s.cancelGraceSeconds * 1000;
+    const at = new Date(now).toISOString();
+    const left = (xs: { pid: number; comm: string }[]) =>
+      xs.filter((x) => this.alive(x.pid));
+    const survey = groupSurvey(this.procs(), pgid, this.runAge(e, now));
+    if (!e.ending) {
+      if (!survey || survey.members.length === 0 || !this.alive(-pgid))
+        return survey ? left(pick(survey.escaped)) : [];
+      this.kill(-pgid, "SIGTERM");
+      e.ending = { at, escaped: pick(survey.escaped) };
+      this.write(e);
+      return null;
+    }
+    if (!survey || !this.alive(-pgid)) return left(e.ending.escaped);
+    if (!e.ending.killedAt) {
+      if (now - Date.parse(e.ending.at) < graceMs) return null;
+      this.kill(-pgid, "SIGKILL");
+      e.ending.killedAt = at;
+      this.write(e);
+      return null;
+    }
+    if (now - Date.parse(e.ending.killedAt) < Math.max(graceMs, 1000))
+      return null;
+    return dedupe([...pick(survey.members), ...left(e.ending.escaped)]);
+  }
+
+  /** Group end: records what outlived a slot's run (once per end). */
+  recordSurvivors(e: GateEntry, survivors: { pid: number; comm: string }[]) {
+    if (!survivors.length) return;
+    this.record(e, {
+      event: "survivors",
+      survivors: survivors.slice(0, 50),
+      ...(e.actor ? { actor: e.actor } : {}),
+    });
   }
 
   /**
@@ -442,6 +533,53 @@ export class GateStore {
     return null;
   }
 
+  /** The slot log's recent rows of one kind (its last LOG_TAIL_BYTES). */
+  recentEvents(event: GateEvent): GateEventRow[] {
+    let text = "";
+    try {
+      const fd = fs.openSync(this.eventsFile, "r");
+      try {
+        const size = fs.fstatSync(fd).size;
+        const len = Math.min(size, LOG_TAIL_BYTES);
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, size - len);
+        text = buf.toString("utf-8");
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return [];
+    }
+    const out: GateEventRow[] = [];
+    for (const l of text.split("\n")) {
+      if (!l.includes(`"${event}"`)) continue;
+      try {
+        const r = JSON.parse(l) as GateEventRow;
+        if (r.event === event) out.push(r);
+      } catch {
+        /* a cut line at the tail's start */
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Group end: survivors of ended runs that still live (from the slot
+   * log's recent rows), each with only its living pids.
+   */
+  livingSurvivors(): (GateEventRow & {
+    survivors: { pid: number; comm: string }[];
+  })[] {
+    const out: (GateEventRow & {
+      survivors: { pid: number; comm: string }[];
+    })[] = [];
+    for (const r of this.recentEvents("survivors")) {
+      const live = (r.survivors ?? []).filter((x) => this.alive(x.pid));
+      if (live.length) out.push({ ...r, survivors: live });
+    }
+    return out;
+  }
+
   /**
    * Holds the lock while `fn` runs. The lock names its holder's pid; a
    * lock whose holder is gone (killed while holding it) is taken back at
@@ -571,11 +709,21 @@ export class GateStore {
     const at = new Date(now).toISOString();
     const entries: GateEntry[] = [];
     for (const e of this.readAll()) {
-      if (!gone(e, this.alive)) {
+      // Group end: gate run died; its run's group is ended here.
+      let survivors: { pid: number; comm: string }[] = [];
+      if (e.pgid !== undefined && !this.alive(e.pid)) {
+        const done = this.sweep(e, s, now);
+        if (!done) {
+          entries.push(e);
+          continue;
+        }
+        survivors = done;
+      } else if (!gone(e, this.alive)) {
         entries.push(e);
         continue;
       }
       this.remove(e.id);
+      this.recordSurvivors(e, survivors);
       this.record(e, { event: "taken-back-gone", ...this.heldFor(e, now) });
     }
     const ordinaryHeld = entries.some(
@@ -680,24 +828,37 @@ export class GateStore {
    * its own process group. Returns the slot as it now stands, or null when
    * it is gone (cancelled while it started: the caller stops its run).
    */
-  setRunPid(id: string, runPid: number, group = false): GateEntry | null {
+  setRunPid(
+    id: string,
+    runPid: number,
+    group = false,
+    startedAt?: number,
+  ): GateEntry | null {
     return this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
       if (!e) return null;
       e.runPid = runPid;
-      if (group) e.runGroup = true;
+      e.runStartedAt = new Date(startedAt ?? this.now()).toISOString();
+      if (group) {
+        e.runGroup = true;
+        e.pgid = runPid;
+      }
       this.write(e);
       return e;
     });
   }
 
-  /** The holder is done (or the waiter gives up). */
-  release(id: string): boolean {
+  /**
+   * The holder is done (or the waiter gives up). `survivors`: what outlived
+   * its run's group end, recorded first.
+   */
+  release(id: string, survivors: { pid: number; comm: string }[] = []): boolean {
     return this.locked(() => {
       const all = this.readAll();
       const e = all.find((x) => x.id === id);
       if (!e) return false;
       this.remove(id);
+      this.recordSurvivors(e, survivors);
       this.record(e, {
         event: "released",
         ...this.heldFor(e, this.now()),
@@ -855,11 +1016,76 @@ export interface ProcRow {
   comm: string;
 }
 
-/** Group end: a run's group and what left it (red-first stub). */
+/** A member may look this much older than its run (ps counts whole seconds). */
+const AGE_SLACK_SEC = 5;
+
+/**
+ * Group end: a run's group (`members`) and what left it while a member's
+ * child or later descendant (`escaped`: setsid, a new group). A process
+ * that left and was already adopted by PID 1 can't be traced back: it is
+ * not here. Null when a member is older than the run: the group id was
+ * reused, and the group is someone else's.
+ */
 export function groupSurvey(
-  _rows: ProcRow[],
-  _pgid: number,
-  _runAgeSec: number,
+  rows: ProcRow[],
+  pgid: number,
+  runAgeSec: number,
 ): { members: ProcRow[]; escaped: ProcRow[] } | null {
-  return null;
+  const members = rows.filter((r) => r.pgid === pgid);
+  if (members.some((r) => r.ageSec > runAgeSec + AGE_SLACK_SEC)) return null;
+  const kids = new Map<number, ProcRow[]>();
+  for (const r of rows) {
+    const l = kids.get(r.ppid);
+    if (l) l.push(r);
+    else kids.set(r.ppid, [r]);
+  }
+  const escaped: ProcRow[] = [];
+  const seen = new Set(members.map((r) => r.pid));
+  const todo = [...members];
+  while (todo.length) {
+    const r = todo.pop()!;
+    for (const k of kids.get(r.pid) ?? []) {
+      if (seen.has(k.pid) || k.pid <= 1) continue;
+      seen.add(k.pid);
+      todo.push(k);
+      if (k.pgid !== pgid) escaped.push(k);
+    }
+  }
+  return { members, escaped };
+}
+
+/** Group end: just pid and command name, for the record. */
+const pick = (xs: ProcRow[]) => xs.map((x) => ({ pid: x.pid, comm: x.comm }));
+
+const dedupe = (xs: { pid: number; comm: string }[]) => [
+  ...new Map(xs.map((x) => [x.pid, x])).values(),
+];
+
+/** Group end: the machine's processes (empty where ps can't say). */
+export function listProcs(): ProcRow[] {
+  if (process.platform === "win32") return [];
+  let out = "";
+  try {
+    out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,etime=,comm="], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    return [];
+  }
+  const rows: ProcRow[] = [];
+  for (const line of out.split("\n")) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/.exec(line);
+    if (!m) continue;
+    const age = parseCpuTime(m[4]!);
+    rows.push({
+      pid: Number(m[1]),
+      ppid: Number(m[2]),
+      pgid: Number(m[3]),
+      ageSec: age ?? 0,
+      comm: path.basename(m[5]!.trim()).slice(0, 64),
+    });
+  }
+  return rows;
 }

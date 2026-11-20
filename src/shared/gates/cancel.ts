@@ -16,7 +16,12 @@ import {
   type Canceller,
   type GateEntry,
 } from "./rules.js";
-import type { GateCancel, GateStore } from "./store.js";
+import {
+  groupSurvey,
+  type GateCancel,
+  type GateStore,
+  type ProcRow,
+} from "./store.js";
 
 export interface StopDeps {
   /** Whether a pid is alive; a negative pid asks for a process group. */
@@ -152,4 +157,33 @@ export function cancelIdleFor(
       out.push({ id: e.id, reason: r.row.reason ?? "", done: r.done });
   }
   return out;
+}
+
+/**
+ * Group end: at a slot's end, ends the group its run leads: TERM, the
+ * grace, KILL (stopRun). A child that outlived its parent, adopted by
+ * PID 1, keeps the group, so it is reached. Returns the survivors: what is
+ * still in the group after KILL, and what had left the group under a
+ * member (setsid) and still lives; those are listed, never signalled. A
+ * group with a member older than the run is someone else's: untouched.
+ */
+export async function endGroup(
+  pgid: number,
+  runAgeSec: () => number,
+  graceMs: number,
+  d: StopDeps & { procs: () => ProcRow[] },
+): Promise<{ pid: number; comm: string }[]> {
+  const before = groupSurvey(d.procs(), pgid, runAgeSec());
+  if (!before) return [];
+  const escaped = before.escaped.map((x) => ({ pid: x.pid, comm: x.comm }));
+  let stayed: { pid: number; comm: string }[] = [];
+  if (before.members.length && d.alive(-pgid)) {
+    const gone = await stopRun(pgid, true, graceMs, d);
+    if (!gone)
+      stayed = (groupSurvey(d.procs(), pgid, runAgeSec())?.members ?? []).map(
+        (x) => ({ pid: x.pid, comm: x.comm }),
+      );
+  }
+  const all = [...stayed, ...escaped.filter((x) => d.alive(x.pid))];
+  return [...new Map(all.map((x) => [x.pid, x])).values()];
 }

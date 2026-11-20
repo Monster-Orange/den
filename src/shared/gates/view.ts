@@ -66,5 +66,14 @@ export function gateView(store: GateStore, now = Date.now()) {
       .filter((e) => e.kind === "release" && e.grantedAt)
       .map((e) => ({ id: e.id, who: e.who, tag: e.tag ?? "" })),
   };
-  return { settings, release, slots };
+  // Group end: what outlived an ended run's group, while it lives.
+  const survivors = store.livingSurvivors().map((r) => ({
+    id: r.id,
+    label: r.label,
+    who: r.who,
+    at: r.at,
+    ...(r.actor ? { actor: r.actor } : {}),
+    pids: r.survivors,
+  }));
+  return { settings, release, slots, survivors };
 }

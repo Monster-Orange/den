@@ -1841,6 +1841,8 @@
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
     "bell.m.gateIdle":
       "テスト実行 {label} は見込みを {n} 分過ぎても止まったまま、順番を持っています",
+    "bell.m.gateSurvivors":
+      "テスト実行 {label} は終わりましたが、まだ動いています: {pids}",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":

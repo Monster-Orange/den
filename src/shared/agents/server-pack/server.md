@@ -134,6 +134,9 @@ Reads (they change nothing):
   A slot whose run sits idle well past its estimate is flagged ("idle N
   min past its estimate" in `gate_slot_status`, and a Needs-you bell for
   its agent). The flag stops nothing; cancel your own if it is stuck.
+  When a `gate run` slot ends, its command's whole process group is
+  ended too; anything that outlives it is listed as survivors in
+  `gate_slot_status` and your bell.
 
 Hub files (through Den, as you; when Hub is connected):
 
