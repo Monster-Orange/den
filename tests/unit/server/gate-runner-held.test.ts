@@ -141,7 +141,11 @@ describe("gate runner tokens, made on the person's Allow", () => {
     const a = await ask({ name: "ci-denied" }, "server");
     const r = await queue.decide(a.body.id, "deny", "session:s1");
     expect(r.ok).toBe(true);
-    expect(tokens().list().map((t) => t.name)).not.toContain("ci-denied");
+    expect(
+      tokens()
+        .list()
+        .map((t) => t.name),
+    ).not.toContain("ci-denied");
   });
 
   it("Allow makes it; the token goes to the asking agent once, never to the Allow's answer, the person or the audit", async () => {

@@ -936,6 +936,17 @@
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
       "Una prueba que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página Agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_remote_renew":
+      "El runner de CI renueva su turno cada, en segundos",
+    "set.server.gate_remote_renew.d":
+      "Un trabajo de CI en una VM runner mantiene su turno de pruebas renovándolo con esta frecuencia (se le dice el número cuando lo pide). __DEN_CLI__ gate settings --remote-renew-seconds 30",
+    "set.server.gate_remote_lapse":
+      "El turno de un runner de CI se recupera tras, en segundos",
+    "set.server.gate_remote_lapse.d":
+      "Un runner de CI que no renueva su turno en este tiempo lo pierde, y empieza el siguiente en la cola. Al menos el doble del tiempo de renovación. __DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_runners": "Tokens de runners de CI",
+    "set.server.gate_runners.d":
+      "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1570,6 +1581,16 @@
       "La clave se muestra una vez, aquí, después de que lo permitas. Den guarda solo su hash.",
     "ap.det.embed_key_create.revoke":
       "Puedes revocarla cuando quieras en Ajustes › Incrustación.",
+    "ap.do.gate_runner_token_create":
+      "Crear un token solo para turnos de pruebas para el runner de CI {name}",
+    "ap.det.gate_runner_token_create.reach":
+      "Crea un token para el runner de CI {name}. Solo puede pedir, renovar y devolver turnos de pruebas en esta máquina: nada más en Den.",
+    "ap.det.gate_runner_token_create.onceAgent":
+      "El token va una vez a {agent}, el agente que lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
+    "ap.det.gate_runner_token_create.once":
+      "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
+    "ap.det.gate_runner_token_create.revoke":
+      "Puedes revocarlo cuando quieras en Ajustes › Servidor.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
@@ -2663,6 +2684,7 @@
     "set.ui.appKeyUnused": "nunca usada",
     "set.ui.appKeyRevoked": "revocada {when}",
     "set.ui.appKeyRevoke": "Revocar",
+    "set.ui.runnerNone": "Aún no hay tokens de runner.",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",

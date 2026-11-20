@@ -264,7 +264,12 @@ import {
   checkGatePatch,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
-import { handleGateRoutes, isGatePath } from "./gate-routes.js";
+import {
+  gateRunnerTokenOp,
+  handleGateRoutes,
+  isGatePath,
+} from "./gate-routes.js";
+import { RunnerTokens } from "../../shared/gates/runner-tokens.js";
 import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
@@ -2069,6 +2074,15 @@ const GUARD: GuardContext = {
     const secret = webSecret.current();
     return secret ? verifyPersonToken(token, secret) : null;
   },
+  // Issue 621: a gate-only runner token (it reaches RUNNER_ROUTES only).
+  verifyRunner: (token) => {
+    const c = RunnerTokens.at(getStateDir()).check(token);
+    return c.ok
+      ? { id: c.runner.id, name: c.runner.name }
+      : c.code === "token_revoked"
+        ? "revoked"
+        : null;
+  },
   session: (req, via) => {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
     return s ? { ...s, secure: s.secure === true } : null;
@@ -3220,6 +3234,10 @@ function approvalDeps(): ApprovalDeps {
       stateDir: () => getStateDir(),
       serverKeys: () => ServerKeys.at(getStateDir()),
     }),
+    // Issue 621: a gate-only token for a CI runner, on the person's Allow.
+    gateRunnerToken: gateRunnerTokenOp({
+      runners: () => RunnerTokens.at(getStateDir()),
+    }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
       run: (a) =>
@@ -4134,6 +4152,7 @@ async function handleRequest(
     await handleGateRoutes(req, res, pathname, {
       store: gates,
       title: product().title,
+      runners: () => RunnerTokens.at(getStateDir()),
     });
     return;
   }

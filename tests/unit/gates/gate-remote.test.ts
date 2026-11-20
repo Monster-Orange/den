@@ -41,7 +41,11 @@ const T0 = Date.parse("2026-11-20T10:00:00Z");
 
 function setup() {
   let now = T0;
-  const store = new GateStore({ dir: tmp(), now: () => now, alive: () => true });
+  const store = new GateStore({
+    dir: tmp(),
+    now: () => now,
+    alive: () => true,
+  });
   const tokens = RunnerTokens.at(tmp(), () => now);
   return {
     store,
@@ -371,9 +375,9 @@ describe("the runner routes", () => {
       label: "unit",
     });
     const id = String(asked.json.id);
-    expect((await call("POST", "/api/gate-slots/renew", b, { id })).status).toBe(
-      404,
-    );
+    expect(
+      (await call("POST", "/api/gate-slots/renew", b, { id })).status,
+    ).toBe(404);
     expect(
       (await call("POST", "/api/gate-slots/release", b, { id })).status,
     ).toBe(404);

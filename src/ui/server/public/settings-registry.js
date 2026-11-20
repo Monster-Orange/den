@@ -1190,6 +1190,70 @@ function drawAppKeys(host, ctx) {
   draw();
 }
 
+/**
+ * Issue 621: the gate-only runner tokens (names and dates; never a token).
+ * An agent asks for one with a held write the person allows; the person
+ * revokes one here, and it answers 401 at once.
+ */
+function drawRunnerTokens(host, ctx) {
+  const shell = ctx.shell;
+  host.innerHTML =
+    `<div id="set-runner-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-runner-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-runner-out");
+  const list = host.querySelector("#set-runner-list");
+  const when = appKeyWhen;
+  const draw = () =>
+    shell
+      .api("GET", "/api/gate-slots/runners")
+      .then((b) => {
+        const runners = (b && b.runners) || [];
+        if (!runners.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.runnerNone", "No runner tokens yet."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          runners
+            .map(
+              (r) =>
+                `<li data-runner="${escHtml(r.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span>${escHtml(r.name)}</span>` +
+                `<span class="set-note">${escHtml(
+                  r.lastUsedAt
+                    ? L("set.ui.appKeyUsed", "last used {when}", {
+                        when: when(r.lastUsedAt),
+                      })
+                    : L("set.ui.appKeyUnused", "never used"),
+                )}</span>` +
+                (r.revokedAt
+                  ? `<span class="set-note">${escHtml(L("set.ui.appKeyRevoked", "revoked {when}", { when: when(r.revokedAt) }))}</span>`
+                  : `<button type="button" class="btn sm" data-revoke="${escHtml(r.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-revoke]"))
+          btn.addEventListener("click", () => {
+            btn.disabled = true;
+            shell
+              .api("POST", "/api/gate-slots/runners/revoke", {
+                id: btn.getAttribute("data-revoke"),
+              })
+              .then(() => {
+                out.innerHTML = "";
+                draw();
+              })
+              .catch((e) => {
+                btn.disabled = false;
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+              });
+          });
+      })
+      .catch(() => {});
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
   {
@@ -2176,6 +2240,46 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
     read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
+  },
+  {
+    // Issue 621: a CI runner (a job in a VM) holds its slot by lease.
+    id: "server.gate_remote_renew",
+    category: "server",
+    label: "CI runner renews its gate slot every, in seconds",
+    description:
+      "A CI job in a runner VM holds its gate slot by renewing it this often (it is told the number when it asks). __DEN_CLI__ gate settings --remote-renew-seconds 30",
+    keywords: ["gate", "slot", "ci", "runner", "lease", "renew"],
+    scope: "user",
+    keys: ["gate_slots.remote_renew_seconds"],
+    control: { type: "number", min: 5, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.gate_slots?.remoteRenewSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ gate_slots: { remote_renew_seconds: v } }),
+  },
+  {
+    id: "server.gate_remote_lapse",
+    category: "server",
+    label: "CI runner's gate slot taken back after, in seconds",
+    description:
+      "A CI runner that hasn't renewed its gate slot for this long loses it, and the next in line starts. At least twice the renew time. __DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    keywords: ["gate", "slot", "ci", "runner", "lease", "lapse", "timeout"],
+    scope: "user",
+    keys: ["gate_slots.remote_lapse_seconds"],
+    control: { type: "number", min: 10, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.gate_slots?.remoteLapseSeconds ?? 120,
+    write: (v, ctx) => ctx.post({ gate_slots: { remote_lapse_seconds: v } }),
+  },
+  {
+    // Issue 621: the gate-only runner tokens; an agent asks for one (a
+    // held write the person allows), and the person revokes one here.
+    id: "server.gate_runners",
+    category: "server",
+    label: "CI runner tokens",
+    description:
+      "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
+    keywords: ["gate", "slot", "ci", "runner", "token", "revoke"],
+    scope: "user",
+    control: { type: "custom", render: drawRunnerTokens },
+    read: () => null,
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

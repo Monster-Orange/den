@@ -11,6 +11,7 @@
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   settings [--cpu-slots N] [--overrun-margin-minutes N]
+ *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *                            the machine's; a person changes them
  */
 import { spawn } from "child_process";
@@ -44,6 +45,9 @@ export const GATE_HELP = {
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
+    "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
+    "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
+    "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
 };
 
@@ -308,11 +312,15 @@ function settings(args: string[], d: GateDeps): number {
   const { f } = flags(args, {
     "--cpu-slots": true,
     "--overrun-margin-minutes": true,
+    "--remote-renew-seconds": true,
+    "--remote-lapse-seconds": true,
   });
   const raw: Record<string, number> = {};
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
+    ["--remote-renew-seconds", "remote_renew_seconds"],
+    ["--remote-lapse-seconds", "remote_lapse_seconds"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);
@@ -328,7 +336,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate`,
+    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s`,
   );
   return 0;
 }

@@ -696,6 +696,30 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/gate-slots/end",
     "Issue 144: a person ends a gate slot early (never an agent); the run is not stopped",
   ),
+  M(
+    ["POST"],
+    "/api/gate-slots/ask",
+    "Issue 621: a CI runner asks for a gate slot with its gate-only runner token (RUNNER_ROUTES); it holds by lease",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/renew",
+    "Issue 621: a CI runner renews its slot's lease and hears where it stands; its runner token only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/release",
+    "Issue 621: a CI runner gives back its own slot; its runner token only",
+  ),
+  R(
+    "/api/gate-slots/runners",
+    "Issue 621: the gate-only runner tokens, for Settings: names and dates, never a token or its hash; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runners/revoke",
+    "Issue 621: a person revokes a runner token; it answers 401 at once",
+  ),
   R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
@@ -932,6 +956,17 @@ export const SIGNIN_FREE: readonly string[] = [
  * (request-guard.ts), whatever else it carries: the key never rides along
  * to a route loopback would let through.
  */
+/**
+ * Issue 621: the only routes a gate-only runner token reaches (POST): ask
+ * for a gate slot, renew its lease, give it back. Any other route answers
+ * 403 to it, before anything else looks at the request.
+ */
+export const RUNNER_ROUTES: readonly string[] = [
+  "/api/gate-slots/ask",
+  "/api/gate-slots/renew",
+  "/api/gate-slots/release",
+];
+
 export const EMBED_KEY_ROUTES: readonly string[] = [
   "/api/embed/say",
   "/api/embed/p/:project/agents/:id/state",

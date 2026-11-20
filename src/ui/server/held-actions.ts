@@ -77,6 +77,11 @@
  *   pr_close          issue 160: close a stale or superseded pull request
  *                     after a Hub note, with a comment saying why (gh
  *                     pr close). Auto unless the repo is watched or pinned
+ *   gate_runner_token_create
+ *                     issue 621: a gate-only token for a CI runner VM
+ *                     (gate-routes.ts gateRunnerTokenOp): it only asks
+ *                     for, renews and gives back gate slots. Always the
+ *                     person's own Allow; the token goes once to the asker
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -178,6 +183,8 @@ export interface HeldActionDeps {
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
   verifyRun?: HeldOp;
+  /** Issue 621: gate_runner_token_create (gate-routes.ts gateRunnerTokenOp). */
+  gateRunnerToken?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -238,6 +245,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "verify_run",
   "embed_key_create",
   "embed_key_revoke",
+  "gate_runner_token_create",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -584,6 +592,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const gateRunnerToken = op(
+    d.gateRunnerToken,
+    "this Den can't make gate runner tokens here",
+  );
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -864,5 +876,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     den_pin_commit: pinCommit,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
+    gate_runner_token_create: gateRunnerToken,
   };
 }
