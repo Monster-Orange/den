@@ -8,7 +8,9 @@
  *   changed   a changed test file;
  *   mapped    the browser specs mapped to a changed page, route or public
  *             file in tests/affected-map.json (browser tests load pages over
- *             HTTP, so jest's import graph never reaches them);
+ *             HTTP, so jest's import graph never reaches them), and each
+ *             test that starts Den as a process, when its subject changes
+ *             (issue 708: a spawn is not an import either);
  *   smoke     the map's fixed smoke set, on every pull request;
  *   ALL       every test, when a changed file matches the map's
  *             "everything" list (the shared shell, the kit, the request
@@ -88,6 +90,17 @@ export function validateMap(map) {
     if (r.mentions !== undefined && typeof r.mentions !== "boolean")
       problems.push(`rules[${i}]: mentions is true or false`);
   }
+  // Issue 708: the subjects of tests that start Den, and the shrink-only
+  // list of those without one.
+  if (
+    map.subjects !== undefined &&
+    (typeof map.subjects !== "object" ||
+      Array.isArray(map.subjects) ||
+      Object.values(map.subjects).some((g) => !Array.isArray(g) || !g.length))
+  )
+    problems.push("subjects: {test file: [globs]}, none empty");
+  if (map.subjectless !== undefined && !Array.isArray(map.subjectless))
+    problems.push("subjectless: a list of test files");
   if (problems.length) throw new Error(`affected map: ${problems.join("; ")}`);
   return map;
 }
@@ -322,7 +335,7 @@ async function main(argv) {
   // The page rules written from today's code join the file's: a spec or
   // page added since the file was last written still runs (never fewer).
   const { buildRules } = await import("./affected-map.mjs");
-  map.rules = [...map.rules, ...buildRules()];
+  map.rules = [...map.rules, ...buildRules(map)];
   const { allTests, related } = jestLists(changed);
   // Rules that run a helper's importers, or the specs naming a changed key.
   const fired = map.rules.filter((r) => changed.some(matcher(r.when)));
