@@ -98,6 +98,47 @@ export interface HubConfig {
    */
   deliveryPollSeconds: number;
   /**
+   * Issue 664 hub.delivery_held_note_seconds (default 60, at least 5): how
+   * long text waits for an agent that isn't at its prompt before the bell
+   * says so (it keeps saying it while the text waits).
+   */
+  deliveryHeldNoteSeconds: number;
+  /**
+   * Issue 701 hub.delivery_state_timeout_seconds (default 60, at least 5):
+   * the longest Den waits to read one agent's state before it holds that
+   * agent's comments and goes on with the others.
+   */
+  deliveryStateTimeoutSeconds: number;
+  /**
+   * Issue 701 hub.delivery_type_timeout_seconds (default 120, at least 5):
+   * the longest one agent's paste holds the others' deliveries.
+   */
+  deliveryTypeTimeoutSeconds: number;
+  /**
+   * Issue 701 hub.delivery_held_bell_minutes (default 5, at least 1): how
+   * long a Hub comment waits for a busy agent (or one with a dialog, a
+   * held Allow, a pause) before the bell says so, and why.
+   */
+  deliveryHeldBellMinutes: number;
+  /**
+   * Issue 701 hub.delivery_answer_minutes (default 30, at least 1): a typed
+   * comment whose turn never shows as ended is "delivered, no answer yet"
+   * after this, and the agent's next comments go on.
+   */
+  deliveryAnswerMinutes: number;
+  /**
+   * Issue 702 hub.delivery_alert_minutes (default 15, 0: off): minutes
+   * with no good read of Hub's comments (and no open stream) before
+   * doctor warns and the bell says "Hub comments aren't arriving".
+   */
+  deliveryAlertMinutes: number;
+  /**
+   * Issue 703 hub.delivery_stream_silence_seconds (default 75, three of
+   * Hub's 25 s keep-alives; 0: off; else at least 5): no bytes on the
+   * comment stream this long, and Den reopens it.
+   */
+  deliveryStreamSilenceSeconds: number;
+  /**
    * 0.4.51 hub.inbox_watch (default true): one watcher per install reads
    * Hub's inbox for this install's agents and types each new item into
    * its agent's pane (issue 166). False: no reading at all.
@@ -152,6 +193,13 @@ type RawHub =
       names_check_seconds?: unknown;
       delivery_heartbeat_seconds?: unknown;
       delivery_poll_seconds?: unknown;
+      delivery_held_note_seconds?: unknown;
+      delivery_state_timeout_seconds?: unknown;
+      delivery_type_timeout_seconds?: unknown;
+      delivery_held_bell_minutes?: unknown;
+      delivery_answer_minutes?: unknown;
+      delivery_alert_minutes?: unknown;
+      delivery_stream_silence_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
       inbox_backoff_max_seconds?: unknown;
@@ -257,6 +305,54 @@ export function readHubConfig(
     15,
   );
   const poll = secs(h.delivery_poll_seconds, "delivery_poll_seconds", 30);
+  const heldNote = secs(
+    h.delivery_held_note_seconds,
+    "delivery_held_note_seconds",
+    60,
+  );
+  const stateTimeout = secs(
+    h.delivery_state_timeout_seconds,
+    "delivery_state_timeout_seconds",
+    60,
+  );
+  const typeTimeout = secs(
+    h.delivery_type_timeout_seconds,
+    "delivery_type_timeout_seconds",
+    120,
+  );
+  const mins = (v: unknown, key: string, dflt: number): number => {
+    if (v === undefined || v === null) return dflt;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 1) return v;
+    throw new Error(`hub.${key} must be a number, at least 1`);
+  };
+  const heldBell = mins(
+    h.delivery_held_bell_minutes,
+    "delivery_held_bell_minutes",
+    5,
+  );
+  const answer = mins(h.delivery_answer_minutes, "delivery_answer_minutes", 30);
+  const am = h.delivery_alert_minutes;
+  if (
+    am !== undefined &&
+    am !== null &&
+    !(typeof am === "number" && Number.isFinite(am) && am >= 0)
+  )
+    throw new Error(
+      "hub.delivery_alert_minutes must be a number, 0 or more (0: off)",
+    );
+  const sil = h.delivery_stream_silence_seconds;
+  if (
+    sil !== undefined &&
+    sil !== null &&
+    !(
+      typeof sil === "number" &&
+      Number.isFinite(sil) &&
+      (sil === 0 || sil >= 5)
+    )
+  )
+    throw new Error(
+      "hub.delivery_stream_silence_seconds must be 0 (off) or a number, at least 5",
+    );
   const names = secs(h.names_check_seconds, "names_check_seconds", 300);
   const iw = h.inbox_watch;
   if (iw !== undefined && iw !== null && typeof iw !== "boolean")
@@ -293,6 +389,13 @@ export function readHubConfig(
     namesCheckSeconds: names,
     deliveryHeartbeatSeconds: beat,
     deliveryPollSeconds: poll,
+    deliveryHeldNoteSeconds: heldNote,
+    deliveryStateTimeoutSeconds: stateTimeout,
+    deliveryTypeTimeoutSeconds: typeTimeout,
+    deliveryHeldBellMinutes: heldBell,
+    deliveryAnswerMinutes: answer,
+    deliveryAlertMinutes: typeof am === "number" ? am : 15,
+    deliveryStreamSilenceSeconds: typeof sil === "number" ? sil : 75,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
     inboxBackoffMaxSeconds: inboxBackoff,

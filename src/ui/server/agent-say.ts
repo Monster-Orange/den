@@ -98,8 +98,9 @@ export async function sayBody(
 
 /**
  * Type `text` into `rec`'s session and press Enter. Throws 409
- * not_running when it has no live session, and 409 dialog_open when its
- * screen ends with a dialog for its person (nothing typed).
+ * not_running when it has no live session, 409 dialog_open when its
+ * screen shows a dialog for its person, and (issue 664) 409
+ * not_at_prompt when its input prompt doesn't show (nothing typed).
  */
 export async function typeMessage(
   d: AgentsResolved,
@@ -112,6 +113,7 @@ export async function typeMessage(
       code: "not_running",
     });
   let dialog = false;
+  let notAtPrompt = false;
   const sent = await sendFirstInstruction(
     d,
     rec.session.id,
@@ -124,8 +126,17 @@ export async function typeMessage(
       onDialog: () => {
         dialog = true;
       },
+      onNotAtPrompt: () => {
+        notAtPrompt = true;
+      },
     },
   );
+  // Issue 664: typed only at its input prompt.
+  if (notAtPrompt)
+    throw new AgentError(
+      `${rec.id} isn't at its prompt. Send it again when it is.`,
+      { status: 409, code: "not_at_prompt" },
+    );
   // A dialog for its person is open: its answer is theirs, in the
   // terminal; a message typed now would answer it.
   if (dialog)

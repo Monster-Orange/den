@@ -32,7 +32,7 @@ import {
   updateWaitNotes,
 } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
-import { typingHeld } from "./attention.js";
+import { deliveryHeld, typingHeld } from "./attention.js";
 import { pausedAgents, startContextWatch } from "./context-watch-service.js";
 import { contextWatchSettings } from "../../shared/agents/context-watch.js";
 import {
@@ -356,7 +356,12 @@ import {
   readWebUrl,
   setWebUrl,
 } from "../../shared/web-url.js";
-import { handleWebUrlRoutes } from "./web-url-routes.js";
+import {
+  adoptAllowed,
+  handleWebUrlRoutes,
+  offeredAlias,
+} from "./web-url-routes.js";
+import { aliasCandidates, isLoopbackUrl } from "../../shared/web-url-check.js";
 import {
   handleAccountsRoute,
   handleKeepRunningRoutes,
@@ -402,12 +407,19 @@ import {
   machineSection,
   publicSearchOpen,
   runGh,
+  shotReaderOf,
 } from "./report-routes.js";
 import { publicRepoVisibility } from "./report-visibility.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
 } from "../../shared/report-store.js";
+import { reportShotHub } from "./report-shot-hub.js";
+import {
+  shotKeepDays,
+  shotLimits,
+  shotStore,
+} from "../../shared/report-shots.js";
 import { ClaimNonces, checkClaimCode } from "../../shared/claim-code.js";
 import {
   ATTEST_NONCES_FILE,
@@ -1065,6 +1077,7 @@ const CONFIG_FREE_ROUTES = new Set([
   // MODE-5: the address row fixes what the config holds.
   "/api/web-url",
   "/api/web-url/probe",
+  "/api/web-url/adopt",
   "/api/themes",
   "/api/scope",
   "/api/workspaces/settings",
@@ -1857,6 +1870,72 @@ function onTheAddress(req: http.IncomingMessage, there: string): boolean {
   );
 }
 
+/**
+ * Issue 666: this install's own aliases that may be its address (its edge
+ * routes to this server, never a loopback name, https first).
+ */
+function addressAliases(): string[] {
+  return aliasCandidates(denEdgeRoutes().map((r) => r.url));
+}
+
+/**
+ * The alias the request came in on: through the edge with its proof, over
+ * https, on one of addressAliases. Null otherwise (a spoofed Host from a
+ * peer that isn't the edge never counts).
+ */
+function aliasHere(req: http.IncomingMessage): string | null {
+  if (!httpsOf(req, "edge")) return null;
+  const h = hostNameOf(req).replace(/\.$/, "");
+  return addressAliases().find((a) => new URL(a).hostname === h) ?? null;
+}
+
+/** The signed-out page's issue 666 offer, when the request is on an alias. */
+function adoptOffer(req: http.IncomingMessage): {
+  offer?: { alias: string; current: string | null; loopback: boolean };
+} {
+  const here = aliasHere(req);
+  if (!here) return {};
+  const w = readWebUrl();
+  const alias = offeredAlias(w, here, [], NAMED.works());
+  return alias
+    ? {
+        offer: {
+          alias,
+          current: w?.url ?? null,
+          loopback: isLoopbackUrl(w?.url),
+        },
+      }
+    : {};
+}
+
+/** Whether the request is the owner's (web-url-routes adoptAllowed). */
+function adoptOwner(
+  req: http.IncomingMessage,
+): { ok: true; who: string } | { ok: false; why: string } {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  if (!g.ok) return { ok: false, why: g.error };
+  const p = g.principal;
+  const browser = p?.kind === "person-browser" && g.session ? g.session : null;
+  const rec = browser
+    ? webSessions.list().find((s) => s.key === browser.key)
+    : undefined;
+  const a = adoptAllowed({
+    agent: p?.kind === "agent" || !!auditActorOf(req),
+    personToken: p?.kind === "person",
+    beyond: g.beyond,
+    session: browser
+      ? {
+          ...(rec?.via ? { via: rec.via } : {}),
+          ...(rec?.login ? { login: rec.login } : {}),
+        }
+      : null,
+    ownerLogin: ownerIdentity()?.login ?? null,
+  });
+  return a.ok
+    ? { ok: true, who: `${principalOf(req) ?? "person"} (${a.how})` }
+    : a;
+}
+
 /** HTTPS: the edge's X-Forwarded-Proto counts only with its proof (H1). */
 function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
   return requestIsHttps(req, via, EDGE_PROVED(req));
@@ -2018,6 +2097,13 @@ function reportOrSignin(signin: Decide): Decide {
 }
 const GITHUB_CLIENT_ID = githubClientId(WEB_AUTH.githubClientId);
 const GITHUB = githubEndpoints();
+/** Issue 403: Hub, for a report's screenshot (every Hub call is in there). */
+const REPORT_SHOT_HUB = reportShotHub({
+  hub: async () => (await import("./hub-sync-service.js")).hubAndToken(),
+  // Settings (reports.*), read at each call.
+  maxBytes: () => shotLimits(readUserConfig()).hubBytes,
+  timeoutMs: () => shotLimits(readUserConfig()).hubTimeoutMs,
+});
 const DEVICE_FLOWS = new DeviceFlows({
   client: githubDeviceClient(GITHUB),
   clientId: () => GITHUB_CLIENT_ID,
@@ -2439,6 +2525,10 @@ function sendSignedOut(
       cmd,
       // Off the address once it is proven: the page names where to sign in.
       ...(there && !onTheAddress(req, there) ? { address: there } : {}),
+      // Issue 666: on this install's own alias while the address is
+      // unset, loopback or not working: "Make <alias> its address", for
+      // the owner to confirm once signed in (POST /api/web-url/adopt).
+      ...adoptOffer(req),
       ...(local ? { local: true, up: cliCommand(bin, "web", "up") } : {}),
       // SEC-2a: which machine runs the commands, and how to reach it.
       machine: machineName(),
@@ -3524,6 +3614,15 @@ function typingHeldIds(): Set<string> {
   );
 }
 
+/** Issue 701: the agents Hub deliveries wait for (an asked question isn't one). */
+function deliveryHeldIds(): Set<string> {
+  return deliveryHeld(
+    attentionWaiting(),
+    approvals ? approvals.queue.waitingActors() : [],
+    pausedAgents(),
+  );
+}
+
 /** NT-3b: why each one waits; a held Allow over what the hooks said. */
 function waitingReasons(): Map<string, string> {
   const out = new Map<string, string>(attentionWaiting());
@@ -3795,6 +3894,17 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         cache_seconds: a.cacheMs / 1000,
         drop_after: a.dropAfter,
         unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
+      };
+    })(),
+    // Issue 403: how long a filed report's screenshot is kept (reports.*).
+    reports: (() => {
+      const l = shotLimits(user);
+      const MB = 1024 * 1024;
+      return {
+        screenshot_keep_days: shotKeepDays(user),
+        screenshot_max_mb: l.keptBytes / MB,
+        hub_screenshot_max_mb: l.hubBytes / MB,
+        hub_timeout_seconds: l.hubTimeoutMs / 1000,
       };
     })(),
     // 0.4.46: how a terminal pane reconnects on its own (panes.*).
@@ -4313,11 +4423,20 @@ async function handleRequest(
     handleWebUrlRoutes(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       read: () => readWebUrl(),
-      set: (url) => setWebUrl(url),
+      set: (url, how) => {
+        const saved = setWebUrl(url, undefined, undefined, how);
+        WEB_URL_NOW = { at: 0, url: null }; // re-read at once
+        return saved;
+      },
+      who: (r) => principalOf(r),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
+      aliases: addressAliases,
+      here: aliasHere,
+      works: () => NAMED.works(),
+      owner: adoptOwner,
     })
   )
     return;
@@ -4511,6 +4630,12 @@ async function handleRequest(
       personOf: () => "person",
       flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
       searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+      // Issue 403: a report's screenshot to Hub, with the install's Bearer.
+      shotHub: REPORT_SHOT_HUB,
+      shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+      // Issue 403: a kept screenshot is the person's (proved, as approvals
+      // ask) or this install's own agent's; never an anonymous request.
+      shotReader: (r) => shotReaderOf(r, guard),
       publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
@@ -7504,6 +7629,7 @@ async function handleRequest(
           agents_list?: unknown;
           agents_shell?: unknown;
           agent_context?: unknown;
+          reports?: unknown;
           feedback?: unknown;
           address_check?: unknown;
           process_lookup?: unknown;
@@ -7542,6 +7668,7 @@ async function handleRequest(
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
             agent_context: body.agent_context,
+            reports: body.reports,
             feedback: body.feedback,
             address_check: body.address_check,
             process_lookup: body.process_lookup,
@@ -8453,7 +8580,22 @@ function sweepServiceLogs(): void {
   }
 }
 sweepServiceLogs();
-setInterval(sweepServiceLogs, LOG_SWEEP_INTERVAL_MS).unref();
+
+// Issue 403: a filed report's kept screenshot is deleted after
+// reports.screenshot_keep_days (30), on the log sweep's beat.
+function sweepReportShots(): void {
+  try {
+    const n = shotStore(getStateDir()).sweep(shotKeepDays(readUserConfig()));
+    if (n) serverLog(`Report screenshots: deleted ${n} past their days`);
+  } catch (e) {
+    serverLog(`Report screenshot sweep failed: ${(e as Error).message}`);
+  }
+}
+sweepReportShots();
+setInterval(() => {
+  sweepServiceLogs();
+  sweepReportShots();
+}, LOG_SWEEP_INTERVAL_MS).unref();
 
 // Last-resort guards: an uncaught throw in an async callback (spawn handlers,
 // timers — code the per-request catch can't see) would kill the whole
@@ -8518,15 +8660,15 @@ void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // D80: the install's address (web.url), the one people are given. An
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
-// localhost.
+// localhost (issue 666: migrateWebUrl takes the first alias that isn't,
+// and puts it in place of a loopback one).
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
-    const urls = webRouteHosts(readEdgeConfig(), ports).map((r) => r.url);
-    const url =
-      urls.find((u) => u.startsWith("https:")) ??
-      urls.find((u) => /^http:\/\/[^/]+\.localhost(:\d+)?$/i.test(u));
-    return url ? { url, from: "the edge route to this server" } : undefined;
+    return webRouteHosts(readEdgeConfig(), ports).map((r) => ({
+      url: r.url,
+      from: "the edge route to this install",
+    }));
   } catch {
     return undefined; // no edge config: nothing to take
   }
@@ -8687,7 +8829,19 @@ void CRASH_GATE.then(() =>
       void m.startDeliveries({
         heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
         pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-        waiting: typingHeldIds,
+        heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
+        // Issue 701: one agent's hang holds only itself; a held comment
+        // and a typed one with no answer are said in the bell.
+        stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
+        typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
+        heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
+        answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
+        // Issue 701: an asked question never holds a delivery.
+        waiting: deliveryHeldIds,
+        waitingWhy: (agent) =>
+          pausedAgents().has(agent)
+            ? "paused"
+            : (waitingReasons().get(agent) ?? null),
         log: (l) => serverLog(`  ${l}`, "warn"),
       });
     });

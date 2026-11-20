@@ -986,11 +986,17 @@ export const denClaude: Runtime = {
     noConversation: /no conversation found/i,
     idInUse: /already in use/i,
   },
-  // SRV-1b: its folder-trust question (two wordings seen), first choice Yes.
+  // SRV-1b: its folder-trust question. Two wordings, two shapes: the
+  // older numbered one ("1. Yes" first and highlighted) and 2.1.329's
+  // ("Quick safety check: … ❯ No, exit / Yes, I trust this folder": No
+  // highlighted first, so Enter alone declines; issues 658, 659).
   trustPrompt: {
     match:
-      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*1\.\s*Yes/i,
+      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*?(?:1\.\s*Yes|Yes, I trust this folder)/i,
     accept: "\r",
+    cursor: "\u276f",
+    yes: /^\s*(?:1\.\s*)?Yes\b/,
+    down: "\x1b[B",
   },
   // Issue 369: its permission dialogs ("Do you want to proceed?", "… make
   // this edit to x?", "… create x?", "… allow Claude to fetch …?"), first
@@ -998,6 +1004,17 @@ export const denClaude: Runtime = {
   permissionPrompt: {
     match: /Do you want to [^?\n]{0,300}\?[\s\S]{0,400}?1\.\s*Yes/i,
     afterMax: 600,
+  },
+  // Issue 664: its input box: a prompt line starting ">" or "❯" (then a
+  // space or a no-break space; inside a box's "│" in older versions),
+  // never a numbered choice, with the box's lower edge ("─", "╰") right
+  // under it or nothing at all; after it only its footer ("? for
+  // shortcuts", the mode) and status line. An earlier prompt echoed in
+  // the conversation has a blank line under it, so it never counts.
+  inputPrompt: {
+    match:
+      /(?:^|\n)[ \t]*(?:│[ \t]*)?[>❯](?![\t\p{Zs}]*\d+[.)])(?:[\t\p{Zs}][^\n]*)?(?=\n[ \t]*[─━╰]|$)/u,
+    afterMax: 400,
   },
   approvals: "terminal",
   envPassthrough: ["CLAUDE_CONFIG_DIR"],

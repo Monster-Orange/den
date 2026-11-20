@@ -52,7 +52,10 @@
  *                                                 a new conversation whose
  *                                                 first prompt is its
  *                                                 handoff.md; a resume of
- *                                                 one is refused (409 rotated)
+ *                                                 one is refused (409 rotated);
+ *                                                 { fromHandoff: true }: from
+ *                                                 its newest handoff on file
+ *                                                 when none is due (issue 658)
  *   POST /api/workspaces/<ws>/agents/<id>/name    { name: string | null }: the
  *                                                 name its tab and the lists
  *                                                 show (AG-4b); the id never
@@ -100,6 +103,7 @@ import {
 } from "../../shared/agents/permissions.js";
 import {
   agentsModeCheckSeconds,
+  agentsTrustCheckSeconds,
   configuredRemoveStoppedAfter,
   getReposRoot,
   readAgentsConfig,
@@ -181,6 +185,10 @@ import {
   rotationSettings,
   setRotationSetting,
   rotationTick,
+  trustTick,
+  TRUST_DECLINED,
+  TRUST_WAITING,
+  undoUnbegunRelaunches,
   ROTATION_TICK_MS,
   startAgent,
   startFresh,
@@ -189,6 +197,7 @@ import {
   type AgentsResolved,
   type Started,
   FRESH_NOTE,
+  freshNote,
   workspacePermissionOf,
   followProjectMode,
   projectModeView,
@@ -355,6 +364,8 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
         ...(e.hints.length ? { hints: e.hints } : {}),
         ...(e.running ? { running: e.running } : {}),
         ...(e.job ? { job: e.job } : {}),
+        // Issue 479: the quarantined copy and the choices, for the page.
+        ...(e.quarantined ? { quarantined: e.quarantined } : {}),
       },
       e.status,
     );
@@ -1048,6 +1059,7 @@ export async function handleAgentRoutes(
       if (instruction && !s.early) {
         const id = s.rec.id;
         let dialog = false;
+        let notAtPrompt = false;
         void sendFirstInstruction(
           d,
           s.info.ref.id,
@@ -1057,6 +1069,9 @@ export async function handleAgentRoutes(
             ...(deps.instruction ?? {}),
             onDialog: () => {
               dialog = true;
+            },
+            onNotAtPrompt: () => {
+              notAtPrompt = true;
             },
           },
         ).then((sent) =>
@@ -1071,7 +1086,9 @@ export async function handleAgentRoutes(
                     outcome: "refused" as const,
                     reason: dialog
                       ? "not typed: a dialog waits for its person in its terminal"
-                      : "the agent ended, or no terminal host",
+                      : notAtPrompt
+                        ? "not typed: the agent wasn't at its prompt"
+                        : "the agent ended, or no terminal host",
                   }),
             },
             principalOf(req),
@@ -1202,7 +1219,18 @@ export async function handleAgentRoutes(
         ...(rec.resumed ? { resumed: true } : {}),
       });
     } else if (verb === "relaunch") {
-      const s = await relaunchAgent(d, id!, ws);
+      // Issue 658: { fromHandoff: true }: from its newest handoff on file
+      // when no rotation is due. Never a file the page names.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "fromHandoff")
+          throw new AgentError(
+            `${k}: unknown field (relaunch takes fromHandoff)`,
+            { usage: true },
+          );
+      const s = await relaunchAgent(d, id!, ws, {
+        ...(body.fromHandoff === true ? { fromHandoff: {} } : {}),
+      });
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
       audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
@@ -1447,7 +1475,20 @@ export async function handleAgentRoutes(
         sendStarted(res, r.s, d, { relaunched: true });
       } else {
         audit(what);
-        sendStarted(res, r.s, d);
+        // Issue 658: a conversation never written started fresh: say so,
+        // and whether its last handoff was its first prompt.
+        sendStarted(
+          res,
+          r.s,
+          d,
+          r.s.fresh
+            ? {
+                note: freshNote(r.s),
+                ...(r.s.fromHandoff ? { handoff: true } : {}),
+                ...(r.s.newConversation ? { newConversation: true } : {}),
+              }
+            : {},
+        );
       }
     }
   } catch (e) {
@@ -1795,8 +1836,23 @@ async function plainSession(
       throw new AgentError("an agent can't start a session from the page", {
         status: 403,
       });
-    const { info } = await startPlainSession(d, ws);
-    what = `plain session ${info.name} in ${ws}`;
+    // Issue 479: an optional { cwd } (Open a terminal there). No body,
+    // or none of it: the project's folder, as before.
+    const raw = await readBody(req).catch(() => "");
+    if (raw.length > MAX_BODY)
+      throw new AgentError("request too large", { status: 413, usage: true });
+    let v: unknown;
+    try {
+      v = JSON.parse(raw || "{}");
+    } catch {
+      throw new AgentError("invalid JSON", { usage: true });
+    }
+    const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    if (b.cwd !== undefined && typeof b.cwd !== "string")
+      throw new AgentError("cwd must be a string", { usage: true });
+    const cwd = b.cwd as string | undefined;
+    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {
       ok: true,
@@ -2321,10 +2377,34 @@ export function startAgentUpkeep(
           );
         else log(`  ⚠ rotation of ${who}: ${e.why}`);
       }
+      // Issue 658: a relaunch whose conversation was never written (it
+      // ended at the folder-trust question, say) can relaunch again.
+      for (const id of await undoUnbegunRelaunches(d))
+        log(
+          `Agent ${id}: its relaunch never began; its handoff is back, so it can relaunch again`,
+        );
     } catch (e) {
       log(`  ⚠ agents.rotate: ${(e as Error).message}`);
     } finally {
       looking = false;
+    }
+  };
+  // Issue 659: an agent's folder-trust question, waiting or declined: its
+  // row, pane and bell say so. One look at a time.
+  let trusting = false;
+  const trust = async () => {
+    if (trusting || hostRefreshing) return;
+    trusting = true;
+    try {
+      for (const e of await trustTick(d))
+        if (e.kind === "waiting")
+          log(`Agent ${e.agent} in ${e.workspace}: ${TRUST_WAITING}`);
+        else if (e.kind === "declined")
+          log(`  ⚠ agent ${e.agent} in ${e.workspace}: ${TRUST_DECLINED}`);
+    } catch (e) {
+      log(`  ⚠ agents' folder-trust look: ${(e as Error).message}`);
+    } finally {
+      trusting = false;
     }
   };
   // 0.4.46 MODE-UI: a mode change applies on its own, after the turn.
@@ -2362,6 +2442,13 @@ export function startAgentUpkeep(
   }, deps.delayMs ?? 2000).unref();
   setInterval(() => void prune(), PRUNE_EVERY_MS).unref();
   setInterval(() => void rotate(), ROTATION_TICK_MS).unref();
+  let trustEvery = 5;
+  try {
+    trustEvery = agentsTrustCheckSeconds();
+  } catch (e) {
+    log(`  ⚠ ${(e as Error).message}`);
+  }
+  setInterval(() => void trust(), trustEvery * 1000).unref();
 }
 
 /**

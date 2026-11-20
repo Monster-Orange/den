@@ -110,6 +110,17 @@ export interface AgentRecord {
    * restore-on-boot bring it back; cleared by a resume or a start.
    */
   restartFailed?: { at: string; why: string };
+  /**
+   * Issue 659: when Den saw its runtime ask whether to trust its folder
+   * (the question on its screen, waiting for its person); cleared once
+   * answered, or by its next start.
+   */
+  trustAsked?: string;
+  /**
+   * Issue 659: when it ended after that question was declined (it never
+   * started); cleared by a resume or a start.
+   */
+  trustDeclined?: string;
   /** What its run came to (den#6), filled in by `<cli> usage`. */
   outcome?: AgentOutcome;
   /** Its tokens, from the runtime's own transcript (den#6). */

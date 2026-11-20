@@ -63,8 +63,12 @@ import {
   type CommandLineOf,
 } from "../../shared/agents/running-mode.js";
 import {
+  plainTerminalText,
+  trustAnswerKey,
   promptOnScreen,
   trustPromptIn,
+  typingCheck,
+  type TypingCheck,
 } from "../../shared/agents/trust-prompt.js";
 import {
   resolveMode,
@@ -155,6 +159,7 @@ import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
+import { checkHandoff } from "../../shared/agents/handoff.js";
 import { envKey } from "../../shared/product.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
@@ -258,12 +263,16 @@ import {
   syncAfter,
   handoffFile,
   handoffPrompt,
+  keptHandoffOf,
   launchRotation,
+  newestHandoff,
   readHandoff,
   readRotation,
+  resumeHandoffPrompt,
   writeRotation,
   reasonText,
   rotationInfo,
+  type RelaunchReason,
   type RotationEntry,
   type RotationInfo,
   type RotationPolicy,
@@ -542,6 +551,11 @@ export class AgentError extends Error {
   readonly running?: { id: string; sessionId: string };
   /** 0.4.48: job_running: how long the job it left running has run. */
   readonly job?: { minutes: number };
+  /**
+   * Issue 479: runtime_quarantined: the copy it would run, and the
+   * choices, so a page can offer them.
+   */
+  readonly quarantined?: QuarantinedRuntime;
   constructor(
     message: string,
     o: {
@@ -551,6 +565,7 @@ export class AgentError extends Error {
       hints?: string[];
       running?: { id: string; sessionId: string };
       job?: { minutes: number };
+      quarantined?: QuarantinedRuntime;
     } = {},
   ) {
     super(message);
@@ -561,8 +576,28 @@ export class AgentError extends Error {
     this.hints = o.hints ?? [];
     if (o.running) this.running = o.running;
     if (o.job) this.job = o.job;
+    if (o.quarantined) this.quarantined = o.quarantined;
   }
 }
+
+/**
+ * Issue 479: a runtime whose CLI copy carries com.apple.quarantine, as a
+ * start refuses it: the copy, the folder it is in, the scope a pin of
+ * another copy goes to (where the setting that chose it lives), and the
+ * other copies found that are not quarantined (never run here).
+ */
+export interface QuarantinedRuntime {
+  runtime: string;
+  name: string;
+  path: string;
+  dir: string;
+  scope: "global" | "workspace";
+  setting: string;
+  others: RuntimeCopy[];
+}
+
+/** Issue 479: a start refused because its CLI copy is quarantined. */
+export const RUNTIME_QUARANTINED = "runtime_quarantined";
 
 /** A request that was wrong as asked (CLI exit 2; HTTP 400 unless given). */
 const usage = (message: string, status = 400) =>
@@ -1103,6 +1138,15 @@ export interface AgentRow {
    * didn't come back: when, and why.
    */
   restartFailed?: { at: string; why: string };
+  /**
+   * Issue 658: a handoff is on file (handoff.md, or one kept from a
+   * relaunch) while no rotation is ready: Relaunch from its last handoff.
+   */
+  handoffOnFile?: boolean;
+  /** Issue 659: its runtime asks whether to trust its folder, now. */
+  trustWait?: boolean;
+  /** Issue 659: it ended because its folder-trust question was declined. */
+  trustDeclined?: boolean;
   /** Its persona resumes on its own after a restart (AG-14.3). */
   autoResume?: boolean;
   /** D59: this agent's own "Resume after a restart" (unset: its persona's). */
@@ -1239,6 +1283,19 @@ export function agentRows(
       // Issue 631: why it didn't come back, while it hasn't since.
       ...(rec.restartFailed && isStoppedState(st)
         ? { restartFailed: { ...rec.restartFailed } }
+        : {}),
+      // Issue 659: its folder-trust question, waiting or declined.
+      ...(rec.trustAsked && !isStoppedState(st) ? { trustWait: true } : {}),
+      ...(rec.trustDeclined && isStoppedState(st)
+        ? { trustDeclined: true }
+        : {}),
+      // Issue 658: Relaunch from its last handoff, while none is ready.
+      ...(stateDir &&
+      isStoppedState(st) &&
+      !rot?.ready &&
+      getRuntime(rec.runtime)?.firstPrompt &&
+      newestHandoff(agentFilesDir(stateDir, rec.id))
+        ? { handoffOnFile: true }
         : {}),
       ...(rec.outcome ? { outcome: rec.outcome } : {}),
       ...(rec.usage ? { usage: rec.usage } : {}),
@@ -2808,7 +2865,69 @@ async function availableOrRefuse(
         : [],
       503,
     );
+  quarantineOrRefuse(d, rt, det);
   return det;
+}
+
+/**
+ * Issue 479: refused, before anything is spawned, when the CLI copy `rt`
+ * would run carries com.apple.quarantine: running it would make macOS
+ * show its warning. Says why, the path and the choices (another copy
+ * found, or clear this one yourself). Den never clears the attribute.
+ */
+function quarantineOrRefuse(
+  d: AgentsResolved,
+  rt: Runtime,
+  det: RuntimeDetect,
+): void {
+  if (!det.available || !det.quarantined || !det.path) return;
+  const name = rt.label || rt.id;
+  const key = binSettingKey(rt.id);
+  const others = (det.others ?? []).filter((o) => !o.quarantined);
+  const dir = path.dirname(det.path);
+  throw new AgentError(
+    `${rt.id} can't start: macOS has quarantined ${det.path} (com.apple.quarantine), so Den did not run it and macOS showed no warning. ` +
+      (others.length
+        ? `A person can use another copy found (${others.map((o) => o.path).join(", ")}) or clear this one.`
+        : "A person can clear it, or install another copy."),
+    {
+      status: 409,
+      code: RUNTIME_QUARANTINED,
+      hints: [
+        ...others.map(
+          (o) =>
+            `Use another copy: set ${key} to ${o.path} in ${d.userConfigFile()} (or Settings › Runtimes › Use this).`,
+        ),
+        `Or clear it yourself: in ${dir}, run ${path.basename(det.path)} once from a terminal and allow it when macOS asks. Den never removes the quarantine.`,
+      ],
+      quarantined: {
+        runtime: rt.id,
+        name,
+        path: det.path,
+        dir,
+        scope: det.source === "workspace" ? "workspace" : "global",
+        setting: key,
+        others,
+      },
+    },
+  );
+}
+
+/**
+ * Issue 479: before an agent is stopped to be started again (restart,
+ * move, persona change, relaunch): refused while its runtime's copy is
+ * quarantined, so it is never left stopped by a start that can't run.
+ */
+async function notQuarantined(
+  d: AgentsResolved,
+  runtime: string,
+  ws?: string,
+): Promise<void> {
+  syncCatalog(d);
+  const rt = getRuntime(runtime);
+  if (!rt) return;
+  await interactiveSearch(d, [rt], ws);
+  quarantineOrRefuse(d, rt, detectRuntime(d, rt, ws));
 }
 
 function runtimeFor(id: string): Runtime {
@@ -3045,6 +3164,9 @@ async function startSession(
   delete rec.exitCode;
   delete rec.interruptedAt;
   delete rec.restartFailed;
+  // Issue 659: a new session hasn't been asked to trust its folder yet.
+  delete rec.trustAsked;
+  delete rec.trustDeclined;
   // Issue 252: it runs in `permission` now.
   delete rec.startedIn;
   // Issue 340: the sign-in this session runs on (its label only).
@@ -5762,6 +5884,16 @@ export interface Resumed extends Started {
   /** Never prompted: started afresh under the same conversation id. */
   fresh: boolean;
   /**
+   * Issue 658: started fresh with its last handoff as the first prompt
+   * (its conversation was never written): the handoff's file.
+   */
+  fromHandoff?: string;
+  /**
+   * Issue 658: its runtime refused the same conversation id both ways
+   * and none was ever written, so it started a new conversation.
+   */
+  newConversation?: boolean;
+  /**
    * Issue 216: another request restarted it while this one waited, so
    * this one didn't restart it again. `at`: when that session started.
    */
@@ -5907,26 +6039,54 @@ export async function resumeAgent(
       // from before 0.4.8 whose session nobody prompted starts afresh under
       // the same id.
       const token = rec.resumeToken;
-      // A runtime that can tell (den-claude: its transcript) decides before
-      // launching: a conversation on disk, or a last session someone typed
-      // into, resumes; neither starts fresh at once. Without that, the record
-      // decides: launched on this token, or a session the host lost.
-      // Issue 631: a conversation relaunched from a handoff began with it
-      // (its first prompt, an argument: nobody typed it), so it resumes.
+      // A runtime that can tell (den-claude: its transcript) decides first:
+      // a conversation on disk resumes. Else a last session someone typed
+      // into resumes, unless what was typed was the answer to its folder-
+      // trust question (issue 659 noted it): nothing was written then.
+      // Issue 658: a relaunch from a handoff the runtime never wrote is no
+      // conversation (issue 631's rule holds only where the runtime can't
+      // tell). Without that, the record decides: launched on this token, a
+      // relaunch from a handoff, or a session the host lost. Whatever is
+      // chosen, the runtime's own answer ("no conversation found") is the
+      // backstop below, and a conversation never written is never a 502.
+      const onDisk =
+        rt.conversationExists && token
+          ? rt.conversationExists(token, d.env)
+          : undefined;
       const known =
-        launchedFromHandoff(rec) ||
-        (rt.conversationExists
-          ? Boolean(token && rt.conversationExists(token, d.env)) ||
-            Boolean(old?.prompted)
-          : Boolean(rec.launched) || !old || Boolean(old.prompted));
-      const launchAs = (asFresh: boolean) => {
-        const out = launchOrThrow(() =>
-          asFresh ? rt.launch(at) : rt.resume!(at),
-        );
+        onDisk === undefined
+          ? launchedFromHandoff(rec) ||
+            Boolean(rec.launched) ||
+            !old ||
+            Boolean(old.prompted)
+          : onDisk ||
+            (Boolean(old?.prompted) && !rec.trustAsked && !rec.trustDeclined);
+      // Issue 658: a fresh start carries the agent's last handoff, when one
+      // is on file, as its first prompt.
+      const handoff = rt.firstPrompt ? newestHandoff(input.filesDir) : null;
+      let usedHandoff: string | undefined;
+      const launchAs = (asFresh: boolean, newId = false) => {
+        const { resumeToken: _same, ...withoutId } = at;
+        const fresh = {
+          ...(newId ? withoutId : at),
+          ...(handoff
+            ? { firstPrompt: resumeHandoffPrompt(handoff.text) }
+            : {}),
+        };
+        // A fresh launch says its conversation id (resumeToken); a resume
+        // keeps the one it had.
+        const out = launchOrThrow<
+          (Omit<LaunchOutput, "resumeToken"> & { resumeToken?: string }) | null
+        >(() => (asFresh ? rt.launch(fresh) : rt.resume!(at)));
         if (!out) throw refused(`agent ${rec.id} has nothing to resume`);
+        usedHandoff = asFresh && handoff ? handoff.file : undefined;
         writeRuntimeFiles(input.filesDir, out.files);
         // den#4: the same conversation keeps its count.
-        launchRotation(input.filesDir, token, launchAfter(rt, input));
+        launchRotation(
+          input.filesDir,
+          newId ? (out.resumeToken ?? token) : token,
+          launchAfter(rt, input),
+        );
         const sized = measureInstructions(d, rt, {
           cwd: rec.cwd,
           filesDir: input.filesDir,
@@ -5938,8 +6098,12 @@ export async function resumeAgent(
           : out;
       };
       const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
-      const run = async (asFresh: boolean, prior: SessionInfo | undefined) => {
-        const out = launchAs(asFresh);
+      const run = async (
+        asFresh: boolean,
+        prior: SessionInfo | undefined,
+        newId = false,
+      ) => {
+        const out = launchAs(asFresh, newId);
         const {
           rec: next,
           info,
@@ -5955,6 +6119,10 @@ export async function resumeAgent(
               cwd: rec.cwd,
               peerName,
               ...(token ? { launched: true } : {}),
+              // Issue 658: a new conversation, when the id was refused.
+              ...(newId && out.resumeToken
+                ? { resumeToken: out.resumeToken }
+                : {}),
             },
             argv: out.argv,
             env: out.env,
@@ -5971,6 +6139,7 @@ export async function resumeAgent(
         return { out, next, info, early, signInWarning };
       };
       let fresh = !known && Boolean(token);
+      let newConversation = false;
       let r = await run(fresh, old);
       // It exited at once saying the other way was the right one: try that,
       // once. A resume with nothing to continue starts fresh under the same
@@ -5988,6 +6157,21 @@ export async function resumeAgent(
           fresh,
           (await c.list()).find((x) => x.ref.id === first.info.ref.id),
         );
+        // Issue 658: refused both ways, and its runtime never wrote the
+        // conversation: there is nothing to lose. A new conversation (a
+        // new id), with its handoff when one is on file. Never a 502 for
+        // a conversation that doesn't exist.
+        if (r.early && onDisk === false) {
+          const second = r;
+          fresh = true;
+          revokeAgentTokens(d.stateDir(), rec.id);
+          r = await run(
+            true,
+            (await c.list()).find((x) => x.ref.id === second.info.ref.id),
+            true,
+          );
+          if (!r.early) newConversation = true;
+        }
         if (r.early)
           throw new AgentError(
             `agent ${rec.id}: conversation ${token} could not be continued or started (${rt.id} exited at once both ways: ${[...first.early!.tail, ...r.early.tail].slice(-4).join(" / ") || "no output"})`,
@@ -6000,6 +6184,18 @@ export async function resumeAgent(
             },
           );
       }
+      // Issue 658: handoff.md, once a fresh start began from it, is kept
+      // aside (as a relaunch does), so the next rotation needs a new one.
+      const from = fresh && !r.early ? usedHandoff : undefined;
+      if (from && from === handoffFile(input.filesDir))
+        try {
+          archiveHandoff(
+            input.filesDir,
+            `${new Date().toISOString().replace(/[:.]/g, "-")}-${token ?? "conversation"}`,
+          );
+        } catch {
+          /* it stays: the next relaunch reads it again */
+        }
       return {
         rec: r.next,
         info: r.info,
@@ -6009,6 +6205,8 @@ export async function resumeAgent(
         ],
         early: r.early,
         fresh,
+        ...(from ? { fromHandoff: from } : {}),
+        ...(newConversation ? { newConversation: true } : {}),
       };
     });
   });
@@ -6044,6 +6242,25 @@ export interface PersonaChanged extends Resumed {
  */
 export const FRESH_NOTE =
   "nothing to resume yet; started fresh (same conversation id, folder and scope)";
+
+/**
+ * Issue 658: what a Resume that started fresh says: FRESH_NOTE, or that
+ * it began from its last handoff, or (its id refused) in a new
+ * conversation.
+ */
+export function freshNote(s: {
+  fromHandoff?: string;
+  newConversation?: boolean;
+}): string {
+  const where = s.newConversation
+    ? "started fresh in a new conversation (its runtime refused the old id)"
+    : "started fresh (same conversation id, folder and scope)";
+  return s.fromHandoff
+    ? `its conversation was never written; ${where}, with its last handoff as the first prompt`
+    : s.newConversation
+      ? `nothing to resume yet; ${where}`
+      : FRESH_NOTE;
+}
 
 /**
  * How often "after this turn" checks its turn (AG-18). How long: the
@@ -6350,6 +6567,7 @@ export async function restartAgent(
           [`Resume it: ${d.cli} agents resume ${rec.id}`],
         );
     }
+    await notQuarantined(d, cur.runtime, cur.workspace);
     let stopped: Stopped;
     try {
       stopped = await stopAgent(
@@ -6578,6 +6796,7 @@ export async function moveAgent(
   }
   // Review M1: stop, move and resume as one change (not the wait above).
   return lockAgent(d, rec.id, async () => {
+    await notQuarantined(d, rec.runtime, to);
     const stopped = await stopAgent(d, rec.id, rec.workspace);
     if (stopped.stillStopping)
       throw refused(
@@ -6722,6 +6941,7 @@ async function switchPersona(
   req: PersonaRequest,
   where: string,
 ): Promise<PersonaChanged> {
+  await notQuarantined(d, rec.runtime, rec.workspace);
   const stopped = await stopAgent(d, rec.id, rec.workspace);
   if (stopped.stillStopping)
     throw refused(
@@ -7073,6 +7293,109 @@ export interface Relaunched extends Started {
   why: string;
   /** Where its handoff was kept. */
   handoff: string;
+  /** Issue 658: why Den relaunched it (a rotation's reason, or manual). */
+  reason: RelaunchReason;
+}
+
+/** Issue 658: relaunch from a handoff when no rotation is due. */
+export interface FromHandoff {
+  /** A handoff file a person named (CLI only); else the newest on file. */
+  file?: string;
+  /** What the record says: "manual" (default) or "resume_failed". */
+  reason?: "manual" | "resume_failed";
+}
+
+/**
+ * Issue 658: whether agent `rec`'s current conversation is a relaunch
+ * from a handoff that never began: its runtime never wrote it and its
+ * session isn't running (it stopped at the folder-trust question and the
+ * answer was No, say). Only a runtime that can tell (its transcript).
+ */
+function unbegunRelaunch(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  sessions: SessionInfo[],
+): RotationEntry | null {
+  const token = rec.resumeToken;
+  const entry = rec.rotations?.[rec.rotations.length - 1];
+  if (!token || !entry || entry.next !== token) return null;
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.conversationExists || rt.conversationExists(token, d.env))
+    return null;
+  const s = liveSessionOf(sessions, rec);
+  if (s && !s.exited) return null;
+  return entry;
+}
+
+/**
+ * Issue 658: undo a relaunch that never began, whenever it ended (at once
+ * or after its person answered a question): handoff.md is back from
+ * handoffs/ and its rotation is due again for the conversation the record
+ * names, with Relaunch asked (the relaunch was already chosen). True when
+ * it did. Once: a handoff.md on file, or a rotation due, means done.
+ */
+function undoUnbegunRelaunch(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  sessions: SessionInfo[],
+): boolean {
+  const entry = unbegunRelaunch(d, rec, sessions);
+  if (!entry) return false;
+  const files = agentFilesDir(d.stateDir(), rec.id);
+  if (fs.existsSync(handoffFile(files))) return false;
+  const st = readRotation(files);
+  if (st?.due && (!st.conversation || st.conversation === rec.resumeToken))
+    return false;
+  const kept = keptHandoffOf(files, entry.conversation);
+  if (!kept) return false;
+  try {
+    fs.renameSync(kept, handoffFile(files));
+  } catch {
+    return false;
+  }
+  const due =
+    entry.reason === "compactions" || entry.reason === "pr-merged"
+      ? entry.reason
+      : undefined;
+  writeRotation(files, {
+    ...(st ?? { compactions: 0, after: 0 }),
+    ...(rec.resumeToken ? { conversation: rec.resumeToken } : {}),
+    compactions: entry.compactions,
+    ...(due ? { due, dueAt: new Date().toISOString() } : {}),
+    relaunchWanted: true,
+  });
+  auditConfig(
+    {
+      verb: "agents",
+      detail: `relaunch ${rec.id} in ${rec.workspace}: its new conversation was never written; its handoff is back and it can relaunch again`,
+    },
+    d.stateDir(),
+  );
+  return true;
+}
+
+/**
+ * Issue 658: every agent whose relaunch never began is made relaunchable
+ * again (undoUnbegunRelaunch); the ids it did. Den's server looks with
+ * its rotation tick. Never starts a session host.
+ */
+export async function undoUnbegunRelaunches(
+  d: AgentsResolved,
+): Promise<string[]> {
+  let sessions: SessionInfo[];
+  try {
+    sessions = await hostSessions(d);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const rec of listRecords(d.stateDir()))
+    try {
+      if (undoUnbegunRelaunch(d, rec, sessions)) out.push(rec.id);
+    } catch {
+      /* the next look tries again */
+    }
+  return out;
 }
 
 /**
@@ -7088,9 +7411,11 @@ export async function relaunchAgent(
   id: string,
   ws?: string,
   /** D28: Den relaunched it by itself (on_due auto). */
-  o: { auto?: boolean } = {},
+  o: { auto?: boolean; fromHandoff?: FromHandoff } = {},
 ): Promise<Relaunched> {
   return lockAgent(d, id, async () => {
+    // Issue 658: a relaunch that never began is undone first.
+    undoUnbegunRelaunch(d, agentRecord(d, id, ws), await hostSessions(d));
     const rec = agentRecord(d, id, ws);
     syncCatalog(d);
     const rt = runtimeFor(rec.runtime);
@@ -7098,36 +7423,65 @@ export async function relaunchAgent(
     const rot = rotationOf(d, rec);
     const fresh = `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`;
     const resume = `Resume: ${d.cli} agents resume ${rec.id}`;
+    const fromLast = `Relaunch from its last handoff: ${d.cli} agents relaunch ${rec.id} --from-handoff`;
     if (!rt.firstPrompt)
       throw refused(
         `${rec.runtime} can't start a conversation from a handoff`,
         [fresh],
       );
-    if (!rot?.due)
+    // Issue 658: with none due, only from a handoff asked for by name.
+    const manual = !rot?.due ? o.fromHandoff : undefined;
+    if (!rot?.due && !manual)
       throw refused(`agent ${rec.id} has not rotated: resume it instead`, [
         resume,
+        fromLast,
       ]);
-    const h = readHandoff(files);
+    let h: { status: string; text?: string; problems: string[] };
+    let source = handoffFile(files);
+    if (manual?.file !== undefined) {
+      source = path.resolve(manual.file);
+      let text: string;
+      try {
+        text = fs.readFileSync(source, "utf-8");
+      } catch {
+        throw usage(`agents relaunch: can't read ${source}`, 404);
+      }
+      const c = checkHandoff(text);
+      h = { status: c.ok ? "ok" : "invalid", text, problems: c.problems };
+    } else if (manual) {
+      const n = newestHandoff(files);
+      if (n) source = n.file;
+      h = n
+        ? { status: "ok", text: n.text, problems: [] }
+        : { status: "missing", problems: [] };
+    } else h = readHandoff(files);
     if (h.status !== "ok")
       throw new AgentError(
         h.status === "missing"
-          ? `agent ${rec.id} has no handoff.md yet, so it can't relaunch from one`
-          : `agent ${rec.id}'s handoff.md is not ready: ${h.problems.join(" ")}`,
+          ? manual
+            ? `agent ${rec.id} has no handoff on file (handoff.md or one kept from a relaunch), so it can't relaunch from one`
+            : `agent ${rec.id} has no handoff.md yet, so it can't relaunch from one`
+          : `agent ${rec.id}'s ${manual?.file !== undefined ? source : "handoff.md"} is not ready: ${h.problems.join(" ")}`,
         { code: "no_handoff", hints: [fresh, resume] },
       );
+    // Only handoff.md moves aside; a kept one, or a person's file, stays.
+    const archive = source === handoffFile(files);
     // The rotated session ends here, if it is still open.
     const s = sessionOf(await hostSessions(d), rec);
     if (s && !s.exited) {
+      await notQuarantined(d, rec.runtime, rec.workspace);
       const stopped = await stopAgent(d, rec.id, ws);
       if (stopped.stillStopping)
         throw refused(`agent ${rec.id} is still stopping; try again`);
     }
     const now = new Date().toISOString();
-    const why = reasonText(rot.due, rot.compactions);
-    const entry = {
+    const reason: RelaunchReason = rot?.due ?? manual?.reason ?? "manual";
+    const compactions = rot?.compactions ?? 0;
+    const why = reasonText(reason, compactions);
+    const entry: RotationEntry = {
       at: now,
-      reason: rot.due,
-      compactions: rot.compactions,
+      reason,
+      compactions,
       ...(rec.resumeToken ? { conversation: rec.resumeToken } : {}),
       ...(o.auto ? { auto: true } : {}),
     };
@@ -7141,10 +7495,21 @@ export async function relaunchAgent(
       if (before)
         writeRotation(files, {
           ...before,
-          due: rot.due,
+          ...(rot?.due ? { due: rot.due } : {}),
           ...(conversation ? { conversation } : {}),
         });
     };
+    // Issue 658 point 5: the folder it ran in, which its runtime knows
+    // (and trusts); never moved to a repo folder by a relaunch (gap 7
+    // moves only a person's Start fresh).
+    const folder =
+      rec.cwd &&
+      !rec.outside &&
+      !isServerScope(rec.workspace) &&
+      fs.statSync(rec.cwd, { throwIfNoEntry: false })?.isDirectory() &&
+      inProject(d, rec.workspace, rec.cwd)
+        ? rec.cwd
+        : undefined;
     const started = await startAgent(
       d,
       {
@@ -7153,23 +7518,36 @@ export async function relaunchAgent(
         runtime: rec.runtime,
         ...keptChoices(rec),
         id: rec.id,
+        ...(folder ? { folder } : {}),
       },
       {
-        firstPrompt: handoffPrompt(h.text!, rot.due, rot.compactions),
+        firstPrompt: handoffPrompt(h.text!, reason, compactions),
         rotations: [...(rec.rotations ?? []), entry],
         beforeLaunch: () => {
-          kept = archiveHandoff(
-            files,
-            `${now.replace(/[:.]/g, "-")}-${rec.resumeToken ?? "conversation"}`,
-          );
+          kept = archive
+            ? archiveHandoff(
+                files,
+                `${now.replace(/[:.]/g, "-")}-${rec.resumeToken ?? "conversation"}`,
+              )
+            : source;
         },
       },
     ).catch((e: unknown) => {
-      undo();
+      if (archive) undo();
       throw e;
     });
-    if (started.early) undo(started.rec.resumeToken);
-    return { ...started, why, handoff: kept };
+    if (started.early && archive) undo(started.rec.resumeToken);
+    // Issue 658: the conversation it started, so one never written is
+    // known as a relaunch that never began.
+    const token = started.rec.resumeToken;
+    const after = readRecord(d.stateDir(), rec.id);
+    const last = after?.rotations?.[after.rotations.length - 1];
+    if (after && last && token && last.at === now && !started.early) {
+      last.next = token;
+      writeRecord(d.stateDir(), after);
+      started.rec.rotations = after.rotations;
+    }
+    return { ...started, why, handoff: kept, reason };
   });
 }
 
@@ -7505,7 +7883,11 @@ export async function busyAgentIds(
   for (const id of ids) {
     const rec = readRecord(d.stateDir(), id);
     if (!rec) continue;
-    if ((await inputState(d, rec, new Set(), 3000)) === "busy") out.push(id);
+    if (
+      (await inputState(d, rec, new Set(), 3000, { promptCheck: false })) ===
+      "busy"
+    )
+      out.push(id);
   }
   return out;
 }
@@ -7643,13 +8025,34 @@ export function personDialogOnScreen(runtime: string, screen: string): boolean {
 }
 
 /**
+ * Issue 664: the one screen check every path that types into an agent
+ * uses (typingCheck): "ok" only when `runtime`'s input prompt ends the
+ * screen and no dialog shows on it.
+ */
+export function agentScreenCheck(runtime: string, screen: string): TypingCheck {
+  return typingCheck(screen, getRuntime(runtime));
+}
+
+/**
+ * Issue 664: agents whose last look found them not at their input prompt
+ * (with no dialog and an idle turn): their held text says why.
+ */
+const notAtPrompt = new Set<string>();
+
+/** Issue 664: whether agent `id`'s text waits because it isn't at its prompt. */
+export function heldNotAtPrompt(id: string): boolean {
+  return notAtPrompt.has(id);
+}
+
+/**
  * Send an agent its first instruction once it is ready (AG-10.1): it has
  * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
  * waiting), or READY_MAX_MS passed. Typed into its session over the host's
  * write path (the same as a keystroke from the pane), never as an argument
  * or through a shell. False when the session ended first or there is no
- * host, or its screen ends with a dialog for its person (never typed
- * into; `onDialog` says so).
+ * host, or its screen shows a dialog for its person (never typed into;
+ * `onDialog` says so), or (issue 664) it isn't at its input prompt by
+ * READY_MAX_MS (`onNotAtPrompt` says so): agentScreenCheck.
  * Never throws.
  */
 export async function sendFirstInstruction(
@@ -7662,6 +8065,8 @@ export async function sendFirstInstruction(
     maxMs?: number;
     /** Called when a dialog for its person held the text back. */
     onDialog?: () => void;
+    /** Issue 664: called when it wasn't at its input prompt (text held). */
+    onNotAtPrompt?: () => void;
   } = {},
 ): Promise<boolean> {
   const quiet = o.quietMs ?? READY_QUIET_MS;
@@ -7674,6 +8079,7 @@ export async function sendFirstInstruction(
     let last = "";
     let changedAt = Date.now();
     let said = "";
+    let check: TypingCheck = "not_at_prompt";
     for (;;) {
       const s = (await c.list()).find((x) => x.ref.id === sessionId);
       if (!s || s.exited) return false;
@@ -7681,14 +8087,26 @@ export async function sendFirstInstruction(
       if (said !== last) {
         last = said;
         changedAt = Date.now();
-      } else if (said && Date.now() - changedAt >= quiet) break;
-      if (Date.now() >= deadline) break;
+      } else if (said && Date.now() - changedAt >= quiet) {
+        // Quiet: ready once its input prompt shows (issue 664).
+        check = agentScreenCheck(runtime, said);
+        if (check !== "not_at_prompt") break;
+      }
+      if (Date.now() >= deadline) {
+        check = agentScreenCheck(runtime, said);
+        break;
+      }
       await new Promise((r) => setTimeout(r, READY_POLL_MS));
     }
     // A dialog waiting for its person: nothing typed. Its answer is
     // theirs, and Enter would pick its first choice.
-    if (personDialogOnScreen(runtime, said)) {
+    if (check === "dialog") {
       o.onDialog?.();
+      return false;
+    }
+    // Issue 664: typed only when its input prompt shows; any doubt holds.
+    if (check !== "ok") {
+      o.onNotAtPrompt?.();
       return false;
     }
     const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
@@ -7721,6 +8139,36 @@ export async function agentInputState(
   const rec = readRecord(d.stateDir(), id);
   if (!rec || isServerScope(rec.workspace)) return "missing";
   return inputState(d, rec, waiting, quietMs);
+}
+
+/**
+ * Issue 701: the dialog for its person agent `id`'s screen ends with:
+ * "trust" (its folder-trust question), "permission", or null (none, no
+ * live session, or Den can't read it). Never throws.
+ */
+export async function agentDialogKind(
+  d: AgentsResolved,
+  id: string,
+): Promise<"trust" | "permission" | null> {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec || rec.stoppedAt) return null;
+  try {
+    const c = await d.connectExisting();
+    if (!c) return null;
+    try {
+      const s = sessionOf(await c.list(), rec);
+      if (!s || s.exited) return null;
+      const out = (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8");
+      const rt = getRuntime(rec.runtime);
+      if (promptOnScreen(out, rt?.trustPrompt)) return "trust";
+      if (promptOnScreen(out, rt?.permissionPrompt)) return "permission";
+      return null;
+    } finally {
+      c.close();
+    }
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -7767,6 +8215,8 @@ async function inputState(
   rec: AgentRecord,
   waiting: ReadonlySet<string>,
   quietMs: number,
+  /** promptCheck false: idle by its turn alone (the restart waits). */
+  o: { promptCheck?: boolean } = {},
 ): Promise<"missing" | "stopped" | "busy" | "idle"> {
   const id = rec.id;
   try {
@@ -7775,28 +8225,38 @@ async function inputState(
     const c = await d.connectExisting();
     if (!c) return "stopped";
     let live = false;
-    let dialog = false;
+    let screen: TypingCheck = "not_at_prompt";
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
       // A dialog waiting for the person: not at its prompt, whatever its
       // transcript or quiet output says.
       if (live && s)
-        dialog = personDialogOnScreen(
+        screen = agentScreenCheck(
           rec.runtime,
-          (await c.scrollback(s.ref.id, 16 * 1024)).toString("utf-8"),
+          (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
         );
     } finally {
       c.close();
     }
+    if (o.promptCheck !== false) notAtPrompt.delete(id);
     if (!live) return "stopped";
-    if (dialog) return "busy";
+    if (screen === "dialog") return "busy";
     if (waiting.has(id)) return "busy";
     const busy = await agentBusy(d, rec);
-    if (busy !== null) return busy ? "busy" : "idle";
+    if (busy === true) return "busy";
     // A runtime that can't say: quiet output for quietMs is waiting (a
     // working TUI redraws its spinner; a waiting one is still).
-    return (await outputQuiet(d, rec.session.id, quietMs)) ? "idle" : "busy";
+    if (busy === null && !(await outputQuiet(d, rec.session.id, quietMs)))
+      return "busy";
+    // Issue 664: its turn is over, but idle only at its input prompt.
+    // Anything else holds what Den would type; the bell and its row say
+    // why. (Not for the restart waits: busyAgentIds asks for "busy".)
+    if (screen !== "ok" && o.promptCheck !== false) {
+      notAtPrompt.add(id);
+      return "busy";
+    }
+    return "idle";
   } catch {
     return "busy";
   }
@@ -7820,6 +8280,162 @@ async function outputQuiet(
   } finally {
     c.close();
   }
+}
+
+// ── Issue 659: the folder-trust question, in plain words ──────────────────
+
+/** What the row, its pane and the bell say while the question waits. */
+export const TRUST_WAITING = "Waiting: trust this folder?";
+/** What they say after it was declined and the agent ended. */
+export const TRUST_DECLINED =
+  "Didn't start: this folder isn't trusted. Resume and choose Yes.";
+
+export interface TrustEvent {
+  kind: "waiting" | "answered" | "declined";
+  agent: string;
+  workspace: string;
+}
+
+/** Sessions looked at once after they ended (a No between two looks). */
+const trustLooked = new Set<string>();
+
+/**
+ * Issue 659: one look at every agent's folder-trust question (its
+ * runtime's `trustPrompt`). On its screen now: the record notes it (its
+ * row and pane say TRUST_WAITING) and the bell has a "needs you" item.
+ * Gone while it runs: answered Yes; the wait and its item go. Ended
+ * while asked (or ended with the question in its last output and no
+ * conversation written): declined; the record, its row and the bell say
+ * TRUST_DECLINED until its next start. Den never answers it: the answer
+ * is its person's. The server agent has its own Trust step (SRV-1b).
+ * Never starts a session host; never throws.
+ */
+export async function trustTick(d: AgentsResolved): Promise<TrustEvent[]> {
+  const out: TrustEvent[] = [];
+  let c: HostClient | null = null;
+  try {
+    c = await d.connectExisting();
+    if (!c) return out;
+    const sessions = await c.list();
+    const store = () => new NotificationStore(d.stateDir());
+    // Read again just before each write: another request may have
+    // changed the record since the list was read.
+    const patch = (id: string, f: (r: AgentRecord) => AgentRecord): void => {
+      const cur = readRecord(d.stateDir(), id);
+      if (cur) writeRecord(d.stateDir(), f(cur));
+    };
+    const unask = (r: AgentRecord): AgentRecord => {
+      const { trustAsked: _a, ...rest } = r;
+      return rest;
+    };
+    const subjectOf = (id: string) => `agent:${id}`;
+    const dropItem = (id: string, key: string) => {
+      try {
+        store().remove(
+          (n) => n.subject === subjectOf(id) && n.msg?.key === key && !n.read,
+        );
+      } catch {
+        /* the bell is best effort */
+      }
+    };
+    for (const rec of listRecords(d.stateDir())) {
+      if (isServerScope(rec.workspace)) continue;
+      const rt = getRuntime(rec.runtime);
+      const tp = rt?.trustPrompt;
+      if (!tp) continue;
+      const s = sessionOf(sessions, rec);
+      const name = rec.displayName || rec.persona || rec.id;
+      const who = { agent: rec.id, workspace: rec.workspace };
+      const link = `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`;
+      try {
+        if (s && !s.exited) {
+          // Only before its conversation exists, or while it was asked.
+          const written =
+            rt.conversationExists && rec.resumeToken
+              ? rt.conversationExists(rec.resumeToken, d.env)
+              : false;
+          if (written && !rec.trustAsked) continue;
+          const screen = (await c.scrollback(s.ref.id, 16 * 1024)).toString(
+            "utf-8",
+          );
+          const on = trustPromptIn(screen, tp);
+          if (on && !rec.trustAsked) {
+            patch(rec.id, (r) => ({
+              ...r,
+              trustAsked: new Date().toISOString(),
+            }));
+            try {
+              store().add({
+                kind: "waiting",
+                subject: subjectOf(rec.id),
+                scope: `workspace/${rec.workspace}`,
+                text: `${name}: ${TRUST_WAITING}`,
+                msg: { key: "bell.m.trust", vars: { name } },
+                link,
+              });
+            } catch {
+              /* the bell is best effort: the row says it */
+            }
+            out.push({ kind: "waiting", ...who });
+          } else if (!on && rec.trustAsked) {
+            patch(rec.id, unask);
+            dropItem(rec.id, "bell.m.trust");
+            out.push({ kind: "answered", ...who });
+          }
+          continue;
+        }
+        // Ended. Asked when it ended, or (a No between two looks) the
+        // question in its last output and nothing written: declined.
+        if (rec.trustDeclined || rec.stoppedAt) {
+          if (rec.trustAsked) {
+            patch(rec.id, unask);
+            dropItem(rec.id, "bell.m.trust");
+          }
+          continue;
+        }
+        let declined = Boolean(rec.trustAsked);
+        if (!declined && s && !trustLooked.has(s.ref.id)) {
+          trustLooked.add(s.ref.id);
+          const written =
+            rt.conversationExists && rec.resumeToken
+              ? rt.conversationExists(rec.resumeToken, d.env)
+              : true;
+          if (!written && s.exitCode !== 0) {
+            const said = plainTerminalText(
+              (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
+            );
+            declined = new RegExp(tp.match.source, tp.match.flags).test(said);
+          }
+        }
+        if (!declined) continue;
+        patch(rec.id, (r) => ({
+          ...unask(r),
+          trustDeclined: new Date().toISOString(),
+        }));
+        dropItem(rec.id, "bell.m.trust");
+        try {
+          store().add({
+            kind: "waiting",
+            subject: subjectOf(rec.id),
+            scope: `workspace/${rec.workspace}`,
+            text: `${name}: ${TRUST_DECLINED}`,
+            msg: { key: "bell.m.trustDeclined", vars: { name } },
+            link,
+          });
+        } catch {
+          /* the bell is best effort: the row says it */
+        }
+        out.push({ kind: "declined", ...who });
+      } catch {
+        /* the next look tries again */
+      }
+    }
+  } catch {
+    /* no host, or it went away: the next look */
+  } finally {
+    c?.close();
+  }
+  return out;
 }
 
 /**
@@ -7859,19 +8475,44 @@ export async function answerServerAgentTrust(
 ): Promise<boolean> {
   const p = await serverAgentTrustPrompt(d);
   if (!p) return false;
+  const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
+  const tp = rec ? getRuntime(rec.runtime)?.trustPrompt : undefined;
+  if (!tp) return false;
   const c = await d.connectExisting();
   if (!c) return false;
+  const screen = async () =>
+    (await c.scrollback(p.sessionId, 16 * 1024)).toString("utf-8");
+  const settleMs = () => new Promise((r) => setTimeout(r, TRUST_KEY_WAIT_MS));
   try {
-    c.write(p.sessionId, Buffer.from(p.accept, "utf-8"));
-    // Let the host take the bytes before the connection closes.
-    await c.list();
-    return true;
+    // Issues 658, 659: Yes is chosen explicitly. While another choice is
+    // highlighted ("No, exit", Claude Code 2.1.329's first), Den moves
+    // down and looks again; Enter only once Yes is highlighted. Never a
+    // bare Enter that could decline.
+    for (let i = 0; i < TRUST_MAX_MOVES; i++) {
+      const key = trustAnswerKey(await screen(), tp);
+      if (key === null) return false;
+      if (key === "down") {
+        c.write(p.sessionId, Buffer.from(tp.down!, "utf-8"));
+        await settleMs();
+        continue;
+      }
+      c.write(p.sessionId, Buffer.from(tp.accept, "utf-8"));
+      await settleMs();
+      // Answered: the question went away.
+      return !trustPromptIn(await screen(), tp);
+    }
+    return false;
   } catch {
     return false;
   } finally {
     c.close();
   }
 }
+
+/** How long Den waits for the screen after each key of its trust answer. */
+const TRUST_KEY_WAIT_MS = 250;
+/** How many Down presses Den's trust answer tries before it gives up. */
+const TRUST_MAX_MOVES = 4;
 
 /**
  * 0.4.40: type a Hub comment into agent `id`'s session, once its output is
@@ -7921,11 +8562,20 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
+  opts: { cwd?: string } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
     throw usage(`project "${ws}" does not exist`, 404);
-  const dir = d.workspaceDir(ws);
+  // Issue 479: Open a terminal there (a quarantined copy's folder). A
+  // person's own shell, so any folder they could cd to; it must be one.
+  if (opts.cwd !== undefined) {
+    if (!path.isAbsolute(opts.cwd))
+      throw usage(`cwd must be an absolute path: ${opts.cwd}`);
+    if (!fs.statSync(opts.cwd, { throwIfNoEntry: false })?.isDirectory())
+      throw usage(`cwd ${opts.cwd} is not a folder`);
+  }
+  const dir = opts.cwd ?? d.workspaceDir(ws);
   if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
     throw refused(`project ${ws}'s directory ${dir} does not exist`);
   ptyOrRefuse(d);
@@ -8167,12 +8817,17 @@ export async function resumeOrRelaunch(
 ): Promise<
   { kind: "resumed"; s: Resumed } | { kind: "relaunched"; s: Relaunched }
 > {
+  // Issue 658: a relaunch that never began is undone first, so it
+  // relaunches again (it was asked for: whatever on_due says).
+  undoUnbegunRelaunch(d, agentRecord(d, id, ws), await hostSessions(d));
   const rec = agentRecord(d, id, ws);
   const rot = rotationOf(d, rec);
-  if (rot?.ready && rot.onDue === "auto")
+  if (rot?.ready && (rot.onDue === "auto" || rot.relaunchWanted))
     return {
       kind: "relaunched",
-      s: await relaunchAgent(d, id, ws, { auto: true }),
+      s: await relaunchAgent(d, id, ws, {
+        ...(rot.onDue === "auto" ? { auto: true } : {}),
+      }),
     };
   return { kind: "resumed", s: await resumeAgent(d, id, ws) };
 }

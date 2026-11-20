@@ -503,6 +503,18 @@ export interface UserConfig {
     refresh_timeout_seconds?: unknown;
   };
   /**
+   * Issue 403: a filed report's screenshot, kept on this install.
+   * `screenshot_keep_days` (30): how long, then the janitor deletes it.
+   * `screenshot_max_mb` (8) the largest kept, `hub_screenshot_max_mb` (6)
+   * the largest sent to Hub, `hub_timeout_seconds` (10) the wait for Hub.
+   */
+  reports?: {
+    screenshot_keep_days?: unknown;
+    screenshot_max_mb?: unknown;
+    hub_screenshot_max_mb?: unknown;
+    hub_timeout_seconds?: unknown;
+  };
+  /**
    * Issue 609: how long Den's process lookups (lsof, ps) wait:
    * first_seconds (5) the first try, retry_seconds (20) the one after
    * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
@@ -596,6 +608,8 @@ export interface UserConfig {
     default_mode?: unknown;
     /** 0.4.46: how often Den looks for an agent whose mode changed (30 s). */
     mode_check_seconds?: unknown;
+    /** Issue 659: how often Den looks for a folder-trust question (5 s). */
+    trust_check_seconds?: unknown;
     /** 0.4.46: how long that restore waits for Hub first (120 s). */
     restore_hub_wait_seconds?: unknown;
     /**
@@ -856,6 +870,22 @@ export function agentsModeCheckSeconds(
   if (typeof v === "number" && Number.isFinite(v) && v >= 5) return v;
   throw new Error(
     `agents.mode_check_seconds must be a number, at least 5 (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * Issue 659: agents.trust_check_seconds (user.yml): how often Den looks
+ * for an agent whose runtime asks to trust its folder. 5 when unset, at
+ * least 1.
+ */
+export function agentsTrustCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.trust_check_seconds;
+  if (v === undefined || v === null) return 5;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 1) return v;
+  throw new Error(
+    `agents.trust_check_seconds must be a number, at least 1 (user.yml; got ${JSON.stringify(v)})`,
   );
 }
 

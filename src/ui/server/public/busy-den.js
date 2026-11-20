@@ -154,6 +154,16 @@ export const DEN_ACTIONS = {
       failure: "busy.startF",
     },
   },
+  // Issue 479: Open a terminal there (a quarantined copy's folder).
+  "open-terminal": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.termW",
+      success: "busy.termS",
+      failure: "busy.termF",
+    },
+  },
   "restart-agent": {
     who: "Den",
     autoClose: true,

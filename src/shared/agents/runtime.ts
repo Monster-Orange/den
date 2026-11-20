@@ -362,6 +362,15 @@ export interface Runtime {
    */
   permissionPrompt?: import("./trust-prompt.js").ScreenPrompt;
   /**
+   * Issue 664: the runtime's input prompt, as its screen ends with it
+   * while it waits for typed text (its prompt line, then only its footer).
+   * Den types into an agent only when this shows (typingCheck). None
+   * (unproven, no capture of what it draws): today's rule, typed when no
+   * dialog shows on its screen, no waiting mark is set and its turn is
+   * idle (or its output quiet).
+   */
+  inputPrompt?: import("./trust-prompt.js").InputPrompt;
+  /**
    * The name the runtime gives the agent's conversation (AG-4b: Claude
    * Code's `/rename`), or null when it has none or can't say. Optional:
    * a runtime without it has Den's rename only. Must be quick and never

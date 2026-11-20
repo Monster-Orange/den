@@ -15,6 +15,7 @@
  * addressCardView(state) is pure (HTML from /api/edge/address's JSON), so a
  * test needs no server.
  */
+import { formatTime } from "/kit/time.js";
 import { dockerState } from "./value-words.js";
 
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
@@ -52,15 +53,12 @@ export function tHtml(key, vars, marks = {}) {
   return s;
 }
 
-/** "21:48", in the viewer's own time. */
+/**
+ * The time of a check, in the person's chosen zone (else the browser's)
+ * and the page's language: the kit's (issue 668).
+ */
 export function clock(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
+  return formatTime(iso, { style: "time" });
 }
 
 /**

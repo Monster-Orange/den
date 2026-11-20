@@ -142,10 +142,6 @@
     "fb.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
     "fb.revShot": "Captura tras ocultar ({n} zonas tapadas)",
     "fb.revShot.one": "Captura tras ocultar ({n} zona tapada)",
-    "fb.sentShot":
-      "La captura está guardada y copiada: pégala en la incidencia.",
-    "fb.sentShotSaved":
-      "La captura está guardada como archivo: añádela a la incidencia.",
     "fb.mine": "Mis informes",
     "fb.myS":
       "Se muestran en vivo desde GitHub. Funciona mientras tengas la sesión iniciada en GitHub.",
@@ -517,6 +513,7 @@
     // prompt() and alert().
     "dlg.ok": "Aceptar",
     "dlg.cancel": "Cancelar",
+    "dlg.close": "Cerrar",
     "dlg.keep": "Conservar",
     "dlg.delete": "Eliminar",
     "dlg.remove": "Quitar",
@@ -564,6 +561,9 @@
     "busy.startW": "Iniciando {name}…",
     "busy.startS": "{name} iniciado.",
     "busy.startF": "No se pudo iniciar {name}.",
+    "busy.termW": "Abriendo una terminal…",
+    "busy.termS": "Terminal abierta.",
+    "busy.termF": "No se pudo abrir una terminal.",
     "busy.sayW": "Enviando a {name}…",
     "busy.sayS": "Enviado a {name}.",
     "busy.sayF": "No se pudo enviar a {name}.",
@@ -733,6 +733,14 @@
     "err.signin.local":
       "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
     "err.signin.atAddress": "{name} inicia sesión en {address}",
+    "err.signin.offerTitle": "Hacer de {alias} la dirección de {name}",
+    "err.signin.offerLoop":
+      "La dirección de {name} es {url}, que solo se abre en su propia máquina, así que el inicio de sesión no puede llevarte allí.",
+    "err.signin.offerWrong":
+      "La dirección de {name} es {url}, y no funciona desde aquí.",
+    "err.signin.offerUnset": "{name} aún no tiene dirección.",
+    "err.signin.offerHow":
+      "Inicia sesión abajo como propietario de {name}: con GitHub o con un código que apruebes en su máquina. Luego haz de {alias} su dirección y el inicio de sesión funcionará aquí.",
     "err.signin.copy": "Copiar comando",
     "err.signin.title": "Inicia sesión en {name}",
     "err.signin.where":
@@ -931,6 +939,21 @@
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_screenshot_days": "Capturas de informes, se guardan",
+    "set.server.report_screenshot_days.d":
+      "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max":
+      "Capturas de informes, la más grande guardada",
+    "set.server.report_screenshot_max.d":
+      "La captura con las zonas tapadas más grande que __DEN_TITLE__ guarda con un informe. Una mayor se rechaza antes de enviar nada. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "Capturas de informes, la más grande enviada a Hub",
+    "set.server.report_screenshot_hub_max.d":
+      "La captura con las zonas tapadas más grande que __DEN_TITLE__ envía a Hub. Una mayor se guarda aquí igualmente, y el informe se envía igual. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait":
+      "Capturas de informes, espera a Hub",
+    "set.server.report_screenshot_hub_wait.d":
+      "Cuánto espera __DEN_TITLE__ a que Hub reciba la captura de un informe. Pasado ese tiempo, la captura se guarda aquí, y el informe ya está enviado. __DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "Informe: visibilidad del repositorio guardada durante",
     "set.server.report_visibility_cache.d":
@@ -999,6 +1022,10 @@
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
     "addr.empty": "Escribe primero una dirección.",
+    "addr.loopback":
+      "{url} solo se abre en esta máquina: otros dispositivos no llegan a ella.",
+    "addr.adopt": "Hacer de {alias} la dirección de __DEN_TITLE__",
+    "addr.adopted": "Guardada: {url} es ahora la dirección.",
     "set.workspace.approvals_policy": "Escrituras de los agentes aquí",
     "set.workspace.approvals_policy.d":
       "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
@@ -1241,6 +1268,8 @@
     "ag.stopped": "Agente {id} detenido",
     "ag.stillStopping": "{id} todavía se está deteniendo",
     "ag.resumedFresh": "{id}: aún no hay nada que reanudar; se inició de nuevo",
+    "ag.resumedHandoff":
+      "{id}: su conversación nunca se escribió; se inició de nuevo desde su último traspaso",
     "ag.inactive": "El proyecto {ws} no está activo",
     "ag.otherTabs.one": "{n} pestaña de otros proyectos oculta",
     "ag.otherTabs": "{n} pestañas de otros proyectos ocultas",
@@ -1255,6 +1284,8 @@
     "ag.why.stopped": "Lo detuviste a las {time}",
     "ag.why.interrupted": "Interrumpido: {name} se reinició",
     "ag.why.restartFailed": "No volvió tras un reinicio: {why}",
+    "ag.why.trustDeclined":
+      "No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "ag.why.exited": "Salió",
     "ag.why.exitedCode": "Salió (código {code})",
     "ag.fresh": "Empezar de cero",
@@ -1272,6 +1303,7 @@
     "ag.relaunch": "Relanzar ahora",
     "ag.relaunchName": "Relanzar {id} ahora",
     "ag.relaunched": "{id} relanzado desde su traspaso",
+    "ag.relaunchHandoff": "Relanzar desde su último traspaso",
     "ag.rc.autoAsk":
       "Toca rotar ({why}). Den le pide el traspaso cuando esté libre y luego lo relanza.",
     "ag.rc.autoReady":
@@ -1838,6 +1870,7 @@
     "ag.waiting.permission": "necesita permiso",
     "ag.waiting.input": "te espera",
     "ag.waiting.asked": "te preguntó",
+    "ag.waiting.trust": "En espera: ¿confiar en esta carpeta?",
     "bell.title": "Notificaciones",
     "bell.n": "Notificaciones: {n} sin leer",
     "bell.n.one": "Notificaciones: {n} sin leer",
@@ -1887,6 +1920,9 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
+    "bell.m.trust": "{name}: En espera: ¿confiar en esta carpeta?",
+    "bell.m.trustDeclined":
+      "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
@@ -1896,6 +1932,46 @@
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
+    "bell.m.notAtPrompt":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
+    "bell.m.notAtPrompt.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente no está en su indicador de entrada",
+    "bell.m.held.busy":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente está ocupado con un turno",
+    "bell.m.held.busy.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente está ocupado con un turno",
+    "bell.m.held.trust":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: hay una pregunta sobre confiar en su carpeta en su pantalla",
+    "bell.m.held.trust.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: hay una pregunta sobre confiar en su carpeta en su pantalla",
+    "bell.m.held.permission":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: hay una pregunta de permiso en su pantalla",
+    "bell.m.held.permission.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: hay una pregunta de permiso en su pantalla",
+    "bell.m.held.approval":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: espera a que permitas un cambio",
+    "bell.m.held.approval.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: espera a que permitas un cambio",
+    "bell.m.held.paused":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: está en pausa tras un bucle de compactación hasta que sigas",
+    "bell.m.held.paused.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: está en pausa tras un bucle de compactación hasta que sigas",
+    "bell.m.held.stopped":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en marcha",
+    "bell.m.held.stopped.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente no está en marcha",
+    "bell.m.held.owner":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den aún pregunta a Hub quién eres",
+    "bell.m.held.owner.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: Den aún pregunta a Hub quién eres",
+    "bell.m.held.unread":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.held.unread.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.hubNoAnswer":
+      "{name}: {n} comentarios de Hub escritos, aún sin respuesta tras {m} min",
+    "bell.m.hubNoAnswer.one":
+      "{name}: {n} comentario de Hub escrito, aún sin respuesta tras {m} min",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
@@ -1931,6 +2007,18 @@
       "__DEN_TITLE__ {v}: confirmar su versión fijada espera tu permiso",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubCommentsRejected":
+      "Los comentarios de Hub no llegan: Hub no aceptó el token de esta instalación (Ajustes › Hub: Volver a conectar)",
+    "bell.m.hubCommentsForbidden":
+      "Los comentarios de Hub no llegan: Hub rechazó la entrega de comentarios de esta instalación",
+    "bell.m.hubCommentsRefused":
+      "Los comentarios de Hub no llegan: Hub no tiene entrega de comentarios para esta instalación",
+    "bell.m.hubCommentsUnreachable":
+      "Los comentarios de Hub no llegan: __DEN_TITLE__ no puede conectar con Hub",
+    "bell.m.hubCommentsClosed":
+      "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
+    "bell.m.hubCommentsSilent":
+      "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
@@ -1962,6 +2050,8 @@
     "ag.ins.tip":
       "Sus archivos de instrucciones ocupan {size}: más del {share}% de su contexto. El más grande es {path} ({big}).",
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
+    "ag.hub.notAtPrompt":
+      "En espera: el agente no está en su indicador de entrada",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
     "tx.error": "Error",
@@ -2239,6 +2329,19 @@
       "Se ejecuta como su propia CLI en el proyecto: las herramientas y los modos de permiso de Den llegarán más adelante.",
     "ag.rt.notInstalled": "no instalado",
     "ag.rt.needsArgv": "la persona no tiene plantilla argv",
+    // issue 479: a quarantined runtime copy is never started.
+    "ag.rt.quarantined":
+      "{name} no puede iniciarse: macOS puso esta copia en cuarentena, así que Den no la ejecutó y macOS no mostró ningún aviso:",
+    "ag.rt.useOther": "Usar otra copia encontrada:",
+    "ag.rt.clearSelf":
+      "O quítala tú en la máquina de Den: ejecútala una vez desde una terminal allí y permítela cuando macOS lo pregunte. Den nunca quita la cuarentena.",
+    "ag.rt.copyPath": "Copiar ruta",
+    "ag.rt.openTerminal": "Abrir una terminal allí",
+    "ag.rt.copied": "Copiado",
+    "ag.rt.copyByHand": "Seleccionada: cópiala con ⌘C o Ctrl+C",
+    "ag.rt.openRuntimes": "Abrir Ajustes › Runtimes",
+    "ag.rt.checkAgain": "Comprobar de nuevo",
+    "ag.rt.notDone": "No funcionó",
     "pj.expand": "Expandir la lista de proyectos",
     "gr.act.autostartOff": "Inicio automático: desactivado (activar)",
     "gr.act.autostartOn": "Inicio automático: activado (desactivar)",

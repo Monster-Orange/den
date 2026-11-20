@@ -58,7 +58,15 @@ import {
   configureBusy,
 } from "@kit/busy.js";
 import { BUSY_WORDS } from "@kit/busy-words.js";
-import { askConfirm, tell } from "@kit/dialog.js";
+import {
+  askConfirm,
+  askSpec,
+  dialogHtml,
+  mountDialog,
+  tell,
+  type DialogSpec,
+  type MountedDialog,
+} from "@kit/dialog.js";
 import { formatTime, timeHtml } from "@kit/time.js";
 import { showUpdate } from "@kit/update-pill.js";
 import {
@@ -237,6 +245,34 @@ void busyAction("save", async (_h, progress) => {
 const bw: string = BUSY_WORDS.en.retry;
 void askConfirm({ title: "Sure?", danger: true }).then((ok: boolean) => ok);
 void tell({ message: "Done" });
+// Issues 669, 670: the one dialog frame, on a server and in a browser.
+const frameHtml: string = dialogHtml({
+  kind: "confirm",
+  id: "unlink",
+  title: "Unlink?",
+  body: "<p>It stays.</p>",
+  open: true,
+  actions: [
+    { label: "Back", href: "/waiting" },
+    { label: "Yes", value: "yes", kind: "danger", attrs: { "data-x": true } },
+  ],
+});
+const panelSpec: DialogSpec = {
+  kind: "panel",
+  title: "Helpers",
+  subtitle: null,
+  headActions: [{ label: "Clear", type: "button" }],
+  closeLabel: "Close",
+  foot: "<p class=\"dk-note\"></p>",
+};
+const mounted: MountedDialog = mountDialog(dialogHtml(panelSpec), {
+  focus: "h2",
+  onClose: (v: string, d: HTMLDialogElement) => void [v, d.id],
+});
+void mounted.closed.then((v: string) => v);
+mounted.show(null).close("close");
+const asked: DialogSpec = askSpec("text", { title: "Rename" }, "q");
+void [frameHtml, asked];
 const when: string =
   formatTime("2026-01-01T00:00:00Z", { style: "relative" }) +
   timeHtml(new Date());

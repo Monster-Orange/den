@@ -836,6 +836,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/settings",
   "/api/scope",
   "/api/web-url",
+  // Issue 666: an alias made this install's address: the owner's.
+  "/api/web-url/adopt",
   // Issue 163: re-installs the launchd jobs (and may run sudo): a person's.
   "/api/keep-running-after-logout",
   // #299: the agents' sign-in token, into the secrets store: a person's.

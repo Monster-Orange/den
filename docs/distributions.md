@@ -4551,7 +4551,28 @@ conversation, in the new mode.
 agents:
   default_mode: auto # ask, edits, auto or all; unset: each persona's
   mode_check_seconds: 30 # how often Den looks for a changed mode
+  trust_check_seconds: 5 # how often Den looks for a folder-trust question
 ```
+
+**The folder-trust question.** Claude Code asks once per folder whether
+to trust it. While an agent's start waits on that question, its row, its
+pane and the bell say "Waiting: trust this folder?". The answer is the
+person's: Den never types it. After a No, the agent ends, and its row and
+the bell say "Didn't start: this folder isn't trusted. Resume and choose
+Yes." A relaunch from a handoff keeps the folder the agent ran in, so a
+folder it was trusted in is never asked about again.
+
+**A conversation that was never written.** Resume asks the runtime
+whether the conversation exists (its transcript). One that was never
+written (its start ended at the trust question, say) starts fresh under
+the same id, never `--resume`. If the agent has a handoff on file
+(handoff.md, or the newest kept one that passes the check), that handoff
+is the new conversation's first prompt. If the runtime refuses the id
+both ways, a new conversation starts. A relaunch that ends before its
+conversation exists is undone: handoff.md comes back and the rotation is
+due again. `agents relaunch <id> --from-handoff [<file>]` (and Relaunch
+from its last handoff in a stopped agent's ⋯ menu) relaunches from the
+newest handoff when no rotation is due.
 
 **Back after the machine restarts.** Every agent that was running comes
 back on its own conversation, project and mode, not only standing
@@ -5346,6 +5367,27 @@ copy in use gets its version command. On macOS a copy carrying the
 `com.apple.quarantine` attribute is never run either, so a scan never
 makes macOS warn; it shows "quarantined, not run" instead. The attribute
 is read with `xattr`, never by running the file.
+
+Starting an agent on a quarantined copy stops before anything runs
+(issue 479): start, resume, restart, move, persona change and relaunch
+are refused with `runtime_quarantined` (409), and an agent already
+running is never stopped for a restart that couldn't start it again.
+The refusal names the path and the choices: another copy found that
+isn't quarantined (set `agents.runtimes.<id>.bin` to it), or clear this
+one yourself (run it once from a terminal and allow it when macOS asks).
+The Start dialog says so before Start, with the path as selectable
+text and **Copy path** (the page may be a browser on another machine,
+so nothing opens a folder on the Den machine), **Open a terminal
+there** (Den's own terminal, in this browser: a shell in the project
+shown, started in the copy's folder, through
+`POST /api/workspaces/<ws>/sessions` with `{ "cwd": "<folder>" }`; a
+person only), **Use this** for each
+such copy, and **Check again**. A refused resume from an agent's row
+offers **Open Settings › Runtimes**, which opens
+`/settings?runtime=<id>#agents.runtimes` at that runtime's row (with
+`&project=<ws>` when a project's setting chose the copy). An agent
+starting another (the CLI, or MCP) gets the same refusal as its error;
+nothing retries it. Den never removes the attribute itself.
 
 Paths are this machine's only: Den reads them from `config/local` files,
 never from the distribution's config. **Settings › Agents › Runtimes**

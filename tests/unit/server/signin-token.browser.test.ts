@@ -123,7 +123,8 @@ describe("#299: Settings › Sign-in token", () => {
     await p.waitForTimeout(500);
     expect(await input.inputValue()).toBe("");
     expect(await p.locator('[data-keep-token="set"]').textContent()).toMatch(
-      /set .*20\d\d/,
+      // The kit's date (issue 668): the year only when it isn't this year's.
+      /set [A-Z][a-z]{2} \d{1,2}(, 20\d\d)?\b/,
     );
     // The store has it.
     const kept = path.join(s!.tmp, "kept");

@@ -255,10 +255,6 @@
     "fb.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
     "fb.revShot": "Screenshot after masking ({n} areas hidden)",
     "fb.revShot.one": "Screenshot after masking ({n} area hidden)",
-    "fb.sentShot":
-      "The screenshot is saved and copied: paste it into the issue.",
-    "fb.sentShotSaved":
-      "The screenshot is saved as a file: add it to the issue.",
     "fb.mine": "My reports",
     "fb.myS":
       "Shown live from GitHub. It works while you are signed in to GitHub.",
@@ -1380,6 +1376,8 @@
     // prompt() and alert().
     "dlg.ok": "OK",
     "dlg.cancel": "Cancel",
+    // Issue 670: a large dialog's Close (the kit's frame).
+    "dlg.close": "Close",
     "dlg.keep": "Keep",
     "dlg.delete": "Delete",
     "dlg.remove": "Remove",
@@ -1433,6 +1431,9 @@
     "busy.startW": "Starting {name}…",
     "busy.startS": "{name} started.",
     "busy.startF": "Couldn't start {name}.",
+    "busy.termW": "Opening a terminal…",
+    "busy.termS": "Terminal open.",
+    "busy.termF": "Couldn't open a terminal.",
     "busy.sayW": "Sending to {name}…",
     "busy.sayS": "Sent to {name}.",
     "busy.sayF": "Couldn't send to {name}.",
@@ -1598,6 +1599,14 @@
     "err.signin.local":
       "A sign-in belongs to one address. This page is on {host}: open the same page on localhost, where this browser is signed in.",
     "err.signin.atAddress": "{name} signs in at {address}",
+    "err.signin.offerTitle": "Make {alias} {name}'s address",
+    "err.signin.offerLoop":
+      "{name}'s address is {url}, which only opens on its own machine, so sign-in can't send you there.",
+    "err.signin.offerWrong":
+      "{name}'s address is {url}, and it isn't working from here.",
+    "err.signin.offerUnset": "{name} has no address yet.",
+    "err.signin.offerHow":
+      "Sign in below as {name}'s owner: with GitHub, or with a code you approve on its machine. Then make {alias} its address, and sign-in works here.",
     "err.signin.copy": "Copy command",
     "err.signin.title": "Sign in to {name}",
     "err.signin.where":
@@ -1907,6 +1916,19 @@
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_screenshot_days": "Report screenshots, kept for",
+    "set.server.report_screenshot_days.d":
+      "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max": "Report screenshots, largest kept",
+    "set.server.report_screenshot_max.d":
+      "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "Report screenshots, largest sent to Hub",
+    "set.server.report_screenshot_hub_max.d":
+      "The largest masked screenshot __DEN_TITLE__ sends to Hub. A larger one is still kept here, and the report is still filed. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait": "Report screenshots, wait for Hub",
+    "set.server.report_screenshot_hub_wait.d":
+      "How long __DEN_TITLE__ waits for Hub to take a report's screenshot. After this, the screenshot is kept here, and the report is already filed. __DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "Report: repository visibility kept for",
     "set.server.report_visibility_cache.d":
@@ -1971,6 +1993,10 @@
     "addr.saved": "Saved: {url} answered.",
     "addr.notSaved": "Not saved. The old address stays.",
     "addr.empty": "Type an address first.",
+    "addr.loopback":
+      "{url} only opens on this machine: other devices can't reach it.",
+    "addr.adopt": "Make {alias} __DEN_TITLE__'s address",
+    "addr.adopted": "Saved: {url} is the address now.",
     "set.workspace.approvals_policy": "Agents' writes here",
     "set.workspace.approvals_policy.d":
       "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
@@ -2088,6 +2114,8 @@
     "ag.stopped": "Stopped agent {id}",
     "ag.stillStopping": "{id} is still stopping",
     "ag.resumedFresh": "{id}: nothing to resume yet; started fresh",
+    "ag.resumedHandoff":
+      "{id}: its conversation was never written; started fresh from its last handoff",
     "ag.inactive": "Project {ws} isn't active",
     "ag.otherTabs.one": "{n} tab from other projects hidden",
     "ag.otherTabs": "{n} tabs from other projects hidden",
@@ -2102,6 +2130,8 @@
     "ag.why.stopped": "Stopped by you {time}",
     "ag.why.interrupted": "Interrupted: {name} restarted",
     "ag.why.restartFailed": "Didn't come back after a restart: {why}",
+    "ag.why.trustDeclined":
+      "Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "ag.why.exited": "Exited",
     "ag.why.exitedCode": "Exited (code {code})",
     "ag.fresh": "Start fresh",
@@ -2131,6 +2161,7 @@
     "ag.relaunch": "Relaunch now",
     "ag.relaunchName": "Relaunch {id} now",
     "ag.relaunched": "Relaunched {id} from its handoff",
+    "ag.relaunchHandoff": "Relaunch from its last handoff",
     "ag.rc.autoAsk":
       "Due ({why}). Den asks it for its handoff when it is idle, then relaunches it.",
     "ag.rc.autoReady":
@@ -2666,6 +2697,7 @@
     "ag.waiting.permission": "needs permission",
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
+    "ag.waiting.trust": "Waiting: trust this folder?",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
@@ -2715,6 +2747,9 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
+    "bell.m.trust": "{name}: Waiting: trust this folder?",
+    "bell.m.trustDeclined":
+      "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
@@ -2724,6 +2759,46 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.notAtPrompt":
+      "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
+    "bell.m.notAtPrompt.one":
+      "{name}: {n} message waits for {m} min. Waiting: the agent isn't at its prompt",
+    "bell.m.held.busy":
+      "{name}: {n} messages wait for {m} min. Waiting: the agent is busy with a turn",
+    "bell.m.held.busy.one":
+      "{name}: {n} message waits for {m} min. Waiting: the agent is busy with a turn",
+    "bell.m.held.trust":
+      "{name}: {n} messages wait for {m} min. Waiting: a question about trusting its folder is on its screen",
+    "bell.m.held.trust.one":
+      "{name}: {n} message waits for {m} min. Waiting: a question about trusting its folder is on its screen",
+    "bell.m.held.permission":
+      "{name}: {n} messages wait for {m} min. Waiting: a permission question is on its screen",
+    "bell.m.held.permission.one":
+      "{name}: {n} message waits for {m} min. Waiting: a permission question is on its screen",
+    "bell.m.held.approval":
+      "{name}: {n} messages wait for {m} min. Waiting: it waits for you to Allow a change",
+    "bell.m.held.approval.one":
+      "{name}: {n} message waits for {m} min. Waiting: it waits for you to Allow a change",
+    "bell.m.held.paused":
+      "{name}: {n} messages wait for {m} min. Waiting: it is paused after a compaction loop until you go on",
+    "bell.m.held.paused.one":
+      "{name}: {n} message waits for {m} min. Waiting: it is paused after a compaction loop until you go on",
+    "bell.m.held.stopped":
+      "{name}: {n} messages wait for {m} min. Waiting: the agent isn't running",
+    "bell.m.held.stopped.one":
+      "{name}: {n} message waits for {m} min. Waiting: the agent isn't running",
+    "bell.m.held.owner":
+      "{name}: {n} messages wait for {m} min. Waiting: Den is still asking Hub who you are",
+    "bell.m.held.owner.one":
+      "{name}: {n} message waits for {m} min. Waiting: Den is still asking Hub who you are",
+    "bell.m.held.unread":
+      "{name}: {n} messages wait for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.held.unread.one":
+      "{name}: {n} message waits for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.hubNoAnswer":
+      "{name}: {n} Hub comments typed in, no answer yet after {m} min",
+    "bell.m.hubNoAnswer.one":
+      "{name}: {n} Hub comment typed in, no answer yet after {m} min",
     "bell.m.crashLoop":
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
@@ -2759,6 +2834,18 @@
       "__DEN_TITLE__ {v}: committing its pin waits for your Allow",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.hubCommentsRejected":
+      "Hub comments aren't arriving: Hub did not accept this install's token (Settings › Hub: Reconnect)",
+    "bell.m.hubCommentsForbidden":
+      "Hub comments aren't arriving: Hub refused this install's comment delivery",
+    "bell.m.hubCommentsRefused":
+      "Hub comments aren't arriving: Hub has no comment delivery for this install",
+    "bell.m.hubCommentsUnreachable":
+      "Hub comments aren't arriving: __DEN_TITLE__ can't reach Hub",
+    "bell.m.hubCommentsClosed":
+      "Hub comments aren't arriving: Hub keeps closing the comment stream",
+    "bell.m.hubCommentsSilent":
+      "Hub comments aren't arriving: the comment stream went silent",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
@@ -2789,6 +2876,7 @@
     "ag.ins.tip":
       "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
+    "ag.hub.notAtPrompt": "Waiting: the agent isn't at its prompt",
     "tx.asked": "Asked",
     "tx.result": "Result",
     "tx.error": "Error",
@@ -3062,6 +3150,19 @@
       "It runs as its own CLI in the project: Den's tools and permission modes are coming for it.",
     "ag.rt.notInstalled": "not installed",
     "ag.rt.needsArgv": "the persona has no argv template",
+    // issue 479: a quarantined runtime copy is never started.
+    "ag.rt.quarantined":
+      "{name} can't start: macOS has quarantined this copy, so Den did not run it and macOS showed no warning:",
+    "ag.rt.useOther": "Use another copy found:",
+    "ag.rt.clearSelf":
+      "Or clear it yourself on the Den machine: run it once from a terminal there and allow it when macOS asks. Den never removes the quarantine.",
+    "ag.rt.copyPath": "Copy path",
+    "ag.rt.openTerminal": "Open a terminal there",
+    "ag.rt.copied": "Copied",
+    "ag.rt.copyByHand": "Selected: copy it with ⌘C or Ctrl+C",
+    "ag.rt.openRuntimes": "Open Settings › Runtimes",
+    "ag.rt.checkAgain": "Check again",
+    "ag.rt.notDone": "That didn't work",
     // issue 171: the Edge page.
     "edge.reading": "Reading the edge…",
     "edge.tls.implicit":

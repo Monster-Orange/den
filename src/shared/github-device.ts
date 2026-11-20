@@ -86,7 +86,7 @@ export interface GithubDeviceClient {
    */
   api?(
     token: string,
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PATCH",
     path: string,
     body?: unknown,
   ): Promise<{ status: number; body: Record<string, unknown> }>;

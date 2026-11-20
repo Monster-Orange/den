@@ -32,6 +32,7 @@ import { newConfirmCode } from "../../shared/confirm-code.js";
 import {
   checkLoginCode,
   ignoredConfigWarning,
+  localhostOrigin,
   loginLink,
   LOGIN_CODE_TTL_MS,
   mintLoginCode,
@@ -1793,23 +1794,27 @@ export function cmdWebClaimLink(args: string[], io: CliIo = stdIo): number {
   }
   const now = Date.now();
   // D80: on the install's address, the one the person's browsers use.
-  let origin: string;
-  try {
-    origin = requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
-  } catch (e) {
-    io.err(`${product().cli}: ${(e as Error).message}\n`);
-    return 1;
-  }
-  void port;
+  // Issue 666's one exception: while it is unset (a fresh install whose
+  // only edge name is a loopback one, never written as web.url), this
+  // link alone is on this machine's own origin, since it is opened in the
+  // browser on this machine. It writes nothing, and says the address isn't
+  // set. A session made there is a localhost one only.
+  const cli = product().cli;
+  const w = (io.webUrl ?? readWebUrl)();
+  const origin = w ? w.url : localhostOrigin(port);
+  const unsetNote = w
+    ? ""
+    : `${cli}: ${notSetLine(cli)} (the name other devices open: your split-DNS name or edge alias; \`${cli} doctor\` offers it when it finds one). Until then this link works only in the browser on this machine.\n`;
   const url = claimLink(
     origin,
     mintClaimCode(ensureWebSecret(io.stateDir ?? getStateDir()), now),
   );
   if (asJson)
     io.out(
-      `${JSON.stringify({ url, expiresAt: new Date(now + CLAIM_CODE_TTL_MS).toISOString() })}\n`,
+      `${JSON.stringify({ url, expiresAt: new Date(now + CLAIM_CODE_TTL_MS).toISOString(), ...(w ? {} : { address: unsetNote.slice(cli.length + 2).trim() }) })}\n`,
     );
   else {
+    if (unsetNote) io.err(unsetNote);
     io.err(
       `${product().cli}: open this link yourself within 30 minutes; it signs in one browser, once. Don't let any agent open it.\n`,
     );

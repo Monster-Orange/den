@@ -110,6 +110,12 @@ export interface ShellModel extends RailModel {
   slots?: Slots;
   /** false: no Report button (reports off). */
   report?: boolean;
+  /**
+   * Issue 694: false for a page with no rail. The top bar draws no ☰ and
+   * no aria-controls for the rail (stamped data-nav-shape="no-rail");
+   * shellHtml draws no rail. Default true.
+   */
+  rail?: boolean;
 }
 export declare function navItemHtml(
   n: NavItem,

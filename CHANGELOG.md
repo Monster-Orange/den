@@ -4,6 +4,51 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.77-dev.1] - 2026-11-20
+
+Fixes for issues reported by the person running Den, plus the 0.4.78 items that were ready.
+
+### Fixed
+
+- Hub comments reach an agent that asked its person a question. The person's comment is often the answer, and it now clears the question in the bell. Hub shows why a comment is waiting on a Den install. (issue 701)
+- Hub comments: one agent that hangs no longer holds other agents' comments. The bell says why a comment is waiting, for every reason, after `hub.delivery_held_bell_minutes` (default 5). A typed comment with no answer after `hub.delivery_answer_minutes` (default 30) is marked "delivered, no answer yet", and the agent's next comments go on. `doctor` lists held comments per agent, with their age and reason. (issue 701)
+- Hub comments: Den says when they aren't arriving. `doctor` has a "hub comments" row (the Hub it reads, stream open, last good read, last comment). After `hub.delivery_alert_minutes` (default 15; 0 turns it off) with no good read, the bell says "Hub comments aren't arriving" with the reason. A quiet Hub never raises it. (issue 702)
+- Hub comments: a stream with no bytes for `hub.delivery_stream_silence_seconds` (default 75) is reopened, and the list is read once. Hub's own end of a long stream reopens at once, and a list failure is no longer silent. (issue 703)
+- Agents: Resume never fails on a conversation that was never written. It starts the agent fresh under the same id, with its last handoff as the first prompt, and never returns a 502. A relaunch keeps the agent's folder. (issue 658)
+- Agents: Claude Code 2.1.329's folder-trust question is recognised. Den never answers it with Enter alone, which picked "No, exit". While an agent waits on it, its row, pane and bell say "Waiting: trust this folder?". After a No, they say "Didn't start: this folder isn't trusted. Resume and choose Yes." New setting: `agents.trust_check_seconds` (default 5). (issue 659)
+- Agents: Den types into a Claude Code agent only when it is at its input prompt, and into any agent only when no dialog shows on its screen. Text that waits shows why on the agent's row, and the bell says how long after `hub.delivery_held_note_seconds` (default 60). (issue 664)
+- Address: Den never sets its address to a name that only opens on its own machine (`localhost`, `*.localhost`, 127.x, ::1). An install that had one takes its edge alias, for you to confirm. Doctor fails such an address and gives the fix. Opening Den on its alias while the address is wrong no longer locks you out: sign in as the owner, then click "Make <alias> Den's address". Every address change is in the activity trail. With no address set yet, `web claim-link` gives a link for the browser on this machine. (issue 666)
+- Account entry: a person with no display name sees "@login" alone, in the rail and the account menu. (issue 656)
+- Agents: Den no longer writes `Write(path)` deny rules, so Claude Code stops warning that the rule never matches. `Edit(path)` still denies edits under the person's config folder. (issue 660)
+- Report: a repository whose visibility Den can't tell reads "Visibility not known", never "Public repository". (issue 415)
+- Connect never links the default project to a Hub project on its own. (issue 649)
+- Pop-ups use Den's font, never the browser's serif. Switch and Unlink sit in one row in Settings › Project setup. (issue 651)
+
+### Added
+
+- Times: dates and times on the Edge card, gate chip, bell, Verify page and Settings show in the time zone you chose, in the page's language. (issue 668)
+- Pins belong to the project you pinned them in. The rail shows the picked project's pins, or all of them under All projects. (issue 402)
+- Agents: Den finds the agent CLI your terminal runs, with your interactive shell's PATH first. Other copies are listed under "Also found:". Den never runs a copy it didn't choose, or one macOS has quarantined. For a quarantined copy it offers Copy path, Open a terminal there, and Open Settings › Runtimes. New setting: `agents.shell_path_timeout_seconds` (default 10). (issues 456, 479)
+- Agents: a held write, `hub_link`, links a project to an existing Hub project after your Allow. (issue 647)
+- Reports: when you tick the box, a filed report's screenshot reaches whoever fixes it. It is kept locally (`reports.screenshot_keep_days`, default 30) and sent to Hub when Hub is connected. The issue names the tool that reads it, never a URL. (issue 403)
+- Den's new mark, with one head snippet in the kit for the tab icons. (issue 644)
+
+### UI kit (den-ui)
+
+- One dialog frame: `dialogHtml({ kind: "confirm" | "panel" })` works with no script, and `mountDialog()` adds focus, Esc and Report. Den's confirms and large dialogs use it. (issues 669, 670)
+- `topBarHtml({ rail: false })` and `shellHtml({ rail: false })` for pages with no rail. (issue 694)
+- `reportVisibility()`; a missing visibility reads as unknown. (issue 415)
+- Report: `shotShare(repo)`. Filing no longer downloads or copies the screenshot. (issue 403)
+
+### Checks
+
+- The live check for issue 631 skips, with its reason, when the kept terminal host already ran the installed version. A live check that answers a clause twice is refused.
+- The live check for issue 629 answers the dialog with a hook, and waits for it.
+
+### Migrations
+
+- None required. Every new setting has a default.
+
 ## [0.4.76] - 2026-11-19
 
 ### Fixed

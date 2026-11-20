@@ -76,6 +76,22 @@ export function typingHeld(
   return out;
 }
 
+/**
+ * Issue 701: the agents Hub deliveries (and relayed messages) wait for:
+ * as typingHeld, but an ask_human question doesn't hold them. The agent
+ * ended its turn to wait for its person's answer, and the person's
+ * comment is that answer. A permission dialog, a held Allow or a pause
+ * still holds them; so does a dialog on screen (agentInputState).
+ */
+export function deliveryHeld(
+  why: ReadonlyMap<string, string>,
+  approvalActors: Iterable<string>,
+  paused: Iterable<string> = [],
+): Set<string> {
+  const asked = new Map([...why].filter(([, w]) => w !== "asked"));
+  return typingHeld(asked, approvalActors, paused);
+}
+
 export interface AttentionDeps {
   store: NotificationStore;
   /** A short mark of the agent's output now (a hash of its tail), or null. */
@@ -401,6 +417,15 @@ export class Attention {
     if (this.waiting.has(agent)) this.clear(agent);
   }
 
+  /**
+   * Issue 701: a comment from the agent's person was typed into it: its
+   * question is answered. A dialog (permission) isn't: only its answer on
+   * screen ends that.
+   */
+  answered(agent: string): void {
+    if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
+  }
+
   private clear(agent: string): void {
     const w = this.waiting.get(agent);
     this.waiting.delete(agent);
@@ -432,6 +457,34 @@ export class Attention {
       scope: `workspace/${workspace}`,
       text: `${name} finished ${what}${w.artifact ? ` on ${w.artifact}` : ""}`,
       msg: { key: w.artifact ? "bell.m.hubOn" : "bell.m.hub", vars },
+      link:
+        w.url && /^https?:\/\//.test(w.url)
+          ? w.url
+          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+    });
+  }
+
+  /**
+   * Issue 701: Hub comments typed into the agent had no answer after
+   * hub.delivery_answer_minutes; its next comments go on. One item,
+   * linking to the comment in Hub when known.
+   */
+  hubNoAnswer(
+    agent: string,
+    workspace: string,
+    w: { count: number; minutes: number; artifact?: string; url?: string },
+  ): void {
+    const name = this.d.nameOf(agent);
+    const what = w.count === 1 ? "1 Hub comment" : `${w.count} Hub comments`;
+    this.d.store.add({
+      kind: "answer",
+      subject: `agent:${agent}`,
+      scope: `workspace/${workspace}`,
+      text: `${name}: ${what} typed in, no answer yet after ${w.minutes} min`,
+      msg: {
+        key: "bell.m.hubNoAnswer",
+        vars: { name, n: w.count, m: w.minutes },
+      },
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url

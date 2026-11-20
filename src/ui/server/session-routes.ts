@@ -417,8 +417,17 @@ export interface ListedSession {
   tokenRevoked?: boolean;
   /** An approval is pending (AG-6a; only when the host knows). */
   waiting?: boolean;
-  /** NT-3b: why ("approval", "permission", "input", "asked"), when known. */
+  /**
+   * NT-3b: why ("approval", "permission", "input", "asked", and issue
+   * 659's "trust": its folder-trust question), when known.
+   */
   waitingWhy?: string;
+  /** Issue 659: it ended because its folder-trust question was declined. */
+  trustDeclined?: true;
+  /** Issue 658: Relaunch from its last handoff is offered (none ready). */
+  handoffOnFile?: true;
+  /** Issue 631: it didn't come back after a restart, and why. */
+  restartFailed?: { at: string; why: string };
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
   hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
   /**
@@ -683,6 +692,14 @@ export function listedSessions(
             ...(why.has(rec.id) ? { waitingWhy: why.get(rec.id) } : {}),
           }
         : {}),
+      // Issue 659: its folder-trust question waits for its person (its
+      // record says so: trustTick), over any other wait.
+      ...(r.trustWait && s && !s.exited
+        ? { waiting: true, waitingWhy: "trust" }
+        : {}),
+      ...(r.trustDeclined ? { trustDeclined: true as const } : {}),
+      ...(r.handoffOnFile ? { handoffOnFile: true as const } : {}),
+      ...(r.restartFailed ? { restartFailed: { ...r.restartFailed } } : {}),
       ...(() => {
         const w = (d.hubWork ?? agentHubWork)(rec.id);
         return w ? { hubWork: w } : {};

@@ -179,6 +179,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/report/drafts",
     "/api/report/drafts/:id",
     "/api/report/github-send/:id",
+    // Issue 403: where a report's screenshot goes (Hub's answer, a read),
+    // and a kept one (the person or this install's own agent only).
+    "/api/report/shot-share",
+    "/api/report/shots/:id",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
@@ -488,6 +492,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/settings"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
+  // Issue 666: Make <alias> this Den's address (the owner's only).
+  M(["POST"], "/api/web-url/adopt"),
   // Issue 163: Keep agents running after logout › Apply (a person's only).
   M(
     ["POST"],
@@ -993,6 +999,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "embed-routes.ts:STATE_PATH": ["/api/embed/p/:project/agents/:id/state"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
+  "report-routes.ts:SHOT_PATH": ["/api/report/shots/:id"],
   "agent-routes.ts:AGENTS_PATH": [
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",

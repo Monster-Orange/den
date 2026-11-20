@@ -62,6 +62,13 @@ describe("readHubConfig", () => {
       mcpRetryAttempts: 0,
       deliveryHeartbeatSeconds: 15,
       deliveryPollSeconds: 30,
+      deliveryHeldNoteSeconds: 60,
+      deliveryStateTimeoutSeconds: 60,
+      deliveryTypeTimeoutSeconds: 120,
+      deliveryHeldBellMinutes: 5,
+      deliveryAnswerMinutes: 30,
+      deliveryAlertMinutes: 15,
+      deliveryStreamSilenceSeconds: 75,
       inboxWatch: true,
       inboxPollSeconds: 30,
       inboxBackoffMaxSeconds: 600,
@@ -845,5 +852,52 @@ describe("#267: Hub's address from Settings", () => {
     };
     expect(patch?.(kept, null)).toEqual({ ok: true, url: null });
     expect(kept.hub).toEqual({ allow_tools: true });
+  });
+});
+
+describe("issue 701: the delivery time limits", () => {
+  const url = "https://hub.example.test";
+  const limits = (c: unknown) => {
+    const r = c as Record<string, unknown>;
+    return [
+      r.deliveryStateTimeoutSeconds,
+      r.deliveryTypeTimeoutSeconds,
+      r.deliveryHeldBellMinutes,
+      r.deliveryAnswerMinutes,
+    ];
+  };
+  it("permissive defaults; set per install; bad values throw", () => {
+    expect(limits(readHubConfig({ hub: { url } }, {}, noSecrets))).toEqual([
+      60, 120, 5, 30,
+    ]);
+    const d = readHubConfig(
+      { hub: { url } },
+      {
+        hub: {
+          delivery_state_timeout_seconds: 90,
+          delivery_type_timeout_seconds: 300,
+          delivery_held_bell_minutes: 10,
+          delivery_answer_minutes: 120,
+        },
+      },
+      noSecrets,
+    );
+    expect(limits(d)).toEqual([90, 300, 10, 120]);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_held_bell_minutes: 0 } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(/hub\.delivery_held_bell_minutes must be a number, at least 1/);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_type_timeout_seconds: 1 } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(
+      /hub\.delivery_type_timeout_seconds must be a number, at least 5/,
+    );
   });
 });

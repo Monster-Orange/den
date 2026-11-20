@@ -87,7 +87,14 @@
  * and Start fresh. A running one says "Handoff due" or "Ready to relaunch"
  * as a tag.
  */
-import { readiness, runtimeName, runtimeOptions } from "/agent-start.js";
+import {
+  quarantinedHtml,
+  quarantineNext,
+  readiness,
+  runtimeName,
+  runtimeOptions,
+  wireQuarantine,
+} from "/agent-start.js";
 import { projectLabel } from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
@@ -482,6 +489,8 @@ function when(iso) {
 
 /** Why a stopped agent stopped (AG-14.1). */
 export function stopReason(r) {
+  // Issue 659: its folder-trust question was declined: it never started.
+  if (r.trustDeclined) return t("ag.why.trustDeclined");
   // Issue 631: it didn't come back after a restart (its terminal host's
   // too), and why.
   if (r.restartFailed?.why)
@@ -801,10 +810,15 @@ export function hubWorkHtml(r, tr = t) {
       ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(w.artifact)}</a>`
       : ` · ${esc(w.artifact)}`
     : "";
+  // Issue 664: why the queued ones wait, when Den knows.
+  const why =
+    w.working > 0 || w.held !== "not_at_prompt"
+      ? ""
+      : ` · <span data-held="not_at_prompt">${esc(tr("ag.hub.notAtPrompt"))}</span>`;
   return (
     `<div class="aghub" data-hubwork="${w.working > 0 ? "working" : "queued"}">` +
     `<span class="den-dot ${w.working > 0 ? "ok" : "warn"}" aria-hidden="true"></span> ` +
-    `${esc(tr(key, { n }))}${art}</div>`
+    `${esc(tr(key, { n }))}${art}${why}</div>`
   );
 }
 
@@ -3454,18 +3468,18 @@ function paintBusy() {
  * (den#4: a new conversation that starts from handoff.md); its pane opens
  * on it.
  */
-function restartRow(r, verb, button) {
-  return oneAtATime(r, verb, () => restartRowNow(r, verb, button));
+function restartRow(r, verb, button, body) {
+  return oneAtATime(r, verb, () => restartRowNow(r, verb, button, body));
 }
 
-async function restartRowNow(r, verb, button) {
+async function restartRowNow(r, verb, button, body) {
   if (button) button.disabled = true;
   const name = { name: r.agent };
   // BUSY-1: the working pop-up while Den starts it, then what happened.
   let opened;
   const out = await window.denShell.busyAction(
     "start-agent",
-    (headers) => api("POST", agentPath(r, verb), undefined, { headers }),
+    (headers) => api("POST", agentPath(r, verb), body, { headers }),
     {
       button,
       vars: name,
@@ -3475,14 +3489,20 @@ async function restartRowNow(r, verb, button) {
             ? "ag.relaunched"
             : verb !== "resume"
               ? "ag.startedFresh"
-              : o?.fresh
-                ? "ag.resumedFresh"
-                : "ag.resumed",
+              : o?.handoff
+                ? // Issue 658: never written; its last handoff began it.
+                  "ag.resumedHandoff"
+                : o?.fresh
+                  ? "ag.resumedFresh"
+                  : "ag.resumed",
           { id: r.agent },
         ),
       // Its open pane follows it to the new session (followAgents, in
       // refresh); one that couldn't (not running yet) is closed for it.
       onDone: (o) => (opened = follow(o)),
+      // Issue 479: a quarantined runtime: Settings at its row, not a
+      // dead end (Try again would refuse the same way).
+      next: (err) => quarantineNext(err, t, r.workspace),
     },
   );
   await (out ? opened : refresh());
@@ -4142,6 +4162,7 @@ function paintRuntimeFields(reset) {
   ready.innerHTML = r.html;
   ready.hidden = !r.html;
   ready.dataset.tone = r.tone;
+  wireStartQuarantine(ready);
   go.disabled = !r.ok;
   go.dataset.blocked = r.ok ? "" : "runtime";
 }
@@ -4587,6 +4608,15 @@ function startBody() {
 
 function showStartError(err) {
   const el = $d("#ag-err");
+  // Issue 479: its runtime's copy is quarantined: why, the path and the
+  // choices (Use this, Copy path), not only the message.
+  const q = err?.data?.quarantined;
+  if (q?.path) {
+    el.innerHTML = quarantinedHtml(q, t);
+    wireStartQuarantine(el);
+    el.hidden = false;
+    return;
+  }
   el.textContent = startFailText(err, t);
   // AG-10.10: that agent is running: offer to open it.
   const running = err?.data?.running;
@@ -4603,6 +4633,25 @@ function showStartError(err) {
     el.append(" ", b);
   }
   el.hidden = false;
+}
+
+/**
+ * Issue 479: the quarantine line's buttons in the Start dialog (its
+ * readiness line, or the refusal after Start). A pin or Check again asks
+ * the runtimes again and repaints; the person presses Start.
+ */
+function wireStartQuarantine(host) {
+  wireQuarantine(host, {
+    api,
+    t,
+    ws: () => $d("#ag-ws")?.value || viewWorkspaces()[0],
+    reload: async () => {
+      const ws = $d("#ag-ws")?.value || viewWorkspaces()[0];
+      personasAsked.delete(ws || "");
+      $d("#ag-err").hidden = true;
+      await fillForWorkspace(ws);
+    },
+  });
 }
 
 /**
@@ -5124,6 +5173,16 @@ function stoppedMenuItems(r, opener) {
           {
             label: t("ag.fresh"),
             onSelect: () => void restartRow(r, "fresh", opener),
+          },
+        ]
+      : []),
+    // Issue 658: a handoff on file while no rotation is ready.
+    ...(r.handoffOnFile
+      ? [
+          {
+            label: t("ag.relaunchHandoff"),
+            onSelect: () =>
+              void restartRow(r, "relaunch", opener, { fromHandoff: true }),
           },
         ]
       : []),
