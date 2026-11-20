@@ -681,6 +681,58 @@ Three pieces, data in, the kit's words out (en, es, ja).
 - `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
   `DenUI.settingRow(el, opts)` are the same, in the kit's language.
 
+## The settings field row and the shared verbs
+
+- **The settings field row** (issue 584): the settings row's text-field
+  variant, in `src/setting-row.js` with its look in `src/setting-row.css`
+  (link them with `button.css` and `savestate.css`; `busy.css` too with
+  `action`).
+
+      const row = mountSettingField(el, {
+        id: "folders", label: "Folders to watch",   // or { key, vars }
+        help: "One folder per line.", placeholder: "docs",
+        value: "notes\ndrafts", multiline: true,    // rows: 4 by default
+        saveLabel: "Save folders",                  // default: the kit's Save
+        error: null, readOnly: false, lang,
+        action: "folders.save",     // optional: a registered busy action
+        onSave: (value, headers) => api.save(value, headers),
+      });
+      row.value(); row.setError("That folder doesn't exist."); row.destroy();
+
+  A label, a single-line input (or a textarea with `multiline`), an error
+  line under it, the help, Save and the save state; `who` and `last` add
+  the on/off row's line. Every word of the host's (label, help,
+  placeholder, error, saveLabel) is its own text or `{ key, vars }` in the
+  kit's tables. Save is disabled until the value differs from the saved
+  one. It calls `onSave` with the value: "Saving…" past 400 ms, then
+  "Saved", and the field shows the saved value (what `onSave` resolved
+  with, when text; else what it sent), which becomes the new baseline. With
+  `action` (a working pop-up action the host registered with
+  `registerActions`), Save runs through `busyAction`: it holds Save, opens
+  the working pop-up past 300 ms and closes it when saved; `headers` carry
+  the request id. A reject puts the rejection's `fieldError` (the host's
+  words) or the kit's "Not saved. Try again." in the error line and marks
+  the field `aria-invalid`; Save stays to try again. `settingFieldHtml(o)`
+  draws it in Node; with `form` it posts with no script (Save is drawn
+  enabled, and wiring disables it until a change).
+
+  The save state is the on/off row's line (`savestate.css`'s look, the
+  kit's `kit.savestate.*` words, `SAVING_AFTER_MS`), not `createSaveState`:
+  that one autosaves after a pause and retries in the background, where
+  this row saves when the person presses Save and says a failure under the
+  field.
+
+- **The shared verbs**: `kit.verb.save`, `kit.verb.cancel`,
+  `kit.verb.delete`, `kit.verb.close` and `kit.verb.retry` (Save, Cancel,
+  Delete, Close, Try again) in en, es and ja. `kitVerb(lang, "save")`
+  picks one (`VERBS` lists them); `DenUI.verb("save")` does in the kit's
+  language. A host-only action keeps its own words ("Save folders").
+  `hostWords(w, lang)` turns a host's words (text or `{ key, vars }`) into
+  text, as the kit's pieces do.
+
+- `DenUI.settingField(el, opts)` and `DenUI.settingFieldHtml` are the same,
+  in the kit's language.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

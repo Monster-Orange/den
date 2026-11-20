@@ -57,11 +57,16 @@ import type {
 } from "./shell-html.js";
 import type { buttonHtml } from "./button.js";
 import type {
+  SettingField,
+  SettingFieldHydrateOptions,
+  SettingFieldOptions,
   SettingRow,
   SettingRowHydrateOptions,
   SettingRowOptions,
+  settingFieldHtml,
   settingRowHtml,
 } from "./setting-row.js";
+import type { Verb } from "./strings.js";
 import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
@@ -197,6 +202,16 @@ export declare function settingRow(
   el: HTMLElement,
   opts: SettingRowHydrateOptions & Partial<SettingRowOptions>,
 ): SettingRow;
+/**
+ * The settings row's text-field variant, in the kit's language: with a
+ * row's data (a label), drawn into el first; else the row el holds is wired.
+ */
+export declare function settingField(
+  el: HTMLElement,
+  opts: SettingFieldHydrateOptions & Partial<SettingFieldOptions>,
+): SettingField;
+/** A shared verb in the kit's language. */
+export declare function verb(name: Verb): string;
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
@@ -257,6 +272,9 @@ export interface DenUIKit {
   pageMenu: typeof pageMenu;
   settingRowHtml: typeof settingRowHtml;
   settingRow: typeof settingRow;
+  settingFieldHtml: typeof settingFieldHtml;
+  settingField: typeof settingField;
+  verb: typeof verb;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

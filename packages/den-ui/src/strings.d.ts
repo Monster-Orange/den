@@ -16,3 +16,18 @@ export declare function kitT(
 ): string;
 /** HTML-escaped text. */
 export declare function esc(v: unknown): string;
+/** A shared verb's name: "kit.verb.<name>" in every table. */
+export type Verb = "save" | "cancel" | "delete" | "close" | "retry";
+/** The shared verbs: Save, Cancel, Delete, Close, Try again. */
+export declare const VERBS: readonly Verb[];
+/** A shared verb in `lang` (else en). */
+export declare function kitVerb(lang: string | undefined, verb: Verb): string;
+/** A host's words: its own text, or { key, vars } in the kit's tables. */
+export type HostWords =
+  | string
+  | { key: string; vars?: Record<string, string | number> };
+/** A host's words in `lang` ("" for null). */
+export declare function hostWords(
+  w: HostWords | null | undefined,
+  lang?: string,
+): string;

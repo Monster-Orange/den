@@ -26,6 +26,10 @@ import {
   kitT,
   addStrings,
   en,
+  kitVerb,
+  hostWords,
+  VERBS,
+  type Verb,
 } from "@kit/strings.js";
 import { icon } from "@kit/icons.js";
 import { versionLabel } from "@kit/version.js";
@@ -51,6 +55,10 @@ import {
   mountSettingRow,
   hydrateSettingRow,
   type SettingRow,
+  settingFieldHtml,
+  mountSettingField,
+  hydrateSettingField,
+  type SettingField,
 } from "@kit/setting-row.js";
 import {
   busyAction,
@@ -369,3 +377,24 @@ sr.set("error");
 void sr.checked();
 hydrateSettingRow(document.createElement("div"), { onSave: () => undefined }).destroy();
 DenUI.settingRow(document.createElement("div"), { id: "r", label: "On" }).destroy();
+
+// The settings row's text-field variant and the shared verbs (issue 584).
+void settingFieldHtml({ id: "f", label: { key: "app.f", vars: { n: 2 } }, value: "a\nb", multiline: true, rows: 6, placeholder: "x", help: "h", error: null, saveLabel: { key: "kit.verb.save" }, state: "saving", form: { action: "/f" } });
+const sf: SettingField = mountSettingField(document.createElement("div"), {
+  id: "f",
+  label: "Folders",
+  action: "folders.save",
+  onSave: async (value: string, headers?: Record<string, string>) => value.trim() + String(headers ?? ""),
+});
+sf.set("saved");
+sf.setError({ key: "app.bad" });
+sf.setError(null);
+const fv: string = sf.value();
+void fv;
+void sf.save();
+hydrateSettingField(document.createElement("div"), { onSave: () => undefined }).destroy();
+DenUI.settingField(document.createElement("div"), { id: "f", label: "Folders" }).destroy();
+const verb: string = kitVerb("es", "retry") + DenUI.verb("close");
+const vs: readonly Verb[] = VERBS;
+const hw: string = hostWords({ key: "kit.verb.save" }, "ja") + hostWords("Keep");
+void [verb, vs, hw];
