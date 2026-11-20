@@ -9,10 +9,12 @@
 // the rule were gone, a loopback name never answers the check as this Den,
 // so nothing would be saved (a 422 there is a FAIL: the wrong refusal).
 // Clause 2 reads doctor, and runs only when the bed's own address is a
-// loopback name (the paths above refuse to make one). Clause 3 needs an
-// alias of the bed that isn't loopback, reached by the browser, while the
-// address is wrong; it only looks at the offer and never presses it (that
-// is the owner's act, and it would change the bed's address for good).
+// loopback name (the paths above refuse to make one). Clause 3 runs last:
+// on an edge alias of the bed (https, not loopback, not the address), it
+// makes the address wrong for a bounded window with ctx.addressDead (the
+// harness puts it back), then opens the alias signed out and signed in as
+// the owner and looks for the offer. It never presses it (the owner's act,
+// and it would change the bed's address for good).
 // The loopback /signin redirect is issue 601's, not asserted here.
 export const issue = 666;
 export const clauses = [
@@ -30,6 +32,8 @@ const LOOPS = [
   "https://[::1]:7443",
 ];
 const SAYS = /names this machine only/;
+const LOOP_HOST = (h) =>
+  /^(localhost|.*\.localhost|127\..*|\[?::1\]?|0\.0\.0\.0)$/i.test(h);
 
 /** doctor --json's address check, or null. */
 function addressRow(out) {
@@ -86,28 +90,41 @@ export async function run(ctx) {
   const row = addressRow(d.out);
 
   // Clause 3: what this browser is offered, on the address it is on.
-  await ctx.goto(ctx.page, "/settings?q=web.url");
+  const look = async () => {
+    await ctx.goto(ctx.page, "/settings?q=web.url");
+    return ctx.page
+      .evaluate(async () => {
+        const r = await fetch("/api/web-url", { credentials: "same-origin" });
+        return r.ok ? r.json() : { status: r.status };
+      })
+      .catch(() => null);
+  };
+  let here = await look();
   const origin = new URL(ctx.page.url()).origin;
-  const here = await ctx.page
-    .evaluate(async () => {
-      const r = await fetch("/api/web-url", { credentials: "same-origin" });
-      return r.ok ? r.json() : { status: r.status };
-    })
-    .catch(() => null);
+  // Den offers only an alias that isn't loopback, and only to a browser on
+  // a name other than the address itself (offeredAlias).
+  const onAlias =
+    origin.startsWith("https:") &&
+    !LOOP_HOST(new URL(origin).hostname) &&
+    origin !== (here?.url ?? null);
+  let dead = null;
+  if (!(here?.offer && here.offer === origin) && onAlias) {
+    if (typeof ctx.addressDead === "function") {
+      // Last: the address is wrong (not answering) for a bounded window
+      // after this, and the harness puts it back.
+      try {
+        dead = await ctx.addressDead({ keepSeconds: 30, maxMs: 180000 });
+      } catch (e) {
+        dead = { error: String(e?.message ?? e).slice(0, 80) };
+      }
+      if (!dead?.error && !dead?.timedOut) here = await look();
+    } else dead = { missing: true };
+  }
   let offer = null;
   if (here?.offer && here.offer === origin) {
-    const btn = ctx.page.locator(`[data-addr-adopt="${here.offer}"]`);
-    const shown = await btn
-      .waitFor({ timeout: 15000 })
-      .then(() => true)
-      .catch(() => false);
-    offer = {
-      alias: here.offer,
-      shown,
-      label: shown ? ((await btn.textContent()) ?? "").trim() : "",
-    };
-    await ctx.shot("666-offer");
-    // Signed out on the alias: the sign-in page leads with the offer.
+    offer = { alias: here.offer };
+    // Signed out on the alias: the sign-in page leads with the offer,
+    // never the device-code page.
     const out = await ctx.signedOut(ctx.browser, ctx.width);
     try {
       await ctx.goto(out.page, "/");
@@ -122,6 +139,21 @@ export async function run(ctx) {
     } finally {
       await out.page.context().close().catch(() => {});
     }
+    // Signed in as the owner (the harness's page): Settings offers it.
+    await ctx.goto(ctx.page, "/settings?q=web.url");
+    const btn = ctx.page.locator(`[data-addr-adopt="${here.offer}"]`);
+    offer.shown = await btn
+      .waitFor({ timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    offer.label = offer.shown ? ((await btn.textContent()) ?? "").trim() : "";
+    offer.signedIn = await ctx.page
+      .evaluate(async () => {
+        const r = await fetch("/api/session", { credentials: "same-origin" });
+        return !!(await r.json().catch(() => ({}))).signedIn;
+      })
+      .catch(() => false);
+    await ctx.shot("666-offer");
   }
 
   const seen = {
@@ -134,6 +166,8 @@ export async function run(ctx) {
     here: here
       ? { url: here.url ?? null, loopback: !!here.loopback, offer: here.offer ?? null }
       : null,
+    onAlias,
+    ...(dead ? { dead } : {}),
     offer,
   };
   ctx.log?.(`666: ${JSON.stringify(seen)}`);
@@ -187,20 +221,46 @@ export function expect(cells) {
             : "no address row in doctor --json",
         },
   );
+  const deadSaid = !r.dead
+    ? "addressDead not needed or not run"
+    : r.dead.missing
+      ? "no ctx.addressDead"
+      : r.dead.error
+        ? `addressDead failed: ${r.dead.error}`
+        : `addressDead waited ${r.dead.waitedMs ?? "?"} ms${r.dead.timedOut ? ", timed out" : ""}`;
   rows.push(
-    !r.offer
+    r.offer
       ? {
           clause: clauses[2],
-          ok: null,
-          skip: "needs-wrong-address-bed",
-          detail: `the browser is on ${r.origin}; the server offers ${r.here?.offer ?? "no alias"} (address ${r.here?.url ?? "unset"}${r.here?.loopback ? ", loopback" : ""}). The bed needs an edge alias that isn't loopback (a split-DNS name with the edge's https and proof, on one of its edge routes), the browser on it, and the address wrong (loopback, unconfirmed or not answering)`,
+          ok: !!(
+            r.offer.signinOffer &&
+            r.offer.shown &&
+            r.offer.signedIn &&
+            r.offer.label.includes(new URL(r.offer.alias).host)
+          ),
+          detail: `on ${r.offer.alias} (${deadSaid}): signed out, the sign-in page ${r.offer.signinOffer ? `leads with "${r.offer.signinTitle}"` : "has no offer"}; signed in ${r.offer.signedIn ? "yes" : "no"}, Settings ${r.offer.shown ? `shows "${r.offer.label}"` : "has no offer"}`,
+          evidence: ["666-signin-offer", "666-offer"],
         }
-      : {
-          clause: clauses[2],
-          ok: !!(r.offer.shown && r.offer.label.includes(new URL(r.offer.alias).host) && r.offer.signinOffer),
-          detail: `on ${r.offer.alias}: Settings shows "${r.offer.label}" (${r.offer.shown ? "shown" : "missing"}); signed out, the sign-in page ${r.offer.signinOffer ? `leads with "${r.offer.signinTitle}"` : "has no offer"}`,
-          evidence: ["666-offer", "666-signin-offer"],
-        },
+      : r.dead?.missing
+        ? {
+            clause: clauses[2],
+            ok: null,
+            skip: "needs-wrong-address-bed",
+            detail:
+              "ctx.addressDead is missing, so the address can't be made wrong for a bounded window",
+          }
+        : !r.onAlias
+          ? {
+              clause: clauses[2],
+              ok: null,
+              skip: "needs-edge-alias",
+              detail: `the browser is on ${r.origin}, the address is ${r.here?.url ?? "unset"}${r.here?.loopback ? " (loopback)" : ""}, and the server offers ${r.here?.offer ?? "no alias"}. Den offers only an alias that isn't loopback, to a browser on a name other than the address, so a dead address alone can't show it: the bed needs a second edge name that isn't *.localhost (a split-DNS name with the edge's https and proof, on one of its edge routes), with the browser opened on it`,
+            }
+          : {
+              clause: clauses[2],
+              ok: false,
+              detail: `on ${r.origin} with the address ${r.here?.url ?? "unset"} wrong (${deadSaid}): no offer (the server offers ${r.here?.offer ?? "none"})`,
+            },
   );
   return rows;
 }
