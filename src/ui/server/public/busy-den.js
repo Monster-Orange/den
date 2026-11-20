@@ -401,3 +401,9 @@ export function busyAction(name, run, opts = {}) {
   setUp();
   return kitBusy(name, run, opts);
 }
+
+/**
+ * Issue 698: the kit's dots alone (no pop-up), for a wait that says its
+ * own words: holdDots(button), then holdDots(button, false).
+ */
+export { holdDots } from "/kit/busy.js";

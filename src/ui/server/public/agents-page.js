@@ -3411,7 +3411,8 @@ function wireOrder(agl) {
 
 // ── the double-click fix: one action per agent at a time ───────────────
 // Held while the server answers. Every redraw (the list's poll, a pane's
-// header) paints the agent's buttons disabled, the pressed one "Working…",
+// header) paints the agent's buttons disabled, the pressed one held with
+// the kit's dots (issue 698),
 // so a second click can't send it again; the server answers a repeat
 // with the first result anyway. Success clears it; an error is shown and
 // the buttons come back.
@@ -3432,7 +3433,10 @@ async function oneAtATime(r, verb, fn) {
   }
 }
 
-/** Paint every busy agent's buttons: disabled, the pressed one "Working…". */
+/** Each pressed button held with dots here, with its release. */
+const dotsHeld = new WeakMap();
+
+/** Paint every busy agent's buttons: disabled, the pressed one's dots. */
 function paintBusy() {
   const root = st.root;
   if (!root) return;
@@ -3450,13 +3454,14 @@ function paintBusy() {
     if (verb) {
       if (!b.disabled) b.disabled = true;
       b.setAttribute("aria-busy", verb === b.dataset.act ? "true" : "false");
-      if (verb === b.dataset.act && b.dataset.busyWas === undefined) {
-        b.dataset.busyWas = b.textContent;
-        b.textContent = t("ag.working");
-      }
-    } else if (b.dataset.busyWas !== undefined) {
-      b.textContent = b.dataset.busyWas;
-      delete b.dataset.busyWas;
+      // Issue 698: the kit's dots in place of the label (a redrawn
+      // button too), never words of its own.
+      if (verb === b.dataset.act && !dotsHeld.has(b))
+        dotsHeld.set(b, window.denShell?.holdDots?.(b) ?? (() => {}));
+    } else if (dotsHeld.has(b)) {
+      const release = dotsHeld.get(b);
+      dotsHeld.delete(b);
+      void release();
       b.removeAttribute("aria-busy");
       b.disabled = false;
     }
@@ -4755,8 +4760,8 @@ async function submitStart(form) {
   const bad = sd.extras.find((c) => commandProblem(c));
   if (sd.pid !== PLAIN && bad)
     return showStartError(new Error(t("pe.badCmd", { c: bad })));
+  // Issue 698: busyAction holds Go with the kit's dots.
   go.disabled = true;
-  go.textContent = t("ag.starting");
   // BUSY-1: the working pop-up while Den starts it; the dialog keeps the
   // error too.
   const plain = sd.pid === PLAIN;
@@ -4822,8 +4827,10 @@ async function submitPersonaChange(when) {
   if (sd.model) body.model = sd.model;
   if (sd.model && sd.ver) body.version = sd.ver;
   if (when) body.when = when;
+  // Issue 698: the kit's dots on Go until the answer; the dialog says
+  // what happened.
+  const release = window.denShell?.holdDots?.(go) ?? (async () => {});
   go.disabled = true;
-  go.textContent = t("ag.pc.going");
   $d("#ag-err").hidden = true;
   try {
     const r = await api(
@@ -4853,6 +4860,7 @@ async function submitPersonaChange(when) {
     if (err?.code === "busy") showBusy();
     else showStartError(err);
   } finally {
+    await release();
     go.textContent = goLabel();
     if (dlg.open) paintRuntime(false);
   }
@@ -4886,8 +4894,9 @@ async function submitBringIn(ws) {
   const c = bringPick();
   const p = curPersona();
   if (!c || !p) return;
+  // Issue 698: the kit's dots on Go until the answer.
+  const release = window.denShell?.holdDots?.(go) ?? (async () => {});
   go.disabled = true;
-  go.textContent = t("ag.bring.going");
   try {
     const r = await api(
       "POST",
@@ -4912,6 +4921,7 @@ async function submitBringIn(ws) {
     // Still open elsewhere, or taken since: the list says so now.
     await fillConversations(ws);
   } finally {
+    await release();
     go.textContent = t("ag.bring.go");
     if (dlg.open) paintRuntime(false);
   }
@@ -5971,10 +5981,11 @@ function openComposer(r, text) {
     const c = makeComposer({
       t,
       name,
+      holds: true,
       // BUSY-1: Send goes through the working pop-up. A quick refusal
       // comes back to the composer, which says it; the pop-up closed
       // after a failure resolves null, and the text stays in the box.
-      send: async ({ text: said }) => {
+      send: async ({ text: said, button }) => {
         const out = await window.denShell.busyAction(
           "send-message",
           (headers) =>
@@ -5985,6 +5996,7 @@ function openComposer(r, text) {
               { headers },
             ),
           {
+            button,
             vars: { name },
             quietFail: true,
             inlineError: true,

@@ -2091,7 +2091,7 @@
           } else if (action === "add-svc") {
             addService(wsName);
           } else if (action === "remove-svc") {
-            removeService(wsName, btn.dataset.address);
+            removeService(wsName, btn.dataset.address, btn);
           } else if (action === "add-dep") {
             openAddSvcModal(wsName);
             setTimeout(() => {
@@ -4203,7 +4203,7 @@
         };
 
         // ── Remove service ────────────────────────────────────────────────────────
-        window.removeService = async function (wsName, address) {
+        window.removeService = async function (wsName, address, button) {
           const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
           const sure = await askConfirm({
             title: dT("dlg.removeSvcT"),
@@ -4223,7 +4223,8 @@
                 { workspace: wsName, address },
                 { headers },
               ),
-            { vars: { name: address } },
+            // Issue 698: the row's Remove shows the kit's dots.
+            { button, vars: { name: address } },
           );
           await loadWorkspaces();
           await renderContent(wsName);

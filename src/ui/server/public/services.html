@@ -438,7 +438,7 @@
                     : `<span style="color:var(--muted);font-size:11px">${t("svc.ws.managed", { branch: entry.branch ?? "main" })}</span>`;
                 return `<div class="ws-service-row">
             <span>${addr}</span>${meta}
-            <button title="${t("svc.ws.remove")}" onclick="removeService('${addr}')">×</button>
+            <button title="${t("svc.ws.remove")}" onclick="removeService('${addr}', this)">×</button>
           </div>`;
               })
               .join("");
@@ -575,7 +575,7 @@
           await Promise.all([loadServices(), refreshWsPanel()]);
         };
 
-        window.removeService = async function (address) {
+        window.removeService = async function (address, button) {
           // Issue 133: through the working pop-up (a slow answer shows it;
           // a failure says so there, with Try again).
           let removed = false;
@@ -588,7 +588,12 @@
                 { address },
                 { headers },
               ),
-            { vars: { name: address }, onDone: () => (removed = true) },
+            // Issue 698: the row's × shows the kit's dots.
+            {
+              button,
+              vars: { name: address },
+              onDone: () => (removed = true),
+            },
           );
           if (!removed) return;
           await Promise.all([loadServices(), refreshWsPanel()]);

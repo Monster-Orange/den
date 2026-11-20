@@ -423,6 +423,10 @@ pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
   `data-instant="opens a menu"`. An empty reason doesn't count;
   `instantProblems(html)` lists each one (a kit test runs it over the
   kit and its first product's pages).
+- A wait that says its own words and isn't one request through
+  `busyAction` (a stream's output, a form with its own error line) holds
+  its button with the dots alone: `holdDots(button)`, then
+  `holdDots(button, false)` to give the label back. No pop-up opens.
 - `opts.dots: false` on busyAction holds a button the old way (no dots,
   the pop-up at `OPEN_MS`).
 - The look is in `src/busy.css`, under "issue 699: the held button"
