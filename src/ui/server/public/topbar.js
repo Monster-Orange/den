@@ -1481,7 +1481,9 @@ function openLock() {
     const saveCb = $("den-lock-vault");
     const pw = input.value;
     if (!pw) return;
-    btn.textContent = t("lock.checking");
+    // Issue 698: the kit's dots on the button until the answer; a wrong
+    // password is said under it.
+    const release = sh()?.holdDots?.(btn) ?? (async () => {});
     btn.disabled = true;
     err.hidden = true;
     const saveToVault = !!(saveLabel() && saveCb?.checked);
@@ -1509,10 +1511,8 @@ function openLock() {
       input.value = "";
       input.focus();
     } finally {
-      if (btn.isConnected) {
-        btn.textContent = t("lock.go");
-        btn.disabled = false;
-      }
+      await release();
+      if (btn.isConnected) btn.disabled = false;
     }
   };
   pop.querySelector("form").addEventListener("submit", onSubmit);

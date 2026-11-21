@@ -202,7 +202,8 @@ async function say(body) {
 }
 
 /** The composer's Send: once more with a new key if this one expired. */
-async function send(body) {
+// The composer hands its Send button too (issue 698); it stays here.
+async function send({ button, ...body }) {
   if (!key) await connect();
   if (!key) throw new Error(t("emb.signinWhy"));
   let r = await say(body);

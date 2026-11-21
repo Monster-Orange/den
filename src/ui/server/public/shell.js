@@ -1344,7 +1344,6 @@
     "lock.saveTo": "Save to {s}",
     "lock.pw": "Admin password",
     "lock.go": "Continue",
-    "lock.checking": "Checking…",
     "lock.note": "Den uses it only for sudo. Agents can't enter it.",
     "lock.saved": "Admin password kept for this session",
     "lock.savedTo": "Admin password kept for this session and saved to {s}",
@@ -2034,7 +2033,6 @@
     "addr.unset": "Not set. The links __DEN_TITLE__ gives people need it.",
     "addr.label": "Address",
     "addr.check": "Check and save",
-    "addr.checking": "Checking…",
     "addr.checkW": "Checking that {url} answers",
     "addr.saved": "Saved: {url} answered.",
     "addr.notSaved": "Not saved. The old address stays.",
@@ -2154,8 +2152,6 @@
     "ag.runtime.default": "{name} (persona default)",
     "ag.unavailable": "unavailable",
     "ag.go": "Start",
-    "ag.starting": "Starting…",
-    "ag.working": "Working…",
     "ag.cancel": "Cancel",
     "ag.started": "Started agent {id}",
     "ag.stopped": "Stopped agent {id}",
@@ -2320,7 +2316,6 @@
     "ag.pc.note":
       "Den stops it and resumes the same conversation as the new persona. Its id, name, folder and tab stay.",
     "ag.pc.go": "Change persona",
-    "ag.pc.going": "Changing…",
     "ag.pc.current": "current",
     "ag.pc.busy": "It's working. Change after this turn, or stop it now?",
     "ag.pc.after": "After this turn",
@@ -2402,7 +2397,6 @@
     "ag.stoppedGroupTip":
       "Agents that aren't running. Open one for its details.",
     "ag.bring.go": "Bring in",
-    "ag.bring.going": "Bringing in…",
     "ag.bring.done": "Brought in as {id}",
     "ag.bring.now": "just now",
     "ag.bring.min": "{n} min ago",
@@ -3470,7 +3464,6 @@
     "lg.search.none": 'no matches for "{q}" in any service\'s history',
     "lg.aws.expired": "AWS sign-in expired",
     "lg.aws.reauth": "Re-authenticate",
-    "lg.aws.authenticating": "Authenticating…",
     "lg.aws.retry": "Retry",
     "lg.aws.failed": "login failed",
     "lg.aws.connErr": "connection error",
@@ -8552,6 +8545,34 @@
       return loadBusy().then(function (m) {
         return m.busyAction(name, run, opts);
       });
+    },
+    /**
+     * Issue 698: the kit's pulsing dots alone, no pop-up, for a wait that
+     * says its own words (a stream, a form with its own error line).
+     * holdDots(button) holds it at once; it returns release(), which gives
+     * the label back (a label the page drew meanwhile stays).
+     */
+    holdDots: function (button) {
+      if (!button) return function () {};
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      var held = loadBusy()
+        .then(function (m) {
+          m.holdDots(button, true);
+          return m;
+        })
+        .catch(function () {
+          return null;
+        });
+      return function () {
+        return held.then(function (m) {
+          if (m) m.holdDots(button, false);
+          else {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+        });
+      };
     },
     /** Light rail item `id` for this page (null: the page's own). */
     setRailLit: function (id) {

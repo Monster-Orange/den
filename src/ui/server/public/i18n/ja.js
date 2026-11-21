@@ -453,7 +453,6 @@
     "lock.saveTo": "{s} に保存",
     "lock.pw": "管理者パスワード",
     "lock.go": "続行",
-    "lock.checking": "確認中…",
     "lock.note":
       "Den はこれを sudo にだけ使います。エージェントは入力できません。",
     "lock.saved": "このセッションの間、管理者パスワードを保持します",
@@ -1022,7 +1021,6 @@
     "addr.unset": "未設定です。__DEN_TITLE__ が渡すリンクに必要です。",
     "addr.label": "アドレス",
     "addr.check": "確認して保存",
-    "addr.checking": "確認しています…",
     "addr.checkW": "{url} が応答するか確認しています",
     "addr.saved": "保存しました: {url} が応答しました。",
     "addr.notSaved": "保存していません。前のアドレスのままです。",
@@ -1266,8 +1264,6 @@
     "ag.runtime.default": "{name}（ペルソナの既定）",
     "ag.unavailable": "利用不可",
     "ag.go": "開始",
-    "ag.starting": "開始中…",
-    "ag.working": "処理中…",
     "ag.cancel": "キャンセル",
     "ag.started": "エージェント {id} を開始しました",
     "ag.stopped": "エージェント {id} を停止しました",
@@ -1426,7 +1422,6 @@
     "ag.pc.note":
       "Den はいったん停止し、同じ会話を新しいペルソナで再開します。ID、名前、フォルダー、タブはそのままです。",
     "ag.pc.go": "ペルソナを変更",
-    "ag.pc.going": "変更中…",
     "ag.pc.current": "現在",
     "ag.pc.busy":
       "作業中です。このターンの後に変更しますか、それとも今すぐ停止しますか?",
@@ -1513,7 +1508,6 @@
     "ag.stoppedGroupTip":
       "実行していないエージェント。開くと詳細が表示されます。",
     "ag.bring.go": "取り込む",
-    "ag.bring.going": "取り込み中…",
     "ag.bring.done": "{id} として取り込みました",
     "ag.bring.now": "たった今",
     "ag.bring.min": "{n} 分前",
@@ -3314,7 +3308,6 @@
     "lg.search.none": "どのサービスの履歴にも「{q}」は見つかりません",
     "lg.aws.expired": "AWS のサインインが期限切れです",
     "lg.aws.reauth": "再認証",
-    "lg.aws.authenticating": "認証中…",
     "lg.aws.retry": "再試行",
     "lg.aws.failed": "ログインに失敗しました",
     "lg.aws.connErr": "接続エラー",

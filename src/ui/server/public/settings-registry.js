@@ -5181,8 +5181,8 @@ function renderAddress(host, ctx) {
         if (!url) return say(t("addr.empty"), true);
         say("");
         input.disabled = true;
-        btn.textContent = t("addr.checking");
-        // BUSY-1: the working pop-up says it is checking, then what happened.
+        // BUSY-1: the working pop-up says it is checking, then what happened;
+        // issue 698: Check shows the kit's dots until the answer.
         ctx.shell
           .busyAction(
             "check-address",
@@ -5207,7 +5207,6 @@ function renderAddress(host, ctx) {
           })
           .finally(() => {
             input.disabled = false;
-            btn.textContent = t("addr.check");
           });
       });
     })

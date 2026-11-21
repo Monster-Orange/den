@@ -274,24 +274,30 @@ async function start(ws, form) {
   const persona = form.querySelector('select[name="persona"]').value;
   const runtime = form.querySelector('select[name="runtime"]').value;
   if (!persona) return;
-  go.disabled = true;
-  go.textContent = t("ag.starting");
-  try {
-    const r = await api("POST", base(ws), {
-      persona,
-      ...(runtime ? { runtime } : {}),
-    });
-    window.denShell?.toast?.(t("ag.started", { id: r?.agent?.id ?? persona }));
+  // Issue 698: the working pop-up holds Start with the kit's dots until
+  // the answer; a refusal says why there, with Try again.
+  const r = await window.denShell.busyAction(
+    "start-agent",
+    (headers) =>
+      api(
+        "POST",
+        base(ws),
+        { persona, ...(runtime ? { runtime } : {}) },
+        { headers },
+      ),
+    {
+      button: go,
+      vars: { name: persona },
+      success: (o) => t("ag.started", { id: o?.agent?.id ?? persona }),
+      next: (err) => quarantineNext(err, t, ws),
+    },
+  );
+  if (r) {
     form.hidden = true;
     form
       .closest("section")
       ?.querySelector("#agent-start-open")
       ?.setAttribute("aria-expanded", "false");
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-  } finally {
-    go.disabled = false;
-    go.textContent = t("ag.go");
   }
   await refresh(ws);
 }

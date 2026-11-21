@@ -469,7 +469,6 @@
     "lock.saveTo": "Guardar en {s}",
     "lock.pw": "Contraseña de administrador",
     "lock.go": "Continuar",
-    "lock.checking": "Comprobando…",
     "lock.note":
       "Den la usa solo para sudo. Los agentes no pueden introducirla.",
     "lock.saved": "Contraseña de administrador guardada para esta sesión",
@@ -1055,7 +1054,6 @@
     "addr.unset": "Sin definir. Los enlaces que da __DEN_TITLE__ la necesitan.",
     "addr.label": "Dirección",
     "addr.check": "Comprobar y guardar",
-    "addr.checking": "Comprobando…",
     "addr.checkW": "Comprobando que {url} responde",
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
@@ -1300,8 +1298,6 @@
     "ag.runtime.default": "{name} (la de la persona)",
     "ag.unavailable": "no disponible",
     "ag.go": "Iniciar",
-    "ag.starting": "Iniciando…",
-    "ag.working": "Procesando…",
     "ag.cancel": "Cancelar",
     "ag.started": "Agente {id} iniciado",
     "ag.stopped": "Agente {id} detenido",
@@ -1468,7 +1464,6 @@
     "ag.pc.note":
       "Den lo detiene y reanuda la misma conversación con la nueva persona. Su id, nombre, carpeta y pestaña se mantienen.",
     "ag.pc.go": "Cambiar persona",
-    "ag.pc.going": "Cambiando…",
     "ag.pc.current": "actual",
     "ag.pc.busy":
       "Está trabajando. ¿Cambiar después de este turno o detenerlo ahora?",
@@ -1556,7 +1551,6 @@
     "ag.stoppedGroupTip":
       "Agentes que no están en marcha. Abre uno para ver sus detalles.",
     "ag.bring.go": "Traer",
-    "ag.bring.going": "Trayendo…",
     "ag.bring.done": "Traída como {id}",
     "ag.bring.now": "ahora mismo",
     "ag.bring.min": "hace {n} min",
@@ -3424,7 +3418,6 @@
       'no hay coincidencias para "{q}" en el historial de ningún servicio',
     "lg.aws.expired": "El acceso a AWS ha caducado",
     "lg.aws.reauth": "Volver a autenticar",
-    "lg.aws.authenticating": "Autenticando…",
     "lg.aws.retry": "Reintentar",
     "lg.aws.failed": "no se pudo iniciar sesión",
     "lg.aws.connErr": "error de conexión",
