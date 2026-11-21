@@ -309,6 +309,25 @@ den gate box remove box2
   machine's. Its runs' expected ends stretch by it, and the run gets
   `DEN_GATE_TIME_SCALE` to stretch its own timeouts.
 
+### An agent can ask
+
+Changing the boxes is yours: `gate box add|remove` and the boxes routes
+refuse an agent. An agent asks instead, with the held writes
+`gate_box_set` (the same fields as `gate box add`; `slots` is `--slots`)
+and `gate_box_remove`:
+
+```
+gate_box_set { name: "box1", ssh: "ci@box1.example", slots: 1 }
+gate_box_remove { name: "box1" }
+```
+
+Den checks the box at the ask and refuses a bad one (or a remove of a box
+it doesn't have) with the same words `gate box add` gives. Nothing changes
+until you Allow it in Den's browser dialog, which shows every field it
+will set. No approval policy runs these without you. On Allow, Den sets
+the box just as your own Settings change does; the activity trail says
+who asked and who allowed. Deny changes nothing.
+
 ### Which runs go to a box
 
 A browser run says where it may go:

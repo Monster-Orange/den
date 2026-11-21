@@ -55,7 +55,7 @@ import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
-import { checkBox } from "../../shared/gates/boxes.js";
+import { checkBox, type GateBox } from "../../shared/gates/boxes.js";
 import {
   browserSlotCheck,
   browserSlotRefusal,
@@ -68,6 +68,7 @@ import {
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
+import type { AskedBy } from "./approvals.js";
 import type { HeldOp } from "./held-actions.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 import {
@@ -555,14 +556,12 @@ async function handleBoxes(
   if (pathname === "/api/gate-slots/boxes") {
     const c = checkBox(body.box);
     if (!c.ok) return sendJson(res, { ok: false, error: c.error }, 400);
-    store.setBox(c.box);
-    audit(`test box ${c.box.name} set (${c.box.browser_slots} browser slots)`);
+    setTestBox(store, c.box, audit);
     return sendJson(res, { ok: true, boxes: store.boxes() });
   }
   const name = typeof body.name === "string" ? body.name : "";
-  if (!store.removeBox(name))
+  if (!removeTestBox(store, name, audit))
     return sendJson(res, { ok: false, error: "no such test box" }, 404);
-  audit(`test box ${name} removed`);
   return sendJson(res, { ok: true, boxes: store.boxes() });
 }
 
@@ -696,4 +695,162 @@ export async function handleGateRoutes(
     principalOf(req),
   );
   return sendJson(res, { ok: true, slots: gateView(d.store()).slots });
+}
+
+/**
+ * Issue 625: set one test box and record it. The person's route and the
+ * held write gate_box_set both come here.
+ */
+export function setTestBox(
+  store: GateStore,
+  box: GateBox,
+  audit: (detail: string) => void,
+  by = "",
+): GateBox {
+  const set = store.setBox(box);
+  audit(`test box ${set.name} set (${set.browser_slots} browser slots)${by}`);
+  return set;
+}
+
+/** Issue 625: remove one test box and record it (false: no such box). */
+export function removeTestBox(
+  store: GateStore,
+  name: string,
+  audit: (detail: string) => void,
+  by = "",
+): boolean {
+  if (!store.removeBox(name)) return false;
+  audit(`test box ${name} removed${by}`);
+  return true;
+}
+
+/** The fields of a box the Allow card shows, in order (snake_case → key). */
+const BOX_CARD_FIELDS: readonly [keyof GateBox, string][] = [
+  ["ssh", "ssh"],
+  ["ssh_port", "ssh_port"],
+  ["ssh_identity", "ssh_identity"],
+  ["playwright", "playwright"],
+  ["browser_slots", "slots"],
+  ["hold_file", "hold_file"],
+  ["time_scale", "time_scale"],
+  ["playwright_version", "playwright_version"],
+  ["min_free_mem_mb", "min_free_mem_mb"],
+];
+
+/** The English line for each field on the Allow card. */
+const BOX_CARD_WORDS: Record<string, string> = {
+  ssh: "SSH",
+  ssh_port: "SSH port",
+  ssh_identity: "SSH key file",
+  playwright: "Playwright address",
+  slots: "Browser slots",
+  hold_file: "Hold file",
+  time_scale: "Time scale",
+  playwright_version: "Playwright version",
+  min_free_mem_mb: "Least free memory (MB)",
+};
+
+/** Unset on the card: the same in every language. */
+const UNSET = "—";
+
+/**
+ * Issue 625 follow-up: the held writes gate_box_set and gate_box_remove.
+ * An agent asks to add, replace or remove a test box; only the person's
+ * own Allow changes it (critical: it widens where agents' runs go, and a
+ * remove deletes). The box is checked at ask time with checkBox, and the
+ * Allow card shows every field. On Allow it runs through setTestBox or
+ * removeTestBox, as the person's route does, and the audit says who
+ * asked and who allowed.
+ */
+export function gateBoxOps(d: {
+  store: () => GateStore;
+  audit?: typeof recordAction;
+}): { set: HeldOp; remove: HeldOp } {
+  const audit = (detail: string) =>
+    (d.audit ?? recordAction)(null, { verb: "gate-box", detail });
+  const by = (asked?: AskedBy) =>
+    `; asked by ${asked?.agent ? `agent:${asked.agent}` : "a person"}, allowed by ${asked?.decidedBy ?? "the person"}`;
+  const set: HeldOp = {
+    check(a) {
+      const c = checkBox(a.box);
+      if (!c.ok) return { ok: false, error: c.error };
+      const b = c.box;
+      const replaces = d
+        .store()
+        .boxes()
+        .some((x) => x.name === b.name);
+      const shown = (k: keyof GateBox) =>
+        b[k] === undefined ? UNSET : String(b[k]);
+      return {
+        ok: true,
+        personOnly: true,
+        args: { box: b },
+        summary: `${replaces ? "replace" : "add"} the test box "${b.name}"`,
+        params: { name: b.name, ...(replaces ? {} : { isNew: "1" }) },
+        details: [
+          replaces
+            ? `Replaces the test box "${b.name}" with these settings. Its browser slots take gate runs from agents.`
+            : `Adds the test box "${b.name}". Its browser slots take gate runs from agents.`,
+          ...BOX_CARD_FIELDS.map(
+            ([k, w]) => `${BOX_CARD_WORDS[w]}: ${shown(k)}`,
+          ),
+        ],
+        detailKeys: [
+          {
+            key: replaces
+              ? "ap.det.gate_box_set.replaces"
+              : "ap.det.gate_box_set.adds",
+            vars: { name: b.name },
+          },
+          ...BOX_CARD_FIELDS.map(([k, w]) => ({
+            key: `ap.det.gate_box_set.${w}`,
+            vars: { v: shown(k) },
+          })),
+        ],
+      };
+    },
+    run(a, asked) {
+      try {
+        const c = checkBox(a.box);
+        if (!c.ok) return Promise.resolve({ ok: false, error: c.error });
+        const b = setTestBox(d.store(), c.box, audit, by(asked));
+        return Promise.resolve({ ok: true, box: b });
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: (e as Error).message });
+      }
+    },
+  };
+  const remove: HeldOp = {
+    check(a) {
+      const name = typeof a.name === "string" ? a.name.trim() : "";
+      if (!name) return { ok: false, error: "give name: the test box's name" };
+      if (
+        !d
+          .store()
+          .boxes()
+          .some((b) => b.name === name)
+      )
+        return { ok: false, error: `no test box ${name}` };
+      return {
+        ok: true,
+        personOnly: true,
+        args: { name },
+        summary: `remove the test box "${name}"`,
+        params: { name },
+        details: [
+          `Removes the test box "${name}". Runs on it now finish; no new run goes there.`,
+        ],
+        detailKeys: [{ key: "ap.det.gate_box_remove.what", vars: { name } }],
+      };
+    },
+    run(a, asked) {
+      const name = String(a.name);
+      return Promise.resolve(
+        removeTestBox(d.store(), name, audit, by(asked))
+          ? { ok: true, name }
+          : { ok: false, error: `no test box ${name}` },
+      );
+    },
+  };
+  return { set, remove };
 }
