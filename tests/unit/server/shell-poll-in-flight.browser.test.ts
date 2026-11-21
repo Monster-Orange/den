@@ -58,7 +58,7 @@ async function signedInPage(e: Engine): Promise<Page> {
   return ctx.newPage();
 }
 
-/** /settings, with `answer` answering `path`; how many asks it got. */
+/** /agents (only the shell asks there), `answer` answering `path`. */
 async function watch(
   e: Engine,
   path: string,
@@ -70,7 +70,7 @@ async function watch(
     n++;
     await answer(r);
   });
-  await p.goto(`${s!.base}/settings`, { waitUntil: "load" });
+  await p.goto(`${s!.base}/agents`, { waitUntil: "load" });
   return { p, asks: () => n };
 }
 
@@ -98,7 +98,9 @@ for (const e of ENGINES)
 
     // A refused read whose caller only looks at the status: its body is
     // read all the same, so nothing stays open and the page settles. The
-    // reads a test install's fixture person is refused, all at once.
+    // reads a test install's fixture person is refused, all at once, each
+    // answered by the real server with an error (a route it doesn't have),
+    // never a faked answer (those arrive already read).
     it("refused reads are read in full: the page settles", async () => {
       if (!browsers[e]) return;
       const p = await signedInPage(e);
@@ -110,14 +112,26 @@ for (const e of ENGINES)
         "/api/web/pair",
         "/api/sessions/helpers",
       ])
-        await p.route(`**${path}*`, refuse);
+        await p.route(`**${path}*`, (r) =>
+          r.continue({ url: `${s!.base}/api/no-such-route` }),
+        );
+      const open = new Set<string>();
+      const key = (r: { method(): string; url(): string }) =>
+        `${r.method()} ${new URL(r.url()).pathname}`;
+      p.on("request", (r) => open.add(key(r)));
+      p.on("requestfinished", (r) => open.delete(key(r)));
+      p.on("requestfailed", (r) => open.delete(key(r)));
       for (const page of ["/settings", "/agents"]) {
         await p.goto(`${s!.base}${page}`, { waitUntil: "load" });
         let settles = true;
         await p
           .waitForLoadState("networkidle", { timeout: 15_000 })
           .catch(() => (settles = false));
-        expect({ page, settles }).toEqual({ page, settles: true });
+        expect({ page, settles, open: settles ? [] : [...open] }).toEqual({
+          page,
+          settles: true,
+          open: [],
+        });
       }
       await p.context().close();
     });
