@@ -152,13 +152,18 @@ export function startGateChip(o) {
               box: b.name,
               time: b.opensAt ? gateTime(b.opensAt) : b.opens || "",
             })
-          : b.state === "held" || b.state === "unreachable" || b.state === "low"
+          : b.state === "held" ||
+              b.state === "unreachable" ||
+              b.state === "low" ||
+              b.state === "unknown"
             ? t(
                 b.state === "held"
                   ? "gate.boxHeld"
                   : b.state === "low"
                     ? "gate.boxLow"
-                    : "gate.boxDown",
+                    : b.state === "unknown"
+                      ? "gate.boxMemUnknown"
+                      : "gate.boxDown",
                 { box: b.name, reason: b.reason || "" },
               )
             : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });

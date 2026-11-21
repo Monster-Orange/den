@@ -3715,6 +3715,8 @@
     "gate.boxHeld": "{box}: skipped, held ({reason})",
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
     "gate.boxLow": "{box}: skipped, low on memory ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: skipped, its free memory can't be read ({reason})",
     "gate.boxSkip": "can't use {box}: {reason}",
     "gate.boxOff": "{box}: skipped, turned off",
     "gate.boxClosed": "{box}: skipped, outside its window (opens {time})",

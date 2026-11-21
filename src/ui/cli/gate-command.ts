@@ -510,7 +510,12 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
     const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
     const off = boxOffWords(b);
     if (off) return `box ${b.name}: skipped, ${off}${still}${pw}`;
-    if (b.state === "held" || b.state === "unreachable" || b.state === "low")
+    if (
+      b.state === "held" ||
+      b.state === "unreachable" ||
+      b.state === "low" ||
+      b.state === "unknown"
+    )
       return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}${pw}`;
     return (b.state === "unchecked" ? `${base}, not checked yet` : base) + pw;
   });

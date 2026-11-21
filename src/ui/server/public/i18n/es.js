@@ -2855,6 +2855,8 @@
     "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
     "gate.boxDown": "{box}: omitida, no responde ({reason})",
     "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: omitida, no se puede leer su memoria libre ({reason})",
     "gate.boxSkip": "no puede usar {box}: {reason}",
     "gate.boxOff": "{box}: omitida, apagada",
     "gate.boxClosed": "{box}: omitida, fuera de su horario (abre a las {time})",

@@ -36,7 +36,10 @@ export function boxLines(store: GateStore): {
           ? `open${when}`
           : `skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}${when}`;
     const mark =
-      b.state === "held" || b.state === "unreachable" || b.state === "low"
+      b.state === "held" ||
+      b.state === "unreachable" ||
+      b.state === "low" ||
+      b.state === "unknown"
         ? "⚠"
         : "✓";
     return {
