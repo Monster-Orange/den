@@ -135,6 +135,8 @@ const LISTING: Record<string, Entry> = {
   "gate run": script("wraps a test command, in a terminal or a gate script"),
   "gate status": page("agents.html", 'id="ag-gate"'),
   "gate end": page("gate-chip.js", "/api/gate-slots/end"),
+  // Issue 795: the waiting run's owner (an agent's shell, or MCP) yields.
+  "gate yield": script("a waiting run's owner lets one run ahead of it"),
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
 
   "repo detect": R,
