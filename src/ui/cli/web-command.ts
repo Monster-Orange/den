@@ -1360,17 +1360,7 @@ export function displayWebHelp(): void {
  * alone on stdout; a one-line note on stderr that it grants the user's
  * access. Creates web.secret on first need.
  */
-export function cmdWebToken(
-  args: string[],
-  io: {
-    out: (s: string) => void;
-    err: (s: string) => void;
-    stateDir?: string;
-  } = {
-    out: (s) => process.stdout.write(s),
-    err: (s) => process.stderr.write(s),
-  },
-): number {
+export function cmdWebToken(args: string[], io: CliIo = stdIo): number {
   const usage =
     `Usage: ${product().cli} web token --print\n` +
     "  Prints the token that authorizes your CLI's calls to the web server.\n";
@@ -1382,6 +1372,12 @@ export function cmdWebToken(
   if (!args.includes("--print") || rest.length > 0) {
     io.err(usage);
     return 2;
+  }
+  // Sign-in: the token is the person's, printed only to their terminal.
+  const refused = printRefusal(io);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
   }
   const secret = ensureWebSecret(io.stateDir ?? getStateDir());
   io.err(

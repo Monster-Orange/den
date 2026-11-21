@@ -140,6 +140,8 @@ describe("Sign-in: the deny rules for the person-only sign-in commands", () => {
     "/usr/local/bin/acme web login",
     "cd /tmp && den web login",
     "den web claim-link",
+    "den web token --print",
+    'curl -H "Authorization: Bearer $(den web token --print)" http://localhost:4100/api/x',
   ])("denies %s", (cmd) => expect(denied(rules, cmd)).toBe(true));
   it.each(["den web up", "den web sessions", "den web logout --all"])(
     "leaves %s alone",

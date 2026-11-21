@@ -384,10 +384,11 @@ describe("approve this computer with a code", () => {
     const a = await askCode();
     const gone = await call("DELETE", `/api/signin/code/${a.id}`, lan());
     expect(json(gone)).toEqual({ ok: true, withdrawn: true });
+    // Sign-in: the CLI's bearer approves over localhost, as `web approve` does.
     const r = await call(
       "POST",
       "/api/web/approve",
-      bearer(),
+      { ...bearer(), host: `localhost:${port}` },
       JSON.stringify({ code: a.code }),
     );
     expect([r.status, json(r).code, json(r).error]).toEqual([

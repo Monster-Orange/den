@@ -17,6 +17,7 @@ import {
 import { parentLine } from "../../../src/shared/peer-process.js";
 import {
   cmdWebApprove,
+  cmdWebToken,
   cmdWebClaimLink,
   cmdWebLogin,
   cmdWebLoginWait,
@@ -133,7 +134,7 @@ describe("personHereRefusal", () => {
         stateDir: tmp,
         line: () => [500, 1],
       }),
-    ).toMatch(/An agent can't do this/);
+    ).toMatch(/can't let a browser in from here/);
   });
   it("a terminal outside every session: allowed", () => {
     record("a", 300);
@@ -269,5 +270,57 @@ describe("Sign-in: each refusal says what to do instead", () => {
     expect(noLinkHereLine("https://den.acme.example.com/", "acme")).toBe(
       "https://den.acme.example.com (a sign-in link is printed only in a terminal: run `acme web login` in one)",
     );
+  });
+  it("an agent's session: what to do instead, in plain words", () => {
+    const t = personHereRefusal({
+      env: { DEN_AGENT: "agent:x" },
+      stateDir: tmp,
+      line: () => [500, 1],
+    });
+    expect(t).toMatch(/Run it in your own terminal/);
+    expect(t).toMatch(/Settings › Access/);
+    expect(t).not.toMatch(/An agent can't/);
+  });
+});
+
+describe("Sign-in: web token --print", () => {
+  const tokenIo = (person: { line?: () => number[] | null; tty?: boolean }) =>
+    io(person);
+  it("inside a running session's tree: refused, nothing printed", () => {
+    record("a", 300);
+    const { o, io: i } = tokenIo({
+      line: () => [process.pid, 300, 1],
+      tty: true,
+    });
+    expect(cmdWebToken(["--print"], i)).toBe(1);
+    expect(o.out).toBe("");
+    expect(o.err).toMatch(/Terminals page/);
+  });
+  it("a parent chain that can't be read: refused", () => {
+    const { o, io: i } = tokenIo({ line: () => null, tty: true });
+    expect(cmdWebToken(["--print"], i)).toBe(1);
+    expect(o.out).toBe("");
+  });
+  it("not a terminal: refused, and says where to run it", () => {
+    const { o, io: i } = tokenIo({ line: () => [process.pid, 1], tty: false });
+    expect(cmdWebToken(["--print"], i)).toBe(1);
+    expect(o.out).toBe("");
+    expect(o.err).toMatch(/in a terminal window on this machine/);
+  });
+  it("the person's own terminal: the token", () => {
+    const { o, io: i } = tokenIo({ line: () => [process.pid, 1], tty: true });
+    expect(cmdWebToken(["--print"], i)).toBe(0);
+    expect(o.out.trim().length).toBeGreaterThan(20);
+  });
+});
+
+describe("Sign-in: issue 819", () => {
+  // Skipped: issue 819 (open). Kept here so the case is tracked; it fails
+  // today by design of the current checks.
+  it.skip("issue 819 (open): refused", () => {
+    record("a", 300);
+    expect(
+      personHereRefusal({ env: {}, stateDir: tmp, line: () => [500, 1] }),
+    ).not.toBeNull();
   });
 });

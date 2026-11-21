@@ -1237,6 +1237,7 @@ import {
   agentPeerWait,
   callerLine,
   callerPid,
+  forwardedRequest,
   callerMiss,
   peerSettled,
   personCallerRefusal,
@@ -2741,6 +2742,7 @@ async function personCallerRefused(
   await peerSettled(req, readBinding().waitMs);
   const why = personCallerRefusal({
     loopback: isLoopbackAddress(req.socket?.remoteAddress),
+    forwarded: forwardedRequest(req, GUARD),
     line: callerLine(req),
     roots: sessionRootPids(getStateDir()),
   });

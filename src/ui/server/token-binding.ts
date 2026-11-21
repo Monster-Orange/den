@@ -20,7 +20,12 @@
  */
 import type * as http from "http";
 import type { Socket } from "net";
-import { isLoopbackAddress } from "./request-guard.js";
+import {
+  hostAllowed,
+  isLoopbackAddress,
+  type GuardContext,
+} from "./request-guard.js";
+import { EDGE_PROOF_HEADER } from "../../shared/edge/proof.js";
 import {
   descendsFrom,
   loopbackPeerFind,
@@ -262,10 +267,38 @@ export function callerLine(
  */
 export function personCallerRefusal(o: {
   loopback: boolean;
+  /** It came through the edge, or Den can't tell (forwardedRequest). */
+  forwarded?: boolean;
   line: number[] | null;
   roots: number[] | null;
 }): string | null {
-  if (!o.loopback) return NOT_LOOPBACK;
+  if (!o.loopback || o.forwarded) return NOT_LOOPBACK;
   if (!o.line || o.line.length === 0 || !o.roots) return NOT_CHECKED;
   return o.line.some((p) => o.roots!.includes(p)) ? IN_A_SESSION : null;
+}
+
+/** Headers a proxy in front of Den adds: any of them, and it was forwarded. */
+const FORWARD_HEADERS = [
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "forwarded",
+  EDGE_PROOF_HEADER,
+];
+
+/**
+ * Sign-in: whether this request came through the edge (or any proxy), or
+ * Den can't tell: its Host isn't one of this server's loopback names, or it
+ * carries a forwarding header. The loopback peer is then the proxy, never
+ * the caller.
+ */
+export function forwardedRequest(
+  req: http.IncomingMessage,
+  ctx: Pick<GuardContext, "port" | "loopbackNames" | "edgeHosts" | "lanHosts">,
+): boolean {
+  const h = req.headers ?? {};
+  const host = Array.isArray(h.host) ? h.host[0] : h.host;
+  if (hostAllowed(host, ctx) !== "loopback") return true;
+  return FORWARD_HEADERS.some((k) => h[k] !== undefined);
 }

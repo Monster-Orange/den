@@ -787,7 +787,7 @@ export function checkRequest(
       code: "origin_rejected",
       error:
         "A request that changes something needs an Origin from this server, " +
-        `or \`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `or \`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   }
   if (!originAllowed(origin, ctx))
@@ -1128,7 +1128,7 @@ function mutatingGetRefusal(
       code: "origin_rejected",
       error:
         "This request runs something: it needs this server's own page, or " +
-        `\`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `\`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   return null;
 }

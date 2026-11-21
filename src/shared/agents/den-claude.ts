@@ -463,6 +463,7 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 export const SIGN_IN_DENY_RULES: readonly string[] = [
   "Bash(*web login*)",
   "Bash(*web claim-link*)",
+  "Bash(*web token*)",
 ];
 
 /**

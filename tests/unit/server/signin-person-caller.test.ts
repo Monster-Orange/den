@@ -9,6 +9,7 @@ import type * as http from "http";
 import type { Socket } from "net";
 import {
   callerLine,
+  forwardedRequest,
   personCallerRefusal,
   watchPeer,
 } from "../../../src/ui/server/token-binding.js";
@@ -85,5 +86,33 @@ describe("Sign-in: each server refusal says what to do instead", () => {
     const t = personCallerRefusal({ ...ok, line: null });
     expect(t).toMatch(/your own terminal/);
     expect(t).toMatch(/Settings › Access/);
+  });
+  it("a request that came through the edge: refused, with what to do instead", () => {
+    const t = personCallerRefusal({ ...ok, forwarded: true });
+    expect(t).toMatch(/over localhost/);
+    expect(t).toMatch(/Settings › Access/);
+  });
+});
+
+describe("forwardedRequest", () => {
+  const ctx = {
+    port: 4100,
+    loopbackNames: ["localhost", "127.0.0.1"],
+    edgeHosts: () => ["den.acme.example.com"],
+    lanHosts: () => [],
+  };
+  const r = (headers: Record<string, string>) =>
+    ({ headers }) as unknown as http.IncomingMessage;
+  it("localhost with no forwarding headers: not forwarded", () => {
+    expect(forwardedRequest(r({ host: "localhost:4100" }), ctx)).toBe(false);
+  });
+  it.each([
+    [{ host: "den.acme.example.com" }],
+    [{ host: "localhost:4100", "x-forwarded-for": "10.0.0.2" }],
+    [{ host: "localhost:4100", forwarded: "for=10.0.0.2" }],
+    [{ host: "localhost:4100", "x-forwarded-host": "den.acme.example.com" }],
+    [{}],
+  ])("%j: forwarded (or can't tell)", (h) => {
+    expect(forwardedRequest(r(h), ctx)).toBe(true);
   });
 });
