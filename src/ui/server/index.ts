@@ -1376,6 +1376,7 @@ import {
   edgeDomains,
   edgeHttps,
   edgeNames,
+  webRouteFindings,
   webRouteHosts,
 } from "../../shared/edge/render.js";
 import {
@@ -9515,13 +9516,16 @@ void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
 // localhost (issue 666: migrateWebUrl takes the first alias that isn't,
-// and puts it in place of a loopback one).
+// and puts it in place of a loopback one). A route edge.routes names is
+// taken over the one made from the brand, and corrects an unconfirmed
+// brand-route address once: only the named one may reach other machines.
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
-    return webRouteHosts(readEdgeConfig(), ports).map((r) => ({
+    return webRouteFindings(readEdgeConfig(), ports).map((r) => ({
       url: r.url,
       from: "the edge route to this install",
+      named: r.named,
     }));
   } catch {
     return undefined; // no edge config: nothing to take
