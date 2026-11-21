@@ -620,16 +620,27 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
   }, 90_000);
 });
 
-/** The frame Den's embedded pane is in, once its composer is there. */
+/**
+ * The frame Den's embedded pane is in, once its composer is there. The
+ * frame sends no cookie (0.4.71): each load offers Sign in to Den, and its
+ * pop-up (a Den window, signed in) Allows in one click.
+ */
 async function embFrame(p: Page): Promise<Frame> {
   const t0 = Date.now();
-  while (Date.now() - t0 < 20_000) {
+  while (Date.now() - t0 < 30_000) {
     for (const f of p.frames()) {
       if (f === p.mainFrame()) continue;
       const has = await f
         .evaluate(() => !!document.querySelector(".agc-in"))
         .catch(() => false);
       if (has) return f;
+      const btn = f.locator("#emb-signin");
+      if (await btn.isVisible().catch(() => false)) {
+        const [pop] = await Promise.all([p.waitForEvent("popup"), btn.click()]);
+        await pop.locator("#emc-allow").click();
+        if (!pop.isClosed())
+          await pop.waitForEvent("close", { timeout: 10_000 });
+      }
     }
     await new Promise((r) => setTimeout(r, 200));
   }

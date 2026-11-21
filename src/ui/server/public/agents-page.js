@@ -1875,8 +1875,9 @@ function toggleTermKeys(p) {
       `<button type="button" class="den-btn" data-key="${k}" aria-label="${esc(t(`ag.keys.${k}`))}">${esc(face[k])}</button>`,
   ).join("");
   // A key never takes the focus: the message box keeps it (and the
-  // keyboard stays where it was).
-  row.addEventListener("pointerdown", (e) => {
+  // keyboard stays where it was). On mousedown, not pointerdown: WebKit
+  // drops a tap's click when its pointerdown is cancelled.
+  row.addEventListener("mousedown", (e) => {
     if (e.target.closest("button")) e.preventDefault();
   });
   row.addEventListener("click", (e) => {
