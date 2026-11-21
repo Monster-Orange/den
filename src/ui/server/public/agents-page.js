@@ -103,7 +103,7 @@ import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
 import { startFailText, terminalFailText } from "/pty-refusal.js";
-import { askConfirm } from "/dialog-den.js";
+import { askConfirm, dialogHtml, mountDialog } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
 import { makeComposer } from "/agent-composer.js";
@@ -4477,55 +4477,72 @@ function localInputValue(d) {
  * then its compactions and merged pull requests don't make it rotate.
  */
 function openDefer(r, opener) {
-  const dlg = $d("#ag-df");
-  if (!dlg || dlg.open) return;
-  const input = $d("#ag-df-at");
-  const err = $d("#ag-df-err");
-  const go = $d("#ag-df-go");
-  const clear = $d("#ag-df-clear");
+  if (document.getElementById("ag-df")?.open) return;
   const id = displayName(r);
-  $d("#ag-df-h").textContent = t("ag.df.title", { id });
-  $d("#ag-df-t").textContent = t("ag.df.until");
-  $d("#ag-df-help").textContent = t("ag.df.help");
-  go.textContent = t("ag.df.go");
-  clear.textContent = t("ag.df.clear");
-  $d("#ag-df-cancel").textContent = t("ag.df.cancel");
   const was = r.rotation?.deferredUntil;
-  clear.hidden = !was;
-  input.min = localInputValue(new Date());
-  input.value = localInputValue(
-    was ? new Date(was) : new Date(Date.now() + 2 * 3_600_000),
-  );
-  err.hidden = true;
-  const close = () => {
-    dlg.close?.();
-    dlg.removeAttribute("open");
-    opener?.focus?.();
-  };
+  const start = was ? new Date(was) : new Date(Date.now() + 2 * 3_600_000);
+  // The kit's confirm frame (issues 669, 670): no dialog of its own.
+  const html = dialogHtml({
+    kind: "confirm",
+    role: "dialog",
+    id: "ag-df",
+    ids: { h: "ag-df-h", m: "ag-df-help" },
+    title: t("ag.df.title", { id }),
+    body: `<p>${esc(t("ag.df.help"))}</p>`,
+    extra:
+      `<label class="dk-opt" for="ag-df-at" id="ag-df-t">${esc(t("ag.df.until"))}</label>` +
+      `<input class="dk-in" id="ag-df-at" type="datetime-local" required min="${esc(localInputValue(new Date()))}" value="${esc(localInputValue(start))}">` +
+      `<p class="dk-msg" id="ag-df-err" role="alert" hidden></p>`,
+    actions: [
+      {
+        label: t("ag.df.cancel"),
+        value: "cancel",
+        attrs: { id: "ag-df-cancel" },
+      },
+      ...(was
+        ? [
+            {
+              label: t("ag.df.clear"),
+              value: "clear",
+              attrs: { id: "ag-df-clear" },
+            },
+          ]
+        : []),
+      {
+        label: t("ag.df.go"),
+        value: "go",
+        kind: "primary",
+        attrs: { id: "ag-df-go" },
+      },
+    ],
+  });
+  const h = mountDialog(html, { opener, focus: "#ag-df-at", show: false });
+  const dlg = h.dialog;
+  const input = dlg.querySelector("#ag-df-at");
+  const err = dlg.querySelector("#ag-df-err");
   const save = async (until, button) => {
     const out = await window.denShell.busyAction(
       "rotation-defer",
       (headers) => api("POST", agentPath(r, "defer"), { until }, { headers }),
       { button, vars: { id } },
     );
-    if (out) close();
+    if (out) h.close("done");
     await refresh();
   };
-  $d("#ag-df-cancel").onclick = close;
-  clear.onclick = () => void save(null, clear);
-  $d("#ag-df-form").onsubmit = (e) => {
+  dlg.querySelector("form").addEventListener("submit", (e) => {
+    const b = e.submitter;
+    if (!b || b.value === "cancel") return;
     e.preventDefault();
+    if (b.value === "clear") return void save(null, b);
     const at = new Date(input.value);
     if (isNaN(at.getTime()) || at.getTime() <= Date.now()) {
       err.textContent = t("ag.df.past");
       err.hidden = false;
       return;
     }
-    void save(at.toISOString(), go);
-  };
-  if (typeof dlg.showModal === "function") dlg.showModal();
-  else dlg.setAttribute("open", "");
-  input.focus();
+    void save(at.toISOString(), b);
+  });
+  h.show(opener);
 }
 
 /**
