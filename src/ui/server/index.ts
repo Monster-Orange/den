@@ -1214,7 +1214,7 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
-import { syncHeldBell } from "./held-bell.js";
+import { heldLapsed, syncHeldBell } from "./held-bell.js";
 import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
@@ -1279,7 +1279,7 @@ import {
   tellBack,
   writeRestartMarker,
 } from "./server-restart.js";
-import type { ApprovalQueue } from "./approvals.js";
+import type { Approval, ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
@@ -3650,7 +3650,10 @@ function approvalDeps(): ApprovalDeps {
   });
   approvals = {
     actions,
-    queue: createApprovalQueue(actions, () => getStateDir()),
+    // Issue 746: one that lapses unanswered rings the bell and tells its asker.
+    queue: createApprovalQueue(actions, () => getStateDir(), {
+      onExpire: (a) => void heldWriteLapsed(a),
+    }),
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
@@ -3694,18 +3697,67 @@ function syncHeldWrites(): void {
     syncHeldBell(
       notificationDeps().store,
       approvals ? approvals.queue.pending() : [],
-      {
-        projectOf: (a) =>
-          typeof a.args.project === "string"
-            ? a.args.project
-            : a.agent
-              ? (readAgentRecord(getStateDir(), a.agent)?.workspace ??
-                undefined)
-              : undefined,
-      },
+      { projectOf: heldProjectOf },
     );
   } catch {
     /* the bell is best effort */
+  }
+}
+/** The project a held write is in: its args', else its asking agent's. */
+function heldProjectOf(a: Approval): string | undefined {
+  return typeof a.args.project === "string"
+    ? a.args.project
+    : a.agent
+      ? (readAgentRecord(getStateDir(), a.agent)?.workspace ?? undefined)
+      : undefined;
+}
+/**
+ * Issue 746: a held write lapsed unanswered. The bell says so, and the
+ * agent that asked is told in its session once it is at its prompt (never
+ * into a dialog for its person), as Den's own "Server is back" line is
+ * (tellBack, up to ui.restart_wait_seconds). One audit row says who was
+ * told what.
+ */
+async function heldWriteLapsed(a: Approval): Promise<void> {
+  let store: ReturnType<typeof notificationDeps>["store"];
+  try {
+    store = notificationDeps().store;
+  } catch {
+    return;
+  }
+  const told = await heldLapsed(a, {
+    store,
+    projectOf: heldProjectOf,
+    tell: async (agent, text) => {
+      const ops = await import("../cli/agent-ops.js");
+      const { webDeps } = await import("./agent-routes.js");
+      const d = webDeps();
+      const server = agent === SERVER_AGENT_ID;
+      return tellBack(text, {
+        state: () =>
+          server
+            ? ops.serverAgentInputState(d)
+            : ops.agentInputState(d, agent, typingHeldIds()),
+        type: (t) => ops.typeIntoAgent(d, agent, t),
+        dialog: () =>
+          server
+            ? ops.serverAgentDialogOpen(d)
+            : ops.agentDialogKind(d, agent).then((k) => k !== null),
+        waitMs: restartWaitSeconds() * 1000,
+      });
+    },
+  });
+  try {
+    recordAction(
+      null,
+      {
+        verb: "approval-expired",
+        detail: `lapsed unanswered: ${a.action}: ${a.summary} [${a.id}]; ${a.actor} ${told}`,
+      },
+      a.actor,
+    );
+  } catch {
+    /* the trail is best effort here */
   }
 }
 /**
@@ -4569,7 +4621,11 @@ async function handleRequest(
   }
   // NT: the bell, and agents saying they wait for their person.
   if (guard.ok && isNotificationPath(pathname)) {
-    await handleNotificationRoutes(req, res, pathname, notificationDeps());
+    await handleNotificationRoutes(req, res, pathname, {
+      ...notificationDeps(),
+      // Issue 746: what waits for the person's Allow leads Needs you.
+      held: () => (approvals ? approvals.queue.pending() : []),
+    });
     return;
   }
   // ON-3: an agent's held writes; Allow from the person's browser only.

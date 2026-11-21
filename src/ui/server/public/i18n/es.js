@@ -1981,6 +1981,19 @@
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.heldLapsed":
+      "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
+    "bell.m.heldLapsedAsk":
+      "Una solicitud venció sin respuesta: {what}. No se ejecutó nada.",
+    "bell.ap.h": "Esperan tu permiso",
+    "bell.ap.row": "{name} pide: {what}",
+    "bell.ap.rowAsk": "Pedido: {what}",
+    "bell.ap.waits": "Espera desde hace {ago} · vence {time}",
+    "bell.ap.allow": "Permitir",
+    "bell.ap.deny": "Denegar",
+    "bell.ap.done": "Permitido: {what}",
+    "bell.ap.denied": "Denegado: {what}",
+    "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",

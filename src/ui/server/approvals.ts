@@ -245,6 +245,11 @@ export interface ApprovalQueueDeps {
   now?: () => number;
   /** How long a request waits for a person (default 10 minutes). */
   ttlMs?: number;
+  /**
+   * Issue 746: a request ended unanswered (pending past its expiry). Called
+   * once per request, when the queue first sees it expired.
+   */
+  onExpire?: (a: Approval) => void;
   /** Whether the agent that asked still runs (its token not revoked). */
   actorLive?: (actor: string) => boolean;
   /** Runs an allowed action from its stored args; `asked`: which request, whose. */
@@ -406,6 +411,11 @@ export class ApprovalQueue {
     if (a.state === "pending" && this.now() >= a.expiresAt) {
       a.state = "expired";
       a.decidedAt = a.expiresAt;
+      try {
+        this.deps.onExpire?.({ ...a });
+      } catch {
+        /* telling is best effort: the request has ended either way */
+      }
     }
   }
 

@@ -90,3 +90,103 @@ export function syncHeldBell(
   }
   return { added, removed };
 }
+
+/**
+ * Issue 746: one held write waiting on the person, as GET
+ * /api/notifications' `waiting` lists it (first, above agents' questions):
+ * what it is, who asked, since when and until when.
+ */
+export interface HeldWaiting {
+  kind: "allow";
+  id: string;
+  action: string;
+  what: string;
+  agent?: string;
+  since: string;
+  expiresAt: string;
+}
+
+/**
+ * Issue 746: the queue's pending requests as Needs you entries, oldest
+ * first. Den's own update ask has its own item (isUpdateAskRequest).
+ */
+export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
+  return pending
+    .filter((a) => a.state === "pending" && !isUpdateAskRequest(a))
+    .sort((x, y) => x.requestedAt - y.requestedAt)
+    .map((a) => ({
+      kind: "allow" as const,
+      id: a.id,
+      action: a.action,
+      what: a.summary,
+      ...(a.agent ? { agent: a.agent } : {}),
+      since: new Date(a.requestedAt).toISOString(),
+      expiresAt: new Date(a.expiresAt).toISOString(),
+    }));
+}
+
+/** Issue 746: a lapsed request's bell item: `record:held-lapsed-<id>`. */
+export const LAPSED_SUBJECT_PREFIX = "record:held-lapsed-";
+
+/** Issue 746: what the asking agent is told when its request lapsed. */
+export function lapsedNotice(
+  a: Pick<Approval, "id" | "action" | "summary">,
+): string {
+  return (
+    `Den: your request ${a.id} (${a.action}: ${a.summary}) lapsed: ` +
+    `the person did not answer before it expired. Nothing ran. ` +
+    `If it is still needed, ask again (call ${a.action} again).`
+  );
+}
+
+export interface LapsedDeps {
+  store: Pick<NotificationStore, "add">;
+  /** The project the request is in, when known. */
+  projectOf?: (a: Approval) => string | undefined;
+  /**
+   * Tells agent `agent` (its id) `text` in its session; resolves to what
+   * happened ("told", "missing", ...). Absent: nobody is told.
+   */
+  tell?: (agent: string, text: string) => Promise<string>;
+}
+
+/**
+ * Issue 746: a held write expired unanswered. The bell says it lapsed (an
+ * update, not a decision: nothing waits on the person now), and the agent
+ * that asked is told directly, with the reason and a hint to ask again.
+ * Den's own update ask is left to its own item. Resolves to what telling
+ * the agent did, or why nobody was told.
+ */
+export async function heldLapsed(a: Approval, d: LapsedDeps): Promise<string> {
+  if (isUpdateAskRequest(a)) return "update ask";
+  let project: string | undefined;
+  try {
+    project = d.projectOf?.(a);
+  } catch {
+    project = undefined;
+  }
+  const what = a.summary;
+  try {
+    d.store.add({
+      kind: "service",
+      subject: `${LAPSED_SUBJECT_PREFIX}${a.id}`,
+      scope: `workspace/${project || "den-server"}`,
+      text: a.agent
+        ? `${a.agent}'s request lapsed unanswered: ${what}. Nothing ran; the agent was told to ask again.`
+        : `A request lapsed unanswered: ${what}. Nothing ran.`,
+      msg: a.agent
+        ? { key: "bell.m.heldLapsed", vars: { name: a.agent, what } }
+        : { key: "bell.m.heldLapsedAsk", vars: { what } },
+      link: heldLink(a.agent, project),
+    });
+  } catch {
+    /* the bell is best effort */
+  }
+  if (!a.actor.startsWith("agent:")) return "not an agent";
+  if (!d.tell) return "nobody to tell";
+  try {
+    return await d.tell(a.actor.slice("agent:".length), lapsedNotice(a));
+  } catch (e) {
+    return `not told: ${(e as Error)?.message ?? String(e)}`;
+  }
+}
