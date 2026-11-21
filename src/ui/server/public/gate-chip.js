@@ -34,6 +34,7 @@ export function startGateChip(o) {
   const kind = (k) =>
     t(k === "browser" ? "gate.kind.browser" : "gate.kind.cpu");
   let slots = [];
+  let boxes = [];
   let pop = null;
   let release = null;
   let timer = 0;
@@ -61,10 +62,23 @@ export function startGateChip(o) {
   }
 
   function lineHtml(s) {
-    const when = s.granted
-      ? t("gate.holds", { kind: kind(s.kind), at: hm(s.expectedEnd) }) +
-        (s.overrun ? " · " + t("gate.over") : "")
-      : t("gate.waits", { kind: kind(s.kind), at: hm(s.expectedStart) });
+    const when =
+      (s.granted
+        ? t("gate.holds", { kind: kind(s.kind), at: hm(s.expectedEnd) }) +
+          (s.overrun ? " · " + t("gate.over") : "")
+        : t("gate.waits", { kind: kind(s.kind), at: hm(s.expectedStart) })) +
+      // Issue 625: the test box a slot is on, or may go to.
+      (s.box
+        ? " · " + t("gate.onBox", { box: s.box })
+        : s.where === "any"
+          ? " · " + t("gate.anyBox")
+          : s.where
+            ? " · " + t("gate.onBox", { box: s.where })
+            : "");
+    // Issue 625 clause 11: a box this run can't use, and why.
+    const skips = (s.skips || [])
+      .map((x) => t("gate.boxSkip", { box: x.box, reason: x.reason }))
+      .join(" · ");
     // Issue 715: a release run a person waits on, and why.
     const pri = s.priority
       ? t(
@@ -85,9 +99,32 @@ export function startGateChip(o) {
       esc(when) +
       "</div>" +
       (pri ? '<div class="gate-pri">' + esc(pri) + "</div>" : "") +
+      (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"
+    );
+  }
+
+  /** Issue 625: a test box: its slots held, or why it is skipped. */
+  function boxHtml(b) {
+    const text =
+      b.state === "held" || b.state === "unreachable" || b.state === "low"
+        ? t(
+            b.state === "held"
+              ? "gate.boxHeld"
+              : b.state === "low"
+                ? "gate.boxLow"
+                : "gate.boxDown",
+            { box: b.name, reason: b.reason || "" },
+          )
+        : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });
+    return (
+      '<li class="gate-box" data-gate-box="' +
+      esc(b.name) +
+      '">' +
+      esc(text) +
+      "</li>"
     );
   }
 
@@ -98,7 +135,14 @@ export function startGateChip(o) {
       "</h2>" +
       (slots.length
         ? '<ul class="gate-ul">' + slots.map(lineHtml).join("") + "</ul>"
-        : '<p class="gate-none">' + esc(t("gate.none")) + "</p>");
+        : '<p class="gate-none">' + esc(t("gate.none")) + "</p>") +
+      (boxes.length
+        ? '<h3 class="gate-h">' +
+          esc(t("gate.boxesH")) +
+          '</h3><ul class="gate-ul">' +
+          boxes.map(boxHtml).join("") +
+          "</ul>"
+        : "");
   }
 
   async function endIt(li, btn) {
@@ -165,7 +209,9 @@ export function startGateChip(o) {
       });
       if (r.ok) {
         const before = JSON.stringify(slots);
-        slots = (await r.json()).slots ?? [];
+        const body = await r.json();
+        slots = body.slots ?? [];
+        boxes = body.boxes ?? [];
         paintChip();
         if (JSON.stringify(slots) !== before) o.onChange?.();
       }

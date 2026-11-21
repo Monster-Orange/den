@@ -146,6 +146,8 @@ describe("gate slots over MCP", () => {
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,
+      boxCheckTimeoutSeconds: 8,
+      boxRecheckSeconds: 30,
     });
   });
 

@@ -136,6 +136,8 @@ const LISTING: Record<string, Entry> = {
   "gate status": page("agents.html", 'id="ag-gate"'),
   "gate end": page("gate-chip.js", "/api/gate-slots/end"),
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
+  // Issue 625: the test boxes, set on the Settings page.
+  "gate box": page("settings-registry.js", 'id: "server.gate_boxes"'),
 
   "repo detect": R,
 

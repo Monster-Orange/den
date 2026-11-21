@@ -64,6 +64,9 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     mcp_renew_minutes: true,
     mcp_lapse_minutes: true,
     mcp_grace_minutes: true,
+    // Issue 625: test boxes' check and recheck.
+    box_check_timeout_seconds: true,
+    box_recheck_seconds: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -213,6 +216,8 @@ describe("the settings inventory (R21)", () => {
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
+        "gate_slots.box_check_timeout_seconds",
+        "gate_slots.box_recheck_seconds",
         "gate_slots.claim_minutes",
         "gate_slots.cpu_slots",
         "gate_slots.mcp_grace_minutes",

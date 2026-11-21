@@ -101,6 +101,8 @@ describe("gate-slot routes", () => {
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,
+      boxCheckTimeoutSeconds: 8,
+      boxRecheckSeconds: 30,
     });
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),
