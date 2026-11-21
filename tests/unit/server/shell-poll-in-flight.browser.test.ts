@@ -6,7 +6,10 @@
  * that poll for the page. Before this, a poll that never answered got a new request
  * every 3 s, so the page never settled.
  *
- * Both answers are faked at the page's network. Chromium; DEN_PW_WS
+ * The shell also reads every refused answer in full, so a caller that
+ * only looks at the status never leaves a request open.
+ *
+ * The answers are faked at the page's network. Chromium; DEN_PW_WS
  * connects to a Playwright server instead of launching. The demo
  * distribution (helpers/agents-page-server.ts). Invented names only.
  */
@@ -20,7 +23,7 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
 
-jest.setTimeout(90_000);
+jest.setTimeout(120_000);
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -76,6 +79,43 @@ describe("the shell's 3 s polls", () => {
       await p.context().close();
     });
   }
+  // A refused read whose caller only looks at the status: its body is read
+  // all the same, so nothing stays open and the page settles. The reads a
+  // test install's fixture person is refused, every one at once.
+  it("refused reads are read in full: the page settles", async () => {
+    if (!browser) return;
+    const ctx = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+      reducedMotion: "reduce",
+    });
+    await signIn(ctx, s!.stateDir, s!.base);
+    const p = await ctx.newPage();
+    const refuse = (r: Route) =>
+      r.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, code: "fixture_scope" }),
+      });
+    for (const path of [
+      "/api/web/waiting",
+      "/api/web/sessions",
+      "/api/web/fixture-person",
+      "/api/web/owner",
+      "/api/web/pair",
+      "/api/sessions/helpers",
+    ])
+      await p.route(`**${path}*`, refuse);
+    for (const page of ["/settings", "/agents"]) {
+      await p.goto(`${s!.base}${page}`, { waitUntil: "load" });
+      let settles = true;
+      await p
+        .waitForLoadState("networkidle", { timeout: 15_000 })
+        .catch(() => (settles = false));
+      expect({ page, settles }).toEqual({ page, settles: true });
+    }
+    await ctx.close();
+  });
+
   // Approvals' 403 is a state the shell shows (sign in to approve), so
   // only the waiting list stops on a refusal.
   it("/api/web/waiting: a refusal stops it for the page", async () => {
