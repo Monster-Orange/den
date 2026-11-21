@@ -7,9 +7,15 @@
    20 px. Tokens only; linked, never injected (style-src 'self'). */
 .den-aa-dlg {
   font-family: var(--sans);
+  /* Placed as base.css places every modal (top 50%, moved up by half its
+     height): setting every inset to 0 here would put top at 0 under that transform and
+     put the top half above the window. */
   position: fixed;
-  inset: 0;
-  margin: auto;
+  inset-block: auto;
+  inset-inline: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0 auto;
   padding: 0;
   width: min(960px, 100vw - var(--space-6));
   height: min(88vh, 760px);
