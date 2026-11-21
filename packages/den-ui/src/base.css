@@ -38,6 +38,7 @@
    a menu, a toast) is in the kit's sans on a page whose own font is on a
    wrapper. Each names the kit's stack after var(--sans): with no --sans
    at all (a theme or page without tokens.css), still never a serif. */
+:where(body),
 :where(dialog) {
   /* prettier-ignore */
   font-family: var(--sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
