@@ -207,6 +207,7 @@ import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
 } from "./notifications-command.js";
+import { GITHUB_HELP, cmdGithub } from "./github-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
@@ -564,6 +565,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
+  github: GITHUB_HELP,
   feedback: FEEDBACK_HELP,
 };
 
@@ -621,6 +623,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "gate",
   "hub",
   "notifications",
+  "github",
   "feedback",
   "service",
   "theme",
@@ -659,6 +662,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "hub",
   // NT: the bell's own file, no org data.
   "notifications",
+  // The shared GitHub watcher's status file, no org data.
+  "github",
   // FB: Den's own report routes; a report matters most when the config is
   // what's wrong.
   "feedback",
@@ -1198,6 +1203,10 @@ class DenCLI {
 
         case "notifications":
           process.exitCode = await cmdNotifications(args.slice(1));
+          break;
+
+        case "github":
+          process.exitCode = await cmdGithub(args.slice(1));
           break;
 
         case "feedback":

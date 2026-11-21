@@ -128,6 +128,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     timeout_seconds: true,
     retries: true,
     backoff_seconds: true,
+  }, // The shared GitHub watcher's pace and API budget.
+  github: {
+    watch_interval_seconds: true,
+    watch_max_interval_seconds: true,
+    api_budget_floor: true,
+    watches_max: true,
   },
 };
 
@@ -219,6 +225,11 @@ describe("the settings inventory (R21)", () => {
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.
         "web_github.owner_name_timeout_seconds",
+        // The shared GitHub watcher's pace and API budget.
+        "github.watch_interval_seconds",
+        "github.watch_max_interval_seconds",
+        "github.api_budget_floor",
+        "github.watches_max",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",

@@ -180,6 +180,11 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/helpers(?:\/[A-Za-z0-9_-]{1,128})?$/,
     method: "GET",
   },
+  // MCP github_watch, github_watch_list, github_watch_cancel: the agent's
+  // own watches in Den's one shared GitHub watcher (the server checks scope).
+  { re: /^\/api\/agents\/self\/github-watches$/, method: "GET" },
+  { re: /^\/api\/agents\/self\/github-watches$/, method: "POST" },
+  { re: /^\/api\/agents\/self\/github-watches\/cancel$/, method: "POST" },
   // Issue 403 (MCP report_screenshot): a filed report's kept screenshot.
   // A read; the route itself answers only the person or the server agent.
   { re: /^\/api\/report\/shots\/[a-f0-9]{16}$/, method: "GET" },

@@ -16,6 +16,11 @@
   conclusion.
 - Don't poll with `sleep` or `until …; do sleep …; done`. Run long work in the
   background and wait to be told it ended, or use a wait primitive.
+- Don't watch GitHub with `gh pr checks --watch`, `gh run watch` or a loop of
+  `gh` calls. Every agent here shares one GitHub account and its hourly API
+  limit. Call Den's `github_watch` tool with the repo and the pull request
+  (or the run), then end your turn or do other work: Den tells you once,
+  with the failures, when the checks finish.
 
 ### Handing work back
 
