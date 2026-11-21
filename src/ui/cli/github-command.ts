@@ -52,7 +52,7 @@ export async function cmdGithub(
   out(
     l
       ? `github watch  ${l.ok ? "✓" : "⚠"}  ${l.text}`
-      : "github watch  no GitHub watch status yet: the server writes it once an agent asks for a watch.",
+      : "github watch  no GitHub watch status yet: Den writes it once an agent asks for a watch.",
   );
   return 0;
 }

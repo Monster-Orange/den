@@ -92,7 +92,7 @@ export async function handleGithubWatchRoutes(
       res,
       403,
       "agent_only",
-      "A GitHub watch is an agent's: it tells the agent in its session. Ask with the MCP tool github_watch.",
+      "A GitHub watch is an agent's: Den tells that agent when it finishes. Ask with the MCP tool github_watch.",
     );
     return true;
   }
