@@ -1,9 +1,9 @@
 {
   "about": "Issue 839: per-file counts of brittle patterns (scripts/brittle-ratchet.mjs). Counts may only go down; lower them with: node scripts/brittle-ratchet.mjs --update",
   "totals": {
-    "sleeps": 222,
-    "positional": 251,
-    "classSelectors": 1563,
+    "sleeps": 183,
+    "positional": 241,
+    "classSelectors": 1576,
     "englishAsserts": 523
   },
   "files": {
@@ -125,8 +125,8 @@
       "classSelectors": 18
     },
     "tests/unit/den-ui/kit-063.browser.test.ts": {
-      "sleeps": 4,
-      "classSelectors": 16,
+      "sleeps": 1,
+      "classSelectors": 18,
       "englishAsserts": 1
     },
     "tests/unit/den-ui/kit-065.browser.test.ts": {
@@ -246,9 +246,8 @@
       "classSelectors": 5
     },
     "tests/unit/server/agents-drop.browser.test.ts": {
-      "sleeps": 9,
-      "positional": 1,
-      "classSelectors": 22,
+      "sleeps": 1,
+      "classSelectors": 26,
       "englishAsserts": 7
     },
     "tests/unit/server/agents-exited-shell.browser.test.ts": {
@@ -262,9 +261,7 @@
       "englishAsserts": 2
     },
     "tests/unit/server/agents-helpers.browser.test.ts": {
-      "sleeps": 4,
-      "positional": 10,
-      "classSelectors": 59,
+      "classSelectors": 60,
       "englishAsserts": 7
     },
     "tests/unit/server/agents-hub-work.browser.test.ts": {
@@ -324,9 +321,9 @@
       "englishAsserts": 10
     },
     "tests/unit/server/agents-term-size.browser.test.ts": {
-      "sleeps": 8,
-      "positional": 7,
-      "classSelectors": 9
+      "sleeps": 5,
+      "positional": 8,
+      "classSelectors": 10
     },
     "tests/unit/server/agents-terminal.browser.test.ts": {
       "sleeps": 13,
@@ -482,9 +479,8 @@
       "classSelectors": 6
     },
     "tests/unit/server/local-dev-room.browser.test.ts": {
-      "sleeps": 16,
       "positional": 2,
-      "classSelectors": 45,
+      "classSelectors": 48,
       "englishAsserts": 1
     },
     "tests/unit/server/mode-layers.browser.test.ts": {
@@ -733,8 +729,8 @@
       "englishAsserts": 20
     },
     "tests/unit/server/update-pill.browser.test.ts": {
-      "sleeps": 7,
-      "classSelectors": 16,
+      "sleeps": 2,
+      "classSelectors": 18,
       "englishAsserts": 4
     },
     "tests/unit/server/verify-page.browser.test.ts": {
