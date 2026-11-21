@@ -629,6 +629,13 @@
     "busy.askAllowW": "確認しています…",
     "busy.askAllowS": "確認しました。ダイアログで許可してください。",
     "busy.askAllowF": "確認できませんでした。",
+    "busy.pushTestW": "テスト通知を送信中…",
+    "busy.pushTestS":
+      "テスト通知を送りました。結果はデバイスごとに表示されます。",
+    "busy.pushTestF": "テスト通知を送信できませんでした。",
+    "busy.pushForgetW": "このデバイスを削除中…",
+    "busy.pushForgetS": "このデバイスはプッシュを受け取らなくなりました。",
+    "busy.pushForgetF": "このデバイスを削除できませんでした。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -2964,6 +2971,28 @@
       "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
     "set.notifications.phone.failed":
       "ここではプッシュをオンにできませんでした。",
+    "set.notifications.push_devices": "プッシュを受け取るデバイス",
+    "set.notifications.push_devices.d":
+      "プッシュをオンにした各デバイスです。テスト通知を送って、スマートフォンに届くか確かめてください。デバイスごとに、プッシュサービスが受け取ったかが表示されます。使わなくなったデバイスは削除できます。",
+    "set.notifications.devices.none":
+      "プッシュを受け取るデバイスはまだありません。スマートフォンで __DEN_TITLE__ を開き（「アクセス」の「デバイスをペアリング」でサインインできます）、そこで「このデバイスへのプッシュ通知」をオンにしてください。",
+    "set.notifications.devices.this": "（このデバイス）",
+    "set.notifications.devices.added": "追加: {t}",
+    "set.notifications.devices.forget": "削除",
+    "set.notifications.devices.test": "テスト通知を送る",
+    "set.notifications.test.reached":
+      "送信済み: プッシュサービスが受け取りました。",
+    "set.notifications.test.gone":
+      "なし: このデバイスはもうプッシュを受け取らないため、削除しました。",
+    "set.notifications.test.refused":
+      "送信できませんでした: プッシュサービスの応答は {status} でした。",
+    "set.notifications.test.noAnswer":
+      "送信できませんでした: プッシュサービスから時間内に応答がありませんでした（プッシュの待ち時間）。",
+    "set.notifications.svc.apple": "Apple のプッシュ",
+    "set.notifications.svc.google": "Google のプッシュ",
+    "set.notifications.svc.mozilla": "Firefox のプッシュ",
+    "set.notifications.svc.microsoft": "Microsoft のプッシュ",
+    "set.notifications.svc.other": "その他のプッシュサービス",
     "set.notifications.quiet_from": "通知を止める時間の開始",
     "set.notifications.quiet_from.d":
       "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",

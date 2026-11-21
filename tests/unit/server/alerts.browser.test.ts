@@ -399,6 +399,56 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
     }
   }, 120_000);
 
+  it("Devices that get push: this device shows up; Send a test alert reaches it and says so; Forget removes it", async () => {
+    if (skip()) return;
+    const stub = await startPushStub();
+    try {
+      const p = await open("/settings#notifications", {
+        permission: "granted",
+        front: true,
+        sub: stub.subscription,
+      });
+      await p.click('#set-nav a[data-cat="notifications"]');
+      const row = p.locator("#setting-notifications-push_devices");
+      // None yet: it says how to add a phone, and the test waits for one.
+      await row.locator("#set-push-none").waitFor();
+      expect(await row.locator("#set-push-test").isDisabled()).toBe(true);
+      await p.locator("#set-phone-push").click();
+      const device = row.locator("li.set-push-device");
+      await device.waitFor({ timeout: 15_000 });
+      expect(await device.count()).toBe(1);
+      expect(await device.textContent()).toContain("Other push service");
+      expect(await device.textContent()).toContain("(this device)");
+      await row.locator("#set-push-test").click();
+      await row
+        .locator("[data-test-result]", {
+          hasText: "Sent: its push service took it.",
+        })
+        .waitFor({ timeout: 15_000 });
+      expect(stub.received).toHaveLength(1);
+      expect(JSON.parse(stub.received[0].text!)).toMatchObject({
+        body: "Test alert: this device gets alerts when an agent needs you.",
+        link: "/settings#notifications",
+      });
+      // The phone is lost: Forget it here.
+      await device.locator("[data-forget]").click();
+      await row.locator("#set-push-none").waitFor({ timeout: 15_000 });
+      expect(
+        (
+          (await (
+            await fetch(`${s!.base}/api/alerts/devices`, {
+              headers: denAuth(s!.stateDir),
+            })
+          ).json()) as { devices: unknown[] }
+        ).devices,
+      ).toEqual([]);
+      expect(errors).toEqual([]);
+      await p.context().close();
+    } finally {
+      await stub.close();
+    }
+  }, 120_000);
+
   it("S2: the manifest and the service worker are served", async () => {
     if (skip()) return;
     const m = await fetch(`${s!.base}/manifest.webmanifest`, {

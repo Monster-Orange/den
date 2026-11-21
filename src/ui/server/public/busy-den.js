@@ -192,6 +192,25 @@ export const DEN_ACTIONS = {
       failure: "sa.fresh.fail",
     },
   },
+  // Issue 172: Settings › Notifications › Devices that get push.
+  "push-test": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pushTestW",
+      success: "busy.pushTestS",
+      failure: "busy.pushTestF",
+    },
+  },
+  "push-forget": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pushForgetW",
+      success: "busy.pushForgetS",
+      failure: "busy.pushForgetF",
+    },
+  },
   "sign-out-all": {
     who: "__DEN_TITLE__",
     keys: {

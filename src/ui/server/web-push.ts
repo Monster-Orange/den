@@ -15,6 +15,7 @@
  */
 import {
   createECDH,
+  createHash,
   createCipheriv,
   createPrivateKey,
   generateKeyPairSync,
@@ -147,6 +148,53 @@ export interface PushSubscription {
   auth: string;
   /** ISO 8601: when it was added. */
   at: string;
+  /** What the device is ("iPhone", "Mac"...), from its browser; "" unknown. */
+  device?: string;
+}
+
+/**
+ * A device's id as a page sees it: a hash of its endpoint, so a list or a
+ * Forget never carries the endpoint (a capability: whoever holds it, with
+ * the keys, can push to the device).
+ */
+export function deviceId(endpoint: string): string {
+  return createHash("sha256").update(endpoint).digest("hex").slice(0, 16);
+}
+
+/** Whose push service a device uses, from its endpoint's host. */
+export type PushService =
+  | "apple"
+  | "google"
+  | "mozilla"
+  | "microsoft"
+  | "other";
+
+export function pushService(endpoint: string): PushService {
+  let host = "";
+  try {
+    host = new URL(endpoint).hostname;
+  } catch {
+    return "other";
+  }
+  const is = (d: string) => host === d || host.endsWith(`.${d}`);
+  if (is("push.apple.com")) return "apple";
+  if (is("googleapis.com")) return "google";
+  if (is("mozilla.com")) return "mozilla";
+  if (is("notify.windows.com")) return "microsoft";
+  return "other";
+}
+
+/** What a device is, from its browser's User-Agent; "" when unknown. */
+export function deviceOf(userAgent: string | undefined): string {
+  const ua = String(userAgent ?? "");
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/iPad/.test(ua)) return "iPad";
+  if (/Android/.test(ua)) return "Android";
+  if (/CrOS/.test(ua)) return "ChromeOS";
+  if (/Macintosh|Mac OS X/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows";
+  if (/Linux/.test(ua)) return "Linux";
+  return "";
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -197,13 +245,18 @@ export class PushSubscriptions {
     try {
       const v = JSON.parse(fs.readFileSync(this.file, "utf-8")) as unknown;
       return Array.isArray(v)
-        ? v.filter(
-            (x): x is PushSubscription =>
-              !!x &&
-              typeof x.endpoint === "string" &&
-              typeof x.p256dh === "string" &&
-              typeof x.auth === "string",
-          )
+        ? v
+            .filter(
+              (x): x is PushSubscription =>
+                !!x &&
+                typeof x.endpoint === "string" &&
+                typeof x.p256dh === "string" &&
+                typeof x.auth === "string",
+            )
+            .map((x) => ({
+              ...x,
+              device: typeof x.device === "string" ? x.device.slice(0, 32) : "",
+            }))
         : [];
     } catch {
       return [];
@@ -214,7 +267,10 @@ export class PushSubscriptions {
     writePrivate(this.file, JSON.stringify(list));
   }
 
-  add(s: Omit<PushSubscription, "at">, now = new Date()): void {
+  add(
+    s: Omit<PushSubscription, "at" | "device"> & { device?: string },
+    now = new Date(),
+  ): void {
     const list = this.list().filter((x) => x.endpoint !== s.endpoint);
     list.push({ ...s, at: now.toISOString() });
     this.save(list.slice(-MAX_SUBSCRIPTIONS));
@@ -237,6 +293,15 @@ export interface PushMessage {
   tag: string;
 }
 
+export interface PushOptions {
+  subs: PushSubscriptions;
+  keys: () => VapidKeys;
+  subject: string;
+  timeoutMs: number;
+  ttlSeconds: number;
+  fetch?: typeof fetch;
+}
+
 /**
  * Send `msg` to every device. A gone one (404, 410) is dropped; any other
  * failure is left for the next alert. Resolves to each device's status
@@ -244,22 +309,23 @@ export interface PushMessage {
  */
 export async function pushAll(
   msg: PushMessage,
-  o: {
-    subs: PushSubscriptions;
-    keys: () => VapidKeys;
-    subject: string;
-    timeoutMs: number;
-    ttlSeconds: number;
-    fetch?: typeof fetch;
-  },
+  o: PushOptions,
 ): Promise<number[]> {
+  return (await pushEach(msg, o)).map((r) => r.status);
+}
+
+/** pushAll, saying which device each status is (a test alert's answer). */
+export async function pushEach(
+  msg: PushMessage,
+  o: PushOptions,
+): Promise<{ endpoint: string; status: number }[]> {
   const list = o.subs.list();
   if (!list.length) return [];
   let keys: VapidKeys;
   try {
     keys = o.keys();
   } catch {
-    return list.map(() => 0);
+    return list.map((s) => ({ endpoint: s.endpoint, status: 0 }));
   }
   const f = o.fetch ?? fetch;
   const payload = Buffer.from(JSON.stringify(msg));
@@ -279,9 +345,9 @@ export async function pushAll(
           signal: AbortSignal.timeout(o.timeoutMs),
         });
         if (r.status === 404 || r.status === 410) o.subs.remove(s.endpoint);
-        return r.status;
+        return { endpoint: s.endpoint, status: r.status };
       } catch {
-        return 0;
+        return { endpoint: s.endpoint, status: 0 };
       }
     }),
   );
