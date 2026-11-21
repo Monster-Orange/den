@@ -65,6 +65,31 @@ describe("issue 101: the bell's Needs you and Earlier sections (kit)", () => {
     }
   });
 
+  it("issue 773: Done, not seen sits under Needs you and over Earlier, only when given", () => {
+    const h = bellPanelHtml({
+      sections: { needs: "<i>n</i>", done: "<i>d</i>", earlier: "<i>e</i>" },
+    });
+    const needs = h.indexOf('data-sec="needs"');
+    const done = h.indexOf('data-sec="done"');
+    const earlier = h.indexOf('data-sec="earlier"');
+    expect(needs).toBeGreaterThan(-1);
+    expect(done).toBeGreaterThan(needs);
+    expect(earlier).toBeGreaterThan(done);
+    expect(h).toContain(">Done, not seen</h3>");
+    expect(h.indexOf("<i>d</i>")).toBeGreaterThan(done);
+    expect(h.indexOf("<i>d</i>")).toBeLessThan(earlier);
+    expect(bellPanelHtml({ sections: { needs: "", done: "" } })).not.toContain(
+      'data-sec="done"',
+    );
+    for (const [lang, word] of [
+      ["es", ">Terminado, sin ver</h3>"],
+      ["ja", ">完了・未確認</h3>"],
+    ])
+      expect(
+        bellPanelHtml({ lang, sections: { needs: "", done: "x" } }),
+      ).toContain(word);
+  });
+
   it("without sections, the panel is as before (body, after)", () => {
     const h = bellPanelHtml({ body: "<b>rows</b>", after: "<u>a</u>" });
     expect(h).toContain("<b>rows</b><u>a</u>");

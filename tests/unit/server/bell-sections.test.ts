@@ -100,6 +100,40 @@ describe("issue 101: Needs you first, then Earlier", () => {
     expect(p.sections.earlier).toContain('data-bell="scope"');
   });
 
+  it("issue 773: Done, not seen has its own section under Needs you; a row opens the agent", async () => {
+    const { bellPanel, bellCountOf } =
+      await import("../../../src/ui/server/public/bell.js");
+    const b = {
+      groups: groups(item("asker", "waiting")),
+      unread: 1,
+      done: [
+        {
+          agent: "builder",
+          name: "builder",
+          workspace: "acme",
+          at,
+          link: "/agents?project=acme&agent=builder",
+        },
+      ],
+    };
+    const p = bellPanel(b);
+    expect(p.sections.needs).toContain('data-kind="waiting"');
+    expect(p.sections.done).toContain('data-kind="done"');
+    expect(p.sections.done).toContain("[bell.doneRow:builder]");
+    expect(p.sections.done).toContain(
+      'href="/agents?project=acme&amp;agent=builder"',
+    );
+    expect(p.sections.done).toContain('data-agent="builder"');
+    expect(p.sections.done).toContain(">acme<");
+    // Counts: the bell shows Needs you plus Done, not seen.
+    expect(bellCountOf(b)).toBe(2);
+    // Nothing else: Done alone still shows (no empty state).
+    const only = bellPanel({ groups: [], unread: 0, done: b.done });
+    expect(only.sections.done).toContain('data-kind="done"');
+    expect(only.sections.needs).toBe("");
+    expect(bellCountOf({ unread: 0, done: b.done })).toBe(1);
+  });
+
   it("nothing at all: the empty state, no sections", async () => {
     const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
     const p = bellPanel({ groups: [], unread: 0 });

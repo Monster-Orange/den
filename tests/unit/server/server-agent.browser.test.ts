@@ -271,22 +271,21 @@ describe("after setup", () => {
     await p.context().close();
   }, 60_000);
 
-  it("Agents lists it under Server, not under a workspace", async () => {
+  it("Agents ranks it by its state like any agent, tagged Server (issue 773)", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");
-    const g = p.locator('#agl .wsg[data-ws="den-server"]');
-    await g.waitFor({ timeout: 20_000 });
-    expect((await g.locator(".wsh span").first().textContent())?.trim()).toBe(
-      "Server",
-    );
-    expect(await g.locator(".wsh a").count()).toBe(0);
-    expect(await g.locator(".agr").first().textContent()).toContain(
-      "Acme agent",
-    );
-    // It is the list's first group.
-    expect(await p.locator("#agl .wsg").first().getAttribute("data-ws")).toBe(
-      "den-server",
-    );
+    const row = p.locator("#agl .agband .agr", { hasText: "Acme agent" });
+    await row.first().waitFor({ timeout: 20_000 });
+    // Its tag says Server; it has no group of its own.
+    expect(
+      (await row.first().locator(".ptag").first().textContent())?.trim(),
+    ).toBe("Server");
+    expect(await p.locator('#agl .wsg[data-ws="den-server"]').count()).toBe(0);
+    // In one of the four bands, by its state.
+    const band = await row
+      .first()
+      .evaluate((e) => e.closest(".agband")?.getAttribute("data-band"));
+    expect(["needs", "done", "working", "idle"]).toContain(band);
     await p.context().close();
   }, 60_000);
 

@@ -184,7 +184,24 @@ beforeAll(async () => {
   );
   server = started.server;
   PORT = started.port;
-}, 60_000);
+  // Den's own terminal host refresh (issue 731) runs at the server's start
+  // and records how it ended in DEN_HOME/host-refresh.json. On a slow
+  // runner it ended between a test's two snapshots: wait for it first.
+  const refresh = path.join(tmp, "home", ".den", "host-refresh.json");
+  const until = Date.now() + 30_000;
+  while (Date.now() < until) {
+    try {
+      if (
+        (JSON.parse(fs.readFileSync(refresh, "utf-8")) as { endedAt?: string })
+          .endedAt
+      )
+        break;
+    } catch {
+      /* not written yet */
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}, 90_000);
 
 afterAll(async () => {
   await stopServer(server ?? undefined);

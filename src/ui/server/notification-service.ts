@@ -29,6 +29,13 @@ import { readWebUrl } from "../../shared/web-url.js";
 import { pushContact } from "../../shared/push-contact.js";
 import { PushSubscriptions, pushAll, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
+import { seenMarks } from "../../shared/seen-mark.js";
+import {
+  agentSubject,
+  doneAgents,
+  type AgentStateDeps,
+  type DoneAgent,
+} from "./agent-state.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -270,6 +277,8 @@ export function notificationDeps(): {
   push: ReturnType<typeof pushDeps>;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
+  seen: ReturnType<typeof seenMarks>;
+  doneAgents: (person: string) => DoneAgent[];
 } {
   store ??= new NotificationStore(getStateDir());
   attention ??= new Attention({
@@ -285,6 +294,14 @@ export function notificationDeps(): {
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
+    // Issue 773: a turn's end is a new version of the agent's finished
+    // work: Done for each person until they open it.
+    turnEnded: (id, at) =>
+      seenMarks(getStateDir()).noteVersion(
+        agentSubject(id),
+        String(at),
+        new Date(at).toISOString(),
+      ),
   });
   if (!timer) {
     let busy = false;
@@ -318,6 +335,32 @@ export function notificationDeps(): {
         return bellPrefs(null);
       }
     },
+    seen: seenMarks(getStateDir()),
+    // Issue 773: the bell's Done, not seen (not one waiting again).
+    doneAgents: (person) =>
+      doneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        new Set(
+          [...attention!.waitingNow()]
+            .filter(([, why]) => why !== "input")
+            .map(([agent]) => agent),
+        ),
+      ),
+  };
+}
+
+/**
+ * Issue 773: what each agent's state for a person is made of: the seen
+ * marks, the agents in a turn, and since when each waits.
+ */
+export function agentStateDeps(): AgentStateDeps {
+  const a = notificationDeps().attention;
+  return {
+    seen: seenMarks(getStateDir()),
+    working: () => a.workingNow(),
+    waitingSince: (agent) => a.waitingDetail(agent)?.since,
   };
 }
 
