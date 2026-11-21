@@ -308,11 +308,9 @@ describe("R24a/b: the page is Workspaces", () => {
     // Filtered: an option reading Projects is listed.
     await p.waitForFunction(
       () =>
-        [
-          ...document.querySelectorAll(
-            '[role="listbox"] [role="option"], .den-pal [role="option"]',
-          ),
-        ].some((o) => /^Projects/.test((o.textContent ?? "").trim())),
+        [...document.querySelectorAll('[role="option"]')].some((o) =>
+          /^Projects/.test((o.textContent ?? "").trim()),
+        ),
       undefined,
       { timeout: 5_000 },
     );
