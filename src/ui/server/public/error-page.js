@@ -1053,8 +1053,9 @@ function mountSignedOut(root, sh, d) {
     (s.expired
       ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`
       : "") +
-    methodsBlock(s, t) +
+    // D17: a claim leads; issue 868's list of ways in comes next.
     claim +
+    methodsBlock(s, t) +
     // D17: with the claim first, "from another computer" may not be true.
     (claim
       ? ""
