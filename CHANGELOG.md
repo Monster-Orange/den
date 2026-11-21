@@ -4,6 +4,24 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.80] - 2026-11-21
+
+### Added
+
+- Gate slots: CI runners ask for release priority over HTTP, as `gate run --priority release` does. (issue 739)
+- Gate slots held over MCP: the agent is told when its slot is granted, a slot never claimed passes to the next run, and a held slot has a lease. (issue 714)
+- Test boxes: a browser slot per test box. An agent asks to add or remove a box with the held writes `gate_box_set` and `gate_box_remove`. Nothing changes until a person Allows it in the browser, and the card shows every field. (issue 625)
+- `gate yield <my-id> --to <their-id>` and the MCP tool `gate_slot_yield`: the owner of a waiting entry lets one waiting entry behind it go just ahead. Never a holder; the slot log records it. (issue 795)
+- Priority classes per project, with optional windows. New settings `class_order`, `class_map` and `class_windows`. A higher class goes first among waiting runs; nothing is pre-empted. With no classes set, the queue works as before. (issue 803)
+
+### Changed
+
+- Gate: on macOS a browser slot needs a container browser (a `ws://` or `wss://` address, or `self`). A browser started on a shared Mac can take its window server down and sign every session out.
+
+### Checks
+
+- The bed's touched run of v0.4.80-dev.2 (715 and 726): 715 passes 5 of 5. Its two reds are the same as on 0.4.79 and nothing in this release touches them: 653's terminal attach over https gets a 403 (being proven as the test person's scope), and 726 skips because a throwaway Den has no person session (issue 814). Released on "no new red against the last release".
+
 ## [0.4.79] - 2026-11-21
 
 ### Changed
