@@ -57,7 +57,7 @@ export function gateBoxTools(k: GateBoxToolKit): DenTool[] {
       name: "gate_box_set",
       title: "Ask to add or replace a test box",
       description:
-        "Issue 625: ask the person to add a test box (another machine whose browsers take gate slots), or replace the one with this name. Same fields as Settings › Server › Test boxes and `gate box add`: how Den reaches it (ssh, and/or a playwright ws:// address), slots, and the rest. Den checks the box now and refuses a bad one before anything is asked. Always the person's own Allow: their dialog shows every field; nothing changes until then, and Deny changes nothing. See docs/gate-slots.md." +
+        "Issue 625: ask the person to add a test box (another machine whose browsers take gate slots), or replace the one with this name. Same fields as the Test boxes settings and `gate box add`: how Den reaches it (ssh, and/or a playwright ws:// address), slots, and the rest. Den checks the box now and refuses a bad one before anything is asked. Always the person's own Allow: their dialog shows every field; nothing changes until then, and Deny changes nothing. See docs/gate-slots.md." +
         k.held,
       action: true,
       shape: {
@@ -84,7 +84,7 @@ export function gateBoxTools(k: GateBoxToolKit): DenTool[] {
         playwright: z
           .string()
           .optional()
-          .describe("The box's Playwright server, ws:// or wss://"),
+          .describe("The box's Playwright address, ws:// or wss://"),
         slots: z
           .number()
           .int()
@@ -109,7 +109,7 @@ export function gateBoxTools(k: GateBoxToolKit): DenTool[] {
         playwright_version: z
           .string()
           .optional()
-          .describe("The box's Playwright server version, like 1.48.0"),
+          .describe("The Playwright version on the box, like 1.48.0"),
         min_free_mem_mb: z
           .number()
           .int()
