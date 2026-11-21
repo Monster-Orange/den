@@ -7497,7 +7497,7 @@
   // every 3 s (a test install's fixture person) kept the page from ever
   // settling. Its body, status and headers stay readable as before.
   var NO_BODY = { 204: 1, 205: 1, 304: 1 };
-  function settled(input, r) {
+  function readRefusal(input, r) {
     if (
       !r ||
       r.ok ||
@@ -7527,7 +7527,7 @@
   var rawFetch = baseFetch
     ? function (input, init) {
         return baseFetch(input, init).then(function (r) {
-          return settled(input, r);
+          return readRefusal(input, r);
         });
       }
     : null;
