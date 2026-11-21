@@ -126,10 +126,10 @@ function signinOf(r: Reply): Record<string, unknown> {
     );
   return (JSON.parse(m![1]) as { signin: Record<string, unknown> }).signin;
 }
-async function askCode(): Promise<{ id: string; code: string }> {
+async function askCode(): Promise<{ id: string; code: string; ref: string }> {
   const r = await call("POST", "/api/signin/code", lan(), "{}");
   expect(r.status).toBe(200);
-  const b = json(r) as { id: string; code: string };
+  const b = json(r) as { id: string; code: string; ref: string };
   secrets.push(b.code, b.id);
   return b;
 }
@@ -323,7 +323,8 @@ describe("approve this computer with a code", () => {
       "pending",
       "",
     ]);
-    // `web approve --list` shows it: code, browser and OS.
+    // `web approve --list` shows it: browser and OS, by its handle; issue
+    // 819: never its code (read off that computer's screen and typed).
     const list = cli([
       "web",
       "approve",
@@ -334,9 +335,10 @@ describe("approve this computer with a code", () => {
     ]);
     expect(list.status).toBe(0);
     const rows = JSON.parse(list.stdout) as Record<string, string>[];
-    expect(rows.find((x) => x.code === a.code)).toMatchObject({
+    expect(rows.find((x) => x.ref === a.ref)).toMatchObject({
       device: "Safari on macOS",
     });
+    expect(list.stdout).not.toContain(a.code);
 
     // Issue 819: the CLI can't approve it, nor can its bearer.
     const typed = a.code.replace("-", "").toLowerCase();

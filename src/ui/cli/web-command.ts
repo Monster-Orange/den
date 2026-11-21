@@ -28,6 +28,7 @@ import {
   readWebSecret,
   rotateWebSecret,
 } from "../../shared/web-secret.js";
+import { newConfirmCode } from "../../shared/confirm-code.js";
 import {
   checkLoginCode,
   ignoredConfigWarning,
@@ -2277,8 +2278,12 @@ export async function cmdWebLoginWait(
     io.err(`${product().cli}: could not make a sign-in link\n`);
     return 1;
   }
+  // Issue 819: on first run, a link opened away from this computer asks
+  // for this code (printed below only then).
+  const confirm = newConfirmCode();
   const reg = await serverCall(stateDir, a.port, "POST", "/api/web/logins", {
     nonce: checked.nonce,
+    code: confirm,
     expiresAt: checked.expiresAt,
   });
   const link = loginLink(origin, loginCode, a.next);
@@ -2291,13 +2296,17 @@ export async function cmdWebLoginWait(
     io.out(`${link}\n`);
     return 0;
   }
-  const id = (reg.json as { id?: unknown } | null)?.id;
+  const regJson = (reg.json ?? {}) as { id?: unknown; firstRun?: unknown };
+  const id = regJson.id;
   if (reg.status !== 200 || typeof id !== "string") {
     io.err(`${product().cli}: ${apiError(reg)}\n`);
     return 1;
   }
   io.err(
-    `${product().cli}: open this link within ${ttlText(ttl)}, in the browser to sign in. ${APPROVE_IN_BROWSER}\n`,
+    regJson.firstRun === true
+      ? `${product().cli}: open this link within ${ttlText(ttl)}, in the browser to sign in. ` +
+          `Opened on another computer, it asks for this code: ${confirm}\n`
+      : `${product().cli}: open this link within ${ttlText(ttl)}, in the browser to sign in. ${APPROVE_IN_BROWSER}\n`,
   );
   io.out(`${link}\n`);
   // D16: on a terminal, the time left, in place.
@@ -2325,6 +2334,7 @@ export async function cmdWebLoginWait(
       state?: string;
       device?: string;
       client?: string;
+      code?: string;
       usedAt?: string;
     };
     // The countdown's line ends before the outcome's.
@@ -2344,7 +2354,9 @@ export async function cmdWebLoginWait(
       if (tty) io.err("\n");
       io.err(
         `${product().cli}: opened in ${j.device ?? "a browser"}${j.client ? ` (${j.client})` : ""}. ` +
-          "Approve it in a browser that is signed in: Settings › Access.\n",
+          (j.code
+            ? `Its screen shows the code ${j.code}: type it in a browser that is signed in, at Settings › Access.\n`
+            : "Approve it in a browser that is signed in: Settings › Access.\n"),
       );
     }
     if (r && j.state === "used") {
@@ -2659,11 +2671,13 @@ export async function cmdWebLogout(
 
 /** Issue 819: `web approve <code>`'s answer. */
 export const APPROVE_ONLY_IN_BROWSER =
-  "A device is approved only from a browser that is signed in: open Settings › Access there and approve its code. `web approve --list` shows the ones waiting.";
+  "A device is approved only from a browser that is signed in: open Settings › Access there and type the code that device's screen shows. `web approve --list` shows the ones waiting.";
 
 interface WaitingRow {
-  code: string;
+  ref?: string;
   device: string;
+  fromLink?: boolean;
+  fromLogin?: string;
   client?: string;
   createdAt: string;
   expiresAt: string;
@@ -2702,7 +2716,8 @@ export async function cmdWebApprove(
         "  Lists the computers whose signed-out page shows a code, waiting to be let in.\n" +
         "  Approve one in a browser that is signed in: Settings › Access. A code lasts\n" +
         "  10 minutes and works once.\n" +
-        "  --list   the computers waiting: code, browser, address, age\n" +
+        "  --list   the computers waiting: browser, address, age, and whether a\n" +
+        "           web login link asked (a code is typed off that computer's screen)\n" +
         "  --json   with --list: as JSON\n",
     );
     return 0;
@@ -2748,12 +2763,17 @@ export async function cmdWebApprove(
     return 0;
   }
   const table = [
-    ["CODE", "BROWSER", "ADDRESS", "WAITING"],
+    ["BROWSER", "ADDRESS", "WAITING", "FROM"],
     ...rows.map((w) => [
-      w.code,
       w.device,
       w.client ?? "",
       agoText(w.createdAt),
+      // Issue 819: no code here (it is read off that computer's screen).
+      w.fromLogin
+        ? `web login run at ${clockTime(w.fromLogin)}`
+        : w.fromLink
+          ? "a sign-in link"
+          : "",
     ]),
   ];
   const widths = table[0].map((_, c) =>

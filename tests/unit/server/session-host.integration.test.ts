@@ -123,6 +123,16 @@ const codeOf = (r: Reply) => {
  */
 const people = new Map<string, SignedIn>();
 async function signInThere(q: string): Promise<Reply> {
+  // Issue 819: a person signed in first (first run over), so the link
+  // opens the pairing screen for that person's browser to approve.
+  let person = people.get(stateDir);
+  if (!person) {
+    person = await signedIn(stateDir, `http://localhost:${port}`, {
+      host: NAMED,
+      edge: EDGE,
+    });
+    people.set(stateDir, person);
+  }
   const opened = await call("GET", q, { ...named(), ...nav });
   const m =
     /<script type="application\/json" id="den-error">\s*([\s\S]*?)\s*<\/script>/.exec(
@@ -133,14 +143,6 @@ async function signInThere(q: string): Promise<Reply> {
         .signin?.pair
     : undefined;
   if (!pair) return opened;
-  let person = people.get(stateDir);
-  if (!person) {
-    person = await signedIn(stateDir, `http://localhost:${port}`, {
-      host: NAMED,
-      edge: EDGE,
-    });
-    people.set(stateDir, person);
-  }
   const ok = await call(
     "POST",
     "/api/web/approve",

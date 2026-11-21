@@ -949,11 +949,12 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
     if (lan) await stopServer(lan);
   });
 
-  it("first run: a `web login --origin http://<this machine>:<port>` link with no fetch-metadata headers: 303 and the cookie", async () => {
+  it("first run: a `web login --origin http://<this machine>:<port>` link with no fetch-metadata headers asks for the code it printed; that code signs in", async () => {
     if (!name) return;
     // Sign-in: a link is printed only in a terminal. Issue 819: `web login`
-    // registers it from this terminal, so on first run it signs in from
-    // another computer; it waits until it is used.
+    // registers it from this terminal with a code it prints on first run;
+    // opened from another computer, the link asks for that code. It waits
+    // until it is used.
     const t = inTerminal(
       TSX,
       [
@@ -970,11 +971,19 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
         env: { ...serverEnv(lanDist, lanHome, lanPort), CI: "1" },
       },
     );
+    let printed = "";
     const link = await new Promise<string>((resolve) =>
       t.onText((all) => {
-        if (/waiting for the link/.test(all)) resolve(linkIn(all));
+        if (/waiting for the link/.test(all)) {
+          printed =
+            /it asks for this code: ([0-9A-Z]{4}-[0-9A-Z]{4})/.exec(all)?.[1] ??
+            "";
+          resolve(linkIn(all));
+        }
       }),
     );
+    minted.push(printed);
+    expect(printed).not.toBe("");
     minted.push(link);
     const u = new URL(link);
     minted.push(u.searchParams.get("c") ?? "");
@@ -990,18 +999,30 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
         lanPort,
       );
       expect([cross.status, setCookie(cross)]).toEqual([403, ""]);
-      const a = await call(
+      const opened = await call(
         "GET",
         `${u.pathname}${u.search}`,
         host,
         undefined,
         lanPort,
       );
+      expect(opened.headers["set-cookie"] ?? []).toEqual([]);
+      const a = await call(
+        "POST",
+        `${u.pathname}${u.search}`,
+        { host: u.host, origin: `http://${u.host}` },
+        JSON.stringify({ code: printed }),
+        lanPort,
+      );
       const line = ([] as string[])
         .concat(a.headers["set-cookie"] ?? [])
         .find((c) => c.startsWith(`den_session_${lanPort}=`));
       minted.push(line?.split(";")[0].split("=")[1] ?? "");
-      expect([a.status, where(a), !!line]).toEqual([303, "/", true]);
+      expect([a.status, JSON.parse(a.body).next, !!line]).toEqual([
+        200,
+        "/",
+        true,
+      ]);
     }
     const r = await t.done;
     expect(r.status).toBe(0);

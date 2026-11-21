@@ -51,18 +51,29 @@ interface Reply {
   body: string;
   headers: http.IncomingHttpHeaders;
 }
-function call(p: string, headers: Record<string, string>): Promise<Reply> {
+function call(
+  p: string,
+  headers: Record<string, string>,
+  body?: string,
+): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const r = http.request(
       {
         host: "127.0.0.1",
         port,
         path: p,
-        method: "GET",
+        method: body === undefined ? "GET" : "POST",
         agent: false,
         timeout: 20_000,
         setHost: false,
-        headers,
+        headers:
+          body === undefined
+            ? headers
+            : {
+                ...headers,
+                "content-type": "application/json",
+                "content-length": String(Buffer.byteLength(body)),
+              },
       },
       (res) => {
         let out = "";
@@ -78,7 +89,7 @@ function call(p: string, headers: Record<string, string>): Promise<Reply> {
     );
     r.on("error", reject);
     r.on("timeout", () => r.destroy(new Error(`timeout: ${p}`)));
-    r.end();
+    r.end(body);
   });
 }
 const nav = { "sec-fetch-site": "none", accept: "text/html" };
@@ -156,7 +167,9 @@ describe("issue 601 clause 2 with an address only this machine opens", () => {
   it("the address is proven: a sign-in on it holds a __Host- cookie", async () => {
     // Issue 819: the install's first sign-in, with a link `web login`
     // registered from the person's terminal (here: this process, on
-    // loopback, with the CLI's bearer), so it signs in on the address.
+    // loopback, with the CLI's bearer). Opened through the edge (not this
+    // machine's own loopback) it asks for the code that terminal printed;
+    // that code signs in on the address.
     const secret = readWebSecret(stateDir)!;
     const c = mintLoginCode(secret);
     const k = checkLoginCode(c, secret);
@@ -167,14 +180,26 @@ describe("issue 601 clause 2 with an address only this machine opens", () => {
         ...cliAuthHeaders(stateDir),
         "content-type": "application/json",
       },
-      body: JSON.stringify({ nonce: k.nonce, expiresAt: k.expiresAt }),
+      body: JSON.stringify({
+        nonce: k.nonce,
+        code: "ABCD-EFGH",
+        expiresAt: k.expiresAt,
+      }),
     });
     expect(reg.status).toBe(200);
-    const r = await call(`/auth?c=${encodeURIComponent(c)}`, {
-      ...onAddress(),
-      ...nav,
-    });
-    expect(r.status).toBe(303);
+    const where = `/auth?c=${encodeURIComponent(c)}`;
+    const opened = await call(where, { ...onAddress(), ...nav });
+    expect(sessionLine(opened)).toBe("");
+    const r = await call(
+      where,
+      {
+        ...onAddress(),
+        origin: `https://${LOOP_NAMED}`,
+        "sec-fetch-site": "same-origin",
+      },
+      JSON.stringify({ code: "abcd-efgh" }),
+    );
+    expect([r.status, JSON.parse(r.body).ok]).toEqual([200, true]);
     expect(sessionLine(r).startsWith(`__Host-den_session_${port}=`)).toBe(true);
   });
 

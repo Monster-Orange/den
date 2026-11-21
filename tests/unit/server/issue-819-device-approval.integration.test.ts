@@ -50,6 +50,7 @@ import {
   cliAuthHeaders,
   readWebSecret,
 } from "../../../src/shared/web-secret.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -247,7 +248,11 @@ const asPerson = (p: Person) =>
  * What `web login` does once its link is printed in a real terminal: a
  * link, and its wait registered with the server.
  */
-async function webLoginLink(): Promise<{ where: string; typed: string }> {
+async function webLoginLink(): Promise<{
+  where: string;
+  typed: string;
+  id: string;
+}> {
   const s = secret();
   const code = mintLoginCode(s);
   const c = checkLoginCode(code, s);
@@ -262,7 +267,11 @@ async function webLoginLink(): Promise<{ where: string; typed: string }> {
     JSON.stringify({ nonce: c.nonce, code: typed, expiresAt: c.expiresAt }),
   );
   if (reg.status !== 200) throw new Error(`register failed (${reg.status})`);
-  return { where: `/auth?c=${encodeURIComponent(code)}`, typed };
+  return {
+    where: `/auth?c=${encodeURIComponent(code)}`,
+    typed,
+    id: String(json(reg).id ?? ""),
+  };
 }
 /** A link minted straight from the secret, nothing registered. */
 const bareLink = () => `/auth?c=${encodeURIComponent(mintLoginCode(secret()))}`;
@@ -278,6 +287,28 @@ async function openOnNewDevice(where: string): Promise<{
 }
 const poll = (id: unknown) =>
   call("GET", `/api/signin/code/${String(id)}`, lan());
+/** `web login`'s wait, as the CLI polls it. */
+const loginWait = async (id: string) =>
+  json(
+    await call("GET", `/api/web/logins/${id}`, {
+      host: `localhost:${port}`,
+      ...bearer(),
+    }),
+  );
+/** Settings › Access's list, from the person's browser. */
+async function waitingRows(p: Person): Promise<Record<string, unknown>[]> {
+  const r = await call(
+    "GET",
+    "/api/web/waiting",
+    local({
+      cookie: p.cookie,
+      "x-den-csrf": p.csrf,
+      "sec-fetch-site": "same-origin",
+    }),
+  );
+  if (r.status !== 200) throw new Error(`waiting list: ${r.status}`);
+  return (json(r).waiting ?? []) as Record<string, unknown>[];
+}
 
 beforeAll(async () => {
   main = await startDen();
@@ -308,7 +339,94 @@ describe("3. first run, on an install that has never had a person signed in", ()
     });
   });
 
-  describe("a Den with no screen", () => {
+  describe("a Den with no screen (first run, away from the Den computer)", () => {
+    let fresh: Den | null = null;
+    /** A link item 8 left unspent. */
+    let unspent = "";
+    beforeAll(async () => {
+      fresh = await startDen();
+      use(fresh);
+    }, 60_000);
+    afterAll(async () => {
+      if (main) use(main);
+      await stopDen(fresh);
+    });
+
+    it("item 8: a link nothing waits on, opened on another computer, says to finish on the Den computer; no request is made", async () => {
+      unspent = bareLink();
+      const r = await call("GET", unspent, lan(page));
+      const s = signinOf(r);
+      expect({
+        signedIn: cookieOf(r) !== "",
+        lead: s.lead,
+        pair: s.pair,
+        confirm: s.confirm,
+      }).toEqual({
+        signedIn: false,
+        lead: "err.signin.firstRunHere",
+        pair: undefined,
+        confirm: undefined,
+      });
+    });
+
+    it("item 4: a `web login` link opened on the Den computer by a process in an agent's session asks for the code too", async () => {
+      // Registered from the person's terminal; then opened by a process in
+      // a running session (its tree holds this test's process).
+      const { where } = await webLoginLink();
+      const dir = sessionPaths(stateDir).dir;
+      fs.mkdirSync(dir, { recursive: true });
+      const rec = path.join(dir, "item4-session.json");
+      fs.writeFileSync(rec, JSON.stringify({ pid: process.pid }));
+      try {
+        const r = await call("GET", where, local(page));
+        expect({
+          signedIn: cookieOf(r) !== "",
+          confirm: signinOf(r).confirm,
+        }).toEqual({ signedIn: false, confirm: true });
+      } finally {
+        fs.rmSync(rec, { force: true });
+      }
+    });
+
+    it("item 4: from another computer, a first-run `web login` link asks for the code it printed: a wrong one signs nothing in, the right one (any case) does", async () => {
+      const { where, typed } = await webLoginLink();
+      const r = await call("GET", where, lan(page));
+      expect({
+        signedIn: cookieOf(r) !== "",
+        confirm: signinOf(r).confirm,
+        pair: signinOf(r).pair,
+      }).toEqual({ signedIn: false, confirm: true, pair: undefined });
+      const wrong = await call(
+        "POST",
+        where,
+        lan(),
+        JSON.stringify({
+          code: typed === "0000-0000" ? "1111-1111" : "0000-0000",
+        }),
+      );
+      expect([json(wrong).code, cookieOf(wrong)]).toEqual(["wrong_code", ""]);
+      const ok = await call(
+        "POST",
+        where,
+        lan(),
+        JSON.stringify({ code: typed.toLowerCase() }),
+      );
+      const cookie = cookieOf(ok);
+      expect([json(ok).ok, cookie !== ""]).toEqual([true, true]);
+      expect((await call("GET", "/api/settings", { cookie })).status).toBe(200);
+    });
+
+    it("item 8: the link that said to finish on the Den computer was not spent: opened now, it shows the pairing screen", async () => {
+      const r = await call("GET", unspent, lan(page));
+      expect({
+        signedIn: cookieOf(r) !== "",
+        pairCode: pairCodeOf(r),
+        expired: signinOf(r).expired,
+      }).toEqual({ signedIn: false, pairCode: true, expired: undefined });
+    });
+  });
+
+  describe("item 6: two first-run sign-ins at once", () => {
     let fresh: Den | null = null;
     beforeAll(async () => {
       fresh = await startDen();
@@ -319,12 +437,14 @@ describe("3. first run, on an install that has never had a person signed in", ()
       await stopDen(fresh);
     });
 
-    it("from another computer, a first-run `web login` link (made in a real terminal) signs in, with no code to type", async () => {
-      const { where } = await webLoginLink();
-      const r = await call("GET", where, lan(page));
-      expect([r.status, cookieOf(r) !== ""]).toEqual([303, true]);
-      const cookie = cookieOf(r);
-      expect((await call("GET", "/api/settings", { cookie })).status).toBe(200);
+    it("two setup links opened together on this computer: only one signs in by itself", async () => {
+      const [a, b] = [setupLink(), setupLink()];
+      const rs = await Promise.all([
+        call("GET", a, local(page)),
+        call("GET", b, local(page)),
+      ]);
+      expect(rs.filter((r) => cookieOf(r) !== "").length).toBe(1);
+      expect(rs.filter((r) => pairCodeOf(r)).length).toBe(1);
     });
   });
 });
@@ -352,44 +472,128 @@ describe("1. a `web login` link doesn't sign in by itself", () => {
 });
 
 describe("2. a signed-in browser approves or denies the waiting device", () => {
-  it("Settings › Access lists it; Approve signs the new browser in, once", async () => {
+  it("item 1: Settings › Access lists it with no code, the link's request first, marked with its web login run", async () => {
+    const person = signedInPerson();
+    // An unlinked request first, then the link's: the link's is listed first.
+    json(await call("POST", "/api/signin/code", lan(), "{}"));
+    const { where } = await webLoginLink();
+    const { pair } = await openOnNewDevice(where);
+    const rows = await waitingRows(person);
+    expect(rows.every((x) => x.code === undefined)).toBe(true);
+    expect(JSON.stringify(rows)).not.toContain(String(pair.code));
+    expect({
+      ref: typeof rows[0].ref,
+      fromLink: rows[0].fromLink,
+      fromLogin: Number.isFinite(Date.parse(String(rows[0].fromLogin))),
+      age: Number.isFinite(Date.parse(String(rows[0].createdAt))),
+    }).toEqual({ ref: "string", fromLink: true, fromLogin: true, age: true });
+  });
+
+  it("item 1: approving needs the code that device shows: none or a wrong one is refused; typed in any case with spaces, it signs the new browser in, once", async () => {
     const person = signedInPerson();
     const { where } = await webLoginLink();
     const { pair } = await openOnNewDevice(where);
-    const waiting = await call(
-      "GET",
-      "/api/web/waiting",
-      local({
-        cookie: person.cookie,
-        "x-den-csrf": person.csrf,
-        "sec-fetch-site": "same-origin",
-      }),
+    const ref = String((await waitingRows(person))[0].ref);
+    const code = String(pair.code);
+    const wrongCode = code.startsWith("0") ? "111-111" : "000-000";
+    const none = await call(
+      "POST",
+      "/api/web/approve",
+      asPerson(person),
+      JSON.stringify({ ref }),
     );
-    expect([waiting.status, json(waiting).code]).toEqual([200, undefined]);
-    const rows = (json(waiting).waiting ?? []) as { code?: string }[];
-    expect(rows.some((x) => x.code === pair.code)).toBe(true);
+    const wrong = await call(
+      "POST",
+      "/api/web/approve",
+      asPerson(person),
+      JSON.stringify({ ref, code: wrongCode }),
+    );
+    expect([none.status === 200, wrong.status, json(wrong).code]).toEqual([
+      false,
+      400,
+      "wrong",
+    ]);
+    expect(json(await poll(pair.id)).state).toBe("pending");
+    const typed = ` ${code.slice(0, 3).toLowerCase()} ${code.slice(4)} `;
     const ok = await call(
       "POST",
       "/api/web/approve",
       asPerson(person),
-      JSON.stringify({ code: pair.code }),
+      JSON.stringify({ ref, code: typed }),
     );
     expect(ok.status).toBe(200);
     const done = await poll(pair.id);
     const cookie = cookieOf(done);
     expect([json(done).state, cookie !== ""]).toEqual(["ok", true]);
     expect((await call("GET", "/api/settings", { cookie })).status).toBe(200);
+    const again = await call(
+      "POST",
+      "/api/web/approve",
+      asPerson(person),
+      JSON.stringify({ ref, code }),
+    );
+    expect(again.status === 200).toBe(false);
   });
 
-  it("Deny ends it: the page is told, no session, and the link is spent", async () => {
+  it("item 1: the right code with an agent's token, the CLI's token, or no session is refused; nothing is approved", async () => {
+    const person = signedInPerson();
+    const a = json(await call("POST", "/api/signin/code", lan(), "{}"));
+    const ref = String(
+      (await waitingRows(person)).find((x) => x.ref === a.ref)?.ref ?? "",
+    );
+    expect(ref).not.toBe("");
+    const { token } = mintActorToken(stateDir, {
+      agentId: "builder",
+      workspace: "north",
+      sessionName: "builder",
+    });
+    const body = JSON.stringify({ ref, code: a.code });
+    const statuses = [
+      (
+        await call(
+          "POST",
+          "/api/web/approve",
+          { authorization: `Bearer ${token}` },
+          body,
+        )
+      ).status,
+      (await call("POST", "/api/web/approve", bearer(), body)).status,
+      (
+        await call(
+          "POST",
+          "/api/web/approve",
+          local({ origin: `http://localhost:${port}` }),
+          body,
+        )
+      ).status,
+      (
+        await call(
+          "POST",
+          "/api/web/approve",
+          lan({ origin: `http://${NAME}:${port}` }),
+          body,
+        )
+      ).status,
+    ];
+    expect(statuses.map((x) => x === 200)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(json(await poll(a.id)).state).toBe("pending");
+  });
+
+  it("Deny by the list's handle ends it: the page is told, no session, and the link is spent", async () => {
     const person = signedInPerson();
     const { where } = await webLoginLink();
     const { pair } = await openOnNewDevice(where);
+    const ref = String((await waitingRows(person))[0].ref);
     const r = await call(
       "POST",
       "/api/web/deny",
       asPerson(person),
-      JSON.stringify({ code: pair.code }),
+      JSON.stringify({ ref }),
     );
     expect(r.status).toBe(200);
     const p = await poll(pair.id);
@@ -397,6 +601,18 @@ describe("2. a signed-in browser approves or denies the waiting device", () => {
     const again = await call("GET", where, lan(page));
     expect({ signedIn: cookieOf(again) !== "" }).toEqual({ signedIn: false });
     expect(signinOf(again).pair).toBeUndefined();
+  });
+
+  it("item 7: a browser already signed in opens a `web login` link: it stays signed in, and the wait is used, so the CLI stops waiting", async () => {
+    const person = signedInPerson();
+    const { where, id } = await webLoginLink();
+    const r = await call(
+      "GET",
+      where,
+      local({ ...page, cookie: person.cookie }),
+    );
+    expect(r.status).toBe(303);
+    expect((await loginWait(id)).state).toBe("used");
   });
 });
 
@@ -554,5 +770,38 @@ describe("3. signing everyone out never brings first run back", () => {
       setupLink: cookieOf(claim) !== "",
       webLogin: cookieOf(link) !== "",
     }).toEqual({ setupLink: false, webLogin: false });
+  });
+});
+
+describe("item 2: new requests are limited per address (a Setting)", () => {
+  const userYml = () =>
+    path.join(main!.tmp, "dist", "config", "local", "user.yml");
+  it("past the limit, a new code gets 429 and a link's page says to wait; the limit is read at once", async () => {
+    use(main!);
+    const before = fs.readFileSync(userYml(), "utf-8");
+    fs.writeFileSync(
+      userYml(),
+      "web:\n  allow_plain_http_remote: true\n  pair_requests_per_minute: 2\n",
+    );
+    try {
+      const statuses: number[] = [];
+      for (let i = 0; i < 3; i++)
+        statuses.push(
+          (await call("POST", "/api/signin/code", lan(), "{}")).status,
+        );
+      const last = await call("POST", "/api/signin/code", lan(), "{}");
+      expect([statuses.includes(429), last.status, json(last).code]).toEqual([
+        true,
+        429,
+        "too_many_requests",
+      ]);
+      const r = await call("GET", bareLink(), lan(page));
+      expect({
+        lead: signinOf(r).lead,
+        pair: signinOf(r).pair,
+      }).toEqual({ lead: "err.signin.tooManyRequests", pair: undefined });
+    } finally {
+      fs.writeFileSync(userYml(), before);
+    }
   });
 });

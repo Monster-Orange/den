@@ -26,10 +26,13 @@ let tmp = "";
 let stand: http.Server | null = null;
 let seen: { method: string; path: string; body: string; auth: boolean }[] = [];
 let answer: () => Record<string, unknown> = () => ({ state: "waiting" });
+// Issue 819: whether the stand-in says nobody has signed in yet.
+let firstRun = false;
 
 beforeEach(() => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-wwait-")));
   seen = [];
+  firstRun = false;
 });
 afterEach(async () => {
   if (stand)
@@ -57,7 +60,9 @@ async function standIn(): Promise<number> {
         connection: "close",
       });
       if (req.method === "POST" && req.url === "/api/web/logins")
-        return res.end(JSON.stringify({ ok: true, id: "w".repeat(32) }));
+        return res.end(
+          JSON.stringify({ ok: true, id: "w".repeat(32), firstRun }),
+        );
       res.end(JSON.stringify({ ok: true, ...answer() }));
     });
   });
@@ -112,7 +117,8 @@ describe("web login waits", () => {
       "/api/web/logins",
       true,
     ]);
-    expect(reg.code).toBeUndefined();
+    // Issue 819: a confirmation code is registered, printed on first run only.
+    expect(reg.code).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}$/);
     expect(typeof reg.expiresAt).toBe("number");
     expect(link.includes(String(reg.nonce))).toBe(true);
     expect(
@@ -120,6 +126,43 @@ describe("web login waits", () => {
         .slice(1)
         .every((s) => s.path === `/api/web/logins/${"w".repeat(32)}`),
     ).toBe(true);
+  });
+
+  it("issue 819: first run: prints the code it registered, for a browser on another computer to type", async () => {
+    const port = await standIn();
+    firstRun = true;
+    answer = () => ({
+      state: "used",
+      device: "Safari on macOS",
+      usedAt: new Date(2026, 10, 6, 10, 42).toISOString(),
+    });
+    const r = await login(["--port", String(port)]);
+    expect(r.code).toBe(0);
+    const reg = JSON.parse(seen[0].body) as Record<string, unknown>;
+    expect(r.err).toContain(
+      `Opened on another computer, it asks for this code: ${String(reg.code)}`,
+    );
+  });
+
+  it("issue 819: opened once set up: prints the code that device's screen shows, to type in a signed-in browser", async () => {
+    const port = await standIn();
+    let polls = 0;
+    answer = () =>
+      ++polls < 3
+        ? {
+            state: "pairing",
+            device: "Safari on macOS",
+            client: "100.64.0.7",
+            code: "K7Q-42M",
+          }
+        : { state: "denied" };
+    const r = await login(["--port", String(port)]);
+    expect(r.code).toBe(1);
+    expect(
+      r.err.match(
+        /Its screen shows the code K7Q-42M: type it in a browser that is signed in, at Settings › Access\./g,
+      ),
+    ).toHaveLength(1);
   });
 
   it("nobody uses it: Expired, exit 1", async () => {

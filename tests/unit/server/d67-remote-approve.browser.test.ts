@@ -136,10 +136,20 @@ const workspaces = async () =>
     ).workspaces ?? {},
   );
 
-/** The other browser's pop-up shows `code`; Allow it there. */
-async function allowFrom(a: Page, code: string): Promise<void> {
+/**
+ * Issue 819: the other browser's pop-up never shows the code; the person
+ * types it there (as read off the new computer's screen), then Allows it.
+ */
+async function typeCodeIn(a: Page, code: string): Promise<void> {
   await a.waitForSelector("#den-pair-dlg[open]", { timeout: 15_000 });
-  expect((await a.textContent("#den-pair-dlg-code"))?.trim()).toBe(code);
+  expect(await a.textContent("#den-pair-dlg")).not.toContain(code);
+  await a.fill("#den-pair-code-in", "");
+  expect(await a.isDisabled("#den-pair-allow")).toBe(true);
+  await a.fill("#den-pair-code-in", code.toLowerCase());
+  expect(await a.isDisabled("#den-pair-allow")).toBe(false);
+}
+async function allowFrom(a: Page, code: string): Promise<void> {
+  await typeCodeIn(a, code);
   expect(await a.textContent("#den-pair-h")).toBe("Allow this computer?");
   await a.click("#den-pair-allow");
   await a.waitForFunction(
@@ -249,8 +259,7 @@ describe("D67: approve from another computer, in browsers only", () => {
     const b = await open();
     expect((await b.goto(`${edge()}/settings`))?.status()).toBe(401);
     const code = await codeOn(b);
-    await a.waitForSelector("#den-pair-dlg[open]", { timeout: 15_000 });
-    expect((await a.textContent("#den-pair-dlg-code"))?.trim()).toBe(code);
+    await typeCodeIn(a, code);
     // Another tab of A asks the server; A's own list stays as it was (as
     // between two polls) while B's page goes.
     const q = await a.context().newPage();
@@ -314,8 +323,7 @@ describe("D67: approve from another computer, in browsers only", () => {
     );
     expect(await b.isVisible("#den-signin-cmd")).toBe(false);
     const code = await codeOn(b);
-    await a.waitForSelector("#den-pair-dlg[open]", { timeout: 15_000 });
-    expect((await a.textContent("#den-pair-dlg-code"))?.trim()).toBe(code);
+    await typeCodeIn(a, code);
     expect(await a.textContent("#den-pair-what")).toContain(
       "on this computer, via localhost",
     );

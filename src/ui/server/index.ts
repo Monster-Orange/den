@@ -333,6 +333,7 @@ import {
   deviceName,
   ignoredConfigWarning,
   localhostOrigin,
+  loginCodeNonce,
   loginLink,
   LOGIN_CODE_MAX_TTL_MS,
   mintLoginCode,
@@ -481,7 +482,11 @@ import {
 } from "./github-routes.js";
 import { PairRequests, pairUnseenMs } from "./pair-requests.js";
 import { LoginWaits } from "./login-waits.js";
-import { handlePairRoutes, isPairRoute } from "./pair-routes.js";
+import {
+  CREATE_REFUSED,
+  handlePairRoutes,
+  isPairRoute,
+} from "./pair-routes.js";
 import {
   cliCommand,
   cliPrefix,
@@ -2221,7 +2226,13 @@ function noteExpiringToken(): void {
 }
 
 // ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
-const PAIRS = new PairRequests({ unseenMs: pairUnseenMs() });
+/** Issue 819: the new-device limits are Settings, read when used. */
+const PAIRS = new PairRequests({
+  unseenMs: pairUnseenMs(),
+  perClient: () => webAuthNow().pairRequestsPerMinute,
+  maxAttempts: () => webAuthNow().approveAttempts,
+  windowMs: () => webAuthNow().approveWindowSeconds * 1000,
+});
 
 /**
  * What every printed command starts with (cli-command.ts): `<cli>` when the
@@ -2591,6 +2602,16 @@ function sendSignedOut(
     pair?: { id: string; code: string; expiresAt: string; expiresIn: number };
     /** Issue 819: the pairing screen's lead line, as a message key. */
     pairLead?: string;
+    /**
+     * SEC-2a; issue 819: first run, a link `web login` printed opened away
+     * from the Den computer: its page asks for the code that terminal shows.
+     */
+    confirm?: boolean;
+    /**
+     * Issue 819: nothing to sign in or approve here; this message key says
+     * what to do next (first run, away from the Den computer).
+     */
+    lead?: string;
     requestId: string;
     message: string;
   },
@@ -2667,6 +2688,8 @@ function sendSignedOut(
       ...(opts.expired ? { expired: true } : {}),
       ...(opts.pair ? { pair: opts.pair } : {}),
       ...(opts.pairLead ? { pairLead: opts.pairLead } : {}),
+      ...(opts.confirm ? { confirm: true } : {}),
+      ...(opts.lead ? { lead: opts.lead } : {}),
       // Issue 819: the pairing screen's lead in English (the page words it).
       ...(opts.pair ? { message: opts.message } : {}),
       ...(toLocal && !opts.expired && !there && !opts.pair
@@ -2821,17 +2844,12 @@ async function personCallerWhy(
 }
 
 /**
- * Issue 819: whether this sign-in is first run's: no person has ever
- * signed in here, and either the link is one `web login` (or `web up`)
- * registered from the person's own terminal, or the browser is on this
- * computer (loopback, not forwarded, outside every agent's session).
+ * Issue 819: whether this browser is the person at the Den computer
+ * itself: on loopback, not forwarded, outside every agent's session
+ * (personCallerWhy). First run signs such a browser in with a link or the
+ * setup link at once.
  */
-async function firstRunSignIn(
-  req: http.IncomingMessage,
-  registered: boolean,
-): Promise<boolean> {
-  if (FIRST_RUN.done()) return false;
-  if (registered) return true;
+async function personHere(req: http.IncomingMessage): Promise<boolean> {
   return (await personCallerWhy(req)) === null;
 }
 
@@ -2847,19 +2865,34 @@ function sendPairing(
   res: http.ServerResponse,
   requestId: string,
   lead: { key: string; message: string },
-  link?: string,
+  link?: { nonce: string; startedAt?: number },
 ): void {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const client = g.ok ? g.client : undefined;
-  const r = PAIRS.create({
+  const r = PAIRS.tryCreate({
     userAgent: req.headers["user-agent"],
     client,
-    ...(link ? { link } : {}),
+    ...(link ? { link: link.nonce, linkAt: link.startedAt } : {}),
   });
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  if (!r.ok)
+    return sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      requestId,
+      lead:
+        r.error === "rate_limited"
+          ? "err.signin.tooManyRequests"
+          : "err.signin.tooManyWaiting",
+      message: CREATE_REFUSED[r.error].error,
+    });
   if (link)
-    LOGIN_WAITS.pairing(link, r.expiresAt, {
+    LOGIN_WAITS.pairing(link.nonce, r.expiresAt, {
       device: deviceName(req.headers["user-agent"]),
       ...(client ? { client } : {}),
+      code: r.code,
     });
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
@@ -2888,22 +2921,42 @@ function pairLinkLead(): { key: string; message: string } {
   };
 }
 
-/** Issue 819: first run's lead, for a link opened away from this computer. */
-function firstRunHereLead(): { key: string; message: string } {
-  return {
-    key: "err.signin.firstRunHere",
+/**
+ * Issue 819: first run, a link nothing here can finish (opened away from
+ * the Den computer, or by an agent's process there): what to do next. The
+ * link is not spent and no request is made.
+ */
+function sendFirstRunHere(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  requestId: string,
+): void {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  return sendSignedOut(req, res, {
+    pathname: "/auth",
+    search: "",
+    scope: "den",
+    requestId,
+    lead: "err.signin.firstRunHere",
     message: `${product().title} isn't set up yet: finish its first sign-in on ${machineName()} itself, with the setup link or \`${product().cli} web login\` run in your own terminal there.`,
-  };
+  });
 }
 
 /**
  * `GET /auth?c=<code>&next=<path>` (§2; issue 819): a valid, unused login
- * code (constant-time mac, single use). It signs a browser in by itself
- * only on first run (firstRunSignIn); from then on it is spent as it opens
- * the pairing screen, and a signed-in browser approves that device. A
- * browser already signed in keeps its session. Anything else gets the
- * signed-out page, which never echoes the code. A HEAD (a link preview)
- * spends nothing; a POST (an older page's typed code) signs nothing in.
+ * code (constant-time mac, single use). A browser already signed in keeps
+ * its session (the code is spent). Otherwise:
+ *
+ *  - first run (first-run.ts), the person at the Den computer
+ *    (personHere) is signed in at once. A link `web login` registered,
+ *    opened anywhere else, asks for the code that terminal printed (POST
+ *    with it signs in). Any other link shows what to do next, unspent;
+ *  - from then on the link is spent as it opens the pairing screen, and a
+ *    signed-in browser approves that device.
+ *
+ * Anything else gets the signed-out page, which never echoes the code. A
+ * HEAD (a link preview) spends nothing.
  */
 async function handleAuth(
   req: http.IncomingMessage,
@@ -2923,21 +2976,16 @@ async function handleAuth(
     res.end();
     return;
   }
-  if (method === "POST") {
-    req.resume();
-    return sendJson(
-      res,
-      {
-        ok: false,
-        code: "expired",
-        error: `A sign-in link no longer takes a code. Open the link again: a browser that is already signed in approves this one in Settings › Access.`,
-      },
-      410,
-    );
-  }
   const secret = webSecret.current();
   const c = url.searchParams.get("c") ?? "";
-  const check = secret ? checkLoginCode(c, secret) : null;
+  const nonce = loginCodeNonce(c);
+  const pending = nonce ? LOGIN_WAITS.forNonce(nonce) : null;
+  // A link whose page asks for its code is checked as of when it opened.
+  const check = secret
+    ? checkLoginCode(c, secret, pending?.openedAt ?? Date.now())
+    : null;
+  if (method === "POST")
+    return confirmFirstRunLink(req, res, url, check, requestId);
   const gone = () =>
     sendSignedOut(req, res, {
       pathname: "/auth",
@@ -2949,35 +2997,57 @@ async function handleAuth(
     });
   if (!check?.ok) return gone();
   const wait = LOGIN_WAITS.forNonce(check.nonce);
-  // A wait that ended (used, denied, expired) spends its link.
-  if (wait && wait.state !== "waiting") return gone();
+  // A wait that ended (used, denied, refused, expired) spends its link.
+  if (wait && wait.state !== "waiting" && wait.state !== "opened")
+    return gone();
+  const meta = (g: GuardResult) => ({
+    device: deviceName(req.headers["user-agent"]),
+    ...(g.ok && g.client ? { client: g.client } : {}),
+  });
   // 0.4.71: `web up` sends an open tab here each time; a browser already
   // signed in keeps its session (the code is spent), so Linked devices
-  // doesn't fill with one per run.
+  // doesn't fill with one per run. `web login` is told it was used.
   const already = checkRequest(req, GUARD, product().cli, product().title);
   if (already.ok && already.session) {
     if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+    if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
     res.writeHead(303, { Location: safeNext(url.searchParams.get("next")) });
     res.end();
     return;
   }
-  const first = await firstRunSignIn(req, !!wait);
-  // The address may have been proven meanwhile: sign-in then goes there.
-  if (sendToNamedAddress(req, res, url, already)) return;
+  if (!FIRST_RUN.done()) {
+    const here = await personHere(req);
+    // The address may have been proven meanwhile: sign-in then goes there.
+    if (sendToNamedAddress(req, res, url, already)) return;
+    if (!here) {
+      // A link `web login` printed (with its code): its page asks for
+      // that code. Anything else: finish on the Den computer, unspent.
+      if (wait?.confirmable) {
+        LOGIN_WAITS.open(check.nonce);
+        return sendSignedOut(req, res, {
+          pathname: "/auth",
+          search: "",
+          scope: "den",
+          confirm: true,
+          requestId,
+          message: "Enter the code `web login` printed.",
+        });
+      }
+      return sendFirstRunHere(req, res, requestId);
+    }
+  } else if (sendToNamedAddress(req, res, url, already)) return;
   if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
-  if (!first)
+  // Checked again right before the session: another first-run sign-in
+  // may have finished while this one waited.
+  if (FIRST_RUN.done())
     return sendPairing(
       req,
       res,
       requestId,
-      FIRST_RUN.done() ? pairLinkLead() : firstRunHereLead(),
-      wait ? check.nonce : undefined,
+      pairLinkLead(),
+      wait ? { nonce: check.nonce, startedAt: wait.startedAt } : undefined,
     );
-  if (wait)
-    LOGIN_WAITS.used(check.nonce, {
-      device: deviceName(req.headers["user-agent"]),
-      ...(already.ok && already.client ? { client: already.client } : {}),
-    });
+  if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
   const s = startSession(req, "link");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -2988,6 +3058,116 @@ async function handleAuth(
     "Set-Cookie": s.cookie,
   });
   res.end();
+}
+
+/**
+ * SEC-2a; issue 819: `POST /auth?c=…` with `{ code }`: first run, the
+ * code `web login` printed for a link opened away from the Den computer.
+ * The right code signs this browser in (the link is spent); five wrong
+ * ones end the link. Once a person has signed in here, it signs nothing
+ * in: the link opened again shows the pairing screen.
+ */
+async function confirmFirstRunLink(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  check: ReturnType<typeof checkLoginCode> | null,
+  requestId: string,
+): Promise<void> {
+  void requestId;
+  const gone = (error?: string) =>
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "expired",
+        error:
+          error ??
+          `This link no longer works. On ${machineName()}, run web login again for a new one.`,
+      },
+      410,
+    );
+  let body: { code?: unknown } = {};
+  try {
+    body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
+    if (typeof body !== "object" || Array.isArray(body)) throw new Error();
+  } catch {
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "bad_request",
+        error: "the body must be JSON: { code }",
+      },
+      400,
+    );
+  }
+  if (!check?.ok) return gone();
+  if (FIRST_RUN.done())
+    return gone(
+      `${product().title} is already set up: open the link again, and a browser that is signed in approves this one.`,
+    );
+  const r = LOGIN_WAITS.confirm(check.nonce, String(body.code ?? ""));
+  if (!r.ok) {
+    if (r.error === "expired") return gone();
+    return sendJson(
+      res,
+      r.error === "wrong"
+        ? {
+            ok: false,
+            code: "wrong_code",
+            left: r.left,
+            error:
+              "That code isn't right. Check what web login printed and try again.",
+          }
+        : r.error === "rate_limited"
+          ? {
+              ok: false,
+              code: "rate_limited",
+              error: "Too many wrong codes. Wait a minute and try again.",
+            }
+          : {
+              ok: false,
+              code: "refused",
+              error: `Too many wrong codes: this link no longer works. On ${machineName()}, run web login again.`,
+            },
+      r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
+    );
+  }
+  // The address may have been proven while the body was read: sign-in on
+  // a loopback name then goes there, and nothing is minted here.
+  const there = NAMED.address();
+  if (there && !onTheAddress(req, there))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_elsewhere",
+        error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
+        address: there,
+      },
+      403,
+    );
+  if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+  // Checked again right before the session (another sign-in may have
+  // finished first run meanwhile).
+  if (FIRST_RUN.done())
+    return gone(
+      `${product().title} is already set up: run web login again, and a browser that is signed in approves this one.`,
+    );
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  LOGIN_WAITS.used(check.nonce, {
+    device: deviceName(req.headers["user-agent"]),
+    ...(g.ok && g.client ? { client: g.client } : {}),
+  });
+  const s = startSession(req, "link");
+  res.setHeader("Set-Cookie", s.cookie);
+  res.setHeader("Cache-Control", "no-store");
+  return sendJson(res, {
+    ok: true,
+    next: safeNext(url.searchParams.get("next")),
+    approveKey: s.approveKey,
+  });
 }
 
 /**
@@ -3306,8 +3486,15 @@ async function handleClaim(
       requestId,
       message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
     });
-  // Issue 819: first run only, and only on this computer.
-  const first = await firstRunSignIn(req, false);
+  // Issue 819: first run only, and only by the person at this computer;
+  // anywhere else on first run, it says so and stays unspent.
+  const first = !FIRST_RUN.done() && (await personHere(req));
+  if (!first && !FIRST_RUN.done()) return sendFirstRunHere(req, res, requestId);
+  // Checked again after the wait above, right before the session (another
+  // first-run sign-in may have finished meanwhile). Nothing awaits between
+  // here and startSession, and spending the setup link below leaves a
+  // trace first-run.ts reads as set up, so it is checked first.
+  const firstNow = first && !FIRST_RUN.done();
   if (!CLAIM_NONCES.consume(check.nonce, check.expiresAt))
     return sendSignedOut(req, res, {
       pathname: "/auth",
@@ -3317,18 +3504,11 @@ async function handleClaim(
       requestId,
       message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
     });
-  if (!first)
-    return sendPairing(
-      req,
-      res,
-      requestId,
-      FIRST_RUN.done()
-        ? {
-            key: "err.signin.claimSetUp",
-            message: `${product().title} is already set up, so the setup link doesn't sign in by itself any more. Approve this browser from one that is signed in: Settings › Access, then the code below.`,
-          }
-        : firstRunHereLead(),
-    );
+  if (!firstNow)
+    return sendPairing(req, res, requestId, {
+      key: "err.signin.claimSetUp",
+      message: `${product().title} is already set up, so the setup link doesn't sign in by itself any more. Approve this browser from one that is signed in: Settings › Access, then the code below.`,
+    });
   const s = startSession(req, "claim");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -4321,6 +4501,15 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
             : 10,
       };
     })(),
+    // Issue 819: new-device requests and wrong codes.
+    web_pairing: (() => {
+      const c = webAuthNow();
+      return {
+        requestsPerMinute: c.pairRequestsPerMinute,
+        approveAttempts: c.approveAttempts,
+        approveWindowSeconds: c.approveWindowSeconds,
+      };
+    })(),
     // den#143: how long `web up` waits for the server.
     web_ready: (() => {
       try {
@@ -4600,7 +4789,9 @@ async function handleRequest(
         : null;
     if (!id) return send400(res, "not a login link's nonce and expiry");
     res.setHeader("Cache-Control", "no-store");
-    return sendJson(res, { ok: true, id });
+    // Issue 819: on first run, `web login` prints its code for a browser
+    // on another computer to type.
+    return sendJson(res, { ok: true, id, firstRun: !FIRST_RUN.done() });
   }
   {
     const w = LOGIN_WAIT_PATH.exec(pathname);
@@ -4613,6 +4804,9 @@ async function handleRequest(
         state: v.state,
         ...(v.device ? { device: v.device } : {}),
         ...(v.client ? { client: v.client } : {}),
+        // Issue 819: the code the pairing screen shows, so `web login`
+        // prints it beside where to approve it.
+        ...(v.code ? { code: v.code } : {}),
         ...(v.usedAt ? { usedAt: new Date(v.usedAt).toISOString() } : {}),
         expiresAt: new Date(v.expiresAt).toISOString(),
       });
@@ -8167,6 +8361,7 @@ async function handleRequest(
           web_bridge?: unknown;
           web_github?: unknown;
           web_ready?: unknown;
+          web_pairing?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
@@ -8222,6 +8417,7 @@ async function handleRequest(
             web_bridge: body.web_bridge,
             web_github: body.web_github,
             web_ready: body.web_ready,
+            web_pairing: body.web_pairing,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
             agent_context: body.agent_context,

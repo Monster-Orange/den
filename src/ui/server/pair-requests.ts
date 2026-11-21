@@ -4,20 +4,25 @@
  * hands that page two things:
  *
  *  - a short code (`K7Q-42M`: six Crockford base32 characters, 30 bits)
- *    that a person who is already in (the CLI's bearer, `<cli> web approve
- *    <code>`, or a signed-in Settings › Access › Waiting devices) types or
- *    clicks to approve it. The code is never a credential by itself: it
- *    only names a request to someone already trusted;
+ *    that a person in a browser already signed in types to approve it
+ *    (issue 819: read off the new device's own screen; the waiting list
+ *    never shows it, so approving needs that screen). The code is never a
+ *    credential by itself: it only names a request to someone already
+ *    trusted;
+ *  - a public handle (`ref`) the waiting list names it by;
  *  - a separate poll id (192 bits) that only that page holds. Once the
  *    request is approved, the page's poll with this id gets the session
  *    cookie, once.
  *
  * A request lasts 10 minutes and is single-use: claiming it (the cookie),
  * denying it, or its expiry ends it. At most `max` are pending at once; a
- * new one beyond that drops the oldest. Approve and deny attempts are
- * rate-limited (a miss, as a guess of a code, costs one; issue 819: a
- * pending request decided doesn't): past `maxAttempts` in the window,
- * every attempt is refused until the window passes.
+ * new one beyond that drops the oldest one no sign-in link opened (issue
+ * 819: a link's request is never dropped for one without), and each
+ * client address may make `perClient` a minute. Approve and deny attempts
+ * are rate-limited: a wrong code typed for a live request, or a code that
+ * names none, costs one; a request that ended, expired or was already
+ * decided doesn't (a person's own stale dialog). Past `maxAttempts` in
+ * the window, every attempt is refused until the window passes.
  *
  * Nothing is written to disk. Clock injected, so a test drives expiry.
  */
@@ -54,9 +59,12 @@ export const MAX_PENDING_PAIRS = 5;
 export const MAX_WITHDRAWN_KEPT = 20;
 /** How long an ended request still answers its page (denied, expired). */
 export const PAIR_ENDED_KEEP_MS = 60_000;
-/** Approve or deny attempts allowed per window. */
+/** Approve or deny attempts allowed per window (web.approve_attempts). */
 export const MAX_APPROVE_ATTEMPTS = 10;
-export const APPROVE_WINDOW_MS = 60_000;
+/** The approve limit's window (web.approve_window_seconds): short. */
+export const APPROVE_WINDOW_MS = 30_000;
+/** New requests a minute from one client address (web.pair_requests_per_minute). */
+export const MAX_PAIRS_PER_CLIENT_MINUTE = 30;
 
 export { PAIR_ALPHABET };
 const CODE_LEN = 6;
@@ -100,6 +108,8 @@ export type PairState =
 /** What the approver sees of a request (and the page, of its own). */
 export interface PairView {
   code: string;
+  /** Issue 819: the public handle the waiting list names it by (never the code). */
+  ref: string;
   state: PairState;
   /** "Chrome on macOS", from the User-Agent. */
   device: string;
@@ -112,6 +122,8 @@ export interface PairView {
    * link opened it. Den's own: never sent to a page or the approver.
    */
   link?: string;
+  /** Issue 819: when the `web login` run whose link opened it began. */
+  linkAt?: number;
 }
 
 interface PairRequest extends PairView {
@@ -127,26 +139,47 @@ export type ApproveResult =
   | { ok: true; request: PairView }
   | {
       ok: false;
-      error: "malformed" | "unknown" | "expired" | "ended" | "rate_limited";
+      error:
+        | "malformed"
+        | "unknown"
+        | "expired"
+        | "ended"
+        | "wrong"
+        | "rate_limited";
     };
+
+/** What a person typed (the code), for the request they chose (its ref). */
+export type Decision = string | { code?: string; ref?: string };
+
+export type CreateResult =
+  | { ok: true; id: string; ref: string; code: string; expiresAt: number }
+  | { ok: false; error: "rate_limited" | "full" };
+
+/** A limit read when it is used (a Setting), or a fixed number. */
+type Live = number | (() => number);
+const live = (v: Live): number => (typeof v === "function" ? v() : v);
 
 export class PairRequests {
   private readonly byId = new Map<string, PairRequest>();
   private readonly now: () => number;
   private readonly max: number;
   private readonly ttlMs: number;
-  private readonly maxAttempts: number;
-  private readonly windowMs: number;
+  private readonly maxAttempts: Live;
+  private readonly windowMs: Live;
+  private readonly perClient: Live;
   private readonly unseenMs: number;
   private attempts: number[] = [];
+  private madeBy = new Map<string, number[]>();
 
   constructor(
     opts: {
       now?: () => number;
       max?: number;
       ttlMs?: number;
-      maxAttempts?: number;
-      windowMs?: number;
+      maxAttempts?: Live;
+      windowMs?: Live;
+      /** New requests a minute from one client address. */
+      perClient?: Live;
       unseenMs?: number;
     } = {},
   ) {
@@ -155,42 +188,83 @@ export class PairRequests {
     this.ttlMs = opts.ttlMs ?? PAIR_TTL_MS;
     this.maxAttempts = opts.maxAttempts ?? MAX_APPROVE_ATTEMPTS;
     this.windowMs = opts.windowMs ?? APPROVE_WINDOW_MS;
+    this.perClient = opts.perClient ?? MAX_PAIRS_PER_CLIENT_MINUTE;
     this.unseenMs = opts.unseenMs ?? PAIR_UNSEEN_MS;
   }
 
-  /** A new request: its poll id (the page's only), code and expiry. */
-  create(meta: { userAgent?: string; client?: string; link?: string }): {
-    id: string;
-    code: string;
-    expiresAt: number;
-  } {
+  /** A new request: its poll id (the page's only), handle, code and expiry. */
+  create(meta: {
+    userAgent?: string;
+    client?: string;
+    link?: string;
+    linkAt?: number;
+  }): { id: string; ref: string; code: string; expiresAt: number } {
+    const r = this.tryCreate(meta);
+    if (!r.ok) throw new Error(`no request: ${r.error}`);
+    return r;
+  }
+
+  /**
+   * A new request, unless its client address made too many this minute
+   * ("rate_limited"), or every pending slot holds a request a sign-in link
+   * opened and this one has none ("full"). Issue 819: past the cap, the
+   * oldest without a link goes first; a link's request goes only for
+   * another link's.
+   */
+  tryCreate(meta: {
+    userAgent?: string;
+    client?: string;
+    link?: string;
+    linkAt?: number;
+  }): CreateResult {
     this.sweep();
+    const now = this.now();
+    const who = String(meta.client ?? "");
+    const made = (this.madeBy.get(who) ?? []).filter((t) => now - t < 60_000);
+    if (made.length >= live(this.perClient)) {
+      this.madeBy.set(who, made);
+      return { ok: false, error: "rate_limited" };
+    }
     const pending = [...this.byId.values()]
       .filter((r) => r.state === "pending")
       .sort((a, b) => a.createdAt - b.createdAt);
     while (pending.length >= this.max) {
-      const oldest = pending.shift()!;
-      this.byId.delete(oldest.id);
+      const i = pending.findIndex((r) => !r.link);
+      if (i < 0 && !meta.link) return { ok: false, error: "full" };
+      const [gone] = pending.splice(i < 0 ? 0 : i, 1);
+      this.byId.delete(gone.id);
     }
-    const live = new Set([...this.byId.values()].map((r) => r.code));
+    made.push(now);
+    this.madeBy.set(who, made);
+    if (this.madeBy.size > 1000)
+      for (const [k, v] of this.madeBy)
+        if (!v.some((t) => now - t < 60_000)) this.madeBy.delete(k);
+    const liveCodes = new Set([...this.byId.values()].map((r) => r.code));
     let code = newPairCode();
-    while (live.has(code)) code = newPairCode();
-    const now = this.now();
+    while (liveCodes.has(code)) code = newPairCode();
     const ua = String(meta.userAgent ?? "").slice(0, 300);
     const r: PairRequest = {
       id: randomBytes(24).toString("base64url"),
+      ref: randomBytes(12).toString("base64url"),
       code,
       state: "pending",
       device: deviceName(ua),
       userAgent: ua,
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
       ...(meta.link ? { link: String(meta.link).slice(0, 64) } : {}),
+      ...(meta.link && meta.linkAt ? { linkAt: meta.linkAt } : {}),
       createdAt: now,
       expiresAt: now + this.ttlMs,
       seenAt: now,
     };
     this.byId.set(r.id, r);
-    return { id: r.id, code: formatPairCode(code), expiresAt: r.expiresAt };
+    return {
+      ok: true,
+      id: r.id,
+      ref: r.ref,
+      code: formatPairCode(code),
+      expiresAt: r.expiresAt,
+    };
   }
 
   /** A request's view by its poll id, or null (unknown, or forgotten). */
@@ -228,25 +302,35 @@ export class PairRequests {
   }
 
   /**
-   * The requests waiting for approval, oldest first: pending, so its page
-   * is still asking (D67, issue 320: sweep ended any a closed tab left,
-   * the same rule decide() goes by).
+   * The requests waiting for approval: pending, so its page is still
+   * asking (D67, issue 320: sweep ended any a closed tab left, the same
+   * rule decide() goes by). Issue 819: those a sign-in link opened first,
+   * then the newest first.
    */
   waiting(): PairView[] {
     this.sweep();
     return [...this.byId.values()]
       .filter((r) => r.state === "pending")
-      .sort((a, b) => a.createdAt - b.createdAt)
+      .sort(
+        (a, b) =>
+          Number(!!b.link) - Number(!!a.link) || b.createdAt - a.createdAt,
+      )
       .map(view);
   }
 
-  /** Approve the pending request with this code (as typed). */
-  approve(input: string): ApproveResult {
+  /**
+   * Approve the pending request with this code (as typed), or (issue 819)
+   * the one with this handle when the typed code is its own.
+   */
+  approve(input: Decision): ApproveResult {
     return this.decide(input, "approved");
   }
 
-  /** Deny the pending request with this code: its page offers a new one. */
-  deny(input: string): ApproveResult {
+  /**
+   * Deny the pending request with this code, or this handle (no code
+   * needed: denying lets nothing in). Its page offers a new one.
+   */
+  deny(input: Decision): ApproveResult {
     return this.decide(input, "denied");
   }
 
@@ -267,21 +351,62 @@ export class PairRequests {
     this.byId.clear();
   }
 
-  private decide(input: string, state: "approved" | "denied"): ApproveResult {
+  private decide(input: Decision, state: "approved" | "denied"): ApproveResult {
     const now = this.now();
-    this.attempts = this.attempts.filter((t) => now - t < this.windowMs);
-    if (this.attempts.length >= this.maxAttempts)
+    const windowMs = live(this.windowMs);
+    this.attempts = this.attempts.filter((t) => now - t < windowMs);
+    if (this.attempts.length >= live(this.maxAttempts))
       return { ok: false, error: "rate_limited" };
-    const r = this.match(input);
-    // Issue 819: a miss costs an attempt (a guess of a code is one); a
-    // pending request decided doesn't.
+    const typed = typeof input === "string" ? { code: input } : input;
+    const r =
+      typed.ref !== undefined
+        ? this.byRef(String(typed.ref), typed.code, state === "denied")
+        : this.match(String(typed.code ?? ""));
     if (!r.ok) {
-      this.attempts.push(now);
+      // A guess costs an attempt: a wrong code for a live request, or a
+      // code that names none. A request that ended (a stale dialog) or a
+      // malformed entry doesn't.
+      if (r.error === "wrong" || (r.error === "unknown" && !typed.ref))
+        this.attempts.push(now);
       return r;
     }
     r.request.state = state;
     if (state === "denied") r.request.forgetAt = now + PAIR_ENDED_KEEP_MS;
     return { ok: true, request: view(r.request) };
+  }
+
+  /**
+   * Issue 819: the request with this handle, when the typed code is its
+   * own (constant time). `codeOptional`: deny needs no code.
+   */
+  private byRef(
+    ref: string,
+    input: string | undefined,
+    codeOptional: boolean,
+  ):
+    | { ok: true; request: PairRequest }
+    | {
+        ok: false;
+        error: "malformed" | "unknown" | "expired" | "ended" | "wrong";
+      } {
+    const code =
+      input === undefined && codeOptional
+        ? ""
+        : normalizePairCode(String(input ?? ""));
+    if (code === null) return { ok: false, error: "malformed" };
+    this.sweep();
+    const r = [...this.byId.values()].find((x) => x.ref === ref);
+    if (!r) return { ok: false, error: "unknown" };
+    if (r.state === "expired") return { ok: false, error: "expired" };
+    if (r.state === "withdrawn") return { ok: false, error: "ended" };
+    if (r.state !== "pending") return { ok: false, error: "ended" };
+    if (code) {
+      const want = Buffer.from(code);
+      const have = Buffer.from(r.code);
+      if (have.length !== want.length || !timingSafeEqual(have, want))
+        return { ok: false, error: "wrong" };
+    }
+    return { ok: true, request: r };
   }
 
   /** The pending request with this code (as typed), or why there is none. */
@@ -337,10 +462,12 @@ export class PairRequests {
 function view(r: PairRequest): PairView {
   return {
     code: formatPairCode(r.code),
+    ref: r.ref,
     state: r.state,
     device: r.device,
     ...(r.client ? { client: r.client } : {}),
     ...(r.link ? { link: r.link } : {}),
+    ...(r.linkAt ? { linkAt: r.linkAt } : {}),
     createdAt: r.createdAt,
     expiresAt: r.expiresAt,
   };

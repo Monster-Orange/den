@@ -56,6 +56,10 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
+  // Issue 819: new-device requests and wrong codes.
+  "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
+  "web.approve_attempts": ["web_pairing", "approve_attempts"],
+  "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.

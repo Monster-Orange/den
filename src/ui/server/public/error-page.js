@@ -250,15 +250,37 @@ function goSignedIn(url) {
   left.then(go, go);
 }
 
-export function landingAfterSignIn(loc) {
+/**
+ * Where a sign-in may land: a path on this page's own origin, by the
+ * server's own rules (web-session.ts safeNext): no control characters,
+ * never another origin, never a sign-in link (/auth). Anything else: "/".
+ */
+export function safeLanding(raw, origin) {
+  const v = String(raw ?? "");
+  for (const c of v) {
+    const n = c.charCodeAt(0);
+    if (n < 0x20 || n === 0x7f) return "/";
+  }
+  if (!v.startsWith("/") || v.startsWith("//") || v.includes("\\")) return "/";
+  let u;
+  try {
+    u = new URL(v, origin);
+  } catch {
+    return "/";
+  }
+  if (u.origin !== origin || u.pathname === "/auth") return "/";
+  return u.pathname + u.search + u.hash;
+}
+
+export function landingAfterSignIn(loc, origin = loc.origin) {
   // Issue 819: a sign-in link's pairing screen (/auth) goes on to its
   // next, never back to the spent link.
   if (loc.pathname !== "/signin" && loc.pathname !== "/auth")
     return loc.pathname + loc.search + loc.hash;
-  const n = new URLSearchParams(loc.search).get("next") || "/";
-  return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\")
-    ? n
-    : "/";
+  return safeLanding(
+    new URLSearchParams(loc.search).get("next") || "/",
+    origin,
+  );
 }
 
 /**
@@ -667,7 +689,7 @@ function wirePair(root, t, s) {
         // D67: this browser's own code, so once it is in (another way),
         // its pop-up never asks to let itself in.
         try {
-          sessionStorage.setItem("den-pair-mine", String(b.code || ""));
+          sessionStorage.setItem("den-pair-mine", String(b.ref || ""));
         } catch {
           /* no storage */
         }
@@ -815,6 +837,79 @@ function mountSignedOut(root, sh, d) {
   const head =
     `<div class="ph"><div><h1>${esc(title)}</h1>` +
     `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>`;
+  if (s.confirm) {
+    // SEC-2a; issue 819: first run, a link `web login` printed opened away
+    // from the Den computer: the code it printed in that terminal, first.
+    // D17: a plain sign-in page, no shell frame and no error wording.
+    document.body.classList.add("den-plain");
+    root.innerHTML =
+      `<div class="ph"><div><h1>${esc(t("err.signin.title", { name }))}</h1>` +
+      `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>` +
+      `<div class="empty" id="den-signin">` +
+      `<form id="den-confirm" autocomplete="off">` +
+      `<p class="lead"><label for="den-confirm-code">${withHost(t, "err.signin.confirmLead", { host })}</label></p>` +
+      `<div class="acts" style="margin-top:0">` +
+      `<input id="den-confirm-code" class="mono" name="code" required maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="ABCD-EFGH" ` +
+      `style="font:16px/1.45 var(--mono);letter-spacing:0.08em;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken);color:var(--text);width:12ch">` +
+      `<button type="submit" class="btn primary" id="den-confirm-go">${esc(t("err.signin.confirmGo"))}</button></div>` +
+      `<p class="den-confirm-err" id="den-confirm-err" role="alert" style="margin-top:12px"></p>` +
+      `</form>` +
+      `<p class="den-signin-why">${withHost(t, "err.signin.confirmWhy", { host })}</p>` +
+      `</div>`;
+    const form = root.querySelector("#den-confirm");
+    const input = root.querySelector("#den-confirm-code");
+    const err = root.querySelector("#den-confirm-err");
+    const go = root.querySelector("#den-confirm-go");
+    input?.focus();
+    form?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      go.disabled = true;
+      err.textContent = "";
+      fetch(location.pathname + location.search, {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: input.value }),
+      })
+        .then((r) => r.json().catch(() => ({})))
+        .then((b) => {
+          go.disabled = false;
+          if (b.ok) {
+            keepApproveKey(b);
+            err.textContent = "";
+            form.innerHTML = `<p class="lead" id="den-confirm-in">${esc(t("err.signin.youreIn"))}</p>`;
+            goSignedIn(safeLanding(b.next, location.origin));
+            return;
+          }
+          err.textContent =
+            b.code === "wrong_code"
+              ? t("err.signin.confirmWrong")
+              : b.code === "rate_limited"
+                ? t("err.signin.confirmBusy")
+                : t("err.signin.confirmGone", { host });
+          if (b.code !== "wrong_code" && b.code !== "rate_limited")
+            go.disabled = true;
+          input.select();
+        })
+        .catch(() => {
+          go.disabled = false;
+          err.textContent = t("err.signin.confirmBusy");
+        });
+    });
+    return;
+  }
+  if (s.lead) {
+    // Issue 819: nothing to approve here (first run, away from the Den
+    // computer): what to do next, and the link stays unspent.
+    root.innerHTML =
+      head +
+      `<div class="empty" id="den-signin">` +
+      `<p class="lead" role="alert" id="den-signin-lead">${withHost(t, s.lead, { name, host })}</p>` +
+      facts +
+      `</div>`;
+    return;
+  }
   if (s.localhost) {
     // 127.0.0.1 or [::1]: the cookie is on localhost. Nothing to approve.
     root.innerHTML =

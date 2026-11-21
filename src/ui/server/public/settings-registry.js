@@ -811,16 +811,33 @@ function drawDevices(host, ctx) {
   load();
 }
 
-/** One waiting device's line: its code, browser and OS, address, age. */
+/** "10:42" in this browser's own time zone. */
+function clockOf(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * One waiting device's line: its browser and OS, address, age, and the
+ * `web login` run it came from. Issue 819: never its code (the person reads
+ * that off the new device's own screen and types it).
+ */
 export function waitingLine(w, now = Date.now()) {
   return {
-    title: `${w.code} · ${deviceWords(w.device)}`,
+    title: deviceWords(w.device),
     tip: w.createdAt
       ? L("set.ui.asked", "asked {ago}", { ago: formatTitle(w.createdAt) })
       : "",
     detail: [
       w.client,
       L("set.ui.asked", "asked {ago}", { ago: seenAgo(w.createdAt, now) }),
+      w.fromLogin
+        ? L("set.ui.fromLogin", "from the web login run at {time}", {
+            time: clockOf(w.fromLogin),
+          })
+        : "",
     ]
       .filter(Boolean)
       .join(" · "),
@@ -828,8 +845,24 @@ export function waitingLine(w, now = Date.now()) {
 }
 
 /**
+ * Issue 819: a typed pairing code as the server reads it: any case, spaces
+ * and dashes ignored. Approve is offered once it has six characters.
+ */
+export function typedPairCode(v) {
+  return String(v ?? "")
+    .toUpperCase()
+    .replace(/[\s-]/g, "");
+}
+
+/** Issue 819: whether a typed code can be sent (six characters). */
+export function pairCodeReady(v) {
+  return typedPairCode(v).length === 6;
+}
+
+/**
  * Issue 819: an Approve or Deny refused, in this page's language when the
- * server says why (only a person's signed-in browser approves a device).
+ * server says why (only a person's signed-in browser approves a device,
+ * with the code that device's screen shows).
  */
 export function approveRefusal(e) {
   const code = e && e.code;
@@ -843,17 +876,35 @@ export function approveRefusal(e) {
       "set.access.approveNeedsBrowser",
       "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
     );
+  if (code === "wrong" || code === "malformed")
+    return L(
+      "set.access.wrongCode",
+      "That code doesn't match the one on that computer's screen. Check it and type it again.",
+    );
+  if (code === "rate_limited")
+    return L(
+      "set.access.tooManyTries",
+      "Too many tries. Wait a minute and try again.",
+    );
+  if (code === "ended" || code === "expired" || code === "unknown")
+    return L(
+      "set.access.ended",
+      "That request ended or expired. Nothing was allowed.",
+    );
   return String((e && e.message) || e);
 }
 
 /**
  * Waiting devices (SEC-2a; issue 819): the computers whose signed-out page
- * shows a code (a sign-in link opened there among them), with Approve and
- * Deny. Approving signs that page in by itself; only a person's signed-in
- * browser may.
+ * shows a code (a sign-in link opened there among them), each with a field
+ * for that code, Approve and Deny. Approving needs the code typed off that
+ * computer's own screen; it then signs in by itself. Only a person's
+ * signed-in browser may. A request past its time is dropped.
  */
 function drawWaiting(host, ctx) {
   let timer = null;
+  let shown = "";
+  let first = true;
   const load = () => {
     clearTimeout(timer);
     if (!host.isConnected && timer !== null) return;
@@ -862,54 +913,113 @@ function drawWaiting(host, ctx) {
         r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
       )
       .then((b) => {
-        const list = b.waiting || [];
         const now = Date.now();
+        const list = (b.waiting || []).filter(
+          (w) =>
+            w &&
+            typeof w.ref === "string" &&
+            !(w.expiresAt && Date.parse(w.expiresAt) <= now),
+        );
+        const refs = list.map((w) => w.ref).join(",");
+        // A new request shows up without a reload.
+        timer = setTimeout(load, 5000);
+        if (refs === shown && list.length) {
+          // The same requests: only their ages change; typed codes stay.
+          list.forEach((w) => {
+            const el = host.querySelector(
+              `.set-waiting[data-ref="${CSS.escape(w.ref)}"] .set-note`,
+            );
+            if (el) el.textContent = waitingLine(w, now).detail;
+          });
+          return;
+        }
+        // Typed codes survive a redraw (a request came or went).
+        const typed = {};
+        host.querySelectorAll("input[data-code-for]").forEach((i) => {
+          typed[i.dataset.codeFor] = i.value;
+        });
+        const focused =
+          document.activeElement && document.activeElement.dataset
+            ? document.activeElement.dataset.codeFor
+            : undefined;
+        shown = refs;
         host.innerHTML = list.length
           ? '<div id="set-waiting" style="width:100%">' +
             list
-              .map((w) => {
+              .map((w, i) => {
                 const l = waitingLine(w, now);
+                const ref = escHtml(w.ref);
+                const id = `set-waiting-code-${i}`;
                 return (
-                  `<div class="set-waiting" data-code="${escHtml(w.code)}" style="${ROW_STYLE}">` +
-                  `<div style="flex:1 1 220px;min-width:0"><div class="mono">${escHtml(l.title)}</div>` +
+                  `<div class="set-waiting" data-ref="${ref}" style="${ROW_STYLE}">` +
+                  `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}</div>` +
                   `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
-                  `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">${escHtml(L("set.ui.approve", "Approve"))}</button>` +
-                  `<button type="button" class="btn" data-deny="${escHtml(w.code)}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
+                  `<label for="${id}" class="set-note">${escHtml(L("set.ui.codeLabel", "Code on its screen"))}</label>` +
+                  `<input id="${id}" class="mono" data-code-for="${ref}" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" style="width:10ch">` +
+                  `<button type="button" class="btn primary" data-approve="${ref}" disabled>${escHtml(L("set.ui.approve", "Approve"))}</button>` +
+                  `<button type="button" class="btn" data-deny="${ref}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
                 );
               })
               .join("") +
             '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
           : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve."))}</output>`;
-        const act = (btn, path, code) => {
+        const act = (btn, path, body) => {
           btn.disabled = true;
           ctx.shell
-            .api("POST", path, { code })
-            .then(load)
+            .api("POST", path, body)
+            .then(() => {
+              shown = "";
+              load();
+            })
             .catch((e) => {
               btn.disabled = false;
               const out = host.querySelector("#set-waiting-out");
               if (out)
                 out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(approveRefusal(e))}</span>`;
+              if (e && (e.code === "ended" || e.code === "expired")) {
+                shown = "";
+                load();
+              }
             });
         };
-        host
-          .querySelectorAll("[data-approve]")
-          .forEach((b) =>
-            b.addEventListener("click", () =>
-              act(b, "/api/web/approve", b.dataset.approve),
-            ),
+        host.querySelectorAll("input[data-code-for]").forEach((input) => {
+          const ref = input.dataset.codeFor;
+          const go = host.querySelector(`[data-approve="${CSS.escape(ref)}"]`);
+          const sync = () => {
+            go.disabled = !pairCodeReady(input.value);
+          };
+          if (typed[ref] !== undefined) input.value = typed[ref];
+          sync();
+          input.addEventListener("input", sync);
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !go.disabled) {
+              e.preventDefault();
+              go.click();
+            }
+          });
+          go.addEventListener("click", () =>
+            act(go, "/api/web/approve", {
+              ref,
+              code: typedPairCode(input.value),
+            }),
           );
+          if (focused === ref) input.focus();
+        });
+        // The first (newest, or a link's) request's field is ready to type.
+        if (first && list.length && !focused) {
+          host.querySelector("input[data-code-for]")?.focus();
+          first = false;
+        }
         host
           .querySelectorAll("[data-deny]")
           .forEach((b) =>
             b.addEventListener("click", () =>
-              act(b, "/api/web/deny", b.dataset.deny),
+              act(b, "/api/web/deny", { ref: b.dataset.deny }),
             ),
           );
-        // A new request shows up without a reload.
-        timer = setTimeout(load, 5000);
       })
       .catch(() => {
+        shown = "";
         host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.waitingSignedIn", "Waiting devices can only be listed signed in, or on this machine."))}</output>`;
       });
   };
@@ -1389,11 +1499,65 @@ const ACCESS_ROWS = [
     category: "access",
     label: "Waiting devices",
     description:
-      "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+      "Computers whose signed-out page shows a code. Type the code that computer's screen shows to approve it, and its page signs in by itself; a request lasts 10 minutes. __DEN_CLI__ web approve --list lists them.",
     keywords: ["waiting", "approve", "code", "pair", "device", "deny"],
     scope: "user",
     control: { type: "custom", render: drawWaiting },
     read: () => null,
+  },
+  {
+    // Issue 819: how many new devices one address may ask for a minute.
+    id: "access.pair_requests",
+    category: "access",
+    label: "New sign-in requests per address, a minute",
+    description:
+      "How many new devices one address may ask to sign in a minute. More are turned away until the minute is up. __DEN_CLI__ config web.pair_requests_per_minute=30",
+    keywords: [
+      "pair",
+      "sign-in",
+      "requests",
+      "limit",
+      "rate",
+      "web.pair_requests_per_minute",
+    ],
+    scope: "user",
+    keys: ["web_pairing.requests_per_minute"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.web_pairing?.requestsPerMinute ?? 30,
+    write: (v, ctx) => ctx.post({ web_pairing: { requests_per_minute: v } }),
+  },
+  {
+    // Issue 819: wrong codes approving a device may take, per window.
+    id: "access.approve_attempts",
+    category: "access",
+    label: "Wrong codes allowed when approving",
+    description:
+      "How many wrong codes approving a device may take in the window below before it waits. __DEN_CLI__ config web.approve_attempts=10",
+    keywords: ["approve", "code", "wrong", "limit", "web.approve_attempts"],
+    scope: "user",
+    keys: ["web_pairing.approve_attempts"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.web_pairing?.approveAttempts ?? 10,
+    write: (v, ctx) => ctx.post({ web_pairing: { approve_attempts: v } }),
+  },
+  {
+    id: "access.approve_window",
+    category: "access",
+    label: "Wrong-code window, in seconds",
+    description:
+      "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
+    keywords: [
+      "approve",
+      "code",
+      "wrong",
+      "window",
+      "web.approve_window_seconds",
+    ],
+    scope: "user",
+    keys: ["web_pairing.approve_window_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_pairing?.approveWindowSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ web_pairing: { approve_window_seconds: v } }),
   },
   {
     id: "access.machine_name",
