@@ -2585,6 +2585,29 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { priority_runners: v ? 1 : 0 } }),
   },
   {
+    // A browser run on a macOS host declares a container browser.
+    id: "server.gate_browser_container",
+    category: "server",
+    label: "Browser runs need a container",
+    description:
+      "On, a browser test run on this machine must say where its browser runs: a container's Playwright endpoint (ws:// or wss://, also from DEN_PW_WS, HUB_PW_WEBKIT_WS or E2E_WEBKIT_WS), or self when the run starts its own container. A run without one is refused, so no test starts a browser on this Mac itself. On by default on macOS, off elsewhere. __DEN_CLI__ gate settings --browser-requires-container 1",
+    keywords: [
+      "gate",
+      "slot",
+      "browser",
+      "container",
+      "webkit",
+      "playwright",
+      "mac",
+    ],
+    scope: "user",
+    keys: ["gate_slots.browser_requires_container"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.browserRequiresContainer === true,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { browser_requires_container: v ? 1 : 0 } }),
+  },
+  {
     // Issue 714: an agent's gate slot held over MCP.
     id: "server.gate_claim",
     category: "server",

@@ -1976,6 +1976,9 @@
       "CI runners may ask for release priority",
     "set.server.gate_priority_runners.d":
       "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container": "Browser runs need a container",
+    "set.server.gate_browser_container.d":
+      "On, a browser test run on this machine must say where its browser runs: a container's Playwright endpoint (ws:// or wss://, also from DEN_PW_WS, HUB_PW_WEBKIT_WS or E2E_WEBKIT_WS), or self when the run starts its own container. A run without one is refused, so no test starts a browser on this Mac itself. On by default on macOS, off elsewhere. __DEN_CLI__ gate settings --browser-requires-container 1",
     "set.server.gate_claim": "An agent's gate slot: minutes to claim it",
     "set.server.gate_claim.d":
       "When a slot an agent waited for is granted, Den tells the agent. Not claimed within this time, it goes to the next in line and the agent goes back in line. __DEN_CLI__ gate settings --claim-minutes 3",

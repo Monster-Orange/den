@@ -25,6 +25,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
   assign,
@@ -105,6 +106,8 @@ export type GateSettingsPatch = {
   mcp_grace_minutes?: number | null;
   box_check_timeout_seconds?: number | null;
   box_recheck_seconds?: number | null;
+  /** 1: a browser ask on this host declares a container browser. */
+  browser_requires_container?: number | null;
   /** Issue 803: priority classes (text; "" or null clears). */
   class_order?: string | null;
   class_map?: string | null;
@@ -149,6 +152,9 @@ export const GATE_LIMITS: Record<
   // Clause 12: never more than 25 s (BOX_CHECK_CAP_MS).
   box_check_timeout_seconds: { min: 1, max: 25, int: true },
   box_recheck_seconds: { min: 1, max: 24 * 3600, int: true },
+  // A browser ask declares a container browser; 1 yes, 0 no. Unset: yes
+  // on a macOS host, no elsewhere (browser-container.ts).
+  browser_requires_container: { min: 0, max: 1, int: true },
 };
 
 /**
@@ -274,6 +280,8 @@ export interface GateStoreOpts {
   lockWaitMs?: number;
   /** Issue 625: checks a test box (tests pass a fake). */
   probe?: BoxProbe;
+  /** The host's platform (the browser-container default); tests set it. */
+  platform?: NodeJS.Platform;
 }
 
 /**
@@ -298,6 +306,13 @@ function classSettings(
   return classes ? { classes, classOrder, classMap, classWindows } : {};
 }
 
+/** A browser run's declared container browser: short, one line. */
+function browserEndpointOf(kind: GateKind, v: string | undefined) {
+  return kind === "browser" && v && /^[\x21-\x7e]{1,300}$/.test(v)
+    ? { browserEndpoint: v }
+    : {};
+}
+
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
 
@@ -313,8 +328,10 @@ export class GateStore {
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
   private readonly probe: BoxProbe;
+  readonly platform: NodeJS.Platform;
 
   constructor(o: GateStoreOpts = {}) {
+    this.platform = o.platform ?? process.platform;
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
@@ -389,6 +406,11 @@ export class GateStore {
           "box_recheck_seconds",
           BOX_DEFAULTS.boxRecheckSeconds,
         ),
+        browserRequiresContainer:
+          num(
+            "browser_requires_container",
+            browserRequiresContainerDefault(this.platform) ? 1 : 0,
+          ) === 1,
         // Issue 803: priority classes; none set is today's queue (and
         // today's settings, key for key).
         ...classSettings(
@@ -398,7 +420,13 @@ export class GateStore {
         ),
       };
     } catch {
-      return { ...GATE_DEFAULTS, ...BOX_DEFAULTS };
+      return {
+        ...GATE_DEFAULTS,
+        ...BOX_DEFAULTS,
+        browserRequiresContainer: browserRequiresContainerDefault(
+          this.platform,
+        ),
+      };
     }
   }
 
@@ -677,6 +705,8 @@ export class GateStore {
     pwVersion?: string;
     /** Issue 803: the project it runs for (settings give its class). */
     project?: string;
+    /** A browser run's declared container browser, as recorded. */
+    browserEndpoint?: string;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -705,6 +735,7 @@ export class GateStore {
         ...(o.pwVersion && /^[0-9A-Za-z.-]{1,48}$/.test(o.pwVersion)
           ? { pwVersion: o.pwVersion }
           : {}),
+        ...browserEndpointOf(o.kind, o.browserEndpoint),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -759,6 +790,8 @@ export class GateStore {
     priority?: { reason: string };
     /** Issue 625: "local" (default), "any", or a test box's name. */
     where?: string;
+    /** A browser run's declared container browser, as recorded. */
+    browserEndpoint?: string;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -787,6 +820,7 @@ export class GateStore {
         askedAt: new Date(this.now()).toISOString(),
         estimateMin: o.estimateMin,
         ...whereOf(o.kind, o.where),
+        ...browserEndpointOf(o.kind, o.browserEndpoint),
         remote: {
           runner: o.runner.slice(0, 64),
           tokenId: o.tokenId,

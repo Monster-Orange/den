@@ -975,6 +975,10 @@
       "Los runners de CI pueden pedir prioridad de versión",
     "set.server.gate_priority_runners.d":
       "Activado, un trabajo de CI con un token de runner puede marcar su ejecución como de versión, con un motivo. Desactivado, su petición se rechaza y espera en la cola normal. Cada adelanto queda en el registro de turnos, con el runner y el porqué. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container":
+      "Las ejecuciones de navegador necesitan un contenedor",
+    "set.server.gate_browser_container.d":
+      "Activado, una ejecución de pruebas de navegador en esta máquina debe indicar dónde corre su navegador: el endpoint de Playwright de un contenedor (ws:// o wss://, también desde DEN_PW_WS, HUB_PW_WEBKIT_WS o E2E_WEBKIT_WS), o self cuando la ejecución inicia su propio contenedor. Una ejecución sin él se rechaza, así ninguna prueba inicia un navegador en este Mac. Activado por defecto en macOS, desactivado en los demás. __DEN_CLI__ gate settings --browser-requires-container 1",
     "set.server.gate_claim": "Turno de un agente: minutos para reclamarlo",
     "set.server.gate_claim.d":
       "Cuando se concede un turno que un agente esperaba, Den se lo dice. Si no lo reclama en este tiempo, pasa al siguiente de la cola y el agente vuelve a la cola. __DEN_CLI__ gate settings --claim-minutes 3",
