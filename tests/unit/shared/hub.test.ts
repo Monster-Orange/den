@@ -74,6 +74,7 @@ describe("readHubConfig", () => {
       inboxBackoffMaxSeconds: 600,
       toolsCheckSeconds: 300,
       toolsRestart: true,
+      groupsCacheSeconds: 30,
     });
   });
 
