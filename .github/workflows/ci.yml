@@ -75,6 +75,10 @@ jobs:
       # positional pick, a class selector or an English-text assert
       # (tests/brittle-baseline.json only goes down).
       - run: node scripts/brittle-ratchet.mjs
+      # A change to the UI kit (packages/den-ui) bumps its version: with the
+      # version already on npm, the release would skip publishing it
+      # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
+      - run: node scripts/kit-version.mjs
       - name: Org-name gate
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
@@ -251,6 +255,10 @@ jobs:
       # positional pick, a class selector or an English-text assert
       # (tests/brittle-baseline.json only goes down).
       - run: node scripts/brittle-ratchet.mjs
+      # A change to the UI kit (packages/den-ui) bumps its version: with the
+      # version already on npm, the release would skip publishing it
+      # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
+      - run: node scripts/kit-version.mjs
       - name: Org-name gate
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
