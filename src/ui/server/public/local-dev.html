@@ -5103,7 +5103,7 @@
           await refreshView(wsName);
         };
 
-        window.toggleAutostart = function (repo, turnOn) {
+        window.toggleAutostart = async function (repo, turnOn) {
           // The workspace now: the confirm below answers later.
           const ws = document.getElementById("content")?.dataset.ws || activeWs;
           if (turnOn) {
@@ -5126,36 +5126,21 @@
             return;
           }
 
-          const overlay = document.createElement("div");
-          overlay.id = "autostart-confirm-overlay";
-          overlay.style.cssText =
-            "position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;" +
-            "display:flex;align-items:center;justify-content:center;";
-          const box = document.createElement("div");
-          box.style.cssText =
-            "background:var(--surface);border:1px solid var(--border);border-radius:8px;" +
-            "padding:18px 20px;max-width:420px;font-size:13px;color:var(--text);";
-          box.innerHTML =
-            `<div style="font-weight:600;margin-bottom:8px">Turn off auto-start for ${escHtml(repo)}?</div>` +
-            `<div style="color:var(--muted);line-height:1.5">It is a hard dependency of: ` +
-            `<strong style="color:var(--text)">${dependents.map(escHtml).join(", ")}</strong>. ` +
-            `Their project's Up may fail readiness while it's off.</div>` +
-            `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">` +
-            `<button id="as-cancel" class="cmd-btn">Cancel</button>` +
-            `<button id="as-confirm" class="cmd-btn" style="border-color:var(--warn);color:var(--warn)">Turn off</button>` +
-            `</div>`;
-          overlay.appendChild(box);
-          document.body.appendChild(overlay);
-          overlay.addEventListener("click", (e) => {
-            if (e.target === overlay) overlay.remove();
+          // Issue 793: the kit's Yes/No question (its font, Report, Esc),
+          // never a layer of the page's own.
+          const ok = await askConfirm({
+            title: pT("dlg.autoOffT", "Turn off auto-start for {repo}?", {
+              repo,
+            }),
+            message: pT(
+              "dlg.autoOff",
+              "It is a hard dependency of: {list}. Their project's Up may fail readiness while it's off.",
+              { list: dependents.join(", ") },
+            ),
+            okLabel: pT("dlg.autoOffGo", "Turn off"),
+            danger: true,
           });
-          box
-            .querySelector("#as-cancel")
-            .addEventListener("click", () => overlay.remove());
-          box.querySelector("#as-confirm").addEventListener("click", () => {
-            overlay.remove();
-            void postAutostart(repo, false, ws);
-          });
+          if (ok) void postAutostart(repo, false, ws);
         };
 
         // Close popup on any outside click

@@ -7,6 +7,7 @@ import { spawn, spawnSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { BOX_DEFAULTS } from "../../../src/shared/gates/boxes.js";
 import {
   GATE_DEFAULTS,
   expectedStart,
@@ -239,11 +240,11 @@ describe("the store", () => {
 
   it("settings: permissive defaults, null clears, nonsense ignored", () => {
     const s = new GateStore({ dir: tmp() });
-    expect(s.settings()).toEqual(GATE_DEFAULTS);
+    expect(s.settings()).toEqual({ ...GATE_DEFAULTS, ...BOX_DEFAULTS });
     s.writeSettings({ cpu_slots: 4 });
     expect(s.settings().cpuSlots).toBe(4);
     s.writeSettings({ cpu_slots: null, overrun_margin_minutes: -3 });
-    expect(s.settings()).toEqual(GATE_DEFAULTS);
+    expect(s.settings()).toEqual({ ...GATE_DEFAULTS, ...BOX_DEFAULTS });
   });
 
   it("the grant waits for the lock; a stale lock (30 s) is taken back", () => {

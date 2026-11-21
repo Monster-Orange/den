@@ -76,7 +76,7 @@ afterAll(async () => {
 const state = (p: Page) =>
   p.evaluate(() => {
     const overlay = document.getElementById("cl-overlay");
-    const box = overlay?.querySelector(".cl-box");
+    const box = overlay;
     const body = document.getElementById("cl-body");
     const a = document.activeElement;
     return {
@@ -144,7 +144,7 @@ describe("the What's new dialog", () => {
     await p.goto(`http://127.0.0.1:${port}/services`);
     // First visit: it opens by itself.
     await p.waitForSelector("#cl-overlay.open", { timeout: 10_000 });
-    const box = p.locator("#cl-overlay .cl-box");
+    const box = p.locator("#cl-overlay");
     expect(await box.getAttribute("role")).toBe("dialog");
     expect(await box.getAttribute("aria-modal")).toBe("true");
     const labelledBy = await box.getAttribute("aria-labelledby");

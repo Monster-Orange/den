@@ -1682,6 +1682,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (hm.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 625: the test boxes, and why one is skipped.
+      const bx = await gateBoxRows();
+      if (bx.lines.length) r.checks.push(bx.check);
     }
     {
       const { hubStatus } = await import("../../shared/hub.js");
@@ -1793,6 +1796,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of hm.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  // Issue 625: the test boxes, and why one is skipped.
+  for (const l of (await gateBoxRows()).lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
@@ -1906,6 +1911,20 @@ export async function cmdDoctor(args: string[]): Promise<number> {
 }
 
 /** Issue 726: doctor's rows for state from an earlier Hub. */
+/** Issue 625: the machine's test boxes (never checked from here). */
+async function gateBoxRows() {
+  const { boxLines } = await import("./doctor-boxes.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    return boxLines(new GateStore());
+  } catch {
+    return {
+      lines: [] as string[],
+      check: { id: "gate_boxes", status: "ok" as const, detail: "" },
+    };
+  }
+}
+
 async function previousHubRows(): Promise<
   ReturnType<typeof import("./doctor-hub-previous.js").previousHubLines>
 > {

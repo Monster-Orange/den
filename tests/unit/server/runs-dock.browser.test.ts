@@ -180,6 +180,21 @@ const runs = (p: Page, fn: string, ...args: unknown[]) =>
   );
 const txt = (p: Page, sel: string) =>
   p.$eval(sel, (e) => (e as HTMLElement).innerText.replace(/\s+/g, " ").trim());
+/** Waits until `sel` shows `want` (as txt reads it); the expect after it
+ * names a miss. Output lands on the next frame, so a time is no wait. */
+const untilTxt = (p: Page, sel: string, want: string) =>
+  p
+    .waitForFunction(
+      ([s, w]) => {
+        const e = document.querySelector(s);
+        return (
+          !!e && (e as HTMLElement).innerText.replace(/\s+/g, " ").trim() === w
+        );
+      },
+      [sel, want] as const,
+      { timeout: 5_000 },
+    )
+    .catch(() => undefined);
 
 describe("the runs dock (R16)", () => {
   it("is on every page: a bar at the foot of the content column, closed until asked", async () => {
@@ -270,10 +285,12 @@ describe("the runs dock (R16)", () => {
     await runs(p, "append", "k6", "scn [  10% ]", "", { key: "scn" });
     await runs(p, "append", "k6", "other");
     await runs(p, "append", "k6", "scn [ 100% ]", "", { key: "scn" });
-    await p.waitForTimeout(100);
+    await untilTxt(p, "#den-dock-out", "scn [ 100% ] other");
     expect(await runs(p, "text", "k6")).toBe("scn [ 100% ]\nother\n");
     for (const n of [1, 2, 3, 4]) await runs(p, "append", "k6", `l${n}`);
-    await p.waitForTimeout(100);
+    // The selected run's output, not a time: CI once read the lines from
+    // before these four a 100ms sleep later.
+    await untilTxt(p, "#den-dock-out", "l2 l3 l4");
     expect(await runs(p, "text", "k6")).toBe("l2\nl3\nl4\n");
     expect(await txt(p, "#den-dock-out")).toBe("l2 l3 l4");
     // Copy: the selected run's output, "Copied!" for a moment.
@@ -429,16 +446,18 @@ describe("the runs dock (R16)", () => {
     await p.emulateMedia({ reducedMotion: "no-preference" });
     // Polled, not read once: a re-render can swap the dot between the
     // query and the style read (CI read "" once, 0.4.6's release run).
-    let pulse = "";
-    for (let i = 0; i < 50 && pulse !== "den-pulse"; i++) {
-      pulse = await p
-        .$eval(
-          "#den-runs .den-dot.run",
-          (e) => getComputedStyle(e).animationName,
-        )
-        .catch(() => "");
-      if (pulse !== "den-pulse") await p.waitForTimeout(100);
-    }
+    const pulse = await p
+      .waitForFunction(
+        () => {
+          const e = document.querySelector("#den-runs .den-dot.run");
+          const name = e ? getComputedStyle(e).animationName : "";
+          return name === "den-pulse" ? name : false;
+        },
+        null,
+        { timeout: 5_000 },
+      )
+      .then((h) => h.jsonValue())
+      .catch(() => "");
     expect(pulse).toBe("den-pulse");
     expect(await p.$("#den-dock-out")).toBeNull();
     expect(await runs(p, "isOpen")).toBe(false);
@@ -500,6 +519,8 @@ describe("the runs dock (R16)", () => {
     );
     await q.context().close();
     const r = await open("/logs", 1280, { keep: true });
+    // Kept: a time on purpose. It proves the dock does NOT open once the
+    // server's prefs (shell.dock false) have had time to land.
     await r.waitForTimeout(400);
     expect(await r.$("#den-dock-out")).toBeNull();
     expect(await runs(r, "isOpen")).toBe(false);
