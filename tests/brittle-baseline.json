@@ -366,10 +366,6 @@
       "classSelectors": 5,
       "englishAsserts": 3
     },
-    "tests/unit/server/confirm-busy.browser.test.ts": {
-      "sleeps": 1,
-      "classSelectors": 4
-    },
     "tests/unit/server/d17-claim.browser.test.ts": {
       "classSelectors": 2,
       "englishAsserts": 7
