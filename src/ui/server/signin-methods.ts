@@ -6,7 +6,8 @@
  *   github    Sign in with GitHub: `ready` when it works from anywhere (an
  *             owner is linked, or one GitHub account is named to claim
  *             it); `no_client_id` when no GitHub App client id is set
- *             (`setting` names it); `no_owner` when nobody can use it yet
+ *             (`setting` names it, `file` where a person sets it on the
+ *             host, `restart` the command that applies it); `no_owner` when nobody can use it yet
  *             (no owner linked, or only a GitHub org that claims it from
  *             the host itself)
  *   browser   a person's browser is signed in, so it can approve this one
@@ -22,10 +23,17 @@
 
 /** The setting that turns Sign in with GitHub on. */
 export const GITHUB_CLIENT_SETTING = "web.github_client_id";
+/**
+ * Where a person sets it: Settings has no control for it, so the host's
+ * own config file, then a restart.
+ */
+export const GITHUB_CLIENT_FILE = "config/local/user.yml";
 
 export interface SigninMethods {
   github: "ready" | "no_client_id" | "no_owner";
   setting: typeof GITHUB_CLIENT_SETTING;
+  file: typeof GITHUB_CLIENT_FILE;
+  restart: string;
   browser: boolean;
   terminal: string;
   remote: boolean;
@@ -43,6 +51,7 @@ export function signinMethods(o: {
   remote: boolean;
   firstRun: boolean;
   terminal: string;
+  restart: string;
 }): SigninMethods {
   const g = o.github;
   const github: SigninMethods["github"] =
@@ -54,6 +63,8 @@ export function signinMethods(o: {
   return {
     github,
     setting: GITHUB_CLIENT_SETTING,
+    file: GITHUB_CLIENT_FILE,
+    restart: o.restart,
     browser: o.signedInBrowser,
     terminal: o.terminal,
     remote: o.remote,

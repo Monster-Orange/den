@@ -2649,6 +2649,7 @@ function sendSignedOut(
     remote,
     firstRun: !FIRST_RUN.done(),
     terminal: cmd,
+    restart: cliCommand(bin, "web", "restart"),
   });
   res.setHeader("Cache-Control", "no-store");
   sendErrorPage(req, res, {

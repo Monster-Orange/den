@@ -818,13 +818,14 @@ export function offerBlock(s, t, name) {
 }
 
 /**
- * `t(key, vars)` escaped: `{host}` in bold, `{setting}` and `{cmd}` as code
- * (issue 868's lines name a setting and a command).
+ * `t(key, vars)` escaped: `{host}` in bold, `{setting}`, `{file}`, `{cmd}`
+ * and `{restart}` as code (issue 868's lines name a setting, a file and
+ * commands).
  */
 function withMarks(t, key, vars) {
   const v = { ...vars };
   const marks = {};
-  for (const k of ["host", "setting", "cmd"])
+  for (const k of ["host", "setting", "file", "cmd", "restart"])
     if (k in v) {
       marks[k] = v[k];
       v[k] = `\u0001${k}\u0001`;
@@ -853,7 +854,14 @@ export function methodsBlock(s, t) {
   if (!m) return "";
   const name = s.name || "Den";
   const host = s.machine || "";
-  const v = { name, host, setting: m.setting, cmd: m.terminal };
+  const v = {
+    name,
+    host,
+    setting: m.setting,
+    file: m.file,
+    restart: m.restart,
+    cmd: m.terminal,
+  };
   const state = (
     ok,
     key = ok ? "err.signin.methods.ready" : "err.signin.methods.notReady",

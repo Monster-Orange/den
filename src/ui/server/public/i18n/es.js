@@ -848,7 +848,7 @@
     "err.signin.methods.githubReady":
       "Usa Iniciar sesión con GitHub más abajo, desde cualquier ordenador.",
     "err.signin.methods.githubNoClient":
-      "No hay ningún id de cliente de GitHub App ({setting}). El agente de {name} puede configurarlo cuando una persona permita el cambio.",
+      "No hay ningún id de cliente de GitHub App ({setting}). Una persona lo pone en {file} en {host} y después ejecuta {restart} allí.",
     "err.signin.methods.githubNoOwner":
       "Aún no hay ningún propietario vinculado en GitHub, así que nadie puede usarlo desde otro ordenador.",
     "err.signin.methods.pair": "Pedir iniciar sesión desde este dispositivo",
@@ -863,7 +863,7 @@
     "err.signin.methods.stuck":
       "Aún no se puede iniciar sesión en {name} desde otro ordenador. Iniciar sesión con GitHub no está configurado, y no hay ningún navegador con sesión iniciada en {name} que apruebe este.",
     "err.signin.methods.fixClient":
-      "Para arreglarlo, pon en {setting} un id de cliente de GitHub App: pide al agente de {name} que haga el cambio, y una persona lo permite. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+      "Para arreglarlo, en {host} pon en {setting} un id de cliente de GitHub App en {file} y ejecuta {restart}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
     "err.signin.methods.fixOwner":
       "Para arreglarlo, vincula al propietario en GitHub: en {host}, ejecuta {cmd}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
     "err.signin.methods.fixFirst":

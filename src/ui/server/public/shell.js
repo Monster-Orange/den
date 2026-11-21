@@ -1724,7 +1724,7 @@
     "err.signin.methods.githubReady":
       "Use Sign in with GitHub below, from any computer.",
     "err.signin.methods.githubNoClient":
-      "No GitHub App client id is set ({setting}). The {name} agent can set it up once a person Allows the change.",
+      "No GitHub App client id is set ({setting}). A person sets it in {file} on {host}, then runs {restart} there.",
     "err.signin.methods.githubNoOwner":
       "No owner is linked on GitHub yet, so nobody can use it from another computer.",
     "err.signin.methods.pair": "Ask to sign in from this device",
@@ -1739,7 +1739,7 @@
     "err.signin.methods.stuck":
       "{name} can't be signed into from another computer yet. Sign in with GitHub isn't set up, and no browser is signed in to {name} to approve this one.",
     "err.signin.methods.fixClient":
-      "To fix it, set {setting} to a GitHub App client id: ask the {name} agent to make the change, and a person Allows it. Then Sign in with GitHub works from any computer.",
+      "To fix it, on {host} set {setting} to a GitHub App client id in {file}, then run {restart}. Then Sign in with GitHub works from any computer.",
     "err.signin.methods.fixOwner":
       "To fix it, link the owner on GitHub: on {host}, run {cmd}. Then Sign in with GitHub works from any computer.",
     "err.signin.methods.fixFirst":

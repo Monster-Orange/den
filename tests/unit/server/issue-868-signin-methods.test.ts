@@ -57,6 +57,7 @@ const text = (html: string) =>
     .trim();
 
 const CMD = "den web login --origin https://den.example.test";
+const RESTART = "den web restart";
 
 describe("signinMethods: what the page is told", () => {
   it("no GitHub client, nobody signed in, from another computer: stuck, with the setting named", () => {
@@ -66,10 +67,13 @@ describe("signinMethods: what the page is told", () => {
       remote: true,
       firstRun: false,
       terminal: CMD,
+      restart: RESTART,
     });
     expect(m).toEqual({
       github: "no_client_id",
       setting: "web.github_client_id",
+      file: "config/local/user.yml",
+      restart: RESTART,
       browser: false,
       terminal: CMD,
       remote: true,
@@ -85,12 +89,18 @@ describe("signinMethods: what the page is told", () => {
       remote: false,
       firstRun: false,
       terminal: CMD,
+      restart: RESTART,
     });
     expect([m.remote, m.stuck]).toEqual([false, false]);
   });
 
   it("a signed-in browser to approve, or GitHub sign-in that works: not stuck", () => {
-    const base = { remote: true, firstRun: false, terminal: CMD };
+    const base = {
+      remote: true,
+      firstRun: false,
+      terminal: CMD,
+      restart: RESTART,
+    };
     expect(
       signinMethods({
         ...base,
@@ -112,6 +122,7 @@ describe("signinMethods: what the page is told", () => {
       remote: true,
       firstRun: true,
       terminal: CMD,
+      restart: RESTART,
       signedInBrowser: false,
     };
     expect(
@@ -138,6 +149,7 @@ describe("methodsBlock: the list on the signed-out page", () => {
       remote: true,
       firstRun: false,
       terminal: CMD,
+      restart: RESTART,
     }),
   };
 
@@ -151,8 +163,9 @@ describe("methodsBlock: the list on the signed-out page", () => {
     const words = text(html);
     expect(words).toContain("web.github_client_id");
     expect(words).toContain(CMD);
-    expect(words).toMatch(/Den agent/);
-    expect(words).toMatch(/Allow/);
+    // Settings has no control for it: the file on the host, then a restart.
+    expect(words).toContain("config/local/user.yml");
+    expect(words).toContain(RESTART);
   });
 
   it("from another computer with no way in: says so plainly, and offers the fix", () => {
@@ -173,6 +186,25 @@ describe("methodsBlock: the list on the signed-out page", () => {
     expect(html).toMatch(/data-method="pair" data-ready="1"/);
     expect(html).toMatch(/<a [^>]*href="#den-pair"[^>]*id="den-signin-ask"/);
   });
+
+  // No tool lets an agent set the GitHub client id yet: the page must not
+  // send a person to ask one, in any language.
+  it.each(["en", "es", "ja"])(
+    "in %s, it never says an agent can set up GitHub sign-in",
+    (lang) => {
+      for (const github of ["no_client_id", "no_owner"]) {
+        const html = methodsBlock(
+          { ...s, methods: { ...s.methods, github } },
+          tFor(lang),
+        );
+        expect([
+          lang,
+          github,
+          /agent|agente|エージェント/i.test(text(html)),
+        ]).toEqual([lang, github, false]);
+      }
+    },
+  );
 
   it("no methods (an older server): nothing", () => {
     expect(methodsBlock({ ...s, methods: undefined }, tFor("en"))).toBe("");

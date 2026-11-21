@@ -829,7 +829,7 @@
     "err.signin.methods.githubReady":
       "下の「GitHub でサインイン」を使ってください。どのコンピューターからでも使えます。",
     "err.signin.methods.githubNoClient":
-      "GitHub App のクライアント ID（{setting}）が設定されていません。人が変更を許可すれば、{name} エージェントが設定できます。",
+      "GitHub App のクライアント ID（{setting}）が設定されていません。{host} で人が {file} に設定し、そこで {restart} を実行します。",
     "err.signin.methods.githubNoOwner":
       "所有者がまだ GitHub でリンクされていないため、他のコンピューターからは誰も使えません。",
     "err.signin.methods.pair": "このデバイスからサインインを依頼",
@@ -844,7 +844,7 @@
     "err.signin.methods.stuck":
       "{name} にはまだ他のコンピューターからサインインできません。GitHub でのサインインが設定されておらず、このデバイスを承認できる、{name} にサインイン済みのブラウザーもありません。",
     "err.signin.methods.fixClient":
-      "解決するには、{setting} に GitHub App のクライアント ID を設定します。{name} エージェントに変更を頼み、人がそれを許可します。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
+      "解決するには、{host} で {file} の {setting} に GitHub App のクライアント ID を設定し、{restart} を実行します。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
     "err.signin.methods.fixOwner":
       "解決するには、所有者を GitHub でリンクします。{host} で {cmd} を実行してください。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
     "err.signin.methods.fixFirst":

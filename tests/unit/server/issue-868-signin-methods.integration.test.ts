@@ -71,6 +71,8 @@ const AWAY = { host: EDGE, "x-forwarded-for": "203.0.113.7", ...EDGE_PROOF };
 interface Methods {
   github: string;
   setting: string;
+  file: string;
+  restart: string;
   browser: boolean;
   terminal: string;
   remote: boolean;
@@ -153,6 +155,8 @@ describe("issue 868: the sign-in page names the methods this install has", () =>
     expect(methodsOf(r)).toEqual({
       github: "no_client_id",
       setting: "web.github_client_id",
+      file: "config/local/user.yml",
+      restart: expect.stringMatching(/web restart/),
       browser: false,
       terminal: expect.stringMatching(/web login/),
       remote: true,
