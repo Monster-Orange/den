@@ -79,6 +79,7 @@ import {
   type AgentActor,
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
@@ -126,7 +127,12 @@ export interface RunnerPrincipal {
 export type Principal =
   | { kind: "person"; actor: `person:${string}` }
   | AgentPrincipal
-  | { kind: "person-browser"; session?: string }
+  | {
+      kind: "person-browser";
+      session?: string;
+      /** Issue 810: the fixture person's session (a test install's live checks). */
+      fixture?: true;
+    }
   | RunnerPrincipal;
 
 /** What the request checks need of a signed-in browser session. */
@@ -143,6 +149,8 @@ export interface GuardSession {
    * session counts (loopbackSessions).
    */
   secure?: boolean;
+  /** How it signed in (web-session.ts); "fixture": the fixture person (issue 810). */
+  via?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -760,7 +768,11 @@ export function checkRequest(
     ...(client ? { client: normAddress(client) } : {}),
   });
   const browser: Principal | null = session
-    ? { kind: "person-browser", session: session.key }
+    ? {
+        kind: "person-browser",
+        session: session.key,
+        ...(session.via === "fixture" ? { fixture: true as const } : {}),
+      }
     : null;
 
   if (!changes(method) && !isUpgrade(req)) {
@@ -787,7 +799,7 @@ export function checkRequest(
       code: "origin_rejected",
       error:
         "A request that changes something needs an Origin from this server, " +
-        `or \`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `or \`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   }
   if (!originAllowed(origin, ctx))
@@ -969,6 +981,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/gate-slots/renew",
   "/api/gate-slots/release",
   "/api/gate-slots/runners/revoke",
+  // Issue 625: the test boxes are a person's to change.
+  "/api/gate-slots/boxes",
+  "/api/gate-slots/boxes/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -1130,7 +1145,7 @@ function mutatingGetRefusal(
       code: "origin_rejected",
       error:
         "This request runs something: it needs this server's own page, or " +
-        `\`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `\`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   return null;
 }
@@ -1185,6 +1200,9 @@ export function agentPrincipalOf(
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person" || p?.kind === "agent") return p.actor;
+  // Issue 810: the fixture person is named as such, never the human.
+  if (p?.kind === "person-browser" && p.session && p.fixture)
+    return FIXTURE_PRINCIPAL;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }
@@ -1213,5 +1231,26 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
     };
     return actor;
   }
+  // Issue 810: the fixture person is never the person. Every person-only
+  // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
+  // it, and the audit keeps it as a claim, labelled as such.
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      kind: "agent",
+      client: FIXTURE_PRINCIPAL,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      unverified: true,
+    };
   return claimed ? { ...claimed, unverified: true } : null;
+}
+
+/**
+ * Issue 810: whether a person-only check must refuse this request: an
+ * agent's token, a claimed agent, or the fixture person.
+ */
+export function notAPersonOf(req: http.IncomingMessage): boolean {
+  return !!agentPrincipalOf(req) || !!auditActorOf(req);
 }

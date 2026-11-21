@@ -74,14 +74,41 @@ export function checkGateModule(file, mod) {
 const HOST_FETCH_AT_URL =
   /(?<![\w.$])fetch\(\s*(?:ctx\.url\b|`\$\{\s*ctx\.url\s*\}|new URL\([^()]*?,\s*ctx\.url\s*\))/g;
 
+// A skip reason written in the source: `skip: "..."`, `skip = "..."`, or a
+// constant used as one (`skip: NAME`, `const NAME = "..."`).
+const SKIP_LITERAL =
+  /\bskip\s*(?::|=(?!=))\s*(?:"([^"\n]*)"|'([^'\n]*)'|([A-Z][A-Z0-9_]*)\b)/g;
+
 export function checkGateSource(file, src) {
   const out = [];
-  for (const m of String(src).matchAll(HOST_FETCH_AT_URL)) {
-    const line = src.slice(0, m.index).split("\n").length;
+  const text = String(src);
+  const lineOf = (i) => text.slice(0, i).split("\n").length;
+  for (const m of text.matchAll(HOST_FETCH_AT_URL)) {
     out.push(
-      `${file}: line ${line}: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)`,
+      `${file}: line ${lineOf(m.index)}: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)`,
     );
   }
+  // Issue 726's bed run: a skip in words, not "person" or "needs-<thing>",
+  // makes every row it answers unreadable to the harness.
+  const bad = new Map();
+  for (const m of text.matchAll(SKIP_LITERAL)) {
+    let at = m.index;
+    let reason = m[1] ?? m[2];
+    if (m[3]) {
+      const c = new RegExp(
+        `\\bconst\\s+${m[3]}\\s*=\\s*(?:"([^"\\n]*)"|'([^'\\n]*)')`,
+      ).exec(text);
+      if (!c) continue;
+      at = c.index;
+      reason = c[1] ?? c[2];
+    }
+    if (SKIP.test(reason)) continue;
+    bad.set(`${lineOf(at)}\0${reason}`, [lineOf(at), reason]);
+  }
+  for (const [line, reason] of [...bad.values()].sort((a, b) => a[0] - b[0]))
+    out.push(
+      `${file}: line ${line}: skip reason ${JSON.stringify(reason)} is not "person" or "needs-<thing>" (put the words in why)`,
+    );
   return out;
 }
 

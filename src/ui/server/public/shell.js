@@ -744,6 +744,22 @@
     "set.ui.appKeyRevoked": "revoked {when}",
     "set.ui.appKeyRevoke": "Revoke",
     "set.ui.runnerNone": "No runner tokens yet.",
+    "set.ui.boxName": "Name",
+    "set.ui.boxSsh": "ssh (login@host)",
+    "set.ui.boxPort": "ssh port",
+    "set.ui.boxKey": "ssh key file",
+    "set.ui.boxPw": "Playwright address (ws://)",
+    "set.ui.boxSlots": "Browser slots",
+    "set.ui.boxHold": "Hold file (on the box)",
+    "set.ui.boxScale": "Time scale",
+    "set.ui.boxSave": "Save box",
+    "set.ui.boxMem": "Keep free memory (MB)",
+    "set.ui.boxPwv": "Playwright version on the box",
+    "set.ui.boxNone": "No test boxes. Browser runs use this machine only.",
+    "set.ui.boxSlotsN": "{n} browser slots",
+    "set.ui.boxHoldIs": "hold file {path}",
+    "set.ui.boxScaleIs": "time ×{n}",
+    "set.ui.boxRemove": "Remove",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -755,6 +771,14 @@
       "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.",
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
+    "set.ui.testInstallYes": "This is a test install.",
+    "set.ui.testInstallNo":
+      "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
+    "set.ui.testPersonReady": "The test person is set up.",
+    "set.ui.testPersonMissing": "The test person isn't set up yet.",
+    "set.ui.testPersonSetUp": "Set up test person",
+    "set.ui.testInstallSignedIn":
+      "The test install can only be read signed in, or on this machine.",
     "set.ui.noPairHost":
       "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
     "set.ui.edgeStart": "Start the edge",
@@ -1156,6 +1180,8 @@
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_install.d":
+      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     "set.distribution.brand.d":
       "brand.name: the name on pages, the CLI banner and help.",
     "set.distribution.github_org.d":
@@ -1427,6 +1453,10 @@
       "Could not open Terminal.app automatically.\n\nRun this in your terminal:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "Could not open the terminal automatically.\n\nRun this in your terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "Turn off auto-start for {repo}?",
+    "dlg.autoOff":
+      "It is a hard dependency of: {list}. Their project's Up may fail readiness while it's off.",
+    "dlg.autoOffGo": "Turn off",
     "rd.keepsHead": "Keeps running:",
     "rd.keepsAgents": "Agents and their terminals",
     "rd.keepsServices": "Services, and deploys on GitHub",
@@ -1481,6 +1511,9 @@
     "busy.edgeW": "Starting the edge…",
     "busy.edgeS": "Edge started",
     "busy.edgeF": "The edge didn't start.",
+    "busy.testPersonW": "Setting up the test person…",
+    "busy.testPersonS": "Test person set up",
+    "busy.testPersonF": "The test person wasn't set up.",
     "keep.onNow": "On: agents keep running after you log out.",
     "keep.offNow": "Off: agents stop when you log out.",
     "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
@@ -1966,9 +1999,50 @@
     "set.server.gate_priority_agents": "Agents may ask for release priority",
     "set.server.gate_priority_agents.d":
       "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_priority_runners":
+      "CI runners may ask for release priority",
+    "set.server.gate_priority_runners.d":
+      "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container": "Browser runs need a container",
+    "set.server.gate_browser_container.d":
+      "On, a browser test run on this machine must say where its browser runs: a container's Playwright endpoint (ws:// or wss://, also from DEN_PW_WS, HUB_PW_WEBKIT_WS or E2E_WEBKIT_WS), or self when the run starts its own container. A run without one is refused, so no test starts a browser on this Mac itself. On by default on macOS, off elsewhere. __DEN_CLI__ gate settings --browser-requires-container 1",
+    "set.server.gate_claim": "An agent's gate slot: minutes to claim it",
+    "set.server.gate_claim.d":
+      "When a slot an agent waited for is granted, Den tells the agent. Not claimed within this time, it goes to the next in line and the agent goes back in line. __DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew":
+      "An agent's gate slot: renew it every, in minutes",
+    "set.server.gate_mcp_renew.d":
+      "How often an agent holding a slot is asked to renew it while it works. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "An agent's gate slot lapses unrenewed after, in minutes",
+    "set.server.gate_mcp_lapse.d":
+      "A slot an agent holds and doesn't renew this long, once past its estimate plus the grace, goes to the next in line. The bell says so. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "An agent's gate slot: grace past its estimate, in minutes",
+    "set.server.gate_mcp_grace.d":
+      "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_class_order": "Gate classes, highest first",
+    "set.server.gate_class_order.d":
+      "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "Gate class of each project",
+    "set.server.gate_class_map.d":
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "Gate class windows",
+    "set.server.gate_class_windows.d":
+      "Comma-separated: <class>=HH:MM-HH:MM/<minutes>, in this machine's time. Outside its window, a run of that class estimated at least that many minutes waits while a higher-class run holds or waits; with none, it runs at once. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
     "set.server.gate_runners": "CI runner tokens",
     "set.server.gate_runners.d":
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
+    "set.server.gate_boxes": "Test boxes",
+    "set.server.gate_boxes.d":
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check": "Test box check waits, in seconds",
+    "set.server.gate_box_check.d":
+      "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck":
+      "A skipped test box is checked again after, in seconds",
+    "set.server.gate_box_recheck.d":
+      "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2117,6 +2191,7 @@
     "set.embed.context_max_kb": "Largest shared page",
     "set.access.machine_name": "Machine name",
     "set.access.pair": "Pair a device",
+    "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
     "set.distribution.orgs": "Org labels",
@@ -2469,6 +2544,24 @@
       "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
     "ap.det.gate_runner_token_create.revoke":
       "You can revoke it any time in Settings, under CI runner tokens.",
+    "ap.do.gate_box_set": "Replace the test box {name}",
+    "ap.do.gate_box_set.new": "Add the test box {name}",
+    "ap.do.gate_box_remove": "Remove the test box {name}",
+    "ap.det.gate_box_set.adds":
+      "Adds the test box {name}. Its browser slots take gate runs from agents.",
+    "ap.det.gate_box_set.replaces":
+      "Replaces the test box {name} with these settings. Its browser slots take gate runs from agents.",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "SSH port: {v}",
+    "ap.det.gate_box_set.ssh_identity": "SSH key file: {v}",
+    "ap.det.gate_box_set.playwright": "Playwright address: {v}",
+    "ap.det.gate_box_set.slots": "Browser slots: {v}",
+    "ap.det.gate_box_set.hold_file": "Hold file: {v}",
+    "ap.det.gate_box_set.time_scale": "Time scale: {v}",
+    "ap.det.gate_box_set.playwright_version": "Playwright version: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "Removes the test box {name}. Runs on it now finish; no new run goes there.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -2823,6 +2916,8 @@
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
+    "bell.m.gateLapsed":
+      '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
@@ -3183,6 +3278,18 @@
     // Issue 715: a release run a person waits on, and why.
     "gate.priority": "release priority: {reason}",
     "gate.priorityWaits": "release priority, after the one ahead: {reason}",
+    // Issue 625: test boxes, browser slots on other machines.
+    "gate.onBox": "on box {box}",
+    "gate.anyBox": "here or on a test box",
+    "gate.boxesH": "Test boxes",
+    "gate.boxSlots": "{box}: {held} of {n} browser slots in use",
+    "gate.boxHeld": "{box}: skipped, held ({reason})",
+    "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
+    "gate.boxLow": "{box}: skipped, low on memory ({reason})",
+    "gate.boxSkip": "can't use {box}: {reason}",
+    "gate.yielded": "Let {to} go ahead",
+    "gate.class": "Class: {name}",
+    "gate.window": "waits for its {window} window",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
@@ -7497,8 +7604,49 @@
 
   // R26d: the server unreachable.
   var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
-  var rawFetch =
+  var baseFetch =
     typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+  // A same-origin refusal or error (4xx, 5xx) is read in full here and
+  // handed on as the same answer, already read. A caller that only looks
+  // at the status (`r.ok ? r.json() : null`) otherwise leaves its body
+  // unread, and the browser holds that request open: a session refused
+  // every 3 s (a test install's fixture person) kept the page from ever
+  // settling. Its body, status and headers stay readable as before.
+  var NO_BODY = { 204: 1, 205: 1, 304: 1 };
+  function readRefusal(input, r) {
+    if (
+      !r ||
+      r.ok ||
+      !r.body ||
+      NO_BODY[r.status] ||
+      typeof Response !== "function" ||
+      !sameOrigin(input)
+    )
+      return r;
+    return r.text().then(
+      function (text) {
+        try {
+          return new Response(text, {
+            status: r.status,
+            statusText: r.statusText,
+            headers: r.headers,
+          });
+        } catch (e) {
+          return r;
+        }
+      },
+      function () {
+        return r;
+      },
+    );
+  }
+  var rawFetch = baseFetch
+    ? function (input, init) {
+        return baseFetch(input, init).then(function (r) {
+          return readRefusal(input, r);
+        });
+      }
+    : null;
   function sameOrigin(input) {
     var u =
       typeof input === "string"
@@ -7749,7 +7897,14 @@
   // so they carry the CSRF token and the approval key; the server decides
   // who may approve (a browser that isn't signed in is told to sign in).
   // The frame is the Start dialog's (persona-ui.css's .pe-dlg).
-  var ap = { dlg: null, shown: null, later: {}, busy: false, css: null };
+  var ap = {
+    dlg: null,
+    shown: null,
+    later: {},
+    busy: false,
+    css: null,
+    polling: false,
+  };
   function apCss() {
     if (ap.css) return ap.css;
     ap.css = new Promise(function (done) {
@@ -8098,9 +8253,12 @@
     apPoll();
   });
   function apPoll() {
-    if (document.hidden || ap.busy) return;
+    // One ask at a time: a tick while the last is still open sends none.
+    if (document.hidden || ap.busy || ap.polling) return;
+    ap.polling = true;
     apList(false).then(
       function (b) {
+        ap.polling = false;
         apSignin(b);
         var list = (b && b.ok && b.pending) || [];
         var open = list.filter(function (a) {
@@ -8115,14 +8273,16 @@
           open[0];
         apShow(cur, open.length - 1);
       },
-      function () {},
+      function () {
+        ap.polling = false;
+      },
     );
   }
   // D67: another computer's signed-out page shows a code and asks to be
   // let in: a signed-in browser asks "Allow this computer?" here, with the
   // code to compare (Settings › Access lists them too). Not signed in, the
   // list is refused and nothing shows.
-  var pr = { dlg: null, shown: null, later: {} };
+  var pr = { dlg: null, shown: null, later: {}, polling: false, off: false };
   function prDialog() {
     if (pr.dlg) return pr.dlg;
     var d = document.createElement("dialog");
@@ -8218,18 +8378,28 @@
     if (!d.open) d.showModal();
   }
   function prPoll() {
-    if (document.hidden) return;
+    // One ask at a time; refused once (a session that may not read it, as
+    // a test install's fixture person), never again on this page.
+    if (document.hidden || pr.polling || pr.off) return;
     // One question at a time: an approval's dialog first.
     if (ap.dlg && ap.dlg.open) return;
+    pr.polling = true;
     rawFetch("/api/web/waiting", {
       cache: "no-store",
       credentials: "same-origin",
+      // An ask that never answers frees the next tick after 20 s.
+      signal:
+        typeof AbortSignal !== "undefined" && AbortSignal.timeout
+          ? AbortSignal.timeout(20000)
+          : undefined,
     })
       .then(function (r) {
+        if (r.status === 401 || r.status === 403) pr.off = true;
         return r.ok ? r.json() : null;
       })
       .then(
         function (b) {
+          pr.polling = false;
           // Never this browser's own code (it signed in another way).
           var own = "";
           try {
@@ -8254,7 +8424,9 @@
             return;
           prShow(list[0]);
         },
-        function () {},
+        function () {
+          pr.polling = false;
+        },
       );
   }
   if (!apiOffPage && !configBad && rawFetch) {

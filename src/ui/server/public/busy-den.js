@@ -299,6 +299,16 @@ export const DEN_ACTIONS = {
       failure: "busy.edgeF",
     },
   },
+  // Issue 810: Settings › Access › Set up test person.
+  "test-person": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.testPersonW",
+      success: "busy.testPersonS",
+      failure: "busy.testPersonF",
+    },
+  },
   "keep-running": {
     who: "__DEN_TITLE__",
     autoClose: true,

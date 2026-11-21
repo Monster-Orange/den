@@ -25,7 +25,11 @@ afterEach(async () => {
 async function serve() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-gateroute-"));
   tmps.push(dir);
-  const store = new GateStore({ dir, alive: () => true });
+  const store = new GateStore({
+    platform: "linux",
+    dir,
+    alive: () => true,
+  });
   const audited: {
     actor: unknown;
     action: { verb: string; detail: string };
@@ -92,10 +96,18 @@ describe("gate-slot routes", () => {
       priorityMax: 1,
       priorityPassLimitMinutes: 60,
       priorityAgents: true,
+      priorityRunners: true,
+      claimMinutes: 3,
+      mcpRenewMinutes: 5,
+      mcpLapseMinutes: 15,
+      mcpGraceMinutes: 15,
+      browserRequiresContainer: false,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,
+      boxCheckTimeoutSeconds: 8,
+      boxRecheckSeconds: 30,
     });
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),

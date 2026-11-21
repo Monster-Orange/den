@@ -95,9 +95,13 @@ export function claimLink(origin: string, code: string): string {
  */
 export function personGrantRefusal(env: NodeJS.ProcessEnv): string | null {
   if (env[AGENT_ACTOR_ENV] !== undefined || isAgentTokenEnv(env))
-    return "An agent can't do this: it lets a browser in as you. Run it in your own terminal.";
+    return AGENT_REFUSAL;
   return null;
 }
+
+/** personGrantRefusal's words (person-here.ts says them too). */
+export const AGENT_REFUSAL =
+  "This command can't let a browser in from here. Run it in your own terminal. Already signed in in a browser? Open Settings › Access there to add another device.";
 
 /** Why the CLI won't mint a claim code here, or null when it may. */
 export function claimRefusalForAgent(env: NodeJS.ProcessEnv): string | null {

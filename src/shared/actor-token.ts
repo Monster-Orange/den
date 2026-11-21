@@ -236,6 +236,22 @@ export function lookupActorToken(
   return load(stateDir).tokens[actorTokenKey(token)] ?? null;
 }
 
+/**
+ * Issue 810: the root pids of every agent session with a token here whose
+ * session hasn't ended (revoked or not: a revoked agent still runs): a
+ * process under one of them is an agent's, whatever its env says.
+ */
+export function agentSessionRoots(stateDir: string): number[] {
+  const out = new Set<number>();
+  for (const rec of Object.values(load(stateDir).tokens)) {
+    const id = rec.session.id;
+    if (!id || sessionState(stateDir, id) === "ended") continue;
+    const pid = sessionPid(stateDir, id);
+    if (pid) out.add(pid);
+  }
+  return [...out];
+}
+
 /** #70: the pid the session host recorded for session `id` (its root process), or null. */
 export function sessionPid(stateDir: string, id: string): number | null {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return null;

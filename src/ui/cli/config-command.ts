@@ -8,6 +8,10 @@ import {
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
 import { patchAlerts } from "../../shared/alerts.js";
+import { testInstallByHandRefusal } from "../../shared/fixture-person.js";
+
+/** Issue 810: the test-install mark's names, refused by `config`. */
+const TEST_INSTALL_KEYS = new Set(["web.test_install", "test_install"]);
 
 import { product } from "../../shared/product.js";
 type ConfigKey = keyof UserConfig;
@@ -173,6 +177,8 @@ export async function cmdConfig(args: string[]): Promise<void> {
   if (args[0] === "rm") {
     const keyArg = args[1];
     if (!keyArg) throw new Error(`Usage: ${product().cli} config rm <key>`);
+    if (TEST_INSTALL_KEYS.has(keyArg))
+      throw new Error(testInstallByHandRefusal(product().configFile));
     if (DOTTED_SWITCH[keyArg]) {
       setSwitch(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
@@ -198,6 +204,10 @@ export async function cmdConfig(args: string[]): Promise<void> {
   }
 
   const name = assignment.slice(0, eq);
+  // Issue 810: the test-install mark is set by hand in the distribution
+  // config, never here (an agent can run this command).
+  if (TEST_INSTALL_KEYS.has(name))
+    throw new Error(testInstallByHandRefusal(product().configFile));
   if (DOTTED_SWITCH[name]) {
     setSwitch(name, parseValue(assignment.slice(eq + 1)));
     console.log(chalk.green(`  ✓ Set ${name}`));
