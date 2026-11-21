@@ -9,11 +9,13 @@
  *   node scripts/fast-checks.mjs          # run them all
  *   node scripts/fast-checks.mjs --list   # print the list
  *
- * Each command runs in turn, then one jest run over the listed files (one
- * start-up for all of them). Every check runs even after one fails; the exit
- * code is 1 when any failed.
+ * The commands and one jest run over the listed files (one start-up for all
+ * of them) run side by side; each one's output is printed whole when it
+ * ends. Every check runs even when another fails; the exit code is 1 when
+ * any failed. DEN_FAST_JEST_CACHE names a jest cache directory (CI keeps
+ * one between runs).
  */
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -30,22 +32,34 @@ if (process.argv.includes("--list")) {
   process.exit(0);
 }
 
-const failed = [];
 const t0 = Date.now();
 const secs = (t) => ((Date.now() - t) / 1000).toFixed(1);
 
 function run(name, cmd, args) {
   const t = Date.now();
-  const r = spawnSync(cmd, args, { cwd: root, stdio: "inherit" });
-  const ok = r.status === 0;
-  console.log(`fast-checks: ${ok ? "ok" : "FAILED"} ${name} (${secs(t)} s)`);
-  if (!ok) failed.push(name);
+  return new Promise((resolve) => {
+    const out = [];
+    const child = spawn(cmd, args, {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout.on("data", (d) => out.push(d));
+    child.stderr.on("data", (d) => out.push(d));
+    const done = (ok) => {
+      process.stdout.write(Buffer.concat(out));
+      console.log(
+        `fast-checks: ${ok ? "ok" : "FAILED"} ${name} (${secs(t)} s)`,
+      );
+      resolve(ok ? null : name);
+    };
+    child.on("error", (e) => {
+      out.push(Buffer.from(`${e.message}\n`));
+      done(false);
+    });
+    child.on("close", (code) => done(code === 0));
+  });
 }
 
-for (const c of list.commands) {
-  const [cmd, ...args] = c.run;
-  run(c.name, cmd === "node" ? process.execPath : cmd, args);
-}
 // jest's package exports only its package.json: its bin sits beside it.
 const jest = join(
   dirname(
@@ -54,7 +68,22 @@ const jest = join(
   "bin",
   "jest.js",
 );
-run("jest", process.execPath, [jest, "--forceExit", ...list.jest]);
+const cache = process.env.DEN_FAST_JEST_CACHE;
+
+const failed = (
+  await Promise.all([
+    ...list.commands.map((c) => {
+      const [cmd, ...args] = c.run;
+      return run(c.name, cmd === "node" ? process.execPath : cmd, args);
+    }),
+    run("jest", process.execPath, [
+      jest,
+      "--forceExit",
+      ...(cache ? ["--cacheDirectory", cache] : []),
+      ...list.jest,
+    ]),
+  ])
+).filter(Boolean);
 
 console.log(`fast-checks: ${secs(t0)} s in all`);
 if (failed.length) {
