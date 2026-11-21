@@ -4,7 +4,8 @@
  * computer (through the edge, its client 203.0.113.7), shows the sign-in
  * methods it has and the fix, not only the CLI hint. An API caller still
  * gets today's 401 body and code; a caller on this machine is never told
- * it is stuck.
+ * it is stuck. Subject: signin-methods.ts, and the page that draws it
+ * (error-page.js).
  *
  * A throwaway distribution with an edge block (org acme, tls none). No
  * code, cookie or token is printed.
