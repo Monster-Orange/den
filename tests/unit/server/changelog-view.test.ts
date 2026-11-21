@@ -50,11 +50,15 @@ describe("changelogView", () => {
       /export function openWhatsNew\(\) \{\s*showAll = false;/,
     );
     expect(src).toMatch(/aria-expanded/);
-    // In the fixed footer, so it is visible however long the newest entry.
-    // FB (den#81): Report first, as in every pop-up.
+    // Issue 793: the kit's dialog frame (a panel), not an overlay of its
+    // own. The toggle is in the frame's fixed footer, so it is visible
+    // however long the newest entry; FB (den#81): Report first there, as in
+    // every pop-up (the frame puts `report` before the actions).
+    expect(src).toMatch(/dialogHtml\(\{\s*kind: "panel",\s*id: "cl-overlay",/);
     expect(src).toMatch(
-      /class="cl-footer">'[\s\S]{0,160}report[\s\S]{0,120}<button type="button" class="cl-more-btn" id="cl-more"/,
+      /report: report \|\| "",[\s\S]{0,200}actions: \[[\s\S]{0,120}type: "button",[\s\S]{0,160}id: "cl-more"/,
     );
+    expect(src).not.toMatch(/cl-footer|cl-box/);
     const header = fs.readFileSync(
       path.resolve(__dirname, "../../../src/ui/server/public/header.js"),
       "utf-8",

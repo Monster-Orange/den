@@ -1406,6 +1406,10 @@
       "Could not open Terminal.app automatically.\n\nRun this in your terminal:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "Could not open the terminal automatically.\n\nRun this in your terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "Turn off auto-start for {repo}?",
+    "dlg.autoOff":
+      "It is a hard dependency of: {list}. Their project's Up may fail readiness while it's off.",
+    "dlg.autoOffGo": "Turn off",
     "rd.keepsHead": "Keeps running:",
     "rd.keepsAgents": "Agents and their terminals",
     "rd.keepsServices": "Services, and deploys on GitHub",

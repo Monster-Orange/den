@@ -100,6 +100,24 @@ export function openerOf(hint) {
   return null;
 }
 
+/**
+ * Issue 793: a page's own focus while a kit pop-up is open (a field that
+ * came in under it). The page behind a modal can't take focus, so the
+ * field is kept here and gets it when the pop-up closes, in place of
+ * what opened the pop-up. With no pop-up open it is focused at once.
+ */
+let wanted = null;
+export function focusWhenFree(el) {
+  if (!el) return;
+  const modal =
+    typeof document !== "undefined" &&
+    [...document.querySelectorAll("dialog.dk-dlg[open]")].find(
+      (d) => d.matches(":modal") && !d.contains(el),
+    );
+  if (modal) wanted = el;
+  else el.focus?.();
+}
+
 /** Focus `el` again (no scroll), when it is still there and focusable. */
 export function focusBack(el) {
   if (!focusable(el)) return false;
@@ -457,6 +475,14 @@ export function mountDialog(target, o = {}) {
       handle.closed = new Promise((r) => (settle = r));
       if (typeof d.showModal === "function") d.showModal();
       else d.setAttribute("open", "");
+      // A modal the page's own style hides would leave the page dead
+      // under nothing to see: it closes at once, and the keyboard stays
+      // where it was.
+      if (getComputedStyle(d).display === "none") {
+        opener = null;
+        close("cancel");
+        return handle;
+      }
     }
     const first = startOf(d, o.focus);
     first?.focus?.();
@@ -482,10 +508,13 @@ export function mountDialog(target, o = {}) {
       const at = document.activeElement;
       const first = all[0];
       const last = all[all.length - 1];
-      if (e.shiftKey && (at === first || !d.contains(at))) {
+      // Anything not a stop (a focused heading, say) counts as outside:
+      // Shift+Tab from it goes round to the last stop, never out.
+      const inside = all.includes(at);
+      if (e.shiftKey && (at === first || !inside)) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && (at === last || !d.contains(at))) {
+      } else if (!e.shiftKey && (at === last || !inside)) {
         e.preventDefault();
         first.focus();
       }
@@ -510,7 +539,11 @@ export function mountDialog(target, o = {}) {
     const s = settle;
     settle = null;
     s?.(value);
-    focusBack(opener);
+    // The page's own field, if one wanted the keyboard meanwhile (issue
+    // 793), else what opened it.
+    const w = wanted;
+    wanted = null;
+    if (!(w && focusBack(w))) focusBack(opener);
     opener = null;
     if (remove) {
       gone = true;
