@@ -311,11 +311,17 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     expect(await row.textContent()).toMatch(/Chrome on \w+/);
     expect(await row.textContent()).not.toContain(code);
     expect(await row.locator("[data-approve]").isDisabled()).toBe(true);
-    await row.locator("input[data-code-for]").fill(code.toLowerCase());
+    // The shell's own "Allow this computer?" pop-up can open over the page
+    // for the same request (modal, its own code field focused): this checks
+    // Settings' field and Approve, so the code goes into that field and the
+    // click to its button directly, as typed input does.
+    await row
+      .locator("input[data-code-for]")
+      .evaluate((el: HTMLInputElement, v: string) => {
+        el.value = v;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, code.toLowerCase());
     expect(await row.locator("[data-approve]").isDisabled()).toBe(false);
-    // The shell's own "a device is waiting" dialog can open over the page
-    // at the same moment (a CI flake): this checks Settings' Approve, so the
-    // click goes to it directly.
     await row.locator("[data-approve]").dispatchEvent("click");
     await p.waitForFunction(
       () => !document.querySelector("#den-signin"),
