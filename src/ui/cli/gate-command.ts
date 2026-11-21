@@ -64,9 +64,9 @@ import {
   browserSlotCheck,
   browserSlotRefusal,
   endpointFromEnv,
+  personLanguage,
+  type UiLanguage,
 } from "../../shared/gates/browser-container.js";
-import { readUserConfig } from "../../shared/den-config.js";
-import { uiLanguage, type UiLanguage } from "../server/ui-language.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
@@ -139,15 +139,6 @@ export interface GateDeps {
   cwd: string;
   /** The language refusals are in (default: the person's, from user.yml). */
   lang?: UiLanguage;
-}
-
-/** The person's language for the command line; English when unknown. */
-function cliLang(): UiLanguage {
-  try {
-    return uiLanguage(readUserConfig().language);
-  } catch {
-    return "en";
-  }
 }
 
 const signalCode = (s: NodeJS.Signals | null) =>
@@ -395,7 +386,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   if (!verdict.ok)
     throw new GateUsage(
       browserSlotRefusal(verdict, {
-        lang: d.lang ?? cliLang(),
+        lang: d.lang ?? personLanguage(),
         surface: "cli",
         cli: product().cli,
         ...(fromEnv ? { from: fromEnv.from } : {}),

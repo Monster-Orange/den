@@ -22,7 +22,19 @@
  * One rule (`browserSlotCheck`), called by `gate run`, the MCP tool
  * gate_slot_request and the runners' POST /api/gate-slots/ask.
  */
-import type { UiLanguage } from "../../ui/server/ui-language.js";
+import { uiLanguage, type UiLanguage } from "../../ui/server/ui-language.js";
+import { readUserConfig } from "../den-config.js";
+
+export type { UiLanguage };
+
+/** The person's language (user.yml), for the command line; else English. */
+export function personLanguage(): UiLanguage {
+  try {
+    return uiLanguage(readUserConfig().language);
+  } catch {
+    return "en";
+  }
+}
 import type { GateKind } from "./rules.js";
 
 /** Where a run's environment may name its container browser, in order. */
