@@ -275,6 +275,17 @@ type PageWin = {
 };
 
 const WHATS_NEW = "#cl-overlay.open";
+
+/**
+ * For review: a screenshot into DEN455_SHOTS (CI uploads that folder as
+ * an artifact); nothing when it isn't set.
+ */
+const SHOTS = process.env.DEN455_SHOTS?.trim() || "";
+async function shot(p: Page, name: string): Promise<void> {
+  if (!SHOTS) return;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await p.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+}
 const CONFIRM = "dialog.dk-dlg[open]";
 
 describe("issue 793: every pop-up draws in the page's font, on every theme", () => {
@@ -292,6 +303,10 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
         await p.locator(WHATS_NEW).waitFor({ state: "detached" });
         await p.click("#version-pill");
         await p.locator(WHATS_NEW).waitFor();
+        await shot(
+          p,
+          `793-whatsnew${where.replace(/\//g, "-")}-${theme.id}${theme.strip ? `-nosans-${theme.strip}` : ""}`,
+        );
         expect(problems(await fontsOf(p, "#cl-overlay"), strict)).toEqual([]);
         await p.context().close();
       },
@@ -365,5 +380,67 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
     expect(isSerif("Rubik")).toBe(true);
     expect(isSerif("Rubik,-apple-system,sans-serif")).toBe(false);
     expect(isSerif("JetBrains Mono,ui-monospace,monospace")).toBe(false);
+  });
+});
+
+/**
+ * Vision's root-cause gate: every Den page's <body> is in the theme's
+ * --sans (base.css), so anything a script adds to <body> inherits it.
+ * Before, Agents, Settings, Verify, Edge, Server agent, the error page and
+ * Embed's connect page set their font on #den-content only, and <body>
+ * was the browser's serif.
+ */
+const PAGES = [
+  "/local-dev",
+  "/graph",
+  "/agents",
+  "/agents?terminal=1",
+  "/services",
+  "/logs",
+  "/verify",
+  "/environments",
+  "/release",
+  "/edge",
+  "/settings",
+  "/server-agent",
+  "/embed/connect",
+  "/no-such-page",
+];
+
+describe("issue 793: every page's <body> is in the theme's sans", () => {
+  describe.each(
+    THEMES.filter((t) => !t.strip && ["den", "serifdisplay"].includes(t.id)),
+  )("$label", (theme) => {
+    it("every page", async () => {
+      if (!browser) return;
+      const p = await pageOn(theme, "/settings");
+      const bad: string[] = [];
+      for (const where of PAGES) {
+        await p.goto(`${base}${where}`);
+        await p.waitForLoadState("load");
+        const f = await p.evaluate(() => {
+          const norm = (s: string) =>
+            s
+              .split(",")
+              .map((x) => x.trim().replace(/^["']|["']$/g, ""))
+              .filter(Boolean)
+              .join(",");
+          const probe = document.createElement("span");
+          probe.style.fontFamily = "var(--sans)";
+          document.documentElement.append(probe);
+          const sans = norm(getComputedStyle(probe).fontFamily);
+          probe.remove();
+          return {
+            body: norm(getComputedStyle(document.body).fontFamily),
+            sans,
+          };
+        });
+        if (isSerif(f.body)) bad.push(`${where}: <body> is serif: ${f.body}`);
+        else if (f.body !== f.sans)
+          bad.push(`${where}: <body> is ${f.body}, --sans is ${f.sans}`);
+      }
+      expect(bad).toEqual([]);
+      await p.context().close();
+    }, 180_000);
   });
 });

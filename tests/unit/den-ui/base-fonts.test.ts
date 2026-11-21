@@ -68,18 +68,6 @@ describe("den-ui base: pop-ups and form controls use the kit's font (issue 651)"
     expect(d["color"]).toBe("inherit");
   });
 
-  // Issue 793: <body> too (a pop-up a script puts in <body> on a page whose
-  // font is on a wrapper), and both name the kit's stack after var(--sans),
-  // so a theme or page with no --sans still never draws in serif.
-  it("body: the kit's sans font, with the kit's stack when --sans is missing", () => {
-    expect(declsFor("body")["font-family"]).toBe(KIT_SANS);
-    const tokens = /--sans\s*:\s*([^;]+);/.exec(
-      fs.readFileSync(TOKENS, "utf-8"),
-    )?.[1];
-    expect(KIT_SANS).toBe(`var(--sans, ${tokens?.trim()})`);
-    expect(KIT_SANS).toMatch(/, sans-serif\)$/);
-  });
-
   it.each(["button", "input", "select", "textarea"])(
     "%s: inherits the font",
     (el) => {
