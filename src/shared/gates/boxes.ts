@@ -13,8 +13,8 @@
  *
  * A box is checked only when a slot on it is about to be given: never on a
  * timer. The check is a read over the box's own connection (an sftp `ls`
- * of the hold file, or a TCP connect to the Playwright server); nothing on
- * the box is run. An open answer is good for one assignment; a held or
+ * of the hold file, or a WebSocket upgrade to the Playwright server, closed
+ * at once); nothing on the box is run. An open answer is good for one assignment; a held or
  * unreachable answer is remembered for `box_recheck_seconds`, then read
  * again the next time a slot on that box is wanted.
  *
@@ -36,9 +36,11 @@
  * Nothing here holds a secret: ssh names a key file, never its contents.
  */
 import { spawn } from "child_process";
+import { createHash, randomBytes } from "crypto";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
+import { connect as tlsConnect } from "tls";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
   clockText,
@@ -446,29 +448,89 @@ const oneLine = (s: string) =>
     .trim()
     .slice(0, 200);
 
-/** A TCP connect to the box's Playwright server (nothing else is sent). */
-function tcpReach(
+const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+/**
+ * The check of a box's Playwright server: a WebSocket upgrade (an HTTP GET
+ * with Upgrade: websocket), open only on "101 Switching Protocols" with
+ * the right Sec-WebSocket-Accept. A bare TCP connect isn't enough: a relay
+ * or port forward in front of a dead server still accepts it. The socket
+ * is closed as soon as the answer's head is read, and never later than
+ * the check's time (capped at BOX_CHECK_CAP_MS). No frame is ever sent.
+ */
+function wsReach(
   u: URL,
   timeoutMs: number,
 ): Promise<{ state: BoxState["state"]; reason?: string }> {
-  const port = Number(u.port) || (u.protocol === "wss:" ? 443 : 80);
+  const tls = u.protocol === "wss:";
+  const port = Number(u.port) || (tls ? 443 : 80);
+  const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
+  const key = randomBytes(16).toString("base64");
+  const accept = createHash("sha1")
+    .update(key + WS_GUID)
+    .digest("base64");
+  const where = `${u.hostname}:${port}`;
   return new Promise((resolve) => {
-    const sock = net.connect({ host: u.hostname, port });
+    const sock: net.Socket = tls
+      ? tlsConnect({ host: u.hostname, port, servername: u.hostname })
+      : net.connect({ host: u.hostname, port });
+    let head = "";
+    let settled = false;
     const done = (v: { state: BoxState["state"]; reason?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       sock.destroy();
       resolve(v);
     };
-    sock.setTimeout(timeoutMs, () =>
+    const timer = setTimeout(
+      () =>
+        done({
+          state: "unreachable",
+          reason: `no websocket upgrade from ${where} in ${Math.max(1, Math.round(capMs / 1000))} s`,
+        }),
+      capMs,
+    );
+    sock.once(tls ? "secureConnect" : "connect", () => {
+      const host = u.port ? `${u.hostname}:${u.port}` : u.hostname;
+      sock.write(
+        `GET ${u.pathname || "/"}${u.search} HTTP/1.1\r\n` +
+          `Host: ${host}\r\n` +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          `Sec-WebSocket-Key: ${key}\r\n` +
+          "Sec-WebSocket-Version: 13\r\n\r\n",
+      );
+    });
+    sock.on("data", (d: Buffer) => {
+      head += d.toString("latin1");
+      const end = head.indexOf("\r\n\r\n");
+      if (end < 0 && head.length < 8192) return;
+      const lines = head.slice(0, end < 0 ? 8192 : end).split("\r\n");
+      const status = /^HTTP\/1\.[01] (\d{3})/.exec(lines[0] ?? "")?.[1];
+      const got = lines
+        .map((l) => /^sec-websocket-accept:\s*(\S+)/i.exec(l)?.[1])
+        .find(Boolean);
+      if (status === "101" && got === accept) return done({ state: "open" });
       done({
         state: "unreachable",
-        reason: `no answer from ${u.hostname}:${port} in ${Math.round(timeoutMs / 1000)} s`,
+        reason: oneLine(
+          status === "101"
+            ? `${where}: a websocket upgrade with the wrong accept key`
+            : `${where}: no websocket upgrade (${lines[0] || "no answer"})`,
+        ),
+      });
+    });
+    sock.once("end", () =>
+      done({
+        state: "unreachable",
+        reason: `${where}: no websocket upgrade (closed without an answer)`,
       }),
     );
-    sock.once("connect", () => done({ state: "open" }));
     sock.once("error", (e) =>
       done({
         state: "unreachable",
-        reason: oneLine(`${u.hostname}:${port}: ${e.message}`),
+        reason: oneLine(`${where}: ${e.message}`),
       }),
     );
   });
@@ -491,7 +553,7 @@ export function memAvailableMb(text: string): number | undefined {
  */
 export function sftpProbe(start: typeof spawn): BoxProbe {
   return (box, timeoutMs) => {
-    if (!box.ssh) return tcpReach(new URL(box.playwright!), timeoutMs);
+    if (!box.ssh) return wsReach(new URL(box.playwright!), timeoutMs);
     const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
     const secs = Math.max(1, Math.round(capMs / 1000));
     const args = [

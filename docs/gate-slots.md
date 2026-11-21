@@ -300,7 +300,7 @@ den gate box disable box3
   machine's local time; Settings and `gate box list` say so. The queue
   pop-up shows when a closed box opens in the viewer's own time.
 - Outside its window, or turned off, a box gets **no slots and no
-  contact**: Den doesn't read its hold file, open a TCP connection to it,
+  contact**: Den doesn't read its hold file, open a connection to its Playwright server,
   or check it from `doctor` or `gate status`. A run waiting for that box
   by name waits; a `--box any` run takes this machine or another box.
 - A run that already holds a slot on a box **finishes** when the window
@@ -340,7 +340,11 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 A box is checked only when a slot on it is about to be given, never on a
 timer. The check is a read: over ssh, one sftp session that lists the
 hold file and reads the box's `/proc/meminfo` (the box runs nothing for
-it); with only a Playwright address, a TCP connect.
+it); with only a Playwright address, a WebSocket upgrade to that address
+(an HTTP GET with `Upgrade: websocket`), closed as soon as it answers.
+Only "101 Switching Protocols" counts as open: a relay or port forward in
+front of a dead server still accepts a TCP connection, so a bare connect
+is never enough.
 
 - **Held** (its hold file is there): no new slot. The next assignment
   after the file is placed sees it.
