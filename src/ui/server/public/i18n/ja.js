@@ -946,6 +946,9 @@
       "CI ランナーもリリースの優先を依頼できる",
     "set.server.gate_priority_runners.d":
       "オンなら、ランナートークンを持つ CI ジョブが理由を添えて実行をリリース実行として優先にできます。オフなら、その依頼は断られ、通常の列で待ちます。追い越しはすべて、ランナーと理由とともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container": "ブラウザ実行にはコンテナが必要",
+    "set.server.gate_browser_container.d":
+      "オンなら、このマシンでのブラウザのテスト実行は、ブラウザがどこで動くかを示す必要があります: コンテナの Playwright エンドポイント (ws:// または wss://。DEN_PW_WS、HUB_PW_WEBKIT_WS、E2E_WEBKIT_WS からも読みます)、または実行が自分でコンテナを起動するときは self。示さない実行は断られるので、この Mac 自体でブラウザを起動するテストはありません。macOS では既定でオン、それ以外ではオフ。__DEN_CLI__ gate settings --browser-requires-container 1",
     "set.server.gate_claim": "エージェントのゲート枠: 受け取るまでの分数",
     "set.server.gate_claim.d":
       "エージェントが待っていた枠が割り当てられると、Den がエージェントに伝えます。この時間内に受け取らなければ、枠は次に回り、エージェントは列に戻ります。__DEN_CLI__ gate settings --claim-minutes 3",
@@ -1612,6 +1615,24 @@
       "トークンは頼んだ人に一度だけ渡され、二度と表示されません。Den はハッシュだけを保存します。",
     "ap.det.gate_runner_token_create.revoke":
       "設定の「CI ランナーのトークン」でいつでも取り消せます。",
+    "ap.do.gate_box_set": "テスト用マシン {name} を置き換え",
+    "ap.do.gate_box_set.new": "テスト用マシン {name} を追加",
+    "ap.do.gate_box_remove": "テスト用マシン {name} を削除",
+    "ap.det.gate_box_set.adds":
+      "テスト用マシン {name} を追加します。そのブラウザスロットはエージェントのゲート実行を受けます。",
+    "ap.det.gate_box_set.replaces":
+      "テスト用マシン {name} をこの設定で置き換えます。そのブラウザスロットはエージェントのゲート実行を受けます。",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "SSH ポート: {v}",
+    "ap.det.gate_box_set.ssh_identity": "SSH 鍵ファイル: {v}",
+    "ap.det.gate_box_set.playwright": "Playwright のアドレス: {v}",
+    "ap.det.gate_box_set.slots": "ブラウザスロット: {v}",
+    "ap.det.gate_box_set.hold_file": "保留ファイル: {v}",
+    "ap.det.gate_box_set.time_scale": "時間倍率: {v}",
+    "ap.det.gate_box_set.playwright_version": "Playwright のバージョン: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "最小空きメモリ (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",

@@ -56,6 +56,7 @@ function storeWith(
   let now = T0;
   const probe: BoxProbe = () => Promise.resolve(answer);
   const store = new GateStore({
+    platform: "linux",
     dir: tmp(),
     alive: () => true,
     now: () => now,

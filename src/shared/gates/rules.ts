@@ -104,6 +104,11 @@ export interface GateEntry {
   where?: string;
   /** Issue 625 clause 11: the run's Playwright client version. */
   pwVersion?: string;
+  /**
+   * A browser run's declared container browser (browser-container.ts):
+   * "self" (the run starts its own), or the address without its path.
+   */
+  browserEndpoint?: string;
   box?: string;
   boxTimeScale?: number;
   /**
@@ -156,6 +161,11 @@ export interface GateSettings {
   classOrder?: string;
   classMap?: string;
   classWindows?: string;
+  /**
+   * On macOS a browser ask must declare a container browser
+   * (browser-container.ts). Default: on for a macOS host, off elsewhere.
+   */
+  browserRequiresContainer: boolean;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -173,6 +183,7 @@ export const GATE_DEFAULTS: GateSettings = {
   mcpRenewMinutes: 5,
   mcpLapseMinutes: 15,
   mcpGraceMinutes: 15,
+  browserRequiresContainer: process.platform === "darwin",
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);

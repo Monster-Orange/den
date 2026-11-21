@@ -1976,6 +1976,9 @@
       "CI runners may ask for release priority",
     "set.server.gate_priority_runners.d":
       "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container": "Browser runs need a container",
+    "set.server.gate_browser_container.d":
+      "On, a browser test run on this machine must say where its browser runs: a container's Playwright endpoint (ws:// or wss://, also from DEN_PW_WS, HUB_PW_WEBKIT_WS or E2E_WEBKIT_WS), or self when the run starts its own container. A run without one is refused, so no test starts a browser on this Mac itself. On by default on macOS, off elsewhere. __DEN_CLI__ gate settings --browser-requires-container 1",
     "set.server.gate_claim": "An agent's gate slot: minutes to claim it",
     "set.server.gate_claim.d":
       "When a slot an agent waited for is granted, Den tells the agent. Not claimed within this time, it goes to the next in line and the agent goes back in line. __DEN_CLI__ gate settings --claim-minutes 3",
@@ -2514,6 +2517,24 @@
       "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
     "ap.det.gate_runner_token_create.revoke":
       "You can revoke it any time in Settings, under CI runner tokens.",
+    "ap.do.gate_box_set": "Replace the test box {name}",
+    "ap.do.gate_box_set.new": "Add the test box {name}",
+    "ap.do.gate_box_remove": "Remove the test box {name}",
+    "ap.det.gate_box_set.adds":
+      "Adds the test box {name}. Its browser slots take gate runs from agents.",
+    "ap.det.gate_box_set.replaces":
+      "Replaces the test box {name} with these settings. Its browser slots take gate runs from agents.",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "SSH port: {v}",
+    "ap.det.gate_box_set.ssh_identity": "SSH key file: {v}",
+    "ap.det.gate_box_set.playwright": "Playwright address: {v}",
+    "ap.det.gate_box_set.slots": "Browser slots: {v}",
+    "ap.det.gate_box_set.hold_file": "Hold file: {v}",
+    "ap.det.gate_box_set.time_scale": "Time scale: {v}",
+    "ap.det.gate_box_set.playwright_version": "Playwright version: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "Removes the test box {name}. Runs on it now finish; no new run goes there.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",

@@ -45,6 +45,7 @@ const T0 = Date.parse("2026-11-20T10:00:00Z");
 function setup() {
   let now = T0;
   const store = new GateStore({
+    platform: "linux",
     dir: tmp(),
     now: () => now,
     alive: () => true,

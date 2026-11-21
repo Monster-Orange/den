@@ -267,6 +267,7 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import {
+  gateBoxOps,
   gateRunnerTokenOp,
   handleGateRoutes,
   isGatePath,
@@ -3597,6 +3598,11 @@ function approvalDeps(): ApprovalDeps {
     gateRunnerToken: gateRunnerTokenOp({
       runners: () => RunnerTokens.at(getStateDir()),
     }),
+    // Issue 625: an agent asks to add or remove a test box; the person allows.
+    ...(() => {
+      const box = gateBoxOps({ store: () => gates() });
+      return { gateBoxSet: box.set, gateBoxRemove: box.remove };
+    })(),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({

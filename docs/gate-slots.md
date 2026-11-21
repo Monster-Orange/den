@@ -7,12 +7,43 @@ time by default. First come, first served. A run is never stopped by another.
 On the machine itself, wrap the run:
 
 ```sh
-den gate run --kind browser --estimate 6m --label "e2e" -- npm run test:e2e
+DEN_PW_WS=ws://127.0.0.1:3000/ den gate run --kind browser --estimate 6m --label "e2e" -- npm run test:e2e
 den gate status            # who holds a slot, who waits
 ```
 
 `gate status`, the Agents page and `GET /api/gate-slots` show every holder,
 local or remote.
+
+## A browser run on a Mac uses a container browser
+
+On a macOS host, a browser slot is refused unless the ask says where its
+browser runs. Several WebKit browsers started on a shared Mac can take its
+window server down, and every login session on it with them. So the ask
+declares one of:
+
+- a container's Playwright server, a `ws://` or `wss://` address:
+  `gate run --browser-endpoint ws://127.0.0.1:3000/…`, or `DEN_PW_WS`,
+  `HUB_PW_WEBKIT_WS` or `E2E_WEBKIT_WS` in the run's environment (the
+  first good one counts). An address given with `--browser-endpoint`
+  reaches the run as `DEN_PW_WS`.
+- `self`: the run starts its own browser container, so there is no
+  address yet when it asks (`--browser-endpoint=self`). Its own setup
+  keeps the browser in that container.
+
+Over MCP (`gate_slot_request`) and HTTP (`POST /api/gate-slots/ask`) the
+field is `browser_endpoint`. A run for a named test box uses that box's
+browser and needs none. An address that is given is checked everywhere:
+anything but `ws://`, `wss://` or `self` is refused. The slot records what
+was declared (`self`, or the address without its path): `gate status`
+shows `browser self`, and `--json` and the MCP tools carry
+`browserEndpoint`.
+
+The Setting `gate_slots.browser_requires_container` (Settings, "Browser
+runs need a container") is on by default on macOS and off elsewhere:
+
+```sh
+den gate settings --browser-requires-container 0   # off on this machine
+```
 
 ## An agent that holds a slot over MCP
 
@@ -277,6 +308,25 @@ den gate box remove box2
 - `--time-scale X`: the box's browsers take X times as long as this
   machine's. Its runs' expected ends stretch by it, and the run gets
   `DEN_GATE_TIME_SCALE` to stretch its own timeouts.
+
+### An agent can ask
+
+Changing the boxes is yours: `gate box add|remove` and the boxes routes
+refuse an agent. An agent asks instead, with the held writes
+`gate_box_set` (the same fields as `gate box add`; `slots` is `--slots`)
+and `gate_box_remove`:
+
+```
+gate_box_set { name: "box1", ssh: "ci@box1.example", slots: 1 }
+gate_box_remove { name: "box1" }
+```
+
+Den checks the box at the ask and refuses a bad one (or a remove of a box
+it doesn't have) with the same words `gate box add` gives. Nothing changes
+until you Allow it in Den's browser dialog, which shows every field it
+will set. No approval policy runs these without you. On Allow, Den sets
+the box just as your own Settings change does; the activity trail says
+who asked and who allowed. Deny changes nothing.
 
 ### Which runs go to a box
 

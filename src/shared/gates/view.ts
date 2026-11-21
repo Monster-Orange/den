@@ -31,6 +31,8 @@ export interface GateSlotView {
   where?: string;
   /** Issue 625 clause 11: boxes this waiter can't use, and why. */
   skips?: { box: string; reason: string }[];
+  /** A browser run's declared container browser: "self" or its address. */
+  browserEndpoint?: string;
   grantedAt?: string;
   expectedEnd?: string;
   overrun?: boolean;
@@ -108,6 +110,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(e.box ? { box: e.box } : {}),
     ...(!e.grantedAt && e.where ? { where: e.where } : {}),
     ...(skipsOf(e).length ? { skips: skipsOf(e) } : {}),
+    ...(e.browserEndpoint ? { browserEndpoint: e.browserEndpoint } : {}),
     ...(e.priority
       ? { priority: { reason: e.priority.reason, holds: pri.has(e.id) } }
       : {}),

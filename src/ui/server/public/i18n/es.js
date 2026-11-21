@@ -975,6 +975,10 @@
       "Los runners de CI pueden pedir prioridad de versión",
     "set.server.gate_priority_runners.d":
       "Activado, un trabajo de CI con un token de runner puede marcar su ejecución como de versión, con un motivo. Desactivado, su petición se rechaza y espera en la cola normal. Cada adelanto queda en el registro de turnos, con el runner y el porqué. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container":
+      "Las ejecuciones de navegador necesitan un contenedor",
+    "set.server.gate_browser_container.d":
+      "Activado, una ejecución de pruebas de navegador en esta máquina debe indicar dónde corre su navegador: el endpoint de Playwright de un contenedor (ws:// o wss://, también desde DEN_PW_WS, HUB_PW_WEBKIT_WS o E2E_WEBKIT_WS), o self cuando la ejecución inicia su propio contenedor. Una ejecución sin él se rechaza, así ninguna prueba inicia un navegador en este Mac. Activado por defecto en macOS, desactivado en los demás. __DEN_CLI__ gate settings --browser-requires-container 1",
     "set.server.gate_claim": "Turno de un agente: minutos para reclamarlo",
     "set.server.gate_claim.d":
       "Cuando se concede un turno que un agente esperaba, Den se lo dice. Si no lo reclama en este tiempo, pasa al siguiente de la cola y el agente vuelve a la cola. __DEN_CLI__ gate settings --claim-minutes 3",
@@ -1658,6 +1662,24 @@
       "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
     "ap.det.gate_runner_token_create.revoke":
       "Puedes revocarlo cuando quieras en Ajustes, en Tokens de runners de CI.",
+    "ap.do.gate_box_set": "Reemplazar la máquina de pruebas {name}",
+    "ap.do.gate_box_set.new": "Añadir la máquina de pruebas {name}",
+    "ap.do.gate_box_remove": "Quitar la máquina de pruebas {name}",
+    "ap.det.gate_box_set.adds":
+      "Añade la máquina de pruebas {name}. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.replaces":
+      "Reemplaza la máquina de pruebas {name} con estos ajustes. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "Puerto SSH: {v}",
+    "ap.det.gate_box_set.ssh_identity": "Archivo de clave SSH: {v}",
+    "ap.det.gate_box_set.playwright": "Dirección de Playwright: {v}",
+    "ap.det.gate_box_set.slots": "Turnos de navegador: {v}",
+    "ap.det.gate_box_set.hold_file": "Archivo de pausa: {v}",
+    "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
+    "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":

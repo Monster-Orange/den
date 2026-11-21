@@ -67,6 +67,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // Issue 625: test boxes' check and recheck.
     box_check_timeout_seconds: true,
     box_recheck_seconds: true,
+    // A browser run on a macOS host declares a container browser.
+    browser_requires_container: true,
     // Issue 803: priority classes per project, and their windows.
     class_order: true,
     class_map: true,
@@ -222,6 +224,7 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
+        "gate_slots.browser_requires_container",
         "gate_slots.claim_minutes",
         "gate_slots.class_map",
         "gate_slots.class_order",
