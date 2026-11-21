@@ -171,7 +171,7 @@ const tabs = (p: Page) =>
   );
 /** Issue 482: the Terminals page's rows' projects. */
 const listedT = (p: Page) =>
-  p.$$eval("#agl .tmrow", (xs) => [
+  p.$$eval("#agl [data-shell][data-ws]", (xs) => [
     ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
   ]);
 const openParam = (p: Page) =>
@@ -184,7 +184,7 @@ describe("#80: a project's view holds only its own", () => {
     const p = await open(
       `/terminals?ws=north&layout=tabs&open=${shells.north},${shells.south}`,
     );
-    await p.waitForSelector("#agl .tmrow");
+    await p.waitForSelector("#agl [data-shell]");
     await p.waitForTimeout(500);
     expect(await listedT(p)).toEqual(["north"]);
     expect(await tabs(p)).toEqual([shells.north]);
@@ -322,13 +322,13 @@ describe("#80: scope wins", () => {
     // A project switch …
     await chooseInTopBar(p, "south");
     await p.waitForSelector(
-      `.pane[data-id="${sid.bo}"]:not([hidden]), .pane[data-id="${sid.cy}"]:not([hidden])`,
+      `section[data-id="${sid.bo}"]:not([hidden]), section[data-id="${sid.cy}"]:not([hidden])`,
     );
     // … a tab switch (bo, south's other agent, then bo again) …
-    await p.click(`#agl .agr[data-id="${sid.bo}"]`);
-    await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
-    await p.click(`#agl .agr[data-id="${sid.cy}"]`);
-    await p.waitForSelector(`.pane[data-id="${sid.cy}"]:not([hidden])`);
+    await p.click(`#agl button[data-id="${sid.bo}"]`);
+    await p.waitForSelector(`section[data-id="${sid.bo}"]:not([hidden])`);
+    await p.click(`#agl button[data-id="${sid.cy}"]`);
+    await p.waitForSelector(`section[data-id="${sid.cy}"]:not([hidden])`);
     await p.click(`.agtab[data-id="${sid.bo}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
     // … and a reload.

@@ -172,6 +172,17 @@ async function waitTerm(p: Page, sid: string, text: string): Promise<void> {
     { timeout: 10_000 },
   );
 }
+/** The page's own text for an i18n key (the shell's t), in English here. */
+const tx = (p: Page, key: string, vars: Record<string, unknown> = {}) =>
+  p.evaluate(
+    ([k, v]) =>
+      (
+        window as unknown as {
+          denShell: { t: (k: string, v: object) => string };
+        }
+      ).denShell.t(k as string, v as object),
+    [key, vars] as const,
+  );
 const openIds = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
@@ -226,7 +237,7 @@ describe("the Agents tab", () => {
     ).toEqual(["north"]);
     expect(await p.locator(`.agr[data-kind="session"]`).count()).toBe(0);
     expect(await p.textContent('#agl [data-note="moved"]')).toContain(
-      "4 terminals moved to Terminals. Nothing was closed.",
+      await tx(p, "tm.moved", { n: 4 }),
     );
     const scout = p.locator(`.agr[data-id="${id("scout")}"]`);
     expect(await scout.getAttribute("data-kind")).toBe("agent");
@@ -251,7 +262,9 @@ describe("the Agents tab", () => {
     const shell = p.locator(`.agr[data-id="${id("shell")}"]`);
     expect(await shell.locator(".st").textContent()).toBe("running");
     expect(await p.locator(`.agr[data-kind="agent"]`).count()).toBe(0);
-    expect(await p.textContent("#ag-count")).toBe("4 terminals · all projects");
+    expect(await p.textContent("#ag-count")).toBe(
+      `${await tx(p, "tm.count", { n: 4 })} · all projects`,
+    );
     await p.goto(`${s!.base}/terminals?ws=south`);
     await p.waitForSelector("#agl:not([aria-busy]) .agr");
     expect(await p.textContent("#ag-count")).toBe("2 terminals · south");
@@ -431,12 +444,13 @@ describe("the Agents tab", () => {
     const p = await page("/agents");
     await p.click("#den-search");
     await p.fill("#den-pal-q", "scout");
+    // North's one agent (scout): its row, then its kind at the row's end.
     const agentOpt = p
-      .locator('#den-pal-list li[role="option"]')
-      .filter({ hasText: "Agents › north /" })
-      .first();
+      .locator("#den-pal-list")
+      .getByRole("option")
+      .filter({ has: p.getByText(/^Agents › north \//) });
     await agentOpt.waitFor();
-    expect(await agentOpt.locator(".den-kind").textContent()).toBe("Agent");
+    expect(await agentOpt.textContent()).toMatch(/Agent$/);
     // Issue 482: a terminal is named by its folder, and is a Terminal.
     const folder = path.basename(s!.wsDir("north"));
     await p.fill("#den-pal-q", `north / ${folder}`);

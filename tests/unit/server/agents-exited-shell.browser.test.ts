@@ -101,9 +101,9 @@ async function open(next: string): Promise<Page> {
 
 // Issue 482: the Terminals page's groups.
 const inStopped = (p: Page, id: string) =>
-  p.locator(`#agl .tmg[data-tm="exited"] [data-shell="${id}"]`);
+  p.locator(`#agl [data-tm="exited"] [data-shell="${id}"]`);
 const inGroup = (p: Page, id: string) =>
-  p.locator(`#agl .tmg[data-tm="running"] .agr[data-id="${id}"]`);
+  p.locator(`#agl [data-tm="running"] button[data-id="${id}"]`);
 const listed = async (id: string) =>
   (await host!.list()).some((v) => v.ref.id === id);
 
@@ -141,7 +141,7 @@ describe("#80: an exited shell has a way out", () => {
       stoppedAt: "2026-11-06T10:00:00.000Z",
     });
     const p = await open(`/agents?project=north&layout=focus`);
-    await p.waitForSelector('#agl .agst[data-agent="idle"]');
+    await p.waitForSelector('#agl div[data-agent="idle"]');
     // Agents lists no shell, exited or not.
     expect(await p.$$(`#agl [data-shell]`)).toHaveLength(0);
     await p.locator("#ag-clear").click();
@@ -186,7 +186,7 @@ describe("#80: an exited shell has a way out", () => {
       await exited(unseen.id);
       await p.waitForTimeout(1500);
       await p.reload();
-      await p.waitForSelector("#agl .tmg");
+      await p.waitForSelector("#agl [data-tm]");
       expect(await listed(seen.id)).toBe(false);
       expect(await listed(unseen.id)).toBe(true);
       await expect(inStopped(p, unseen.id).count()).resolves.toBe(1);
