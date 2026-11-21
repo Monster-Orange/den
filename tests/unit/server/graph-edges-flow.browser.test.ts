@@ -162,8 +162,18 @@ async function graph(o: BrowserContextOptions = {}): Promise<Page> {
 /** Select a card by clicking it (the details panel may open). */
 async function select(p: Page, id: string): Promise<void> {
   await p.click(`.dg-card[data-id="${id}"]`, { timeout: 8_000 });
-  await p.locator(`.dg-card.sel[data-id="${id}"]`).waitFor({ timeout: 5_000 });
+  await selected(p, id);
 }
+/** Wait until the card named `id` is the selected one. */
+const selected = (p: Page, id: string) =>
+  p.waitForFunction(
+    (i) =>
+      document
+        .querySelector(`[role="group"][data-id="${i}"]`)
+        ?.classList.contains("sel") ?? false,
+    id,
+    { timeout: 5_000 },
+  );
 
 describe("R22b-2: a selected card's edges flow from data-f to data-t", () => {
   it("the lit edge's overlay animates, its dashoffset decreasing; nothing flows before a selection", async () => {
@@ -298,9 +308,7 @@ describe("R22b-1: the edge layer paints above the frames and the cards", () => {
       '.dg-card[data-id="shop/worker"]',
     ))!.boundingBox())!;
     await p.mouse.click(tip.x, box.y + 4);
-    await p
-      .locator('.dg-card.sel[data-id="shop/worker"]')
-      .waitFor({ timeout: 5_000 });
+    await selected(p, "shop/worker");
     expect(
       await p.$eval('.dg-card[data-id="shop/worker"]', (e) =>
         e.classList.contains("sel"),
