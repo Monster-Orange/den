@@ -207,6 +207,8 @@ export function peekHtml(v, link) {
     kind: "panel",
     id: "den-peek",
     className: "den-peek",
+    // The mock's phone rule, a full-screen sheet: the kit's.
+    sheet: true,
     title: v.name,
     subtitle: v.project,
     headActions: [

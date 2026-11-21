@@ -298,7 +298,9 @@ function panelInner(spec, ids) {
  *
  *   kind "confirm"  a Yes/No question: heading, body, actions in the footer
  *   kind "panel"    a large dialog: heading (and subtitle), the header's
- *                   own actions and Close, a body that scrolls, a footer
+ *                   own actions and Close, a body that scrolls, a footer;
+ *                   with sheet: true, a full-screen sheet on a phone (no
+ *                   radius, nothing dimmed behind it)
  *
  * title and labels are text (escaped); body, extra and foot are HTML the
  * caller has escaped. Called with a kind string first (kind, opts, ids),
@@ -324,7 +326,7 @@ export function dialogHtml(spec, opts, askIds) {
       ? ` aria-describedby="${esc(ids.m)}"`
       : "";
   return (
-    `<dialog id="${esc(ids.id)}" class="dk-dlg dk-${kind}${s.className ? ` ${esc(s.className)}` : ""}"` +
+    `<dialog id="${esc(ids.id)}" class="dk-dlg dk-${kind}${kind === "panel" && s.sheet ? " dk-sheet" : ""}${s.className ? ` ${esc(s.className)}` : ""}"` +
     ` data-dk-kind="${esc(s.dataKind ?? kind)}" role="${esc(role)}"${named}${described}` +
     attrsOf(s.attrs) +
     (s.report ? " data-dk-report" : "") +

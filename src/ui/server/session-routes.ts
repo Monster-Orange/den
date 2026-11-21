@@ -1473,7 +1473,6 @@ export async function handleSessionUpgrade(
     onData: (data) => ws.send(data),
     onSize: (cols, rows) => {
       ptySize = { cols, rows };
-      lead.heard(ptySize);
       if (ws.open) ws.send(JSON.stringify({ type: "size", cols, rows }));
     },
     onExit: (exitCode) => {
@@ -1494,8 +1493,8 @@ export async function handleSessionUpgrade(
     if (binary) {
       if (!exited && data.length) {
         // Issue 791: the person typing here makes this view the active
-        // one: the PTY takes its size before the keys arrive.
-        if (!terminalReportOnly(data)) resize(lead.input(ws));
+        // one (its size came with its own resize, if it said one).
+        if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
         if (!terminalReportOnly(data)) d.typed(s.ref.id);
@@ -1534,7 +1533,7 @@ export async function handleSessionUpgrade(
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
         const data = Buffer.from(msg.data, "utf-8");
-        if (!terminalReportOnly(data)) resize(lead.input(ws));
+        if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
         if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
@@ -1546,8 +1545,8 @@ export async function handleSessionUpgrade(
     done = true;
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
-    // Issue 791: the view that led went: the next one leads, at its size.
-    resize(lead.detach(ws));
+    // Issue 791: the view that led went: the newest one left leads.
+    lead.detach(ws);
     if (viewing?.size) tellViewers(s.ref.id);
     else {
       VIEWERS.delete(s.ref.id);

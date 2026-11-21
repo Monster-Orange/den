@@ -120,7 +120,7 @@ describe("rule: What it is (the agent's real terminal in a panel; typing works)"
     });
     const h = peekHtml(v, "/agents?project=north&agent=planner");
     expect(h).toMatch(
-      /^<dialog id="den-peek" class="dk-dlg dk-panel den-peek"/,
+      /^<dialog id="den-peek" class="dk-dlg dk-panel dk-sheet den-peek"/,
     );
     expect(h).toMatch(/aria-labelledby="den-peek-h"/);
     expect(h).toMatch(/<h2 id="den-peek-h" tabindex="-1">planner<\/h2>/);

@@ -112,7 +112,9 @@ describe("NT-3: the bell", () => {
     );
     await sec.waitFor();
     expect(await sec.locator(".den-bell-sc span").textContent()).toBe("north");
-    const row = sec.locator('.den-bell-row[data-kind="waiting"] a');
+    const row = sec.locator(
+      '.den-bell-row[data-kind="waiting"] a[data-bell="open"]',
+    );
     expect(await row.textContent()).toMatch(/needs your permission$/);
     expect(await row.getAttribute("href")).toBe(
       "/agents?project=north&agent=planner",

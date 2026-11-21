@@ -38,6 +38,7 @@ let browser: Browser | null = null;
 let s: AgentsPageServer;
 let sid = "";
 let pty: ScriptedPty;
+let latest = "";
 const errors: string[] = [];
 const PLANNER = "/agents?project=north&agent=planner";
 
@@ -67,6 +68,12 @@ beforeAll(async () => {
   host.close();
   sid = info.ref.id;
   pty = s.made.at(-1)!;
+  latest =
+    (
+      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+        version: string;
+      }[]
+    )[0]?.version ?? "";
   s.seed({
     id: "planner",
     persona: "builder",
@@ -111,10 +118,11 @@ async function open(width: number, path = "/services"): Promise<Page> {
     viewport: { width, height: 860 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
+  // What's new seen up to this version: it never opens over the bell.
+  await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
+        localStorage.setItem(k, v);
     } catch {
       /* none */
     }
@@ -126,7 +134,7 @@ async function open(width: number, path = "/services"): Promise<Page> {
         ((w.__socks ??= []) as WebSocket[]).push(this);
       }
     };
-  });
+  }, latest);
   await signIn(ctx, s.stateDir, s.base);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${width}: ${e.message}`));

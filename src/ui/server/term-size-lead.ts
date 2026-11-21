@@ -5,19 +5,21 @@
  *
  *   - a lone viewer leads (the first to attach, or the one left);
  *   - typing in a view (the person's keys, never the terminal's own
- *     answers) makes it the active one: the PTY takes the size that view
- *     last asked for, with no resize message of its own;
+ *     answers) makes it the active one. Its size comes with its own
+ *     resize (a page says its size before the keys when it must); a
+ *     hidden page that types says none, and nothing is resized (D54);
  *   - a claim (Take over, the pane the person just opened) makes that
  *     view the active one at once, at its size;
  *   - any other view's resize (a refit: its window, a late font, its
- *     layout) is kept as what it wants, never applied while another view
- *     leads: the page is told the size in use and draws at it;
- *   - when the active view goes, the next one left leads, at its own size.
+ *     layout) is never applied while another view leads: the page is
+ *     told the size in use and draws at it;
+ *   - when the active view goes, the newest one left leads; it says its
+ *     own size (the page does, once it hears it is alone).
  *
  * So a small peek over the page never shrinks the agent's terminal for
  * the full view, and the view being typed in is never resized mid-typing.
  * The io route (session-routes.ts) keeps one per session; nothing here
- * touches a socket or a PTY: each call returns the size to apply, or null.
+ * touches a socket or a PTY: resize() returns the size to apply, or null.
  */
 export interface TermSize {
   cols: number;
@@ -26,10 +28,8 @@ export interface TermSize {
 
 export class SizeLead<V> {
   private lead: V | null = null;
-  /** Every viewer, in attach order, with the size it last asked for. */
-  private readonly wants = new Map<V, TermSize | null>();
-  /** The size this lead last applied (null: none yet). */
-  private applied: TermSize | null = null;
+  /** Every viewer, in attach order. */
+  private readonly viewers = new Set<V>();
 
   /** The viewer that sets the size now (null: none yet). */
   leader(): V | null {
@@ -37,19 +37,15 @@ export class SizeLead<V> {
   }
 
   attach(v: V): void {
-    if (!this.wants.has(v)) this.wants.set(v, null);
+    this.viewers.add(v);
     if (this.lead === null) this.lead = v;
   }
 
-  /** The viewer went: the next one left leads, at the size it asked for. */
-  detach(v: V): TermSize | null {
-    this.wants.delete(v);
-    if (this.lead !== v) return null;
-    this.lead = null;
-    const next = [...this.wants.keys()].at(-1);
-    if (next === undefined) return null;
-    this.lead = next;
-    return this.apply(this.wants.get(next) ?? null);
+  /** The viewer went: the newest one left leads. */
+  detach(v: V): void {
+    this.viewers.delete(v);
+    if (this.lead !== v) return;
+    this.lead = [...this.viewers].at(-1) ?? null;
   }
 
   /**
@@ -59,39 +55,16 @@ export class SizeLead<V> {
    */
   resize(v: V, size: TermSize, claim = false): TermSize | null {
     this.attach(v);
-    this.wants.set(v, { cols: size.cols, rows: size.rows });
-    if (claim || this.lead === v || !this.wants.has(this.lead as V)) {
+    if (claim || this.lead === v) {
       this.lead = v;
-      // Always said again: another attach (the CLI) may have resized the
-      // PTY unseen; the same size again is free.
-      this.applied = { cols: size.cols, rows: size.rows };
-      return this.applied;
+      return { cols: size.cols, rows: size.rows };
     }
     return null;
   }
 
-  /** The PTY's size as the host says it (any attach's resize). */
-  heard(size: TermSize): void {
-    this.applied = { cols: size.cols, rows: size.rows };
-  }
-
-  /** The person typed in `v`: it leads, at the size it last asked for. */
-  input(v: V): TermSize | null {
+  /** The person typed in `v`: it is the active view now. */
+  input(v: V): void {
     this.attach(v);
-    if (this.lead === v) return null;
     this.lead = v;
-    return this.apply(this.wants.get(v) ?? null);
-  }
-
-  private apply(size: TermSize | null): TermSize | null {
-    if (!size) return null;
-    if (
-      this.applied &&
-      this.applied.cols === size.cols &&
-      this.applied.rows === size.rows
-    )
-      return null;
-    this.applied = { cols: size.cols, rows: size.rows };
-    return this.applied;
   }
 }

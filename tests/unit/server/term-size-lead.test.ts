@@ -5,7 +5,9 @@
  * the one that claimed it (Take over, the pane the person just opened);
  * a lone viewer leads. Another viewer's refit (its window resized, a font
  * that loaded late, a layout change) never resizes the PTY while it does
- * not lead; it is told the size in use and follows it.
+ * not lead; it is told the size in use and follows it. Typing alone never
+ * resizes (a hidden page's keys, D54): a view's size comes with its own
+ * resize.
  *
  * The rules without a server: src/ui/server/term-size-lead.ts, which the
  * io route (session-routes.ts) asks before each resize.
@@ -19,16 +21,15 @@ type Size = { cols: number; rows: number };
 function rig() {
   const lead = new SizeLead<string>();
   const pty: Size[] = [];
-  const apply = (z: Size | null) => {
-    if (z) pty.push(z);
-  };
   return {
     lead,
     pty,
-    resize: (v: string, z: Size, claim = false) =>
-      apply(lead.resize(v, z, claim)),
-    typed: (v: string) => apply(lead.input(v)),
-    detach: (v: string) => apply(lead.detach(v)),
+    resize: (v: string, z: Size, claim = false) => {
+      const got = lead.resize(v, z, claim);
+      if (got) pty.push(got);
+    },
+    typed: (v: string) => lead.input(v),
+    detach: (v: string) => lead.detach(v),
   };
 }
 
@@ -46,7 +47,6 @@ describe("issue 791: the last active viewer sets the size", () => {
     r.lead.attach("main");
     r.resize("main", { cols: 160, rows: 40 });
     r.lead.attach("peek");
-    // The peek's box is small: its refit is not a claim.
     r.resize("peek", { cols: 80, rows: 24 });
     expect(r.pty).toEqual([{ cols: 160, rows: 40 }]);
     expect(r.lead.leader()).toBe("main");
@@ -64,21 +64,21 @@ describe("issue 791: the last active viewer sets the size", () => {
     expect(r.pty).toEqual([{ cols: 160, rows: 40 }]);
   });
 
-  it("the one typed in becomes active and its size wins, with no resize message of its own", () => {
+  it("the one typed in becomes active: its refits apply, the other's no longer do", () => {
     const r = rig();
     r.lead.attach("main");
     r.resize("main", { cols: 160, rows: 40 });
     r.lead.attach("peek");
-    r.resize("peek", { cols: 80, rows: 24 });
     r.typed("peek");
+    expect(r.lead.leader()).toBe("peek");
+    // Typing alone resized nothing (a hidden page types, D54).
+    expect(r.pty).toEqual([{ cols: 160, rows: 40 }]);
+    r.resize("peek", { cols: 80, rows: 24 });
+    r.resize("main", { cols: 170, rows: 40 });
     expect(r.pty).toEqual([
       { cols: 160, rows: 40 },
       { cols: 80, rows: 24 },
     ]);
-    expect(r.lead.leader()).toBe("peek");
-    // Now the main pane's refit is the follower's: ignored.
-    r.resize("main", { cols: 170, rows: 40 });
-    expect(r.pty).toHaveLength(2);
   });
 
   it("a claim (Take over, the pane just opened) takes the size at once", () => {
@@ -91,16 +91,16 @@ describe("issue 791: the last active viewer sets the size", () => {
     expect(r.lead.leader()).toBe("other");
   });
 
-  it("when the active viewer goes, the one left takes its own size back", () => {
+  it("when the active viewer goes, the one left leads and its size applies", () => {
     const r = rig();
     r.lead.attach("main");
     r.resize("main", { cols: 160, rows: 40 });
     r.lead.attach("peek");
-    r.resize("peek", { cols: 80, rows: 24 });
-    r.typed("peek");
+    r.resize("peek", { cols: 80, rows: 24 }, true);
     r.detach("peek");
-    expect(r.pty.at(-1)).toEqual({ cols: 160, rows: 40 });
     expect(r.lead.leader()).toBe("main");
+    r.resize("main", { cols: 160, rows: 40 });
+    expect(r.pty.at(-1)).toEqual({ cols: 160, rows: 40 });
   });
 
   it("closing a peek that never led leaves the main pane's size alone", () => {
@@ -111,14 +111,6 @@ describe("issue 791: the last active viewer sets the size", () => {
     r.resize("peek", { cols: 80, rows: 24 });
     r.detach("peek");
     expect(r.pty).toEqual([{ cols: 160, rows: 40 }]);
-  });
-
-  it("typing that only repeats the active viewer's size resizes nothing", () => {
-    const r = rig();
-    r.lead.attach("main");
-    r.resize("main", { cols: 160, rows: 40 });
-    r.typed("main");
-    r.typed("main");
-    expect(r.pty).toEqual([{ cols: 160, rows: 40 }]);
+    expect(r.lead.leader()).toBe("main");
   });
 });
