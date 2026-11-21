@@ -122,9 +122,9 @@ type Word = "needsCli" | "needsField" | "bad";
 export const BROWSER_WORDS: Record<UiLanguage, Record<Word, string>> = {
   en: {
     needsCli:
-      'a browser run on this macOS host must use a browser in a container, never one started on this machine. Set {vars} to the container\'s Playwright server (ws:// or wss://), or pass --browser-endpoint ws://…; a run that starts its own browser container passes --browser-endpoint=self. Or turn the rule off: {cli} gate settings --browser-requires-container 0 (Settings, "Browser runs need a container").',
+      'a browser run on this macOS host must use a browser in a container, never one started on this machine. Set {vars} to the container\'s Playwright endpoint (ws:// or wss://), or pass --browser-endpoint ws://…; a run that starts its own browser container passes --browser-endpoint=self. Or turn the rule off: {cli} gate settings --browser-requires-container 0 (Settings, "Browser runs need a container").',
     needsField:
-      'a browser slot on this macOS host must use a browser in a container, never one started on this machine. Give browser_endpoint: the container\'s Playwright server (ws:// or wss://), or "self" when the run starts its own browser container. Or a person turns the rule off: {cli} gate settings --browser-requires-container 0 (Settings, "Browser runs need a container").',
+      'a browser slot on this macOS host must use a browser in a container, never one started on this machine. Give browser_endpoint: the container\'s Playwright endpoint (ws:// or wss://), or "self" when the run starts its own browser container. Or a person turns the rule off: {cli} gate settings --browser-requires-container 0 (Settings, "Browser runs need a container").',
     bad: '{from} is "{value}": give a ws:// or wss:// address of a Playwright endpoint, or self when the run starts its own browser container.',
   },
   es: {
