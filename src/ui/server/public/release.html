@@ -509,69 +509,24 @@
         color: var(--text);
         background: var(--border);
       }
-      /* ── Modal ────────────────────────────────────────────────────────────── */
-      .overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 1000;
-        background: rgba(0, 0, 0, 0.65);
-        display: none;
-        align-items: center;
-        justify-content: center;
+      /* ── The deploy dialogs: the kit's frame (issue 793) ─────────────────── */
+      .dk-dlg.rel-dlg {
+        width: min(560px, calc(100vw - 32px));
       }
-      .overlay.open {
-        display: flex;
+      .rel-ftr {
+        display: contents;
       }
-      .modal {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        width: min(560px, 94vw);
-        max-height: 86vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        box-shadow: var(--shadow);
-      }
-      .modal-hdr {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 13px 18px;
-        border-bottom: 1px solid var(--border);
-      }
-      .modal-hdr h3 {
-        font-family: var(--mono);
-        font-size: 13px;
-        font-weight: 600;
-        flex: 1;
-      }
-      .modal-close {
-        background: none;
-        border: none;
-        color: var(--muted);
-        font-size: 18px;
-        cursor: pointer;
-        line-height: 1;
-      }
-      .modal-close:hover {
-        color: var(--text);
-      }
-      .modal-body {
-        overflow-y: auto;
-        padding: 16px 18px;
-      }
-      .modal-body label {
+      #modal-body label {
         display: block;
         font-size: 11px;
         color: var(--muted);
         margin: 12px 0 4px;
       }
-      .modal-body label:first-child {
+      #modal-body label:first-child {
         margin-top: 0;
       }
-      .modal-body select,
-      .modal-body input[type="text"] {
+      #modal-body select,
+      #modal-body input[type="text"] {
         width: 100%;
         background: var(--bg);
         border: 1px solid var(--border);
@@ -580,13 +535,6 @@
         border-radius: 6px;
         font-size: 12px;
         font-family: var(--mono);
-      }
-      .modal-ftr {
-        padding: 12px 18px;
-        border-top: 1px solid var(--border);
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
       }
       .banner {
         border-radius: 6px;
@@ -751,25 +699,6 @@
          selecting one attaches its log, its × closes the session. -->
       </div>
 
-      <!-- Generic modal -->
-      <div class="overlay" id="overlay">
-        <div class="modal">
-          <div class="modal-hdr">
-            <h3 id="modal-title">…</h3>
-            <button
-              class="modal-close"
-              id="modal-x"
-              title="Close"
-              data-t-attr="title:rel.close"
-            >
-              ×
-            </button>
-          </div>
-          <div class="modal-body" id="modal-body"></div>
-          <div class="modal-ftr" id="modal-ftr"></div>
-        </div>
-      </div>
-
       <script type="module">
         import {
           applyDenConfig,
@@ -782,6 +711,7 @@
         import { viewNoteHtml, viewRepos, viewScope } from "/view-scope.js";
         import { formatTime, timeHtml } from "/kit/time.js";
         import { statusVars } from "/value-words.js";
+        import { dialogHtml, mountDialog } from "/dialog-den.js";
         // The page's words (issue 171): shell.js's catalog, "rel.*". A deploy's
         // own log lines (the server's) are output, not translated.
         const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
@@ -931,13 +861,6 @@
           $("refresh-btn").addEventListener("click", () => loadStatus(true));
           $("deploy-all-btn").addEventListener("click", openDeployAllModal);
           $("waves-btn").addEventListener("click", openWaveEditor);
-          $("modal-x").addEventListener("click", closeModal);
-          $("overlay").addEventListener("click", (e) => {
-            if (e.target === $("overlay")) closeModal();
-          });
-          document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") closeModal();
-          });
 
           renderHead();
           await Promise.all([
@@ -1245,19 +1168,28 @@
         }
 
         // ── Deploy modals ───────────────────────────────────────────────────────────
-        let modalKeyHandler = null;
-
-        function openModal(title, bodyHtml, footerHtml) {
-          $("modal-title").textContent = title;
-          $("modal-body").innerHTML = bodyHtml;
-          $("modal-ftr").innerHTML = footerHtml;
-          $("overlay").classList.add("open");
-
+        // Issue 793: the kit's frame (its font, Close, Esc, focus kept
+        // inside, Report first in the footer), made on first use.
+        let modal = null;
+        function modalFrame() {
+          if (modal) return modal;
+          modal = mountDialog(
+            dialogHtml({
+              kind: "panel",
+              id: "rel-modal",
+              className: "rel-dlg",
+              ids: { h: "modal-title", body: "modal-body" },
+              title: "",
+              foot: '<div class="dk-ft"><span class="rel-ftr" id="modal-ftr"></span></div>',
+            }),
+            { show: false, remove: false },
+          );
+          const d = modal.dialog;
           // Enter submits the primary action. Typing the confirmation word and
           // pressing Enter is the natural flow, and doing nothing reads as the
-          // modal being stuck. Bound on the overlay so it also covers inputs
+          // modal being stuck. Bound on the dialog so it also covers inputs
           // rendered later (the prod confirm box appears after branch load).
-          modalKeyHandler = (e) => {
+          d.addEventListener("keydown", (e) => {
             if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
             // A focused button or textarea handles Enter itself — don't
             // double-fire, and don't hijack multi-line input.
@@ -1273,15 +1205,31 @@
             if (!primary) return; // still incomplete — leave the modal open
             e.preventDefault();
             primary.click();
-          };
-          $("overlay").addEventListener("keydown", modalKeyHandler);
+          });
+          // A click on the backdrop (outside the box) closes it.
+          d.addEventListener("click", (e) => {
+            if (e.target !== d) return;
+            const r = d.getBoundingClientRect();
+            if (
+              e.clientX < r.left ||
+              e.clientX > r.right ||
+              e.clientY < r.top ||
+              e.clientY > r.bottom
+            )
+              closeModal();
+          });
+          return modal;
+        }
+
+        function openModal(title, bodyHtml, footerHtml) {
+          const m = modalFrame();
+          $("modal-title").textContent = title;
+          $("modal-body").innerHTML = bodyHtml;
+          $("modal-ftr").innerHTML = footerHtml;
+          m.show();
         }
         function closeModal() {
-          if (modalKeyHandler) {
-            $("overlay").removeEventListener("keydown", modalKeyHandler);
-            modalKeyHandler = null;
-          }
-          $("overlay").classList.remove("open");
+          if (modal?.dialog.open) modal.close("cancel");
         }
 
         async function openDeployModal(repo) {

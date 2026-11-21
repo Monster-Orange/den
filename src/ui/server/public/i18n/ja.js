@@ -519,6 +519,10 @@
       "Terminal.app を自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "ターミナルを自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "{repo} の自動起動をオフにしますか?",
+    "dlg.autoOff":
+      "次のものが強く依存しています: {list}。オフの間は、そのプロジェクトの Up が準備完了の確認で失敗することがあります。",
+    "dlg.autoOffGo": "オフにする",
     "rd.keepsHead": "動き続けるもの:",
     "rd.keepsAgents": "エージェントとそのターミナル",
     "rd.keepsServices": "サービスと GitHub 上のデプロイ",
