@@ -634,7 +634,7 @@ export function drawPushDevices(host, ctx) {
           .join(" \u00b7 ");
         const r = result?.get(d.id);
         return (
-          `<li class="set-push-device" data-device="${escHtml(d.id)}">` +
+          `<li class="set-push-device" data-device="${escHtml(d.id)}" data-service="${escHtml(d.service ?? "")}"${d.id === mine ? " data-this" : ""}>` +
           `<span><b>${escHtml(what)}</b>` +
           (d.id === mine
             ? ` <span class="set-note">${escHtml(L("set.notifications.devices.this", "(this device)"))}</span>`

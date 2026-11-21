@@ -414,11 +414,11 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       await row.locator("#set-push-none").waitFor();
       expect(await row.locator("#set-push-test").isDisabled()).toBe(true);
       await p.locator("#set-phone-push").click();
-      const device = row.locator("li.set-push-device");
+      const device = row.locator("[data-device]");
       await device.waitFor({ timeout: 15_000 });
       expect(await device.count()).toBe(1);
-      expect(await device.textContent()).toContain("Other push service");
-      expect(await device.textContent()).toContain("(this device)");
+      expect(await device.getAttribute("data-service")).toBe("other");
+      expect(await device.getAttribute("data-this")).not.toBeNull();
       await row.locator("#set-push-test").click();
       await row
         .locator("[data-test-result]", {
