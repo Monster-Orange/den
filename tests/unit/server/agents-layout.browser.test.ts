@@ -840,7 +840,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
 
   // Issue 170 (a phone, 390 px): the runs dock covered the pane's To line
   // (the pane ran on under it), and tags cut the project's name.
-  it("issue 170: at 390x844 the runs dock never covers the To line and tags never cut the project's name", async () => {
+  it("issue 170: at 390x844 an agent open has no runs dock, its To line is whole, and tags never cut the project's name", async () => {
     if (skip()) return;
     await s!.settings({ agents_layout: null, shell: { dock: null } });
     const ctx = await browser!.newContext({
@@ -926,13 +926,24 @@ describe("the Agents tab's layouts (AG-4b)", () => {
           ),
         };
       });
+    // Issue 302: the mock's frame 2 ("An agent opened"): on a phone an
+    // agent open is the whole screen with no runs dock, so the To line is
+    // whole in the window (Den Design 11-18: frame 2 is meant as a rule).
     const check = async (when: string, on: Page = p) => {
       const m = await look(on);
+      const view = await on.evaluate(() => ({
+        dock:
+          getComputedStyle(document.getElementById("den-dock")!).display !==
+          "none",
+        h: window.innerHeight,
+      }));
       process.stdout.write(
-        `issue 170 at 390x844 ${when}: To ${m.to.t}-${m.to.b}, dock top ${m.dock.t}, name ${m.name.l}-${m.name.r}, tags over it ${m.hit}\n`,
+        `issue 170 at 390x844 ${when}: To ${m.to.t}-${m.to.b}, dock shown ${view.dock}, name ${m.name.l}-${m.name.r}, tags over it ${m.hit}\n`,
       );
-      expect(m.to.b).toBeLessThanOrEqual(m.dock.t + 0.5);
+      expect(view.dock).toBe(false);
       expect(m.to.t).toBeGreaterThanOrEqual(0);
+      expect(m.to.b).toBeLessThanOrEqual(view.h + 0.5);
+      expect(m.to.b - m.to.t).toBeGreaterThan(0);
       expect(m.hit).toBe(0);
       expect(m.cut).toBeLessThanOrEqual(0);
       // Whole inside its box and the pane: nothing clips it.
@@ -946,35 +957,21 @@ describe("the Agents tab's layouts (AG-4b)", () => {
         c.scrollTop = c.scrollHeight;
         window.scrollTo(0, document.documentElement.scrollHeight);
       });
-    // The dock shut (its bar): the pane ends above it, no scrolling.
-    await check("shut");
-    // Scrolled to the bottom: still above it.
+    // An agent open: no dock, the To line whole, not scrolled.
+    await check("agent open");
+    // Scrolled to the bottom: the same.
     await toBottom();
     await check("scrolled");
-    // The dock open (half the window at most): scrolled to the bottom,
-    // the pane still ends above it.
-    // Opening it saves the choice; the next page to load starts with it.
-    const saved = p.waitForResponse(
-      (r) =>
-        r.url().endsWith("/api/settings") && r.request().method() === "POST",
-    );
-    await p.click('.den-dock [data-act="dock"]');
-    await p.waitForSelector("#den-dock-out");
-    await saved;
-    await toBottom();
-    await check("dock open, scrolled");
-    // The dock left open (a saved choice) and the page loaded again, not
-    // scrolled: what a person sees first (a dogfood gate on 0.4.49-dev.1).
-    // A second tab, as a person opening Agents again.
+    // The dock left open (a saved choice) and the page loaded again: an
+    // agent open still has no dock, and the To line is whole.
+    expect(await s!.settings({ shell: { dock: true } })).toBe(200);
     const p2 = await ctx.newPage();
     p2.on("pageerror", (e) => errors.push(`issue 170: ${e.message}`));
     await p2.goto(`${s!.base}/agents?layout=tabs&open=${all()}`);
     await p2.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
     await termsUp(p2, 1);
-    await p2.waitForSelector("#den-dock-out");
     await p2.waitForSelector("#agr .pane:not([hidden]) .bar2 [data-tags]");
-    await check("dock open, as loaded", p2);
-    await p.click('.den-dock [data-act="dock"]');
+    await check("dock saved open, as loaded", p2);
     await shot(p, "issue-170-390");
     await ctx.unrouteAll({ behavior: "ignoreErrors" });
     await ctx.close();

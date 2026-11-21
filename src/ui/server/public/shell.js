@@ -2332,6 +2332,17 @@
     "ag.pc.done": "{id} is now {p}",
     "ag.pc.pending": "{id} becomes {p} when this turn ends",
     "ag.more": "More for {id}",
+    "ag.back": "Back to agents",
+    "ag.keys.show": "Terminal keys",
+    "ag.keys.hide": "Hide terminal keys",
+    "ag.keys.esc": "Escape",
+    "ag.keys.escKey": "Esc",
+    "ag.keys.ctrlc": "Control-C",
+    "ag.keys.ctrlcKey": "Ctrl-C",
+    "ag.keys.up": "Up arrow",
+    "ag.keys.down": "Down arrow",
+    "ag.keys.left": "Left arrow",
+    "ag.keys.right": "Right arrow",
     "ag.chip.stopped": "Stopped",
     "ag.chip.exited": "Exited",
     "ag.chip.interrupted": "Interrupted",
@@ -3872,6 +3883,10 @@
   // (window.DenUIShell): the top bar, the rail, the version chip and the
   // Report button are drawn by it, from Den's registries as data.
   var DUI = window.DenUIShell;
+  // Issue 302: a phone's on-screen keyboard, once, on every page: the
+  // root gets data-kbd-up and --vv-h while it is up (the kit's phone.js;
+  // phone.css steps the top bar aside).
+  if (DUI && DUI.initKeyboardUp) DUI.initKeyboardUp(window);
   /** An icon's <svg> (the kit's line drawings; a product's own markup). */
   function icon(name) {
     return DUI.icon(name);
@@ -4458,6 +4473,7 @@
   /** The runs dock open or collapsed to its bar (R16a), remembered. */
   function setDock(on) {
     dockOpen = !!on;
+    dockShutHere = false;
     renderDock();
     return rememberDock();
   }
@@ -6174,6 +6190,26 @@
   var runSel = null;
   var DOCK_H = 170;
   var dockOpen = state.dock === true;
+  // Issue 302: a page may show the dock shut for its own view (a phone's
+  // list of agents), never saving it: the person's choice stays as it
+  // was. The person's own Show runs ends it. The Agents page on a phone
+  // (the kit's breakpoint) starts so, from the first paint: the mock's
+  // frame 1 shows the dock shut, frame 2 (an agent open, by its address)
+  // shows none. The Agents page keeps both as panes open and close.
+  var PHONE_MQ = "(pointer: coarse), (max-width: 767.98px)";
+  var agentsPhone =
+    page === "agents" &&
+    !!(window.matchMedia && window.matchMedia(PHONE_MQ).matches);
+  var dockShutHere = agentsPhone;
+  if (agentsPhone && document.body && document.body.dataset) {
+    var openAddr =
+      /\/agents\/[^/]+\/?$/.test(location.pathname || "") ||
+      /[?&]open=/.test(location.search || "");
+    if (openAddr) document.body.dataset.phoneAgent = "";
+  }
+  function dockShown() {
+    return dockOpen && !dockShutHere;
+  }
   var dockH = state.dockHeight >= 60 ? state.dockHeight : DOCK_H;
   var runSeqId = 0;
   var runListeners = [];
@@ -6188,6 +6224,8 @@
   if (dock.setAttribute) {
     dock.setAttribute("role", "region");
     dock.setAttribute("aria-label", t("runs.title"));
+    // Issue 302: it steps aside while a phone's keyboard is up.
+    dock.setAttribute("data-kbd-hide", "");
   }
   function placeDock() {
     if (document.body && document.body.appendChild)
@@ -6336,7 +6374,7 @@
           .join("")
       : "<span>" + esc(t("runs.none")) + "</span>";
     var acts = "";
-    if (dockOpen && sel) {
+    if (dockShown() && sel) {
       (sel.actions || []).forEach(function (a, i) {
         acts +=
           '<button type="button" class="den-ib" data-ract="' +
@@ -6382,9 +6420,9 @@
           "</button>"
         : "") +
       '<button type="button" class="den-ib" data-act="dock" aria-expanded="' +
-      (dockOpen ? "true" : "false") +
+      (dockShown() ? "true" : "false") +
       '" aria-controls="den-dock-out">' +
-      esc(dockOpen ? t("dock.close") + " ▾" : t("dock.show") + " ▴") +
+      esc(dockShown() ? t("dock.close") + " ▾" : t("dock.show") + " ▴") +
       "</button>"
     );
   }
@@ -6466,9 +6504,9 @@
           document.activeElement.getAttribute("data-dock")
         : null;
     bar.innerHTML = barHtml();
-    dock.classList.toggle("open", dockOpen);
+    dock.classList.toggle("open", dockShown());
     var out = outEl();
-    if (dockOpen && !out) {
+    if (dockShown() && !out) {
       out = document.createElement("pre");
       out.id = "den-dock-out";
       out.setAttribute("role", "tabpanel");
@@ -6481,7 +6519,7 @@
       });
       dock.appendChild(out);
       fillOut();
-    } else if (!dockOpen && out) {
+    } else if (!dockShown() && out) {
       out.remove();
       shownRun = null;
     } else if (out && selectedRun() !== shownRun) fillOut();
@@ -6498,7 +6536,7 @@
       on.scrollIntoView({ block: "nearest", inline: "nearest" });
     var chip = document.getElementById("den-runs");
     if (chip) {
-      chip.setAttribute("aria-expanded", dockOpen ? "true" : "false");
+      chip.setAttribute("aria-expanded", dockShown() ? "true" : "false");
       chip.setAttribute("aria-controls", "den-dock");
     }
   }
@@ -6562,6 +6600,7 @@
       if (opts && opts.select) runSel = r.id;
       if (opts && opts.open === true) {
         dockOpen = true;
+        dockShutHere = false;
         rememberDock();
       }
       renderDock();
@@ -6587,6 +6626,7 @@
       // action whose whole point is output (e.g. a service's Logs).
       if (opts.open === true) {
         dockOpen = true;
+        dockShutHere = false;
         rememberDock();
       }
       renderDock();
@@ -6653,6 +6693,7 @@
       runSel = r.id;
       if (o && o.open === true) {
         dockOpen = true;
+        dockShutHere = false;
         rememberDock();
       }
       renderDock();
@@ -6678,22 +6719,33 @@
     },
     show: function () {
       dockOpen = true;
+      dockShutHere = false;
       rememberDock();
       renderDock();
     },
     hide: function () {
       dockOpen = false;
+      dockShutHere = false;
       rememberDock();
       renderDock();
     },
     toggle: function () {
-      dockOpen = !dockOpen;
+      // What the person sees, flipped: shut here (a phone's list) and
+      // saved open, Show runs opens it and the saved choice is unchanged.
+      dockOpen = !dockShown();
+      dockShutHere = false;
       rememberDock();
       renderDock();
       return dockOpen;
     },
     isOpen: function () {
-      return dockOpen;
+      return dockShown();
+    },
+    /** Issue 302: shut for this view only, or not; never saved. */
+    shutHere: function (on) {
+      if (dockShutHere === !!on) return;
+      dockShutHere = !!on;
+      renderDock();
     },
     has: function (id) {
       return !!runById(String(id));
@@ -6859,7 +6911,7 @@
       }
       if (next < 0 || !shown[next]) return;
       e.preventDefault();
-      runsApi.select(shown[next].id, { open: dockOpen });
+      runsApi.select(shown[next].id, { open: dockShown() });
       if (typeof shown[next].onSelect === "function")
         shown[next].onSelect(shown[next].id);
       var to = dock.querySelector('[data-rsel="' + shown[next].n + '"]');
@@ -8850,10 +8902,16 @@
     "  background: var(--bg); }",
     ".den-bell-ask p { margin: 0 0 6px; }",
     ".den-bell-ask div { display: flex; gap: 8px; }",
-    // A phone: the small buttons 32px (the kit's shell.css makes the
-    // panel full width and its rows 44px).
-    "@media (max-width: 480px) {",
-    "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 32px; min-width: 32px; } }",
+    // Issue 302: on a touch screen or a phone, the small buttons are 44px
+    // targets each way (the kit's shell.css makes the panel full width and
+    // its rows 44px).
+    "@media (pointer: coarse), (max-width: 767.98px) {",
+    "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 44px; min-width: 44px; } }",
+    // Issue 302: the bell's "Mark all read" and its folds, 44px each way
+    // there too. (A .den-btn's 44px tap on a touch screen is the kit's
+    // button.css.)
+    "@media (pointer: coarse), (max-width: 767.98px) {",
+    "  .den-bell-sc button, .den-bell-older { min-height: 44px; min-width: 44px; } }",
     "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
@@ -9077,11 +9135,15 @@
     // (The kit's shell.css hides the crumbs' keys at 860px, the crumbs and
     // the search's words at 720px.)
     "@media (max-width: 860px) { .den-chip .den-lbl-l { display: none; } }",
-    // A phone's tap targets (issue 209, T9): the dock's buttons 32 px or
-    // more each way. The top bar's, and the title visually hidden, are the
-    // kit's shell.css (den-ui 0.7.0).
-    "@media (max-width: 479.98px) {",
-    "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
+    // A phone's tap targets (issue 209, T9; 44px since issue 302): the
+    // dock's buttons 44px or more each way, on a touch screen or a phone.
+    // The top bar's, and the title visually hidden, are the kit's
+    // shell.css (den-ui 0.7.0).
+    "@media (pointer: coarse), (max-width: 767.98px) {",
+    "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 44px; min-width: 44px; }",
+    // The bar stays its height: the 44px buttons are its row, without the
+    // 6px above and below that framed the 32px ones.
+    "  .den-dock .den-bar { padding-top: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }",
     "}",
   ].join("\n");
   document.head.appendChild(style);

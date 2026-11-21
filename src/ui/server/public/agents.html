@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <script>
       // Mode before first paint: yours (the server fills it in below),
       // else the system's, else the theme's default, else dark.
@@ -191,6 +194,47 @@
         background: color-mix(in srgb, var(--accent) 16%, transparent);
         color: var(--text);
         font-weight: 500;
+      }
+      /* Issue 302: on a touch screen or a phone, the layout switch is a
+         44px target each way. A project's heading in the list keeps its
+         height (the panes need the room above the runs dock): its link
+         and Reorder take the kit's 44px tap (.den-hit's), a transparent
+         area centred on each, with no change to the layout. */
+      @media (pointer: coarse), (max-width: 767.98px) {
+        .seg button {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        .agl .wslink,
+        .agl .agord-t {
+          position: relative;
+        }
+        .agl .agord-t {
+          min-height: 0;
+          min-width: 0;
+        }
+        .agl .wslink::after,
+        .agl .agord-t::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 100%;
+          height: 100%;
+          min-width: 44px;
+          min-height: 44px;
+          transform: translate(-50%, -50%);
+          background: transparent;
+        }
+        /* An open agent's view (its tabs, its bar's buttons) keeps its
+           sizes here: that view on a phone is issue 302's first slice
+           (the phone's agent screen), and 44px rows in it put the To line
+           under an open runs dock (issue 170). */
+        #agr .den-btn,
+        #agr .agtabs [role="tab"] {
+          min-height: 0;
+          min-width: 0;
+        }
       }
       .agl .aghint {
         padding: 10px 12px;
@@ -1179,6 +1223,174 @@
         .agl {
           max-height: 50vh;
         }
+      }
+      /* Issue 302: a phone. The agent's message box is the pane's foot,
+         always there: the box and Send side by side, the box's words 16px
+         (iOS zooms under 16) with 11px 14px inside, Send a 44px target;
+         its bottom clears the home indicator (the kit's --den-foot-pad). */
+      .pane .agc.agc-phone {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        column-gap: 8px;
+        padding: 8px 16px var(--den-foot-pad, 12px);
+      }
+      .pane .agc.agc-phone > .agc-chips,
+      .pane .agc.agc-phone > .agc-msg {
+        grid-column: 1 / -1;
+      }
+      .pane .agc.agc-phone > .agc-hint {
+        display: none;
+      }
+      .pane .agc.agc-phone > .agc-in {
+        grid-column: 1;
+        grid-row: 2;
+        font-size: 16px;
+        line-height: 22px;
+        padding: 11px 14px;
+        min-height: 44px;
+        max-height: calc(var(--vv-h, 100dvh) * 0.25);
+        border-radius: 12px;
+        resize: none;
+        box-sizing: border-box;
+      }
+      .pane .agc.agc-phone > .agc-acts {
+        grid-column: 2;
+        grid-row: 2;
+        flex-wrap: nowrap;
+      }
+      .pane .agc.agc-phone > .agc-msg {
+        grid-row: 3;
+      }
+      /* No page shared: the box and Send are the first row (no empty row
+         and its gap above them). */
+      .pane .agc.agc-phone:has(> .agc-chips[hidden]) > :is(.agc-in, .agc-acts) {
+        grid-row: 1;
+      }
+      .pane .agc.agc-phone:has(> .agc-chips[hidden]) > .agc-msg {
+        grid-row: 2;
+      }
+      /* Issue 302, the mock's frame 2 ("An agent opened"): on a phone an
+         agent open is the whole screen, with no runs dock. Back on the
+         list (no agent open) the dock is there again, shut (frame 1). */
+      body[data-phone-agent] #den-dock {
+        display: none !important;
+      }
+      /* Issue 302, slice 2: the mock's two screens at 480px and under.
+         Back (‹) is the agent screen's own; wider, the list is beside or
+         above the panes, so there is none. */
+      .pane .bar2 .agback {
+        display: none;
+      }
+      /* ⋯ → Terminal keys: a row of 44px keys above the message box. */
+      .pane .agkeys {
+        display: flex;
+        gap: 8px;
+        padding: 8px 16px 0;
+        overflow-x: auto;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        min-width: 0;
+      }
+      #agr .pane .agkeys > button {
+        flex: none;
+        min-height: 44px;
+        min-width: 44px;
+        padding-inline: 10px;
+        font: 15px var(--mono);
+      }
+      /* (A phone: a touch screen 480px wide or less, as TWO_SCREENS in
+         agents-page.js. A narrow desktop window keeps the list above.) */
+      @media (pointer: coarse) and (max-width: 480px) {
+        /* Frame 2, an agent opened: the list, the page's header and the
+           tab strip go; the agent takes the screen under the top bar. */
+        body[data-phone-agent] #den-content > .ph,
+        body[data-phone-agent] #agl,
+        body[data-phone-agent] #agr > .agtabs {
+          display: none;
+        }
+        html body.den-has-shell[data-phone-agent] > #den-content {
+          padding: 0;
+          overflow: hidden;
+        }
+        body[data-phone-agent] .agx,
+        body[data-phone-agent] #agr.agp {
+          grid-template-rows: minmax(0, 1fr);
+          gap: 0;
+        }
+        /* (An id, so it beats the open dock's give-way rule above.) */
+        body[data-phone-agent] #agr .pane {
+          min-height: 0;
+          border-width: 0;
+          border-radius: 0;
+        }
+        /* The bar: 52px, 12px sides, 6px between; Back, the name and
+           state, then Stop and ⋯, each a 44px target. A pane's ×
+           (detach) gives way to Back. */
+        body[data-phone-agent] .pane .bar2 {
+          min-height: 52px;
+          padding-inline: 12px;
+          column-gap: 6px;
+        }
+        body[data-phone-agent] #agr .pane .bar2 .agback {
+          display: inline-grid;
+          place-items: center;
+          min-width: 44px;
+          min-height: 44px;
+          padding: 0;
+          border-color: transparent;
+          background: none;
+          font-size: 26px;
+          line-height: 1;
+        }
+        body[data-phone-agent] #agr .pane .bar2 .x > .den-btn {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        body[data-phone-agent] .pane .bar2 [data-act="close"] {
+          display: none;
+        }
+        /* Frame 1 after Back: the list is the screen; the agents stay
+           open behind it (the address keeps them). */
+        body[data-phone-list] #agr {
+          display: none;
+        }
+        body[data-phone-list] .agl {
+          max-height: none;
+        }
+      }
+      .pane .agc.agc-phone .agc-send {
+        min-height: 44px;
+        min-width: 44px;
+        padding-inline: 14px;
+        border-radius: 12px;
+        font-size: 15px;
+      }
+      /* The terminal's own input: 16px, so a tap on it never zooms. */
+      @media (pointer: coarse), (max-width: 720px) {
+        .pane .xterm-helper-textarea {
+          font-size: 16px !important;
+        }
+      }
+      /* The keyboard up (the kit's phone.js: data-kbd-up, --vv-h): the
+         pane being typed in is the whole visible area, the terminal to
+         read and the box above the keyboard; its bar, the page's header,
+         the list and the To line step aside, as the top bar and the runs
+         dock do. */
+      :root[data-kbd-up] .pane:focus-within {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--vv-h, 100dvh);
+        min-height: 0;
+        z-index: 30;
+        border-radius: 0;
+        border-width: 0;
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+      :root[data-kbd-up] .pane:focus-within > .bar2,
+      :root[data-kbd-up] .pane:focus-within > .agto {
+        display: none;
       }
     </style>
   </head>

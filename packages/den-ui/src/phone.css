@@ -1,0 +1,103 @@
+/*
+ * den-ui, issue 302: a phone. The safe area, the on-screen keyboard
+ * (phone.js sets data-kbd-up and --vv-h on the root) and 44px targets in
+ * the top bar on a touch screen. The values are another app's phone kit,
+ * value for value.
+ *
+ * Load it after shell.css:
+ *   <link rel="stylesheet" href="/kit/phone.css">
+ * and start the watcher once: initKeyboardUp() (phone.js).
+ */
+
+/* The safe area. With viewport-fit=cover the status bar, the notch and
+   the home indicator cover the page's edges. Every edge rule reads these
+   four, never env() directly, so a spec can fake an inset. In a browser
+   tab without viewport-fit=cover each is 0 and changes nothing. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+/* The top bar starts below the status bar; the page and the rail under
+   it move down with it. */
+.den-top {
+  height: calc(var(--den-top-h) + var(--safe-top));
+  padding-top: var(--safe-top);
+}
+body.den-has-shell {
+  padding-top: calc(var(--den-top-h) + var(--safe-top));
+}
+.den-rail {
+  top: calc(var(--den-top-h) + var(--safe-top));
+}
+
+/* A foot (a message box's row): its content never sits on the window's
+   edge: 12px, or the home indicator's inset where larger. A host whose
+   own rule sets the foot's padding reads --den-foot-pad for its bottom. */
+:root {
+  --den-foot-pad: max(12px, var(--safe-bottom));
+}
+.den-phone-foot {
+  padding-bottom: var(--den-foot-pad);
+}
+
+/* The keyboard up: only what the person reads and the box they type in
+   stay. The top bar, the rail and anything marked data-kbd-hide step
+   aside; the page is the visible height, and never scrolls under the
+   keyboard. A tap on a data-kbd-dismiss region puts the keyboard down
+   and they come back (phone.js). */
+:root[data-kbd-up] {
+  overflow: hidden;
+}
+:root[data-kbd-up] .den-top,
+:root[data-kbd-up] .den-rail,
+:root[data-kbd-up] .den-upd,
+:root[data-kbd-up] [data-kbd-hide] {
+  display: none !important;
+}
+:root[data-kbd-up] body.den-has-shell {
+  padding-top: 0;
+}
+/* The foot sits on the keyboard: no home indicator under it, only its
+   own 8px. */
+:root[data-kbd-up] {
+  --den-foot-pad: 8px;
+}
+
+/* A touch screen or a phone-width window: every top-bar control is a
+   44px target each way. */
+@media (pointer: coarse), (max-width: 767.98px) {
+  .den-top button,
+  .den-top a[href] {
+    min-height: 44px;
+    min-width: 44px;
+    box-sizing: border-box;
+  }
+  /* A host chip's own floor (0 on a phone) never lowers it. */
+  .den-top .den-end > :is(button, a[href]) {
+    min-width: 44px;
+  }
+  .den-top a[href] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* The bar's spacing on a phone: 8px sides, 6px between its parts. */
+  .den-top {
+    column-gap: 6px;
+    padding-left: max(8px, var(--safe-left));
+    padding-right: max(8px, var(--safe-right));
+  }
+  .den-top .den-end {
+    gap: 6px;
+  }
+}
+@media (max-width: 479.98px) {
+  .den-top {
+    grid-template-columns: var(--den-top-left-sm44, 94px) auto minmax(
+        min-content,
+        1fr
+      );
+  }
+}

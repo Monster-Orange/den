@@ -260,8 +260,10 @@ describe("nav inventory: red cases on the reference", () => {
     expect(searchSlot(1100)).toEqual({ x: 396, w: 304 });
     expect(searchSlot(960)).toEqual({ x: 256, w: 304 });
     expect(searchSlot(800)).toEqual({ x: 96, w: 304 });
-    expect(searchSlot(390)).toEqual({ x: 82, w: 54 });
-    expect(searchSlot(600)).toEqual({ x: 220, w: 54 });
+    // Issue 302, a phone (phone.css, under 768px): 8px sides, a 6px gap;
+    // under 480px ☰ and the mark take 94px, and the search is 44px.
+    expect(searchSlot(390)).toEqual({ x: 108, w: 44 });
+    expect(searchSlot(600)).toEqual({ x: 214, w: 54 });
   });
 
   // The right group, anchored from the right edge in any host: ◐ at the

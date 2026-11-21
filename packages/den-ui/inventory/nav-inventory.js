@@ -599,11 +599,15 @@ const COLUMN = ["rail", "foot"];
  * needs for the search and the kit's right group (TOP_RIGHT_MIN);
  * 481–720px: 200px; up to 480px: 62px. The bar's padding is 12px and
  * its column gap 8px. Mirrors shell.css's .den-top columns (defaults).
+ * Issue 302, a phone (phone.css, under 768px): the bar's sides are 8px
+ * and its gap 6px; under 480px the left part is 94px (☰ and the mark,
+ * each 44px) and the search a 44px button.
  */
 export const TOP_RIGHT_MIN = 380;
 export function searchSlot(viewportW) {
-  const pad = 12;
-  const gap = 8;
+  const phone = viewportW < 768;
+  const pad = phone ? 8 : 12;
+  const gap = phone ? 6 : 8;
   if (viewportW > 720) {
     const left = Math.max(
       0,
@@ -611,7 +615,8 @@ export function searchSlot(viewportW) {
     );
     return { x: pad + left + gap, w: 304 };
   }
-  return { x: pad + (viewportW < 480 ? 62 : 200) + gap, w: 54 };
+  if (viewportW < 480) return { x: pad + 94 + gap, w: 44 };
+  return { x: pad + 200 + gap, w: 54 };
 }
 
 /**

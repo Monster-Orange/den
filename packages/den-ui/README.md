@@ -730,6 +730,37 @@ Three pieces, data in, the kit's words out (en, es, ja).
 - `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
   `DenUI.settingRow(el, opts)` are the same, in the kit's language.
 
+## A phone (issue 302)
+
+- `src/phone.js`, `src/phone.css` (exports `./phone`, `./phone.css`): the
+  on-screen keyboard, the safe area and 44px targets on a touch screen.
+  Link `phone.css` after `shell.css`, and start the watcher once:
+
+      import { initKeyboardUp } from "/kit/phone.js";
+      initKeyboardUp(); // returns its undo
+
+- The keyboard is up when the screen is touch (`pointer: coarse`), a text
+  field has the focus, and the visual viewport is at least 120px
+  (`KEYBOARD_MIN`; `initKeyboardUp(window, { min })`) shorter than the
+  window. Then the root has `data-kbd-up` and `--vv-h` (the visible
+  height). The top bar, the rail, the update pill and anything marked
+  `data-kbd-hide` step aside, and the page doesn't scroll. A host sizes
+  what stays to `--vv-h`. A tap inside `data-kbd-dismiss` that isn't on a
+  control puts the keyboard down. A field with `inputmode="none"` (a
+  terminal's own hidden input on a phone) never raises the keyboard, so
+  focus there doesn't count as typing.
+- The safe area: `--safe-top`, `--safe-right`, `--safe-bottom` and
+  `--safe-left` (from `env(safe-area-inset-*)`). Read these, never
+  `env()`, so a test can fake an inset. The top bar starts below
+  `--safe-top`. `.den-phone-foot` (a message box's row) has
+  `--den-foot-pad` under it: 12px, or the home indicator's inset where
+  larger, and 8px while the keyboard is up. Insets are 0 unless the page's
+  viewport meta has `viewport-fit=cover`.
+- On a touch screen, or in a window 767.98px wide or less, every top-bar
+  button and link is at least 44px each way. The bar has 8px sides and
+  6px between its parts; under 480px its left part (☰ and the mark) is
+  `--den-top-left-sm44` (94px).
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

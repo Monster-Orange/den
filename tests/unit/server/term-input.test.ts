@@ -19,6 +19,8 @@ import {
   layoutKeyIndex,
   linkModifier,
   softNewlineKey,
+  TERM_KEYS,
+  termKeySeq,
 } from "../../../src/ui/server/public/term-input.js";
 
 const key = (over: Partial<KeyboardEvent>) =>
@@ -187,5 +189,31 @@ describe("the keys", () => {
         key({ code: "Digit1", ctrlKey: true, shiftKey: true, altKey: true }),
       ),
     ).toBe(-1);
+  });
+});
+
+// Issue 302: a phone's "Terminal keys" row (⋯ → Terminal keys) sends the
+// keys a message can't: Esc, Ctrl-C and the arrows.
+describe("issue 302: the terminal keys a phone sends", () => {
+  it("the row's keys, in the mock's order", () => {
+    expect(TERM_KEYS).toEqual(["esc", "ctrlc", "up", "down", "left", "right"]);
+  });
+
+  it("each key's bytes, the arrows as the terminal's cursor mode asks", () => {
+    expect(termKeySeq("esc")).toBe("\x1b");
+    expect(termKeySeq("ctrlc")).toBe("\x03");
+    expect(termKeySeq("up")).toBe("\x1b[A");
+    expect(termKeySeq("down")).toBe("\x1b[B");
+    expect(termKeySeq("right")).toBe("\x1b[C");
+    expect(termKeySeq("left")).toBe("\x1b[D");
+    // Application cursor mode (a full-screen program asked for it).
+    expect(termKeySeq("up", true)).toBe("\x1bOA");
+    expect(termKeySeq("left", true)).toBe("\x1bOD");
+    expect(termKeySeq("esc", true)).toBe("\x1b");
+  });
+
+  it("an unknown key sends nothing", () => {
+    expect(termKeySeq("tab")).toBe("");
+    expect(termKeySeq("")).toBe("");
   });
 });
