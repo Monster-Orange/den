@@ -13,7 +13,7 @@
  *       Issue 625: --box any lets a browser run take a test box's slot
  *       (whichever frees first); the run gets DEN_GATE_BOX, DEN_PW_WS
  *   status [--json]          who holds, who waits, overruns, test boxes
- *   box <list|add|remove>    the test boxes (a person changes them)
+ *   box <list|add|remove|enable|disable>  the test boxes (a person's)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
@@ -55,7 +55,11 @@ import {
 import * as fs from "fs";
 import { boxEnv, checkBox } from "../../shared/gates/boxes.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
-import { gateBoxesView, gateView } from "../../shared/gates/view.js";
+import {
+  boxOffWords,
+  gateBoxesView,
+  gateView,
+} from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
@@ -73,10 +77,13 @@ export const GATE_HELP = {
     "    --box any: a browser run that can use a test box's browser takes",
     "    whichever slot frees first, here or on a box (DEN_PW_WS is set)",
     "{cli} gate status [--json]      who holds a slot, who waits",
-    "{cli} gate box <list|add|remove> <name> [--ssh login@host] [--ssh-port N]",
+    "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
     "    [--hold-file <path>] [--time-scale X] [--min-free-mem-mb N]",
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
+    "    [--window HH:MM-HH:MM] when it may be used, this machine's time",
+    "    [--off] added turned off; [--recheck-seconds N] least time between",
+    "    checks of a box that says no. Off or outside its window: no slot, no contact",
     "    a box run: --base-url http://<name>.localhost:<port> (never 80/443)",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
@@ -276,6 +283,10 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
     all.map((e) => ({ granted: !!e.grantedAt, box: e.box })),
   ).map((b) => {
     const base = `box ${b.name}: ${b.held} of ${b.slots} browser slots held`;
+    // A run already on it finishes; it shows beside why the box is skipped.
+    const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
+    const off = boxOffWords(b);
+    if (off) return `box ${b.name}: skipped, ${off}${still}`;
     if (b.state === "held" || b.state === "unreachable" || b.state === "low")
       return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}`;
     return b.state === "unchecked" ? `${base}, not checked yet` : base;
@@ -486,8 +497,9 @@ function status(args: string[], d: GateDeps): number {
 /**
  * Issue 625: the test boxes. `box list`; `box add <name> --ssh <dest>
  * [--ssh-port N] [--ssh-identity <key file>] [--playwright ws://…]
- * [--slots N] [--hold-file <path>] [--time-scale X]` (adds or replaces);
- * `box remove <name>`. Adding and removing are a person's.
+ * [--slots N] [--hold-file <path>] [--time-scale X] [--window HH:MM-HH:MM]
+ * [--off] [--recheck-seconds N]` (adds or replaces); `box remove <name>`;
+ * `box enable|disable <name>`. Changing them is a person's.
  */
 function boxCmd(args: string[], d: GateDeps): number {
   const [verb, ...rest] = args;
@@ -502,12 +514,22 @@ function boxCmd(args: string[], d: GateDeps): number {
           (b.hold_file ? `  hold file ${b.hold_file}` : "") +
           (b.time_scale && b.time_scale !== 1
             ? `  time scale ${b.time_scale}`
-            : ""),
+            : "") +
+          (b.window ? `  window ${b.window} (this machine's time)` : "") +
+          (b.recheck_seconds
+            ? `  rechecked after ${b.recheck_seconds} s`
+            : "") +
+          (b.enabled === false ? "  turned off" : ""),
       );
     return 0;
   }
-  if (verb !== "add" && verb !== "remove")
-    throw new GateUsage("gate box <list|add|remove> ...");
+  if (
+    verb !== "add" &&
+    verb !== "remove" &&
+    verb !== "enable" &&
+    verb !== "disable"
+  )
+    throw new GateUsage("gate box <list|add|remove|enable|disable> ...");
   if (isAgentEnv(d.env))
     throw new GateUsage(
       `gate box ${verb}: only a person can change the test boxes (this is an agent)`,
@@ -522,9 +544,25 @@ function boxCmd(args: string[], d: GateDeps): number {
     "--time-scale": true,
     "--min-free-mem-mb": true,
     "--playwright-version": true,
+    "--window": true,
+    "--recheck-seconds": true,
+    "--off": false,
   });
   const [name, extra] = pos;
   if (!name || extra) throw new GateUsage(`gate box ${verb} needs one <name>`);
+  if (verb === "enable" || verb === "disable") {
+    const b = d.store.setBoxEnabled(name, verb === "enable");
+    if (!b) {
+      d.err(`gate box ${verb}: no box ${name}`);
+      return 1;
+    }
+    d.out(
+      verb === "enable"
+        ? `Box ${name} turned on${b.window ? `: slots within ${b.window}, this machine's time` : ""}.`
+        : `Box ${name} turned off: no new slots and no contact. Its running slots finish.`,
+    );
+    return 0;
+  }
   if (verb === "remove") {
     if (!d.store.removeBox(name)) {
       d.err(`gate box remove: no box ${name}`);
@@ -546,6 +584,9 @@ function boxCmd(args: string[], d: GateDeps): number {
     time_scale: num("--time-scale"),
     min_free_mem_mb: num("--min-free-mem-mb"),
     playwright_version: f["--playwright-version"],
+    window: f["--window"],
+    recheck_seconds: num("--recheck-seconds"),
+    ...(f["--off"] ? { enabled: false } : {}),
   });
   if (!c.ok) throw new GateUsage(c.error);
   d.store.setBox(c.box);
