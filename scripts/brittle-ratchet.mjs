@@ -17,24 +17,33 @@
  *   englishAsserts  toBe/toEqual/toContain/toMatch/toHaveText… with plain
  *                   English of two words or more, or getByText("English")
  *
- * The baseline (JSON) records each file's counts. The check fails when a
- * file's count for any kind goes up, or a file not in the baseline has any.
- * It never fails when counts go down; it then prints the command that
- * lowers the baseline (--update), which never raises a count or adds a file.
+ * A change is judged against its merge base, never a hand-kept file. For
+ * each matching file the change touched (git diff <merge base> HEAD), the
+ * check counts the file at the merge base (zero for a new file; a renamed
+ * file's old path) and at HEAD. It fails when a count goes up. A count
+ * going down never fails, and a file the change didn't touch is never
+ * judged. Two changes, each green alone, can't turn main red by merging in
+ * turn: they share no baseline to race on.
  *
- *   node scripts/brittle-ratchet.mjs [--root dir] [--files glob]…
- *        [--baseline file] [--update | --init] [--json]
+ *   node scripts/brittle-ratchet.mjs --base <ref> [--root dir] [--files glob]… [--json]
+ *   node scripts/brittle-ratchet.mjs --report [--root dir] [--files glob]… [--json]
  *
+ *   --base      the branch the change goes into (a pull request's base sha,
+ *               or origin/main). Needs the history back to the merge base:
+ *               a shallow clone without it is an error (exit 2), never a pass.
+ *   --report    totals per kind, and per file, of the files as they are now.
+ *               Never fails (a push to main; the weekly numbers).
  *   --files     a glob relative to --root (** any folders, * any name part);
  *               repeat for more. Default: tests/**\/*.browser.* and gate/*.mjs
- *   --baseline  default: tests/brittle-baseline.json under --root
- *   --update    rewrite the baseline lower where counts went down
- *   --init      write the baseline from today's counts (only when none exists)
- *   --json      print counts and failures as JSON
+ *   --json      print the result as JSON
+ *
+ * --baseline, --update and --init (the hand-kept baseline) were replaced by
+ * --base; they are refused with a note saying so.
  *
  * Plain Node, no imports but node:*, so another repo can copy it alone.
- * Exit 0 when nothing went up, 1 when something did, 2 on a usage error.
+ * Exit 0 when nothing went up, 1 when something did, 2 on a usage or git error.
  */
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,7 +55,6 @@ export const KINDS = [
   "englishAsserts",
 ];
 const DEFAULT_FILES = ["tests/**/*.browser.*", "gate/*.mjs"];
-const DEFAULT_BASELINE = "tests/brittle-baseline.json";
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage"]);
 
 const ADVICE = {
@@ -357,73 +365,157 @@ function listFiles(root, globs) {
 
 // --------------------------------------------------------------- ratchet
 
-/** Compares counts with a baseline: { failures, lower }. */
-export function compare(counts, baseline) {
-  const failures = [];
-  const lower = [];
-  const files = baseline.files ?? {};
-  for (const [file, hits] of Object.entries(counts)) {
-    for (const k of KINDS) {
-      const now = hits[k].length;
-      const was = files[file]?.[k] ?? 0;
-      if (now > was)
-        failures.push({
-          file,
-          kind: k,
-          count: now,
-          baseline: was,
-          newFile: !(file in files),
-          lines: hits[k],
-        });
-      else if (now < was)
-        lower.push({ file, kind: k, count: now, baseline: was });
-    }
-  }
-  for (const [file, was] of Object.entries(files))
-    if (!(file in counts))
-      for (const k of KINDS)
-        if (was[k]) lower.push({ file, kind: k, count: 0, baseline: was[k] });
-  return { failures, lower };
-}
+const countOf = (src) => {
+  const hits = scan(src);
+  return Object.fromEntries(KINDS.map((k) => [k, hits[k]]));
+};
 
-function totals(files) {
+/** Totals per kind over { file: { kind: n } }. */
+export function totals(files) {
   const t = Object.fromEntries(KINDS.map((k) => [k, 0]));
   for (const c of Object.values(files))
     for (const k of KINDS) t[k] += c[k] ?? 0;
   return t;
 }
 
-function baselineDoc(files) {
-  const sorted = {};
-  for (const f of Object.keys(files).sort()) {
-    const row = {};
-    for (const k of KINDS) if (files[f][k]) row[k] = files[f][k];
-    if (Object.keys(row).length) sorted[f] = row;
+/**
+ * Compares one file's counts at the merge base ({ kind: n }) with its hits
+ * at HEAD ({ kind: [line, …] }): { failures, lower }.
+ */
+export function compareFile(file, base, head, newFile = false) {
+  const failures = [];
+  const lower = [];
+  for (const k of KINDS) {
+    const was = base[k] ?? 0;
+    const now = head[k]?.length ?? 0;
+    if (now > was)
+      failures.push({
+        file,
+        kind: k,
+        base: was,
+        head: now,
+        newFile,
+        lines: head[k],
+      });
+    else if (now < was) lower.push({ file, kind: k, base: was, head: now });
   }
-  return {
-    about:
-      "Issue 839: per-file counts of brittle patterns (scripts/brittle-ratchet.mjs). " +
-      "Counts may only go down; lower them with: node scripts/brittle-ratchet.mjs --update",
-    totals: totals(sorted),
-    files: sorted,
+  return { failures, lower };
+}
+
+class GitError extends Error {}
+
+function gitIn(root) {
+  return (...args) => {
+    const r = spawnSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 256 * 1024 * 1024,
+    });
+    if (r.error) throw new GitError(`git ${args[0]}: ${r.error.message}`);
+    return r;
   };
 }
 
-/** The new baseline --update writes: each count lowered to today's, never raised. */
-export function lowered(counts, baseline) {
-  const files = {};
-  for (const [file, was] of Object.entries(baseline.files ?? {})) {
-    if (!(file in counts)) continue;
-    const row = {};
-    for (const k of KINDS)
-      row[k] = Math.min(was[k] ?? 0, counts[file][k].length);
-    files[file] = row;
+const NO_BASE_HINT =
+  "The check needs the history back to where this change and its base meet. " +
+  "In CI, check out with fetch-depth: 0 (or fetch the base ref deep enough); " +
+  "locally, git fetch --unshallow.";
+
+/** The merge base of `base` and HEAD, or a GitError that says why not. */
+export function mergeBase(root, base) {
+  const git = gitIn(root);
+  const ref = git("rev-parse", "--verify", "--quiet", `${base}^{commit}`);
+  if (ref.status !== 0)
+    throw new GitError(
+      `no merge base: ${base} is not a commit in this clone. ${NO_BASE_HINT}`,
+    );
+  const mb = git("merge-base", ref.stdout.trim(), "HEAD");
+  if (mb.status !== 0 || !mb.stdout.trim()) {
+    const shallow =
+      git("rev-parse", "--is-shallow-repository").stdout.trim() === "true";
+    throw new GitError(
+      `no merge base between ${base} and HEAD${shallow ? " (this is a shallow clone)" : ""}. ${NO_BASE_HINT}`,
+    );
   }
-  return baselineDoc(files);
+  return mb.stdout.trim();
 }
 
+/**
+ * The files matching `globs` that changed between the merge base and HEAD:
+ * [{ file, from }] where `from` is the path at the merge base (a rename's
+ * old path), or null for a new file. Deleted files are left out (a count
+ * that drops to nothing never fails).
+ */
+export function changedFiles(root, mb, globs) {
+  const res = globs.map(globRe);
+  const r = gitIn(root)("diff", "--name-status", "-z", "-M", mb, "HEAD", "--");
+  if (r.status !== 0) throw new GitError(`git diff: ${r.stderr.trim()}`);
+  const parts = r.stdout.split("\0");
+  const out = [];
+  for (let i = 0; i < parts.length - 1; ) {
+    const status = parts[i++];
+    if (/^[RC]/.test(status)) {
+      const from = parts[i++];
+      const to = parts[i++];
+      if (res.some((x) => x.test(to)))
+        out.push({ file: to, from: status[0] === "R" ? from : null });
+    } else {
+      const file = parts[i++];
+      if (status === "D") continue;
+      if (res.some((x) => x.test(file)))
+        out.push({ file, from: status === "A" ? null : file });
+    }
+  }
+  return out.sort((a, b) => (a.file < b.file ? -1 : 1));
+}
+
+function showAt(root, rev, file) {
+  const r = gitIn(root)("show", `${rev}:${file}`);
+  if (r.status !== 0)
+    throw new GitError(`git show ${rev}:${file}: ${r.stderr.trim()}`);
+  return r.stdout;
+}
+
+/** Judges a change: { mergeBase, files, failures, lower }. */
+export function judge(root, base, globs) {
+  const mb = mergeBase(root, base);
+  const files = {};
+  const failures = [];
+  const lower = [];
+  for (const { file, from } of changedFiles(root, mb, globs)) {
+    const was = from ? countOf(showAt(root, mb, from)) : {};
+    const now = countOf(showAt(root, "HEAD", file));
+    const wasN = Object.fromEntries(KINDS.map((k) => [k, was[k]?.length ?? 0]));
+    const r = compareFile(file, wasN, now, !from);
+    failures.push(...r.failures);
+    lower.push(...r.lower);
+    const row = {};
+    for (const k of KINDS)
+      if (wasN[k] || now[k].length)
+        row[k] = { base: wasN[k], head: now[k].length, lines: now[k] };
+    files[file] = row;
+  }
+  return { mergeBase: mb, files, failures, lower };
+}
+
+/** Counts every matching file as it is now: { totals, files }. */
+export function report(root, globs) {
+  const files = {};
+  for (const f of listFiles(root, globs)) {
+    const hits = scan(fs.readFileSync(path.join(root, f), "utf8"));
+    const row = {};
+    for (const k of KINDS) if (hits[k].length) row[k] = hits[k].length;
+    if (Object.keys(row).length) files[f] = row;
+  }
+  return { totals: totals(files), files };
+}
+
+const REPLACED = new Set(["--baseline", "--update", "--init"]);
+const USAGE =
+  "usage: brittle-ratchet.mjs --base <ref> | --report [--root dir] [--files glob]… [--json]";
+
 function parseArgs(argv) {
-  const o = { files: [], json: false, update: false, init: false };
+  const o = { files: [], json: false, report: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const val = () => {
@@ -432,12 +524,24 @@ function parseArgs(argv) {
     };
     if (a === "--root") o.root = val();
     else if (a === "--files") o.files.push(val());
-    else if (a === "--baseline") o.baseline = val();
-    else if (a === "--update") o.update = true;
-    else if (a === "--init") o.init = true;
+    else if (a === "--base") o.base = val();
+    else if (a === "--report") o.report = true;
     else if (a === "--json") o.json = true;
+    else if (REPLACED.has(a))
+      throw new Error(
+        `${a} is gone: there is no hand-kept baseline any more (issue 839). ` +
+          "A change is judged against its merge base with --base <ref>; " +
+          "totals come from --report.",
+      );
     else throw new Error(`unknown argument ${a}`);
   }
+  if (!o.base && !o.report)
+    throw new Error(
+      "pass --base <ref> to judge a change against its merge base, " +
+        "or --report for totals per kind",
+    );
+  if (o.base && o.report)
+    throw new Error("--base <ref> and --report don't go together");
   return o;
 }
 
@@ -446,94 +550,59 @@ function main(argv) {
   try {
     o = parseArgs(argv);
   } catch (e) {
-    console.error(`brittle-ratchet: ${e.message}`);
+    console.error(`brittle-ratchet: ${e.message}\n${USAGE}`);
     return 2;
   }
   const here = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(o.root ?? path.join(here, ".."));
   const globs = o.files.length ? o.files : DEFAULT_FILES;
-  const basePath = path.resolve(root, o.baseline ?? DEFAULT_BASELINE);
 
-  const counts = {};
-  for (const f of listFiles(root, globs)) {
-    const hits = scan(fs.readFileSync(path.join(root, f), "utf8"));
-    if (KINDS.some((k) => hits[k].length)) counts[f] = hits;
-  }
-
-  if (o.init) {
-    if (fs.existsSync(basePath)) {
-      console.error(
-        `brittle-ratchet: ${basePath} exists; --init only writes a new baseline (use --update to lower one)`,
+  if (o.report) {
+    const r = report(root, globs);
+    if (o.json) console.log(JSON.stringify(r, null, 2));
+    else {
+      console.log(
+        `brittle-ratchet: ${Object.keys(r.files).length} files with brittle patterns`,
       );
-      return 2;
+      for (const k of KINDS) console.log(`  ${k.padEnd(15)} ${r.totals[k]}`);
     }
-    const flat = Object.fromEntries(
-      Object.entries(counts).map(([f, h]) => [
-        f,
-        Object.fromEntries(KINDS.map((k) => [k, h[k].length])),
-      ]),
-    );
-    const doc = baselineDoc(flat);
-    fs.mkdirSync(path.dirname(basePath), { recursive: true });
-    fs.writeFileSync(basePath, JSON.stringify(doc, null, 2) + "\n");
-    console.log(`brittle-ratchet: wrote ${path.relative(root, basePath)}`);
-    console.log(JSON.stringify(doc.totals));
     return 0;
   }
 
-  let baseline = { files: {} };
-  if (fs.existsSync(basePath))
-    baseline = JSON.parse(fs.readFileSync(basePath, "utf8"));
-  const { failures, lower } = compare(counts, baseline);
-
-  if (o.update && lower.length) {
-    fs.writeFileSync(
-      basePath,
-      JSON.stringify(lowered(counts, baseline), null, 2) + "\n",
-    );
+  let r;
+  try {
+    r = judge(root, o.base, globs);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    console.error(`brittle-ratchet: ${e.message}`);
+    return 2;
   }
-
   if (o.json) {
-    const files = {};
-    for (const [f, h] of Object.entries(counts))
-      files[f] = Object.fromEntries(
-        KINDS.filter((k) => h[k].length).map((k) => [
-          k,
-          { count: h[k].length, lines: h[k] },
-        ]),
-      );
-    console.log(JSON.stringify({ files, failures, lower }, null, 2));
-    return failures.length ? 1 : 0;
+    console.log(JSON.stringify(r, null, 2));
+    return r.failures.length ? 1 : 0;
   }
-
-  const rel = path.relative(process.cwd(), basePath) || basePath;
-  const updateCmd = `node scripts/brittle-ratchet.mjs${o.root ? ` --root ${o.root}` : ""}${o.files.map((g) => ` --files '${g}'`).join("")}${o.baseline ? ` --baseline ${o.baseline}` : ""} --update`;
-  if (failures.length) {
+  const against = `${o.base} (merge base ${r.mergeBase.slice(0, 12)})`;
+  if (r.failures.length) {
     console.error(
-      `brittle-ratchet: ${failures.length} count(s) went up over ${rel} (issue 839)\n`,
+      `brittle-ratchet: ${r.failures.length} count(s) went up in files this change touched, against ${against} (issue 839)\n`,
     );
-    for (const f of failures) {
+    for (const f of r.failures) {
       const where = f.lines.length === 1 ? "line" : "lines";
       console.error(
-        `  ${f.file}: ${f.kind} ${f.count} > ${f.baseline}${f.newFile ? " (new file: not in the baseline)" : ""}, ${where} ${f.lines.join(", ")}\n    ${ADVICE[f.kind]}`,
+        `  ${f.file}: ${f.kind} ${f.base} -> ${f.head}${f.newFile ? " (new file)" : ""}, ${where} ${f.lines.join(", ")}\n    ${ADVICE[f.kind]}`,
       );
     }
-    console.error(
-      "\nThe baseline never goes up: rewrite the new lines the way each note says.",
-    );
+    console.error("\nRewrite the new lines the way each note says.");
   }
-  if (lower.length && !o.update) {
+  if (r.lower.length)
     console.log(
-      `brittle-ratchet: ${lower.length} count(s) went down. Lower the baseline with:\n  ${updateCmd}`,
+      `brittle-ratchet: ${r.lower.length} count(s) went down against ${against}`,
     );
-  } else if (lower.length) {
-    console.log(`brittle-ratchet: lowered ${lower.length} count(s) in ${rel}`);
-  }
-  if (!failures.length && !lower.length)
+  if (!r.failures.length && !r.lower.length)
     console.log(
-      `brittle-ratchet: ${Object.keys(counts).length} files at their baseline`,
+      `brittle-ratchet: ${Object.keys(r.files).length} touched file(s), no count went up against ${against}`,
     );
-  return failures.length ? 1 : 0;
+  return r.failures.length ? 1 : 0;
 }
 
 if (
