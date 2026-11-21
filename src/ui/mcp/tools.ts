@@ -9,8 +9,13 @@
  */
 import * as path from "path";
 import { z } from "zod";
-import { GatePriorityRefused, GateStore } from "../../shared/gates/store.js";
+import {
+  GatePriorityRefused,
+  GateStore,
+  GateYieldRefused,
+} from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
+import { getStateDir } from "../../shared/paths.js";
 import {
   MCP_ACTIONS,
   type McpAction,
@@ -94,6 +99,11 @@ export interface ToolContext {
   env?: Record<string, string | undefined>;
   /** The machine's gate slots (issue 144); tests pass a temp store. */
   gates?: GateStore;
+  /**
+   * Issue 714: this install (its state dir), recorded on an MCP slot so
+   * only this Den tells the agent about it. Default getStateDir().
+   */
+  install?: string;
 }
 
 type Args = Record<string, unknown>;
@@ -216,11 +226,45 @@ function actionResult(
 
 // ── Gate slots (issue 144) ──────────────────────────────────────────────────
 
-/** The slots this MCP server asked for: the only ones it may give back. */
-const mySlots = new Set<string>();
+/**
+ * The slots this MCP server asked for (the only ones it may give back),
+ * and the store each is in.
+ */
+const mySlots = new Map<string, GateStore>();
 let defaultGates: GateStore | undefined;
 const gatesOf = (ctx: ToolContext): GateStore =>
   ctx.gates ?? (defaultGates ??= new GateStore());
+
+/**
+ * Issue 714: the agent's own slots that lapsed since its last call (their
+ * lease not renewed, past their estimate): said once, at its next tool
+ * call. A slot gone another way (released, ended early) is just dropped.
+ */
+function lapseNotices(): string[] {
+  const out: string[] = [];
+  // Settle each store once: a lease that lapsed by now is taken back.
+  const live = new Map<GateStore, Set<string>>();
+  for (const store of new Set(mySlots.values())) {
+    try {
+      live.set(store, new Set(store.list().map((e) => e.id)));
+    } catch {
+      live.set(store, new Set(mySlots.keys())); // the lock stayed held
+    }
+  }
+  for (const [id, store] of mySlots) {
+    if (live.get(store)?.has(id)) continue;
+    mySlots.delete(id);
+    const last = store
+      .events()
+      .filter((r) => r.id === id)
+      .at(-1);
+    if (last?.event === "taken-back-lapsed")
+      out.push(
+        `Den: Your gate slot ${id} lapsed: it wasn't renewed, and it ran past its estimate, so it went to the next in line. Ask gate_slot_request for a new one before you run heavy tests, and renew it (gate_slot_request with its id) while you work.`,
+      );
+  }
+  return out;
+}
 
 /** Your slot, and who holds the machine now and until when. */
 function slotView(store: GateStore, id: string) {
@@ -228,6 +272,9 @@ function slotView(store: GateStore, id: string) {
   const mine = v.slots.find((x) => x.id === id);
   return {
     ...mine,
+    // Issue 714: renew it this often while you work (gate_slot_request
+    // with its id), or it lapses once past its estimate.
+    renewEveryMinutes: v.settings.mcpRenewMinutes,
     heldBy: v.slots
       .filter((x) => x.granted && x.id !== id)
       .map(({ id, kind, who, label, expectedEnd, overrun }) => ({
@@ -390,7 +437,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_request",
     "Ask for a gate slot",
-    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Never stops anyone's run; a later ask only waits. Issue 715: `priority: \"release\"` with a `reason` (required) is for a release run a person waits on (marked by the person, or for an issue the person reported): it goes to the front of its kind's queue, never ahead of a holder, one at a time per kind (a second waits behind the first), and the slot log records who, why and which runs it passed. Never use it for routine runs.",
+    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Issue 714: when a slot you waited for is granted, Den types a line at your prompt; claim it by calling this with its `id` before `claimBy` (3 minutes by default, a Setting), or it passes to the next in line and you go back in line. While you hold it, renew it by calling this with its `id` every `renewEveryMinutes`: a slot not renewed and past its estimate lapses and goes to the next in line. Release it as soon as you are done. Never stops anyone's run; a later ask only waits. Issue 715: `priority: \"release\"` with a `reason` (required) is for a release run a person waits on (marked by the person, or for an issue the person reported): it goes to the front of its kind's queue, never ahead of a holder, one at a time per kind (a second waits behind the first), and the slot log records who, why and which runs it passed. Never use it for routine runs.",
     {
       kind: z
         .enum(["browser", "cpu"])
@@ -433,7 +480,8 @@ const READ_TOOLS: DenTool[] = [
       if (id) {
         if (!mySlots.has(id))
           throw new Refusal("gate_slot_request: that slot isn't yours.");
-        if (!store.get(id)) {
+        // Issue 714: asking again claims a granted slot and renews it.
+        if (!store.renewMcp(id) && !store.get(id)) {
           mySlots.delete(id);
           throw new Refusal(
             "gate_slot_request: that slot is gone (released, or ended early by a person); ask for a new one.",
@@ -452,6 +500,9 @@ const READ_TOOLS: DenTool[] = [
             typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
           agent: true,
           ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
+          mcp: { install: ctx.install ?? path.resolve(getStateDir()) },
+          // Issue 803: the agent's project gives the class (settings).
+          ...(ctx.scope?.workspace ? { project: ctx.scope.workspace } : {}),
           ...(a.priority === "release" && reason
             ? { priority: { reason } }
             : {}),
@@ -461,7 +512,7 @@ const READ_TOOLS: DenTool[] = [
           throw new Refusal(`gate_slot_request: ${err.message}.`);
         throw err;
       }
-      mySlots.add(e.id);
+      mySlots.set(e.id, store);
       return slotView(store, e.id);
     },
   ),
@@ -476,6 +527,33 @@ const READ_TOOLS: DenTool[] = [
         throw new Refusal("gate_slot_release: that slot isn't yours.");
       mySlots.delete(id);
       return { released: gatesOf(ctx).release(id) };
+    },
+  ),
+  read(
+    "gate_slot_yield",
+    "Let one waiting run go just ahead of yours",
+    "Issue 795: your waiting slot `id` lets another waiting slot `to` go just ahead of it, and keeps its own place otherwise (A, B, C becomes C, A, B when A lets C ahead). Use it instead of giving your place back and asking again at the back. Only your own slot (one you asked for here, or a `gate run` from your shell); never a slot that holds, and `to` must be waiting behind you. The slot log records it as `yielded` with both ids; gate_slot_status shows it as `yieldedTo` until your run starts.",
+    {
+      id: z.string().describe("Your waiting slot's id"),
+      to: z.string().describe("The waiting slot to let just ahead of yours"),
+    },
+    async (a, ctx) => {
+      const id = str(a.id) ?? "";
+      const actor = ctx.scope?.actor;
+      const store = gatesOf(ctx);
+      try {
+        store.yieldTo(
+          id,
+          str(a.to) ?? "",
+          (e) =>
+            !e.remote && (mySlots.has(e.id) || (!!actor && e.actor === actor)),
+        );
+      } catch (err) {
+        if (err instanceof GateYieldRefused)
+          throw new Refusal(`gate_slot_yield: ${err.message}.`);
+        throw err;
+      }
+      return slotView(store, id);
     },
   ),
   read(
@@ -2875,6 +2953,19 @@ export async function callTool(
       text: `Unknown or disabled tool "${name}". Actions must be named in mcp.actions.`,
       isError: true,
     };
+  // Issue 714: a slot of the agent's that lapsed is said at its next call.
+  const said = mySlots.size ? lapseNotices() : [];
+  const told = (r: { text: string; isError: boolean }) =>
+    said.length ? { ...r, text: [...said, r.text].join("\n\n") } : r;
+  return told(await runTool(tool, name, args, ctx));
+}
+
+async function runTool(
+  tool: DenTool,
+  name: string,
+  args: Args,
+  ctx: ToolContext,
+): Promise<{ text: string; isError: boolean }> {
   try {
     const out = await tool.run(
       ctx.scope ? await scopeArgs(tool, args, ctx, ctx.scope) : args,

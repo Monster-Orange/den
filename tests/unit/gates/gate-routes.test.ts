@@ -92,10 +92,17 @@ describe("gate-slot routes", () => {
       priorityMax: 1,
       priorityPassLimitMinutes: 60,
       priorityAgents: true,
+      priorityRunners: true,
+      claimMinutes: 3,
+      mcpRenewMinutes: 5,
+      mcpLapseMinutes: 15,
+      mcpGraceMinutes: 15,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,
+      boxCheckTimeoutSeconds: 8,
+      boxRecheckSeconds: 30,
     });
     expect(r.json.slots).toEqual([
       expect.objectContaining({ id: a.id, granted: true, label: "e2e" }),

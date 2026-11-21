@@ -377,7 +377,12 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     expect(String(listed?.name)).toMatch(/:planner$/);
     await p.click("#den-search");
     await p.fill("#den-pal-q", "api spike");
-    await p.waitForSelector('#den-pal-list li[role="option"]');
+    // The sessions arrive after the palette opens; any row that matches
+    // the letters in order (a setting's label can) shows first, so wait
+    // for the agent's row, then check it ranks first.
+    await p.waitForSelector(
+      '#den-pal-list li[role="option"] .den-pal-l:text-is("Agents › north / planner · api spike")',
+    );
     expect(
       await p
         .locator('#den-pal-list li[role="option"] .den-pal-l')

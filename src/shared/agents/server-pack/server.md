@@ -134,6 +134,9 @@ Reads (they change nothing):
   as `<cli> gate run -- <command>` instead. A release run your person
   waits on (they marked it, or it's for an issue they reported) may ask
   with `priority: "release"` and a `reason`; never a routine run.
+- `gate_slot_yield`: your waiting slot lets one waiting slot behind it go
+  just ahead of yours; you keep your place otherwise. Use it instead of
+  giving your place back and asking again at the back.
 
 Hub files (through Den, as you; when Hub is connected):
 

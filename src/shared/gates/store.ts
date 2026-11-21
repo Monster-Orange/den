@@ -7,11 +7,13 @@
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
  *   settings.json     cpu_slots, overrun_margin_minutes,
- *                     remote_renew_seconds, remote_lapse_seconds
+ *                     remote_renew_seconds, remote_lapse_seconds; issue
+ *                     803: class_order, class_map, class_windows (text)
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
  *                     back (process gone, or lease lapsed), overdue, ended
  *                     early (Coach reads time lost); issue 715: priority
- *                     (who, why, what it passed) and priority-waits
+ *                     (who, why, what it passed) and priority-waits;
+ *                     issue 795: yielded (the entry and the one let ahead)
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone (or, issue 621,
@@ -24,17 +26,43 @@ import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
+  BOX_DEFAULTS,
+  assign,
+  boxesOf,
+  boxesWanted,
+  checkBox,
+  freshNo,
+  freshYes,
+  withMemory,
+  readBoxStates,
+  realBoxProbe,
+  writeBoxStates,
+  type BoxCap,
+  type BoxProbe,
+  type BoxSettings,
+  type BoxState,
+  type GateBox,
+} from "./boxes.js";
+import {
+  classOf,
+  parseClassMap,
+  parseClassOrder,
+  parseClassWindows,
+  readClasses,
+} from "./classes.js";
+import {
   GATE_DEFAULTS,
   byAsked,
   expectedStart,
   gone,
-  grants,
   lapsed,
+  mcpLapsed,
   overrun,
   passedBy,
   priorityIds,
   queueOrder,
   queuePlace,
+  unclaimed,
   type GateEntry,
   type GateKind,
   type GateSettings,
@@ -70,11 +98,33 @@ export type GateSettingsPatch = {
   priority_max?: number | null;
   priority_pass_limit_minutes?: number | null;
   priority_agents?: number | null;
+  priority_runners?: number | null;
+  claim_minutes?: number | null;
+  mcp_renew_minutes?: number | null;
+  mcp_lapse_minutes?: number | null;
+  mcp_grace_minutes?: number | null;
+  box_check_timeout_seconds?: number | null;
+  box_recheck_seconds?: number | null;
+  /** Issue 803: priority classes (text; "" or null clears). */
+  class_order?: string | null;
+  class_map?: string | null;
+  class_windows?: string | null;
 };
+
+/** Issue 803: the settings that are a line of text, and their checks. */
+export const GATE_TEXT: Record<
+  "class_order" | "class_map" | "class_windows",
+  (v: string) => unknown
+> = {
+  class_order: parseClassOrder,
+  class_map: parseClassMap,
+  class_windows: parseClassWindows,
+};
+type GateNumberKey = Exclude<keyof GateSettingsPatch, keyof typeof GATE_TEXT>;
 
 /** Each setting: its least and most, and whether it is whole. */
 export const GATE_LIMITS: Record<
-  keyof GateSettingsPatch,
+  GateNumberKey,
   { min: number; max: number; int: boolean }
 > = {
   cpu_slots: { min: 1, max: 64, int: true },
@@ -87,6 +137,18 @@ export const GATE_LIMITS: Record<
   priority_max: { min: 0, max: 16, int: true },
   priority_pass_limit_minutes: { min: 1, max: 24 * 60, int: false },
   priority_agents: { min: 0, max: 1, int: true },
+  // Issue 739: CI runners may ask for priority; 1 yes, 0 no.
+  priority_runners: { min: 0, max: 1, int: true },
+  // Issue 714: an agent's slot held over MCP: claim, renew, lapse, grace.
+  claim_minutes: { min: 1, max: 24 * 60, int: false },
+  mcp_renew_minutes: { min: 1, max: 24 * 60, int: false },
+  mcp_lapse_minutes: { min: 1, max: 7 * 24 * 60, int: false },
+  mcp_grace_minutes: { min: 0, max: 7 * 24 * 60, int: false },
+  // Issue 625: a test box's check, and how long a no from it is kept.
+  // The check runs outside the lock, so it may take its time.
+  // Clause 12: never more than 25 s (BOX_CHECK_CAP_MS).
+  box_check_timeout_seconds: { min: 1, max: 25, int: true },
+  box_recheck_seconds: { min: 1, max: 24 * 3600, int: true },
 };
 
 /**
@@ -100,11 +162,23 @@ export function checkGatePatch(
     return { ok: false, error: "gate_slots is an object" };
   const patch: GateSettingsPatch = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
-    const l = GATE_LIMITS[k as keyof GateSettingsPatch];
+    // Issue 803: a line of text, checked by its parser; "" clears it.
+    const text = GATE_TEXT[k as keyof typeof GATE_TEXT];
+    if (text) {
+      if (x === undefined) continue;
+      if (x !== null && (typeof x !== "string" || x.length > 2000))
+        return { ok: false, error: `gate_slots.${k} is text, or null` };
+      const err = x ? text(x) : null;
+      if (typeof err === "string")
+        return { ok: false, error: `gate_slots.${k}: ${err}` };
+      (patch as Record<string, unknown>)[k] = x ? x.trim() : null;
+      continue;
+    }
+    const l = GATE_LIMITS[k as GateNumberKey];
     if (!l)
       return {
         ok: false,
-        error: `gate_slots.${k} is not a setting (${Object.keys(GATE_LIMITS).join(", ")})`,
+        error: `gate_slots.${k} is not a setting (${[...Object.keys(GATE_LIMITS), ...Object.keys(GATE_TEXT)].join(", ")})`,
       };
     if (x === undefined) continue;
     if (
@@ -119,7 +193,7 @@ export function checkGatePatch(
         ok: false,
         error: `gate_slots.${k} is ${l.int ? "a whole number" : "a number"} from ${l.min} to ${l.max}, or null`,
       };
-    patch[k as keyof GateSettingsPatch] = x;
+    patch[k as GateNumberKey] = x;
   }
   return { ok: true, patch };
 }
@@ -135,7 +209,9 @@ export type GateEvent =
   | "overdue"
   | "ended-early"
   | "priority"
-  | "priority-waits";
+  | "priority-waits"
+  | "passed-unclaimed"
+  | "yielded";
 
 export interface GateEventRow {
   at: string;
@@ -158,11 +234,28 @@ export interface GateEventRow {
   by?: string;
   /** Issue 621: a runner's slot: the runner token's name. */
   runner?: string;
+  /** Issue 714: an MCP slot: the agent and the install that asked. */
+  actor?: string;
+  install?: string;
+  /** Issue 714: granted while it waited: claim it by then (ISO). */
+  claimBy?: string;
+  /** Issue 625: the test box the slot is on (absent: this machine). */
+  box?: string;
+  /** Issue 795: yielded: the waiting entry let just ahead of this one. */
+  to?: string;
+  /** Issue 803: its class, when classes are set. */
+  class?: string;
 }
 
-/** Issue 715: who asked for priority, for the record. */
+/** Issue 715: who asked for priority, for the record (739: a runner). */
 const byOf = (e: GateEntry): string =>
-  e.actor ?? (e.agent ? "an agent" : "a person");
+  e.remote
+    ? `runner:${e.remote.runner}`
+    : (e.actor ?? (e.agent ? "an agent" : "a person"));
+
+/** Issue 715: a priority reason, one line, at most 200 characters. */
+const reasonOf = (r: string | undefined) =>
+  r?.replace(/\s+/g, " ").trim().slice(0, 200);
 
 const isAlive = (pid: number): boolean => {
   try {
@@ -179,6 +272,8 @@ export interface GateStoreOpts {
   alive?: (pid: number) => boolean;
   /** How long to wait for the lock before giving up, ms. */
   lockWaitMs?: number;
+  /** Issue 625: checks a test box (tests pass a fake). */
+  probe?: BoxProbe;
 }
 
 /**
@@ -193,8 +288,21 @@ function leaseTimes(renew: number, lapse: number) {
   };
 }
 
+/** Issue 803: the class settings, or none at all when no classes are set. */
+function classSettings(
+  classOrder: string,
+  classMap: string,
+  classWindows: string,
+): Partial<GateSettings> {
+  const classes = readClasses(classOrder, classMap, classWindows);
+  return classes ? { classes, classOrder, classMap, classWindows } : {};
+}
+
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
+
+/** Issue 795: a yield that isn't the owner's, or isn't waiting to waiting. */
+export class GateYieldRefused extends Error {}
 
 /** Issue 621: a runner token has as many slots as it may. */
 export class GateFullError extends Error {}
@@ -204,24 +312,28 @@ export class GateStore {
   private readonly now: () => number;
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
+  private readonly probe: BoxProbe;
 
   constructor(o: GateStoreOpts = {}) {
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
+    this.probe = o.probe ?? realBoxProbe;
   }
 
   private get slots() {
     return path.join(this.dir, "slots");
   }
 
-  settings(): GateSettings {
+  settings(): GateSettings & BoxSettings {
     try {
       const v = JSON.parse(
         fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
       ) as Record<string, unknown>;
-      const num = (k: keyof GateSettingsPatch, d: number) => {
+      const text = (k: keyof typeof GATE_TEXT) =>
+        typeof v[k] === "string" ? (v[k] as string) : "";
+      const num = (k: GateNumberKey, d: number) => {
         const n = v[k];
         const l = GATE_LIMITS[k];
         return typeof n === "number" &&
@@ -254,9 +366,39 @@ export class GateStore {
         ),
         priorityAgents:
           num("priority_agents", GATE_DEFAULTS.priorityAgents ? 1 : 0) === 1,
+        priorityRunners:
+          num("priority_runners", GATE_DEFAULTS.priorityRunners ? 1 : 0) === 1,
+        claimMinutes: num("claim_minutes", GATE_DEFAULTS.claimMinutes),
+        mcpRenewMinutes: num(
+          "mcp_renew_minutes",
+          GATE_DEFAULTS.mcpRenewMinutes,
+        ),
+        mcpLapseMinutes: num(
+          "mcp_lapse_minutes",
+          GATE_DEFAULTS.mcpLapseMinutes,
+        ),
+        mcpGraceMinutes: num(
+          "mcp_grace_minutes",
+          GATE_DEFAULTS.mcpGraceMinutes,
+        ),
+        boxCheckTimeoutSeconds: num(
+          "box_check_timeout_seconds",
+          BOX_DEFAULTS.boxCheckTimeoutSeconds,
+        ),
+        boxRecheckSeconds: num(
+          "box_recheck_seconds",
+          BOX_DEFAULTS.boxRecheckSeconds,
+        ),
+        // Issue 803: priority classes; none set is today's queue (and
+        // today's settings, key for key).
+        ...classSettings(
+          text("class_order"),
+          text("class_map"),
+          text("class_windows"),
+        ),
       };
     } catch {
-      return { ...GATE_DEFAULTS };
+      return { ...GATE_DEFAULTS, ...BOX_DEFAULTS };
     }
   }
 
@@ -288,6 +430,7 @@ export class GateStore {
   private record(e: GateEntry, row: Partial<GateEventRow>): string {
     fs.mkdirSync(this.dir, { recursive: true });
     const at = new Date(this.now()).toISOString();
+    const cls = classOf(e, this.settings().classes);
     const full = {
       at,
       id: e.id,
@@ -295,6 +438,9 @@ export class GateStore {
       who: e.who,
       label: e.label,
       ...(e.remote ? { runner: e.remote.runner } : {}),
+      ...(e.mcp ? { actor: e.actor, install: e.mcp.install } : {}),
+      ...(e.box ? { box: e.box } : {}),
+      ...(cls ? { class: cls } : {}),
       ...row,
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
@@ -418,13 +564,14 @@ export class GateStore {
    * Takes back the gone, grants who may start, flags the overdue, and
    * returns the queue as it now stands. Call under the lock.
    */
-  private settle(): GateEntry[] {
+  private settle(claimNow?: string): GateEntry[] {
     const s = this.settings();
     const now = this.now();
     const at = new Date(now).toISOString();
     const entries: GateEntry[] = [];
     for (const e of this.readAll()) {
-      const lapse = lapsed(e, now);
+      // Issue 714: an MCP holder's lease lapses as a runner's does.
+      const lapse = lapsed(e, now) || mcpLapsed(e, s, now);
       if (!lapse && !gone(e, this.alive)) {
         entries.push(e);
         continue;
@@ -435,6 +582,22 @@ export class GateStore {
         ...this.heldFor(e, now),
       });
     }
+    // Issue 714: an MCP slot granted while it waited and not claimed in
+    // time passes on, when someone waits: back in line, at its end.
+    if (entries.some((x) => !x.grantedAt))
+      for (const e of entries) {
+        if (!unclaimed(e, now)) continue;
+        this.record(e, { event: "passed-unclaimed", ...this.heldFor(e, now) });
+        delete e.grantedAt;
+        delete e.flaggedAt;
+        delete e.mcp!.claimBy;
+        // Issue 625: the box it was given is free again; a new grant
+        // picks the place afresh.
+        delete e.box;
+        delete e.boxTimeScale;
+        e.askedAt = at;
+        this.write(e);
+      }
     // Issue 715: a run that takes priority is recorded once: who, why,
     // and the waiters it goes ahead of.
     for (const id of priorityIds(entries, s)) {
@@ -449,15 +612,30 @@ export class GateStore {
         passed: passedBy(entries, e.id, s, now),
       });
     }
-    for (const id of grants(entries, s, now)) {
-      const e = entries.find((x) => x.id === id)!;
+    // Issue 625: test boxes; an open answer is good for one assignment.
+    const caps = this.boxCaps(now);
+    for (const g of assign(entries, s, now, caps.caps)) {
+      const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
+      // Issue 714: an MCP ask granted while it waited is claimed by its
+      // agent within claimMinutes; one granted as it asks is claimed.
+      if (e.mcp)
+        e.mcp =
+          e.id === claimNow
+            ? { install: e.mcp.install, renewedAt: at }
+            : {
+                install: e.mcp.install,
+                claimBy: new Date(now + s.claimMinutes * 60_000).toISOString(),
+              };
+      if (g.box) this.onBox(e, g.box, caps);
       this.write(e);
       this.record(e, {
         event: "granted",
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
+        ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
       });
     }
+    if (caps.used) writeBoxStates(this.dir, caps.states);
     for (const e of entries) {
       if (e.flaggedAt || !overrun(e, s, now)) continue;
       e.flaggedAt = at;
@@ -491,8 +669,16 @@ export class GateStore {
     actor?: string;
     /** Issue 715: a release run a person waits on, and why. */
     priority?: { reason: string };
+    /** Issue 714: an agent's ask over MCP (claim and lease). */
+    mcp?: { install: string };
+    /** Issue 625: "local" (default), "any", or a test box's name. */
+    where?: string;
+    /** Issue 625 clause 11: the run's Playwright client version. */
+    pwVersion?: string;
+    /** Issue 803: the project it runs for (settings give its class). */
+    project?: string;
   }): GateEntry {
-    const reason = o.priority?.reason.replace(/\s+/g, " ").trim().slice(0, 200);
+    const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
       throw new GatePriorityRefused("a priority ask needs a reason");
     return this.locked(() => {
@@ -504,6 +690,7 @@ export class GateStore {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
         who: o.who.slice(0, 200),
+        ...(o.project ? { project: o.project.slice(0, 120) } : {}),
         label: o.label.slice(0, 120),
         pid: o.pid,
         askedAt: new Date(this.now()).toISOString(),
@@ -513,34 +700,47 @@ export class GateStore {
           ? { actor: o.actor }
           : {}),
         ...(reason ? { priority: { for: "release" as const, reason } } : {}),
+        ...(o.mcp ? { mcp: { install: o.mcp.install.slice(0, 512) } } : {}),
+        ...whereOf(o.kind, o.where),
+        ...(o.pwVersion && /^[0-9A-Za-z.-]{1,48}$/.test(o.pwVersion)
+          ? { pwVersion: o.pwVersion }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
       writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
-      this.record(e, { event: "asked" });
-      const all = this.settle();
-      const now = all.find((x) => x.id === e.id) ?? e;
-      // Issue 715: marked, but another holds priority: it waits behind it.
-      if (now.priority && !now.priority.at && !now.grantedAt)
-        this.record(now, {
-          event: "priority-waits",
-          reason: now.priority.reason,
-          behind: all
-            .filter(
-              (x) => x.kind === now.kind && !x.grantedAt && x.priority?.at,
-            )
-            .map((x) => x.id),
-        });
-      if (!now.grantedAt)
-        this.record(now, {
-          event: "waits",
-          behind: all.filter((x) => x.grantedAt).map((x) => x.id),
-          expectedStart: new Date(
-            expectedStart(all, e.id, this.now(), this.settings()),
-          ).toISOString(),
-        });
-      return now;
+      return this.afterAsk(e);
     });
+  }
+
+  /**
+   * A new entry is written: log the ask, settle, and log where it waits
+   * (issue 715: behind another priority run, if it is marked). Call under
+   * the lock.
+   */
+  private afterAsk(e: GateEntry): GateEntry {
+    this.record(e, { event: "asked" });
+    // Issue 714: granted as it asks, an MCP slot is claimed at once.
+    const all = this.settle(e.id);
+    const now = all.find((x) => x.id === e.id) ?? e;
+    // Issue 715: marked, but another holds priority: it waits behind it.
+    if (now.priority && !now.priority.at && !now.grantedAt)
+      this.record(now, {
+        event: "priority-waits",
+        reason: now.priority.reason,
+        behind: all
+          .filter((x) => x.kind === now.kind && !x.grantedAt && x.priority?.at)
+          .map((x) => x.id),
+      });
+    if (!now.grantedAt)
+      this.record(now, {
+        event: "waits",
+        behind: all.filter((x) => x.grantedAt).map((x) => x.id),
+        expectedStart: new Date(
+          expectedStart(all, e.id, this.now(), this.settings()),
+        ).toISOString(),
+      });
+    return now;
   }
 
   /**
@@ -555,8 +755,19 @@ export class GateStore {
     estimateMin: number;
     runner: string;
     tokenId: string;
+    /** Issue 739: a release run a person waits on, and why. */
+    priority?: { reason: string };
+    /** Issue 625: "local" (default), "any", or a test box's name. */
+    where?: string;
   }): GateEntry {
+    const reason = reasonOf(o.priority?.reason);
+    if (o.priority && !reason)
+      throw new GatePriorityRefused("a priority ask needs a reason");
     return this.locked(() => {
+      if (reason && !this.settings().priorityRunners)
+        throw new GatePriorityRefused(
+          "CI runners may not ask for release priority on this machine (Settings, gate priority); ask without it to wait in the normal queue",
+        );
       // One token's live slots are capped (a Setting): a retrying or
       // runaway runner can't fill the queue.
       const max = this.settings().remoteMaxSlots;
@@ -575,26 +786,17 @@ export class GateStore {
         pid: 0,
         askedAt: new Date(this.now()).toISOString(),
         estimateMin: o.estimateMin,
+        ...whereOf(o.kind, o.where),
         remote: {
           runner: o.runner.slice(0, 64),
           tokenId: o.tokenId,
           leaseUntil: this.leaseEnd(),
         },
+        ...(reason ? { priority: { for: "release" as const, reason } } : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
-      this.record(e, { event: "asked" });
-      const all = this.settle();
-      const now = all.find((x) => x.id === e.id) ?? e;
-      if (!now.grantedAt)
-        this.record(now, {
-          event: "waits",
-          behind: all.filter((x) => x.grantedAt).map((x) => x.id),
-          expectedStart: new Date(
-            expectedStart(all, e.id, this.now(), this.settings()),
-          ).toISOString(),
-        });
-      return now;
+      return this.afterAsk(e);
     });
   }
 
@@ -664,6 +866,61 @@ export class GateStore {
     });
   }
 
+  /**
+   * Issue 714: an MCP holder asks again with its id: a granted slot is
+   * claimed (if it waited for that) and its lease renewed. Null when gone
+   * or not an MCP slot.
+   */
+  renewMcp(id: string): GateEntry | null {
+    return this.locked(() => {
+      const e = this.settle().find((x) => x.id === id);
+      if (!e?.mcp) return null;
+      if (!e.grantedAt) return e;
+      e.mcp = {
+        install: e.mcp.install,
+        renewedAt: new Date(this.now()).toISOString(),
+      };
+      this.write(e);
+      return e;
+    });
+  }
+
+  /**
+   * Issue 714: the slot log's rows after byte `from` (a reader's place),
+   * and the place to read from next. From past the end (a log that was
+   * cut short), it reads from the start.
+   */
+  eventsFrom(from: number): { rows: GateEventRow[]; next: number } {
+    let buf: Buffer;
+    try {
+      buf = fs.readFileSync(this.eventsFile);
+    } catch {
+      return { rows: [], next: 0 };
+    }
+    const start = from > buf.length ? 0 : from;
+    const end = buf.lastIndexOf(0x0a) + 1;
+    if (end <= start) return { rows: [], next: start };
+    const rows: GateEventRow[] = [];
+    for (const l of buf.subarray(start, end).toString("utf-8").split("\n")) {
+      if (!l) continue;
+      try {
+        rows.push(JSON.parse(l) as GateEventRow);
+      } catch {
+        /* a broken line: skip */
+      }
+    }
+    return { rows, next: end };
+  }
+
+  /** Issue 714: the slot log's size now, bytes (where a reader starts). */
+  eventsEnd(): number {
+    try {
+      return fs.statSync(this.eventsFile).size;
+    } catch {
+      return 0;
+    }
+  }
+
   /** 0 holding; a waiter's place in line (1 is next); -1 when gone. */
   place(id: string): number {
     return queuePlace(this.list(), id, this.settings(), this.now());
@@ -692,6 +949,44 @@ export class GateStore {
   }
 
   /**
+   * Issue 795: the owner of waiting entry `id` lets waiting entry `to` go
+   * just ahead of it; it keeps its own place otherwise. `owns` says whether
+   * the caller owns an entry; a refusal changes nothing. Returns the slot
+   * log's row.
+   */
+  yieldTo(
+    id: string,
+    to: string,
+    owns: (e: GateEntry) => boolean,
+  ): GateEventRow {
+    return this.locked(() => {
+      const all = this.settle();
+      const e = all.find((x) => x.id === id);
+      if (!e || !owns(e))
+        throw new GateYieldRefused(`${id} isn't yours (or is gone)`);
+      if (e.grantedAt)
+        throw new GateYieldRefused(
+          `${id} holds its slot; only a waiting entry can yield`,
+        );
+      const w = all.find((x) => x.id === to);
+      if (!w || w.grantedAt || w.id === id)
+        throw new GateYieldRefused(
+          "the one you let ahead must be another waiting entry (gate status lists them)",
+        );
+      const order = queueOrder(all, this.settings(), this.now());
+      if (order.indexOf(w) < order.indexOf(e))
+        throw new GateYieldRefused(`${to} is already ahead of ${id}`);
+      const at = new Date(this.now()).toISOString();
+      e.yields = [...(e.yields ?? []), { to, at }];
+      this.write(e);
+      const row = { event: "yielded" as const, to };
+      this.record(e, row);
+      this.settle();
+      return { at, id, kind: e.kind, who: e.who, label: e.label, ...row };
+    });
+  }
+
+  /**
    * A person ends someone's slot early; recorded with who. The run it was
    * for is not stopped. Returns the slot log's row (an install's audit
    * points to it), or null if no slot.
@@ -714,4 +1009,176 @@ export class GateStore {
       return { at, ...row };
     });
   }
+
+  // ---- Issue 625: test boxes (shared/gates/boxes.ts) ----
+
+  private settingsFile(): Record<string, unknown> {
+    try {
+      const v = JSON.parse(
+        fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
+      ) as unknown;
+      return v && typeof v === "object" && !Array.isArray(v)
+        ? (v as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** The test boxes (settings.json `boxes`); none by default. */
+  boxes(): GateBox[] {
+    return boxesOf(this.settingsFile().boxes);
+  }
+
+  /** Writes the box list; the named box is checked afresh. */
+  private writeBoxes(list: GateBox[], fresh: string): void {
+    const cur = this.settingsFile();
+    if (list.length) cur.boxes = list;
+    else delete cur.boxes;
+    writeFileAtomic(
+      path.join(this.dir, "settings.json"),
+      JSON.stringify(cur, null, 2) + "\n",
+    );
+    const st = readBoxStates(this.dir);
+    if (fresh in st) {
+      delete st[fresh];
+      writeBoxStates(this.dir, st);
+    }
+  }
+
+  /** Adds a test box, or replaces the one of that name. */
+  setBox(v: unknown): GateBox {
+    const c = checkBox(v);
+    if (!c.ok) throw new Error(c.error);
+    this.locked(() =>
+      this.writeBoxes(
+        [...this.boxes().filter((b) => b.name !== c.box.name), c.box],
+        c.box.name,
+      ),
+    );
+    return c.box;
+  }
+
+  /**
+   * Removes a test box. Its running slots finish; a waiter that named it
+   * waits until a box of that name is set again.
+   */
+  removeBox(name: string): boolean {
+    return this.locked(() => {
+      const list = this.boxes();
+      if (!list.some((b) => b.name === name)) return false;
+      this.writeBoxes(
+        list.filter((b) => b.name !== name),
+        name,
+      );
+      return true;
+    });
+  }
+
+  /** What the last check of each box found. */
+  boxStates(): Record<string, BoxState> {
+    return readBoxStates(this.dir);
+  }
+
+  /** The boxes as one assignment sees them (under the lock). */
+  private boxCaps(now: number) {
+    const boxes = this.boxes();
+    const states = boxes.length ? readBoxStates(this.dir) : {};
+    const s = this.settings();
+    const caps: BoxCap[] = boxes.map((b) => ({
+      name: b.name,
+      slots: b.browser_slots,
+      open: freshYes(states[b.name], now, s.boxCheckTimeoutSeconds),
+      ...(b.playwright_version ? { version: b.playwright_version } : {}),
+    }));
+    return { boxes, states, caps, used: false };
+  }
+
+  /** A grant on a box: its name and time scale; its open answer is used. */
+  private onBox(
+    e: GateEntry,
+    box: string,
+    c: { boxes: GateBox[]; states: Record<string, BoxState>; used: boolean },
+  ): void {
+    e.box = box;
+    const scale = c.boxes.find((b) => b.name === box)?.time_scale;
+    if (scale && scale !== 1) e.boxTimeScale = scale;
+    delete c.states[box];
+    c.used = true;
+  }
+
+  /**
+   * Checks the test boxes a waiter would be given a slot on now, then
+   * gives the slots. Called by whoever waits (gate run, a runner's ask),
+   * never on a timer. A box is checked only when a slot on it is about to
+   * be given; a held or unreachable box is not checked again for
+   * box_recheck_seconds. The checks run outside the lock. A held or
+   * unreachable box is passed over in the same call: the run goes to the
+   * next box, or waits.
+   */
+  async checkBoxes(): Promise<void> {
+    const boxes = this.boxes();
+    if (!boxes.length) return;
+    const s = this.settings();
+    for (let round = 0; round < boxes.length; round++) {
+      const now = this.now();
+      const states = readBoxStates(this.dir);
+      const caps = boxes
+        .filter((b) => !freshNo(states[b.name], now, s.boxRecheckSeconds))
+        .map((b) => ({
+          name: b.name,
+          slots: b.browser_slots,
+          open: true,
+          ...(b.playwright_version ? { version: b.playwright_version } : {}),
+        }));
+      const want = boxesWanted(this.readAll(), s, now, caps).filter(
+        (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),
+      );
+      if (!want.length) {
+        this.locked(() => this.settle());
+        return;
+      }
+      const found = await Promise.all(
+        want.map(async (n) => {
+          const b = boxes.find((x) => x.name === n)!;
+          try {
+            return {
+              n,
+              r: withMemory(
+                b,
+                await this.probe(b, s.boxCheckTimeoutSeconds * 1000),
+              ),
+            };
+          } catch (e) {
+            return {
+              n,
+              r: {
+                state: "unreachable" as const,
+                reason: (e as Error).message,
+              },
+            };
+          }
+        }),
+      );
+      const no = this.locked(() => {
+        const st = readBoxStates(this.dir);
+        const at = new Date(this.now()).toISOString();
+        for (const { n, r } of found)
+          st[n] = {
+            state: r.state,
+            ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
+            at,
+          };
+        writeBoxStates(this.dir, st);
+        this.settle();
+        return found.some((f) => f.r.state !== "open");
+      });
+      if (!no) return;
+    }
+  }
+}
+
+/** Issue 625: where a browser run may go, as stored (local is the default). */
+function whereOf(kind: GateKind, where: string | undefined) {
+  return kind === "browser" && where && where !== "local" ? { where } : {};
 }
