@@ -6,7 +6,7 @@ description: Install Den, Monster Orange's local dev orchestrator, and hand the 
 # Install Den
 
 You are installing Den on this person's machine. Den runs their repos locally and shows them in a browser. Your job
-is short: install it, name it, start it, and hand over the link. **Den's own agent takes it from there.** It adds
+is short: install it, name it, start it, and hand over to the person. **Den's own agent takes it from there.** It adds
 their repos and starts their services, with the person allowing each change in the browser.
 
 You do three things only. You don't add repos or create workspaces: those are Den's own agent's job. Keep your
@@ -53,15 +53,15 @@ person (`ask`).
 2. `cd <dir> && npm install`
 3. From here on, the Den command is `./bin/<name>`, run from `<dir>`.
 
-## 3. Start the web server and hand over the link
+## 3. Start the web server and hand over
 
 1. `./bin/<name> web up --no-open --json`. It answers `{ok, url, port}`.
-2. `./bin/<name> web claim-link --json`. It answers `{url, expiresAt}`: a one-time setup link that signs the
-   person's browser in, so they can allow Den's agent's changes. It lasts 30 minutes and works once.
-3. Hand over, in a few short sentences:
-   - **Open** the `url` from `claim-link`, in your browser on this machine. "Den's own agent takes it from there."
+2. Hand over, in a few short sentences:
+   - **Sign in:** run `./bin/<name> web open` in your own terminal, from `<dir>`. It opens Den in your browser on
+     this machine, signed in, so you can allow Den's agent's changes. "Den's own agent takes it from there."
    - **Your Den** lives in `<dir>`, and its command is `./bin/<name>`.
-   - If the link has expired, run `./bin/<name> web claim-link` yourself for a new one.
+
+Sign-in links are printed only in the person's own terminal, so you never ask for one.
 
 That's all. Don't go on to add repos.
 

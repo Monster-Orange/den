@@ -49,3 +49,16 @@ describe("npx always runs the newest Den", () => {
     expect(uses.filter((u) => !/@latest$/.test(u.text))).toEqual([]);
   });
 });
+
+describe("Sign-in: the hand-over is a command the person runs", () => {
+  const skill = () =>
+    fs.readFileSync(path.join(ROOT, "skills/install-den/SKILL.md"), "utf-8");
+  it("the skill never asks for a sign-in link itself", () => {
+    expect(skill()).not.toMatch(/web claim-link --json/);
+  });
+  it("it tells the person what to run in their own terminal", () => {
+    expect(skill()).toMatch(
+      /run `\.\/bin\/<name> web open` in your own terminal/i,
+    );
+  });
+});
