@@ -59,7 +59,18 @@ jobs:
           node-version: "24.13.0"
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # Jest's transform cache: cold, compiling the suites' TypeScript was
+      # half of the job's minute. A key per run (caches can't be
+      # overwritten), restored from the newest with the same lockfile and
+      # jest config.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/den-fast-jest
+          key: fast-jest-${{ runner.os }}-${{ hashFiles('package-lock.json', 'jest.config.js', 'tsconfig.jest.json') }}-${{ github.run_id }}
+          restore-keys: fast-jest-${{ runner.os }}-${{ hashFiles('package-lock.json', 'jest.config.js', 'tsconfig.jest.json') }}-
       - run: node scripts/fast-checks.mjs
+        env:
+          DEN_FAST_JEST_CACHE: ${{ runner.temp }}/den-fast-jest
 
   # The fast gates, once per Node at both ends of the supported range: the
   # lowest Node that package.json's engines allows, and the Node installs
