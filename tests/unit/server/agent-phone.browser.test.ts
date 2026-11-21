@@ -166,7 +166,16 @@ async function phone(
   }, latest);
   const p = await ctx.newPage();
   const errors: string[] = [];
-  p.on("pageerror", (e) => errors.push(e.message));
+  // WebKit refuses a fetch a page starts while a reload is already loading
+  // the next page, and reports it as a page error ("… <url> due to access
+  // control checks."): the page's timed polls can start in that gap. Only
+  // that message, for this server's own URL, is not the page's.
+  const own = `/${new URL(s.base).host}/`;
+  p.on("pageerror", (e) => {
+    const m = e.message;
+    if (m.endsWith(" due to access control checks.") && m.includes(own)) return;
+    errors.push(m);
+  });
   return { p, errors };
 }
 
