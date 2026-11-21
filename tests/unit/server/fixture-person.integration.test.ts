@@ -6,9 +6,9 @@
  *  - test: all of that.
  *  - noflag: the mark, its own state dir, no launch flag (a real install).
  *  - homedir: the mark and the flag, on the default state dir.
- * Covered: the mark ignored unless bound; Set up test person (a person's,
- * the browser or the CLI asking the server; never an agent, an
- * env-stripped CLI inside an agent's session, or the fixture person); a
+ * Covered: the mark ignored unless bound (a person signed in by a link
+ * counts as one); Set up test person (a person's browser session only;
+ * never an agent, the person's CLI bearer, or the fixture person); a
  * key file written by hand refused; the fixture sign-in, logged and
  * audited as the fixture person; what a fixture session can't reach
  * (approvals, person-only settings, terminals, Hub, anything off its
@@ -29,12 +29,7 @@ import {
   readFixtureKey,
   setupFixturePerson,
 } from "../../../src/shared/fixture-person.js";
-import {
-  bindActorSession,
-  mintActorToken,
-  revokeAgentTokens,
-} from "../../../src/shared/actor-token.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
+import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
 import { clearWebOwner, writeWebOwner } from "../../../src/shared/web-owner.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -273,6 +268,11 @@ async function fixtureSignIn(den: Den) {
     },
   };
 }
+/** Signs a person's session out, so it no longer counts as one on `den`. */
+async function signOut(den: Den, headers: Record<string, string>) {
+  const r = await call(den, "POST", "/api/session/logout", headers, {});
+  expect(r.status).toBe(200);
+}
 async function stillSignedIn(den: Den, cookie: string): Promise<boolean> {
   const me = await call(den, "GET", "/api/session", {
     cookie,
@@ -378,8 +378,19 @@ describe("making the fixture person on the test install", () => {
       { ...p.headers, ...AGENT_CLAIM },
       {},
     );
+    await signOut(test, p.headers);
     expect([r.status, r.json.code]).toEqual([403, "person_only"]);
     expect(fs.existsSync(fixturePersonPath(test.stateDir))).toBe(false);
+  });
+
+  it("a person signed in by a link counts as a person on the install", async () => {
+    const p = await signedIn(test.stateDir, test.base);
+    try {
+      expect((await state(test)).testInstall).toBe(false);
+    } finally {
+      await signOut(test, p.headers);
+    }
+    expect((await state(test)).testInstall).toBe(true);
   });
 
   it("a signed-in person sets it up: 0600, never in the answer; Settings reads ready", async () => {
@@ -403,39 +414,23 @@ describe("making the fixture person on the test install", () => {
     });
   });
 
-  it("the person's CLI asks the server, which sets it up", () => {
+  it("the person's CLI bearer is refused: setup is the Settings button only", async () => {
     const before = keyText(test);
-    const r = cliFixturePerson(test);
-    expect([r.status, r.stderr.trim().slice(0, 200)]).toEqual([0, ""]);
-    expect(keyText(test)).not.toBe(before);
-    expect((r.stdout + r.stderr).includes(keyText(test).trim())).toBe(false);
-  });
-
-  it("the CLI run inside an agent's session with its agent env removed is refused", () => {
-    // An agent session whose root is this test's own process: the CLI it
-    // starts runs under it, as an agent's command would.
-    const { key } = mintActorToken(test.stateDir, {
-      agentId: "gate-runner",
-      workspace: "default",
-      sessionName: "fx810",
-    });
-    bindActorSession(test.stateDir, key, "fx810sess");
-    const sessions = path.join(test.stateDir, "sessions");
-    fs.mkdirSync(sessions, { recursive: true });
-    fs.writeFileSync(
-      path.join(sessions, "fx810sess.json"),
-      JSON.stringify({ pid: process.pid }),
+    const r = await call(
+      test,
+      "POST",
+      "/api/web/fixture-person",
+      {
+        authorization: `Bearer ${personToken(readWebSecret(test.stateDir)!)}`,
+      },
+      {},
     );
-    try {
-      const before = keyText(test);
-      const r = cliFixturePerson(test);
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/person/);
-      expect(keyText(test)).toBe(before);
-    } finally {
-      revokeAgentTokens(test.stateDir, "gate-runner");
-      fs.rmSync(path.join(sessions, "fx810sess.json"), { force: true });
-    }
+    expect([r.status, r.json.code]).toEqual([403, "person_only"]);
+    expect(keyText(test)).toBe(before);
+    const c = cliFixturePerson(test);
+    expect(c.status).toBe(1);
+    expect(c.stderr).toMatch(/Set up test person/);
+    expect(keyText(test)).toBe(before);
   });
 });
 
@@ -453,6 +448,15 @@ describe("the fixture sign-in", () => {
       .map((l) => JSON.parse(l) as Record<string, unknown>)
       .find((e) => String(e.detail).includes("fixture person signed in"));
     expect(line?.principal).toBe("fixture:person");
+  });
+
+  it("a HEAD never spends the one-time code", async () => {
+    const code = mintFixtureCode(readFixtureKey(test.stateDir)!);
+    const q = `/auth?fixture=${encodeURIComponent(code)}`;
+    const head = await call(test, "HEAD", q, nav);
+    expect(head.status).not.toBe(303);
+    expect(sessionCookie(head)).toBe("");
+    expect((await call(test, "GET", q, nav)).status).toBe(303);
   });
 
   it("is one-time", async () => {
@@ -541,6 +545,7 @@ describe("the test-install mark is never written through Settings", () => {
       const r = await call(test, "POST", "/api/settings", headers, {
         test_install: false,
       });
+      if (!fx) await signOut(test, headers);
       expect(r.status).toBe(403);
       expect(r.json.code).toBe("test_install_by_hand");
       expect(
@@ -573,6 +578,24 @@ describe("a fixture session dies with what allowed it", () => {
     } finally {
       fs.writeFileSync(cfg, MARKED.join("\n"));
     }
+  });
+
+  it("when the test person is set up again", async () => {
+    const f = await fixtureSignIn(test);
+    expect(await stillSignedIn(test, f.cookie)).toBe(true);
+    const p = await signedIn(test.stateDir, test.base);
+    const r = await call(
+      test,
+      "POST",
+      "/api/web/fixture-person",
+      p.headers,
+      {},
+    );
+    expect([r.status, r.json.ok]).toEqual([200, true]);
+    expect(await stillSignedIn(test, f.cookie)).toBe(false);
+    // A new sign-in, with the new key, stands.
+    const g = await fixtureSignIn(test);
+    expect(await stillSignedIn(test, g.cookie)).toBe(true);
   });
 
   it("when the key is removed", async () => {

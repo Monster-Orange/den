@@ -1,8 +1,7 @@
 /**
  * Issue 810: the CLI side of the fixture person.
- *  - `web fixture-person` (the fallback to Settings' button): refused
- *    inside an agent's session, and otherwise it asks the running server,
- *    which decides (person only, test install only).
+ *  - `web fixture-person`: setup is Settings' button only (a person's
+ *    browser session); the command says so and fails.
  *  - `web fixture-login`: the gate runner (an agent) gets a one-time
  *    sign-in link as the fixture person, on a test install only, with the
  *    fixture person made.
@@ -64,21 +63,24 @@ const asAgent = () => {
 const secretValue = () =>
   fs.readFileSync(fixturePersonPath(tmp), "utf-8").trim();
 
-describe("web fixture-person (the person's fallback to Settings' button)", () => {
-  it("is refused inside an agent's session, and writes nothing", async () => {
-    asAgent();
-    const { o, io: i } = io(true);
-    expect(await cmdWebFixturePerson([], i)).toBe(1);
-    expect(o.err).toMatch(/An agent can't/);
-    expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
-  });
-
-  it("never decides here: it asks the running server, and with none answering it is refused and writes nothing", async () => {
-    const { o, io: i } = io(true);
-    expect(await cmdWebFixturePerson(["--port", "1"], i)).toBe(1);
-    expect(o.err).toMatch(/nothing answers on port/i);
-    expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
-  });
+describe("web fixture-person: setup is the Settings button only", () => {
+  it.each([
+    ["the person's terminal", false],
+    ["an agent", true],
+  ])(
+    "from %s it says so, fails, and asks nothing of the server",
+    async (_n, agent) => {
+      if (agent) asAgent();
+      const { o, io: i } = io(true);
+      // Port 1: were it to ask the server, the answer would say nothing answers.
+      expect(await cmdWebFixturePerson(["--port", "1"], i)).toBe(1);
+      expect(o.out).toBe("");
+      expect(o.err).toMatch(/Set up test person/);
+      expect(o.err).toMatch(/Settings/);
+      expect(o.err).not.toMatch(/nothing answers/i);
+      expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
+    },
+  );
 });
 
 describe("web fixture-login (the gate runner, an agent)", () => {

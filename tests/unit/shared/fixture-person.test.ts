@@ -16,6 +16,7 @@ import {
   FIXTURE_LABEL,
   FIXTURE_PRINCIPAL,
   FIXTURE_SESSION_MINUTES,
+  fixtureKeyFingerprint,
   fixtureLoginLink,
   fixturePersonPath,
   fixtureScopeRefusal,
@@ -247,7 +248,22 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["GET", "/api/web/sessions", "shell-grade"],
     ["GET", "/api/nowhere", null],
     ["DELETE", "/api/workspaces", "mutating"],
+    // Hardening: agent writes that are refused to a fixture session anyway.
+    ["POST", "/api/workspaces/notes/agents/a1/say", "mutating"],
+    ["POST", "/api/workspaces/notes/agents/a1/restart", "mutating"],
   ] as const)("%s %s is refused", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toMatch(/fixture person/);
+  });
+});
+
+describe("the fixture key's fingerprint (a fixture session is bound to the key it signed in with)", () => {
+  it("is a hash, never the key, and differs per key", () => {
+    const a = Buffer.from("a".repeat(43));
+    const b = Buffer.from("b".repeat(43));
+    const fa = fixtureKeyFingerprint(a);
+    expect(fa).toBe(fixtureKeyFingerprint(Buffer.from("a".repeat(43))));
+    expect(fa).not.toBe(fixtureKeyFingerprint(b));
+    expect(fa.includes("a".repeat(16))).toBe(false);
+    expect(fa).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 });

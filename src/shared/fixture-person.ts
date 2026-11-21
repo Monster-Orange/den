@@ -370,3 +370,8 @@ export function fixtureScopeRefusal(
     ? null
     : refused;
 }
+
+/** The fixture key's fingerprint (red stub). */
+export function fixtureKeyFingerprint(_key: Buffer): string {
+  throw new Error("not yet");
+}
