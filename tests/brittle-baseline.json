@@ -1,8 +1,8 @@
 {
   "about": "Issue 839: per-file counts of brittle patterns (scripts/brittle-ratchet.mjs). Counts may only go down; lower them with: node scripts/brittle-ratchet.mjs --update",
   "totals": {
-    "sleeps": 183,
-    "positional": 241,
+    "sleeps": 165,
+    "positional": 229,
     "classSelectors": 1576,
     "englishAsserts": 523
   },
@@ -112,8 +112,7 @@
       "classSelectors": 10
     },
     "tests/unit/den-ui/busy-kit.browser.test.ts": {
-      "sleeps": 5,
-      "positional": 1,
+      "sleeps": 4,
       "classSelectors": 23,
       "englishAsserts": 10
     },
@@ -121,7 +120,6 @@
       "classSelectors": 2
     },
     "tests/unit/den-ui/kind-tag.browser.test.ts": {
-      "positional": 2,
       "classSelectors": 18
     },
     "tests/unit/den-ui/kit-063.browser.test.ts": {
@@ -133,7 +131,6 @@
       "classSelectors": 11
     },
     "tests/unit/den-ui/kit-070.browser.test.ts": {
-      "positional": 1,
       "classSelectors": 64,
       "englishAsserts": 4
     },
@@ -142,32 +139,23 @@
       "englishAsserts": 2
     },
     "tests/unit/den-ui/kit-csp.browser.test.ts": {
-      "sleeps": 1,
-      "positional": 2,
       "classSelectors": 19
     },
     "tests/unit/den-ui/list-bars-kit.browser.test.ts": {
-      "positional": 3,
       "classSelectors": 26,
       "englishAsserts": 5
     },
     "tests/unit/den-ui/markdown-editor.browser.test.ts": {
-      "sleeps": 1,
-      "positional": 2,
-      "classSelectors": 15,
+      "classSelectors": 13,
       "englishAsserts": 5
     },
     "tests/unit/den-ui/nav-inventory.browser.test.ts": {
-      "sleeps": 2,
-      "positional": 2,
+      "positional": 1,
       "classSelectors": 18
     },
     "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts": {
       "classSelectors": 4,
       "englishAsserts": 1
-    },
-    "tests/unit/den-ui/rail-load-motion.browser.test.ts": {
-      "sleeps": 2
     },
     "tests/unit/den-ui/report-visibility.browser.test.ts": {
       "classSelectors": 13,
@@ -179,7 +167,6 @@
       "englishAsserts": 6
     },
     "tests/unit/den-ui/shell-kit-parity.browser.test.ts": {
-      "sleeps": 3,
       "classSelectors": 6
     },
     "tests/unit/scripts/doc-shots-guard.browser.test.ts": {
@@ -443,9 +430,8 @@
       "englishAsserts": 2
     },
     "tests/unit/server/graph-many-groups.browser.test.ts": {
-      "sleeps": 5,
       "positional": 4,
-      "classSelectors": 13,
+      "classSelectors": 15,
       "englishAsserts": 1
     },
     "tests/unit/server/i18n-layout.browser.test.ts": {
@@ -567,7 +553,7 @@
       "englishAsserts": 4
     },
     "tests/unit/server/runs-dock.browser.test.ts": {
-      "sleeps": 4,
+      "sleeps": 1,
       "positional": 1,
       "classSelectors": 23,
       "englishAsserts": 5
