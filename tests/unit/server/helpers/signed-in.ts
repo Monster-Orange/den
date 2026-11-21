@@ -416,6 +416,7 @@ export async function signIn(
 /** What signInPage needs of a Playwright Page. */
 interface PageLike<R> {
   context(): CookieJar;
+  url(): string;
   goto(
     url: string,
     opts?: {
@@ -439,5 +440,9 @@ export async function signInPage<R>(
   const s = await signIn(page.context(), stateDir, base);
   const u = new URL(next, base);
   u.hash = `ak=${s.approveKey}`;
+  // Already on that page (its signed-out one): a goto that only changes
+  // the fragment loads nothing, so leave it first.
+  const here = page.url().split("#")[0];
+  if (here === u.href.split("#")[0]) await page.goto("about:blank");
   return page.goto(u.href, opts);
 }
