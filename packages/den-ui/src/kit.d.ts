@@ -58,6 +58,7 @@ import type {
   esc,
 } from "./shell-html.js";
 import type { buttonHtml } from "./button.js";
+import type { groupHeaderHtml } from "./group-header.js";
 import type {
   SettingRow,
   SettingRowHydrateOptions,
@@ -257,6 +258,7 @@ export interface DenUIKit {
   filterBar: typeof filterBar;
   bulkBar: typeof bulkBar;
   buttonHtml: typeof buttonHtml;
+  groupHeaderHtml: typeof groupHeaderHtml;
   menuRowHtml: typeof menuRowHtml;
   pageMenuButtonHtml: typeof pageMenuButtonHtml;
   pageMenuHtml: typeof pageMenuHtml;

@@ -769,6 +769,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
   ),
   R(
+    "/api/hub/groups",
+    "Issue 750: this install's groups as Hub serves them (read from Hub, kept in memory only), for the agents page's By group view",
+  ),
+  R(
     "/api/hub/names-check",
     "issue 167: when Hub last answered Den's check of its project names, and when it last didn't (times only)",
   ),

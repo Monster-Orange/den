@@ -50,6 +50,8 @@
     "./button.css": "./src/button.css",
     "./setting-row": "./src/setting-row.js",
     "./setting-row.css": "./src/setting-row.css",
+    "./group-header": "./src/group-header.js",
+    "./group-header.css": "./src/group-header.css",
     "./marks/*": "./src/marks/*",
     "./site/*": "./src/site/*",
     "./inventory": {
