@@ -889,7 +889,7 @@ describe("the CLI default is named, never a bare glyph", () => {
     const p = await open("main", "/local-dev");
     await p.waitForSelector('.ws-item[data-name="main"]');
     const row = await p.$eval(
-      '.ws-item[data-name="main"] span:has(> .ws-name)',
+      '.ws-item[data-name="main"] > span:not([class])',
       (e) => ({
         text: e.textContent!.replace(/\s+/g, " ").trim(),
         tip: e.querySelector(".ws-cli-default")?.getAttribute("title") ?? "",
@@ -902,7 +902,7 @@ describe("the CLI default is named, never a bare glyph", () => {
       /Picking a project in the top bar also makes it the CLI default/,
     );
     const side = await p.$eval(
-      '.ws-item[data-name="side"] span:has(> .ws-name)',
+      '.ws-item[data-name="side"] > span:not([class])',
       (e) => e.textContent!,
     );
     expect(side).not.toContain("CLI default");
