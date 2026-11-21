@@ -222,6 +222,19 @@ let defaultGates: GateStore | undefined;
 const gatesOf = (ctx: ToolContext): GateStore =>
   ctx.gates ?? (defaultGates ??= new GateStore());
 
+/**
+ * Whether a slot is this agent's: asked for through this MCP server, or
+ * (issue 752) recorded with this agent as its asker, as `gate run` from
+ * the agent's own shell records it. A runner's lease is its token's.
+ */
+function isMine(store: GateStore, id: string, ctx: ToolContext): boolean {
+  if (mySlots.has(id)) return true;
+  const actor = ctx.scope?.actor;
+  if (!actor) return false;
+  const e = store.list().find((x) => x.id === id);
+  return !!e && !e.remote && e.agent === true && e.actor === actor;
+}
+
 /** Your slot, and who holds the machine now and until when. */
 function slotView(store: GateStore, id: string) {
   const v = gateView(store);
@@ -431,7 +444,7 @@ const READ_TOOLS: DenTool[] = [
           "gate_slot_request: priority release needs a reason (who waits on it).",
         );
       if (id) {
-        if (!mySlots.has(id))
+        if (!isMine(store, id, ctx))
           throw new Refusal("gate_slot_request: that slot isn't yours.");
         if (!store.get(id)) {
           mySlots.delete(id);
@@ -468,14 +481,15 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_release",
     "Give a gate slot back",
-    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting). Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`.",
+    "Issue 144: give back a slot of yours (holding or still waiting): one you asked for with gate_slot_request, or one your own `<cli> gate run` made from a shell (issue 752; see gate_slot_status for its id). Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`.",
     { id: z.string().describe("Your slot's id") },
     async (a, ctx) => {
       const id = str(a.id) ?? "";
-      if (!mySlots.has(id))
+      const store = gatesOf(ctx);
+      if (!isMine(store, id, ctx))
         throw new Refusal("gate_slot_release: that slot isn't yours.");
       mySlots.delete(id);
-      return { released: gatesOf(ctx).release(id) };
+      return { released: store.release(id) };
     },
   ),
   read(
