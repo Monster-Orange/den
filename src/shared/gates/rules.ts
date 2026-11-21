@@ -17,14 +17,32 @@
  * an ordinary run until the one ahead starts, then takes priority. The
  * store records each jump (who, why, what it passed).
  *
+ * Issue 803: with classes set (classes.ts), a higher class's waiters go
+ * first; within a class it is first-come. A windowed class's long run,
+ * outside its window, waits (at the back, blocking no one) while a
+ * higher-class run holds or waits. No classes: exactly the order above.
+ *
  * Issue 795: the owner of a waiting entry may yield to one waiting entry
  * behind it (`gate yield <my-id> --to <their-id>`): that entry moves to
  * just ahead of it, and it keeps its own place otherwise (A, B, C becomes
- * C, A, B). Yields are applied last, in the order they were made.
+ * C, A, B). Yields are applied after priority and classes, in the order
+ * they were made.
+ *
+ * All together, in this precedence: a granted slot is never pre-empted;
+ * release priority (715, and 739's runners) goes first, past any class;
+ * then classes; then yields, which never move an entry past one that
+ * outranks it by priority or class (other than the yielder, who chose
+ * to); then first come. A window's hold applies last.
  *
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
+import {
+  classRank,
+  windowHeld,
+  windowOpens,
+  type GateClasses,
+} from "./classes.js";
 
 export type GateKind = "browser" | "cpu";
 
@@ -33,6 +51,8 @@ export interface GateEntry {
   kind: GateKind;
   /** Who asked, in words: "<install> · <project> · <agent or person>". */
   who: string;
+  /** Issue 803: the project it ran for (its class comes from settings). */
+  project?: string;
   /** What runs, a short label (never the command's arguments). */
   label: string;
   /** The process that holds or waits (gate run, or the agent's MCP server). */
@@ -130,6 +150,12 @@ export interface GateSettings {
   mcpLapseMinutes: number;
   /** Issue 714: past its estimate by this much, an unrenewed slot may lapse. */
   mcpGraceMinutes: number;
+  /** Issue 803: the classes, read from the three lines; absent: off. */
+  classes?: GateClasses;
+  /** Issue 803: the lines as typed (absent when no classes are set). */
+  classOrder?: string;
+  classMap?: string;
+  classWindows?: string;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -158,7 +184,7 @@ export function byAsked(a: GateEntry, b: GateEntry): number {
 
 type PrioritySettings = Pick<
   GateSettings,
-  "priorityMax" | "priorityPassLimitMinutes"
+  "priorityMax" | "priorityPassLimitMinutes" | "classes"
 >;
 
 /**
@@ -186,18 +212,22 @@ export function priorityIds(
 }
 
 /**
- * The waiters in the order they start: by ask, except that a run holding
- * priority (issue 715) goes ahead of its kind's other waiters, never
- * ahead of one that has waited past the pass limit.
+ * The waiters in the order they start: by class (issue 803), then by
+ * ask, except that a run holding priority (issue 715) goes ahead of its
+ * kind's other waiters, of any class, never ahead of one that has waited
+ * past the pass limit. Then yields (issue 795); a window's hold last.
  */
 export function queueOrder(
   entries: GateEntry[],
   s: Partial<PrioritySettings> = GATE_DEFAULTS,
   now: number = Date.now(),
 ): GateEntry[] {
-  const q = entries.filter((e) => !e.grantedAt).sort(byAsked);
+  const c = s.classes;
+  const rank = (e: GateEntry) => classRank(e, c);
+  const q = entries
+    .filter((e) => !e.grantedAt)
+    .sort((a, b) => rank(a) - rank(b) || byAsked(a, b));
   const pri = priorityIds(entries, s);
-  if (!pri.size) return applyYields(q);
   const limitMs =
     (s.priorityPassLimitMinutes ?? GATE_DEFAULTS.priorityPassLimitMinutes) *
     60_000;
@@ -213,14 +243,22 @@ export function queueOrder(
     }
     q.splice(to, 0, p);
   }
-  return applyYields(q);
+  // Issue 795, below 715 and 803: a yield never passes a waiter that
+  // outranks the one moved, by priority (same kind) or by class.
+  const outranks = (w: GateEntry, m: GateEntry) =>
+    (pri.has(w.id) && !pri.has(m.id) && w.kind === m.kind) || rank(w) < rank(m);
+  return windowLast(applyYields(q, outranks), entries, s, now);
 }
 
 /**
  * Issue 795: each yield, oldest first, moves its waiting entry to just
- * ahead of the one that yielded, when it is still behind it.
+ * ahead of the one that yielded, when it is still behind it and no waiter
+ * between them outranks it (issue 803's classes, issue 715's priority).
  */
-function applyYields(q: GateEntry[]): GateEntry[] {
+function applyYields(
+  q: GateEntry[],
+  outranks: (w: GateEntry, moved: GateEntry) => boolean = () => false,
+): GateEntry[] {
   const moves = q
     .flatMap((e) => (e.yields ?? []).map((y) => ({ from: e.id, ...y })))
     .sort((a, b) => t(a.at) - t(b.at));
@@ -228,10 +266,26 @@ function applyYields(q: GateEntry[]): GateEntry[] {
     const at = q.findIndex((e) => e.id === m.from);
     const to = q.findIndex((e) => e.id === m.to);
     if (at < 0 || to <= at) continue;
+    if (q.slice(at + 1, to).some((w) => outranks(w, q[to]!))) continue;
     const [w] = q.splice(to, 1);
     q.splice(at, 0, w!);
   }
   return q;
+}
+
+/** Issue 803: the waiters a window holds back go last, in their order. */
+function windowLast(
+  q: GateEntry[],
+  entries: GateEntry[],
+  s: Partial<PrioritySettings>,
+  now: number,
+): GateEntry[] {
+  const held = windowHeld(entries, s.classes, now);
+  if (!held.size) return q;
+  return [
+    ...q.filter((e) => !held.has(e.id)),
+    ...q.filter((e) => held.has(e.id)),
+  ];
 }
 
 /** Issue 795: the waiting entries `e` let ahead of it, still waiting. */
@@ -268,10 +322,12 @@ export function grants(
 ): string[] {
   const holders = entries.filter((e) => e.grantedAt);
   const waiters = queueOrder(entries, s, now);
+  const held = windowHeld(entries, s.classes, now);
   const out: string[] = [];
   let browserHeld = holders.some((e) => e.kind === "browser");
   let cpuHeld = holders.filter((e) => e.kind === "cpu").length;
   for (const w of waiters) {
+    if (held.has(w.id)) continue; // issue 803: it waits for its window
     if (w.kind === "browser") {
       if (browserHeld || cpuHeld > 0) break;
       out.push(w.id);
@@ -355,7 +411,9 @@ export function expectedStart(
     ...entries.filter((e) => e.grantedAt).map(expectedEnd),
   );
   for (const w of ahead) free += w.estimateMin * 60_000;
-  return free;
+  // Issue 803: held for its window: not before the window opens.
+  const win = windowHeld(entries, s.classes, now).get(id);
+  return win ? Math.max(free, windowOpens(win, now)) : free;
 }
 
 /** Issue 714: an MCP slot granted while it waited, not claimed in time. */

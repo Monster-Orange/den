@@ -32,6 +32,7 @@ import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { windowHeld } from "./classes.js";
 import { queueOrder, type GateEntry, type GateSettings } from "./rules.js";
 
 export const BOX_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -262,12 +263,15 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
  * run that may go anywhere takes this machine first, then the first open
  * box with a free slot. A waiter that can't start keeps every slot it
  * waits for from the waiters behind it (first come, first served), and
- * leaves the others free.
+ * leaves the others free. Issue 803: a waiter its class's window holds
+ * back is passed over and holds no slot from the runs behind it.
  */
 export function assign(
   entries: GateEntry[],
   s: Pick<GateSettings, "cpuSlots"> &
-    Partial<Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes">>,
+    Partial<
+      Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes" | "classes">
+    >,
   now: number,
   boxes: BoxCap[] = [],
 ): { id: string; box?: string }[] {
@@ -288,7 +292,9 @@ export function assign(
     const b = cap(place);
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
+  const held = windowHeld(entries, s.classes, now);
   for (const w of queueOrder(entries, s, now)) {
+    if (held.has(w.id)) continue; // issue 803: it waits for its window
     const places = placesOf(w, boxes);
     const at = places.find((p) => free(p, w.kind));
     if (at === undefined) {
@@ -314,7 +320,9 @@ export function assign(
 export function boxesWanted(
   entries: GateEntry[],
   s: Pick<GateSettings, "cpuSlots"> &
-    Partial<Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes">>,
+    Partial<
+      Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes" | "classes">
+    >,
   now: number,
   boxes: BoxCap[],
 ): string[] {

@@ -84,10 +84,60 @@ back of the queue.
   is not a person's only, because it only moves your own place back.
 - Never a run that holds a slot. `--to` must name a waiting run behind
   yours.
+- A yield never moves a run past one that outranks it: a release-priority
+  run, or a run of a higher class (below), between yours and theirs stays
+  ahead, and the yield waits until it no longer passes one.
 - The slot log has a `yielded` row with both ids (`id`, `to`).
 - `gate status` (text and `--json`, `yieldedTo`) and the queue on the
   Agents page show it on your run's line until your run starts.
 - The MCP tool `gate_slot_yield` (`id`, `to`) does the same.
+
+## Priority classes per project
+
+Off by default: with no classes set, the queue is first come, exactly as
+above. A person sets three lines in Settings › Server, or with
+`den gate settings`:
+
+```sh
+den gate settings --class-order "release, lane, other" \
+  --class-map "den=lane, label:release*=release, *=other" \
+  --class-windows "other=22:00-06:00/30"
+```
+
+- `class_order`: the classes, highest first. Among waiting runs, a higher
+  class starts first. Within a class, first come. A run that holds a slot
+  is never taken back. A release-priority run (above) still goes first:
+  it moves ahead of waiting runs of any class.
+- `class_map`: each project's class. `<project>=<class>` names a project
+  (a `gate run`'s repo folder, or an agent's Den project over MCP).
+  `label:<pattern>=<class>` matches a run's label (`*` is any text), and
+  wins over the project. `*=<class>` is every other project. Without `*`,
+  the last class.
+- `class_windows` (optional): `<class>=HH:MM-HH:MM/<minutes>`, in the
+  machine's local time. Outside its window, a run of that class estimated
+  at least that many minutes waits while a run of a higher class holds or
+  waits. It waits at the back and blocks no one. With no higher-class run,
+  it starts at once. Without `/<minutes>`, every run of the class.
+- The class comes from these settings, never from the asker.
+- `gate status` (text and `--json`), the queue on the Agents page and the
+  slot log (`class` on each row) show each run's class, and a run waiting
+  for its window says so.
+
+`""` clears a line (`--class-order ""` turns classes off).
+
+## The order, all together
+
+1. A run that holds a slot is never taken back.
+2. A release-priority run (a person's, an agent's or a CI runner's) goes
+   first in its kind, past any class, but never past a run waiting longer
+   than `priority_pass_limit_minutes`.
+3. Then classes, highest first.
+4. Then yields: a run let ahead goes just ahead of the run that let it,
+   never past a run that outranks it by 2 or 3.
+5. Then first come.
+
+A run its class's window holds waits at the back and blocks no one. Test
+box slots and MCP leases apply to whichever run this order starts.
 
 ## A CI job in a runner VM
 

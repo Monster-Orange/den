@@ -960,6 +960,15 @@
       "エージェントのゲート枠: 見積もり後の猶予（分）",
     "set.server.gate_mcp_grace.d":
       "更新されない枠も、見積もりをこの時間過ぎるまでは保持されます。__DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_class_order": "順番のクラス(高い順)",
+    "set.server.gate_class_order.d":
+      "カンマ区切りで、たとえば release, lane, other。高いクラスの待機中の実行が先に始まり、同じクラスの中では先着順です。順番を持っている実行は止まりません。空なら全員が先着順です。__DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "プロジェクトごとの順番のクラス",
+    "set.server.gate_class_map.d":
+      "カンマ区切りで <プロジェクト>=<クラス>、label:<パターン>=<クラス>(* は任意の文字列)、その他のプロジェクトには *=<クラス>。* がなければ最後のクラスです。__DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "順番のクラスの時間帯",
+    "set.server.gate_class_windows.d":
+      "カンマ区切りで <クラス>=HH:MM-HH:MM/<分>、このマシンの時刻です。時間帯の外では、そのクラスで見込みがその分数以上の実行は、より高いクラスの実行が順番を持つか待つ間は待ちます。それがなければすぐに始まります。__DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
     "set.server.gate_runners": "CI ランナーのトークン",
     "set.server.gate_runners.d":
       "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",
@@ -2294,6 +2303,8 @@
     "gate.boxLow": "{box}: 空きメモリが少ないため飛ばします ({reason})",
     "gate.boxSkip": "{box} は使えません: {reason}",
     "gate.yielded": "{to} に先を譲りました",
+    "gate.class": "クラス: {name}",
+    "gate.window": "時間帯 {window} を待っています",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",

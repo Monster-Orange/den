@@ -10,6 +10,7 @@ import {
   yieldedTo,
 } from "./rules.js";
 import { boxSkipReason } from "./boxes.js";
+import { classOf, windowHeld } from "./classes.js";
 import type { GateStore } from "./store.js";
 
 export interface GateSlotView {
@@ -42,6 +43,10 @@ export interface GateSlotView {
   priority?: { reason: string; holds: boolean };
   /** Issue 795: waiting entries it let go just ahead of it, until it starts. */
   yieldedTo?: string[];
+  /** Issue 803: its class (from settings), when classes are set. */
+  class?: string;
+  /** Issue 803: held for its class's window ("22:00-06:00"). */
+  window?: string;
 }
 
 /**
@@ -88,6 +93,7 @@ export function gateView(store: GateStore, now = Date.now()) {
       .map((b) => ({ box: b.name, reason: boxSkipReason(e, b) }))
       .filter((x) => x.reason);
   };
+  const held = windowHeld(all, settings.classes, now);
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -106,6 +112,8 @@ export function gateView(store: GateStore, now = Date.now()) {
       ? { priority: { reason: e.priority.reason, holds: pri.has(e.id) } }
       : {}),
     ...(yieldedTo(e, all).length ? { yieldedTo: yieldedTo(e, all) } : {}),
+    ...(settings.classes ? { class: classOf(e, settings.classes) } : {}),
+    ...(held.has(e.id) ? { window: held.get(e.id)!.text } : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,

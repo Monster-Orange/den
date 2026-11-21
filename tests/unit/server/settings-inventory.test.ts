@@ -67,6 +67,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // Issue 625: test boxes' check and recheck.
     box_check_timeout_seconds: true,
     box_recheck_seconds: true,
+    // Issue 803: priority classes per project, and their windows.
+    class_order: true,
+    class_map: true,
+    class_windows: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -219,6 +223,9 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
         "gate_slots.claim_minutes",
+        "gate_slots.class_map",
+        "gate_slots.class_order",
+        "gate_slots.class_windows",
         "gate_slots.cpu_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",

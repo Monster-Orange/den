@@ -8,6 +8,7 @@
  * the working pop-up. Ending a slot frees it; the run itself is not
  * stopped. Issue 715: a release run with priority says so, and why. The queue is a dialog on the body, so Report finds it.
  * Issue 795: a waiting run that let another go ahead says which, until it starts.
+ * Issue 803: with classes set, each run's class, and a wait for its window.
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -94,6 +95,11 @@ export function startGateChip(o) {
       .map((id) => slots.find((x) => x.id === id)?.label ?? id)
       .join(", ");
     const yld = ylds ? t("gate.yielded", { to: ylds }) : "";
+    // Issue 803: its class (from settings), and a wait for its window.
+    const cls = s.class
+      ? t("gate.class", { name: s.class }) +
+        (s.window ? " · " + t("gate.window", { window: s.window }) : "")
+      : "";
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -107,6 +113,7 @@ export function startGateChip(o) {
       (pri ? '<div class="gate-pri">' + esc(pri) + "</div>" : "") +
       (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
       (yld ? '<div class="gate-pri">' + esc(yld) + "</div>" : "") +
+      (cls ? '<div class="gate-pri">' + esc(cls) + "</div>" : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"

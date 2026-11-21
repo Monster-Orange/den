@@ -501,6 +501,8 @@ const READ_TOOLS: DenTool[] = [
           agent: true,
           ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
           mcp: { install: ctx.install ?? path.resolve(getStateDir()) },
+          // Issue 803: the agent's project gives the class (settings).
+          ...(ctx.scope?.workspace ? { project: ctx.scope.workspace } : {}),
           ...(a.priority === "release" && reason
             ? { priority: { reason } }
             : {}),
