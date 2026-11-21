@@ -24,6 +24,7 @@
  */
 import { rankCommands } from "/topbar.js";
 import { timeHtml } from "/kit/time.js";
+import { buttonHtml } from "/kit/button.js";
 
 // Its words are the shell's catalog (shell.js MESSAGES, R19: the err.*
 // keys), so the page is in the page's language. "Copy details" is a
@@ -816,6 +817,118 @@ export function offerBlock(s, t, name) {
   );
 }
 
+/**
+ * `t(key, vars)` escaped: `{host}` in bold, `{setting}` and `{cmd}` as code
+ * (issue 868's lines name a setting and a command).
+ */
+function withMarks(t, key, vars) {
+  const v = { ...vars };
+  const marks = {};
+  for (const k of ["host", "setting", "cmd"])
+    if (k in v) {
+      marks[k] = v[k];
+      v[k] = `\u0001${k}\u0001`;
+    }
+  let out = esc(t(key, v));
+  for (const [k, val] of Object.entries(marks))
+    out = out
+      .split(`\u0001${k}\u0001`)
+      .join(
+        k === "host"
+          ? `<b>${esc(val)}</b>`
+          : `<code class="mono">${esc(val)}</code>`,
+      );
+  return out;
+}
+
+/**
+ * Issue 868: the ways in this install has set up, each with whether it is
+ * set up here: Sign in with GitHub, asking from this device (a signed-in
+ * browser types the code; issue 819), and a link from a terminal on the
+ * host. From another computer with none that works, it says so plainly,
+ * and the fix. Pure (a string), for tests; "" when the server sent none.
+ */
+export function methodsBlock(s, t) {
+  const m = s && s.methods;
+  if (!m) return "";
+  const name = s.name || "Den";
+  const host = s.machine || "";
+  const v = { name, host, setting: m.setting, cmd: m.terminal };
+  const state = (
+    ok,
+    key = ok ? "err.signin.methods.ready" : "err.signin.methods.notReady",
+  ) =>
+    `<span class="den-method-state${ok ? " ok" : ""}">${withMarks(t, key, v)}</span>`;
+  const row = (id, ok, title, status, body) =>
+    `<li data-method="${id}" data-ready="${ok ? "1" : "0"}">` +
+    `<div class="den-method-head"><b>${esc(title)}</b> ${status}</div>` +
+    body +
+    `</li>`;
+  const gh = m.github === "ready";
+  const github = row(
+    "github",
+    gh,
+    t("err.signin.methods.github"),
+    state(gh),
+    `<p>${withMarks(
+      t,
+      gh
+        ? "err.signin.methods.githubReady"
+        : m.github === "no_client_id"
+          ? "err.signin.methods.githubNoClient"
+          : "err.signin.methods.githubNoOwner",
+      v,
+    )}</p>`,
+  );
+  const pair = row(
+    "pair",
+    m.browser,
+    t("err.signin.methods.pair"),
+    state(m.browser),
+    `<p>${withMarks(
+      t,
+      m.browser
+        ? "err.signin.methods.pairReady"
+        : "err.signin.methods.pairNone",
+      v,
+    )}</p>` +
+      (m.browser
+        ? `<div class="acts" style="margin-top:0">${buttonHtml({
+            label: t("err.signin.methods.ask"),
+            href: "#den-pair",
+            id: "den-signin-ask",
+            size: "sm",
+          })}</div>`
+        : ""),
+  );
+  const terminal = row(
+    "terminal",
+    !m.remote,
+    t("err.signin.methods.terminal", { host }),
+    state(!m.remote, m.remote ? "err.signin.methods.hostOnly" : undefined),
+    `<p>${withMarks(t, "err.signin.methods.terminalHow", v)}</p>`,
+  );
+  const fix = m.stuck
+    ? `<p class="lead" role="alert" id="den-signin-stuck">${withMarks(t, "err.signin.methods.stuck", v)}</p>` +
+      `<p id="den-signin-fix">${withMarks(
+        t,
+        m.github === "no_client_id"
+          ? "err.signin.methods.fixClient"
+          : "err.signin.methods.fixOwner",
+        { ...v, cmd: (s.github && s.github.owner) || m.terminal },
+      )}` +
+      (m.firstRun ? ` ${withMarks(t, "err.signin.methods.fixFirst", v)}` : "") +
+      `</p>`
+    : "";
+  return (
+    `<div id="den-signin-methods">` +
+    fix +
+    `<h2 class="den-h" id="den-methods-title">${esc(t("err.signin.methods.title", { name }))}</h2>` +
+    `<ul class="den-methods">${github}${pair}${terminal}</ul>` +
+    `</div>`
+  );
+}
+
 /** Where a sign-in lands instead of its own next (issue 666's offer). */
 let landingOverride = null;
 
@@ -932,6 +1045,7 @@ function mountSignedOut(root, sh, d) {
     (s.expired
       ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`
       : "") +
+    methodsBlock(s, t) +
     claim +
     // D17: with the claim first, "from another computer" may not be true.
     (claim

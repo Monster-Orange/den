@@ -839,6 +839,35 @@
       "Este enlace ya no funciona. En {host}, ejecuta web login de nuevo para obtener uno nuevo.",
     "err.signin.confirmWhy":
       "El enlace solo no basta: también hace falta el código que se muestra en {host}, así que alguien que vea el enlace no puede iniciar sesión.",
+    // Issue 868: the ways in this install has, on the signed-out page.
+    "err.signin.methods.title": "Formas de iniciar sesión en {name}",
+    "err.signin.methods.ready": "Configurado aquí",
+    "err.signin.methods.notReady": "No configurado aquí",
+    "err.signin.methods.hostOnly": "Solo en {host}",
+    "err.signin.methods.github": "Iniciar sesión con GitHub",
+    "err.signin.methods.githubReady":
+      "Usa Iniciar sesión con GitHub más abajo, desde cualquier ordenador.",
+    "err.signin.methods.githubNoClient":
+      "No hay ningún id de cliente de GitHub App ({setting}). El agente de {name} puede configurarlo cuando una persona permita el cambio.",
+    "err.signin.methods.githubNoOwner":
+      "Aún no hay ningún propietario vinculado en GitHub, así que nadie puede usarlo desde otro ordenador.",
+    "err.signin.methods.pair": "Pedir iniciar sesión desde este dispositivo",
+    "err.signin.methods.pairReady":
+      "Un navegador que ya inició sesión en {name} aprueba este escribiendo el código que muestra esta página.",
+    "err.signin.methods.pairNone":
+      "Aún no hay ningún navegador con sesión iniciada en {name}, así que nadie puede aprobar este.",
+    "err.signin.methods.ask": "Pedir iniciar sesión",
+    "err.signin.methods.terminal": "Un enlace desde una terminal en {host}",
+    "err.signin.methods.terminalHow":
+      "Ejecuta {cmd} en una terminal en {host} y abre el enlace que imprime.",
+    "err.signin.methods.stuck":
+      "Aún no se puede iniciar sesión en {name} desde otro ordenador. Iniciar sesión con GitHub no está configurado, y no hay ningún navegador con sesión iniciada en {name} que apruebe este.",
+    "err.signin.methods.fixClient":
+      "Para arreglarlo, pon en {setting} un id de cliente de GitHub App: pide al agente de {name} que haga el cambio, y una persona lo permite. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.fixOwner":
+      "Para arreglarlo, vincula al propietario en GitHub: en {host}, ejecuta {cmd}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.fixFirst":
+      "O termina el primer inicio de sesión en el propio {host}: después ese navegador puede aprobar este.",
     "err.signin.firstRunHere":
       "{name} aún no está configurado. Termina su primer inicio de sesión en el propio {host}: abre allí el enlace de configuración, o ejecuta web login en tu propia terminal allí.",
     "err.signin.tooManyRequests":

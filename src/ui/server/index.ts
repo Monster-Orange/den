@@ -472,6 +472,7 @@ import {
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
 import { FirstRun } from "./first-run.js";
+import { signinMethods } from "./signin-methods.js";
 import { ownerNameFromGithub } from "../../shared/owner-github.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
 import { DeviceFlows, type Decide } from "./device-flows.js";
@@ -2638,6 +2639,17 @@ function sendSignedOut(
   const ssh = sshTargetOf(req);
   const user = sshUserNow();
   const gh = githubSignin();
+  // Issue 868: from another computer? The request checks' own answer
+  // (the edge's attested client), else the peer.
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const remote = g.beyond ?? !isLoopbackAddress(req.socket?.remoteAddress);
+  const methods = signinMethods({
+    github: gh,
+    signedInBrowser: personBrowserSignedIn(),
+    remote,
+    firstRun: !FIRST_RUN.done(),
+    terminal: cmd,
+  });
   res.setHeader("Cache-Control", "no-store");
   sendErrorPage(req, res, {
     status: 401,
@@ -2685,6 +2697,7 @@ function sendSignedOut(
               : {}
           : { message: noClientIdMessage(product().cli) }),
       },
+      methods,
       ...(opts.expired ? { expired: true } : {}),
       ...(opts.pair ? { pair: opts.pair } : {}),
       ...(opts.pairLead ? { pairLead: opts.pairLead } : {}),
@@ -3434,6 +3447,23 @@ const PERSON_VIAS: ReadonlySet<string> = new Set([
   "code",
   "link",
 ]);
+
+/**
+ * Issue 868: whether a person's browser is signed in here and could
+ * approve a new device (it holds an approval key; never the fixture
+ * person). Once Den's own address works, only a session made there counts.
+ */
+function personBrowserSignedIn(): boolean {
+  const named = NAMED.works();
+  return webSessions
+    .list()
+    .some(
+      (s) =>
+        (s.via === undefined || PERSON_VIAS.has(s.via)) &&
+        !!s.approveKeyHash &&
+        (!named || s.secure === true),
+    );
+}
 
 /**
  * Issue 819: why this request may not approve or deny a waiting device, or
