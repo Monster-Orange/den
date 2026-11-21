@@ -23,6 +23,9 @@ const hex = () =>
     b.toString(16).padStart(2, "0"),
   ).join("");
 
+// Read only (issue 845): reads the identity route, /api/edge/address, doctor, `edge route` and the Edge page.
+export const readOnly = true;
+
 export async function setup(ctx) {
   const s = {};
   // The identity route: a challenge gets a 64-hex answer; a non-challenge is refused.
