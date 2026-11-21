@@ -118,6 +118,7 @@ import { makeComposer } from "/agent-composer.js";
 import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
 import {
   attnSub,
+  bandGroup,
   bandsOf,
   chipHtml,
   markHtml,
@@ -1045,6 +1046,7 @@ function rowHtml(r) {
     ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
     ` data-attn="${attn}"` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + ` · ${t(`ag.chip.${attn}`)}` + (said ? ` · ${said}` : ""))}">` +
+    gripHtml(r) +
     markHtml(attn) +
     `<span class="nm">${nm}</span>${right}` +
     (chip
@@ -3244,17 +3246,29 @@ const agentPath = (r, verb) =>
 
 // ── Issue 96: a project's agents in the person's order ─────────────────
 // A grip and a pointer drag (mouse, pen and touch), ⋯ Move up, Move down
-// and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in
-// the project's header (Up and Down per row, then Done). A row moves
-// inside its group (agent-order.js); the server stores the order in the
-// person's user config and every list follows.
+// and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder for
+// the Stopped group. A row moves inside its group (agent-order.js; issue
+// 773: a running one inside its band, among its project's agents); the
+// server stores the order in the person's user config and every list
+// follows. The bands still set the order between bands.
 
-/** The agent ids of r's group, as the list shows them. */
-const groupOf = (r) => orderGroup(st.data?.sessions ?? [], r, inStopped);
+/**
+ * The agent ids of r's group, as the list shows them. Issue 773: a running
+ * agent moves among its project's agents in its band (the bands set the
+ * order between bands); a stopped one in the Stopped group, as before.
+ */
+const groupOf = (r) =>
+  inStopped(r)
+    ? orderGroup(st.data?.sessions ?? [], r, inStopped)
+    : bandGroup(
+        (st.data?.sessions ?? []).filter((s) => !inStopped(s)),
+        r,
+        { seenNow: seenMap() },
+      );
 
 /** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
 const gripHtml = (r) =>
-  orderable(r, SERVER_WS) && inStopped(r)
+  orderable(r, SERVER_WS)
     ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
     : "";
 
@@ -3285,9 +3299,7 @@ function orderRowHtml(html, r, on) {
 
 /** ⋯'s Move up, Move down and Move to top, those that can move it. */
 function orderItems(r, focusRow) {
-  // Issue 773: running agents are in the bands' order; only the Stopped
-  // group keeps the person's.
-  if (!orderable(r, SERVER_WS) || !inStopped(r)) return [];
+  if (!orderable(r, SERVER_WS)) return [];
   const ids = groupOf(r);
   return [
     ["up", "ag.ord.up"],
@@ -3357,6 +3369,12 @@ function showMoved(r, to) {
   const rest = all.filter((s) => s !== r);
   const at = rest.indexOf(other) + (to.after ? 1 : 0);
   st.data.sessions = [...rest.slice(0, at), r, ...rest.slice(at)];
+  // Issue 773: the bands follow each agent's place; the server stores the
+  // project's whole order on a move, so every agent of it has one now.
+  let n = 0;
+  for (const s of st.data.sessions)
+    if (s.kind === "agent" && s.agent && s.workspace === r.workspace)
+      s.place = n++;
   paintList();
 }
 
@@ -3402,7 +3420,9 @@ function wireOrder(agl) {
       !over ||
       over.kind !== "agent" ||
       over.workspace !== r.workspace ||
-      inStopped(over) !== inStopped(r)
+      inStopped(over) !== inStopped(r) ||
+      // Issue 773: a running row drops inside its own band only.
+      !groupOf(r).includes(over.agent)
     )
       return null;
     const box = b.getBoundingClientRect();

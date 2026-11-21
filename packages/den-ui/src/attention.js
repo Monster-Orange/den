@@ -15,7 +15,9 @@
  *   attentionTable(override?)    the table, with a person's override
  *   attentionState({needs, working, done})
  *   compareAttention(a, b, table?), sortByAttention(items, table?)
- *     items: { state, since?, name?, id? } (since: an ISO time)
+ *     items: { state, since?, name?, id?, group?, place? } (since: an ISO
+ *     time; group and place: the person's own order, issue 96)
+ *   inPersonOrder(sorted)        the person's order inside each band
  *   attentionCounts(items, table?)  { needs, done, working, idle, rail, bell }
  */
 
@@ -118,9 +120,43 @@ export function compareAttention(a, b, table = ATTENTION_TABLE) {
   return byName(a, b) || byId(a, b);
 }
 
-/** A sorted copy of `items` (compareAttention). */
+/**
+ * A sorted copy of `items`: compareAttention, then the person's own order
+ * inside each band (inPersonOrder).
+ */
 export function sortByAttention(items, table = ATTENTION_TABLE) {
-  return [...(items ?? [])].sort((a, b) => compareAttention(a, b, table));
+  return inPersonOrder(
+    [...(items ?? [])].sort((a, b) => compareAttention(a, b, table)),
+  );
+}
+
+const placed = (i) =>
+  typeof i.place === "number" && Number.isFinite(i.place) && i.group != null;
+
+/**
+ * Issue 96: the person's order holds inside a band. In each band of
+ * `sorted` (by state), the slots held by one group's placed items (those
+ * with a `place` in their `group`, a project) are filled by those items in
+ * the person's order. Other groups' items, and unplaced ones, keep their
+ * slots, and the bands keep their order.
+ */
+export function inPersonOrder(sorted) {
+  const out = [...sorted];
+  const slots = new Map();
+  sorted.forEach((i, n) => {
+    if (!placed(i)) return;
+    const k = `${i.state}\0${i.group}`;
+    const at = slots.get(k) ?? [];
+    at.push(n);
+    slots.set(k, at);
+  });
+  for (const at of slots.values()) {
+    const mine = at
+      .map((n) => sorted[n])
+      .sort((a, b) => a.place - b.place || byName(a, b) || byId(a, b));
+    at.forEach((n, j) => (out[n] = mine[j]));
+  }
+  return out;
 }
 
 /** How many of each state, and the rail's and the bell's counts. */

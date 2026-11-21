@@ -204,3 +204,29 @@ describe("issue 773 Counts: the sub-line and the rail", () => {
     ).toBe(1);
   });
 });
+
+describe("issue 773 + issue 96: the person's drag order inside a band", () => {
+  it("a project's dragged order holds inside each band; bands still come first", async () => {
+    const { bandsOf } = await mod();
+    const b = bandsOf([
+      ag("alpha", "idle", { place: 2 }),
+      ag("zeta", "idle", { place: 0 }),
+      ag("planner", "needs", { attnSince: T(3), place: 3 }),
+      ag("mid", "idle", { place: 1 }),
+    ]);
+    expect(b.map((x) => x.state)).toEqual(["needs", "idle"]);
+    expect(b[1].rows.map((r) => r.agent)).toEqual(["zeta", "mid", "alpha"]);
+  });
+
+  it("bandGroup: the ids a running row moves among: its project, its band, as shown", async () => {
+    const { bandGroup } = await mod();
+    const rows = [
+      ag("alpha", "idle", { place: 1 }),
+      ag("zeta", "idle", { place: 0 }),
+      ag("other", "idle", { workspace: "south" }),
+      ag("planner", "needs", { attnSince: T(3) }),
+    ];
+    expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
+    expect(bandGroup(rows, rows[3])).toEqual(["planner"]);
+  });
+});

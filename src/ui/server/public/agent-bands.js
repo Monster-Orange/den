@@ -8,7 +8,11 @@
  * in their own group, outside the bands.
  *
  *   rowState(r, seenNow?)    a row's state; Done opened just now is Idle
- *   bandsOf(rows, {seenNow}) [{ state, rows }], only the bands with rows
+ *   bandsOf(rows, {seenNow}) [{ state, rows }], only the bands with rows;
+ *                            inside a band the person's order holds (issue
+ *                            96: each row's `place` in its project)
+ *   bandGroup(rows, r, {seenNow})  the agent ids r moves among by drag or
+ *                            Move up/down: its project's, in its band
  *   markHtml(state)          the mark: !, a tick, a halo, a ring
  *   chipHtml(r, seenNow?)    the chip: "Needs you · permission", "Done", …
  *   tagHtml(r, {all, name})  the project tag (All projects), "Server"
@@ -64,6 +68,8 @@ export function bandsOf(rows, { seenNow } = {}) {
     since: r.attnSince,
     name: sortName(r),
     id: r.id,
+    group: r.workspace,
+    ...(typeof r.place === "number" ? { place: r.place } : {}),
     r,
   }));
   const sorted = sortByAttention(items);
@@ -71,6 +77,19 @@ export function bandsOf(rows, { seenNow } = {}) {
     state,
     rows: sorted.filter((i) => i.state === state).map((i) => i.r),
   })).filter((b) => b.rows.length > 0);
+}
+
+/**
+ * Issue 96: the agent ids a running row moves among: the agents of its
+ * project in its band, as the band shows them.
+ */
+export function bandGroup(rows, r, { seenNow } = {}) {
+  if (!r || r.kind !== "agent" || !r.agent) return [];
+  const state = rowState(r, seenNow);
+  const band = bandsOf(rows, { seenNow }).find((b) => b.state === state);
+  return (band?.rows ?? [])
+    .filter((s) => s.kind === "agent" && s.agent && s.workspace === r.workspace)
+    .map((s) => s.agent);
 }
 
 const MARK = {

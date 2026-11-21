@@ -144,3 +144,69 @@ describe("issue 773: Order", () => {
     expect(compareAttention(a, a)).toBe(0);
   });
 });
+
+describe("issue 773 + issue 96: the person's order inside a band", () => {
+  it("a person's order (place) holds inside a band; the bands still set the order between bands", () => {
+    const items = [
+      // The person put zeta before alpha in project north.
+      { id: "a", name: "alpha", state: "idle", group: "north", place: 1 },
+      { id: "z", name: "zeta", state: "idle", group: "north", place: 0 },
+      {
+        id: "n",
+        name: "needy",
+        state: "needs",
+        since: T(5),
+        group: "north",
+        place: 2,
+      },
+      { id: "w", name: "worker", state: "working", group: "north", place: 3 },
+    ];
+    expect(sortByAttention(items).map((i) => i.id)).toEqual([
+      "n",
+      "w",
+      "z",
+      "a",
+    ]);
+  });
+
+  it("overrides the band's own order in Needs you too (the longest wait no longer first)", () => {
+    const items = [
+      {
+        id: "old",
+        name: "old",
+        state: "needs",
+        since: T(1),
+        group: "north",
+        place: 1,
+      },
+      {
+        id: "new",
+        name: "new",
+        state: "needs",
+        since: T(9),
+        group: "north",
+        place: 0,
+      },
+    ];
+    expect(sortByAttention(items).map((i) => i.id)).toEqual(["new", "old"]);
+  });
+
+  it("only one project's placed rows trade slots; other projects and unplaced rows keep theirs", () => {
+    const items = [
+      { id: "b", name: "b", state: "idle", group: "north", place: 0 },
+      { id: "c", name: "c", state: "idle", group: "south" },
+      { id: "d", name: "d", state: "idle", group: "north" },
+      { id: "e", name: "e", state: "idle", group: "south", place: 0 },
+      { id: "a", name: "a", state: "idle", group: "north", place: 1 },
+    ];
+    // Band order A to Z: a b c d e. North's placed rows (a, b) hold slots
+    // 1 and 2 and take the person's order b, a; c, d, e stay.
+    expect(sortByAttention(items).map((i) => i.id)).toEqual([
+      "b",
+      "a",
+      "c",
+      "d",
+      "e",
+    ]);
+  });
+});

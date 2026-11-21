@@ -18,11 +18,11 @@
  *      44 px Up and Down on each stopped agent that can move; a stopped
  *      agent moves, and the order holds through a reload.
  *
- * Issue 773 (approved mock): running agents are in the four bands, in
- * the bands' order (A to Z in Working and Idle; same input, same order),
- * so 1-3 no longer apply to them: no grip, no Alt+arrow move, and a saved
- * order doesn't change the bands. The Stopped group keeps the person's
- * order (4).
+ * Issue 773 (approved mock): running agents are in the four bands. The
+ * bands set the order between bands; inside a band the person's order
+ * holds: a drag by the grip, or Alt+arrow, moves a row among its
+ * project's agents in its band, and a reload keeps it. The Stopped group
+ * keeps the person's order (4).
  *
  * The demo distribution with a session host in this process and a
  * scripted PTY: nothing really runs. DEN_PW_WS connects to a running
@@ -165,6 +165,27 @@ async function order(p: Page): Promise<string[]> {
   return ids.map((x) => by[x] ?? x);
 }
 
+/** A mouse drag of row `from` by its grip onto `to`'s upper half. */
+async function mouseDrag(p: Page, from: string, to: string): Promise<void> {
+  await p.hover(row(from));
+  const g = (await p.locator(`${row(from)} .agrip`).boundingBox())!;
+  const t = (await p.locator(row(to)).boundingBox())!;
+  await p.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(g.x + g.width / 2, g.y + g.height / 2 + 8, { steps: 2 });
+  await p.mouse.move(t.x + 40, t.y + t.height / 4, { steps: 6 });
+  await p.mouse.up();
+}
+
+/** Waits until north's running agents show `want` (a poll may lag). */
+async function until(p: Page, want: string[]): Promise<void> {
+  for (let i = 0; i < 60; i++) {
+    if (JSON.stringify(await order(p)) === JSON.stringify(want)) return;
+    await p.waitForTimeout(100);
+  }
+  expect(await order(p)).toEqual(want);
+}
+
 /**
  * `act`, a move, to its end: the server has answered its POST (it writes
  * the person's user config first), and the page has shown the list from
@@ -202,26 +223,40 @@ describe.each(ENGINES)(
   (engine) => {
     const skip = () => !browsers[engine] || !s;
 
-    it("issue 773: running agents are in the bands' order (A to Z when Idle), with no grip; a saved order doesn't change it", async () => {
+    it("issue 773 + issue 96: inside a band your drag order holds; Alt+↑ moves one; a reload keeps it", async () => {
       if (skip()) return;
       resetOrder();
-      const u = userYml();
-      u.agents = { ...(u.agents ?? {}), order: { north: ["cy", "ada", "bo"] } };
-      fs.writeFileSync(userFile(), stringifyYaml(u));
       const p = await open(engine);
-      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
-      expect(await p.locator("#agl .agband .agrip").count()).toBe(0);
-      // Alt+↑ moves nothing: the order is the rule's.
-      await p.locator(row(sid.cy)).focus();
-      await p.keyboard.press("Alt+ArrowUp");
-      await p.waitForTimeout(300);
-      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
-      // No phone Reorder on the bands either.
-      await p.setViewportSize({ width: 375, height: 800 });
-      await p.waitForTimeout(200);
-      expect(await p.locator('#agl .agband [data-act="reorder"]').count()).toBe(
-        0,
-      );
+      // No order saved: the Idle band's own order, A to Z.
+      await until(p, ["ada", "bo", "cy"]);
+      // Every row of the band has its grip, with an accessible name.
+      expect(await p.locator("#agl .agband .agrip").count()).toBe(3);
+      expect(
+        await p.locator(`${row(sid.cy)} .agrip`).getAttribute("aria-label"),
+      ).toBeTruthy();
+      // Dragged onto ada's upper half: cy goes before ada.
+      await moved(p, () => mouseDrag(p, sid.cy, sid.ada));
+      await until(p, ["cy", "ada", "bo"]);
+      const north = userYml().agents?.order?.north ?? [];
+      expect(north.indexOf("cy")).toBeLessThan(north.indexOf("ada"));
+      // Alt+↑ on bo: one up, focus stays on it.
+      await p.locator(row(sid.bo)).focus();
+      await moved(p, () => p.keyboard.press("Alt+ArrowUp"));
+      await until(p, ["cy", "bo", "ada"]);
+      expect(
+        await p.evaluate(
+          () => (document.activeElement as HTMLElement | null)?.dataset.id,
+        ),
+      ).toBe(sid.bo);
+      // The bands are still the bands: one, Idle.
+      expect(
+        await p.$$eval("#agl .agband", (bs) =>
+          bs.map((b) => (b as HTMLElement).dataset.band),
+        ),
+      ).toEqual(["idle"]);
+      await p.reload();
+      await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
+      await until(p, ["cy", "bo", "ada"]);
       resetOrder();
       await p.context().close();
     }, 60_000);
