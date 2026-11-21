@@ -176,7 +176,7 @@ function standing(store: GateStore, e: GateEntry): Record<string, unknown> {
       ? { expected_end: new Date(expectedEnd(now)).toISOString() }
       : {
           expected_start: new Date(
-            expectedStart(all, now.id, Date.now()),
+            expectedStart(all, now.id, Date.now(), s),
           ).toISOString(),
         }),
     ...(now.remote ? { lease_until: now.remote.leaseUntil } : {}),

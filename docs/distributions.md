@@ -5607,9 +5607,12 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 <cli> gate settings --cpu-slots 3
 ```
 
-- A `browser` run holds the machine alone. `cpu` runs share it, up to
-  `cpu_slots` (default 2), never beside a browser run. First come, first
-  served: a waiting browser run stops new cpu grants, so it can't starve.
+- `cpu` runs share the machine, up to `cpu_slots` (default 2). Browser and
+  cpu runs wait in separate lines, first come within each. Up to
+  `cpu_slots_beside_browser` (default 2) cpu runs run beside a `browser`
+  run; at 0 a browser run holds the machine alone. A browser run waiting
+  for cpu runs to drop to that number stops new cpu grants past it, so it
+  can't starve.
 - Nothing is pre-empted. A later run only waits, and says each minute who
   holds the slot and when it should end. A live holder keeps its slot
   however long it runs.

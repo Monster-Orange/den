@@ -1,18 +1,24 @@
 /**
  * Issue 144 GATE-SLOT: who may run a heavy test now.
  *
- * One machine runs gates for many repos and installs. Browser suites hold
- * the machine alone; cpu runs (unit suites) share up to `cpuSlots`, never
- * beside a browser run. First come, first served: a waiter never jumps the
- * one ahead of it, so a waiting browser run stops new cpu grants and can't
- * starve. Nothing is ever pre-empted: a later ask only waits, and a live
+ * One machine runs gates for many repos and installs. cpu runs (unit
+ * suites) share up to `cpuSlots`. Issue 751: browser and cpu runs wait in
+ * separate lines, first come within each, so a cpu waiter is never behind
+ * a browser waiter, nor a browser waiter behind a cpu waiter. Up to
+ * `cpuSlotsBesideBrowser` cpu runs may run beside a browser run on this
+ * machine (a browser run on a test box is not this machine's); at 0 a
+ * browser run runs alone. A browser waiter can't be starved: while one
+ * waits for cpu runs to drop to that number, no further cpu run starts
+ * past it. Nothing is ever pre-empted: a later ask only waits, and a live
  * holder keeps its slot however long it runs (past its estimate it is
  * flagged, never stopped).
  *
  * Issue 715: a release run a person waits on (`gate run --priority
  * release --reason <why>`) goes to the front of its kind's queue. It never
- * passes a holder (nothing is pre-empted), nor a waiter that has waited
- * past `priorityPassLimitMinutes`. At most `priorityMax` such runs per kind
+ * passes a holder (nothing is pre-empted). Issue 751: it passes every plain
+ * waiter of its kind, however long it has waited; `priorityPassLimitMinutes`
+ * applies only between marked runs (a marked run that has waited past it
+ * is never passed; 0: none is). At most `priorityMax` such runs per kind
  * hold priority at a time (the first asked); a later one waits in line as
  * an ordinary run until the one ahead starts, then takes priority. The
  * store records each jump (who, why, what it passed).
@@ -129,6 +135,11 @@ export interface GateEntry {
 export interface GateSettings {
   /** cpu runs that may share the machine (its load budget). */
   cpuSlots: number;
+  /**
+   * Issue 751: cpu runs that may run beside a browser run on this machine
+   * (never more than cpuSlots). 0: a browser run runs alone.
+   */
+  cpuSlotsBesideBrowser: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
   /** Issue 621: how often a runner renews its lease, seconds (it is told). */
@@ -141,7 +152,10 @@ export interface GateSettings {
   remoteMaxAsks: number;
   /** Issue 715: marked release runs per kind that hold priority at once. */
   priorityMax: number;
-  /** Issue 715: a waiter that has waited this long is never passed again. */
+  /**
+   * Issue 715, 751: a marked release run that has waited this long is never
+   * passed by another (0: none is). Plain waiters are always passed.
+   */
   priorityPassLimitMinutes: number;
   /** Issue 715: agents may ask for priority (else people only). */
   priorityAgents: boolean;
@@ -170,13 +184,14 @@ export interface GateSettings {
 
 export const GATE_DEFAULTS: GateSettings = {
   cpuSlots: 2,
+  cpuSlotsBesideBrowser: 2,
   overrunMarginMinutes: 15,
   remoteRenewSeconds: 30,
   remoteLapseSeconds: 120,
   remoteMaxSlots: 4,
   remoteMaxAsks: 4,
   priorityMax: 1,
-  priorityPassLimitMinutes: 60,
+  priorityPassLimitMinutes: 0,
   priorityAgents: true,
   priorityRunners: true,
   claimMinutes: 3,
@@ -197,6 +212,51 @@ type PrioritySettings = Pick<
   GateSettings,
   "priorityMax" | "priorityPassLimitMinutes" | "classes"
 >;
+
+/** What the queue's order and guesses read (issue 751 adds the beside count). */
+type QueueSettings = PrioritySettings &
+  Pick<GateSettings, "cpuSlotsBesideBrowser">;
+
+/** Issue 751: cpu runs that may run beside a browser run here. */
+function besideOf(s: Partial<QueueSettings>): number {
+  const n = s.cpuSlotsBesideBrowser ?? GATE_DEFAULTS.cpuSlotsBesideBrowser;
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
+/**
+ * Issue 751: this machine's room, as one assignment fills it. A browser run
+ * starts when no browser run holds here and at most the beside count of
+ * cpu runs do; a cpu run starts while fewer than cpuSlots hold, or fewer
+ * than the beside count while a browser run holds here. A browser waiter
+ * kept out only by cpu runs (`wait`) caps later cpu grants at the beside
+ * count, so the cpu runs drain to it and the browser run starts.
+ */
+export function localRoom(
+  entries: GateEntry[],
+  s: Pick<GateSettings, "cpuSlots"> & Partial<QueueSettings>,
+) {
+  const holders = entries.filter((e) => e.grantedAt);
+  // Issue 625: a browser run on a test box doesn't hold this machine.
+  let browser = holders.some((e) => e.kind === "browser" && !e.box);
+  let cpu = holders.filter((e) => e.kind === "cpu").length;
+  let draining = false;
+  const beside = besideOf(s);
+  const slots = Math.max(1, Math.floor(s.cpuSlots));
+  return {
+    fits(kind: GateKind): boolean {
+      if (kind === "browser") return !browser && cpu <= beside;
+      return cpu < (browser || draining ? Math.min(slots, beside) : slots);
+    },
+    take(kind: GateKind): void {
+      if (kind === "browser") browser = true;
+      else cpu++;
+    },
+    /** A waiter of `kind` that wanted this machine and could not start. */
+    wait(kind: GateKind): void {
+      if (kind === "browser" && !browser) draining = true;
+    },
+  };
+}
 
 /**
  * Issue 715: the marked waiters that hold priority now: per kind, the
@@ -225,12 +285,14 @@ export function priorityIds(
 /**
  * The waiters in the order they start: by class (issue 803), then by
  * ask, except that a run holding priority (issue 715) goes ahead of its
- * kind's other waiters, of any class, never ahead of one that has waited
- * past the pass limit. Then yields (issue 795); a window's hold last.
+ * kind's other waiters, of any class: every plain one, and a marked one
+ * only while it has waited less than the pass limit (issue 751). Then
+ * yields (issue 795); a window's hold last. Each kind is its own line
+ * (issue 751): read a waiter's place among its own kind (queuePlace).
  */
 export function queueOrder(
   entries: GateEntry[],
-  s: Partial<PrioritySettings> = GATE_DEFAULTS,
+  s: Partial<QueueSettings> = GATE_DEFAULTS,
   now: number = Date.now(),
 ): GateEntry[] {
   const c = s.classes;
@@ -249,7 +311,9 @@ export function queueOrder(
     for (let i = from - 1; i >= 0; i--) {
       const w = q[i]!;
       if (w.kind !== p.kind) continue;
-      if (pri.has(w.id) || now - t(w.askedAt) > limitMs) break;
+      if (pri.has(w.id)) break;
+      // Issue 751: the limit guards marked runs only; at 0, all of them.
+      if (w.priority && (limitMs <= 0 || now - t(w.askedAt) > limitMs)) break;
       to = i;
     }
     q.splice(to, 0, p);
@@ -325,29 +389,30 @@ export function passedBy(
     .map((w) => w.id);
 }
 
-/** Which waiters may start now, in order. */
+/**
+ * Which waiters may start now on this machine, in order. Issue 751: each
+ * kind's line on its own; a waiter that can't start holds back only its
+ * own kind (and, as a browser run, cpu runs past the beside count).
+ */
 export function grants(
   entries: GateEntry[],
-  s: Pick<GateSettings, "cpuSlots"> & Partial<PrioritySettings>,
+  s: Pick<GateSettings, "cpuSlots"> & Partial<QueueSettings>,
   now: number = Date.now(),
 ): string[] {
-  const holders = entries.filter((e) => e.grantedAt);
-  const waiters = queueOrder(entries, s, now);
+  const room = localRoom(entries, s);
   const held = windowHeld(entries, s.classes, now);
   const out: string[] = [];
-  let browserHeld = holders.some((e) => e.kind === "browser");
-  let cpuHeld = holders.filter((e) => e.kind === "cpu").length;
-  for (const w of waiters) {
+  const stopped = new Set<GateKind>();
+  for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
-    if (w.kind === "browser") {
-      if (browserHeld || cpuHeld > 0) break;
-      out.push(w.id);
-      browserHeld = true;
+    if (stopped.has(w.kind)) continue;
+    if (!room.fits(w.kind)) {
+      room.wait(w.kind);
+      stopped.add(w.kind);
       continue;
     }
-    if (browserHeld || cpuHeld >= Math.max(1, s.cpuSlots)) break;
+    room.take(w.kind);
     out.push(w.id);
-    cpuHeld++;
   }
   return out;
 }
@@ -367,17 +432,20 @@ export function lapsed(e: GateEntry, now: number): boolean {
   return !!e.remote && !(Date.parse(e.remote.leaseUntil) > now);
 }
 
-/** 0 for a holder; a waiter's place in line (1 is next); -1 if absent. */
+/**
+ * 0 for a holder; a waiter's place in its kind's line (1 is next; issue
+ * 751); -1 if absent.
+ */
 export function queuePlace(
   entries: GateEntry[],
   id: string,
-  s: Partial<PrioritySettings> = GATE_DEFAULTS,
+  s: Partial<QueueSettings> = GATE_DEFAULTS,
   now: number = Date.now(),
 ): number {
   const e = entries.find((x) => x.id === id);
   if (!e) return -1;
   if (e.grantedAt) return 0;
-  const queue = queueOrder(entries, s, now);
+  const queue = queueOrder(entries, s, now).filter((x) => x.kind === e.kind);
   return queue.findIndex((x) => x.id === id) + 1;
 }
 
@@ -402,14 +470,19 @@ export function overrun(
 /**
  * For a waiter: when it may expect to start (ms): the holders' latest
  * expected end, plus the estimates of the waiters ahead of it. A guess.
+ * Issue 751: only its own kind's holders and line count, unless a browser
+ * run runs alone (cpuSlotsBesideBrowser 0), when both kinds do.
  */
 export function expectedStart(
   entries: GateEntry[],
   id: string,
   now: number,
-  s: Partial<PrioritySettings> = GATE_DEFAULTS,
+  s: Partial<QueueSettings> = GATE_DEFAULTS,
 ): number {
-  const queue = queueOrder(entries, s, now);
+  const me = entries.find((e) => e.id === id);
+  const alone = besideOf(s) === 0;
+  const mine = (e: GateEntry) => alone || !me || e.kind === me.kind;
+  const queue = queueOrder(entries, s, now).filter(mine);
   const ahead = queue.slice(
     0,
     Math.max(
@@ -419,7 +492,7 @@ export function expectedStart(
   );
   let free = Math.max(
     now,
-    ...entries.filter((e) => e.grantedAt).map(expectedEnd),
+    ...entries.filter((e) => e.grantedAt && mine(e)).map(expectedEnd),
   );
   for (const w of ahead) free += w.estimateMin * 60_000;
   // Issue 803: held for its window: not before the window opens.

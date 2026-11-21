@@ -1,12 +1,21 @@
 /**
- * Issue 751: a cpu run waits only for the browser run holding the machine,
- * not for every browser run queued before it. When a browser run ends,
- * waiting cpu runs start (up to cpu_slots) before the next browser waiter;
- * a browser waiter past `priority_pass_limit_minutes` is never passed by a
- * new cpu run. Within a kind, the line keeps its order (issue 715's
- * priority included). Pure rules: no store, no Den, no suite runs.
+ * Issue 751: a cpu run waited behind every queued browser run. Now:
+ *
+ * 1. cpu and browser waiters queue in separate lines: a cpu waiter is
+ *    never behind a browser waiter, and a browser waiter never behind a
+ *    cpu waiter.
+ * 2. cpu runs may run beside a browser holder, up to
+ *    `cpu_slots_beside_browser` (default 2; 0 is "a browser run runs
+ *    alone"). A browser holder on a test box is not this machine's.
+ * 3. A release-priority run passes every plain waiter of its kind, however
+ *    long they have waited. `priority_pass_limit_minutes` (default 0) now
+ *    applies only between release-priority runs.
+ *
+ * Pure rules: no store, no Den, no suite runs.
  */
 import { describe, expect, it } from "@jest/globals";
+import { assign } from "../../../src/shared/gates/boxes.js";
+import { readClasses } from "../../../src/shared/gates/classes.js";
 import {
   GATE_DEFAULTS,
   expectedStart,
@@ -23,23 +32,30 @@ const entry = (
   id: string,
   kind: "browser" | "cpu",
   askedMin: number,
-  o: { granted?: number; reason?: string; estimate?: number } = {},
-): GateEntry => ({
-  id,
-  kind,
-  who: id,
-  label: id,
-  pid: 1,
-  askedAt: iso(askedMin),
-  estimateMin: o.estimate ?? 10,
-  ...(o.granted !== undefined ? { grantedAt: iso(o.granted) } : {}),
-  ...(o.reason
-    ? { priority: { for: "release" as const, reason: o.reason } }
-    : {}),
-});
+  o: Partial<GateEntry> & {
+    granted?: number;
+    reason?: string;
+    estimate?: number;
+  } = {},
+): GateEntry => {
+  const { granted, reason, estimate, ...rest } = o;
+  return {
+    id,
+    kind,
+    who: id,
+    label: id,
+    pid: 1,
+    askedAt: iso(askedMin),
+    estimateMin: estimate ?? 10,
+    ...(granted !== undefined ? { grantedAt: iso(granted) } : {}),
+    ...(reason ? { priority: { for: "release" as const, reason } } : {}),
+    ...rest,
+  };
+};
 const ids = (es: GateEntry[]) => es.map((e) => e.id);
+const ALONE = { ...GATE_DEFAULTS, cpuSlotsBesideBrowser: 0 };
 
-describe("cpu runs fill in behind a browser holder (issue 751)", () => {
+describe("issue 751 rule 1: cpu and browser wait in separate lines", () => {
   const q = [
     entry("h", "browser", 0, { granted: 0, estimate: 60 }),
     entry("b1", "browser", 1, { estimate: 60 }),
@@ -48,80 +64,126 @@ describe("cpu runs fill in behind a browser holder (issue 751)", () => {
     entry("c", "cpu", 4, { estimate: 5 }),
   ];
 
-  it("three browser waiters and a cpu waiter asked last: the cpu run is next", () => {
-    expect(ids(queueOrder(q, GATE_DEFAULTS, at(5)))).toEqual([
-      "c",
-      "b1",
-      "b2",
-      "b3",
-    ]);
-    // Never beside the browser holder.
-    expect(grants(q, GATE_DEFAULTS, at(5))).toEqual([]);
-    // The holder ends: the cpu run starts, the next browser run waits.
-    const after = q.filter((e) => e.id !== "h");
-    expect(grants(after, GATE_DEFAULTS, at(30))).toEqual(["c"]);
+  it("a cpu waiter asked after three browser waiters is first in its line", () => {
+    const busy = [entry("x", "cpu", 0, { granted: 0 }), ...q];
+    const full = [entry("y", "cpu", 0, { granted: 0 }), ...busy];
+    expect(queuePlace(full, "c", GATE_DEFAULTS, at(5))).toBe(1);
+    expect(queuePlace(full, "b1", GATE_DEFAULTS, at(5))).toBe(1);
+    expect(queuePlace(full, "b3", GATE_DEFAULTS, at(5))).toBe(3);
+    // Its expected start is the end of a cpu holder, not of the browser line.
+    expect(expectedStart(full, "c", at(5), GATE_DEFAULTS)).toBe(at(10));
   });
 
-  it("gate status tells the cpu waiter the truth: next, at the holder's end", () => {
-    expect(queuePlace(q, "c", GATE_DEFAULTS, at(5))).toBe(1);
-    expect(queuePlace(q, "b1", GATE_DEFAULTS, at(5))).toBe(2);
-    expect(expectedStart(q, "c", at(5), GATE_DEFAULTS)).toBe(at(60));
+  it("a browser waiter is never behind a cpu waiter", () => {
+    const es = [
+      entry("c1", "cpu", 0, { granted: 0 }),
+      entry("c2", "cpu", 0, { granted: 0 }),
+      entry("c3", "cpu", 1),
+      entry("b", "browser", 2),
+    ];
+    expect(queuePlace(es, "b", GATE_DEFAULTS, at(3))).toBe(1);
+    // cpu is full; the browser run starts beside the two cpu holders.
+    expect(grants(es, GATE_DEFAULTS, at(3))).toEqual(["b"]);
   });
 
-  it("cpu runs fill up to cpu_slots; the next browser run starts once they end", () => {
-    const free = [
-      entry("b1", "browser", 1),
-      entry("c1", "cpu", 2),
-      entry("c2", "cpu", 3),
-      entry("c3", "cpu", 4),
-    ];
-    expect(grants(free, GATE_DEFAULTS, at(5))).toEqual(["c1", "c2"]);
-    const running = [
-      entry("b1", "browser", 1),
-      entry("c1", "cpu", 2, { granted: 5 }),
-      entry("c2", "cpu", 3, { granted: 5 }),
-      entry("c3", "cpu", 4),
-    ];
-    expect(grants(running, GATE_DEFAULTS, at(6))).toEqual([]);
-    expect(grants([entry("b1", "browser", 1)], GATE_DEFAULTS, at(20))).toEqual([
-      "b1",
-    ]);
+  it("a waiting browser run never stops a cpu grant", () => {
+    expect(grants(q, GATE_DEFAULTS, at(5))).toEqual(["c"]);
   });
+});
 
-  it("a browser waiter past the pass limit blocks new cpu runs", () => {
-    const q2 = [
-      entry("b1", "browser", 0),
-      entry("c1", "cpu", 1, { granted: 1 }),
-      entry("c2", "cpu", 70),
-    ];
-    // At 30 min b1 is inside the limit: c2 may start beside c1.
-    expect(grants(q2, GATE_DEFAULTS, at(30))).toEqual(["c2"]);
-    // At 70 min b1 has waited past 60: c2 waits behind it.
-    expect(ids(queueOrder(q2, GATE_DEFAULTS, at(70)))).toEqual(["b1", "c2"]);
-    expect(grants(q2, GATE_DEFAULTS, at(70))).toEqual([]);
-    // The limit is the setting.
-    expect(
-      grants(q2, { ...GATE_DEFAULTS, priorityPassLimitMinutes: 120 }, at(70)),
-    ).toEqual(["c2"]);
-    // With the slot free, b1 starts first.
-    expect(grants([q2[0]!, q2[2]!], GATE_DEFAULTS, at(70))).toEqual(["b1"]);
-  });
+describe("issue 751 rule 2: cpu runs beside a browser holder", () => {
+  const q = [
+    entry("h", "browser", 0, { granted: 0 }),
+    entry("c1", "cpu", 1),
+    entry("c2", "cpu", 2),
+    entry("c3", "cpu", 3),
+  ];
 
-  it("a priority run keeps its place within its kind", () => {
-    const q3 = [
-      entry("h", "browser", 0, { granted: 0 }),
-      entry("a", "browser", 1),
-      entry("p", "browser", 2, { reason: "the person waits" }),
-      entry("c1", "cpu", 3),
-      entry("c2", "cpu", 4),
-      entry("cp", "cpu", 5, { reason: "release check" }),
-    ];
-    expect(ids(queueOrder(q3, GATE_DEFAULTS, at(6)))).toEqual([
-      "cp",
+  it("up to cpu_slots_beside_browser (default 2) run beside it", () => {
+    expect(GATE_DEFAULTS.cpuSlotsBesideBrowser).toBe(2);
+    const wide = { ...GATE_DEFAULTS, cpuSlots: 4 };
+    expect(grants(q, wide, at(5))).toEqual(["c1", "c2"]);
+    // Without the browser holder, all cpu_slots are open.
+    expect(grants(q.slice(1), wide, at(5))).toEqual(["c1", "c2", "c3"]);
+    expect(grants(q, { ...wide, cpuSlotsBesideBrowser: 3 }, at(5))).toEqual([
       "c1",
       "c2",
-      "p",
-      "a",
+      "c3",
     ]);
+    // Never more than cpu_slots.
+    expect(grants(q, GATE_DEFAULTS, at(5))).toEqual(["c1", "c2"]);
+  });
+
+  it("at 0, a browser run runs alone, as before", () => {
+    expect(grants(q, ALONE, at(5))).toEqual([]);
+    // A browser waiter held off by a cpu run stops new cpu runs, so it
+    // can't be starved.
+    const es = [
+      entry("c1", "cpu", 0, { granted: 0 }),
+      entry("b", "browser", 1),
+      entry("c2", "cpu", 2),
+    ];
+    expect(grants(es, ALONE, at(3))).toEqual([]);
+    expect(grants(es.slice(1), ALONE, at(4))).toEqual(["b"]);
+    // At the default, nothing waits.
+    expect(grants(es, GATE_DEFAULTS, at(3))).toEqual(["b", "c2"]);
+  });
+
+  it("a browser holder on a test box is not this machine's", () => {
+    const es = [
+      entry("h", "browser", 0, { granted: 0, box: "box1" }),
+      entry("c1", "cpu", 1),
+      entry("c2", "cpu", 2),
+      entry("b", "browser", 3),
+    ];
+    expect(grants(es, ALONE, at(5))).toEqual(["c1", "c2"]);
+    expect(grants([es[0]!, es[3]!], ALONE, at(5))).toEqual(["b"]);
+    const box = [{ name: "box1", slots: 1, open: true }];
+    expect(assign(es, ALONE, at(5), box)).toEqual([{ id: "c1" }, { id: "c2" }]);
+    // A local browser holder at 0: nothing beside it.
+    const local = [entry("h", "browser", 0, { granted: 0 }), es[1]!];
+    expect(assign(local, ALONE, at(5), box)).toEqual([]);
+  });
+});
+
+describe("issue 751 rule 3: release priority passes every plain waiter", () => {
+  it("whatever their wait; the pass limit defaults to 0", () => {
+    expect(GATE_DEFAULTS.priorityPassLimitMinutes).toBe(0);
+    const es = [
+      entry("h", "browser", 0, { granted: 0 }),
+      entry("old", "browser", 1),
+      entry("p", "browser", 200, { reason: "the person waits" }),
+    ];
+    expect(ids(queueOrder(es, GATE_DEFAULTS, at(201)))).toEqual(["p", "old"]);
+    // A pass limit no longer protects a plain waiter.
+    expect(
+      ids(
+        queueOrder(
+          es,
+          { ...GATE_DEFAULTS, priorityPassLimitMinutes: 60 },
+          at(201),
+        ),
+      ),
+    ).toEqual(["p", "old"]);
+  });
+
+  it("the pass limit applies only between release-priority runs", () => {
+    // `rel` asked first and holds priority; `hi`, marked too, waits as a
+    // plain run but sits ahead of it by class.
+    const classes = readClasses("p0, p1", "top=p0, *=p1", undefined)!;
+    const es = [
+      entry("rel", "browser", 0, { reason: "first", project: "low" }),
+      entry("hi", "browser", 10, { reason: "second", project: "top" }),
+      entry("plain", "browser", 20, { project: "top" }),
+    ];
+    const s = { ...GATE_DEFAULTS, classes };
+    // At 0, `rel` never passes another marked run; it still passes `plain`.
+    expect(ids(queueOrder(es, s, at(100)))).toEqual(["hi", "rel", "plain"]);
+    // With a limit, it passes a marked run that has waited less.
+    const lim = { ...s, priorityPassLimitMinutes: 120 };
+    expect(ids(queueOrder(es, lim, at(100)))).toEqual(["rel", "hi", "plain"]);
+    // ...and not one that has waited longer.
+    const short = { ...s, priorityPassLimitMinutes: 60 };
+    expect(ids(queueOrder(es, short, at(100)))).toEqual(["hi", "rel", "plain"]);
   });
 });

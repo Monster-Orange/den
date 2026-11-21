@@ -55,7 +55,10 @@ const entry = (
 });
 
 describe("the queue rules", () => {
-  it("a browser run holds the machine alone; the next one waits", () => {
+  // Issue 751: at cpu_slots_beside_browser 0, a browser run runs alone.
+  const ALONE = { ...GATE_DEFAULTS, cpuSlotsBesideBrowser: 0 };
+
+  it("a browser run holds the machine alone at 0 beside; the next one waits", () => {
     expect(grants([entry("a", "browser", 0)], GATE_DEFAULTS)).toEqual(["a"]);
     expect(
       grants(
@@ -64,10 +67,7 @@ describe("the queue rules", () => {
       ),
     ).toEqual([]);
     expect(
-      grants(
-        [entry("a", "browser", 0, 0), entry("c", "cpu", 1)],
-        GATE_DEFAULTS,
-      ),
+      grants([entry("a", "browser", 0, 0), entry("c", "cpu", 1)], ALONE),
     ).toEqual([]);
   });
 
@@ -85,14 +85,14 @@ describe("the queue rules", () => {
     ]);
   });
 
-  it("a browser run waits for cpu to drain, and stops new cpu grants", () => {
+  it("at 0 beside, a browser run waits for cpu to drain, and stops new cpu grants", () => {
     const q = [
       entry("a", "cpu", 0, 0),
       entry("b", "browser", 1),
       entry("c", "cpu", 2),
     ];
-    expect(grants(q, GATE_DEFAULTS)).toEqual([]);
-    expect(grants(q.slice(1), GATE_DEFAULTS)).toEqual(["b"]);
+    expect(grants(q, ALONE)).toEqual([]);
+    expect(grants(q.slice(1), ALONE)).toEqual(["b"]);
   });
 
   it("a waiter sees when it may start; an overrun is flagged past the margin", () => {

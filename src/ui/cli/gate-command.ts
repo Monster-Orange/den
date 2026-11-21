@@ -23,7 +23,8 @@
  *                            agent); recorded with who
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
  *                            waiting entry go just ahead of it (yours only)
- *   settings [--cpu-slots N] [--overrun-margin-minutes N]
+ *   settings [--cpu-slots N] [--cpu-slots-beside-browser N]
+ *            [--overrun-margin-minutes N]
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
  *            [--priority-max N] [--priority-pass-limit-minutes N]
@@ -75,8 +76,9 @@ import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 export const GATE_HELP = {
   usage: "gate <run|status|end|yield|box|settings> ...",
   lines: [
-    "Heavy test runs on this machine, taken in turn: a browser suite runs",
-    "alone; unit suites share (2 at a time by default). Every repo and install",
+    "Heavy test runs on this machine, taken in turn: one browser suite at a",
+    "time; unit suites share (2 at a time by default, 2 of them beside a browser",
+    "suite). Browser and unit runs wait in separate lines. Every repo and install",
     "on the machine shares the same queue. A run is never stopped by another.",
     "",
     "{cli} gate run [--kind browser|cpu] [--estimate 6m] [--label <l>] -- <cmd>",
@@ -97,7 +99,7 @@ export const GATE_HELP = {
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
-    "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
+    "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--overrun-margin-minutes N]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
     "    [--priority-max N] [--priority-pass-limit-minutes N] [--priority-agents 0|1]",
@@ -669,6 +671,7 @@ function settings(args: string[], d: GateDeps): number {
     "--remote-lapse-seconds": true,
     "--remote-max-slots": true,
     "--remote-max-asks": true,
+    "--cpu-slots-beside-browser": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
@@ -687,6 +690,7 @@ function settings(args: string[], d: GateDeps): number {
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
+    ["--cpu-slots-beside-browser", "cpu_slots_beside_browser"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
     ["--remote-lapse-seconds", "remote_lapse_seconds"],
@@ -727,7 +731,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, never past a run waiting ${s.priorityPassLimitMinutes} min, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""
