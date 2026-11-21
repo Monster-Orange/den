@@ -344,7 +344,7 @@
   "light-390": [
     {
       "key": "ap-menu",
-      "height": "432.8",
+      "height": "538.1",
       "display": "block",
       "padding-top": "6px",
       "padding-right": "6px",
@@ -384,7 +384,7 @@
     },
     {
       "key": "button.den-mi:mode=system",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -398,13 +398,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:mode=dark",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -418,13 +418,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:mode=light",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -438,7 +438,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
@@ -484,7 +484,7 @@
     },
     {
       "key": "button.den-mi:theme=den",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -498,13 +498,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:theme=x",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -518,7 +518,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
@@ -584,7 +584,7 @@
     },
     {
       "key": "button.den-mi:language=en",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -598,13 +598,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:language=ja",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -618,7 +618,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
@@ -644,7 +644,7 @@
     },
     {
       "key": "a.den-mi:item",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -658,13 +658,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:item=help",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -678,7 +678,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     }
@@ -1028,7 +1028,7 @@
   "dark-390": [
     {
       "key": "ap-menu",
-      "height": "432.8",
+      "height": "538.1",
       "display": "block",
       "padding-top": "6px",
       "padding-right": "6px",
@@ -1068,7 +1068,7 @@
     },
     {
       "key": "button.den-mi:mode=system",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1082,13 +1082,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:mode=dark",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1102,13 +1102,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:mode=light",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1122,7 +1122,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
@@ -1168,7 +1168,7 @@
     },
     {
       "key": "button.den-mi:theme=den",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1182,13 +1182,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:theme=x",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1202,7 +1202,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
@@ -1268,7 +1268,7 @@
     },
     {
       "key": "button.den-mi:language=en",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1282,13 +1282,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:language=ja",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1302,7 +1302,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
@@ -1328,7 +1328,7 @@
     },
     {
       "key": "a.den-mi:item",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1342,13 +1342,13 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     },
     {
       "key": "button.den-mi:item=help",
-      "height": "32.3",
+      "height": "44",
       "display": "flex",
       "padding-top": "6px",
       "padding-right": "8px",
@@ -1362,7 +1362,7 @@
       "font-weight": "400",
       "line-height": "20.3px",
       "cursor": "pointer",
-      "min-height": "0px",
+      "min-height": "44px",
       "max-width": "none",
       "white-space": "normal"
     }

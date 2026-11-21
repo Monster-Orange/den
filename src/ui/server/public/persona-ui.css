@@ -616,3 +616,47 @@ dialog.pe-dlg::backdrop {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Issue 302: at phone width the ask's buttons stack, full width, one
+   under the other (the iPhone mock's screen 5): Allow first, then Deny,
+   so Deny is never beside Later; Review and Later after them. Each is a
+   44px target, 8px apart. Pairing's Allow / Deny (the same frame) too. */
+@media (max-width: 767.98px) {
+  .den-ap-dlg .btns {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .den-ap-dlg .btns > .den-btn {
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+    justify-content: center;
+  }
+  .den-ap-dlg .btns > .sp {
+    order: 5;
+    margin: 0;
+  }
+  .den-ap-dlg .btns > .sp:empty {
+    display: none;
+  }
+  #den-ap-allow,
+  #den-pair-allow {
+    order: 1;
+  }
+  #den-ap-deny,
+  #den-pair-deny {
+    order: 2;
+  }
+  #den-ap-review {
+    order: 3;
+  }
+  /* Later is a plain line, not a third button that looks like Deny. */
+  #den-ap-later,
+  #den-pair-later {
+    order: 4;
+    border-color: transparent;
+    background: none;
+  }
+}
