@@ -48,7 +48,7 @@ const WS = "proj-gate";
 const TYPED_MS = 90000;
 const QUIET_MS = 20000;
 const FIXTURE = "allowed by test fixture";
-const NO_CONNECT = "needs Hub fixture connect-allow";
+const NO_CONNECT = "needs-hub-connect-allow";
 
 const parse = (b) => {
   if (b && typeof b === "object") return b;
@@ -261,14 +261,17 @@ async function leg(ctx, s, a, o) {
 }
 
 export async function setup(ctx) {
-  if (!ctx.den2) return { skip: "needs ctx.den2" };
+  if (!ctx.den2)
+    return { skip: "needs-den2", why: "the bed gives no ctx.den2" };
   let d2;
   try {
     d2 = await ctx.den2();
   } catch (e) {
+    // The throwaway Den needs a person signed in on it; a bed that can't
+    // give it one (no fixture person there) skips as "person".
     return {
-      skip: "needs ctx.den2",
-      why: String(e?.message ?? e).slice(0, 200),
+      skip: "person",
+      why: `the second Den could not start signed in: ${String(e?.message ?? e).slice(0, 200)}`,
     };
   }
   const s = { d2, agent: fresh("gate-726") };
@@ -302,8 +305,9 @@ export async function run(_bed, s) {
 
   // Leg 1: A -> B by address, then back to B -> A (B's token revoked on B).
   if (sameOrigin) {
-    out.address = { skip: "the two test Hubs share an origin" };
-    out.back = { skip: "the two test Hubs share an origin" };
+    const why = "the two test Hubs share an origin";
+    out.address = { skip: "needs-two-hub-origins", why };
+    out.back = { skip: "needs-two-hub-origins", why };
   } else {
     out.address = await leg(ctx, s, stub, {
       fromKey: "a",
@@ -329,9 +333,16 @@ export async function run(_bed, s) {
   }
 
   // Leg 2: on A, company a1 -> a2 (Connect again), then back to a1.
-  if (!a2) out.company = { skip: "needs a second test company" };
+  if (!a2)
+    out.company = {
+      skip: "needs-second-company",
+      why: "Hub A has one gate-726 test company",
+    };
   else if (!(await connected(ctx)))
-    out.company = { skip: "the Den is not connected to Hub A" };
+    out.company = {
+      skip: "needs-hub-a-connected",
+      why: "the Den is not connected to Hub A",
+    };
   else {
     out.company = await leg(ctx, s, stub, {
       fromKey: "a",
@@ -365,7 +376,12 @@ export async function teardown(ctx, s) {
 /** The rows for one leg: [typed, links, token, bell+doctor] (+ new comment). */
 function legRows(r, names, base) {
   if (r?.skip)
-    return names.map((clause) => ({ clause, ok: null, skip: r.skip }));
+    return names.map((clause) => ({
+      clause,
+      ok: null,
+      skip: r.skip,
+      ...(r.why ? { detail: r.why } : {}),
+    }));
   if (base) return names.map((clause) => ({ clause, ok: false, detail: base }));
   if (!r?.change?.ok)
     return names.map((clause) => ({
@@ -448,7 +464,12 @@ export function expect(r) {
       : null;
   const k = res.back ?? {};
   const back = k.skip
-    ? { clause: clauses[5], ok: null, skip: k.skip }
+    ? {
+        clause: clauses[5],
+        ok: null,
+        skip: k.skip,
+        ...(k.why ? { detail: k.why } : {}),
+      }
     : base
       ? { clause: clauses[5], ok: false, detail: base }
       : {
