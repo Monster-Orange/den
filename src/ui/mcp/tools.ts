@@ -28,6 +28,7 @@ import {
 } from "../../shared/den-config.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
+import { checkIssueWrite } from "../../shared/issue-write.js";
 import { actorTokenOf } from "../../shared/actor-token.js";
 import {
   hubPull,
@@ -174,6 +175,12 @@ function tail(r: StreamResult, n: number): string[] {
 }
 
 /** One line per stream: how it ended and its exit code. */
+/**
+ * A refusal the web server already recorded in the activity trail (it
+ * refused the call itself): said as any refusal, never reported again.
+ */
+class ServerRefusal extends Refusal {}
+
 /**
  * Whether a streamed action failed: a non-zero exit, a detached service whose
  * launcher exited non-zero, or a run that never finished (timeout).
@@ -1599,6 +1606,99 @@ const HUB_FILE_TOOLS: DenTool[] = [
   },
 ];
 
+// ── Direct writes: audited, no person (issue_write) ────────────────────────
+
+/**
+ * issue_write: an agent writes GitHub issues in its own project's repos,
+ * at once and audited (shared/issue-write.ts; the server's checks are the
+ * gate: the role setting, the project's repos and the install's limit).
+ * Always registered, whatever mcp.actions and mcp.approvals say.
+ */
+const DIRECT_WRITE_TOOLS: DenTool[] = [
+  {
+    name: "issue_write",
+    title: "Write a GitHub issue",
+    description:
+      "Create or update a GitHub issue in one of your project's repos, at once (no person's Allow), as you: one action per call. `create`: `title` (1-256 characters), `body`, optional `labels` and `milestone` (its title). `comment`: `issue` (its number) and `body`. `label`: `issue`, with `add` and/or `remove` (label names). `milestone`: `issue` and `milestone` (its title). Den adds a line naming you and this Den to every issue and comment you write, and records each write (never its text). It never closes, reopens, deletes, transfers or locks an issue: those are a person's, and Den has no held write for them yet. `repo` (owner/name) must be one of your project's repos; Den's own agent names `project`. Only roles the person allows (agents.issue_writes), and at most agents.issue_writes_per_hour writes an hour for the whole Den.",
+    action: true,
+    shape: {
+      action: z.string().describe("create, comment, label or milestone"),
+      repo: z.string().describe("The GitHub repo, owner/name"),
+      issue: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("The issue's number (comment, label, milestone)"),
+      title: z.string().optional().describe("create: the title, one line"),
+      body: z
+        .string()
+        .optional()
+        .describe("create, comment: the text, Markdown"),
+      labels: z.array(z.string()).optional().describe("create: label names"),
+      add: z.array(z.string()).optional().describe("label: names to add"),
+      remove: z.array(z.string()).optional().describe("label: names to remove"),
+      milestone: z
+        .string()
+        .optional()
+        .describe("create, milestone: the milestone's title"),
+      project: z
+        .string()
+        .optional()
+        .describe(
+          "The project (default: the one you work in; Den's own agent names it)",
+        ),
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("issue_write", a, "project", "the project whose repo it is");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `issue_write: you work in project "${ctx.scope.workspace}" and write issues in its repos only, not project "${project}"; nothing was sent.`,
+        );
+      const c = checkIssueWrite(a);
+      if (!c.ok) throw new Refusal(`issue_write: ${c.error}`);
+      const fields = Object.fromEntries(
+        [
+          "action",
+          "repo",
+          "issue",
+          "title",
+          "body",
+          "labels",
+          "add",
+          "remove",
+          "milestone",
+        ]
+          .filter((k) => a[k] !== undefined)
+          .map((k) => [k, a[k]]),
+      );
+      try {
+        return await ctx.api.get(ISSUE_WRITE_ROUTE, {}, "POST", {
+          project,
+          ...fields,
+        });
+      } catch (e) {
+        if (!(e instanceof DenHttpError) || e.status === 404) throw e;
+        let said = e.body;
+        try {
+          const j = JSON.parse(e.body) as { error?: unknown };
+          if (typeof j.error === "string") said = j.error;
+        } catch {
+          /* the body as it came */
+        }
+        throw new ServerRefusal(`issue_write: ${said} (${e.status})`);
+      }
+    },
+  },
+];
+
+const ISSUE_WRITE_ROUTE = "/api/agents/self/issue-write";
+
+export const DIRECT_WRITE_TOOL_NAMES: readonly string[] =
+  DIRECT_WRITE_TOOLS.map((t) => t.name);
+
 export const HUB_FILE_TOOL_NAMES: readonly string[] = HUB_FILE_TOOLS.map(
   (t) => t.name,
 );
@@ -2725,6 +2825,7 @@ export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
   const tools = [
     ...READ_TOOLS,
     ...HUB_FILE_TOOLS,
+    ...DIRECT_WRITE_TOOLS,
     ...held,
     // Issue 160: agent_import is a held write too; registered once.
     ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a))
@@ -2814,6 +2915,7 @@ export const ROUTE_SINCE: Readonly<Record<string, string>> = {
   "/api/verify/plan": "0.4.51",
   "/api/verify/run": "0.4.51",
   "/api/server-agent/update": "0.4.64",
+  "/api/agents/self/issue-write": "0.4.81",
 };
 
 /** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */
@@ -3033,7 +3135,11 @@ async function runTool(
     }
     // A call outside a scoped server's workspace is recorded whatever the
     // tool: it is an attempt to cross the boundary (AG-2a-core).
-    if (e instanceof Refusal && (tool.action || e instanceof ScopeRefusal))
+    if (
+      e instanceof Refusal &&
+      !(e instanceof ServerRefusal) &&
+      (tool.action || e instanceof ScopeRefusal)
+    )
       await reportRefusal(ctx, name, args, e.message);
     const msg =
       e instanceof Refusal

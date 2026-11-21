@@ -3401,6 +3401,58 @@ export const DEN_SETTINGS = [
       ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
   },
   {
+    // issue_write: which persona roles write GitHub issues in their
+    // project's repos (user.yml agents.issue_writes). A person's only.
+    id: "agents.issue_writes",
+    category: "agents",
+    label: "Who writes GitHub issues",
+    description:
+      "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+    keywords: [
+      "issue",
+      "issues",
+      "github",
+      "role",
+      "comment",
+      "label",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.roles"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.agent_issue_writes?.roles ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({
+        agent_issue_writes: {
+          roles: String(v ?? "")
+            .split(",")
+            .map((r) => r.trim())
+            .filter(Boolean),
+        },
+      }),
+  },
+  {
+    id: "agents.issue_writes_per_hour",
+    category: "agents",
+    label: "GitHub issue writes an hour",
+    description:
+      "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+    keywords: [
+      "issue",
+      "issues",
+      "github",
+      "limit",
+      "rate",
+      "hour",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.per_hour"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.agent_issue_writes?.per_hour ?? 60,
+    write: (v, ctx) => ctx.post({ agent_issue_writes: { per_hour: v } }),
+  },
+  {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the
     // projects that override it.
