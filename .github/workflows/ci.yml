@@ -53,6 +53,27 @@ jobs:
   # own variable, DEN_SELF_HOSTED_NIGHT. tests/unit/test-infra/
   # ci-runner-guard.test.ts fails if any other job names DEN_SELF_HOSTED.
   #
+  # Issue 843: the static checks that fail most often (version sync, the
+  # words gate, the colour and kit tokens, i18n parity, the pop-up and
+  # dialog ratchets: scripts/fast-checks.json) run first, in under a minute,
+  # on every push and pull request. The test jobs and shards wait for this
+  # one, so such a failure shows in a minute or two, not after a shard.
+  # The pre-push hook runs the same list (scripts/fast-checks.mjs).
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The words gate diffs against a base commit (scripts/words-base.txt).
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.13.0"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: node scripts/fast-checks.mjs
+
   # The fast gates, once per Node at both ends of the supported range: the
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
@@ -113,6 +134,7 @@ jobs:
   # took 17–20 min against a 20-min limit and was cut off; six parts and a
   # 30-min limit leave room.
   tests:
+    needs: [fast]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -174,8 +196,8 @@ jobs:
   # On a pull request it runs when the change's tests include it (it is in
   # the subset when den-ui or the shell changed: the pr job's "nav" output).
   den-ui-nav:
-    needs: [pr]
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.pr.outputs.nav == 'true') }}
+    needs: [fast, pr]
+    if: ${{ !cancelled() && needs.fast.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.pr.outputs.nav == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -209,6 +231,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
+    needs: [fast]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
@@ -237,6 +260,7 @@ jobs:
   # tests are left out of the blocking steps and run in a last step that
   # can't block.
   pr:
+    needs: [fast]
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -395,7 +419,7 @@ jobs:
   # subset again (a diff and jest's file lists: seconds), plans the split by
   # measured time (issue 998) and runs its share of it.
   pr-shards:
-    needs: [pr]
+    needs: [fast, pr]
     if: needs.pr.outputs.shards != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30

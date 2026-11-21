@@ -58,6 +58,25 @@ there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
 totals per kind and never fails.
 
+### What runs first
+
+The static checks that fail most often run first, in seconds: version
+sync, the words gate, the colour and kit tokens, i18n parity, the
+settings inventory, the pop-up and dialog ratchets, and the kit-copy
+check. The list is `scripts/fast-checks.json`; one script runs it:
+
+```bash
+node scripts/fast-checks.mjs          # about 10 s
+node scripts/fast-checks.mjs --list   # what it runs
+```
+
+In CI it is the `fast` job, under a minute. The test jobs and shards wait
+for it, so one of these failing shows in a minute or two, not after a
+ten-minute shard. The `pre-push` hook runs the same list before the
+org-name checks; `DEN_PREPUSH_FAST=0` skips it for one push. A check
+belongs on the list only when it reads the repo and nothing else (no
+server, browser, Docker or network) and takes seconds.
+
 On a busy machine, fewer jest workers means fewer flakes from load:
 `DEN_TEST_WORKERS` sets how many (a number, or a percentage such as
 `50%`). Unset, jest picks its own. `npm run preflight` uses 8 unless it is
