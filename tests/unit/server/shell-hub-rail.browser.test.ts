@@ -108,8 +108,20 @@ async function open(
         window as unknown as { denShell: { setCollapsed(b: boolean): void } }
       ).denShell.setCollapsed(true),
     );
-  // The answer is drawn on the next render.
-  await p.waitForTimeout(150);
+  // The answer is drawn on the next render: a configured Hub once the
+  // shell's state has it (it draws the rail as it takes it).
+  if ((answer as { configured?: boolean } | null)?.configured)
+    await p.waitForFunction(
+      () =>
+        (
+          window as unknown as {
+            denShell?: { getState(): { hub?: { configured?: boolean } } };
+          }
+        ).denShell?.getState().hub?.configured === true,
+    );
+  // Kept on purpose: with no Hub the state doesn't change (no Hub is
+  // drawn), so nothing marks it; tests here prove that one stays away.
+  else await p.waitForTimeout(150);
   return { p, errors };
 }
 
@@ -306,9 +318,11 @@ describe("the rail's Hub link", () => {
     const mod = process.platform === "darwin" ? "Meta" : "Control";
     const palette = async () => {
       await p.keyboard.press(`${mod}+k`);
-      await p.locator("#den-pal-list li[data-i]").first().waitFor();
+      // Listed: any row.
+      await p.waitForSelector("#den-pal-list li[data-i]");
     };
     await palette();
+    // first(): that Hub is listed first is what this checks.
     const first = p.locator("#den-pal-list li[data-i]").first();
     expect(await first.locator(".den-pal-l").textContent()).toBe("Hub");
     expect(await first.locator(".den-sub").textContent()).toBe("Acme Co");
@@ -365,7 +379,8 @@ describe("the rail's Hub link", () => {
     const { p } = await open({ configured: false });
     const mod = process.platform === "darwin" ? "Meta" : "Control";
     await p.keyboard.press(`${mod}+k`);
-    await p.locator("#den-pal-list li[data-i]").first().waitFor();
+    // Listed: any row.
+    await p.waitForSelector("#den-pal-list li[data-i]");
     expect(
       await p
         .locator("#den-pal-list li .den-pal-l", { hasText: /^Hub$/ })
