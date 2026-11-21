@@ -30,6 +30,7 @@ import {
   stopServer,
 } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+import { inTerminal, linkIn } from "./helpers/in-terminal.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -715,7 +716,40 @@ describe("the CLI: web login, web sessions, web logout", () => {
   it("`web login --no-wait` prints one link on stdout (the origin asked for, /auth, a code) that signs a browser in once", async () => {
     // Issue 666: this install's only edge name is a loopback one, which is
     // never its address, so it has none: the link names its origin.
-    const r = cli([
+    // Sign-in: a link is printed only in a terminal.
+    const r = await inTerminal(
+      TSX,
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "web",
+        "login",
+        "--no-wait",
+        "--port",
+        String(port),
+        "--origin",
+        `http://localhost:${port}`,
+        "--next",
+        "/settings",
+      ],
+      {
+        cwd: root,
+        env: { ...serverEnv(root, path.join(tmp, "home"), port), CI: "1" },
+      },
+    ).done;
+    expect(r.status).toBe(0);
+    const link = linkIn(r.text);
+    minted.push(link);
+    const u = new URL(link);
+    expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
+      `http://localhost:${port}`,
+      "/auth",
+      "/settings",
+    ]);
+    expect(r.text).toMatch(/within 5 minutes/);
+    // The code is in the link alone, once.
+    expect(r.text.split(u.searchParams.get("c") ?? "\0").length).toBe(2);
+    // Not in a terminal: no link.
+    const piped = cli([
       "web",
       "login",
       "--no-wait",
@@ -723,21 +757,8 @@ describe("the CLI: web login, web sessions, web logout", () => {
       String(port),
       "--origin",
       `http://localhost:${port}`,
-      "--next",
-      "/settings",
     ]);
-    expect(r.status).toBe(0);
-    const link = r.stdout.trim();
-    minted.push(link);
-    expect(link.split("\n").length).toBe(1);
-    const u = new URL(link);
-    expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
-      `http://localhost:${port}`,
-      "/auth",
-      "/settings",
-    ]);
-    expect(r.stderr).toMatch(/within 5 minutes/);
-    expect(r.stderr.includes(u.searchParams.get("c") ?? "\0")).toBe(false);
+    expect([piped.status, piped.stdout]).toEqual([1, ""]);
     const a = await call("GET", `${u.pathname}${u.search}`, nav);
     expect([a.status, where(a)]).toEqual([303, "/settings"]);
     const b = await call("GET", `${u.pathname}${u.search}`, nav);
@@ -874,7 +895,8 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
 
   it("a `web login --no-wait --origin http://<this machine>:<port>` link with no fetch-metadata headers: 303 and the cookie", async () => {
     if (!name) return;
-    const r = spawnSync(
+    // Sign-in: a link is printed only in a terminal.
+    const r = await inTerminal(
       TSX,
       [
         path.join(ENGINE, "src", "ui", "cli", "index.ts"),
@@ -888,13 +910,11 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
       ],
       {
         cwd: lanDist,
-        encoding: "utf-8",
-        timeout: 60_000,
         env: { ...serverEnv(lanDist, lanHome, lanPort), CI: "1" },
       },
-    );
+    ).done;
     expect(r.status).toBe(0);
-    const link = r.stdout.trim();
+    const link = linkIn(r.text);
     minted.push(link);
     const u = new URL(link);
     minted.push(u.searchParams.get("c") ?? "");

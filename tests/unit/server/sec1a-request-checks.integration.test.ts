@@ -24,6 +24,7 @@ import {
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { signedIn, type SignedIn } from "./helpers/signed-in.js";
+import { inTerminal } from "./helpers/in-terminal.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -542,34 +543,43 @@ describe("web.secret", () => {
 });
 
 describe("the CLI works with no setup", () => {
+  const cliEnv = (): NodeJS.ProcessEnv => ({
+    ...process.env,
+    DEN_ROOT: root,
+    DEN_ENGINE_ROOT: ENGINE,
+    DEN_HOME: stateDir,
+    HOME: path.join(tmp, "home"),
+    DEN_NO_OPEN: "1",
+    NO_COLOR: "1",
+    CI: "1",
+  });
   const cli = (args: string[]) =>
     spawnSync(
       TSX,
       [path.join(ENGINE, "src", "ui", "cli", "index.ts"), ...args],
-      {
-        cwd: root,
-        encoding: "utf-8",
-        timeout: 60_000,
-        env: {
-          ...process.env,
-          DEN_ROOT: root,
-          DEN_ENGINE_ROOT: ENGINE,
-          DEN_HOME: stateDir,
-          HOME: path.join(tmp, "home"),
-          DEN_NO_OPEN: "1",
-          NO_COLOR: "1",
-          CI: "1",
-        },
-      },
+      { cwd: root, encoding: "utf-8", timeout: 60_000, env: cliEnv() },
     );
   const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
   it("`web token --print` prints the token the server accepts", async () => {
-    const r = cli(["web", "token", "--print"]);
+    // Sign-in: the token is printed only in a terminal.
+    const r = await inTerminal(
+      TSX,
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "web",
+        "token",
+        "--print",
+      ],
+      { cwd: root, env: cliEnv() },
+    ).done;
     expect(r.status).toBe(0);
-    const printed = r.stdout.trim();
+    const printed = /den_pt_[A-Za-z0-9_-]{43}/.exec(r.text)?.[0] ?? "";
     expect(printed).toMatch(/^den_pt_[A-Za-z0-9_-]{43}$/);
-    expect(r.stderr).toMatch(/grants your access/);
+    expect(r.text).toMatch(/grants your access/);
+    // Not in a terminal: no token.
+    const piped = cli(["web", "token", "--print"]);
+    expect([piped.status, piped.stdout]).toEqual([1, ""]);
     expect(hash(`Bearer ${printed}`)).toBe(
       hash(cliAuthHeaders(stateDir).Authorization),
     );

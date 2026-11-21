@@ -755,6 +755,14 @@
       "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.",
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
+    "set.ui.testInstallYes": "This is a test install.",
+    "set.ui.testInstallNo":
+      "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
+    "set.ui.testPersonReady": "The test person is set up.",
+    "set.ui.testPersonMissing": "The test person isn't set up yet.",
+    "set.ui.testPersonSetUp": "Set up test person",
+    "set.ui.testInstallSignedIn":
+      "The test install can only be read signed in, or on this machine.",
     "set.ui.noPairHost":
       "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
     "set.ui.edgeStart": "Start the edge",
@@ -1135,6 +1143,8 @@
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_install.d":
+      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     "set.distribution.brand.d":
       "brand.name: the name on pages, the CLI banner and help.",
     "set.distribution.github_org.d":
@@ -1464,6 +1474,9 @@
     "busy.edgeW": "Starting the edge…",
     "busy.edgeS": "Edge started",
     "busy.edgeF": "The edge didn't start.",
+    "busy.testPersonW": "Setting up the test person…",
+    "busy.testPersonS": "Test person set up",
+    "busy.testPersonF": "The test person wasn't set up.",
     "keep.onNow": "On: agents keep running after you log out.",
     "keep.offNow": "Off: agents stop when you log out.",
     "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
@@ -2094,6 +2107,7 @@
     "set.embed.context_max_kb": "Largest shared page",
     "set.access.machine_name": "Machine name",
     "set.access.pair": "Pair a device",
+    "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
     "set.distribution.orgs": "Org labels",
@@ -7512,8 +7526,49 @@
 
   // R26d: the server unreachable.
   var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
-  var rawFetch =
+  var baseFetch =
     typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+  // A same-origin refusal or error (4xx, 5xx) is read in full here and
+  // handed on as the same answer, already read. A caller that only looks
+  // at the status (`r.ok ? r.json() : null`) otherwise leaves its body
+  // unread, and the browser holds that request open: a session refused
+  // every 3 s (a test install's fixture person) kept the page from ever
+  // settling. Its body, status and headers stay readable as before.
+  var NO_BODY = { 204: 1, 205: 1, 304: 1 };
+  function readRefusal(input, r) {
+    if (
+      !r ||
+      r.ok ||
+      !r.body ||
+      NO_BODY[r.status] ||
+      typeof Response !== "function" ||
+      !sameOrigin(input)
+    )
+      return r;
+    return r.text().then(
+      function (text) {
+        try {
+          return new Response(text, {
+            status: r.status,
+            statusText: r.statusText,
+            headers: r.headers,
+          });
+        } catch (e) {
+          return r;
+        }
+      },
+      function () {
+        return r;
+      },
+    );
+  }
+  var rawFetch = baseFetch
+    ? function (input, init) {
+        return baseFetch(input, init).then(function (r) {
+          return readRefusal(input, r);
+        });
+      }
+    : null;
   function sameOrigin(input) {
     var u =
       typeof input === "string"
@@ -7764,7 +7819,14 @@
   // so they carry the CSRF token and the approval key; the server decides
   // who may approve (a browser that isn't signed in is told to sign in).
   // The frame is the Start dialog's (persona-ui.css's .pe-dlg).
-  var ap = { dlg: null, shown: null, later: {}, busy: false, css: null };
+  var ap = {
+    dlg: null,
+    shown: null,
+    later: {},
+    busy: false,
+    css: null,
+    polling: false,
+  };
   function apCss() {
     if (ap.css) return ap.css;
     ap.css = new Promise(function (done) {
@@ -8113,9 +8175,12 @@
     apPoll();
   });
   function apPoll() {
-    if (document.hidden || ap.busy) return;
+    // One ask at a time: a tick while the last is still open sends none.
+    if (document.hidden || ap.busy || ap.polling) return;
+    ap.polling = true;
     apList(false).then(
       function (b) {
+        ap.polling = false;
         apSignin(b);
         var list = (b && b.ok && b.pending) || [];
         var open = list.filter(function (a) {
@@ -8130,14 +8195,16 @@
           open[0];
         apShow(cur, open.length - 1);
       },
-      function () {},
+      function () {
+        ap.polling = false;
+      },
     );
   }
   // D67: another computer's signed-out page shows a code and asks to be
   // let in: a signed-in browser asks "Allow this computer?" here, with the
   // code to compare (Settings › Access lists them too). Not signed in, the
   // list is refused and nothing shows.
-  var pr = { dlg: null, shown: null, later: {} };
+  var pr = { dlg: null, shown: null, later: {}, polling: false, off: false };
   function prDialog() {
     if (pr.dlg) return pr.dlg;
     var d = document.createElement("dialog");
@@ -8233,18 +8300,28 @@
     if (!d.open) d.showModal();
   }
   function prPoll() {
-    if (document.hidden) return;
+    // One ask at a time; refused once (a session that may not read it, as
+    // a test install's fixture person), never again on this page.
+    if (document.hidden || pr.polling || pr.off) return;
     // One question at a time: an approval's dialog first.
     if (ap.dlg && ap.dlg.open) return;
+    pr.polling = true;
     rawFetch("/api/web/waiting", {
       cache: "no-store",
       credentials: "same-origin",
+      // An ask that never answers frees the next tick after 20 s.
+      signal:
+        typeof AbortSignal !== "undefined" && AbortSignal.timeout
+          ? AbortSignal.timeout(20000)
+          : undefined,
     })
       .then(function (r) {
+        if (r.status === 401 || r.status === 403) pr.off = true;
         return r.ok ? r.json() : null;
       })
       .then(
         function (b) {
+          pr.polling = false;
           // Never this browser's own code (it signed in another way).
           var own = "";
           try {
@@ -8269,7 +8346,9 @@
             return;
           prShow(list[0]);
         },
-        function () {},
+        function () {
+          pr.polling = false;
+        },
       );
   }
   if (!apiOffPage && !configBad && rawFetch) {
