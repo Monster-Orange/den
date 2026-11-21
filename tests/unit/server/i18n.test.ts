@@ -193,6 +193,55 @@ describe("the catalogs", () => {
     expect([...keys].filter((k) => !(k in EN))).toEqual([]);
   });
 
+  // Issue 806: Add Service's words, each in en, es and ja, and each one
+  // looked up by the project page (pT), so none is drawn in English only.
+  const ADD_SERVICE = [
+    "as.title",
+    "as.filter",
+    "as.local",
+    "as.github",
+    "as.sortBy",
+    "as.sortName",
+    "as.sortProject",
+    "as.refresh",
+    "as.refreshTip",
+    "as.loading",
+    "as.loadingGh",
+    "as.refreshing",
+    "as.noLocal",
+    "as.noResults",
+    "as.noMatch",
+    "as.devManagedHead",
+    "as.denManagedHead",
+    "as.supportedHead",
+    "as.noManifestHead",
+    "as.noManifest",
+    "as.added",
+    "as.manage",
+    "as.modeDev",
+    "as.modeManaged",
+    "as.branch",
+    "as.newBranch",
+    "as.optional",
+    "as.add",
+    "as.done",
+    "as.setup",
+    "as.missing",
+  ];
+  it.each(UI_LANGUAGES)("issue 806: Add Service's words are in %s", (lang) => {
+    const table = messages[lang];
+    const missing = ADD_SERVICE.filter((k) => !table?.[k]?.trim());
+    expect(missing).toEqual([]);
+  });
+  it("issue 806: the project page looks up every Add Service word", () => {
+    const src = read("local-dev.html");
+    const unused = ADD_SERVICE.filter(
+      (k) =>
+        !new RegExp(String.raw`\bpT\(\s*"${k.replace(".", "\\.")}"`).test(src),
+    );
+    expect(unused).toEqual([]);
+  });
+
   it.each([
     ["topbar.js", TOPBAR_EN],
     ["appearance.js", APPEARANCE_EN],

@@ -46,21 +46,24 @@ const LEGACY: Record<string, number> = {
  * Issue 793: full-window layers that stay, per file, each with why. A
  * count may only go down; a new layer is a pop-up, and goes through the
  * kit's frame (dialogHtml, mountDialog, askConfirm).
+ *
+ * Issue 806: Add Service (local-dev.html) is the kit's frame now, and off
+ * this list. The two left were reviewed in the same change. Each stays,
+ * for the reason given.
  */
 const OVERLAYS: Record<string, { n: number; why: string }> = {
   "shell.js": {
     n: 1,
-    why: "the command palette (.den-pal-wrap): a search field and its list, not a dialog; it sets its own font",
+    why: "the command palette (.den-pal-wrap): a search field and its list (a combobox), not a dialog: no heading, no footer, no Report, and a pick closes it; it sets its own font",
   },
   "graph.css": {
     n: 1,
-    why: "the graph's details panel popped out (.dg-modal-back): the side panel itself, inside the graph's own .dg root, which sets the font",
-  },
-  "local-dev.html": {
-    n: 1,
-    why: "Add Service (.add-svc-backdrop): a two-tab chooser not moved yet; its page's <body> sets the font",
+    why: "the graph's details panel popped out (.dg-modal-back): the same side panel element and renderer, moved into a layer; its clicks go to the graph's .dg root and its styles are scoped under .dg, which sets the font; Report is drawn in it (panel.js)",
   },
 };
+
+/** Issue 806: moved onto the kit's frame; never a layer of their own again. */
+const OVERLAYS_MOVED = ["local-dev.html"];
 
 const CREATE = /<dialog\b|createElement\(\s*["']dialog["']\s*\)/g;
 /** A dialog's backdrop given a look, or a dialog's rule with a radius. */
@@ -204,6 +207,14 @@ describe("issue 793: no page draws a full-window pop-up of its own", () => {
       expect([f, o.why.length > 20]).toEqual([f, true]);
       expect([f, found[f] ?? 0]).toEqual([f, o.n]);
     }
+  });
+
+  it("issue 806: Add Service is off the list and draws no layer of its own", () => {
+    const found = scan(overlays);
+    expect(OVERLAYS_MOVED.filter((f) => f in OVERLAYS)).toEqual([]);
+    expect(
+      OVERLAYS_MOVED.filter((f) => found[f]).map((f) => `${f}: ${found[f]}`),
+    ).toEqual([]);
   });
 
   it("no other file draws one; the ones that stay only go down", () => {

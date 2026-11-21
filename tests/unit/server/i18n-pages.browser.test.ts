@@ -303,6 +303,59 @@ describe("pages in a pseudo-locale: no literal inside <main>", () => {
     await p.close();
     expect(found).toEqual([]);
   }, 60_000);
+
+  it("issue 806: Add Service, open, on each tab and with a repo chosen", async () => {
+    if (!browser) return;
+    const p = await open("/local-dev?ws=north");
+    // The lists, by names this file shows as they are: GitHub's without
+    // GitHub (one repo with a manifest, one without), and the local ones
+    // (one on disk, one this Den manages).
+    await p.route("**/api/github/repos*", (r) =>
+      r.fulfill({
+        json: [
+          { name: "alpha", nameWithOwner: "acme/alpha", hasDen: true },
+          { name: "zeta", nameWithOwner: "acme/zeta", hasDen: false },
+        ],
+      }),
+    );
+    await p.route("**/api/github/branches*", (r) => r.fulfill({ json: [] }));
+    await p.route("**/api/workspaces/available-repos*", (r) =>
+      r.fulfill({
+        json: [
+          { name: "alpha", relPath: "code/alpha", source: "local" },
+          { name: "zeta", relPath: "code/zeta", source: "managed" },
+        ],
+      }),
+    );
+    const listed = p.waitForResponse((r) =>
+      r.url().includes("/api/workspaces/available-repos"),
+    );
+    await p.reload();
+    await listed;
+    await p.waitForSelector("#ws-list .ws-item");
+    await p.waitForSelector("#content h2");
+    await p.waitForTimeout(300);
+    await p.waitForFunction(
+      () =>
+        typeof (window as unknown as { openAddSvcModal?: unknown })
+          .openAddSvcModal === "function",
+    );
+    await p.evaluate(() =>
+      (
+        window as unknown as { openAddSvcModal: (ws: string) => void }
+      ).openAddSvcModal("north"),
+    );
+    const dlg = "#add-svc-dlg";
+    await p.waitForSelector(`${dlg}[open]`);
+    const found = new Set(await leaks(p, dlg));
+    await p.click("#add-svc-tab-gh");
+    await p.waitForSelector(`${dlg} #add-svc-gh-list .add-svc-row`);
+    await p.click(`${dlg} #add-svc-gh-list .add-svc-row`);
+    await p.waitForSelector("#add-svc-gh-config:not([style*='none'])");
+    for (const l of await leaks(p, dlg)) found.add(l);
+    await p.close();
+    expect([...found]).toEqual([]);
+  }, 60_000);
 });
 
 describe("den#171: Edge, Tests, Release, Logs, Environments and Services in es and ja", () => {

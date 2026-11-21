@@ -9,7 +9,8 @@
  *
  * The pop-ups: What's new (on its own the first time a version is unseen,
  * then from the version chip), a Yes/No question (the kit's confirm), and
- * Local Dev's "turn off auto-start" question. Each on the Agents page and
+ * Local Dev's "turn off auto-start" question, and Add Service (issue
+ * 806). Each on the Agents page and
  * on Settings, whose <body> has no font of its own (the font is on the
  * page's main, #den-content): a pop-up put in <body> that sets no font of
  * its own drew in the browser's serif there, which is what the owner saw.
@@ -274,6 +275,7 @@ async function pageOn(
 type PageWin = {
   denShell?: { api: (m: string, u: string, b?: unknown) => Promise<unknown> };
   toggleAutostart?: (repo: string, on: boolean) => unknown;
+  openAddSvcModal?: (ws: string) => void;
 };
 
 const WHATS_NEW = "#cl-overlay.open";
@@ -373,6 +375,62 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       }
       await p.locator(pop).first().waitFor();
       expect(problems(await fontsOf(p, pop), strict)).toEqual([]);
+      await p.context().close();
+    }, 60_000);
+
+    // Issue 806: Add Service is the kit's frame: its tabs, rows, pills,
+    // the chosen repo's settings and its footer are in the page's font.
+    it("Add Service, on each tab and with a repo chosen", async () => {
+      if (!browser) return;
+      const p = await pageOn(theme, "/settings");
+      await p.route("**/api/github/repos*", (r) =>
+        r.fulfill({
+          json: [
+            { name: "widgets", nameWithOwner: "example/widgets", hasDen: true },
+            { name: "tools", nameWithOwner: "example/tools", hasDen: false },
+          ],
+        }),
+      );
+      await p.route("**/api/github/branches*", (r) => r.fulfill({ json: [] }));
+      await p.route("**/api/workspaces/available-repos*", (r) =>
+        r.fulfill({
+          json: [
+            { name: "lamp", relPath: "code/lamp", source: "local" },
+            { name: "desk", relPath: "code/desk", source: "managed" },
+          ],
+        }),
+      );
+      const listed = p.waitForResponse((r) =>
+        r.url().includes("/api/workspaces/available-repos"),
+      );
+      await p.goto(`${base}/local-dev`);
+      await p.locator(WHATS_NEW).waitFor({ timeout: 20_000 });
+      await p.keyboard.press("Escape");
+      await p.locator(WHATS_NEW).waitFor({ state: "detached" });
+      await listed;
+      await p.waitForFunction(
+        () =>
+          typeof (window as unknown as PageWin).openAddSvcModal === "function",
+      );
+      await p.waitForTimeout(300);
+      await p.evaluate(() =>
+        (window as unknown as PageWin).openAddSvcModal!("default"),
+      );
+      const dlg = "dialog.dk-dlg#add-svc-dlg[open]";
+      await p.locator(dlg).waitFor();
+      await p
+        .locator(`${dlg} #add-svc-local-list .add-svc-row`)
+        .first()
+        .waitFor();
+      expect(problems(await fontsOf(p, dlg), strict)).toEqual([]);
+      await p.click("#add-svc-tab-gh");
+      await p.locator(`${dlg} #add-svc-gh-list .add-svc-row`).first().click();
+      await p.locator("#add-svc-gh-config:not([style*='none'])").waitFor();
+      await shot(
+        p,
+        `806-add-service-${theme.id}${theme.strip ? `-nosans-${theme.strip}` : ""}`,
+      );
+      expect(problems(await fontsOf(p, dlg), strict)).toEqual([]);
       await p.context().close();
     }, 60_000);
   });
