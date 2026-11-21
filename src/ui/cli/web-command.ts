@@ -2767,3 +2767,23 @@ export async function cmdWebOwner(
     );
   return 0;
 }
+
+/** Issue 810: red-first stub; the real command follows. */
+export async function cmdWebFixturePerson(
+  args: string[],
+  io: CliIo & { testInstall?: () => boolean } = stdIo,
+): Promise<number> {
+  void args;
+  void io;
+  return 2;
+}
+
+/** Issue 810: red-first stub; the real command follows. */
+export async function cmdWebFixtureLogin(
+  args: string[],
+  io: CliIo & { testInstall?: () => boolean } = stdIo,
+): Promise<number> {
+  void args;
+  void io;
+  return 2;
+}
