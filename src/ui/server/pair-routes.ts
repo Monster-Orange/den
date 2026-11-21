@@ -4,7 +4,7 @@
  *   POST /api/signin/code          a new request (sign-in free; an allowed
  *                                  Origin, no CSRF token: the signed-out
  *                                  page holds none). Its poll id, code,
- *                                  expiry, and the commands that approve it
+ *                                  and expiry
  *   GET  /api/signin/code/<id>     its state; approved: the session cookie,
  *                                  once (the request is consumed)
  *   DELETE /api/signin/code/<id>  D67: its page is going; a pending
@@ -13,12 +13,14 @@
  *                                  page's sendBeacon sends it (Safari
  *                                  drops a keepalive DELETE as a page goes)
  *   GET  /api/web/waiting          the requests waiting (shell-grade)
- *   POST /api/web/approve {code}   approve one (shell-grade: `<cli> web
- *                                  approve`, Settings › Access)
- *   POST /api/web/deny {code}      deny one (shell-grade)
+ *   POST /api/web/approve {code}   approve one (issue 819: a person's
+ *                                  signed-in browser only, Settings › Access)
+ *   POST /api/web/deny {code}      deny one (the same)
  *
- * Approve and deny are audited with the actor; neither the code nor the
- * poll id is logged.
+ * Issue 819: approving or denying needs a person's signed-in browser
+ * holding its approval key (`approver`): never the CLI's bearer, an
+ * agent's token or the fixture person. Approve and deny are audited with
+ * the actor; neither the code nor the poll id is logged.
  */
 import type * as http from "http";
 import type { PairRequests, PairView } from "./pair-requests.js";
@@ -31,11 +33,19 @@ export interface PairRouteDeps {
   signIn: (req: http.IncomingMessage) => { cookie: string; approveKey: string };
   /** The client's address for a new request's record, when Den knows it. */
   client: (req: http.IncomingMessage) => string | undefined;
-  /** The commands that approve `code`: on the server, and by ssh from the browser's machine. */
-  commands: (
+  /**
+   * Issue 819: why this request may not approve or deny a device (not a
+   * person's signed-in browser with its approval key), or null when it may.
+   */
+  approver: (
     req: http.IncomingMessage,
-    code: string,
-  ) => { approve: string; ssh: string };
+  ) => { status: number; code: string; error: string } | null;
+  /** Issue 819: a request a sign-in link opened was decided, or signed in. */
+  linkEnded?: (
+    link: string,
+    how: "denied" | "signed-in",
+    req: http.IncomingMessage,
+  ) => void;
   /** Record an approve or deny (who, what, whether it was refused). */
   audit: (
     req: http.IncomingMessage,
@@ -120,7 +130,6 @@ export async function handlePairRoutes(
       expiresAt: new Date(r.expiresAt).toISOString(),
       // What is left, for the page's own countdown (no clock skew).
       expiresIn: Math.max(0, r.expiresAt - Date.now()),
-      ...deps.commands(req, r.code),
     });
     return true;
   }
@@ -152,11 +161,13 @@ export async function handlePairRoutes(
       return true;
     }
     if (v.state === "approved") {
-      if (!deps.pairs.claim(p[1])) {
+      const claimed = deps.pairs.claim(p[1]);
+      if (!claimed) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
       const s = deps.signIn(req);
+      if (claimed.link) deps.linkEnded?.(claimed.link, "signed-in", req);
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");
       // The approval key goes to this answer only (web-session.ts).
@@ -184,10 +195,22 @@ export async function handlePairRoutes(
     method === "POST"
   ) {
     const verb = pathname === "/api/web/approve" ? "approve" : "deny";
+    const refused = deps.approver(req);
+    if (refused) {
+      req.resume();
+      deps.audit(req, verb, "a waiting device", refused.code);
+      deps.sendJson(
+        res,
+        { ok: false, code: refused.code, error: refused.error },
+        refused.status,
+      );
+      return true;
+    }
     let body: { code?: unknown } = {};
     try {
       body = (JSON.parse((await deps.readBody(req)) || "{}") ??
         {}) as typeof body;
+      if (typeof body !== "object" || Array.isArray(body)) throw new Error();
     } catch {
       deps.sendJson(
         res,
@@ -214,6 +237,8 @@ export async function handlePairRoutes(
       );
       return true;
     }
+    if (verb === "deny" && r.request.link)
+      deps.linkEnded?.(r.request.link, "denied", req);
     const who = [r.request.device, r.request.client].filter(Boolean).join(", ");
     deps.audit(req, verb, `a waiting device (${who})`);
     deps.sendJson(res, { ok: true, ...waitingJson(r.request) });

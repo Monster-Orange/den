@@ -19,7 +19,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -113,7 +113,7 @@ async function open(
     await route.fulfill({ json: { ok: true } });
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, o.path ?? "/agents"));
+  await signInPage(p, s!.stateDir, s!.base, o.path ?? "/agents");
   await p.waitForFunction(() => "denShell" in window, undefined, {
     timeout: 20_000,
   });

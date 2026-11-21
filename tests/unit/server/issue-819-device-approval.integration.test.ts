@@ -253,10 +253,12 @@ async function webLoginLink(): Promise<{ where: string; typed: string }> {
   const c = checkLoginCode(code, s);
   if (!c.ok) throw new Error("could not mint a login code");
   const typed = newConfirmCode();
+  // As the CLI calls it: on this machine's loopback name (PR 821: the
+  // server registers a link only for a caller on this machine).
   const reg = await call(
     "POST",
     "/api/web/logins",
-    bearer(),
+    { host: `localhost:${port}`, ...bearer() },
     JSON.stringify({ nonce: c.nonce, code: typed, expiresAt: c.expiresAt }),
   );
   if (reg.status !== 200) throw new Error(`register failed (${reg.status})`);

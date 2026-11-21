@@ -801,17 +801,18 @@
     "err.signin.youreIn": "サインインしました。",
     "err.signin.expiredLead":
       "このサインインリンクは期限切れか、使用済みです。下から改めてサインインしてください。",
-    "err.signin.confirmLead":
-      "{host} で web login が表示したコードを入力してください:",
-    "err.signin.confirmGo": "サインイン",
-    "err.signin.confirmWrong":
-      "コードが正しくありません。web login の表示を確認して、もう一度お試しください。",
-    "err.signin.confirmBusy":
-      "試行回数が多すぎます。1 分待ってからもう一度お試しください。",
-    "err.signin.confirmGone":
-      "このリンクはもう使えません。{host} で web login をもう一度実行して新しいリンクを取得してください。",
-    "err.signin.confirmWhy":
-      "リンクだけでは足りません。{host} に表示されたコードも必要なので、他の人がリンクを見てもサインインできません。",
+    "err.signin.pairLinkLead":
+      "このブラウザーを入れるには、すでにサインインしているブラウザーで承認してください。そちらで 設定 › アクセス を開き、下のコードを承認します。",
+    "err.signin.pairLinkWaiting":
+      "サインイン済みのブラウザーでの承認を待っています…",
+    "err.signin.pairLinkDenied":
+      "このブラウザーは拒否されました。サインインするには、新しいコードを取得し、サインイン済みのブラウザーで承認してください。",
+    "err.signin.pairLinkEnded":
+      "このリクエストは終了しました。新しいコードを取得して、もう一度承認してください。",
+    "err.signin.firstRunHere":
+      "{name} はまだセットアップされていません。最初のサインインは {host} 本体で行ってください。そこでセットアップリンクを開くか、自分のターミナルで web login を実行します。",
+    "err.signin.claimSetUp":
+      "{name} はすでにセットアップ済みのため、セットアップリンクだけではサインインしません。サインイン済みのブラウザーで 設定 › アクセス を開き、下のコードを承認してください。",
     "err.signin.github": "GitHub でサインイン",
     "err.signin.githubEnter": "{url} でこのコードを入力してください:",
     "err.signin.githubOpen": "GitHub を開く",
@@ -1219,6 +1220,10 @@
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
+    "set.access.approveNeedsBrowser":
+      "デバイスの承認には、サインイン済みのブラウザーが必要です。このページで改めてサインインしてから承認してください。",
+    "set.access.approveNotAgent":
+      "デバイスを承認できるのは人だけで、その人自身のサインイン済みブラウザーから行います。",
     "set.access.pair": "デバイスをペアリング",
     "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",

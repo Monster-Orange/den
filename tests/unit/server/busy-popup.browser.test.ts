@@ -10,7 +10,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -69,7 +69,7 @@ async function page(width = 1280, clock = false): Promise<Page> {
   const p = await ctx.newPage();
   if (clock) await p.clock.install();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   // Issue 699: these tests are about the pop-up; its wait after a held
   // button's dots is set to the old 300 ms here.

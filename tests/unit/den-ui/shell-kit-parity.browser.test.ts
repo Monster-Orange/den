@@ -43,7 +43,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { signInUrl } from "../server/helpers/den-auth.js";
+import { signInPage } from "../server/helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -368,7 +368,7 @@ async function open(
     /* never answered */
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(
     () =>
       "denShell" in window &&

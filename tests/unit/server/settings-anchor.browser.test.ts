@@ -14,7 +14,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -74,7 +74,7 @@ async function open(e: Engine): Promise<{ p: Page; landed: Promise<void> }> {
   // Signed in first, in a tab of its own (signing in keeps the path, not
   // the #).
   const first = await ctx.newPage();
-  await first.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(first, s!.stateDir, s!.base, "/settings");
   await first.waitForSelector(ROW);
   // The link opens in a fresh tab of the same signed-in browser: a fresh
   // load, as from a bell link. Not via about:blank in the same tab: under

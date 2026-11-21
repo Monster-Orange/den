@@ -18,8 +18,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
-import { signInUrl } from "./helpers/den-auth.js";
-import { signIn } from "./helpers/signed-in.js";
+import { signIn, signInPage } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
@@ -189,7 +188,7 @@ describe("the identity chip", () => {
     await seeWhatsNew(ctx);
     const p = await ctx.newPage();
     const origin = `http://${EDGE}:${port}`;
-    const r = await p.goto(signInUrl(stateDir, origin, "/settings#access"));
+    const r = await signInPage(p, stateDir, origin, "/settings#access");
     expect(r?.status()).toBe(200);
     // The first load after the sign-in: the toast, once.
     await p.waitForSelector(".den-toast");

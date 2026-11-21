@@ -820,17 +820,18 @@
     "err.signin.youreIn": "Ya estás dentro.",
     "err.signin.expiredLead":
       "Ese enlace de inicio de sesión caducó o ya se usó. Inicia sesión de nuevo abajo.",
-    "err.signin.confirmLead":
-      "Introduce el código que web login imprimió en {host}:",
-    "err.signin.confirmGo": "Iniciar sesión",
-    "err.signin.confirmWrong":
-      "Ese código no es correcto. Revisa lo que imprimió web login e inténtalo de nuevo.",
-    "err.signin.confirmBusy":
-      "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
-    "err.signin.confirmGone":
-      "Este enlace ya no funciona. En {host}, ejecuta web login de nuevo para obtener uno nuevo.",
-    "err.signin.confirmWhy":
-      "El enlace solo no basta: también hace falta el código que se muestra en {host}, así que alguien que vea el enlace no puede iniciar sesión.",
+    "err.signin.pairLinkLead":
+      "Para dejar entrar a este navegador, apruébalo desde un navegador que ya tenga la sesión iniciada: abre allí Ajustes › Acceso y aprueba el código de abajo.",
+    "err.signin.pairLinkWaiting":
+      "Esperando a que lo apruebes desde un navegador con la sesión iniciada…",
+    "err.signin.pairLinkDenied":
+      "Se rechazó este navegador. Para iniciar sesión, obtén un código nuevo y apruébalo desde un navegador con la sesión iniciada.",
+    "err.signin.pairLinkEnded":
+      "Esta solicitud terminó. Obtén un código nuevo y apruébalo otra vez.",
+    "err.signin.firstRunHere":
+      "{name} aún no está configurado. Termina su primer inicio de sesión en el propio {host}: abre allí el enlace de configuración, o ejecuta web login en tu propia terminal allí.",
+    "err.signin.claimSetUp":
+      "{name} ya está configurado, así que el enlace de configuración ya no inicia sesión por sí solo. Aprueba este navegador desde uno con la sesión iniciada: Ajustes › Acceso y luego el código de abajo.",
     "err.signin.github": "Iniciar sesión con GitHub",
     "err.signin.githubEnter": "Introduce este código en {url}:",
     "err.signin.githubOpen": "Abrir GitHub",
@@ -1252,6 +1253,10 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "set.access.approveNeedsBrowser":
+      "Para aprobar un dispositivo hace falta un navegador con la sesión iniciada. Vuelve a iniciar sesión en esta página y apruébalo.",
+    "set.access.approveNotAgent":
+      "Solo una persona aprueba un dispositivo, desde su propio navegador con la sesión iniciada.",
     "set.access.pair": "Emparejar un dispositivo",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",

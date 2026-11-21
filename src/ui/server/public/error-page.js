@@ -172,34 +172,6 @@ function cmdLine(id, cmd, t, extra = "") {
   );
 }
 
-/** Whether this browser runs on Windows (no ssh:// app by default). */
-function onWindows() {
-  const nav = globalThis.navigator;
-  const platform = nav?.userAgentData?.platform || nav?.platform || "";
-  return /^win/i.test(platform) || /Windows/i.test(nav?.userAgent || "");
-}
-
-/** How long a click on Open Terminal waits for an app to take the page's focus. */
-const NOTHING_OPENED_MS = 2000;
-
-/**
- * SEC-2a-UX.2: after a click on Open Terminal, if this page still has
- * focus 2 s later, no app took the ssh:// link; say so under the button.
- */
-function wireNothingOpened(root) {
-  const term = root.querySelector("#den-pair-term");
-  const note = root.querySelector("#den-pair-nothing");
-  if (!term || !note) return;
-  let timer = null;
-  term.addEventListener("click", () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (!document.hidden && document.hasFocus() && note.isConnected)
-        note.hidden = false;
-    }, window.__denNothingOpenedMs || NOTHING_OPENED_MS);
-  });
-}
-
 /** Wire every copy button under `root` (each once). */
 function wireCopy(root, t) {
   root.querySelectorAll("button[data-copy-for]").forEach((b) => {
@@ -558,10 +530,11 @@ function wireGithub(root, t, s, attest = "") {
 }
 
 /**
- * Approve this computer with a code (SEC-2a, the main fallback). The page
- * asks the server for a request: a short code to approve it with, on the
- * server (`<cli> web approve <code>`) or in a signed-in Settings › Access ›
- * Waiting devices, and a poll id only this page holds. It polls; once
+ * Approve this computer with a code (SEC-2a, the main fallback; issue
+ * 819). The page asks the server for a request: a short code a signed-in
+ * browser approves in Settings › Access (or its "Allow this computer?"),
+ * and a poll id only this page holds. A sign-in link opened here brings its
+ * own request (`s.pair`) and why it is here (`s.pairLead`). It polls; once
  * approved, the poll sets the cookie and the page goes on by itself. A
  * live countdown runs out at 10 minutes: "This code expired", and a new
  * one is a click away. Denied, likewise.
@@ -570,10 +543,10 @@ function wirePair(root, t, s) {
   const box = root.querySelector("#den-pair");
   if (!box) return;
   const host = s.machine || "";
-  const target = s.ssh?.target || "";
-  // SEC-2a-UX: the account to log in as, so the SSH app doesn't guess one.
-  const user = s.ssh?.user || "";
-  const login = user ? `${user}@${target}` : target;
+  // Issue 819: the request a sign-in link opened, used once (a new code
+  // is this page's own).
+  let given = s.pair && s.pair.id ? s.pair : null;
+  const fromLink = !!given;
   let poll = null;
   let tick = null;
   let gen = 0;
@@ -643,7 +616,7 @@ function wirePair(root, t, s) {
   const ended = (key) => {
     stop();
     box.innerHTML =
-      `<p class="den-pair-end" role="alert" id="den-pair-ended">${withHost(t, key, { host })}</p>` +
+      `<p class="den-pair-end" role="alert" id="den-pair-ended">${withHost(t, key, { host, name: s.name })}</p>` +
       `<div class="acts" style="margin-top:0"><button type="button" class="btn primary" id="den-pair-new">${esc(t("err.signin.newCode"))}</button></div>`;
     box.querySelector("#den-pair-new").addEventListener("click", begin);
   };
@@ -654,66 +627,39 @@ function wirePair(root, t, s) {
       `<div class="acts" style="margin-top:0"><button type="button" class="btn" id="den-pair-new">${esc(t("err.retry"))}</button></div>`;
     box.querySelector("#den-pair-new").addEventListener("click", begin);
   };
-  // SEC-2a-UX.2: Windows has no ssh:// app by default, so the link would
-  // do nothing. There the command itself is the step.
-  const windows = onWindows();
   const show = (b) => {
-    const term =
-      s.ssh?.name && target && !windows
-        ? `<a class="btn" id="den-pair-term" href="ssh://${esc(login)}">${esc(t("err.signin.openTerminal"))}</a>`
-        : "";
-    // D67: first the way a person at a browser has: a browser already
-    // signed in to Den (on the Den machine or another) asks "Allow this
-    // computer?" with this code. The commands are Other ways.
+    // Issue 819: a person approves this computer from a browser already
+    // signed in to Den (on the Den machine or another): it asks "Allow
+    // this computer?" with this code, and Settings › Access lists it.
+    // No command approves it.
     box.innerHTML =
+      (fromLink && s.pairLead
+        ? `<p class="lead" id="den-pair-lead">${withHost(t, s.pairLead, { name: s.name, host })}</p>`
+        : "") +
       `<p id="den-pair-browser">${withHost(t, "err.signin.allowFrom", { name: s.name, host })}</p>` +
       `<p class="den-pair-code mono" id="den-pair-code">${esc(b.code || "")}</p>` +
       `<p>${esc(t("err.signin.step2"))}</p>` +
-      `<p class="den-pair-wait" id="den-pair-status">${esc(t("err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p>` +
-      `<details class="den-other" id="den-pair-other"><summary>${esc(t("err.signin.pairOther"))}</summary>` +
-      `<ol class="den-steps">` +
-      `<li><p>${s.local ? esc(t("err.signin.step1Local")) : withHost(t, "err.signin.step1", { host })}</p>` +
-      cmdLine("den-pair-cmd", b.approve, t) +
-      `<p>${withHost(t, "err.signin.step1Or", { name: s.name, host })}</p></li>` +
-      `</ol>` +
-      // 0.4.71: on this machine there is no other machine to ssh from.
-      (s.local ? "" : sshWay(b, term)) +
-      `</details>`;
-    wireCopy(box, t);
-    wireNothingOpened(box);
+      `<p class="den-pair-wait" id="den-pair-status">${esc(t(fromLink ? "err.signin.pairLinkWaiting" : "err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p>`;
   };
-  // The ssh way in, from another machine (SEC-2a-UX).
-  const sshWay = (b, term) =>
-    `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
-    (windows && b.ssh
-      ? `<p class="den-pair-win" id="den-pair-win">${esc(t("err.signin.windowsSteps"))}</p>`
-      : "") +
-    cmdLine("den-pair-ssh", b.ssh, t, term) +
-    (term
-      ? `<p class="den-pair-nothing" id="den-pair-nothing" role="status" hidden>${esc(t("err.signin.nothingOpened"))}</p>`
-      : "") +
-    (term || (windows && b.ssh && target)
-      ? `<p class="den-pair-note" id="den-pair-note">${
-          user
-            ? withHost(t, "err.signin.sshUserNote", { host, user })
-            : withHost(t, "err.signin.sshNote", { target })
-        }</p>`
-      : "");
   function begin() {
     stop();
     withdraw();
     const now = gen;
-    fetch("/api/signin/code", {
-      method: "POST",
-      cache: "no-store",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    })
-      .then((r) => r.json().catch(() => ({})))
+    const first = given;
+    given = null;
+    (first
+      ? Promise.resolve({ ok: true, ...first })
+      : fetch("/api/signin/code", {
+          method: "POST",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }).then((r) => r.json().catch(() => ({})))
+    )
       .then((b) => {
         if (now !== gen) return;
-        if (!b.ok || !b.id || !b.approve) return failed();
+        if (!b.ok || !b.id || !b.code) return failed();
         mine = b.id;
         // D67: this browser's own code, so once it is in (another way),
         // its pop-up never asks to let itself in.
@@ -768,8 +714,12 @@ function wirePair(root, t, s) {
               }
               ended(
                 p.state === "denied"
-                  ? "err.signin.codeDenied"
-                  : "err.signin.codeExpired",
+                  ? fromLink
+                    ? "err.signin.pairLinkDenied"
+                    : "err.signin.codeDenied"
+                  : fromLink
+                    ? "err.signin.pairLinkEnded"
+                    : "err.signin.codeExpired",
               );
             })
             .catch(() => {
@@ -862,67 +812,6 @@ function mountSignedOut(root, sh, d) {
   const head =
     `<div class="ph"><div><h1>${esc(title)}</h1>` +
     `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>`;
-  if (s.confirm) {
-    // SEC-2a: a link `web login` waits on: the code it printed, first.
-    // D17: a plain sign-in page, no shell frame and no error wording.
-    document.body.classList.add("den-plain");
-    root.innerHTML =
-      `<div class="ph"><div><h1>${esc(t("err.signin.title", { name }))}</h1>` +
-      `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>` +
-      `<div class="empty" id="den-signin">` +
-      `<form id="den-confirm" autocomplete="off">` +
-      `<p class="lead"><label for="den-confirm-code">${withHost(t, "err.signin.confirmLead", { host })}</label></p>` +
-      `<div class="acts" style="margin-top:0">` +
-      `<input id="den-confirm-code" class="mono" name="code" required maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="ABCD-EFGH" ` +
-      `style="font:16px/1.45 var(--mono);letter-spacing:0.08em;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken);color:var(--text);width:12ch">` +
-      `<button type="submit" class="btn primary" id="den-confirm-go">${esc(t("err.signin.confirmGo"))}</button></div>` +
-      `<p class="den-confirm-err" id="den-confirm-err" role="alert" style="margin-top:12px"></p>` +
-      `</form>` +
-      `<p class="den-signin-why">${withHost(t, "err.signin.confirmWhy", { host })}</p>` +
-      `</div>`;
-    const form = root.querySelector("#den-confirm");
-    const input = root.querySelector("#den-confirm-code");
-    const err = root.querySelector("#den-confirm-err");
-    const go = root.querySelector("#den-confirm-go");
-    input?.focus();
-    form?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      go.disabled = true;
-      err.textContent = "";
-      fetch(location.pathname + location.search, {
-        method: "POST",
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: input.value }),
-      })
-        .then((r) => r.json().catch(() => ({})))
-        .then((b) => {
-          go.disabled = false;
-          if (b.ok) {
-            keepApproveKey(b);
-            err.textContent = "";
-            form.innerHTML = `<p class="lead" id="den-confirm-in">${esc(t("err.signin.youreIn"))}</p>`;
-            goSignedIn(typeof b.next === "string" ? b.next : "/");
-            return;
-          }
-          err.textContent =
-            b.code === "wrong_code"
-              ? t("err.signin.confirmWrong")
-              : b.code === "rate_limited"
-                ? t("err.signin.confirmBusy")
-                : t("err.signin.confirmGone", { host });
-          if (b.code !== "wrong_code" && b.code !== "rate_limited")
-            go.disabled = true;
-          input.select();
-        })
-        .catch(() => {
-          go.disabled = false;
-          err.textContent = t("err.signin.confirmBusy");
-        });
-    });
-    return;
-  }
   if (s.localhost) {
     // 127.0.0.1 or [::1]: the cookie is on localhost. Nothing to approve.
     root.innerHTML =

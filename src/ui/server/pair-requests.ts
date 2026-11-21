@@ -15,12 +15,13 @@
  * A request lasts 10 minutes and is single-use: claiming it (the cookie),
  * denying it, or its expiry ends it. At most `max` are pending at once; a
  * new one beyond that drops the oldest. Approve and deny attempts are
- * rate-limited (a guess of a code costs one): past `maxAttempts` in
- * `attemptWindowMs`, every attempt is refused until the window passes.
+ * rate-limited (a miss, as a guess of a code, costs one; issue 819: a
+ * pending request decided doesn't): past `maxAttempts` in the window,
+ * every attempt is refused until the window passes.
  *
  * Nothing is written to disk. Clock injected, so a test drives expiry.
  */
-import { randomBytes, randomInt } from "crypto";
+import { randomBytes, randomInt, timingSafeEqual } from "crypto";
 import { PAIR_ALPHABET } from "../../shared/confirm-code.js";
 import { deviceName } from "../../shared/web-session.js";
 
@@ -106,6 +107,11 @@ export interface PairView {
   client?: string;
   createdAt: number;
   expiresAt: number;
+  /**
+   * Issue 819: the sign-in link this request came from (its nonce), when a
+   * link opened it. Den's own: never sent to a page or the approver.
+   */
+  link?: string;
 }
 
 interface PairRequest extends PairView {
@@ -153,7 +159,7 @@ export class PairRequests {
   }
 
   /** A new request: its poll id (the page's only), code and expiry. */
-  create(meta: { userAgent?: string; client?: string }): {
+  create(meta: { userAgent?: string; client?: string; link?: string }): {
     id: string;
     code: string;
     expiresAt: number;
@@ -178,6 +184,7 @@ export class PairRequests {
       device: deviceName(ua),
       userAgent: ua,
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
+      ...(meta.link ? { link: String(meta.link).slice(0, 64) } : {}),
       createdAt: now,
       expiresAt: now + this.ttlMs,
       seenAt: now,
@@ -265,18 +272,40 @@ export class PairRequests {
     this.attempts = this.attempts.filter((t) => now - t < this.windowMs);
     if (this.attempts.length >= this.maxAttempts)
       return { ok: false, error: "rate_limited" };
-    this.attempts.push(now);
+    const r = this.match(input);
+    // Issue 819: a miss costs an attempt (a guess of a code is one); a
+    // pending request decided doesn't.
+    if (!r.ok) {
+      this.attempts.push(now);
+      return r;
+    }
+    r.request.state = state;
+    if (state === "denied") r.request.forgetAt = now + PAIR_ENDED_KEEP_MS;
+    return { ok: true, request: view(r.request) };
+  }
+
+  /** The pending request with this code (as typed), or why there is none. */
+  private match(
+    input: string,
+  ):
+    | { ok: true; request: PairRequest }
+    | { ok: false; error: "malformed" | "unknown" | "expired" | "ended" } {
     const code = normalizePairCode(input);
     if (!code) return { ok: false, error: "malformed" };
     this.sweep();
-    const r = [...this.byId.values()].find((x) => x.code === code);
+    // Constant time, whichever request it is (issue 819).
+    const want = Buffer.from(code);
+    let r: PairRequest | undefined;
+    for (const x of this.byId.values()) {
+      const have = Buffer.from(x.code);
+      if (have.length === want.length && timingSafeEqual(have, want) && !r)
+        r = x;
+    }
     if (!r) return { ok: false, error: "unknown" };
     if (r.state === "expired") return { ok: false, error: "expired" };
     if (r.state === "withdrawn") return { ok: false, error: "ended" };
     if (r.state !== "pending") return { ok: false, error: "unknown" };
-    r.state = state;
-    if (state === "denied") r.forgetAt = now + PAIR_ENDED_KEEP_MS;
-    return { ok: true, request: view(r) };
+    return { ok: true, request: r };
   }
 
   /**
@@ -311,6 +340,7 @@ function view(r: PairRequest): PairView {
     state: r.state,
     device: r.device,
     ...(r.client ? { client: r.client } : {}),
+    ...(r.link ? { link: r.link } : {}),
     createdAt: r.createdAt,
     expiresAt: r.expiresAt,
   };

@@ -1695,16 +1695,18 @@
     "err.signin.youreIn": "You're in.",
     "err.signin.expiredLead":
       "That sign-in link expired or was used. Sign in again below.",
-    "err.signin.confirmLead":
-      "Enter the code that web login printed on {host}:",
-    "err.signin.confirmGo": "Sign in",
-    "err.signin.confirmWrong":
-      "That code isn't right. Check what web login printed and try again.",
-    "err.signin.confirmBusy": "Too many tries. Wait a minute and try again.",
-    "err.signin.confirmGone":
-      "This link no longer works. On {host}, run web login again for a new one.",
-    "err.signin.confirmWhy":
-      "The link alone isn't enough: it needs the code shown on {host} too, so a link someone else sees can't sign them in.",
+    "err.signin.pairLinkLead":
+      "To let this browser in, approve it from a browser that is already signed in: open Settings › Access there and approve the code below.",
+    "err.signin.pairLinkWaiting":
+      "Waiting for you to approve it from a signed-in browser…",
+    "err.signin.pairLinkDenied":
+      "This browser was denied. To sign in, get a new code and approve it from a signed-in browser.",
+    "err.signin.pairLinkEnded":
+      "This request ended. Get a new code and approve it again.",
+    "err.signin.firstRunHere":
+      "{name} isn't set up yet. Finish its first sign-in on {host} itself: open the setup link there, or run web login in your own terminal there.",
+    "err.signin.claimSetUp":
+      "{name} is already set up, so the setup link doesn't sign in by itself. Approve this browser from one that is signed in: Settings › Access, then the code below.",
     "err.signin.github": "Sign in with GitHub",
     "err.signin.githubEnter": "Enter this code at {url}:",
     "err.signin.githubOpen": "Open GitHub",
@@ -2106,6 +2108,10 @@
     "set.embed.key_minutes": "Embedded pane's permission lasts",
     "set.embed.context_max_kb": "Largest shared page",
     "set.access.machine_name": "Machine name",
+    "set.access.approveNeedsBrowser":
+      "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
+    "set.access.approveNotAgent":
+      "Only a person approves a device, from their own signed-in browser.",
     "set.access.pair": "Pair a device",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
@@ -8217,7 +8223,14 @@
               : code === "expired"
                 ? t("pair.expired")
                 : "";
-          err.textContent = gone || (e && e.message) || String(e);
+          // Issue 819: only a person's signed-in browser approves a device.
+          var who =
+            code === "approve_not_agent" || code === "fixture_cannot_approve"
+              ? t("set.access.approveNotAgent")
+              : code === "approve_needs_browser" || code === "signin_to_approve"
+                ? t("set.access.approveNeedsBrowser")
+                : "";
+          err.textContent = gone || who || (e && e.message) || String(e);
           err.hidden = false;
           if (gone) {
             d.querySelector("#den-pair-allow").hidden = true;

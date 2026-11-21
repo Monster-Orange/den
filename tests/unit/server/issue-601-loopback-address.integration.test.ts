@@ -21,8 +21,14 @@ import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
 import * as path from "path";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
-import { mintLoginCode } from "../../../src/shared/web-session.js";
+import {
+  cliAuthHeaders,
+  readWebSecret,
+} from "../../../src/shared/web-secret.js";
+import {
+  checkLoginCode,
+  mintLoginCode,
+} from "../../../src/shared/web-session.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 
@@ -148,7 +154,22 @@ afterAll(async () => {
 
 describe("issue 601 clause 2 with an address only this machine opens", () => {
   it("the address is proven: a sign-in on it holds a __Host- cookie", async () => {
-    const c = mintLoginCode(readWebSecret(stateDir)!);
+    // Issue 819: the install's first sign-in, with a link `web login`
+    // registered from the person's terminal (here: this process, on
+    // loopback, with the CLI's bearer), so it signs in on the address.
+    const secret = readWebSecret(stateDir)!;
+    const c = mintLoginCode(secret);
+    const k = checkLoginCode(c, secret);
+    if (!k.ok) throw new Error("no login code");
+    const reg = await fetch(`http://localhost:${port}/api/web/logins`, {
+      method: "POST",
+      headers: {
+        ...cliAuthHeaders(stateDir),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ nonce: k.nonce, expiresAt: k.expiresAt }),
+    });
+    expect(reg.status).toBe(200);
     const r = await call(`/auth?c=${encodeURIComponent(c)}`, {
       ...onAddress(),
       ...nav,

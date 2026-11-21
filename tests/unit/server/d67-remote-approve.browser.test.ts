@@ -21,9 +21,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
-import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { denAuth } from "./helpers/den-auth.js";
 import { launchBrowser } from "../helpers/browser.js";
@@ -163,7 +162,8 @@ describe("D67: approve from another computer, in browsers only", () => {
     if (skip()) return;
     // A: signed in on the Den machine.
     const a = await open();
-    await a.goto(claimLink(local(), mintClaimCode(readWebSecret(stateDir)!)));
+    // Issue 819: first run, then approved by a signed-in browser.
+    await signInPage(a, stateDir, local());
     await a.waitForFunction(
       () => localStorage.getItem("den.approveKey")?.length === 43,
     );
@@ -240,7 +240,8 @@ describe("D67: approve from another computer, in browsers only", () => {
   it("#320: Allow on a code that has ended does nothing and says so; no new session", async () => {
     if (skip()) return;
     const a = await open();
-    await a.goto(claimLink(local(), mintClaimCode(readWebSecret(stateDir)!)));
+    // Issue 819: first run, then approved by a signed-in browser.
+    await signInPage(a, stateDir, local());
     await a.waitForFunction(
       () => localStorage.getItem("den.approveKey")?.length === 43,
     );
@@ -293,7 +294,8 @@ describe("D67: approve from another computer, in browsers only", () => {
   it("0.4.71: a browser on this machine with no session: one line and Sign in; its code's Allow says it is this computer, via localhost", async () => {
     if (skip()) return;
     const a = await open();
-    await a.goto(claimLink(local(), mintClaimCode(readWebSecret(stateDir)!)));
+    // Issue 819: first run, then approved by a signed-in browser.
+    await signInPage(a, stateDir, local());
     await a.waitForFunction(
       () => localStorage.getItem("den.approveKey")?.length === 43,
     );

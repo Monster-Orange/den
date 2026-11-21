@@ -828,8 +828,29 @@ export function waitingLine(w, now = Date.now()) {
 }
 
 /**
- * Waiting devices (SEC-2a): the computers whose signed-out page shows a
- * code, with Approve and Deny. Approving signs that page in by itself.
+ * Issue 819: an Approve or Deny refused, in this page's language when the
+ * server says why (only a person's signed-in browser approves a device).
+ */
+export function approveRefusal(e) {
+  const code = e && e.code;
+  if (code === "approve_not_agent" || code === "fixture_cannot_approve")
+    return L(
+      "set.access.approveNotAgent",
+      "Only a person approves a device, from their own signed-in browser.",
+    );
+  if (code === "approve_needs_browser" || code === "signin_to_approve")
+    return L(
+      "set.access.approveNeedsBrowser",
+      "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
+    );
+  return String((e && e.message) || e);
+}
+
+/**
+ * Waiting devices (SEC-2a; issue 819): the computers whose signed-out page
+ * shows a code (a sign-in link opened there among them), with Approve and
+ * Deny. Approving signs that page in by itself; only a person's signed-in
+ * browser may.
  */
 function drawWaiting(host, ctx) {
   let timer = null;
@@ -868,7 +889,7 @@ function drawWaiting(host, ctx) {
               btn.disabled = false;
               const out = host.querySelector("#set-waiting-out");
               if (out)
-                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(approveRefusal(e))}</span>`;
             });
         };
         host
