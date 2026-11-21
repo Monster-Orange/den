@@ -38,7 +38,6 @@ const ctx = (): GuardContext => ({
             session: { name: "s1", id: "s1" },
           }
         : null,
-  csrfToken: "start-csrf",
   session: () => null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
   peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),

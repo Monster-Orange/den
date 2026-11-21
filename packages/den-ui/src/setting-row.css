@@ -1,0 +1,56 @@
+/* den-ui: the settings on/off row (setting-row.js, issue 554). Tokens
+   only. Save is the kit's button (button.css); the state line is
+   savestate.css's. Linked, never injected. */
+.den-setrow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 32rem;
+  margin: 0;
+}
+.den-setrow-l {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-weight: 600;
+  color: var(--text);
+}
+.den-setrow-l input {
+  margin: 3px 0 0;
+  flex: none;
+  accent-color: var(--accent-fill);
+}
+.den-setrow-help {
+  margin: 0;
+  color: var(--muted);
+}
+.den-setrow-act {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+.den-setrow-act .den-btn[aria-disabled="true"] {
+  cursor: progress;
+}
+.den-setrow-meta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+/* A phone: the label and Save are 44px targets; the box is 22px. */
+@media (max-width: 720px), (pointer: coarse) {
+  .den-setrow-l {
+    min-height: var(--tap);
+    align-items: center;
+  }
+  .den-setrow-l input {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+  }
+  .den-setrow-act .den-btn {
+    min-height: var(--tap);
+  }
+}

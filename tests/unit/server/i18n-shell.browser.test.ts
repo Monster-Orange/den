@@ -21,6 +21,7 @@ import type { Browser, Page } from "playwright";
 import { pageImport } from "./helpers/page-import.js";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -29,7 +30,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -262,7 +263,7 @@ describe("the shell in a pseudo-locale", () => {
     };
     await open("#appearance-btn", ".den-pop");
     await open("#env-btn", ".den-pop");
-    await open("#version-pill", ".cl-box #cl-title");
+    await open("#version-pill", "#cl-overlay #cl-title");
     await open("#den-status", "#den-drawer-title");
     await open("#den-search", "#den-pal-q");
     // The admin-password prompt, as a run's needs-sudo opens it (LK-0).

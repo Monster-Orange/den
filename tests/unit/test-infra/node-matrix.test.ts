@@ -90,21 +90,25 @@ describe("the Node matrix (den#84)", () => {
     everyShard(jobs("ci.yml").tests);
   });
 
-  it("release.yml: the checks and the tests block on both ends, before the tarball is built and tagged", () => {
-    const j = jobs("release.yml");
-    checksAndTests(j);
-    for (const after of ["pack", "tag"])
-      expect(([] as string[]).concat(j[after]?.needs ?? [])).toEqual(
-        expect.arrayContaining(["checks", "tests"]),
-      );
+  // The release's gates are release-gates.yml, called by release.yml and
+  // by its dry run on every dev tag (issue 615).
+  it("the release: the checks and the tests block on both ends, before the tarball is built and tagged", () => {
+    const g = jobs("release-gates.yml");
+    checksAndTests(g);
+    expect(([] as string[]).concat(g.pack?.needs ?? [])).toEqual(
+      expect.arrayContaining(["checks", "tests"]),
+    );
+    expect(
+      ([] as string[]).concat(jobs("release.yml").tag?.needs ?? []),
+    ).toEqual(expect.arrayContaining(["gates"]));
   });
 
-  it("release.yml: the tests' shards are 1..N and each runs its own part of N", () => {
-    everyShard(jobs("release.yml").tests);
+  it("the release: the tests' shards are 1..N and each runs its own part of N", () => {
+    everyShard(jobs("release-gates.yml").tests);
   });
 
-  it("release.yml: the tarball is built on the lowest Node", () => {
-    const steps = jobs("release.yml").pack?.steps ?? [];
+  it("the release: the tarball is built on the lowest Node", () => {
+    const steps = jobs("release-gates.yml").pack?.steps ?? [];
     const v = steps.find((s) => s.with?.["node-version"])?.with?.[
       "node-version"
     ];

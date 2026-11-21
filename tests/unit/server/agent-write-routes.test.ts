@@ -50,12 +50,27 @@ afterAll(() => {
 const AGENTS_MAY: Record<string, string> = {
   "POST /api/approvals":
     "asks the person to allow a held write; nothing runs until they do",
+  "POST /api/approvals/:id/withdraw":
+    "takes back its own held write (issue 142); another's is refused, nothing runs",
   "POST /api/activity": "an agent's report of a refused call, appended only",
   "GET /api/service/exec":
     "MCP service lifecycle: up, down, restart, local only (checked for an agent)",
   "HEAD /api/service/exec": "as GET",
   "GET /api/run": "MCP tests_run: starts a test run",
   "HEAD /api/run": "as GET",
+  // 0.4.71: log reads run a command for their output, so they need a
+  // credential; an agent's token still reads them (MCP logs_tail, logs_search).
+  "GET /api/service/logs": "MCP logs_tail: follows a service's log",
+  "HEAD /api/service/logs": "as GET",
+  "GET /api/service/taillog": "MCP logs_tail: tails a service's log",
+  "HEAD /api/service/taillog": "as GET",
+  "GET /api/service/history": "a service's log history, read only",
+  "HEAD /api/service/history": "as GET",
+  "GET /api/logs/search": "MCP logs_search: searches the logs",
+  "HEAD /api/logs/search": "as GET",
+  "GET /api/manifest/validate":
+    "MCP manifest_validate: reads a manifest inside a repo, never quoting it",
+  "HEAD /api/manifest/validate": "as GET",
   "POST /api/workspace/sync": "MCP sync: git clone and pull in the checkouts",
   "GET /api/workspace/sync": "the same sync, streamed (as the page does)",
   "HEAD /api/workspace/sync": "as GET",

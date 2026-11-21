@@ -98,7 +98,17 @@ const typed = (r: Rig) => Buffer.concat(r.made[0].writes).toString();
 describe("a relayed message, through the delivery loop", () => {
   it("sent mid-turn: arrives after the turn ends, not before", async () => {
     const r = await rig();
-    const transcript = await started(r, ask);
+    // Issue 607: the prompt is written after its session started, as a
+    // runtime writes it; one from before it would be a cut turn (idle).
+    const transcript = await started(r, "");
+    fs.appendFileSync(
+      transcript,
+      line({
+        type: "user",
+        timestamp: new Date().toISOString(),
+        message: { role: "user", content: "plan the release" },
+      }),
+    );
     r.made[0].emit("> ");
     const loop = loopFor(r, new Set());
     expect(await loop.takeLocal(relayed())).toBe(true);

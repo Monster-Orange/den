@@ -53,6 +53,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -67,7 +69,7 @@ const PTY = loadPty().available;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -166,6 +168,7 @@ async function page(
     reducedMotion: "reduce",
     ...(touch ? { hasTouch: true, isMobile: true } : {}),
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -811,11 +814,9 @@ describe("the panel", () => {
         () => document.activeElement?.closest(".den-rail") !== null,
       ),
     ).toBe(true);
-    await p.evaluate(() =>
-      (
-        window as unknown as { denShell: { pin(id: string): void } }
-      ).denShell.pin("notes"),
-    );
+    // Put the pins back as they were: notes pinned in north (issue 402:
+    // pinning again under All would make it a pin of no project).
+    expect(await s!.settings({ shell: { pins: ["notes", "blog"] } })).toBe(200);
     await p.context().close();
   }, 60_000);
 });

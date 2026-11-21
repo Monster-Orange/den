@@ -26,8 +26,10 @@ import { writeWebOwner } from "../../../src/shared/web-owner.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -46,12 +48,9 @@ let server: ChildProcess;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await chromium.connect(ws, { exposeNetwork: "<loopback>" })
-      : await chromium.launch({
-          args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-        });
+    browser = await launchBrowser(chromium, {
+      args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
+    });
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -197,6 +196,8 @@ describe("the account entry draws who is signed in", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    // A browser on this machine, signed in as `web up` does (0.4.71).
+    await signIn(ctx, stateDir, `http://localhost:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://localhost:${port}/`);
     expect(await entry(p)).toMatchObject({
@@ -216,6 +217,8 @@ describe("the account entry draws who is signed in", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    // A browser on this machine, signed in as `web up` does (0.4.71).
+    await signIn(ctx, stateDir, `http://localhost:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://localhost:${port}/`);
     expect(await entry(p)).toMatchObject({

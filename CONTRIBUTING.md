@@ -196,6 +196,7 @@ export function expect(cells) {
 
 - `issue` matches the file name. `clauses` names each clause the check
   proves, as the issue words it, and `expect` answers each one once.
+- The harness reads a row's `detail:` (what was seen), never `note:`.
 - `ok` is `true`, `false`, or `null` for "not run". `null` always comes
   with `skip`: `"person"` for a person's own act (an Allow, an answer, an
   approval), or `"needs-<thing>"` for what the bed lacks (for example
@@ -207,28 +208,92 @@ export function expect(cells) {
 
 What the harness passes in `ctx`:
 
-|                                         |                                                                                                                                                                                                                                                    |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.url`                               | the bed's address                                                                                                                                                                                                                                  |
-| `ctx.cli(args)`                         | runs the bed's CLI: `{ code, out, err }`, one-time codes already masked                                                                                                                                                                            |
-| `ctx.api(path, init?)`                  | a signed-in `fetch` against the bed                                                                                                                                                                                                                |
-| `ctx.page`, `ctx.browser`, `ctx.width`  | with a `matrix`: a signed-in page in this cell                                                                                                                                                                                                     |
-| `ctx.shot(name, { mask? })`             | a screenshot into the evidence folder; pairing and device codes masked by default                                                                                                                                                                  |
-| `ctx.evidence(name)`                    | an absolute path in this tag's evidence folder, for logs and files                                                                                                                                                                                 |
-| `ctx.agent(id)`                         | the bed's stub agent: `start(persona)`, `running(ms)`, `stop()`, `restart()`, `remove()`, `state()`, `waiting(why)`, `askHuman(q)`, `permissionRequest(tool)`, `idlePrompt()`, `sessionStart(kind)`, `print(text)`, `hook(event, input)`, `exit()` |
-| `ctx.fetch(path, init?)`                | like `api`, keeping the status: `{ status, headers, body }` (refusals are judged by status)                                                                                                                                                        |
-| `ctx.readBed(rel)`                      | a file under the bed's folder or its state folder, read only: its text (codes masked), or null                                                                                                                                                     |
-| `ctx.listBed(rel = '.')`                | the names in a folder under the bed's folder or its state folder, sorted, read only; or null                                                                                                                                                       |
-| `ctx.goto(page, path)`, `ctx.sleep(ms)` | open a bed page; wait                                                                                                                                                                                                                              |
-| `ctx.until(fn, ms)`                     | waits for `fn` to be true: the ms it took, or null                                                                                                                                                                                                 |
-| `ctx.bell(page)`                        | `{ badge, unread, waiting[] }`                                                                                                                                                                                                                     |
-| `ctx.edge`                              | the bed's own edge: `inspect()`, `swap({ image, accessLog })`, `restore()`, `status(path)`                                                                                                                                                         |
-| `ctx.signedOut(browser, width)`         | a page with no session: `{ ctx, page }`                                                                                                                                                                                                            |
-| `ctx.shotOf(page, name, { mask? })`     | `shot` for another page                                                                                                                                                                                                                            |
+|                                                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.url`                                                                     | the bed's address as the browser reaches it: for pages (`goto`, links), never a module's own `fetch`                                                                                                                                                                                                                                                                                                                                                                        |
+| `ctx.hostUrl`                                                                 | the bed's address as the host reaches it (`http://127.0.0.1:<port>`), for a module's own plain `fetch`. A plain `fetch` runs on the host, where `ctx.url` reaches the live edge: the harness refuses it, and `gate-shape` flags it                                                                                                                                                                                                                                          |
+| `ctx.cli(args, { timeout?, env? })`                                           | runs the bed's CLI: `{ code, out, err }`, one-time codes already masked                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `ctx.api(path, init?)`                                                        | a signed-in `fetch` against the bed                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `ctx.page`, `ctx.browser`, `ctx.width`                                        | with a `matrix`: a signed-in page in this cell                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ctx.shot(name, { mask? })`                                                   | a screenshot into the evidence folder; pairing and device codes masked by default                                                                                                                                                                                                                                                                                                                                                                                           |
+| `ctx.evidence(name)`                                                          | an absolute path in this tag's evidence folder, for logs and files                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `ctx.agent(id)`                                                               | the bed's stub agent: `start(persona)`, `running(ms)`, `stop()`, `restart()`, `remove()`, `state()`, `waiting(why)`, `askHuman(q)`, `permissionRequest(tool)`, `idlePrompt()`, `sessionStart(kind)`, `print(text)`, `hook(event, input)`, `exit()`, `typed({ since })` (what Den typed into it), `sh(cmd, ms)` (a command run inside its own session: `{ status, out, err }`)                                                                                               |
+| `ctx.fetch(path, init?)`                                                      | like `api`, keeping the status: `{ status, headers, body }` (refusals are judged by status)                                                                                                                                                                                                                                                                                                                                                                                 |
+| `ctx.readBed(rel)`                                                            | a file under the bed's folder, or its state folder with a `state:` prefix (`state:agents/<id>.json`), read only: its text (codes masked), or null                                                                                                                                                                                                                                                                                                                           |
+| `ctx.listBed(rel = '.')`                                                      | the names in a folder under the bed's folder, or its state folder with a `state:` prefix, sorted, read only; or null                                                                                                                                                                                                                                                                                                                                                        |
+| `ctx.goto(page, path)`, `ctx.sleep(ms)`, `ctx.now()`                          | open a bed page; wait; the harness's clock                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `ctx.until(fn, ms)`                                                           | waits for `fn` to be true: the ms it took, or null                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `ctx.bell(page)`                                                              | `{ badge, unread, waiting[] }`                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ctx.notifications`, `ctx.waiting`                                            | the bed's notifications, and what waits on the person, as the bell reads them                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ctx.edge`                                                                    | the bed's own edge: `inspect()`, `swap({ image, accessLog })`, `restore()`, `status(path)`                                                                                                                                                                                                                                                                                                                                                                                  |
+| `ctx.signedIn`, `ctx.signedOut(browser, width)`                               | a signed-in page; a page with no session: `{ ctx, page }`                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `ctx.pageApi`                                                                 | an API call through the page's own sign-in                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `ctx.sessions`                                                                | the bed's terminal and agent sessions                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ctx.addressDead({ keepSeconds, maxMs })`                                     | takes the bed's address down for a while, to see what the page and sessions do                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ctx.stub`, `ctx.stubLog(name, { k? })`                                       | the stub runtime the bed's agents run; its log (codes masked)                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ctx.stub.nextStart({ mode, shape?, default? })`, `ctx.stub.clearNextStart()` | how the next stub start (a start, Resume or relaunch) behaves, that start only: `mode: 'unwritten'` exits 1 before writing any conversation; `mode: 'trust'` draws the folder-trust question first (`shape` `'a'` "1. Yes, I trust this folder" or `'b'` "1. Yes, proceed"; `default` `'yes'` or `'no'`, the choice a bare Enter picks) and writes nothing until Yes. Clear it in `teardown`                                                                                |
+| `ctx.stub.trust(id, yes)`                                                     | the stub's own stand-in for the person on its trust screen (its control channel, never Den's terminal or page)                                                                                                                                                                                                                                                                                                                                                              |
+| stub verbs (typed in as a message from the page, `POST …/agents/<id>/say`)    | `/bg <secs> [name]`: the stub forks a detached shell under its own process that sources `$STUB_HOME/shell-snapshots/snapshot-zsh-<id>.sh` and sleeps `<secs>` (a background shell as Claude Code's look to Den), and its turn ends at once; `/bg-stop` ends them, as the stub's exit does                                                                                                                                                                                   |
+| `ctx.transcriptPath(id)`                                                      | the stub agent's conversation file, or null while none is written                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `ctx.hub`                                                                     | the bed's Hub: `url`, `team`, `by`, `deliveries(after?)`, `doc({ agent, workspace, title })`, `comment({ agent, text, slug? })` → `{ id, slug }`, `delivery(id)` → `{ state, ack, ackedAt, acked, from }` (`acked`: it has left Hub's unanswered list; Hub's list doesn't show `ack` yet). For a stronger check, also read Den's side (the agent's row, or doctor's held list)                                                                                              |
+| `ctx.hubs.a`, `ctx.hubs.b`                                                    | the two test Hubs (`fixture: true`), for a check that moves the bed from one Hub to the other: `url`, `team`, `companies` (the test companies seeded there, `[]` until seeded), `by`, and `comment({ agent, text, slug?, workspace?, company? })`, `doc`, `deliveries`, `delivery` as on `ctx.hub` (those three only on the Hub the bed is bound to now). Allowed by test fixture: only on the test Hubs, only in test companies                                            |
+| `ctx.den2()`                                                                  | a throwaway second Den on its own dir, state dir and loopback port, at the bed's commit, pointed at the first Postgres test Hub, so a check can change a Den's Hub without touching the bed's own Den. A full ctx of its own (`api`, `fetch`, `cli`, `agent`, `readBed('state:…')`, `hubs`, `hubConnect`, `hubTokenSnapshot`, `hubTokenStatus`); its `close()` disconnects it (Hub revokes), checks its last token answers 401 and removes it. Call `close()` in `teardown` |
+| `ctx.hubConnect(key, { company? })`                                           | the fixture Connect to `ctx.hubs[key]`: Allow pressed as the fixture person, for `company` (default: the Hub's own pick). `{ ok, company }`, never a code or token. Absent until Hub's fixture connect-allow exists: skip with `"needs Hub fixture connect-allow"`                                                                                                                                                                                                          |
+| `ctx.hubTokenSnapshot()`, `ctx.hubTokenStatus(id, key)`                       | keep the bed's Hub token now, in the harness's memory only (an id back, never the token); later, the HTTP status of Hub's `/connect/whoami` with it on `ctx.hubs[key]` (200, or 401 once revoked). Throws on an unknown id or key                                                                                                                                                                                                                                           |
+| `ctx.pairing`, `ctx.loginLink(…)`                                             | a pairing code and a one-time sign-in link, in memory only: never log them, never return them from `run`, never put them in a row                                                                                                                                                                                                                                                                                                                                           |
+| `ctx.shotOf(page, name, { mask? })`                                           | `shot` for another page                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Names in a row's `evidence` are written into the verdict next to it.
 Anything else on `ctx` is the harness's internals and may change: never
 use it. Setup's state reaches `expect` only through what `run` returns.
+
+### The bed signs in as a fixture person
+
+Live checks run as an agent, and Den never signs an agent in as the
+person. On a bed, the runner signs in as a **fixture person** instead:
+neither the person nor an agent, logged and audited as "fixture person".
+It works only on a **test install**, which needs all four of these:
+
+1. The mark, set by hand by a person in the bed's distribution config
+   (`config/den.yml`). Settings, `config` and agents can't set it, and
+   agents are denied edits to that file.
+
+   ```yaml
+   web:
+     test_install: true
+     fixture_session_minutes: 60 # optional: how long a fixture session lasts
+   ```
+
+2. The launcher's test-only flag in the server's own start environment,
+   `<PREFIX>_TEST_INSTALL=1` (`DEN_TEST_INSTALL=1` for Den). No file can
+   set it, and the server drops it from what it passes on.
+3. Its own state folder (`<PREFIX>_HOME`), never the product's default
+   one.
+4. No owner and no other person: no GitHub sign-in, setup link or
+   pairing code ever used on it, and no one signed in by a `web login`
+   link except the person who pressed **Set up test person**.
+
+Then:
+
+1. Signed in (a `web login` link), the person opens Settings › Access ›
+   Test install in their browser and presses **Set up test person**,
+   once. It is a button only: every command-line call and agent is
+   refused. The server writes a key in the bed's state folder (0600),
+   sealed with the install's own secret, so a key it didn't write is
+   refused. Pressing it again replaces the key and ends every older
+   fixture session.
+2. The runner gets a one-time sign-in link as the fixture person:
+
+   ```sh
+   <cli> web fixture-login [--next <path>] [--origin <url>]
+   ```
+
+Anywhere else the fixture sign-in and its setup are refused, and an
+agent's own `web login` stays refused everywhere. A fixture session
+counts as an agent at every person-only check, reaches only the pages and
+the few writes live checks need, never opens a terminal, and ends as soon
+as the install stops being a test install, the key goes, or its time is
+up.
 
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with
@@ -270,6 +335,24 @@ trusted publishing (no token anywhere):
   such tag of the version is in the release commit's history
   (`scripts/release-ancestry.sh`): a candidate that passed its gate but
   never merged stops the release.
+- Every pushed dev tag starts the release's dry run
+  (`.github/workflows/release-dry-run.yml`, issue 615). It applies the
+  release commit's edits to the runner's copy only
+  (`scripts/release-dry-run.mjs`): Den's version without `-dev.N` in
+  `package.json`, `package-lock.json` and
+  `examples/distribution/package.json`, the kit's version, and the
+  changelog entry's date. Then it runs the release's own checks, tests and
+  pack (`release-gates.yml`, which `release.yml` calls too). It never tags,
+  publishes or makes a GitHub release, and has no token. Its result is a
+  check on the candidate's commit, beside the bed run: a failure there
+  would fail the release.
+- The kit's version (`packages/den-ui`) is decided in the candidate,
+  never in the release commit. When a candidate changes the kit and npm
+  already has its version, bump the kit's version (its `package.json` and
+  its entry in `package-lock.json`) in the candidate before the dev tag.
+  The dry run fails and says so otherwise.
+- The release commit changes only Den's version and the changelog entry's
+  date: everything else was in the candidate the dry run checked.
 - Bump the version in `package.json`, `package-lock.json` and
   `CHANGELOG.md` together; the changelog entry lists the **Migrations** a
   distribution must make.

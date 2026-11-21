@@ -20,6 +20,7 @@ import * as path from "path";
 import {
   DIALOG_WORDS,
   answerOf,
+  askSpec,
   configureDialog,
   dialogHtml,
   dialogWord,
@@ -90,10 +91,13 @@ describe("den#133 kit: the words and the markup", () => {
       { title: "Gone <b>?", message: 'a "b"\nc', danger: true, okLabel: "Go" },
       ids,
     );
-    expect(html).toContain('<h2 id="h1">Gone &lt;b&gt;?</h2>');
-    expect(html).toContain('<p class="dk-msg" id="m1">a &quot;b&quot;\nc</p>');
+    // Issues 669, 670: the inside of the kit's frame; every answer a submit.
+    expect(html).toContain('<h2 id="h1" tabindex="-1">Gone &lt;b&gt;?</h2>');
+    expect(html).toContain(
+      '<div class="dk-msg" id="m1"><p class="dk-text">a &quot;b&quot;\nc</p></div>',
+    );
     expect(html).toMatch(
-      /class="dk-ft"><button data-report="x">Report<\/button><button type="button" class="dk-btn" data-dk="cancel">Cancel<\/button><button type="submit" class="dk-btn dk-danger" data-dk="ok">Go<\/button>/,
+      /class="dk-ft"><button data-report="x">Report<\/button><button type="submit" class="dk-btn" value="cancel" data-dk="cancel" formnovalidate>Cancel<\/button><button type="submit" class="dk-btn dk-danger" value="ok" data-dk="ok">Go<\/button>/,
     );
     expect(html).not.toContain("dk-primary");
   });
@@ -128,8 +132,11 @@ describe("den#133 kit: the words and the markup", () => {
 
   it("confirm and tell are alertdialogs, text a dialog; each named and described", () => {
     expect(SRC).toMatch(/kind === "text" \? "dialog" : "alertdialog"/);
-    expect(SRC).toContain('"aria-labelledby"');
-    expect(SRC).toContain('"aria-describedby"');
+    const q = dialogHtml(askSpec("confirm", { title: "T", message: "M" }, "q"));
+    expect(q).toContain('aria-labelledby="q-h"');
+    expect(q).toContain('aria-describedby="q-m"');
+    const bare = dialogHtml(askSpec("tell", { message: "M" }, "b"));
+    expect(bare).toContain('aria-labelledby="b-m"');
   });
 });
 
@@ -183,7 +190,11 @@ describe("den#133: Den serves it and its pages use it", () => {
     const src = fs.readFileSync(path.join(PUBLIC, "local-dev.html"), "utf-8");
     expect(src).not.toContain("autostart-confirm-overlay");
     expect(src).not.toMatch(/>Cancel</);
-    expect(src).not.toContain("Turn off auto-start for");
+    // The English words appear only as pT's fallback for the catalog key.
+    const english = src.split("Turn off auto-start for").length - 1;
+    const asFallback =
+      src.split('pT("dlg.autoOffT", "Turn off auto-start for').length - 1;
+    expect(english).toBe(asFallback);
     expect(src).not.toContain('"Enter a path or paste YAML content"');
     expect(src).toMatch(/askConfirm\(\{\s*title: \w+\("dlg\.autoOffT"/);
   });

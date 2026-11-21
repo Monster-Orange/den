@@ -78,6 +78,14 @@ const LISTING: Record<string, Entry> = {
   "web login": page("settings-registry.js", 'id="set-signin"'),
   "web sessions": R,
   "web logout": page("settings-registry.js", "data-signout-all"),
+  // Issue 810: setup is Settings' Set up test person; the command only says so.
+  "web fixture-person": page(
+    "settings-registry.js",
+    '"/api/web/fixture-person"',
+  ),
+  "web fixture-login": script(
+    "the live-check runner's one-time link on a test install; never on a page",
+  ),
   "web owner": page("settings-registry.js", "/api/web/owner"),
   "web approve": page("settings-registry.js", "/api/web/approve"),
   "web claim-link": script("a setup link for a new device, from a shell"),
@@ -90,6 +98,8 @@ const LISTING: Record<string, Entry> = {
   "edge untrust": slot("0.4.47", "untrust the local certificate"),
   "edge status": R,
   "edge routes": R,
+  // Issue 455: prints a route; the Edge page shows the same (it reads).
+  "edge route": R,
 
   "service install": slot("0.4.47", "start at login (launchd)"),
   "service uninstall": slot("0.4.47", "stop starting at login"),

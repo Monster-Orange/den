@@ -17,6 +17,8 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -27,7 +29,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     // No browser: fail loudly, never pass by skipping (set
     // DEN_SKIP_BROWSER_TESTS=1 where none can be installed).
@@ -74,7 +76,7 @@ afterAll(async () => {
 const state = (p: Page) =>
   p.evaluate(() => {
     const overlay = document.getElementById("cl-overlay");
-    const box = overlay?.querySelector(".cl-box");
+    const box = overlay;
     const body = document.getElementById("cl-body");
     const a = document.activeElement;
     return {
@@ -117,6 +119,7 @@ describe("the What's new dialog", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
+    await signIn(ctx, path.join(tmp, "home"), `http://127.0.0.1:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://127.0.0.1:${port}/services`);
     // The pill's label comes from the same read: wait for it.
@@ -136,11 +139,12 @@ describe("the What's new dialog", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
+    await signIn(ctx, path.join(tmp, "home"), `http://127.0.0.1:${port}`);
     const p = await ctx.newPage();
     await p.goto(`http://127.0.0.1:${port}/services`);
     // First visit: it opens by itself.
     await p.waitForSelector("#cl-overlay.open", { timeout: 10_000 });
-    const box = p.locator("#cl-overlay .cl-box");
+    const box = p.locator("#cl-overlay");
     expect(await box.getAttribute("role")).toBe("dialog");
     expect(await box.getAttribute("aria-modal")).toBe("true");
     const labelledBy = await box.getAttribute("aria-labelledby");
@@ -187,6 +191,7 @@ describe("the What's new dialog", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1024, height: 300 },
       });
+      await signIn(ctx, path.join(tmp, "home"), `http://127.0.0.1:${port}`);
       const p = await ctx.newPage();
       // The newest release's notes can be one line: give it enough bullets
       // that the dialog scrolls whatever CHANGELOG.md says today.

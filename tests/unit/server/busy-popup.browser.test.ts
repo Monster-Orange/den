@@ -16,7 +16,9 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { pageImport } from "./helpers/page-import.js";
+import { shortDots } from "./helpers/short-dots.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -25,7 +27,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -54,11 +56,24 @@ async function page(width = 1280, clock = false): Promise<Page> {
     viewport: { width, height: 800 },
     reducedMotion: "reduce",
   });
+  // What's new off, as in the other Settings tests: since issue 793 it
+  // waits for an open pop-up (this one) to close and then opens, taking
+  // the keyboard these tests check.
+  await ctx.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const st = document.createElement("style");
+      st.textContent = "#cl-overlay{display:none!important}";
+      document.head.appendChild(st);
+    });
+  });
   const p = await ctx.newPage();
   if (clock) await p.clock.install();
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
+  // Issue 699: these tests are about the pop-up; its wait after a held
+  // button's dots is set to the old 300 ms here.
+  await shortDots(p);
   return p;
 }
 

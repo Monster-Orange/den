@@ -18,6 +18,11 @@ export interface HubAddressDeps {
   disconnect: (
     force: boolean,
   ) => Promise<{ ok: boolean; error?: string; message?: string }>;
+  /**
+   * Issue 726: the address was written: the old Hub's state is archived
+   * and its bell items go (hub-change.ts noteHub).
+   */
+  changed?: (url: string | null) => Promise<unknown>;
   /** Restart Den after answering. */
   restart: (reason: string) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -103,6 +108,7 @@ export async function runHubAddress(
   const p = patchHubUrl(user, target);
   if (!p.ok) return p;
   d.writeUser(user);
+  await d.changed?.(p.url).catch(() => undefined);
   const r = await d.restart(
     p.url ? `Hub's address set to ${p.url}` : "Hub's address cleared",
   );

@@ -76,6 +76,22 @@ export function typingHeld(
   return out;
 }
 
+/**
+ * Issue 701: the agents Hub deliveries (and relayed messages) wait for:
+ * as typingHeld, but an ask_human question doesn't hold them. The agent
+ * ended its turn to wait for its person's answer, and the person's
+ * comment is that answer. A permission dialog, a held Allow or a pause
+ * still holds them; so does a dialog on screen (agentInputState).
+ */
+export function deliveryHeld(
+  why: ReadonlyMap<string, string>,
+  approvalActors: Iterable<string>,
+  paused: Iterable<string> = [],
+): Set<string> {
+  const asked = new Map([...why].filter(([, w]) => w !== "asked"));
+  return typingHeld(asked, approvalActors, paused);
+}
+
 export interface AttentionDeps {
   store: NotificationStore;
   /** A short mark of the agent's output now (a hash of its tail), or null. */
@@ -134,6 +150,23 @@ export const SETTLE_MS = 4000;
  */
 export const RESUME_AFTER_MS = 1000;
 
+/**
+ * Issue 609: whether a tool run is the one a permission wait asked for:
+ * the same tool, and the same input when both say it (an older hook, or
+ * a caller that names only the tool, matches on the tool).
+ */
+export function ownRun(
+  w: { why: WaitingWhy; what: string; input?: string },
+  run: { what: string; input?: string },
+): boolean {
+  return (
+    w.why === "permission" &&
+    !!w.what &&
+    w.what === run.what &&
+    (!w.input || !run.input || w.input === run.input)
+  );
+}
+
 /** Issue 327: what an agent waits on, and since when (ISO). */
 export interface WaitingDetail {
   why: WaitingWhy;
@@ -151,6 +184,8 @@ interface Waiting {
   workspace: string;
   /** Cleared by the runtime's hooks, not by its output. */
   byHook: boolean;
+  /** Issue 609: the hash of the asked tool's input (attention-hook.ts). */
+  input?: string;
   /** Issue 101: the lead its question went to, instead of its person. */
   lead?: string;
 }
@@ -164,6 +199,13 @@ export class Attention {
   private readonly bellSeen = new Map<string, string>();
   /** Issue 369: rows from before this server still to decide. */
   private orphansLeft = true;
+  /** Issue 609: events in the order they came (a set's awaits aside). */
+  private seq = 0;
+  /** Issue 609: each agent's last named tool run, and when it came. */
+  private readonly lastRun = new Map<
+    string,
+    { seq: number; at: number; what: string; input?: string }
+  >();
 
   constructor(private readonly d: AttentionDeps) {
     this.now = d.now ?? Date.now;
@@ -213,17 +255,42 @@ export class Attention {
           what?: string;
           idle?: boolean;
           hooked?: boolean;
+          /** Issue 609: the asked tool's input hash. */
+          input?: string;
         }
       | { event: "finished"; text?: string; question?: string }
-      | { event: "resumed"; from: "tool" | "prompt" | "session" },
+      | {
+          event: "resumed";
+          from: "tool" | "prompt" | "session";
+          /** Issue 609: the tool that ran, and its input hash. */
+          what?: string;
+          input?: string;
+        },
   ): Promise<{ lead: string } | void> {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
     const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
+    const seq = ++this.seq;
+    const arrived = this.now();
     if (ev.event === "resumed") {
+      // Issue 609: a named tool run is kept, so a dialog for it applied
+      // after it (its set still awaiting, or the calls swapped) doesn't
+      // stay up.
+      const run =
+        ev.from === "tool" && ev.what
+          ? { seq, at: arrived, what: ev.what, input: ev.input }
+          : undefined;
+      if (run) this.lastRun.set(agent, run);
       const w = this.waiting.get(agent);
       if (!w) return;
+      // Issue 609: the asked tool ran (it was allowed): its dialog is
+      // over, however soon after it the run came.
+      if (run && ownRun(w, run)) {
+        this.lastRun.delete(agent);
+        this.clear(agent);
+        return;
+      }
       // Issue 327: a new session has no dialog from before it; an ask
       // stays (Den holds the question, not the session).
       if (ev.from === "session") {
@@ -323,14 +390,34 @@ export class Attention {
         : prev?.why === "asked" && prev.lead && prev.text === text
           ? prev.lead
           : await this.toLead(agent, workspace, name, q);
+    const mark = await this.d.outputMark(agent);
+    // Issue 609: the asked tool's run already landed (while this set
+    // awaited, or just before it: the two calls swapped). The clear wins:
+    // no wait is left.
+    const ran = this.lastRun.get(agent);
+    if (
+      ev.why === "permission" &&
+      ran &&
+      (ran.seq > seq || arrived - ran.at < RESUME_AFTER_MS) &&
+      ownRun(
+        { why: ev.why, what: trimWhat(ev.what ?? ""), input: ev.input },
+        ran,
+      )
+    ) {
+      this.lastRun.delete(agent);
+      if (this.waiting.has(agent)) this.clear(agent);
+      return;
+    }
+    const cur = this.waiting.get(agent);
     this.waiting.set(agent, {
       why: ev.why,
       text,
       what,
-      at: prev?.at ?? this.now(),
-      mark: await this.d.outputMark(agent),
+      at: cur?.at ?? this.now(),
+      mark,
       workspace,
       byHook: hooked,
+      input: what === cur?.what ? (cur?.input ?? ev.input) : ev.input,
       ...(lead ? { lead } : {}),
     });
     if (lead) {
@@ -401,6 +488,15 @@ export class Attention {
     if (this.waiting.has(agent)) this.clear(agent);
   }
 
+  /**
+   * Issue 701: a comment from the agent's person was typed into it: its
+   * question is answered. A dialog (permission) isn't: only its answer on
+   * screen ends that.
+   */
+  answered(agent: string): void {
+    if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
+  }
+
   private clear(agent: string): void {
     const w = this.waiting.get(agent);
     this.waiting.delete(agent);
@@ -432,6 +528,34 @@ export class Attention {
       scope: `workspace/${workspace}`,
       text: `${name} finished ${what}${w.artifact ? ` on ${w.artifact}` : ""}`,
       msg: { key: w.artifact ? "bell.m.hubOn" : "bell.m.hub", vars },
+      link:
+        w.url && /^https?:\/\//.test(w.url)
+          ? w.url
+          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+    });
+  }
+
+  /**
+   * Issue 701: Hub comments typed into the agent had no answer after
+   * hub.delivery_answer_minutes; its next comments go on. One item,
+   * linking to the comment in Hub when known.
+   */
+  hubNoAnswer(
+    agent: string,
+    workspace: string,
+    w: { count: number; minutes: number; artifact?: string; url?: string },
+  ): void {
+    const name = this.d.nameOf(agent);
+    const what = w.count === 1 ? "1 Hub comment" : `${w.count} Hub comments`;
+    this.d.store.add({
+      kind: "answer",
+      subject: `agent:${agent}`,
+      scope: `workspace/${workspace}`,
+      text: `${name}: ${what} typed in, no answer yet after ${w.minutes} min`,
+      msg: {
+        key: "bell.m.hubNoAnswer",
+        vars: { name, n: w.count, m: w.minutes },
+      },
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
@@ -560,6 +684,7 @@ export class Attention {
 
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
+    this.lastRun.delete(agent);
     this.clear(agent);
   }
 

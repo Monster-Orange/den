@@ -36,13 +36,21 @@ describe("issue 395: the route's gate", () => {
     edgeHosts: () => [],
     verifyBearer: (t) =>
       t === "den_at_agent" ? agent : t === "den_pt_good" ? "person:me" : null,
-    csrfToken: "the-csrf",
+    // A signed-in browser (0.4.71: the page signs in on this machine too).
+    session: (r) =>
+      String(r.headers.cookie ?? "").includes("den_session_1=good")
+        ? { key: "k".repeat(64), csrf: "the-csrf" }
+        : null,
   };
   const req = (headers: Record<string, string>) =>
     ({
       method: "POST",
       url: PATH,
-      headers: { host: `localhost:${PORT}`, ...headers },
+      headers: {
+        host: `localhost:${PORT}`,
+        cookie: "den_session_1=good",
+        ...headers,
+      },
     }) as unknown as http.IncomingMessage;
   const origin = `http://localhost:${PORT}`;
 

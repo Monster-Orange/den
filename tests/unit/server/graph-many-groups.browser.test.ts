@@ -28,6 +28,8 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 // org → its repos' service counts (31 services, 15 repos).
@@ -181,7 +183,7 @@ beforeAll(async () => {
       ?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -201,6 +203,7 @@ async function page(url: string, w: number, h: number): Promise<Page> {
     // DEN_SHOTS_DIR: screenshots for the release notes, in Den dark.
     ...(SHOTS ? { colorScheme: "dark" as const } : {}),
   });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);
@@ -392,6 +395,11 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1440, height: 900 },
     });
+    await signIn(
+      ctx,
+      path.join(tmp, "home", ".den"),
+      `http://localhost:${port}`,
+    );
     await ctx.addInitScript((v) => {
       try {
         localStorage.setItem("den-changelog-seen", v);

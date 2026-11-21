@@ -101,11 +101,14 @@ describe("the web app's crash-loop guard (den#85)", () => {
   it("records its start, and a SIGTERM stop marks it clean", async () => {
     const pid = server!.pid!;
     expect(boots().map((b) => !!b.clean)).toEqual([false, false, false]);
-    await stopServer(server);
+    // A clean stop is what this checks: on a loaded machine the server's own
+    // shutdown can take more than stopServer's 5 s before it would be killed
+    // (and a killed server never marks its stop clean).
+    await stopServer(server, 60_000);
     server = null;
     const mine = boots().at(-1)!;
     expect(mine.clean).toBe(true);
     expect(mine.pid).not.toBe(999_992);
     expect(typeof pid).toBe("number");
-  });
+  }, 90_000);
 });

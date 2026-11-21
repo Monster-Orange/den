@@ -40,20 +40,22 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-function login(args: string[]) {
+async function login(args: string[]) {
   let out = "";
   let err = "";
-  const code = cmdWebLogin(args, {
+  const code = await cmdWebLogin(args, {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
   });
   return { code, out, err };
 }
 
 describe("web login --host", () => {
-  it("the edge hostname: its edge URL (scheme and port from the edge config)", () => {
-    const r = login(["--port", "7777", "--host", "den.acme.localhost"]);
+  it("the edge hostname: its edge URL (scheme and port from the edge config)", async () => {
+    const r = await login(["--port", "7777", "--host", "den.acme.localhost"]);
     expect(r.code).toBe(0);
     const u = new URL(r.out.trim());
     expect([u.origin, u.pathname]).toEqual([
@@ -65,17 +67,17 @@ describe("web login --host", () => {
     ).toBe(true);
   });
 
-  it("an alias domain (a VPN name), any case", () => {
-    const r = login(["--port", "7777", "--host", "DEN.acme.vpn.example"]);
+  it("an alias domain (a VPN name), any case", async () => {
+    const r = await login(["--port", "7777", "--host", "DEN.acme.vpn.example"]);
     expect(r.code).toBe(0);
     expect(new URL(r.out.trim()).origin).toBe(
       "https://den.acme.vpn.example:8443",
     );
   });
 
-  it("a name not in the Host allowlist: refused, saying what to add", () => {
+  it("a name not in the Host allowlist: refused, saying what to add", async () => {
     for (const h of ["shop.acme.localhost", "evil.example"]) {
-      const r = login(["--port", "7777", "--host", h]);
+      const r = await login(["--port", "7777", "--host", h]);
       expect([h, r.code, r.out]).toEqual([h, 2, ""]);
       expect(r.err).toMatch(/den\.acme\.localhost/);
       expect(r.err).toMatch(/edge\.aliases/);
@@ -83,8 +85,8 @@ describe("web login --host", () => {
     }
   });
 
-  it("--origin is kept", () => {
-    const r = login(["--origin", "https://den.acme.localhost"]);
+  it("--origin is kept", async () => {
+    const r = await login(["--origin", "https://den.acme.localhost"]);
     expect(new URL(r.out.trim()).origin).toBe("https://den.acme.localhost");
   });
 });

@@ -6,13 +6,14 @@
  * should end or start, and End early (a person's only: the route refuses
  * an agent). End early asks first (the kit's dialog), then goes through
  * the working pop-up. Ending a slot frees it; the run itself is not
- * stopped. The queue is a dialog on the body, so Report finds it.
+ * stopped. Issue 715: a release run with priority says so, and why. The queue is a dialog on the body, so Report finds it.
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
  *   chip.tagFor("agent:x")   the row tag's text for an agent holding or
  *                            waiting, or ""
  */
+import { formatTime } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 
 const esc = (s) =>
@@ -24,8 +25,9 @@ const esc = (s) =>
       ],
   );
 
-const hm = (iso) =>
-  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** A slot's time in the person's chosen zone: the kit's (issue 668). */
+export const gateTime = (iso) => formatTime(iso, { style: "time" });
+const hm = gateTime;
 
 export function startGateChip(o) {
   const { button, t } = o;
@@ -63,6 +65,15 @@ export function startGateChip(o) {
       ? t("gate.holds", { kind: kind(s.kind), at: hm(s.expectedEnd) }) +
         (s.overrun ? " · " + t("gate.over") : "")
       : t("gate.waits", { kind: kind(s.kind), at: hm(s.expectedStart) });
+    // Issue 715: a release run a person waits on, and why.
+    const pri = s.priority
+      ? t(
+          s.granted || s.priority.holds
+            ? "gate.priority"
+            : "gate.priorityWaits",
+          { reason: s.priority.reason },
+        )
+      : "";
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -72,7 +83,9 @@ export function startGateChip(o) {
       esc(s.label) +
       '</span></div><div class="gate-when">' +
       esc(when) +
-      '</div><button type="button" class="den-btn sm" data-gate-end>' +
+      "</div>" +
+      (pri ? '<div class="gate-pri">' + esc(pri) + "</div>" : "") +
+      '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"
     );

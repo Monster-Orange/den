@@ -286,11 +286,16 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       edgeUnattested: "signin",
       bridgeListen: "auto",
       bridgeProbeSeconds: 10,
+      // Issue 406: the start waits 10 s for the owner's GitHub name.
+      ownerNameTimeoutSeconds: 10,
       // den#143: `web up`'s readiness waits.
       readyProbeSeconds: 10,
       startWaitSeconds: 120,
       // D16: a sign-in link lasts 5 minutes unless set.
       loginLinkTtlMs: 5 * 60_000,
+      // Issue 810: not a test install unless a person marks it by hand.
+      testInstall: false,
+      fixtureSessionMinutes: 60,
     });
     expect(ignoredConfigWarning(cfg)).toBeNull();
   });

@@ -51,20 +51,22 @@ afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 /** D80: the install's address the links are on. */
 const ADDRESS = "https://den.acme.example.com";
 
-function login(args: string[], webUrl: string | null = ADDRESS) {
+async function login(args: string[], webUrl: string | null = ADDRESS) {
   let out = "";
   let err = "";
-  const code = cmdWebLogin(args, {
+  const code = await cmdWebLogin(args, {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
     webUrl: () => (webUrl ? { url: webUrl, confirmed: true } : null),
   });
   return { code, out, err };
 }
 
 describe("web open", () => {
-  it("is up that always opens a browser (a fresh sign-in tab)", () => {
+  it("is up that always opens a browser (a fresh sign-in tab)", async () => {
     expect(parseWebCommandArgs(["open"], {})).toMatchObject({
       action: "open",
       openBrowser: true,
@@ -76,8 +78,8 @@ describe("web open", () => {
 });
 
 describe("web login", () => {
-  it("prints one /auth link on the install's address (web.url, D80) whose code this state dir's secret verifies", () => {
-    const r = login(["--port", "4321", "--next", "/settings"]);
+  it("prints one /auth link on the install's address (web.url, D80) whose code this state dir's secret verifies", async () => {
+    const r = await login(["--port", "4321", "--next", "/settings"]);
     expect(r.code).toBe(0);
     const lines = r.out.trim().split("\n");
     expect(lines.length).toBe(1);
@@ -95,22 +97,22 @@ describe("web login", () => {
     expect(fs.statSync(path.join(tmp, "web.secret")).mode & 0o777).toBe(0o600);
   });
 
-  it("D80: with no address set, no link (never localhost): says to set it", () => {
-    const r = login(["--port", "4321"], null);
+  it("D80: with no address set, no link (never localhost): says to set it", async () => {
+    const r = await login(["--port", "4321"], null);
     expect(r.code).toBe(1);
     expect(r.out).toBe("");
     expect(r.err).toMatch(/address not set: run `\S+ web url <address>`/);
     expect(r.err).not.toMatch(/localhost/);
   });
 
-  it("each call mints a new code", () => {
-    const a = new URL(login(["--port", "4321"]).out.trim());
-    const b = new URL(login(["--port", "4321"]).out.trim());
+  it("each call mints a new code", async () => {
+    const a = new URL((await login(["--port", "4321"])).out.trim());
+    const b = new URL((await login(["--port", "4321"])).out.trim());
     expect(a.searchParams.get("c") === b.searchParams.get("c")).toBe(false);
   });
 
-  it("--origin for the edge or a LAN name; a next off-site is dropped", () => {
-    const r = login([
+  it("--origin for the edge or a LAN name; a next off-site is dropped", async () => {
+    const r = await login([
       "--origin",
       "https://den.acme.localhost",
       "--next",
@@ -123,11 +125,11 @@ describe("web login", () => {
     ]);
   });
 
-  it("refuses an origin with a path, and an unknown argument", () => {
-    expect(login(["--origin", "https://x/y"]).code).toBe(2);
-    expect(login(["--origin", "x"]).code).toBe(2);
-    expect(login(["--what"]).code).toBe(2);
-    expect(login(["--what"]).out).toBe("");
+  it("refuses an origin with a path, and an unknown argument", async () => {
+    expect((await login(["--origin", "https://x/y"])).code).toBe(2);
+    expect((await login(["--origin", "x"])).code).toBe(2);
+    expect((await login(["--what"])).code).toBe(2);
+    expect((await login(["--what"])).out).toBe("");
   });
 });
 
@@ -138,6 +140,8 @@ describe("web sessions --help", () => {
       out: (x) => (out += x),
       err: () => undefined,
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
     });
     expect(code).toBe(0);
     expect(out).toMatch(
@@ -163,6 +167,8 @@ const io = () => {
       out: (x: string) => (o.out += x),
       err: (x: string) => (o.err += x),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
     },
   };
 };
@@ -171,9 +177,9 @@ describe("each web subcommand's own --help (the dispatcher answers for none of t
   it("login, logout, token and sessions print their own usage, exit 0, and do nothing else", async () => {
     const port = String(await freePort());
     const a = io();
-    expect(cmdWebLogin(["--help"], a.io)).toBe(0);
+    expect(await cmdWebLogin(["--help"], a.io)).toBe(0);
     expect(a.o.out).toMatch(/^Usage: den web login \[--next <path>\]/);
-    expect(a.o.out).toMatch(/On localhost nothing asks for a sign-in/);
+    expect(a.o.out).toMatch(/On this machine `web up` opens such a link/);
     // No link was minted, so no secret was made for one.
     expect(a.o.out).not.toMatch(/\/auth\?c=/);
     const b = io();
@@ -191,7 +197,7 @@ describe("each web subcommand's own --help (the dispatcher answers for none of t
     expect(d.o.out).not.toMatch(/web\.session\.idle/);
   });
 
-  it("the dispatcher's list is each command's own: web's and mcp's subcommands", () => {
+  it("the dispatcher's list is each command's own: web's and mcp's subcommands", async () => {
     expect([...SUBCOMMAND_OWN_HELP.web]).toEqual([
       ...WEB_SUBCOMMANDS_WITH_HELP,
     ]);

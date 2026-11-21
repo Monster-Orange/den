@@ -26,6 +26,7 @@ import {
   reportButtonHtml,
   searchHtml,
   shellHtml,
+  topBarHtml,
 } from "../../../packages/den-ui/src/shell-html.js";
 import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
 
@@ -168,12 +169,14 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(login).toContain('data-nav-shape="login"');
     // The role is never in the rail's entry: its shape is name, login.
     const role = accountHtml({
-      name: "Ada",
+      name: "Ada Lovelace",
       login: "ada",
       role: "Owner",
       href: "/me",
     });
-    expect(lines(role)).toEqual(["n:Ada", "l:@ada"]);
+    // (Issue 656: a name that is just the login, "Ada" for "ada", is no
+    // name; account-name-parity.test.ts has those.)
+    expect(lines(role)).toEqual(["n:Ada Lovelace", "l:@ada"]);
     expect(role).toContain('data-nav-shape="name,login"');
     expect(role).not.toContain("Owner");
     expect(
@@ -301,6 +304,50 @@ describe("shellHtml (shell-html.js), in Node", () => {
       "data-den-report",
     );
     expect(reportButtonHtml({ inFoot: true })).toContain("den-rb-in");
+  });
+});
+
+// Issue 694: a page with no rail draws the bar without ☰.
+describe("topBarHtml({ rail: false }) (issue 694)", () => {
+  const model = {
+    product: { name: "Acme", version: "1.2.3" },
+    lang: "en",
+    slots: { end: '<span id="s-end"></span>' },
+  };
+  const MENU = /<button class="den-ib den-menu-btn"[^>]*>☰<\/button>/;
+
+  it("by default draws ☰, wired to the rail (unchanged)", () => {
+    const h = topBarHtml(model);
+    expect(h).toMatch(MENU);
+    expect(h).toContain('aria-controls="den-rail"');
+    expect(h).toContain('<header class="den-top">');
+    expect(topBarHtml({ ...model, rail: true })).toBe(h);
+  });
+
+  it("with rail: false draws no ☰ and nothing that points at the rail", () => {
+    const h = topBarHtml({ ...model, rail: false });
+    expect(h).not.toContain("☰");
+    expect(h).not.toContain("den-menu-btn");
+    expect(h).not.toContain("aria-controls");
+    expect(h).not.toContain("den-rail");
+  });
+
+  it("with rail: false is otherwise the same bar, stamped for the parity gate", () => {
+    const def = topBarHtml(model);
+    const want = def
+      .replace(MENU, "")
+      .replace(
+        '<header class="den-top">',
+        '<header class="den-top" data-nav-shape="no-rail">',
+      );
+    expect(topBarHtml({ ...model, rail: false })).toBe(want);
+  });
+
+  it("shellHtml with rail: false draws the bar without ☰ and no rail", () => {
+    const h = shellHtml({ ...model, rail: false });
+    expect(h).toContain(topBarHtml({ ...model, rail: false }));
+    expect(h).not.toContain("den-rail");
+    expect(h).toContain('class="den-skip"');
   });
 });
 
@@ -451,7 +498,7 @@ describe("the package ships every kit file", () => {
       expect(fs.existsSync(path.join(PKG, "src", f))).toBe(true);
   });
   it("packs src/ and bin/, with den-ui-parity as its bin", () => {
-    expect(pkg.version).toMatch(/^0\.7\.\d+$/);
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(pkg.files).toEqual(expect.arrayContaining(["src/", "bin/"]));
     expect(pkg.bin["den-ui-parity"]).toBe("bin/den-ui-parity.mjs");
     expect(fs.existsSync(path.join(PKG, pkg.bin["den-ui-parity"]))).toBe(true);

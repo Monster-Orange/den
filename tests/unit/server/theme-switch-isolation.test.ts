@@ -32,8 +32,10 @@ import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 import { denAuth } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { pageImport } from "./helpers/page-import.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -397,10 +399,16 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
     const before = snapshot();
 
     for (const shell of [
-      { pins: ["shop"] },
-      { pins: ["shop", "billing/api"] },
+      // Issue 402: a pin is { item, project } (null: none).
+      { pins: [{ item: "shop", project: null }] },
+      {
+        pins: [
+          { item: "shop", project: null },
+          { item: "billing/api", project: null },
+        ],
+      },
       { collapsed: true },
-      { pins: ["billing/api"], collapsed: false },
+      { pins: [{ item: "billing/api", project: null }], collapsed: false },
       // Navigation (R21): hide a page, reorder pages.
       { hidden: ["tests", "release"] },
       { order: ["logs", "services", "local-dev"] },
@@ -413,7 +421,7 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       shell: unknown;
     };
     expect(got.shell).toEqual({
-      pins: ["billing/api"],
+      pins: [{ item: "billing/api", project: null }],
       collapsed: false,
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
@@ -443,7 +451,7 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
     ) as Record<string, unknown>;
     expect(shell).toEqual({
-      pins: ["billing/api"],
+      pins: [{ item: "billing/api" }],
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
     });
@@ -471,7 +479,7 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
     let browser: import("playwright").Browser;
     try {
       const { chromium } = await import("playwright");
-      browser = await chromium.launch();
+      browser = await launchBrowser(chromium);
     } catch (err) {
       if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
       throw err;
@@ -489,7 +497,6 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
         fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
       ) as Record<string, unknown>;
       await new Promise((r) => setTimeout(r, 500));
-      const before = snapshot();
 
       const latest = (
         JSON.parse((await request("GET", "/api/changelog")).body) as {
@@ -506,6 +513,14 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
           /* none */
         }
       }, latest ?? "");
+      // The person's browser, signed in as `web up` does (0.4.71). Before
+      // the snapshot: signing in records the session in DEN_HOME.
+      await signIn(
+        ctx,
+        path.join(tmp, "home", ".den"),
+        `http://localhost:${PORT}`,
+      );
+      const before = snapshot();
       const p = await ctx.newPage();
       const reqs: string[] = [];
       p.on("request", (r) =>
@@ -557,11 +572,15 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
         'POST /api/settings {"appearance":{"mode":"light"}}',
         'POST /api/settings {"appearance":{"theme":"paper"}}',
       ]);
+      // Issue 455: the address banner's read (GET /api/edge/address) is the
+      // page load's, and only reads.
       expect(
-        reqs.filter((r) =>
-          /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
-            r,
-          ),
+        reqs.filter(
+          (r) =>
+            r !== "GET /api/edge/address" &&
+            /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
+              r,
+            ),
         ),
       ).toEqual([]);
 

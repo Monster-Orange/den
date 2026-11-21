@@ -1,0 +1,40 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.329[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mModel[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mClaude[39m [38;5;246mPlan[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m/tmp/project[39m
+
+
+[38;5;246m[48;5;237m❯ [38;5;231mRun the shell command: ls -la[39m
+
+[49m  [38;5;246mListed [1m1[0m[38;5;246m directory (ctrl+o to expand)[39m
+
+[38;5;231m⏺[39m The directory has a single file, [38;5;153mreadme.txt[39m, which is 6 bytes. It's owned by [38;5;153msam[39m and was last modified Nov 19 at
+  21:56.
+
+[38;5;246m✻[39m [38;5;246mWorked for 2s · done 9:56 PM[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231mRun exactly this shell command and nothing else: touch made.txt[39m
+
+[38;5;211m[49m⏺[39m [1mBash[0m(touch made.txt)
+[38;5;246m  ⎿[39m [38;5;246m Interrupted · What should Claude do instead?[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246m⏸ manual mode on · ? for shortcuts[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

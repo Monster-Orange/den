@@ -27,7 +27,6 @@ const LEFT: Record<string, number> = {
   "local-dev.html": 17,
   "persona-ui.js": 5,
   "release.html": 4,
-  "restart-den.js": 1,
   "server-agent-page.js": 4,
   "services.html": 2,
   "settings-registry.js": 15,

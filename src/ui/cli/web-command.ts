@@ -32,6 +32,7 @@ import { newConfirmCode } from "../../shared/confirm-code.js";
 import {
   checkLoginCode,
   ignoredConfigWarning,
+  localhostOrigin,
   loginLink,
   LOGIN_CODE_TTL_MS,
   mintLoginCode,
@@ -44,7 +45,12 @@ import {
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
-import { webRouteHosts } from "../../shared/edge/render.js";
+import {
+  edgeDomains,
+  edgeNames,
+  webRouteHosts,
+} from "../../shared/edge/render.js";
+import { containerState } from "../../shared/edge/runtime.js";
 import {
   expiringTokenWarning,
   GITHUB_DEVICE_PAGE,
@@ -84,9 +90,32 @@ import {
   CLAIM_CODE_TTL_MS,
   claimLink,
   mintClaimCode,
-  personGrantRefusal,
 } from "../../shared/claim-code.js";
+import {
+  FIXTURE_LABEL,
+  fixtureLoginLink,
+} from "../../shared/fixture-person.js";
+import {
+  personHereRefusal,
+  terminalRefusal,
+  type PersonHereDeps,
+} from "../../shared/person-here.js";
 import { redactSecrets } from "../../shared/redact.js";
+import {
+  checkAddress,
+  cliLanguage,
+  localIdentityKey,
+  noticeLine,
+  noticeOnce,
+  upNoticeLines,
+  upAddressLines,
+  givenAddress,
+  edgeUncheckedLine,
+  isEdgeAddress,
+  statedAddress,
+  type AddressState,
+  type CheckDeps,
+} from "../../shared/edge/address-check.js";
 import { localDateTime } from "../../shared/local-time.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
@@ -120,7 +149,12 @@ interface StopServerResult {
 }
 
 type BrowserFocusResult =
-  | { status: "focused"; app: string }
+  | {
+      status: "focused";
+      app: string;
+      /** The focused tab's URL (0.4.71: where its sign-in link goes back to). */
+      url?: string;
+    }
   | { status: "not-found" }
   | { status: "unsupported" }
   | { status: "error"; apps: string[]; error: string };
@@ -947,7 +981,7 @@ if application ${appleScriptString(appName)} is running then
           set active tab index of w to tabIndex
           set index of w to 1
           activate
-          return "focused"
+          return "focused " & u
         end if
       end repeat
     end repeat
@@ -970,7 +1004,7 @@ if application "Safari" is running then
           set current tab of w to t
           set index of w to 1
           activate
-          return "focused"
+          return "focused " & u
         end if
       end repeat
     end repeat
@@ -985,7 +1019,7 @@ function runAppleScript(
   script: string,
   timeout = CLI_SPAWN_TIMEOUT_MS,
 ): string {
-  return execFileSync("osascript", [], {
+  return execFileSync("/usr/bin/osascript", [], {
     input: script,
     encoding: "utf-8",
     timeout,
@@ -1015,7 +1049,12 @@ function focusExistingBrowserTab(port: number): BrowserFocusResult {
       continue;
     }
 
-    if (result === "focused") return { status: "focused", app: app.name };
+    if (result === "focused" || result.startsWith("focused "))
+      return {
+        status: "focused",
+        app: app.name,
+        ...(result.length > 8 ? { url: result.slice(8) } : {}),
+      };
     if (result === "not-found") inspectedBrowser = true;
   }
 
@@ -1026,13 +1065,70 @@ function focusExistingBrowserTab(port: number): BrowserFocusResult {
   return { status: "not-found" };
 }
 
+/**
+ * 0.4.71: send the tab focusTab just brought forward to `url` (its sign-in
+ * link). False when it can't (the browser said no, or isn't scriptable).
+ */
+function navigateFocusedTab(app: string, url: string): boolean {
+  if (process.platform !== "darwin") return false;
+  const kind = BROWSER_APPS.find((a) => a.name === app)?.kind;
+  if (!kind) return false;
+  const tab =
+    kind === "safari"
+      ? "current tab of front window"
+      : "active tab of front window";
+  try {
+    runAppleScript(
+      `tell application ${appleScriptString(app)} to set URL of ${tab} to ${appleScriptString(url)}`,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The path, query and hash of a tab's URL, for its sign-in's `next`. */
+function tabNext(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url);
+    // An open sign-in or auth page goes home after, not back to itself.
+    if (u.pathname === "/auth" || u.pathname === "/signin") return "/";
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Where a Linux system keeps xdg-open (never the caller's PATH). */
+const XDG_OPEN_PATHS = [
+  "/usr/bin/xdg-open",
+  "/usr/local/bin/xdg-open",
+  "/bin/xdg-open",
+];
+
+/**
+ * Sign-in: the program that opens the browser, by absolute path: macOS's
+ * /usr/bin/open, the first xdg-open of a fixed system list elsewhere (null
+ * when there is none). Windows: its own cmd.exe.
+ */
+export function browserOpener(
+  platform: NodeJS.Platform = process.platform,
+  exists: (p: string) => boolean = (p) => fs.existsSync(p),
+): string | null {
+  if (platform === "darwin") return "/usr/bin/open";
+  if (platform === "win32")
+    return `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\cmd.exe`;
+  return XDG_OPEN_PATHS.find(exists) ?? null;
+}
+
+let OPENER: string | null | undefined;
+
 function openUrl(url: string): BrowserOpenResult {
-  const cmd =
-    process.platform === "darwin"
-      ? "open"
-      : process.platform === "win32"
-        ? "cmd"
-        : "xdg-open";
+  // Resolved once per run.
+  if (OPENER === undefined) OPENER = browserOpener();
+  const cmd = OPENER;
+  if (!cmd) return { status: "open-failed", error: "no browser opener found" };
   const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
   const result = spawnSync(cmd, args, {
     stdio: "ignore",
@@ -1048,15 +1144,18 @@ function openUrl(url: string): BrowserOpenResult {
 /**
  * Focus a tab already on this server, else open `url()` (SEC-1b: the
  * sign-in link, minted only when it is opened). `focus: false` (`web
- * open`) always opens.
+ * open`) always opens. 0.4.71: a focused tab is sent to a fresh link too,
+ * back to the page it was on, so it is signed in whatever it held; when
+ * it can't be, the link opens in a new tab.
  */
 export function openOrFocusDenWebUrl(
-  url: () => string,
+  url: (next?: string) => string,
   port: number,
   focus = true,
   /** A test's stubs; the env says whether it may open at all. */
   deps: {
     focus?: (port: number) => BrowserFocusResult;
+    navigate?: (app: string, url: string) => boolean;
     open?: (url: string) => BrowserOpenResult;
     env?: NodeJS.ProcessEnv;
   } = {},
@@ -1067,7 +1166,16 @@ export function openOrFocusDenWebUrl(
   if (why) return { status: "skipped", why };
   if (focus) {
     const focusResult = (deps.focus ?? focusExistingBrowserTab)(port);
-    if (focusResult.status === "focused") return focusResult;
+    if (focusResult.status === "focused") {
+      const link = url(tabNext(focusResult.url));
+      // Inside an agent's session the "link" is the plain page: the
+      // focused tab stays as it is.
+      if (!/\/auth\?/.test(link))
+        return { status: "focused", app: focusResult.app };
+      if ((deps.navigate ?? navigateFocusedTab)(focusResult.app, link))
+        return { status: "focused", app: focusResult.app };
+      return (deps.open ?? openUrl)(link);
+    }
 
     if (focusResult.status === "error" && process.platform === "darwin") {
       return focusResult;
@@ -1196,6 +1304,8 @@ export const WEB_SUBCOMMANDS_WITH_HELP = [
   "approve",
   "claim-link",
   "url",
+  "fixture-person",
+  "fixture-login",
 ] as const;
 
 export function displayWebHelp(): void {
@@ -1216,6 +1326,10 @@ export function displayWebHelp(): void {
   console.log(`  ${product().cli} web url [<address>] [--json]`);
   console.log(
     `  ${product().cli} web approve <code> | --list [--json] [--port <port>]`,
+  );
+  console.log(`  ${product().cli} web fixture-person`);
+  console.log(
+    `  ${product().cli} web fixture-login [--next <path>] [--origin <url>]`,
   );
   console.log();
   console.log(chalk.bold("Actions:"));
@@ -1278,17 +1392,7 @@ export function displayWebHelp(): void {
  * alone on stdout; a one-line note on stderr that it grants the user's
  * access. Creates web.secret on first need.
  */
-export function cmdWebToken(
-  args: string[],
-  io: {
-    out: (s: string) => void;
-    err: (s: string) => void;
-    stateDir?: string;
-  } = {
-    out: (s) => process.stdout.write(s),
-    err: (s) => process.stderr.write(s),
-  },
-): number {
+export function cmdWebToken(args: string[], io: CliIo = stdIo): number {
   const usage =
     `Usage: ${product().cli} web token --print\n` +
     "  Prints the token that authorizes your CLI's calls to the web server.\n";
@@ -1300,6 +1404,12 @@ export function cmdWebToken(
   if (!args.includes("--print") || rest.length > 0) {
     io.err(usage);
     return 2;
+  }
+  // Sign-in: the token is the person's, printed only to their terminal.
+  const refused = printRefusal(io);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
   }
   const secret = ensureWebSecret(io.stateDir ?? getStateDir());
   io.err(
@@ -1371,6 +1481,14 @@ async function runWeb(args: string[]): Promise<void> {
   }
   if (args[0] === "url") {
     process.exitCode = await cmdWebUrl(args.slice(1));
+    return;
+  }
+  if (args[0] === "fixture-person") {
+    process.exitCode = await cmdWebFixturePerson(args.slice(1));
+    return;
+  }
+  if (args[0] === "fixture-login") {
+    process.exitCode = await cmdWebFixtureLogin(args.slice(1));
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {
@@ -1495,7 +1613,12 @@ async function runWeb(args: string[]): Promise<void> {
     // D20: started from an ssh (Background) shell, it lives there.
     const where = webUpWarning(launchdSession(), product().cli);
     if (where) console.log(chalk.yellow(`\n  ⚠ ${where}`));
-    console.log(chalk.cyan(`\n  Starting ${product().cli} web on ${shown}...`));
+    // Issue 455: no address yet; it is said once it is proven.
+    console.log(
+      chalk.cyan(
+        `\n  Starting ${product().cli} web on port ${options.port}...`,
+      ),
+    );
     try {
       started = startDenWebServer(options);
       running = await waitForDenWeb(options.port, started.pid);
@@ -1520,18 +1643,74 @@ async function runWeb(args: string[]): Promise<void> {
     }
   } else if (!svc.handled) {
     recordRunningDenWebServer(options.port);
+  }
+
+  // Issue 455: only an address just proven to reach this Den is printed or
+  // opened. When the install's address isn't Den (another server holds its
+  // port), Den's own port here, said once per change with what holds it.
+  const proven = addr
+    ? await checkAddress({
+        webPort: options.port,
+        wanted: addr.url,
+        key: localIdentityKey(getStateDir()),
+        cli: product().cli,
+      })
+    : null;
+  // When web.url is the edge address and it hasn't answered as this Den
+  // (nothing answers, another server does, or no answer in time), Visit
+  // and what opens are the checked address, as doctor and web.log give it,
+  // and one line names the edge address as not checked yet. Once it is
+  // proven, it is the address (D80).
+  const said =
+    proven && addr ? statedAddress(proven, isEdgeAddressHere(addr.url)) : null;
+  const origin =
+    (said?.unchecked ? said.address : null) ??
+    (proven ? givenAddress(proven) : null) ??
+    addr?.url ??
+    null;
+  const shownNow = origin ?? shown;
+  if (running && !svc.handled && !started)
     console.log(
       chalk.green(
-        `\n  OK ${product().title} web is already running at ${shown}`,
+        `\n  OK ${product().title} web is already running at ${shownNow}`,
       ),
     );
+  // Nothing answers the address: said plainly, next to the checked one.
+  if (proven && addr)
+    for (const l of upAddressLines(
+      proven,
+      { lang: cliLanguage(), title: product().title, cli: product().cli },
+      edgeDownFor(addr.url),
+    ))
+      console.log(chalk.yellow(`  ! ${l}`));
+  if (said?.unchecked)
+    console.log(
+      chalk.gray(
+        `  ${edgeUncheckedLine(said.unchecked, {
+          lang: cliLanguage(),
+          title: product().title,
+          cli: product().cli,
+        })}`,
+      ),
+    );
+  if (proven?.address && addr && proven.address !== addr.url) {
+    const words = {
+      lang: cliLanguage(),
+      title: product().title,
+      cli: product().cli,
+    };
+    if (noticeOnce(getStateDir(), proven))
+      for (const [i, l] of upNoticeLines(proven, words, null).entries())
+        console.log(
+          i === 0 ? chalk.yellow(`  ! ${l}`) : chalk.gray(`    ${l}`),
+        );
   }
 
   if (!options.openBrowser) {
-    console.log(chalk.gray(`  Browser open skipped. Visit: ${shown}\n`));
+    console.log(chalk.gray(`  Browser open skipped. Visit: ${shownNow}\n`));
     return;
   }
-  if (!addr) {
+  if (!addr || !origin) {
     // D80: nothing to open until the install has its address.
     console.log(chalk.yellow(`  Nothing opened: ${shown.slice(1, -1)}\n`));
     return;
@@ -1542,8 +1721,10 @@ async function runWeb(args: string[]): Promise<void> {
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
-  let link: string | null = personGrantRefusal(process.env) ? addr.url : null;
-  const signIn = () => (link ??= freshLoginLink(options.port));
+  // Sign-in: a link only where `web login` would print one.
+  let link: string | null = webOpenRefusal(getStateDir()) ? origin : null;
+  const signIn = (next?: string) =>
+    (link ??= freshLoginLink(options.port, next ?? "/", origin));
   const browser = openOrFocusDenWebUrl(
     signIn,
     options.port,
@@ -1553,21 +1734,21 @@ async function runWeb(args: string[]): Promise<void> {
     // Its origin (never the link): which run tried to open what.
     console.log(
       chalk.gray(
-        `  Browser open skipped (${browser.why}): ${addr.url.replace(/\/+$/, "")}\n`,
+        `  Browser open skipped (${browser.why}): ${origin.replace(/\/+$/, "")}\n`,
       ),
     );
     return;
   }
   if (browser.status === "focused") {
     console.log(chalk.green(`  OK Focused existing ${browser.app} tab`));
-    console.log(chalk.gray(`  ${shown}\n`));
+    console.log(chalk.gray(`  ${shownNow}\n`));
     return;
   }
   if (browser.status === "opened") {
     console.log(
       chalk.green(`  OK Opened ${product().cli} web in your browser`),
     );
-    console.log(chalk.gray(`  ${shown}\n`));
+    console.log(chalk.gray(`  ${shownNow}\n`));
     return;
   }
 
@@ -1589,6 +1770,11 @@ async function runWeb(args: string[]): Promise<void> {
   } else {
     console.log(chalk.yellow("\n  Could not open a browser automatically."));
   }
+  // Sign-in: a link is printed only to a terminal.
+  if (terminalRefusal(onTerminal())) {
+    console.log(chalk.gray(`  ${noLinkHereLine(origin, product().cli)}\n`));
+    return;
+  }
   console.log(
     `  Sign in (once, within ${ttlText(loginLinkTtl())}): ${signIn()}\n`,
   );
@@ -1605,9 +1791,10 @@ export function freshLoginLink(
   next = "/",
   origin?: string,
   stateDir: string = getStateDir(),
+  person: PersonCheck = {},
 ): string {
   void port; // the link is on the address, whatever port serves it
-  const refused = personGrantRefusal(process.env);
+  const refused = personHereRefusal({ ...person, stateDir });
   if (refused) throw new Error(refused);
   return loginLink(
     origin ?? requireWebUrl(product().cli),
@@ -1634,7 +1821,7 @@ export function cmdWebClaimLink(args: string[], io: CliIo = stdIo): number {
     );
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -1654,23 +1841,27 @@ export function cmdWebClaimLink(args: string[], io: CliIo = stdIo): number {
   }
   const now = Date.now();
   // D80: on the install's address, the one the person's browsers use.
-  let origin: string;
-  try {
-    origin = requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
-  } catch (e) {
-    io.err(`${product().cli}: ${(e as Error).message}\n`);
-    return 1;
-  }
-  void port;
+  // Issue 666's one exception: while it is unset (a fresh install whose
+  // only edge name is a loopback one, never written as web.url), this
+  // link alone is on this machine's own origin, since it is opened in the
+  // browser on this machine. It writes nothing, and says the address isn't
+  // set. A session made there is a localhost one only.
+  const cli = product().cli;
+  const w = (io.webUrl ?? readWebUrl)();
+  const origin = w ? w.url : localhostOrigin(port);
+  const unsetNote = w
+    ? ""
+    : `${cli}: ${notSetLine(cli)} (the name other devices open: your split-DNS name or edge alias; \`${cli} doctor\` offers it when it finds one). Until then this link works only in the browser on this machine.\n`;
   const url = claimLink(
     origin,
     mintClaimCode(ensureWebSecret(io.stateDir ?? getStateDir()), now),
   );
   if (asJson)
     io.out(
-      `${JSON.stringify({ url, expiresAt: new Date(now + CLAIM_CODE_TTL_MS).toISOString() })}\n`,
+      `${JSON.stringify({ url, expiresAt: new Date(now + CLAIM_CODE_TTL_MS).toISOString(), ...(w ? {} : { address: unsetNote.slice(cli.length + 2).trim() }) })}\n`,
     );
   else {
+    if (unsetNote) io.err(unsetNote);
     io.err(
       `${product().cli}: open this link yourself within 30 minutes; it signs in one browser, once. Don't let any agent open it.\n`,
     );
@@ -1685,7 +1876,132 @@ interface CliIo {
   stateDir?: string;
   /** D80: the install's address (web.url); readWebUrl by default. */
   webUrl?: () => WebUrl | null;
+  /** Issue 455: the address check's parts (tests swap the owner lookup). */
+  addressDeps?: Partial<CheckDeps>;
+  /** Sign-in: where this runs (tests give its parents and the terminal). */
+  person?: PersonCheck;
 }
+
+/** Sign-in: personHereRefusal's parts, and whether output is a terminal. */
+type PersonCheck = Omit<PersonHereDeps, "stateDir" | "env"> & {
+  tty?: boolean;
+};
+
+/** Sign-in: `web up`'s line where it prints no link: the address, and what to run. */
+export function noLinkHereLine(origin: string, cli: string): string {
+  return `${origin.replace(/\/+$/, "")} (a sign-in link is printed only in a terminal: run \`${cli} web login\` in one)`;
+}
+
+/**
+ * Sign-in: why `web up` / `web open` won't make a sign-in link here (it
+ * opens the plain page instead), or null: the checks `web login` makes.
+ */
+export function webOpenRefusal(
+  stateDir: string,
+  person: PersonCheck = {},
+): string | null {
+  return (
+    personHereRefusal({ ...person, stateDir }) ??
+    terminalRefusal(person.tty ?? onTerminal())
+  );
+}
+
+/** Whether this process's output is on a terminal (stdout and stderr). */
+function onTerminal(): boolean {
+  return !!process.stdout.isTTY && !!process.stderr.isTTY;
+}
+
+/** Sign-in: why this command won't let a browser in from here, or null. */
+function grantRefusal(io: CliIo): string | null {
+  return personHereRefusal({
+    ...io.person,
+    stateDir: io.stateDir ?? getStateDir(),
+  });
+}
+
+/** grantRefusal, then: a link or code is printed only to a terminal. */
+function printRefusal(io: CliIo): string | null {
+  return grantRefusal(io) ?? terminalRefusal(io.person?.tty ?? onTerminal());
+}
+
+/**
+ * Issue 455: the origin a link may carry. The install's address (web.url)
+ * when it was just proven to reach this Den; else Den's own port here
+ * when that was, with the one sentence that says why (once per change).
+ * When nothing answers as this Den (its server isn't running), `wanted`
+ * as before: nothing was proven either way.
+ */
+export async function provenOrigin(
+  port: number,
+  wanted: string,
+  stateDir: string,
+  say: (line: string) => void,
+  deps: Partial<CheckDeps> = {},
+): Promise<{ origin: string; state: AddressState }> {
+  const state = await checkAddress({
+    webPort: port,
+    wanted,
+    key: localIdentityKey(stateDir),
+    cli: product().cli,
+    ...deps,
+  });
+  const given = givenAddress(state) ?? wanted;
+  // Nothing answers it: still given (D80), said plainly next to it.
+  for (const l of upAddressLines(
+    state,
+    { lang: cliLanguage(), title: product().title, cli: product().cli },
+    (deps.edgeDown ?? (() => edgeDownFor(wanted)))(),
+  ))
+    say(l);
+  if (given !== wanted && noticeOnce(stateDir, state)) {
+    const line = noticeLine(state, {
+      lang: cliLanguage(),
+      title: product().title,
+      cli: product().cli,
+    });
+    if (line) say(line);
+  }
+  return { origin: given, state };
+}
+/** Whether `url` is the edge address here (issue 455: isEdgeAddress). */
+function isEdgeAddressHere(url: string): boolean {
+  let domains: string[] = [];
+  try {
+    domains = edgeDomains(readEdgeConfig());
+  } catch {
+    domains = []; // no edge configured: only a loopback name counts
+  }
+  return isEdgeAddress(url, domains);
+}
+
+/**
+ * Whether the edge that serves `wanted` is down, when Den can tell: the
+ * install has an edge publishing the address's port, and its container
+ * isn't running. null when Den can't tell (no edge config, another port).
+ */
+export function edgeDownFor(wanted: string): boolean | null {
+  let cfg: ReturnType<typeof readEdgeConfig>;
+  try {
+    cfg = readEdgeConfig();
+  } catch {
+    return null;
+  }
+  if (!cfg.ports) return null;
+  let port: number;
+  try {
+    const u = new URL(wanted);
+    port = Number(u.port) || (u.protocol === "https:" ? 443 : 80);
+  } catch {
+    return null;
+  }
+  if (port !== cfg.ports.http && port !== cfg.ports.https) return null;
+  try {
+    return containerState(edgeNames(cfg.org).container) !== "running";
+  } catch {
+    return null;
+  }
+}
+
 const stdIo: CliIo = {
   out: (s) => process.stdout.write(s),
   err: (s) => process.stderr.write(s),
@@ -1777,9 +2093,9 @@ const LOGIN_HELP = () =>
   "  unless set) for one browser, and a\n" +
   "  code the page behind the link asks for, then waits until the link is used:\n" +
   '  "Signed in: <browser> (<address>) at <time>", or "Expired: nobody used the\n' +
-  '  link" (exit 1). On localhost nothing asks for a sign-in; it is needed when\n' +
-  "  this server is reached from another machine (pass the edge hostname as\n" +
-  "  --host, or a LAN address as --origin).\n" +
+  '  link" (exit 1). On this machine `web up` opens such a link by itself.\n' +
+  "  From another machine, pass the edge hostname as --host, or a LAN address\n" +
+  "  as --origin.\n" +
   "  --next <path>   where the browser lands after signing in (same origin only)\n" +
   "  --host <name>   an edge hostname that routes here (an edge domain or alias,\n" +
   "                  a VPN name among them): the link uses its edge URL\n" +
@@ -1794,12 +2110,15 @@ const LOGIN_HELP = () =>
  * allowed origin (a LAN name), where the cookie must be set (the
  * signed-out page there says which). The link signs in when opened.
  */
-export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
+export async function cmdWebLogin(
+  args: string[],
+  io: CliIo = stdIo,
+): Promise<number> {
   if (isHelp(args)) {
     io.out(LOGIN_HELP());
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -1814,12 +2133,18 @@ export function cmdWebLogin(args: string[], io: CliIo = stdIo): number {
     io.err(`${product().cli}: ${(e as Error).message}\n`);
     return 1;
   }
-  const link = freshLoginLink(
-    a.port,
-    a.next,
-    origin,
-    io.stateDir ?? getStateDir(),
-  );
+  const stateDir = io.stateDir ?? getStateDir();
+  // Issue 455: an origin the person named (--origin, --host) is theirs;
+  // the install's address is checked first.
+  if (!a.origin)
+    ({ origin } = await provenOrigin(
+      a.port,
+      origin,
+      stateDir,
+      (l) => io.err(`${product().cli}: ${l}\n`),
+      io.addressDeps,
+    ));
+  const link = freshLoginLink(a.port, a.next, origin, stateDir, io.person);
   io.err(
     `${product().cli}: open this link within ${ttlText(loginLinkTtl())}; it signs in one browser, once.\n`,
   );
@@ -1876,7 +2201,7 @@ export async function cmdWebLoginWait(
     io.out(LOGIN_HELP());
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -1898,6 +2223,15 @@ export async function cmdWebLoginWait(
     return 1;
   }
   const stateDir = io.stateDir ?? getStateDir();
+  // Issue 455: the install's address only when it reaches this Den.
+  if (!a.origin)
+    ({ origin } = await provenOrigin(
+      a.port,
+      origin,
+      stateDir,
+      (l) => io.err(`${product().cli}: ${l}\n`),
+      io.addressDeps,
+    ));
   const secret = ensureWebSecret(stateDir);
   const now = Date.now();
   const ttl = loginLinkTtl();
@@ -2324,7 +2658,7 @@ export async function cmdWebApprove(
     io.err(usage);
     return 2;
   }
-  const refused = list ? null : personGrantRefusal(process.env);
+  const refused = list ? null : grantRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -2433,7 +2767,7 @@ export async function cmdWebOwner(
   }
   const stateDir = io.stateDir ?? getStateDir();
   const cli = product().cli;
-  const refused = sub === "show" ? null : personGrantRefusal(process.env);
+  const refused = sub === "show" ? null : grantRefusal(io);
   if (refused) {
     io.err(`${cli}: ${refused}\n`);
     return 1;
@@ -2522,5 +2856,117 @@ export async function cmdWebOwner(
       `Linked @${rec.login} (${githubPrincipal(outcome.identity.id)}) as this Den's owner; ` +
         "the token was not kept. Sign in with GitHub from your other devices now works.\n",
     );
+  return 0;
+}
+
+// ── Issue 810: the fixture person (live checks on a test install) ──────────
+
+/** What the fixture commands read: the CLI's io, and the test-install mark. */
+type FixtureIo = CliIo & { testInstall?: () => boolean };
+
+/** `web.test_install` from the distribution config (false when unreadable). */
+function testInstallNow(io: FixtureIo): boolean {
+  if (io.testInstall) return io.testInstall();
+  try {
+    return readWebAuthConfig(getDistRoot(), product().configFile).testInstall;
+  } catch {
+    return false;
+  }
+}
+
+const FIXTURE_PERSON_HELP = () =>
+  `Usage: ${product().cli} web fixture-person\n` +
+  "  Setting up the fixture person live checks sign in as is a button: on a test\n" +
+  "  install, sign in and press Settings › Access › Set up test person in your\n" +
+  "  browser. This command does nothing else.\n";
+
+/**
+ * `<cli> web fixture-person` (issue 810): setup is Settings' Set up test
+ * person, a person's browser session only. This says so and fails; it
+ * never asks the server (which refuses every CLI bearer there).
+ */
+export function cmdWebFixturePerson(
+  args: string[],
+  io: FixtureIo = stdIo,
+): Promise<number> {
+  if (isHelp(args)) {
+    io.out(FIXTURE_PERSON_HELP());
+    return Promise.resolve(0);
+  }
+  io.err(
+    `${product().cli}: setting up the ${FIXTURE_LABEL} is a button, not a command: ` +
+      "on a test install, sign in and press Settings › Access › Set up test person in your browser.\n",
+  );
+  return Promise.resolve(1);
+}
+
+const FIXTURE_LOGIN_HELP = () =>
+  `Usage: ${product().cli} web fixture-login [--next <path>] [--origin <url>]\n` +
+  "  On a test install with its fixture person set up, prints a one-time sign-in\n" +
+  "  link as the fixture person (for live checks; an agent may run it). Refused\n" +
+  "  on any install not marked a test install.\n";
+
+/**
+ * `<cli> web fixture-login` (issue 810): the gate runner's one-time link
+ * as the fixture person, on stdout alone. An agent may run it: it never
+ * signs in as the person. Refused off a test install, or with no fixture
+ * person set up.
+ */
+export async function cmdWebFixtureLogin(
+  args: string[],
+  io: FixtureIo = stdIo,
+): Promise<number> {
+  if (isHelp(args)) {
+    io.out(FIXTURE_LOGIN_HELP());
+    return 0;
+  }
+  let next = "/";
+  let origin: string | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const val = (flag: string) =>
+      a === flag
+        ? args[++i]
+        : a.startsWith(`${flag}=`)
+          ? a.slice(flag.length + 1)
+          : undefined;
+    const n = val("--next");
+    const o = n === undefined ? val("--origin") : undefined;
+    if (n !== undefined) next = n;
+    else if (o !== undefined) {
+      origin = parseOrigin(o);
+      if (!origin) {
+        io.err(
+          `--origin must be http(s)://host[:port] with no path, got "${o}"\n`,
+        );
+        return 2;
+      }
+    } else {
+      io.err(FIXTURE_LOGIN_HELP());
+      return 2;
+    }
+  }
+  const testInstall = testInstallNow(io);
+  if (!origin && testInstall) {
+    try {
+      origin = requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
+    } catch (e) {
+      io.err(`${product().cli}: ${(e as Error).message}\n`);
+      return 1;
+    }
+  }
+  const r = fixtureLoginLink(io.stateDir ?? getStateDir(), {
+    testInstall,
+    origin: origin ?? "",
+    next,
+    ttlMs: loginLinkTtl(),
+    configFile: product().configFile,
+    cli: product().cli,
+  });
+  if (!r.ok) {
+    io.err(`${product().cli}: ${r.error}\n`);
+    return 1;
+  }
+  io.out(`${r.url}\n`);
   return 0;
 }

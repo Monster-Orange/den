@@ -5128,18 +5128,21 @@
             return;
           }
 
-          // Issue 133: the kit's dialog, in the page's language (Esc
-          // cancels; focus stays in it and goes back after). It names the
-          // service it turns off and the ones that depend on it.
-          const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
-          const sure = await askConfirm({
-            title: dT("dlg.autoOffT", { svc: repo }),
-            message: dT("dlg.autoOff", { deps: dependents.join(", ") }),
-            okLabel: dT("dlg.autoOffGo"),
+          // Issue 793: the kit's Yes/No question (its font, Report, Esc),
+          // never a layer of the page's own.
+          const ok = await askConfirm({
+            title: pT("dlg.autoOffT", "Turn off auto-start for {repo}?", {
+              repo,
+            }),
+            message: pT(
+              "dlg.autoOff",
+              "It is a hard dependency of: {list}. Their project's Up may fail readiness while it's off.",
+              { list: dependents.join(", ") },
+            ),
+            okLabel: pT("dlg.autoOffGo", "Turn off"),
             danger: true,
           });
-          if (!sure) return;
-          await postAutostart(repo, false, ws);
+          if (ok) void postAutostart(repo, false, ws);
         };
 
         // Close popup on any outside click

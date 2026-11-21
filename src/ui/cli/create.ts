@@ -11,7 +11,11 @@
  * one exists. examples/distribution/ is exactly `den create acme`; a unit
  * test regenerates it, so the two cannot drift.
  */
-import { checkWebUrl } from "../../shared/web-url-check.js";
+import {
+  checkWebUrl,
+  isLoopbackName,
+  loopbackRefusal,
+} from "../../shared/web-url-check.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -421,6 +425,9 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
 function parseUrlFlag(v: string): string {
   const ok = checkWebUrl(v);
   if (!("url" in ok)) throw new Error(`--url: ${ok.error}\n${CREATE_USAGE}`);
+  // Issue 666: the address is the name other devices open.
+  const loop = loopbackRefusal(ok.url);
+  if (loop) throw new Error(`--url: ${loop}\n${CREATE_USAGE}`);
   return ok.url;
 }
 
@@ -753,9 +760,12 @@ export function laterInstall(
       | undefined;
     return typeof edge?.domain === "string" ? strip(edge.domain) : "";
   };
+  // Issue 666: never a loopback domain (an edge on `localhost`): the
+  // proposal would name this machine only.
+  const named = (d: string) => (d && !isLoopbackName(d) ? d : "");
   const domain =
-    installs.map(fromUrl).find(Boolean) ||
-    installs.map(fromEdge).find(Boolean) ||
+    installs.map(fromUrl).map(named).find(Boolean) ||
+    installs.map(fromEdge).map(named).find(Boolean) ||
     undefined;
   return { later: installs.length > 0, ...(domain ? { domain } : {}) };
 }
@@ -822,8 +832,13 @@ export async function runCreate(
         ? answer || proposal
         : `https://${answer}`,
     );
-    if ("url" in checked) args = { ...args, url: checked.url };
-    else console.error(`create: ${checked.error} (set it later: web url)`);
+    // Issue 666: a loopback name is never written as the address.
+    const loop = "url" in checked ? loopbackRefusal(checked.url) : null;
+    if ("url" in checked && !loop) args = { ...args, url: checked.url };
+    else
+      console.error(
+        `create: ${loop ?? ("error" in checked ? checked.error : "")} (set it later: web url)`,
+      );
   }
   const r = await createResult(args, cwd, runningDenVersion(), portOpts);
   if (json) {
