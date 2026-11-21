@@ -393,6 +393,18 @@ describe("making the fixture person on the test install", () => {
     expect((await state(test)).testInstall).toBe(true);
   });
 
+  it("the signed-in person's own Settings still reads a test install, so the button shows", async () => {
+    const p = await signedIn(test.stateDir, test.base);
+    try {
+      const own = await call(test, "GET", "/api/web/fixture-person", p.headers);
+      expect(own.json.testInstall).toBe(true);
+      // Anyone else still sees the person's session as a person here.
+      expect((await state(test)).testInstall).toBe(false);
+    } finally {
+      await signOut(test, p.headers);
+    }
+  });
+
   it("a signed-in person sets it up: 0600, never in the answer; Settings reads ready", async () => {
     const p = await signedIn(test.stateDir, test.base);
     const r = await call(
