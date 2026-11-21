@@ -192,7 +192,8 @@ describe("the double-click fix", () => {
         (sel) => {
           const b = document.querySelector(sel);
           return (
-            !!b?.querySelector(".bz-dots") &&
+            // The kit's dots: the button's own aria-hidden span.
+            !!b?.querySelector(':scope > span[aria-hidden="true"]') &&
             b.getAttribute("aria-busy") === "true"
           );
         },
@@ -239,7 +240,11 @@ describe("the double-click fix", () => {
     await p.waitForFunction(
       (sel) => {
         const b = document.querySelector(sel) as HTMLButtonElement | null;
-        return b && !b.disabled && !b.querySelector(".bz-dots");
+        return (
+          b &&
+          !b.disabled &&
+          !b.querySelector(':scope > span[aria-hidden="true"]')
+        );
       },
       btn("fail-one", "fresh"),
     );
