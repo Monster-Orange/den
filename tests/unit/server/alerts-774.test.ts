@@ -39,6 +39,7 @@ import {
   deliverAlert,
 } from "../../../src/ui/server/public/alerts.js";
 import {
+  badgeColors,
   badgeText,
   titleWithCount,
 } from "../../../src/ui/server/public/tab-count.js";
@@ -440,5 +441,44 @@ describe("774 clause 7: no double alert", () => {
     );
     expect(t.shown).toEqual([]);
     expect(t.played).toEqual(["needs"]);
+  });
+});
+
+describe("the tab badge takes the theme's colors (774)", () => {
+  const docWith = (vars: Record<string, string>) =>
+    ({
+      documentElement: {},
+      defaultView: {
+        getComputedStyle: () => ({
+          getPropertyValue: (n: string) => vars[n] ?? "",
+        }),
+      },
+    }) as unknown as Document;
+
+  it("reads the accent, background, on-accent and sans tokens", () => {
+    expect(
+      badgeColors(
+        docWith({
+          "--accent": " #123456",
+          "--bg": "#000",
+          "--on-accent": "#fff",
+          "--sans": '"Test Sans", sans-serif',
+        }),
+      ),
+    ).toEqual({
+      dot: "#123456",
+      ring: "#000",
+      digit: "#fff",
+      sans: '"Test Sans", sans-serif',
+    });
+  });
+
+  it("gives empty colors when the page has no theme yet", () => {
+    expect(badgeColors({} as Document)).toEqual({
+      dot: "",
+      ring: "",
+      digit: "",
+      sans: "",
+    });
   });
 });

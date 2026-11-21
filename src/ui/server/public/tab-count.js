@@ -26,20 +26,40 @@ export function badgeText(n) {
 }
 
 /**
- * The badge drawn on a 64 px icon (the mock's, scaled with it): an
- * orange dot top right, ringed in the icon's dark, a white digit.
+ * The theme's colors for the badge, from its tokens on the page: the
+ * accent dot, ringed in the page's background, the digit in the color
+ * that reads on the accent. A canvas takes no CSS variables, so they are
+ * read once per drawing, with the theme's sans for the digit. Empty when
+ * the page has no theme yet.
  */
-function drawBadge(g, text) {
+export function badgeColors(doc) {
+  const cs = doc.defaultView?.getComputedStyle?.(doc.documentElement);
+  const v = (name) => (cs ? cs.getPropertyValue(name).trim() : "");
+  return {
+    dot: v("--accent"),
+    ring: v("--bg"),
+    digit: v("--on-accent"),
+    sans: v("--sans"),
+  };
+}
+
+/**
+ * The badge drawn on a 64 px icon (the mock's, scaled with it): a dot in
+ * the theme's accent top right, ringed in its background, with the digit
+ * in the color that reads on the accent. A color the theme doesn't give
+ * leaves the canvas's own.
+ */
+function drawBadge(g, text, colors) {
   g.beginPath();
   g.arc(46, 18, 17, 0, Math.PI * 2);
-  g.fillStyle = "#c9520a";
+  if (colors.dot) g.fillStyle = colors.dot;
   g.fill();
   g.lineWidth = 3;
-  g.strokeStyle = "#2b2118";
+  if (colors.ring) g.strokeStyle = colors.ring;
   g.stroke();
-  g.fillStyle = "#fff";
+  if (colors.digit) g.fillStyle = colors.digit;
   g.textAlign = "center";
-  g.font = `700 ${text.length > 1 ? 17 : 22}px -apple-system, system-ui, sans-serif`;
+  g.font = `700 ${text.length > 1 ? 17 : 22}px ${colors.sans || "sans-serif"}`;
   g.fillText(text, 46, text.length > 1 ? 24.1 : 25.9);
 }
 
@@ -83,7 +103,7 @@ export function tabCount(win = window) {
         const g = c.getContext("2d");
         if (!g) return;
         g.drawImage(img, 0, 0, 64, 64);
-        drawBadge(g, text);
+        drawBadge(g, text, badgeColors(doc));
         drawn = c.toDataURL("image/png");
         l.setAttribute("href", drawn);
       } catch {
