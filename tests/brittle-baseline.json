@@ -1,0 +1,766 @@
+{
+  "about": "Issue 839: per-file counts of brittle patterns (scripts/brittle-ratchet.mjs). Counts may only go down; lower them with: node scripts/brittle-ratchet.mjs --update",
+  "totals": {
+    "sleeps": 222,
+    "positional": 251,
+    "classSelectors": 1563,
+    "englishAsserts": 523
+  },
+  "files": {
+    "gate/101.mjs": {
+      "classSelectors": 3
+    },
+    "gate/142.mjs": {
+      "sleeps": 4,
+      "positional": 1,
+      "classSelectors": 4
+    },
+    "gate/143.mjs": {
+      "positional": 1,
+      "classSelectors": 3
+    },
+    "gate/160.mjs": {
+      "positional": 1,
+      "classSelectors": 5
+    },
+    "gate/163.mjs": {
+      "positional": 1,
+      "classSelectors": 3
+    },
+    "gate/271.mjs": {
+      "classSelectors": 3
+    },
+    "gate/327.mjs": {
+      "positional": 1,
+      "classSelectors": 2
+    },
+    "gate/330.mjs": {
+      "positional": 1
+    },
+    "gate/335.mjs": {
+      "positional": 1,
+      "classSelectors": 2
+    },
+    "gate/339.mjs": {
+      "positional": 2
+    },
+    "gate/352.mjs": {
+      "classSelectors": 2
+    },
+    "gate/367.mjs": {
+      "positional": 1,
+      "classSelectors": 3
+    },
+    "gate/393.mjs": {
+      "positional": 1,
+      "classSelectors": 3
+    },
+    "gate/402.mjs": {
+      "positional": 4,
+      "classSelectors": 2
+    },
+    "gate/403.mjs": {
+      "classSelectors": 3
+    },
+    "gate/415.mjs": {
+      "sleeps": 2,
+      "positional": 1,
+      "classSelectors": 6
+    },
+    "gate/448.mjs": {
+      "positional": 5,
+      "classSelectors": 9
+    },
+    "gate/456.mjs": {
+      "positional": 6,
+      "classSelectors": 2
+    },
+    "gate/479.mjs": {
+      "positional": 8,
+      "classSelectors": 5
+    },
+    "gate/503.mjs": {
+      "positional": 1
+    },
+    "gate/542.mjs": {
+      "positional": 1
+    },
+    "gate/573.mjs": {
+      "positional": 1
+    },
+    "gate/601.mjs": {
+      "positional": 1
+    },
+    "gate/609.mjs": {
+      "positional": 2
+    },
+    "gate/631.mjs": {
+      "positional": 1
+    },
+    "gate/666.mjs": {
+      "positional": 1
+    },
+    "gate/699.mjs": {
+      "classSelectors": 13
+    },
+    "gate/715.mjs": {
+      "positional": 1
+    },
+    "gate/93.mjs": {
+      "sleeps": 2,
+      "positional": 8,
+      "classSelectors": 10
+    },
+    "tests/unit/den-ui/busy-kit.browser.test.ts": {
+      "sleeps": 5,
+      "positional": 1,
+      "classSelectors": 23,
+      "englishAsserts": 10
+    },
+    "tests/unit/den-ui/den-topbar-kit.browser.test.ts": {
+      "classSelectors": 2
+    },
+    "tests/unit/den-ui/kind-tag.browser.test.ts": {
+      "positional": 2,
+      "classSelectors": 18
+    },
+    "tests/unit/den-ui/kit-063.browser.test.ts": {
+      "sleeps": 4,
+      "classSelectors": 16,
+      "englishAsserts": 1
+    },
+    "tests/unit/den-ui/kit-065.browser.test.ts": {
+      "classSelectors": 11
+    },
+    "tests/unit/den-ui/kit-070.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 64,
+      "englishAsserts": 4
+    },
+    "tests/unit/den-ui/kit-button-menu-row.browser.test.ts": {
+      "classSelectors": 3,
+      "englishAsserts": 2
+    },
+    "tests/unit/den-ui/kit-csp.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 2,
+      "classSelectors": 19
+    },
+    "tests/unit/den-ui/list-bars-kit.browser.test.ts": {
+      "positional": 3,
+      "classSelectors": 26,
+      "englishAsserts": 5
+    },
+    "tests/unit/den-ui/markdown-editor.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 2,
+      "classSelectors": 15,
+      "englishAsserts": 5
+    },
+    "tests/unit/den-ui/nav-inventory.browser.test.ts": {
+      "sleeps": 2,
+      "positional": 2,
+      "classSelectors": 18
+    },
+    "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts": {
+      "classSelectors": 4,
+      "englishAsserts": 1
+    },
+    "tests/unit/den-ui/rail-load-motion.browser.test.ts": {
+      "sleeps": 2
+    },
+    "tests/unit/den-ui/report-visibility.browser.test.ts": {
+      "classSelectors": 13,
+      "englishAsserts": 4
+    },
+    "tests/unit/den-ui/savestate-kit.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 5,
+      "englishAsserts": 6
+    },
+    "tests/unit/den-ui/shell-kit-parity.browser.test.ts": {
+      "sleeps": 3,
+      "classSelectors": 6
+    },
+    "tests/unit/scripts/doc-shots-guard.browser.test.ts": {
+      "englishAsserts": 1
+    },
+    "tests/unit/server/a11y.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 7
+    },
+    "tests/unit/server/account-entry-parity.browser.test.ts": {
+      "sleeps": 2,
+      "classSelectors": 2
+    },
+    "tests/unit/server/account-who.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 2
+    },
+    "tests/unit/server/address-banner.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 3,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/agent-deep-link.browser.test.ts": {
+      "sleeps": 2,
+      "classSelectors": 8,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/agent-mode-page.browser.test.ts": {
+      "sleeps": 2,
+      "positional": 3,
+      "classSelectors": 7,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/agent-order.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 1,
+      "classSelectors": 13,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/agent-runtimes.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 11,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/agent-start-ready.browser.test.ts": {
+      "positional": 1,
+      "englishAsserts": 3
+    },
+    "tests/unit/server/agents-ag14.browser.test.ts": {
+      "sleeps": 9,
+      "positional": 5,
+      "classSelectors": 76,
+      "englishAsserts": 18
+    },
+    "tests/unit/server/agents-compacting.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 3,
+      "classSelectors": 2,
+      "englishAsserts": 7
+    },
+    "tests/unit/server/agents-double-click.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 1,
+      "classSelectors": 5
+    },
+    "tests/unit/server/agents-drop.browser.test.ts": {
+      "sleeps": 9,
+      "positional": 1,
+      "classSelectors": 22,
+      "englishAsserts": 7
+    },
+    "tests/unit/server/agents-exited-shell.browser.test.ts": {
+      "sleeps": 3,
+      "classSelectors": 5
+    },
+    "tests/unit/server/agents-helpers-badge.browser.test.ts": {
+      "sleeps": 2,
+      "positional": 1,
+      "classSelectors": 13,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/agents-helpers.browser.test.ts": {
+      "sleeps": 4,
+      "positional": 10,
+      "classSelectors": 59,
+      "englishAsserts": 7
+    },
+    "tests/unit/server/agents-hub-work.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 1,
+      "englishAsserts": 3
+    },
+    "tests/unit/server/agents-layout.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 14,
+      "classSelectors": 65,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/agents-pane-retry.browser.test.ts": {
+      "sleeps": 2,
+      "classSelectors": 8
+    },
+    "tests/unit/server/agents-project-names.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 4,
+      "englishAsserts": 3
+    },
+    "tests/unit/server/agents-project-view.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 1,
+      "classSelectors": 22,
+      "englishAsserts": 7
+    },
+    "tests/unit/server/agents-rotation-callout.browser.test.ts": {
+      "positional": 8,
+      "classSelectors": 14,
+      "englishAsserts": 10
+    },
+    "tests/unit/server/agents-rotation.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "classSelectors": 9,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/agents-scope.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 9,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/agents-signin.browser.test.ts": {
+      "classSelectors": 4,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/agents-subagents.browser.test.ts": {
+      "classSelectors": 4,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/agents-tab.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 10,
+      "classSelectors": 37,
+      "englishAsserts": 10
+    },
+    "tests/unit/server/agents-term-size.browser.test.ts": {
+      "sleeps": 8,
+      "positional": 7,
+      "classSelectors": 9
+    },
+    "tests/unit/server/agents-terminal.browser.test.ts": {
+      "sleeps": 13,
+      "positional": 3,
+      "classSelectors": 49,
+      "englishAsserts": 14
+    },
+    "tests/unit/server/agents-where.browser.test.ts": {
+      "classSelectors": 5,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/alerts.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 1,
+      "classSelectors": 4,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/approval-dialog.browser.test.ts": {
+      "classSelectors": 3,
+      "englishAsserts": 14
+    },
+    "tests/unit/server/bell-needs-you.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 2
+    },
+    "tests/unit/server/bell-row.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 7,
+      "classSelectors": 8
+    },
+    "tests/unit/server/bell-v6.browser.test.ts": {
+      "positional": 5,
+      "classSelectors": 19,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/bell.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 3,
+      "classSelectors": 13,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/bring-in.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 13,
+      "englishAsserts": 8
+    },
+    "tests/unit/server/busy-popup.browser.test.ts": {
+      "classSelectors": 11,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/config-invalid-page.browser.test.ts": {
+      "sleeps": 2,
+      "classSelectors": 5,
+      "englishAsserts": 3
+    },
+    "tests/unit/server/confirm-busy.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 4
+    },
+    "tests/unit/server/d17-claim.browser.test.ts": {
+      "classSelectors": 2,
+      "englishAsserts": 7
+    },
+    "tests/unit/server/d67-remote-approve.browser.test.ts": {
+      "sleeps": 1,
+      "englishAsserts": 7
+    },
+    "tests/unit/server/dialogs-centred.browser.test.ts": {
+      "classSelectors": 1
+    },
+    "tests/unit/server/dialogs-fit-ipad.browser.test.ts": {
+      "classSelectors": 3
+    },
+    "tests/unit/server/edge-page.browser.test.ts": {
+      "positional": 2,
+      "classSelectors": 8,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/embed-frame.browser.test.ts": {
+      "sleeps": 5,
+      "positional": 1,
+      "classSelectors": 14,
+      "englishAsserts": 9
+    },
+    "tests/unit/server/environments-dead-host.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 2,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/environments-view.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 2,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/error-frame.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 13,
+      "englishAsserts": 9
+    },
+    "tests/unit/server/fresh-create-ui.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 3
+    },
+    "tests/unit/server/gate-chip.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 10,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/graph-edges-flow.browser.test.ts": {
+      "sleeps": 4,
+      "positional": 1,
+      "classSelectors": 4
+    },
+    "tests/unit/server/graph-health-cards.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 6,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/graph-many-groups.browser.test.ts": {
+      "sleeps": 5,
+      "positional": 4,
+      "classSelectors": 13,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/i18n-layout.browser.test.ts": {
+      "sleeps": 4,
+      "positional": 1,
+      "classSelectors": 8
+    },
+    "tests/unit/server/i18n-pages.browser.test.ts": {
+      "sleeps": 3,
+      "classSelectors": 6
+    },
+    "tests/unit/server/i18n-shell.browser.test.ts": {
+      "classSelectors": 2
+    },
+    "tests/unit/server/kit-dialog.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 6
+    },
+    "tests/unit/server/light-contrast.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1
+    },
+    "tests/unit/server/lk0-sudo.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "englishAsserts": 5
+    },
+    "tests/unit/server/local-dev-output-panel.browser.test.ts": {
+      "sleeps": 2,
+      "positional": 2,
+      "classSelectors": 6
+    },
+    "tests/unit/server/local-dev-room.browser.test.ts": {
+      "sleeps": 16,
+      "positional": 2,
+      "classSelectors": 45,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/mode-layers.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "classSelectors": 3,
+      "englishAsserts": 12
+    },
+    "tests/unit/server/my-reports.browser.test.ts": {
+      "positional": 9,
+      "classSelectors": 14,
+      "englishAsserts": 17
+    },
+    "tests/unit/server/no-services-repo-projects.browser.test.ts": {
+      "classSelectors": 2,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/one-url-per-module.browser.test.ts": {
+      "positional": 2,
+      "classSelectors": 4
+    },
+    "tests/unit/server/pair-unseen.browser.test.ts": {
+      "sleeps": 3
+    },
+    "tests/unit/server/pane-ime.browser.test.ts": {
+      "sleeps": 2,
+      "classSelectors": 3
+    },
+    "tests/unit/server/pane-reconnect.browser.test.ts": {
+      "sleeps": 2,
+      "positional": 1,
+      "classSelectors": 12,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/pin-tuple.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 4
+    },
+    "tests/unit/server/popup-font.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1
+    },
+    "tests/unit/server/project-mcp-row.browser.test.ts": {
+      "positional": 1
+    },
+    "tests/unit/server/project-mode.browser.test.ts": {
+      "positional": 1,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/rail-lit.browser.test.ts": {
+      "classSelectors": 6
+    },
+    "tests/unit/server/release-no-env.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 1
+    },
+    "tests/unit/server/report-dialog.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 4,
+      "classSelectors": 18,
+      "englishAsserts": 16
+    },
+    "tests/unit/server/report-every-page.browser.test.ts": {
+      "classSelectors": 4
+    },
+    "tests/unit/server/report-everywhere.browser.test.ts": {
+      "sleeps": 4,
+      "positional": 1,
+      "classSelectors": 13
+    },
+    "tests/unit/server/report-shot-filing.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 2,
+      "classSelectors": 1,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/report-visibility.browser.test.ts": {
+      "classSelectors": 5,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/run-outcome.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 1,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/runs-dock.browser.test.ts": {
+      "sleeps": 4,
+      "positional": 1,
+      "classSelectors": 23,
+      "englishAsserts": 5
+    },
+    "tests/unit/server/sec1a-cross-origin.browser.test.ts": {
+      "englishAsserts": 3
+    },
+    "tests/unit/server/sec1b-signin.browser.test.ts": {
+      "sleeps": 1,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/sec2a-github-steps.browser.test.ts": {
+      "englishAsserts": 4
+    },
+    "tests/unit/server/sec2a-identity.browser.test.ts": {
+      "positional": 2,
+      "classSelectors": 8
+    },
+    "tests/unit/server/sec2a-pair.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "classSelectors": 4,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/sec2a-signin.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "classSelectors": 10,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/server-agent.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 5,
+      "classSelectors": 18,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/service-panel.browser.test.ts": {
+      "sleeps": 2,
+      "positional": 1,
+      "classSelectors": 79,
+      "englishAsserts": 11
+    },
+    "tests/unit/server/services-workspace-exec.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 5,
+      "englishAsserts": 3
+    },
+    "tests/unit/server/settings-anchor.browser.test.ts": {
+      "sleeps": 4,
+      "positional": 1,
+      "classSelectors": 2
+    },
+    "tests/unit/server/settings-cli-rows.browser.test.ts": {
+      "classSelectors": 2
+    },
+    "tests/unit/server/settings-edge-up.browser.test.ts": {
+      "sleeps": 1,
+      "classSelectors": 1,
+      "englishAsserts": 5
+    },
+    "tests/unit/server/settings-hub-github.browser.test.ts": {
+      "positional": 1,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/settings-hub-link-all.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 1,
+      "englishAsserts": 12
+    },
+    "tests/unit/server/settings-hub-project.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "classSelectors": 6,
+      "englishAsserts": 26
+    },
+    "tests/unit/server/settings-hub.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 1,
+      "classSelectors": 4,
+      "englishAsserts": 11
+    },
+    "tests/unit/server/settings-pressed.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 4
+    },
+    "tests/unit/server/settings-project-name.browser.test.ts": {
+      "positional": 1,
+      "englishAsserts": 8
+    },
+    "tests/unit/server/settings-signin.browser.test.ts": {
+      "englishAsserts": 2
+    },
+    "tests/unit/server/settings-token-go.browser.test.ts": {
+      "englishAsserts": 1
+    },
+    "tests/unit/server/shell-close.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 5,
+      "englishAsserts": 2
+    },
+    "tests/unit/server/shell-hub-rail.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 6,
+      "classSelectors": 14,
+      "englishAsserts": 6
+    },
+    "tests/unit/server/shell-poll-in-flight.browser.test.ts": {
+      "sleeps": 2
+    },
+    "tests/unit/server/shell-rail.browser.test.ts": {
+      "sleeps": 3,
+      "classSelectors": 41,
+      "englishAsserts": 19
+    },
+    "tests/unit/server/signin-accounts.browser.test.ts": {
+      "positional": 1,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/signin-this-machine.browser.test.ts": {
+      "englishAsserts": 2
+    },
+    "tests/unit/server/signin-token-nostore.browser.test.ts": {
+      "englishAsserts": 2
+    },
+    "tests/unit/server/signin-token.browser.test.ts": {
+      "sleeps": 3
+    },
+    "tests/unit/server/start-dialog.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 3,
+      "classSelectors": 14,
+      "englishAsserts": 12
+    },
+    "tests/unit/server/terminal-rail.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "classSelectors": 12,
+      "englishAsserts": 3
+    },
+    "tests/unit/server/terminal-recent.browser.test.ts": {
+      "sleeps": 1,
+      "positional": 1,
+      "classSelectors": 7
+    },
+    "tests/unit/server/terminal-reuse.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 3,
+      "classSelectors": 9,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/time-zone.browser.test.ts": {
+      "positional": 3,
+      "classSelectors": 6
+    },
+    "tests/unit/server/topbar.browser.test.ts": {
+      "sleeps": 3,
+      "positional": 2,
+      "classSelectors": 61,
+      "englishAsserts": 20
+    },
+    "tests/unit/server/update-pill.browser.test.ts": {
+      "sleeps": 7,
+      "classSelectors": 16,
+      "englishAsserts": 4
+    },
+    "tests/unit/server/verify-page.browser.test.ts": {
+      "classSelectors": 5
+    },
+    "tests/unit/server/whats-new-dialog.browser.test.ts": {
+      "classSelectors": 3,
+      "englishAsserts": 1
+    },
+    "tests/unit/server/workspace-delete-agents.browser.test.ts": {
+      "englishAsserts": 4
+    },
+    "tests/unit/server/workspace-health-unfocused.browser.test.ts": {
+      "positional": 1,
+      "classSelectors": 1
+    },
+    "tests/unit/server/workspaces-agents.browser.test.ts": {
+      "positional": 2,
+      "classSelectors": 7,
+      "englishAsserts": 3
+    },
+    "tests/unit/server/workspaces-page.browser.test.ts": {
+      "sleeps": 8,
+      "positional": 7,
+      "classSelectors": 67,
+      "englishAsserts": 9
+    }
+  }
+}

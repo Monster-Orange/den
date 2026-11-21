@@ -15,6 +15,7 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as yaml from "yaml";
 
 const ROOT = path.join(__dirname, "../../..");
 const SCRIPT = path.join(ROOT, "scripts", "brittle-ratchet.mjs");
@@ -43,6 +44,7 @@ const CLEAN = [
   '  expect(await row.getAttribute("data-state")).toBe("saved");',
   "  await new Promise((r) => setTimeout(r, 20));",
   "  // await page.waitForTimeout(500); a comment never counts",
+  "  /* it used to pick li:nth-child(2) */",
   "  const s = \"page.locator('.x').nth(1)\"; // nor a string's text",
   "});",
   "",
@@ -232,5 +234,18 @@ describe("the brittle-pattern ratchet (issue 839)", () => {
     expect(r.stdout + r.stderr).not.toMatch(/went up|new file/);
     expect(r.status).toBe(0);
     expect(Date.now() - t0).toBeLessThan(5000);
+  });
+
+  it("clause 4: CI runs it with the other checks, on a push and a pull request", () => {
+    const ci = yaml.parse(
+      fs.readFileSync(path.join(ROOT, ".github/workflows/ci.yml"), "utf8"),
+    ) as { jobs: Record<string, { steps: { run?: string }[] }> };
+    for (const job of ["checks", "pr"]) {
+      const runs = ci.jobs[job].steps.map((st) => st.run ?? "");
+      const at = runs.indexOf("node scripts/brittle-ratchet.mjs");
+      expect([job, at >= 0]).toEqual([job, true]);
+      // Among the static checks: after lint, next to the den-ui gate.
+      expect(at).toBeGreaterThan(runs.indexOf("npm run lint"));
+    }
   });
 });
