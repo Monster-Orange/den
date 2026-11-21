@@ -7,8 +7,9 @@
  *    new key and ends every current test-person sign-in. Cancel sends
  *    nothing; Set up again goes through the working pop-up.
  *
- * The test-install answers are faked at the page's network (GET and POST
- * /api/web/fixture-person), so nothing is written. Chromium and WebKit;
+ * The test-install answers (src/shared/fixture-person.ts) are faked at the
+ * page's network (GET and POST /api/web/fixture-person), so nothing is
+ * written. Chromium and WebKit;
  * DEN_PW_WS connects to a Playwright server instead of launching. The demo
  * distribution (helpers/agents-page-server.ts). Invented names only.
  */
