@@ -2,6 +2,7 @@
  * Issue 144 GATE-SLOT: the queue as the web page, the MCP tools and
  * `gate status --json` show it.
  */
+import { classOf, windowHeld } from "./classes.js";
 import { expectedEnd, expectedStart, overrun, priorityIds } from "./rules.js";
 import type { GateStore } from "./store.js";
 
@@ -25,12 +26,17 @@ export interface GateSlotView {
    * priority now (false: it waits behind another, or already started).
    */
   priority?: { reason: string; holds: boolean };
+  /** Issue 803: its class (from settings), when classes are set. */
+  class?: string;
+  /** Issue 803: held for its class's window ("22:00-06:00"). */
+  window?: string;
 }
 
 export function gateView(store: GateStore, now = Date.now()) {
   const all = store.list();
   const settings = store.settings();
   const pri = priorityIds(all, settings);
+  const held = windowHeld(all, settings.classes, now);
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -43,6 +49,8 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(e.priority
       ? { priority: { reason: e.priority.reason, holds: pri.has(e.id) } }
       : {}),
+    ...(settings.classes ? { class: classOf(e, settings.classes) } : {}),
+    ...(held.has(e.id) ? { window: held.get(e.id)!.text } : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,

@@ -1956,6 +1956,15 @@
     "set.server.gate_priority_agents": "Agents may ask for release priority",
     "set.server.gate_priority_agents.d":
       "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_class_order": "Gate classes, highest first",
+    "set.server.gate_class_order.d":
+      "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "Gate class of each project",
+    "set.server.gate_class_map.d":
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "Gate class windows",
+    "set.server.gate_class_windows.d":
+      "Comma-separated: <class>=HH:MM-HH:MM/<minutes>, in this machine's time. Outside its window, a run of that class estimated at least that many minutes waits while a higher-class run holds or waits; with none, it runs at once. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
     "set.server.gate_runners": "CI runner tokens",
     "set.server.gate_runners.d":
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
@@ -3174,6 +3183,8 @@
     // Issue 715: a release run a person waits on, and why.
     "gate.priority": "release priority: {reason}",
     "gate.priorityWaits": "release priority, after the one ahead: {reason}",
+    "gate.class": "Class: {name}",
+    "gate.window": "waits for its {window} window",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

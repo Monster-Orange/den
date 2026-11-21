@@ -2406,6 +2406,53 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { priority_agents: v ? 1 : 0 } }),
   },
   {
+    // Issue 803: priority classes per project; empty is first-come.
+    id: "server.gate_class_order",
+    category: "server",
+    label: "Gate classes, highest first",
+    description:
+      "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
+    keywords: ["gate", "slot", "class", "priority", "release", "queue"],
+    scope: "user",
+    keys: ["gate_slots.class_order"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classOrder ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { class_order: String(v ?? "").trim() || null },
+      }),
+  },
+  {
+    id: "server.gate_class_map",
+    category: "server",
+    label: "Gate class of each project",
+    description:
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    keywords: ["gate", "slot", "class", "project", "label", "priority"],
+    scope: "user",
+    keys: ["gate_slots.class_map"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classMap ?? "",
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { class_map: String(v ?? "").trim() || null } }),
+  },
+  {
+    id: "server.gate_class_windows",
+    category: "server",
+    label: "Gate class windows",
+    description:
+      "Comma-separated: <class>=HH:MM-HH:MM/<minutes>, in this machine's time. Outside its window, a run of that class estimated at least that many minutes waits while a higher-class run holds or waits; with none, it runs at once. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
+    keywords: ["gate", "slot", "class", "window", "night", "overnight"],
+    scope: "user",
+    keys: ["gate_slots.class_windows"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classWindows ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { class_windows: String(v ?? "").trim() || null },
+      }),
+  },
+  {
     // Issue 621: the gate-only runner tokens; an agent asks for one (a
     // held write the person allows), and the person revokes one here.
     id: "server.gate_runners",

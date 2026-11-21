@@ -18,11 +18,14 @@
  *            [--remote-max-slots N] [--remote-max-asks N]
  *            [--priority-max N] [--priority-pass-limit-minutes N]
  *            [--priority-agents 0|1]
- *                            the machine's; a person changes them
+ *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
+ *                            the machine's; a person changes them. Issue
+ *                            803: priority classes per project ("" clears)
  */
 import { spawn } from "child_process";
 import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
+import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   expectedEnd,
   expectedStart,
@@ -59,6 +62,8 @@ export const GATE_HELP = {
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
     "    [--priority-max N] [--priority-pass-limit-minutes N] [--priority-agents 0|1]",
+    '    [--class-order "release, lane, other"] [--class-map "<project>=<class>, label:<pattern>=<class>, *=<class>"]',
+    '    [--class-windows "<class>=22:00-06:00/30"]   priority classes per project ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
@@ -188,7 +193,13 @@ export function slotLine(
   now: number,
   margin: { overrunMarginMinutes: number } & Partial<GateSettings>,
 ): string {
-  const pri = priorityWords(e, all, margin);
+  // Issue 803: its class, and a wait for its class's window.
+  const cls = classOf(e, margin.classes);
+  const win = windowHeld(all, margin.classes, now).get(e.id);
+  const pri =
+    priorityWords(e, all, margin) +
+    (cls ? `  class ${cls}` : "") +
+    (win ? `  waits for its ${win.text} window` : "");
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
     return `${e.id}  holds ${e.kind}  ${e.who}  "${e.label}"  until about ${hm(expectedEnd(e))}${late}${pri}`;
@@ -257,6 +268,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       pid: d.pid,
       estimateMin,
       agent: isAgentEnv(d.env),
+      project: path.basename(d.cwd),
       ...(actor ? { actor } : {}),
       ...(priority ? { priority: { reason } } : {}),
     });
@@ -365,8 +377,11 @@ function settings(args: string[], d: GateDeps): number {
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
+    "--class-order": true,
+    "--class-map": true,
+    "--class-windows": true,
   });
-  const raw: Record<string, number> = {};
+  const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
@@ -381,6 +396,15 @@ function settings(args: string[], d: GateDeps): number {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);
   }
+  // Issue 803: a line of text each; "" clears it.
+  for (const [flag, key] of [
+    ["--class-order", "class_order"],
+    ["--class-map", "class_map"],
+    ["--class-windows", "class_windows"],
+  ] as const) {
+    const v = f[flag];
+    if (typeof v === "string") raw[key] = v.trim() || null;
+  }
   if (Object.keys(raw).length) {
     if (isAgentEnv(d.env))
       throw new GateUsage(
@@ -392,7 +416,11 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, never past a run waiting ${s.priorityPassLimitMinutes} min, ${s.priorityAgents ? "agents and people" : "people only"} may ask`,
+    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, never past a run waiting ${s.priorityPassLimitMinutes} min, ${s.priorityAgents ? "agents and people" : "people only"} may ask${
+      s.classes
+        ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
+        : ""
+    }`,
   );
   return 0;
 }

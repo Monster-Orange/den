@@ -41,6 +41,39 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 Change the three settings in Settings › Server, or with
 `den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
 
+## Priority classes per project
+
+Off by default: with no classes set, the queue is first come, exactly as
+above. A person sets three lines in Settings › Server, or with
+`den gate settings`:
+
+```sh
+den gate settings --class-order "release, lane, other" \
+  --class-map "den=lane, label:release*=release, *=other" \
+  --class-windows "other=22:00-06:00/30"
+```
+
+- `class_order`: the classes, highest first. Among waiting runs, a higher
+  class starts first. Within a class, first come. A run that holds a slot
+  is never taken back. A release-priority run (above) moves ahead only
+  within its own class.
+- `class_map`: each project's class. `<project>=<class>` names a project
+  (a `gate run`'s repo folder, or an agent's Den project over MCP).
+  `label:<pattern>=<class>` matches a run's label (`*` is any text), and
+  wins over the project. `*=<class>` is every other project. Without `*`,
+  the last class.
+- `class_windows` (optional): `<class>=HH:MM-HH:MM/<minutes>`, in the
+  machine's local time. Outside its window, a run of that class estimated
+  at least that many minutes waits while a run of a higher class holds or
+  waits. It waits at the back and blocks no one. With no higher-class run,
+  it starts at once. Without `/<minutes>`, every run of the class.
+- The class comes from these settings, never from the asker.
+- `gate status` (text and `--json`), the queue on the Agents page and the
+  slot log (`class` on each row) show each run's class, and a run waiting
+  for its window says so.
+
+`""` clears a line (`--class-order ""` turns classes off).
+
 ## A CI job in a runner VM
 
 A CI job running in a VM on this machine has no Den and no process Den can

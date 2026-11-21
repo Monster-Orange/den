@@ -971,6 +971,15 @@
       "Los agentes pueden pedir prioridad de versión",
     "set.server.gate_priority_agents.d":
       "Activado, un agente puede marcar una ejecución de versión para un problema que tú informaste. Desactivado, solo tú puedes. Cada adelanto queda en el registro de turnos, con quién y por qué. __DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_class_order": "Clases de turno, de mayor a menor",
+    "set.server.gate_class_order.d":
+      "Separadas por comas, por ejemplo release, lane, other. Una ejecución en espera de una clase mayor empieza antes; dentro de una clase, por orden de llegada. Una ejecución que tiene su turno nunca se detiene. Vacío: orden de llegada para todas. __DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "Clase de turno de cada proyecto",
+    "set.server.gate_class_map.d":
+      "Separadas por comas: <proyecto>=<clase>, label:<patrón>=<clase> (* vale por cualquier texto) y *=<clase> para los demás proyectos. Sin *, la última clase. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "Horarios de las clases de turno",
+    "set.server.gate_class_windows.d":
+      "Separados por comas: <clase>=HH:MM-HH:MM/<minutos>, en la hora de esta máquina. Fuera de su horario, una ejecución de esa clase estimada en al menos esos minutos espera mientras una de clase mayor tiene turno o espera; si no hay ninguna, empieza enseguida. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
     "set.server.gate_runners": "Tokens de runners de CI",
     "set.server.gate_runners.d":
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
@@ -2346,6 +2355,8 @@
     "gate.priority": "prioridad de versión: {reason}",
     "gate.priorityWaits":
       "prioridad de versión, después de la anterior: {reason}",
+    "gate.class": "Clase: {name}",
+    "gate.window": "espera su horario {window}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
