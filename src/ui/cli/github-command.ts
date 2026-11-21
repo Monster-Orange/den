@@ -32,7 +32,8 @@ export async function cmdGithub(
   const out = d.out ?? ((l: string) => console.log(l));
   const err = d.err ?? ((l: string) => console.error(l));
   const [sub = "status", ...rest] = args;
-  if (sub !== "status" || rest.some((a) => a !== "--json")) {
+  const known = sub === "status" && rest.every((a) => a === "--json");
+  if (!known) {
     let cli = "den";
     try {
       cli = product().cli;
