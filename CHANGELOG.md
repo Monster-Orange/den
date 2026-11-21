@@ -4,6 +4,18 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.81] - unreleased
+
+### Changed
+
+- Sign-in: a new device asks to sign in, and a person already signed in approves it by typing the code the new device shows (Settings › Access, or the pop-up). Sign-in links open the request rather than signing in at once. The code stays on the new device's screen: `web login` names the device and its address, never its code. A request that is refused for being too many no longer uses up the link. (issue 819)
+- Sign-in page: a browser that isn't signed in gets a page listing this install's ways in (GitHub sign-in, asking from this device, a link from a terminal on the host), each marked set up or not. From another machine with none that works, it says so and how to fix it. API callers get the same 401 as before. (issue 868)
+
+### Fixed
+
+- Address: the one-time address Den takes from its edge prefers a route the distribution names over the route Den makes from the brand, so an install no longer takes a name only its own host can open. An address taken that way is corrected once at start, with an audit row; a confirmed address, or one a person set, is never changed. Doctor's unconfirmed-address row lists the other edge addresses.
+- `web url` no longer says to restart the web server: the address is in use as soon as it is saved.
+
 ## [0.4.80] - 2026-11-21
 
 ### Added
