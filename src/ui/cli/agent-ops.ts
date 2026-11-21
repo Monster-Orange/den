@@ -160,7 +160,7 @@ import { getDistRoot } from "../../shared/paths.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { envKey, product } from "../../shared/product.js";
+import { installLocationEnv, product } from "../../shared/product.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -990,22 +990,6 @@ function withServerScope(r: AgentsResolved): AgentsResolved {
 
 // ── the agent's MCP ─────────────────────────────────────────────────────────
 
-/**
- * Where the distribution is, from the caller's env (DEN_ROOT,
- * `<PREFIX>_ROOT`, `<PREFIX>_HOME`): the agent's env is an allowlist, so
- * its MCP server gets them in its own config instead, and reaches the same
- * distribution and state dir as the CLI that started it. Paths, never
- * secrets.
- */
-function distLocationEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of new Set(["DEN_ROOT", envKey("ROOT"), envKey("HOME")])) {
-    const v = env[k];
-    if (v) out[k] = v;
-  }
-  return out;
-}
-
 /** `<cli> mcp --workspace <ws> --actor agent:<id> [--grant <g>…]`. */
 export function agentMcp(
   d: AgentsResolved,
@@ -1026,7 +1010,7 @@ export function agentMcp(
       `agent:${id}`,
       ...grants.flatMap((g) => ["--grant", g]),
     ],
-    env: { ...distLocationEnv(d.env), ...server.env },
+    env: { ...installLocationEnv(d.env), ...server.env },
     scope: ws,
     ...(() => {
       // Issue 335: the project's own HTTP servers; a bearer is read at
@@ -1038,7 +1022,7 @@ export function agentMcp(
           ? {
               headersHelper: projectMcpHeadersHelper(
                 bin,
-                { ...distLocationEnv(d.env), ...server.env },
+                { ...installLocationEnv(d.env), ...server.env },
                 s.name,
               ),
             }
