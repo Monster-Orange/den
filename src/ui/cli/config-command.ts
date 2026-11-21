@@ -60,6 +60,10 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // issue_write: which roles write GitHub issues ([planner, sde]), and the
+  // install's writes an hour.
+  "agents.issue_writes": ["agent_issue_writes", "roles"],
+  "agents.issue_writes_per_hour": ["agent_issue_writes", "per_hour"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",

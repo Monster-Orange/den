@@ -145,6 +145,12 @@ Hub files (through Den, as you; when Hub is connected):
   a page's text into one call.
 - `hub_pull`: fetch a version's files into a folder, each hash checked.
 
+Direct writes (they run at once, audited, as you):
+
+- `issue_write`: create an issue, comment, label or set a milestone in a
+  project's GitHub repo (name the project). Den adds a line naming you to
+  what you write. It never closes, deletes, transfers or locks an issue.
+
 Held (each waits for the person's Allow):
 
 - `workspace_create`: create a project.

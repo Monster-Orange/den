@@ -25,6 +25,9 @@
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
+ *   agent_issue_writes: { roles?: [role, …] | null, per_hour? }
+ *                                     user.yml agents.issue_writes and
+ *                                     agents.issue_writes_per_hour (issue_write)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
@@ -54,6 +57,7 @@ import {
 import { WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { SHELL_PATH_TIMEOUT } from "./den-config.js";
+import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
@@ -80,6 +84,8 @@ export const PERSON_ONLY_SETTINGS = [
   "reports",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
+  // issue_write: which roles write GitHub issues, and how many an hour.
+  "agent_issue_writes",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
   // then holds its deliveries.
   "agent_context",
@@ -262,6 +268,16 @@ const AGENTS_SHELL: Record<string, Limit> = {
     min: SHELL_PATH_TIMEOUT.min,
     max: SHELL_PATH_TIMEOUT.max,
     int: false,
+  },
+};
+
+/** issue_write: user.yml agents.issue_writes_per_hour (issue-write.ts). */
+const AGENT_ISSUE_WRITES: Record<string, Limit> = {
+  per_hour: {
+    key: "issue_writes_per_hour",
+    min: ISSUE_WRITES_PER_HOUR.min,
+    max: ISSUE_WRITES_PER_HOUR.max,
+    int: true,
   },
 };
 
@@ -486,7 +502,51 @@ export function patchCliRows(
       });
     if (Object.keys(rest).length) contextRest = rest;
   }
+  // issue_write: agents.issue_writes (a list of roles; [] none, null the
+  // default) and its limit.
+  const iw = body.agent_issue_writes;
+  let issueRest: unknown = undefined;
+  if (iw !== undefined) {
+    if (!isObj(iw))
+      return {
+        ok: false,
+        error: "agent_issue_writes is an object: roles, per_hour",
+      };
+    const { roles, ...rest } = iw;
+    if (
+      roles !== undefined &&
+      roles !== null &&
+      !(
+        Array.isArray(roles) &&
+        roles.every(
+          (r) => typeof r === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(r),
+        )
+      )
+    )
+      return {
+        ok: false,
+        error:
+          "agent_issue_writes.roles is a list of roles (lowercase letters, digits and -), or null",
+      };
+    if (roles !== undefined)
+      apply.push(() => {
+        const a = isObj(user.agents) ? { ...user.agents } : {};
+        if (roles === null) delete a.issue_writes;
+        else a.issue_writes = [...new Set(roles as string[])];
+        if (Object.keys(a).length) user.agents = a;
+        else delete user.agents;
+      });
+    if (Object.keys(rest).length) issueRest = rest;
+  }
   const e =
+    patchBlock(
+      user,
+      "agent_issue_writes",
+      "agents",
+      AGENT_ISSUE_WRITES,
+      issueRest,
+      apply,
+    ) ??
     patchBlock(
       user,
       "agent_context",

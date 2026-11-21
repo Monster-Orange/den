@@ -1132,6 +1132,13 @@
     "set.agents.approvals_critical": "Crítico",
     "set.agents.approvals_critical.d":
       "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.agents.issue_writes": "Quién escribe issues de GitHub",
+    "set.agents.issue_writes.d":
+      "Los roles cuyos agentes pueden crear issues, comentar, poner etiquetas y fijar hitos en los repositorios de GitHub de su propio proyecto, al momento y con registro. Separados por comas; vacío: ninguno. Sin definir: planner, orchestrator, lead, sde, builder, reviewer e install (el agente propio de __DEN_TITLE__). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+    "set.agents.issue_writes_per_hour":
+      "Escrituras de issues de GitHub por hora",
+    "set.agents.issue_writes_per_hour.d":
+      "Cuántas escrituras de issues pueden hacer todos los agentes juntos en una hora. Pasado ese número, al agente se le dice cuánto esperar. __DEN_CLI__ config agents.issue_writes_per_hour=60",
     "ap.do.agent_import":
       'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
     "ap.do.approval_policy":

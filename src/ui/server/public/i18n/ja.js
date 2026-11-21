@@ -1096,6 +1096,13 @@
     "set.agents.approvals_critical": "重要な書き込み",
     "set.agents.approvals_critical.d":
       "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "set.agents.issue_writes": "GitHub の issue を書けるロール",
+    "set.agents.issue_writes.d":
+      "自分のプロジェクトの GitHub リポジトリで、issue の作成、コメント、ラベル付け、マイルストーン設定をすぐに行えるエージェントのロールです。すべて記録されます。カンマ区切り、空欄はなし。未設定: planner、orchestrator、lead、sde、builder、reviewer、install（__DEN_TITLE__ 自身のエージェント）。__DEN_CLI__ config agents.issue_writes=[planner,sde]",
+    "set.agents.issue_writes_per_hour":
+      "1 時間あたりの GitHub issue の書き込み数",
+    "set.agents.issue_writes_per_hour.d":
+      "すべてのエージェントを合わせて 1 時間に行える issue の書き込み数です。超えると、エージェントに待ち時間が伝えられます。__DEN_CLI__ config agents.issue_writes_per_hour=60",
     "ap.do.agent_import":
       "会話 {session} をプロジェクト「{project}」の {persona} エージェントとして取り込む",
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",

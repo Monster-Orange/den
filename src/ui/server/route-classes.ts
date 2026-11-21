@@ -752,6 +752,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/agents/self/attention",
     "NT-1: an agent (its own token only) says it waits for its person or finished its turn",
   ),
+  M(
+    ["POST"],
+    "/api/agents/self/issue-write",
+    "issue_write: an agent (its own token only) writes a GitHub issue in its own project's repos; audited",
+  ),
   M(["POST"], "/api/notifications/read", "NT-3: mark notifications read"),
   M(["POST"], "/api/notifications/clear", "NT-3: clear the read ones"),
   M(

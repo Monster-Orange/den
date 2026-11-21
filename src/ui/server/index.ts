@@ -100,7 +100,10 @@ import type {
 } from "../../shared/types/index.js";
 import { getRunDonePayload } from "./perf-report.js";
 import { oldKindWarning } from "../../shared/run-outcome.js";
-import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import {
+  readCatalog,
+  resolveRepoGhSlug,
+} from "../../shared/environment-manager/catalog.js";
 import {
   getActiveWorkspace,
   getActiveWorkspaces,
@@ -1189,6 +1192,7 @@ import {
   type ErrorPageData,
 } from "./http-errors.js";
 import {
+  githubOrgFor,
   readOrgContext,
   resolveAllWorkspaceOrgs,
   withOrgMembership,
@@ -1216,6 +1220,16 @@ import {
   type HeldActions,
 } from "./approval-routes.js";
 import { syncHeldBell } from "./held-bell.js";
+import {
+  ISSUE_WRITE_PATH,
+  handleIssueWriteRoute,
+  type IssueWriteDeps,
+} from "./issue-write-routes.js";
+import {
+  IssueWriteLimit,
+  issueWriteSettings,
+} from "../../shared/issue-write.js";
+import { defaultInstallLabel } from "./hub-connect.js";
 import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
@@ -1316,6 +1330,7 @@ import {
   runPersonaUpdate,
   runProjectMode,
   runAgentImport,
+  personaLookup,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -2223,6 +2238,76 @@ let CLI_PREFIX: string | null = null;
 function printedCli(): string {
   CLI_PREFIX ??= cliPrefix(product().cli, getDistRoot(), getEngineRoot());
   return CLI_PREFIX;
+}
+
+/** issue_write's limit: the install's writes in the last hour, every agent's. */
+const issueWriteLimit = new IssueWriteLimit();
+
+/**
+ * issue_write's wiring: the agent's record and persona role, the
+ * project's GitHub repos (the catalog's gh, else the project's org), the
+ * settings from user.yml, pr_close's gh call path (runGh), and the audit.
+ */
+function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
+  return {
+    agentOf: (id) => {
+      const rec = readAgentRecord(getStateDir(), id);
+      if (!rec) return null;
+      let role: string | undefined;
+      try {
+        role = personaLookup(agentWebDeps())(rec)?.role;
+      } catch {
+        role = undefined;
+      }
+      return {
+        name: rec.displayName || rec.persona || id,
+        ...(role ? { role } : {}),
+      };
+    },
+    projectExists: (p) =>
+      Object.hasOwn(readWorkspacesFile().workspaces ?? {}, p),
+    projectRepos: (p) => {
+      const ws = (readWorkspacesFile().workspaces ?? {})[p];
+      if (!ws) return [];
+      const names = new Set<string>([
+        ...Object.keys(ws.services ?? {}).map((a) => a.split("/")[0]),
+        ...Object.keys(ws.repos ?? {}),
+      ]);
+      const catalog = readCatalog();
+      const out: string[] = [];
+      for (const n of names)
+        try {
+          out.push(resolveRepoGhSlug(n, catalog, () => githubOrgFor(p)));
+        } catch {
+          /* a repo with no GitHub owner: not one issue_write reaches */
+        }
+      return out.sort();
+    },
+    settings: () =>
+      issueWriteSettings(
+        () => readUserConfig(),
+        () => readDenConfig(),
+      ),
+    limit: issueWriteLimit,
+    gh: runGh,
+    installLabel: () => defaultInstallLabel(),
+    audit: (e) => {
+      try {
+        recordAction(
+          auditActorOf(req),
+          {
+            verb: "issue_write",
+            detail: `${e.project ? `project ${e.project}: ` : ""}${e.summary}`,
+            ...(e.refused ? { outcome: "refused" as const } : {}),
+            ...(e.reason ? { reason: e.reason } : {}),
+          },
+          principalOf(req),
+        );
+      } catch {
+        /* the audit is best-effort; the write's answer still goes back */
+      }
+    },
+  };
 }
 
 /**
@@ -4268,6 +4353,15 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       }
     })(),
     // Issue 456: how long Den waits for the shell's PATH.
+    // issue_write: which roles write GitHub issues, and how many an hour.
+    agent_issue_writes: (() => {
+      try {
+        const c = issueWriteSettings(() => user, readDenConfig);
+        return { roles: c.roles, per_hour: c.perHour };
+      } catch {
+        return null;
+      }
+    })(),
     agents_shell: (() => {
       try {
         return {
@@ -4571,6 +4665,12 @@ async function handleRequest(
       title: product().title,
       runners: () => RunnerTokens.at(getStateDir()),
     });
+    return;
+  }
+  // issue_write: an agent writes a GitHub issue in its own project's repos
+  // (direct and audited; the route checks the role, the repo and the limit).
+  if (guard.ok && pathname === ISSUE_WRITE_PATH) {
+    await handleIssueWriteRoute(req, res, pathname, issueWriteDeps(req));
     return;
   }
   // NT: the bell, and agents saying they wait for their person.
@@ -8069,6 +8169,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
           feedback?: unknown;
@@ -8123,6 +8224,7 @@ async function handleRequest(
             web_ready: body.web_ready,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
             feedback: body.feedback,
