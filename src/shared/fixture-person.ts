@@ -83,8 +83,9 @@ export function testInstallBinding(o: {
  * Issue 810/823: whether a person is on this install, so it isn't a test
  * install. A claimed owner (web-owner.json) always counts. So does every
  * person's sign-in (link, GitHub, claim, pairing code; no kind: a link from
- * before 0.4.5), except the caller's own (`except`), whatever its kind, and
- * the link that pressed Set up test person. The fixture never counts.
+ * before 0.4.5), except the caller's own (`except`) and the sign-in that
+ * pressed Set up test person (`testOperator`), whatever their kind. The
+ * fixture never counts.
  */
 export function personsOnInstall(o: {
   sessions: readonly { via?: string; key: string; testOperator?: boolean }[];
@@ -93,10 +94,14 @@ export function personsOnInstall(o: {
 }): boolean {
   if (o.owner) return true;
   return o.sessions.some((s) => {
-    if (s.key === o.except) return false;
-    if (s.via === "github" || s.via === "claim" || s.via === "code")
-      return true;
-    return (s.via === "link" || s.via === undefined) && !s.testOperator;
+    if (s.key === o.except || s.testOperator) return false;
+    return (
+      s.via === "github" ||
+      s.via === "claim" ||
+      s.via === "code" ||
+      s.via === "link" ||
+      s.via === undefined
+    );
   });
 }
 

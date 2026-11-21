@@ -367,6 +367,17 @@ describe("issue 823: who counts as a person on the install", () => {
       }),
     ).toBe(true);
   });
+  it("the sign-in that pressed Set up test person never counts, whatever its kind", () => {
+    for (const via of ["link", "github", "claim", "code", undefined])
+      expect(
+        personsOnInstall({ sessions: [S(via, "op", true)], owner: false }),
+      ).toBe(false);
+  });
+  it("a claimed owner counts even when the presser's sign-in is exempt", () => {
+    expect(
+      personsOnInstall({ sessions: [S("claim", "op", true)], owner: true }),
+    ).toBe(true);
+  });
   it("the link that pressed Set up test person, and the fixture, never count", () => {
     expect(
       personsOnInstall({
