@@ -299,9 +299,14 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
       Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
     );
     expect(await s.$("#cl-overlay.open")).toBeNull();
-    // Issue 819: the newest request first, with no code: the person types
-    // the code that computer's screen shows.
-    const row = s.locator(".set-waiting").first();
+    // Issue 819: the row has no code: the person types the code that
+    // computer's screen shows. Found by its request's handle (its page
+    // keeps it).
+    const ref = await p.evaluate(
+      () => sessionStorage.getItem("den-pair-mine") ?? "",
+    );
+    expect(ref).not.toBe("");
+    const row = s.locator(`.set-waiting[data-ref="${ref}"]`);
     await row.waitFor();
     expect(await row.textContent()).toMatch(/Chrome on \w+/);
     expect(await row.textContent()).not.toContain(code);
