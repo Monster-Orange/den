@@ -12,7 +12,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -90,7 +90,7 @@ async function page(
   });
   for (const [glob, h] of Object.entries(extra))
     await p.route(glob, (r) => h(r) as Promise<void>);
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings?ws=north#workspace"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings?ws=north#workspace");
   await p.waitForSelector(`${ROW} [data-pname]`);
   return p;
 }

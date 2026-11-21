@@ -11,7 +11,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -65,7 +65,7 @@ async function open(path: string): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
+  await signInPage(p, s!.stateDir, s!.base, path);
   return p;
 }
 
@@ -81,9 +81,7 @@ describe("D73: Terminal", () => {
       "Open a shell in this project's folder, in Den",
     );
     const before = s!.made.length;
-    await p.goto(
-      signInUrl(s!.stateDir, s!.base, "/agents?terminal=1&ws=north"),
-    );
+    await signInPage(p, s!.stateDir, s!.base, "/agents?terminal=1&ws=north");
     await p.waitForSelector(".pane .xterm-rows");
     await p.waitForFunction(() => !location.search.includes("terminal="));
     const pty = s!.made.at(-1)!;
@@ -160,7 +158,7 @@ describe("D73: Terminal", () => {
     expect(s!.made.length).toBe(first);
 
     // Another project's Terminal here: the first tab stays.
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=south"));
+    await signInPage(p, s!.stateDir, s!.base, "/?ws=south");
     await p.locator("#ws-term-here").click();
     await p.waitForFunction(() => !location.search.includes("terminal="));
     await p.waitForFunction(
@@ -181,12 +179,11 @@ describe("D73: Terminal", () => {
 
     // The rail's Terminal from /agents?ws=south: south's shell (not the
     // first project's) in front, no third tab.
-    await p.goto(
-      signInUrl(
-        s!.stateDir,
-        s!.base,
-        `/agents?ws=south&open=${open2.join(",")}`,
-      ),
+    await signInPage(
+      p,
+      s!.stateDir,
+      s!.base,
+      `/agents?ws=south&open=${open2.join(",")}`,
     );
     await p.waitForSelector(".pane[data-id]", { state: "attached" });
     await p.locator('#den-rail [data-nav="terminal"]').click();

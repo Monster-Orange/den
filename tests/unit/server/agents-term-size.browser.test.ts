@@ -220,6 +220,15 @@ const last = (pty: ScriptedPty) => pty.resizes.at(-1) ?? [0, 0];
  * the agent's queries take too.)
  */
 const type = async (v: { p: Page }, d: string) => {
+  // Issue 819: another viewer's sign-in is a new device asking to be let
+  // in, and this signed-in page's "Allow this computer?" pop-up (modal)
+  // may show it until its next poll sees it approved. Keys typed then go
+  // to the pop-up, so wait for it to close first.
+  await v.p.waitForFunction(
+    () => !document.getElementById("den-pair-dlg")?.hasAttribute("open"),
+    null,
+    { timeout: 10_000 },
+  );
   await v.p.focus(".pane .xterm-helper-textarea");
   await v.p.keyboard.type(d);
 };

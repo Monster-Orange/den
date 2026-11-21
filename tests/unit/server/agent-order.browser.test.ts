@@ -34,7 +34,7 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -154,7 +154,7 @@ async function open(
     }
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
   await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
   return p;
 }
@@ -288,11 +288,11 @@ describe.each(ENGINES)(
       // A Den restart reads it again.
       await s!.webDown();
       await s!.webUp();
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+      await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
       await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
       expect(await order(p)).toEqual(["cy", "ada", "bo"]);
       // The Projects page's agents follow the same order.
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=north"));
+      await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
       await p
         .locator('#agents-section[data-ws="north"] #agent-table tr.agent')
         .first()

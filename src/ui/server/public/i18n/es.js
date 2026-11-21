@@ -820,6 +820,14 @@
     "err.signin.youreIn": "Ya estás dentro.",
     "err.signin.expiredLead":
       "Ese enlace de inicio de sesión caducó o ya se usó. Inicia sesión de nuevo abajo.",
+    "err.signin.pairLinkLead":
+      "Para dejar entrar a este navegador, apruébalo desde un navegador que ya tenga la sesión iniciada: abre allí Ajustes › Acceso y aprueba el código de abajo.",
+    "err.signin.pairLinkWaiting":
+      "Esperando a que lo apruebes desde un navegador con la sesión iniciada…",
+    "err.signin.pairLinkDenied":
+      "Se rechazó este navegador. Para iniciar sesión, obtén un código nuevo y apruébalo desde un navegador con la sesión iniciada.",
+    "err.signin.pairLinkEnded":
+      "Esta solicitud terminó. Obtén un código nuevo y apruébalo otra vez.",
     "err.signin.confirmLead":
       "Introduce el código que web login imprimió en {host}:",
     "err.signin.confirmGo": "Iniciar sesión",
@@ -831,6 +839,14 @@
       "Este enlace ya no funciona. En {host}, ejecuta web login de nuevo para obtener uno nuevo.",
     "err.signin.confirmWhy":
       "El enlace solo no basta: también hace falta el código que se muestra en {host}, así que alguien que vea el enlace no puede iniciar sesión.",
+    "err.signin.firstRunHere":
+      "{name} aún no está configurado. Termina su primer inicio de sesión en el propio {host}: abre allí el enlace de configuración, o ejecuta web login en tu propia terminal allí.",
+    "err.signin.tooManyRequests":
+      "Demasiadas solicitudes de inicio de sesión desde esta dirección. Espera un minuto y abre el enlace de nuevo.",
+    "err.signin.tooManyWaiting":
+      "Hay demasiados dispositivos esperando aprobación en {name}. Espera unos minutos y abre el enlace de nuevo.",
+    "err.signin.claimSetUp":
+      "{name} ya está configurado, así que el enlace de configuración ya no inicia sesión por sí solo. Aprueba este navegador desde uno con la sesión iniciada: Ajustes › Acceso y luego el código de abajo.",
     "err.signin.github": "Iniciar sesión con GitHub",
     "err.signin.githubEnter": "Introduce este código en {url}:",
     "err.signin.githubOpen": "Abrir GitHub",
@@ -1295,7 +1311,27 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "set.access.approveNeedsBrowser":
+      "Para aprobar un dispositivo hace falta un navegador con la sesión iniciada. Vuelve a iniciar sesión en esta página y apruébalo.",
+    "set.access.approveNotAgent":
+      "Solo una persona aprueba un dispositivo, desde su propio navegador con la sesión iniciada.",
+    "set.access.wrongCode":
+      "Ese código no coincide con el de la pantalla de ese ordenador. Revísalo y escríbelo de nuevo.",
+    "set.access.tooManyTries":
+      "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+    "set.access.ended": "Esa solicitud terminó o caducó. No se permitió nada.",
     "set.access.pair": "Emparejar un dispositivo",
+    "set.access.pair_requests":
+      "Solicitudes nuevas de inicio de sesión por dirección, por minuto",
+    "set.access.pair_requests.d":
+      "Cuántos dispositivos nuevos puede pedir una dirección por minuto para iniciar sesión. Los demás se rechazan hasta que pase el minuto. __DEN_CLI__ config web.pair_requests_per_minute=30",
+    "set.access.approve_attempts": "Códigos incorrectos permitidos al aprobar",
+    "set.access.approve_attempts.d":
+      "Cuántos códigos incorrectos se aceptan al aprobar un dispositivo en el intervalo de abajo antes de esperar. __DEN_CLI__ config web.approve_attempts=10",
+    "set.access.approve_window":
+      "Intervalo de códigos incorrectos, en segundos",
+    "set.access.approve_window.d":
+      "Durante cuánto tiempo se cuentan los códigos incorrectos. Cuando pasa, se puede volver a intentar aprobar. __DEN_CLI__ config web.approve_window_seconds=30",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
@@ -1616,13 +1652,20 @@
     "pair.aDevice": "Un navegador",
     "pair.local": "en este ordenador, por localhost",
     "pair.help":
-      "Permítelo solo si este código aparece en la pantalla de ese equipo.",
+      "Escribe el código que se muestra en la pantalla de ese ordenador. Permite solo un ordenador en el que estés iniciando sesión tú.",
     "pair.allow": "Permitir",
     "pair.allowed": "Ese equipo ya inició sesión.",
     "pair.ended":
       "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
     "pair.expired": "Ese código caducó. No se permitió nada.",
     "pair.close": "Cerrar",
+    "pair.codeLabel": "Código en la pantalla de ese ordenador",
+    "pair.age": "Lo pidió hace {n} min.",
+    "pair.ageNow": "Lo pidió ahora mismo.",
+    "pair.fromLogin": "Del web login ejecutado a las {time}.",
+    "pair.wrong":
+      "Ese código no coincide con el de la pantalla de ese ordenador. Revísalo y escríbelo de nuevo.",
+    "pair.busy": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
     "ap.do.workspace_create": 'Crear el proyecto "{name}"',
     "ap.do.repo_add":
       'Añadir el repositorio de {path} al proyecto "{workspace}"',
@@ -2821,6 +2864,8 @@
     "set.ui.saveOrigins": "Guardar lista",
     "set.ui.approve": "Aprobar",
     "set.ui.deny": "Denegar",
+    "set.ui.codeLabel": "Código en su pantalla",
+    "set.ui.fromLogin": "del web login ejecutado a las {time}",
     "set.ui.noWaiting":
       "No hay ordenadores en espera. Una página sin iniciar sesión en otro ordenador muestra un código; aparece aquí para aprobarlo.",
     "set.ui.waitingSignedIn":
@@ -3205,7 +3250,7 @@
     "set.access.devices.d":
       "Los navegadores con la sesión iniciada en este Den. Revocar cierra uno al instante. __DEN_CLI__ web logout --all los cierra todos.",
     "set.access.waiting.d":
-      "Ordenadores cuya página sin iniciar sesión muestra un código. Aprueba uno y su página inicia sesión sola; el código dura 10 minutos. __DEN_CLI__ web approve <code> hace lo mismo desde la línea de comandos.",
+      "Ordenadores cuya página sin iniciar sesión muestra un código. Escribe el código que muestra la pantalla de ese ordenador para aprobarlo, y su página inicia sesión sola; una solicitud dura 10 minutos. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
       "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
     "set.embed.app_keys.d":

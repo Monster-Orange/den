@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -121,7 +121,8 @@ async function sweep(base: string, route: string, width: number, auth = true) {
         document.head.appendChild(st);
       });
     });
-    await p.goto(auth ? signInUrl(s!.stateDir, base, route) : base + route);
+    if (auth) await signInPage(p, s!.stateDir, base, route);
+    else await p.goto(base + route);
     await p.waitForSelector(".den-top");
     await p.waitForFunction(
       () => !!document.querySelector('[data-den-report], [data-act="report"]'),
