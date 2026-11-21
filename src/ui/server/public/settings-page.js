@@ -345,12 +345,10 @@ export async function mountSettings(deps) {
   /** The sections, in the page's language (0.4.45). */
   function localSections() {
     const tr = shell.tr;
+    const rows = shell.settings().filter(rowShown);
     return sections(
       shell.settingsCategories().map((c) => localizeCategory(c, tr)),
-      shell
-        .settings()
-        .filter(rowShown)
-        .map((r) => localizeRow(r, tr)),
+      rows.map((r) => localizeRow(r, tr)),
       state.q,
     );
   }

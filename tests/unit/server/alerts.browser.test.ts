@@ -200,12 +200,15 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
     await p.waitForFunction(() => document.title.startsWith("(1) "), null, {
       timeout: 15_000,
     });
-    expect(
-      await p.evaluate(
-        () =>
-          document.getElementById("den-favicon")?.getAttribute("href") ?? "",
-      ),
-    ).toMatch(/^data:image\/png/);
+    // The icon's badge is drawn once the theme's icon has loaded.
+    await p.waitForFunction(
+      () =>
+        (
+          document.getElementById("den-favicon")?.getAttribute("href") ?? ""
+        ).startsWith("data:image/png"),
+      null,
+      { timeout: 15_000 },
+    );
     expect(shown[0].tag).toMatch(/^[0-9a-f-]{36}$/);
     expect(JSON.stringify(shown)).not.toContain("sk-live");
     await p.evaluate(() =>
