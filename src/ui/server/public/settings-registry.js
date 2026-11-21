@@ -1400,7 +1400,70 @@ const ACCESS_ROWS = [
     control: { type: "custom", render: drawPair },
     read: () => null,
   },
+  {
+    id: "access.test_install",
+    category: "access",
+    label: "Test install",
+    description:
+      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
+    keywords: ["test", "test install", "live checks", "fixture", "gate"],
+    scope: "user",
+    control: { type: "custom", render: drawTestInstall },
+    read: () => null,
+  },
 ];
+
+/**
+ * Issue 810: Settings › Access › Test install. Read only: whether this is a
+ * test install (set by hand in the distribution config) and whether its
+ * test person is set up. Set up test person shows on a test install only.
+ */
+function drawTestInstall(host, ctx) {
+  const draw = (b) => {
+    const lines = [
+      b.testInstall
+        ? L("set.ui.testInstallYes", "This is a test install.")
+        : L(
+            "set.ui.testInstallNo",
+            "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
+          ),
+    ];
+    if (b.testInstall)
+      lines.push(
+        b.ready
+          ? L("set.ui.testPersonReady", "The test person is set up.")
+          : L("set.ui.testPersonMissing", "The test person isn't set up yet."),
+      );
+    host.innerHTML =
+      `<output class="set-ro" id="set-test-install" data-test-install="${b.testInstall ? "yes" : "no"}" data-ready="${b.ready ? "yes" : "no"}">${lines.map(escHtml).join(" ")}</output>` +
+      (b.testInstall
+        ? ` <button type="button" class="btn" id="set-test-person">${escHtml(L("set.ui.testPersonSetUp", "Set up test person"))}</button>`
+        : "");
+    const btn = host.querySelector("#set-test-person");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const run = (headers) =>
+          ctx.shell.api("POST", "/api/web/fixture-person", {}, { headers });
+        const r = ctx.shell.busyAction
+          ? await ctx.shell.busyAction("test-person", run, { button: btn })
+          : await run({});
+        if (r?.ok) draw(r);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  };
+  fetch("/api/web/fixture-person", { cache: "no-store" })
+    .then((r) =>
+      r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+    )
+    .then(draw)
+    .catch(() => {
+      host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.testInstallSignedIn", "The test install can only be read signed in, or on this machine."))}</output>`;
+    });
+}
 
 /**
  * Issue 163: Apply for Keep agents running after logout. The server says

@@ -541,6 +541,10 @@
       "No se pudo abrir Terminal.app automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "No se pudo abrir la terminal automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "¿Desactivar el inicio automático de {repo}?",
+    "dlg.autoOff":
+      "Es una dependencia estricta de: {list}. Mientras esté desactivado, el Up de su proyecto puede fallar la comprobación de disponibilidad.",
+    "dlg.autoOffGo": "Desactivar",
     "rd.keepsHead": "Sigue en marcha:",
     "rd.keepsAgents": "Los agentes y sus terminales",
     "rd.keepsServices": "Los servicios y los despliegues en GitHub",
@@ -589,6 +593,9 @@
     "busy.edgeW": "Iniciando el edge…",
     "busy.edgeS": "Edge iniciado",
     "busy.edgeF": "El edge no se inició.",
+    "busy.testPersonW": "Configurando la persona de prueba…",
+    "busy.testPersonS": "Persona de prueba configurada",
+    "busy.testPersonF": "La persona de prueba no se configuró.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -1246,6 +1253,7 @@
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
     "set.access.pair": "Emparejar un dispositivo",
+    "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",
@@ -2737,6 +2745,14 @@
       "No hay ordenadores en espera. Una página sin iniciar sesión en otro ordenador muestra un código; aparece aquí para aprobarlo.",
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
+    "set.ui.testInstallYes": "Esta es una instalación de prueba.",
+    "set.ui.testInstallNo":
+      "No es una instalación de prueba. Las comprobaciones en vivo no pueden iniciar sesión aquí. Una persona marca una instalación de prueba a mano en la configuración de la distribución (web.test_install: true).",
+    "set.ui.testPersonReady": "La persona de prueba está configurada.",
+    "set.ui.testPersonMissing": "La persona de prueba aún no está configurada.",
+    "set.ui.testPersonSetUp": "Configurar persona de prueba",
+    "set.ui.testInstallSignedIn":
+      "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
       "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
     "set.ui.edgeStart": "Iniciar el edge",
@@ -3126,6 +3142,8 @@
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_install.d":
+      "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
     "set.distribution.brand.d":
       "brand.name: el nombre en las páginas, el banner de la CLI y la ayuda.",
     "set.distribution.github_org.d":

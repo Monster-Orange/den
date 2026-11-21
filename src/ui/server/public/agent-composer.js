@@ -24,6 +24,8 @@
  * never sent anywhere.
  */
 
+import { focusWhenFree } from "/kit/dialog.js";
+
 /** The most pages one message carries (shared-page.ts MAX_SHARED). */
 export const MAX_SHARED = 5;
 
@@ -207,8 +209,9 @@ export function makeComposer({ t, name, send, onClose, draft }) {
     },
     contexts: () => shared.map((p) => ({ ...p })),
     focus() {
-      ta.focus();
       ta.setSelectionRange(ta.value.length, ta.value.length);
+      // Issue 793: under an open pop-up (What's new), once it closes.
+      focusWhenFree(ta);
     },
   };
 }

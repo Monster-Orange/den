@@ -408,6 +408,8 @@ describe("issue 666: claim-link while the address is unset (D80's one exception)
           out: (s) => (out += s),
           err: (s) => (err += s),
           stateDir: dir,
+          // Sign-in: the person's own terminal.
+          person: { tty: true, line: () => [process.pid, 1] },
           webUrl: () => w,
         },
       );
