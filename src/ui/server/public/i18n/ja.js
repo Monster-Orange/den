@@ -2262,6 +2262,13 @@
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",
+    // Issue 133: the auto-start toggle, on the working pop-up.
+    "busy.autoOnW": "{name} の自動起動をオンにしています…",
+    "busy.autoOnS": "{name} の自動起動はオンです。",
+    "busy.autoOnF": "{name} の自動起動をオンにできませんでした。",
+    "busy.autoOffW": "{name} の自動起動をオフにしています…",
+    "busy.autoOffS": "{name} の自動起動はオフです。",
+    "busy.autoOffF": "{name} の自動起動をオフにできませんでした。",
     "ag.orphan.one":
       "{names} にはプロジェクトがありません (削除されました)。⋯ › 別のプロジェクトへ移動… で割り当ててください。",
     "ag.orphan.many":
@@ -2556,6 +2563,7 @@
     "pj.validate.go": "検証",
     "pj.validate.paste": "…または {file} の内容をここに貼り付け",
     "pj.checking": "確認中…",
+    "pj.valNeedInput": "パスを入力するか、YAML の内容を貼り付けてください",
     "pj.noRuntime": "実行環境なし",
     "pj.noRuntimeTip":
       "このリポジトリは何も実行しません。起動やヘルスチェックの対象はありません。エージェントはここで作業できます。",

@@ -14,7 +14,7 @@
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
- * remove-service, remove-mcp, gate-end. Waits for
+ * remove-service, autostart-on, autostart-off, remove-mcp, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -76,6 +76,25 @@ export const DEN_ACTIONS = {
       working: "busy.rmSvcW",
       success: "busy.rmSvcS",
       failure: "busy.rmSvcF",
+    },
+  },
+  // Issue 133: the Projects page's auto-start toggle.
+  "autostart-on": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.autoOnW",
+      success: "busy.autoOnS",
+      failure: "busy.autoOnF",
+    },
+  },
+  "autostart-off": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.autoOffW",
+      success: "busy.autoOffS",
+      failure: "busy.autoOffF",
     },
   },
   // Issue 352: Settings › Project › Agents' extra MCP servers › Remove.

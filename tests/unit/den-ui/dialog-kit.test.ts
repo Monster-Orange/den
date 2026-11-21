@@ -168,8 +168,7 @@ describe("den#133: Den serves it and its pages use it", () => {
     },
   );
 
-  it("every dlg.* key the pages use is in Den's en catalog", () => {
-    const shell = fs.readFileSync(path.join(PUBLIC, "shell.js"), "utf-8");
+  it("every dlg.* key the pages use is in Den's en, es and ja catalogs", () => {
     const used = new Set<string>();
     for (const f of ["local-dev.html", "services.html", "dialog-den.js"])
       for (const m of fs
@@ -177,7 +176,62 @@ describe("den#133: Den serves it and its pages use it", () => {
         .matchAll(/["'](dlg\.[\w.]+)["']/g))
         used.add(m[1]!);
     expect(used.size).toBeGreaterThan(10);
-    const missing = [...used].filter((k) => !shell.includes(`"${k}":`));
-    expect(missing).toEqual([]);
+    for (const cat of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
+      const src = fs.readFileSync(path.join(PUBLIC, cat), "utf-8");
+      const missing = [...used].filter((k) => !src.includes(`"${k}":`));
+      expect({ cat, missing }).toEqual({ cat, missing: [] });
+    }
+  });
+
+  // Issue 133: Turn off auto-start on the Projects page asks with the
+  // kit's dialog (Esc, focus, the working pop-up), not a dialog the page
+  // builds itself in English.
+  it("the Projects page builds no English dialog of its own", () => {
+    const src = fs.readFileSync(path.join(PUBLIC, "local-dev.html"), "utf-8");
+    expect(src).not.toContain("autostart-confirm-overlay");
+    expect(src).not.toMatch(/>Cancel</);
+    // The English words appear only as pT's fallback for the catalog key.
+    const english = src.split("Turn off auto-start for").length - 1;
+    const asFallback =
+      src.split('pT("dlg.autoOffT", "Turn off auto-start for').length - 1;
+    expect(english).toBe(asFallback);
+    expect(src).not.toContain('"Enter a path or paste YAML content"');
+    expect(src).toMatch(/askConfirm\(\{\s*title: \w+\("dlg\.autoOffT"/);
+  });
+});
+
+/** Every page and script Den serves from src/ui/server/public. */
+function publicFiles(dir = PUBLIC): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) return publicFiles(p);
+    return /\.(?:m?js|html)$/.test(e.name) ? [p] : [];
+  });
+}
+
+// Issue 133's guard: no page or script Den serves calls the browser's own
+// confirm(), prompt() or alert(); they speak only the browser's language.
+// Use askConfirm, askText or tell from /dialog-den.js.
+describe("issue 133: no native dialog anywhere in src/ui/server/public", () => {
+  it("reads every page and script there (the check sees them)", () => {
+    const files = publicFiles().map((f) => path.relative(PUBLIC, f));
+    expect(files).toEqual(
+      expect.arrayContaining([
+        "local-dev.html",
+        "services.html",
+        "shell.js",
+        "i18n/es.js",
+      ]),
+    );
+    expect(files.length).toBeGreaterThan(40);
+  });
+
+  it("calls no native confirm, prompt or alert", () => {
+    const found = publicFiles().flatMap((f) =>
+      nativeCalls(fs.readFileSync(f, "utf-8")).map(
+        (c) => `${path.relative(PUBLIC, f)}: ${c}()`,
+      ),
+    );
+    expect(found).toEqual([]);
   });
 });

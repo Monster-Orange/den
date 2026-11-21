@@ -671,6 +671,7 @@
     "pj.validate.go": "Validate",
     "pj.validate.paste": "…or paste {file} content here",
     "pj.checking": "checking…",
+    "pj.valNeedInput": "Enter a path or paste YAML content",
     "pj.noRuntime": "no runtime",
     "pj.noRuntimeTip":
       "This repo runs nothing: nothing to start or health-check. Agents can work in it.",
@@ -3180,6 +3181,13 @@
     "busy.rmSvcW": "Removing {name}…",
     "busy.rmSvcS": "Removed {name}.",
     "busy.rmSvcF": "Couldn't remove {name}.",
+    // Issue 133: the auto-start toggle, on the working pop-up.
+    "busy.autoOnW": "Turning on auto-start for {name}…",
+    "busy.autoOnS": "Auto-start is on for {name}.",
+    "busy.autoOnF": "Couldn't turn on auto-start for {name}.",
+    "busy.autoOffW": "Turning off auto-start for {name}…",
+    "busy.autoOffS": "Auto-start is off for {name}.",
+    "busy.autoOffF": "Couldn't turn off auto-start for {name}.",
     "ag.orphan.one":
       "{names} has no project: its project was deleted. Give it one with ⋯ › Move to project….",
     "ag.orphan.many":

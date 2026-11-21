@@ -4730,7 +4730,8 @@
           const statusEl = document.getElementById("validate-result-panel");
           if (!textVal && !pathVal) {
             if (statusEl) {
-              statusEl.textContent = "Enter a path or paste YAML content";
+              statusEl.textContent =
+                window.denShell?.t?.("pj.valNeedInput") ?? "";
               statusEl.className = "validate-result";
             }
             return;
@@ -5067,18 +5068,19 @@
           autostart,
           wsName = document.getElementById("content")?.dataset.ws || activeWs,
         ) {
-          try {
-            await window.denShell.api(
-              "POST",
-              "/api/workspaces/services/autostart",
-              { workspace: wsName, repo, autostart },
-            );
-          } catch (err) {
-            if (!err.denApi) throw err;
-            err.message = `auto-start toggle failed: ${err.message}`;
-            window.denShell.errorToast(err);
-            return;
-          }
+          // Issue 133: through the working pop-up (a slow answer shows it;
+          // a failure says so there, with Try again).
+          await window.denShell.busyAction(
+            autostart ? "autostart-on" : "autostart-off",
+            (headers) =>
+              window.denShell.api(
+                "POST",
+                "/api/workspaces/services/autostart",
+                { workspace: wsName, repo, autostart },
+                { headers },
+              ),
+            { vars: { name: repo } },
+          );
           await refreshView(wsName); // refetch services → re-render graph + tables
         }
 
@@ -5107,7 +5109,7 @@
           // The workspace now: the confirm below answers later.
           const ws = document.getElementById("content")?.dataset.ws || activeWs;
           if (turnOn) {
-            void postAutostart(repo, true, ws);
+            await postAutostart(repo, true, ws);
             return;
           }
           // Turning OFF: warn when other systems hard-depend on this one.
@@ -5122,7 +5124,7 @@
             ),
           ];
           if (dependents.length === 0) {
-            void postAutostart(repo, false, ws);
+            await postAutostart(repo, false, ws);
             return;
           }
 
