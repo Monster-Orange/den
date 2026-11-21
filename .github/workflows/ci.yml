@@ -71,10 +71,10 @@ jobs:
       # shell, version chip, What's new, update pill, Report, working
       # pop-up); a copy passes only when DIVERGE.md names it with a reason.
       - run: npm run -s gate:den-ui
-      # Issue 839: browser tests and live checks never add a fixed sleep, a
-      # positional pick, a class selector or an English-text assert
-      # (tests/brittle-baseline.json only goes down).
-      - run: node scripts/brittle-ratchet.mjs
+      # Issue 839: the brittle-pattern totals per kind, for the log. Report
+      # only: a pull request is judged against its merge base (the pr job),
+      # so nothing a merge race leaves on main can fail here.
+      - run: node scripts/brittle-ratchet.mjs --report
       # A change to the UI kit (packages/den-ui) bumps its version: with the
       # version already on npm, the release would skip publishing it
       # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
@@ -240,7 +240,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The words gate and the subset diff against the base commit.
+          # The words gate, the subset and the brittle ratchet diff against
+          # the base commit.
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -251,10 +252,11 @@ jobs:
       - run: node scripts/words-gate.mjs
       - run: npm run lint
       - run: npm run -s gate:den-ui
-      # Issue 839: browser tests and live checks never add a fixed sleep, a
-      # positional pick, a class selector or an English-text assert
-      # (tests/brittle-baseline.json only goes down).
-      - run: node scripts/brittle-ratchet.mjs
+      # Issue 839: a browser test or live check this change touches never
+      # gains a fixed sleep, a positional pick, a class selector or an
+      # English-text assert, counted at the merge base and at HEAD (needs
+      # the fetch-depth: 0 above). Untouched files are never judged.
+      - run: node scripts/brittle-ratchet.mjs --base "${{ github.event.pull_request.base.sha }}"
       # A change to the UI kit (packages/den-ui) bumps its version: with the
       # version already on npm, the release would skip publishing it
       # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
