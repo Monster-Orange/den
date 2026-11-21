@@ -3081,7 +3081,21 @@
     "set.notifications.desktop.denied":
       "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
     "set.notifications.desktop.none":
-      "Este navegador no puede mostrar notificaciones.",
+      "Este navegador no puede mostrar notificaciones aquí. En iPhone, añade __DEN_TITLE__ a tu pantalla de inicio y ábrelo desde allí. La campana y el contador de la pestaña siguen funcionando.",
+    "set.notifications.desktop.blocked":
+      "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto. La campana y el contador de la pestaña siguen funcionando.",
+    "set.notifications.alert_finished":
+      "Avisarme también cuando un agente termina",
+    "set.notifications.alert_finished.d":
+      "Una notificación cuando un agente termina un turno y no lo estás mirando. Desactivado por defecto. Un agente que silenciaste nunca avisa.",
+    "set.notifications.alert_sound": "Sonidos",
+    "set.notifications.alert_sound.d":
+      "Un sonido corto con cada aviso en el escritorio, uno para “te necesita” y otro más suave para “terminó”. Solo suena con una pestaña de __DEN_TITLE__ abierta; una pestaña cerrada o un teléfono usan su propio sonido de aviso.",
+    "set.notifications.alert_sound.needs": "▶ Te necesita",
+    "set.notifications.alert_sound.finished": "▶ Terminó",
+    "set.notifications.tab_count": "Contador en la pestaña",
+    "set.notifications.tab_count.d":
+      "Muestra cuántos agentes te necesitan en el título y el icono de la pestaña. Con cero no muestra nada.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",

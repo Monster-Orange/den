@@ -4,9 +4,11 @@
  * Allow), the person is told on the desktop (an open Den tab shows a
  * browser notification) and on a phone or a closed tab (Web Push).
  *
- * - Only a new need alerts: a finished turn, an update or a release never
- *   does. Held writes alert only when the approval policy (issue 160)
- *   held them for the person.
+ * - A new need alerts. Issue 774: a finished turn alerts too, only when
+ *   the person turned on "Also tell me when an agent finishes"
+ *   (alerts.finished); an update or a release never does. Held writes
+ *   alert only when the approval policy (issue 160) held them for the
+ *   person. An agent (or project) the person muted never alerts.
  * - The words are the bell's own and never the details: who, and what it
  *   waits on. Never the tool line, the question's text or the write's
  *   summary (any of them can hold a secret or a code).
@@ -17,6 +19,9 @@
  *     desktop: true          # an open tab shows them (default on)
  *     phone: true            # push to subscribed devices (default on)
  *     quiet: { from: "22:00", to: "07:00" }   # none by default
+ *     finished: false        # issue 774: a finished turn alerts too
+ *     sound: false           # issue 774: a short sound from an open tab
+ *     tab_count: true        # issue 774: the count in the tab title and icon
  *     push_timeout_seconds: 30     # how long one push may take (1..3600)
  *     push_ttl_seconds: 86400      # how long a push service keeps it
  *                                  # (0..2419200); both Settings rows (#367)
@@ -25,7 +30,26 @@ import type { UserConfig } from "./den-config.js";
 import type { UiLanguage } from "../ui/server/ui-language.js";
 
 /** What the agent waits on. */
-export type AlertWhy = "permission" | "asked" | "allow";
+export type AlertWhy = "permission" | "asked" | "allow" | "finished";
+
+/**
+ * Issue 774 (built for #780): what each kind does, read from here, never
+ * hard-wired where it is used: whether it alerts ("opt-in": only with
+ * alerts.finished on), which sound an open tab plays, and whether it
+ * counts in the tab. Issue 773's attention states are to feed this table
+ * when they land.
+ */
+export const ALERT_KINDS: Readonly<
+  Record<
+    AlertWhy,
+    { alert: true | "opt-in"; sound: "needs" | "finished"; count: boolean }
+  >
+> = {
+  permission: { alert: true, sound: "needs", count: true },
+  asked: { alert: true, sound: "needs", count: true },
+  allow: { alert: true, sound: "needs", count: true },
+  finished: { alert: "opt-in", sound: "finished", count: false },
+};
 
 /** The words, in each language the UI ships (a test keeps them even). */
 export const ALERT_WORDS: Readonly<
@@ -35,16 +59,19 @@ export const ALERT_WORDS: Readonly<
     permission: "{name} needs your permission",
     asked: "{name} asked you",
     allow: "{name} needs your Allow",
+    finished: "{name} finished",
   },
   es: {
     permission: "{name} necesita tu permiso",
     asked: "{name} te preguntó",
     allow: "{name} necesita tu Permitir",
+    finished: "{name} terminó",
   },
   ja: {
     permission: "{name} があなたの許可を待っています",
     asked: "{name} から質問があります",
     allow: "{name} が「許可」を待っています",
+    finished: "{name} が終わりました",
   },
 };
 
@@ -83,6 +110,12 @@ export interface AlertPrefs {
   pushTimeoutSeconds: number;
   /** How long a push service keeps an alert for a device that is off. */
   pushTtlSeconds: number;
+  /** Issue 774: a finished turn alerts too (default off). */
+  finished: boolean;
+  /** Issue 774: an open tab plays a short sound with each alert (default off). */
+  sound: boolean;
+  /** Issue 774: the count in the tab's title and icon (default on). */
+  tabCount: boolean;
 }
 
 export const ALERT_DEFAULTS: AlertPrefs = {
@@ -91,7 +124,19 @@ export const ALERT_DEFAULTS: AlertPrefs = {
   quiet: null,
   pushTimeoutSeconds: 30,
   pushTtlSeconds: 86_400,
+  finished: false,
+  sound: false,
+  tabCount: true,
 };
+
+/** The switches as user.yml stores them, and each one's prefs field. */
+const SWITCHES = {
+  desktop: "desktop",
+  phone: "phone",
+  finished: "finished",
+  sound: "sound",
+  tab_count: "tabCount",
+} as const;
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -102,9 +147,16 @@ export function alertPrefs(user: unknown): AlertPrefs {
   const q = a.quiet as { from?: unknown; to?: unknown } | undefined;
   const t = a.push_timeout_seconds;
   const ttl = a.push_ttl_seconds;
+  const on = (k: keyof typeof SWITCHES): boolean =>
+    typeof a[k] === "boolean"
+      ? (a[k] as boolean)
+      : (ALERT_DEFAULTS[SWITCHES[k]] as boolean);
   return {
-    desktop: typeof a.desktop === "boolean" ? a.desktop : true,
-    phone: typeof a.phone === "boolean" ? a.phone : true,
+    desktop: on("desktop"),
+    phone: on("phone"),
+    finished: on("finished"),
+    sound: on("sound"),
+    tabCount: on("tab_count"),
     quiet:
       q &&
       typeof q.from === "string" &&
@@ -150,11 +202,15 @@ export function alertSettings(user: UserConfig): Record<string, unknown> {
     // Issue 367: the push limits, their defaults when unset.
     push_timeout_seconds: p.pushTimeoutSeconds,
     push_ttl_seconds: p.pushTtlSeconds,
+    // Issue 774: a finished turn, sounds, the count in the tab.
+    finished: p.finished,
+    sound: p.sound,
+    tab_count: p.tabCount,
   };
 }
 
 /**
- * A POSTed `alerts`: {desktop?, phone?: boolean; quiet_from?, quiet_to?:
+ * A POSTed `alerts`: {desktop?, phone?, finished?, sound?, tab_count?: boolean; quiet_from?, quiet_to?:
  * "HH:MM" or "" (none); push_timeout_seconds? (1..3600),
  * push_ttl_seconds? (0..2419200): whole seconds}; null clears one (back
  * to its default).
@@ -169,7 +225,7 @@ export function patchAlerts(
   const u = user as { alerts?: Record<string, unknown> };
   const a: Record<string, unknown> = { ...(u.alerts ?? {}) };
   for (const [k, x] of Object.entries(body)) {
-    if (k === "desktop" || k === "phone") {
+    if (Object.hasOwn(SWITCHES, k)) {
       if (x === null) delete a[k];
       else if (typeof x === "boolean") a[k] = x;
       else return { ok: false, error: `alerts.${k} must be true or false` };

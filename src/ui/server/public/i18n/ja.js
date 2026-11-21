@@ -2983,7 +2983,21 @@
       "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
     "set.notifications.desktop.denied":
       "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
-    "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
+    "set.notifications.desktop.none":
+      "このブラウザーではここで通知を表示できません。iPhone では、先に __DEN_TITLE__ をホーム画面に追加し、そこから開いてください。ベルとタブのカウントはそのまま使えます。",
+    "set.notifications.desktop.blocked":
+      "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。ベルとタブのカウントはそのまま使えます。",
+    "set.notifications.alert_finished": "エージェントが終わったときも知らせる",
+    "set.notifications.alert_finished.d":
+      "エージェントがターンを終え、あなたがそれを見ていないときに通知します。既定はオフです。ミュートしたエージェントは通知しません。",
+    "set.notifications.alert_sound": "サウンド",
+    "set.notifications.alert_sound.d":
+      "デスクトップ通知ごとに短い音を鳴らします。「あなたが必要」用と、より控えめな「終わりました」用の 2 つです。__DEN_TITLE__ のタブが開いているときだけ鳴ります。閉じたタブやスマートフォンは、それぞれの通知音を使います。",
+    "set.notifications.alert_sound.needs": "▶ あなたが必要",
+    "set.notifications.alert_sound.finished": "▶ 終わりました",
+    "set.notifications.tab_count": "タブのカウント",
+    "set.notifications.tab_count.d":
+      "あなたを必要としているエージェントの数を、タブのタイトルとアイコンに表示します。0 のときは何も表示しません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",

@@ -19,7 +19,9 @@
  *                                     visible and focused: {agents: [...]}.
  *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
  *                                     for an open tab to show (alert-feed.ts),
- *                                     {seq, alerts}; the person's only.
+ *                                     {seq, alerts, prefs, count}; the
+ *                                     person's only. Issue 774: count is
+ *                                     the agents that need the person.
  *   GET  /api/alerts/push-key        S2: this install's VAPID public key.
  *   POST /api/alerts/subscribe       S2: {subscription} (a device's
  *                                     PushSubscription.toJSON()).
@@ -71,6 +73,11 @@ export interface NotificationRouteDeps {
   alerts?: AlertFeed;
   /** Issue 172 S2: the person's devices, and this install's public key. */
   push?: { subs: PushSubscriptions; publicKey: () => string };
+  /**
+   * Issue 774: how many agents need the person now, every project (the
+   * tab's title and icon). Absent: none.
+   */
+  needsYou?: () => number;
 }
 
 async function jsonBody(
@@ -221,9 +228,17 @@ export async function handleNotificationRoutes(
     const raw = new URL(req.url ?? "/", "http://x").searchParams.get("after");
     const after = raw !== null && /^\d{1,12}$/.test(raw) ? Number(raw) : null;
     res.setHeader("Cache-Control", "no-store");
+    let count = 0;
+    try {
+      count = deps.needsYou?.() ?? 0;
+    } catch {
+      count = 0;
+    }
     sendJson(res, {
       ok: true,
       ...(deps.alerts?.after(after) ?? { seq: 0, alerts: [] }),
+      // Issue 774: the count in the tab, quiet hours and mutes or not.
+      count,
     });
     return true;
   }

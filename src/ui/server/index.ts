@@ -32,7 +32,7 @@ import {
   updateWaitNotes,
 } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
-import { deliveryHeld, typingHeld } from "./attention.js";
+import { deliveryHeld, needsYouAgents, typingHeld } from "./attention.js";
 import { pausedAgents, startContextWatch } from "./context-watch-service.js";
 import { contextWatchSettings } from "../../shared/agents/context-watch.js";
 import {
@@ -3998,6 +3998,18 @@ function waitingAgentIds(): Set<string> {
 }
 
 /**
+ * Issue 774: how many agents need the person now, every project (the
+ * tab's title and icon): attention.ts needsYouAgents. The one hook to
+ * point at issue 773's "needs you" state.
+ */
+function needsYouCount(): number {
+  return needsYouAgents(
+    attentionWaiting(),
+    approvals ? approvals.queue.waitingActors() : [],
+  ).size;
+}
+
+/**
  * The agents a Hub delivery or tools note waits for: a held Allow, a
  * permission prompt or an ask_human question. Not an idle one ("input").
  */
@@ -4569,7 +4581,10 @@ async function handleRequest(
   }
   // NT: the bell, and agents saying they wait for their person.
   if (guard.ok && isNotificationPath(pathname)) {
-    await handleNotificationRoutes(req, res, pathname, notificationDeps());
+    await handleNotificationRoutes(req, res, pathname, {
+      ...notificationDeps(),
+      needsYou: needsYouCount,
+    });
     return;
   }
   // ON-3: an agent's held writes; Allow from the person's browser only.
