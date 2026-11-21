@@ -3136,15 +3136,7 @@ async function handleFixturePersonRoute(
   res: http.ServerResponse,
 ): Promise<void> {
   const method = (req.method ?? "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") {
-    const testInstall = testInstallNow();
-    return sendJson(res, {
-      ok: true,
-      testInstall,
-      ready: testInstall && !!fixtureKeyNow(),
-    });
-  }
-  if (method !== "POST") {
+  if (method !== "GET" && method !== "HEAD" && method !== "POST") {
     res.setHeader("Allow", "GET, HEAD, POST");
     return sendJson(res, { ok: false, error: "use GET or POST" }, 405);
   }
@@ -3158,6 +3150,16 @@ async function handleFixturePersonRoute(
     g.principal.session === session.key &&
     (session.via === undefined || PERSON_VIAS.has(session.via)) &&
     !notAPersonOf(req);
+  if (method === "GET" || method === "HEAD") {
+    // The person's own session doesn't count against the install for
+    // them, as on the press: else signing in hides the button.
+    const testInstall = testInstallNow(browser ? session!.key : undefined);
+    return sendJson(res, {
+      ok: true,
+      testInstall,
+      ready: testInstall && !!fixtureKeyNow(),
+    });
+  }
   if (g.ok && !g.principal)
     return sendJson(
       res,
