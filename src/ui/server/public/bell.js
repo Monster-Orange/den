@@ -23,6 +23,8 @@ import { formatTime, formatTitle } from "/kit/time.js";
 // gives what is in it and what a row does.
 import { bellPanelHtml } from "/kit/shell-html.js";
 import { hydrateBell } from "/kit/shell-client.js";
+// Issue 791: an agent's row opens Peek, its terminal over this page.
+import { openPeek, peekOpen, peekRefresh, peekTarget } from "/peek.js";
 
 const POLL_MS = 5000;
 
@@ -130,6 +132,9 @@ const safeLink = (l) =>
 /** One item's row; `fold` is its ×N toggle and ⊘, on a kind's first. */
 function rowHtml(n, fold) {
   const link = safeLink(n.link);
+  // Issue 791: an agent's row peeks; its small Open in Agents link goes
+  // to the page, as the row did.
+  const peek = link ? peekTarget(n) : null;
   const text = noteText(n);
   const sub = noteSub(n);
   const long = n.msg?.key === "bell.m.asked" && text.length > LONG;
@@ -140,8 +145,11 @@ function rowHtml(n, fold) {
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
     (link
-      ? `<a href="${esc(link)}" data-bell="open"${long ? ' class="den-bell-tw"' : ""}>${long ? `<span class="den-bell-t long">${esc(text)}</span>` : esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
+      ? `<a href="${esc(link)}" data-bell="open"${peek ? ` data-peek="${esc(peek.agent)}"` : ""}${long ? ' class="den-bell-tw"' : ""}>${long ? `<span class="den-bell-t long">${esc(text)}</span>` : esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
       : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}</span>`) +
+    (peek
+      ? `<a href="${esc(link)}" class="den-bell-page" data-bell="page">${esc(tr("bell.openInAgents"))}</a>`
+      : "") +
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`
       : "") +
@@ -357,6 +365,38 @@ export function initBell(doc = document) {
     last = b;
     bell.setCount(b?.unread ?? 0);
     if (bell.isOpen()) paint();
+    // Issue 791: an open peek hears what needs the person now.
+    if (peekOpen()) peekRefresh(b);
+  };
+  /** The item a row shows, from the last answer (by its id). */
+  const itemOf = (id) => {
+    for (const part of [last, last?.older, last?.updates])
+      for (const g of part?.groups ?? [])
+        for (const s of g.subjects ?? [])
+          for (const n of s.items ?? []) if (n.id === id) return n;
+    return null;
+  };
+  const peekTargetOf = (rowEl) => {
+    const n = itemOf(rowEl?.dataset.id);
+    return n ? peekTarget(n) : null;
+  };
+  /**
+   * Issue 791: the peek over this page. Focus goes back to the row it
+   * came from (found again: the bell redraws its rows while open).
+   */
+  const openPeekFrom = async (target, el, id) => {
+    const h = await openPeek(target, {
+      opener: el,
+      bell: () => last,
+    });
+    void h?.handle?.closed?.then(() => {
+      if (!bell.isOpen() || pop.contains(doc.activeElement)) return;
+      pop
+        .querySelector(
+          `.den-bell-row[data-id="${CSS.escape(id ?? "")}"] a[data-bell="open"]`,
+        )
+        ?.focus?.();
+    });
   };
   pop.addEventListener("click", async (e) => {
     const el = e.target.closest("[data-bell]");
@@ -371,16 +411,30 @@ export function initBell(doc = document) {
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    if (what === "open") {
-      const id = el.closest("[data-id]")?.dataset.id;
-      // Marked read first; the link then opens the agent.
+    if (what === "open" || what === "page") {
+      const rowEl = el.closest("[data-id]");
+      const id = rowEl?.dataset.id;
+      // Issue 791: a plain click on an agent's row peeks (a modified
+      // click, a new tab, still opens the page).
+      const peek =
+        what === "open" &&
+        el.dataset.peek &&
+        !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button);
+      const target = peek ? peekTargetOf(rowEl) : null;
+      if (target) e.preventDefault();
+      // Marked read first; the link then opens the agent. A peek counts
+      // as looking: every item of the agent's is read, and the person's
+      // seen mark is recorded (issue 773: subject + version + person).
       if (id)
         void fetch("/api/notifications/read", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify(
+            target ? { subject: `agent:${target.agent}`, seen: true } : { id },
+          ),
           keepalive: true,
         }).catch(() => {});
+      if (target) void openPeekFrom(target, el, id);
       return;
     }
     e.preventDefault();

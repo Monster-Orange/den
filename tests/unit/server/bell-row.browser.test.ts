@@ -1,10 +1,13 @@
 /**
  * Issue 93: a bell row opens on a click anywhere; there is no separate
- * Open link. On the real page, at 1280 and 390 px:
+ * Open link. Issue 791 (the approved Peek mock): an agent's row opens its
+ * peek over the page, and its one small "Open in Agents" link goes to
+ * the page, as the row did. On the real page, at 1280 and 390 px:
  *
- *   1. A long question's row and a short one's both open on a click in
- *      the middle of their text, and on a click on their time.
- *   2. No row holds an element named Open (Abrir, 開く) in en, es or ja.
+ *   1. A long question's row and a short one's both open (their peek) on
+ *      a click in the middle of their text, and on a click on their time.
+ *   2. No row holds an element named Open (Abrir, 開く) in en, es or ja;
+ *      the only Open in a row is the agent's Open in Agents link.
  *   3. The row's link is reached by Tab, shows a focus ring, has
  *      one accessible name, and Enter opens it.
  *   4. The controls inside a row (×N, ⊘) do their own thing and never
@@ -140,13 +143,21 @@ const row = (p: Page, link: string) =>
     has: p.locator(`a[href="${link}"]`),
   });
 
+/** Issue 791: the row opened its agent's peek, over /services. */
+async function peeked(p: Page, link: string): Promise<void> {
+  await p.locator("dialog#den-peek[open]").waitFor({ timeout: 10_000 });
+  const agent = new URL(link, "http://x").searchParams.get("agent");
+  await expect(p.locator("#den-peek .dk-hd h2").textContent()).resolves.toBe(
+    agent,
+  );
+  expect(new URL(p.url()).pathname).toBe("/services");
+}
+
 /** The page didn't leave /services within a short wait. */
 async function stays(p: Page): Promise<void> {
   await p.waitForTimeout(600);
   expect(new URL(p.url()).pathname).toBe("/services");
 }
-
-const esc = (u: string) => u.replace(/[?]/g, "\\?");
 
 describe.each([1280, 390])(
   "issue 93: a bell row opens on a click anywhere (%i px)",
@@ -168,7 +179,7 @@ describe.each([1280, 390])(
         // is visible and still, finding it again if the bell redraws the
         // row; a boundingBox() read once can be null mid-redraw.
         await r.locator(".den-bell-t, a").first().click();
-        await p.waitForURL(new RegExp(esc(link)));
+        await peeked(p, link);
         await p.context().close();
       },
       90_000,
@@ -185,7 +196,7 @@ describe.each([1280, 390])(
         await openBell(p);
         const r = row(p, link);
         await r.locator("time").click();
-        await p.waitForURL(new RegExp(esc(link)));
+        await peeked(p, link);
         await p.context().close();
       },
       90_000,
@@ -201,20 +212,26 @@ describe.each([1280, 390])(
         .first()
         .waitFor();
       const r = row(p, SHORT_LINK);
-      // One link, one name: the question itself.
+      // The row's link has one name, the question itself; beside it the
+      // agent's Open in Agents link (issue 791).
       const links = r.getByRole("link");
-      expect(await links.count()).toBe(1);
-      const name = await links.evaluate(
-        (a) => a.getAttribute("aria-label") ?? a.textContent ?? "",
+      expect(await links.count()).toBe(2);
+      expect(await r.locator('a[data-bell="page"]').getAttribute("href")).toBe(
+        SHORT_LINK,
       );
+      const name = await r
+        .locator('a[data-bell="open"]')
+        .evaluate((a) => a.getAttribute("aria-label") ?? a.textContent ?? "");
       expect(name).toContain(SHORT_Q);
       expect(await r.getByRole("button").count()).toBe(0);
       // Tab until the row's link has focus.
       let at = "";
       for (let i = 0; i < 30 && at !== SHORT_LINK; i++) {
         await p.keyboard.press("Tab");
-        at = await p.evaluate(
-          () => document.activeElement?.getAttribute("href") ?? "",
+        at = await p.evaluate(() =>
+          document.activeElement?.getAttribute("data-bell") === "open"
+            ? (document.activeElement?.getAttribute("href") ?? "")
+            : "",
         );
       }
       expect(at).toBe(SHORT_LINK);
@@ -232,7 +249,7 @@ describe.each([1280, 390])(
       expect(ring.style).not.toBe("none");
       expect(ring.width).toBeGreaterThan(0);
       await p.keyboard.press("Enter");
-      await p.waitForURL(new RegExp(esc(SHORT_LINK)));
+      await peeked(p, SHORT_LINK);
       await p.context().close();
     }, 90_000);
 
@@ -288,8 +305,13 @@ describe("issue 93: no Open in any row, in en, es and ja", () => {
         );
         expect(names.length).toBeGreaterThan(0);
         expect(names.filter((n) => OPEN_WORDS.test(n))).toEqual([]);
+        // Issue 791: the agent's Open in Agents link is the one Open.
         const texts = await p.$$eval("#den-bell-pop .den-bell-row", (els) =>
-          els.map((e) => e.textContent ?? ""),
+          els.map((e) => {
+            const c = e.cloneNode(true) as HTMLElement;
+            c.querySelectorAll(".den-bell-page").forEach((x) => x.remove());
+            return c.textContent ?? "";
+          }),
         );
         for (const t of texts) expect(t).not.toMatch(/\b(Open|Abrir)\b|開く/);
         await p.context().close();

@@ -28,11 +28,13 @@
  *   - a text frame `{"type":"session",…}` first (what is attached), and
  *     `{"type":"exit","exitCode":n}` when the session ends;
  *   - `{"type":"size","cols":c,"rows":r}`: the PTY's size, on attach and
- *     each time any viewer (another browser, a CLI attach) resizes it. The
- *     size is last-writer-wins; a pane that learns it is out of step says
- *     its own again when it is used (focused, typed in, shown);
+ *     each time any viewer (another browser, a CLI attach) resizes it.
+ *     Issue 791: among browsers the last active viewer sets it (term-size-
+ *     lead.ts): the one typed in, or that claimed it; another's resize is
+ *     kept for later and answered with the size in use, `"lead":false`;
  *   - in: binary frames are input; a text frame is JSON control:
- *     `{"type":"resize","cols":c,"rows":r}` (or `{"type":"input","data":s}`).
+ *     `{"type":"resize","cols":c,"rows":r[,"claim":true]}` (claim: Take
+ *     over, a pane just opened) or `{"type":"input","data":s}`.
  * Closing the socket detaches. Nothing here ever signals a session: leaving
  * the tab never kills it.
  *
@@ -43,6 +45,7 @@
  * with the actor from the credential.
  */
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
+import { SizeLead } from "./term-size-lead.js";
 import * as fs from "fs";
 import type * as http from "http";
 import * as path from "path";
@@ -321,6 +324,12 @@ const VIEWERS = new Map<
   string,
   Set<{ open: boolean; send(d: string): void }>
 >();
+
+/**
+ * Issue 791: who sets each session's PTY size among its browsers: the
+ * last active viewer (term-size-lead.ts). By session id, beside VIEWERS.
+ */
+const LEADS = new Map<string, SizeLead<object>>();
 
 function tellViewers(id: string): void {
   const set = VIEWERS.get(id);
@@ -1392,6 +1401,14 @@ export async function handleSessionUpgrade(
   VIEWERS.set(s.ref.id, set);
   set.add(ws);
   const viewers = set.size;
+  const lead = LEADS.get(s.ref.id) ?? new SizeLead<object>();
+  LEADS.set(s.ref.id, lead);
+  lead.attach(ws);
+  // The PTY's size as last heard, to tell a view that doesn't lead.
+  let ptySize: { cols: number; rows: number } | null = null;
+  const resize = (z: { cols: number; rows: number } | null) => {
+    if (z && !exited) client.resize(s.ref.id, z.cols, z.rows);
+  };
   ws.send(
     JSON.stringify({
       type: "session",
@@ -1410,6 +1427,8 @@ export async function handleSessionUpgrade(
   const att = client.attach(s.ref.id, {
     onData: (data) => ws.send(data),
     onSize: (cols, rows) => {
+      ptySize = { cols, rows };
+      lead.heard(ptySize);
       if (ws.open) ws.send(JSON.stringify({ type: "size", cols, rows }));
     },
     onExit: (exitCode) => {
@@ -1429,13 +1448,22 @@ export async function handleSessionUpgrade(
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
       if (!exited && data.length) {
+        // Issue 791: the person typing here makes this view the active
+        // one: the PTY takes its size before the keys arrive.
+        if (!terminalReportOnly(data)) resize(lead.input(ws));
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
         if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
       return;
     }
-    let msg: { type?: unknown; cols?: unknown; rows?: unknown; data?: unknown };
+    let msg: {
+      type?: unknown;
+      cols?: unknown;
+      rows?: unknown;
+      data?: unknown;
+      claim?: unknown;
+    };
     try {
       msg = JSON.parse(data.toString("utf-8")) as typeof msg;
     } catch {
@@ -1445,11 +1473,23 @@ export async function handleSessionUpgrade(
       // Never below 2x2: a pane measured before it was laid out.
       const ok = (n: unknown): n is number =>
         typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
-      if (!exited && ok(msg.cols) && ok(msg.rows))
-        client.resize(s.ref.id, msg.cols, msg.rows);
+      if (!exited && ok(msg.cols) && ok(msg.rows)) {
+        // Issue 791: the last active viewer sets the size. Another view's
+        // refit is kept for when it leads; it hears the size in use
+        // (`lead: false`) and draws at it.
+        const z = lead.resize(
+          ws,
+          { cols: msg.cols, rows: msg.rows },
+          msg.claim === true,
+        );
+        if (z) resize(z);
+        else if (ptySize && ws.open)
+          ws.send(JSON.stringify({ type: "size", ...ptySize, lead: false }));
+      }
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
         const data = Buffer.from(msg.data, "utf-8");
+        if (!terminalReportOnly(data)) resize(lead.input(ws));
         client.write(s.ref.id, data);
         if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
@@ -1461,8 +1501,13 @@ export async function handleSessionUpgrade(
     done = true;
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
+    // Issue 791: the view that led went: the next one leads, at its size.
+    resize(lead.detach(ws));
     if (viewing?.size) tellViewers(s.ref.id);
-    else VIEWERS.delete(s.ref.id);
+    else {
+      VIEWERS.delete(s.ref.id);
+      LEADS.delete(s.ref.id);
+    }
     // Detach only: the session keeps running in the host.
     att.detach();
     client.close();

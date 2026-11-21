@@ -42,7 +42,8 @@ import type { Attention, WaitingWhy } from "./attention.js";
 import type { AlertFeed } from "./alert-feed.js";
 import { parseSubscription, type PushSubscriptions } from "./web-push.js";
 import { readBody, sendJson } from "./http-helpers.js";
-import { agentPrincipalOf } from "./request-guard.js";
+import { agentPrincipalOf, principalOf } from "./request-guard.js";
+import { seenMarks } from "../../shared/seen-mark.js";
 
 export const NOTIFICATION_PATHS = [
   "/api/agents/self/attention",
@@ -71,6 +72,17 @@ export interface NotificationRouteDeps {
   alerts?: AlertFeed;
   /** Issue 172 S2: the person's devices, and this install's public key. */
   push?: { subs: PushSubscriptions; publicKey: () => string };
+  /**
+   * Issue 791: a peek is a look: the person's seen mark on `subject`
+   * (issue 773). Absent: the state folder's seen marks.
+   */
+  seen?: (subject: string, req: http.IncomingMessage) => void;
+}
+
+/** Issue 773's mark: this person has seen the subject's latest version. */
+function markSeen(subject: string, req: http.IncomingMessage): void {
+  const person = principalOf(req);
+  if (person) seenMarks().markSeen({ subject, person });
 }
 
 async function jsonBody(
@@ -361,6 +373,14 @@ export async function handleNotificationRoutes(
           return [...v.recent, ...v.updates, ...v.older].filter((x) => !x.read);
         })()
       : null;
+  // Issue 791: a peek's read is a look at the agent (`seen: true`).
+  if (
+    pathname === "/api/notifications/read" &&
+    b.seen === true &&
+    "subject" in which &&
+    /^agent:/.test(which.subject)
+  )
+    (deps.seen ?? markSeen)(which.subject, req);
   const n = shownAll
     ? shownAll.reduce((k, x) => k + deps.store.markRead({ id: x.id }), 0)
     : pathname === "/api/notifications/read"
