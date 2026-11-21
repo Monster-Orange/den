@@ -64,6 +64,7 @@ export interface GateBoxView {
     | "held"
     | "unreachable"
     | "low"
+    | "unknown"
     | "unchecked"
     | "off"
     | "window";

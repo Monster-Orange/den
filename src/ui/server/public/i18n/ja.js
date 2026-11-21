@@ -2301,6 +2301,8 @@
     "gate.boxHeld": "{box}: 保留中のため飛ばします ({reason})",
     "gate.boxDown": "{box}: 応答がないため飛ばします ({reason})",
     "gate.boxLow": "{box}: 空きメモリが少ないため飛ばします ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: 空きメモリを読めないため飛ばします ({reason})",
     "gate.boxSkip": "{box} は使えません: {reason}",
     "gate.boxOff": "{box}: オフのため飛ばします",
     "gate.boxClosed": "{box}: 時間帯外のため飛ばします ({time} から)",

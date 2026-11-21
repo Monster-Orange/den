@@ -340,7 +340,11 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 A box is checked only when a slot on it is about to be given, never on a
 timer. The check is a read: over ssh, one sftp session that lists the
 hold file and reads the box's `/proc/meminfo` (the box runs nothing for
-it); with only a Playwright address, a WebSocket upgrade to that address
+it). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
+over ssh, `vm_stat` and `sysctl -n hw.pagesize`, and nothing else, and
+counts free, inactive and speculative pages as available. A macOS box
+added with ssh gets the hold file and the memory floor like a Linux box.
+With only a Playwright address, a WebSocket upgrade to that address
 (an HTTP GET with `Upgrade: websocket`), closed as soon as it answers.
 Only "101 Switching Protocols" counts as open: a relay or port forward in
 front of a dead server still accepts a TCP connection, so a bare connect
@@ -351,6 +355,10 @@ is never enough.
 - **Low on memory**: the box has less available memory than its
   `min_free_mem_mb` (2048 by default; `--min-free-mem-mb`). No new slot,
   and the queue says "box low on memory".
+- **Memory unknown**: Den couldn't read the box's free memory (no
+  `/proc/meminfo` and no `vm_stat`, or output it can't read). The box is
+  skipped with why, never counted as free. A box set with
+  `--min-free-mem-mb 0` keeps no free memory, so its memory isn't read.
 - **Unreachable** (no answer within `box_check_timeout_seconds`, 8 by
   default, never more than 25): skipped, with why, and the run goes to
   another box or waits. An ssh that connects but stalls before its banner

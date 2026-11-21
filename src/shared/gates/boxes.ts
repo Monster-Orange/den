@@ -303,8 +303,11 @@ export function boxRecheckSeconds(
 
 /** What the last check of a box found. */
 export interface BoxState {
-  /** Clause 8: "low", the box has less free memory than it keeps. */
-  state: "open" | "held" | "unreachable" | "low";
+  /**
+   * Clause 8: "low", the box has less free memory than it keeps. Issue
+   * 857: "unknown", its free memory couldn't be read (never free).
+   */
+  state: "open" | "held" | "unreachable" | "low" | "unknown";
   /** Why it takes no slot (held, unreachable), in words. */
   reason?: string;
   /** When it was checked (ISO). */
@@ -543,87 +546,164 @@ export function memAvailableMb(text: string): number | undefined {
 }
 
 /**
+ * Issue 857: free memory on macOS (MB) from `vm_stat` and, after it,
+ * `sysctl -n hw.pagesize`: free + inactive + speculative pages times the
+ * page size (sysctl's, else the one in vm_stat's header). Undefined when
+ * the text isn't that: memory unknown, never free.
+ */
+export function macFreeMb(text: string): number | undefined {
+  const pages = (label: string) => {
+    const m = new RegExp(`^Pages ${label}:\\s+(\\d+)\\.?\\s*$`, "m").exec(text);
+    return m ? Number(m[1]) : undefined;
+  };
+  const free = pages("free");
+  if (free === undefined) return undefined;
+  const sysctl = /^\s*(\d{3,7})\s*$/m.exec(text)?.[1];
+  const header = /page size of (\d+) bytes/.exec(text)?.[1];
+  const size = Number(sysctl ?? header);
+  if (!Number.isInteger(size) || size < 512) return undefined;
+  const n = free + (pages("inactive") ?? 0) + (pages("speculative") ?? 0);
+  return (n * size) / (1024 * 1024);
+}
+
+/** Issue 857: the one command a macOS box runs for its memory. */
+export const MAC_MEM_COMMAND =
+  "/usr/bin/vm_stat && /usr/sbin/sysctl -n hw.pagesize";
+
+/** One process, its output, killed at the time given. */
+function runOnce(
+  start: typeof spawn,
+  cmd: string,
+  args: string[],
+  stdin: string,
+  capMs: number,
+): Promise<{
+  code: number | null;
+  out: string;
+  err: string;
+  failed?: string;
+  timedOut?: boolean;
+}> {
+  return new Promise((resolve) => {
+    let err = "";
+    let out = "";
+    let settled = false;
+    const finish = (v: Awaited<ReturnType<typeof runOnce>>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(v);
+    };
+    const k = start(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const timer = setTimeout(() => {
+      k.kill("SIGKILL");
+      finish({ code: null, out, err, timedOut: true });
+    }, capMs);
+    k.stdout?.on("data", (d: Buffer) => {
+      if (out.length < 65536) out += d.toString("utf-8");
+    });
+    k.stderr?.on("data", (d: Buffer) => {
+      if (err.length < 4096) err += d.toString("utf-8");
+    });
+    k.on("error", (e: Error) =>
+      finish({ code: null, out, err, failed: e.message }),
+    );
+    k.on("close", (code: number | null) => finish({ code, out, err }));
+    k.stdin?.end(stdin);
+  });
+}
+
+/**
  * The check over ssh, with the process starter given (tests pass a
  * stub). It is one sftp read: `ls` of the hold file, and the box's
- * /proc/meminfo (clause 8); the box runs nothing for it. Keys only
- * (BatchMode): a box that asks for a password is unreachable. Clause 12:
- * the whole check is killed at the time given, and never later than
- * BOX_CHECK_CAP_MS, so an ssh that connects but stalls at the banner is
- * unreachable and never hangs its callers.
+ * /proc/meminfo (clause 8); the box runs nothing for it. Issue 857: a
+ * box with no /proc/meminfo (macOS) is then read with one ssh exec of
+ * MAC_MEM_COMMAND, nothing else. Memory that can't be read is "unknown":
+ * the box is skipped with that reason, never counted as free (unless it
+ * keeps no free memory: min_free_mem_mb 0). Keys only (BatchMode): a box
+ * that asks for a password is unreachable. Clause 12: the whole check is
+ * killed at the time given, and never later than BOX_CHECK_CAP_MS, so an
+ * ssh that connects but stalls at the banner is unreachable and never
+ * hangs its callers.
  */
 export function sftpProbe(start: typeof spawn): BoxProbe {
-  return (box, timeoutMs) => {
+  return async (box, timeoutMs) => {
     if (!box.ssh) return wsReach(new URL(box.playwright!), timeoutMs);
     const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
+    const deadline = Date.now() + capMs;
     const secs = Math.max(1, Math.round(capMs / 1000));
-    const args = [
-      "-q",
-      "-b",
-      "-",
+    const conn = (port: string) => [
       "-o",
       "BatchMode=yes",
       "-o",
       `ConnectTimeout=${secs}`,
-      ...(box.ssh_port ? ["-P", String(box.ssh_port)] : []),
+      ...(box.ssh_port ? [port, String(box.ssh_port)] : []),
       ...(box.ssh_identity ? ["-i", box.ssh_identity] : []),
       "--",
-      box.ssh,
+      box.ssh!,
     ];
-    return new Promise((resolve) => {
-      let err = "";
-      let out = "";
-      let settled = false;
-      const finish = (v: Awaited<ReturnType<BoxProbe>>) => {
-        if (settled) return;
-        settled = true;
-        resolve(v);
+    const noAnswer = {
+      state: "unreachable" as const,
+      reason: `no answer over ssh in ${secs} s`,
+    };
+    // A leading "-" lets the batch go on when a file is absent.
+    const r = await runOnce(
+      start,
+      "sftp",
+      ["-q", "-b", "-", ...conn("-P")],
+      (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+        "-get /proc/meminfo /dev/stdout\n",
+      capMs,
+    );
+    if (r.timedOut) return noAnswer;
+    if (r.failed)
+      return { state: "unreachable", reason: oneLine(`sftp: ${r.failed}`) };
+    if (r.code !== 0)
+      return {
+        state: "unreachable",
+        reason:
+          oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
+          `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-      const k = start("sftp", args, { stdio: ["pipe", "pipe", "pipe"] });
-      const timer = setTimeout(() => {
-        k.kill("SIGKILL");
-        finish({
-          state: "unreachable",
-          reason: `no answer over ssh in ${secs} s`,
-        });
-      }, capMs);
-      k.stdout?.on("data", (d: Buffer) => {
-        if (out.length < 65536) out += d.toString("utf-8");
-      });
-      k.stderr?.on("data", (d: Buffer) => {
-        if (err.length < 4096) err += d.toString("utf-8");
-      });
-      k.on("error", (e: Error) => {
-        clearTimeout(timer);
-        finish({
-          state: "unreachable",
-          reason: oneLine(`sftp: ${e.message}`),
-        });
-      });
-      k.on("close", (code: number | null) => {
-        clearTimeout(timer);
-        if (code !== 0)
-          return finish({
-            state: "unreachable",
-            reason:
-              oneLine(err.split("\n").filter(Boolean).pop() ?? "") ||
-              `ssh to ${box.ssh} failed (exit ${code})`,
-          });
-        const freeMemMb = memAvailableMb(out);
-        const mem = freeMemMb === undefined ? {} : { freeMemMb };
-        if (box.hold_file && !/not found|no such file/i.test(err))
-          return finish({
-            state: "held",
-            reason: `its hold file (${box.hold_file}) is there`,
-            ...mem,
-          });
-        finish({ state: "open", ...mem });
-      });
-      // A leading "-" lets the batch go on when the hold file is absent.
-      k.stdin?.end(
-        (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
-          "-get /proc/meminfo /dev/stdout\n",
+    const missing = r.err
+      .split("\n")
+      .filter((l) => /not found|no such file/i.test(l));
+    const noMeminfo = missing.some((l) => l.includes("/proc/meminfo"));
+    const holdGone = missing.some((l) => !l.includes("/proc/meminfo"));
+    let freeMemMb = memAvailableMb(r.out);
+    const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
+    if (box.hold_file && !holdGone)
+      return {
+        state: "held",
+        reason: `its hold file (${box.hold_file}) is there`,
+        ...mem(),
+      };
+    if ((box.min_free_mem_mb ?? BOX_MIN_FREE_MEM_MB) <= 0)
+      return { state: "open", ...mem() };
+    let why = "/proc/meminfo has no MemAvailable";
+    if (freeMemMb === undefined && noMeminfo) {
+      // Issue 857: no /proc (macOS): one fixed command, nothing else.
+      const left = deadline - Date.now();
+      if (left <= 0) return noAnswer;
+      const m = await runOnce(
+        start,
+        "ssh",
+        ["-T", ...conn("-p"), MAC_MEM_COMMAND],
+        "",
+        left,
       );
-    });
+      if (m.timedOut) return noAnswer;
+      freeMemMb = m.code === 0 ? macFreeMb(m.out) : undefined;
+      why =
+        m.code === 0
+          ? "vm_stat gave nothing Den can read"
+          : oneLine(
+              `vm_stat failed: ${m.failed ?? (m.err.split("\n").filter(Boolean).pop() || `exit ${m.code}`)}`,
+            );
+    }
+    if (freeMemMb === undefined)
+      return { state: "unknown", reason: `memory unknown: ${why}` };
+    return { state: "open", ...mem() };
   };
 }
 
