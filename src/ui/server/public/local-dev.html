@@ -3771,7 +3771,7 @@
             `</div></div>` +
             `<div class="add-svc-config-row">` +
             `<label for="add-svc-branch">${e(pT("as.branch", "Branch"))}</label>` +
-            `<input class="add-svc-inp" id="add-svc-branch" list="add-svc-branch-list" placeholder="main" autocomplete="off">` +
+            `<input class="add-svc-inp" id="add-svc-branch" list="add-svc-branch-list" autocomplete="off">` +
             `<datalist id="add-svc-branch-list"></datalist>` +
             `<label for="add-svc-newbranch">${e(pT("as.newBranch", "New branch"))}</label>` +
             `<input class="add-svc-inp" id="add-svc-newbranch" placeholder="${e(pT("as.optional", "optional"))}" autocomplete="off">` +
@@ -3782,6 +3782,9 @@
             id: "add-svc-dlg",
             className: "add-svc-dlg",
             title: pT("as.title", "Add Service — {ws}", { ws: wsName }),
+            // Den's word, not the kit's own: the HTML is built before
+            // mountDialog hands the kit Den's words.
+            closeLabel: pT("dlg.close", "Close"),
             body,
             foot,
             actions: [
@@ -3921,7 +3924,7 @@
               '<span class="add-svc-name">' +
               escHtml(r.name + branchLabel) +
               "</span>" +
-              '<div class="add-svc-row-path">' +
+              '<div class="add-svc-row-path" translate="no">' +
               escHtml(r.relPath) +
               "</div>" +
               "</div>" +
@@ -4181,7 +4184,6 @@
             });
           const defaultBranch = repo.defaultBranch || "main";
           branchEl.value = defaultBranch;
-          branchEl.placeholder = defaultBranch;
           dlEl.innerHTML = '<option value="' + escHtml(defaultBranch) + '">';
           document.getElementById("add-svc-newbranch").value = "";
           configEl.style.display = "";

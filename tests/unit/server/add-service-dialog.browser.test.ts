@@ -13,8 +13,8 @@
  *     back to "+ Add repo".
  *
  * The real page and server on the demo distribution; the repo lists and
- * the add itself are answered here, so nothing is cloned or written.
- * Invented names only. Needs Playwright's chromium;
+ * the add itself are answered here, so nothing is cloned or written
+ * (their routes are workspace-routes.ts's). Invented names only. Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
