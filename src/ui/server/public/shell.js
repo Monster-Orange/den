@@ -7488,8 +7488,49 @@
 
   // R26d: the server unreachable.
   var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
-  var rawFetch =
+  var baseFetch =
     typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+  // A same-origin refusal or error (4xx, 5xx) is read in full here and
+  // handed on as the same answer, already read. A caller that only looks
+  // at the status (`r.ok ? r.json() : null`) otherwise leaves its body
+  // unread, and the browser holds that request open: a session refused
+  // every 3 s (a test install's fixture person) kept the page from ever
+  // settling. Its body, status and headers stay readable as before.
+  var NO_BODY = { 204: 1, 205: 1, 304: 1 };
+  function settled(input, r) {
+    if (
+      !r ||
+      r.ok ||
+      !r.body ||
+      NO_BODY[r.status] ||
+      typeof Response !== "function" ||
+      !sameOrigin(input)
+    )
+      return r;
+    return r.text().then(
+      function (text) {
+        try {
+          return new Response(text, {
+            status: r.status,
+            statusText: r.statusText,
+            headers: r.headers,
+          });
+        } catch (e) {
+          return r;
+        }
+      },
+      function () {
+        return r;
+      },
+    );
+  }
+  var rawFetch = baseFetch
+    ? function (input, init) {
+        return baseFetch(input, init).then(function (r) {
+          return settled(input, r);
+        });
+      }
+    : null;
   function sameOrigin(input) {
     var u =
       typeof input === "string"
