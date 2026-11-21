@@ -19,7 +19,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
 import * as path from "path";
-import type { Browser } from "playwright";
+import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
@@ -130,6 +130,30 @@ afterAll(async () => {
   });
 });
 
+/**
+ * Wait until the cards and the dock hold still: their boxes are the same
+ * on two looks in a row, 100 ms apart.
+ */
+const settled = (p: Page) =>
+  p.waitForFunction(
+    () => {
+      const box = (e: Element | null) => {
+        const r = e?.getBoundingClientRect();
+        return r ? `${r.x},${r.y},${r.width},${r.height}` : "-";
+      };
+      const now = [
+        box(document.getElementById("den-dock")),
+        ...[...document.querySelectorAll('[role="group"][data-id]')].map(box),
+      ].join("|");
+      const w = window as unknown as { __boxesWas?: string };
+      const same = now === w.__boxesWas;
+      w.__boxesWas = now;
+      return same;
+    },
+    undefined,
+    { polling: 100, timeout: 10_000 },
+  );
+
 describe("the Graph page's output, in the runs dock (a consumer's dev.18 run)", () => {
   it("with a run's output open, the lowest card is still the card under the pointer, and clicks", async () => {
     if (!browser) return;
@@ -156,7 +180,7 @@ describe("the Graph page's output, in the runs dock (a consumer's dev.18 run)", 
       (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
     );
     await p.waitForSelector(".dg-card");
-    await p.waitForTimeout(600);
+    await settled(p);
     // A run's output tab, selected, with output in it, the dock opened to
     // its usual ~233px (the bar, 170px of output and its padding).
     await p.evaluate(() => {
@@ -177,7 +201,15 @@ describe("the Graph page's output, in the runs dock (a consumer's dev.18 run)", 
       for (let i = 0; i < 40; i++)
         runs.append("main/shop/api", `› step ${i + 1}… ok`);
     });
-    await p.waitForTimeout(600);
+    // Opened: the dock has its height and the page holds still.
+    await p.waitForFunction(
+      () =>
+        (document.getElementById("den-dock")?.getBoundingClientRect().height ??
+          0) > 220,
+      undefined,
+      { timeout: 10_000 },
+    );
+    await settled(p);
     const panelH = await p.$eval(
       "#den-dock",
       (el) => el.getBoundingClientRect().height,
@@ -215,19 +247,23 @@ describe("the Graph page's output, in the runs dock (a consumer's dev.18 run)", 
     expect(hits.filter((h) => h.hit !== "card")).toEqual([]);
 
     // And a real click on the lowest card lands (no timeout).
+    // Named by its data-id (a service's card) or data-repo (a repo's).
     const lowest = await p.$$eval(".dg-card", (cards) => {
       let best = -1;
-      let at = 0;
-      cards.forEach((c, i) => {
+      let sel = "";
+      for (const c of cards as HTMLElement[]) {
         const b = c.getBoundingClientRect().bottom;
         if (b > best) {
           best = b;
-          at = i;
+          sel = c.dataset.id
+            ? `[role="group"][data-id="${c.dataset.id}"]`
+            : `[role="group"][data-repo="${c.dataset.repo}"]`;
         }
-      });
-      return at;
+      }
+      return sel;
     });
-    await p.locator(".dg-card").nth(lowest).click({ timeout: 3_000 });
+    await expect(p.locator(lowest).count()).resolves.toBe(1);
+    await p.locator(lowest).click({ timeout: 3_000 });
     await ctx.close();
   }, 45_000);
 });
