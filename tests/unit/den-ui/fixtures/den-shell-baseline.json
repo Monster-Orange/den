@@ -3020,10 +3020,10 @@
     "sel": "#den-menu-btn",
     "count": 1,
     "rect": [
-     12,
-     7.5,
-     32,
-     32
+     8,
+     1.5,
+     44,
+     44
     ],
     "style": {
      "display": "flex",
@@ -3053,10 +3053,10 @@
     "sel": ".den-brand",
     "count": 1,
     "rect": [
-     52,
-     12.5,
-     22,
-     22
+     60,
+     1.5,
+     44,
+     44
     ],
     "style": {
      "display": "flex",
@@ -3086,10 +3086,10 @@
     "sel": ".den-chips",
     "count": 1,
     "rect": [
-     144,
-     7.5,
-     234,
-     32
+     158,
+     1.5,
+     224,
+     44
     ],
     "style": {
      "display": "flex",
@@ -3119,10 +3119,10 @@
     "sel": ".den-rb-top",
     "count": 1,
     "rect": [
-     216.53,
-     7.5,
+     203,
+     1.5,
      83,
-     32
+     44
     ],
     "style": {
      "display": "flex",
@@ -3152,10 +3152,10 @@
     "sel": "#den-bell",
     "count": 1,
     "rect": [
-     303.53,
-     7.5,
-     34,
-     32
+     290,
+     1.5,
+     44,
+     44
     ],
     "style": {
      "display": "flex",

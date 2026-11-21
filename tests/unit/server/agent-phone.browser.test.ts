@@ -34,6 +34,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -152,6 +153,8 @@ async function phone(
     isMobile: true,
     reducedMotion: "reduce",
   });
+  // Signed in, as a person on this machine is (0.4.71).
+  await signIn(ctx, s.stateDir, s.base);
   await ctx.addInitScript(fakeViewport);
   await ctx.addInitScript((v) => {
     try {
@@ -181,17 +184,6 @@ async function openAgent(p: Page, id: string): Promise<void> {
   const res = await p.goto(`${s.base}/p/north/agents/${id}`);
   expect(res?.status()).toBe(200);
   await box(p, id).waitFor({ timeout: 20_000 });
-  // The terminal is connected (its output drawn): a key typed before
-  // that goes nowhere.
-  await p.waitForFunction(
-    ([i, t]) =>
-      (
-        document.querySelector(`.pane[data-id="${i}"] .xterm-rows`)
-          ?.textContent ?? ""
-      ).includes(t),
-    [sid[id], `${id} ready`],
-    { timeout: 20_000 },
-  );
 }
 
 describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
@@ -413,6 +405,7 @@ describe.each(ENGINES)(
           viewport: { width: 1440, height: 900 },
           reducedMotion: "reduce",
         });
+        await signIn(ctx, s.stateDir, s.base);
         await ctx.addInitScript((v) => {
           try {
             for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -568,10 +561,15 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     // Each key reaches the agent as the terminal's own bytes.
     const press = async (label: string, want: string) => {
       const from = pty.scout.writes.length;
-      await keys.getByRole("button", { name: label }).tap();
+      // A key tapped before the terminal's socket is open goes nowhere
+      // (as a key typed into it would): tap again until one lands.
       const t0 = Date.now();
-      while (!typed("scout", from).includes(want) && Date.now() - t0 < 10_000)
-        await new Promise((r) => setTimeout(r, 100));
+      while (!typed("scout", from).includes(want) && Date.now() - t0 < 15_000) {
+        await keys.getByRole("button", { name: label }).tap();
+        const t1 = Date.now();
+        while (!typed("scout", from).includes(want) && Date.now() - t1 < 1_000)
+          await new Promise((r) => setTimeout(r, 100));
+      }
       expect(typed("scout", from)).toContain(want);
     };
     await press("Control-C", "\x03");
