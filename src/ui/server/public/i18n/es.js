@@ -541,6 +541,10 @@
       "No se pudo abrir Terminal.app automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "No se pudo abrir la terminal automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "¿Desactivar el inicio automático de {repo}?",
+    "dlg.autoOff":
+      "Es una dependencia estricta de: {list}. Mientras esté desactivado, el Up de su proyecto puede fallar la comprobación de disponibilidad.",
+    "dlg.autoOffGo": "Desactivar",
     "rd.keepsHead": "Sigue en marcha:",
     "rd.keepsAgents": "Los agentes y sus terminales",
     "rd.keepsServices": "Los servicios y los despliegues en GitHub",
@@ -589,6 +593,9 @@
     "busy.edgeW": "Iniciando el edge…",
     "busy.edgeS": "Edge iniciado",
     "busy.edgeF": "El edge no se inició.",
+    "busy.testPersonW": "Configurando la persona de prueba…",
+    "busy.testPersonS": "Persona de prueba configurada",
+    "busy.testPersonF": "La persona de prueba no se configuró.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -964,9 +971,52 @@
       "Los agentes pueden pedir prioridad de versión",
     "set.server.gate_priority_agents.d":
       "Activado, un agente puede marcar una ejecución de versión para un problema que tú informaste. Desactivado, solo tú puedes. Cada adelanto queda en el registro de turnos, con quién y por qué. __DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_priority_runners":
+      "Los runners de CI pueden pedir prioridad de versión",
+    "set.server.gate_priority_runners.d":
+      "Activado, un trabajo de CI con un token de runner puede marcar su ejecución como de versión, con un motivo. Desactivado, su petición se rechaza y espera en la cola normal. Cada adelanto queda en el registro de turnos, con el runner y el porqué. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container":
+      "Las ejecuciones de navegador necesitan un contenedor",
+    "set.server.gate_browser_container.d":
+      "Activado, una ejecución de pruebas de navegador en esta máquina debe indicar dónde corre su navegador: el endpoint de Playwright de un contenedor (ws:// o wss://, también desde DEN_PW_WS, HUB_PW_WEBKIT_WS o E2E_WEBKIT_WS), o self cuando la ejecución inicia su propio contenedor. Una ejecución sin él se rechaza, así ninguna prueba inicia un navegador en este Mac. Activado por defecto en macOS, desactivado en los demás. __DEN_CLI__ gate settings --browser-requires-container 1",
+    "set.server.gate_claim": "Turno de un agente: minutos para reclamarlo",
+    "set.server.gate_claim.d":
+      "Cuando se concede un turno que un agente esperaba, Den se lo dice. Si no lo reclama en este tiempo, pasa al siguiente de la cola y el agente vuelve a la cola. __DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew":
+      "Turno de un agente: renovarlo cada, en minutos",
+    "set.server.gate_mcp_renew.d":
+      "Cada cuánto se pide a un agente que tiene un turno que lo renueve mientras trabaja. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "Turno de un agente: caduca sin renovar tras, en minutos",
+    "set.server.gate_mcp_lapse.d":
+      "Un turno que un agente tiene y no renueva en este tiempo, pasada su estimación más el margen, pasa al siguiente de la cola. La campana lo dice. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "Turno de un agente: margen tras su estimación, en minutos",
+    "set.server.gate_mcp_grace.d":
+      "Un turno sin renovar se mantiene hasta pasar su estimación en este tiempo. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_class_order": "Clases de turno, de mayor a menor",
+    "set.server.gate_class_order.d":
+      "Separadas por comas, por ejemplo release, lane, other. Una ejecución en espera de una clase mayor empieza antes; dentro de una clase, por orden de llegada. Una ejecución que tiene su turno nunca se detiene. Vacío: orden de llegada para todas. __DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "Clase de turno de cada proyecto",
+    "set.server.gate_class_map.d":
+      "Separadas por comas: <proyecto>=<clase>, label:<patrón>=<clase> (* vale por cualquier texto) y *=<clase> para los demás proyectos. Sin *, la última clase. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "Horarios de las clases de turno",
+    "set.server.gate_class_windows.d":
+      "Separados por comas: <clase>=HH:MM-HH:MM/<minutos>, en la hora de esta máquina. Fuera de su horario, una ejecución de esa clase estimada en al menos esos minutos espera mientras una de clase mayor tiene turno o espera; si no hay ninguna, empieza enseguida. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
     "set.server.gate_runners": "Tokens de runners de CI",
     "set.server.gate_runners.d":
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
+    "set.server.gate_boxes": "Máquinas de pruebas",
+    "set.server.gate_boxes.d":
+      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check":
+      "Espera de la comprobación de una máquina, en segundos",
+    "set.server.gate_box_check.d":
+      "Cuánto espera Den la respuesta de una máquina de pruebas cuando está a punto de darle un turno. Sin respuesta, la máquina se omite. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck":
+      "Una máquina omitida se comprueba de nuevo tras, en segundos",
+    "set.server.gate_box_recheck.d":
+      "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1246,6 +1296,7 @@
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
     "set.access.pair": "Emparejar un dispositivo",
+    "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",
@@ -1611,6 +1662,24 @@
       "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
     "ap.det.gate_runner_token_create.revoke":
       "Puedes revocarlo cuando quieras en Ajustes, en Tokens de runners de CI.",
+    "ap.do.gate_box_set": "Reemplazar la máquina de pruebas {name}",
+    "ap.do.gate_box_set.new": "Añadir la máquina de pruebas {name}",
+    "ap.do.gate_box_remove": "Quitar la máquina de pruebas {name}",
+    "ap.det.gate_box_set.adds":
+      "Añade la máquina de pruebas {name}. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.replaces":
+      "Reemplaza la máquina de pruebas {name} con estos ajustes. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "Puerto SSH: {v}",
+    "ap.det.gate_box_set.ssh_identity": "Archivo de clave SSH: {v}",
+    "ap.det.gate_box_set.playwright": "Dirección de Playwright: {v}",
+    "ap.det.gate_box_set.slots": "Turnos de navegador: {v}",
+    "ap.det.gate_box_set.hold_file": "Archivo de pausa: {v}",
+    "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
+    "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":
@@ -1972,6 +2041,8 @@
       "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
+    "bell.m.gateLapsed":
+      'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
@@ -2338,6 +2409,17 @@
     "gate.priority": "prioridad de versión: {reason}",
     "gate.priorityWaits":
       "prioridad de versión, después de la anterior: {reason}",
+    "gate.onBox": "en la máquina de pruebas {box}",
+    "gate.anyBox": "aquí o en una máquina de pruebas",
+    "gate.boxesH": "Máquinas de pruebas",
+    "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
+    "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
+    "gate.boxDown": "{box}: omitida, no responde ({reason})",
+    "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
+    "gate.boxSkip": "no puede usar {box}: {reason}",
+    "gate.yielded": "Dejó pasar a {to}",
+    "gate.class": "Clase: {name}",
+    "gate.window": "espera su horario {window}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
@@ -2715,6 +2797,23 @@
     "set.ui.appKeyRevoked": "revocada {when}",
     "set.ui.appKeyRevoke": "Revocar",
     "set.ui.runnerNone": "Aún no hay tokens de runner.",
+    "set.ui.boxName": "Nombre",
+    "set.ui.boxSsh": "ssh (usuario@host)",
+    "set.ui.boxPort": "Puerto ssh",
+    "set.ui.boxKey": "Archivo de clave ssh",
+    "set.ui.boxPw": "Servidor de Playwright (ws://)",
+    "set.ui.boxSlots": "Turnos de navegador",
+    "set.ui.boxHold": "Archivo de pausa (en la máquina)",
+    "set.ui.boxScale": "Escala de tiempo",
+    "set.ui.boxSave": "Guardar máquina",
+    "set.ui.boxMem": "Memoria libre a mantener (MB)",
+    "set.ui.boxPwv": "Versión de Playwright en la máquina",
+    "set.ui.boxNone":
+      "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
+    "set.ui.boxSlotsN": "{n} turnos de navegador",
+    "set.ui.boxHoldIs": "archivo de pausa {path}",
+    "set.ui.boxScaleIs": "tiempo ×{n}",
+    "set.ui.boxRemove": "Quitar",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",
@@ -2726,6 +2825,14 @@
       "No hay ordenadores en espera. Una página sin iniciar sesión en otro ordenador muestra un código; aparece aquí para aprobarlo.",
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
+    "set.ui.testInstallYes": "Esta es una instalación de prueba.",
+    "set.ui.testInstallNo":
+      "No es una instalación de prueba. Las comprobaciones en vivo no pueden iniciar sesión aquí. Una persona marca una instalación de prueba a mano en la configuración de la distribución (web.test_install: true).",
+    "set.ui.testPersonReady": "La persona de prueba está configurada.",
+    "set.ui.testPersonMissing": "La persona de prueba aún no está configurada.",
+    "set.ui.testPersonSetUp": "Configurar persona de prueba",
+    "set.ui.testInstallSignedIn":
+      "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
       "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
     "set.ui.edgeStart": "Iniciar el edge",
@@ -3115,6 +3222,8 @@
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_install.d":
+      "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
     "set.distribution.brand.d":
       "brand.name: el nombre en las páginas, el banner de la CLI y la ayuda.",
     "set.distribution.github_org.d":

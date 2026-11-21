@@ -263,7 +263,7 @@ describe("the shell in a pseudo-locale", () => {
     };
     await open("#appearance-btn", ".den-pop");
     await open("#env-btn", ".den-pop");
-    await open("#version-pill", ".cl-box #cl-title");
+    await open("#version-pill", "#cl-overlay #cl-title");
     await open("#den-status", "#den-drawer-title");
     await open("#den-search", "#den-pal-q");
     // The admin-password prompt, as a run's needs-sudo opens it (LK-0).

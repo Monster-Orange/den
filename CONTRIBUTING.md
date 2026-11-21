@@ -49,6 +49,15 @@ DEN_ORG_NAMES_FILE=<patterns file> node scripts/org-name-gate.mjs
 
 A new test, lint rule or gate must be seen failing before it is trusted.
 
+Browser tests and live checks (`tests/**/*.browser.*`, `gate/*.mjs`) never
+gain a fixed sleep, a positional pick, a class selector or an English-text
+assert (issue 839). On a pull request, `scripts/brittle-ratchet.mjs` counts
+each file the change touched at its merge base and at HEAD, and fails only
+when a count goes up; files the change didn't touch are never judged, and
+there is no baseline file to update. Run it before a push with
+`node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
+totals per kind and never fails.
+
 On a busy machine, fewer jest workers means fewer flakes from load:
 `DEN_TEST_WORKERS` sets how many (a number, or a percentage such as
 `50%`). Unset, jest picks its own. `npm run preflight` uses 8 unless it is
@@ -183,6 +192,8 @@ export const clauses = [
 // Optional: run once per cell; expect then gets [{ cell, result }].
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000; // optional; a cell over it is ok: false
+// Optional: it changes nothing in Den, so it may run beside others.
+export const readOnly = true;
 export async function setup(ctx) {} // prepare the bed; returns state
 export async function run(ctx, state) {} // act; returns what it saw
 export async function teardown(ctx, state) {} // optional; always called
@@ -205,6 +216,38 @@ export function expect(cells) {
   what it needs under its own names and removes them; it never changes
   the bed's settings for good, and never touches a live install.
 - Names stay neutral (the one rule above applies here too).
+
+### Read-only checks
+
+A check that changes nothing in Den says so, with a one-line comment
+naming what it reads:
+
+```js
+// Read only (issue 845): reads doctor and Settings › Agents.
+export const readOnly = true;
+```
+
+The bed runs read-only checks together, a few at a time, each in its own
+browser context, inside one test slot. Every other check runs alone, one
+after another, and the ones that restart or reconfigure Den run last.
+
+A read-only check may sign in as the fixture person, read the API and the
+CLI's reads (`doctor`, `agents list`, `gate status`, ...), open pages, and
+click what only changes the page's view. It never:
+
+- writes settings or config (`POST /api/settings`, `config`, user.yml);
+- starts, stops, removes or drives an agent (`ctx.agent`, `ctx.stub`);
+- restarts or takes down Den, its web server, edge, host or address;
+- writes to Hub, asks for a held write, or files a notification or report;
+- asks for a gate slot, writes files, starts a process or signs out;
+- fakes a request with `page.route` (a missed route is a real write).
+
+Leave it off when in doubt, and when the check depends on what another
+check could change mid-run (exact counts of agents or bell items) or on
+fixed ports or names. Leaving it off is always safe: the check just runs
+alone. `tests/unit/test-infra/gate-readonly-modules.test.ts` reads every
+check marked read-only and fails, naming the check, the line and the
+call, on any write it finds.
 
 What the harness passes in `ctx`:
 
@@ -247,6 +290,54 @@ Names in a row's `evidence` are written into the verdict next to it.
 Anything else on `ctx` is the harness's internals and may change: never
 use it. Setup's state reaches `expect` only through what `run` returns.
 
+### The bed signs in as a fixture person
+
+Live checks run as an agent, and Den never signs an agent in as the
+person. On a bed, the runner signs in as a **fixture person** instead:
+neither the person nor an agent, logged and audited as "fixture person".
+It works only on a **test install**, which needs all four of these:
+
+1. The mark, set by hand by a person in the bed's distribution config
+   (`config/den.yml`). Settings, `config` and agents can't set it, and
+   agents are denied edits to that file.
+
+   ```yaml
+   web:
+     test_install: true
+     fixture_session_minutes: 60 # optional: how long a fixture session lasts
+   ```
+
+2. The launcher's test-only flag in the server's own start environment,
+   `<PREFIX>_TEST_INSTALL=1` (`DEN_TEST_INSTALL=1` for Den). No file can
+   set it, and the server drops it from what it passes on.
+3. Its own state folder (`<PREFIX>_HOME`), never the product's default
+   one.
+4. No owner and no other person: no GitHub sign-in, setup link or
+   pairing code ever used on it, and no one signed in by a `web login`
+   link except the person who pressed **Set up test person**.
+
+Then:
+
+1. Signed in (a `web login` link), the person opens Settings › Access ›
+   Test install in their browser and presses **Set up test person**,
+   once. It is a button only: every command-line call and agent is
+   refused. The server writes a key in the bed's state folder (0600),
+   sealed with the install's own secret, so a key it didn't write is
+   refused. Pressing it again replaces the key and ends every older
+   fixture session.
+2. The runner gets a one-time sign-in link as the fixture person:
+
+   ```sh
+   <cli> web fixture-login [--next <path>] [--origin <url>]
+   ```
+
+Anywhere else the fixture sign-in and its setup are refused, and an
+agent's own `web login` stays refused everywhere. A fixture session
+counts as an agent at every person-only check, reaches only the pages and
+the few writes live checks need, never opens a terminal, and ends as soon
+as the install stops being a test install, the key goes, or its time is
+up.
+
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with
 the rules for `expect`'s rows (`checkRows`).
@@ -268,6 +359,10 @@ items) is read from config, with no org default.
 `.github/workflows/release.yml` publishes `@monster-orange/den` with npm
 trusted publishing (no token anywhere):
 
+- A PR that changes `packages/den-ui` bumps the kit's version (its
+  `package.json` and its `package-lock.json` entry together):
+  `scripts/kit-version.mjs` fails the PR's checks and the release's den-ui
+  job otherwise, since npm already has the old version.
 - A push to `main` whose `package.json` version is not on npm yet is the
   release: the gates, the tarball and its SHA256SUMS, the tag `v<version>`,
   `npm publish` with provenance, and a GitHub release.

@@ -13,9 +13,19 @@
  * a slot with a gate-only runner token (shared/gates/runner-tokens.ts).
  * request-guard.ts lets that token reach these three routes only:
  *   POST /api/gate-slots/ask      {kind, estimate_minutes, label?,
- *                                 wait_seconds?}: waits up to wait_seconds
- *                                 (at most the lapse time) for the slot,
- *                                 then answers granted, or its place in line
+ *                                 wait_seconds?, priority?, reason?}: waits
+ *                                 up to wait_seconds (at most the lapse
+ *                                 time) for the slot, then answers granted,
+ *                                 or its place in line. Issue 739:
+ *                                 priority "release" with a reason goes
+ *                                 ahead of its kind's plain waiting runs
+ *                                 (issue 715's rules), if the machine lets
+ *                                 runners ask (priority_runners).
+ *                                 browser_endpoint (or browserEndpoint):
+ *                                 a browser run's container browser,
+ *                                 ws:// or wss://, or "self" (the run
+ *                                 starts its own); on a macOS host a
+ *                                 browser ask needs one (a Setting)
  *   POST /api/gate-slots/renew    {id}: renews the lease (holding or
  *                                 waiting) and says where it stands: the poll
  *   POST /api/gate-slots/release  {id}: gives it back
@@ -26,21 +36,39 @@
  *   POST /api/gate-slots/runners/revoke   {id}
  * A token is made only by the held write gate_runner_token_create, on the
  * person's Allow (gateRunnerTokenOp).
+ *
+ * Issue 625: test boxes, a browser slot source each (gates/boxes.ts). A
+ * person lists, sets and removes them (Settings):
+ *   GET  /api/gate-slots/boxes          the boxes as set
+ *   POST /api/gate-slots/boxes          {box}: adds or replaces one
+ *   POST /api/gate-slots/boxes/remove   {name}
+ * A runner's ask may say `where`: "any", or a box's name (a runner on
+ * that box). The box is checked just before its slot is given.
  */
 import type * as http from "http";
 import {
   expectedEnd,
   expectedStart,
-  queuePlace,
   type GateEntry,
 } from "../../shared/gates/rules.js";
 import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
-import { GateFullError, type GateStore } from "../../shared/gates/store.js";
+import { checkBox, type GateBox } from "../../shared/gates/boxes.js";
+import {
+  browserSlotCheck,
+  browserSlotRefusal,
+} from "../../shared/gates/browser-container.js";
+import { product } from "../../shared/product.js";
+import {
+  GateFullError,
+  GatePriorityRefused,
+  type GateStore,
+} from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
+import type { AskedBy } from "./approvals.js";
 import type { HeldOp } from "./held-actions.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 import {
@@ -58,6 +86,8 @@ export const GATE_PATHS = [
   "/api/gate-slots/release",
   "/api/gate-slots/runners",
   "/api/gate-slots/runners/revoke",
+  "/api/gate-slots/boxes",
+  "/api/gate-slots/boxes/remove",
 ] as const;
 
 export const isGatePath = (p: string) =>
@@ -140,15 +170,17 @@ function standing(store: GateStore, e: GateEntry): Record<string, unknown> {
     id: now.id,
     kind: now.kind,
     granted: !!now.grantedAt,
-    place: queuePlace(all, now.id, s),
+    // The machine's priority settings and clock (issue 739).
+    place: store.place(now.id),
     ...(now.grantedAt
       ? { expected_end: new Date(expectedEnd(now)).toISOString() }
       : {
           expected_start: new Date(
-            expectedStart(all, now.id, Date.now(), s),
+            expectedStart(all, now.id, Date.now()),
           ).toISOString(),
         }),
     ...(now.remote ? { lease_until: now.remote.leaseUntil } : {}),
+    ...(now.box ? { box: now.box } : {}),
     renew_seconds: s.remoteRenewSeconds,
     lapse_seconds: s.remoteLapseSeconds,
   };
@@ -166,7 +198,15 @@ async function askAndWait(
   d: GateRouteDeps,
   store: GateStore,
   runner: { id: string; name: string },
-  a: { kind: "browser" | "cpu"; label: string; est: number; waitMs: number },
+  a: {
+    kind: "browser" | "cpu";
+    label: string;
+    est: number;
+    waitMs: number;
+    reason?: string;
+    where?: string;
+    browserEndpoint?: string;
+  },
 ): Promise<void> {
   let e: GateEntry | null;
   try {
@@ -177,8 +217,17 @@ async function askAndWait(
       estimateMin: a.est,
       runner: runner.name,
       tokenId: runner.id,
+      ...(a.reason !== undefined ? { priority: { reason: a.reason } } : {}),
+      ...(a.where ? { where: a.where } : {}),
+      ...(a.browserEndpoint ? { browserEndpoint: a.browserEndpoint } : {}),
     });
   } catch (err) {
+    if (err instanceof GatePriorityRefused)
+      return sendJson(
+        res,
+        { ok: false, code: "priority_refused", error: err.message },
+        403,
+      );
     if (err instanceof GateFullError)
       return sendJson(
         res,
@@ -195,9 +244,16 @@ async function askAndWait(
   let closed = false;
   res.on("close", () => (closed = true));
   let looks = 0;
+  // Issue 625: a box a slot is about to be given on is checked first.
+  const boxes = !!a.where && a.where !== "local";
+  if (boxes && !e.grantedAt) {
+    await store.checkBoxes();
+    e = store.peek(e.id) ?? e;
+  }
   while (e && !e.grantedAt && Date.now() < until && !closed) {
     await new Promise((r) => setTimeout(r, d.pollMs ?? 1000));
     if (closed || !tokenLive(d, runner.id)) break;
+    if (boxes) await store.checkBoxes();
     looks++;
     e =
       looks % LOOKS_PER_RENEW === 0
@@ -272,11 +328,88 @@ async function handleRunnerRoute(
             .trim()
             .slice(0, 120) || "CI job"
         : "CI job";
+    // Issue 739: release priority, as `gate run --priority release`.
+    let reason: string | undefined;
+    if (body.priority !== undefined) {
+      if (body.priority !== "release")
+        return sendJson(
+          res,
+          { ok: false, error: 'priority is "release", or left out' },
+          400,
+        );
+      reason =
+        typeof body.reason === "string"
+          ? body.reason.replace(/\s+/g, " ").replace(CONTROL, "").trim()
+          : "";
+      if (!reason)
+        return sendJson(
+          res,
+          {
+            ok: false,
+            code: "reason_required",
+            error:
+              "priority release needs a reason: who waits on this run, and why",
+          },
+          400,
+        );
+    }
     const waitRaw = body.wait_seconds ?? 20;
     if (typeof waitRaw !== "number" || !Number.isFinite(waitRaw) || waitRaw < 0)
       return sendJson(
         res,
         { ok: false, error: "wait_seconds is a number of seconds, 0 or more" },
+        400,
+      );
+    // Issue 625: where the run may go: this machine (the default), any
+    // test box, or one box by name (a runner on that box).
+    const where = body.where;
+    if (
+      where !== undefined &&
+      !(
+        where === "any" ||
+        where === "local" ||
+        (typeof where === "string" &&
+          store.boxes().some((b) => b.name === where))
+      )
+    )
+      return sendJson(
+        res,
+        {
+          ok: false,
+          error: "where is any, local, or the name of a test box set here",
+        },
+        400,
+      );
+    if (where !== undefined && kind !== "browser")
+      return sendJson(
+        res,
+        { ok: false, error: "where goes with kind browser" },
+        400,
+      );
+    // On macOS a browser ask declares a container browser (a Setting).
+    const rawEndpoint = body.browser_endpoint ?? body.browserEndpoint;
+    const endpoint =
+      rawEndpoint === undefined ? undefined : String(rawEndpoint).trim();
+    const verdict = browserSlotCheck({
+      kind,
+      ...(endpoint !== undefined ? { endpoint } : {}),
+      ...(typeof where === "string" ? { where } : {}),
+      platform: store.platform,
+      requiresContainer: store.settings().browserRequiresContainer,
+    });
+    if (!verdict.ok)
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: verdict.code,
+          error: browserSlotRefusal(verdict, {
+            lang: "en",
+            surface: "field",
+            cli: product().cli,
+            ...(endpoint !== undefined ? { value: endpoint } : {}),
+          }),
+        },
         400,
       );
     // At most the lapse time (a Setting): the caller hears back in time.
@@ -302,6 +435,9 @@ async function handleRunnerRoute(
         label,
         est,
         waitMs,
+        ...(reason !== undefined ? { reason } : {}),
+        ...(typeof where === "string" ? { where } : {}),
+        ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       });
     } finally {
       const n = (ASKING.get(runner.id) ?? 1) - 1;
@@ -371,6 +507,62 @@ async function handleRunnerTokens(
     principalOf(req),
   );
   return sendJson(res, { ok: true, runners: d.runners().list() });
+}
+
+/**
+ * Issue 625: a person lists, sets and removes the test boxes. An agent, an
+ * agent's claim or a runner token is refused; a signed-out page is told to
+ * sign in. Each change goes in this install's audit.
+ */
+async function handleBoxes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: GateRouteDeps,
+): Promise<void> {
+  if (agentPrincipalOf(req) || auditActorOf(req) || runnerPrincipalOf(req))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error: "only a person lists or changes the test boxes",
+      },
+      403,
+    );
+  if (!principalOf(req)?.startsWith("person:"))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_required",
+        error: "sign in to see the test boxes",
+      },
+      401,
+    );
+  const store = d.store();
+  if (pathname === "/api/gate-slots/boxes" && req.method === "GET")
+    return sendJson(res, { ok: true, boxes: store.boxes() });
+  if (req.method !== "POST")
+    return sendJson(res, { ok: false, error: "POST only" }, 405);
+  const body = await bodyOf(req);
+  if (!body) return sendJson(res, TOO_BIG, 400);
+  const audit = (detail: string) =>
+    (d.audit ?? recordAction)(
+      null,
+      { verb: "gate-box", detail },
+      principalOf(req),
+    );
+  if (pathname === "/api/gate-slots/boxes") {
+    const c = checkBox(body.box);
+    if (!c.ok) return sendJson(res, { ok: false, error: c.error }, 400);
+    setTestBox(store, c.box, audit);
+    return sendJson(res, { ok: true, boxes: store.boxes() });
+  }
+  const name = typeof body.name === "string" ? body.name : "";
+  if (!removeTestBox(store, name, audit))
+    return sendJson(res, { ok: false, error: "no such test box" }, 404);
+  return sendJson(res, { ok: true, boxes: store.boxes() });
 }
 
 /**
@@ -461,6 +653,11 @@ export async function handleGateRoutes(
     pathname === "/api/gate-slots/runners/revoke"
   )
     return handleRunnerTokens(req, res, pathname, d);
+  if (
+    pathname === "/api/gate-slots/boxes" ||
+    pathname === "/api/gate-slots/boxes/remove"
+  )
+    return handleBoxes(req, res, pathname, d);
   if (pathname === "/api/gate-slots") {
     if (req.method !== "GET")
       return sendJson(res, { ok: false, error: "GET only" }, 405);
@@ -498,4 +695,162 @@ export async function handleGateRoutes(
     principalOf(req),
   );
   return sendJson(res, { ok: true, slots: gateView(d.store()).slots });
+}
+
+/**
+ * Issue 625: set one test box and record it. The person's route and the
+ * held write gate_box_set both come here.
+ */
+export function setTestBox(
+  store: GateStore,
+  box: GateBox,
+  audit: (detail: string) => void,
+  by = "",
+): GateBox {
+  const set = store.setBox(box);
+  audit(`test box ${set.name} set (${set.browser_slots} browser slots)${by}`);
+  return set;
+}
+
+/** Issue 625: remove one test box and record it (false: no such box). */
+export function removeTestBox(
+  store: GateStore,
+  name: string,
+  audit: (detail: string) => void,
+  by = "",
+): boolean {
+  if (!store.removeBox(name)) return false;
+  audit(`test box ${name} removed${by}`);
+  return true;
+}
+
+/** The fields of a box the Allow card shows, in order (snake_case → key). */
+const BOX_CARD_FIELDS: readonly [keyof GateBox, string][] = [
+  ["ssh", "ssh"],
+  ["ssh_port", "ssh_port"],
+  ["ssh_identity", "ssh_identity"],
+  ["playwright", "playwright"],
+  ["browser_slots", "slots"],
+  ["hold_file", "hold_file"],
+  ["time_scale", "time_scale"],
+  ["playwright_version", "playwright_version"],
+  ["min_free_mem_mb", "min_free_mem_mb"],
+];
+
+/** The English line for each field on the Allow card. */
+const BOX_CARD_WORDS: Record<string, string> = {
+  ssh: "SSH",
+  ssh_port: "SSH port",
+  ssh_identity: "SSH key file",
+  playwright: "Playwright address",
+  slots: "Browser slots",
+  hold_file: "Hold file",
+  time_scale: "Time scale",
+  playwright_version: "Playwright version",
+  min_free_mem_mb: "Least free memory (MB)",
+};
+
+/** Unset on the card: the same in every language. */
+const UNSET = "—";
+
+/**
+ * Issue 625 follow-up: the held writes gate_box_set and gate_box_remove.
+ * An agent asks to add, replace or remove a test box; only the person's
+ * own Allow changes it (critical: it widens where agents' runs go, and a
+ * remove deletes). The box is checked at ask time with checkBox, and the
+ * Allow card shows every field. On Allow it runs through setTestBox or
+ * removeTestBox, as the person's route does, and the audit says who
+ * asked and who allowed.
+ */
+export function gateBoxOps(d: {
+  store: () => GateStore;
+  audit?: typeof recordAction;
+}): { set: HeldOp; remove: HeldOp } {
+  const audit = (detail: string) =>
+    (d.audit ?? recordAction)(null, { verb: "gate-box", detail });
+  const by = (asked?: AskedBy) =>
+    `; asked by ${asked?.agent ? `agent:${asked.agent}` : "a person"}, allowed by ${asked?.decidedBy ?? "the person"}`;
+  const set: HeldOp = {
+    check(a) {
+      const c = checkBox(a.box);
+      if (!c.ok) return { ok: false, error: c.error };
+      const b = c.box;
+      const replaces = d
+        .store()
+        .boxes()
+        .some((x) => x.name === b.name);
+      const shown = (k: keyof GateBox) =>
+        b[k] === undefined ? UNSET : String(b[k]);
+      return {
+        ok: true,
+        personOnly: true,
+        args: { box: b },
+        summary: `${replaces ? "replace" : "add"} the test box "${b.name}"`,
+        params: { name: b.name, ...(replaces ? {} : { isNew: "1" }) },
+        details: [
+          replaces
+            ? `Replaces the test box "${b.name}" with these settings. Its browser slots take gate runs from agents.`
+            : `Adds the test box "${b.name}". Its browser slots take gate runs from agents.`,
+          ...BOX_CARD_FIELDS.map(
+            ([k, w]) => `${BOX_CARD_WORDS[w]}: ${shown(k)}`,
+          ),
+        ],
+        detailKeys: [
+          {
+            key: replaces
+              ? "ap.det.gate_box_set.replaces"
+              : "ap.det.gate_box_set.adds",
+            vars: { name: b.name },
+          },
+          ...BOX_CARD_FIELDS.map(([k, w]) => ({
+            key: `ap.det.gate_box_set.${w}`,
+            vars: { v: shown(k) },
+          })),
+        ],
+      };
+    },
+    run(a, asked) {
+      try {
+        const c = checkBox(a.box);
+        if (!c.ok) return Promise.resolve({ ok: false, error: c.error });
+        const b = setTestBox(d.store(), c.box, audit, by(asked));
+        return Promise.resolve({ ok: true, box: b });
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: (e as Error).message });
+      }
+    },
+  };
+  const remove: HeldOp = {
+    check(a) {
+      const name = typeof a.name === "string" ? a.name.trim() : "";
+      if (!name) return { ok: false, error: "give name: the test box's name" };
+      if (
+        !d
+          .store()
+          .boxes()
+          .some((b) => b.name === name)
+      )
+        return { ok: false, error: `no test box ${name}` };
+      return {
+        ok: true,
+        personOnly: true,
+        args: { name },
+        summary: `remove the test box "${name}"`,
+        params: { name },
+        details: [
+          `Removes the test box "${name}". Runs on it now finish; no new run goes there.`,
+        ],
+        detailKeys: [{ key: "ap.det.gate_box_remove.what", vars: { name } }],
+      };
+    },
+    run(a, asked) {
+      const name = String(a.name);
+      return Promise.resolve(
+        removeTestBox(d.store(), name, audit, by(asked))
+          ? { ok: true, name }
+          : { ok: false, error: `no test box ${name}` },
+      );
+    },
+  };
+  return { set, remove };
 }

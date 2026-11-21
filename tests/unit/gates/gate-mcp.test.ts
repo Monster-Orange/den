@@ -47,7 +47,11 @@ function ctx(dir?: string, actor = "agent:coder"): ToolContext {
     } as unknown as ToolContext["cfg"],
     cli: "acme",
     scope: { workspace: "north", actor },
-    gates: new GateStore({ dir: d, alive: () => true }),
+    gates: new GateStore({
+      platform: "linux",
+      dir: d,
+      alive: () => true,
+    }),
   };
 }
 
@@ -137,10 +141,18 @@ describe("gate slots over MCP", () => {
       priorityMax: 1,
       priorityPassLimitMinutes: 60,
       priorityAgents: true,
+      priorityRunners: true,
+      claimMinutes: 3,
+      mcpRenewMinutes: 5,
+      mcpLapseMinutes: 15,
+      mcpGraceMinutes: 15,
+      browserRequiresContainer: false,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,
+      boxCheckTimeoutSeconds: 8,
+      boxRecheckSeconds: 30,
     });
   });
 

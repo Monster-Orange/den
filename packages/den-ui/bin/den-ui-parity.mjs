@@ -123,7 +123,9 @@ export const COMPONENTS = {
   },
   whatsnew: {
     label: "What's new (release notes pop-up)",
-    markup: [id("cl-overlay"), cls("cl-overlay"), cls("cl-box")],
+    // Issue 793: now the kit's dialog frame (.cl-dlg); the old overlay's
+    // names still count as a copy.
+    markup: [id("cl-overlay"), cls("cl-dlg"), cls("cl-overlay"), cls("cl-box")],
     css: [
       "cl-overlay",
       "cl-box",
@@ -131,6 +133,9 @@ export const COMPONENTS = {
       "cl-body",
       "cl-footer",
       "cl-got-it",
+      "cl-dlg",
+      "cl-ver",
+      "cl-items",
     ],
     code: ["changelogView", "whatsNewHtml"],
     files: ["whatsnew.js", "whatsnew.css", "changelog-view.js"],

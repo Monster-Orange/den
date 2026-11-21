@@ -161,6 +161,7 @@ describe("the store's audit (issue 715)", () => {
   const store = () => {
     let now = at(10);
     return new GateStore({
+      platform: "linux",
       dir: tmp(),
       alive: () => true,
       now: () => (now += 1000),
@@ -278,7 +279,11 @@ function deps(env: NodeJS.ProcessEnv = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const d: GateDeps = {
-    store: new GateStore({ dir: tmp(), alive: () => true }),
+    store: new GateStore({
+      platform: "linux",
+      dir: tmp(),
+      alive: () => true,
+    }),
     env,
     out: (l) => out.push(l),
     err: (l) => err.push(l),
@@ -434,7 +439,11 @@ describe("gate_slot_request with priority (issue 715)", () => {
   });
 
   it("takes priority with a reason, and refuses one without", async () => {
-    const store = new GateStore({ dir: tmp(), alive: () => true });
+    const store = new GateStore({
+      platform: "linux",
+      dir: tmp(),
+      alive: () => true,
+    });
     store.ask({
       kind: "browser",
       who: "h",
