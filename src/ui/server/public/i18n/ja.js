@@ -914,7 +914,10 @@
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
-      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
+      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。単体テストとブラウザーテストは別々の列で待ちます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_cpu_beside": "ブラウザーテストと並んで動かす単体テスト",
+    "set.server.gate_cpu_beside.d":
+      "ブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。同時に動かす単体テストの数を超えることはありません。0 ではブラウザーテストは単独で動きます。テスト用マシンで動くブラウザーテストは数えません。__DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -935,9 +938,10 @@
       "種類ごとに同時に順番を飛ばせるリリース実行",
     "set.server.gate_priority_max.d":
       "人が待っていて、リリース優先の印が付いたリリース実行は、同じ種類の待機中の実行より先に進みます。実行中のものを止めることはありません。2 つ目は 1 つ目の後ろで待ちます。0 でオフになります。__DEN_CLI__ gate settings --priority-max 1",
-    "set.server.gate_priority_pass": "この時間待った実行は追い越されない（分）",
+    "set.server.gate_priority_pass":
+      "この時間待った印付きのリリース実行は追い越されない（分）",
     "set.server.gate_priority_pass.d":
-      "優先されたリリース実行は他の待機中の実行より先に進みますが、この時間待っている実行は追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+      "優先されたリリース実行は、同じ種類の他のすべての待機中の実行より先に進みます。リリース優先の印が付いた実行どうしでは、この時間待っているものは追い越しません。0 では他の印付きの実行を追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     "set.server.gate_priority_agents":
       "エージェントもリリースの優先を依頼できる",
     "set.server.gate_priority_agents.d":

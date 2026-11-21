@@ -48,6 +48,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
+    // Issue 751: cpu runs beside a browser run.
+    cpu_slots_beside_browser: true,
     overrun_margin_minutes: true,
     remote_renew_seconds: true,
     remote_lapse_seconds: true,
@@ -230,6 +232,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.class_order",
         "gate_slots.class_windows",
         "gate_slots.cpu_slots",
+        "gate_slots.cpu_slots_beside_browser",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",

@@ -33,7 +33,12 @@ import * as net from "net";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import { windowHeld } from "./classes.js";
-import { queueOrder, type GateEntry, type GateSettings } from "./rules.js";
+import {
+  localRoom,
+  queueOrder,
+  type GateEntry,
+  type GateSettings,
+} from "./rules.js";
 
 export const BOX_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -262,33 +267,41 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
  * machine). With no boxes it gives exactly what `grants` gives. A browser
  * run that may go anywhere takes this machine first, then the first open
  * box with a free slot. A waiter that can't start keeps every slot it
- * waits for from the waiters behind it (first come, first served), and
- * leaves the others free. Issue 803: a waiter its class's window holds
- * back is passed over and holds no slot from the runs behind it.
+ * waits for from the waiters of its kind behind it (first come, first
+ * served, in each kind's line: issue 751), and leaves the others free.
+ * This machine's room is `localRoom` (rules.ts): cpu runs beside a browser
+ * run up to the beside count; a browser run on a box holds no room here.
+ * Issue 803: a waiter its class's window holds back is passed over and
+ * holds no slot from the runs behind it.
  */
 export function assign(
   entries: GateEntry[],
   s: Pick<GateSettings, "cpuSlots"> &
     Partial<
-      Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes" | "classes">
+      Pick<
+        GateSettings,
+        | "cpuSlotsBesideBrowser"
+        | "priorityMax"
+        | "priorityPassLimitMinutes"
+        | "classes"
+      >
     >,
   now: number,
   boxes: BoxCap[] = [],
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
-  let browserHeld = holders.some((e) => e.kind === "browser" && !e.box);
-  let cpuHeld = holders.filter((e) => e.kind === "cpu").length;
+  const room = localRoom(entries, s);
   const used: Record<string, number> = {};
   for (const h of holders) if (h.box) used[h.box] = (used[h.box] ?? 0) + 1;
+  // Issue 751: this machine is reserved per kind; a box is browser only.
+  const key = (place: string, kind: GateEntry["kind"]) =>
+    place === "local" ? `local:${kind}` : place;
   const reserved = new Set<string>();
   const out: { id: string; box?: string }[] = [];
   const cap = (n: string) => boxes.find((b) => b.name === n);
   const free = (place: string, kind: GateEntry["kind"]): boolean => {
-    if (reserved.has(place)) return false;
-    if (place === "local")
-      return kind === "browser"
-        ? !browserHeld && cpuHeld === 0
-        : !browserHeld && cpuHeld < Math.max(1, s.cpuSlots);
+    if (reserved.has(key(place, kind))) return false;
+    if (place === "local") return room.fits(kind);
     const b = cap(place);
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
@@ -298,12 +311,12 @@ export function assign(
     const places = placesOf(w, boxes);
     const at = places.find((p) => free(p, w.kind));
     if (at === undefined) {
-      for (const p of places) reserved.add(p);
+      for (const p of places) reserved.add(key(p, w.kind));
+      if (places.includes("local")) room.wait(w.kind);
       continue;
     }
     if (at === "local") {
-      if (w.kind === "browser") browserHeld = true;
-      else cpuHeld++;
+      room.take(w.kind);
       out.push({ id: w.id });
     } else {
       used[at] = (used[at] ?? 0) + 1;
@@ -321,7 +334,13 @@ export function boxesWanted(
   entries: GateEntry[],
   s: Pick<GateSettings, "cpuSlots"> &
     Partial<
-      Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes" | "classes">
+      Pick<
+        GateSettings,
+        | "cpuSlotsBesideBrowser"
+        | "priorityMax"
+        | "priorityPassLimitMinutes"
+        | "classes"
+      >
     >,
   now: number,
   boxes: BoxCap[],

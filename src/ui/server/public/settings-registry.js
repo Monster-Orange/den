@@ -2453,13 +2453,28 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Unit test runs at once, on this machine",
     description:
-      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. Unit and browser test runs wait in separate lines. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
     keywords: ["gate", "slot", "tests", "queue", "cpu", "parallel"],
     scope: "user",
     keys: ["gate_slots.cpu_slots"],
     control: { type: "number", min: 1, max: 64, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.cpuSlots ?? 2,
     write: (v, ctx) => ctx.post({ gate_slots: { cpu_slots: v } }),
+  },
+  {
+    // Issue 751: cpu runs beside a browser run on this machine.
+    id: "server.gate_cpu_beside",
+    category: "server",
+    label: "Unit test runs beside a browser test run",
+    description:
+      "How many unit-test runs may run on this machine while a browser test run does, never more than the unit test runs at once. 0: a browser test run runs alone. A browser run on a test box doesn't count. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    keywords: ["gate", "slot", "tests", "queue", "cpu", "browser", "beside"],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots_beside_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlotsBesideBrowser ?? 2,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { cpu_slots_beside_browser: v } }),
   },
   {
     id: "server.gate_overrun",
@@ -2545,14 +2560,14 @@ export const DEN_SETTINGS = [
   {
     id: "server.gate_priority_pass",
     category: "server",
-    label: "A run waiting this long is never passed, in minutes",
+    label: "Waiting this long, a marked release run is never passed, in minutes",
     description:
-      "A release run with priority goes ahead of other waiting runs, but never ahead of one that has waited this long. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+      "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     keywords: ["gate", "slot", "priority", "release", "starvation", "wait"],
     scope: "user",
     keys: ["gate_slots.priority_pass_limit_minutes"],
-    control: { type: "number", min: 1, max: 1440, step: 1 },
-    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 60,
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 0,
     write: (v, ctx) =>
       ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
   },

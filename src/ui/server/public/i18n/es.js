@@ -938,7 +938,11 @@
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
-      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Las pruebas unitarias y las de navegador esperan en colas separadas. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_cpu_beside":
+      "Pruebas unitarias junto a una prueba de navegador",
+    "set.server.gate_cpu_beside.d":
+      "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador, nunca más que las pruebas unitarias a la vez. 0: una prueba de navegador se ejecuta sola. Una prueba de navegador en una máquina de pruebas no se incluye. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
@@ -964,9 +968,9 @@
     "set.server.gate_priority_max.d":
       "Una ejecución de versión que una persona espera, marcada con prioridad de versión, pasa delante de las demás que esperan de su tipo. Nunca detiene una que ya se ejecuta. Una segunda espera detrás de la primera. 0 lo desactiva. __DEN_CLI__ gate settings --priority-max 1",
     "set.server.gate_priority_pass":
-      "Una ejecución que espera tanto nunca se adelanta, en minutos",
+      "Una ejecución de versión marcada que espera tanto nunca se adelanta, en minutos",
     "set.server.gate_priority_pass.d":
-      "Una ejecución de versión con prioridad pasa delante de las demás que esperan, pero nunca de una que lleva esperando este tiempo. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+      "Una ejecución de versión con prioridad pasa delante de todas las demás que esperan de su tipo. Entre las marcadas con prioridad de versión, nunca pasa a una que lleva esperando este tiempo. 0: nunca pasa a otra marcada. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     "set.server.gate_priority_agents":
       "Los agentes pueden pedir prioridad de versión",
     "set.server.gate_priority_agents.d":
