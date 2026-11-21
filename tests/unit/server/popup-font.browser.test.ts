@@ -19,7 +19,9 @@
  * whose display and Japanese faces are serif, a monospace UI face, a theme
  * with no `type` at all; then a theme whose CSS has no --sans (the kit's
  * tokens.css still has it), and no --sans anywhere (the kit's own
- * fallback is all there is: the pop-up still never draws in serif).
+ * fallback is all there is: the pop-up still never draws in serif). The
+ * theme's CSS is theme-runtime.ts's; the kit's sheets are served as
+ * ui-assets.ts lists them.
  *
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
@@ -271,7 +273,7 @@ async function pageOn(
 /** The page's globals this file uses. */
 type PageWin = {
   denShell?: { api: (m: string, u: string, b?: unknown) => Promise<unknown> };
-  toggleAutostart?: (repo: string, on: boolean) => void;
+  toggleAutostart?: (repo: string, on: boolean) => unknown;
 };
 
 const WHATS_NEW = "#cl-overlay.open";
@@ -363,9 +365,10 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       const pop = `#autostart-confirm-overlay, ${CONFIRM}`;
       const t0 = Date.now();
       while (!(await p.$(pop)) && Date.now() - t0 < 20_000) {
-        await p.evaluate(() =>
-          (window as unknown as PageWin).toggleAutostart?.("shop", false),
-        );
+        // Not awaited: it answers only once the question is answered.
+        await p.evaluate(() => {
+          void (window as unknown as PageWin).toggleAutostart?.("shop", false);
+        });
         await p.waitForTimeout(400);
       }
       await p.locator(pop).first().waitFor();

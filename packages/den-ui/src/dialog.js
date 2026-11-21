@@ -454,6 +454,7 @@ export function mountDialog(target, o = {}) {
   let opener = null;
   let settle = null;
   let gone = false;
+  let shown = false;
   const handle = { dialog: d, show, close, closed: Promise.resolve("") };
 
   function close(value = "cancel") {
@@ -473,6 +474,7 @@ export function mountDialog(target, o = {}) {
       opener = openerOf(from ?? o.opener);
       d.returnValue = "";
       handle.closed = new Promise((r) => (settle = r));
+      shown = true;
       if (typeof d.showModal === "function") d.showModal();
       else d.setAttribute("open", "");
       // A modal the page's own style hides would leave the page dead
@@ -533,7 +535,13 @@ export function mountDialog(target, o = {}) {
       }
     }
   });
-  d.addEventListener("close", () => {
+  // Issue 793: what a close does runs once per showing, as soon as the
+  // dialog is closed (its open attribute goes, seen in a microtask), not
+  // only at the close event, which the browser fires a task later: so a
+  // pop-up's state and focus are right the moment it is shut.
+  const finish = () => {
+    if (!shown || d.open) return;
+    shown = false;
     const value = d.returnValue || "cancel";
     o.onClose?.(value, d);
     const s = settle;
@@ -547,9 +555,16 @@ export function mountDialog(target, o = {}) {
     opener = null;
     if (remove) {
       gone = true;
+      watch?.disconnect();
       d.remove();
     }
-  });
+  };
+  d.addEventListener("close", finish);
+  const watch =
+    typeof MutationObserver === "function"
+      ? new MutationObserver(finish)
+      : null;
+  watch?.observe(d, { attributes: true, attributeFilter: ["open"] });
   if (o.show !== false) show();
   return handle;
 }

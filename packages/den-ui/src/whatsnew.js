@@ -36,8 +36,10 @@ const cfg = {
 };
 let entries = [];
 let showAll = false;
-/** The mounted frame (mountDialog's handle), made once. */
+/** The open frame (mountDialog's handle); null while closed. */
 let frame = null;
+/** Waiting for another pop-up to close before opening. */
+let waiting = false;
 
 const lang = () => (typeof cfg.lang === "function" ? cfg.lang() : cfg.lang);
 const t = (key, vars) => kitT(lang(), key, vars);
@@ -80,9 +82,15 @@ export async function loadWhatsNew() {
   return entries;
 }
 
-/** The dialog, made once (closed until opened). */
-export function ensureWhatsNew() {
-  if (frame && document.getElementById("cl-overlay") === frame.dialog) return;
+/**
+ * Kept for hosts that call it at load: the dialog is made when it opens
+ * and taken off the page when it closes (issue 793), like the kit's other
+ * pop-ups, so nothing of it is on the page while closed.
+ */
+export function ensureWhatsNew() {}
+
+/** The dialog, made for one opening. */
+function makeFrame() {
   const report = cfg.reportButton
     ? cfg.reportButton()
     : reportButtonHtml({ inFoot: false, lang: lang() });
@@ -119,7 +127,7 @@ export function ensureWhatsNew() {
       },
     ],
   });
-  frame = mountDialog(html, { show: false, remove: false, onClose: closed });
+  frame = mountDialog(html, { show: false, onClose: closed });
   const d = frame.dialog;
   d.querySelector("#cl-more")?.addEventListener("click", () => {
     showAll = !showAll;
@@ -144,6 +152,7 @@ export function ensureWhatsNew() {
 /** After it closes, however: remember the newest version as seen. */
 function closed() {
   frame?.dialog.classList.remove("open");
+  frame = null;
   if (cfg.onClose) cfg.onClose(entries[0]?.version ?? null);
   const pip = document.getElementById("v-pip");
   if (pip) pip.style.display = "none";
@@ -378,12 +387,37 @@ export function buildMarkdown(entry) {
   return lines.join("\n");
 }
 
+/** Another pop-up of the page's that is open as a modal, if any. */
+function otherModal() {
+  return [...document.querySelectorAll("dialog[open]")].find(
+    (d) => d.id !== "cl-overlay" && d.matches(":modal"),
+  );
+}
+
 export function openWhatsNew() {
+  // Issue 793: never over a question or pop-up already open (a modal sits
+  // on top of the one before it): it opens once that one closes.
+  const other = otherModal();
+  if (other) {
+    if (!waiting) {
+      waiting = true;
+      other.addEventListener(
+        "close",
+        () => {
+          // Closed (or seen) meanwhile: nothing to open.
+          if (!waiting) return;
+          waiting = false;
+          setTimeout(openWhatsNew, 0);
+        },
+        { once: true },
+      );
+    }
+    return;
+  }
   showAll = false;
-  ensureWhatsNew();
+  if (!frame) makeFrame();
   renderBody();
-  const d = frame?.dialog;
-  if (!d) return;
+  const d = frame.dialog;
   if (!d.open) {
     // Focus goes back to what opened it; nothing focused (a first-visit
     // open): the version chip.
@@ -406,6 +440,7 @@ export function closeWhatsNew() {
   // Issue 143: a field of the page's own that wanted the keyboard while
   // this was open (a deep link's composer) gets it now (focusWhenFree);
   // else what opened it, else the version chip.
+  waiting = false;
   if (frame?.dialog.open) frame.close("cancel");
   else closed();
 }

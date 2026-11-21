@@ -47,7 +47,7 @@ describe("changelogView", () => {
     );
     expect(src).toMatch(/changelogView\(entries, showAll\)/);
     expect(src).toMatch(
-      /export function openWhatsNew\(\) \{\s*showAll = false;/,
+      /export function openWhatsNew\(\) \{[\s\S]{0,900}?\n  showAll = false;/,
     );
     expect(src).toMatch(/aria-expanded/);
     // Issue 793: the kit's dialog frame (a panel), not an overlay of its
