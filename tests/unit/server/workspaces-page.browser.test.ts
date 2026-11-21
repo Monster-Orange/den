@@ -229,8 +229,13 @@ const repoOrder = (p: Page) =>
 const reposAre = (p: Page, want: string[]) =>
   p.waitForFunction(
     (w) =>
-      // A repo row is the one headed by its repo (th scope=row).
-      [...document.querySelectorAll('#repo-table tr:has(> th[scope="row"])')]
+      // A repo row: headed by its name (th scope=row) and, unlike a
+      // service's sub-row, naming no service (data-id).
+      [
+        ...document.querySelectorAll(
+          '#repo-table tr[data-repo]:not([data-id]):has(> th[scope="row"])',
+        ),
+      ]
         .map((r) => (r as HTMLElement).dataset.repo)
         .join(",") === w,
     want.join(","),
@@ -638,7 +643,10 @@ describe("R24d: one repo table", () => {
     ).toEqual([false, false]);
     await p.fill("#tbl-find", "nothing-like-it");
     await p.waitForFunction(
-      () => !document.querySelector('#repo-table th[scope="row"]'),
+      () =>
+        !document.querySelector(
+          '#repo-table tr[data-repo]:not([data-id]):has(> th[scope="row"])',
+        ),
       undefined,
       { timeout: 5_000 },
     );
@@ -648,7 +656,9 @@ describe("R24d: one repo table", () => {
     await p.fill("#tbl-find", "");
     await p.waitForFunction(
       () =>
-        document.querySelectorAll('#repo-table th[scope="row"]').length === 3,
+        document.querySelectorAll(
+          '#repo-table tr[data-repo]:not([data-id]):has(> th[scope="row"])',
+        ).length === 3,
       undefined,
       { timeout: 5_000 },
     );
