@@ -47,7 +47,11 @@ function ctx(dir?: string, actor = "agent:coder"): ToolContext {
     } as unknown as ToolContext["cfg"],
     cli: "acme",
     scope: { workspace: "north", actor },
-    gates: new GateStore({ dir: d, alive: () => true }),
+    gates: new GateStore({
+      platform: "linux",
+      dir: d,
+      alive: () => true,
+    }),
   };
 }
 
@@ -142,6 +146,7 @@ describe("gate slots over MCP", () => {
       mcpRenewMinutes: 5,
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
+      browserRequiresContainer: false,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,

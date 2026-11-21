@@ -80,6 +80,7 @@ function storeWith(boxes: GateBox[]) {
   const f = fakeProbe();
   let now = T0;
   const store = new GateStore({
+    platform: "linux",
     dir: tmp(),
     alive: () => true,
     now: () => now,

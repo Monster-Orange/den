@@ -39,7 +39,12 @@ const INSTALL = "/x/den-state";
 
 function setup(dir = tmp()) {
   let now = T0;
-  const store = new GateStore({ dir, now: () => now, alive: () => true });
+  const store = new GateStore({
+    platform: "linux",
+    dir,
+    now: () => now,
+    alive: () => true,
+  });
   return {
     dir,
     store,
