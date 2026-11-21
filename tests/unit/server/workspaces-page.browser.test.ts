@@ -225,6 +225,38 @@ const repoOrder = (p: Page) =>
   p.$$eval("#repo-table tr.repo", (rs) =>
     rs.map((r) => (r as HTMLElement).dataset.repo),
   );
+/** Wait until the table's repo rows are `want` (in that order). */
+const reposAre = (p: Page, want: string[]) =>
+  p.waitForFunction(
+    (w) =>
+      // A repo row is the one headed by its repo (th scope=row).
+      [...document.querySelectorAll('#repo-table tr:has(> th[scope="row"])')]
+        .map((r) => (r as HTMLElement).dataset.repo)
+        .join(",") === w,
+    want.join(","),
+    { timeout: 5_000 },
+  );
+/** Wait until queue's sub-rows' hidden flags are `want`, top to bottom. */
+const queueSubsHidden = (p: Page, want: boolean[]) =>
+  p.waitForFunction(
+    (w) =>
+      // A service's sub-row is the one that names the service (data-id).
+      [
+        ...document.querySelectorAll(
+          '#repo-table tr[data-id][data-repo="queue"]',
+        ),
+      ]
+        .map((r) => String((r as HTMLElement).hidden))
+        .join(",") === w,
+    want.join(","),
+    { timeout: 5_000 },
+  );
+/** The group-by pref's save, answered by the server. */
+const groupSaved = (p: Page) =>
+  p.waitForResponse(
+    (r) => r.url().endsWith("/api/settings") && r.request().method() === "POST",
+    { timeout: 10_000 },
+  );
 /** Wait for the health to land in the table (queue's worker reads down). */
 const healthLanded = (p: Page) =>
   p.waitForSelector('#repo-table tr.fix[data-repo="queue"]', {
@@ -268,7 +300,17 @@ describe("R24a/b: the page is Workspaces", () => {
       timeout: 5_000,
     });
     await p.keyboard.type("Local Dev");
-    await p.waitForTimeout(150);
+    // Filtered: an option reading Projects is listed.
+    await p.waitForFunction(
+      () =>
+        [
+          ...document.querySelectorAll(
+            '[role="listbox"] [role="option"], .den-pal [role="option"]',
+          ),
+        ].some((o) => /^Projects/.test((o.textContent ?? "").trim())),
+      undefined,
+      { timeout: 5_000 },
+    );
     const options = await p.$$eval(
       '[role="listbox"] [role="option"], .den-pal [role="option"]',
       (es) => es.map((e) => e.textContent ?? ""),
@@ -290,7 +332,9 @@ describe("R24c: the workspace header", () => {
     await p.waitForSelector(".dg-card", { timeout: 15_000 });
     const ids = await p.$$eval(".dg-card", (cs) =>
       [
-        ...new Set(cs.map((c) => (c as HTMLElement).dataset.id!.split("/")[0])),
+        ...new Set(
+          cs.map((c) => (c as HTMLElement).dataset.id!.replace(/\/.*$/, "")),
+        ),
       ].sort(),
     );
     expect(ids).toEqual(["notes", "queue", "web"]);
@@ -451,7 +495,10 @@ describe("R24d: one repo table", () => {
     if (!browser) return;
     const p = await open();
     await healthLanded(p);
-    expect((await repoOrder(p))[0]).toBe("queue");
+    // queue sorts first; the healthy two follow.
+    const [top, ...rest] = await repoOrder(p);
+    expect(top).toBe("queue");
+    expect(rest.sort()).toEqual(["notes", "web"]);
     const fix = await p.$eval('#repo-table tr.fix[data-repo="queue"]', (e) => ({
       text: e.querySelector(".fix-t")!.textContent!.replace(/\s+/g, " ").trim(),
       buttons: [...e.querySelectorAll("button")].map((b) =>
@@ -469,7 +516,7 @@ describe("R24d: one repo table", () => {
     );
     const said = fix.text
       .replace(/^queue\/worker · /, "")
-      .split(" · failed at")[0];
+      .replace(/ · failed at.*$/, "");
     expect(said).toMatch(/127\.0\.0\.1:\d+\/health/);
     expect(card).toContain(said);
     // A repo of several services summarises, in the problem colour; the
@@ -507,6 +554,7 @@ describe("R24d: one repo table", () => {
   it("Group by Application matches `acme apps`, and is kept as a user pref", async () => {
     if (!browser) return;
     const p = await open();
+    const saved = groupSaved(p);
     await p.click('#tbl-group [data-group="app"]');
     await p.waitForSelector('#repo-table tbody[data-group^="app:"]');
     const groups = await p.$$eval("#repo-table tbody", (bs) =>
@@ -544,7 +592,7 @@ describe("R24d: one repo table", () => {
             : "Not in an application",
         );
     // Kept: the user's settings say so, and a fresh page opens grouped.
-    await p.waitForTimeout(300);
+    expect((await saved).ok()).toBe(true);
     const s = (await (await fetch(api("/api/settings"))).json()) as {
       graph?: { groupBy?: string };
     };
@@ -554,8 +602,9 @@ describe("R24d: one repo table", () => {
     expect(
       await q.getAttribute('#tbl-group [data-group="app"]', "aria-pressed"),
     ).toBe("true");
+    const reset = groupSaved(q);
     await q.click('#tbl-group [data-group="none"]');
-    await q.waitForTimeout(300);
+    expect((await reset).ok()).toBe(true);
     await q.context().close();
   }, 45_000);
 
@@ -563,7 +612,8 @@ describe("R24d: one repo table", () => {
     if (!browser) return;
     const p = await open();
     await p.fill("#tbl-find", "WORK");
-    await p.waitForTimeout(100);
+    await reposAre(p, ["queue"]);
+    await queueSubsHidden(p, [true, false]);
     expect(await repoOrder(p)).toEqual(["queue"]);
     // A match on a service opens its repo's sub-rows: only the ones it
     // matches (0.3.0-dev.37).
@@ -580,19 +630,28 @@ describe("R24d: one repo table", () => {
     ]);
     // A match on the repo shows every one of its services.
     await p.fill("#tbl-find", "queue");
-    await p.waitForTimeout(100);
+    await queueSubsHidden(p, [false, false]);
     expect(
       await p.$$eval('#repo-table tr.sub[data-repo="queue"]', (r) =>
         r.map((e) => (e as HTMLElement).hidden),
       ),
     ).toEqual([false, false]);
     await p.fill("#tbl-find", "nothing-like-it");
-    await p.waitForTimeout(100);
+    await p.waitForFunction(
+      () => !document.querySelector('#repo-table th[scope="row"]'),
+      undefined,
+      { timeout: 5_000 },
+    );
     expect(await p.textContent("#repo-table .tbl-none")).toMatch(
       /No repo matches/,
     );
     await p.fill("#tbl-find", "");
-    await p.waitForTimeout(100);
+    await p.waitForFunction(
+      () =>
+        document.querySelectorAll('#repo-table th[scope="row"]').length === 3,
+      undefined,
+      { timeout: 5_000 },
+    );
     expect((await repoOrder(p)).sort()).toEqual(["notes", "queue", "web"]);
     await p.context().close();
   }, 30_000);
@@ -671,9 +730,12 @@ describe("R24d: one repo table", () => {
         }),
       );
     });
-    expect(await p.textContent("#repo-table thead th:nth-child(5)")).toBe(
-      "Last test run",
-    );
+    // Every column, in order: Last test run is the fifth.
+    expect(
+      await p.$$eval("#repo-table thead th", (t) =>
+        t.map((e) => e.textContent!.trim()),
+      ),
+    ).toEqual(["Repo", "Health", "Branch", "Mode", "Last test run", "Actions"]);
     const last = (repo: string) =>
       p.textContent(`#repo-table tr.repo[data-repo="${repo}"] [data-last]`);
     await p.waitForFunction(
@@ -740,10 +802,13 @@ describe("R24d: one repo table", () => {
           title: b.getAttribute("title"),
         })),
       ).toEqual({ disabled: false, title: null });
-      const before = asked.length;
+      // The row's request, asked for and stopped by the route above.
+      const stopped = p.waitForEvent("requestfailed", {
+        predicate: (r) => r.url().includes("/api/workspace/exec"),
+        timeout: 10_000,
+      });
       await p.click(sel);
-      for (let i = 0; i < 50 && asked.length === before; i++)
-        await p.waitForTimeout(100);
+      await stopped;
       await p.context().close();
     }
     expect(asked).toEqual([
@@ -814,7 +879,7 @@ describe("the CLI default is named, never a bare glyph", () => {
     const p = await open("main", "/local-dev");
     await p.waitForSelector('.ws-item[data-name="main"]');
     const row = await p.$eval(
-      '.ws-item[data-name="main"] > span:first-child',
+      '.ws-item[data-name="main"] span:has(> .ws-name)',
       (e) => ({
         text: e.textContent!.replace(/\s+/g, " ").trim(),
         tip: e.querySelector(".ws-cli-default")?.getAttribute("title") ?? "",
@@ -827,7 +892,7 @@ describe("the CLI default is named, never a bare glyph", () => {
       /Picking a project in the top bar also makes it the CLI default/,
     );
     const side = await p.$eval(
-      '.ws-item[data-name="side"] > span:first-child',
+      '.ws-item[data-name="side"] span:has(> .ws-name)',
       (e) => e.textContent!,
     );
     expect(side).not.toContain("CLI default");
