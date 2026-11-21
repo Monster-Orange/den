@@ -57,8 +57,12 @@ person (`ask`).
 
 1. `./bin/<name> web up --no-open --json`. It answers `{ok, url, port}`.
 2. Hand over, in a few short sentences:
-   - **Sign in:** run `./bin/<name> web open` in your own terminal, from `<dir>`. It opens Den in your browser on
-     this machine, signed in, so you can allow Den's agent's changes. "Den's own agent takes it from there."
+   - **Sign in, on this computer:** run `./bin/<name> web open` in your own terminal, from `<dir>`. It opens Den
+     in your browser here, signed in, so you can allow Den's agent's changes.
+   - **Sign in, from another computer** (Den runs on a server or a computer you're not at): connect with
+     `ssh -t <host>` (the `-t` matters), then run `./bin/<name> web login` from `<dir>`. Open the link it prints in
+     your browser on the computer you're at, and type the code it shows if asked. "Den's own agent takes it from
+     there."
    - **Your Den** lives in `<dir>`, and its command is `./bin/<name>`.
 
 Sign-in links are printed only in the person's own terminal, so you never ask for one.

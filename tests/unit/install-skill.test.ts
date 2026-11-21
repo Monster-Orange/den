@@ -61,4 +61,8 @@ describe("Sign-in: the hand-over is a command the person runs", () => {
       /run `\.\/bin\/<name> web open` in your own terminal/i,
     );
   });
+  it("from another computer, it says ssh -t and web login, and to open the link there", () => {
+    expect(skill()).toMatch(/ssh -t/);
+    expect(skill()).toMatch(/`\.\/bin\/<name> web login`/);
+  });
 });
