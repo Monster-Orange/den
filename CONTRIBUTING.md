@@ -359,6 +359,10 @@ items) is read from config, with no org default.
 `.github/workflows/release.yml` publishes `@monster-orange/den` with npm
 trusted publishing (no token anywhere):
 
+- A PR that changes `packages/den-ui` bumps the kit's version (its
+  `package.json` and its `package-lock.json` entry together):
+  `scripts/kit-version.mjs` fails the PR's checks and the release's den-ui
+  job otherwise, since npm already has the old version.
 - A push to `main` whose `package.json` version is not on npm yet is the
   release: the gates, the tarball and its SHA256SUMS, the tag `v<version>`,
   `npm publish` with provenance, and a GitHub release.
