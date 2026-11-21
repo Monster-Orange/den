@@ -52,6 +52,7 @@ async function setLanguage(ctx, language) {
   });
 }
 
+export const readOnly = true;
 export async function setup(ctx) {
   const s = await ctx.api("/api/settings");
   return { was: s?.language ?? null };
