@@ -148,7 +148,10 @@ async function open(width: number, path = "/services"): Promise<Page> {
 }
 
 async function openBell(p: Page): Promise<void> {
-  await p.click("#den-bell");
+  // A closed peek leaves the bell open (focus back on its row): a click
+  // on the bell then would close it.
+  if (!(await p.locator("#den-bell-pop").isVisible()))
+    await p.click("#den-bell");
   await p
     .locator('#den-bell-pop .den-bell-row[data-kind="waiting"]')
     .first()
