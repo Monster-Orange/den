@@ -16,6 +16,9 @@ const ROWS = {
   "notifications.push_ttl": [0, 2419200],
 };
 
+// Read only (issue 845): reads doctor's push line and Settings › Notifications' rows.
+export const readOnly = true;
+
 export async function setup(ctx) {
   const d = ctx.cli(["doctor"]);
   const line =
