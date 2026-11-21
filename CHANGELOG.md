@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.79] - unreleased
 
+### Fixed
+
+- Pop-ups: every button in a dialog's footer is one size and font. Report drew smaller and shorter than "Got it" and the other buttons in What's new, the Yes/No questions and the large dialogs. The kit's dialog now sets one font, size, line height and height for all of them. Report's shortcut hint stays in its smaller key style. (issue 805)
+
 ### Changed
 
 - Sign-in: Den prints a sign-in link or code only in a terminal. Where there is none (a script, a service log), `den web up` prints the address and says to run `den web login` in a terminal.

@@ -167,11 +167,25 @@
 .dk-ft > :first-child:not(.dk-btn) {
   margin-right: auto;
 }
-.dk-btn {
+/* Issue 805: every footer button, the product's Report too, is one size
+   and one font: the same family, size, line height, height and padding,
+   set here, never per page. */
+.dk-btn,
+.dk-ft .den-rb {
+  font-family: inherit;
   font-size: var(--fs-s);
+  line-height: 1.25;
   min-height: var(--tap-min);
   padding: 0 var(--space-3);
   border-radius: var(--radius-button);
+  box-sizing: border-box;
+}
+/* Report's shortcut hint keeps its smaller key style, and never makes
+   the button taller. */
+.dk-ft .den-rb kbd {
+  font: 11px/1 var(--mono);
+}
+.dk-btn {
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
@@ -198,7 +212,8 @@
   color: var(--on-accent);
 }
 @media (max-width: 480px) {
-  .dk-btn {
+  .dk-btn,
+  .dk-ft .den-rb {
     min-height: var(--tap);
   }
 }
