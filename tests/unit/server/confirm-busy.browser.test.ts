@@ -43,6 +43,13 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
+/**
+ * The kit's Yes/No question (askConfirm, role alertdialog). What's new is
+ * a kit dialog too since issue 793 (kind "panel", role dialog) and may be
+ * open on the same page, so a bare `.dk-dlg` would find both.
+ */
+const ASK = 'dialog.dk-dlg[role="alertdialog"]';
+
 async function page(at: string): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 900 },
@@ -103,7 +110,7 @@ async function confirmFirst(p: Page, done: Promise<unknown>): Promise<void> {
   let over = false;
   void done.then(() => (over = true));
   while (!over) {
-    const open = p.locator(".dk-dlg[open]");
+    const open = p.locator(`${ASK}[open]`);
     if (await open.count()) {
       await open
         .locator(first ? '[data-dk="ok"]' : '[data-dk="cancel"]')
@@ -338,7 +345,7 @@ describe("issue 133: Turn off auto-start asks with Den's dialog, in the page's l
         ).toggleAutostart("notes", false);
       });
       try {
-        await p.waitForSelector("dialog.dk-dlg[open]", { timeout: 10_000 });
+        await p.waitForSelector(`${ASK}[open]`, { timeout: 10_000 });
       } catch (err) {
         const shown = await p.evaluate(
           () =>
@@ -350,7 +357,9 @@ describe("issue 133: Turn off auto-start asks with Den's dialog, in the page's l
         );
       }
       const st = await p.evaluate(() => {
-        const d = document.querySelector("dialog.dk-dlg[open]")!;
+        const d = document.querySelector(
+          'dialog.dk-dlg[role="alertdialog"][open]',
+        )!;
         const byId = (id: string | null) =>
           id ? (document.getElementById(id)?.textContent ?? null) : null;
         const a = document.activeElement as HTMLElement | null;
@@ -375,7 +384,7 @@ describe("issue 133: Turn off auto-start asks with Den's dialog, in the page's l
       expect(st.description).toContain("ledger");
       expect(st.description).not.toMatch(/hard dependency|readiness/);
       await p.keyboard.press("Escape");
-      await p.waitForSelector("dialog.dk-dlg", { state: "detached" });
+      await p.waitForSelector(ASK, { state: "detached" });
       await p.waitForTimeout(300);
       expect(await p.evaluate(() => document.activeElement?.id)).toBe(
         "as-opener",
