@@ -690,7 +690,8 @@ describe("ci.yml (issue 398)", () => {
   it("a pull request: both Nodes, the checks, then the subset with its reasons in the summary", () => {
     const pr = ci.jobs.pr;
     expect(pr.if).toBe("github.event_name == 'pull_request'");
-    expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
+    // Issue 843: and the fast static checks.
+    expect(ci.jobs["pr-shards"].needs).toEqual(["fast", "pr"]);
     const text = runs(pr);
     for (const gate of [
       "npm run typecheck",
