@@ -942,6 +942,10 @@
       "エージェントもリリースの優先を依頼できる",
     "set.server.gate_priority_agents.d":
       "オンなら、あなたが報告した問題のリリース実行をエージェントが優先にできます。オフなら、あなただけができます。追い越しはすべて、誰がなぜ行ったかとともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_priority_runners":
+      "CI ランナーもリリースの優先を依頼できる",
+    "set.server.gate_priority_runners.d":
+      "オンなら、ランナートークンを持つ CI ジョブが理由を添えて実行をリリース実行として優先にできます。オフなら、その依頼は断られ、通常の列で待ちます。追い越しはすべて、ランナーと理由とともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-runners 1",
     "set.server.gate_runners": "CI ランナーのトークン",
     "set.server.gate_runners.d":
       "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",

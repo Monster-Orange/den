@@ -525,3 +525,102 @@ describe("review fixes: revoke, caps, dropped asks", () => {
     expect(big.status).toBe(400);
   });
 });
+
+describe("a runner asks for release priority (issue 739)", () => {
+  const ask = (
+    call: Awaited<ReturnType<typeof serve>>["call"],
+    token: string,
+    extra: Record<string, unknown> = {},
+  ) =>
+    call("POST", "/api/gate-slots/ask", token, {
+      kind: "browser",
+      estimate_minutes: 6,
+      label: "release e2e",
+      wait_seconds: 0,
+      ...extra,
+    });
+  // The clock is still: each ask a second later keeps their order.
+  const local = (
+    s: { store: GateStore; advance: (n: number) => void },
+    label: string,
+  ) => {
+    s.advance(1);
+    return s.store.ask({
+      kind: "browser",
+      who: "me",
+      label,
+      pid: 1,
+      estimateMin: 5,
+    });
+  };
+
+  it("1. with a reason it goes ahead of plain waiting runs; the log names the runner and why", async () => {
+    const t = await serve();
+    const { store, tokens, call } = t;
+    const { token } = tokens.create("ci-linux");
+    const h = local(t, "holder");
+    const a = local(t, "a");
+    const b = local(t, "b");
+    t.advance(1);
+    const r = await ask(call, token, {
+      priority: "release",
+      reason: "the person waits on the release",
+    });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ ok: true, granted: false, place: 1 });
+    const id = String(r.json.id);
+    expect(store.list().map((e) => e.id)).toEqual([h.id, id, a.id, b.id]);
+    const row = store.events().find((e) => e.event === "priority");
+    expect(row).toMatchObject({
+      id,
+      runner: "ci-linux",
+      by: "runner:ci-linux",
+      reason: "the person waits on the release",
+      passed: [a.id, b.id],
+    });
+    // Never ahead of a holder: it starts when the holder ends.
+    store.release(h.id);
+    expect(store.get(id)?.grantedAt).toBeDefined();
+  });
+
+  it("2. without a reason (or with a bad priority) it is refused, 400, and nothing is queued", async () => {
+    const t = await serve();
+    const { store, tokens, call } = t;
+    const { token } = tokens.create("ci-linux");
+    const h = local(t, "holder");
+    const no = await ask(call, token, { priority: "release" });
+    expect([no.status, no.json.code]).toEqual([400, "reason_required"]);
+    const blank = await ask(call, token, { priority: "release", reason: "  " });
+    expect(blank.status).toBe(400);
+    const bad = await ask(call, token, { priority: "urgent", reason: "x" });
+    expect(bad.status).toBe(400);
+    expect(store.list().map((e) => e.id)).toEqual([h.id]);
+    expect(store.events().filter((e) => e.event === "asked")).toHaveLength(1);
+  });
+
+  it("3. with runners not allowed to ask, it is refused; asked plainly, the run waits in the normal queue", async () => {
+    const t = await serve();
+    const { store, tokens, call } = t;
+    expect(GATE_DEFAULTS.priorityRunners).toBe(true);
+    store.writeSettings({ priority_runners: 0 });
+    expect(store.settings().priorityRunners).toBe(false);
+    const { token } = tokens.create("ci-linux");
+    const h = local(t, "holder");
+    const a = local(t, "a");
+    const r = await ask(call, token, { priority: "release", reason: "r" });
+    expect([r.status, r.json.code]).toEqual([403, "priority_refused"]);
+    expect(store.list().map((e) => e.id)).toEqual([h.id, a.id]);
+    t.advance(1);
+    const plain = await ask(call, token);
+    expect(plain.json).toMatchObject({ ok: true, granted: false, place: 2 });
+    expect(store.events().some((e) => e.event === "priority")).toBe(false);
+  });
+
+  it("the setting is checked like the others", () => {
+    expect(checkGatePatch({ priority_runners: 0 })).toEqual({
+      ok: true,
+      patch: { priority_runners: 0 },
+    });
+    expect(checkGatePatch({ priority_runners: 2 }).ok).toBe(false);
+  });
+});

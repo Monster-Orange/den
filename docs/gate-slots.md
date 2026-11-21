@@ -40,6 +40,7 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 
 Change the three settings in Settings › Server, or with
 `den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
+A CI runner may ask for it too (see below; `priority_runners`).
 
 ## A CI job in a runner VM
 
@@ -135,6 +136,14 @@ The answers:
   same. 404 when the slot is gone (released, ended early, or lapsed): ask
   again.
 - `release` `{id}`: gives it back. `{ok: true, released: true}`.
+- `ask` with `"priority": "release"` and a `"reason"`: a release run a
+  person waits on goes ahead of its kind's plain waiting runs, under the
+  same rules as `gate run --priority release` (above). The slot log's
+  `priority` row names the runner (`by: "runner:<name>"`) and the reason.
+  Without a reason: 400 `reason_required`, and nothing is queued. When
+  `priority_runners` is 0 (Settings › Server, or
+  `den gate settings --priority-runners 0`): 403 `priority_refused`, and
+  nothing is queued; ask without priority to wait in the normal queue.
 - 401 `token_revoked`: the person revoked the token; its slots are free.
 - 429 `too_many_slots` or `too_many_asks`: one runner may have 4 slots
   (held or waiting) and 4 asks waiting at once, by default (Settings, or

@@ -85,6 +85,8 @@ export interface GateSettings {
   priorityPassLimitMinutes: number;
   /** Issue 715: agents may ask for priority (else people only). */
   priorityAgents: boolean;
+  /** Issue 739: CI runners (runner token) may ask for priority. */
+  priorityRunners: boolean;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -97,6 +99,7 @@ export const GATE_DEFAULTS: GateSettings = {
   priorityMax: 1,
   priorityPassLimitMinutes: 60,
   priorityAgents: true,
+  priorityRunners: true,
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);

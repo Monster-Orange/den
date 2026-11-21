@@ -2406,6 +2406,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { priority_agents: v ? 1 : 0 } }),
   },
   {
+    // Issue 739: a CI runner's ask over HTTP may carry release priority.
+    id: "server.gate_priority_runners",
+    category: "server",
+    label: "CI runners may ask for release priority",
+    description:
+      "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    keywords: ["gate", "slot", "priority", "release", "runner", "ci"],
+    scope: "user",
+    keys: ["gate_slots.priority_runners"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.priorityRunners !== false,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { priority_runners: v ? 1 : 0 } }),
+  },
+  {
     // Issue 621: the gate-only runner tokens; an agent asks for one (a
     // held write the person allows), and the person revokes one here.
     id: "server.gate_runners",
