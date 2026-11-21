@@ -32,6 +32,7 @@ import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
+import { pageImport } from "./helpers/page-import.js";
 import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -305,17 +306,10 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
         await p.locator(WHATS_NEW).waitFor({ timeout: 20_000 });
         await p.keyboard.press("Escape");
         await p.locator(WHATS_NEW).waitFor({ state: "detached" });
-        await p.evaluate(() => {
-          void import("/dialog-den.js" as string).then(
-            (m: {
-              askConfirm: (o: { title: string; message: string }) => unknown;
-            }) =>
-              m.askConfirm({
-                title: "Turn it off?",
-                message: "Two systems need it.",
-              }),
-          );
-        });
+        // A string, so the browser does the import (not the test's compiler).
+        await p.evaluate(
+          `${pageImport("/dialog-den.js")}.then((m) => void m.askConfirm({ title: "Turn it off?", message: "Two systems need it." }))`,
+        );
         await p.locator(CONFIRM).waitFor();
         expect(problems(await fontsOf(p, CONFIRM), strict)).toEqual([]);
         await p.keyboard.press("Escape");
