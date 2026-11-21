@@ -15,3 +15,16 @@ describe("the person's config folder is denied to agents' edits", () => {
     expect(rules.some((r) => /den\.yml|acme\.yml/.test(r))).toBe(false);
   });
 });
+
+describe("issue 810: the distribution config (the test-install mark) is denied too", () => {
+  it("Edit on the distribution config file when it is named", () => {
+    const rules = personConfigDenyRules(
+      "/home/someone/acme/config/local",
+      "/home/someone/acme/config/den.yml",
+    );
+    expect(rules).toEqual([
+      "Edit(//home/someone/acme/config/local/**)",
+      "Edit(//home/someone/acme/config/den.yml)",
+    ]);
+  });
+});

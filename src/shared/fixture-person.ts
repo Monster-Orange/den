@@ -59,6 +59,37 @@ export function readFixtureSecret(stateDir: string): Buffer | null {
   }
 }
 
+// Red-first stubs (issue 810 review): the real binding follows.
+export const FIXTURE_SESSION_MINUTES = 0;
+export function fixtureSessionExpired(
+  createdAt: number,
+  now: number,
+  minutes: number,
+): boolean {
+  void createdAt;
+  void now;
+  void minutes;
+  return false;
+}
+export function readFixtureKey(stateDir: string): Buffer | null {
+  return readFixtureSecret(stateDir);
+}
+export function verifiedFixtureKey(
+  stateDir: string,
+  webSecret: Buffer | null,
+): Buffer | null {
+  void webSecret;
+  return readFixtureSecret(stateDir);
+}
+export function testInstallBinding(o: {
+  mark: boolean;
+  launchFlag: boolean;
+  defaultStateDir: boolean;
+  owned: boolean;
+}): { ok: true } | { ok: false; why: string } {
+  return o.mark ? { ok: true } : { ok: false, why: "no_mark" };
+}
+
 /** Whether the fixture person is set up here (Settings shows it). */
 export function fixturePersonReady(stateDir: string): boolean {
   return readFixtureSecret(stateDir) !== null;
@@ -97,7 +128,12 @@ export type FixtureSetup =
  */
 export function setupFixturePerson(
   stateDir: string,
-  o: { testInstall: boolean; agent: boolean; configFile?: string },
+  o: {
+    testInstall: boolean;
+    agent: boolean;
+    configFile?: string;
+    webSecret?: Buffer | null;
+  },
 ): FixtureSetup {
   if (o.agent)
     return {
@@ -236,7 +272,9 @@ const HUB_PATH = /\/hub(?:[-_][^/]*)?(?:\/|$)/;
 export function fixtureScopeRefusal(
   method: string,
   pathname: string,
+  cls?: string | null,
 ): string | null {
+  void cls;
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD") return null;
   if (PERSON_ONLY_PATHS.some((re) => re.test(pathname)))

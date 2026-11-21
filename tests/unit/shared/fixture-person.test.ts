@@ -1,9 +1,10 @@
 /**
  * Issue 810: live checks sign in as a fixture person on a test install,
  * never as an agent with its identity stripped. The pure parts: the
- * test-install mark (the distribution config only, set by hand), the
- * fixture person's secret (made by a person, 0600, never printed), its
- * one-time sign-in code, and what a fixture session may never reach.
+ * test-install mark and what binds it to a test install, the fixture
+ * person's secret (made by the server for a person, sealed with the
+ * install's own secret, 0600, never printed), its one-time sign-in code,
+ * the session's lifetime, and the short list a fixture session may reach.
  * No secret or code is printed: a failure shows booleans and reasons.
  */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
@@ -14,12 +15,16 @@ import {
   checkFixtureCode,
   FIXTURE_LABEL,
   FIXTURE_PRINCIPAL,
+  FIXTURE_SESSION_MINUTES,
   fixtureLoginLink,
   fixturePersonPath,
   fixtureScopeRefusal,
+  fixtureSessionExpired,
   mintFixtureCode,
-  readFixtureSecret,
+  readFixtureKey,
   setupFixturePerson,
+  testInstallBinding,
+  verifiedFixtureKey,
 } from "../../../src/shared/fixture-person.js";
 import {
   checkLoginCode,
@@ -41,6 +46,13 @@ function write(rel: string, text: string): void {
   fs.mkdirSync(path.dirname(f), { recursive: true });
   fs.writeFileSync(f, text);
 }
+const secret = () => ensureWebSecret(tmp);
+const setUp = () =>
+  setupFixturePerson(tmp, {
+    testInstall: true,
+    agent: false,
+    webSecret: secret(),
+  });
 
 describe("the test-install mark (web.test_install)", () => {
   it("is off when nothing sets it", () => {
@@ -65,74 +77,110 @@ describe("the test-install mark (web.test_install)", () => {
   });
 });
 
-describe("making the fixture person (a person, on a test install)", () => {
+describe("what binds the mark to a test install", () => {
+  const ok = {
+    mark: true,
+    launchFlag: true,
+    defaultStateDir: false,
+    owned: false,
+  };
+  it("holds only with the mark, the launch flag, its own state dir and no owner", () => {
+    expect(testInstallBinding(ok)).toEqual({ ok: true });
+  });
+  it.each([
+    ["no_mark", { mark: false }],
+    ["no_launch_flag", { launchFlag: false }],
+    ["default_state_dir", { defaultStateDir: true }],
+    ["owned", { owned: true }],
+  ])("refused: %s", (why, change) => {
+    expect(testInstallBinding({ ...ok, ...change })).toEqual({
+      ok: false,
+      why,
+    });
+  });
+});
+
+describe("making the fixture person (the server, for a person, on a test install)", () => {
   it("a real install refuses it, and writes nothing", () => {
-    const r = setupFixturePerson(tmp, { testInstall: false, agent: false });
-    expect(r.ok).toBe(false);
+    const r = setupFixturePerson(tmp, {
+      testInstall: false,
+      agent: false,
+      webSecret: secret(),
+    });
     expect(r.ok ? "" : r.code).toBe("not_test_install");
     expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
   });
 
   it("an agent is refused, even on a test install, and nothing is written", () => {
-    const r = setupFixturePerson(tmp, { testInstall: true, agent: true });
-    expect(r.ok).toBe(false);
+    const r = setupFixturePerson(tmp, {
+      testInstall: true,
+      agent: true,
+      webSecret: secret(),
+    });
     expect(r.ok ? "" : r.code).toBe("person_only");
     expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
   });
 
-  it("a person on a test install makes it: a 0600 file in the state dir, its value never returned", () => {
-    const r = setupFixturePerson(tmp, { testInstall: true, agent: false });
+  it("a person on a test install makes it: 0600, sealed, its value never returned", () => {
+    const r = setUp();
     expect(r.ok).toBe(true);
-    const st = fs.statSync(fixturePersonPath(tmp));
-    expect(st.mode & 0o777).toBe(0o600);
-    const value = fs.readFileSync(fixturePersonPath(tmp), "utf-8").trim();
-    expect(value.length).toBeGreaterThanOrEqual(43);
-    expect(JSON.stringify(r).includes(value)).toBe(false);
-    expect(readFixtureSecret(tmp)).not.toBeNull();
+    expect(fs.statSync(fixturePersonPath(tmp)).mode & 0o777).toBe(0o600);
+    const key = readFixtureKey(tmp);
+    expect(key).not.toBeNull();
+    expect(JSON.stringify(r).includes(key!.toString())).toBe(false);
+    expect(verifiedFixtureKey(tmp, secret())).not.toBeNull();
   });
 
-  it("a secret others can read is no secret: refused (null)", () => {
-    setupFixturePerson(tmp, { testInstall: true, agent: false });
+  it("a key file written by hand (not sealed by the server) is refused", () => {
+    write("fixture-person.key", `${"A".repeat(43)}\n`);
+    fs.chmodSync(fixturePersonPath(tmp), 0o600);
+    expect(verifiedFixtureKey(tmp, secret())).toBeNull();
+  });
+
+  it("a sealed key copied to another install (another secret) is refused there", () => {
+    setUp();
+    const other = Buffer.alloc(32, 7);
+    expect(verifiedFixtureKey(tmp, other)).toBeNull();
+  });
+
+  it("a key others can read is no secret: refused", () => {
+    setUp();
     fs.chmodSync(fixturePersonPath(tmp), 0o644);
-    expect(readFixtureSecret(tmp)).toBeNull();
+    expect(verifiedFixtureKey(tmp, secret())).toBeNull();
+    expect(readFixtureKey(tmp)).toBeNull();
   });
 });
 
 describe("the fixture sign-in code", () => {
-  it("round-trips with the fixture secret, and is one the person's sign-in never takes", () => {
-    setupFixturePerson(tmp, { testInstall: true, agent: false });
-    const secret = readFixtureSecret(tmp)!;
-    const code = mintFixtureCode(secret);
-    expect(checkFixtureCode(code, secret).ok).toBe(true);
-    // The person's own login code check refuses it (another shape and key).
-    expect(checkLoginCode(code, ensureWebSecret(tmp)).ok).toBe(false);
-    // And a person's login code is never a fixture code.
-    const personCode = mintLoginCode(ensureWebSecret(tmp));
-    expect(checkFixtureCode(personCode, secret).ok).toBe(false);
+  it("round-trips with the fixture key, and is one the person's sign-in never takes", () => {
+    setUp();
+    const key = verifiedFixtureKey(tmp, secret())!;
+    const code = mintFixtureCode(readFixtureKey(tmp)!);
+    expect(checkFixtureCode(code, key).ok).toBe(true);
+    expect(checkLoginCode(code, secret()).ok).toBe(false);
+    expect(checkFixtureCode(mintLoginCode(secret()), key).ok).toBe(false);
   });
 
   it("expires", () => {
-    setupFixturePerson(tmp, { testInstall: true, agent: false });
-    const secret = readFixtureSecret(tmp)!;
-    const code = mintFixtureCode(secret, 1_000, 60_000);
-    const r = checkFixtureCode(code, secret, 1_000 + 61_000);
+    setUp();
+    const key = readFixtureKey(tmp)!;
+    const code = mintFixtureCode(key, 1_000, 60_000);
+    const r = checkFixtureCode(code, key, 1_000 + 61_000);
     expect(r.ok ? "ok" : r.reason).toBe("expired");
   });
 
   it("fixtureLoginLink: refused on a real install, refused with no fixture person, else /auth?fixture=", () => {
     const origin = "https://den.example.test";
     const real = fixtureLoginLink(tmp, { testInstall: false, origin });
-    expect(real.ok).toBe(false);
     expect(real.ok ? "" : real.code).toBe("not_test_install");
     const none = fixtureLoginLink(tmp, { testInstall: true, origin });
     expect(none.ok ? "" : none.code).toBe("no_fixture_person");
-    setupFixturePerson(tmp, { testInstall: true, agent: false });
+    setUp();
     const ok = fixtureLoginLink(tmp, {
       testInstall: true,
       origin,
       next: "/agents",
     });
-    expect(ok.ok).toBe(true);
     const url = new URL(ok.ok ? ok.url : "http://x/");
     expect(url.origin).toBe(origin);
     expect(url.pathname).toBe("/auth");
@@ -141,33 +189,65 @@ describe("the fixture sign-in code", () => {
   });
 });
 
-describe("what a fixture session never reaches", () => {
+describe("a fixture session's lifetime", () => {
+  const MIN = 60_000;
+  it("has a short default", () => {
+    expect(FIXTURE_SESSION_MINUTES).toBeGreaterThan(0);
+    expect(FIXTURE_SESSION_MINUTES).toBeLessThanOrEqual(240);
+  });
+  it("ends after it", () => {
+    expect(fixtureSessionExpired(0, 59 * MIN, 60)).toBe(false);
+    expect(fixtureSessionExpired(0, 60 * MIN, 60)).toBe(true);
+  });
+  it("is read from web.fixture_session_minutes, within bounds", () => {
+    expect(readWebAuthConfig(tmp).fixtureSessionMinutes).toBe(
+      FIXTURE_SESSION_MINUTES,
+    );
+    write("config/den.yml", "web:\n  fixture_session_minutes: 15\n");
+    expect(readWebAuthConfig(tmp).fixtureSessionMinutes).toBe(15);
+    write("config/den.yml", "web:\n  fixture_session_minutes: 0\n");
+    expect(() => readWebAuthConfig(tmp)).toThrow(/web.fixture_session_minutes/);
+  });
+});
+
+describe("what a fixture session may reach: an allow-list", () => {
   it("is named the fixture person, never the human", () => {
     expect(FIXTURE_PRINCIPAL).toBe("fixture:person");
     expect(FIXTURE_LABEL).toBe("fixture person");
   });
 
   it.each([
-    ["POST", "/api/hub/connect"],
-    ["POST", "/api/hub/disconnect"],
-    ["POST", "/api/hub/sync"],
-    ["POST", "/api/workspaces/notes/hub-project"],
-    ["POST", "/api/web/fixture-person"],
-    ["POST", "/api/web/pair"],
-    ["POST", "/api/web/approve"],
-    ["POST", "/api/web/owner/link"],
-    ["POST", "/api/approvals/a1/decide"],
-  ])("%s %s is refused", (method, p) => {
-    expect(fixtureScopeRefusal(method, p)).toMatch(/fixture person/);
+    ["GET", "/settings", null],
+    ["GET", "/agents", null],
+    ["GET", "/theme.css", null],
+    ["GET", "/api/session", "readonly"],
+    ["GET", "/api/notifications", "readonly"],
+    ["GET", "/api/hub", "readonly"],
+    ["POST", "/api/settings", "mutating"],
+    ["POST", "/api/session/logout", "mutating"],
+    ["POST", "/api/notifications/read", "mutating"],
+    ["POST", "/api/workspaces/notes/agents/a1/stop", "mutating"],
+  ] as const)("%s %s passes", (m, p, cls) => {
+    expect(fixtureScopeRefusal(m, p, cls)).toBeNull();
   });
 
   it.each([
-    ["GET", "/api/agents"],
-    ["GET", "/api/session"],
-    ["GET", "/api/hub"],
-    ["POST", "/api/agents/a1/say"],
-    ["POST", "/api/settings"],
-  ])("%s %s is not refused here (the bed's own pages and writes)", (m, p) => {
-    expect(fixtureScopeRefusal(m, p)).toBeNull();
+    ["POST", "/api/local-dev", "mutating"],
+    ["POST", "/api/hub/connect", "mutating"],
+    ["POST", "/api/hub/sync", "mutating"],
+    ["POST", "/api/workspaces/notes/hub-project", "mutating"],
+    ["POST", "/api/web/fixture-person", "mutating"],
+    ["POST", "/api/web/pair", "shell-grade"],
+    ["POST", "/api/web/approve", "shell-grade"],
+    ["POST", "/api/approvals/a1/decide", "mutating"],
+    ["POST", "/api/sudo-password", "mutating"],
+    ["GET", "/api/sessions/s1/io", "shell-grade"],
+    ["GET", "/api/run", "mutating"],
+    ["GET", "/api/hub/github", "readonly"],
+    ["GET", "/api/web/sessions", "shell-grade"],
+    ["GET", "/api/nowhere", null],
+    ["DELETE", "/api/workspaces", "mutating"],
+  ] as const)("%s %s is refused", (m, p, cls) => {
+    expect(fixtureScopeRefusal(m, p, cls)).toMatch(/fixture person/);
   });
 });

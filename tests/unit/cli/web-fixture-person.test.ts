@@ -1,7 +1,8 @@
 /**
  * Issue 810: the CLI side of the fixture person.
- *  - `web fixture-person` (the fallback to Settings' button): a person's,
- *    on a test install only; refused inside an agent's session.
+ *  - `web fixture-person` (the fallback to Settings' button): refused
+ *    inside an agent's session, and otherwise it asks the running server,
+ *    which decides (person only, test install only).
  *  - `web fixture-login`: the gate runner (an agent) gets a one-time
  *    sign-in link as the fixture person, on a test install only, with the
  *    fixture person made.
@@ -21,7 +22,11 @@ import {
   cmdWebLoginWait,
 } from "../../../src/ui/cli/web-command.js";
 import { cmdConfig } from "../../../src/ui/cli/config-command.js";
-import { fixturePersonPath } from "../../../src/shared/fixture-person.js";
+import {
+  fixturePersonPath,
+  setupFixturePerson,
+} from "../../../src/shared/fixture-person.js";
+import { ensureWebSecret } from "../../../src/shared/web-secret.js";
 
 let tmp = "";
 const AGENT_KEYS = ["DEN_AGENT", "DEN_ACTOR_TOKEN", "DEN_ACTOR_TOKEN_FILE"];
@@ -59,15 +64,8 @@ const asAgent = () => {
 const secretValue = () =>
   fs.readFileSync(fixturePersonPath(tmp), "utf-8").trim();
 
-describe("web fixture-person (a person, on a test install)", () => {
-  it("is refused on a real install, and writes nothing", async () => {
-    const { o, io: i } = io(false);
-    expect(await cmdWebFixturePerson([], i)).toBe(1);
-    expect(o.err).toMatch(/isn't marked a test install/);
-    expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
-  });
-
-  it("is refused inside an agent's session, even on a test install", async () => {
+describe("web fixture-person (the person's fallback to Settings' button)", () => {
+  it("is refused inside an agent's session, and writes nothing", async () => {
     asAgent();
     const { o, io: i } = io(true);
     expect(await cmdWebFixturePerson([], i)).toBe(1);
@@ -75,13 +73,11 @@ describe("web fixture-person (a person, on a test install)", () => {
     expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
   });
 
-  it("a person on a test install makes it (0600), and its value is never printed", async () => {
+  it("never decides here: it asks the running server, and with none answering it is refused and writes nothing", async () => {
     const { o, io: i } = io(true);
-    expect(await cmdWebFixturePerson([], i)).toBe(0);
-    expect(fs.statSync(fixturePersonPath(tmp)).mode & 0o777).toBe(0o600);
-    const v = secretValue();
-    expect((o.out + o.err).includes(v)).toBe(false);
-    expect(o.out + o.err).toMatch(/fixture person/);
+    expect(await cmdWebFixturePerson(["--port", "1"], i)).toBe(1);
+    expect(o.err).toMatch(/no .*server answers/i);
+    expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
   });
 });
 
@@ -91,7 +87,7 @@ describe("web fixture-login (the gate runner, an agent)", () => {
     const { o, io: i } = io(false);
     expect(await cmdWebFixtureLogin([], i)).toBe(1);
     expect(o.out).toBe("");
-    expect(o.err).toMatch(/isn't marked a test install/);
+    expect(o.err).toMatch(/isn't a test install/);
   });
 
   it("a test install with no fixture person refuses, saying how to make one", async () => {
@@ -103,8 +99,11 @@ describe("web fixture-login (the gate runner, an agent)", () => {
   });
 
   it("a test install grants it: one /auth?fixture= link, never the secret", async () => {
-    const made = io(true);
-    expect(await cmdWebFixturePerson([], made.io)).toBe(0);
+    setupFixturePerson(tmp, {
+      testInstall: true,
+      agent: false,
+      webSecret: ensureWebSecret(tmp),
+    });
     asAgent();
     const { o, io: i } = io(true);
     expect(await cmdWebFixtureLogin(["--next", "/agents"], i)).toBe(0);

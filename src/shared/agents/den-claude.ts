@@ -462,7 +462,11 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
  * covers file writes under Edit(path) rules and warns that a Write(path)
  * rule never matches, so Den writes the Edit rule only.
  */
-export function personConfigDenyRules(dir: string): string[] {
+export function personConfigDenyRules(
+  dir: string,
+  distConfigFile?: string,
+): string[] {
+  void distConfigFile;
   const abs = path.resolve(dir);
   return [`Edit(/${abs}/**)`];
 }
