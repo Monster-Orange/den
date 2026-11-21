@@ -4,14 +4,6 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [Unreleased]
-
-### Changed
-
-- Gate slots: cpu and browser runs wait in separate lines. A cpu run no longer waits behind every queued browser run, and a browser run never waits behind a cpu run. (issue 751)
-- Gate slots: up to `cpu_slots_beside_browser` cpu runs (new setting, default 2) run beside a browser run on this machine. 0 keeps the old rule: a browser run runs alone. A browser run on a test box doesn't count. (issue 751)
-- Gate slots: a release-priority run passes every plain waiting run of its kind, however long it has waited. `priority_pass_limit_minutes` now defaults to 0 and applies only between release-priority runs. (issue 751)
-
 ## [0.4.80] - 2026-11-21
 
 ### Added

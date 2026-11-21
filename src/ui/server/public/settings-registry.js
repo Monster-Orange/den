@@ -2560,7 +2560,7 @@ export const DEN_SETTINGS = [
   {
     id: "server.gate_priority_pass",
     category: "server",
-    label: "A marked release run waiting this long is never passed, in minutes",
+    label: "Waiting this long, a marked release run is never passed, in minutes",
     description:
       "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     keywords: ["gate", "slot", "priority", "release", "starvation", "wait"],

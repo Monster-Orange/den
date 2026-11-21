@@ -1969,7 +1969,7 @@
     "set.server.gate_priority_max.d":
       "A release run a person waits on, marked for release priority, goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
     "set.server.gate_priority_pass":
-      "A marked release run waiting this long is never passed, in minutes",
+      "Waiting this long, a marked release run is never passed, in minutes",
     "set.server.gate_priority_pass.d":
       "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     "set.server.gate_priority_agents": "Agents may ask for release priority",
