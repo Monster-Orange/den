@@ -21,6 +21,7 @@ import {
   cmdWebLogin,
   cmdWebLoginWait,
   freshLoginLink,
+  noLinkHereLine,
 } from "../../../src/ui/cli/web-command.js";
 
 let tmp = "";
@@ -108,12 +109,12 @@ describe("personHereRefusal", () => {
         stateDir: tmp,
         line: () => [500, 400, 300, 1],
       }),
-    ).toMatch(/An agent can't do this/);
+    ).toMatch(/Terminals page/);
   });
   it("a parent chain that can't be read: refused", () => {
     expect(
       personHereRefusal({ env: {}, stateDir: tmp, line: () => null }),
-    ).toMatch(/couldn't check/);
+    ).toMatch(/can't let a browser in from here/);
   });
   it("session records that can't be read: refused", () => {
     expect(
@@ -123,7 +124,7 @@ describe("personHereRefusal", () => {
         line: () => [500, 1],
         roots: () => null,
       }),
-    ).toMatch(/couldn't check/);
+    ).toMatch(/can't let a browser in from here/);
   });
   it("an agent's session: refused, as before", () => {
     expect(
@@ -171,7 +172,7 @@ describe("the CLI inside a running session's tree", () => {
   const refused = (code: number, o: { out: string; err: string }) => {
     expect(code).toBe(1);
     expect(o.out).toBe("");
-    expect(o.err).toMatch(/An agent can't do this/);
+    expect(o.err).toMatch(/Terminals page/);
     expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   };
   it("web login --no-wait refuses", async () => {
@@ -193,7 +194,7 @@ describe("the CLI inside a running session's tree", () => {
   it("freshLoginLink throws", () => {
     expect(() =>
       freshLoginLink(4100, "/", "https://den.acme.example.com", tmp, inside),
-    ).toThrow(/An agent can't do this/);
+    ).toThrow(/Terminals page/);
   });
 });
 
@@ -202,7 +203,7 @@ describe("the CLI where its parent chain can't be read", () => {
     const { o, io: i } = io({ line: () => null, tty: true });
     expect(await cmdWebLogin(["--no-wait"], i)).toBe(1);
     expect(o.out).toBe("");
-    expect(o.err).toMatch(/couldn't check/);
+    expect(o.err).toMatch(/can't let a browser in from here/);
   });
 });
 
@@ -239,5 +240,34 @@ describe("the person's own terminal", () => {
     const { o, io: i } = io(mine);
     expect(cmdWebClaimLink([], i)).toBe(0);
     expect(o.out).toMatch(/\/auth\?claim=c1\./);
+  });
+});
+
+describe("Sign-in: each refusal says what to do instead", () => {
+  it("inside a running session: your own terminal, or Settings › Access", () => {
+    record("a", 300);
+    const t = personHereRefusal({
+      env: {},
+      stateDir: tmp,
+      line: () => [500, 300, 1],
+    });
+    expect(t).toMatch(/Terminals page/);
+    expect(t).toMatch(/Run it in your own terminal/);
+    expect(t).toMatch(/Settings › Access/);
+  });
+  it("couldn't check: your own terminal, or Settings › Access", () => {
+    const t = personHereRefusal({ env: {}, stateDir: tmp, line: () => null });
+    expect(t).toMatch(/your own terminal/);
+    expect(t).toMatch(/Settings › Access/);
+  });
+  it("not a terminal: where to run it", () => {
+    expect(terminalRefusal(false)).toMatch(
+      /Run it yourself in a terminal window on this machine/,
+    );
+  });
+  it("web up with no terminal: the address, and the command that prints a link", () => {
+    expect(noLinkHereLine("https://den.acme.example.com/", "acme")).toBe(
+      "https://den.acme.example.com (a sign-in link is printed only in a terminal: run `acme web login` in one)",
+    );
   });
 });

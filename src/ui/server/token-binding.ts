@@ -28,8 +28,11 @@ import {
   type LookupMiss,
 } from "../../shared/peer-process.js";
 import { ACTOR_TOKEN_PREFIX } from "../../shared/actor-token.js";
-import { AGENT_REFUSAL } from "../../shared/claim-code.js";
-import { NOT_CHECKED } from "../../shared/person-here.js";
+import {
+  IN_A_SESSION,
+  NOT_CHECKED,
+  NOT_LOOPBACK,
+} from "../../shared/person-here.js";
 
 /** ok: from the agent's own processes; elsewhere: proved not; unknown: couldn't tell. */
 export type TokenCaller = "ok" | "elsewhere" | "unknown";
@@ -262,7 +265,7 @@ export function personCallerRefusal(o: {
   line: number[] | null;
   roots: number[] | null;
 }): string | null {
-  if (!o.loopback || !o.line || o.line.length === 0 || !o.roots)
-    return NOT_CHECKED;
-  return o.line.some((p) => o.roots!.includes(p)) ? AGENT_REFUSAL : null;
+  if (!o.loopback) return NOT_LOOPBACK;
+  if (!o.line || o.line.length === 0 || !o.roots) return NOT_CHECKED;
+  return o.line.some((p) => o.roots!.includes(p)) ? IN_A_SESSION : null;
 }

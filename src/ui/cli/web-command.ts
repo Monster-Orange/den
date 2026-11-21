@@ -1737,7 +1737,7 @@ async function runWeb(args: string[]): Promise<void> {
   }
   // Sign-in: a link is printed only to a terminal.
   if (terminalRefusal(onTerminal())) {
-    console.log(chalk.gray(`  ${origin.replace(/\/+$/, "")}\n`));
+    console.log(chalk.gray(`  ${noLinkHereLine(origin, product().cli)}\n`));
     return;
   }
   console.log(
@@ -1851,6 +1851,11 @@ interface CliIo {
 type PersonCheck = Omit<PersonHereDeps, "stateDir" | "env"> & {
   tty?: boolean;
 };
+
+/** Sign-in: `web up`'s line where it prints no link: the address, and what to run. */
+export function noLinkHereLine(origin: string, cli: string): string {
+  return `${origin.replace(/\/+$/, "")} (a sign-in link is printed only in a terminal: run \`${cli} web login\` in one)`;
+}
 
 /** Whether this process's output is on a terminal (stdout and stderr). */
 function onTerminal(): boolean {

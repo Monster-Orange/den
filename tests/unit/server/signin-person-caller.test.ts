@@ -20,22 +20,22 @@ describe("personCallerRefusal", () => {
   });
   it("a caller inside a running session's tree: refused", () => {
     expect(personCallerRefusal({ ...ok, roots: [400] })).toMatch(
-      /An agent can't do this/,
+      /Terminals page/,
     );
   });
   it("not on loopback: refused", () => {
     expect(personCallerRefusal({ ...ok, loopback: false })).toMatch(
-      /couldn't check/,
+      /over localhost/,
     );
   });
   it("a caller it couldn't place, or whose line it couldn't read: refused", () => {
     expect(personCallerRefusal({ ...ok, line: null })).toMatch(
-      /couldn't check/,
+      /can't let a browser in from here/,
     );
   });
   it("records it couldn't read: refused", () => {
     expect(personCallerRefusal({ ...ok, roots: null })).toMatch(
-      /couldn't check/,
+      /can't let a browser in from here/,
     );
   });
 });
@@ -66,5 +66,24 @@ describe("callerLine", () => {
     const r = req(50003);
     watchPeer(r.socket, { peer: () => 500 });
     expect(callerLine(r, { line: () => null })).toBeNull();
+  });
+});
+
+describe("Sign-in: each server refusal says what to do instead", () => {
+  const ok = { loopback: true, line: [500, 400, 1], roots: [300] };
+  it("not on loopback (an install on its LAN address only): --no-wait, or Settings › Access", () => {
+    const t = personCallerRefusal({ ...ok, loopback: false });
+    expect(t).toMatch(/--no-wait/);
+    expect(t).toMatch(/Settings › Access/);
+  });
+  it("inside a running session: your own terminal, or Settings › Access", () => {
+    const t = personCallerRefusal({ ...ok, roots: [400] });
+    expect(t).toMatch(/your own terminal/);
+    expect(t).toMatch(/Settings › Access/);
+  });
+  it("couldn't place the caller: your own terminal, or Settings › Access", () => {
+    const t = personCallerRefusal({ ...ok, line: null });
+    expect(t).toMatch(/your own terminal/);
+    expect(t).toMatch(/Settings › Access/);
   });
 });

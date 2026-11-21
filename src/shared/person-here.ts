@@ -16,15 +16,24 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { AGENT_REFUSAL, personGrantRefusal } from "./claim-code.js";
+import { personGrantRefusal } from "./claim-code.js";
 import { parentLine } from "./peer-process.js";
 import { sessionPaths } from "./sessions/paths.js";
 
-export const NOT_CHECKED =
-  "It couldn't check where this command runs (its parent processes or the running sessions), so it won't let a browser in from here. Run it in your own terminal.";
+/** Where else a browser gets in: one already signed in adds the device. */
+const ACCESS_HINT =
+  "Already signed in in a browser? Open Settings › Access there to add another device.";
+
+export const NOT_CHECKED = `This command can't let a browser in from here. Run it in your own terminal on this machine. ${ACCESS_HINT}`;
+
+/** Inside a running session (an agent's, or a shell on the Terminals page). */
+export const IN_A_SESSION = `This command can't let a browser in from inside an agent, or from a shell on the Terminals page. Run it in your own terminal instead. ${ACCESS_HINT}`;
+
+/** The server's word for a caller not on this machine's loopback. */
+export const NOT_LOOPBACK = `This works only from a terminal on this machine, over localhost. On an install that listens only on its LAN address, use \`web login --no-wait\` instead. ${ACCESS_HINT}`;
 
 export const NOT_A_TERMINAL =
-  "A sign-in link is printed only in a terminal. Run it in your own terminal, with its output on the screen.";
+  "A sign-in link is printed only in a terminal. Run it yourself in a terminal window on this machine, with its output on the screen (not sent to a file or another program).";
 
 /**
  * The root pids of the session host's running sessions ([] when it has
@@ -82,7 +91,7 @@ export function personHereRefusal(d: PersonHereDeps): string | null {
   if (!roots) return NOT_CHECKED;
   const line = (d.line ?? (() => parentLine(process.pid)))();
   if (!line || line.length === 0) return NOT_CHECKED;
-  if (line.some((p) => roots.includes(p))) return AGENT_REFUSAL;
+  if (line.some((p) => roots.includes(p))) return IN_A_SESSION;
   return null;
 }
 
