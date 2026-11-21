@@ -355,8 +355,10 @@ import {
   notTestInstallRefusal,
   setupFixturePerson,
   TEST_INSTALL_ENV_KEY,
+  personsOnInstall,
   testInstallBinding,
   testInstallByHandRefusal,
+  testInstallRead,
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
 import { routeClass } from "./route-classes.js";
@@ -2934,12 +2936,16 @@ function realOrResolved(p: string): string {
 /**
  * Issue 810: whether this install is a test install right now: the mark,
  * the launch flag, its own state dir (not the product's default), and no
- * owner or signed-in person (a GitHub sign-in, the setup link, a pairing
- * code, or a `web login` link). The one link session that pressed Set up
- * test person doesn't count, nor `except` (the caller's own, while it
- * presses it). Checked at every fixture path and on every fixture request.
+ * owner or signed-in person (personsOnInstall). The one link session that
+ * pressed Set up test person doesn't count, nor `except` (the caller's own
+ * sign-in of any kind, while it reads or presses it). Checked at every fixture path and on every fixture request.
  */
 function testInstallNow(except?: string): boolean {
+  return testInstallBindingNow(except).ok;
+}
+
+/** Issue 823: testInstallNow's binding, with the first missing condition. */
+function testInstallBindingNow(except?: string) {
   let mark = false;
   try {
     mark = webAuthNow().testInstall;
@@ -2952,19 +2958,12 @@ function testInstallNow(except?: string): boolean {
     launchFlag: TEST_INSTALL_LAUNCH_FLAG,
     defaultStateDir:
       realOrResolved(stateDir) === realOrResolved(getProfile().stateDir),
-    owned:
-      !!readWebOwner(stateDir) ||
-      webSessions.list().some(
-        (s) =>
-          s.via === "github" ||
-          s.via === "claim" ||
-          s.via === "code" ||
-          // A link (unset: a link from before 0.4.5).
-          ((s.via === "link" || s.via === undefined) &&
-            !s.testOperator &&
-            s.key !== except),
-      ),
-  }).ok;
+    owned: personsOnInstall({
+      owner: !!readWebOwner(stateDir),
+      sessions: webSessions.list(),
+      except,
+    }),
+  });
 }
 
 /** Issue 810: the fixture key this server sealed, or null. */
@@ -3105,13 +3104,16 @@ async function handleFixturePersonRoute(
     !notAPersonOf(req);
   if (method === "GET" || method === "HEAD") {
     // The person's own session doesn't count against the install for
-    // them, as on the press: else signing in hides the button.
-    const testInstall = testInstallNow(browser ? session!.key : undefined);
-    return sendJson(res, {
-      ok: true,
-      testInstall,
-      ready: testInstall && !!fixtureKeyNow(),
-    });
+    // them, as on the press: else signing in hides the button. Issue 823:
+    // not a test install, the first missing condition (testInstallRead).
+    const b = testInstallBindingNow(browser ? session!.key : undefined);
+    return sendJson(
+      res,
+      testInstallRead(b, {
+        ready: b.ok && !!fixtureKeyNow(),
+        envPrefix: getProfile().envPrefix,
+      }),
+    );
   }
   if (g.ok && !g.principal)
     return sendJson(

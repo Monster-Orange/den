@@ -40,7 +40,7 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
-import { dialogHtml, mountDialog } from "./dialog-den.js";
+import { askConfirm, dialogHtml, mountDialog } from "./dialog-den.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -1413,46 +1413,111 @@ const ACCESS_ROWS = [
 ];
 
 /**
- * Issue 810: Settings › Access › Test install. Read only: whether this is a
- * test install (set by hand in the distribution config) and whether its
- * test person is set up. Set up test person shows on a test install only.
+ * Issue 823: why an install isn't a test install, in plain words with
+ * what to do: the first missing condition the server sends (`why`), and
+ * for the launch flag its name in this distribution's prefix (`launchFlag`,
+ * from the server). An older server's answer, with no reason: the general
+ * words.
  */
-function drawTestInstall(host, ctx) {
-  const draw = (b) => {
-    const lines = [
-      b.testInstall
-        ? L("set.ui.testInstallYes", "This is a test install.")
-        : L(
-            "set.ui.testInstallNo",
-            "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
-          ),
-    ];
-    if (b.testInstall)
-      lines.push(
+function testInstallWhyLine(b) {
+  switch (b.why) {
+    case "no_mark":
+      return L(
+        "set.ui.testInstallNoMark",
+        "Not a test install: the test-install mark is missing. A person adds web.test_install: true to the distribution config by hand.",
+      );
+    case "no_launch_flag":
+      return L(
+        "set.ui.testInstallNoFlag",
+        "Not a test install: it wasn't started with the test launcher's flag. Start it with {flag}=1 set.",
+        { flag: b.launchFlag || "<PREFIX>_TEST_INSTALL" },
+      );
+    case "default_state_dir":
+      return L(
+        "set.ui.testInstallDefaultDir",
+        "Not a test install: it runs on the default state folder. Start it on a state folder of its own.",
+      );
+    case "owned":
+      return L(
+        "set.ui.testInstallOwned",
+        "Not a test install: an owner or another person (not you) is signed in here. They sign out first.",
+      );
+    default:
+      return L(
+        "set.ui.testInstallNo",
+        "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
+      );
+  }
+}
+
+/**
+ * Issue 810, 823: Settings › Access › Test install, from the read of
+ * /api/web/fixture-person. Not a test install: the missing condition and
+ * what to do, no button. A test install, not set up: Set up test person.
+ * Set up: the state plainly, no primary button; a secondary Set up again.
+ */
+export function testInstallHtml(b) {
+  const lines = b.testInstall
+    ? [
+        L("set.ui.testInstallYes", "This is a test install."),
         b.ready
           ? L("set.ui.testPersonReady", "The test person is set up.")
           : L("set.ui.testPersonMissing", "The test person isn't set up yet."),
-      );
-    host.innerHTML =
-      `<output class="set-ro" id="set-test-install" data-test-install="${b.testInstall ? "yes" : "no"}" data-ready="${b.ready ? "yes" : "no"}">${lines.map(escHtml).join(" ")}</output>` +
-      (b.testInstall
-        ? ` <button type="button" class="btn" id="set-test-person">${escHtml(L("set.ui.testPersonSetUp", "Set up test person"))}</button>`
-        : "");
-    const btn = host.querySelector("#set-test-person");
-    if (!btn) return;
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      try {
-        const run = (headers) =>
-          ctx.shell.api("POST", "/api/web/fixture-person", {}, { headers });
-        const r = ctx.shell.busyAction
-          ? await ctx.shell.busyAction("test-person", run, { button: btn })
-          : await run({});
-        if (r?.ok) draw(r);
-      } finally {
-        btn.disabled = false;
-      }
-    });
+      ]
+    : [testInstallWhyLine(b)];
+  const why = !b.testInstall && b.why ? ` data-why="${escHtml(b.why)}"` : "";
+  const button = !b.testInstall
+    ? ""
+    : b.ready
+      ? ` <button type="button" class="btn" id="set-test-person-again">${escHtml(L("set.ui.testPersonAgain", "Set up again"))}</button>`
+      : ` <button type="button" class="btn primary" id="set-test-person">${escHtml(L("set.ui.testPersonSetUp", "Set up test person"))}</button>`;
+  return (
+    `<output class="set-ro" id="set-test-install" data-test-install="${b.testInstall ? "yes" : "no"}" data-ready="${b.ready ? "yes" : "no"}"${why}>${lines.map(escHtml).join(" ")}</output>` +
+    button
+  );
+}
+
+/**
+ * Issue 810: Settings › Access › Test install. Read only: whether this is a
+ * test install (set by hand in the distribution config) and whether its
+ * test person is set up. Set up test person shows on a test install only;
+ * Set up again (issue 823) asks first, in the kit's dialog with Report.
+ */
+function drawTestInstall(host, ctx) {
+  const setUp = async (btn) => {
+    btn.disabled = true;
+    try {
+      const run = (headers) =>
+        ctx.shell.api("POST", "/api/web/fixture-person", {}, { headers });
+      const r = ctx.shell.busyAction
+        ? await ctx.shell.busyAction("test-person", run, { button: btn })
+        : await run({});
+      if (r?.ok) draw(r);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  const draw = (b) => {
+    host.innerHTML = testInstallHtml(b);
+    const first = host.querySelector("#set-test-person");
+    if (first) first.addEventListener("click", () => setUp(first));
+    const again = host.querySelector("#set-test-person-again");
+    if (again)
+      again.addEventListener("click", async () => {
+        const ok = await askConfirm({
+          title: L(
+            "set.ui.testPersonAgainTitle",
+            "Set up the test person again?",
+          ),
+          message: L(
+            "set.ui.testPersonAgainAsk",
+            "This makes a new key for the test person, and every current test-person sign-in ends. Live checks sign in again with the new key.",
+          ),
+          okLabel: L("set.ui.testPersonAgain", "Set up again"),
+          danger: true,
+        });
+        if (ok) await setUp(again);
+      });
   };
   fetch("/api/web/fixture-person", { cache: "no-store" })
     .then((r) =>

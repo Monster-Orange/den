@@ -302,10 +302,13 @@ describe("the mark counts only on a bound test install", () => {
   });
 
   it("ignored without the launcher's flag: Settings reads no, setup and sign-in refused", async () => {
+    // Issue 823: and why: the launcher's flag, by its name here.
     expect(await state(noflag)).toEqual({
       ok: true,
       testInstall: false,
       ready: false,
+      why: "no_launch_flag",
+      launchFlag: "DEN_TEST_INSTALL",
     });
     const p = await signedIn(noflag.stateDir, noflag.base);
     const r = await call(
@@ -336,13 +339,39 @@ describe("the mark counts only on a bound test install", () => {
   });
 
   it("ignored on the product's default state dir", async () => {
-    expect((await state(homedir)).testInstall).toBe(false);
+    expect(await state(homedir)).toEqual({
+      ok: true,
+      testInstall: false,
+      ready: false,
+      why: "default_state_dir",
+    });
+  });
+
+  it("ignored without the mark, and it says so", async () => {
+    const cfg = path.join(test.root, "config", "den.yml");
+    fs.writeFileSync(cfg, "environments: [local]\n");
+    try {
+      expect(await state(test)).toEqual({
+        ok: true,
+        testInstall: false,
+        ready: false,
+        why: "no_mark",
+      });
+    } finally {
+      fs.writeFileSync(cfg, MARKED.join("\n"));
+    }
+    expect((await state(test)).testInstall).toBe(true);
   });
 
   it("ignored on an install with an owner", async () => {
     writeWebOwner({ id: 1, login: "someone" }, test.stateDir);
     try {
-      expect((await state(test)).testInstall).toBe(false);
+      expect(await state(test)).toEqual({
+        ok: true,
+        testInstall: false,
+        ready: false,
+        why: "owned",
+      });
     } finally {
       clearWebOwner(test.stateDir);
     }
@@ -386,7 +415,7 @@ describe("making the fixture person on the test install", () => {
   it("a person signed in by a link counts as a person on the install", async () => {
     const p = await signedIn(test.stateDir, test.base);
     try {
-      expect((await state(test)).testInstall).toBe(false);
+      expect((await state(test)).why).toBe("owned");
     } finally {
       await signOut(test, p.headers);
     }
@@ -398,8 +427,10 @@ describe("making the fixture person on the test install", () => {
     try {
       const own = await call(test, "GET", "/api/web/fixture-person", p.headers);
       expect(own.json.testInstall).toBe(true);
+      // Issue 823: their own session is never the reason, for them.
+      expect(own.json.why).toBeUndefined();
       // Anyone else still sees the person's session as a person here.
-      expect((await state(test)).testInstall).toBe(false);
+      expect((await state(test)).why).toBe("owned");
     } finally {
       await signOut(test, p.headers);
     }
