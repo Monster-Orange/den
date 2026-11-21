@@ -142,13 +142,27 @@ async function graph(o: BrowserContextOptions = {}): Promise<Page> {
   await p.goto(api("/graph?ws=main"));
   // (A straight vertical edge has a zero-width box: attached, not "visible".)
   await p.waitForSelector(EDGE, { state: "attached" });
-  await p.waitForTimeout(300);
+  // Laid out: the edge's path and where it sits on screen are the same
+  // on two looks in a row.
+  await p.waitForFunction(
+    (sel) => {
+      const e = document.querySelector(sel);
+      const r = e?.getBoundingClientRect();
+      const now = e && r ? `${e.getAttribute("d")}|${r.x},${r.y}` : "";
+      const w = window as unknown as { __edgeWas?: string };
+      const same = !!now && now === w.__edgeWas;
+      w.__edgeWas = now;
+      return same;
+    },
+    EDGE,
+    { polling: 100, timeout: 10_000 },
+  );
   return p;
 }
 /** Select a card by clicking it (the details panel may open). */
 async function select(p: Page, id: string): Promise<void> {
   await p.click(`.dg-card[data-id="${id}"]`, { timeout: 8_000 });
-  await p.waitForTimeout(200);
+  await p.locator(`.dg-card.sel[data-id="${id}"]`).waitFor({ timeout: 5_000 });
 }
 
 describe("R22b-2: a selected card's edges flow from data-f to data-t", () => {
@@ -206,6 +220,7 @@ describe("R22b-2: a selected card's edges flow from data-f to data-t", () => {
           parseFloat(getComputedStyle(e).strokeDashoffset),
         ),
       );
+      // Kept on purpose: the samples are taken over time, to see motion.
       await p.waitForTimeout(90);
     }
     const steps = offs.slice(1).map((v, i) => v - offs[i]);
@@ -283,7 +298,9 @@ describe("R22b-1: the edge layer paints above the frames and the cards", () => {
       '.dg-card[data-id="shop/worker"]',
     ))!.boundingBox())!;
     await p.mouse.click(tip.x, box.y + 4);
-    await p.waitForTimeout(200);
+    await p
+      .locator('.dg-card.sel[data-id="shop/worker"]')
+      .waitFor({ timeout: 5_000 });
     expect(
       await p.$eval('.dg-card[data-id="shop/worker"]', (e) =>
         e.classList.contains("sel"),
