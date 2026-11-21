@@ -11,8 +11,8 @@
  *    person's terminal proves it is theirs): the right code signs in, five
  *    wrong ones end the link ("refused");
  *  - from then on, the link opens the pairing screen (pair-requests.ts):
- *    the wait is "pairing", with the code that screen shows (so the CLI
- *    prints it: terminal, new screen and approver all show one code),
+ *    the wait is "pairing" (with the device and address, never the code:
+ *    that stays on the new device's screen, where the person reads it),
  *    until a signed-in browser approves the device and it signs in
  *    ("used"), or denies it ("denied"), or the request runs out
  *    ("expired").
@@ -54,8 +54,6 @@ export interface LoginWaitView {
   /** pairing, used: the browser and OS that opened it, its address. */
   device?: string;
   client?: string;
-  /** pairing: the code the pairing screen shows (the CLI prints it). */
-  code?: string;
   /** used: when it signed in. */
   usedAt?: number;
   /** When the CLI registered it (the `web login` run began). */
@@ -73,7 +71,6 @@ interface LoginWait {
   state: LoginWaitState;
   device?: string;
   client?: string;
-  code?: string;
   usedAt?: number;
   openedAt?: number;
   codeHash?: Buffer;
@@ -189,14 +186,13 @@ export class LoginWaits {
   pairing(
     nonce: string,
     until: number,
-    meta: { device: string; client?: string; code?: string },
+    meta: { device: string; client?: string },
   ): void {
     const w = this.find(nonce);
     if (!w || (w.state !== "waiting" && w.state !== "opened")) return;
     w.state = "pairing";
     w.device = meta.device;
     if (meta.client) w.client = meta.client;
-    if (meta.code) w.code = meta.code;
     w.expiresAt = until;
   }
 
@@ -211,7 +207,6 @@ export class LoginWaits {
     w.device = meta.device;
     if (meta.client) w.client = meta.client;
     w.usedAt = this.now();
-    delete w.code;
     this.end(w, "used");
   }
 
@@ -219,7 +214,6 @@ export class LoginWaits {
   denied(nonce: string): void {
     const w = this.find(nonce);
     if (!w || w.state !== "pairing") return;
-    delete w.code;
     this.end(w, "denied");
   }
 
@@ -245,7 +239,6 @@ export class LoginWaits {
           w.state === "pairing") &&
         now >= w.expiresAt
       ) {
-        delete w.code;
         this.end(w, "expired");
       }
       if (w.forgetAt !== undefined && now >= w.forgetAt) this.byId.delete(id);
@@ -258,7 +251,6 @@ function view(w: LoginWait): LoginWaitView {
     state: w.state,
     ...(w.device ? { device: w.device } : {}),
     ...(w.client ? { client: w.client } : {}),
-    ...(w.code && w.state === "pairing" ? { code: w.code } : {}),
     ...(w.usedAt ? { usedAt: w.usedAt } : {}),
     startedAt: w.createdAt,
     ...(w.openedAt ? { openedAt: w.openedAt } : {}),

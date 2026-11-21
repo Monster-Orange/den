@@ -2866,6 +2866,7 @@ function sendPairing(
   requestId: string,
   lead: { key: string; message: string },
   link?: { nonce: string; startedAt?: number },
+  spend?: { spend: () => boolean; gone: () => void },
 ): void {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const client = g.ok ? g.client : undefined;
@@ -2888,11 +2889,18 @@ function sendPairing(
           : "err.signin.tooManyWaiting",
       message: CREATE_REFUSED[r.error].error,
     });
+  // The link is spent only once its request is made: a refusal above
+  // leaves it usable. A link spent meanwhile ends that request.
+  if (spend && !spend.spend()) {
+    PAIRS.withdraw(r.id);
+    return spend.gone();
+  }
+  // Issue 819: the wait never carries the pairing code (it stays on the
+  // new device's screen).
   if (link)
     LOGIN_WAITS.pairing(link.nonce, r.expiresAt, {
       device: deviceName(req.headers["user-agent"]),
       ...(client ? { client } : {}),
-      code: r.code,
     });
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
@@ -3036,9 +3044,11 @@ async function handleAuth(
       return sendFirstRunHere(req, res, requestId);
     }
   } else if (sendToNamedAddress(req, res, url, already)) return;
-  if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+  const spendLink = () => webSessions.consumeCode(check.nonce, check.expiresAt);
   // Checked again right before the session: another first-run sign-in
-  // may have finished while this one waited.
+  // may have finished while this one waited. Nothing awaits between here
+  // and startSession. Once set up, the link is spent only when its
+  // request is made.
   if (FIRST_RUN.done())
     return sendPairing(
       req,
@@ -3046,7 +3056,9 @@ async function handleAuth(
       requestId,
       pairLinkLead(),
       wait ? { nonce: check.nonce, startedAt: wait.startedAt } : undefined,
+      { spend: spendLink, gone },
     );
+  if (!spendLink()) return gone();
   if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
   const s = startSession(req, "link");
   res.writeHead(303, {
@@ -3495,8 +3507,8 @@ async function handleClaim(
   // here and startSession, and spending the setup link below leaves a
   // trace first-run.ts reads as set up, so it is checked first.
   const firstNow = first && !FIRST_RUN.done();
-  if (!CLAIM_NONCES.consume(check.nonce, check.expiresAt))
-    return sendSignedOut(req, res, {
+  const claimGone = () =>
+    sendSignedOut(req, res, {
       pathname: "/auth",
       search: "",
       scope: "den",
@@ -3504,11 +3516,21 @@ async function handleClaim(
       requestId,
       message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
     });
+  const spendClaim = () => CLAIM_NONCES.consume(check.nonce, check.expiresAt);
+  // Once set up, the setup link is spent only when its request is made.
   if (!firstNow)
-    return sendPairing(req, res, requestId, {
-      key: "err.signin.claimSetUp",
-      message: `${product().title} is already set up, so the setup link doesn't sign in by itself any more. Approve this browser from one that is signed in: Settings › Access, then the code below.`,
-    });
+    return sendPairing(
+      req,
+      res,
+      requestId,
+      {
+        key: "err.signin.claimSetUp",
+        message: `${product().title} is already set up, so the setup link doesn't sign in by itself any more. Approve this browser from one that is signed in: Settings › Access, then the code below.`,
+      },
+      undefined,
+      { spend: spendClaim, gone: claimGone },
+    );
+  if (!spendClaim()) return claimGone();
   const s = startSession(req, "claim");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -4804,9 +4826,6 @@ async function handleRequest(
         state: v.state,
         ...(v.device ? { device: v.device } : {}),
         ...(v.client ? { client: v.client } : {}),
-        // Issue 819: the code the pairing screen shows, so `web login`
-        // prints it beside where to approve it.
-        ...(v.code ? { code: v.code } : {}),
         ...(v.usedAt ? { usedAt: new Date(v.usedAt).toISOString() } : {}),
         expiresAt: new Date(v.expiresAt).toISOString(),
       });

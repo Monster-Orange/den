@@ -2334,7 +2334,6 @@ export async function cmdWebLoginWait(
       state?: string;
       device?: string;
       client?: string;
-      code?: string;
       usedAt?: string;
     };
     // The countdown's line ends before the outcome's.
@@ -2354,9 +2353,8 @@ export async function cmdWebLoginWait(
       if (tty) io.err("\n");
       io.err(
         `${product().cli}: opened in ${j.device ?? "a browser"}${j.client ? ` (${j.client})` : ""}. ` +
-          (j.code
-            ? `Its screen shows the code ${j.code}: type it in a browser that is signed in, at Settings › Access.\n`
-            : "Approve it in a browser that is signed in: Settings › Access.\n"),
+          // Issue 819: the pairing code stays on that device's screen.
+          "Read the code on that device's screen, and type it in a browser that is signed in, at Settings › Access.\n",
       );
     }
     if (r && j.state === "used") {

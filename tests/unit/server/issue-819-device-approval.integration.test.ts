@@ -603,6 +603,15 @@ describe("2. a signed-in browser approves or denies the waiting device", () => {
     expect(signinOf(again).pair).toBeUndefined();
   });
 
+  it("the pairing code stays on the new device's screen: `web login`'s wait never carries it", async () => {
+    const { where, id } = await webLoginLink();
+    const { pair } = await openOnNewDevice(where);
+    const w = await loginWait(id);
+    expect(w.state).toBe("pairing");
+    expect(Object.keys(w)).not.toContain("code");
+    expect(JSON.stringify(w)).not.toContain(String(pair.code));
+  });
+
   it("item 7: a browser already signed in opens a `web login` link: it stays signed in, and the wait is used, so the CLI stops waiting", async () => {
     const person = signedInPerson();
     const { where, id } = await webLoginLink();
@@ -800,6 +809,50 @@ describe("item 2: new requests are limited per address (a Setting)", () => {
         lead: signinOf(r).lead,
         pair: signinOf(r).pair,
       }).toEqual({ lead: "err.signin.tooManyRequests", pair: undefined });
+    } finally {
+      fs.writeFileSync(userYml(), before);
+    }
+  });
+
+  it("a refused request never spends the link or the setup link: once the limit allows, each opens the pairing screen, and `web login` still waits", async () => {
+    use(main!);
+    const before = fs.readFileSync(userYml(), "utf-8");
+    const { where, id } = await webLoginLink();
+    const setup = setupLink();
+    fs.writeFileSync(
+      userYml(),
+      "web:\n  allow_plain_http_remote: true\n  pair_requests_per_minute: 1\n",
+    );
+    try {
+      // Past the limit (one more request, if none was made this minute).
+      await call("POST", "/api/signin/code", lan(), "{}");
+      const refused = await call("GET", where, lan(page));
+      const refusedSetup = await call("GET", setup, local(page));
+      expect([
+        signinOf(refused).lead,
+        signinOf(refusedSetup).lead,
+        (await loginWait(id)).state,
+      ]).toEqual([
+        "err.signin.tooManyRequests",
+        "err.signin.tooManyRequests",
+        "waiting",
+      ]);
+    } finally {
+      fs.writeFileSync(
+        userYml(),
+        "web:\n  allow_plain_http_remote: true\n  pair_requests_per_minute: 1000\n",
+      );
+    }
+    try {
+      const again = await call("GET", where, lan(page));
+      const againSetup = await call("GET", setup, local(page));
+      // The setup link may be refused again (too many waiting), but it is
+      // never the used-or-expired page: it was not spent.
+      expect({
+        link: pairCodeOf(again),
+        wait: (await loginWait(id)).state,
+        setupLinkSpent: signinOf(againSetup).expired === true,
+      }).toEqual({ link: true, wait: "pairing", setupLinkSpent: false });
     } finally {
       fs.writeFileSync(userYml(), before);
     }

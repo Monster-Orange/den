@@ -144,7 +144,7 @@ describe("web login waits", () => {
     );
   });
 
-  it("issue 819: opened once set up: prints the code that device's screen shows, to type in a signed-in browser", async () => {
+  it("issue 819: opened once set up: never prints a pairing code (even one a server sends); says to read it on that device", async () => {
     const port = await standIn();
     let polls = 0;
     answer = () =>
@@ -158,9 +158,10 @@ describe("web login waits", () => {
         : { state: "denied" };
     const r = await login(["--port", String(port)]);
     expect(r.code).toBe(1);
+    expect(r.err + r.out).not.toContain("K7Q");
     expect(
       r.err.match(
-        /Its screen shows the code K7Q-42M: type it in a browser that is signed in, at Settings › Access\./g,
+        /opened in Safari on macOS \(100\.64\.0\.7\)\. Read the code on that device's screen, and type it in a browser that is signed in, at Settings › Access\./g,
       ),
     ).toHaveLength(1);
   });
@@ -190,7 +191,7 @@ describe("web login waits", () => {
     expect(r.code).toBe(0);
     expect(
       r.err.match(
-        /opened in Safari on macOS \(100\.64\.0\.7\)\. Approve it in a browser that is signed in: Settings › Access\./g,
+        /opened in Safari on macOS \(100\.64\.0\.7\)\. Read the code on that device's screen, and type it in a browser that is signed in, at Settings › Access\./g,
       ),
     ).toHaveLength(1);
     expect(r.out.trim().split("\n")[1]).toBe(
