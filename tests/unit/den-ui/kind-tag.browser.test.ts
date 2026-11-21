@@ -49,6 +49,7 @@ import {
   navWarnings,
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
+import { STRINGS } from "../../../packages/den-ui/src/strings.js";
 import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
@@ -704,8 +705,9 @@ for (const engine of ["chromium", "webkit"]) {
               .getAttribute("aria-label"),
           ),
         );
-        const hub =
-          lang === "en" ? "Hub" : got[2]!.split(" · ")[1].split(",")[0];
+        // The kind word from the kit's own table for that language.
+        const hub = STRINGS[lang]["kit.kind.hub"];
+        expect(hub).toBeTruthy();
         expect({ lang, got }).toEqual({
           lang,
           got: [

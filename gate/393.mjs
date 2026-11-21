@@ -27,6 +27,9 @@ const chores = () =>
       ),
   );
 
+// Read only (issue 845): reads Settings › Browser sign-in and every row's words.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }

@@ -99,6 +99,9 @@ function audit() {
   return out;
 }
 
+// Read only (issue 845): opens each rail page in light and dark and audits its markup.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }

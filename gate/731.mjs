@@ -31,6 +31,9 @@ const parse = (b) => {
   }
 };
 
+// Read only (issue 845): reads the host refresh state file and doctor.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }

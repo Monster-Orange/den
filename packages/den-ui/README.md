@@ -130,6 +130,14 @@ syncPinToggles }`.
   (the release notes pop-up: newest first, earlier versions on request,
   copy as Markdown or for chat), `src/report.js` and `src/report-shot.js`
   (the Report form, its screenshot and masks).
+- Issue 793: What's new is drawn by the dialog frame (`dialogHtml`, kind
+  "panel", and `mountDialog` from `dialog.js`), so serve `dialog.js` and
+  `dialog.css` wherever `whatsnew.js` is served; `whatsnew.css` styles only
+  the notes inside it. `base.css` gives `body` and every `dialog` the kit's
+  sans (`var(--sans, …)` with the kit's own list after it), so nothing a
+  script puts in `body` falls back to the browser's serif.
+  `focusWhenFree(el)` (`dialog.js`) focuses a page's own field now, or
+  when the open kit pop-up over it closes.
 
 ### The client entry: `src/kit.js` (`window.DenUI`)
 

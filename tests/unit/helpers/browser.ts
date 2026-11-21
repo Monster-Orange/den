@@ -6,7 +6,10 @@
  *   this machine's localhost and *.localhost. Launch options do not apply
  *   there. It never falls back to a local browser: an unreachable server
  *   fails the suite and names DEN_PW_WS.
- * - DEN_PW_WS unset: launch a local browser with the suite's options.
+ * - DEN_PW_WS unset: launch a local browser with the suite's options,
+ *   except WebKit on macOS outside CI: a local WebKit on a shared Mac took
+ *   down its window server and logged every session out. There it is
+ *   refused unless DEN_HOST_WEBKIT=1 (a person on their own Mac).
  *
  * `launchBrowser` throws when it can't open one; a suite's own catch decides
  * whether DEN_SKIP_BROWSER_TESTS=1 skips it. `openBrowser` does that itself:
@@ -27,6 +30,23 @@ async function browserType(
   return pw[engine];
 }
 
+/** Why a local launch of `engine` is refused here, or null when it isn't. */
+export function hostWebkitRefusal(
+  engine: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): string | null {
+  if (engine !== "webkit" || platform !== "darwin") return null;
+  if (env.DEN_PW_WS || env.CI === "true" || env.DEN_HOST_WEBKIT === "1")
+    return null;
+  return (
+    "A local WebKit on macOS is refused: it can take down the window " +
+    "server and log every session out. Set DEN_PW_WS to the Linux " +
+    "Playwright server, run it in CI, or on your own Mac set " +
+    "DEN_HOST_WEBKIT=1."
+  );
+}
+
 /** A browser for a test: DEN_PW_WS's server, else a local launch. */
 export async function launchBrowser(
   engine: BrowserEngine | BrowserType = "chromium",
@@ -34,7 +54,15 @@ export async function launchBrowser(
 ): Promise<Browser> {
   const type = await browserType(engine);
   const ws = process.env.DEN_PW_WS;
-  if (!ws) return type.launch(options);
+  if (!ws) {
+    const refused = hostWebkitRefusal(
+      type.name(),
+      process.env,
+      process.platform,
+    );
+    if (refused) throw new Error(refused);
+    return type.launch(options);
+  }
   try {
     return await type.connect(ws, { exposeNetwork: "<loopback>" });
   } catch (err) {
