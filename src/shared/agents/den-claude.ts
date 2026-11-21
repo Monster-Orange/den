@@ -451,8 +451,19 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
     `Bash(cat ${secret}:*)`,
     `Bash(cat ${sessions}/:*)`,
+    ...SIGN_IN_DENY_RULES,
   ];
 }
+
+/**
+ * Sign-in: the commands that print a person's sign-in link, whatever the
+ * CLI's name or path. A cooperating agent's boundary only; the CLI and
+ * the server check where they run (person-here.ts).
+ */
+export const SIGN_IN_DENY_RULES: readonly string[] = [
+  "Bash(*web login*)",
+  "Bash(*web claim-link*)",
+];
 
 /**
  * Review M4 (0.4.46): edits denied under the person's own config folder

@@ -24,9 +24,12 @@ import { isLoopbackAddress } from "./request-guard.js";
 import {
   descendsFrom,
   loopbackPeerFind,
+  parentLine,
   type LookupMiss,
 } from "../../shared/peer-process.js";
 import { ACTOR_TOKEN_PREFIX } from "../../shared/actor-token.js";
+import { AGENT_REFUSAL } from "../../shared/claim-code.js";
+import { NOT_CHECKED } from "../../shared/person-here.js";
 
 /** ok: from the agent's own processes; elsewhere: proved not; unknown: couldn't tell. */
 export type TokenCaller = "ok" | "elsewhere" | "unknown";
@@ -229,4 +232,37 @@ export function refusalDetail(o: {
       : "outside the agent's own processes";
   const why = o.from === "unknown" && o.why ? `${MISS_WORDS[o.why]}; ` : "";
   return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
+}
+
+/**
+ * Sign-in: this request's caller and its parents up to init, whole: as
+ * found when it connected when that line reached init, else read now.
+ * Null when the caller wasn't placed or a parent can't be read.
+ */
+export function callerLine(
+  req: http.IncomingMessage,
+  d: { line?: (pid: number) => number[] | null } = {},
+): number[] | null {
+  const pid = callerPid(req);
+  if (pid === null) return null;
+  const seen = PEERS.get(req.socket)?.line;
+  if (!d.line && seen && seen[0] === pid && seen[seen.length - 1] === 1)
+    return seen;
+  return (d.line ?? ((p: number) => parentLine(p)))(pid);
+}
+
+/**
+ * Sign-in: why the server won't register a sign-in link or let a browser
+ * in for this caller (the CLI's bearer), or null when it may. It must be
+ * on loopback, placed, with a whole line that holds no running session's
+ * root. Anything it can't tell refuses.
+ */
+export function personCallerRefusal(o: {
+  loopback: boolean;
+  line: number[] | null;
+  roots: number[] | null;
+}): string | null {
+  if (!o.loopback || !o.line || o.line.length === 0 || !o.roots)
+    return NOT_CHECKED;
+  return o.line.some((p) => o.roots!.includes(p)) ? AGENT_REFUSAL : null;
 }

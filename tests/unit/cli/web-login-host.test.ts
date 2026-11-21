@@ -47,6 +47,8 @@ async function login(args: string[]) {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
   });
   return { code, out, err };
 }

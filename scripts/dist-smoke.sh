@@ -328,7 +328,16 @@ SEC_TOKEN=""
 # server swaps for a session cookie, once.
 # D80: the link is on the install's address; this check has no DNS for
 # it, so the link is made for this server's own origin (--origin).
-SEC_LINK="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" --origin "http://localhost:$PORT" 2>/dev/null)"
+# Sign-in: a link is printed only in a terminal, so it runs in one
+# (script(1); macOS and util-linux spell it differently).
+in_terminal() {
+  if [ "$(uname)" = Darwin ]; then script -q /dev/null "$@" </dev/null
+  else script -qec "$(printf '%q ' "$@")" /dev/null </dev/null; fi
+}
+SEC_LINK="$(cd "$DIST" && in_terminal ./bin/acme web login --no-wait --port "$PORT" --origin "http://localhost:$PORT" 2>/dev/null | tr -d '\r' | grep -m1 -Eo 'https?://[^[:space:]]+' || true)"
+piped="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" --origin "http://localhost:$PORT" 2>/dev/null || true)"
+[ -z "$piped" ] && ok "\`acme web login\` prints no link outside a terminal" || bad "\`acme web login\` printed a link outside a terminal"
+piped=""
 SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 SEC_LINK=""

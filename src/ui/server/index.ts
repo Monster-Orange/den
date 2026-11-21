@@ -1231,12 +1231,15 @@ import {
   type VerifyServerDeps,
 } from "./verify-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { sessionRootPids } from "../../shared/person-here.js";
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
+  callerLine,
   callerPid,
   callerMiss,
   peerSettled,
+  personCallerRefusal,
   refusalDetail,
   tokenCaller,
   watchPeer,
@@ -2722,6 +2725,40 @@ function sendGuardRefusal(
  * 303 to `next` when it is a same-origin path, else `/`. Anything else gets
  * the signed-out page, which never echoes the code.
  */
+/**
+ * Sign-in: a call that registers a sign-in link or lets a browser in, from
+ * anything but a signed-in browser (the CLI's bearer), is answered only
+ * for a caller on this machine outside every running session's process
+ * tree (personCallerRefusal). True when it was refused (and answered).
+ */
+async function personCallerRefused(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  guard: GuardResult,
+  pathname: string,
+): Promise<boolean> {
+  if (guard.ok && guard.principal?.kind === "person-browser") return false;
+  await peerSettled(req, readBinding().waitMs);
+  const why = personCallerRefusal({
+    loopback: isLoopbackAddress(req.socket?.remoteAddress),
+    line: callerLine(req),
+    roots: sessionRootPids(getStateDir()),
+  });
+  if (!why) return false;
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "person-grant",
+      detail: pathname,
+      outcome: "refused" as const,
+      reason: "person_only",
+    },
+    principalOf(req),
+  );
+  sendJson(res, { ok: false, code: "person_only", error: why }, 403);
+  return true;
+}
+
 async function handleAuth(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -4128,6 +4165,7 @@ async function handleRequest(
   // SEC-2a: `web login` registers its link's wait, then polls it
   // (shell-grade: the CLI's bearer).
   if (pathname === "/api/web/logins" && req.method === "POST") {
+    if (await personCallerRefused(req, res, guard, pathname)) return;
     let body: { nonce?: unknown; code?: unknown; expiresAt?: unknown } = {};
     try {
       body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
@@ -4234,6 +4272,7 @@ async function handleRequest(
   // 0.4.15: what lets another browser in needs the person, not just
   // loopback (approvals.ts: an agent with a shell is on loopback too).
   if (req.method === "POST" && PERSON_GRANT_ROUTES.includes(pathname)) {
+    if (await personCallerRefused(req, res, guard, pathname)) return;
     const g = guard.ok ? guard : null;
     const ok = g ? personGrantAllowed(req, g, printedCli()) : null;
     if (!ok?.ok) {

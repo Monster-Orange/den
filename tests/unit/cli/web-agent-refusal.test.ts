@@ -41,6 +41,8 @@ function io() {
       out: (s: string) => (o.out += s),
       err: (s: string) => (o.err += s),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
       // D80: the install's address the links are on.
       webUrl: () => ({ url: "https://den.acme.example.com", confirmed: true }),
     },

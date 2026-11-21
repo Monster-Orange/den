@@ -16,7 +16,7 @@
  * them, and a failure shows booleans.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { spawnSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
@@ -24,6 +24,7 @@ import * as path from "path";
 import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
 import { cliPrefix } from "../../../src/shared/cli-command.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { inTerminal, linkIn } from "./helpers/in-terminal.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -427,7 +428,9 @@ describe("`web login` waits, and its link asks for the code", () => {
     code: Promise<string>;
     done: Promise<{ status: number | null; out: string; err: string }>;
   } {
-    const child = spawn(
+    // Sign-in: a link and its code are printed only in a terminal; what
+    // it shows is stdout and stderr together.
+    const term = inTerminal(
       TSX,
       [
         path.join(ENGINE, "src", "ui", "cli", "index.ts"),
@@ -438,33 +441,23 @@ describe("`web login` waits, and its link asks for the code", () => {
         "--origin",
         `http://${NAME}:${port}`,
       ],
-      {
-        cwd: root,
-        env: { ...env(), CI: "1" },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
+      { cwd: root, env: { ...env(), CI: "1" } },
     );
-    let out = "";
-    let err = "";
     let gotLink: (s: string) => void = () => {};
     let gotCode: (s: string) => void = () => {};
     const link = new Promise<string>((r) => (gotLink = r));
     const code = new Promise<string>((r) => (gotCode = r));
-    child.stdout.on("data", (d: Buffer) => {
-      out += d.toString();
-      const l = out.split("\n")[0];
-      if (out.includes("\n")) gotLink(l);
-    });
-    child.stderr.on("data", (d: Buffer) => {
-      err += d.toString();
-      const m = /It asks for this code: (\S+)/.exec(err);
+    term.onText((all) => {
+      const l = linkIn(all);
+      if (l) gotLink(l);
+      const m = /It asks for this code: (\S+)/.exec(all);
       if (m) gotCode(m[1]);
     });
-    const done = new Promise<{
-      status: number | null;
-      out: string;
-      err: string;
-    }>((r) => child.on("close", (status) => r({ status, out, err })));
+    const done = term.done.then((r) => ({
+      status: r.status as number | null,
+      out: r.text,
+      err: r.text,
+    }));
     return { link, code, done };
   }
 
@@ -522,9 +515,12 @@ describe("`web login` waits, and its link asks for the code", () => {
     );
     const r = await run.done;
     expect(r.status).toBe(0);
-    expect(r.out.trim().split("\n")[1]).toMatch(
-      /^Signed in: Safari on macOS \(.+\) at \d\d:\d\d$/,
-    );
+    expect(
+      r.out
+        .split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.startsWith("Signed in:")),
+    ).toMatch(/^Signed in: Safari on macOS \(.+\) at \d\d:\d\d$/);
   }, 120_000);
 
   it("five wrong codes burn the link: the CLI says Refused, exit 1", async () => {

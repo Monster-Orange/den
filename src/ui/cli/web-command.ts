@@ -90,8 +90,12 @@ import {
   CLAIM_CODE_TTL_MS,
   claimLink,
   mintClaimCode,
-  personGrantRefusal,
 } from "../../shared/claim-code.js";
+import {
+  personHereRefusal,
+  terminalRefusal,
+  type PersonHereDeps,
+} from "../../shared/person-here.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   checkAddress,
@@ -1681,7 +1685,9 @@ async function runWeb(args: string[]): Promise<void> {
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
-  let link: string | null = personGrantRefusal(process.env) ? origin : null;
+  let link: string | null = personHereRefusal({ stateDir: getStateDir() })
+    ? origin
+    : null;
   const signIn = (next?: string) =>
     (link ??= freshLoginLink(options.port, next ?? "/", origin));
   const browser = openOrFocusDenWebUrl(
@@ -1729,6 +1735,11 @@ async function runWeb(args: string[]): Promise<void> {
   } else {
     console.log(chalk.yellow("\n  Could not open a browser automatically."));
   }
+  // Sign-in: a link is printed only to a terminal.
+  if (terminalRefusal(onTerminal())) {
+    console.log(chalk.gray(`  ${origin.replace(/\/+$/, "")}\n`));
+    return;
+  }
   console.log(
     `  Sign in (once, within ${ttlText(loginLinkTtl())}): ${signIn()}\n`,
   );
@@ -1745,9 +1756,10 @@ export function freshLoginLink(
   next = "/",
   origin?: string,
   stateDir: string = getStateDir(),
+  person: PersonCheck = {},
 ): string {
   void port; // the link is on the address, whatever port serves it
-  const refused = personGrantRefusal(process.env);
+  const refused = personHereRefusal({ ...person, stateDir });
   if (refused) throw new Error(refused);
   return loginLink(
     origin ?? requireWebUrl(product().cli),
@@ -1774,7 +1786,7 @@ export function cmdWebClaimLink(args: string[], io: CliIo = stdIo): number {
     );
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -1831,6 +1843,31 @@ interface CliIo {
   webUrl?: () => WebUrl | null;
   /** Issue 455: the address check's parts (tests swap the owner lookup). */
   addressDeps?: Partial<CheckDeps>;
+  /** Sign-in: where this runs (tests give its parents and the terminal). */
+  person?: PersonCheck;
+}
+
+/** Sign-in: personHereRefusal's parts, and whether output is a terminal. */
+type PersonCheck = Omit<PersonHereDeps, "stateDir" | "env"> & {
+  tty?: boolean;
+};
+
+/** Whether this process's output is on a terminal (stdout and stderr). */
+function onTerminal(): boolean {
+  return !!process.stdout.isTTY && !!process.stderr.isTTY;
+}
+
+/** Sign-in: why this command won't let a browser in from here, or null. */
+function grantRefusal(io: CliIo): string | null {
+  return personHereRefusal({
+    ...io.person,
+    stateDir: io.stateDir ?? getStateDir(),
+  });
+}
+
+/** grantRefusal, then: a link or code is printed only to a terminal. */
+function printRefusal(io: CliIo): string | null {
+  return grantRefusal(io) ?? terminalRefusal(io.person?.tty ?? onTerminal());
 }
 
 /**
@@ -2027,7 +2064,7 @@ export async function cmdWebLogin(
     io.out(LOGIN_HELP());
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -2053,7 +2090,7 @@ export async function cmdWebLogin(
       (l) => io.err(`${product().cli}: ${l}\n`),
       io.addressDeps,
     ));
-  const link = freshLoginLink(a.port, a.next, origin, stateDir);
+  const link = freshLoginLink(a.port, a.next, origin, stateDir, io.person);
   io.err(
     `${product().cli}: open this link within ${ttlText(loginLinkTtl())}; it signs in one browser, once.\n`,
   );
@@ -2110,7 +2147,7 @@ export async function cmdWebLoginWait(
     io.out(LOGIN_HELP());
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -2567,7 +2604,7 @@ export async function cmdWebApprove(
     io.err(usage);
     return 2;
   }
-  const refused = list ? null : personGrantRefusal(process.env);
+  const refused = list ? null : grantRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -2676,7 +2713,7 @@ export async function cmdWebOwner(
   }
   const stateDir = io.stateDir ?? getStateDir();
   const cli = product().cli;
-  const refused = sub === "show" ? null : personGrantRefusal(process.env);
+  const refused = sub === "show" ? null : grantRefusal(io);
   if (refused) {
     io.err(`${cli}: ${refused}\n`);
     return 1;
