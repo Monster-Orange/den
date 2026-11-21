@@ -267,6 +267,7 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import {
+  gateBoxOps,
   gateRunnerTokenOp,
   handleGateRoutes,
   isGatePath,
@@ -3597,6 +3598,11 @@ function approvalDeps(): ApprovalDeps {
     gateRunnerToken: gateRunnerTokenOp({
       runners: () => RunnerTokens.at(getStateDir()),
     }),
+    // Issue 625: an agent asks to add or remove a test box; the person allows.
+    ...(() => {
+      const box = gateBoxOps({ store: () => gates() });
+      return { gateBoxSet: box.set, gateBoxRemove: box.remove };
+    })(),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
@@ -9374,6 +9380,25 @@ void CRASH_GATE.then(() =>
       .then((m) =>
         m.startHubToolsWatch({
           waiting: typingHeldIds,
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
+    // Issue 714: an agent's gate slot held over MCP. Granted while it
+    // waited: it is told (typed at its prompt) and claims it; passed on
+    // unclaimed: told it is back in line; its lease lapsed: the bell.
+    void hubChecked
+      .then(() => import("./gate-notices.js"))
+      .then((m) =>
+        m.startGateNotices({
+          store: gates,
+          install: path.resolve(getStateDir()),
+          projectOf: (agent) =>
+            readAgentRecord(getStateDir(), agent)?.workspace ?? null,
+          relay: async (dv) =>
+            (await import("./hub-delivery-service.js")).relayMessage(dv),
+          bell: (n) => {
+            notificationDeps().store.add(n);
+          },
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
