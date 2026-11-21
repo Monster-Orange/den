@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.79] - unreleased
+
+### Changed
+
+- Sign-in: Den prints a sign-in link or code only in a terminal. Where there is none (a script, a service log), `den web up` prints the address and says to run `den web login` in a terminal.
+
 ## [0.4.78] - 2026-11-21
 
 ### Fixed
