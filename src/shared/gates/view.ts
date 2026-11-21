@@ -15,6 +15,8 @@ export interface GateSlotView {
   actor?: string;
   /** Issue 621: a CI runner's slot (held by lease): the runner's name. */
   runner?: string;
+  /** Issue 714: granted to an MCP agent, not claimed yet: by then. */
+  claimBy?: string;
   grantedAt?: string;
   expectedEnd?: string;
   overrun?: boolean;
@@ -40,6 +42,8 @@ export function gateView(store: GateStore, now = Date.now()) {
     agent: e.agent === true,
     ...(e.actor ? { actor: e.actor } : {}),
     ...(e.remote ? { runner: e.remote.runner } : {}),
+    // Issue 714: an agent's MCP slot granted while it waited, unclaimed.
+    ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
     ...(e.priority
       ? { priority: { reason: e.priority.reason, holds: pri.has(e.id) } }
       : {}),

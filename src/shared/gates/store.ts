@@ -30,11 +30,13 @@ import {
   gone,
   grants,
   lapsed,
+  mcpLapsed,
   overrun,
   passedBy,
   priorityIds,
   queueOrder,
   queuePlace,
+  unclaimed,
   type GateEntry,
   type GateKind,
   type GateSettings,
@@ -71,6 +73,10 @@ export type GateSettingsPatch = {
   priority_pass_limit_minutes?: number | null;
   priority_agents?: number | null;
   priority_runners?: number | null;
+  claim_minutes?: number | null;
+  mcp_renew_minutes?: number | null;
+  mcp_lapse_minutes?: number | null;
+  mcp_grace_minutes?: number | null;
 };
 
 /** Each setting: its least and most, and whether it is whole. */
@@ -90,6 +96,11 @@ export const GATE_LIMITS: Record<
   priority_agents: { min: 0, max: 1, int: true },
   // Issue 739: CI runners may ask for priority; 1 yes, 0 no.
   priority_runners: { min: 0, max: 1, int: true },
+  // Issue 714: an agent's slot held over MCP: claim, renew, lapse, grace.
+  claim_minutes: { min: 1, max: 24 * 60, int: false },
+  mcp_renew_minutes: { min: 1, max: 24 * 60, int: false },
+  mcp_lapse_minutes: { min: 1, max: 7 * 24 * 60, int: false },
+  mcp_grace_minutes: { min: 0, max: 7 * 24 * 60, int: false },
 };
 
 /**
@@ -138,7 +149,8 @@ export type GateEvent =
   | "overdue"
   | "ended-early"
   | "priority"
-  | "priority-waits";
+  | "priority-waits"
+  | "passed-unclaimed";
 
 export interface GateEventRow {
   at: string;
@@ -161,6 +173,11 @@ export interface GateEventRow {
   by?: string;
   /** Issue 621: a runner's slot: the runner token's name. */
   runner?: string;
+  /** Issue 714: an MCP slot: the agent and the install that asked. */
+  actor?: string;
+  install?: string;
+  /** Issue 714: granted while it waited: claim it by then (ISO). */
+  claimBy?: string;
 }
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
@@ -265,6 +282,19 @@ export class GateStore {
           num("priority_agents", GATE_DEFAULTS.priorityAgents ? 1 : 0) === 1,
         priorityRunners:
           num("priority_runners", GATE_DEFAULTS.priorityRunners ? 1 : 0) === 1,
+        claimMinutes: num("claim_minutes", GATE_DEFAULTS.claimMinutes),
+        mcpRenewMinutes: num(
+          "mcp_renew_minutes",
+          GATE_DEFAULTS.mcpRenewMinutes,
+        ),
+        mcpLapseMinutes: num(
+          "mcp_lapse_minutes",
+          GATE_DEFAULTS.mcpLapseMinutes,
+        ),
+        mcpGraceMinutes: num(
+          "mcp_grace_minutes",
+          GATE_DEFAULTS.mcpGraceMinutes,
+        ),
       };
     } catch {
       return { ...GATE_DEFAULTS };
@@ -306,6 +336,7 @@ export class GateStore {
       who: e.who,
       label: e.label,
       ...(e.remote ? { runner: e.remote.runner } : {}),
+      ...(e.mcp ? { actor: e.actor, install: e.mcp.install } : {}),
       ...row,
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
@@ -429,13 +460,14 @@ export class GateStore {
    * Takes back the gone, grants who may start, flags the overdue, and
    * returns the queue as it now stands. Call under the lock.
    */
-  private settle(): GateEntry[] {
+  private settle(claimNow?: string): GateEntry[] {
     const s = this.settings();
     const now = this.now();
     const at = new Date(now).toISOString();
     const entries: GateEntry[] = [];
     for (const e of this.readAll()) {
-      const lapse = lapsed(e, now);
+      // Issue 714: an MCP holder's lease lapses as a runner's does.
+      const lapse = lapsed(e, now) || mcpLapsed(e, s, now);
       if (!lapse && !gone(e, this.alive)) {
         entries.push(e);
         continue;
@@ -446,6 +478,18 @@ export class GateStore {
         ...this.heldFor(e, now),
       });
     }
+    // Issue 714: an MCP slot granted while it waited and not claimed in
+    // time passes on, when someone waits: back in line, at its end.
+    if (entries.some((x) => !x.grantedAt))
+      for (const e of entries) {
+        if (!unclaimed(e, now)) continue;
+        this.record(e, { event: "passed-unclaimed", ...this.heldFor(e, now) });
+        delete e.grantedAt;
+        delete e.flaggedAt;
+        delete e.mcp!.claimBy;
+        e.askedAt = at;
+        this.write(e);
+      }
     // Issue 715: a run that takes priority is recorded once: who, why,
     // and the waiters it goes ahead of.
     for (const id of priorityIds(entries, s)) {
@@ -463,10 +507,21 @@ export class GateStore {
     for (const id of grants(entries, s, now)) {
       const e = entries.find((x) => x.id === id)!;
       e.grantedAt = at;
+      // Issue 714: an MCP ask granted while it waited is claimed by its
+      // agent within claimMinutes; one granted as it asks is claimed.
+      if (e.mcp)
+        e.mcp =
+          e.id === claimNow
+            ? { install: e.mcp.install, renewedAt: at }
+            : {
+                install: e.mcp.install,
+                claimBy: new Date(now + s.claimMinutes * 60_000).toISOString(),
+              };
       this.write(e);
       this.record(e, {
         event: "granted",
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
+        ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
       });
     }
     for (const e of entries) {
@@ -502,6 +557,8 @@ export class GateStore {
     actor?: string;
     /** Issue 715: a release run a person waits on, and why. */
     priority?: { reason: string };
+    /** Issue 714: an agent's ask over MCP (claim and lease). */
+    mcp?: { install: string };
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -524,6 +581,7 @@ export class GateStore {
           ? { actor: o.actor }
           : {}),
         ...(reason ? { priority: { for: "release" as const, reason } } : {}),
+        ...(o.mcp ? { mcp: { install: o.mcp.install.slice(0, 512) } } : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -539,7 +597,8 @@ export class GateStore {
    */
   private afterAsk(e: GateEntry): GateEntry {
     this.record(e, { event: "asked" });
-    const all = this.settle();
+    // Issue 714: granted as it asks, an MCP slot is claimed at once.
+    const all = this.settle(e.id);
     const now = all.find((x) => x.id === e.id) ?? e;
     // Issue 715: marked, but another holds priority: it waits behind it.
     if (now.priority && !now.priority.at && !now.grantedAt)
@@ -679,6 +738,61 @@ export class GateStore {
       this.settle();
       return true;
     });
+  }
+
+  /**
+   * Issue 714: an MCP holder asks again with its id: a granted slot is
+   * claimed (if it waited for that) and its lease renewed. Null when gone
+   * or not an MCP slot.
+   */
+  renewMcp(id: string): GateEntry | null {
+    return this.locked(() => {
+      const e = this.settle().find((x) => x.id === id);
+      if (!e?.mcp) return null;
+      if (!e.grantedAt) return e;
+      e.mcp = {
+        install: e.mcp.install,
+        renewedAt: new Date(this.now()).toISOString(),
+      };
+      this.write(e);
+      return e;
+    });
+  }
+
+  /**
+   * Issue 714: the slot log's rows after byte `from` (a reader's place),
+   * and the place to read from next. From past the end (a log that was
+   * cut short), it reads from the start.
+   */
+  eventsFrom(from: number): { rows: GateEventRow[]; next: number } {
+    let buf: Buffer;
+    try {
+      buf = fs.readFileSync(this.eventsFile);
+    } catch {
+      return { rows: [], next: 0 };
+    }
+    const start = from > buf.length ? 0 : from;
+    const end = buf.lastIndexOf(0x0a) + 1;
+    if (end <= start) return { rows: [], next: start };
+    const rows: GateEventRow[] = [];
+    for (const l of buf.subarray(start, end).toString("utf-8").split("\n")) {
+      if (!l) continue;
+      try {
+        rows.push(JSON.parse(l) as GateEventRow);
+      } catch {
+        /* a broken line: skip */
+      }
+    }
+    return { rows, next: end };
+  }
+
+  /** Issue 714: the slot log's size now, bytes (where a reader starts). */
+  eventsEnd(): number {
+    try {
+      return fs.statSync(this.eventsFile).size;
+    } catch {
+      return 0;
+    }
   }
 
   /** 0 holding; a waiter's place in line (1 is next); -1 when gone. */

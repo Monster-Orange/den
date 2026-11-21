@@ -59,6 +59,11 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     priority_agents: true,
     // Issue 739: CI runners may ask for priority.
     priority_runners: true,
+    // Issue 714: an agent's slot held over MCP.
+    claim_minutes: true,
+    mcp_renew_minutes: true,
+    mcp_lapse_minutes: true,
+    mcp_grace_minutes: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -208,7 +213,11 @@ describe("the settings inventory (R21)", () => {
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
+        "gate_slots.claim_minutes",
         "gate_slots.cpu_slots",
+        "gate_slots.mcp_grace_minutes",
+        "gate_slots.mcp_lapse_minutes",
+        "gate_slots.mcp_renew_minutes",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
         "gate_slots.priority_max",

@@ -14,6 +14,31 @@ den gate status            # who holds a slot, who waits
 `gate status`, the Agents page and `GET /api/gate-slots` show every holder,
 local or remote.
 
+## An agent that holds a slot over MCP
+
+An agent can hold a slot across several commands with the MCP tool
+`gate_slot_request`. Its MCP server keeps running while the agent is idle,
+so the slot is held by a claim and a lease, not by a process:
+
+- Put in line, the agent is told in its session when its slot is granted:
+  "Your browser slot is granted: <id>. Call gate_slot_request with this id
+  to start …". Den types it only at the agent's input prompt, as it does a
+  Hub comment, and holds it otherwise.
+- The agent claims it by calling `gate_slot_request` with the id. Not
+  claimed within `claim_minutes` (default 3) while someone else waits, it
+  goes to the next in line (`passed-unclaimed` in the slot log). The agent
+  goes back in line and is told so.
+- While it holds the slot, the agent renews it the same way, every
+  `mcp_renew_minutes` (default 5). A slot not renewed for
+  `mcp_lapse_minutes` (default 15) and past its estimate plus
+  `mcp_grace_minutes` (default 15) is taken back (`taken-back-lapsed`), and
+  the next in line starts. The bell names it, and the agent's next tool call
+  says so.
+
+`gate run` holders are unchanged: they hold while their process runs.
+Change the four settings in Settings › Server, or with
+`den gate settings --claim-minutes N --mcp-renew-minutes N --mcp-lapse-minutes N --mcp-grace-minutes N`.
+
 ## A release run a person waits on
 
 ```sh

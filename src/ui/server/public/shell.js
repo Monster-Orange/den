@@ -1960,6 +1960,21 @@
       "CI runners may ask for release priority",
     "set.server.gate_priority_runners.d":
       "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_claim": "An agent's gate slot: minutes to claim it",
+    "set.server.gate_claim.d":
+      "When a slot an agent waited for is granted, Den tells the agent. Not claimed within this time, it goes to the next in line and the agent goes back in line. __DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew":
+      "An agent's gate slot: renew it every, in minutes",
+    "set.server.gate_mcp_renew.d":
+      "How often an agent holding a slot is asked to renew it while it works. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "An agent's gate slot lapses unrenewed after, in minutes",
+    "set.server.gate_mcp_lapse.d":
+      "A slot an agent holds and doesn't renew this long, once past its estimate plus the grace, goes to the next in line. The bell says so. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "An agent's gate slot: grace past its estimate, in minutes",
+    "set.server.gate_mcp_grace.d":
+      "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
     "set.server.gate_runners": "CI runner tokens",
     "set.server.gate_runners.d":
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
@@ -2818,6 +2833,8 @@
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
+    "bell.m.gateLapsed":
+      '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",

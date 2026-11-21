@@ -946,6 +946,20 @@
       "CI ランナーもリリースの優先を依頼できる",
     "set.server.gate_priority_runners.d":
       "オンなら、ランナートークンを持つ CI ジョブが理由を添えて実行をリリース実行として優先にできます。オフなら、その依頼は断られ、通常の列で待ちます。追い越しはすべて、ランナーと理由とともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_claim": "エージェントのゲート枠: 受け取るまでの分数",
+    "set.server.gate_claim.d":
+      "エージェントが待っていた枠が割り当てられると、Den がエージェントに伝えます。この時間内に受け取らなければ、枠は次に回り、エージェントは列に戻ります。__DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew": "エージェントのゲート枠: 更新の間隔（分）",
+    "set.server.gate_mcp_renew.d":
+      "枠を持つエージェントに、作業中にどれくらいの間隔で更新するよう伝えるか。__DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "エージェントのゲート枠: 更新なしで失効するまで（分）",
+    "set.server.gate_mcp_lapse.d":
+      "エージェントが持つ枠がこの時間更新されず、見積もりと猶予を過ぎると、次に回ります。ベルで知らせます。__DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "エージェントのゲート枠: 見積もり後の猶予（分）",
+    "set.server.gate_mcp_grace.d":
+      "更新されない枠も、見積もりをこの時間過ぎるまでは保持されます。__DEN_CLI__ gate settings --mcp-grace-minutes 15",
     "set.server.gate_runners": "CI ランナーのトークン",
     "set.server.gate_runners.d":
       "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",
@@ -1928,6 +1942,8 @@
       "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
+    "bell.m.gateLapsed":
+      "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
