@@ -16,6 +16,7 @@ import {
   isNotificationPath,
 } from "./notification-routes.js";
 import {
+  agentStateDeps,
   alertFeed,
   attentionDetail,
   attentionWaiting,
@@ -7598,6 +7599,8 @@ async function handleRequest(
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
+        // Issue 773: each agent's state for the person asking.
+        agentStates: agentStateDeps,
       },
     )
   )

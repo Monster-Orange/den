@@ -94,6 +94,12 @@ export function deliveryHeld(
 
 export interface AttentionDeps {
   store: NotificationStore;
+  /**
+   * Issue 773: `agent`'s turn ended at `at` (ms): its finished work, a new
+   * version for the seen mark (Done, not seen). Not a turn that ended on a
+   * question (that needs its person).
+   */
+  turnEnded?: (agent: string, at: number) => void;
   /** A short mark of the agent's output now (a hash of its tail), or null. */
   outputMark: (agent: string) => Promise<string | null>;
   /** The agent's display name, for the text. */
@@ -194,6 +200,8 @@ export class Attention {
   private readonly waiting = new Map<string, Waiting>();
   /** NT-2: agent → until when a page shows it, visible and focused. */
   private readonly looking = new Map<string, number>();
+  /** Issue 773: agent → since when it is in a turn (Working). */
+  private readonly working = new Map<string, number>();
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
@@ -214,6 +222,21 @@ export class Attention {
   /** An agent's display name (issue 101: the lead a question went to). */
   nameOf(agent: string): string {
     return this.d.nameOf(agent);
+  }
+
+  /** Issue 773: the agents in a turn now, and since when (ms). */
+  workingNow(): Map<string, number> {
+    return new Map(this.working);
+  }
+
+  /** Issue 773: its turn ended now (a new version of its finished work). */
+  private turnEnd(agent: string): void {
+    this.working.delete(agent);
+    try {
+      this.d.turnEnded?.(agent, this.now());
+    } catch {
+      /* the seen mark is best effort */
+    }
   }
 
   /** The agents waiting now, and why (the sessions list, the bell). */
@@ -282,6 +305,10 @@ export class Attention {
           ? { seq, at: arrived, what: ev.what, input: ev.input }
           : undefined;
       if (run) this.lastRun.set(agent, run);
+      // Issue 773: a tool ran or a prompt came: a turn is under way. A new
+      // session is no turn.
+      if (ev.from !== "session" && !this.working.has(agent))
+        this.working.set(agent, arrived);
       const w = this.waiting.get(agent);
       if (!w) return;
       // Issue 609: the asked tool ran (it was allowed): its dialog is
@@ -305,6 +332,7 @@ export class Attention {
       return;
     }
     if (ev.event === "finished") {
+      this.working.delete(agent);
       // Asked, then ended its turn to wait for the answer: still waiting.
       if (this.waiting.get(agent)?.why === "asked") return;
       this.clear(agent);
@@ -323,6 +351,8 @@ export class Attention {
           text: q,
           hooked: true,
         });
+      // Issue 773: its finished work, unseen until its person opens it.
+      this.turnEnd(agent);
       // Issue 142: kept even while a page shows the agent. That page's
       // next "looking" takes it out (opening an agent clears its updates);
       // a page that closed meanwhile (NT-2 keeps it 10 s) never does, and
@@ -340,6 +370,12 @@ export class Attention {
       return;
     }
     const prev = this.waiting.get(agent);
+    // Issue 773: waiting is no turn under way. A hookless agent's idle
+    // notice is its turn's end (its only one).
+    this.working.delete(agent);
+    const hookless =
+      ev.hooked !== true && prev?.byHook !== true && !this.d.hooked?.(agent);
+    if (ev.why === "input" && hookless && !prev) this.turnEnd(agent);
     // Issue 327: Claude Code's idle notice means no dialog is open: a
     // permission wait from before it is over.
     if (
@@ -685,6 +721,7 @@ export class Attention {
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
     this.lastRun.delete(agent);
+    this.working.delete(agent);
     this.clear(agent);
   }
 

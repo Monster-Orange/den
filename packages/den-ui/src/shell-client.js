@@ -645,6 +645,10 @@ export function hydrateBell(btn, opts = {}) {
   btn.addEventListener("click", () => (isOpen() ? close() : open()));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !isOpen()) return;
+    // While a dialog is open over the page (Peek, a kit dialog), Esc is
+    // the dialog's, wherever focus is: the panel under it stays open.
+    for (const dlg of document.querySelectorAll("dialog[open]"))
+      if (!dlg.contains(pop)) return;
     if (opts.onEscape && opts.onEscape(e) === true) return;
     e.preventDefault();
     close(true);

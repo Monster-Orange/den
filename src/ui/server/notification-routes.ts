@@ -10,6 +10,8 @@
  *                                     the person's kinds that are on;
  *                                     items older than foldDays in
  *                                     `older`; unread counts what is shown.
+ *                                     Issue 773: `done`, the agents that
+ *                                     finished since this person looked.
  *   POST /api/notifications/read     {id} | {subject} | {scope} | {all: true}
  *                                     (all: what is shown only)
  *   POST /api/notifications/clear    the read ones ({scope} or all).
@@ -17,6 +19,8 @@
  *                                     unmutes.
  *   POST /api/notifications/looking  NT-2: a page shows these agents now,
  *                                     visible and focused: {agents: [...]}.
+ *                                     Issue 773: the person has seen their
+ *                                     finished work (the seen mark).
  *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
  *                                     for an open tab to show (alert-feed.ts),
  *                                     {seq, alerts}; the person's only.
@@ -43,6 +47,8 @@ import type { AlertFeed } from "./alert-feed.js";
 import { parseSubscription, type PushSubscriptions } from "./web-push.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf } from "./request-guard.js";
+import type { SeenMarks } from "../../shared/seen-mark.js";
+import { agentSubject, personKey, type DoneAgent } from "./agent-state.js";
 
 export const NOTIFICATION_PATHS = [
   "/api/agents/self/attention",
@@ -71,6 +77,13 @@ export interface NotificationRouteDeps {
   alerts?: AlertFeed;
   /** Issue 172 S2: the person's devices, and this install's public key. */
   push?: { subs: PushSubscriptions; publicKey: () => string };
+  /**
+   * Issue 773: the seen marks (opening an agent marks its work seen;
+   * issue 791: so does a peek).
+   */
+  seen?: SeenMarks;
+  /** Issue 773: the agents Done, not seen, for `person` (the bell). */
+  doneAgents?: (person: string) => DoneAgent[];
 }
 
 async function jsonBody(
@@ -250,9 +263,17 @@ export async function handleNotificationRoutes(
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
     const v = bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null));
+    let done: DoneAgent[] = [];
+    try {
+      done = deps.doneAgents?.(personKey(req)) ?? [];
+    } catch {
+      /* the bell is best effort: no Done section this time */
+    }
     sendJson(res, {
       ok: true,
       unread: v.unread,
+      // Issue 773: Done, not seen, for this person (its own section).
+      done,
       // Issue 327: and what it waits on, since when.
       waiting: [...deps.attention.waitingNow()].map(([a, why]) => {
         const w = deps.attention.waitingDetail(a);
@@ -313,6 +334,13 @@ export async function handleNotificationRoutes(
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)
       : [];
     deps.attention.lookingAt(agents);
+    // Issue 773: opening the agent (or its terminal) is seen, for this
+    // person: Done turns into Idle.
+    if (deps.seen) {
+      const person = personKey(req);
+      for (const a of agents)
+        deps.seen.markSeen({ subject: agentSubject(a), person });
+    }
     // ATTN-5 (den#142): opening an agent clears its updates (they leave
     // the list, and its count drops); what needs you stays until answered.
     const opened = new Set(agents.map((a) => `agent:${a}`));
@@ -361,6 +389,14 @@ export async function handleNotificationRoutes(
           return [...v.recent, ...v.updates, ...v.older].filter((x) => !x.read);
         })()
       : null;
+  // Issue 791: a peek's read is a look at the agent (`seen: true`).
+  if (
+    pathname === "/api/notifications/read" &&
+    b.seen === true &&
+    "subject" in which &&
+    /^agent:/.test(which.subject)
+  )
+    deps.seen?.markSeen({ subject: which.subject, person: personKey(req) });
   const n = shownAll
     ? shownAll.reduce((k, x) => k + deps.store.markRead({ id: x.id }), 0)
     : pathname === "/api/notifications/read"

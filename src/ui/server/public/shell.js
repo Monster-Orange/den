@@ -2760,6 +2760,40 @@
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
     "ag.waiting.trust": "Waiting: trust this folder?",
+    // Issue 773: four agent states, one list sorted by who needs you.
+    "ag.band.needs": "Needs you",
+    "ag.band.done": "Done, not seen",
+    "ag.band.working": "Working",
+    "ag.band.idle": "Idle",
+    "ag.chip.needs": "Needs you",
+    "ag.chip.needsWhy": "Needs you · {why}",
+    "ag.chip.done": "Done",
+    "ag.chip.working": "Working",
+    "ag.chip.idle": "Idle",
+    "ag.why.permission": "permission",
+    "ag.why.asked": "question",
+    "ag.why.approval": "Allow",
+    "ag.why.trust": "folder trust",
+    "ag.whyLong.permission": "asks for your permission",
+    "ag.whyLong.asked": "asked you a question",
+    "ag.whyLong.approval": "waits for your Allow",
+    "ag.whyLong.trust": "asks to trust its folder",
+    "ag.tag.server": "Server",
+    "ag.sub.needs": "{n} need you",
+    "ag.sub.needsOne": "{n} needs you",
+    "ag.sub.done": "{n} done, not seen",
+    "ag.sub.doneOne": "{n} done, not seen",
+    "ag.sub.working": "{n} working",
+    "ag.sub.idle": "{n} idle",
+    "ag.sub.idleOne": "{n} idle",
+    "ag.meta.finished": "finished {ago}",
+    "ag.meta.working": "began {ago}",
+    "ag.meta.seen": "seen just now",
+    "ag.list.failed": "The list could not load.",
+    "ag.list.retry": "Retry",
+    "ag.list.keepRunning": "Your agents keep running.",
+    "ag.list.loading": "Loading the agents",
+    "bell.doneRow": "{name} finished",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
@@ -2772,6 +2806,27 @@
     "bell.updates": "Updates ({n})",
     "bell.rep": "{n} more like this",
     "bell.stop": "Stop showing this kind",
+    "bell.openInAgents": "Open in Agents",
+    "peek.openInLayout": "Open in layout",
+    "peek.close": "Close (Esc)",
+    "peek.back": "Back to notifications",
+    "peek.chipNeed": "Needs you · {why}",
+    "peek.chipNeedPlain": "Needs you",
+    "peek.chipDone": "Done",
+    "peek.chipStopped": "Stopped",
+    "peek.chipRunning": "Running",
+    "peek.connecting": "Connecting to {name}…",
+    "peek.noConnect": "Could not connect to {name}’s terminal.",
+    "peek.retry": "Retry",
+    "peek.finished":
+      "{name} finished while you were looking. It is now Idle for you.",
+    "peek.stopped": "{name} stopped. Nothing to answer.",
+    "peek.restart": "Restart",
+    "peek.next": "{name} ({project}) also needs you: {why}",
+    "peek.whyWaiting": "waiting for you",
+    "peek.switch": "Switch to {name}",
+    "peek.footType": "Esc closes · typing goes to {name}",
+    "peek.footEsc": "Esc closes",
     "bell.askT": "Stop showing “{kind}”?",
     "bell.askB":
       "Only this kind. The activity trail still records it. You can turn it back on in Settings.",
@@ -4157,6 +4212,8 @@
     down: 0,
     openLogs: 0,
     helpersRunning: 0,
+    // Issue 773: the agents that need the person (the rail's Agents count).
+    agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
     pins: [],
@@ -4977,8 +5034,10 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
-      // D32: helpers the agents started that run now.
+      // Issue 773: the agents that need you (not Done); else (D32) the
+      // helpers the agents started that run now.
       badge: function (s) {
+        if (s.agentsNeedYou > 0) return { n: s.agentsNeedYou, what: "waiting" };
         return s.helpersRunning > 0
           ? { n: s.helpersRunning, what: "running" }
           : null;
@@ -8365,6 +8424,9 @@
           function (b) {
             var n = b && typeof b.running === "number" ? b.running : 0;
             if (n !== state.helpersRunning) setState({ helpersRunning: n });
+            // Issue 773: the agents that need you, for the rail's count.
+            var w = b && typeof b.needs === "number" ? b.needs : 0;
+            if (w !== state.agentsNeedYou) setState({ agentsNeedYou: w });
           },
           function () {},
         )
@@ -8839,6 +8901,8 @@
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
+    // Issue 791: an agent's row peeks; its small link still opens the page.
+    ".den-bell-page { flex: none; font-size: 12px; color: var(--accent-text); white-space: nowrap; }",
     ".den-bell-x, .den-bell-row .den-ib { font: 500 11px var(--mono); background: none; color: var(--muted);",
     "  border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; min-height: 20px; cursor: pointer; }",
     ".den-bell-row .den-ib { border-color: transparent; }",
