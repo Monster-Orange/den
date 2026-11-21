@@ -13,7 +13,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { denAuth, signInUrl } from "./helpers/den-auth.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -24,6 +24,8 @@ import { launchBrowser } from "../helpers/browser.js";
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
 const errors: string[] = [];
+/** The newest release in What's new: seen, so it never opens over a test. */
+let latest = "";
 
 beforeAll(async () => {
   try {
@@ -35,6 +37,10 @@ beforeAll(async () => {
     throw err;
   }
   s = await startAgentsPageServer();
+  const r = await fetch(`${s.base}/api/changelog`, {
+    headers: denAuth(s.stateDir),
+  });
+  latest = ((await r.json()) as { version?: string }[])[0]?.version ?? "";
 }, 90_000);
 
 afterAll(async () => {
@@ -55,14 +61,16 @@ async function page(at: string): Promise<Page> {
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
+  // What's new opens when the seen version differs from the newest one,
+  // and since issue 793 it is a kit dialog that takes focus: mark it seen.
+  await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
+        localStorage.setItem(k, v);
     } catch {
       /* none */
     }
-  });
+  }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(signInUrl(s!.stateDir, s!.base, at));
