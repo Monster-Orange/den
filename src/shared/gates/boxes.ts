@@ -25,6 +25,14 @@
  * that can't start keeps the slots it waits for from the runs behind it,
  * and never blocks a slot it could not use.
  *
+ * When a box may be used: its window (`window: "00:00-08:00"`, this
+ * machine's local time, may wrap past midnight) and its switch (`enabled`,
+ * on unless set false). Outside its window, or turned off, a box gets no
+ * new slot and Den makes no contact with it at all: no check, no doctor
+ * read. A run already holding a slot on it finishes. A fragile box can
+ * keep its own `recheck_seconds`: the least time between two contacts
+ * while it says no (box_recheck_seconds when unset).
+ *
  * Nothing here holds a secret: ssh names a key file, never its contents.
  */
 import { spawn } from "child_process";
@@ -32,7 +40,15 @@ import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
-import { glob, items, windowHeld } from "./classes.js";
+import {
+  clockText,
+  glob,
+  inWindow,
+  items,
+  parseWindow,
+  windowHeld,
+  windowOpens,
+} from "./classes.js";
 import {
   loadHold,
   localRoom,
@@ -70,6 +86,12 @@ export interface GateBox {
    * `playwright_version`, which stay as they were for a box with one.
    */
   playwright_endpoints?: Record<string, string>;
+  /** When it may be used, "HH:MM-HH:MM" in this machine's local time. */
+  window?: string;
+  /** false: turned off, no slot and no contact. Absent: on. */
+  enabled?: boolean;
+  /** Least seconds between contacts while it says no (else the global). */
+  recheck_seconds?: number;
 }
 
 export const BOX_LIMITS = {
@@ -77,6 +99,7 @@ export const BOX_LIMITS = {
   ssh_port: { min: 1, max: 65535 },
   time_scale: { min: 1, max: 10 },
   min_free_mem_mb: { min: 0, max: 1024 * 1024 },
+  recheck_seconds: { min: 1, max: 24 * 3600 },
 } as const;
 
 /** Clause 8: free memory a box keeps by default (MB). */
@@ -325,11 +348,37 @@ export function checkBox(
       };
     box.playwright_version = pv;
   }
+  const win = o.window;
+  if (typeof win === "string" && win.trim()) {
+    const w = parseWindow(win);
+    if (!w)
+      return {
+        ok: false,
+        error: `box ${name}: window is HH:MM-HH:MM, this machine's time (like 00:00-08:00)`,
+      };
+    if (w.from === w.to)
+      return {
+        ok: false,
+        error: `box ${name}: its window opens and closes at the same time`,
+      };
+    box.window = `${clockText(w.from)}-${clockText(w.to)}`;
+  } else if (win !== undefined && win !== null && win !== "")
+    return {
+      ok: false,
+      error: `box ${name}: window is HH:MM-HH:MM, this machine's time (like 00:00-08:00)`,
+    };
+  if (o.enabled !== undefined && o.enabled !== null) {
+    if (typeof o.enabled !== "boolean")
+      return { ok: false, error: `box ${name}: enabled is true or false` };
+    // Only "off" is written: an old box, and one turned on, look the same.
+    if (!o.enabled) box.enabled = false;
+  }
   for (const k of [
     "browser_slots",
     "ssh_port",
     "time_scale",
     "min_free_mem_mb",
+    "recheck_seconds",
   ] as const) {
     const x = o[k];
     if (x === undefined || x === null) continue;
@@ -362,6 +411,37 @@ export function boxesOf(raw: unknown): GateBox[] {
     out.push(c.box);
   }
   return out;
+}
+
+/**
+ * Why a box takes no slot and gets no contact now, or null when it may be
+ * used: turned off, or outside its window (with when it opens: "HH:MM",
+ * this machine's time, and the moment).
+ */
+export type BoxOff =
+  | { why: "off" }
+  | { why: "window"; opens: string; opensAt: number };
+
+export function boxOff(
+  box: Pick<GateBox, "enabled" | "window">,
+  now: number,
+): BoxOff | null {
+  if (box.enabled === false) return { why: "off" };
+  const w = box.window ? parseWindow(box.window) : undefined;
+  if (!w || w.from === w.to || inWindow(w, now)) return null;
+  return {
+    why: "window",
+    opens: clockText(w.from),
+    opensAt: windowOpens(w, now),
+  };
+}
+
+/** Least seconds between two contacts while a box says no. */
+export function boxRecheckSeconds(
+  box: Pick<GateBox, "recheck_seconds">,
+  s: Pick<BoxSettings, "boxRecheckSeconds">,
+): number {
+  return box.recheck_seconds ?? s.boxRecheckSeconds;
 }
 
 /** What the last check of a box found. */

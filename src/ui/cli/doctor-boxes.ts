@@ -4,10 +4,12 @@
  * check found. A held or unreachable box is ⚠ with why: it is skipped,
  * never waited on. Doctor reads the last check; it never checks a box
  * itself (a box is checked only when a slot on it is about to be given).
+ * A box turned off, or outside its window, says so: it is skipped by
+ * choice, not a warning.
  */
 import type { OnboardCheck } from "./doctor-onboard.js";
 import type { GateStore } from "../../shared/gates/store.js";
-import { gateBoxesView } from "../../shared/gates/view.js";
+import { boxOffWords, gateBoxesView } from "../../shared/gates/view.js";
 import { localDateTime } from "../../shared/local-time.js";
 
 export function boxLines(store: GateStore): {
@@ -25,8 +27,10 @@ export function boxLines(store: GateStore): {
     };
   const rows = boxes.map((b) => {
     const when = b.checkedAt ? ` (checked ${localDateTime(b.checkedAt)})` : "";
-    const what =
-      b.state === "unchecked"
+    const off = boxOffWords(b);
+    const what = off
+      ? `skipped, ${off}`
+      : b.state === "unchecked"
         ? "not checked yet (checked when a slot on it is about to be given)"
         : b.state === "open"
           ? `open${when}`

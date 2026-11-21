@@ -1114,7 +1114,7 @@
       "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",
     "set.server.gate_boxes": "テストマシン",
     "set.server.gate_boxes.d":
-      "ブラウザテストを実行する他のマシンです。それぞれに自分のブラウザスロットがあります。マシンを使えるブラウザ実行は、ここかマシンのうち先に空いたスロットを取ります。保留ファイルがあるマシンは新しい実行を取りません。応答のないマシンは飛ばし、待ちません。__DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "ブラウザテストを実行する他のマシンです。それぞれに自分のブラウザスロットがあります。マシンを使えるブラウザ実行は、ここかマシンのうち先に空いたスロットを取ります。保留ファイルがあるマシンは新しい実行を取りません。応答のないマシンは飛ばし、待ちません。時間帯を決めたマシンは、このマシンの時刻でその時間帯にだけ実行を取ります。時間帯外やオフのとき、Den はそのマシンに一切接続しません。すでに動いている実行は最後まで続きます。__DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     "set.server.gate_box_check": "テストマシンの確認の待ち時間 (秒)",
     "set.server.gate_box_check.d":
       "テストマシンにスロットを渡す直前に、Den がその応答を待つ時間です。応答がなければ、そのマシンは飛ばします。__DEN_CLI__ gate settings --box-check-timeout-seconds 8",
@@ -2757,6 +2757,8 @@
     "gate.boxDown": "{box}: 応答がないため飛ばします ({reason})",
     "gate.boxLow": "{box}: 空きメモリが少ないため飛ばします ({reason})",
     "gate.boxSkip": "{box} は使えません: {reason}",
+    "gate.boxOff": "{box}: オフのため飛ばします",
+    "gate.boxClosed": "{box}: 時間帯外のため飛ばします ({time} から)",
     "gate.yielded": "{to} に先を譲りました",
     "gate.class": "クラス: {name}",
     "gate.window": "時間帯 {window} を待っています",
@@ -3157,6 +3159,13 @@
     "set.ui.boxHoldIs": "保留ファイル {path}",
     "set.ui.boxScaleIs": "時間 ×{n}",
     "set.ui.boxRemove": "削除",
+    "set.ui.boxWindow": "時間帯 (このマシンの時刻)",
+    "set.ui.boxRecheck": "再確認まで (秒)",
+    "set.ui.boxOn": "オン",
+    "set.ui.boxWindowIs": "{window} (このマシンの時刻)",
+    "set.ui.boxIsOff": "オフ",
+    "set.ui.boxTurnOn": "オンにする",
+    "set.ui.boxTurnOff": "オフにする",
     "set.ui.appKeyOnce":
       "このキーを今すぐウェブアプリのバックエンドにコピーしてください。もう表示されません。",
     "set.ui.appKeyNew": "新しいアプリキー",

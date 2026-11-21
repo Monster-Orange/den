@@ -1562,7 +1562,9 @@ function drawRunnerTokens(host, ctx) {
 /**
  * Issue 625: the test boxes, browser slots on other machines. A person
  * adds one (its name, how Den reaches it, its slots, its hold file and
- * time scale), and removes one. Saving a box of the same name replaces it.
+ * time scale, its window in this machine's time, its recheck time, on or
+ * off), turns one on or off, and removes one. Saving a box of the same
+ * name replaces it.
  * Never a key: ssh names a key file on this machine.
  */
 function drawGateBoxes(host, ctx) {
@@ -1644,6 +1646,21 @@ function drawGateBoxes(host, ctx) {
       "text",
       `maxlength="2048" placeholder="${escHtml(L("set.ui.boxPwsEx", "1.61=ws://box:3931, 1.63=ws://box:3932"))}"`,
     ) +
+    field(
+      "set-box-window",
+      "set.ui.boxWindow",
+      "Window (this machine's time)",
+      "text",
+      'maxlength="11" placeholder="00:00-08:00"',
+    ) +
+    field(
+      "set-box-recheck",
+      "set.ui.boxRecheck",
+      "Recheck after, in seconds",
+      "number",
+      'min="1" max="86400" step="1"',
+    ) +
+    `<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="set-box-on" checked> ${escHtml(L("set.ui.boxOn", "On"))}</label>` +
     `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
     `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
@@ -1718,11 +1735,33 @@ function drawGateBoxes(host, ctx) {
                 (x.time_scale && x.time_scale !== 1
                   ? `<span class="set-note">${escHtml(L("set.ui.boxScaleIs", "time ×{n}", { n: x.time_scale }))}</span>`
                   : "") +
+                (x.window
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxWindowIs", "{window}, this machine's time", { window: x.window }))}</span>`
+                  : "") +
+                (x.enabled === false
+                  ? `<span class="set-note set-warn">${escHtml(L("set.ui.boxIsOff", "turned off"))}</span>`
+                  : "") +
+                `<button type="button" class="btn sm" data-box-on="${escHtml(x.name)}" data-on="${x.enabled === false ? "1" : "0"}">${escHtml(
+                  x.enabled === false
+                    ? L("set.ui.boxTurnOn", "Turn on")
+                    : L("set.ui.boxTurnOff", "Turn off"),
+                )}</button>` +
                 `<button type="button" class="btn sm" data-box-rm="${escHtml(x.name)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
                 `</li>`,
             )
             .join("") +
           `</ul>`;
+        for (const btn of list.querySelectorAll("[data-box-on]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/boxes/enable",
+              {
+                name: btn.getAttribute("data-box-on"),
+                enabled: btn.getAttribute("data-on") === "1",
+              },
+              btn,
+            ).catch(warn);
+          });
         for (const btn of list.querySelectorAll("[data-box-rm]"))
           btn.addEventListener("click", () => {
             post(
@@ -1747,6 +1786,9 @@ function drawGateBoxes(host, ctx) {
       playwright_version: val("#set-box-pwv") || undefined,
       // Issue 1017: "1.61=ws://…, 1.63=ws://…" → version → address.
       playwright_endpoints: pwPairs(val("#set-box-pws")),
+      window: val("#set-box-window") || undefined,
+      recheck_seconds: num("#set-box-recheck"),
+      enabled: host.querySelector("#set-box-on").checked,
     };
     post("/api/gate-slots/boxes", { box }, save).catch(warn);
   });
@@ -3426,8 +3468,18 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Test boxes",
     description:
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
-    keywords: ["gate", "slot", "box", "remote", "browser", "tests", "machine"],
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. A box with a window takes runs only within it, in this machine's time. Outside it, or turned off, Den never contacts the box; a run already on it finishes. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    keywords: [
+      "gate",
+      "slot",
+      "box",
+      "remote",
+      "browser",
+      "tests",
+      "machine",
+      "window",
+      "off",
+    ],
     scope: "user",
     control: { type: "custom", render: drawGateBoxes },
     read: () => null,

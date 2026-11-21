@@ -382,6 +382,41 @@ den gate box remove box2
 - `--time-scale X`: the box's browsers take X times as long as this
   machine's. Its runs' expected ends stretch by it, and the run gets
   `DEN_GATE_TIME_SCALE` to stretch its own timeouts.
+- `--window HH:MM-HH:MM`: when the box may be used, in **this machine's
+  local time zone** (the gate host's, not the box's). Optional; without
+  it, any time.
+- `--off`: add the box turned off. `den gate box enable|disable <name>`
+  switches it later.
+- `--recheck-seconds N`: this box's own `box_recheck_seconds` (below).
+
+### When a box may be used: its window and its switch
+
+Some boxes are free only part of the day: an evening-only box, a Windows
+box that is someone's machine by day.
+
+```sh
+den gate box add box3 --ssh ci@box3.example --window 00:00-08:00
+den gate box add box4 --ssh ci@box4.example --window 22:00-06:00 --off
+den gate box enable box4
+den gate box disable box3
+```
+
+- A window may wrap past midnight (`22:00-06:00`). Times are this
+  machine's local time; Settings and `gate box list` say so. The queue
+  pop-up shows when a closed box opens in the viewer's own time.
+- Outside its window, or turned off, a box gets **no slots and no
+  contact**: Den doesn't read its hold file, open a TCP connection to it,
+  or check it from `doctor` or `gate status`. A run waiting for that box
+  by name waits; a `--box any` run takes this machine or another box.
+- A run that already holds a slot on a box **finishes** when the window
+  closes, or when the box is turned off. No new slot is given after.
+- Each box is on unless turned off. An existing `settings.json` with boxes
+  loads unchanged: on, no window, the global recheck.
+- Turning a box on or off is a person's only (Settings › Server › Test
+  boxes, or the CLI), and goes in the audit, like adding or removing one.
+
+`gate status`, the queue pop-up and `den doctor` say why a box is
+skipped: "outside its window (opens 00:00)" or "turned off".
 
 ### An agent can ask
 
@@ -549,6 +584,9 @@ to connect()`.
   tunnel's forwarders listen on IPv4).
 - A held or unreachable box is passed over for `box_recheck_seconds` (30
   by default), then checked again the next time a slot on it is wanted.
+  A fragile box can set its own `recheck_seconds` (`--recheck-seconds`,
+  or Settings): the least time between two contacts while it says no, so
+  a queue waiting on it contacts it at most once in that time.
 
 `gate status`, the queue on the Agents page and `den doctor` show each
 slot's box and each box's state, with why a box is skipped. The slot log

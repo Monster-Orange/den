@@ -143,17 +143,25 @@ export function startGateChip(o) {
 
   /** Issue 625: a test box: its slots held, or why it is skipped. */
   function boxHtml(b) {
+    // Turned off, or outside its window (shown in this viewer's time).
     const text =
-      b.state === "held" || b.state === "unreachable" || b.state === "low"
-        ? t(
-            b.state === "held"
-              ? "gate.boxHeld"
-              : b.state === "low"
-                ? "gate.boxLow"
-                : "gate.boxDown",
-            { box: b.name, reason: b.reason || "" },
-          )
-        : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });
+      b.state === "off"
+        ? t("gate.boxOff", { box: b.name })
+        : b.state === "window"
+          ? t("gate.boxClosed", {
+              box: b.name,
+              time: b.opensAt ? gateTime(b.opensAt) : b.opens || "",
+            })
+          : b.state === "held" || b.state === "unreachable" || b.state === "low"
+            ? t(
+                b.state === "held"
+                  ? "gate.boxHeld"
+                  : b.state === "low"
+                    ? "gate.boxLow"
+                    : "gate.boxDown",
+                { box: b.name, reason: b.reason || "" },
+              )
+            : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });
     return (
       '<li class="gate-box" data-gate-box="' +
       esc(b.name) +
