@@ -452,6 +452,8 @@ const READ_TOOLS: DenTool[] = [
             typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
           agent: true,
           ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
+          // Issue 803: the agent's project gives the class (settings).
+          ...(ctx.scope?.workspace ? { project: ctx.scope.workspace } : {}),
           ...(a.priority === "release" && reason
             ? { priority: { reason } }
             : {}),

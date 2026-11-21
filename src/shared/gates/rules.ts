@@ -17,9 +17,21 @@
  * an ordinary run until the one ahead starts, then takes priority. The
  * store records each jump (who, why, what it passed).
  *
+ * Issue 803: with classes set (classes.ts), a higher class's waiters go
+ * first; within a class it is first-come, and a priority run never passes
+ * a higher class. A windowed class's long run, outside its window, waits
+ * (at the back, blocking no one) while a higher-class run holds or waits.
+ * No classes: exactly the order above.
+ *
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
+import {
+  classRank,
+  windowHeld,
+  windowOpens,
+  type GateClasses,
+} from "./classes.js";
 
 export type GateKind = "browser" | "cpu";
 
@@ -28,6 +40,8 @@ export interface GateEntry {
   kind: GateKind;
   /** Who asked, in words: "<install> · <project> · <agent or person>". */
   who: string;
+  /** Issue 803: the project it ran for (its class comes from settings). */
+  project?: string;
   /** What runs, a short label (never the command's arguments). */
   label: string;
   /** The process that holds or waits (gate run, or the agent's MCP server). */
@@ -85,6 +99,12 @@ export interface GateSettings {
   priorityPassLimitMinutes: number;
   /** Issue 715: agents may ask for priority (else people only). */
   priorityAgents: boolean;
+  /** Issue 803: the classes, read from the three lines; absent: off. */
+  classes?: GateClasses;
+  /** Issue 803: the lines as typed (absent when no classes are set). */
+  classOrder?: string;
+  classMap?: string;
+  classWindows?: string;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -108,7 +128,7 @@ export function byAsked(a: GateEntry, b: GateEntry): number {
 
 type PrioritySettings = Pick<
   GateSettings,
-  "priorityMax" | "priorityPassLimitMinutes"
+  "priorityMax" | "priorityPassLimitMinutes" | "classes"
 >;
 
 /**
@@ -145,9 +165,13 @@ export function queueOrder(
   s: Partial<PrioritySettings> = GATE_DEFAULTS,
   now: number = Date.now(),
 ): GateEntry[] {
-  const q = entries.filter((e) => !e.grantedAt).sort(byAsked);
+  const c = s.classes;
+  const rank = (e: GateEntry) => classRank(e, c);
+  const q = entries
+    .filter((e) => !e.grantedAt)
+    .sort((a, b) => rank(a) - rank(b) || byAsked(a, b));
   const pri = priorityIds(entries, s);
-  if (!pri.size) return q;
+  if (!pri.size) return windowLast(q, entries, s, now);
   const limitMs =
     (s.priorityPassLimitMinutes ?? GATE_DEFAULTS.priorityPassLimitMinutes) *
     60_000;
@@ -159,11 +183,27 @@ export function queueOrder(
       const w = q[i]!;
       if (w.kind !== p.kind) continue;
       if (pri.has(w.id) || now - t(w.askedAt) > limitMs) break;
+      if (rank(w) < rank(p)) break;
       to = i;
     }
     q.splice(to, 0, p);
   }
-  return q;
+  return windowLast(q, entries, s, now);
+}
+
+/** Issue 803: the waiters a window holds back go last, in their order. */
+function windowLast(
+  q: GateEntry[],
+  entries: GateEntry[],
+  s: Partial<PrioritySettings>,
+  now: number,
+): GateEntry[] {
+  const held = windowHeld(entries, s.classes, now);
+  if (!held.size) return q;
+  return [
+    ...q.filter((e) => !held.has(e.id)),
+    ...q.filter((e) => held.has(e.id)),
+  ];
 }
 
 /** Issue 715: the same-kind waiters a priority run goes ahead of. */
@@ -191,10 +231,12 @@ export function grants(
 ): string[] {
   const holders = entries.filter((e) => e.grantedAt);
   const waiters = queueOrder(entries, s, now);
+  const held = windowHeld(entries, s.classes, now);
   const out: string[] = [];
   let browserHeld = holders.some((e) => e.kind === "browser");
   let cpuHeld = holders.filter((e) => e.kind === "cpu").length;
   for (const w of waiters) {
+    if (held.has(w.id)) continue; // issue 803: it waits for its window
     if (w.kind === "browser") {
       if (browserHeld || cpuHeld > 0) break;
       out.push(w.id);
@@ -276,5 +318,7 @@ export function expectedStart(
     ...entries.filter((e) => e.grantedAt).map(expectedEnd),
   );
   for (const w of ahead) free += w.estimateMin * 60_000;
-  return free;
+  // Issue 803: held for its window: not before the window opens.
+  const win = windowHeld(entries, s.classes, now).get(id);
+  return win ? Math.max(free, windowOpens(win, now)) : free;
 }

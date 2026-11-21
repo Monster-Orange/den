@@ -169,7 +169,7 @@ describe("clause 3: no classes set, exactly today's queue", () => {
     b.ask("o1", { project: "app" });
     b.ask("r", { project: "rel-repo" });
     expect(b.waiting()).toEqual(["o1", "r"]);
-    expect(b.store.settings().classes).toBeNull();
+    expect(b.store.settings().classes).toBeUndefined();
     expect(gateView(b.store, b.now()).slots.every((s) => !("class" in s))).toBe(
       true,
     );
@@ -186,12 +186,16 @@ describe("clause 3: no classes set, exactly today's queue", () => {
     expect(b.waiting()).toEqual(["r", "o1"]);
     const { d } = deps(b.store, b.now);
     expect(await cmdGate(["settings", "--class-order", ""], d)).toBe(0);
-    expect(b.store.settings().classes).toBeNull();
+    expect(b.store.settings().classes).toBeUndefined();
     expect(b.waiting()).toEqual(["o1", "r"]);
   });
 
-  it("the defaults have no classes", () => {
-    expect(GATE_DEFAULTS.classes).toBeNull();
+  it("the settings are today's, key for key", () => {
+    expect(GATE_DEFAULTS.classes).toBeUndefined();
+    expect(bed({ cpu_slots: 1 }).store.settings()).toEqual({
+      ...GATE_DEFAULTS,
+      cpuSlots: 1,
+    });
   });
 });
 

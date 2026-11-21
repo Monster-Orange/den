@@ -7,7 +7,8 @@
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
  *   settings.json     cpu_slots, overrun_margin_minutes,
- *                     remote_renew_seconds, remote_lapse_seconds
+ *                     remote_renew_seconds, remote_lapse_seconds; issue
+ *                     803: class_order, class_map, class_windows (text)
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
  *                     back (process gone, or lease lapsed), overdue, ended
  *                     early (Coach reads time lost); issue 715: priority
@@ -23,6 +24,13 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import {
+  classOf,
+  parseClassMap,
+  parseClassOrder,
+  parseClassWindows,
+  readClasses,
+} from "./classes.js";
 import {
   GATE_DEFAULTS,
   byAsked,
@@ -70,11 +78,26 @@ export type GateSettingsPatch = {
   priority_max?: number | null;
   priority_pass_limit_minutes?: number | null;
   priority_agents?: number | null;
+  /** Issue 803: priority classes (text; "" or null clears). */
+  class_order?: string | null;
+  class_map?: string | null;
+  class_windows?: string | null;
 };
+
+/** Issue 803: the settings that are a line of text, and their checks. */
+export const GATE_TEXT: Record<
+  "class_order" | "class_map" | "class_windows",
+  (v: string) => unknown
+> = {
+  class_order: parseClassOrder,
+  class_map: parseClassMap,
+  class_windows: parseClassWindows,
+};
+type GateNumberKey = Exclude<keyof GateSettingsPatch, keyof typeof GATE_TEXT>;
 
 /** Each setting: its least and most, and whether it is whole. */
 export const GATE_LIMITS: Record<
-  keyof GateSettingsPatch,
+  GateNumberKey,
   { min: number; max: number; int: boolean }
 > = {
   cpu_slots: { min: 1, max: 64, int: true },
@@ -100,11 +123,23 @@ export function checkGatePatch(
     return { ok: false, error: "gate_slots is an object" };
   const patch: GateSettingsPatch = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
-    const l = GATE_LIMITS[k as keyof GateSettingsPatch];
+    // Issue 803: a line of text, checked by its parser; "" clears it.
+    const text = GATE_TEXT[k as keyof typeof GATE_TEXT];
+    if (text) {
+      if (x === undefined) continue;
+      if (x !== null && (typeof x !== "string" || x.length > 2000))
+        return { ok: false, error: `gate_slots.${k} is text, or null` };
+      const err = x ? text(x) : null;
+      if (typeof err === "string")
+        return { ok: false, error: `gate_slots.${k}: ${err}` };
+      (patch as Record<string, unknown>)[k] = x ? x.trim() : null;
+      continue;
+    }
+    const l = GATE_LIMITS[k as GateNumberKey];
     if (!l)
       return {
         ok: false,
-        error: `gate_slots.${k} is not a setting (${Object.keys(GATE_LIMITS).join(", ")})`,
+        error: `gate_slots.${k} is not a setting (${[...Object.keys(GATE_LIMITS), ...Object.keys(GATE_TEXT)].join(", ")})`,
       };
     if (x === undefined) continue;
     if (
@@ -119,7 +154,7 @@ export function checkGatePatch(
         ok: false,
         error: `gate_slots.${k} is ${l.int ? "a whole number" : "a number"} from ${l.min} to ${l.max}, or null`,
       };
-    patch[k as keyof GateSettingsPatch] = x;
+    patch[k as GateNumberKey] = x;
   }
   return { ok: true, patch };
 }
@@ -158,6 +193,8 @@ export interface GateEventRow {
   by?: string;
   /** Issue 621: a runner's slot: the runner token's name. */
   runner?: string;
+  /** Issue 803: its class, when classes are set. */
+  class?: string;
 }
 
 /** Issue 715: who asked for priority, for the record. */
@@ -193,6 +230,16 @@ function leaseTimes(renew: number, lapse: number) {
   };
 }
 
+/** Issue 803: the class settings, or none at all when no classes are set. */
+function classSettings(
+  classOrder: string,
+  classMap: string,
+  classWindows: string,
+): Partial<GateSettings> {
+  const classes = readClasses(classOrder, classMap, classWindows);
+  return classes ? { classes, classOrder, classMap, classWindows } : {};
+}
+
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
 
@@ -221,7 +268,9 @@ export class GateStore {
       const v = JSON.parse(
         fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
       ) as Record<string, unknown>;
-      const num = (k: keyof GateSettingsPatch, d: number) => {
+      const text = (k: keyof typeof GATE_TEXT) =>
+        typeof v[k] === "string" ? (v[k] as string) : "";
+      const num = (k: GateNumberKey, d: number) => {
         const n = v[k];
         const l = GATE_LIMITS[k];
         return typeof n === "number" &&
@@ -254,6 +303,13 @@ export class GateStore {
         ),
         priorityAgents:
           num("priority_agents", GATE_DEFAULTS.priorityAgents ? 1 : 0) === 1,
+        // Issue 803: priority classes; none set is today's queue (and
+        // today's settings, key for key).
+        ...classSettings(
+          text("class_order"),
+          text("class_map"),
+          text("class_windows"),
+        ),
       };
     } catch {
       return { ...GATE_DEFAULTS };
@@ -288,6 +344,7 @@ export class GateStore {
   private record(e: GateEntry, row: Partial<GateEventRow>): string {
     fs.mkdirSync(this.dir, { recursive: true });
     const at = new Date(this.now()).toISOString();
+    const cls = classOf(e, this.settings().classes);
     const full = {
       at,
       id: e.id,
@@ -295,6 +352,7 @@ export class GateStore {
       who: e.who,
       label: e.label,
       ...(e.remote ? { runner: e.remote.runner } : {}),
+      ...(cls ? { class: cls } : {}),
       ...row,
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
@@ -491,6 +549,8 @@ export class GateStore {
     actor?: string;
     /** Issue 715: a release run a person waits on, and why. */
     priority?: { reason: string };
+    /** Issue 803: the project it runs for (settings give its class). */
+    project?: string;
   }): GateEntry {
     const reason = o.priority?.reason.replace(/\s+/g, " ").trim().slice(0, 200);
     if (o.priority && !reason)
@@ -504,6 +564,7 @@ export class GateStore {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
         who: o.who.slice(0, 200),
+        ...(o.project ? { project: o.project.slice(0, 120) } : {}),
         label: o.label.slice(0, 120),
         pid: o.pid,
         askedAt: new Date(this.now()).toISOString(),
