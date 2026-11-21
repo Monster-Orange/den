@@ -721,6 +721,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 621: a person revokes a runner token; it answers 401 at once",
   ),
   R(
+    "/api/gate-slots/boxes",
+    "Issue 625: the test boxes (browser slots on other machines) as set; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes",
+    "Issue 625: a person adds or replaces a test box; never an agent",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes/remove",
+    "Issue 625: a person removes a test box; its running slots finish",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),

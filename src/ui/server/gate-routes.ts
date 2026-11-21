@@ -26,6 +26,14 @@
  *   POST /api/gate-slots/runners/revoke   {id}
  * A token is made only by the held write gate_runner_token_create, on the
  * person's Allow (gateRunnerTokenOp).
+ *
+ * Issue 625: test boxes, a browser slot source each (gates/boxes.ts). A
+ * person lists, sets and removes them (Settings):
+ *   GET  /api/gate-slots/boxes          the boxes as set
+ *   POST /api/gate-slots/boxes          {box}: adds or replaces one
+ *   POST /api/gate-slots/boxes/remove   {name}
+ * A runner's ask may say `where`: "any", or a box's name (a runner on
+ * that box). The box is checked just before its slot is given.
  */
 import type * as http from "http";
 import {
@@ -38,6 +46,7 @@ import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
+import { checkBox } from "../../shared/gates/boxes.js";
 import { GateFullError, type GateStore } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
@@ -58,6 +67,8 @@ export const GATE_PATHS = [
   "/api/gate-slots/release",
   "/api/gate-slots/runners",
   "/api/gate-slots/runners/revoke",
+  "/api/gate-slots/boxes",
+  "/api/gate-slots/boxes/remove",
 ] as const;
 
 export const isGatePath = (p: string) =>
@@ -149,6 +160,7 @@ function standing(store: GateStore, e: GateEntry): Record<string, unknown> {
           ).toISOString(),
         }),
     ...(now.remote ? { lease_until: now.remote.leaseUntil } : {}),
+    ...(now.box ? { box: now.box } : {}),
     renew_seconds: s.remoteRenewSeconds,
     lapse_seconds: s.remoteLapseSeconds,
   };
@@ -166,7 +178,13 @@ async function askAndWait(
   d: GateRouteDeps,
   store: GateStore,
   runner: { id: string; name: string },
-  a: { kind: "browser" | "cpu"; label: string; est: number; waitMs: number },
+  a: {
+    kind: "browser" | "cpu";
+    label: string;
+    est: number;
+    waitMs: number;
+    where?: string;
+  },
 ): Promise<void> {
   let e: GateEntry | null;
   try {
@@ -177,6 +195,7 @@ async function askAndWait(
       estimateMin: a.est,
       runner: runner.name,
       tokenId: runner.id,
+      ...(a.where ? { where: a.where } : {}),
     });
   } catch (err) {
     if (err instanceof GateFullError)
@@ -195,9 +214,16 @@ async function askAndWait(
   let closed = false;
   res.on("close", () => (closed = true));
   let looks = 0;
+  // Issue 625: a box a slot is about to be given on is checked first.
+  const boxes = !!a.where && a.where !== "local";
+  if (boxes && !e.grantedAt) {
+    await store.checkBoxes();
+    e = store.peek(e.id) ?? e;
+  }
   while (e && !e.grantedAt && Date.now() < until && !closed) {
     await new Promise((r) => setTimeout(r, d.pollMs ?? 1000));
     if (closed || !tokenLive(d, runner.id)) break;
+    if (boxes) await store.checkBoxes();
     looks++;
     e =
       looks % LOOKS_PER_RENEW === 0
@@ -279,6 +305,32 @@ async function handleRunnerRoute(
         { ok: false, error: "wait_seconds is a number of seconds, 0 or more" },
         400,
       );
+    // Issue 625: where the run may go: this machine (the default), any
+    // test box, or one box by name (a runner on that box).
+    const where = body.where;
+    if (
+      where !== undefined &&
+      !(
+        where === "any" ||
+        where === "local" ||
+        (typeof where === "string" &&
+          store.boxes().some((b) => b.name === where))
+      )
+    )
+      return sendJson(
+        res,
+        {
+          ok: false,
+          error: "where is any, local, or the name of a test box set here",
+        },
+        400,
+      );
+    if (where !== undefined && kind !== "browser")
+      return sendJson(
+        res,
+        { ok: false, error: "where goes with kind browser" },
+        400,
+      );
     // At most the lapse time (a Setting): the caller hears back in time.
     const waitMs =
       Math.min(waitRaw, store.settings().remoteLapseSeconds) * 1000;
@@ -302,6 +354,7 @@ async function handleRunnerRoute(
         label,
         est,
         waitMs,
+        ...(typeof where === "string" ? { where } : {}),
       });
     } finally {
       const n = (ASKING.get(runner.id) ?? 1) - 1;
@@ -371,6 +424,64 @@ async function handleRunnerTokens(
     principalOf(req),
   );
   return sendJson(res, { ok: true, runners: d.runners().list() });
+}
+
+/**
+ * Issue 625: a person lists, sets and removes the test boxes. An agent, an
+ * agent's claim or a runner token is refused; a signed-out page is told to
+ * sign in. Each change goes in this install's audit.
+ */
+async function handleBoxes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: GateRouteDeps,
+): Promise<void> {
+  if (agentPrincipalOf(req) || auditActorOf(req) || runnerPrincipalOf(req))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error: "only a person lists or changes the test boxes",
+      },
+      403,
+    );
+  if (!principalOf(req)?.startsWith("person:"))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_required",
+        error: "sign in to see the test boxes",
+      },
+      401,
+    );
+  const store = d.store();
+  if (pathname === "/api/gate-slots/boxes" && req.method === "GET")
+    return sendJson(res, { ok: true, boxes: store.boxes() });
+  if (req.method !== "POST")
+    return sendJson(res, { ok: false, error: "POST only" }, 405);
+  const body = await bodyOf(req);
+  if (!body) return sendJson(res, TOO_BIG, 400);
+  const audit = (detail: string) =>
+    (d.audit ?? recordAction)(
+      null,
+      { verb: "gate-box", detail },
+      principalOf(req),
+    );
+  if (pathname === "/api/gate-slots/boxes") {
+    const c = checkBox(body.box);
+    if (!c.ok) return sendJson(res, { ok: false, error: c.error }, 400);
+    store.setBox(c.box);
+    audit(`test box ${c.box.name} set (${c.box.browser_slots} browser slots)`);
+    return sendJson(res, { ok: true, boxes: store.boxes() });
+  }
+  const name = typeof body.name === "string" ? body.name : "";
+  if (!store.removeBox(name))
+    return sendJson(res, { ok: false, error: "no such test box" }, 404);
+  audit(`test box ${name} removed`);
+  return sendJson(res, { ok: true, boxes: store.boxes() });
 }
 
 /**
@@ -461,6 +572,11 @@ export async function handleGateRoutes(
     pathname === "/api/gate-slots/runners/revoke"
   )
     return handleRunnerTokens(req, res, pathname, d);
+  if (
+    pathname === "/api/gate-slots/boxes" ||
+    pathname === "/api/gate-slots/boxes/remove"
+  )
+    return handleBoxes(req, res, pathname, d);
   if (pathname === "/api/gate-slots") {
     if (req.method !== "GET")
       return sendJson(res, { ok: false, error: "GET only" }, 405);

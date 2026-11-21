@@ -56,6 +56,17 @@ export interface GateEntry {
    * why. `at`: when it took priority (the store records it once).
    */
   priority?: { for: "release"; reason: string; at?: string };
+  /**
+   * Issue 625: where a browser run may go: this machine only ("local",
+   * the default), this machine or any test box ("any"), or one box by
+   * name. `box`: the box it got (absent: this machine), and that box's
+   * time scale (its estimate stretches by it).
+   */
+  where?: string;
+  /** Issue 625 clause 11: the run's Playwright client version. */
+  pwVersion?: string;
+  box?: string;
+  boxTimeScale?: number;
   remote?: {
     /** The runner token's name (who, in words). */
     runner: string;
@@ -239,7 +250,9 @@ export function queuePlace(
 
 /** When a holder is expected to end (ms), from its grant and estimate. */
 export function expectedEnd(e: GateEntry): number {
-  return t(e.grantedAt ?? e.askedAt) + e.estimateMin * 60_000;
+  return (
+    t(e.grantedAt ?? e.askedAt) + e.estimateMin * (e.boxTimeScale ?? 1) * 60_000
+  );
 }
 
 /** Past its estimate plus the margin: flagged, never stopped. */
