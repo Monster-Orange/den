@@ -2346,6 +2346,7 @@
     "gate.priority": "prioridad de versión: {reason}",
     "gate.priorityWaits":
       "prioridad de versión, después de la anterior: {reason}",
+    "gate.yielded": "Dejó pasar a {to}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

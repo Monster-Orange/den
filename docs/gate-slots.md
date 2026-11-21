@@ -41,6 +41,28 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 Change the three settings in Settings › Server, or with
 `den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
 
+## Let one waiting run go ahead of yours
+
+```sh
+den gate status                          # find both ids
+den gate yield <your-id> --to <their-id>
+```
+
+Your waiting run lets another waiting run go just ahead of it, and keeps
+its own place otherwise: A, B, C becomes C, A, B when A lets C ahead.
+Before this, the only way was to give your place back and ask again at the
+back of the queue.
+
+- Only the owner of `<your-id>` can do it: the agent that asked for it (its
+  `gate run`, or its MCP ask), or a person for a run no agent asked for. It
+  is not a person's only, because it only moves your own place back.
+- Never a run that holds a slot. `--to` must name a waiting run behind
+  yours.
+- The slot log has a `yielded` row with both ids (`id`, `to`).
+- `gate status` (text and `--json`, `yieldedTo`) and the queue on the
+  Agents page show it on your run's line until your run starts.
+- The MCP tool `gate_slot_yield` (`id`, `to`) does the same.
+
 ## A CI job in a runner VM
 
 A CI job running in a VM on this machine has no Den and no process Den can

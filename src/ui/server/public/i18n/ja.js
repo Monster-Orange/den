@@ -2256,6 +2256,7 @@
     "gate.rowWaits": "順番待ち: {kind}",
     "gate.priority": "リリース優先: {reason}",
     "gate.priorityWaits": "リリース優先、前の実行の後: {reason}",
+    "gate.yielded": "{to} に先を譲りました",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
