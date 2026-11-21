@@ -564,7 +564,12 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
-  feedback: FEEDBACK_HELP,
+  feedback: {
+    ...FEEDBACK_HELP,
+    usage: FEEDBACK_HELP.usage.replace(/^report/, "feedback"),
+  },
+  // Issue 565: Report from a shell, for the person and for agents.
+  report: FEEDBACK_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -622,6 +627,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "hub",
   "notifications",
   "feedback",
+  "report",
   "service",
   "theme",
   "plugin",
@@ -660,8 +666,9 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   // NT: the bell's own file, no org data.
   "notifications",
   // FB: Den's own report routes; a report matters most when the config is
-  // what's wrong.
+  // what's wrong. Issue 565: `report` is the same command.
   "feedback",
+  "report",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1201,6 +1208,7 @@ class DenCLI {
           break;
 
         case "feedback":
+        case "report":
           process.exitCode = await cmdFeedback(args.slice(1));
           break;
 
