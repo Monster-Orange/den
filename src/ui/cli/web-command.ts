@@ -92,6 +92,11 @@ import {
   mintClaimCode,
   personGrantRefusal,
 } from "../../shared/claim-code.js";
+import {
+  FIXTURE_LABEL,
+  fixtureLoginLink,
+  setupFixturePerson,
+} from "../../shared/fixture-person.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   checkAddress,
@@ -1274,6 +1279,8 @@ export const WEB_SUBCOMMANDS_WITH_HELP = [
   "approve",
   "claim-link",
   "url",
+  "fixture-person",
+  "fixture-login",
 ] as const;
 
 export function displayWebHelp(): void {
@@ -1294,6 +1301,10 @@ export function displayWebHelp(): void {
   console.log(`  ${product().cli} web url [<address>] [--json]`);
   console.log(
     `  ${product().cli} web approve <code> | --list [--json] [--port <port>]`,
+  );
+  console.log(`  ${product().cli} web fixture-person`);
+  console.log(
+    `  ${product().cli} web fixture-login [--next <path>] [--origin <url>]`,
   );
   console.log();
   console.log(chalk.bold("Actions:"));
@@ -1449,6 +1460,14 @@ async function runWeb(args: string[]): Promise<void> {
   }
   if (args[0] === "url") {
     process.exitCode = await cmdWebUrl(args.slice(1));
+    return;
+  }
+  if (args[0] === "fixture-person") {
+    process.exitCode = await cmdWebFixturePerson(args.slice(1));
+    return;
+  }
+  if (args[0] === "fixture-login") {
+    process.exitCode = await cmdWebFixtureLogin(args.slice(1));
     return;
   }
   if (args.includes("--help") || args.includes("-h")) {
@@ -2768,22 +2787,133 @@ export async function cmdWebOwner(
   return 0;
 }
 
-/** Issue 810: red-first stub; the real command follows. */
-export async function cmdWebFixturePerson(
-  args: string[],
-  io: CliIo & { testInstall?: () => boolean } = stdIo,
-): Promise<number> {
-  void args;
-  void io;
-  return 2;
+// ── Issue 810: the fixture person (live checks on a test install) ──────────
+
+/** What the fixture commands read: the CLI's io, and the test-install mark. */
+type FixtureIo = CliIo & { testInstall?: () => boolean };
+
+/** `web.test_install` from the distribution config (false when unreadable). */
+function testInstallNow(io: FixtureIo): boolean {
+  if (io.testInstall) return io.testInstall();
+  try {
+    return readWebAuthConfig(getDistRoot(), product().configFile).testInstall;
+  } catch {
+    return false;
+  }
 }
 
-/** Issue 810: red-first stub; the real command follows. */
+const FIXTURE_PERSON_HELP = () =>
+  `Usage: ${product().cli} web fixture-person\n` +
+  "  On a test install (web.test_install: true in the distribution config, set by\n" +
+  "  hand), makes the fixture person live checks sign in as. Settings › Access ›\n" +
+  "  Set up test person does the same. Run it in your own terminal: an agent\n" +
+  "  can't. Its secret stays in the state folder (0600) and is never printed.\n";
+
+/**
+ * `<cli> web fixture-person` (issue 810): the person's fallback to Settings'
+ * Set up test person. Refused inside an agent's session, and off a test
+ * install. Never prints the secret.
+ */
+export async function cmdWebFixturePerson(
+  args: string[],
+  io: FixtureIo = stdIo,
+): Promise<number> {
+  if (isHelp(args)) {
+    io.out(FIXTURE_PERSON_HELP());
+    return 0;
+  }
+  if (args.length) {
+    io.err(FIXTURE_PERSON_HELP());
+    return 2;
+  }
+  const refused = personGrantRefusal(process.env);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
+  }
+  const r = setupFixturePerson(io.stateDir ?? getStateDir(), {
+    testInstall: testInstallNow(io),
+    agent: false,
+    configFile: product().configFile,
+  });
+  if (!r.ok) {
+    io.err(`${product().cli}: ${r.error}\n`);
+    return 1;
+  }
+  io.out(
+    `Set up the ${FIXTURE_LABEL} for live checks on this test install. ` +
+      `The gate runner signs in as it with \`${product().cli} web fixture-login\`.\n`,
+  );
+  return 0;
+}
+
+const FIXTURE_LOGIN_HELP = () =>
+  `Usage: ${product().cli} web fixture-login [--next <path>] [--origin <url>]\n` +
+  "  On a test install with its fixture person set up, prints a one-time sign-in\n" +
+  "  link as the fixture person (for live checks; an agent may run it). Refused\n" +
+  "  on any install not marked a test install.\n";
+
+/**
+ * `<cli> web fixture-login` (issue 810): the gate runner's one-time link
+ * as the fixture person, on stdout alone. An agent may run it: it never
+ * signs in as the person. Refused off a test install, or with no fixture
+ * person set up.
+ */
 export async function cmdWebFixtureLogin(
   args: string[],
-  io: CliIo & { testInstall?: () => boolean } = stdIo,
+  io: FixtureIo = stdIo,
 ): Promise<number> {
-  void args;
-  void io;
-  return 2;
+  if (isHelp(args)) {
+    io.out(FIXTURE_LOGIN_HELP());
+    return 0;
+  }
+  let next = "/";
+  let origin: string | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const val = (flag: string) =>
+      a === flag
+        ? args[++i]
+        : a.startsWith(`${flag}=`)
+          ? a.slice(flag.length + 1)
+          : undefined;
+    const n = val("--next");
+    const o = n === undefined ? val("--origin") : undefined;
+    if (n !== undefined) next = n;
+    else if (o !== undefined) {
+      origin = parseOrigin(o);
+      if (!origin) {
+        io.err(
+          `--origin must be http(s)://host[:port] with no path, got "${o}"\n`,
+        );
+        return 2;
+      }
+    } else {
+      io.err(FIXTURE_LOGIN_HELP());
+      return 2;
+    }
+  }
+  const testInstall = testInstallNow(io);
+  if (!origin && testInstall) {
+    try {
+      origin = requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
+    } catch (e) {
+      io.err(`${product().cli}: ${(e as Error).message}\n`);
+      return 1;
+    }
+  }
+  const r = fixtureLoginLink(io.stateDir ?? getStateDir(), {
+    testInstall,
+    origin: origin ?? "",
+    next,
+    ttlMs: loginLinkTtl(),
+    configFile: product().configFile,
+    cli: product().cli,
+  });
+  if (!r.ok) {
+    io.err(`${product().cli}: ${r.error}\n`);
+    return 1;
+  }
+  io.out(`${r.url}\n`);
+  return 0;
 }

@@ -79,6 +79,7 @@ import {
   type AgentActor,
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
@@ -126,7 +127,12 @@ export interface RunnerPrincipal {
 export type Principal =
   | { kind: "person"; actor: `person:${string}` }
   | AgentPrincipal
-  | { kind: "person-browser"; session?: string }
+  | {
+      kind: "person-browser";
+      session?: string;
+      /** Issue 810: the fixture person's session (a test install's live checks). */
+      fixture?: true;
+    }
   | RunnerPrincipal;
 
 /** What the request checks need of a signed-in browser session. */
@@ -143,6 +149,8 @@ export interface GuardSession {
    * session counts (loopbackSessions).
    */
   secure?: boolean;
+  /** How it signed in (web-session.ts); "fixture": the fixture person (issue 810). */
+  via?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -760,7 +768,11 @@ export function checkRequest(
     ...(client ? { client: normAddress(client) } : {}),
   });
   const browser: Principal | null = session
-    ? { kind: "person-browser", session: session.key }
+    ? {
+        kind: "person-browser",
+        session: session.key,
+        ...(session.via === "fixture" ? { fixture: true as const } : {}),
+      }
     : null;
 
   if (!changes(method) && !isUpgrade(req)) {
@@ -1183,6 +1195,9 @@ export function agentPrincipalOf(
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person" || p?.kind === "agent") return p.actor;
+  // Issue 810: the fixture person is named as such, never the human.
+  if (p?.kind === "person-browser" && p.session && p.fixture)
+    return FIXTURE_PRINCIPAL;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }

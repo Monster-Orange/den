@@ -247,6 +247,36 @@ Names in a row's `evidence` are written into the verdict next to it.
 Anything else on `ctx` is the harness's internals and may change: never
 use it. Setup's state reaches `expect` only through what `run` returns.
 
+### The bed signs in as a fixture person
+
+Live checks run as an agent, and Den never signs an agent in as the
+person. On a bed, the runner signs in as a **fixture person** instead:
+neither the person nor an agent, logged and audited as "fixture person".
+It works only on an install a person has marked a test install:
+
+1. The person marks the bed a test install, by hand, in its distribution
+   config (`config/den.yml`). Settings, `config` and agents can't set it.
+
+   ```yaml
+   web:
+     test_install: true
+   ```
+
+2. Signed in, the person opens Settings › Access › Test install and
+   presses **Set up test person**, once. From their own terminal,
+   `<cli> web fixture-person` does the same. Either makes a secret in the
+   bed's state folder (0600) that is never printed. An agent is refused.
+3. The runner gets a one-time sign-in link as the fixture person:
+
+   ```sh
+   <cli> web fixture-login [--next <path>] [--origin <url>]
+   ```
+
+On an install not marked a test install, the fixture sign-in and its
+setup are refused, and an agent's own `web login` stays refused
+everywhere. A fixture session can't approve a held write, let another
+browser in, set up the fixture person, or reach Hub.
+
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with
 the rules for `expect`'s rows (`checkRows`).

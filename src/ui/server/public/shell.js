@@ -755,6 +755,14 @@
       "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.",
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
+    "set.ui.testInstallYes": "This is a test install.",
+    "set.ui.testInstallNo":
+      "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
+    "set.ui.testPersonReady": "The test person is set up.",
+    "set.ui.testPersonMissing": "The test person isn't set up yet.",
+    "set.ui.testPersonSetUp": "Set up test person",
+    "set.ui.testInstallSignedIn":
+      "The test install can only be read signed in, or on this machine.",
     "set.ui.noPairHost":
       "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
     "set.ui.edgeStart": "Start the edge",
@@ -1135,6 +1143,8 @@
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_install.d":
+      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once; __DEN_CLI__ web fixture-person does the same from your own terminal.",
     "set.distribution.brand.d":
       "brand.name: the name on pages, the CLI banner and help.",
     "set.distribution.github_org.d":
@@ -1464,6 +1474,9 @@
     "busy.edgeW": "Starting the edge…",
     "busy.edgeS": "Edge started",
     "busy.edgeF": "The edge didn't start.",
+    "busy.testPersonW": "Setting up the test person…",
+    "busy.testPersonS": "Test person set up",
+    "busy.testPersonF": "The test person wasn't set up.",
     "keep.onNow": "On: agents keep running after you log out.",
     "keep.offNow": "Off: agents stop when you log out.",
     "keep.saved": "Saved. __DEN_TITLE__ already runs this way.",
@@ -2094,6 +2107,7 @@
     "set.embed.context_max_kb": "Largest shared page",
     "set.access.machine_name": "Machine name",
     "set.access.pair": "Pair a device",
+    "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
     "set.distribution.orgs": "Org labels",

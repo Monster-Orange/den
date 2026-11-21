@@ -343,6 +343,18 @@ import {
   type WebAuthConfig,
 } from "../../shared/web-session.js";
 import {
+  checkFixtureCode,
+  FIXTURE_LABEL,
+  FIXTURE_LINK_PARAM,
+  FIXTURE_PRINCIPAL,
+  fixturePersonReady,
+  fixtureScopeRefusal,
+  notTestInstallRefusal,
+  readFixtureSecret,
+  setupFixturePerson,
+  testInstallByHandRefusal,
+} from "../../shared/fixture-person.js";
+import {
   clearSessionCookies,
   readSessionCookie,
   sessionSetCookie as sessionCookieLine,
@@ -2282,7 +2294,7 @@ function closeSessionSockets(keys: Iterable<string>): void {
  */
 function startSession(
   req: http.IncomingMessage,
-  via: "github" | "link" | "code" | "claim",
+  via: "github" | "link" | "code" | "claim" | "fixture",
   login?: string,
   name?: string,
 ): { cookie: string; approveKey: string } {
@@ -2730,6 +2742,8 @@ async function handleAuth(
 ): Promise<void> {
   if (url.searchParams.has("claim"))
     return handleClaim(req, res, url, requestId);
+  if (url.searchParams.has(FIXTURE_LINK_PARAM))
+    return handleFixtureAuth(req, res, url, requestId);
   const secret = webSecret.current();
   const c = url.searchParams.get("c") ?? "";
   const nonce = loginCodeNonce(c);
@@ -2884,6 +2898,149 @@ async function handleAuth(
  * else: the signed-out page, which says the link was used and never
  * echoes the code. An agent's token never gets here (AGENT_FORBIDDEN).
  */
+/**
+ * Issue 810: `GET /auth?fixture=<code>&next=<path>`: the gate runner's
+ * sign-in as the fixture person (`web fixture-login`). Only on a test
+ * install (web.test_install in the distribution config), only with a code
+ * the fixture person's secret minted, once. The session's `via` is
+ * "fixture": logged and audited as the fixture person, never the human,
+ * and it never approves (approvals.ts) or reaches Hub (fixtureScopeRefusal).
+ * Refusals never echo the code.
+ */
+function handleFixtureAuth(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  requestId: string,
+): void {
+  const refuse = (status: number, why: string, msg: string) => {
+    recordAction(
+      null,
+      {
+        verb: "signin",
+        detail: `${FIXTURE_LABEL} sign-in refused`,
+        outcome: "refused",
+        reason: why,
+      },
+      FIXTURE_PRINCIPAL,
+    );
+    res.writeHead(status, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end(`${msg} (request id ${requestId})`);
+  };
+  if (req.method !== "GET" && req.method !== "HEAD")
+    return refuse(405, "method", "Open the fixture sign-in link with GET.");
+  if (!webAuthNow().testInstall)
+    return refuse(
+      403,
+      "not_test_install",
+      notTestInstallRefusal(product().configFile),
+    );
+  const secret = readFixtureSecret(getStateDir());
+  const check = secret
+    ? checkFixtureCode(url.searchParams.get(FIXTURE_LINK_PARAM) ?? "", secret)
+    : null;
+  if (!check?.ok || !webSessions.consumeCode(check.nonce, check.expiresAt))
+    return refuse(
+      401,
+      check && !check.ok ? check.reason : secret ? "used" : "no_fixture_person",
+      `That ${FIXTURE_LABEL} sign-in link expired, was used, or isn't this install's. Run \`${product().cli} web fixture-login\` for a new one.`,
+    );
+  const s = startSession(req, "fixture");
+  recordAction(
+    null,
+    { verb: "signin", detail: `${FIXTURE_LABEL} signed in (live checks)` },
+    FIXTURE_PRINCIPAL,
+  );
+  serverLog(
+    `  ${logTimestamp()}  ${FIXTURE_LABEL} signed in (live checks, a test install)`,
+    "lifecycle",
+  );
+  res.writeHead(303, {
+    // No approval key: the fixture person never approves.
+    Location: safeNext(url.searchParams.get("next")),
+    "Set-Cookie": s.cookie,
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+  });
+  res.end();
+}
+
+/**
+ * Issue 810: Settings › Access › Test install. GET: whether this is a test
+ * install and whether the fixture person is set up (never its secret).
+ * POST: Set up test person, a signed-in person's (or the person's CLI
+ * bearer), on a test install only. An agent's token, a claimed agent and
+ * the fixture person are refused.
+ */
+async function handleFixturePersonRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  const method = (req.method ?? "GET").toUpperCase();
+  const testInstall = webAuthNow().testInstall;
+  if (method === "GET" || method === "HEAD")
+    return sendJson(res, {
+      ok: true,
+      testInstall,
+      ready: testInstall && fixturePersonReady(getStateDir()),
+    });
+  if (method !== "POST") {
+    res.setHeader("Allow", "GET, HEAD, POST");
+    return sendJson(res, { ok: false, error: "use GET or POST" }, 405);
+  }
+  const p = principalPersonOf(req);
+  const agent =
+    !!agentPrincipalOf(req) ||
+    !!auditActorOf(req) ||
+    (p.kind === "person-browser" && p.fixture === true);
+  if (!agent && p.kind !== "person" && p.kind !== "person-browser")
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_required",
+        error: "Sign in on this page to set up the test person.",
+      },
+      401,
+    );
+  const r = setupFixturePerson(getStateDir(), {
+    testInstall,
+    agent,
+    configFile: product().configFile,
+  });
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "fixture-person",
+      detail: r.ok
+        ? `${FIXTURE_LABEL} set up (test install)`
+        : `${FIXTURE_LABEL} setup refused`,
+      ...(r.ok ? {} : { outcome: "refused" as const, reason: r.code }),
+    },
+    principalOf(req),
+  );
+  if (!r.ok)
+    return sendJson(res, { ok: false, code: r.code, error: r.error }, 403);
+  return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/** The request's principal kind, for the fixture person route. */
+function principalPersonOf(req: http.IncomingMessage): {
+  kind: string;
+  fixture?: boolean;
+} {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  if (!g.ok || !g.principal) return { kind: "none" };
+  const pr = g.principal;
+  return pr.kind === "person-browser"
+    ? { kind: pr.kind, ...(pr.fixture ? { fixture: true } : {}) }
+    : { kind: pr.kind };
+}
+
 const CLAIM_NONCES = new ClaimNonces(getStateDir());
 function handleClaim(
   req: http.IncomingMessage,
@@ -4074,6 +4231,32 @@ async function handleRequest(
     return sendGuardRefusal(req, res, pathname, guard, requestId, url.search);
   }
   if (guard.ok) setPrincipal(req, guard.principal);
+  // Issue 810: the fixture person stays on this install and never acts
+  // as the person (approve, let a browser in, Hub).
+  if (
+    guard.ok &&
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+  ) {
+    const why = fixtureScopeRefusal(req.method ?? "GET", pathname);
+    if (why) {
+      recordAction(
+        null,
+        {
+          verb: "fixture-scope",
+          detail: pathname.slice(0, 200),
+          outcome: "refused",
+          reason: "fixture_scope",
+        },
+        FIXTURE_PRINCIPAL,
+      );
+      return sendJson(
+        res,
+        { ok: false, code: "fixture_scope", error: why },
+        403,
+      );
+    }
+  }
   // 0.4.45: a browser signed in while the cookie was SameSite=Strict still
   // holds it so. Each signed-in page load gets the same cookie again as Lax
   // (the same session, so its CSRF stays; a session never expires here, so
@@ -4288,6 +4471,10 @@ async function handleRequest(
     }))
   )
     return;
+
+  // Issue 810: Settings › Access, the test install and its fixture person.
+  if (pathname === "/api/web/fixture-person")
+    return handleFixturePersonRoute(req, res);
 
   // SEC-2a: approve this computer with a code. Before config validation.
   if (
@@ -7721,6 +7908,21 @@ async function handleRequest(
           approvals_watch?: unknown;
           approvals_critical?: unknown;
         };
+        // Issue 810: the test-install mark is a person's, by hand, in the
+        // distribution config: never written here, by anyone.
+        if (
+          Object.prototype.hasOwnProperty.call(body, "test_install") ||
+          Object.prototype.hasOwnProperty.call(body, "web_test_install")
+        )
+          return sendJson(
+            res,
+            {
+              ok: false,
+              code: "test_install_by_hand",
+              error: testInstallByHandRefusal(product().configFile),
+            },
+            403,
+          );
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
         // of them is refused before anything is written.

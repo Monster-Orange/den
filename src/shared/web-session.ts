@@ -263,6 +263,15 @@ export interface WebAuthConfig {
    * long a sign-in link lasts, in ms. Unset: LOGIN_CODE_TTL_MS (5 minutes).
    */
   loginLinkTtlMs: number;
+  /**
+   * Issue 810: `web.test_install: true`, from the distribution config only:
+   * a person marks a test install by hand, and only then may live checks
+   * sign in as the fixture person (fixture-person.ts). Never written by
+   * Settings, `config` or any agent.
+   */
+  testInstall: boolean;
+  /** `web.test_install` in user.yml: ignored there (warned at start). */
+  testInstallInUser?: true;
 }
 
 /** A GitHub login (or org name): letters, digits, single dashes, ≤ 39. */
@@ -366,6 +375,11 @@ export function ignoredConfigWarning(cfg: WebAuthConfig): string | null {
         "It is a choice for one machine, read only from config/local/user.yml; " +
         "move it there on the machine that needs it, and remove it here.",
     );
+  if (cfg.testInstallInUser)
+    lines.push(
+      "web.test_install (config/local/user.yml): ignored. A test install is marked " +
+        "by hand in the distribution config only; remove it here.",
+    );
   if (cfg.plainHttpInDistribution)
     lines.push(
       `web.allow_plain_http_remote (${cfg.plainHttpInDistribution}): ignored. ` +
@@ -459,7 +473,20 @@ export function readWebAuthConfig(
   const ttl =
     parseLoginLinkTtl(user.login_link_ttl, "config/local/user.yml") ??
     parseLoginLinkTtl(team.login_link_ttl, configFile);
+  const testMark = team.test_install;
+  if (
+    testMark !== undefined &&
+    testMark !== null &&
+    typeof testMark !== "boolean"
+  )
+    throw new Error(
+      `web.test_install (${configFile}) must be true or false, got ${JSON.stringify(testMark)}`,
+    );
   return {
+    testInstall: testMark === true,
+    ...(user.test_install !== undefined
+      ? { testInstallInUser: true as const }
+      : {}),
     ...(ownerGithub ? { ownerGithub } : {}),
     ...(ownerGithub && ownerGithubName ? { ownerGithubName } : {}),
     ...(allowedGithubOrg
@@ -592,7 +619,7 @@ export interface SessionRecord {
    */
   secure?: true;
   /** SEC-2a: how it signed in: a GitHub sign-in, a one-time link, a code (pairing), or the install's setup link (claim, 0.4.15). Unset: a link (before 0.4.5). */
-  via?: "github" | "link" | "code" | "claim";
+  via?: "github" | "link" | "code" | "claim" | "fixture";
   /** SEC-2a: the client's address when Den could attest it. */
   client?: string;
   /** SEC-2a: a GitHub sign-in's login (the account entry's "@login"). */
@@ -737,7 +764,7 @@ export class WebSessionStore {
     host?: string;
     reach?: "loopback" | "edge" | "lan";
     secure?: boolean;
-    via?: "github" | "link" | "code" | "claim";
+    via?: "github" | "link" | "code" | "claim" | "fixture";
     client?: string;
     login?: string;
     name?: string;

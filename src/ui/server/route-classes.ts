@@ -419,6 +419,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/signin/code/:id/withdraw",
     "issue 320: the same, as the signed-out page's beacon sends it",
   ),
+  R(
+    "/api/web/fixture-person",
+    "issue 810: whether this is a test install and its fixture person is set up (never the secret)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person",
+    "issue 810: Set up test person, a person's, on a test install only",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",

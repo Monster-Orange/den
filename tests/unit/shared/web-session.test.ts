@@ -293,6 +293,8 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       startWaitSeconds: 120,
       // D16: a sign-in link lasts 5 minutes unless set.
       loginLinkTtlMs: 5 * 60_000,
+      // Issue 810: not a test install unless a person marks it by hand.
+      testInstall: false,
     });
     expect(ignoredConfigWarning(cfg)).toBeNull();
   });
