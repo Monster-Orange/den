@@ -15,6 +15,10 @@ import {
   GateYieldRefused,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
+import {
+  browserSlotCheck,
+  browserSlotRefusal,
+} from "../../shared/gates/browser-container.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
   MCP_ACTIONS,
@@ -437,7 +441,8 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_request",
     "Ask for a gate slot",
-    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Issue 714: when a slot you waited for is granted, Den types a line at your prompt; claim it by calling this with its `id` before `claimBy` (3 minutes by default, a Setting), or it passes to the next in line and you go back in line. While you hold it, renew it by calling this with its `id` every `renewEveryMinutes`: a slot not renewed and past its estimate lapses and goes to the next in line. Release it as soon as you are done. Never stops anyone's run; a later ask only waits. Issue 715: `priority: \"release\"` with a `reason` (required) is for a release run a person waits on (marked by the person, or for an issue the person reported): it goes to the front of its kind's queue, never ahead of a holder, one at a time per kind (a second waits behind the first), and the slot log records who, why and which runs it passed. Never use it for routine runs.",
+    "Issue 144: ask for a slot to run heavy tests in, held by this MCP server until you release it or you stop. For one command, run it as `<cli> gate run --kind <k> --estimate <time> -- <command>` instead: that waits, runs and gives the slot back however it ends. Use this to hold a slot across several commands. Returns your slot: `granted` true (start now), or false with `expectedStart` and `heldBy` (who holds the machine, until when). Ask again with `id` to see where you stand. Issue 714: when a slot you waited for is granted, Den types a line at your prompt; claim it by calling this with its `id` before `claimBy` (3 minutes by default, a Setting), or it passes to the next in line and you go back in line. While you hold it, renew it by calling this with its `id` every `renewEveryMinutes`: a slot not renewed and past its estimate lapses and goes to the next in line. Release it as soon as you are done. Never stops anyone's run; a later ask only waits. Issue 715: `priority: \"release\"` with a `reason` (required) is for a release run a person waits on (marked by the person, or for an issue the person reported): it goes to the front of its kind's queue, never ahead of a holder, one at a time per kind (a second waits behind the first), and the slot log records who, why and which runs it passed. Never use it for routine runs." +
+      ' A browser slot on a macOS host (a Setting) needs `browser_endpoint`: the ws:// or wss:// address of the container\'s Playwright endpoint your tests connect to, or "self" when your run starts its own browser container; never a browser started on the host. The slot records it.',
     {
       kind: z
         .enum(["browser", "cpu"])
@@ -468,6 +473,12 @@ const READ_TOOLS: DenTool[] = [
         .describe(
           "With priority: why, in a few words (who waits on it, which issue)",
         ),
+      browser_endpoint: z
+        .string()
+        .optional()
+        .describe(
+          'With kind browser: the container browser\'s Playwright endpoint (ws:// or wss://), or "self" when the run starts its own container. Needed on a macOS host.',
+        ),
     },
     async (a, ctx) => {
       const store = gatesOf(ctx);
@@ -489,10 +500,28 @@ const READ_TOOLS: DenTool[] = [
         }
         return slotView(store, id);
       }
+      const kind = a.kind === "browser" ? "browser" : "cpu";
+      // On macOS a browser slot declares a container browser (a Setting).
+      const endpoint = str(a.browser_endpoint)?.trim();
+      const verdict = browserSlotCheck({
+        kind,
+        ...(endpoint !== undefined ? { endpoint } : {}),
+        platform: store.platform,
+        requiresContainer: store.settings().browserRequiresContainer,
+      });
+      if (!verdict.ok)
+        throw new Refusal(
+          `gate_slot_request: ${browserSlotRefusal(verdict, {
+            lang: "en",
+            surface: "field",
+            cli: ctx.cli,
+            ...(endpoint !== undefined ? { value: endpoint } : {}),
+          })}`,
+        );
       let e;
       try {
         e = store.ask({
-          kind: a.kind === "browser" ? "browser" : "cpu",
+          kind,
           who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
           label: (str(a.label) ?? "tests").slice(0, 120),
           pid: process.pid,
@@ -506,6 +535,7 @@ const READ_TOOLS: DenTool[] = [
           ...(a.priority === "release" && reason
             ? { priority: { reason } }
             : {}),
+          ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
         });
       } catch (err) {
         if (err instanceof GatePriorityRefused)

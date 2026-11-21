@@ -946,6 +946,9 @@
       "CI ランナーもリリースの優先を依頼できる",
     "set.server.gate_priority_runners.d":
       "オンなら、ランナートークンを持つ CI ジョブが理由を添えて実行をリリース実行として優先にできます。オフなら、その依頼は断られ、通常の列で待ちます。追い越しはすべて、ランナーと理由とともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container": "ブラウザ実行にはコンテナが必要",
+    "set.server.gate_browser_container.d":
+      "オンなら、このマシンでのブラウザのテスト実行は、ブラウザがどこで動くかを示す必要があります: コンテナの Playwright エンドポイント (ws:// または wss://。DEN_PW_WS、HUB_PW_WEBKIT_WS、E2E_WEBKIT_WS からも読みます)、または実行が自分でコンテナを起動するときは self。示さない実行は断られるので、この Mac 自体でブラウザを起動するテストはありません。macOS では既定でオン、それ以外ではオフ。__DEN_CLI__ gate settings --browser-requires-container 1",
     "set.server.gate_claim": "エージェントのゲート枠: 受け取るまでの分数",
     "set.server.gate_claim.d":
       "エージェントが待っていた枠が割り当てられると、Den がエージェントに伝えます。この時間内に受け取らなければ、枠は次に回り、エージェントは列に戻ります。__DEN_CLI__ gate settings --claim-minutes 3",

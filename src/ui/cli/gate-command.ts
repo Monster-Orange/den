@@ -12,6 +12,11 @@
  *       kind's queue (never ahead of a holder), recorded with why
  *       Issue 625: --box any lets a browser run take a test box's slot
  *       (whichever frees first); the run gets DEN_GATE_BOX, DEN_PW_WS
+ *       --browser-endpoint ws://…|self: where a browser run's browser
+ *       runs (a container's Playwright endpoint, or a container the run
+ *       starts itself); also read from DEN_PW_WS, HUB_PW_WEBKIT_WS,
+ *       E2E_WEBKIT_WS. On macOS a browser run without one is refused
+ *       (gates/browser-container.ts; a Setting)
  *   status [--json]          who holds, who waits, overruns, test boxes
  *   box <list|add|remove>    the test boxes (a person changes them)
  *   end <id>                 a person ends a slot early (refused for an
@@ -28,6 +33,7 @@
  *            [--mcp-grace-minutes N]
  *            [--box-check-timeout-seconds N] [--box-recheck-seconds N]
  *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
+ *            [--browser-requires-container 0|1]
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
@@ -54,6 +60,13 @@ import {
 } from "../../shared/gates/store.js";
 import * as fs from "fs";
 import { boxEnv, checkBox } from "../../shared/gates/boxes.js";
+import {
+  browserSlotCheck,
+  browserSlotRefusal,
+  endpointFromEnv,
+} from "../../shared/gates/browser-container.js";
+import { readUserConfig } from "../../shared/den-config.js";
+import { uiLanguage, type UiLanguage } from "../server/ui-language.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
@@ -72,6 +85,9 @@ export const GATE_HELP = {
     "    goes to the front of its kind's queue (one at a time; recorded)",
     "    --box any: a browser run that can use a test box's browser takes",
     "    whichever slot frees first, here or on a box (DEN_PW_WS is set)",
+    "    --browser-endpoint ws://…: the container browser a browser run uses",
+    "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
+    "    its own. On macOS a browser run needs one (a Setting)",
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
@@ -90,6 +106,7 @@ export const GATE_HELP = {
     "    [--box-check-timeout-seconds N] [--box-recheck-seconds N]",
     '    [--class-order "release, lane, other"] [--class-map "<project>=<class>, label:<pattern>=<class>, *=<class>"]',
     '    [--class-windows "<class>=22:00-06:00/30"]   priority classes per project ("" clears)',
+    "    [--browser-requires-container 0|1]   a browser run declares a container browser",
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
@@ -120,6 +137,17 @@ export interface GateDeps {
   exit: (code: number) => void;
   pid: number;
   cwd: string;
+  /** The language refusals are in (default: the person's, from user.yml). */
+  lang?: UiLanguage;
+}
+
+/** The person's language for the command line; English when unknown. */
+function cliLang(): UiLanguage {
+  try {
+    return uiLanguage(readUserConfig().language);
+  } catch {
+    return "en";
+  }
 }
 
 const signalCode = (s: NodeJS.Signals | null) =>
@@ -253,7 +281,8 @@ export function slotLine(
     priorityWords(e, all, margin) +
     (cls ? `  class ${cls}` : "") +
     (win ? `  waits for its ${win.text} window` : "") +
-    (yields.length ? `  let ${yields.join(", ")} go ahead` : "");
+    (yields.length ? `  let ${yields.join(", ")} go ahead` : "") +
+    (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "");
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
     const on = e.box ? ` on box ${e.box}` : "";
@@ -292,6 +321,12 @@ function flags(args: string[], known: Record<string, boolean>) {
       return { f, pos, rest: true };
     }
     if (a.startsWith("--")) {
+      // --flag=value, for a flag that takes one.
+      const eq = a.indexOf("=");
+      if (eq > 2 && known[a.slice(0, eq)] === true) {
+        f[a.slice(0, eq)] = a.slice(eq + 1);
+        continue;
+      }
       if (!(a in known)) throw new GateUsage(`unknown option ${a}`);
       if (known[a]) {
         const v = args[++i];
@@ -313,6 +348,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     "--box": true,
     "--base-url": true,
     "--pw-version": true,
+    "--browser-endpoint": true,
   });
   if (!rest || pos.length === 0)
     throw new GateUsage("gate run needs -- <command> [args]");
@@ -338,6 +374,34 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         })`,
       );
   }
+  // On macOS a browser run declares a container browser (a Setting):
+  // --browser-endpoint, else the run's environment. Checked before it asks.
+  const flagEndpoint =
+    typeof f["--browser-endpoint"] === "string"
+      ? f["--browser-endpoint"].trim()
+      : undefined;
+  const fromEnv =
+    flagEndpoint === undefined && kind === "browser"
+      ? endpointFromEnv(d.env)
+      : undefined;
+  const endpoint = flagEndpoint ?? fromEnv?.endpoint;
+  const verdict = browserSlotCheck({
+    kind: kind as GateKind,
+    ...(endpoint !== undefined ? { endpoint } : {}),
+    ...(where ? { where } : {}),
+    platform: d.store.platform,
+    requiresContainer: d.store.settings().browserRequiresContainer,
+  });
+  if (!verdict.ok)
+    throw new GateUsage(
+      browserSlotRefusal(verdict, {
+        lang: d.lang ?? cliLang(),
+        surface: "cli",
+        cli: product().cli,
+        ...(fromEnv ? { from: fromEnv.from } : {}),
+        ...(endpoint !== undefined ? { value: endpoint } : {}),
+      }),
+    );
   // Clause 9: a run that may use a box's browser declares its base URLs,
   // each loopback with an explicit port other than 80 or 443. The run is
   // handed them (DEN_GATE_ALLOW) to guard every browser context.
@@ -398,6 +462,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(priority ? { priority: { reason } } : {}),
       ...(where ? { where } : {}),
       ...(pwVersion ? { pwVersion } : {}),
+      ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
@@ -446,7 +511,10 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           ...boxEnv(box),
           DEN_GATE_ALLOW: allow.join(","),
         })
-      : d.exec(pos[0]!, pos.slice(1));
+      : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
+        ? // The address given on the command line reaches the run.
+          d.exec(pos[0]!, pos.slice(1), { DEN_PW_WS: flagEndpoint })
+        : d.exec(pos[0]!, pos.slice(1));
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
     // Past its estimate plus the margin, it says so once; never stopped.
     let flagged = false;
@@ -623,6 +691,7 @@ function settings(args: string[], d: GateDeps): number {
     "--class-order": true,
     "--class-map": true,
     "--class-windows": true,
+    "--browser-requires-container": true,
   });
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
@@ -642,6 +711,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--mcp-grace-minutes", "mcp_grace_minutes"],
     ["--box-check-timeout-seconds", "box_check_timeout_seconds"],
     ["--box-recheck-seconds", "box_recheck_seconds"],
+    ["--browser-requires-container", "browser_requires_container"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);
@@ -666,7 +736,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, never past a run waiting ${s.priorityPassLimitMinutes} min, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s${
+    `cpu slots ${s.cpuSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, never past a run waiting ${s.priorityPassLimitMinutes} min, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

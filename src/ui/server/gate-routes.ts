@@ -21,6 +21,11 @@
  *                                 ahead of its kind's plain waiting runs
  *                                 (issue 715's rules), if the machine lets
  *                                 runners ask (priority_runners).
+ *                                 browser_endpoint (or browserEndpoint):
+ *                                 a browser run's container browser,
+ *                                 ws:// or wss://, or "self" (the run
+ *                                 starts its own); on a macOS host a
+ *                                 browser ask needs one (a Setting)
  *   POST /api/gate-slots/renew    {id}: renews the lease (holding or
  *                                 waiting) and says where it stands: the poll
  *   POST /api/gate-slots/release  {id}: gives it back
@@ -51,6 +56,11 @@ import {
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
 import { checkBox } from "../../shared/gates/boxes.js";
+import {
+  browserSlotCheck,
+  browserSlotRefusal,
+} from "../../shared/gates/browser-container.js";
+import { product } from "../../shared/product.js";
 import {
   GateFullError,
   GatePriorityRefused,
@@ -194,6 +204,7 @@ async function askAndWait(
     waitMs: number;
     reason?: string;
     where?: string;
+    browserEndpoint?: string;
   },
 ): Promise<void> {
   let e: GateEntry | null;
@@ -207,6 +218,7 @@ async function askAndWait(
       tokenId: runner.id,
       ...(a.reason !== undefined ? { priority: { reason: a.reason } } : {}),
       ...(a.where ? { where: a.where } : {}),
+      ...(a.browserEndpoint ? { browserEndpoint: a.browserEndpoint } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused)
@@ -373,6 +385,32 @@ async function handleRunnerRoute(
         { ok: false, error: "where goes with kind browser" },
         400,
       );
+    // On macOS a browser ask declares a container browser (a Setting).
+    const rawEndpoint = body.browser_endpoint ?? body.browserEndpoint;
+    const endpoint =
+      rawEndpoint === undefined ? undefined : String(rawEndpoint).trim();
+    const verdict = browserSlotCheck({
+      kind,
+      ...(endpoint !== undefined ? { endpoint } : {}),
+      ...(typeof where === "string" ? { where } : {}),
+      platform: store.platform,
+      requiresContainer: store.settings().browserRequiresContainer,
+    });
+    if (!verdict.ok)
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: verdict.code,
+          error: browserSlotRefusal(verdict, {
+            lang: "en",
+            surface: "field",
+            cli: product().cli,
+            ...(endpoint !== undefined ? { value: endpoint } : {}),
+          }),
+        },
+        400,
+      );
     // At most the lapse time (a Setting): the caller hears back in time.
     const waitMs =
       Math.min(waitRaw, store.settings().remoteLapseSeconds) * 1000;
@@ -398,6 +436,7 @@ async function handleRunnerRoute(
         waitMs,
         ...(reason !== undefined ? { reason } : {}),
         ...(typeof where === "string" ? { where } : {}),
+        ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       });
     } finally {
       const n = (ASKING.get(runner.id) ?? 1) - 1;
