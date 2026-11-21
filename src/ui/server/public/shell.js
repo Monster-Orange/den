@@ -1144,7 +1144,7 @@
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
     "set.access.test_install.d":
-      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once; __DEN_CLI__ web fixture-person does the same from your own terminal.",
+      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     "set.distribution.brand.d":
       "brand.name: the name on pages, the CLI banner and help.",
     "set.distribution.github_org.d":

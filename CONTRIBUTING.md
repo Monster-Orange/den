@@ -269,17 +269,19 @@ It works only on a **test install**, which needs all four of these:
    set it, and the server drops it from what it passes on.
 3. Its own state folder (`<PREFIX>_HOME`), never the product's default
    one.
-4. No owner and no paired person: no GitHub sign-in, setup link or
-   pairing code ever used on it.
+4. No owner and no other person: no GitHub sign-in, setup link or
+   pairing code ever used on it, and no one signed in by a `web login`
+   link except the person who pressed **Set up test person**.
 
 Then:
 
-1. Signed in, the person opens Settings › Access › Test install and
-   presses **Set up test person**, once. From their own terminal,
-   `<cli> web fixture-person` asks the running server to do the same.
-   The server writes a key in the bed's state folder (0600), sealed with
-   the install's own secret, so a key it didn't write is refused. Agents,
-   and anything run inside an agent's session, are refused.
+1. Signed in (a `web login` link), the person opens Settings › Access ›
+   Test install in their browser and presses **Set up test person**,
+   once. It is a button only: every command-line call and agent is
+   refused. The server writes a key in the bed's state folder (0600),
+   sealed with the install's own secret, so a key it didn't write is
+   refused. Pressing it again replaces the key and ends every older
+   fixture session.
 2. The runner gets a one-time sign-in link as the fixture person:
 
    ```sh

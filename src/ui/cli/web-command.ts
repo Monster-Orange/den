@@ -2802,60 +2802,29 @@ function testInstallNow(io: FixtureIo): boolean {
 }
 
 const FIXTURE_PERSON_HELP = () =>
-  `Usage: ${product().cli} web fixture-person [--port <port>]\n` +
-  "  On a test install, asks the running install to make the fixture person live\n" +
-  "  checks sign in as. Settings › Access › Set up test person does the same. Run\n" +
-  "  it in your own terminal: an agent, or anything an agent runs, is refused.\n" +
-  "  Its key stays in the state folder (0600) and is never printed.\n";
+  `Usage: ${product().cli} web fixture-person\n` +
+  "  Setting up the fixture person live checks sign in as is a button: on a test\n" +
+  "  install, sign in and press Settings › Access › Set up test person in your\n" +
+  "  browser. This command does nothing else.\n";
 
 /**
- * `<cli> web fixture-person` (issue 810): the person's fallback to Settings'
- * Set up test person. Refused inside an agent's session, and off a test
- * install. Never prints the secret.
+ * `<cli> web fixture-person` (issue 810): setup is Settings' Set up test
+ * person, a person's browser session only. This says so and fails; it
+ * never asks the server (which refuses every CLI bearer there).
  */
-export async function cmdWebFixturePerson(
+export function cmdWebFixturePerson(
   args: string[],
   io: FixtureIo = stdIo,
 ): Promise<number> {
   if (isHelp(args)) {
     io.out(FIXTURE_PERSON_HELP());
-    return 0;
+    return Promise.resolve(0);
   }
-  const { port, rest } = takePort(args);
-  if (rest.length) {
-    io.err(FIXTURE_PERSON_HELP());
-    return 2;
-  }
-  const refused = personGrantRefusal(process.env);
-  if (refused) {
-    io.err(`${product().cli}: ${refused}\n`);
-    return 1;
-  }
-  // The server decides (a person, outside every agent's session, on a
-  // test install) and writes the key: nothing is decided or written here.
-  const r = await serverCall(
-    io.stateDir ?? getStateDir(),
-    port,
-    "POST",
-    "/api/web/fixture-person",
-    {},
+  io.err(
+    `${product().cli}: setting up the ${FIXTURE_LABEL} is a button, not a command: ` +
+      "on a test install, sign in and press Settings › Access › Set up test person in your browser.\n",
   );
-  if (!r) {
-    io.err(
-      `${product().cli}: nothing answers on port ${port}: ` +
-        `start ${product().cli} (\`${product().cli} web up\`), or press Set up test person in Settings.\n`,
-    );
-    return 1;
-  }
-  if (r.status !== 200) {
-    io.err(`${product().cli}: ${apiError(r)}\n`);
-    return 1;
-  }
-  io.out(
-    `Set up the ${FIXTURE_LABEL} for live checks on this test install. ` +
-      `The gate runner signs in as it with \`${product().cli} web fixture-login\`.\n`,
-  );
-  return 0;
+  return Promise.resolve(1);
 }
 
 const FIXTURE_LOGIN_HELP = () =>

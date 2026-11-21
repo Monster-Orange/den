@@ -644,6 +644,16 @@ export interface SessionRecord {
   secure?: true;
   /** SEC-2a: how it signed in: a GitHub sign-in, a one-time link, a code (pairing), or the install's setup link (claim, 0.4.15). Unset: a link (before 0.4.5). */
   via?: "github" | "link" | "code" | "claim" | "fixture";
+  /**
+   * Issue 810: a fixture session's key fingerprint (fixtureKeyFingerprint,
+   * never the key). It stands only while that key is the current one.
+   */
+  fixtureKey?: string;
+  /**
+   * Issue 810: the person's link session that pressed Set up test person
+   * on a test install: it doesn't make the install count as owned.
+   */
+  testOperator?: true;
   /** SEC-2a: the client's address when Den could attest it. */
   client?: string;
   /** SEC-2a: a GitHub sign-in's login (the account entry's "@login"). */
@@ -789,6 +799,7 @@ export class WebSessionStore {
     reach?: "loopback" | "edge" | "lan";
     secure?: boolean;
     via?: "github" | "link" | "code" | "claim" | "fixture";
+    fixtureKey?: string;
     client?: string;
     login?: string;
     name?: string;
@@ -814,6 +825,7 @@ export class WebSessionStore {
       ...(meta.reach ? { reach: meta.reach } : {}),
       ...(meta.secure ? { secure: true as const } : {}),
       ...(meta.via ? { via: meta.via } : {}),
+      ...(meta.fixtureKey ? { fixtureKey: meta.fixtureKey } : {}),
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
       ...(meta.login ? { login: String(meta.login).slice(0, 64) } : {}),
       ...(meta.login && githubDisplayName(meta.name)
@@ -869,6 +881,19 @@ export class WebSessionStore {
     const next = structuredClone(data);
     delete next.sessions[key].welcome;
     this.trySave(next);
+    return true;
+  }
+
+  /**
+   * Issue 810: mark a person's link session as the one that set up the
+   * test person (SessionRecord.testOperator). False: no such session.
+   */
+  markTestOperator(key: string): boolean {
+    const data = this.load();
+    if (!data.sessions[key]) return false;
+    const next = structuredClone(data);
+    next.sessions[key].testOperator = true;
+    this.save(next);
     return true;
   }
 

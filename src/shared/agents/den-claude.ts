@@ -423,19 +423,7 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   const abs = path.resolve(stateDir);
   const secret = path.join(abs, "web.secret");
   const sessions = path.join(abs, "sessions");
-  const spellings = (p: string): string[] => {
-    const out = [p];
-    if (home) {
-      const h = path.resolve(home);
-      if (p.startsWith(h + path.sep)) {
-        const rel = p.slice(h.length + 1);
-        out.push(`~/${rel}`, `$HOME/${rel}`, "${HOME}/" + rel);
-      }
-    }
-    for (const x of [...out])
-      if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
-    return [...new Set(out)];
-  };
+  const spellings = (p: string) => shellSpellings(p, home);
   // Issue 810: the fixture person's key, as the web secret.
   const fixtureKey = path.join(abs, "fixture-person.key");
   const targets = [
@@ -460,6 +448,24 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 }
 
 /**
+ * A path as a shell may write it from `home`: as is, `~/…`, `$HOME/…`,
+ * `${HOME}/…`, and with each space backslash-escaped.
+ */
+function shellSpellings(p: string, home?: string): string[] {
+  const out = [p];
+  if (home) {
+    const h = path.resolve(home);
+    if (p.startsWith(h + path.sep)) {
+      const rel = p.slice(h.length + 1);
+      out.push(`~/${rel}`, `$HOME/${rel}`, "${HOME}/" + rel);
+    }
+  }
+  for (const x of [...out])
+    if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
+  return [...new Set(out)];
+}
+
+/**
  * Review M4 (0.4.46): edits denied under the person's own config folder
  * (config/local: user.yml holds self_update and the person's settings).
  * The team file beside it stays editable. A cooperating agent's boundary
@@ -470,13 +476,21 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 export function personConfigDenyRules(
   dir: string,
   distConfigFile?: string,
+  home?: string,
 ): string[] {
   const abs = path.resolve(dir);
   // Issue 810: the distribution config holds the test-install mark, which
-  // only a person sets by hand.
+  // only a person sets by hand: denied to Edit, and to any shell command
+  // naming it (the state-dir rules' shape).
+  const dist = distConfigFile ? path.resolve(distConfigFile) : null;
   return [
     `Edit(/${abs}/**)`,
-    ...(distConfigFile ? [`Edit(/${path.resolve(distConfigFile)})`] : []),
+    ...(dist
+      ? [
+          `Edit(/${dist})`,
+          ...shellSpellings(dist, home).map((t) => `Bash(*${t}*)`),
+        ]
+      : []),
   ];
 }
 
@@ -691,6 +705,7 @@ function common(input: LaunchInput): {
                                   ? personConfigDenyRules(
                                       input.personConfigDir,
                                       input.distConfigFile,
+                                      input.env?.HOME,
                                     )
                                   : []),
                               ],

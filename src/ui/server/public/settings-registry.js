@@ -1404,7 +1404,7 @@ const ACCESS_ROWS = [
     category: "access",
     label: "Test install",
     description:
-      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once; __DEN_CLI__ web fixture-person does the same from your own terminal.",
+      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     keywords: ["test", "test install", "live checks", "fixture", "gate"],
     scope: "user",
     control: { type: "custom", render: drawTestInstall },

@@ -327,9 +327,7 @@ import {
   checkActorToken,
   sessionPid,
   revokeAllActorTokens,
-  agentSessionRoots,
 } from "../../shared/actor-token.js";
-import { descendsFrom } from "../../shared/peer-process.js";
 import {
   checkLoginCode,
   deviceName,
@@ -351,6 +349,7 @@ import {
   FIXTURE_LABEL,
   FIXTURE_LINK_PARAM,
   FIXTURE_PRINCIPAL,
+  fixtureKeyFingerprint,
   fixtureScopeRefusal,
   fixtureSessionExpired,
   notTestInstallRefusal,
@@ -2132,7 +2131,7 @@ const GUARD: GuardContext = {
   session: (req, via) => {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
     // Issue 810: a fixture session ends as soon as what allowed it goes.
-    if (s?.via === "fixture" && !fixtureSessionStands(s.createdAt)) {
+    if (s?.via === "fixture" && !fixtureSessionStands(s)) {
       webSessions.end(s.key);
       return null;
     }
@@ -2310,6 +2309,7 @@ function startSession(
   via: "github" | "link" | "code" | "claim" | "fixture",
   login?: string,
   name?: string,
+  fixtureKey?: string,
 ): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
@@ -2322,6 +2322,7 @@ function startSession(
     ...(named ? { reach: named } : {}),
     secure,
     via,
+    ...(fixtureKey ? { fixtureKey } : {}),
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
     ...(login && name ? { name } : {}),
@@ -2933,10 +2934,12 @@ function realOrResolved(p: string): string {
 /**
  * Issue 810: whether this install is a test install right now: the mark,
  * the launch flag, its own state dir (not the product's default), and no
- * owner or paired person (a GitHub sign-in, the setup link or a pairing
- * code). Checked at every fixture path and on every fixture request.
+ * owner or signed-in person (a GitHub sign-in, the setup link, a pairing
+ * code, or a `web login` link). The one link session that pressed Set up
+ * test person doesn't count, nor `except` (the caller's own, while it
+ * presses it). Checked at every fixture path and on every fixture request.
  */
-function testInstallNow(): boolean {
+function testInstallNow(except?: string): boolean {
   let mark = false;
   try {
     mark = webAuthNow().testInstall;
@@ -2951,11 +2954,16 @@ function testInstallNow(): boolean {
       realOrResolved(stateDir) === realOrResolved(getProfile().stateDir),
     owned:
       !!readWebOwner(stateDir) ||
-      webSessions
-        .list()
-        .some(
-          (s) => s.via === "github" || s.via === "claim" || s.via === "code",
-        ),
+      webSessions.list().some(
+        (s) =>
+          s.via === "github" ||
+          s.via === "claim" ||
+          s.via === "code" ||
+          // A link (unset: a link from before 0.4.5).
+          ((s.via === "link" || s.via === undefined) &&
+            !s.testOperator &&
+            s.key !== except),
+      ),
   }).ok;
 }
 
@@ -2966,19 +2974,26 @@ function fixtureKeyNow(): Buffer | null {
 
 /**
  * Issue 810: whether a fixture session still stands: a test install, the
- * sealed key in place, and within its lifetime.
+ * sealed key it signed in with still the current one, and within its
+ * lifetime.
  */
-function fixtureSessionStands(createdAt: number): boolean {
+function fixtureSessionStands(s: {
+  createdAt: number;
+  fixtureKey?: string;
+}): boolean {
   let minutes: number;
   try {
     minutes = webAuthNow().fixtureSessionMinutes;
   } catch {
     return false;
   }
+  const key = fixtureKeyNow();
   return (
     testInstallNow() &&
-    !!fixtureKeyNow() &&
-    !fixtureSessionExpired(createdAt, Date.now(), minutes)
+    !!key &&
+    !!s.fixtureKey &&
+    s.fixtureKey === fixtureKeyFingerprint(key) &&
+    !fixtureSessionExpired(s.createdAt, Date.now(), minutes)
   );
 }
 
@@ -3015,7 +3030,8 @@ function handleFixtureAuth(
     });
     res.end(`${msg} (request id ${requestId})`);
   };
-  if (req.method !== "GET" && req.method !== "HEAD")
+  // GET only: a HEAD (a link preview) never spends the one-time code.
+  if (req.method !== "GET")
     return refuse(405, "method", "Open the fixture sign-in link with GET.");
   if (!testInstallNow())
     return refuse(
@@ -3033,7 +3049,13 @@ function handleFixtureAuth(
       check && !check.ok ? check.reason : secret ? "used" : "no_fixture_person",
       `That ${FIXTURE_LABEL} sign-in link expired, was used, or isn't this install's. Run \`${product().cli} web fixture-login\` for a new one.`,
     );
-  const s = startSession(req, "fixture");
+  const s = startSession(
+    req,
+    "fixture",
+    undefined,
+    undefined,
+    fixtureKeyFingerprint(secret!),
+  );
   recordAction(
     null,
     { verb: "signin", detail: `${FIXTURE_LABEL} signed in (live checks)` },
@@ -3056,34 +3078,40 @@ function handleFixtureAuth(
 /**
  * Issue 810: Settings › Access › Test install. GET: whether this is a test
  * install and whether the fixture person is set up (never its secret).
- * POST: Set up test person, a signed-in person's (or the person's CLI
- * bearer), on a test install only. An agent's token, a claimed agent and
- * the fixture person are refused.
+ * POST: Set up test person, only from a person's own browser session (a
+ * GitHub sign-in, the setup link, a pairing code or a `web login` link,
+ * with its CSRF token), on a test install. Every bearer (the person's CLI
+ * too), a claimed agent and the fixture person are refused. Setting it up
+ * again replaces the key, which ends every older fixture session.
  */
 async function handleFixturePersonRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): Promise<void> {
   const method = (req.method ?? "GET").toUpperCase();
-  const testInstall = testInstallNow();
-  if (method === "GET" || method === "HEAD")
+  if (method === "GET" || method === "HEAD") {
+    const testInstall = testInstallNow();
     return sendJson(res, {
       ok: true,
       testInstall,
       ready: testInstall && !!fixtureKeyNow(),
     });
+  }
   if (method !== "POST") {
     res.setHeader("Allow", "GET, HEAD, POST");
     return sendJson(res, { ok: false, error: "use GET or POST" }, 405);
   }
-  const p = principalPersonOf(req);
-  const agent =
-    notAPersonOf(req) ||
-    (p.kind === "person-browser" && p.fixture === true) ||
-    // The person's CLI bearer: refused when the caller runs inside an
-    // agent's session, whatever its env says (or can't be placed).
-    (p.kind === "person" && !(await personCliOutsideAgents(req)));
-  if (!agent && p.kind !== "person" && p.kind !== "person-browser")
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const session = g.ok ? g.session : null;
+  const browser =
+    g.ok &&
+    g.principal?.kind === "person-browser" &&
+    !g.principal.fixture &&
+    !!session &&
+    g.principal.session === session.key &&
+    (session.via === undefined || PERSON_VIAS.has(session.via)) &&
+    !notAPersonOf(req);
+  if (g.ok && !g.principal)
     return sendJson(
       res,
       {
@@ -3094,11 +3122,12 @@ async function handleFixturePersonRoute(
       401,
     );
   const r = setupFixturePerson(getStateDir(), {
-    testInstall,
-    agent,
+    testInstall: testInstallNow(browser ? session!.key : undefined),
+    agent: !browser,
     webSecret: webSecret.current(),
     configFile: product().configFile,
   });
+  if (r.ok && browser) webSessions.markTestOperator(session!.key);
   recordAction(
     auditActorOf(req),
     {
@@ -3115,35 +3144,13 @@ async function handleFixturePersonRoute(
   return sendJson(res, { ok: true, testInstall: true, ready: true });
 }
 
-/**
- * Issue 810: whether the process behind a person's CLI bearer is outside
- * every running agent session. False when it can't be placed.
- */
-async function personCliOutsideAgents(
-  req: http.IncomingMessage,
-): Promise<boolean> {
-  await peerSettled(req, Math.max(readBinding().waitMs, 1_000)).catch(
-    () => undefined,
-  );
-  const pid = callerPid(req);
-  if (!pid) return false;
-  return !agentSessionRoots(getStateDir()).some((root) =>
-    descendsFrom(pid, root),
-  );
-}
-
-/** The request's principal kind, for the fixture person route. */
-function principalPersonOf(req: http.IncomingMessage): {
-  kind: string;
-  fixture?: boolean;
-} {
-  const g = checkRequest(req, GUARD, product().cli, product().title);
-  if (!g.ok || !g.principal) return { kind: "none" };
-  const pr = g.principal;
-  return pr.kind === "person-browser"
-    ? { kind: pr.kind, ...(pr.fixture ? { fixture: true } : {}) }
-    : { kind: pr.kind };
-}
+/** Issue 810: the sign-ins that are a person's own browser session. */
+const PERSON_VIAS: ReadonlySet<string> = new Set([
+  "github",
+  "claim",
+  "code",
+  "link",
+]);
 
 const CLAIM_NONCES = new ClaimNonces(getStateDir());
 function handleClaim(

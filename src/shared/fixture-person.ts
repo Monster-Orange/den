@@ -12,8 +12,8 @@
  *    default; and no owner or paired person. Anything less: not a test
  *    install, and every fixture path is refused.
  *  - The fixture person's key (FIXTURE_PERSON_FILE, 0600, in the state
- *    dir) is made by the server for a person (Settings › Set up test
- *    person, or `web fixture-person`, which asks the server). It is sealed
+ *    dir) is made by the server for a person's browser session (Settings ›
+ *    Set up test person; never a CLI bearer). It is sealed
  *    with the install's own web secret, so a key the server didn't write
  *    is refused (verifiedFixtureKey). Its value is never printed.
  *  - With it, the gate runner mints a one-time code (`web fixture-login`)
@@ -21,11 +21,12 @@
  *    named "fixture person" in the log and the audit trail (principal
  *    FIXTURE_PRINCIPAL), never the human. It lasts
  *    `web.fixture_session_minutes`, and ends at once when the install
- *    stops being a test install or the key goes.
+ *    stops being a test install, or the key it signed in with goes or is
+ *    replaced (fixtureKeyFingerprint).
  *  - A fixture session reaches only its allow-list (fixtureScopeRefusal),
  *    and counts as an agent at every person-only check.
  */
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -177,7 +178,8 @@ export function setupFixturePerson(
       ok: false,
       code: "person_only",
       error:
-        "Only a person sets up the test person: an agent, or the fixture person itself, can't.",
+        "Only a person sets up the test person, in their browser (Settings › Access › Set up test " +
+        "person): an agent, a command-line call or the fixture person itself can't.",
     };
   if (!o.testInstall)
     return {
@@ -294,7 +296,7 @@ export function fixtureLoginLink(
       code: "no_fixture_person",
       error:
         "No fixture person on this install yet. A person presses Set up test person in Settings " +
-        `(Access), or runs \`${o.cli ?? "den"} web fixture-person\` in their own terminal.`,
+        "(Access), in their browser.",
     };
   const now = Date.now();
   const ttl = o.ttlMs ?? LOGIN_CODE_TTL_MS;
@@ -321,10 +323,7 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/notifications\/(?:read|clear)$/],
   ["POST", /^\/api\/report\/drafts$/],
   ["DELETE", /^\/api\/report\/drafts\/[^/]+$/],
-  [
-    "POST",
-    /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:say|start|stop|restart|resume)$/,
-  ],
+  ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:start|stop|resume)$/],
 ];
 
 /** Reads never open to a fixture session, whatever their route class. */
@@ -371,7 +370,17 @@ export function fixtureScopeRefusal(
     : refused;
 }
 
-/** The fixture key's fingerprint (red stub). */
-export function fixtureKeyFingerprint(_key: Buffer): string {
-  throw new Error("not yet");
+const FINGERPRINT_CONTEXT = "den-fixture-fp-v1:";
+
+/**
+ * The fixture key's fingerprint, kept on a fixture session when it is
+ * minted (never the key): the session stands only while the key it signed
+ * in with is the install's current one, so setting the test person up
+ * again ends every older fixture session.
+ */
+export function fixtureKeyFingerprint(key: Buffer): string {
+  return createHash("sha256")
+    .update(FINGERPRINT_CONTEXT)
+    .update(key)
+    .digest("base64url");
 }
