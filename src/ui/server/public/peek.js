@@ -611,11 +611,15 @@ async function attach(st) {
   term.onResize(() => {
     if (!st.following) sendSize(st, false);
   });
+  // Closed while the settings loaded: teardown already let the terminal
+  // go, and no socket may open after it.
+  const settings = await paneSettings();
+  if (st.closed || st.row !== r) return;
   st.pane = termPane({
     id: r.id,
     term: () => st.term,
     csrf: (fresh) => csrf(fresh),
-    settings: await paneSettings(),
+    settings,
     words: PANE_WORDS,
     paint: (s) => {
       if (s.kind === "tripped" || s.kind === "refused") {
@@ -624,6 +628,10 @@ async function attach(st) {
       }
     },
     onOpen: (sock) => {
+      if (st.closed) {
+        sock.close();
+        return;
+      }
       st.sock = sock;
       st.conn = "live";
       st.pty = null;
