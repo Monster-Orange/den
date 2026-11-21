@@ -126,10 +126,10 @@ describe("an agent's own web login stays refused", () => {
     asAgent();
     const a = io(testInstall);
     expect(await cmdWebLogin(["--no-wait"], a.io)).toBe(1);
-    expect(a.o.err).toMatch(/An agent can't do this/);
+    expect(a.o.err).toMatch(/can't let a browser in from here/);
     const b = io(testInstall);
     expect(await cmdWebLoginWait([], b.io)).toBe(1);
-    expect(b.o.err).toMatch(/An agent can't do this/);
+    expect(b.o.err).toMatch(/can't let a browser in from here/);
     expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   });
 });

@@ -251,6 +251,36 @@ export function descendsFrom(
   }
 }
 
+/**
+ * `pid` and every parent up to init, or null when any of them can't be
+ * read (or this platform can't tell): a line that is whole or nothing.
+ */
+export function parentLine(pid: number, d: PeerDeps = {}): number[] | null {
+  if (!(pid > 0)) return null;
+  const o = defaults(d);
+  try {
+    let parent: (p: number) => number | null;
+    if (o.platform === "linux") parent = procParent(o);
+    else if (o.platform === "darwin") {
+      const table = psTable(o.run(DARWIN_PS, PS_ARGS));
+      if (!table.has(pid)) return null;
+      parent = (p) => table.get(p) ?? null;
+    } else return null;
+    const line = [pid];
+    let p = pid;
+    for (let i = 0; i < 64; i++) {
+      if (p <= 1) return line;
+      const q = parent(p);
+      if (q === null || !(q >= 0)) return null;
+      if (q > 0) line.push(q);
+      p = q;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** A pid's parent from /proc/<pid>/stat. */
 const procParent =
   (o: { read: (p: string) => string }) =>

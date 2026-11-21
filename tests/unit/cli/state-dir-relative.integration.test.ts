@@ -10,11 +10,11 @@
  * failure shows booleans).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { readProfileFile } from "../../../src/shared/profile.js";
+import { inTerminal } from "../server/helpers/in-terminal.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -57,7 +57,7 @@ describe("a relative product.state_dir", () => {
     }
   });
 
-  it("the CLI run from another directory writes the distribution's state, not the cwd's", () => {
+  it("the CLI run from another directory writes the distribution's state, not the cwd's", async () => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       DEN_ROOT: root,
@@ -68,11 +68,12 @@ describe("a relative product.state_dir", () => {
     // Nothing may override the profile's state_dir here.
     delete env.NORTH_HOME;
     delete env.DEN_PROFILE;
-    const r = spawnSync(
+    // Sign-in: the token is printed only in a terminal.
+    const r = await inTerminal(
       path.join(ENGINE, "bin", "den"),
       ["web", "token", "--print"],
-      { cwd: elsewhere, encoding: "utf-8", input: "", env, timeout: 60_000 },
-    );
+      { cwd: elsewhere, env },
+    ).done;
     expect(r.status).toBe(0);
     expect(fs.existsSync(path.join(root, "state", "web.secret"))).toBe(true);
     expect(fs.existsSync(path.join(elsewhere, "state"))).toBe(false);

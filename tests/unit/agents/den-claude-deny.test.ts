@@ -145,3 +145,21 @@ describe("issue 810: the fixture person's key is denied as web.secret is", () =>
     expect(rules).toContain(`Edit(/${STATE}/fixture-person.key)`);
   });
 });
+
+describe("Sign-in: the deny rules for the person-only sign-in commands", () => {
+  const rules = stateDirDenyRules(STATE, HOME);
+  it.each([
+    "den web login",
+    "den web login --no-wait",
+    "./bin/den web login --origin http://x:4100",
+    "/usr/local/bin/acme web login",
+    "cd /tmp && den web login",
+    "den web claim-link",
+    "den web token --print",
+    'curl -H "Authorization: Bearer $(den web token --print)" http://localhost:4100/api/x',
+  ])("denies %s", (cmd) => expect(denied(rules, cmd)).toBe(true));
+  it.each(["den web up", "den web sessions", "den web logout --all"])(
+    "leaves %s alone",
+    (cmd) => expect(denied(rules, cmd)).toBe(false),
+  );
+});
