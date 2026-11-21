@@ -5,6 +5,8 @@
  * address, far faster than a person: past the limit it raises the Setting
  * as the approving person, then signs in. Here the limit is 2 a minute and
  * five sign-ins in a row all work. Invented names.
+ *
+ * Subject (issue 708): src/ui/server/pair-requests.ts, src/ui/server/pair-routes.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
