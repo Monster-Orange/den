@@ -15,6 +15,7 @@ import {
   GateYieldRefused,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
+import { gateBoxTools } from "./gate-box-tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
   MCP_ACTIONS,
@@ -559,7 +560,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -2465,6 +2466,8 @@ const APPROVAL_TOOLS: DenTool[] = [
       );
     },
   },
+  // Issue 625: an agent asks to add or remove a test box (gate-box-tools.ts).
+  ...gateBoxTools({ ask: askPerson, noteArg, askArg, held: HELD }),
   {
     name: "host_restart",
     title: "Restart the terminal host when agents are idle",

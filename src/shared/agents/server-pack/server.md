@@ -189,6 +189,10 @@ Held (each waits for the person's Allow):
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as
   the CI system's secret at once, and never print it.
+- `gate_box_set`, `gate_box_remove`: ask to add, replace or remove a test
+  box (another machine whose browsers take gate slots;
+  docs/gate-slots.md). Den checks the box first; it waits for the
+  person's Allow, and nothing changes until then.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the
