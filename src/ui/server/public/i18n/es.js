@@ -930,6 +930,22 @@
       "Consulta del nombre en GitHub al arrancar, en segundos",
     "set.server.owner_name_timeout.d":
       "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.github_watch_interval":
+      "Vigilancia de GitHub: primer intervalo, en segundos",
+    "set.server.github_watch_interval.d":
+      "Cada cuánto el único vigilante de GitHub de __DEN_TITLE__ mira las solicitudes de cambios y las ejecuciones que vigilan los agentes (MCP github_watch). Se duplica mientras nada cambia y vuelve a empezar cuando algo cambia. __DEN_CLI__ config github.watch_interval_seconds=60",
+    "set.server.github_watch_max_interval":
+      "Vigilancia de GitHub: intervalo más largo, en segundos",
+    "set.server.github_watch_max_interval.d":
+      "Lo más que espera el vigilante de GitHub entre una mirada y otra mientras nada cambia. __DEN_CLI__ config github.watch_max_interval_seconds=300",
+    "set.server.github_api_budget_floor":
+      "Vigilancia de GitHub: llamadas a la API en reserva",
+    "set.server.github_api_budget_floor.d":
+      "Con menos llamadas a la API de GitHub que estas en lo que queda de hora, el vigilante no pregunta nada a GitHub y rechaza vigilancias nuevas hasta que GitHub reinicia el límite, y lo dice con la hora del reinicio. __DEN_CLI__ config github.api_budget_floor=500",
+    "set.server.github_watches_max":
+      "Vigilancia de GitHub: vigilancias a la vez",
+    "set.server.github_watches_max.d":
+      "Cuántas solicitudes de cambios y ejecuciones vigila a la vez el vigilante de GitHub, para todos los agentes de aquí juntos. Una más se rechaza, diciendo por qué. __DEN_CLI__ config github.watches_max=50",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",

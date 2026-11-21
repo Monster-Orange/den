@@ -757,6 +757,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/agents/self/issue-write",
     "issue_write: an agent (its own token only) writes a GitHub issue in its own project's repos; audited",
   ),
+  R(
+    "/api/agents/self/github-watches",
+    "An agent's own watches in the shared GitHub watcher (its token only); reads Den's state, asks GitHub nothing",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/github-watches",
+    "An agent asks the shared GitHub watcher to watch a pull request's checks or a run in its project's repo; one GitHub call at most",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/github-watches/cancel",
+    "An agent stops one of its own GitHub watches",
+  ),
   M(["POST"], "/api/notifications/read", "NT-3: mark notifications read"),
   M(["POST"], "/api/notifications/clear", "NT-3: clear the read ones"),
   M(

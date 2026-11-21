@@ -44,6 +44,10 @@
  *                                     user.yml process_lookup.* (issue 609)
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
+ *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
+ *     api_budget_floor?, watches_max? }
+ *                                     user.yml github.* (the shared GitHub
+ *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -61,6 +65,7 @@ import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
+import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -117,6 +122,8 @@ export const PERSON_ONLY_SETTINGS = [
   "process_lookup",
   // Issue 609: how agents' hooks wait for Den, and retry.
   "agent_hooks",
+  // The shared GitHub watcher's pace and API budget: every agent's polls.
+  "github",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -319,6 +326,14 @@ const FEEDBACK: Record<string, Limit> = Object.fromEntries(
   Object.entries(VISIBILITY_LIMITS).map(([k, l]) => [
     k,
     { key: k, min: l.min, max: l.max, int: false },
+  ]),
+);
+
+/** The shared GitHub watcher: user.yml github.* (github-watch/settings.ts). */
+const GITHUB_WATCH: Record<string, Limit> = Object.fromEntries(
+  Object.entries(GITHUB_WATCH_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: true },
   ]),
 );
 
@@ -608,7 +623,8 @@ export function patchCliRows(
       AGENT_HOOKS,
       body.agent_hooks,
       apply,
-    );
+    ) ??
+    patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

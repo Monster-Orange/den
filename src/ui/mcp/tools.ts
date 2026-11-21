@@ -331,6 +331,37 @@ async function denUpdateOf(api: DenApi): Promise<unknown> {
   }
 }
 
+/** The shared GitHub watcher tells an agent: a scoped (agent's) server only. */
+function githubWatchAgent(tool: string, ctx: ToolContext): void {
+  if (!ctx.scope?.actor.startsWith("agent:"))
+    throw new Refusal(
+      `${tool}: a GitHub watch is an agent's (Den tells the agent itself when it finishes); this MCP server isn't an agent's.`,
+    );
+}
+
+/** The watcher's refusal (scope, budget, limits) as the agent's refusal. */
+async function githubWatchCall(
+  tool: string,
+  call: () => Promise<unknown>,
+): Promise<unknown> {
+  try {
+    return await call();
+  } catch (e) {
+    if (e instanceof DenHttpError && e.status >= 400 && e.status < 500) {
+      let why = e.body;
+      try {
+        const j = JSON.parse(e.body) as { error?: unknown };
+        if (typeof j.error === "string") why = j.error;
+      } catch {
+        /* the body as is */
+      }
+      if (e.status === 403) throw new ScopeRefusal(`${tool}: ${why}`);
+      throw new Refusal(`${tool}: ${why}`);
+    }
+    throw e;
+  }
+}
+
 const READ_TOOLS: DenTool[] = [
   read(
     "agent_helpers",
@@ -552,6 +583,71 @@ const READ_TOOLS: DenTool[] = [
       }
       mySlots.set(e.id, store);
       return slotView(store, e.id);
+    },
+  ),
+  read(
+    "github_watch",
+    "Watch a pull request's checks or a workflow run",
+    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: after a new push, watch again. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
+    {
+      repo: z.string().describe("The GitHub repo, owner/name"),
+      pr: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("A pull request's number (or give run)"),
+      run: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("A workflow run's id (or give pr)"),
+    },
+    async (a, ctx) => {
+      githubWatchAgent("github_watch", ctx);
+      const repo = needArg("github_watch", a, "repo", "owner/name");
+      const pr = typeof a.pr === "number" ? a.pr : undefined;
+      const run = typeof a.run === "number" ? a.run : undefined;
+      if ((pr === undefined) === (run === undefined))
+        throw new Refusal(
+          "github_watch: give pr (a pull request's number) or run (a workflow run's id), one of them.",
+        );
+      return githubWatchCall("github_watch", () =>
+        ctx.api.get(
+          "/api/agents/self/github-watches",
+          {},
+          "POST",
+          pr !== undefined ? { repo, pr } : { repo, run },
+        ),
+      );
+    },
+  ),
+  read(
+    "github_watch_list",
+    "Your GitHub watches",
+    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
+    {},
+    async (_a, ctx) => {
+      githubWatchAgent("github_watch_list", ctx);
+      return githubWatchCall("github_watch_list", () =>
+        ctx.api.get("/api/agents/self/github-watches", {}, "GET"),
+      );
+    },
+  ),
+  read(
+    "github_watch_cancel",
+    "Stop one of your GitHub watches",
+    "Stop a watch you asked for with github_watch (its `id`); you are not told when it finishes. Only your own.",
+    { id: z.string().describe("The watch's id (gw-…)") },
+    async (a, ctx) => {
+      githubWatchAgent("github_watch_cancel", ctx);
+      const id = needArg("github_watch_cancel", a, "id", "the watch's id");
+      return githubWatchCall("github_watch_cancel", () =>
+        ctx.api.get("/api/agents/self/github-watches/cancel", {}, "POST", {
+          id,
+        }),
+      );
     },
   ),
   read(

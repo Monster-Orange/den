@@ -137,6 +137,11 @@ Reads (they change nothing):
 - `gate_slot_yield`: your waiting slot lets one waiting slot behind it go
   just ahead of yours; you keep your place otherwise. Use it instead of
   giving your place back and asking again at the back.
+- `github_watch`: Den tells you once when a pull request's checks or a
+  workflow run finish, with each failure's URL. Use it instead of
+  `gh pr checks --watch` or `gh run watch`: one watcher for every agent
+  here, under one GitHub API budget. `github_watch_list` and
+  `github_watch_cancel` show and stop your own watches.
 
 Hub files (through Den, as you; when Hub is connected):
 

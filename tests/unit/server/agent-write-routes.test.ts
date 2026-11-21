@@ -81,6 +81,10 @@ const AGENTS_MAY: Record<string, string> = {
   "POST /api/report/preview": "composes a report's text; writes nothing",
   "POST /api/report/drafts":
     "an agent's report stays a draft, stamped as its own, for its person to send",
+  "POST /api/agents/self/github-watches":
+    "MCP github_watch: its own watch in the shared GitHub watcher, in its project's repos (checked there)",
+  "POST /api/agents/self/github-watches/cancel":
+    "MCP github_watch_cancel: stops one of its own watches",
   "POST /api/agents/self/attention":
     "NT-1: the agent's own waiting mark, by its own token only",
   "POST /api/agents/self/issue-write":

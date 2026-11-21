@@ -2404,6 +2404,80 @@ export const DEN_SETTINGS = [
     write: (v, ctx) =>
       ctx.post({ web_github: { owner_name_timeout_seconds: v } }),
   },
+  // The shared GitHub watcher (MCP github_watch): its pace and API budget.
+  {
+    id: "server.github_watch_interval",
+    category: "server",
+    label: "GitHub watch: first interval, in seconds",
+    description:
+      "How often __DEN_TITLE__'s one GitHub watcher looks at the pull requests and runs agents watch (MCP github_watch). It doubles while nothing changes, and starts again on a change. __DEN_CLI__ config github.watch_interval_seconds=60",
+    keywords: [
+      "github",
+      "watch",
+      "checks",
+      "interval",
+      "poll",
+      "github.watch_interval_seconds",
+    ],
+    scope: "user",
+    keys: ["github.watch_interval_seconds"],
+    control: { type: "number", min: 10, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github?.watch_interval_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_interval_seconds: v } }),
+  },
+  {
+    id: "server.github_watch_max_interval",
+    category: "server",
+    label: "GitHub watch: longest interval, in seconds",
+    description:
+      "The most the GitHub watcher waits between looks while nothing changes. __DEN_CLI__ config github.watch_max_interval_seconds=300",
+    keywords: [
+      "github",
+      "watch",
+      "checks",
+      "interval",
+      "backoff",
+      "github.watch_max_interval_seconds",
+    ],
+    scope: "user",
+    keys: ["github.watch_max_interval_seconds"],
+    control: { type: "number", min: 10, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github?.watch_max_interval_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ github: { watch_max_interval_seconds: v } }),
+  },
+  {
+    id: "server.github_api_budget_floor",
+    category: "server",
+    label: "GitHub watch: API calls kept in reserve",
+    description:
+      "Below this many GitHub API calls left this hour, the GitHub watcher asks GitHub nothing and refuses new watches until GitHub's reset, and says so with the reset time. __DEN_CLI__ config github.api_budget_floor=500",
+    keywords: [
+      "github",
+      "api",
+      "rate limit",
+      "budget",
+      "floor",
+      "github.api_budget_floor",
+    ],
+    scope: "user",
+    keys: ["github.api_budget_floor"],
+    control: { type: "number", min: 0, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.github?.api_budget_floor ?? 500,
+    write: (v, ctx) => ctx.post({ github: { api_budget_floor: v } }),
+  },
+  {
+    id: "server.github_watches_max",
+    category: "server",
+    label: "GitHub watch: watches at once",
+    description:
+      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+    keywords: ["github", "watch", "limit", "github.watches_max"],
+    scope: "user",
+    keys: ["github.watches_max"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.github?.watches_max ?? 50,
+    write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
   {
     // den#143: how long `web up` waits for the server (user.yml
     // web.ready_probe_seconds, web.start_wait_seconds). A person's only.

@@ -906,6 +906,19 @@
     "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
     "set.server.owner_name_timeout.d":
       "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.github_watch_interval": "GitHub の監視: 最初の間隔 (秒)",
+    "set.server.github_watch_interval.d":
+      "__DEN_TITLE__ のひとつの GitHub 監視が、エージェントの監視するプルリクエストと実行 (MCP github_watch) を確認する間隔です。変化がない間は倍になり、変化があると最初に戻ります。__DEN_CLI__ config github.watch_interval_seconds=60",
+    "set.server.github_watch_max_interval": "GitHub の監視: 最長の間隔 (秒)",
+    "set.server.github_watch_max_interval.d":
+      "変化がない間、GitHub の監視が確認と確認の間に待つ最長の時間です。__DEN_CLI__ config github.watch_max_interval_seconds=300",
+    "set.server.github_api_budget_floor":
+      "GitHub の監視: 残しておく API 呼び出し数",
+    "set.server.github_api_budget_floor.d":
+      "この 1 時間に残る GitHub API の呼び出しがこの数を下回ると、GitHub の監視は GitHub のリセットまで何も問い合わせず、新しい監視を断り、リセットの時刻を伝えます。__DEN_CLI__ config github.api_budget_floor=500",
+    "set.server.github_watches_max": "GitHub の監視: 同時に監視する数",
+    "set.server.github_watches_max.d":
+      "ここにいるすべてのエージェントを合わせて、GitHub の監視が同時に監視するプルリクエストと実行の数です。それを超える分は理由を添えて断ります。__DEN_CLI__ config github.watches_max=50",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
