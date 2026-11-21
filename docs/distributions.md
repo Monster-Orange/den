@@ -5166,7 +5166,22 @@ itself (default)"). Its buttons:
 - **Keep this conversation**: the compaction count starts again. With
   "Don't ask again for this agent", that agent's `after_compactions` is
   set to `never`. A person's only.
+- **Put off rotation until…**: pick a time (in your time zone). Until
+  then the agent's compactions and merged pull requests don't make it
+  rotate; at that time the normal rule applies again. Also in the pane
+  bar's ⋯ of any agent that rotates, so it can be put off before it is
+  due (say, while its helper sub-agents still run). A put-off agent's row
+  says until when, with a button to change it or stop putting it off.
 - **Settings**: Settings › Agents › Rotation.
+
+**Helper sub-agents (forks)** share their agent's files folder and its
+session id; Den tells a fork apart by its agent id, or its transcript
+under `subagents/`. A fork's compactions, and pull requests a fork
+merges, never make the agent due, and the rotation notice reaches the
+agent's own session only. A fork that tries to write the agent's
+`handoff.md` (a file tool, or a shell `>`, `>>` or `tee`) is refused and
+told to write `handoffs/<its id>.md` instead; a relaunch never reads a
+fork's handoff.
 
 **Resume and Start on a due agent** follow `on_due`. Under `auto`, Resume
 relaunches it from its handoff once the handoff passes. Under `ask`,
@@ -5216,10 +5231,15 @@ Rotation, or from the command line, and kept in
 <cli> agents rotate --agent art --unset after_compactions
 <cli> agents rotate art --show                       # its values, and where each comes from
 <cli> agents keep <id> [--never]                     # Keep this conversation
+<cli> agents rotate <id> --defer +2h                 # Put off rotation until (+90m, +1d, an ISO time)
+<cli> agents rotate <id> --defer none                # stop putting it off
 <cli> agents handoff <id>                            # Write handoff
 ```
 
-`agents rotate` and `agents keep` are refused inside an agent's session.
+`agents rotate` and `agents keep` are refused inside an agent's session,
+and so is `POST /api/workspaces/<ws>/agents/<id>/defer` (`{ "until":
+"<ISO time>" | null }`). An agent asks with the held write
+`agent_rotation_defer` (`agent`, `until`): always the person's own Allow.
 den#4's `standing: false` still works: standing personas never rotate,
 unless a persona or agent override says otherwise. Set it per persona
 instead (`--persona planner after_compactions never`).

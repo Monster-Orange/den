@@ -103,7 +103,7 @@ import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
 import { startFailText, terminalFailText } from "/pty-refusal.js";
-import { askConfirm } from "/dialog-den.js";
+import { askConfirm, dialogHtml, mountDialog } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
 import { makeComposer } from "/agent-composer.js";
@@ -662,9 +662,11 @@ function rotActionsHtml(r) {
       ? `<button type="button" class="den-btn sm" data-act="rot-write" aria-label="${esc(t("ag.rc.writeName", { id }))}">${esc(t("ag.rc.write"))}</button>`
       : "";
   const keep = `<button type="button" class="den-btn sm" data-act="rot-keep" aria-label="${esc(t("ag.rc.keepName", { id }))}">${esc(t("ag.rc.keep"))}</button>`;
+  // Issue 765: put it off until a time (say, while its forks still run).
+  const defer = `<button type="button" class="den-btn sm" data-act="rot-defer" aria-label="${esc(t("ag.rc.deferName", { id }))}">${esc(t("ag.rc.defer"))}</button>`;
   const never = `<label class="agnever"><input type="checkbox" data-rot-never> ${esc(t("ag.rc.never"))}</label>`;
   const settings = `<a class="lnk" data-rot-settings href="${esc(settingsHref())}">${esc(t("ag.rc.settings"))}</a>`;
-  return now + write + keep + never + settings;
+  return now + write + keep + defer + never + settings;
 }
 
 /** D28: the effective settings and where each comes from, in words. */
@@ -688,6 +690,12 @@ function rotFromText(rot) {
 /** D28: the callout under a row: the message, its line of settings, the buttons. */
 function rotCalloutHtml(r) {
   const acts = rotActionsHtml(r);
+  // Issue 765: put off until a time: when, and a button to change it.
+  if (!acts && r.rotation?.deferredUntil)
+    return (
+      `<span class="agcant" data-rot-deferred>${esc(t("ag.rc.deferred", { at: formatTime(r.rotation.deferredUntil, { style: "datetime" }) }))}</span>` +
+      `<button type="button" class="den-btn sm" data-act="rot-defer" aria-label="${esc(t("ag.rc.deferName", { id: r.agent }))}">${esc(t("ag.rc.defer"))}</button>`
+    );
   if (!acts) return "";
   const from = rotFromText(r.rotation);
   return (
@@ -4457,6 +4465,86 @@ function openRename(r, opener) {
   input.select();
 }
 
+/** A Date as a datetime-local input's value, in this browser's zone. */
+function localInputValue(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Issue 765: Put off rotation until… for agent row `r`: a time in the
+ * viewer's zone (2 hours ahead to start), or stop putting it off. Until
+ * then its compactions and merged pull requests don't make it rotate.
+ */
+function openDefer(r, opener) {
+  if (document.getElementById("ag-df")?.open) return;
+  const id = displayName(r);
+  const was = r.rotation?.deferredUntil;
+  const start = was ? new Date(was) : new Date(Date.now() + 2 * 3_600_000);
+  // The kit's confirm frame (issues 669, 670): no dialog of its own.
+  const html = dialogHtml({
+    kind: "confirm",
+    role: "dialog",
+    id: "ag-df",
+    ids: { h: "ag-df-h", m: "ag-df-help" },
+    title: t("ag.df.title", { id }),
+    body: `<p>${esc(t("ag.df.help"))}</p>`,
+    extra:
+      `<label class="dk-opt" for="ag-df-at" id="ag-df-t">${esc(t("ag.df.until"))}</label>` +
+      `<input class="dk-in" id="ag-df-at" type="datetime-local" required min="${esc(localInputValue(new Date()))}" value="${esc(localInputValue(start))}">` +
+      `<p class="dk-msg" id="ag-df-err" role="alert" hidden></p>`,
+    actions: [
+      {
+        label: t("ag.df.cancel"),
+        value: "cancel",
+        attrs: { id: "ag-df-cancel" },
+      },
+      ...(was
+        ? [
+            {
+              label: t("ag.df.clear"),
+              value: "clear",
+              attrs: { id: "ag-df-clear" },
+            },
+          ]
+        : []),
+      {
+        label: t("ag.df.go"),
+        value: "go",
+        kind: "primary",
+        attrs: { id: "ag-df-go" },
+      },
+    ],
+  });
+  const h = mountDialog(html, { opener, focus: "#ag-df-at", show: false });
+  const dlg = h.dialog;
+  const input = dlg.querySelector("#ag-df-at");
+  const err = dlg.querySelector("#ag-df-err");
+  const save = async (until, button) => {
+    const out = await window.denShell.busyAction(
+      "rotation-defer",
+      (headers) => api("POST", agentPath(r, "defer"), { until }, { headers }),
+      { button, vars: { id } },
+    );
+    if (out) h.close("done");
+    await refresh();
+  };
+  dlg.querySelector("form").addEventListener("submit", (e) => {
+    const b = e.submitter;
+    if (!b || b.value === "cancel") return;
+    e.preventDefault();
+    if (b.value === "clear") return void save(null, b);
+    const at = new Date(input.value);
+    if (isNaN(at.getTime()) || at.getTime() <= Date.now()) {
+      err.textContent = t("ag.df.past");
+      err.hidden = false;
+      return;
+    }
+    void save(at.toISOString(), b);
+  });
+  h.show(opener);
+}
+
 /**
  * D72: Move to workspace… for agent row `r`. Stopped: its record moves.
  * Running: Den waits for its turn to end (or Move now), then resumes the
@@ -5555,6 +5643,7 @@ export async function mountAgentsPage(root) {
       if (which === "relaunch") void relaunchNow(r, act);
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
+      else if (which === "rot-defer") openDefer(r, act);
       else if (which === "mode-apply") void applyMode(r, act);
       // Issue 278: the row's Stop is its pane's Stop; Clear ends the hold.
       else if (which === "stop")
@@ -5645,6 +5734,7 @@ export async function mountAgentsPage(root) {
       if (b.dataset.act === "relaunch") void relaunchNow(r, b);
       else if (b.dataset.act === "rot-write") void writeHandoff(r, b);
       else if (b.dataset.act === "rot-keep") void keepConversation(r, b);
+      else if (b.dataset.act === "rot-defer") openDefer(r, b);
     } else if (b.dataset.act === "ctx-clear") {
       // Issue 278: the bar's Clear, as under the row.
       const r = rowOf(id);
@@ -5696,6 +5786,10 @@ export async function mountAgentsPage(root) {
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),
               ]),
+          // Issue 765: Put off rotation until… (an agent that rotates).
+          ...(r.rotation && r.rotation.after > 0
+            ? [{ label: t("ag.rc.defer"), onSelect: () => openDefer(r, b) }]
+            : []),
           // D28: its rotation settings and where each comes from.
           {
             label: t("ag.rc.menu"),

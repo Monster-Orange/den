@@ -2210,6 +2210,18 @@
     "ag.rc.keep": "Keep this conversation",
     "ag.rc.keepName": "Keep {id}'s conversation",
     "ag.rc.never": "Don't ask again for this agent",
+    "ag.rc.defer": "Put off rotation until…",
+    "ag.rc.deferName": "Put off {id}'s rotation until a time",
+    "ag.rc.deferred":
+      "Rotation put off until {at}. Then the normal rule applies again.",
+    "ag.df.title": "Put off {id}'s rotation",
+    "ag.df.until": "Until",
+    "ag.df.help":
+      "Until then, its compactions and merged pull requests don't make it rotate. At that time the normal rule applies again.",
+    "ag.df.go": "Put off",
+    "ag.df.clear": "Stop putting it off",
+    "ag.df.cancel": "Cancel",
+    "ag.df.past": "Pick a time that is still ahead.",
     "ag.rc.settings": "Settings",
     "ag.rc.from":
       "Rotates after {n} compactions ({src}); when due: {mode} ({src2})",
@@ -2455,6 +2467,11 @@
       "{origin} can no longer message {agent} or read its state with this key.",
     "ap.det.embed_key_revoke.held":
       "Messages it sent that wait for the agent's turn are still typed.",
+    "ap.do.agent_rotation_defer": "Put off {agent}'s rotation until {until}",
+    "ap.det.agent_rotation_defer.keep":
+      "Until then it keeps its conversation, however often it compacts or a pull request merges.",
+    "ap.det.agent_rotation_defer.then":
+      "At that time the normal rotation rule applies again.",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
@@ -3136,6 +3153,9 @@
     "busy.ordW": "Moving {id}…",
     "busy.ordS": "Done: {id} moved.",
     "busy.ordF": "Couldn't move {id}.",
+    "busy.dfW": "Saving {id}'s rotation…",
+    "busy.dfS": "Done: {id}'s rotation is saved.",
+    "busy.dfF": "Couldn't change {id}'s rotation.",
     // Issue 133: Delete project and Remove service, on the working pop-up.
     "busy.delProjW": "Deleting {name}…",
     "busy.delProjS": "Deleted {name}.",
@@ -7755,6 +7775,11 @@
   } catch (e) {
     /* no modules: the fallback stays */
   }
+  function localDateTimeText(iso) {
+    if (kitTime) return kitTime.formatTime(iso, { style: "datetime" });
+    var d = new Date(iso);
+    return isNaN(d) ? String(iso) : d.toLocaleString();
+  }
   function localTime(iso) {
     if (kitTime) return kitTime.formatTime(iso, { style: "time" });
     var d = new Date(iso);
@@ -7773,6 +7798,9 @@
 
   function apWhat(a) {
     var p = a.params || {};
+    // Issue 765: a time to put a rotation off until, in the viewer's zone.
+    if (a.action === "agent_rotation_defer" && p.until)
+      p = Object.assign({}, p, { until: localDateTimeText(p.until) });
     var key =
       "ap.do." +
       a.action +

@@ -256,6 +256,7 @@ import {
 } from "../../shared/agents/rotate-settings.js";
 import {
   archiveHandoff,
+  deferRotation,
   keepConversation,
   noteAsked,
   noteFellBack,
@@ -8753,7 +8754,8 @@ export async function rotationTick(
       )
         continue;
       syncAfter(files, pol.afterCompactions);
-      const rot = rotationInfo(d.stateDir(), rec, pol);
+      // Issue 765: put off until a time: not due before it.
+      const rot = rotationInfo(d.stateDir(), rec, pol, now);
       if (!rot?.due) continue;
       // Relaunch now, asked before the handoff, relaunches whatever on_due says.
       const wanted = rot.relaunchWanted === true;
@@ -8831,6 +8833,147 @@ export function keepAgentConversation(
   if (o.never)
     setRotateValue(d.stateDir(), "agent", rec.id, "after_compactions", "never");
   return rec;
+}
+
+/**
+ * Issue 765: when "Put off rotation until" takes it to: `+90m`, `+2h`,
+ * `+1d`, or an ISO 8601 date-time; `none` (or "") is null, no longer put
+ * off. A time already gone, or words it can't read, is a usage error.
+ */
+export function parseDeferTime(
+  raw: string,
+  now: Date = new Date(),
+): Date | null {
+  const v = raw.trim();
+  if (v === "" || v === "none") return null;
+  const rel = /^\+(\d{1,5})([mhd])$/.exec(v);
+  let at: number;
+  if (rel) {
+    const unit = { m: 60_000, h: 3_600_000, d: 86_400_000 }[
+      rel[2] as "m" | "h" | "d"
+    ];
+    at = now.getTime() + Number(rel[1]) * unit;
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(v) && Number.isFinite(Date.parse(v)))
+    at = Date.parse(v);
+  else
+    throw usage(
+      `put off until: +90m, +2h, +1d, an ISO date-time (2026-11-21T08:00:00Z), or none (got ${JSON.stringify(v)})`,
+    );
+  if (at <= now.getTime())
+    throw usage(`put off until: ${new Date(at).toISOString()} is already past`);
+  return new Date(at);
+}
+
+/**
+ * Issue 765 "Put off rotation until <time>": agent `id`'s rotation is not
+ * due before `until` (null: no longer put off). At that time the normal
+ * rule applies again. A person's; an agent asks with agent_rotation_defer.
+ */
+export function deferAgentRotation(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  until: Date | null,
+  now: Date = new Date(),
+): { rec: AgentRecord; until?: string } {
+  const rec = agentRecord(d, id, ws);
+  if (until && until.getTime() <= now.getTime())
+    throw usage(`put off until: ${until.toISOString()} is already past`);
+  if (!deferRotation(agentFilesDir(d.stateDir(), rec.id), until))
+    throw refused(
+      `agent ${rec.id} has no rotation yet: it counts from its next start`,
+    );
+  return { rec, ...(until ? { until: until.toISOString() } : {}) };
+}
+
+export interface RotationDeferArgs {
+  agent: string;
+  project: string;
+  until: string;
+}
+
+/**
+ * Issue 765: checks an agent_rotation_defer ask: put agent `agent`'s
+ * rotation off until `until` (an ISO date-time ahead, or +2h). Always the
+ * person's own Allow: an agent could keep a session past its rotation. A
+ * project's agent asks for its own project's agents; Den's agent for any.
+ */
+export function checkRotationDefer(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+  now: Date = new Date(),
+): HeldOpCheck<RotationDeferArgs> {
+  const no = (error: string): HeldOpCheck<RotationDeferArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const text = (k: string) =>
+      typeof raw[k] === "string" && (raw[k] as string).trim()
+        ? (raw[k] as string).trim()
+        : undefined;
+    const id = text("agent");
+    if (!id) return no("agent is required (the agent's id)");
+    const rawUntil = text("until");
+    if (!rawUntil)
+      return no("until is required: an ISO date-time ahead, or +2h");
+    const until = parseDeferTime(rawUntil, now);
+    if (!until) return no("until is required: an ISO date-time ahead, or +2h");
+    const rec = agentRecord(d, id, text("project"));
+    if (
+      who.project &&
+      !isServerScope(who.project) &&
+      who.project !== rec.workspace
+    )
+      return no(
+        `${who.agent ?? "this agent"} works in project ${who.project}: it can ask for that project's agents only, not ${id} in project ${rec.workspace}`,
+      );
+    if (!readRotation(agentFilesDir(d.stateDir(), rec.id)))
+      return no(
+        `agent ${id} has no rotation yet: it counts from its next start`,
+      );
+    const shown = rec.displayName ?? id;
+    const iso = until.toISOString();
+    return {
+      ok: true,
+      personOnly: true,
+      summary: `Put off ${shown}'s rotation until ${iso}`,
+      params: { agent: shown, until: iso },
+      details: [
+        `Agent: ${shown}${shown !== id ? ` (${id})` : ""}, project ${rec.workspace}`,
+        "Until then it keeps its conversation, however often it compacts or a pull request merges.",
+        "At that time the normal rotation rule applies again.",
+      ],
+      detailKeys: [
+        null,
+        { key: "ap.det.agent_rotation_defer.keep" },
+        { key: "ap.det.agent_rotation_defer.then" },
+      ],
+      args: { agent: id, project: rec.workspace, until: iso },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** Issue 765: on Allow, puts the rotation off (checked again first). */
+export async function runRotationDefer(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | { ok: true; agent: string; project: string; until: string }
+  | { ok: false; error: string }
+> {
+  const c = checkRotationDefer(d, raw);
+  if (!c.ok) return c;
+  const { agent, project, until } = c.args;
+  try {
+    deferAgentRotation(d, agent, project, new Date(until));
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  return { ok: true, agent, project, until };
 }
 
 /**

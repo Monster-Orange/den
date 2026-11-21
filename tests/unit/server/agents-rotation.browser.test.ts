@@ -174,6 +174,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
       "row-more",
       "relaunch",
       "rot-keep",
+      "rot-defer",
     ]);
     expect(await text(p, "merger", ".agr .stchip")).toBe(
       "Ready to relaunch (PR merged)",
@@ -183,6 +184,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
       "row-more",
       "relaunch",
       "rot-keep",
+      "rot-defer",
     ]);
     // The 0.4.8 stopped row's buttons: den-btn sm, the primary first, the
     // mock's .btn.sm (2px 9px, 12.5px).
@@ -215,6 +217,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
       "row-more",
       "relaunch",
       "rot-keep",
+      "rot-defer",
     ]);
     expect(await text(p, "drift", '[data-handoff="missing"]')).toBe(
       "Due (3 compactions). It has no handoff yet.",

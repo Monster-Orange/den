@@ -1355,6 +1355,18 @@
     "ag.rc.keep": "Mantener esta conversación",
     "ag.rc.keepName": "Mantener la conversación de {id}",
     "ag.rc.never": "No volver a preguntar para este agente",
+    "ag.rc.defer": "Aplazar la rotación hasta…",
+    "ag.rc.deferName": "Aplazar la rotación de {id} hasta una hora",
+    "ag.rc.deferred":
+      "Rotación aplazada hasta {at}. Después vuelve la regla normal.",
+    "ag.df.title": "Aplazar la rotación de {id}",
+    "ag.df.until": "Hasta",
+    "ag.df.help":
+      "Hasta entonces, sus compactaciones y las pull requests fusionadas no la hacen rotar. A esa hora vuelve la regla normal.",
+    "ag.df.go": "Aplazar",
+    "ag.df.clear": "Dejar de aplazarla",
+    "ag.df.cancel": "Cancelar",
+    "ag.df.past": "Elige una hora que aún no haya pasado.",
     "ag.rc.settings": "Ajustes",
     "ag.rc.from":
       "Rota tras {n} compactaciones ({src}); al tocar: {mode} ({src2})",
@@ -1625,6 +1637,12 @@
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
       "Los mensajes que envió y que esperan el turno del agente se escriben igualmente.",
+    "ap.do.agent_rotation_defer":
+      "Aplazar la rotación de {agent} hasta {until}",
+    "ap.det.agent_rotation_defer.keep":
+      "Hasta entonces conserva su conversación, por mucho que se compacte o se fusione una pull request.",
+    "ap.det.agent_rotation_defer.then":
+      "A esa hora vuelve la regla normal de rotación.",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
@@ -2319,6 +2337,9 @@
     "busy.ordW": "Moviendo {id}…",
     "busy.ordS": "Hecho: {id} se movió.",
     "busy.ordF": "No se pudo mover {id}.",
+    "busy.dfW": "Guardando la rotación de {id}…",
+    "busy.dfS": "Hecho: la rotación de {id} está guardada.",
+    "busy.dfF": "No se pudo cambiar la rotación de {id}.",
     "busy.delProjW": "Eliminando {name}…",
     "busy.delProjS": "Se eliminó {name}.",
     "busy.delProjF": "No se pudo eliminar {name}.",

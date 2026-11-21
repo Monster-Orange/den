@@ -160,7 +160,12 @@ describe("a due agent's callout (D28)", () => {
       ).toBe(
         "Rotates after 3 compactions (default); when due: relaunch by itself (default)",
       );
-      expect(await acts(p)).toEqual(["relaunch", "rot-write", "rot-keep"]);
+      expect(await acts(p)).toEqual([
+        "relaunch",
+        "rot-write",
+        "rot-keep",
+        "rot-defer",
+      ]);
       expect(await row(p).locator("[data-rot-never]").count()).toBe(1);
       expect(
         await row(p).locator("[data-rot-settings]").getAttribute("href"),
@@ -171,7 +176,7 @@ describe("a due agent's callout (D28)", () => {
         await bar
           .locator("[data-act]")
           .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).dataset.act)),
-      ).toEqual(["relaunch", "rot-write", "rot-keep"]);
+      ).toEqual(["relaunch", "rot-write", "rot-keep", "rot-defer"]);
       // At 375 px: the callout takes a line of its own below the bar's
       // own buttons, so a long name never puts Stop over Write handoff.
       if (width === 375)

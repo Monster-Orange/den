@@ -41,6 +41,10 @@
  *                     writes its project's personas (a repo's
  *                     .den/personas file); this machine's own, only Den's
  *                     own agent or a person
+ *   agent_rotation_defer
+ *                     issue 765: put an agent's rotation off until a time
+ *                     (agent-ops.ts checkRotationDefer, runRotationDefer).
+ *                     The person's own Allow
  *   agent_mode        issue 199: clear an agent's own mode, so it follows
  *                     its project's (agent-ops.ts checkAgentMode,
  *                     runAgentMode); a running one restarts after its turn
@@ -184,6 +188,8 @@ export interface HeldActionDeps {
   projectMcpUpdate?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
+  /** Issue 765: agent_rotation_defer's check and put off (agent-ops.ts). */
+  rotationDefer?: HeldOp;
   /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
@@ -254,6 +260,8 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "embed_key_revoke",
   "gate_runner_token_create",
   "host_restart",
+  // Issue 765: an agent could keep a session past its rotation.
+  "agent_rotation_defer",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -590,6 +598,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.agentMode,
     "this Den can't change an agent's mode here",
   );
+  const rotationDefer = op(
+    d.rotationDefer,
+    "this Den can't put an agent's rotation off here",
+  );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
   const appKeyCreate = op(
     d.appKeys?.create,
@@ -881,6 +893,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     hub_link: hubLink,
     agent_folder: agentFolder,
     agent_mode: agentMode,
+    agent_rotation_defer: rotationDefer,
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,

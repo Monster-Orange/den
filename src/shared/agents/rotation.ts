@@ -10,6 +10,15 @@
  *   agent-files/<id>/handoff.md      what the session wrote when it rotated
  *                                    (handoff.ts checks it)
  *   agent-files/<id>/handoffs/       handoffs Den relaunched from, kept
+ *                                    (<ISO time>-….md), and a helper
+ *                                    sub-agent's own (<its session>.md,
+ *                                    issue 765: never relaunched from)
+ *
+ * Issue 765: the agent's helper sub-agents (forks) share this folder, and
+ * their hook input carries the agent's own session id. Only the agent's
+ * own input counts and is told to rotate; a fork's (an `agent_id`, or a
+ * transcript under `subagents/`) is left alone (forkOf). A person can put a rotation off
+ * until a time (`deferUntil`): until then nothing is due.
  *
  * Triggers (org config `agents.rotate`):
  *   - `after_compactions` (default 3): SessionStart "compact" counts each
@@ -71,6 +80,8 @@ export interface RotationState {
   fellBack?: boolean;
   /** D28 "Relaunch now" before a handoff: relaunch once it passes, whatever on_due says. */
   relaunchWanted?: boolean;
+  /** Issue 765: put off until this time (ISO 8601): nothing is due before it. */
+  deferUntil?: string;
 }
 
 /** `agents.rotate` with its defaults applied. */
@@ -145,11 +156,66 @@ export function readRotation(filesDir: string): RotationState | null {
   if (typeof o.askedAt === "string") s.askedAt = o.askedAt;
   if (o.fellBack === true) s.fellBack = true;
   if (o.relaunchWanted === true) s.relaunchWanted = true;
+  if (
+    typeof o.deferUntil === "string" &&
+    Number.isFinite(Date.parse(o.deferUntil))
+  )
+    s.deferUntil = o.deferUntil;
   return s;
 }
 
 export function writeRotation(filesDir: string, s: RotationState): void {
   writePrivate(rotationFile(filesDir), JSON.stringify(s, null, 2) + "\n");
+}
+
+/**
+ * Issue 765: the fork a hook's input comes from, or undefined when it is
+ * the agent's own session. A fork runs under the agent's own session id,
+ * so only its input tells it apart: an `agent_id`, or a transcript under
+ * `subagents/` (never the session id alone). The key names its handoff:
+ * handoffs/<key>.md.
+ */
+export function forkOf(input: unknown): string | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const i = input as Record<string, unknown>;
+  const text = (v: unknown) =>
+    typeof v === "string" && v.trim() ? v.trim() : undefined;
+  const agentId = text(i.agent_id);
+  if (agentId) return agentId;
+  const transcript = text(i.transcript_path);
+  if (transcript && /[\\/]subagents[\\/]/.test(transcript))
+    return path.basename(transcript).replace(/\.jsonl$/, "");
+  return undefined;
+}
+
+/** Issue 765: where fork `key` writes a handoff of its own. */
+export function forkHandoffFile(filesDir: string, key: string): string {
+  const safe = key.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80) || "fork";
+  return path.join(filesDir, HANDOFFS_DIR, `${safe}.md`);
+}
+
+/**
+ * Issue 765: put the agent's rotation off until `until` (null: no longer
+ * put off). Returns false with no state.
+ */
+export function deferRotation(filesDir: string, until: Date | null): boolean {
+  const s = readRotation(filesDir);
+  if (!s) return false;
+  const next: RotationState = { ...s };
+  if (until) next.deferUntil = until.toISOString();
+  else delete next.deferUntil;
+  writeRotation(filesDir, next);
+  return true;
+}
+
+/** Issue 765: the time it is put off until, while that is still ahead. */
+export function deferredUntil(
+  s: RotationState | null,
+  now: Date = new Date(),
+): string | undefined {
+  if (!s?.deferUntil) return undefined;
+  const at = Date.parse(s.deferUntil);
+  return Number.isFinite(at) && at > now.getTime() ? s.deferUntil : undefined;
 }
 
 /**
@@ -198,6 +264,8 @@ export function noteCompaction(
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
   const prev = readRotation(filesDir);
+  // Issue 765: a fork's compaction is not this agent's.
+  if (forkOf(input) !== undefined) return prev ?? { compactions: 0, after };
   const fresh =
     !prev ||
     (conversation !== undefined &&
@@ -315,12 +383,17 @@ export function clearDue(filesDir: string, reason: RotateReason): boolean {
   return true;
 }
 
-/** Whether the state says a rotation is due, for this conversation. */
+/**
+ * Whether the state says a rotation is due, for this conversation. Issue
+ * 765: nothing is due while it is put off (deferUntil ahead of `now`).
+ */
 export function dueFor(
   s: RotationState | null,
   conversation?: string,
+  now: Date = new Date(),
 ): RotateReason | undefined {
   if (!s || s.after === 0) return undefined;
+  if (deferredUntil(s, now)) return undefined;
   if (conversation && s.conversation && s.conversation !== conversation)
     return undefined;
   if (s.due) return s.due;
@@ -380,6 +453,8 @@ export interface RotationInfo {
   problems?: string[];
   /** Due and handoff.md passes: Relaunch from handoff, not Resume. */
   ready: boolean;
+  /** Issue 765: put off until this time (ISO 8601); nothing is due before it. */
+  deferredUntil?: string;
 }
 
 /**
@@ -390,6 +465,7 @@ export function rotationInfo(
   stateDir: string,
   rec: AgentRecord,
   policy?: RotationPolicy,
+  now: Date = new Date(),
 ): RotationInfo | null {
   const files = agentFilesDir(stateDir, rec.id);
   const read = readRotation(files);
@@ -414,9 +490,13 @@ export function rotationInfo(
   }
   if (policy && !policy.onPrMerged && s.due === "pr-merged") delete s.due;
   const merged = policy ? policy.onPrMerged : true;
-  const due =
-    dueFor(s) ??
-    (s.after > 0 && merged && rec.outcome?.prMerged ? "pr-merged" : undefined);
+  const deferred = deferredUntil(read, now);
+  const due = deferred
+    ? undefined
+    : (dueFor(s, undefined, now) ??
+      (s.after > 0 && merged && rec.outcome?.prMerged
+        ? "pr-merged"
+        : undefined));
   const h = due
     ? readHandoff(files)
     : { status: "missing" as const, problems: [] };
@@ -432,6 +512,7 @@ export function rotationInfo(
     handoff: h.status,
     ...(h.status === "invalid" ? { problems: h.problems } : {}),
     ready: Boolean(due) && h.status === "ok",
+    ...(deferred ? { deferredUntil: deferred } : {}),
   };
 }
 
@@ -475,7 +556,11 @@ export function newestHandoff(
   const dir = path.join(filesDir, HANDOFFS_DIR);
   let names: string[];
   try {
-    names = fs.readdirSync(dir).filter((n) => n.endsWith(".md"));
+    // Issue 765: only the ones Den kept (archiveHandoff: an ISO time
+    // first), never a fork's own (handoffs/<its session>.md).
+    names = fs
+      .readdirSync(dir)
+      .filter((n) => n.endsWith(".md") && /^\d{4}-\d{2}-\d{2}T/.test(n));
   } catch {
     return null;
   }

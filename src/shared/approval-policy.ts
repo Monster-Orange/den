@@ -110,6 +110,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "a looser mode lets agents act without asking; a stricter one only narrows",
   },
+  agent_rotation_defer: {
+    risk: "critical",
+    why: "keeps an agent's conversation going past its rotation until a time (issue 765: the person's own Allow)",
+  },
   agent_mode: {
     risk: "widens",
     why: "following a looser project mode widens the agent; a stricter one narrows",
