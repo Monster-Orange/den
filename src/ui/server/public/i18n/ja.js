@@ -519,6 +519,10 @@
       "Terminal.app を自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "ターミナルを自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "{repo} の自動起動をオフにしますか?",
+    "dlg.autoOff":
+      "次のものが強く依存しています: {list}。オフの間は、そのプロジェクトの Up が準備完了の確認で失敗することがあります。",
+    "dlg.autoOffGo": "オフにする",
     "rd.keepsHead": "動き続けるもの:",
     "rd.keepsAgents": "エージェントとそのターミナル",
     "rd.keepsServices": "サービスと GitHub 上のデプロイ",
@@ -568,6 +572,9 @@
     "busy.edgeW": "エッジを起動しています…",
     "busy.edgeS": "エッジを起動しました",
     "busy.edgeF": "エッジを起動できませんでした。",
+    "busy.testPersonW": "テスト用の人物を設定しています…",
+    "busy.testPersonS": "テスト用の人物を設定しました",
+    "busy.testPersonF": "テスト用の人物を設定できませんでした。",
     "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
     "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
     "keep.saved":
@@ -1213,6 +1220,7 @@
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
     "set.access.pair": "デバイスをペアリング",
+    "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
     "set.distribution.orgs": "組織のラベル",
@@ -2646,6 +2654,14 @@
       "承認待ちのコンピューターはありません。別のコンピューターのサインアウト中のページにはコードが表示され、承認できるようここに表示されます。",
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
+    "set.ui.testInstallYes": "これはテスト用インストールです。",
+    "set.ui.testInstallNo":
+      "テスト用インストールではありません。ここではライブチェックはサインインできません。テスト用インストールは、人がディストリビューションの設定で手作業で印付けします (web.test_install: true)。",
+    "set.ui.testPersonReady": "テスト用の人物は設定済みです。",
+    "set.ui.testPersonMissing": "テスト用の人物はまだ設定されていません。",
+    "set.ui.testPersonSetUp": "テスト用の人物を設定",
+    "set.ui.testInstallSignedIn":
+      "テスト用インストールは、サインイン中かこのマシン上でのみ読み取れます。",
     "set.ui.noPairHost":
       "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
     "set.ui.edgeStart": "エッジを起動",
@@ -3030,6 +3046,8 @@
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":
       "GitHub を使わない場合やオフラインの場合: エッジのホスト名 1 つに対する一回限りのリンクと QR コードです (__DEN_CLI__ web login --host <name>)。",
+    "set.access.test_install.d":
+      "このインストールがテスト用として印付けされているかどうか: ディストリビューションの設定の web.test_install で、手作業で設定します。その場合に限り、ライブチェックはテスト用の人物としてサインインできます (あなたでも、エージェントでもありません)。ブラウザのこの画面で「テスト用の人物を設定」を押して一度作成します。",
     "set.distribution.brand.d":
       "brand.name: ページ、CLI のバナー、ヘルプに表示される名前です。",
     "set.distribution.github_org.d":

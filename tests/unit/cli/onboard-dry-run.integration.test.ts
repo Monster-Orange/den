@@ -12,7 +12,7 @@
  *      for the default, so nothing here touches 7777), then the engine
  *      linked into node_modules, standing in for `npm install`
  *   2. web up --no-open --json                (url and port)
- *   3. web claim-link --json                  (the one-time setup link)
+ *   3. hand over: the person runs web claim-link in their own terminal
  *
  * The person opens the link: it signs the browser in, and a fresh Den's
  * first page is its server agent. The server agent, through
@@ -33,6 +33,7 @@ import * as http from "http";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
+import { inTerminal } from "../server/helpers/in-terminal.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 /** ON-5's share line, as people see it on the site and in the README. */
@@ -363,9 +364,25 @@ describe("ON-4: install, hand over, and the server agent sets up one repo", () =
         port: webPort,
       });
 
-    // 3. The setup link (never printed here: it signs a browser in).
-    const cl = acme("web", "claim-link", "--json");
-    expect(cl.code).toBe(0);
+    // 3. The hand-over. Asked for by the install agent (no terminal), the
+    // setup link is not printed, and the answer says what to do instead.
+    const asked = acme("web", "claim-link", "--json");
+    expect(asked.code).not.toBe(0);
+    expect(asked.out).toMatch(/in a terminal/);
+    expect(asked.out).not.toMatch(/[?&]claim=/);
+    // The person runs it in their own terminal.
+    const mine = await inTerminal(
+      path.join(dist, "bin", "acme"),
+      ["web", "claim-link", "--json"],
+      { cwd: dist, env },
+    ).done;
+    expect(mine.status).toBe(0);
+    const cl = {
+      json: JSON.parse(mine.text.slice(mine.text.indexOf("{"))) as Record<
+        string,
+        unknown
+      >,
+    };
     const link = new URL(String(cl.json.url));
     // Issue 666, D80's one exception: with no address, the link for this
     // machine's browser is on this machine's own origin, and says so.

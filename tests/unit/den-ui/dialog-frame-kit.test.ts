@@ -251,7 +251,9 @@ describe("issues 669, 670: one look", () => {
   it("the theme's radius, backdrop and font; no number of its own", () => {
     const frame = rule(".dk-dlg");
     expect(frame).toMatch(/border-radius:\s*var\(--radius\)/);
-    expect(frame).toMatch(/font-family:\s*var\(--sans\)/);
+    // Issue 793: its own font, with the kit's stack when a theme has no
+    // --sans: never the page's, never a serif.
+    expect(frame).toMatch(/font-family:\s*var\(--sans, [^;]*, sans-serif\);/);
     expect(rule(".dk-dlg::backdrop")).toMatch(
       /background:\s*var\(--kit-scrim\)/,
     );

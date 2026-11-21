@@ -19,6 +19,7 @@ import {
 } from "./runtime.js";
 import { sessionPath, type RuntimeFind } from "./runtime-search.js";
 import { ACTOR_TOKEN_FILE_ENV } from "../actor-token.js";
+import { installLocationEnv } from "../product.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../sessions/env.js";
 
 registerRuntime(denClaude);
@@ -76,7 +77,7 @@ export function withSessionPath(
  * An agent's session env, as `agents start` builds it and `doctor --probe`
  * checks it: the allowlist (its PATH the search's, withSessionPath), the runtime's passthrough and launch env, Den's
  * markers (DEN_AGENT=agent:<id>, and SEC-1c's DEN_ACTOR_TOKEN when one was
- * minted), then every runtime's scrubEnv and any person credential.
+ * minted, and the install's location: installLocationEnv), then every runtime's scrubEnv and any person credential.
  */
 export function agentSessionEnv(
   caller: NodeJS.ProcessEnv,
@@ -103,6 +104,9 @@ export function agentSessionEnv(
     // The distribution's declared env (agents.git's GIT_CONFIG_*).
     extra: declared,
     den: {
+      // The install it runs under (its root and state folder): a CLI the
+      // agent runs in its shell finds its token there.
+      ...installLocationEnv(caller),
       [AGENT_ACTOR_ENV]: `agent:${agentId}`,
       ...(actorTokenFile ? { [ACTOR_TOKEN_FILE_ENV]: actorTokenFile } : {}),
     },

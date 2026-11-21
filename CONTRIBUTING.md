@@ -247,6 +247,54 @@ Names in a row's `evidence` are written into the verdict next to it.
 Anything else on `ctx` is the harness's internals and may change: never
 use it. Setup's state reaches `expect` only through what `run` returns.
 
+### The bed signs in as a fixture person
+
+Live checks run as an agent, and Den never signs an agent in as the
+person. On a bed, the runner signs in as a **fixture person** instead:
+neither the person nor an agent, logged and audited as "fixture person".
+It works only on a **test install**, which needs all four of these:
+
+1. The mark, set by hand by a person in the bed's distribution config
+   (`config/den.yml`). Settings, `config` and agents can't set it, and
+   agents are denied edits to that file.
+
+   ```yaml
+   web:
+     test_install: true
+     fixture_session_minutes: 60 # optional: how long a fixture session lasts
+   ```
+
+2. The launcher's test-only flag in the server's own start environment,
+   `<PREFIX>_TEST_INSTALL=1` (`DEN_TEST_INSTALL=1` for Den). No file can
+   set it, and the server drops it from what it passes on.
+3. Its own state folder (`<PREFIX>_HOME`), never the product's default
+   one.
+4. No owner and no other person: no GitHub sign-in, setup link or
+   pairing code ever used on it, and no one signed in by a `web login`
+   link except the person who pressed **Set up test person**.
+
+Then:
+
+1. Signed in (a `web login` link), the person opens Settings › Access ›
+   Test install in their browser and presses **Set up test person**,
+   once. It is a button only: every command-line call and agent is
+   refused. The server writes a key in the bed's state folder (0600),
+   sealed with the install's own secret, so a key it didn't write is
+   refused. Pressing it again replaces the key and ends every older
+   fixture session.
+2. The runner gets a one-time sign-in link as the fixture person:
+
+   ```sh
+   <cli> web fixture-login [--next <path>] [--origin <url>]
+   ```
+
+Anywhere else the fixture sign-in and its setup are refused, and an
+agent's own `web login` stays refused everywhere. A fixture session
+counts as an agent at every person-only check, reaches only the pages and
+the few writes live checks need, never opens a terminal, and ends as soon
+as the install stops being a test install, the key goes, or its time is
+up.
+
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with
 the rules for `expect`'s rows (`checkRows`).
