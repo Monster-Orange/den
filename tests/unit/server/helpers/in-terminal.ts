@@ -13,6 +13,7 @@ export interface InTerminal {
   done: Promise<{ status: number; text: string }>;
 }
 
+// eslint-disable-next-line no-control-regex -- terminal escape codes
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g;
 
 export function inTerminal(
@@ -73,6 +74,7 @@ function viaScript(
     text += d
       .toString("utf-8")
       .replace(ANSI, "")
+      // eslint-disable-next-line no-control-regex -- terminal control bytes
       .replace(/[\r\x04\x08]/g, "");
     for (const fn of fns) fn(text);
   };
