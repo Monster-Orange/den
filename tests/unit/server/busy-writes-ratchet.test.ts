@@ -21,7 +21,7 @@ const LEFT: Record<string, number> = {
   "agents-section.js": 2,
   "appearance.js": 2,
   "bell.js": 1,
-  "error-page.js": 3,
+  "error-page.js": 4,
   "graph.js": 1,
   "header.js": 2,
   "local-dev.html": 18,

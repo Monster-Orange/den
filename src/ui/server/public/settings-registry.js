@@ -811,12 +811,9 @@ function drawDevices(host, ctx) {
   load();
 }
 
-/** "10:42" in this browser's own time zone. */
+/** "10:42" in the person's chosen time zone (the kit's). */
 function clockOf(iso) {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatTime(iso, { style: "time" });
 }
 
 /**

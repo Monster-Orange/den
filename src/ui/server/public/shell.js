@@ -8224,18 +8224,9 @@
   }
   function prWhen(w) {
     var parts = [prAge(w)];
-    if (w.fromLogin) {
-      var d = new Date(w.fromLogin);
-      if (!isNaN(d.getTime()))
-        parts.push(
-          t("pair.fromLogin", {
-            time: d.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          }),
-        );
-    }
+    // The person's chosen time zone (localTime: the kit's, or its fallback).
+    var at = w.fromLogin ? localTime(w.fromLogin) : "";
+    if (at) parts.push(t("pair.fromLogin", { time: at }));
     return parts.join(" ");
   }
   function prDialog() {

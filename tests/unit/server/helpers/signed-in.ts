@@ -209,13 +209,37 @@ async function approved(w: Where, a: Approver): Promise<Minted | null> {
     typeof csrf !== "string"
   )
     return null;
-  const asked = await call(
-    w.server,
-    "POST",
-    "/api/signin/code",
-    { origin: w.origin, ...w.via },
-    "{}",
-  );
+  const ask = () =>
+    call(
+      w.server,
+      "POST",
+      "/api/signin/code",
+      { origin: w.origin, ...w.via },
+      "{}",
+    );
+  let asked = await ask();
+  if (asked.status === 429) {
+    // Issue 819: new requests are limited per address (a Setting, 30 a
+    // minute by default). A suite signs in far faster than a person, all
+    // from this one address: the approving person raises the limit in
+    // Settings for this test install, as a person could, then asks again.
+    const raised = await call(
+      w.server,
+      "POST",
+      "/api/settings",
+      {
+        ...w.via,
+        cookie: a.pair,
+        origin: w.origin,
+        "x-den-csrf": csrf,
+        "sec-fetch-site": "same-origin",
+      },
+      JSON.stringify({ web_pairing: { requests_per_minute: 10_000 } }),
+    );
+    if (raised.status !== 200)
+      throw new Error(`raising the request limit failed (${raised.status})`);
+    asked = await ask();
+  }
   const req = parse(asked);
   if (asked.status !== 200 || typeof req.id !== "string")
     throw new Error(`the signed-out page's request failed (${asked.status})`);
