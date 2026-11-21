@@ -41,6 +41,8 @@ function io() {
       out: (s: string) => (o.out += s),
       err: (s: string) => (o.err += s),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
       // D80: the install's address the links are on.
       webUrl: () => ({ url: "https://den.acme.example.com", confirmed: true }),
     },
@@ -60,7 +62,7 @@ describe.each(AGENT_ENVS)("inside an agent's session (%s set)", (k, v) => {
   const expectRefused = (code: number, o: { out: string; err: string }) => {
     expect(code).toBe(1);
     expect(o.out).toBe("");
-    expect(o.err).toMatch(/An agent can't do this/);
+    expect(o.err).toMatch(/can't let a browser in from here/);
     // Nothing touched web.secret: no file was made.
     expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   };
@@ -92,7 +94,7 @@ describe.each(AGENT_ENVS)("inside an agent's session (%s set)", (k, v) => {
 
   it("freshLoginLink (what `web open` hands the browser) throws", () => {
     expect(() => freshLoginLink(4100, "/", undefined, tmp)).toThrow(
-      /An agent can't do this/,
+      /can't let a browser in from here/,
     );
   });
 });

@@ -645,24 +645,35 @@ async function main() {
       });
       // 0.4.71: signed in, as `web up` signs a browser in: the one-time
       // link `web login --no-wait` prints (never printed here).
-      const link = execFileSync(
+      // Sign-in: a link is printed only in a terminal, so `web login`
+      // runs in one (script(1); macOS and util-linux spell it differently).
+      const login = [
         path.join(ENGINE, "bin", "den"),
-        [
-          "web",
-          "login",
-          "--no-wait",
-          "--port",
-          new URL(url).port,
-          "--origin",
-          url,
-        ],
+        "web",
+        "login",
+        "--no-wait",
+        "--port",
+        new URL(url).port,
+        "--origin",
+        url,
+      ];
+      const shown = execFileSync(
+        "script",
+        process.platform === "darwin"
+          ? ["-q", "/dev/null", ...login]
+          : [
+              "-qec",
+              login.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
+              "/dev/null",
+            ],
         {
           cwd: demo.root,
           env: serverEnv,
           encoding: "utf-8",
           stdio: ["ignore", "pipe", "pipe"],
         },
-      ).trim();
+      );
+      const link = /https?:\/\/\S+/.exec(shown.replace(/\r/g, ""))?.[0] ?? "";
       const sp = await ctx.newPage();
       const signed = await sp.goto(link);
       await sp.close();
