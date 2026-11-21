@@ -49,6 +49,15 @@ DEN_ORG_NAMES_FILE=<patterns file> node scripts/org-name-gate.mjs
 
 A new test, lint rule or gate must be seen failing before it is trusted.
 
+Browser tests and live checks (`tests/**/*.browser.*`, `gate/*.mjs`) never
+gain a fixed sleep, a positional pick, a class selector or an English-text
+assert (issue 839). On a pull request, `scripts/brittle-ratchet.mjs` counts
+each file the change touched at its merge base and at HEAD, and fails only
+when a count goes up; files the change didn't touch are never judged, and
+there is no baseline file to update. Run it before a push with
+`node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
+totals per kind and never fails.
+
 On a busy machine, fewer jest workers means fewer flakes from load:
 `DEN_TEST_WORKERS` sets how many (a number, or a percentage such as
 `50%`). Unset, jest picks its own. `npm run preflight` uses 8 unless it is
