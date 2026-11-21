@@ -2,7 +2,13 @@
  * Issue 144 GATE-SLOT: the queue as the web page, the MCP tools and
  * `gate status --json` show it.
  */
-import { expectedEnd, expectedStart, overrun, priorityIds } from "./rules.js";
+import {
+  expectedEnd,
+  expectedStart,
+  overrun,
+  priorityIds,
+  yieldedTo,
+} from "./rules.js";
 import { boxSkipReason } from "./boxes.js";
 import type { GateStore } from "./store.js";
 
@@ -34,6 +40,8 @@ export interface GateSlotView {
    * priority now (false: it waits behind another, or already started).
    */
   priority?: { reason: string; holds: boolean };
+  /** Issue 795: waiting entries it let go just ahead of it, until it starts. */
+  yieldedTo?: string[];
 }
 
 /**
@@ -97,6 +105,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(e.priority
       ? { priority: { reason: e.priority.reason, holds: pri.has(e.id) } }
       : {}),
+    ...(yieldedTo(e, all).length ? { yieldedTo: yieldedTo(e, all) } : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,

@@ -2386,6 +2386,7 @@
     "gate.boxDown": "{box}: omitida, no responde ({reason})",
     "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
     "gate.boxSkip": "no puede usar {box}: {reason}",
+    "gate.yielded": "Dejó pasar a {to}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

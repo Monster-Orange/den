@@ -9,7 +9,11 @@
  */
 import * as path from "path";
 import { z } from "zod";
-import { GatePriorityRefused, GateStore } from "../../shared/gates/store.js";
+import {
+  GatePriorityRefused,
+  GateStore,
+  GateYieldRefused,
+} from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
@@ -521,6 +525,33 @@ const READ_TOOLS: DenTool[] = [
         throw new Refusal("gate_slot_release: that slot isn't yours.");
       mySlots.delete(id);
       return { released: gatesOf(ctx).release(id) };
+    },
+  ),
+  read(
+    "gate_slot_yield",
+    "Let one waiting run go just ahead of yours",
+    "Issue 795: your waiting slot `id` lets another waiting slot `to` go just ahead of it, and keeps its own place otherwise (A, B, C becomes C, A, B when A lets C ahead). Use it instead of giving your place back and asking again at the back. Only your own slot (one you asked for here, or a `gate run` from your shell); never a slot that holds, and `to` must be waiting behind you. The slot log records it as `yielded` with both ids; gate_slot_status shows it as `yieldedTo` until your run starts.",
+    {
+      id: z.string().describe("Your waiting slot's id"),
+      to: z.string().describe("The waiting slot to let just ahead of yours"),
+    },
+    async (a, ctx) => {
+      const id = str(a.id) ?? "";
+      const actor = ctx.scope?.actor;
+      const store = gatesOf(ctx);
+      try {
+        store.yieldTo(
+          id,
+          str(a.to) ?? "",
+          (e) =>
+            !e.remote && (mySlots.has(e.id) || (!!actor && e.actor === actor)),
+        );
+      } catch (err) {
+        if (err instanceof GateYieldRefused)
+          throw new Refusal(`gate_slot_yield: ${err.message}.`);
+        throw err;
+      }
+      return slotView(store, id);
     },
   ),
   read(

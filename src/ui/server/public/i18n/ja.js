@@ -2293,6 +2293,7 @@
     "gate.boxDown": "{box}: 応答がないため飛ばします ({reason})",
     "gate.boxLow": "{box}: 空きメモリが少ないため飛ばします ({reason})",
     "gate.boxSkip": "{box} は使えません: {reason}",
+    "gate.yielded": "{to} に先を譲りました",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",

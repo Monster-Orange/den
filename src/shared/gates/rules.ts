@@ -17,6 +17,11 @@
  * an ordinary run until the one ahead starts, then takes priority. The
  * store records each jump (who, why, what it passed).
  *
+ * Issue 795: the owner of a waiting entry may yield to one waiting entry
+ * behind it (`gate yield <my-id> --to <their-id>`): that entry moves to
+ * just ahead of it, and it keeps its own place otherwise (A, B, C becomes
+ * C, A, B). Yields are applied last, in the order they were made.
+ *
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
@@ -81,6 +86,11 @@ export interface GateEntry {
   pwVersion?: string;
   box?: string;
   boxTimeScale?: number;
+  /**
+   * Issue 795: waiting entries this one let go just ahead of it, and when
+   * (the order yields are applied in).
+   */
+  yields?: { to: string; at: string }[];
   remote?: {
     /** The runner token's name (who, in words). */
     runner: string;
@@ -187,7 +197,7 @@ export function queueOrder(
 ): GateEntry[] {
   const q = entries.filter((e) => !e.grantedAt).sort(byAsked);
   const pri = priorityIds(entries, s);
-  if (!pri.size) return q;
+  if (!pri.size) return applyYields(q);
   const limitMs =
     (s.priorityPassLimitMinutes ?? GATE_DEFAULTS.priorityPassLimitMinutes) *
     60_000;
@@ -203,7 +213,34 @@ export function queueOrder(
     }
     q.splice(to, 0, p);
   }
+  return applyYields(q);
+}
+
+/**
+ * Issue 795: each yield, oldest first, moves its waiting entry to just
+ * ahead of the one that yielded, when it is still behind it.
+ */
+function applyYields(q: GateEntry[]): GateEntry[] {
+  const moves = q
+    .flatMap((e) => (e.yields ?? []).map((y) => ({ from: e.id, ...y })))
+    .sort((a, b) => t(a.at) - t(b.at));
+  for (const m of moves) {
+    const at = q.findIndex((e) => e.id === m.from);
+    const to = q.findIndex((e) => e.id === m.to);
+    if (at < 0 || to <= at) continue;
+    const [w] = q.splice(to, 1);
+    q.splice(at, 0, w!);
+  }
   return q;
+}
+
+/** Issue 795: the waiting entries `e` let ahead of it, still waiting. */
+export function yieldedTo(e: GateEntry, entries: GateEntry[]): string[] {
+  if (e.grantedAt || !e.yields?.length) return [];
+  const waiting = new Set(entries.filter((x) => !x.grantedAt).map((x) => x.id));
+  return [...new Set(e.yields.map((y) => y.to))].filter((id) =>
+    waiting.has(id),
+  );
 }
 
 /** Issue 715: the same-kind waiters a priority run goes ahead of. */

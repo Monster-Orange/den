@@ -7,6 +7,7 @@
  * an agent). End early asks first (the kit's dialog), then goes through
  * the working pop-up. Ending a slot frees it; the run itself is not
  * stopped. Issue 715: a release run with priority says so, and why. The queue is a dialog on the body, so Report finds it.
+ * Issue 795: a waiting run that let another go ahead says which, until it starts.
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -88,6 +89,11 @@ export function startGateChip(o) {
           { reason: s.priority.reason },
         )
       : "";
+    // Issue 795: the waiting runs it let go just ahead of it.
+    const ylds = (s.yieldedTo ?? [])
+      .map((id) => slots.find((x) => x.id === id)?.label ?? id)
+      .join(", ");
+    const yld = ylds ? t("gate.yielded", { to: ylds }) : "";
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -100,6 +106,7 @@ export function startGateChip(o) {
       "</div>" +
       (pri ? '<div class="gate-pri">' + esc(pri) + "</div>" : "") +
       (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
+      (yld ? '<div class="gate-pri">' + esc(yld) + "</div>" : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"

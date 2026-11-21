@@ -16,6 +16,8 @@
  *   box <list|add|remove>    the test boxes (a person changes them)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
+ *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
+ *                            waiting entry go just ahead of it (yours only)
  *   settings [--cpu-slots N] [--overrun-margin-minutes N]
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
@@ -34,6 +36,7 @@ import {
   expectedStart,
   overrun,
   priorityIds,
+  yieldedTo,
   type GateEntry,
   type GateKind,
   type GateSettings,
@@ -41,6 +44,7 @@ import {
 import {
   GatePriorityRefused,
   GateStore,
+  GateYieldRefused,
   checkGatePatch,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
@@ -52,7 +56,7 @@ import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
-  usage: "gate <run|status|end|box|settings> ...",
+  usage: "gate <run|status|end|yield|box|settings> ...",
   lines: [
     "Heavy test runs on this machine, taken in turn: a browser suite runs",
     "alone; unit suites share (2 at a time by default). Every repo and install",
@@ -71,6 +75,8 @@ export const GATE_HELP = {
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
     "    a box run: --base-url http://<name>.localhost:<port> (never 80/443)",
     "{cli} gate end <id>             end a slot early (a person's only)",
+    "{cli} gate yield <my-id> --to <id>",
+    "    your waiting run lets another waiting run go just ahead of it",
     "{cli} gate settings [--cpu-slots N] [--overrun-margin-minutes N]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
@@ -233,7 +239,10 @@ export function slotLine(
   now: number,
   margin: { overrunMarginMinutes: number } & Partial<GateSettings>,
 ): string {
-  const pri = priorityWords(e, all, margin);
+  const yields = yieldedTo(e, all);
+  const pri =
+    priorityWords(e, all, margin) +
+    (yields.length ? `  let ${yields.join(", ")} go ahead` : "");
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
     const on = e.box ? ` on box ${e.box}` : "";
@@ -552,6 +561,35 @@ function end(args: string[], d: GateDeps): number {
   return 0;
 }
 
+/**
+ * Issue 795: your waiting entry lets another waiting entry go just ahead
+ * of it. Yours: an agent's (its DEN_AGENT) or, for a person, one no agent
+ * asked for. It only moves your own place back, so it is not a person's
+ * only.
+ */
+function yieldPlace(args: string[], d: GateDeps): number {
+  const { f, pos } = flags(args, { "--to": true });
+  const [id, extra] = pos;
+  const to = f["--to"];
+  if (!id || extra || typeof to !== "string")
+    throw new GateUsage("gate yield needs <my-id> --to <their-id>");
+  const actor = d.env[AGENT_ACTOR_ENV]?.trim();
+  const agent = isAgentEnv(d.env);
+  const owns = (e: GateEntry) =>
+    !e.remote && (agent ? !!actor && e.actor === actor : !e.agent);
+  try {
+    d.store.yieldTo(id, to, owns);
+  } catch (err) {
+    if (err instanceof GateYieldRefused) {
+      d.err(`gate yield: ${err.message}`);
+      return 1;
+    }
+    throw err;
+  }
+  d.out(`${to} goes just ahead of ${id}; ${id} keeps its place otherwise.`);
+  return 0;
+}
+
 function settings(args: string[], d: GateDeps): number {
   const { f } = flags(args, {
     "--cpu-slots": true,
@@ -623,6 +661,8 @@ export async function cmdGate(
         return end(args.slice(1), d);
       case "box":
         return boxCmd(args.slice(1), d);
+      case "yield":
+        return yieldPlace(args.slice(1), d);
       case "settings":
         return settings(args.slice(1), d);
       default:

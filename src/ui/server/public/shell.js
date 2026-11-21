@@ -3230,6 +3230,7 @@
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
     "gate.boxLow": "{box}: skipped, low on memory ({reason})",
     "gate.boxSkip": "can't use {box}: {reason}",
+    "gate.yielded": "Let {to} go ahead",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

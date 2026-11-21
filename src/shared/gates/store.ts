@@ -11,7 +11,8 @@
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
  *                     back (process gone, or lease lapsed), overdue, ended
  *                     early (Coach reads time lost); issue 715: priority
- *                     (who, why, what it passed) and priority-waits
+ *                     (who, why, what it passed) and priority-waits;
+ *                     issue 795: yielded (the entry and the one let ahead)
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone (or, issue 621,
@@ -174,7 +175,8 @@ export type GateEvent =
   | "ended-early"
   | "priority"
   | "priority-waits"
-  | "passed-unclaimed";
+  | "passed-unclaimed"
+  | "yielded";
 
 export interface GateEventRow {
   at: string;
@@ -204,6 +206,8 @@ export interface GateEventRow {
   claimBy?: string;
   /** Issue 625: the test box the slot is on (absent: this machine). */
   box?: string;
+  /** Issue 795: yielded: the waiting entry let just ahead of this one. */
+  to?: string;
 }
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
@@ -249,6 +253,9 @@ function leaseTimes(renew: number, lapse: number) {
 
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
+
+/** Issue 795: a yield that isn't the owner's, or isn't waiting to waiting. */
+export class GateYieldRefused extends Error {}
 
 /** Issue 621: a runner token has as many slots as it may. */
 export class GateFullError extends Error {}
@@ -877,6 +884,44 @@ export class GateStore {
       this.record(e, { event: "released", ...this.heldFor(e, this.now()) });
       this.settle();
       return true;
+    });
+  }
+
+  /**
+   * Issue 795: the owner of waiting entry `id` lets waiting entry `to` go
+   * just ahead of it; it keeps its own place otherwise. `owns` says whether
+   * the caller owns an entry; a refusal changes nothing. Returns the slot
+   * log's row.
+   */
+  yieldTo(
+    id: string,
+    to: string,
+    owns: (e: GateEntry) => boolean,
+  ): GateEventRow {
+    return this.locked(() => {
+      const all = this.settle();
+      const e = all.find((x) => x.id === id);
+      if (!e || !owns(e))
+        throw new GateYieldRefused(`${id} isn't yours (or is gone)`);
+      if (e.grantedAt)
+        throw new GateYieldRefused(
+          `${id} holds its slot; only a waiting entry can yield`,
+        );
+      const w = all.find((x) => x.id === to);
+      if (!w || w.grantedAt || w.id === id)
+        throw new GateYieldRefused(
+          "the one you let ahead must be another waiting entry (gate status lists them)",
+        );
+      const order = queueOrder(all, this.settings(), this.now());
+      if (order.indexOf(w) < order.indexOf(e))
+        throw new GateYieldRefused(`${to} is already ahead of ${id}`);
+      const at = new Date(this.now()).toISOString();
+      e.yields = [...(e.yields ?? []), { to, at }];
+      this.write(e);
+      const row = { event: "yielded" as const, to };
+      this.record(e, row);
+      this.settle();
+      return { at, id, kind: e.kind, who: e.who, label: e.label, ...row };
     });
   }
 
