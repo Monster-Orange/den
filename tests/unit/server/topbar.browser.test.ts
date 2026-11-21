@@ -323,7 +323,12 @@ const palRows = (p: Page, sel = "#den-pal-list [role=option]") =>
         .join(" "),
     ),
   );
-const palRow = async (p: Page, sel: string) => (await palRows(p, sel))[0];
+/** The one row `sel` names (it must name exactly one). */
+const palRow = async (p: Page, sel: string) => {
+  const rows = await palRows(p, sel);
+  expect(rows).toHaveLength(1);
+  return rows.join("");
+};
 const text = (p: Page, sel: string) =>
   p.$eval(sel, (e) => (e as HTMLElement).innerText.replace(/\s+/g, " ").trim());
 const focused = (p: Page) =>
@@ -341,7 +346,13 @@ describe("narrow (SA's dev.20 run)", () => {
       ".den-title",
       (e) => (e.textContent = "A Rather Long Platform Name"),
     );
-    await p.waitForTimeout(100);
+    // Drawn: two animation frames after the change.
+    await p.evaluate(
+      () =>
+        new Promise<void>((r) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => r())),
+        ),
+    );
     const m = await p.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
       right: Math.round(
@@ -467,7 +478,8 @@ describe("the status drawer (R15)", () => {
       "shop/db, healthy, 9 ms",
       "http://shop/db → 200",
     ]);
-    expect((await named("billing/billing"))[0]).toBe("billing/billing, down");
+    const [billing] = await named("billing/billing");
+    expect(billing).toBe("billing/billing, down");
     for (let i = 0; i < 12; i++) await p.keyboard.press("Tab");
     expect(
       await p.evaluate(() => !!document.activeElement?.closest(".den-drawer")),
@@ -769,6 +781,9 @@ describe("the admin password, asked only when sudo needs it (R8, LK-0)", () => {
     if (!browser) return;
     const { p, posts, reqs } = await mount();
     await p.waitForSelector("#den-status.bad");
+    // Kept on purpose: this proves nothing asks for the password, and an
+    // absence has no state to wait for; the short wait gives a late ask
+    // the chance to show.
     await p.waitForTimeout(200);
     expect(await p.isHidden("#den-lock")).toBe(true);
     // A page view never wakes 1Password, nor asks about the password.
@@ -978,6 +993,8 @@ describe("Local Dev (LK-0)", () => {
     if (!browser) return;
     const { p, reqs } = await mount({ page: "local-dev", vaultStored: true });
     await p.waitForSelector(".den-rail .den-ni");
+    // Kept on purpose: proves the vault is not asked on load; an absence
+    // has no state to wait for.
     await p.waitForTimeout(300);
     expect(reqs.filter((r) => r.includes("/api/sudo-password"))).toEqual([]);
     expect(await p.isHidden("#den-lock")).toBe(true);
