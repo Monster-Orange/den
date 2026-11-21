@@ -187,11 +187,25 @@ describe("the Start dialog (AG-10.1)", () => {
     expect(pty.args).toEqual(expect.arrayContaining(["--model", "haiku"]));
     expect(pty.args.join(" ")).not.toContain("Plan the login");
     // The runtime asks for bracketed paste and goes quiet: ready.
-    pty.emit("\x1b[?2004h> ");
     const typed = () => Buffer.concat(pty.writes).toString("utf-8");
-    const end = Date.now() + 15_000;
-    while (!typed().includes("Keep it small.\x1b[201~\r") && Date.now() < end)
-      await new Promise((r) => setTimeout(r, 100));
+    // Pasted: checked on each write the runtime gets, within 15 s.
+    const pasted = new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (typed().includes("Keep it small.\x1b[201~\r")) resolve();
+      };
+      const write = pty.write.bind(pty);
+      pty.write = (d: Buffer) => {
+        write(d);
+        check();
+      };
+      check();
+      setTimeout(
+        () => reject(new Error("the prompt was not pasted within 15 s")),
+        15_000,
+      ).unref();
+    });
+    pty.emit("\x1b[?2004h> ");
+    await pasted;
     expect(typed()).toContain(
       "\x1b[200~Plan the login story.\nKeep it small.\x1b[201~\r",
     );
@@ -292,8 +306,11 @@ describe("the Start dialog (AG-10.1)", () => {
     const p = await page("/agents?ws=north&start=1");
     await openDialog(p);
     // Grouped by category with no filter; Plain shell last.
-    const heads = await p.$$eval("#ag-persona .pgh span:first-child", (xs) =>
-      xs.map((x) => (x.textContent ?? "").toLowerCase()),
+    // A group's head reads its category, then its count.
+    const heads = await p.$$eval("#ag-persona .pgh", (xs) =>
+      xs.map((x) =>
+        (x.textContent ?? "").replace(/\d+$/, "").trim().toLowerCase(),
+      ),
     );
     expect(heads).toEqual(["engineering", "design", "shell"]);
     expect((await pids(p)).at(-1)).toBe(":plain");
@@ -346,7 +363,8 @@ describe("the Start dialog (AG-10.1)", () => {
     // select at 638px (the long "the runtime's default · latest" was cut).
     expect(
       await p.$eval(
-        "#ag-model option:first-child",
+        // The default: the option with no model of its own.
+        '#ag-model option[value=""]',
         (o) => (o as HTMLOptionElement).textContent,
       ),
     ).toBe("Persona default (latest)");
