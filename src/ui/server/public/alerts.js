@@ -1,19 +1,36 @@
 /**
- * Issue 172: alerts outside the bell, from an open Den tab. While the
- * browser lets this page notify (Settings › Notifications › Desktop
- * alerts asks it), the tab reads GET /api/alerts every few seconds, even
- * in the background, and shows each new alert as a desktop notification
- * when the tab isn't in front. A click brings the tab up on the agent's
- * page. The server decides what alerts (a new need only), in the bell's
- * words; the page shows it as given.
+ * Issue 172: alerts outside the bell, from an open Den tab. The tab
+ * reads GET /api/alerts every few seconds, even in the background, and
+ * shows each new alert as a desktop notification when the tab isn't in
+ * front. A click brings the tab up on the agent's page. The server
+ * decides what alerts (a new need; issue 774: a finished turn, when the
+ * person turned it on; never a muted agent, never in quiet hours), in
+ * the bell's words; the page shows it as given: the words as the
+ * heading, the project under them.
  *
- * Two tabs show one: each alert is claimed once per browser, and its id
+ * Issue 774, browser side only:
+ *   - a short sound with each alert, when the person turned sounds on
+ *     (alert-sounds.js): one for "needs you", a softer one for
+ *     "finished"; it plays even when the browser can't notify;
+ *   - the count of agents that need the person, in the tab's title and
+ *     on its icon (tab-count.js), when "Count in the tab" is on.
+ *   alertPlan says what one alert does in this tab (the mock's table of
+ *   when it stays quiet).
+ *
+ * No double alert: each alert is claimed once per browser (two tabs show
+ * one notification and play one sound). The tab in front claims at once;
+ * a tab behind waits a moment, so the one in front wins. The alert's id
  * is the notification's tag. A browser that gets push (a service worker
- * subscription) leaves it to the push.
+ * subscription) leaves the notification to the push; its tab still
+ * plays the sound.
  */
+import { playAlertSound, primeAlertSounds } from "./alert-sounds.js";
+import { tabCount } from "./tab-count.js";
 
 const POLL_MS = 5000;
 const CLAIMED = "den-alerts-shown";
+/** A tab behind waits this long before it claims, so the one in front wins. */
+const BEHIND_WAIT_MS = 1500;
 
 /** Only Den's own pages: an alert's link. */
 export const alertLink = (l) =>
@@ -44,8 +61,9 @@ async function pushed(win) {
 
 /** Show `a` as a notification; a click opens its page in this tab. */
 export function showAlert(win, a) {
-  const n = new win.Notification(a.title || "", {
-    body: a.body || "",
+  // Issue 774: the words are the heading, the project the line under it.
+  const n = new win.Notification(a.body || a.title || "", {
+    body: a.project || "",
     tag: a.id,
   });
   n.onclick = () => {
@@ -60,20 +78,81 @@ export function showAlert(win, a) {
   return n;
 }
 
+/**
+ * Issue 774: what alert `a` does in this tab: { notify, sound } (sound
+ * "needs", "finished" or null). `prefs`: the person's switches
+ * ({desktop, sound}); `env`: this tab now ({front, permission ("granted",
+ * "denied", "default" or "unsupported"), pushed, agent: the agent this
+ * page shows, or null}).
+ */
+export function alertPlan(a, prefs, env) {
+  // Looking at that agent: nothing (its page says it).
+  if (env.front && env.agent && env.agent === a.agent)
+    return { notify: false, sound: null };
+  const notify =
+    !env.front &&
+    prefs.desktop !== false &&
+    env.permission === "granted" &&
+    !env.pushed;
+  const sound =
+    prefs.sound === true ? (a.why === "finished" ? "finished" : "needs") : null;
+  return { notify, sound };
+}
+
+/**
+ * Issue 774: alert `a` in this tab, once per browser. `deps`: { show(a),
+ * play(kind), wait(ms) } (the page's own, or a test's).
+ */
+export async function deliverAlert(win, a, prefs, env, deps) {
+  if (!a?.id) return;
+  if (!env.front) await deps.wait(BEHIND_WAIT_MS);
+  // The tab in front claims even when it does nothing: a tab behind then
+  // shows no notification for what the person sees already.
+  if (!claim(win, a.id)) return;
+  const plan = alertPlan(a, prefs, env);
+  if (plan.notify) {
+    try {
+      deps.show(a);
+    } catch {
+      /* the bell has it */
+    }
+  }
+  if (plan.sound) {
+    try {
+      deps.play(plan.sound);
+    } catch {
+      /* no sound: the bell has it */
+    }
+  }
+}
+
+/** The agent this page shows (the Agents page's ?agent=), or null. */
+function pageAgent(win) {
+  try {
+    const u = new URL(win.location.href);
+    return u.pathname === "/agents" ? u.searchParams.get("agent") : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Start reading alerts on this page (every page with the header). */
 export function initAlerts(win = window) {
   const doc = win.document;
-  if (!doc || typeof win.Notification !== "function") return;
+  if (!doc) return;
   // SEC-1b: a refusal page (421, signed out) makes no /api call.
   if (win.denShell?.apiOff?.() === true) return;
+  const tab = tabCount(win);
   let seq = null;
   let busy = false;
+  let primed = false;
+  const deps = {
+    show: (a) => showAlert(win, a),
+    play: (kind) => playAlertSound(win, kind),
+    wait: (ms) => new Promise((r) => win.setTimeout(r, ms)),
+  };
   const tick = async () => {
     if (busy) return;
-    if (win.Notification.permission !== "granted") {
-      seq = null; // allowed later: start from then
-      return;
-    }
     busy = true;
     try {
       const r = await win.fetch(
@@ -82,14 +161,26 @@ export function initAlerts(win = window) {
       );
       if (!r.ok) return;
       const b = await r.json();
+      const prefs = b.prefs || { desktop: true, sound: false, tab_count: true };
+      // Issue 774: the count, quiet hours or not; zero shows nothing.
+      tab.show(prefs.tab_count === false ? 0 : Number(b.count) || 0);
+      if (prefs.sound && !primed) {
+        primed = true;
+        primeAlertSounds(win);
+      }
       const first = seq === null;
       seq = typeof b.seq === "number" ? b.seq : seq;
       const list = Array.isArray(b.alerts) ? b.alerts : [];
       if (first || !list.length) return;
-      // In front: the bell and the Allow dialog already say it.
-      if (doc.visibilityState === "visible" && doc.hasFocus?.()) return;
-      if (await pushed(win)) return;
-      for (const a of list) if (a?.id && claim(win, a.id)) showAlert(win, a);
+      const N = win.Notification;
+      const env = {
+        front: doc.visibilityState === "visible" && !!doc.hasFocus?.(),
+        permission: typeof N === "function" ? N.permission : "unsupported",
+        pushed: false,
+        agent: pageAgent(win),
+      };
+      if (env.permission === "granted") env.pushed = await pushed(win);
+      for (const a of list) void deliverAlert(win, a, prefs, env, deps);
     } catch {
       /* next tick */
     } finally {

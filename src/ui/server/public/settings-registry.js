@@ -7,7 +7,8 @@
  *
  * A category: { id, label, order, description?, from? }.
  * A row: { id, category, label, description, keywords, scope, control,
- *   read(ctx), write?(value, ctx), keys? }
+ *   read(ctx), write?(value, ctx), keys?, shown?(ctx) }
+ *   shown    issue 774: false hides the row in this browser (it has no use here)
  *   scope    "user" (config/local/user.yml), "workspace" (the workspace's
  *            entry in config/local/workspaces.yml) or "distribution" (the
  *            distribution's tracked config: read-only, so no write).
@@ -42,6 +43,7 @@ import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
+import { playAlertSound } from "./alert-sounds.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -353,6 +355,10 @@ function bellRows() {
  * Issue 172: alerts outside the bell (alerts.js). Desktop alerts is on
  * when the person has it on (user.yml alerts.desktop, default on) and
  * this browser lets the page notify; turning it on asks the browser.
+ * Issue 774: three rows after it (a finished turn, sounds, the count in
+ * the tab). A browser that can't notify at all (an iPhone's Safari
+ * outside a Home Screen app) shows fewer rows (`shown`): sounds and the
+ * count still work there.
  */
 const notifyApi = () =>
   typeof window !== "undefined" && typeof window.Notification === "function"
@@ -376,12 +382,12 @@ function alertRows() {
           if (!N)
             return L(
               "set.notifications.desktop.none",
-              "This browser can't show notifications.",
+              "This browser can't show notifications here. On iPhone, add __DEN_TITLE__ to your Home Screen first, then open it from there. The bell and the tab count still work.",
             );
           return N.permission === "denied"
             ? L(
-                "set.notifications.desktop.denied",
-                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+                "set.notifications.desktop.blocked",
+                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on. The bell and the tab count still work.",
               )
             : "";
         },
@@ -396,6 +402,49 @@ function alertRows() {
           await N.requestPermission();
         return ctx.post({ alerts: { desktop: v === true } });
       },
+    },
+    {
+      // Issue 774: a finished turn alerts too (alerts.finished, default off).
+      id: "notifications.alert_finished",
+      category: "notifications",
+      label: "Also tell me when an agent finishes",
+      description:
+        "A notification when an agent finishes a turn and you are not looking at it. Off by default. An agent you muted never alerts.",
+      keywords: ["notifications", "alerts", "finished", "done", "turn"],
+      scope: "user",
+      shown: () => !!notifyApi(),
+      control: { type: "toggle" },
+      keys: ["alerts.finished"],
+      read: (ctx) => ctx.data.alerts?.finished === true,
+      write: (v, ctx) => ctx.post({ alerts: { finished: v === true } }),
+    },
+    {
+      // Issue 774: a short sound from an open tab (alerts.sound, default off).
+      id: "notifications.alert_sound",
+      category: "notifications",
+      label: "Sounds",
+      description:
+        "A short sound with each desktop alert, one for \u201cneeds you\u201d and a softer one for \u201cfinished\u201d. Plays only while a __DEN_TITLE__ tab is open; a closed tab or a phone uses its own alert sound.",
+      keywords: ["notifications", "alerts", "sound", "chime", "audio"],
+      scope: "user",
+      control: { type: "custom", render: drawSounds },
+      keys: ["alerts.sound"],
+      read: (ctx) => ctx.data.alerts?.sound === true,
+      write: (v, ctx) => ctx.post({ alerts: { sound: v === true } }),
+    },
+    {
+      // Issue 774: the count in the tab (alerts.tab_count, default on).
+      id: "notifications.tab_count",
+      category: "notifications",
+      label: "Count in the tab",
+      description:
+        "Show how many agents need you in the tab title and on the tab icon. Zero shows nothing.",
+      keywords: ["notifications", "tab", "title", "icon", "count", "badge"],
+      scope: "user",
+      control: { type: "toggle" },
+      keys: ["alerts.tab_count"],
+      read: (ctx) => ctx.data.alerts?.tab_count !== false,
+      write: (v, ctx) => ctx.post({ alerts: { tab_count: v === true } }),
     },
     {
       // S2: push, to this device (a phone, or a computer with no tab open).
@@ -413,6 +462,8 @@ function alertRows() {
         "iphone",
       ],
       scope: "user",
+      // Issue 774: not where the browser can't notify at all.
+      shown: () => !!notifyApi(),
       control: { type: "custom", render: drawPush },
       keys: ["alerts.phone"],
       read: (ctx) => ctx.data.alerts?.phone !== false,
@@ -487,6 +538,25 @@ function alertRows() {
       write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
     },
   ];
+}
+
+/**
+ * Issue 774: the Sounds switch, and a play button for each sound (they
+ * write nothing: they let the person hear them).
+ */
+function drawSounds(host, ctx, io) {
+  const on = ctx.data.alerts?.sound === true;
+  host.innerHTML =
+    `<input type="checkbox" class="set-check" id="set-alert-sound" aria-labelledby="l-notifications-alert_sound"${on ? " checked" : ""}>` +
+    `<span class="set-sound-try">` +
+    `<button type="button" class="btn sm" data-sound="needs">${escHtml(L("set.notifications.alert_sound.needs", "\u25b6 Needs you"))}</button> ` +
+    `<button type="button" class="btn sm" data-sound="finished">${escHtml(L("set.notifications.alert_sound.finished", "\u25b6 Finished"))}</button>` +
+    `</span>`;
+  host
+    .querySelector("input")
+    .addEventListener("change", (e) => void io.save(e.target.checked));
+  for (const b of host.querySelectorAll("button[data-sound]"))
+    b.addEventListener("click", () => playAlertSound(window, b.dataset.sound));
 }
 
 /**

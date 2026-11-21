@@ -347,9 +347,20 @@ export async function mountSettings(deps) {
     const tr = shell.tr;
     return sections(
       shell.settingsCategories().map((c) => localizeCategory(c, tr)),
-      shell.settings().map((r) => localizeRow(r, tr)),
+      shell
+        .settings()
+        .filter(rowShown)
+        .map((r) => localizeRow(r, tr)),
       state.q,
     );
+  }
+  /** Issue 774: a row may say it has no use in this browser (`shown`). */
+  function rowShown(r) {
+    try {
+      return typeof r.shown !== "function" || r.shown(ctx) !== false;
+    } catch {
+      return true;
+    }
   }
   function draw() {
     const list = localSections();

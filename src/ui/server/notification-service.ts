@@ -248,9 +248,17 @@ export function alertFeed(): AlertFeed {
     zone: () => timeZonePref(readUserConfig().time_zone),
     title: () => product().title,
     nameOf,
+    // Issue 774: an agent (or its project) the person muted never alerts.
+    muted: (agent, workspace) =>
+      (store ?? notificationDeps().store).muted(
+        `agent:${agent}`,
+        `workspace/${workspace}`,
+      ),
+    // Issue 774: the heading is the bell's words, the line under it the
+    // project (as an open tab shows it).
     push: (a, prefs) =>
       pushAll(
-        { title: a.title, body: a.body, link: a.link, tag: a.id },
+        { title: a.body, body: a.project, link: a.link, tag: a.id },
         {
           subs: pushDeps().subs,
           keys: () => vapidKeys(getStateDir()),

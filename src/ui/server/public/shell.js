@@ -1085,7 +1085,21 @@
       "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
     "set.notifications.desktop.denied":
       "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
-    "set.notifications.desktop.none": "This browser can't show notifications.",
+    "set.notifications.desktop.none":
+      "This browser can't show notifications here. On iPhone, add __DEN_TITLE__ to your Home Screen first, then open it from there. The bell and the tab count still work.",
+    "set.notifications.desktop.blocked":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on. The bell and the tab count still work.",
+    "set.notifications.alert_finished": "Also tell me when an agent finishes",
+    "set.notifications.alert_finished.d":
+      "A notification when an agent finishes a turn and you are not looking at it. Off by default. An agent you muted never alerts.",
+    "set.notifications.alert_sound": "Sounds",
+    "set.notifications.alert_sound.d":
+      "A short sound with each desktop alert, one for “needs you” and a softer one for “finished”. Plays only while a __DEN_TITLE__ tab is open; a closed tab or a phone uses its own alert sound.",
+    "set.notifications.alert_sound.needs": "▶ Needs you",
+    "set.notifications.alert_sound.finished": "▶ Finished",
+    "set.notifications.tab_count": "Count in the tab",
+    "set.notifications.tab_count.d":
+      "Show how many agents need you in the tab title and on the tab icon. Zero shows nothing.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",

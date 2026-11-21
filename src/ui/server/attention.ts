@@ -92,6 +92,25 @@ export function deliveryHeld(
   return typingHeld(asked, approvalActors, paused);
 }
 
+/**
+ * Issue 774: the agents that need their person now, in every project: a
+ * permission prompt or a question (the hooks), or a held Allow
+ * (`approvalActors`, "agent:<id>"). An idle agent ("input") or one that
+ * finished needs nobody. The tab's count; the one place to point at
+ * issue 773's "needs you" state when it lands.
+ */
+export function needsYouAgents(
+  why: ReadonlyMap<string, string>,
+  approvalActors: Iterable<string>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [agent, w] of why)
+    if (w === "permission" || w === "asked") out.add(agent);
+  for (const actor of approvalActors)
+    if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
+  return out;
+}
+
 export interface AttentionDeps {
   store: NotificationStore;
   /** A short mark of the agent's output now (a hash of its tail), or null. */
@@ -133,12 +152,14 @@ export interface AttentionDeps {
   /**
    * Issue 172: an agent began to need its person (a permission prompt or
    * a question), and its person isn't looking at it: alert them outside
-   * the bell (alert-feed.ts). Once per wait, never for a repeat.
+   * the bell (alert-feed.ts). Once per wait, never for a repeat. Issue
+   * 774: a finished turn too ("finished"); the feed holds it back unless
+   * its person turned that alert on.
    */
   alert?: (n: {
     agent: string;
     workspace: string;
-    why: "permission" | "asked";
+    why: "permission" | "asked" | "finished";
   }) => void;
 }
 
@@ -337,6 +358,14 @@ export class Attention {
           : { key: "bell.m.turn", vars: { name } },
         link,
       });
+      // Issue 774: alerts outside the bell too, when its person turned
+      // that on (the feed decides) and isn't looking at it.
+      if (!this.onScreen(agent))
+        try {
+          this.d.alert?.({ agent, workspace, why: "finished" });
+        } catch {
+          /* an alert is best effort: the bell has it */
+        }
       return;
     }
     const prev = this.waiting.get(agent);
