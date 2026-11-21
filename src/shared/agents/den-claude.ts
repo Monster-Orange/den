@@ -444,6 +444,7 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
     `Bash(cat ${secret}:*)`,
     `Bash(cat ${sessions}/:*)`,
+    ...SIGN_IN_DENY_RULES,
   ];
 }
 
@@ -464,6 +465,17 @@ function shellSpellings(p: string, home?: string): string[] {
     if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
   return [...new Set(out)];
 }
+
+/**
+ * Sign-in: the commands that print a person's sign-in link, claim link or
+ * token, whatever the CLI's name or path: an agent's Bash tool doesn't run
+ * them. The CLI and the server also check where they run (person-here.ts).
+ */
+export const SIGN_IN_DENY_RULES: readonly string[] = [
+  "Bash(*web login*)",
+  "Bash(*web claim-link*)",
+  "Bash(*web token*)",
+];
 
 /**
  * Review M4 (0.4.46): edits denied under the person's own config folder
