@@ -624,51 +624,18 @@
         border-color: var(--accent);
         color: var(--accent-text);
       }
-      /* ── Add Service modal ────────────────────────────────────────────────── */
-      .add-svc-backdrop {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.65);
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+      /* ── Add Service: the kit's frame (issue 806), its look is dialog.css.
+         Here only its size, and the search and tabs that stay while the
+         list scrolls. ─────────────────────────────────────────────────── */
+      .dk-dlg.add-svc-dlg {
+        width: min(560px, calc(100vw - 32px));
+        max-height: min(80vh, calc(100dvh - 32px));
       }
-      .add-svc-modal {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        width: 560px;
-        max-width: 96vw;
-        max-height: 80vh;
+      .dk-dlg.add-svc-dlg .dk-body {
+        padding: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        box-shadow: var(--shadow);
-      }
-      .add-svc-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px 16px 0;
-        flex-shrink: 0;
-      }
-      .add-svc-header h3 {
-        margin: 0;
-        font-size: 14px;
-        font-weight: 600;
-      }
-      .add-svc-close {
-        background: none;
-        border: none;
-        color: var(--muted);
-        font-size: 20px;
-        cursor: pointer;
-        padding: 0 2px;
-        line-height: 1;
-      }
-      .add-svc-close:hover {
-        color: var(--text);
       }
       .add-svc-tabs {
         display: flex;
@@ -817,13 +784,22 @@
       .add-svc-search:focus {
         border-color: var(--accent);
       }
-      .add-svc-footer-panel {
-        border-top: 1px solid var(--border);
-        padding: 12px 16px 14px;
-        flex-shrink: 0;
+      .add-svc-sortbar,
+      .add-svc-refreshbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+      .add-svc-sort-label {
+        font-size: 10px;
+        color: var(--muted);
       }
       .add-svc-gh-config {
-        margin-bottom: 10px;
+        border-top: 1px solid var(--border);
+        padding: 12px 16px 4px;
+        flex-shrink: 0;
       }
       .add-svc-config-name {
         font-size: 13px;
@@ -868,40 +844,14 @@
       .add-svc-inp:focus {
         border-color: var(--accent);
       }
-      .add-svc-footer {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 10px;
-      }
-      .add-svc-submit {
-        background: var(--accent-fill);
-        border: none;
-        color: var(--on-accent);
-        padding: 6px 20px;
-        border-radius: 5px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .add-svc-submit:hover {
-        filter: brightness(0.92);
-      }
-      .add-svc-submit:disabled {
-        opacity: 0.45;
-        cursor: default;
-      }
-      .add-svc-msg {
+      /* What the server said, above the footer (showMsg sets its class). */
+      #add-svc-msg {
+        display: block;
+        padding: 6px 16px;
         font-size: 11px;
       }
-      .add-svc-msg.ok {
-        color: var(--ok);
-      }
-      .add-svc-msg.err {
-        color: var(--bad);
-      }
-      .add-svc-msg.warn {
-        color: var(--warn);
+      #add-svc-msg:empty {
+        display: none;
       }
       .add-svc-empty {
         font-size: 12px;
@@ -1645,7 +1595,13 @@
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
         // issue 133: Den's own dialogs, in the page's language, never the
         // browser's confirm(), prompt() or alert().
-        import { askConfirm, askText, tell } from "/dialog-den.js";
+        import {
+          askConfirm,
+          askText,
+          tell,
+          dialogHtml,
+          mountDialog,
+        } from "/dialog-den.js";
         import {
           mountGraph,
           graphEmptyNote,
@@ -1693,6 +1649,8 @@
         let _addSvcSelectedGh = null;
         let _addSvcSelectedLocal = null;
         let _addSvcLocalSort = "name"; // 'name' | 'workspace'
+        /** Issue 806: the open Add Service (the kit's frame), or null. */
+        let _addSvcDlg = null;
 
         const escHtml = (s) =>
           String(s)
@@ -3764,31 +3722,112 @@
 
         // ── Add Service modal ─────────────────────────────────────────────────────
 
+        /**
+         * Issue 806: Add Service is the kit's frame (a panel): its heading
+         * and Close, the search, the two tabs and their lists in its body,
+         * the chosen GitHub repo's settings above its footer, and Report
+         * and Add in the footer. mountDialog keeps focus inside, closes it
+         * on Esc and gives focus back to what opened it.
+         */
+        function _addSvcHtml(wsName) {
+          const e = escHtml;
+          const sortBtn = (mode, label) =>
+            `<button type="button" class="svc-sort-btn add-svc-sort-btn${mode === "name" ? " active" : ""}" data-sort="${mode}" onclick="setAddSvcLocalSort('${mode}')">${e(label)}</button>`;
+          const body =
+            `<div class="add-svc-global-search">` +
+            `<input class="add-svc-search" id="add-svc-global-search" type="text" autocomplete="off"` +
+            ` placeholder="${e(pT("as.filter", "Filter repos…"))}" aria-label="${e(pT("as.filter", "Filter repos…"))}"` +
+            ` oninput="renderAddSvcLocalList(); renderAddSvcGhList();">` +
+            `</div>` +
+            `<div class="add-svc-tabs">` +
+            `<button type="button" class="add-svc-tab active" id="add-svc-tab-local" onclick="switchAddSvcTab('local')">` +
+            `${e(pT("as.local", "Local"))} <span class="add-svc-tab-count" id="add-svc-local-count"></span></button>` +
+            `<button type="button" class="add-svc-tab" id="add-svc-tab-gh" onclick="switchAddSvcTab('gh')">` +
+            `${e(pT("as.github", "GitHub"))} <span class="add-svc-tab-count" id="add-svc-gh-count"></span></button>` +
+            `</div>` +
+            `<div class="add-svc-body" id="add-svc-panel-local">` +
+            `<div class="add-svc-sortbar">` +
+            `<span class="add-svc-sort-label">${e(pT("as.sortBy", "Sort by"))}</span>` +
+            `<div class="svc-sort-btns">` +
+            sortBtn("name", pT("as.sortName", "Name")) +
+            sortBtn("workspace", pT("as.sortProject", "Project")) +
+            `</div></div>` +
+            `<div id="add-svc-local-list"><div class="add-svc-empty">${e(pT("as.loading", "Loading…"))}</div></div>` +
+            `</div>` +
+            `<div class="add-svc-body" id="add-svc-panel-gh" style="display: none">` +
+            `<div class="add-svc-refreshbar">` +
+            `<button type="button" class="add-svc-refresh-btn" title="${e(pT("as.refreshTip", "Refresh the GitHub repo list"))}" onclick="_refreshAddSvcGhRepos()">${e(pT("as.refresh", "↻ Refresh"))}</button>` +
+            `</div>` +
+            `<div id="add-svc-gh-list"></div>` +
+            `</div>`;
+          const foot =
+            `<div class="add-svc-gh-config" id="add-svc-gh-config" style="display: none">` +
+            `<div class="add-svc-config-name" id="add-svc-config-name"></div>` +
+            `<div class="add-svc-config-row">` +
+            `<label>${e(pT("as.manage", "Manage"))}</label>` +
+            `<div class="add-svc-radio">` +
+            `<label><input type="radio" name="add-svc-mode" value="dev-managed" checked> ${e(pT("as.modeDev", "Dev-managed"))}</label>` +
+            `<label><input type="radio" name="add-svc-mode" value="managed"> ${e(pT("as.modeManaged", "Managed"))}</label>` +
+            `</div></div>` +
+            `<div class="add-svc-config-row">` +
+            `<label for="add-svc-branch">${e(pT("as.branch", "Branch"))}</label>` +
+            `<input class="add-svc-inp" id="add-svc-branch" list="add-svc-branch-list" autocomplete="off">` +
+            `<datalist id="add-svc-branch-list"></datalist>` +
+            `<label for="add-svc-newbranch">${e(pT("as.newBranch", "New branch"))}</label>` +
+            `<input class="add-svc-inp" id="add-svc-newbranch" placeholder="${e(pT("as.optional", "optional"))}" autocomplete="off">` +
+            `</div></div>` +
+            `<span id="add-svc-msg" role="status"></span>`;
+          return dialogHtml({
+            kind: "panel",
+            id: "add-svc-dlg",
+            className: "add-svc-dlg",
+            title: pT("as.title", "Add Service — {ws}", { ws: wsName }),
+            // Den's word, not the kit's own: the HTML is built before
+            // mountDialog hands the kit Den's words.
+            closeLabel: pT("dlg.close", "Close"),
+            body,
+            foot,
+            actions: [
+              {
+                label: pT("as.add", "Add"),
+                kind: "primary",
+                type: "button",
+                attrs: { id: "add-svc-submit", disabled: true },
+              },
+            ],
+          });
+        }
+
         window.openAddSvcModal = function (wsName) {
+          _addSvcDlg?.close("cancel");
           _addSvcWsName = wsName;
           _addSvcSelectedGh = null;
           _addSvcSelectedLocal = null;
-          document.getElementById("add-svc-title").textContent =
-            "Add Service — " + wsName;
-          document.getElementById("add-svc-msg").textContent = "";
-          document.getElementById("add-svc-gh-config").style.display = "none";
-          document.getElementById("add-svc-submit").disabled = true;
-          document.getElementById("add-svc-global-search").value = "";
+          const h = mountDialog(_addSvcHtml(wsName), {
+            focus: "#add-svc-global-search",
+            show: false,
+            onClose: () => {
+              if (_addSvcDlg === h) _addSvcDlg = null;
+              _addSvcSelectedGh = null;
+              _addSvcSelectedLocal = null;
+            },
+          });
+          _addSvcDlg = h;
+          h.dialog
+            .querySelector("#add-svc-submit")
+            .addEventListener("click", () => void window.submitAddSvc());
           _renderAddSvcLocalList();
           _renderAddSvcGhList();
           const hasLocal = [..._addSvcLocalRepos, ..._addSvcManagedRepos].some(
             (r) => !r.alreadyAdded,
           );
           _switchAddSvcTab(hasLocal ? "local" : "gh");
-          document.getElementById("add-svc-backdrop").style.display = "flex";
+          h.show();
         };
 
-        window.closeAddSvcModal = function (evt) {
-          if (evt && evt.target !== document.getElementById("add-svc-backdrop"))
-            return;
-          document.getElementById("add-svc-backdrop").style.display = "none";
-          _addSvcSelectedGh = null;
-          _addSvcSelectedLocal = null;
+        /** Closes Add Service ("added" once a repo went in). */
+        window.closeAddSvcModal = function (value = "cancel") {
+          _addSvcDlg?.close(value);
         };
 
         function _switchAddSvcTab(tab) {
@@ -3837,6 +3876,8 @@
         }
 
         function _renderAddSvcLocalList() {
+          const listEl = document.getElementById("add-svc-local-list");
+          if (!listEl) return; // Add Service is closed
           const added = _addSvcAddedSet();
           const all = [..._addSvcLocalRepos, ..._addSvcManagedRepos];
           const query = (
@@ -3844,23 +3885,25 @@
           ).toLowerCase();
 
           if (!all.length) {
-            document.getElementById("add-svc-local-list").innerHTML =
-              '<div class="add-svc-empty">No local repos found</div>';
+            listEl.innerHTML =
+              '<div class="add-svc-empty">' +
+              escHtml(pT("as.noLocal", "No local repos found")) +
+              "</div>";
             return;
           }
 
           const makeRow = (r) => {
             const isAdded = added.has(r.relPath);
             const isSel = _addSvcSelectedLocal?.relPath === r.relPath;
-            const isManaged = r.source === "managed";
             const wsName = _wsFromRelPath(r.relPath);
-            const wsLabel = wsName || "None";
             const branchLabel = r.currentBranch ? " @ " + r.currentBranch : "";
             const wsBadge = wsName
               ? '<span class="add-svc-ws-badge">' + escHtml(wsName) + "</span>"
               : "";
             const addedBadge = isAdded
-              ? '<span class="add-svc-pill added">added</span>'
+              ? '<span class="add-svc-pill added">' +
+                escHtml(pT("as.added", "added")) +
+                "</span>"
               : "";
             const cls =
               "add-svc-row" +
@@ -3881,7 +3924,7 @@
               '<span class="add-svc-name">' +
               escHtml(r.name + branchLabel) +
               "</span>" +
-              '<div class="add-svc-row-path">' +
+              '<div class="add-svc-row-path" translate="no">' +
               escHtml(r.relPath) +
               "</div>" +
               "</div>" +
@@ -3929,15 +3972,22 @@
           let html = "";
           if (localFiltered.length)
             html +=
-              '<div class="add-svc-section-label">Dev-Managed</div>' +
+              '<div class="add-svc-section-label">' +
+              escHtml(pT("as.devManagedHead", "Dev-managed")) +
+              "</div>" +
               localFiltered.map(makeRow).join("");
           if (managedFiltered.length)
             html +=
-              '<div class="add-svc-section-label">__DEN_TITLE__-Managed</div>' +
+              '<div class="add-svc-section-label">' +
+              escHtml(pT("as.denManagedHead", "__DEN_TITLE__-managed")) +
+              "</div>" +
               managedFiltered.map(makeRow).join("");
           if (!localFiltered.length && !managedFiltered.length)
-            html = '<div class="add-svc-empty">No results</div>';
-          document.getElementById("add-svc-local-list").innerHTML = html;
+            html =
+              '<div class="add-svc-empty">' +
+              escHtml(pT("as.noResults", "No results")) +
+              "</div>";
+          listEl.innerHTML = html;
         }
 
         window.setAddSvcLocalSort = function (mode) {
@@ -3976,20 +4026,29 @@
             window.denShell.errorToast(err);
             return;
           }
+          const ws = _addSvcWsName;
+          window.closeAddSvcModal("added");
           await loadWorkspaces();
-          await renderContent(_addSvcWsName);
-          document.getElementById("add-svc-backdrop").style.display = "none";
+          await renderContent(ws);
           const freshMsg = document.getElementById("add-msg");
-          if (freshMsg) showMsg(freshMsg, "\u2713 Added " + relPath, "ok");
+          if (freshMsg)
+            showMsg(
+              freshMsg,
+              pT("as.done", "\u2713 Added {name}", { name: relPath }),
+              "ok",
+            );
         };
 
         function _renderAddSvcGhList() {
           const listEl = document.getElementById("add-svc-gh-list");
+          if (!listEl) return; // Add Service is closed
           const ghRepos = _addSvcGhRepos;
 
           if (!ghRepos) {
             listEl.innerHTML =
-              '<div class="add-svc-empty">Loading GitHub repos\u2026</div>';
+              '<div class="add-svc-empty">' +
+              escHtml(pT("as.loadingGh", "Loading GitHub repos\u2026")) +
+              "</div>";
             fetch("/api/github/repos")
               .then((r) => r.json())
               .catch(() => [])
@@ -4026,9 +4085,13 @@
 
           if (!ghCount) {
             listEl.innerHTML =
-              '<div class="add-svc-empty">No repos match &ldquo;' +
-              escHtml(query) +
-              "&rdquo;</div>";
+              '<div class="add-svc-empty">' +
+              escHtml(
+                pT("as.noMatch", "No repos match \u201c{q}\u201d", {
+                  q: query,
+                }),
+              ) +
+              "</div>";
             return;
           }
 
@@ -4037,9 +4100,13 @@
             const isSel = r.name === active;
             const pill = r.hasDen
               ? '<span class="add-svc-pill supported">\u2713 __DEN_CLI__</span>'
-              : '<span class="add-svc-pill no-manifest">no manifest</span>';
+              : '<span class="add-svc-pill no-manifest">' +
+                escHtml(pT("as.noManifest", "no manifest")) +
+                "</span>";
             const addedPill = isAdded
-              ? '<span class="add-svc-pill added">added</span>'
+              ? '<span class="add-svc-pill added">' +
+                escHtml(pT("as.added", "added")) +
+                "</span>"
               : "";
             const cls =
               "add-svc-row selectable" +
@@ -4063,11 +4130,19 @@
           let html = "";
           if (supported.length)
             html +=
-              '<div class="add-svc-section-label">\u2713 __DEN_TITLE__ Supported</div>' +
+              '<div class="add-svc-section-label">' +
+              escHtml(
+                pT("as.supportedHead", "\u2713 __DEN_TITLE__ supported"),
+              ) +
+              "</div>" +
               supported.map(makeRow).join("");
           if (unsupported.length)
             html +=
-              '<div class="add-svc-section-label">\u2014 No __DEN_MANIFEST_YML__</div>' +
+              '<div class="add-svc-section-label">' +
+              escHtml(
+                pT("as.noManifestHead", "\u2014 No __DEN_MANIFEST_YML__"),
+              ) +
+              "</div>" +
               unsupported.map(makeRow).join("");
           listEl.innerHTML = html;
         }
@@ -4076,8 +4151,12 @@
 
         window._refreshAddSvcGhRepos = function () {
           _addSvcGhRepos = null;
-          document.getElementById("add-svc-gh-list").innerHTML =
-            '<div class="add-svc-empty">Refreshing\u2026</div>';
+          const listEl = document.getElementById("add-svc-gh-list");
+          if (listEl)
+            listEl.innerHTML =
+              '<div class="add-svc-empty">' +
+              escHtml(pT("as.refreshing", "Refreshing\u2026")) +
+              "</div>";
           fetch("/api/github/repos?refresh=1")
             .then((r) => r.json())
             .catch(() => [])
@@ -4105,7 +4184,6 @@
             });
           const defaultBranch = repo.defaultBranch || "main";
           branchEl.value = defaultBranch;
-          branchEl.placeholder = defaultBranch;
           dlEl.innerHTML = '<option value="' + escHtml(defaultBranch) + '">';
           document.getElementById("add-svc-newbranch").value = "";
           configEl.style.display = "";
@@ -4177,28 +4255,24 @@
             return;
           }
           submitBtn.disabled = false;
-          if (typeof data !== "object") data = {};
+          if (typeof data !== "object" || !data) data = {};
+          const ws = _addSvcWsName;
+          window.closeAddSvcModal("added");
           await loadWorkspaces();
-          await renderContent(_addSvcWsName);
-          document.getElementById("add-svc-backdrop").style.display = "none";
+          await renderContent(ws);
           const freshMsg = document.getElementById("add-msg");
           if (freshMsg) {
-            const setupNote = data.setupStarted
-              ? " \u00b7 setup running (check Logs)"
-              : "";
-            if (data.missingDeps?.length > 0) {
-              showMsg(
-                freshMsg,
-                "\u2713 Added " +
-                  r.name +
-                  setupNote +
-                  " \u2014 missing deps: " +
-                  data.missingDeps.join(", "),
-                "warn",
-              );
-            } else {
-              showMsg(freshMsg, "\u2713 Added " + r.name + setupNote, "ok");
-            }
+            let text = pT("as.done", "\u2713 Added {name}", { name: r.name });
+            if (data.setupStarted)
+              text += " \u00b7 " + pT("as.setup", "setup running (check Logs)");
+            const missing = data.missingDeps?.length > 0;
+            if (missing)
+              text +=
+                " \u2014 " +
+                pT("as.missing", "missing deps: {deps}", {
+                  deps: data.missingDeps.join(", "),
+                });
+            showMsg(freshMsg, text, missing ? "warn" : "ok");
           }
         };
 
@@ -5213,170 +5287,6 @@
 
         init();
       </script>
-
-      <!-- ── Add Service modal ──────────────────────────────────────────────────── -->
-      <div
-        class="add-svc-backdrop"
-        id="add-svc-backdrop"
-        style="display: none"
-        onclick="closeAddSvcModal(event)"
-      >
-        <div class="add-svc-modal">
-          <div class="add-svc-header">
-            <h3 id="add-svc-title">Add Service</h3>
-            <button class="add-svc-close" onclick="closeAddSvcModal()">
-              ×
-            </button>
-          </div>
-
-          <!-- Global search — filters whichever tab is active -->
-          <div class="add-svc-global-search">
-            <input
-              class="add-svc-search"
-              id="add-svc-global-search"
-              type="text"
-              placeholder="Filter repos…"
-              oninput="
-                renderAddSvcLocalList();
-                renderAddSvcGhList();
-              "
-              autocomplete="off"
-            />
-          </div>
-
-          <div class="add-svc-tabs">
-            <button
-              class="add-svc-tab active"
-              id="add-svc-tab-local"
-              onclick="switchAddSvcTab('local')"
-            >
-              Local
-              <span class="add-svc-tab-count" id="add-svc-local-count"></span>
-            </button>
-            <button
-              class="add-svc-tab"
-              id="add-svc-tab-gh"
-              onclick="switchAddSvcTab('gh')"
-            >
-              GitHub
-              <span class="add-svc-tab-count" id="add-svc-gh-count"></span>
-            </button>
-          </div>
-
-          <!-- Local tab -->
-          <div class="add-svc-body" id="add-svc-panel-local">
-            <div
-              style="
-                display: flex;
-                align-items: center;
-                justify-content: flex-end;
-                gap: 6px;
-                margin-bottom: 4px;
-              "
-            >
-              <span style="font-size: 10px; color: var(--muted)">Sort by</span>
-              <div class="svc-sort-btns">
-                <button
-                  class="svc-sort-btn add-svc-sort-btn active"
-                  data-sort="name"
-                  onclick="setAddSvcLocalSort('name')"
-                >
-                  Name
-                </button>
-                <button
-                  class="svc-sort-btn add-svc-sort-btn"
-                  data-sort="workspace"
-                  onclick="setAddSvcLocalSort('workspace')"
-                >
-                  Project
-                </button>
-              </div>
-            </div>
-            <div id="add-svc-local-list">
-              <div class="add-svc-empty">Loading…</div>
-            </div>
-          </div>
-
-          <!-- GitHub tab -->
-          <div class="add-svc-body" id="add-svc-panel-gh" style="display: none">
-            <div
-              style="
-                display: flex;
-                align-items: center;
-                justify-content: flex-end;
-                margin-bottom: 2px;
-              "
-            >
-              <button
-                class="add-svc-refresh-btn"
-                title="Refresh GitHub repo list"
-                onclick="_refreshAddSvcGhRepos()"
-              >
-                ↻ refresh
-              </button>
-            </div>
-            <div id="add-svc-gh-list"></div>
-          </div>
-
-          <!-- Stable footer — always visible -->
-          <div class="add-svc-footer-panel">
-            <div
-              class="add-svc-gh-config"
-              id="add-svc-gh-config"
-              style="display: none"
-            >
-              <div class="add-svc-config-name" id="add-svc-config-name"></div>
-              <div class="add-svc-config-row">
-                <label>Manage</label>
-                <div class="add-svc-radio">
-                  <label
-                    ><input
-                      type="radio"
-                      name="add-svc-mode"
-                      value="dev-managed"
-                      checked
-                    />
-                    Dev-managed</label
-                  >
-                  <label
-                    ><input type="radio" name="add-svc-mode" value="managed" />
-                    Managed</label
-                  >
-                </div>
-              </div>
-              <div class="add-svc-config-row">
-                <label>Branch</label>
-                <input
-                  class="add-svc-inp"
-                  id="add-svc-branch"
-                  list="add-svc-branch-list"
-                  placeholder="main"
-                  autocomplete="off"
-                />
-                <datalist id="add-svc-branch-list"></datalist>
-                <label>New branch</label>
-                <input
-                  class="add-svc-inp"
-                  id="add-svc-newbranch"
-                  placeholder="optional"
-                  autocomplete="off"
-                />
-              </div>
-            </div>
-            <div class="add-svc-footer">
-              <span class="add-svc-msg" id="add-svc-msg"></span>
-              <button
-                class="add-svc-submit"
-                id="add-svc-submit"
-                disabled
-                onclick="submitAddSvc()"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </main>
   </body>
 </html>
