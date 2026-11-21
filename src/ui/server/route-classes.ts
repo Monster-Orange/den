@@ -73,6 +73,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/graph.html",
     "/agents",
     "/agents.html",
+    // Issue 482: the Terminals page.
+    "/terminals",
     "/server-agent",
     "/server-agent.html",
     "/tests",

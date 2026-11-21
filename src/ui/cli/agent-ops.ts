@@ -8620,7 +8620,7 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
-  opts: { cwd?: string } = {},
+  opts: { cwd?: string; replaces?: string } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
@@ -8673,6 +8673,20 @@ export async function startPlainSession(
           });
         throw e;
       });
+    // Issue 482: Restart on an exited terminal: once the new one runs, the
+    // host forgets the exited one, so the list keeps one row for it. Only
+    // an exited plain shell of this project: never a running one, never an
+    // agent's (its record keeps its session).
+    if (opts.replaces) {
+      const old = (await c.list()).find((s) => s.ref.id === opts.replaces);
+      const agents = listRecords(d.stateDir());
+      if (
+        old?.exited &&
+        old.name.startsWith(`${d.dist}-${ws}:`) &&
+        !agents.some((r) => r.session.id === old.ref.id)
+      )
+        await c.forget(old.ref.id).catch(() => {});
+    }
     return { info };
   });
 }

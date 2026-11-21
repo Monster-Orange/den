@@ -1,10 +1,12 @@
 /**
  * D73: the rail's Terminal opens a plain shell in the project's folder, in
  * the same pane agents use. Typing reaches it; what it prints shows. A
- * reload keeps the tab and starts no second shell. A project's "Terminal
- * here" opens one in that project. The label and tooltip are translated.
- * Issue 448: a project that already runs a shell gets that one again
- * (terminal-reuse.browser.test.ts has the rest).
+ * reload keeps the tab and starts no second shell. A project's "New
+ * terminal" opens a new one in that project. The label and tooltip are
+ * translated. Issue 448: the rail's Terminals in a project that already
+ * runs a shell gets that one again (terminal-reuse.browser.test.ts has
+ * the rest). Issue 482: Terminals is a page of its own (/terminals); an
+ * older /agents?terminal=1 link goes there.
  *
  * The demo distribution (helpers/agents-page-server.ts), a scripted PTY
  * (no real shell runs). Invented names only.
@@ -78,7 +80,7 @@ describe("D73: Terminal", () => {
     const p = await open("/services?ws=north");
     const link = p.locator('#den-rail [data-nav="terminal"]');
     expect(await link.getAttribute("title")).toBe(
-      "Open a shell in this project's folder, in Den",
+      "Your terminals in one list, each in a project's folder",
     );
     const before = s!.made.length;
     await p.goto(
@@ -86,6 +88,7 @@ describe("D73: Terminal", () => {
     );
     await p.waitForSelector(".pane .xterm-rows");
     await p.waitForFunction(() => !location.search.includes("terminal="));
+    expect(new URL(p.url()).pathname).toBe("/terminals");
     const pty = s!.made.at(-1)!;
     expect(s!.made.length).toBe(before + 1);
     expect(pty.opts.cwd).toBe(s!.wsDir("north"));
@@ -131,13 +134,15 @@ describe("D73: Terminal", () => {
     expect(await rows(p, id!)).toBeDefined();
   }, 90_000);
 
-  it("a project's Terminal here opens one in that project", async () => {
+  it("a project's New terminal opens one in that project", async () => {
     if (skip()) return;
     const p = await open("/?ws=south");
     const here = p.locator("#ws-term-here");
     await here.waitFor();
-    expect(await here.textContent()).toBe("Terminal here");
-    expect(await here.getAttribute("href")).toBe("/agents?terminal=1&ws=south");
+    expect(await here.textContent()).toBe("New terminal");
+    expect(await here.getAttribute("href")).toBe(
+      "/terminals?terminal=1&fresh=1&project=south",
+    );
     const before = s!.made.length;
     await here.click();
     await p.waitForFunction(() => !location.search.includes("terminal="));
@@ -150,18 +155,20 @@ describe("D73: Terminal", () => {
     if (skip()) return;
     // north and south each run a shell already (the tests above): issue
     // 448, Terminal opens that one again, as a tab next to the others.
-    const p = await open("/?ws=north");
+    // Issue 482: a project's New terminal always starts one, so the rail's
+    // Terminals link (no fresh=1) is the one that reuses.
     const first = s!.made.length;
-    await p.locator("#ws-term-here").click();
+    const p = await open("/terminals?terminal=1&project=north");
     await p.waitForFunction(() => !location.search.includes("terminal="));
     await p.waitForSelector(".pane[data-id]");
     const firstId = new URL(p.url()).searchParams.get("open")!;
     expect(firstId).toBeTruthy();
     expect(s!.made.length).toBe(first);
 
-    // Another project's Terminal here: the first tab stays.
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=south"));
-    await p.locator("#ws-term-here").click();
+    // Another project's Terminal: the first tab stays.
+    await p.goto(
+      signInUrl(s!.stateDir, s!.base, "/terminals?terminal=1&project=south"),
+    );
     await p.waitForFunction(() => !location.search.includes("terminal="));
     await p.waitForFunction(
       () =>
@@ -179,13 +186,13 @@ describe("D73: Terminal", () => {
       open2,
     );
 
-    // The rail's Terminal from /agents?ws=south: south's shell (not the
-    // first project's) in front, no third tab.
+    // The rail's Terminal from /terminals?ws=south: south's shell (not
+    // the first project's) in front, no third tab.
     await p.goto(
       signInUrl(
         s!.stateDir,
         s!.base,
-        `/agents?ws=south&open=${open2.join(",")}`,
+        `/terminals?ws=south&open=${open2.join(",")}`,
       ),
     );
     await p.waitForSelector(".pane[data-id]", { state: "attached" });
@@ -203,14 +210,14 @@ describe("D73: Terminal", () => {
     expect(s!.made.length).toBe(first);
   }, 120_000);
 
-  it("in Spanish: Terminal, with its tooltip", async () => {
+  it("in Spanish: Terminales, with its tooltip", async () => {
     if (skip()) return;
     expect(await s!.settings({ language: "es" })).toBe(200);
     try {
       const p = await open("/services?ws=north");
       const link = p.locator('#den-rail [data-nav="terminal"]');
       expect(await link.getAttribute("title")).toBe(
-        "Abrir una terminal en la carpeta de este proyecto, en Den",
+        "Tus terminales en una lista, cada una en la carpeta de un proyecto",
       );
     } finally {
       await s!.settings({ language: null });
