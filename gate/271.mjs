@@ -12,6 +12,9 @@ export const clauses = [
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000;
 
+// Read only (issue 845): reads Settings › Project's Hub project picker; Create is never pressed.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }

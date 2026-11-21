@@ -183,6 +183,8 @@ export const clauses = [
 // Optional: run once per cell; expect then gets [{ cell, result }].
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000; // optional; a cell over it is ok: false
+// Optional: it changes nothing in Den, so it may run beside others.
+export const readOnly = true;
 export async function setup(ctx) {} // prepare the bed; returns state
 export async function run(ctx, state) {} // act; returns what it saw
 export async function teardown(ctx, state) {} // optional; always called
@@ -205,6 +207,38 @@ export function expect(cells) {
   what it needs under its own names and removes them; it never changes
   the bed's settings for good, and never touches a live install.
 - Names stay neutral (the one rule above applies here too).
+
+### Read-only checks
+
+A check that changes nothing in Den says so, with a one-line comment
+naming what it reads:
+
+```js
+// Read only (issue 845): reads doctor and Settings › Agents.
+export const readOnly = true;
+```
+
+The bed runs read-only checks together, a few at a time, each in its own
+browser context, inside one test slot. Every other check runs alone, one
+after another, and the ones that restart or reconfigure Den run last.
+
+A read-only check may sign in as the fixture person, read the API and the
+CLI's reads (`doctor`, `agents list`, `gate status`, ...), open pages, and
+click what only changes the page's view. It never:
+
+- writes settings or config (`POST /api/settings`, `config`, user.yml);
+- starts, stops, removes or drives an agent (`ctx.agent`, `ctx.stub`);
+- restarts or takes down Den, its web server, edge, host or address;
+- writes to Hub, asks for a held write, or files a notification or report;
+- asks for a gate slot, writes files, starts a process or signs out;
+- fakes a request with `page.route` (a missed route is a real write).
+
+Leave it off when in doubt, and when the check depends on what another
+check could change mid-run (exact counts of agents or bell items) or on
+fixed ports or names. Leaving it off is always safe: the check just runs
+alone. `tests/unit/test-infra/gate-readonly-modules.test.ts` reads every
+check marked read-only and fails, naming the check, the line and the
+call, on any write it finds.
 
 What the harness passes in `ctx`:
 
