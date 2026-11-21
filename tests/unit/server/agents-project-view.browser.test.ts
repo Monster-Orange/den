@@ -153,9 +153,14 @@ async function open(next: string): Promise<Page> {
   return p;
 }
 
-/** The projects of the list's groups, and the tabs' ids. */
+/**
+ * The projects of the list's running rows (issue 773: one list in bands,
+ * each row naming its project), in order of first row, and the tabs' ids.
+ */
 const listed = (p: Page) =>
-  p.$$eval("#agl .wsg", (xs) => xs.map((x) => (x as HTMLElement).dataset.ws));
+  p.$$eval("#agl .agband button.agr[data-ws]", (xs) => [
+    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
+  ]);
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),
@@ -243,9 +248,9 @@ describe("#80: a project's view holds only its own", () => {
       () => new URLSearchParams(location.search).get("project") === "north",
     );
     await p.waitForFunction(() =>
-      Array.from(document.querySelectorAll("#agl .wsg")).every(
-        (x) => (x as HTMLElement).dataset.ws === "north",
-      ),
+      Array.from(
+        document.querySelectorAll("#agl .agband button.agr[data-ws]"),
+      ).every((x) => (x as HTMLElement).dataset.ws === "north"),
     );
     expect(await listed(p)).toEqual(["north"]);
     await expect(p.locator("#ws-pill").textContent()).resolves.toContain(

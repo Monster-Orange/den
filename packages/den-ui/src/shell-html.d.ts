@@ -241,7 +241,7 @@ export interface BellPanelOptions {
    * Issue 101: the rows of the panel's two sections, in place of rows:
    * the kit heads them "Needs you" (always first) and "Earlier".
    */
-  sections?: { needs: string; earlier?: string };
+  sections?: { needs: string; done?: string; earlier?: string };
   /** The empty state: its words, and HTML under them. */
   empty?: { text?: string; more?: string };
   after?: string;

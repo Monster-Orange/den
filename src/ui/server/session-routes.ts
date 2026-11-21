@@ -58,6 +58,11 @@ import {
   SERVER_SCOPE,
   isServerScope,
 } from "../../shared/agents/server-agent.js";
+import {
+  personKey,
+  withAgentStates,
+  type AgentStateDeps,
+} from "./agent-state.js";
 import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
@@ -183,6 +188,11 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
+  /**
+   * Issue 773: what each running agent's state for the person asking is
+   * made of (absent: no states; the page ranks every agent Idle).
+   */
+  agentStates?: () => AgentStateDeps;
 }
 
 /** den#156: how long a list waits for the host, and the page for a list. */
@@ -453,6 +463,12 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
+  /**
+   * Issue 773: its state for the person asking (running agents only):
+   * needs, done (finished, not seen), working or idle; and since when.
+   */
+  attn?: "needs" | "done" | "working" | "idle";
+  attnSince?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;
@@ -831,13 +847,21 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const listed = listedSessions(
+    sessions,
+    d,
+    wanted?.known ? wanted.workspace : undefined,
+    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
+  );
+  // Issue 773: each running agent's state for this person.
+  let states: AgentStateDeps | undefined;
+  try {
+    states = deps.agentStates?.();
+  } catch {
+    states = undefined;
+  }
   sendJson(res, {
-    sessions: listedSessions(
-      sessions,
-      d,
-      wanted?.known ? wanted.workspace : undefined,
-      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-    ),
+    sessions: states ? withAgentStates(listed, personKey(req), states) : listed,
     workspaces: d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
@@ -1506,8 +1530,18 @@ async function helpersRunning(
     /* no host: nothing runs, so no helper runs */
   }
   let running = 0;
-  for (const r of listedSessions(sessions, d))
+  // Issue 773: the rail's Agents item counts the agents that need you.
+  let needs = 0;
+  for (const r of listedSessions(sessions, d)) {
     running += r.helpers?.running ?? 0;
-  sendJson(res, { running });
+    if (
+      r.kind === "agent" &&
+      r.state === "running" &&
+      r.waiting &&
+      r.waitingWhy !== "input"
+    )
+      needs += 1;
+  }
+  sendJson(res, { running, needs });
   return true;
 }

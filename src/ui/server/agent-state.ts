@@ -1,0 +1,141 @@
+/**
+ * Issue 773: each running agent's state for one person, one of four (the
+ * kit's attention table, packages/den-ui/src/attention.js):
+ *   needs    stopped on a permission, a question, an Allow (or its folder
+ *            trust): its row's `waiting`, but not an idle notice ("input")
+ *   working  in a turn (attention.ts: a turn began, none ended since)
+ *   done     a turn ended after this person last opened it (the seen mark,
+ *            src/shared/seen-mark.ts: subject "agent:<id>", version the
+ *            turn's end)
+ *   idle     none of these
+ * A stopped agent and a plain shell have none: the Stopped group and the
+ * Terminals keep them. `attnSince`: since when it waits (needs), when it
+ * finished (done), since when it works, or its last finish (idle).
+ */
+import type * as http from "http";
+import type { SeenMarks } from "../../shared/seen-mark.js";
+import { principalOf } from "./request-guard.js";
+
+export type AgentAttn = "needs" | "done" | "working" | "idle";
+
+export interface AgentStateDeps {
+  seen: SeenMarks;
+  /** The agents in a turn now, and since when (ms). */
+  working: () => ReadonlyMap<string, number>;
+  /** Since when `agent` waits (an ISO time), when known. */
+  waitingSince?: (agent: string) => string | undefined;
+}
+
+/** The seen mark's subject for agent `id`. */
+export const agentSubject = (id: string): string => `agent:${id}`;
+
+/**
+ * The person a request is: the person it proved ("person:<user>"; a
+ * signed-in browser is its OS user's, so a phone and a desktop are one
+ * person), else Den's one person.
+ */
+export function personKey(req: http.IncomingMessage): string {
+  const p = principalOf(req);
+  return p && p.startsWith("person:") ? p : "person";
+}
+
+interface RowLike {
+  kind?: string;
+  agent?: string;
+  state?: string;
+  waiting?: boolean;
+  waitingWhy?: string;
+}
+
+/** `row`'s state for `person`, or null (not a running agent). */
+export function agentStateOf(
+  row: RowLike,
+  person: string,
+  d: AgentStateDeps,
+): { attn: AgentAttn; attnSince?: string } | null {
+  if (row.kind !== "agent" || !row.agent || row.state !== "running")
+    return null;
+  const id = row.agent;
+  const needs = !!row.waiting && row.waitingWhy !== "input";
+  const workingAt = d.working().get(id);
+  const latest = d.seen.latest(agentSubject(id));
+  const done =
+    !!latest && !d.seen.isSeen({ subject: agentSubject(id), person });
+  // The kit's attentionState (packages/den-ui/src/attention.js), the same
+  // rule: a need first, then a turn under way, then unseen work.
+  const attn: AgentAttn = needs
+    ? "needs"
+    : workingAt !== undefined
+      ? "working"
+      : done
+        ? "done"
+        : "idle";
+  const since =
+    attn === "needs"
+      ? d.waitingSince?.(id)
+      : attn === "done"
+        ? latest?.at
+        : attn === "working" && workingAt !== undefined
+          ? new Date(workingAt).toISOString()
+          : latest?.at;
+  return { attn, ...(since ? { attnSince: since } : {}) };
+}
+
+/** The list's rows, each running agent with its state for `person`. */
+export function withAgentStates<T extends RowLike>(
+  rows: readonly T[],
+  person: string,
+  d: AgentStateDeps,
+): (T & { attn?: AgentAttn; attnSince?: string })[] {
+  return rows.map((r) => {
+    const s = agentStateOf(r, person, d);
+    return s ? { ...r, ...s } : r;
+  });
+}
+
+export interface DoneAgent {
+  agent: string;
+  name: string;
+  workspace: string;
+  /** When its turn ended (ISO). */
+  at: string;
+  link: string;
+}
+
+/**
+ * The bell's Done, not seen (issue 773): the agents whose last turn ended
+ * after `person` last opened them, oldest first. An agent stopped after it
+ * finished is left out (it is in Stopped), and so is one working or
+ * waiting again (Working, Needs you).
+ */
+export function doneAgents(
+  records: readonly {
+    id: string;
+    workspace: string;
+    displayName?: string;
+    stoppedAt?: string;
+  }[],
+  person: string,
+  d: AgentStateDeps,
+  busy: ReadonlySet<string> = new Set(),
+): DoneAgent[] {
+  const working = d.working();
+  const out: DoneAgent[] = [];
+  for (const r of records) {
+    if (working.has(r.id) || busy.has(r.id)) continue;
+    const subject = agentSubject(r.id);
+    const latest = d.seen.latest(subject);
+    if (!latest || d.seen.isSeen({ subject, person })) continue;
+    if (r.stoppedAt && r.stoppedAt >= latest.at) continue;
+    out.push({
+      agent: r.id,
+      name: r.displayName || r.id,
+      workspace: r.workspace,
+      at: latest.at,
+      link: `/agents?project=${encodeURIComponent(r.workspace)}&agent=${encodeURIComponent(r.id)}`,
+    });
+  }
+  return out.sort(
+    (a, b) => a.at.localeCompare(b.at) || a.agent.localeCompare(b.agent),
+  );
+}

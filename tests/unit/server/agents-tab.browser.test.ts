@@ -216,17 +216,18 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 45_000);
 
-  it("lists sessions and agents by workspace: plain ones labelled shell, the count says agents and shells, the revoked token marked; ?ws= narrows it", async () => {
+  it("lists sessions and agents of every project in one list: plain ones labelled shell, the count says agents, shells and states, the revoked token marked; ?ws= narrows it", async () => {
     if (skip()) return;
     const p = await page("/agents");
-    expect(
-      await p.$$eval(".wsg", (gs) =>
-        gs.map((g) => (g as HTMLElement).dataset.ws),
-      ),
-    ).toEqual(["north", "south"]);
+    // Issue 773: one list across projects; each row names its project.
+    const projects = () =>
+      p.$$eval("#agl .agband button.agr[data-ws]", (bs) =>
+        [...new Set(bs.map((b) => (b as HTMLElement).dataset.ws))].sort(),
+      );
+    expect(await projects()).toEqual(["north", "south"]);
     const shell = p.locator(`.agr[data-id="${id("shell")}"]`);
     expect(await shell.locator(".sbdg").textContent()).toBe("shell");
-    expect(await shell.locator(".st").textContent()).toBe("running");
+    expect(await shell.locator(".cp").textContent()).toBe("Idle");
     const scout = p.locator(`.agr[data-id="${id("scout")}"]`);
     expect(await scout.getAttribute("data-kind")).toBe("agent");
     expect((await scout.locator(".nm").textContent())?.trim()).toBe(
@@ -236,18 +237,12 @@ describe("the Agents tab", () => {
       "token revoked",
     );
     expect(await p.textContent("#ag-count")).toBe(
-      "1 agent · 4 shells · 0 waiting · all projects",
+      "1 agent · 4 shells · 5 idle · all projects",
     );
     await p.goto(`${s!.base}/agents?ws=south`);
     await p.waitForSelector("#agl:not([aria-busy]) .agr");
-    expect(
-      await p.$$eval(".wsg", (gs) =>
-        gs.map((g) => (g as HTMLElement).dataset.ws),
-      ),
-    ).toEqual(["south"]);
-    expect(await p.textContent("#ag-count")).toBe(
-      "2 shells · 0 waiting · south",
-    );
+    expect(await projects()).toEqual(["south"]);
+    expect(await p.textContent("#ag-count")).toBe("2 shells · 2 idle · south");
     await p.context().close();
   }, 45_000);
 
@@ -621,17 +616,14 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 60_000);
 
-  it("0.4.17: an agent links back to its workspace: the pane header, the list's group, and ⌘K Go to workspace", async () => {
+  it("0.4.17: an agent links back to its workspace: the pane header and ⌘K Go to workspace", async () => {
     if (skip()) return;
     const p = await page(`/agents?open=${id("scout")}`);
     const head = `.pane[data-id="${id("scout")}"] .bar2 .where a.wslink`;
     await p.waitForSelector(head);
     expect(await p.getAttribute(head, "href")).toBe("/local-dev?project=north");
     expect(await p.textContent(head)).toBe("north");
-    const group = '#agl .wsg[data-ws="north"] .wsh a.wslink';
-    expect(await p.getAttribute(group, "href")).toBe(
-      "/local-dev?project=north",
-    );
+    // Issue 773: the list has no project heading now (one list in bands).
     // ⌘K: an agent's name finds its workspace.
     await p.click("#den-search");
     await p.fill("#den-pal-q", "scout");

@@ -17,6 +17,10 @@
  * decision, a mention) shows open and counts on the badge. The rest
  * (finished, answers, releases and checks) folds into one Updates row;
  * opening the agent clears its updates.
+ *
+ * Issue 773: the agents Done, not seen (GET /api/notifications `done`, this
+ * person's) have their own section under Needs you; a row opens the agent,
+ * and opening it is seen. The badge counts Needs you plus Done, not seen.
  */
 import { formatTime, formatTitle } from "/kit/time.js";
 // den-ui 0.7.0: the bell, its badge and its panel are the kit's; Den
@@ -179,6 +183,28 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
+/** Issue 773: one Done, not seen row: "<name> finished", its project, when. */
+function doneRowHtml(d) {
+  const link = safeLink(d.link);
+  const text = tr("bell.doneRow", { name: d.name || d.agent });
+  const where =
+    d.workspace === "den-server" ? tr("bell.server") : d.workspace || "";
+  return (
+    `<div class="den-bell-row" data-kind="done" data-agent="${esc(d.agent)}">` +
+    `<span class="den-dot ok" aria-hidden="true"></span>` +
+    (link
+      ? `<a href="${esc(link)}" data-bell="open-done">${esc(text)}<span class="den-bell-sub">${esc(where)}</span></a>`
+      : `<span class="den-bell-t">${esc(text)}</span>`) +
+    `<time datetime="${esc(d.at)}" title="${esc(formatTitle(d.at))}">${esc(bellAgo(d.at))}</time>` +
+    `</div>`
+  );
+}
+
+/** Issue 773: the badge's count: Needs you plus Done, not seen. */
+export function bellCountOf(b) {
+  return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
+}
+
 /** `needs`: issue 101, a Needs you group has no Mark read. */
 function groupsHtml(groups, ui, needs = false) {
   return groups
@@ -224,6 +250,7 @@ export function bellPanel(b, ui = {}) {
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
+  const done = Array.isArray(b?.done) ? b.done : [];
   const actions =
     (b?.unread || updates.unread
       ? `<button type="button" data-bell="all">${esc(tr("bell.markAll"))}</button>`
@@ -243,7 +270,7 @@ export function bellPanel(b, ui = {}) {
     ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
       (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
     : "";
-  if (!groups.length && !older.count && !updates.count)
+  if (!groups.length && !older.count && !updates.count && !done.length)
     return {
       ...panel,
       items: [],
@@ -263,6 +290,8 @@ export function bellPanel(b, ui = {}) {
     ...panel,
     sections: {
       needs: groupsHtml(groups, u, true),
+      // Issue 773: Done, not seen, under Needs you (when there is any).
+      ...(done.length ? { done: done.map(doneRowHtml).join("") } : {}),
       earlier:
         updatesHtml +
         (older.count
@@ -355,7 +384,7 @@ export function initBell(doc = document) {
     const b = await load();
     if (!b) return;
     last = b;
-    bell.setCount(b?.unread ?? 0);
+    bell.setCount(bellCountOf(b));
     if (bell.isOpen()) paint();
   };
   pop.addEventListener("click", async (e) => {
@@ -365,20 +394,27 @@ export function initBell(doc = document) {
       // space between) opens it as its link does.
       const a = e.target
         .closest(".den-bell-row")
-        ?.querySelector('a[data-bell="open"]');
+        ?.querySelector('a[data-bell="open"], a[data-bell="open-done"]');
       if (a) a.click();
       return;
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    if (what === "open") {
+    // Issue 773: a Done row opens the agent; opening it is seen.
+    if (what === "open" || what === "open-done") {
+      // Marked read first (issue 773: a Done row, seen); the link then
+      // opens the agent. Sent so it outlives the page the link leaves.
       const id = el.closest("[data-id]")?.dataset.id;
-      // Marked read first; the link then opens the agent.
-      if (id)
-        void fetch("/api/notifications/read", {
+      const agent = el.closest("[data-agent]")?.dataset.agent;
+      const [path, body] =
+        what === "open-done"
+          ? ["/api/notifications/looking", agent ? { agents: [agent] } : null]
+          : ["/api/notifications/read", id ? { id } : null];
+      if (body)
+        void fetch(path, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify(body),
           keepalive: true,
         }).catch(() => {});
       return;

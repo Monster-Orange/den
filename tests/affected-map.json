@@ -33,7 +33,15 @@
     "tests/unit/server/ui-assets.test.ts",
     "tests/unit/server/route-classes.test.ts"
   ],
-  "subjects": {},
+  "subjects": {
+    "tests/unit/server/agents-states-773.browser.test.ts": [
+      "src/ui/server/agent-state.ts",
+      "src/shared/seen-mark.ts",
+      "src/ui/server/attention.ts",
+      "src/ui/server/notification-routes.ts",
+      "src/ui/server/session-routes.ts"
+    ]
+  },
   "subjectless": [
     "tests/unit/cli/address-455-unchecked.integration.test.ts",
     "tests/unit/cli/dev-metrics-cli-ship.integration.test.ts",
@@ -214,6 +222,7 @@
   "rules": [
     {
       "when": [
+        "src/ui/server/public/agent-bands.js",
         "src/ui/server/public/agent-helpers.js",
         "src/ui/server/public/agent-order.js",
         "src/ui/server/public/agents-page.js",
@@ -248,6 +257,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -271,6 +281,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
@@ -302,6 +313,7 @@
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
@@ -322,7 +334,8 @@
       ],
       "run": [
         "tests/unit/server/embed-frame.browser.test.ts",
-        "tests/unit/server/one-url-per-module.browser.test.ts"
+        "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts"
       ],
       "why": "embed.html"
     },
@@ -337,6 +350,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
@@ -407,7 +421,6 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
-        "tests/unit/server/agent-order.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -431,6 +444,7 @@
         "tests/unit/server/no-services-repo-projects.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
@@ -466,6 +480,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
@@ -485,6 +500,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
@@ -506,6 +522,7 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -539,6 +556,7 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
@@ -593,6 +611,7 @@
         "tests/unit/server/my-reports.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pair-unseen.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/report-dialog.browser.test.ts",
@@ -640,6 +659,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/verify-page.browser.test.ts"
       ],
@@ -671,6 +691,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -694,6 +715,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
@@ -755,6 +777,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -790,6 +813,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
@@ -850,6 +874,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -876,6 +901,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
@@ -928,6 +954,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -962,6 +989,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
@@ -1020,6 +1048,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
@@ -1049,7 +1078,6 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
-        "tests/unit/server/agent-order.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -1080,6 +1108,7 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
@@ -1177,6 +1206,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
@@ -1223,6 +1253,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
@@ -1335,6 +1366,7 @@
       "run": [
         "tests/unit/agents/quarantined-launch.test.ts",
         "tests/unit/agents/uploads.test.ts",
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/button-kit.test.ts",
         "tests/unit/den-ui/dialog-frame-guard.test.ts",
         "tests/unit/den-ui/kit-route.test.ts",
@@ -1383,6 +1415,7 @@
         "tests/unit/cli/repo-add-no-run.integration.test.ts",
         "tests/unit/cli/repo-add.integration.test.ts",
         "tests/unit/cli/up-multi-service-dep.integration.test.ts",
+        "tests/unit/den-ui/attention-kit.test.ts",
         "tests/unit/den-ui/site-head-kit.test.ts",
         "tests/unit/edge/ca.test.ts",
         "tests/unit/environment-manager/workspace-manager.test.ts",
@@ -1396,10 +1429,13 @@
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/agent-bands-773.test.ts",
+        "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
+        "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
@@ -1490,6 +1526,7 @@
     {
       "when": ["scripts/words.js"],
       "run": [
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
@@ -1559,6 +1596,17 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "src/shared/seen-mark.ts",
+        "src/ui/server/agent-state.ts",
+        "src/ui/server/attention.ts",
+        "src/ui/server/notification-routes.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-states-773.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/shared/alerts.ts", "src/ui/server/alerts.ts"],
       "run": ["tests/unit/server/alerts.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -1617,6 +1665,13 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/ui/server/index.ts", "src/ui/server/named-address.ts"],
+      "run": [
+        "tests/unit/server/issue-601-loopback-address.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/mcp/server.ts"],
       "run": ["tests/unit/server/mode-layers.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -1632,6 +1687,11 @@
     {
       "when": ["src/shared/org-sources.ts"],
       "run": ["tests/unit/server/org-sources.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/theme-runtime.ts", "src/ui/server/ui-assets.ts"],
+      "run": ["tests/unit/server/popup-font.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
