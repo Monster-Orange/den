@@ -612,6 +612,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -984,6 +985,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1250,6 +1252,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1335,6 +1338,7 @@
       "run": [
         "tests/unit/agents/quarantined-launch.test.ts",
         "tests/unit/agents/uploads.test.ts",
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/button-kit.test.ts",
         "tests/unit/den-ui/dialog-frame-guard.test.ts",
         "tests/unit/den-ui/kit-route.test.ts",
@@ -1396,10 +1400,15 @@
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/hub-change.test.ts",
+        "tests/unit/server/hub-connect-review.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
+        "tests/unit/server/settings-hub-review.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
+        "tests/unit/shared/hub-binding.test.ts",
+        "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
@@ -1490,6 +1499,7 @@
     {
       "when": ["scripts/words.js"],
       "run": [
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
@@ -1617,6 +1627,13 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/ui/server/index.ts", "src/ui/server/named-address.ts"],
+      "run": [
+        "tests/unit/server/issue-601-loopback-address.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/mcp/server.ts"],
       "run": ["tests/unit/server/mode-layers.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -1676,6 +1693,11 @@
     {
       "when": ["src/shared/settings-cli-rows.ts"],
       "run": ["tests/unit/server/settings-cli-rows.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/hub-connect-review.ts"],
+      "run": ["tests/unit/server/settings-hub-review.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

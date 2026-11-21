@@ -312,30 +312,30 @@ describe("finish: what comes back from Hub", () => {
     expect(h.hc.lastResult()).toBeNull();
   });
 
-  it("0.4.45: Connect links the clear projects and says how many need a pick; an older Hub links none", async () => {
+  it("issue 646: Connect links nothing itself; it says how many projects wait for the review", async () => {
     for (const [after, said] of [
       [
-        { linked: ["north", "west"], unclear: ["south"] },
-        "Connected to Hub (Acme Co). Linked 2 projects to Hub; 1 needs your pick.",
+        { review: 3 },
+        "Connected to Hub (Acme Co). Review 3 projects below, then press Connect and link all.",
       ],
       [
-        { linked: ["north"], unclear: [] },
-        "Connected to Hub (Acme Co). Linked 1 project to Hub.",
+        { review: 1 },
+        "Connected to Hub (Acme Co). Review 1 project below, then press Connect and link all.",
       ],
-      [{ linked: [], unclear: [] }, "Connected to Hub (Acme Co)."],
+      [{ review: 0 }, "Connected to Hub (Acme Co)."],
       [
         { cannot: true },
-        "Connected to Hub (Acme Co). Hub can't link projects yet: link them in Settings › Agents › Unclear matches when it can.",
+        "Connected to Hub (Acme Co). Hub can't list its projects yet: link them in Settings › Hub when it can.",
       ],
     ] as const) {
-      const h = harness({ linkAfter: async () => after });
+      const h = harness({ reviewAfter: async () => after });
       const { q } = start(h);
       await h.hc.finish(back({ state: q.state, code: "c1" }));
       expect(h.hc.lastResult()).toEqual({ ok: true, message: said });
     }
-    // Linking that throws never fails the Connect.
+    // A review count that throws never fails the Connect.
     const h = harness({
-      linkAfter: async () => {
+      reviewAfter: async () => {
         throw new Error("boom");
       },
     });
@@ -343,7 +343,7 @@ describe("finish: what comes back from Hub", () => {
     expect(
       await h.hc.finish(back({ state: q.state, code: "c1" })),
     ).toMatchObject({ ok: true });
-    expect(h.hc.lastResult()?.message).toMatch(/Hub can't link projects yet/);
+    expect(h.hc.lastResult()?.message).toMatch(/Hub can't list its projects/);
   });
 
   it("at most 16 connects wait; the oldest goes first", async () => {
@@ -503,14 +503,14 @@ describe("issue 726: a Hub change, from Connect and Disconnect", () => {
     ]);
   });
 
-  it("clause 1: Connect binds the Hub and its company before projects are linked", async () => {
+  it("clause 1: Connect binds the Hub and its company before projects are reviewed", async () => {
     const order: string[] = [];
     const h = harness({
       rebind: async (url, company) =>
         void order.push(`rebind ${url} ${company}`),
-      linkAfter: async () => {
-        order.push("link");
-        return { linked: [], unclear: ["web", "api"] };
+      reviewAfter: async () => {
+        order.push("review");
+        return { review: 2 };
       },
       exchange: async () => ({
         token: TOKEN,
@@ -521,8 +521,8 @@ describe("issue 726: a Hub change, from Connect and Disconnect", () => {
     const { q } = start(h);
     const r = await h.hc.finish(back({ code: "c1", state: q.state }));
     expect(r.ok).toBe(true);
-    expect(order).toEqual([`rebind ${HUB} acme`, "link"]);
-    expect(h.hc.lastResult()?.message).toMatch(/2 need your pick/);
+    expect(order).toEqual([`rebind ${HUB} acme`, "review"]);
+    expect(h.hc.lastResult()?.message).toMatch(/Review 2 projects below/);
   });
 });
 

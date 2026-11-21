@@ -1177,6 +1177,58 @@
       "{n} 件をリンクできませんでした: {names}。もう一度お試しください。",
     "hubla.failedAll":
       "{names} をリンクできませんでした。もう一度お試しください。",
+    "hubrv.title": "この Den を {company} に接続",
+    "hubrv.titleNo": "この Den のプロジェクトを Hub にリンク",
+    "hubrv.offline":
+      "Hub が応答しませんでした。会社はわかっていますが、プロジェクトを一覧できません。何も変更していません。",
+    "hubrv.retry": "再試行",
+    "hubrv.allMatch":
+      "{n} 件のプロジェクトがすべて一致しています。選ぶものはありません。",
+    "hubrv.why.repo": "同じリポジトリ",
+    "hubrv.why.name": "同じ名前",
+    "hubrv.why.picked": "あなたの選択",
+    "hubrv.why.linked": "リンク済み",
+    "hubrv.why.new": "合う Hub プロジェクトがありません: 新規作成",
+    "hubrv.why.pick": "2 つの Hub プロジェクトが合います: 1 つ選んでください",
+    "hubrv.waiting":
+      "新しい Hub プロジェクト。Hub でオーナーの適用を待っています",
+    "hubrv.was": "{host} の「{name}」にリンクされていました。ここでは{why}",
+    "hubrv.wasCo":
+      "{host}(会社 {company})の「{name}」にリンクされていました。ここでは{why}",
+    "hubrv.offlineRow": "Hub がプロジェクト一覧に応答しませんでした",
+    "hubrv.create": "「{name}」を作成",
+    "hubrv.suggested": "おすすめ",
+    "hubrv.choose": "「{project}」の Hub プロジェクトを選択",
+    "hubrv.search": "{n} 件のプロジェクトを検索",
+    "hubrv.noMatch": "一致する Hub プロジェクトはありません。",
+    "hubrv.noProjects": "この会社の Hub にはまだプロジェクトがありません。",
+    "hubrv.use": "{name} を使う",
+    "hubrv.createInstead": "代わりに「{name}」を作成",
+    "hubrv.cancel": "キャンセル",
+    "hubrv.change": "変更",
+    "hubrv.openPlan": "Hub のプランページを開く",
+    "hubrv.apply": "接続してすべてリンク",
+    "hubrv.applyNote":
+      "リンクはすぐに適用されます。新しいプロジェクトは Hub のプランページを開きます。そこで 1 回適用すればすべて作成されます。",
+    "hubrv.member":
+      "{n} 件の新しいプロジェクトはオーナーの承認に回ります。あなたはメンバーなので、Hub がオーナーに適用を依頼します。リンクはすぐに適用されます。",
+    "hubrv.doneTitle": "{company} に接続しました",
+    "hubrv.doneTitleNo": "完了",
+    "hubrv.linkedLine": "{project} → {name}({why})",
+    "hubrv.creatingLine":
+      "{project}: 新しい Hub プロジェクト {name} は Hub での適用を待っています。適用されるとリンクされます。",
+    "hubrv.skip.unknown":
+      "{project}: 未実行: ここにそのプロジェクトはありません。",
+    "hubrv.skip.offline":
+      "{project}: 未実行: Hub が応答しませんでした。もう一度お試しください。",
+    "hubrv.skip.stale":
+      "{project}: 未実行: もうこの会社の Hub プロジェクトではありません。",
+    "hubrv.skip.waiting":
+      "{project}: 未実行: 新しい Hub プロジェクトがすでにオーナーを待っています。",
+    "hubrv.skip.hub": "{project}: 未実行: Hub の応答: {why}",
+    "hubrv.skip.name": "{project}: 未実行: 名前は 1〜80 文字にしてください。",
+    "hubrv.asked": "新しいプロジェクトを Hub に依頼しました。",
+    "hubrv.switch": "会社を切り替え",
     "set.agents.hub_link_all": "判断できない候補",
     "set.agents.hub_link_all.d":
       "リンクすると、プロジェクトが Hub プロジェクトとつながり、エージェントがそこにドキュメント、モック、コメントを保存します。どの Hub プロジェクトが合うか Den が判断できないときだけ、ここに表示されます。1つ選んで「リンク」を押してください。それまで、そのプロジェクトの分は何も保存されません。",
@@ -2731,7 +2783,7 @@
     "set.ui.hub.address": "Hub のアドレス",
     "set.ui.hub.connect": "接続",
     "set.ui.hub.connectLinks":
-      "接続すると、ここの各プロジェクトが対応する Hub プロジェクトにも結び付けられます。どれが合うか Den が判断できないときは、あなたに確認します。",
+      "接続すると、ここの各プロジェクトにおすすめの Hub プロジェクトが表示されます。確認してから「接続してすべてリンク」を押してください。",
     "set.ui.hub.connectNote":
       "「接続」を押すと Hub が開きます。そこでサインインしてこのインストールを承認すると、接続された状態でここに戻ります。トークンはこのインストールのシークレットストアに保存され、表示されることはありません。",
     "set.ui.hub.teams": "{host} の共有 Hub。",

@@ -19,12 +19,52 @@ import { callerName } from "./config-audit.js";
 import { forgetLinkSeen } from "./hub-links-seen.js";
 import { WORKSPACE_NAME_MAX } from "./workspace-name.js";
 import { parseHubCreate, type HubCreate } from "./hub-project-create.js";
+import { hubOrigin, readHubBinding, type HubBinding } from "./hub-binding.js";
+import { getStateDir } from "./paths.js";
 
 export interface HubProjectLink {
   /** Hub's project id (proj_…). */
   id: string;
   slug: string;
   name: string;
+  /**
+   * Issue 646: the Hub (its origin) and the company the link was made on,
+   * from hub/bound.json at the time. None on a link written before.
+   */
+  hub?: LinkHub;
+}
+
+/** Issue 646: which Hub and company a link belongs to. */
+export interface LinkHub {
+  origin: string;
+  /** The company's slug (else its name), as hub/bound.json says it. */
+  company?: string;
+}
+
+/** The Hub this install is bound to now (issue 726), or null. */
+function boundNow(): HubBinding | null {
+  try {
+    return readHubBinding(getStateDir());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Issue 646: whether `link` points at another Hub than `bound`: another
+ * origin, or another company on the same one. A link with no Hub recorded
+ * (written before 646) is the bound Hub's: issue 726 archives every link
+ * when the Hub changes. No binding yet: nothing is elsewhere.
+ */
+export function isLinkElsewhere(
+  link: HubProjectLink,
+  bound: HubBinding | null,
+): boolean {
+  if (!link.hub || !bound) return false;
+  if (link.hub.origin !== bound.origin) return true;
+  return Boolean(
+    link.hub.company && bound.company && link.hub.company !== bound.company,
+  );
 }
 
 /**
@@ -49,17 +89,46 @@ export function parseHubProjectLink(v: unknown): HubProjectLink | null {
   const id = plain(o.id, 64);
   if (!HUB_PROJECT_ID_RE.test(id)) return null;
   const slug = plain(o.slug, 100) || id;
-  return { id, slug, name: plain(o.name, 200) || slug };
+  const h = (o.hub ?? null) as Record<string, unknown> | null;
+  const origin = h && typeof h.origin === "string" ? hubOrigin(h.origin) : "";
+  const company = h ? plain(h.company, 100) : "";
+  return {
+    id,
+    slug,
+    name: plain(o.name, 200) || slug,
+    ...(origin ? { hub: { origin, ...(company ? { company } : {}) } } : {}),
+  };
 }
 
-/** Project `ws`'s Hub project, or null (not linked, or unreadable). */
+/**
+ * Project `ws`'s Hub project, or null (not linked, or unreadable). Issue
+ * 646: a link to another Hub or company counts as not linked.
+ */
 export function hubProjectOf(
   ws: string,
   read: () => WorkspacesFile = readWorkspacesFile,
+  bound: () => HubBinding | null = boundNow,
 ): HubProjectLink | null {
   try {
-    const cfg = read().workspaces[ws];
-    return parseHubProjectLink(cfg?.hub_project);
+    const link = parseHubProjectLink(read().workspaces[ws]?.hub_project);
+    return link && !isLinkElsewhere(link, bound()) ? link : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Issue 646: project `ws`'s link when it points at another Hub or company
+ * than the bound one (doctor fails it; Connect's review says it), else null.
+ */
+export function hubLinkElsewhere(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+  bound: () => HubBinding | null = boundNow,
+): HubProjectLink | null {
+  try {
+    const link = parseHubProjectLink(read().workspaces[ws]?.hub_project);
+    return link && isLinkElsewhere(link, bound()) ? link : null;
   } catch {
     return null;
   }
@@ -82,7 +151,17 @@ export function setHubProject(
   if (link) {
     const ok = parseHubProjectLink(link);
     if (!ok) throw new Error(`"${link.id}" is not a Hub project id`);
-    next.hub_project = ok;
+    // Issue 646: the link is the bound Hub's (and its company's).
+    const b = ok.hub ? null : boundNow();
+    next.hub_project = b
+      ? {
+          ...ok,
+          hub: {
+            origin: b.origin,
+            ...(b.company ? { company: b.company } : {}),
+          },
+        }
+      : ok;
     // Issue 167: a rename asked of another Hub project isn't this one's.
     if (was?.id !== ok.id) delete next.hub_rename;
     // Issue 271: linked now, so a new Hub project asked for it is moot.
