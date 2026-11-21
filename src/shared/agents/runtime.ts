@@ -122,6 +122,11 @@ export interface LaunchInput {
    */
   personConfigDir?: string;
   /**
+   * Issue 810: the distribution config file (it holds the test-install
+   * mark), denied to the agent's edits with personConfigDir.
+   */
+  distConfigFile?: string;
+  /**
    * NT-1: Den's web server as the agent reaches it, for the attention
    * hooks (Notification: waiting; Stop: finished). No token: the hook
    * sends the agent's own, from its env.
