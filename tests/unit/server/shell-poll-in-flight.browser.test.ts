@@ -7,7 +7,8 @@
  * every 3 s, so the page never settled.
  *
  * The shell also reads every refused answer in full, so a caller that
- * only looks at the status never leaves a request open.
+ * only looks at the status never leaves a request open (the fixture
+ * person's refusals: src/shared/fixture-person.ts).
  *
  * The answers are faked at the page's network. Chromium; DEN_PW_WS
  * connects to a Playwright server instead of launching. The demo
