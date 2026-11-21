@@ -379,5 +379,12 @@ describe("issue 310: words, escaping, CSP and the look", () => {
     expect(css).toMatch(/@media \(max-width:\s*767px\)/);
     expect(css).toMatch(/min-height:\s*var\(--tap\)/);
     expect(css).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--accent\)/);
+    // Centred as base.css centres a modal: top 50% under its translate,
+    // never inset: 0 (that put the top half above the window).
+    const at = css.indexOf(".den-aa-dlg {");
+    const dlg = css.slice(at, css.indexOf("}", at));
+    expect(dlg).toMatch(/top:\s*50%/);
+    expect(dlg).toMatch(/transform:\s*translateY\(-50%\)/);
+    expect(dlg).not.toMatch(/(^|\s)inset:\s*0/);
   });
 });
