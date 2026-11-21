@@ -17,7 +17,7 @@
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
  *            [--priority-max N] [--priority-pass-limit-minutes N]
- *            [--priority-agents 0|1]
+ *            [--priority-agents 0|1] [--priority-runners 0|1]
  *                            the machine's; a person changes them
  */
 import { spawn } from "child_process";
@@ -59,6 +59,7 @@ export const GATE_HELP = {
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
     "    [--priority-max N] [--priority-pass-limit-minutes N] [--priority-agents 0|1]",
+    "    [--priority-runners 0|1]",
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
@@ -365,6 +366,7 @@ function settings(args: string[], d: GateDeps): number {
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
+    "--priority-runners": true,
   });
   const raw: Record<string, number> = {};
   for (const [flag, key] of [
@@ -377,6 +379,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--priority-max", "priority_max"],
     ["--priority-pass-limit-minutes", "priority_pass_limit_minutes"],
     ["--priority-agents", "priority_agents"],
+    ["--priority-runners", "priority_runners"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);

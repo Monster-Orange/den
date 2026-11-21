@@ -137,6 +137,7 @@ describe("gate slots over MCP", () => {
       priorityMax: 1,
       priorityPassLimitMinutes: 60,
       priorityAgents: true,
+      priorityRunners: true,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
