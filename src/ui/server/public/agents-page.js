@@ -1,7 +1,15 @@
 /**
  * The Agents tab (AG-4a-term, AG spec §5d): every session and agent of
- * the workspaces in view, grouped by workspace (the scope bar, or the
- * page's ?ws=), and up to four terminal panes beside the list.
+ * the workspaces in view (the scope bar, or the page's ?ws=), and up to
+ * four terminal panes beside the list.
+ *
+ * Issue 773: one list across projects, in four bands sorted by who needs
+ * the person (agent-bands.js, the kit's attention.js): Needs you, Done not
+ * seen, Working, Idle. Each row has its mark and chip; on All projects its
+ * project tag; the server agent is ranked like any other, tagged "Server".
+ * Opening an agent is seen: Done turns Idle at once (the server keeps the
+ * mark per person, POST /api/notifications/looking). Stopped agents stay
+ * in one group at the bottom, in the person's order.
  *
  * A pane is xterm.js (served from node_modules, /vendor/*) on a WebSocket
  * to /api/sessions/<id>/io: the session host's attach, so the pane gets
@@ -109,6 +117,16 @@ import { termPane } from "/term-pane.js";
 import { makeComposer } from "/agent-composer.js";
 import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
 import {
+  attnSub,
+  bandGroup,
+  bandsOf,
+  chipHtml,
+  markHtml,
+  railNeeds,
+  rowState,
+  tagHtml,
+} from "/agent-bands.js";
+import {
   attachFiles,
   guardPageDrops,
   pickFiles,
@@ -189,12 +207,17 @@ const REFRESH_MS = 5_000;
 
 const st = {
   root: null,
+  /**
+   * Issue 773: agents this page opened, id → the finish it saw (attnSince):
+   * Done shows Idle at once, until the server's list agrees.
+   */
+  seenNow: new Map(),
+  /** Issue 773: the list could not load (no list yet): Retry. */
+  loadFailed: false,
   /** Issue 96: the row being dragged (the list isn't redrawn meanwhile). */
   drag: null,
   /** Issue 96: a drag just ended, so the click it makes is swallowed. */
   dragClick: false,
-  /** Issue 96: on a phone, the project whose agents show Up and Down. */
-  reorderWs: null,
   /** Issue 226: on a phone, whether the Stopped group's agents show them. */
   reorderStopped: false,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
@@ -908,6 +931,64 @@ function waitingText(r) {
   return s && s !== k ? s : t("ag.waiting");
 }
 
+/**
+ * Issue 773: the agents this person has seen now: the ones the page opened
+ * (st.seenNow) and the ones in a pane on screen. Each with the finish it
+ * saw, so a later finish is Done again.
+ */
+function seenMap() {
+  const out = new Map(st.seenNow);
+  if (typeof document !== "undefined" && document.visibilityState !== "hidden")
+    for (const id of visibleIds()) {
+      const r = rowOf(id);
+      if (r?.attn === "done") out.set(id, r.attnSince);
+    }
+  return out;
+}
+
+/** Issue 773: the person opened agent row `id`: its Done is seen. */
+function markOpened(id) {
+  const r = rowOf(id);
+  if (!r || r.kind !== "agent") return;
+  if (r.attn === "done") st.seenNow.set(id, r.attnSince);
+  sayLooking([r.agent]);
+}
+
+/**
+ * NT-2: this page shows these agents now (no alert for them). Issue 773:
+ * and the person has seen their finished work.
+ */
+function sayLooking(agents) {
+  if (agents.length)
+    void api("POST", "/api/notifications/looking", { agents }).catch(() => {});
+}
+
+/** Issue 773: the list shows more than one project (each row is tagged). */
+function allProjects() {
+  return viewWorkspaces().length > 1;
+}
+
+/** Issue 773: what a row's state is about, on its second line. */
+function attnDetail(r, attn) {
+  const ago = (iso) =>
+    iso && Number.isFinite(Date.parse(iso))
+      ? formatTime(iso, { style: "relative" })
+      : "";
+  if (r.kind !== "agent") return cwdText(r);
+  if (attn === "needs") {
+    const k = r.waitingWhy ? `ag.whyLong.${r.waitingWhy}` : "";
+    const why = k && t(k) !== k ? t(k) : waitingText(r);
+    return [why, ago(r.attnSince)].filter(Boolean).join(" · ");
+  }
+  if (attn === "done")
+    return r.attnSince ? t("ag.meta.finished", { ago: ago(r.attnSince) }) : "";
+  if (attn === "working")
+    return r.attnSince ? t("ag.meta.working", { ago: ago(r.attnSince) }) : "";
+  // Idle: seen just now (opened on this page), else its last finish.
+  if (r.attn === "done") return t("ag.meta.seen");
+  return r.attnSince ? ago(r.attnSince) : cwdText(r);
+}
+
 function rowHtml(r) {
   if (isStopped(r)) return stoppedHtml(r);
   const open = st.open.includes(r.id);
@@ -915,10 +996,13 @@ function rowHtml(r) {
     r.kind === "agent"
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  const right = r.waiting
-    ? `<span class="wbdg">${esc(waitingText(r))}</span>`
-    : `<span class="st">${esc(stateText(r.state))}</span>`;
-  const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
+  // Issue 773: the state's chip, and on line 2 the project tag, the
+  // runtime and what the state is about.
+  const seen = seenMap();
+  const attn = rowState(r, seen);
+  const right = chipHtml(r, seen);
+  const meta = [r.runtime, attnDetail(r, attn)].filter(Boolean).join(" · ");
+  const ptag = tagHtml(r, { all: allProjects(), name: projName });
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
   // column (it pushed this row's name right of the others').
   const chip = r.kind === "agent" ? helperBadgeHtml(r) : "";
@@ -958,16 +1042,17 @@ function rowHtml(r) {
       ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"` +
     ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + (said ? ` · ${said}` : ""))}">` +
+    ` data-attn="${attn}"` +
+    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + ` · ${t(`ag.chip.${attn}`)}` + (said ? ` · ${said}` : ""))}">` +
     gripHtml(r) +
-    `<span class="den-dot ${r.waiting ? "warn" : stateTone(r)}" aria-hidden="true"></span>` +
+    markHtml(attn) +
     `<span class="nm">${nm}</span>${right}` +
     (chip
-      ? `<span class="agl2">${chip}${meta ? `<span class="meta">${esc(meta)}</span>` : ""}</span>`
-      : meta
-        ? `<span class="meta">${esc(meta)}</span>`
+      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta">${ptag}${esc(meta)}</span>` : ""}</span>`
+      : meta || ptag
+        ? `<span class="meta">${ptag}${esc(meta)}</span>`
         : "") +
     tags +
     `</button>`;
@@ -1075,7 +1160,15 @@ function paintList() {
       `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
     );
   if (!st.data) {
-    setList(el, notes.join(""));
+    // Issue 773: three placeholder rows while the first list loads; the
+    // list that could not load says so, with Retry.
+    setList(
+      el,
+      notes.join("") +
+        (st.loadFailed
+          ? `<div class="agnote" data-note="load-failed" role="status">${esc(t("ag.list.failed"))} <button type="button" class="den-btn sm" data-act="retry-list">${esc(t("ag.list.retry"))}</button> ${esc(t("ag.list.keepRunning"))}</div>`
+          : `<div class="agskel" role="status" aria-label="${esc(t("ag.list.loading"))}"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>`),
+    );
     return;
   }
   // ON-6: the server agent's group, "Server", first, whatever the view.
@@ -1141,25 +1234,24 @@ function paintList() {
           : "") +
         ` · <button type="button" class="lnk" data-act="review">${esc(t("ag.review"))}</button></div>`,
     );
-  // D37: running ones (and plain sessions) under their workspace; the
-  // agents that aren't running in one "Stopped (n)" group at the bottom.
+  // Issue 773: one list in four bands, sorted by who needs the person
+  // (D37: the agents that aren't running in one "Stopped (n)" group at the
+  // bottom, as before).
   const inView = shown.flatMap((ws) =>
     st.data.sessions.filter((s) => s.workspace === ws),
   );
   const stopped = inView.filter(inStopped);
-  const groups = shown
-    .map((ws) => ({
-      ws,
-      rows: inView.filter((s) => s.workspace === ws && !inStopped(s)),
-    }))
-    .filter((g) => g.rows.length > 0);
+  const bands = bandsOf(
+    inView.filter((s) => !inStopped(s)),
+    { seenNow: seenMap() },
+  );
   const body =
-    groups.length || stopped.length
-      ? groups
+    bands.length || stopped.length
+      ? bands
           .map(
-            (g) =>
-              `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
-              g.rows.map((r) => reorderRowHtml(g, r)).join("") +
+            (b) =>
+              `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(t(`ag.band.${b.state}`))}</span><span class="n">${esc(b.rows.length)}</span></div>` +
+              b.rows.map((r) => rowHtml(r)).join("") +
               `</div>`,
           )
           .join("") + stoppedGroupHtml(stopped)
@@ -1345,34 +1437,17 @@ async function paneFollowsProject() {
   if (latest) await openPane(latest.id);
 }
 
-/**
- * The Agents page's count: "2 agents · 1 shell · 0 waiting · <scope>". A
- * plain terminal is a shell, not an agent; a part that is 0 is left out,
- * except waiting (and agents, when there is nothing at all).
- */
-export function subText(rows, waiting, scope) {
-  const agents = rows.filter((r) => r.kind === "agent").length;
-  const shells = rows.length - agents;
-  const parts = [];
-  if (agents || !shells)
-    parts.push(
-      t(agents === 1 ? "ag.sub.agent" : "ag.sub.agents", { n: agents }),
-    );
-  if (shells)
-    parts.push(
-      t(shells === 1 ? "ag.sub.shell" : "ag.sub.shells", { n: shells }),
-    );
-  parts.push(t("ag.sub.waiting", { w: waiting }));
-  if (scope) parts.push(scope);
-  return parts.join(" · ");
-}
-
 function paintSub() {
   const rows = visibleRows();
-
-  const waiting = rows.filter((r) => r.waiting).length;
+  // Issue 773: the agents, then each state above zero, then the scope
+  // (stopped agents are outside the four states).
   const count = st.root.querySelector("#ag-count");
-  if (count) count.textContent = subText(rows, waiting, st.scopeLabel);
+  if (count)
+    count.textContent = attnSub(
+      rows.filter((r) => !inStopped(r)),
+      st.scopeLabel,
+      seenMap(),
+    );
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;
   // 0.4.45: the rail lights by the pane in front, not the address (which
@@ -1506,14 +1581,26 @@ async function refreshOnce() {
   } catch {
     /* the last list stays; the next ask may answer */
   }
+  // Issue 773: no list yet, and this ask failed: "could not load", Retry.
+  st.loadFailed = !st.data && !st.signedOut;
   followAgents();
-  // D32: the rail's Agents badge: helpers running now.
+  // D32: the rail's Agents badge: helpers running now. Issue 773: the
+  // agents that need you, over it.
   window.denShell?.setState?.({
     helpersRunning: (st.data?.sessions ?? []).reduce(
       (n, r) => n + (r.helpers?.running ?? 0),
       0,
     ),
+    agentsNeedYou: railNeeds(
+      (st.data?.sessions ?? []).filter((r) => !inStopped(r)),
+    ),
   });
+  // Issue 773: once the server's list agrees an opened agent isn't Done
+  // (or a new finish came), the page's own mark for it goes.
+  for (const [id, at] of st.seenNow) {
+    const r = rowOf(id);
+    if (!r || r.attn !== "done" || r.attnSince !== at) st.seenNow.delete(id);
+  }
   st.scopeLabel = scopeLabelFor(viewWorkspaces());
   hideOtherProjects();
   paintList();
@@ -1927,6 +2014,8 @@ async function pick(id, add) {
     st.claimOnOpen = live;
   } else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
+    // Issue 773: opening the agent is the whole action: its Done is seen.
+    markOpened(id);
     paintLayout();
     paintList();
     if (!add) {
@@ -2879,6 +2968,8 @@ function pathAnchor(p, e) {
 }
 
 async function openPane(id, { front = true } = {}) {
+  // Issue 773: opening the agent (its terminal) is seen: Done turns Idle.
+  markOpened(id);
   if (st.panes.has(id)) {
     st.panes.get(id).term?.focus();
     return;
@@ -3171,27 +3262,31 @@ const agentPath = (r, verb) =>
 
 // ── Issue 96: a project's agents in the person's order ─────────────────
 // A grip and a pointer drag (mouse, pen and touch), ⋯ Move up, Move down
-// and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in
-// the project's header (Up and Down per row, then Done). A row moves
-// inside its group (agent-order.js); the server stores the order in the
-// person's user config and every list follows.
+// and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder for
+// the Stopped group. A row moves inside its group (agent-order.js; issue
+// 773: a running one inside its band, among its project's agents); the
+// server stores the order in the person's user config and every list
+// follows. The bands still set the order between bands.
 
-/** The agent ids of r's group, as the list shows them. */
-const groupOf = (r) => orderGroup(st.data?.sessions ?? [], r, inStopped);
+/**
+ * The agent ids of r's group, as the list shows them. Issue 773: a running
+ * agent moves among its project's agents in its band (the bands set the
+ * order between bands); a stopped one in the Stopped group, as before.
+ */
+const groupOf = (r) =>
+  inStopped(r)
+    ? orderGroup(st.data?.sessions ?? [], r, inStopped)
+    : bandGroup(
+        (st.data?.sessions ?? []).filter((s) => !inStopped(s)),
+        r,
+        { seenNow: seenMap() },
+      );
 
 /** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
 const gripHtml = (r) =>
   orderable(r, SERVER_WS)
     ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
     : "";
-
-/** A phone's Reorder (or Done) in a project's header, when it has two agents to order. */
-function reorderButtonHtml(g) {
-  if (!phone() || g.ws === SERVER_WS) return "";
-  if (g.rows.filter((r) => orderable(r, SERVER_WS)).length < 2) return "";
-  const on = st.reorderWs === g.ws;
-  return `<button type="button" class="den-btn sm agord-t" data-act="reorder" data-ws="${esc(g.ws)}" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderOne", { ws: projName(g.ws) }))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button>`;
-}
 
 /**
  * Issue 226: a phone's Reorder (or Done) for the Stopped group, when one
@@ -3205,15 +3300,6 @@ function reorderStoppedHtml(rows) {
 
 /** Issue 226: a stopped row that can move: its group has two or more. */
 const stoppedMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
-
-/** A running row; in a phone's Reorder, with its Up and Down beside it. */
-function reorderRowHtml(g, r) {
-  return orderRowHtml(
-    rowHtml(r),
-    r,
-    phone() && st.reorderWs === g.ws && orderable(r, SERVER_WS),
-  );
-}
 
 /** `html`, the row of `r`; with its Up and Down beside it when `on`. */
 function orderRowHtml(html, r, on) {
@@ -3299,6 +3385,12 @@ function showMoved(r, to) {
   const rest = all.filter((s) => s !== r);
   const at = rest.indexOf(other) + (to.after ? 1 : 0);
   st.data.sessions = [...rest.slice(0, at), r, ...rest.slice(at)];
+  // Issue 773: the bands follow each agent's place; the server stores the
+  // project's whole order on a move, so every agent of it has one now.
+  let n = 0;
+  for (const s of st.data.sessions)
+    if (s.kind === "agent" && s.agent && s.workspace === r.workspace)
+      s.place = n++;
   paintList();
 }
 
@@ -3344,7 +3436,9 @@ function wireOrder(agl) {
       !over ||
       over.kind !== "agent" ||
       over.workspace !== r.workspace ||
-      inStopped(over) !== inStopped(r)
+      inStopped(over) !== inStopped(r) ||
+      // Issue 773: a running row drops inside its own band only.
+      !groupOf(r).includes(over.agent)
     )
       return null;
     const box = b.getBoundingClientRect();
@@ -5530,6 +5624,8 @@ export async function mountAgentsPage(root) {
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
       if (which === "switch-back") return void switchBack();
+      // Issue 773: the list that could not load, asked again.
+      if (which === "retry-list") return void refresh();
       // #80: the helpers badge opens or closes them under its agent.
       if (which === "helpers-toggle") {
         const k = `${act.dataset.ws}\0${act.dataset.agent}`;
@@ -5540,11 +5636,9 @@ export async function mountAgentsPage(root) {
       }
       // Issue 96: a phone's Reorder, and its Up and Down per row.
       if (which === "reorder") {
+        // Issue 773: only the Stopped group keeps a person's order.
         if (act.hasAttribute("data-stopped"))
           st.reorderStopped = !st.reorderStopped;
-        else
-          st.reorderWs =
-            st.reorderWs === act.dataset.ws ? null : act.dataset.ws;
         paintList();
         return;
       }
@@ -5803,10 +5897,7 @@ export async function mountAgentsPage(root) {
       .map((id) => rowOf(id))
       .filter((r) => r?.kind === "agent")
       .map((r) => r.agent);
-    if (agents.length)
-      void api("POST", "/api/notifications/looking", { agents }).catch(
-        () => {},
-      );
+    sayLooking(agents);
   };
   setInterval(looking, 4000);
   window.addEventListener("focus", looking);

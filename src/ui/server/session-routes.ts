@@ -61,6 +61,11 @@ import {
   SERVER_SCOPE,
   isServerScope,
 } from "../../shared/agents/server-agent.js";
+import {
+  personKey,
+  withAgentStates,
+  type AgentStateDeps,
+} from "./agent-state.js";
 import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
@@ -116,7 +121,11 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
-import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
+import {
+  agentOrderOf,
+  inAgentOrder,
+  placeInOrder,
+} from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
@@ -186,6 +195,11 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
+  /**
+   * Issue 773: what each running agent's state for the person asking is
+   * made of (absent: no states; the page ranks every agent Idle).
+   */
+  agentStates?: () => AgentStateDeps;
 }
 
 /** den#156: how long a list waits for the host, and the page for a list. */
@@ -342,6 +356,11 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
+  /**
+   * Issue 773 + issue 96: an agent's place (0 first) in its project's saved
+   * order, when the person set one; the page keeps it inside each band.
+   */
+  place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
   workspace: string;
@@ -462,6 +481,12 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
+  /**
+   * Issue 773: its state for the person asking (running agents only):
+   * needs, done (finished, not seen), working or idle; and since when.
+   */
+  attn?: "needs" | "done" | "working" | "idle";
+  attnSince?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;
@@ -763,6 +788,18 @@ export function listedSessions(
     });
   }
   const order = [...active];
+  // Issue 773: each agent's place in its project's saved order (read once
+  // per project), for the page's bands.
+  const saved = new Map<string, readonly string[]>();
+  const orderOf = (ws: string) => {
+    if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
+    return saved.get(ws)!;
+  };
+  for (const r of out)
+    if (r.kind === "agent" && r.agent) {
+      const place = placeInOrder(orderOf, r.workspace, r.agent);
+      if (place !== undefined) r.place = place;
+    }
   // Issue 96: within a project, the person's order for its agents (one helper
   // for every list: the page, the rail, the flyout read this one).
   return inAgentOrder(
@@ -776,7 +813,7 @@ export function listedSessions(
       r.kind === "agent" && r.agent
         ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
         : null,
-    (ws) => agentOrderOf(ws),
+    orderOf,
   );
 }
 
@@ -840,13 +877,21 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const listed = listedSessions(
+    sessions,
+    d,
+    wanted?.known ? wanted.workspace : undefined,
+    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
+  );
+  // Issue 773: each running agent's state for this person.
+  let states: AgentStateDeps | undefined;
+  try {
+    states = deps.agentStates?.();
+  } catch {
+    states = undefined;
+  }
   sendJson(res, {
-    sessions: listedSessions(
-      sessions,
-      d,
-      wanted?.known ? wanted.workspace : undefined,
-      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-    ),
+    sessions: states ? withAgentStates(listed, personKey(req), states) : listed,
     workspaces: d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
@@ -1551,8 +1596,18 @@ async function helpersRunning(
     /* no host: nothing runs, so no helper runs */
   }
   let running = 0;
-  for (const r of listedSessions(sessions, d))
+  // Issue 773: the rail's Agents item counts the agents that need you.
+  let needs = 0;
+  for (const r of listedSessions(sessions, d)) {
     running += r.helpers?.running ?? 0;
-  sendJson(res, { running });
+    if (
+      r.kind === "agent" &&
+      r.state === "running" &&
+      r.waiting &&
+      r.waitingWhy !== "input"
+    )
+      needs += 1;
+  }
+  sendJson(res, { running, needs });
   return true;
 }

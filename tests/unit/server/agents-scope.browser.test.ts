@@ -95,16 +95,15 @@ async function open(ws: string): Promise<Page> {
 
 const note = (p: Page) => p.locator('#agl .agnote[data-note="inactive"]');
 const listed = (p: Page) =>
-  p
-    .locator("#agl .agst, #agl .agr")
-    .evaluateAll((els) =>
-      els
-        .filter((e) => e.matches(".agst") || !e.closest(".agst"))
-        .map(
-          (e) =>
-            `${((e.closest(".agst") ?? e.closest(".wsg")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
-        ),
-    );
+  p.locator("#agl .agst, #agl .agr").evaluateAll((els) =>
+    els
+      .filter((e) => e.matches(".agst") || !e.closest(".agst"))
+      .map(
+        (e) =>
+          // Issue 773: a running row names its project itself (data-ws).
+          `${((e.closest(".agst") ?? e.closest("[data-ws]")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
+      ),
+  );
 
 describe("?ws= for a workspace that isn't active", () => {
   it("says so in one line, lists only that workspace, and Clear stopped sends exactly it", async () => {

@@ -65,9 +65,13 @@ function rig() {
   const deps = {
     store,
     attention: {} as never,
-    seen: (subject: string) => {
-      seen.push(subject);
-    },
+    // Issue 773's store: only markSeen is asked for here.
+    seen: {
+      markSeen: (k: { subject: string; person: string }) => {
+        seen.push(k.subject);
+        return true;
+      },
+    } as never,
   };
   return { store, seen, deps };
 }

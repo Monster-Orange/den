@@ -2746,6 +2746,40 @@
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
     "ag.waiting.trust": "Waiting: trust this folder?",
+    // Issue 773: four agent states, one list sorted by who needs you.
+    "ag.band.needs": "Needs you",
+    "ag.band.done": "Done, not seen",
+    "ag.band.working": "Working",
+    "ag.band.idle": "Idle",
+    "ag.chip.needs": "Needs you",
+    "ag.chip.needsWhy": "Needs you · {why}",
+    "ag.chip.done": "Done",
+    "ag.chip.working": "Working",
+    "ag.chip.idle": "Idle",
+    "ag.why.permission": "permission",
+    "ag.why.asked": "question",
+    "ag.why.approval": "Allow",
+    "ag.why.trust": "folder trust",
+    "ag.whyLong.permission": "asks for your permission",
+    "ag.whyLong.asked": "asked you a question",
+    "ag.whyLong.approval": "waits for your Allow",
+    "ag.whyLong.trust": "asks to trust its folder",
+    "ag.tag.server": "Server",
+    "ag.sub.needs": "{n} need you",
+    "ag.sub.needsOne": "{n} needs you",
+    "ag.sub.done": "{n} done, not seen",
+    "ag.sub.doneOne": "{n} done, not seen",
+    "ag.sub.working": "{n} working",
+    "ag.sub.idle": "{n} idle",
+    "ag.sub.idleOne": "{n} idle",
+    "ag.meta.finished": "finished {ago}",
+    "ag.meta.working": "began {ago}",
+    "ag.meta.seen": "seen just now",
+    "ag.list.failed": "The list could not load.",
+    "ag.list.retry": "Retry",
+    "ag.list.keepRunning": "Your agents keep running.",
+    "ag.list.loading": "Loading the agents",
+    "bell.doneRow": "{name} finished",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
@@ -4164,6 +4198,8 @@
     down: 0,
     openLogs: 0,
     helpersRunning: 0,
+    // Issue 773: the agents that need the person (the rail's Agents count).
+    agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
     pins: [],
@@ -4984,8 +5020,10 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
-      // D32: helpers the agents started that run now.
+      // Issue 773: the agents that need you (not Done); else (D32) the
+      // helpers the agents started that run now.
       badge: function (s) {
+        if (s.agentsNeedYou > 0) return { n: s.agentsNeedYou, what: "waiting" };
         return s.helpersRunning > 0
           ? { n: s.helpersRunning, what: "running" }
           : null;
@@ -8307,6 +8345,9 @@
           function (b) {
             var n = b && typeof b.running === "number" ? b.running : 0;
             if (n !== state.helpersRunning) setState({ helpersRunning: n });
+            // Issue 773: the agents that need you, for the rail's count.
+            var w = b && typeof b.needs === "number" ? b.needs : 0;
+            if (w !== state.agentsNeedYou) setState({ agentsNeedYou: w });
           },
           function () {},
         )
