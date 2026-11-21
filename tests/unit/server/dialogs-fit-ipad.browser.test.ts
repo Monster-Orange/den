@@ -145,7 +145,8 @@ async function open(p: Page, k: string): Promise<string> {
         title: "Remove it?",
         message: kind === "confirm" ? "It goes." : "A long line. ".repeat(900),
       });
-      return ".dk-dlg";
+      // The question itself: What's new (issue 793) is a .dk-dlg too.
+      return '.dk-dlg[data-dk-kind="confirm"]';
     }
     if (kind === "busy") {
       void kit.busyAction("save", () => new Promise(() => {}));

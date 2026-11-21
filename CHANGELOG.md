@@ -4,10 +4,38 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.78] - unreleased
+## [0.4.80] - 2026-11-21
+
+### Added
+
+- Gate slots: CI runners ask for release priority over HTTP, as `gate run --priority release` does. (issue 739)
+- Gate slots held over MCP: the agent is told when its slot is granted, a slot never claimed passes to the next run, and a held slot has a lease. (issue 714)
+- Test boxes: a browser slot per test box. An agent asks to add or remove a box with the held writes `gate_box_set` and `gate_box_remove`. Nothing changes until a person Allows it in the browser, and the card shows every field. (issue 625)
+- `gate yield <my-id> --to <their-id>` and the MCP tool `gate_slot_yield`: the owner of a waiting entry lets one waiting entry behind it go just ahead. Never a holder; the slot log records it. (issue 795)
+- Priority classes per project, with optional windows. New settings `class_order`, `class_map` and `class_windows`. A higher class goes first among waiting runs; nothing is pre-empted. With no classes set, the queue works as before. (issue 803)
+
+### Changed
+
+- Gate: on macOS a browser slot needs a container browser (a `ws://` or `wss://` address, or `self`). A browser started on a shared Mac can take its window server down and sign every session out.
+
+### Checks
+
+- The bed's touched run of v0.4.80-dev.2 (715 and 726): 715 passes 5 of 5. Its two reds are the same as on 0.4.79 and nothing in this release touches them: 653's terminal attach over https gets a 403 (being proven as the test person's scope), and 726 skips because a throwaway Den has no person session (issue 814). Released on "no new red against the last release".
+
+## [0.4.79] - 2026-11-21
+
+### Changed
+
+- Sign-in: Den prints a sign-in link or code only in a terminal. Where there is none (a script, a service log), `den web up` prints the address and says to run `den web login` in a terminal.
+- The UI kit (`@monster-orange/den-ui`) is published as 0.9.1. It carries 0.4.78's pop-up font fix to apps that use the kit from npm.
+
+## [0.4.78] - 2026-11-21
 
 ### Fixed
 
+- Agents: a Den command an agent runs in its shell reaches the install it runs under. On an install with its own state folder (`<PREFIX>_HOME`), the agent's shell read the default folder, and Den refused its token as not live. That refused `ask_human`, a self-restart and every other `mcp --call` from the shell. The agent's session env now carries the install's root and state folder, the same paths its MCP config gets. Paths only. The live installs checked on the build machine use their default state folder, so their agents were not affected. (issue 629)
+- Pages settle when Den refuses some of their reads. The shell reads every refused answer in full, so no request is left open. Its 3-second checks never stack up, and a refused waiting list stops being checked for the page. (PR 827)
+- Pop-ups no longer draw in a serif font. What's new (the release notes), Local Dev's "turn off auto-start" question and the Releases page's deploy dialogs are now the kit's dialog, with its own font, Close, Esc, Report and focus handling. The cause: on pages whose font is set on the main area rather than on the page itself (Agents, Settings and others), a pop-up added to the page took the browser's default serif. The kit now also gives the page itself and every dialog its sans font, with its own font list after the theme's, so a theme without one never falls back to serif. The "turn off auto-start" question is now in Spanish and Japanese too. (issue 793)
 - Agents: an agent's permission mark in the bell clears as soon as the tool it asked about runs, even when the run comes within a second of the dialog. (issue 609)
 - Hub comments reach an agent that has a background job running. An agent that started a background shell (a log watcher, a test run) and then ended its turn now gets its Hub comments at once. Before, Den held them for as long as the shell ran, sometimes for hours, saying "the agent is busy with a turn". Restarts still wait for such a job, and a person's Restart still asks first. The page, the CLI and the restart's error now say "a background job it started is still running (N min)". (issue 732)
 - Changing a Den's Hub (a new address, or another company) is clean. The comment delivery state and each project's Hub link are archived under `hub/previous/`. The old cursor and held comments never reach the new Hub, the old Hub's bell items go, and the bell says how many projects need a pick again. The old Hub token is revoked on every path: Settings, `POST /api/settings`, `hub_connect`, Connect to another Hub, Connect again for another company, and a `hub.url` edited in the config file (seen at start). A token the old Hub couldn't hear is listed in doctor (`hub:unrevoked`), and Den retries the revoke at each start. Doctor has a new `hub:previous` row. (issue 726)
@@ -15,10 +43,17 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Test installs and a test person for live checks. On a test install (the mark in the distribution config, the launch flag, its own state folder, and no other person signed in), a person sets up a test person once in Settings › Access. Live checks then sign in as that test person with `web fixture-login`. The test person reaches only the pages and the few writes live checks need. It never counts as a person at a person-only check, never opens an agent's terminal, and is refused anywhere else. (issue 810)
 - Gate slots: `gate run --priority release --reason "<why>"` lets a release run that a person waits on go ahead of the other waiting runs of its kind. The MCP tool `gate_slot_request` takes `priority` and `reason` too. It never stops a running slot. One such run per kind has priority at a time, and it never passes a run that has waited `priority_pass_limit_minutes` (60). Each jump is in the slot log with who, why and the runs it passed; `gate status` and the Agents page show it. New settings: `priority_max` (1), `priority_pass_limit_minutes` (60), `priority_agents` (on). (issue 715)
 
 ### Checks
 
+- The 0.4.78 candidate ran on the live-check bed as the test person: the full bed on v0.4.78-dev.5 (its verdict kept unchanged, plus a rescored copy giving the proof for each clause the test person may not reach), then 101, 142, 327, 629 and 732 again on v0.4.78-dev.6. Den's self-restart came back on a new process in about 2 s.
+- Clauses that need a person are covered in CI instead, suite by suite. What CI does not cover, plainly:
+  - a real browser attaching an agent's terminal through the real https edge (653): CI checks the sign-in on a modelled edge upgrade, and the terminal itself on localhost;
+  - a restart of the real terminal host while an agent's hook is calling (609): CI checks the hook's waits and retries against a slow Den;
+  - a Den moving between two real Hubs and two real companies (726): CI checks each step on one server against fake Hubs.
+- 732 (a Hub comment waits while the agent is mid-turn, and is typed once the turn ends): the turn-ended and restart clauses passed on the bed. The mid-turn clause is covered in CI (tests/unit/agents/job-not-busy.test.ts). On the bed, the stub agent closed its own turn, which Den read correctly.
 - Live checks for 726 (a throwaway second Den changes Hub by address, back, and by company), 732 (a background shell under the agent, from the stub's `/bg`), 731 and 715.
 
 ### Migrations

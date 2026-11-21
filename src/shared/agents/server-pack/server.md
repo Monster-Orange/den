@@ -134,6 +134,9 @@ Reads (they change nothing):
   as `<cli> gate run -- <command>` instead. A release run your person
   waits on (they marked it, or it's for an issue they reported) may ask
   with `priority: "release"` and a `reason`; never a routine run.
+- `gate_slot_yield`: your waiting slot lets one waiting slot behind it go
+  just ahead of yours; you keep your place otherwise. Use it instead of
+  giving your place back and asking again at the back.
 
 Hub files (through Den, as you; when Hub is connected):
 
@@ -190,6 +193,10 @@ Held (each waits for the person's Allow):
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as
   the CI system's secret at once, and never print it.
+- `gate_box_set`, `gate_box_remove`: ask to add, replace or remove a test
+  box (another machine whose browsers take gate slots;
+  docs/gate-slots.md). Den checks the box first; it waits for the
+  person's Allow, and nothing changes until then.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the

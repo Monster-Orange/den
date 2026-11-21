@@ -80,6 +80,14 @@ const LISTING: Record<string, Entry> = {
   "web login": page("settings-registry.js", 'id="set-signin"'),
   "web sessions": R,
   "web logout": page("settings-registry.js", "data-signout-all"),
+  // Issue 810: setup is Settings' Set up test person; the command only says so.
+  "web fixture-person": page(
+    "settings-registry.js",
+    '"/api/web/fixture-person"',
+  ),
+  "web fixture-login": script(
+    "the live-check runner's one-time link on a test install; never on a page",
+  ),
   "web owner": page("settings-registry.js", "/api/web/owner"),
   "web approve": page("settings-registry.js", "/api/web/approve"),
   "web claim-link": script("a setup link for a new device, from a shell"),
@@ -129,7 +137,11 @@ const LISTING: Record<string, Entry> = {
   "gate run": script("wraps a test command, in a terminal or a gate script"),
   "gate status": page("agents.html", 'id="ag-gate"'),
   "gate end": page("gate-chip.js", "/api/gate-slots/end"),
+  // Issue 795: the waiting run's owner (an agent's shell, or MCP) yields.
+  "gate yield": script("a waiting run's owner lets one run ahead of it"),
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
+  // Issue 625: the test boxes, set on the Settings page.
+  "gate box": page("settings-registry.js", 'id: "server.gate_boxes"'),
 
   "repo detect": R,
 
