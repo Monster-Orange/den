@@ -10,7 +10,7 @@
  * only looks at the status never leaves a request open (the fixture
  * person's refusals: src/shared/fixture-person.ts).
  *
- * The answers are faked at the page's network. Chromium; DEN_PW_WS
+ * The answers are faked at the page's network. Chromium and WebKit; DEN_PW_WS
  * connects to a Playwright server instead of launching. The demo
  * distribution (helpers/agents-page-server.ts). Invented names only.
  */
@@ -24,15 +24,17 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
 
-jest.setTimeout(120_000);
+jest.setTimeout(180_000);
 
-let browser: Browser | null = null;
+const ENGINES = ["chromium", "webkit"] as const;
+type Engine = (typeof ENGINES)[number];
+const browsers: Partial<Record<Engine, Browser>> = {};
 let s: AgentsPageServer | null = null;
 
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    browser = await launchBrowser(pw.chromium);
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -41,20 +43,28 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  await closeBrowserSuite({ browsers: [browser], servers: [s] });
+  await closeBrowserSuite({
+    browsers: Object.values(browsers),
+    servers: [s],
+  });
 });
 
-/** /settings, with `route` answering `path`; how many asks it got. */
-async function watch(
-  path: string,
-  answer: (r: Route) => Promise<void> | void,
-): Promise<{ p: Page; asks: () => number }> {
-  const ctx = await browser!.newContext({
+async function signedInPage(e: Engine): Promise<Page> {
+  const ctx = await browsers[e]!.newContext({
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
   await signIn(ctx, s!.stateDir, s!.base);
-  const p = await ctx.newPage();
+  return ctx.newPage();
+}
+
+/** /settings, with `answer` answering `path`; how many asks it got. */
+async function watch(
+  e: Engine,
+  path: string,
+  answer: (r: Route) => Promise<void> | void,
+): Promise<{ p: Page; asks: () => number }> {
+  const p = await signedInPage(e);
   let n = 0;
   await p.route(`**${path}*`, async (r) => {
     n++;
@@ -64,72 +74,61 @@ async function watch(
   return { p, asks: () => n };
 }
 
-const ROUTES = ["/api/web/waiting", "/api/approvals"];
+const refuse = (r: Route) =>
+  r.fulfill({
+    status: 403,
+    contentType: "application/json",
+    body: JSON.stringify({ ok: false, code: "fixture_scope" }),
+  });
 
-describe("the shell's 3 s polls", () => {
-  for (const route of ROUTES) {
-    it(`${route}: no new ask while the last is still open`, async () => {
-      if (!browser) return;
-      const held: Route[] = [];
-      const { p, asks } = await watch(route, (r) => {
-        held.push(r); // never answered
+for (const e of ENGINES)
+  describe(`the shell's 3 s polls (${e})`, () => {
+    for (const route of ["/api/web/waiting", "/api/approvals"])
+      it(`${route}: no new ask while the last is still open`, async () => {
+        if (!browsers[e]) return;
+        const held: Route[] = [];
+        const { p, asks } = await watch(e, route, (r) => {
+          held.push(r); // never answered
+        });
+        await p.waitForTimeout(10_000);
+        expect(asks()).toBe(1);
+        for (const r of held) await r.abort().catch(() => undefined);
+        await p.context().close();
       });
-      await p.waitForTimeout(10_000);
-      expect(asks()).toBe(1);
-      for (const r of held) await r.abort().catch(() => undefined);
+
+    // A refused read whose caller only looks at the status: its body is
+    // read all the same, so nothing stays open and the page settles. The
+    // reads a test install's fixture person is refused, all at once.
+    it("refused reads are read in full: the page settles", async () => {
+      if (!browsers[e]) return;
+      const p = await signedInPage(e);
+      for (const path of [
+        "/api/web/waiting",
+        "/api/web/sessions",
+        "/api/web/fixture-person",
+        "/api/web/owner",
+        "/api/web/pair",
+        "/api/sessions/helpers",
+      ])
+        await p.route(`**${path}*`, refuse);
+      for (const page of ["/settings", "/agents"]) {
+        await p.goto(`${s!.base}${page}`, { waitUntil: "load" });
+        let settles = true;
+        await p
+          .waitForLoadState("networkidle", { timeout: 15_000 })
+          .catch(() => (settles = false));
+        expect({ page, settles }).toEqual({ page, settles: true });
+      }
       await p.context().close();
     });
-  }
-  // A refused read whose caller only looks at the status: its body is read
-  // all the same, so nothing stays open and the page settles. The reads a
-  // test install's fixture person is refused, every one at once.
-  it("refused reads are read in full: the page settles", async () => {
-    if (!browser) return;
-    const ctx = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      reducedMotion: "reduce",
-    });
-    await signIn(ctx, s!.stateDir, s!.base);
-    const p = await ctx.newPage();
-    const refuse = (r: Route) =>
-      r.fulfill({
-        status: 403,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: false, code: "fixture_scope" }),
-      });
-    for (const path of [
-      "/api/web/waiting",
-      "/api/web/sessions",
-      "/api/web/fixture-person",
-      "/api/web/owner",
-      "/api/web/pair",
-      "/api/sessions/helpers",
-    ])
-      await p.route(`**${path}*`, refuse);
-    for (const page of ["/settings", "/agents"]) {
-      await p.goto(`${s!.base}${page}`, { waitUntil: "load" });
-      let settles = true;
-      await p
-        .waitForLoadState("networkidle", { timeout: 15_000 })
-        .catch(() => (settles = false));
-      expect({ page, settles }).toEqual({ page, settles: true });
-    }
-    await ctx.close();
-  });
 
-  // Approvals' 403 is a state the shell shows (sign in to approve), so
-  // only the waiting list stops on a refusal.
-  it("/api/web/waiting: a refusal stops it for the page", async () => {
-    if (!browser) return;
-    const { p, asks } = await watch("/api/web/waiting", (r) =>
-      r.fulfill({
-        status: 403,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: false, code: "fixture_scope" }),
-      }),
-    );
-    await p.waitForTimeout(10_000);
-    expect(asks()).toBe(1);
-    await p.context().close();
+    // Approvals' 403 is a state the shell shows (sign in to approve), so
+    // only the waiting list stops on a refusal.
+    it("/api/web/waiting: a refusal stops it for the page", async () => {
+      if (!browsers[e]) return;
+      const { p, asks } = await watch(e, "/api/web/waiting", refuse);
+      await p.waitForTimeout(10_000);
+      expect(asks()).toBe(1);
+      await p.context().close();
+    });
   });
-});
