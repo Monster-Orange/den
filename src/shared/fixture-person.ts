@@ -79,6 +79,39 @@ export function testInstallBinding(o: {
   return { ok: true };
 }
 
+export type TestInstallRead =
+  | { ok: true; testInstall: true; ready: boolean }
+  | {
+      ok: true;
+      testInstall: false;
+      ready: false;
+      why: TestInstallWhy;
+      /** With no_launch_flag: the flag's name, `<PREFIX>_TEST_INSTALL`. */
+      launchFlag?: string;
+    };
+
+/**
+ * Issue 823: what Settings reads (GET /api/web/fixture-person): whether
+ * this is a test install, whether its test person is set up, and if it
+ * isn't a test install, the first missing condition; for the launch flag,
+ * its name in this distribution's own prefix.
+ */
+export function testInstallRead(
+  b: ReturnType<typeof testInstallBinding>,
+  o: { ready: boolean; envPrefix: string },
+): TestInstallRead {
+  if (b.ok) return { ok: true, testInstall: true, ready: o.ready };
+  return {
+    ok: true,
+    testInstall: false,
+    ready: false,
+    why: b.why,
+    ...(b.why === "no_launch_flag"
+      ? { launchFlag: `${o.envPrefix}_${TEST_INSTALL_ENV_KEY}` }
+      : {}),
+  };
+}
+
 /** The key file's two parts, or null (missing, others can read it, malformed). */
 function readKeyFile(stateDir: string): { key: string; seal: string } | null {
   const f = fixturePersonPath(stateDir);

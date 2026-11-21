@@ -357,6 +357,7 @@ import {
   TEST_INSTALL_ENV_KEY,
   testInstallBinding,
   testInstallByHandRefusal,
+  testInstallRead,
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
 import { routeClass } from "./route-classes.js";
@@ -2940,6 +2941,11 @@ function realOrResolved(p: string): string {
  * presses it). Checked at every fixture path and on every fixture request.
  */
 function testInstallNow(except?: string): boolean {
+  return testInstallBindingNow(except).ok;
+}
+
+/** Issue 823: testInstallNow's binding, with the first missing condition. */
+function testInstallBindingNow(except?: string) {
   let mark = false;
   try {
     mark = webAuthNow().testInstall;
@@ -2964,7 +2970,7 @@ function testInstallNow(except?: string): boolean {
             !s.testOperator &&
             s.key !== except),
       ),
-  }).ok;
+  });
 }
 
 /** Issue 810: the fixture key this server sealed, or null. */
@@ -3105,13 +3111,16 @@ async function handleFixturePersonRoute(
     !notAPersonOf(req);
   if (method === "GET" || method === "HEAD") {
     // The person's own session doesn't count against the install for
-    // them, as on the press: else signing in hides the button.
-    const testInstall = testInstallNow(browser ? session!.key : undefined);
-    return sendJson(res, {
-      ok: true,
-      testInstall,
-      ready: testInstall && !!fixtureKeyNow(),
-    });
+    // them, as on the press: else signing in hides the button. Issue 823:
+    // not a test install, the first missing condition (testInstallRead).
+    const b = testInstallBindingNow(browser ? session!.key : undefined);
+    return sendJson(
+      res,
+      testInstallRead(b, {
+        ready: b.ok && !!fixtureKeyNow(),
+        envPrefix: getProfile().envPrefix,
+      }),
+    );
   }
   if (g.ok && !g.principal)
     return sendJson(
