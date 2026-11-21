@@ -17,6 +17,7 @@
  * The demo distribution with a session host in this process and a
  * scripted PTY (helpers/agents-page-server.ts): nothing really runs.
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
+ * DEN_HELPERS_BROWSER=firefox|webkit runs it there.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page } from "playwright";
@@ -42,8 +43,13 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    browser = await launchBrowser(chromium);
+    const pw = await import("playwright");
+    const engine = (
+      ["firefox", "webkit"].includes(process.env.DEN_HELPERS_BROWSER ?? "")
+        ? process.env.DEN_HELPERS_BROWSER
+        : "chromium"
+    ) as "chromium" | "firefox" | "webkit";
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
