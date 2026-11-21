@@ -190,6 +190,8 @@ export const SUBCOMMAND_OWN_HELP: Readonly<Record<string, readonly string[]>> =
       "approve",
       "claim-link",
       "url",
+      "fixture-person",
+      "fixture-login",
     ],
     mcp: ["connect", "disconnect", "clients", "config"],
     repo: ["add"],

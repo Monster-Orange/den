@@ -75,8 +75,10 @@ That file is the install-den skill, also in the package at
 Claude skill front matter. `den --help` prints the line. The skill does three
 things only: it installs Den (after checking Node and git), helps the person
 pick its name and folder (default `~/<name>`), then runs `web up` and hands
-over the one-time link from `web claim-link`: "Den's own agent takes it from
-there." It adds no repo and creates no project: that is
+over: on the same computer, the person runs `<cli> web open` in their own
+terminal, which opens Den signed in; from another computer, they connect with
+`ssh -t <host>`, run `<cli> web login`, and open the printed link where they
+are. "Den's own agent takes it from there." It adds no repo and creates no project: that is
 [the server agent](#the-server-agent)'s job. Every command below also stays a
 person's own: `npm i -g @monster-orange/den` → `den create <name>` →
 `<cli> repo add` → `<cli> up` skips both agents. The skill runs the first
