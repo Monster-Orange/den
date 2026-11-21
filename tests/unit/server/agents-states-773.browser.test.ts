@@ -37,6 +37,8 @@ let s: AgentsPageServer | null = null;
 /** A role in the test → { id: the agent's id, sid: its session's, token }. */
 const ag: Record<string, { id: string; sid: string; token: string }> = {};
 const errors: string[] = [];
+/** The newest changelog version: seen, so What's new stays shut. */
+let latest = "";
 
 /** An agent started as a person does (the demo's planner persona). */
 async function startAgent(ws: string, role: string): Promise<void> {
@@ -78,6 +80,12 @@ beforeAll(async () => {
     throw err;
   }
   s = await startAgentsPageServer();
+  latest =
+    (
+      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+        version: string;
+      }[]
+    )[0]?.version ?? "";
   await startAgent("north", "planner");
   await startAgent("north", "builder");
   await startAgent("south", "reviewer");
@@ -121,14 +129,20 @@ async function open(path: string, width = 1280): Promise<Page> {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
+  await ctx.addInitScript((v) => {
+    // No What's new over the list.
+    document.addEventListener("DOMContentLoaded", () => {
+      const st = document.createElement("style");
+      st.textContent = "#cl-overlay{display:none!important}";
+      document.head.appendChild(st);
+    });
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
+        localStorage.setItem(k, v);
     } catch {
       /* none */
     }
-  });
+  }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(signInUrl(s!.stateDir, s!.base, path));
