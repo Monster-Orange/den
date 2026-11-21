@@ -573,6 +573,8 @@ describe("the panel", () => {
     );
     // Logs opens the runs dock on that service's tab, and it reads.
     await p.waitForSelector(".den-dock:not([hidden])");
+    // Kept on purpose: this proves the stream does not close; nothing
+    // marks "stays open", so it gives a close a moment to show.
     await p.waitForTimeout(1_500);
     expect(await p.textContent(".den-dock")).not.toContain("Connection closed");
     asked.length = 0;
@@ -751,7 +753,17 @@ describe("the panel", () => {
       await p.waitForSelector(`${panel}.den-sheet`);
       await p.touchscreen.tap(195, 10);
       await p.waitForFunction(() => !document.querySelector(".den-svp"));
-      await p.waitForTimeout(150);
+      // Focus moves a task after the panel goes: wait for it to land
+      // somewhere other than the page itself (or a moment), then look.
+      await p
+        .waitForFunction(
+          () =>
+            !!document.activeElement &&
+            document.activeElement !== document.body,
+          undefined,
+          { timeout: 2_000 },
+        )
+        .catch(() => undefined);
       const at = await p.evaluate(() => {
         const a = document.activeElement as HTMLElement | null;
         const r = a?.getBoundingClientRect();
