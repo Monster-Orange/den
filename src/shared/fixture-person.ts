@@ -4,28 +4,40 @@
  * Live checks need a browser signed in, and they are run by an agent,
  * which Den never lets in as the person. The fixture person is neither:
  *
- *  - The test-install mark, `web.test_install: true`, is read from the
- *    distribution config only (readWebAuthConfig). A person sets it by
- *    hand, once. Settings shows it and never writes it; `config` and
- *    POST /api/settings refuse it; user.yml's copy is ignored.
- *  - The fixture person's secret (FIXTURE_PERSON_FILE, 0600, in the state
- *    dir) is made by a signed-in person (Settings › Set up test person) or
- *    in their own terminal (`web fixture-person`), on a test install only.
- *    Its value is never printed or returned.
+ *  - A test install (testInstallBinding) needs ALL of: the mark,
+ *    `web.test_install: true`, in the distribution config (set by hand;
+ *    never through Settings, `config` or an agent); the launcher's
+ *    test-only flag, `<PREFIX>_TEST_INSTALL=1`, in the server's own start
+ *    environment (never a file); a state dir that isn't the product's
+ *    default; and no owner or paired person. Anything less: not a test
+ *    install, and every fixture path is refused.
+ *  - The fixture person's key (FIXTURE_PERSON_FILE, 0600, in the state
+ *    dir) is made by the server for a person (Settings › Set up test
+ *    person, or `web fixture-person`, which asks the server). It is sealed
+ *    with the install's own web secret, so a key the server didn't write
+ *    is refused (verifiedFixtureKey). Its value is never printed.
  *  - With it, the gate runner mints a one-time code (`web fixture-login`)
  *    and opens `/auth?fixture=<code>`: a session whose `via` is "fixture",
  *    named "fixture person" in the log and the audit trail (principal
- *    FIXTURE_PRINCIPAL), never the human. Off a test install it is refused.
- *  - A fixture session never approves a held write, never lets another
- *    browser in, never makes the fixture person, and never reaches Hub
- *    (fixtureScopeRefusal).
+ *    FIXTURE_PRINCIPAL), never the human. It lasts
+ *    `web.fixture_session_minutes`, and ends at once when the install
+ *    stops being a test install or the key goes.
+ *  - A fixture session reaches only its allow-list (fixtureScopeRefusal),
+ *    and counts as an agent at every person-only check.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { LOGIN_CODE_TTL_MS, safeNext } from "./web-session.js";
+import {
+  FIXTURE_SESSION_MINUTES,
+  FIXTURE_SESSION_RANGE,
+  LOGIN_CODE_TTL_MS,
+  safeNext,
+} from "./web-session.js";
 
-/** The fixture person's secret, in the state dir (0600). */
+export { FIXTURE_SESSION_MINUTES, FIXTURE_SESSION_RANGE };
+
+/** The fixture person's key, in the state dir (0600). */
 export const FIXTURE_PERSON_FILE = "fixture-person.key";
 /** The fixture session's principal in the audit trail. */
 export const FIXTURE_PRINCIPAL = "fixture:person";
@@ -33,73 +45,96 @@ export const FIXTURE_PRINCIPAL = "fixture:person";
 export const FIXTURE_LABEL = "fixture person";
 /** The sign-in link's query parameter. */
 export const FIXTURE_LINK_PARAM = "fixture";
+/** The launcher's flag, `<PREFIX>_TEST_INSTALL` (profile readEnv). */
+export const TEST_INSTALL_ENV_KEY = "TEST_INSTALL";
 
 const CONTEXT = "den-fixture-v1:";
+const SEAL_CONTEXT = "den-fixture-key-v1:";
 const SKEW_MS = 5_000;
 const MAX_TTL_MS = 60 * 60_000;
+const KEY_RE = /^[A-Za-z0-9_-]{43}$/;
 
 export function fixturePersonPath(stateDir: string): string {
   return path.join(stateDir, FIXTURE_PERSON_FILE);
 }
 
-/**
- * The fixture person's secret, or null: missing, unreadable, malformed,
- * or readable by others (then it is no secret, and nothing signs in).
- */
-export function readFixtureSecret(stateDir: string): Buffer | null {
-  const f = fixturePersonPath(stateDir);
-  try {
-    const st = fs.statSync(f);
-    if (!st.isFile() || (st.mode & 0o077) !== 0) return null;
-    const v = fs.readFileSync(f, "utf-8").trim();
-    if (!/^[A-Za-z0-9_-]{43,}$/.test(v)) return null;
-    return Buffer.from(v, "utf-8");
-  } catch {
-    return null;
-  }
-}
+export type TestInstallWhy =
+  | "no_mark"
+  | "no_launch_flag"
+  | "default_state_dir"
+  | "owned";
 
-// Red-first stubs (issue 810 review): the real binding follows.
-export const FIXTURE_SESSION_MINUTES = 0;
-export function fixtureSessionExpired(
-  createdAt: number,
-  now: number,
-  minutes: number,
-): boolean {
-  void createdAt;
-  void now;
-  void minutes;
-  return false;
-}
-export function readFixtureKey(stateDir: string): Buffer | null {
-  return readFixtureSecret(stateDir);
-}
-export function verifiedFixtureKey(
-  stateDir: string,
-  webSecret: Buffer | null,
-): Buffer | null {
-  void webSecret;
-  return readFixtureSecret(stateDir);
-}
+/** Whether this install is a test install, and if not, the first reason. */
 export function testInstallBinding(o: {
   mark: boolean;
   launchFlag: boolean;
   defaultStateDir: boolean;
   owned: boolean;
-}): { ok: true } | { ok: false; why: string } {
-  return o.mark ? { ok: true } : { ok: false, why: "no_mark" };
+}): { ok: true } | { ok: false; why: TestInstallWhy } {
+  if (!o.mark) return { ok: false, why: "no_mark" };
+  if (!o.launchFlag) return { ok: false, why: "no_launch_flag" };
+  if (o.defaultStateDir) return { ok: false, why: "default_state_dir" };
+  if (o.owned) return { ok: false, why: "owned" };
+  return { ok: true };
 }
 
-/** Whether the fixture person is set up here (Settings shows it). */
-export function fixturePersonReady(stateDir: string): boolean {
-  return readFixtureSecret(stateDir) !== null;
+/** The key file's two parts, or null (missing, others can read it, malformed). */
+function readKeyFile(stateDir: string): { key: string; seal: string } | null {
+  const f = fixturePersonPath(stateDir);
+  try {
+    const st = fs.lstatSync(f);
+    if (!st.isFile() || (st.mode & 0o077) !== 0) return null;
+    const [key, seal = ""] = fs.readFileSync(f, "utf-8").trim().split(".");
+    return KEY_RE.test(key) ? { key, seal } : null;
+  } catch {
+    return null;
+  }
+}
+
+function sealOf(key: string, webSecret: Buffer): Buffer {
+  return createHmac("sha256", webSecret)
+    .update(SEAL_CONTEXT + key)
+    .digest();
+}
+
+/**
+ * The fixture key as the CLI reads it, to mint a code (unverified: the
+ * server checks its seal). Null when missing, readable by others, or
+ * malformed.
+ */
+export function readFixtureKey(stateDir: string): Buffer | null {
+  const k = readKeyFile(stateDir);
+  return k ? Buffer.from(k.key, "utf-8") : null;
+}
+
+/**
+ * The fixture key the server trusts: the file's, only when its seal is
+ * this install's web secret's (so the server wrote it). Null otherwise.
+ */
+export function verifiedFixtureKey(
+  stateDir: string,
+  webSecret: Buffer | null,
+): Buffer | null {
+  const k = readKeyFile(stateDir);
+  if (!k || !webSecret) return null;
+  let given: Buffer;
+  try {
+    given = Buffer.from(k.seal, "base64url");
+  } catch {
+    return null;
+  }
+  const want = sealOf(k.key, webSecret);
+  if (given.length !== want.length || !timingSafeEqual(given, want))
+    return null;
+  return Buffer.from(k.key, "utf-8");
 }
 
 /** Why the fixture person is refused on this install. */
 export function notTestInstallRefusal(configFile = "config/den.yml"): string {
   return (
-    "This install isn't marked a test install, so the fixture person is refused. " +
-    `A person marks one by hand: web.test_install: true in ${configFile}.`
+    "This install isn't a test install, so the fixture person is refused. A test install is " +
+    `marked by hand (web.test_install: true in ${configFile}) and started by the test launcher ` +
+    "on its own state folder, with no owner."
   );
 }
 
@@ -117,22 +152,24 @@ export type FixtureSetup =
   | { ok: true }
   | {
       ok: false;
-      code: "not_test_install" | "person_only";
+      code: "not_test_install" | "person_only" | "no_secret";
       error: string;
     };
 
 /**
- * Make (or replace) the fixture person's secret: a person's, on a test
- * install only. `agent`: the caller is an agent (an actor token, a claimed
- * agent, or a fixture session), refused first. Never returns the value.
+ * Make (or replace) the fixture person's key, sealed with `webSecret`:
+ * the server's, for a person, on a test install only. `agent`: the
+ * caller isn't a person (an agent, a claimed agent, a process inside an
+ * agent's session, or a fixture session), refused first. Never returns
+ * the value.
  */
 export function setupFixturePerson(
   stateDir: string,
   o: {
     testInstall: boolean;
     agent: boolean;
+    webSecret: Buffer | null;
     configFile?: string;
-    webSecret?: Buffer | null;
   },
 ): FixtureSetup {
   if (o.agent)
@@ -148,15 +185,30 @@ export function setupFixturePerson(
       code: "not_test_install",
       error: notTestInstallRefusal(o.configFile),
     };
+  if (!o.webSecret)
+    return {
+      ok: false,
+      code: "no_secret",
+      error: "This install has no web secret yet: start it first.",
+    };
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const f = fixturePersonPath(stateDir);
+  const key = randomBytes(32).toString("base64url");
+  const seal = sealOf(key, o.webSecret).toString("base64url");
   const tmp = `${f}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  fs.writeFileSync(tmp, `${randomBytes(32).toString("base64url")}\n`, {
-    mode: 0o600,
-  });
+  fs.writeFileSync(tmp, `${key}.${seal}\n`, { mode: 0o600 });
   fs.chmodSync(tmp, 0o600);
   fs.renameSync(tmp, f);
   return { ok: true };
+}
+
+/** Whether a fixture session made at `createdAt` has outlived its minutes. */
+export function fixtureSessionExpired(
+  createdAt: number,
+  now: number,
+  minutes: number,
+): boolean {
+  return now - createdAt >= minutes * 60_000;
 }
 
 function mac(secret: Buffer, body: string): Buffer {
@@ -167,23 +219,23 @@ function mac(secret: Buffer, body: string): Buffer {
 
 /** A one-time fixture sign-in code: `f1.<nonce>.<expiry>.<mac>`. */
 export function mintFixtureCode(
-  secret: Buffer,
+  key: Buffer,
   now: number = Date.now(),
   ttlMs: number = LOGIN_CODE_TTL_MS,
 ): string {
   const nonce = randomBytes(16).toString("base64url");
   const body = `f1.${nonce}.${(now + ttlMs).toString(36)}`;
-  return `${body}.${mac(secret, body).toString("base64url")}`;
+  return `${body}.${mac(key, body).toString("base64url")}`;
 }
 
 export type FixtureCodeCheck =
   | { ok: true; nonce: string; expiresAt: number }
   | { ok: false; reason: "malformed" | "bad_mac" | "expired" };
 
-/** Whether `code` is one this fixture secret minted, still in its time. */
+/** Whether `code` is one this fixture key minted, still in its time. */
 export function checkFixtureCode(
   code: string,
-  secret: Buffer,
+  key: Buffer,
   now: number = Date.now(),
 ): FixtureCodeCheck {
   const m =
@@ -192,7 +244,7 @@ export function checkFixtureCode(
     );
   if (!m) return { ok: false, reason: "malformed" };
   const given = Buffer.from(m[4], "base64url");
-  const want = mac(secret, m[1]);
+  const want = mac(key, m[1]);
   if (given.length !== want.length || !timingSafeEqual(given, want))
     return { ok: false, reason: "bad_mac" };
   const expiresAt = parseInt(m[3], 36);
@@ -215,8 +267,8 @@ export type FixtureLink =
 
 /**
  * The gate runner's sign-in link as the fixture person:
- * `<origin>/auth?fixture=<code>[&next=<path>]`. Refused off a test
- * install, and when no person has set the fixture person up.
+ * `<origin>/auth?fixture=<code>[&next=<path>]`. Refused when the server
+ * says this isn't a test install, and when no fixture person is set up.
  */
 export function fixtureLoginLink(
   stateDir: string,
@@ -235,8 +287,8 @@ export function fixtureLoginLink(
       code: "not_test_install",
       error: notTestInstallRefusal(o.configFile),
     };
-  const secret = readFixtureSecret(stateDir);
-  if (!secret)
+  const key = readFixtureKey(stateDir);
+  if (!key)
     return {
       ok: false,
       code: "no_fixture_person",
@@ -246,7 +298,7 @@ export function fixtureLoginLink(
     };
   const now = Date.now();
   const ttl = o.ttlMs ?? LOGIN_CODE_TTL_MS;
-  const code = mintFixtureCode(secret, now, ttl);
+  const code = mintFixtureCode(key, now, ttl);
   const n = safeNext(o.next ?? "/");
   return {
     ok: true,
@@ -257,29 +309,64 @@ export function fixtureLoginLink(
   };
 }
 
-/** Routes that let another browser in, or approve: a person's alone. */
-const PERSON_ONLY_PATHS: readonly RegExp[] = [
-  /^\/api\/web\/(?:pair|approve|deny|owner(?:\/.*)?|fixture-person)$/,
-  /^\/api\/approvals\/[^/]+\/decide$/,
+/**
+ * The writes a fixture session may make: what live checks drive through
+ * the page. Person-only fields inside them are still refused (a fixture
+ * session counts as an agent there).
+ */
+export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
+  ["POST", /^\/api\/session\/logout$/],
+  ["POST", /^\/api\/settings$/],
+  ["POST", /^\/api\/scope$/],
+  ["POST", /^\/api\/notifications\/(?:read|clear)$/],
+  ["POST", /^\/api\/report\/drafts$/],
+  ["DELETE", /^\/api\/report\/drafts\/[^/]+$/],
+  [
+    "POST",
+    /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:say|start|stop|restart|resume)$/,
+  ],
 ];
-/** Any path with a `hub` segment (or one starting `hub-`): Hub's. */
-const HUB_PATH = /\/hub(?:[-_][^/]*)?(?:\/|$)/;
+
+/** Reads never open to a fixture session, whatever their route class. */
+const READ_DENY: readonly RegExp[] = [
+  // Hub: only Den's own view of it (the rail).
+  /\/hub(?:[-_][^/]*)?\/./,
+  /\/hub[-_][^/]*$/,
+  // Who may sign in, and the person's own records.
+  /^\/api\/web\//,
+  /^\/api\/sessions\//,
+];
 
 /**
  * Why a fixture session may not make this request, or null when it may.
- * Reads pass; writes to Hub, to who may sign in, and to approvals don't.
+ * An allow-list: a page or asset (a GET off /api/), a /api/ GET the route
+ * table classes `readonly` and READ_DENY doesn't name, or one of
+ * FIXTURE_WRITES. Everything else (shell-grade and mutating GETs,
+ * unclassified routes, every other write) is refused. `cls` is the
+ * route's class (route-classes.ts routeClass), null when unclassified.
  */
 export function fixtureScopeRefusal(
   method: string,
   pathname: string,
-  cls?: string | null,
+  cls: string | null,
 ): string | null {
-  void cls;
   const m = method.toUpperCase();
-  if (m === "GET" || m === "HEAD") return null;
-  if (PERSON_ONLY_PATHS.some((re) => re.test(pathname)))
-    return "The fixture person can't approve, let a browser in, or set up the test person: that is a person's.";
-  if (HUB_PATH.test(pathname))
-    return "The fixture person stays on this install: it can't reach Hub.";
-  return null;
+  const refused =
+    "The fixture person can only use the pages and the few writes live checks need: not this.";
+  if (m === "GET" || m === "HEAD") {
+    // A page or an asset; a page route that streams or starts something
+    // (a mutating GET) only when it is the sign-in itself.
+    if (!pathname.startsWith("/api/"))
+      return cls === "mutating" || cls === "shell-grade"
+        ? pathname === "/auth"
+          ? null
+          : refused
+        : null;
+    if (cls !== "readonly") return refused;
+    if (READ_DENY.some((re) => re.test(pathname))) return refused;
+    return null;
+  }
+  return FIXTURE_WRITES.some(([wm, re]) => wm === m && re.test(pathname))
+    ? null
+    : refused;
 }

@@ -272,7 +272,17 @@ export interface WebAuthConfig {
   testInstall: boolean;
   /** `web.test_install` in user.yml: ignored there (warned at start). */
   testInstallInUser?: true;
+  /**
+   * Issue 810: `web.fixture_session_minutes` (user.yml over the
+   * distribution's): how long a fixture person's session lasts.
+   */
+  fixtureSessionMinutes: number;
 }
+
+/** Issue 810: `web.fixture_session_minutes`' default. */
+export const FIXTURE_SESSION_MINUTES = 60;
+/** Its bounds, in minutes. */
+export const FIXTURE_SESSION_RANGE = { min: 1, max: 24 * 60 } as const;
 
 /** A GitHub login (or org name): letters, digits, single dashes, ≤ 39. */
 const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -482,8 +492,22 @@ export function readWebAuthConfig(
     throw new Error(
       `web.test_install (${configFile}) must be true or false, got ${JSON.stringify(testMark)}`,
     );
+  const fxMin = user.fixture_session_minutes ?? team.fixture_session_minutes;
+  if (
+    fxMin !== undefined &&
+    fxMin !== null &&
+    (typeof fxMin !== "number" ||
+      !Number.isInteger(fxMin) ||
+      fxMin < FIXTURE_SESSION_RANGE.min ||
+      fxMin > FIXTURE_SESSION_RANGE.max)
+  )
+    throw new Error(
+      `web.fixture_session_minutes must be a whole number of minutes from ${FIXTURE_SESSION_RANGE.min} to ${FIXTURE_SESSION_RANGE.max}, got ${JSON.stringify(fxMin)}`,
+    );
   return {
     testInstall: testMark === true,
+    fixtureSessionMinutes:
+      typeof fxMin === "number" ? fxMin : FIXTURE_SESSION_MINUTES,
     ...(user.test_install !== undefined
       ? { testInstallInUser: true as const }
       : {}),

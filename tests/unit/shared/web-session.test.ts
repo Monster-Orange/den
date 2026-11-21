@@ -295,6 +295,7 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       loginLinkTtlMs: 5 * 60_000,
       // Issue 810: not a test install unless a person marks it by hand.
       testInstall: false,
+      fixtureSessionMinutes: 60,
     });
     expect(ignoredConfigWarning(cfg)).toBeNull();
   });

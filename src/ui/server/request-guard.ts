@@ -1226,5 +1226,26 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
     };
     return actor;
   }
+  // Issue 810: the fixture person is never the person. Every person-only
+  // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
+  // it, and the audit keeps it as a claim, labelled as such.
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      kind: "agent",
+      client: FIXTURE_PRINCIPAL,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      unverified: true,
+    };
   return claimed ? { ...claimed, unverified: true } : null;
+}
+
+/**
+ * Issue 810: whether a person-only check must refuse this request: an
+ * agent's token, a claimed agent, or the fixture person.
+ */
+export function notAPersonOf(req: http.IncomingMessage): boolean {
+  return !!agentPrincipalOf(req) || !!auditActorOf(req);
 }

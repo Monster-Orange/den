@@ -76,7 +76,7 @@ describe("web fixture-person (the person's fallback to Settings' button)", () =>
   it("never decides here: it asks the running server, and with none answering it is refused and writes nothing", async () => {
     const { o, io: i } = io(true);
     expect(await cmdWebFixturePerson(["--port", "1"], i)).toBe(1);
-    expect(o.err).toMatch(/no .*server answers/i);
+    expect(o.err).toMatch(/nothing answers on port/i);
     expect(fs.existsSync(fixturePersonPath(tmp))).toBe(false);
   });
 });

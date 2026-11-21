@@ -95,7 +95,6 @@ import {
 import {
   FIXTURE_LABEL,
   fixtureLoginLink,
-  setupFixturePerson,
 } from "../../shared/fixture-person.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
@@ -2803,11 +2802,11 @@ function testInstallNow(io: FixtureIo): boolean {
 }
 
 const FIXTURE_PERSON_HELP = () =>
-  `Usage: ${product().cli} web fixture-person\n` +
-  "  On a test install (web.test_install: true in the distribution config, set by\n" +
-  "  hand), makes the fixture person live checks sign in as. Settings › Access ›\n" +
-  "  Set up test person does the same. Run it in your own terminal: an agent\n" +
-  "  can't. Its secret stays in the state folder (0600) and is never printed.\n";
+  `Usage: ${product().cli} web fixture-person [--port <port>]\n` +
+  "  On a test install, asks the running install to make the fixture person live\n" +
+  "  checks sign in as. Settings › Access › Set up test person does the same. Run\n" +
+  "  it in your own terminal: an agent, or anything an agent runs, is refused.\n" +
+  "  Its key stays in the state folder (0600) and is never printed.\n";
 
 /**
  * `<cli> web fixture-person` (issue 810): the person's fallback to Settings'
@@ -2822,7 +2821,8 @@ export async function cmdWebFixturePerson(
     io.out(FIXTURE_PERSON_HELP());
     return 0;
   }
-  if (args.length) {
+  const { port, rest } = takePort(args);
+  if (rest.length) {
     io.err(FIXTURE_PERSON_HELP());
     return 2;
   }
@@ -2831,13 +2831,24 @@ export async function cmdWebFixturePerson(
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
   }
-  const r = setupFixturePerson(io.stateDir ?? getStateDir(), {
-    testInstall: testInstallNow(io),
-    agent: false,
-    configFile: product().configFile,
-  });
-  if (!r.ok) {
-    io.err(`${product().cli}: ${r.error}\n`);
+  // The server decides (a person, outside every agent's session, on a
+  // test install) and writes the key: nothing is decided or written here.
+  const r = await serverCall(
+    io.stateDir ?? getStateDir(),
+    port,
+    "POST",
+    "/api/web/fixture-person",
+    {},
+  );
+  if (!r) {
+    io.err(
+      `${product().cli}: nothing answers on port ${port}: ` +
+        `start ${product().cli} (\`${product().cli} web up\`), or press Set up test person in Settings.\n`,
+    );
+    return 1;
+  }
+  if (r.status !== 200) {
+    io.err(`${product().cli}: ${apiError(r)}\n`);
     return 1;
   }
   io.out(

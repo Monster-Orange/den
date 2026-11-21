@@ -510,6 +510,7 @@ describe("what the fixture person can't reach", () => {
     const r = await upgrade(test, "/api/sessions/s1/io", {
       cookie: f.cookie,
       origin: test.base,
+      "sec-websocket-protocol": `den.csrf.${String(f.me.csrf ?? "")}`,
     });
     expect(r.status).toBe(403);
     expect(r.body).toMatch(/fixture_scope/);

@@ -217,6 +217,7 @@ import {
   engineVersion,
   getDistRoot,
   getEngineRoot,
+  getProfile,
   getStateDir,
 } from "../../shared/paths.js";
 import { enginePath } from "../../shared/engine.js";
@@ -292,6 +293,7 @@ import {
 import {
   agentPrincipalOf,
   auditActorOf,
+  notAPersonOf,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -325,7 +327,9 @@ import {
   checkActorToken,
   sessionPid,
   revokeAllActorTokens,
+  agentSessionRoots,
 } from "../../shared/actor-token.js";
+import { descendsFrom } from "../../shared/peer-process.js";
 import {
   checkLoginCode,
   deviceName,
@@ -347,13 +351,17 @@ import {
   FIXTURE_LABEL,
   FIXTURE_LINK_PARAM,
   FIXTURE_PRINCIPAL,
-  fixturePersonReady,
   fixtureScopeRefusal,
+  fixtureSessionExpired,
   notTestInstallRefusal,
-  readFixtureSecret,
   setupFixturePerson,
+  TEST_INSTALL_ENV_KEY,
+  testInstallBinding,
   testInstallByHandRefusal,
+  verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
+import { routeClass } from "./route-classes.js";
+import { envName, readEnv } from "../../shared/profile.js";
 import {
   clearSessionCookies,
   readSessionCookie,
@@ -2123,6 +2131,11 @@ const GUARD: GuardContext = {
   },
   session: (req, via) => {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
+    // Issue 810: a fixture session ends as soon as what allowed it goes.
+    if (s?.via === "fixture" && !fixtureSessionStands(s.createdAt)) {
+      webSessions.end(s.key);
+      return null;
+    }
     return s ? { ...s, secure: s.secure === true } : null;
   },
   // Once Den's own named https address works, the session lives there.
@@ -2899,6 +2912,77 @@ async function handleAuth(
  * echoes the code. An agent's token never gets here (AGENT_FORBIDDEN).
  */
 /**
+ * Issue 810: the launcher's test-only flag, read once from the server's
+ * own start environment (never a file), then taken out of it so nothing
+ * this server starts (agents, terminals) inherits it.
+ */
+const TEST_INSTALL_LAUNCH_FLAG = (() => {
+  const on = readEnv(getProfile(), TEST_INSTALL_ENV_KEY) === "1";
+  delete process.env[envName(getProfile(), TEST_INSTALL_ENV_KEY)];
+  return on;
+})();
+
+function realOrResolved(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * Issue 810: whether this install is a test install right now: the mark,
+ * the launch flag, its own state dir (not the product's default), and no
+ * owner or paired person (a GitHub sign-in, the setup link or a pairing
+ * code). Checked at every fixture path and on every fixture request.
+ */
+function testInstallNow(): boolean {
+  let mark = false;
+  try {
+    mark = webAuthNow().testInstall;
+  } catch {
+    mark = false;
+  }
+  const stateDir = getStateDir();
+  return testInstallBinding({
+    mark,
+    launchFlag: TEST_INSTALL_LAUNCH_FLAG,
+    defaultStateDir:
+      realOrResolved(stateDir) === realOrResolved(getProfile().stateDir),
+    owned:
+      !!readWebOwner(stateDir) ||
+      webSessions
+        .list()
+        .some(
+          (s) => s.via === "github" || s.via === "claim" || s.via === "code",
+        ),
+  }).ok;
+}
+
+/** Issue 810: the fixture key this server sealed, or null. */
+function fixtureKeyNow(): Buffer | null {
+  return verifiedFixtureKey(getStateDir(), webSecret.current());
+}
+
+/**
+ * Issue 810: whether a fixture session still stands: a test install, the
+ * sealed key in place, and within its lifetime.
+ */
+function fixtureSessionStands(createdAt: number): boolean {
+  let minutes: number;
+  try {
+    minutes = webAuthNow().fixtureSessionMinutes;
+  } catch {
+    return false;
+  }
+  return (
+    testInstallNow() &&
+    !!fixtureKeyNow() &&
+    !fixtureSessionExpired(createdAt, Date.now(), minutes)
+  );
+}
+
+/**
  * Issue 810: `GET /auth?fixture=<code>&next=<path>`: the gate runner's
  * sign-in as the fixture person (`web fixture-login`). Only on a test
  * install (web.test_install in the distribution config), only with a code
@@ -2933,13 +3017,13 @@ function handleFixtureAuth(
   };
   if (req.method !== "GET" && req.method !== "HEAD")
     return refuse(405, "method", "Open the fixture sign-in link with GET.");
-  if (!webAuthNow().testInstall)
+  if (!testInstallNow())
     return refuse(
       403,
       "not_test_install",
       notTestInstallRefusal(product().configFile),
     );
-  const secret = readFixtureSecret(getStateDir());
+  const secret = fixtureKeyNow();
   const check = secret
     ? checkFixtureCode(url.searchParams.get(FIXTURE_LINK_PARAM) ?? "", secret)
     : null;
@@ -2981,12 +3065,12 @@ async function handleFixturePersonRoute(
   res: http.ServerResponse,
 ): Promise<void> {
   const method = (req.method ?? "GET").toUpperCase();
-  const testInstall = webAuthNow().testInstall;
+  const testInstall = testInstallNow();
   if (method === "GET" || method === "HEAD")
     return sendJson(res, {
       ok: true,
       testInstall,
-      ready: testInstall && fixturePersonReady(getStateDir()),
+      ready: testInstall && !!fixtureKeyNow(),
     });
   if (method !== "POST") {
     res.setHeader("Allow", "GET, HEAD, POST");
@@ -2994,9 +3078,11 @@ async function handleFixturePersonRoute(
   }
   const p = principalPersonOf(req);
   const agent =
-    !!agentPrincipalOf(req) ||
-    !!auditActorOf(req) ||
-    (p.kind === "person-browser" && p.fixture === true);
+    notAPersonOf(req) ||
+    (p.kind === "person-browser" && p.fixture === true) ||
+    // The person's CLI bearer: refused when the caller runs inside an
+    // agent's session, whatever its env says (or can't be placed).
+    (p.kind === "person" && !(await personCliOutsideAgents(req)));
   if (!agent && p.kind !== "person" && p.kind !== "person-browser")
     return sendJson(
       res,
@@ -3010,6 +3096,7 @@ async function handleFixturePersonRoute(
   const r = setupFixturePerson(getStateDir(), {
     testInstall,
     agent,
+    webSecret: webSecret.current(),
     configFile: product().configFile,
   });
   recordAction(
@@ -3026,6 +3113,23 @@ async function handleFixturePersonRoute(
   if (!r.ok)
     return sendJson(res, { ok: false, code: r.code, error: r.error }, 403);
   return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/**
+ * Issue 810: whether the process behind a person's CLI bearer is outside
+ * every running agent session. False when it can't be placed.
+ */
+async function personCliOutsideAgents(
+  req: http.IncomingMessage,
+): Promise<boolean> {
+  await peerSettled(req, Math.max(readBinding().waitMs, 1_000)).catch(
+    () => undefined,
+  );
+  const pid = callerPid(req);
+  if (!pid) return false;
+  return !agentSessionRoots(getStateDir()).some((root) =>
+    descendsFrom(pid, root),
+  );
 }
 
 /** The request's principal kind, for the fixture person route. */
@@ -4238,7 +4342,11 @@ async function handleRequest(
     guard.principal?.kind === "person-browser" &&
     guard.principal.fixture
   ) {
-    const why = fixtureScopeRefusal(req.method ?? "GET", pathname);
+    const why = fixtureScopeRefusal(
+      req.method ?? "GET",
+      pathname,
+      routeClass(req.method ?? "GET", pathname),
+    );
     if (why) {
       recordAction(
         null,
@@ -7544,7 +7652,7 @@ async function handleRequest(
   if (pathname === "/api/local-dev" && req.method === "POST") {
     // MODE-5: a person's setting (Settings › Command line); an agent's
     // claim is refused, as on /api/settings.
-    if (agentPrincipalOf(req) || auditActorOf(req))
+    if (notAPersonOf(req))
       return sendJson(
         res,
         { ok: false, error: "only a person can change local_dev" },
@@ -7929,7 +8037,7 @@ async function handleRequest(
         const personOnly = PERSON_ONLY_SETTINGS.filter(
           (k) => (body as Record<string, unknown>)[k] !== undefined,
         );
-        if (personOnly.length && (agentPrincipalOf(req) || auditActorOf(req)))
+        if (personOnly.length && notAPersonOf(req))
           return sendJson(
             res,
             {
@@ -8660,6 +8768,24 @@ function handleUpgrade(
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
+  // Issue 810: the fixture person never opens a terminal (or any socket).
+  if (guard.principal?.kind === "person-browser" && guard.principal.fixture) {
+    recordAction(
+      null,
+      {
+        verb: "fixture-scope",
+        detail: `WS ${routeTemplate(pathname)}`,
+        outcome: "refused",
+        reason: "fixture_scope",
+      },
+      FIXTURE_PRINCIPAL,
+    );
+    return refuse(
+      403,
+      "The fixture person can't open a terminal.",
+      "fixture_scope",
+    );
+  }
   if (!isSessionIoPath(pathname))
     return refuse(404, "No WebSocket route here", "not_found");
   if (guard.session) trackSessionSocket(guard.session.key, socket);

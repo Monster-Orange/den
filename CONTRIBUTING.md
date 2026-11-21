@@ -252,30 +252,46 @@ use it. Setup's state reaches `expect` only through what `run` returns.
 Live checks run as an agent, and Den never signs an agent in as the
 person. On a bed, the runner signs in as a **fixture person** instead:
 neither the person nor an agent, logged and audited as "fixture person".
-It works only on an install a person has marked a test install:
+It works only on a **test install**, which needs all four of these:
 
-1. The person marks the bed a test install, by hand, in its distribution
-   config (`config/den.yml`). Settings, `config` and agents can't set it.
+1. The mark, set by hand by a person in the bed's distribution config
+   (`config/den.yml`). Settings, `config` and agents can't set it, and
+   agents are denied edits to that file.
 
    ```yaml
    web:
      test_install: true
+     fixture_session_minutes: 60 # optional: how long a fixture session lasts
    ```
 
-2. Signed in, the person opens Settings › Access › Test install and
+2. The launcher's test-only flag in the server's own start environment,
+   `<PREFIX>_TEST_INSTALL=1` (`DEN_TEST_INSTALL=1` for Den). No file can
+   set it, and the server drops it from what it passes on.
+3. Its own state folder (`<PREFIX>_HOME`), never the product's default
+   one.
+4. No owner and no paired person: no GitHub sign-in, setup link or
+   pairing code ever used on it.
+
+Then:
+
+1. Signed in, the person opens Settings › Access › Test install and
    presses **Set up test person**, once. From their own terminal,
-   `<cli> web fixture-person` does the same. Either makes a secret in the
-   bed's state folder (0600) that is never printed. An agent is refused.
-3. The runner gets a one-time sign-in link as the fixture person:
+   `<cli> web fixture-person` asks the running server to do the same.
+   The server writes a key in the bed's state folder (0600), sealed with
+   the install's own secret, so a key it didn't write is refused. Agents,
+   and anything run inside an agent's session, are refused.
+2. The runner gets a one-time sign-in link as the fixture person:
 
    ```sh
    <cli> web fixture-login [--next <path>] [--origin <url>]
    ```
 
-On an install not marked a test install, the fixture sign-in and its
-setup are refused, and an agent's own `web login` stays refused
-everywhere. A fixture session can't approve a held write, let another
-browser in, set up the fixture person, or reach Hub.
+Anywhere else the fixture sign-in and its setup are refused, and an
+agent's own `web login` stays refused everywhere. A fixture session
+counts as an agent at every person-only check, reaches only the pages and
+the few writes live checks need, never opens a terminal, and ends as soon
+as the install stops being a test install, the key goes, or its time is
+up.
 
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with

@@ -436,13 +436,18 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
       if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
     return [...new Set(out)];
   };
+  // Issue 810: the fixture person's key, as the web secret.
+  const fixtureKey = path.join(abs, "fixture-person.key");
   const targets = [
     ...spellings(secret).map((p) => `${p}*`),
     ...spellings(sessions).map((p) => `${p}/*`),
+    ...spellings(fixtureKey).map((p) => `${p}*`),
   ];
   return [
     `Read(/${secret})`,
     `Read(/${sessions}/**)`,
+    `Read(/${fixtureKey})`,
+    `Edit(/${fixtureKey})`,
     // Any command naming the path, whatever the program.
     ...targets.map((t) => `Bash(*${t})`),
     // The common readers by name too, should a version match a leading
@@ -466,9 +471,13 @@ export function personConfigDenyRules(
   dir: string,
   distConfigFile?: string,
 ): string[] {
-  void distConfigFile;
   const abs = path.resolve(dir);
-  return [`Edit(/${abs}/**)`];
+  // Issue 810: the distribution config holds the test-install mark, which
+  // only a person sets by hand.
+  return [
+    `Edit(/${abs}/**)`,
+    ...(distConfigFile ? [`Edit(/${path.resolve(distConfigFile)})`] : []),
+  ];
 }
 
 /** The readers named in the Bash deny rules (stateDirDenyRules). */
@@ -679,7 +688,10 @@ function common(input: LaunchInput): {
                                     )
                                   : []),
                                 ...(input.personConfigDir
-                                  ? personConfigDenyRules(input.personConfigDir)
+                                  ? personConfigDenyRules(
+                                      input.personConfigDir,
+                                      input.distConfigFile,
+                                    )
                                   : []),
                               ],
                             }
