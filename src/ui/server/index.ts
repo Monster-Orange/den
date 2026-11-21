@@ -355,6 +355,7 @@ import {
   notTestInstallRefusal,
   setupFixturePerson,
   TEST_INSTALL_ENV_KEY,
+  personsOnInstall,
   testInstallBinding,
   testInstallByHandRefusal,
   testInstallRead,
@@ -2935,10 +2936,9 @@ function realOrResolved(p: string): string {
 /**
  * Issue 810: whether this install is a test install right now: the mark,
  * the launch flag, its own state dir (not the product's default), and no
- * owner or signed-in person (a GitHub sign-in, the setup link, a pairing
- * code, or a `web login` link). The one link session that pressed Set up
- * test person doesn't count, nor `except` (the caller's own, while it
- * presses it). Checked at every fixture path and on every fixture request.
+ * owner or signed-in person (personsOnInstall). The one link session that
+ * pressed Set up test person doesn't count, nor `except` (the caller's own
+ * sign-in of any kind, while it reads or presses it). Checked at every fixture path and on every fixture request.
  */
 function testInstallNow(except?: string): boolean {
   return testInstallBindingNow(except).ok;
@@ -2958,18 +2958,11 @@ function testInstallBindingNow(except?: string) {
     launchFlag: TEST_INSTALL_LAUNCH_FLAG,
     defaultStateDir:
       realOrResolved(stateDir) === realOrResolved(getProfile().stateDir),
-    owned:
-      !!readWebOwner(stateDir) ||
-      webSessions.list().some(
-        (s) =>
-          s.via === "github" ||
-          s.via === "claim" ||
-          s.via === "code" ||
-          // A link (unset: a link from before 0.4.5).
-          ((s.via === "link" || s.via === undefined) &&
-            !s.testOperator &&
-            s.key !== except),
-      ),
+    owned: personsOnInstall({
+      owner: !!readWebOwner(stateDir),
+      sessions: webSessions.list(),
+      except,
+    }),
   });
 }
 

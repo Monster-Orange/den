@@ -24,6 +24,7 @@ import {
   mintFixtureCode,
   readFixtureKey,
   setupFixturePerson,
+  personsOnInstall,
   testInstallBinding,
   testInstallRead,
   verifiedFixtureKey,
@@ -323,5 +324,55 @@ describe("the fixture key's fingerprint (a fixture session is bound to the key i
     expect(fa).not.toBe(fixtureKeyFingerprint(b));
     expect(fa.includes("a".repeat(16))).toBe(false);
     expect(fa).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+});
+
+describe("issue 823: who counts as a person on the install", () => {
+  const S = (via: string | undefined, key: string, testOperator = false) => ({
+    via,
+    key,
+    testOperator,
+  });
+  it("every person's sign-in counts: link, GitHub, claim, code, and an old link", () => {
+    for (const via of ["link", "github", "claim", "code", undefined])
+      expect(personsOnInstall({ sessions: [S(via, "k1")], owner: false })).toBe(
+        true,
+      );
+  });
+  it("the caller's own sign-in never counts for them, whatever its kind", () => {
+    for (const via of ["link", "github", "claim", "code", undefined])
+      expect(
+        personsOnInstall({
+          sessions: [S(via, "mine")],
+          owner: false,
+          except: "mine",
+        }),
+      ).toBe(false);
+  });
+  it("someone else's sign-in still counts while the caller's is exempt", () => {
+    expect(
+      personsOnInstall({
+        sessions: [S("github", "mine"), S("code", "theirs")],
+        owner: false,
+        except: "mine",
+      }),
+    ).toBe(true);
+  });
+  it("a claimed owner always counts, even with the caller's sign-in exempt", () => {
+    expect(
+      personsOnInstall({
+        sessions: [S("claim", "mine")],
+        owner: true,
+        except: "mine",
+      }),
+    ).toBe(true);
+  });
+  it("the link that pressed Set up test person, and the fixture, never count", () => {
+    expect(
+      personsOnInstall({
+        sessions: [S("link", "op", true), S("fixture", "fx")],
+        owner: false,
+      }),
+    ).toBe(false);
   });
 });
