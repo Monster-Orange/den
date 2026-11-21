@@ -208,14 +208,8 @@ describe("the identity chip", () => {
       body: JSON.stringify({ code }),
     });
     expect(ok.status).toBe(200);
-    await p.waitForFunction(
-      () => !document.querySelector("#den-signin"),
-      null,
-      {
-        timeout: 20_000,
-      },
-    );
-    expect(new URL(p.url()).pathname).toBe("/settings");
+    // It goes on to the link's next, not back to the spent link.
+    await p.waitForURL((u) => u.pathname === "/settings", { timeout: 20_000 });
     // The first load after the sign-in: the toast, once.
     await p.waitForSelector(".den-toast");
     expect((await p.textContent(".den-toast"))?.trim()).toBe(

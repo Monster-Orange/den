@@ -251,7 +251,10 @@ function goSignedIn(url) {
 }
 
 export function landingAfterSignIn(loc) {
-  if (loc.pathname !== "/signin") return loc.pathname + loc.search + loc.hash;
+  // Issue 819: a sign-in link's pairing screen (/auth) goes on to its
+  // next, never back to the spent link.
+  if (loc.pathname !== "/signin" && loc.pathname !== "/auth")
+    return loc.pathname + loc.search + loc.hash;
   const n = new URLSearchParams(loc.search).get("next") || "/";
   return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\")
     ? n
