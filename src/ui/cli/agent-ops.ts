@@ -160,7 +160,7 @@ import { getDistRoot } from "../../shared/paths.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { envKey } from "../../shared/product.js";
+import { envKey, product } from "../../shared/product.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -3303,6 +3303,8 @@ function launchInput(
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
     personConfigDir: path.join(d.distRoot(), "config", "local"),
+    // Issue 810: the distribution config (the test-install mark).
+    distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,
     ...(bin ? { bin } : {}),
     // den#3: its subagents' model (the persona's, else the org's), and

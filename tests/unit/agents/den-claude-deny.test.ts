@@ -130,3 +130,18 @@ describe("the Bash deny rules", () => {
       expect([r, /^Bash\([^()]+\)$/.test(r)]).toEqual([r, true]);
   });
 });
+
+describe("issue 810: the fixture person's key is denied as web.secret is", () => {
+  const rules = stateDirDenyRules(STATE, HOME);
+  it.each([
+    `cat ${STATE}/fixture-person.key`,
+    `cp ${STATE}/fixture-person.key /tmp/x`,
+    `echo x > ${STATE}/fixture-person.key`,
+    `chmod 600 ${STATE}/fixture-person.key`,
+    "cat ~/.acme/fixture-person.key",
+  ])("denies %s", (cmd) => expect(denied(rules, cmd)).toBe(true));
+  it("Read and Edit on its path", () => {
+    expect(rules).toContain(`Read(/${STATE}/fixture-person.key)`);
+    expect(rules).toContain(`Edit(/${STATE}/fixture-person.key)`);
+  });
+});
