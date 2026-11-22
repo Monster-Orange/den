@@ -29,6 +29,7 @@ describe("clause 7: runtimes point to their rule sets", () => {
       codex: "codex",
       gemini: "gemini",
       grok: "grok",
+      antigravity: "antigravity",
     });
   });
 
@@ -75,7 +76,14 @@ describe("clause 9: herdr's Apache-2.0 attribution", () => {
       herdrFiles()
         .map(([f]) => path.basename(f))
         .sort(),
-    ).toEqual(["claude.ts", "codex.ts", "engine.ts", "gemini.ts", "grok.ts"]);
+    ).toEqual([
+      "antigravity.ts",
+      "claude.ts",
+      "codex.ts",
+      "engine.ts",
+      "gemini.ts",
+      "grok.ts",
+    ]);
   });
 
   it("each such file has a copyright line, the license and 'Modified by Den'", () => {

@@ -92,6 +92,22 @@ const hhmm = (s: string): number | undefined => {
   return m ? Number(m[1]) * 60 + Number(m[2]) : undefined;
 };
 
+/**
+ * "22:00-06:00" → a window (local time; it may wrap past midnight), or
+ * undefined. Issue 625 reads a test box's window with it.
+ */
+export function parseWindow(s: string): GateWindow | undefined {
+  const m = /^\s*([0-9:]+)\s*-\s*([0-9:]+)\s*$/.exec(s);
+  const from = m ? hhmm(m[1]!) : undefined;
+  const to = m ? hhmm(m[2]!) : undefined;
+  if (from === undefined || to === undefined) return undefined;
+  return { from, to, longMinutes: 0, text: `${m![1]}-${m![2]}` };
+}
+
+/** Minutes past midnight as HH:MM. */
+export const clockText = (min: number) =>
+  `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
 /** "other=22:00-06:00/30" → windows by class; or what is wrong. */
 export function parseClassWindows(
   s: string,

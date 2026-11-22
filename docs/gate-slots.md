@@ -68,7 +68,10 @@ local or remote.
 The slot is given back the moment the command ends, however it ends: its
 own exit, or any signal (Ctrl-C, `kill`, a hang-up). A signal sent to
 `gate run` itself (SIGINT, SIGTERM, SIGHUP or SIGQUIT) is passed to the
-command, and the slot is free once the command ends. An agent can also
+command, and the slot is free once the command ends. On Linux a command
+that dumps core (SIGQUIT) gives its slot back as the dump starts, not
+after it: it can run no more, and a crash handler may take seconds to
+read the dump. An agent can also
 give back a slot its own `gate run` made with the MCP tool
 `gate_slot_release` (its id from `gate status`); giving it back does not
 stop the command. Another agent's slot is refused.
@@ -382,6 +385,41 @@ den gate box remove box2
 - `--time-scale X`: the box's browsers take X times as long as this
   machine's. Its runs' expected ends stretch by it, and the run gets
   `DEN_GATE_TIME_SCALE` to stretch its own timeouts.
+- `--window HH:MM-HH:MM`: when the box may be used, in **this machine's
+  local time zone** (the gate host's, not the box's). Optional; without
+  it, any time.
+- `--off`: add the box turned off. `den gate box enable|disable <name>`
+  switches it later.
+- `--recheck-seconds N`: this box's own `box_recheck_seconds` (below).
+
+### When a box may be used: its window and its switch
+
+Some boxes are free only part of the day: an evening-only box, a Windows
+box that is someone's machine by day.
+
+```sh
+den gate box add box3 --ssh ci@box3.example --window 00:00-08:00
+den gate box add box4 --ssh ci@box4.example --window 22:00-06:00 --off
+den gate box enable box4
+den gate box disable box3
+```
+
+- A window may wrap past midnight (`22:00-06:00`). Times are this
+  machine's local time; Settings and `gate box list` say so. The queue
+  pop-up shows when a closed box opens in the viewer's own time.
+- Outside its window, or turned off, a box gets **no slots and no
+  contact**: Den doesn't read its hold file, open a connection to its Playwright server,
+  or check it from `doctor` or `gate status`. A run waiting for that box
+  by name waits; a `--box any` run takes this machine or another box.
+- A run that already holds a slot on a box **finishes** when the window
+  closes, or when the box is turned off. No new slot is given after.
+- Each box is on unless turned off. An existing `settings.json` with boxes
+  loads unchanged: on, no window, the global recheck.
+- Turning a box on or off is a person's only (Settings › Server › Test
+  boxes, or the CLI), and goes in the audit, like adding or removing one.
+
+`gate status`, the queue pop-up and `den doctor` say why a box is
+skipped: "outside its window (opens 00:00)" or "turned off".
 
 ### An agent can ask
 
@@ -491,13 +529,25 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 A box is checked only when a slot on it is about to be given, never on a
 timer. The check is a read: over ssh, one sftp session that lists the
 hold file and reads the box's `/proc/meminfo` (the box runs nothing for
-it); with only a Playwright address, a TCP connect.
+it). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
+over ssh, `vm_stat` and `sysctl -n hw.pagesize`, and nothing else, and
+counts free, inactive and speculative pages as available. A macOS box
+added with ssh gets the hold file and the memory floor like a Linux box.
+With only a Playwright address, a WebSocket upgrade to that address
+(an HTTP GET with `Upgrade: websocket`), closed as soon as it answers.
+Only "101 Switching Protocols" counts as open: a relay or port forward in
+front of a dead server still accepts a TCP connection, so a bare connect
+is never enough.
 
 - **Held** (its hold file is there): no new slot. The next assignment
   after the file is placed sees it.
 - **Low on memory**: the box has less available memory than its
   `min_free_mem_mb` (2048 by default; `--min-free-mem-mb`). No new slot,
   and the queue says "box low on memory".
+- **Memory unknown**: Den couldn't read the box's free memory (no
+  `/proc/meminfo` and no `vm_stat`, or output it can't read). The box is
+  skipped with why, never counted as free. A box set with
+  `--min-free-mem-mb 0` keeps no free memory, so its memory isn't read.
 - **Unreachable** (no answer within `box_check_timeout_seconds`, 8 by
   default, never more than 25): skipped, with why, and the run goes to
   another box or waits. An ssh that connects but stalls before its banner
@@ -549,6 +599,9 @@ to connect()`.
   tunnel's forwarders listen on IPv4).
 - A held or unreachable box is passed over for `box_recheck_seconds` (30
   by default), then checked again the next time a slot on it is wanted.
+  A fragile box can set its own `recheck_seconds` (`--recheck-seconds`,
+  or Settings): the least time between two contacts while it says no, so
+  a queue waiting on it contacts it at most once in that time.
 
 `gate status`, the queue on the Agents page and `den doctor` show each
 slot's box and each box's state, with why a box is skipped. The slot log

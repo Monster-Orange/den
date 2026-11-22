@@ -21,6 +21,13 @@ import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import type { SessionRef } from "../sessions/types.js";
 import type { RotationEntry } from "./rotation.js";
+import {
+  backfillConversations,
+  isCurrent,
+  nextConversations,
+  parseConversations,
+  type ConversationEntry,
+} from "./conversation-history.js";
 import type { PermissionIntent } from "./permissions.js";
 import { keepUnreadable, readKept } from "../state-backup.js";
 
@@ -314,10 +321,67 @@ function recordFile(stateDir: string, id: string): string {
 }
 
 export function writeRecord(stateDir: string, rec: AgentRecord): void {
+  keepConversations(stateDir, rec);
   writePrivate(
     recordFile(stateDir, rec.id),
     JSON.stringify(rec, null, 2) + "\n",
   );
+}
+
+/**
+ * Issue 52: where agent `id`'s conversations are kept, beside its record
+ * (never in it: records are read on hot paths, and this only grows).
+ */
+export function conversationsFile(stateDir: string, id: string): string {
+  return path.join(agentFilesDir(stateDir, id), "conversations.json");
+}
+
+function readStoredConversations(
+  stateDir: string,
+  id: string,
+): ConversationEntry[] | null {
+  try {
+    return parseConversations(
+      JSON.parse(fs.readFileSync(conversationsFile(stateDir, id), "utf-8")),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Every conversation agent `rec` has had, oldest first (issue 52). */
+export function readConversations(
+  stateDir: string,
+  rec: AgentRecord,
+): ConversationEntry[] {
+  return (
+    readStoredConversations(stateDir, rec.id) ?? backfillConversations(rec)
+  );
+}
+
+/**
+ * Issue 52: write `rec` and keep its conversations. Only a change of its
+ * conversation id (or no list yet) reads the old record and writes the
+ * list, so an ordinary save costs one small read.
+ */
+function keepConversations(stateDir: string, rec: AgentRecord): void {
+  const stored = readStoredConversations(stateDir, rec.id);
+  // A new agent (no record yet) always starts its own list, even when an
+  // earlier agent of the same id left one.
+  const known = fs.existsSync(recordFile(stateDir, rec.id));
+  if (known && stored && isCurrent(stored, rec.resumeToken)) return;
+  let prev: AgentRecord | null = null;
+  try {
+    prev = readRecord(stateDir, rec.id);
+  } catch {
+    prev = null; // unreadable: the list starts again from this record
+  }
+  const list = nextConversations(stored, prev, rec, new Date().toISOString());
+  if (list)
+    writePrivate(
+      conversationsFile(stateDir, rec.id),
+      JSON.stringify(list, null, 2) + "\n",
+    );
 }
 
 export function readRecord(stateDir: string, id: string): AgentRecord | null {

@@ -364,6 +364,9 @@ export function shotLine(o: ShotOutcome): string {
     : `Screenshot: kept on the reporting install; its agent can read it with report_screenshot(${o.id})`;
 }
 
+/** Issue 957: the filed line when this send's screenshot wasn't kept. */
+export const NOT_KEPT_LINE = "Screenshot: not kept on the reporting install";
+
 /** Hub's id goes in a public issue: its own shape only. */
 const HUB_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -376,7 +379,8 @@ function pendingShot(
   b: Record<string, unknown>,
   maxBytes: number,
   byFixture = false,
-): PendingShot | null | string {
+  stateDir?: string,
+): PendingShot | null | string | { conflict: string } {
   if (b.shot === undefined || b.shot === null) return null;
   const png = pngOfDataUrl(b.shot, maxBytes);
   if (!png)
@@ -385,6 +389,14 @@ function pendingShot(
     typeof b.draftId === "string" && REPORT_ID.test(b.draftId)
       ? b.draftId
       : newReportId();
+  // Issue 957: a filing never replaces a kept screenshot of another kind of
+  // filer (the fixture person's, or anyone else's): nothing is filed.
+  const kept = stateDir ? shotStore(stateDir).get(id) : null;
+  if (kept && (kept.record.byFixture === true) !== byFixture)
+    return {
+      conflict:
+        "that report id holds another filer's screenshot: send it as a new report",
+    };
   return { id, png, share: b.shareShot === true, byFixture };
 }
 
@@ -406,8 +418,18 @@ async function afterFiling(
   hub: ReportRouteDeps["shotHub"],
   now: number,
   update: (line: string) => Promise<void>,
-): Promise<ShotOutcome> {
+): Promise<ShotOutcome | null> {
   const store = shotStore(stateDir);
+  // Issue 957: checked again here, at the save. A held filing saves only
+  // after the person's approval, and another kind of filer may have kept
+  // a screenshot under this id meanwhile: that one stays, nothing kept.
+  const kept = store.get(p.id);
+  if (kept && (kept.record.byFixture === true) !== p.byFixture) {
+    // The filed line named this id: it says now that none was kept, so no
+    // filed issue names an id that holds another filer's screenshot.
+    await update(`\n\n${NOT_KEPT_LINE}`).catch(() => undefined);
+    return null;
+  }
   store.save(p.id, p.png, repo, now, { byFixture: p.byFixture });
   const local = (why?: UploadWhy): ShotOutcome => ({
     where: "local",
@@ -627,9 +649,12 @@ export async function fileReport(
     b,
     d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
     opts.byFixture === true,
+    d.stateDir(),
   );
   if (typeof pending === "string")
     return { status: 400, body: { ok: false, error: pending } };
+  if (pending && "conflict" in pending)
+    return { status: 409, body: { ok: false, error: pending.conflict } };
   const body = c.body + filedLine(pending);
   const r =
     addTo !== null
@@ -923,9 +948,12 @@ export function handleReportRoutes(
         b,
         d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
         d.filedByFixture?.(req) === true,
+        d.stateDir(),
       );
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
+      if (pending && "conflict" in pending)
+        return d.sendJson(res, { ok: false, error: pending.conflict }, 409);
       const s = d.settings();
       const who = d.personOf(req);
       const log = sentLog(d.stateDir());

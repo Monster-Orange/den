@@ -130,6 +130,60 @@ describe("the test boxes routes", () => {
     expect(t.store.boxes()).toEqual([]);
   });
 
+  it("a person turns a box off and on; the audit says so; an agent can't", async () => {
+    const t = await serve();
+    t.store.setBox(B1);
+    const off = await t.call("POST", "/api/gate-slots/boxes/enable", "person", {
+      name: "b1",
+      enabled: false,
+    });
+    expect(off.status).toBe(200);
+    expect(t.store.boxes()[0]!.enabled).toBe(false);
+    expect(
+      (
+        await t.call("POST", "/api/gate-slots/boxes/enable", "agent", {
+          name: "b1",
+          enabled: true,
+        })
+      ).status,
+    ).toBe(403);
+    expect(t.store.boxes()[0]!.enabled).toBe(false);
+    const on = await t.call("POST", "/api/gate-slots/boxes/enable", "person", {
+      name: "b1",
+      enabled: true,
+    });
+    expect(on.status).toBe(200);
+    expect(t.store.boxes()).toEqual([B1]);
+    expect(
+      (
+        await t.call("POST", "/api/gate-slots/boxes/enable", "person", {
+          name: "nope",
+          enabled: true,
+        })
+      ).status,
+    ).toBe(404);
+    expect(t.audited.join("\n")).toMatch(
+      /test box b1 turned off[\s\S]*test box b1 turned on/,
+    );
+  });
+
+  it("a runner asking for a box that is turned off waits; the box is never checked", async () => {
+    const t = await serve();
+    t.store.setBox({ ...B1, enabled: false });
+    const r = await t.call("POST", "/api/gate-slots/ask", "runner", {
+      kind: "browser",
+      estimate_minutes: 5,
+      where: "b1",
+      wait_seconds: 0,
+    });
+    expect(r.json).toMatchObject({ granted: false });
+    expect(t.calls).toEqual([]);
+    const v = await t.call("GET", "/api/gate-slots", null);
+    expect(v.json.boxes).toEqual([
+      expect.objectContaining({ name: "b1", state: "off" }),
+    ]);
+  });
+
   it("a malformed box is refused, saying why", async () => {
     const t = await serve();
     const r = await t.call("POST", "/api/gate-slots/boxes", "person", {
