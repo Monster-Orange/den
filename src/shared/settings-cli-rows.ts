@@ -149,10 +149,14 @@ export const PERSON_ONLY_SETTINGS = [
 
 /**
  * Issue 402: the person-only fields a test install's fixture person may
- * still change, as its pages do: the rail's own view prefs (pins, collapse,
- * order, dock), which a live check sets by pressing ☆/★. Never an agent's
- * token or a claimed agent, and never a field that names a program or
- * widens what agents may do.
+ * still change, as its pages do: the rail's prefs (pins, collapse, order,
+ * dock), which a live check sets by pressing ☆/★. Never an agent's token
+ * or a claimed agent, and never a field that names a program.
+ *
+ * Issue 946: pins are more than a view: a held write on a pinned item
+ * waits for an Allow (approval-policy.ts). So the fixture person adds pins
+ * and takes off only the ones it added (shell-prefs.ts fixtureSave); the
+ * person's own pins always stay.
  */
 export const FIXTURE_PAGE_SETTINGS: readonly string[] = ["shell"];
 

@@ -15,7 +15,14 @@
  * allow-list); and the session dying with the mark, the binding or the key.
  * No code, cookie or secret is printed: failures show statuses and codes.
  */
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import { spawnSync, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
@@ -509,6 +516,62 @@ describe("what the fixture person saves from a page", () => {
       shell: { pins: [] },
     });
     expect(clear.status).toBe(200);
+  });
+});
+
+/**
+ * Issue 946: a pin is more than a view pref (a held write on a pinned
+ * item waits for an Allow). The fixture person's saves add pins and remove
+ * only the ones it added; the person's own pins always stay.
+ */
+describe("the fixture person's pins never touch the person's", () => {
+  const person = () => ({
+    authorization: `Bearer ${personToken(readWebSecret(test.stateDir)!)}`,
+  });
+  const items = async (cookie: string) => {
+    const back = await call(test, "GET", "/api/settings", {
+      cookie,
+      "sec-fetch-site": "same-origin",
+    });
+    return (
+      (back.json.shell as { pins?: { item: string }[] } | undefined)?.pins ?? []
+    ).map((p) => p.item);
+  };
+  afterEach(async () => {
+    await call(test, "POST", "/api/settings", person(), { shell: null });
+  });
+
+  it("an empty list from the fixture person leaves the person's pin", async () => {
+    const mine = await call(test, "POST", "/api/settings", person(), {
+      shell: { pins: [{ item: "svc-person", project: null }] },
+    });
+    expect(mine.status).toBe(200);
+    const f = await fixtureSignIn(test);
+    const r = await call(test, "POST", "/api/settings", f.headers, {
+      shell: { pins: [] },
+    });
+    expect(r.status).toBe(200);
+    expect(await items(f.cookie)).toEqual(["svc-person"]);
+  });
+
+  it("it adds a pin and takes off only its own", async () => {
+    await call(test, "POST", "/api/settings", person(), {
+      shell: { pins: [{ item: "svc-person", project: null }] },
+    });
+    const f = await fixtureSignIn(test);
+    await call(test, "POST", "/api/settings", f.headers, {
+      shell: {
+        pins: [
+          { item: "svc-person", project: null },
+          { item: "svc-check", project: null },
+        ],
+      },
+    });
+    expect(await items(f.cookie)).toEqual(["svc-person", "svc-check"]);
+    await call(test, "POST", "/api/settings", f.headers, {
+      shell: { pins: [] },
+    });
+    expect(await items(f.cookie)).toEqual(["svc-person"]);
   });
 });
 

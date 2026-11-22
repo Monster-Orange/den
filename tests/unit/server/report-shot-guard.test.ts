@@ -126,7 +126,8 @@ describe("issue 403: reading a kept screenshot, through the real guard", () => {
       cookie: `den_session_${PORT}=fx`,
       "x-den-csrf": FIXTURE.csrf,
     });
-    expect(reader).toEqual({ ok: true });
+    // Issue 946: marked, so the route shows it only what a fixture filed.
+    expect(reader).toEqual({ ok: true, fixture: true });
   });
 
   it("the fixture person's cookie with no CSRF token is refused (401)", () => {
@@ -134,5 +135,31 @@ describe("issue 403: reading a kept screenshot, through the real guard", () => {
       ok: false,
       status: 401,
     });
+  });
+
+  // Issue 946: the fixture cookie with anything less than its own CSRF token.
+  it("the fixture person's cookie with a wrong CSRF token is refused (401)", () => {
+    expect(
+      read({ cookie: `den_session_${PORT}=fx`, "x-den-csrf": "not-its-token" })
+        .reader,
+    ).toEqual({ ok: false, status: 401 });
+  });
+
+  it("the fixture person's cookie with a bearer is never the fixture person", () => {
+    const { reader } = read({
+      cookie: `den_session_${PORT}=fx`,
+      "x-den-csrf": FIXTURE.csrf,
+      authorization: "Bearer den_at_gate403notatoken",
+    });
+    expect(reader).toEqual({ ok: false, status: 401 });
+  });
+
+  it("the fixture person's cookie with an agent's claim header reads only as the fixture person", () => {
+    const { reader } = read({
+      cookie: `den_session_${PORT}=fx`,
+      "x-den-csrf": FIXTURE.csrf,
+      "x-den-actor": "agent:north-a",
+    });
+    expect(reader).toEqual({ ok: true, fixture: true });
   });
 });
