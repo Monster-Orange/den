@@ -40,6 +40,7 @@ import {
 import type { NotificationStore } from "../../shared/notifications.js";
 import { recordAction } from "./audit.js";
 import { readBody, sendJson } from "./http-helpers.js";
+import { allowLink } from "../../shared/agent-links.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -250,6 +251,26 @@ export function approvalView(
   };
 }
 
+/**
+ * Issue 1016: an agent's pending request's full Allow link, on web.url
+ * (`{ allowLink }`), or nothing when it isn't set or can't be read.
+ */
+function allowLinkOf(
+  a: Pick<Approval, "agent" | "state">,
+  project: string | undefined,
+  webUrl: (() => string | null) | undefined,
+): { allowLink?: string } {
+  if (!a.agent || a.state !== "pending" || !webUrl) return {};
+  let url: string | null;
+  try {
+    url = webUrl();
+  } catch {
+    return {};
+  }
+  const link = allowLink(url, a.agent, project);
+  return link ? { allowLink: link } : {};
+}
+
 /** Issue 334: drop a run result's `once` part (shown to the Allow only). */
 export function forgetOnce(a: Pick<Approval, "result">): void {
   const r = a.result as Record<string, unknown> | undefined;
@@ -324,6 +345,12 @@ export async function handleApprovalRoutes(
      * held-write items follow the queue (held-bell.ts).
      */
     changed?: () => void;
+    /**
+     * Issue 1016: the install's address for people (web.url), or null
+     * when it isn't set: an agent's pending ask carries its full Allow
+     * link on it, never a guessed one.
+     */
+    webUrl?: () => string | null;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -547,6 +574,7 @@ export async function handleApprovalRoutes(
             }
           : {}),
         ...(ticket ? { ticket: ticket.ticket } : {}),
+        ...allowLinkOf(a, agent?.workspace, deps.webUrl),
       },
       202,
     );
@@ -629,7 +657,11 @@ export async function handleApprovalRoutes(
           a.id,
           typeof ticket === "string" ? ticket : undefined,
         );
-    sendJson(res, { ok: true, ...approvalView(a, { asker }) });
+    sendJson(res, {
+      ok: true,
+      ...approvalView(a, { asker }),
+      ...(agent ? allowLinkOf(a, agent.workspace, deps.webUrl) : {}),
+    });
     if (asker && a.state === "done" && method === "GET") forgetForAsker(a);
     return true;
   }

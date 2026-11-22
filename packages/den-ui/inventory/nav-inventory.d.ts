@@ -116,6 +116,8 @@ export declare const NAV_THEME: NavTheme;
  */
 export declare const PINNED_CLASSES: readonly string[];
 /** The search's x and width for a viewport width, the same in any host. */
+export declare const TOP_LEFT_MIN: number;
+export declare const SEARCH_MIN: number;
 export declare function searchSlot(viewportW: number): { x: number; w: number };
 export declare const TOP_RIGHT_MIN: number;
 /** The search away from searchSlot (slot.x, slot.w), at any width. */
