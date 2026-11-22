@@ -2021,7 +2021,7 @@ service started by hand from its own checkout. Den acts only on its own:
 - `acme doctor` warns (`--json`: check `stacks:projects`) on a project
   name two stacks render to (stack `a-b` in namespace `c` and stack `a`
   in `b-c` are both `a-b-c`), and on a project already running
-  containers Den didn't start. Workspaces sharing a namespace on one
+  containers Den didn't start. Projects sharing a namespace on one
   checkout are one stack, not a clash.
 
 ## Releases
