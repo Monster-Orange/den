@@ -255,5 +255,22 @@ describe("P0-D2 on the real server", () => {
       }),
     );
     await until(async () => (await asks()).length === 0);
+    // P0-D4: Den's delivery log names both, with no body or name.
+    const log = path.join(s.stateDir, "hub", "deliveries.jsonl");
+    await until(async () => fs.existsSync(log));
+    const text = fs.readFileSync(log, "utf8");
+    const got = text
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { id: string; outcome: string });
+    expect(got).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "ap-0", outcome: "received" }),
+        expect.objectContaining({ id: "ap-1", outcome: "received" }),
+      ]),
+    );
+    expect(text).not.toContain("Nice.");
+    expect(text).not.toContain("Sam Example");
+    expect(fs.statSync(log).mode & 0o777).toBe(0o600);
   }, 60_000);
 });

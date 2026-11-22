@@ -19,6 +19,7 @@ import {
   type Delivery,
   type DeliveryOwner,
 } from "../../shared/hub-delivery.js";
+import { appendJournal } from "../../shared/hub-delivery-journal.js";
 import { hubCommentsBell } from "./hub-comments-bell.js";
 import {
   DeliveryLoop,
@@ -451,6 +452,9 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     heartbeatMs: o.heartbeatSeconds * 1000,
     pollMs: o.pollSeconds * 1000,
     log: o.log,
+    // P0-D4: every delivery's outcome, for doctor (no body or name).
+    journal: (e) =>
+      appendJournal(path.join(getStateDir(), "hub", "deliveries.jsonl"), e),
     // Issue 702: doctor reads the path's health from a file.
     onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
     health0: {
