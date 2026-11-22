@@ -50,6 +50,8 @@ import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
+  gateWorkers,
+  type LoadHold,
   expectedStart,
   loadHold,
   queueEnd,
@@ -66,6 +68,7 @@ import {
   GateStore,
   GateYieldRefused,
   checkGatePatch,
+  realCores,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import * as fs from "fs";
@@ -153,6 +156,8 @@ export interface GateRun {
 
 export interface GateDeps {
   store: GateStore;
+  /** Issue 1048: this machine's cores (the worker cap); default the host's. */
+  cores?: number;
   env: NodeJS.ProcessEnv;
   out: (line: string) => void;
   err: (line: string) => void;
@@ -439,6 +444,16 @@ function priorityWords(
   return `  ${why} (waits behind the one ahead)`;
 }
 
+/** Issue 1048: the workers a cpu slot's run may use. */
+export const GATE_WORKERS_ENV = "DEN_GATE_WORKERS";
+
+/** Issues 1009, 1048: why a cpu run waits on the load, in words. */
+export function holdWords(h: LoadHold): string {
+  return h.why === "release"
+    ? `waiting: load ${Math.round(h.load)} ≥ ${h.limit} while a release run holds the browser slot`
+    : `waiting: this machine's load is ${h.load.toFixed(1)}, over ${h.perCore} × ${h.cores} cores (${h.limit}), while another unit test run is going; it starts once the load drops or that run ends`;
+}
+
 /** One line for a holder or waiter. */
 export function slotLine(
   e: GateEntry,
@@ -447,13 +462,15 @@ export function slotLine(
   margin: { overrunMarginMinutes: number } & Partial<GateSettings> & {
       /** Issue 1009: the machine's 5-minute load, when read. */
       load?: number;
+      /** Issue 1048: the machine's cores. */
+      cores?: number;
     },
 ): string {
   const yields = yieldedTo(e, all);
   // Issue 1009: a cpu waiter held by the load under a release run.
   const hold =
     !e.grantedAt && e.kind === "cpu" && !e.priority
-      ? loadHold(all, margin, margin.load)
+      ? loadHold(all, margin, margin.load, margin.cores)
       : undefined;
   // Issue 803: its class, and a wait for its class's window.
   const cls = classOf(e, margin.classes);
@@ -462,9 +479,7 @@ export function slotLine(
     priorityWords(e, all, margin) +
     (cls ? `  class ${cls}` : "") +
     (win ? `  waits for its ${win.text} window` : "") +
-    (hold
-      ? `  waiting: load ${Math.round(hold.load)} ≥ ${hold.limit} while a release run holds the browser slot`
-      : "") +
+    (hold ? `  ${holdWords(hold)}` : "") +
     (yields.length ? `  let ${yields.join(", ")} go ahead` : "") +
     (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "") +
     (e.hostWhy ? `  stays here: ${e.hostWhy}` : "") +
@@ -825,12 +840,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         // Issue 1009: a cpu run held by the load says so.
         const hold =
           e.kind === "cpu" && !e.priority
-            ? loadHold(all, set, s.load())
+            ? loadHold(all, set, s.load(), s.cores())
             : undefined;
-        if (hold)
-          d.err(
-            `waiting: load ${Math.round(hold.load)} ≥ ${hold.limit} while a release run holds the browser slot`,
-          );
+        if (hold) d.err(holdWords(hold));
         said = d.now();
       }
       await d.sleep(2_000);
@@ -843,11 +855,16 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     const box = e.box ? s.boxes().find((b) => b.name === e!.box) : undefined;
     d.err(`gate: ${id} holds ${kind}${machineWords(e)}; running ${label}`);
     // Issue 928: the command knows the slot it runs in.
-    const slotEnv = {
+    const slotEnv: Record<string, string> = {
       [GATE_SLOT_ENV]: id,
       [GATE_SLOT_KIND_ENV]: kind,
       [GATE_SLOT_BOX_ENV]: e.box ?? "local",
     };
+    // Issue 1048: a cpu run here uses its share of the cores, no more.
+    if (kind === "cpu" && !e.box)
+      slotEnv[GATE_WORKERS_ENV] = String(
+        gateWorkers(d.cores ?? realCores(), s.settings().cpuSlots),
+      );
     child = box
       ? d.exec(pos[0]!, pos.slice(1), {
           // Issue 1017: the box's endpoint for this run's version.
@@ -892,7 +909,11 @@ function status(args: string[], d: GateDeps): number {
   }
   const all = d.store.list();
   // Issue 1009: the load, so a held cpu waiter's line says why.
-  const set = { ...d.store.settings(), load: d.store.load() };
+  const set = {
+    ...d.store.settings(),
+    load: d.store.load(),
+    cores: d.store.cores(),
+  };
   if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
@@ -1040,6 +1061,7 @@ function settings(args: string[], d: GateDeps): number {
     "--cpu-slots-beside-release-browser": true,
     "--local-browser-slots": true,
     "--cpu-hold-load": true,
+    "--load-hold-per-core": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
@@ -1065,6 +1087,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--cpu-slots-beside-release-browser", "cpu_slots_beside_release_browser"],
     ["--local-browser-slots", "local_browser_slots"],
     ["--cpu-hold-load", "cpu_hold_load"],
+    ["--load-hold-per-core", "load_hold_per_core"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
@@ -1128,7 +1151,7 @@ function settings(args: string[], d: GateDeps): number {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

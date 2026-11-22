@@ -66,7 +66,14 @@ export interface GateSlotView {
    * Issue 1009: a cpu waiter held by the machine's load while a release
    * browser run holds a browser slot: the load and the setting.
    */
-  loadHold?: { load: number; limit: number };
+  loadHold?: {
+    load: number;
+    limit: number;
+    /** Issue 1048: "cores" (over a multiple of the cores) or "release". */
+    why: "release" | "cores";
+    perCore?: number;
+    cores?: number;
+  };
 }
 
 /**
@@ -132,7 +139,7 @@ export function gateView(store: GateStore, now = Date.now()) {
       .filter((x) => x.reason);
   };
   const held = windowHeld(all, settings.classes, now);
-  const hold = loadHold(all, settings, store.load());
+  const hold = loadHold(all, settings, store.load(), store.cores());
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -167,7 +174,12 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(settings.classes ? { class: classOf(e, settings.classes) } : {}),
     ...(held.has(e.id) ? { window: held.get(e.id)!.text } : {}),
     ...(hold && !e.grantedAt && e.kind === "cpu" && !e.priority
-      ? { loadHold: { load: Math.round(hold.load), limit: hold.limit } }
+      ? {
+          loadHold: {
+            ...hold,
+            load: Math.round(hold.load * 10) / 10,
+          },
+        }
       : {}),
     ...(e.grantedAt
       ? {
