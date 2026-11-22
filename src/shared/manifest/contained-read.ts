@@ -137,21 +137,54 @@ export function broadRootReason(
   return null;
 }
 
-/** Does `root` hold a `.git` (a folder, or a worktree's pointer file)? */
-export function holdsGit(root: string): boolean {
+const GITDIR_LINE = /^gitdir:\s*(.+?)\s*$/m;
+
+/**
+ * Does `dir` (resolved) hold a git checkout's `.git`: a folder, or a
+ * worktree's pointer file whose `gitdir:` names a folder that is there and
+ * whose checkout is not far too broad? Any other `.git` is none.
+ */
+export function holdsGit(dir: string, opts: BroadRootOptions = {}): boolean {
+  const dotGit = path.join(dir, ".git");
+  let st: fs.Stats;
   try {
-    const st = fs.lstatSync(path.join(root, ".git"));
-    return st.isDirectory() || st.isFile();
+    st = fs.lstatSync(dotGit);
   } catch {
     return false;
   }
+  if (st.isDirectory()) return true;
+  if (!st.isFile()) return false;
+  let target: string;
+  try {
+    const m = GITDIR_LINE.exec(readWithin(dotGit, [dir]));
+    if (!m) return false;
+    target = fs.realpathSync.native(path.resolve(dir, m[1]));
+    if (!fs.statSync(target).isDirectory()) return false;
+  } catch {
+    return false;
+  }
+  // The checkout the git folder belongs to: the folder holding the nearest
+  // `.git` folder at or above it (a worktree's main repo), else the folder.
+  let owner = target;
+  for (let at = target; ; at = path.dirname(at)) {
+    if (path.basename(at) === ".git") {
+      owner = path.dirname(at);
+      break;
+    }
+    if (path.dirname(at) === at) break;
+  }
+  return broadRootReason(owner, opts) === null;
 }
 
 /**
  * The top of the git work tree `root` is in (resolved): `root` itself or
- * the nearest folder above it that holds a `.git`; null outside one.
+ * the nearest folder above it that holds a `.git` (see holdsGit); null
+ * outside one.
  */
-export function gitTop(root: string): string | null {
+export function gitTop(
+  root: string,
+  opts: BroadRootOptions = {},
+): string | null {
   let dir: string;
   try {
     dir = fs.realpathSync.native(root);
@@ -159,7 +192,7 @@ export function gitTop(root: string): string | null {
     return null;
   }
   for (;;) {
-    if (holdsGit(dir)) return dir;
+    if (holdsGit(dir, opts)) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -179,7 +212,7 @@ export function rootRefusal(
   if (!root || !path.isAbsolute(root)) return "it is not an absolute path";
   const broad = broadRootReason(root, opts);
   if (broad) return broad;
-  const top = gitTop(root);
+  const top = gitTop(root, opts);
   if (!top)
     return "it is not a git checkout, nor in one (no .git in it or above it)";
   const topBroad = broadRootReason(top, opts);

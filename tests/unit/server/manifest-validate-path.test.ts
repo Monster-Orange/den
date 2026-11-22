@@ -186,6 +186,15 @@ describe("validateAtPath", () => {
     if (process.getuid?.() !== 0) expect(answers[2]).toBe(answers[0]);
   });
 
+  it("a root whose .git is an empty file is refused", () => {
+    const root = path.join(tempDir(), "shop");
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, ".git"), "");
+    fs.writeFileSync(path.join(root, ".den.yml"), GOOD);
+    const r = validateAtPath(root, { ...deps(), repoRoots: [root] });
+    expect(r.status).toBe(403);
+  });
+
   it("a configured monorepo subfolder validates", () => {
     const mono = path.join(tempDir(), "mono");
     const web = path.join(mono, "apps", "web");
@@ -271,17 +280,19 @@ describe("validateAtPath", () => {
     expect(body.layers?.[0]?.file).toBe(path.join(held, "shop.den.yml"));
   });
 
-  it("the origin lookup never looks above the repo root", () => {
-    // The root's .git names no git folder; a checkout above it has an origin.
+  it("the origin lookup never looks above the checkout the root is in", () => {
+    // The root is a folder in a checkout with no origin; a checkout above
+    // that one has an origin, which is not this repo's.
     const above = tempDir();
     fs.mkdirSync(path.join(above, ".git"));
     fs.writeFileSync(
       path.join(above, ".git", "config"),
       originConfig("https://example.com/acme/store.git"),
     );
-    const root = path.join(above, "shop");
+    const mono = path.join(above, "mono");
+    fs.mkdirSync(path.join(mono, ".git"), { recursive: true });
+    const root = path.join(mono, "shop");
     fs.mkdirSync(root);
-    fs.writeFileSync(path.join(root, ".git"), "not a git pointer\n");
     fs.writeFileSync(path.join(held, "store.den.yml"), GOOD);
     fs.writeFileSync(path.join(held, "shop.den.yml"), GOOD);
     const body = validateAtPath(root, { ...deps(), repoRoots: [root] })

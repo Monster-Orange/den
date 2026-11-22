@@ -157,6 +157,56 @@ describe("rootRefusal", () => {
     expect(rootRefusal(repo, { home })).toBe(null);
   });
 
+  it("a root whose .git is an empty file is refused", () => {
+    const home = tempDir();
+    const root = path.join(home, "work", "shop");
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, ".git"), "");
+    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+  });
+
+  it("a root whose .git file names a folder that isn't there is refused", () => {
+    const home = tempDir();
+    const root = path.join(home, "work", "shop");
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".git"),
+      `gitdir: ${path.join(home, "gone", ".git", "worktrees", "shop")}\n`,
+    );
+    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+  });
+
+  it("a root whose .git file names a folder in a far too broad place is refused", () => {
+    const home = tempDir();
+    const root = path.join(home, "work", "shop");
+    fs.mkdirSync(root, { recursive: true });
+    fs.mkdirSync(path.join(home, ".git", "worktrees", "shop"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(root, ".git"),
+      `gitdir: ${path.join(home, ".git", "worktrees", "shop")}\n`,
+    );
+    expect(rootRefusal(root, { home })).not.toBe(null);
+  });
+
+  it("a real worktree's .git file still works", () => {
+    const home = tempDir();
+    const main = path.join(home, "work", "main");
+    const admin = path.join(main, ".git", "worktrees", "wt");
+    fs.mkdirSync(admin, { recursive: true });
+    const wt = path.join(home, "work", "wt");
+    fs.mkdirSync(wt, { recursive: true });
+    fs.writeFileSync(path.join(wt, ".git"), `gitdir: ${admin}\n`);
+    expect(rootRefusal(wt, { home })).toBe(null);
+    // A relative gitdir, as git can write it, works too.
+    fs.writeFileSync(
+      path.join(wt, ".git"),
+      `gitdir: ${path.relative(wt, admin)}\n`,
+    );
+    expect(rootRefusal(wt, { home })).toBe(null);
+  });
+
   it("a folder inside a repo can be a root", () => {
     const home = tempDir();
     const mono = path.join(home, "work", "mono");

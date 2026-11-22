@@ -104,7 +104,9 @@ export function validateAtPath(
   // The git work trees the roots are in (a root may be a monorepo's app):
   // the origin lookup reads only there. rootRefusal checked each is sound.
   const gitRoots = [
-    ...new Set(repoRoots.map((r) => gitTop(r)).filter((t): t is string => !!t)),
+    ...new Set(
+      repoRoots.map((r) => gitTop(r, deps)).filter((t): t is string => !!t),
+    ),
   ];
   // Errors name the file's line and column, never its text.
   const plain = (r: ReturnType<typeof validateManifest>) => ({
