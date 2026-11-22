@@ -8,7 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -58,7 +58,7 @@ async function settings(): Promise<Page> {
       document.head.appendChild(st);
     });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#cli"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings#cli");
   await p.waitForSelector('[data-focus-key="cli-cli_tabs"]');
   return p;
 }

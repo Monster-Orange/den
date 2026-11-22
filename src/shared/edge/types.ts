@@ -37,6 +37,13 @@ export interface EdgeConfig {
   subzones?: string[];
   /** `<name>` → upstream URL, served at `https://<name>.<domain>`. */
   routes: Record<string, string>;
+  /**
+   * The route names the config's `edge.routes` gives on purpose (team or
+   * user), as opposed to the one Den makes from the brand. The migration
+   * to web.url prefers these: a distribution adds one when only that name
+   * is reachable from other machines.
+   */
+  namedRoutes?: string[];
   /** Host ports to publish, or null when another proxy fronts the edge. */
   ports: EdgePorts | null;
   /** Where the org's CA, certs and generated config live. */

@@ -60,3 +60,37 @@ describe("issue 503: a terminal with no PTY says so", () => {
     expect(startFailText(other, t)).toBe("project north is gone");
   });
 });
+
+// Issue 89: an agent that exited at once: the start dialog shows the
+// lines it printed (the server's tail, redacted there), in every language.
+describe("issue 89: the lines a failed start printed", () => {
+  const exited = Object.assign(new Error("agent planner exited at once"), {
+    code: "exited_at_once",
+    data: {
+      ok: false,
+      code: "exited_at_once",
+      tail: ["Error: no such flag --bogus", "Usage: claude [options]"],
+    },
+  });
+
+  it("an exited-at-once failure gives its tail", async () => {
+    const { startFailTail } =
+      await import("../../../src/ui/server/public/pty-refusal.js");
+    expect(startFailTail(exited)).toEqual([
+      "Error: no such flag --bogus",
+      "Usage: claude [options]",
+    ]);
+  });
+
+  it("any other failure gives none", async () => {
+    const { startFailTail } =
+      await import("../../../src/ui/server/public/pty-refusal.js");
+    expect(startFailTail(noPty)).toEqual([]);
+    expect(startFailTail(new Error("nope"))).toEqual([]);
+    expect(startFailTail(null)).toEqual([]);
+  });
+
+  it.each(["shell.js", "i18n/es.js", "i18n/ja.js"])("%s names it", (file) => {
+    expect(catalogString(file, "ag.start.lastLines").length).toBeGreaterThan(5);
+  });
+});

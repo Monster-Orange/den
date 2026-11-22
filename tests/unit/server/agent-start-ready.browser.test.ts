@@ -23,7 +23,6 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
 import { signIn } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
@@ -167,10 +166,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
 
   it("unavailable on the Workspaces page's form too", async () => {
     if (skip()) return;
-    const p = await page(
-      missing!,
-      signInUrl(missing!.stateDir, missing!.base, "/?ws=north"),
-    );
+    const p = await page(missing!, "/?ws=north");
     await p.waitForSelector("#agent-start-open");
     await p.click("#agent-start-open");
     await p.waitForSelector(

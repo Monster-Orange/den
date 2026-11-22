@@ -20,13 +20,25 @@
  */
 import type * as http from "http";
 import type { Socket } from "net";
-import { isLoopbackAddress } from "./request-guard.js";
+import {
+  hostAllowed,
+  isLoopbackAddress,
+  type GuardContext,
+} from "./request-guard.js";
+import { EDGE_PROOF_HEADER } from "../../shared/edge/proof.js";
 import {
   descendsFrom,
   loopbackPeerFind,
+  parentLine,
   type LookupMiss,
 } from "../../shared/peer-process.js";
 import { ACTOR_TOKEN_PREFIX } from "../../shared/actor-token.js";
+import {
+  IN_A_SESSION,
+  IN_DEN,
+  NOT_CHECKED,
+  NOT_LOOPBACK,
+} from "../../shared/person-here.js";
 
 /** ok: from the agent's own processes; elsewhere: proved not; unknown: couldn't tell. */
 export type TokenCaller = "ok" | "elsewhere" | "unknown";
@@ -229,4 +241,69 @@ export function refusalDetail(o: {
       : "outside the agent's own processes";
   const why = o.from === "unknown" && o.why ? `${MISS_WORDS[o.why]}; ` : "";
   return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
+}
+
+/**
+ * Sign-in: this request's caller and its parents up to init, whole: as
+ * found when it connected when that line reached init, else read now.
+ * Null when the caller wasn't placed or a parent can't be read.
+ */
+export function callerLine(
+  req: http.IncomingMessage,
+  d: { line?: (pid: number) => number[] | null } = {},
+): number[] | null {
+  const pid = callerPid(req);
+  if (pid === null) return null;
+  const seen = PEERS.get(req.socket)?.line;
+  if (!d.line && seen && seen[0] === pid && seen[seen.length - 1] === 1)
+    return seen;
+  return (d.line ?? ((p: number) => parentLine(p)))(pid);
+}
+
+/**
+ * Sign-in: why the server won't register a sign-in link or let a browser
+ * in for this caller (the CLI's bearer), or null when it may. It must be
+ * on loopback, placed, with a whole line that holds no running session's
+ * root. Anything it can't tell refuses.
+ */
+export function personCallerRefusal(o: {
+  loopback: boolean;
+  /** It came through the edge, or Den can't tell (forwardedRequest). */
+  forwarded?: boolean;
+  line: number[] | null;
+  roots: number[] | null;
+  /** Den's own processes (this server among them); null when unreadable. */
+  den?: number[] | null;
+}): string | null {
+  if (!o.loopback || o.forwarded) return NOT_LOOPBACK;
+  if (!o.line || o.line.length === 0 || !o.roots) return NOT_CHECKED;
+  if (o.line.some((p) => o.roots!.includes(p))) return IN_A_SESSION;
+  if (o.den === null) return NOT_CHECKED;
+  return o.line.some((p) => (o.den ?? []).includes(p)) ? IN_DEN : null;
+}
+
+/** Headers a proxy in front of Den adds: any of them, and it was forwarded. */
+const FORWARD_HEADERS = [
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "forwarded",
+  EDGE_PROOF_HEADER,
+];
+
+/**
+ * Sign-in: whether this request came through the edge (or any proxy), or
+ * Den can't tell: its Host isn't one of this server's loopback names, or it
+ * carries a forwarding header. The loopback peer is then the proxy, never
+ * the caller.
+ */
+export function forwardedRequest(
+  req: http.IncomingMessage,
+  ctx: Pick<GuardContext, "port" | "loopbackNames" | "edgeHosts" | "lanHosts">,
+): boolean {
+  const h = req.headers ?? {};
+  const host = Array.isArray(h.host) ? h.host[0] : h.host;
+  if (hostAllowed(host, ctx) !== "loopback") return true;
+  return FORWARD_HEADERS.some((k) => h[k] !== undefined);
 }

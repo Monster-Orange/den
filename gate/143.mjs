@@ -10,6 +10,9 @@ export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 90000;
 const ROWS = ["server.ready_probe", "server.start_wait"];
 
+// Read only (issue 845): reads /api/settings and Settings › Server's wait rows.
+export const readOnly = true;
+
 export async function setup(ctx) {
   const s = await ctx.api("/api/settings");
   return { webReady: s?.web_ready ?? null };

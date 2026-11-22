@@ -9,7 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -43,7 +43,7 @@ describe("the session cookie moves to Lax", () => {
     if (!browser) return;
     const ctx = await browser.newContext();
     const p = await ctx.newPage();
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+    await signInPage(p, s!.stateDir, s!.base, "/settings");
     const session = (await ctx.cookies()).find((c) =>
       c.name.startsWith("den_session_"),
     )!;

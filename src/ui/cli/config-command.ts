@@ -8,6 +8,10 @@ import {
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
 import { patchAlerts } from "../../shared/alerts.js";
+import { testInstallByHandRefusal } from "../../shared/fixture-person.js";
+
+/** Issue 810: the test-install mark's names, refused by `config`. */
+const TEST_INSTALL_KEYS = new Set(["web.test_install", "test_install"]);
 
 import { product } from "../../shared/product.js";
 type ConfigKey = keyof UserConfig;
@@ -49,13 +53,26 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "web_github",
     "owner_name_timeout_seconds",
   ],
+  // The shared GitHub watcher's pace and API budget.
+  "github.watch_interval_seconds": ["github", "watch_interval_seconds"],
+  "github.watch_max_interval_seconds": ["github", "watch_max_interval_seconds"],
+  "github.api_budget_floor": ["github", "api_budget_floor"],
+  "github.watches_max": ["github", "watches_max"],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
+  // Issue 819: new-device requests and wrong codes.
+  "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
+  "web.approve_attempts": ["web_pairing", "approve_attempts"],
+  "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // issue_write: which roles write GitHub issues ([planner, sde]), and the
+  // install's writes an hour.
+  "agents.issue_writes": ["agent_issue_writes", "roles"],
+  "agents.issue_writes_per_hour": ["agent_issue_writes", "per_hour"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",
@@ -175,6 +192,8 @@ export async function cmdConfig(args: string[]): Promise<void> {
   if (args[0] === "rm") {
     const keyArg = args[1];
     if (!keyArg) throw new Error(`Usage: ${product().cli} config rm <key>`);
+    if (TEST_INSTALL_KEYS.has(keyArg))
+      throw new Error(testInstallByHandRefusal(product().configFile));
     if (DOTTED_SWITCH[keyArg]) {
       setSwitch(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
@@ -200,6 +219,10 @@ export async function cmdConfig(args: string[]): Promise<void> {
   }
 
   const name = assignment.slice(0, eq);
+  // Issue 810: the test-install mark is set by hand in the distribution
+  // config, never here (an agent can run this command).
+  if (TEST_INSTALL_KEYS.has(name))
+    throw new Error(testInstallByHandRefusal(product().configFile));
   if (DOTTED_SWITCH[name]) {
     setSwitch(name, parseValue(assignment.slice(eq + 1)));
     console.log(chalk.green(`  ✓ Set ${name}`));

@@ -281,6 +281,14 @@ describe("den-ui Markdown editor in a browser", () => {
     await ready(p);
     expect(await p.locator("#host [role=toolbar]").count()).toBe(0);
     await content(p).click();
+    // When the composition ended, as the editor sees it.
+    await p.evaluate(() =>
+      window.addEventListener(
+        "compositionend",
+        () => ((window as unknown as { ended?: number }).ended = Date.now()),
+        true,
+      ),
+    );
     const cdp = await p.context().newCDPSession(p);
     await cdp.send("Input.imeSetComposition", {
       text: "かんじ",
@@ -306,7 +314,17 @@ describe("den-ui Markdown editor in a browser", () => {
     await p.keyboard.press("Enter");
     expect((await seen(p)).submits).toBe(0);
     expect(await value(p)).toBe("漢字");
-    await p.waitForTimeout(250);
+    // Past the editor's grace after compositionend (its own constant): an
+    // Enter from here on is the person's, not the IME's.
+    const grace = (await p.evaluate(
+      'import("/markdown-editor.js").then((m) => m.COMPOSITION_GRACE_MS)',
+    )) as number;
+    await p.waitForFunction(
+      (ms) =>
+        Date.now() - ((window as unknown as { ended?: number }).ended ?? 0) >
+        ms,
+      grace,
+    );
     await p.keyboard.press("Shift+Enter");
     await p.keyboard.type("x");
     expect(await value(p)).toBe("漢字\nx");
@@ -403,7 +421,9 @@ describe("den-ui Markdown editor in a browser", () => {
     const sizes = async (width: number) => {
       const { p, release } = await open({ width, hold: true });
       await mount(p);
-      const tool = p.locator("#host .md-tool").first();
+      const tool = p
+        .locator("#host [role=toolbar]")
+        .getByRole("button", { name: /^Bold/ });
       const box = await tool.boundingBox();
       const standIn = await p
         .locator("#host textarea.md-fallback")
@@ -439,7 +459,10 @@ describe("den-ui Markdown editor in a browser", () => {
       await p.locator("#host [role=toolbar]").getAttribute("aria-label"),
     ).toBe("書式");
     expect(
-      await p.locator("#host .md-tool").first().getAttribute("aria-label"),
+      await p
+        .locator("#host [role=toolbar]")
+        .getByRole("button", { name: /^太字/ })
+        .getAttribute("aria-label"),
     ).toMatch(/^太字（(⌘|Ctrl\+)B）$/);
     // CodeMirror's own styles are in (its nonce'd <style>).
     expect(

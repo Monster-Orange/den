@@ -101,6 +101,8 @@ describe("<cli> web token --print", () => {
       out: (s) => out.push(s),
       err: (s) => err.push(s),
       stateDir: dir,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
     });
     expect(code).toBe(0);
     // Created on first need, and the token is the one the server derives.

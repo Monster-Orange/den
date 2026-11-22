@@ -79,6 +79,16 @@ import {
   type AgentActor,
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+import {
+  OPERATOR_PRINCIPAL,
+  type OperatorAct,
+} from "../../shared/test-operator.js";
+import {
+  notTestBedRefusal,
+  TEST_PERSON_HEADER,
+  testPersonCredentialRefusal,
+} from "../../shared/test-person.js";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
@@ -124,9 +134,19 @@ export interface RunnerPrincipal {
 
 /** Who a request proved itself to be. */
 export type Principal =
-  | { kind: "person"; actor: `person:${string}` }
+  | {
+      kind: "person";
+      actor: `person:${string}`;
+      /** Issue 636: a test bed's CLI, on the test-person path. */
+      testPerson?: true;
+    }
   | AgentPrincipal
-  | { kind: "person-browser"; session?: string }
+  | {
+      kind: "person-browser";
+      session?: string;
+      /** Issue 810: the fixture person's session (a test install's live checks). */
+      fixture?: true;
+    }
   | RunnerPrincipal;
 
 /** What the request checks need of a signed-in browser session. */
@@ -143,6 +163,8 @@ export interface GuardSession {
    * session counts (loopbackSessions).
    */
   secure?: boolean;
+  /** How it signed in (web-session.ts); "fixture": the fixture person (issue 810). */
+  via?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -226,6 +248,11 @@ export interface GuardContext {
    * whatever web.edge_unattested says. Unset: no proof (fails closed).
    */
   edgeProved?: (req: http.IncomingMessage) => boolean;
+  /**
+   * Issue 636: whether this install is a test bed right now (issue 810's
+   * test install binding). Unset: never (the test-person path is refused).
+   */
+  testBed?: () => boolean;
 }
 
 export type GuardResult =
@@ -260,13 +287,15 @@ export type GuardResult =
         | "cross_site"
         | "agent_forbidden"
         | "embed_key_scope"
-        | "runner_scope";
+        | "runner_scope"
+        | "test_person_refused"
+        | "not_test_bed";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
       via?: Via;
       beyond?: boolean;
-      /** agent_forbidden: the agent refused, for the audit. */
+      /** agent_forbidden: the agent refused; not_test_bed: the person. For the audit. */
       principal?: Principal;
     };
 
@@ -689,6 +718,27 @@ export function checkRequest(
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
+  // Issue 636: the test-person path counts only with the person's own
+  // token, from this machine, on a test bed. Anything else is refused
+  // here, before any route runs.
+  if (header(req, TEST_PERSON_HEADER) !== undefined) {
+    if (principal?.kind !== "person" || beyond)
+      return {
+        ok: false,
+        status: 403,
+        code: "test_person_refused",
+        error: testPersonCredentialRefusal(),
+      };
+    if (!ctx.testBed?.())
+      return {
+        ok: false,
+        status: 403,
+        code: "not_test_bed",
+        error: notTestBedRefusal(),
+        principal,
+      };
+    principal = { ...principal, testPerson: true };
+  }
   // Once Den's own named https address works, sessions count only when
   // minted on it: none on a loopback name, and none minted elsewhere.
   const namedOnly = ctx.loopbackSessions?.() === false;
@@ -760,7 +810,11 @@ export function checkRequest(
     ...(client ? { client: normAddress(client) } : {}),
   });
   const browser: Principal | null = session
-    ? { kind: "person-browser", session: session.key }
+    ? {
+        kind: "person-browser",
+        session: session.key,
+        ...(session.via === "fixture" ? { fixture: true as const } : {}),
+      }
     : null;
 
   if (!changes(method) && !isUpgrade(req)) {
@@ -787,7 +841,7 @@ export function checkRequest(
       code: "origin_rejected",
       error:
         "A request that changes something needs an Origin from this server, " +
-        `or \`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `or \`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   }
   if (!originAllowed(origin, ctx))
@@ -967,6 +1021,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/gate-slots/renew",
   "/api/gate-slots/release",
   "/api/gate-slots/runners/revoke",
+  // Issue 625: the test boxes are a person's to change.
+  "/api/gate-slots/boxes",
+  "/api/gate-slots/boxes/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -1128,7 +1185,7 @@ function mutatingGetRefusal(
       code: "origin_rejected",
       error:
         "This request runs something: it needs this server's own page, or " +
-        `\`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `\`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   return null;
 }
@@ -1148,6 +1205,13 @@ export function sessionRequestAllowed(
 }
 
 const PRINCIPALS = new WeakMap<http.IncomingMessage, Principal>();
+
+/**
+ * Issue 814: the test operator's act a request was let through as (the
+ * request gate in index.ts sets it, after operatorRefusal), or none. Only
+ * on a fixture session's request; it never makes the request the person's.
+ */
+const OPERATOR_ACTS = new WeakMap<http.IncomingMessage, OperatorAct>();
 
 /** Remember what the request proved (for the audit trail). */
 export function setPrincipal(
@@ -1183,6 +1247,10 @@ export function agentPrincipalOf(
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person" || p?.kind === "agent") return p.actor;
+  // Issue 810: the fixture person is named as such, never the human;
+  // issue 814: the test operator's act as the test operator.
+  if (p?.kind === "person-browser" && p.session && p.fixture)
+    return OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }
@@ -1211,5 +1279,52 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
     };
     return actor;
   }
+  // Issue 810: the fixture person is never the person. Every person-only
+  // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
+  // it, and the audit keeps it as a claim, labelled as such.
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      kind: "agent",
+      client: OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      unverified: true,
+    };
   return claimed ? { ...claimed, unverified: true } : null;
+}
+
+/**
+ * Issue 810: whether a person-only check must refuse this request: an
+ * agent's token, a claimed agent, or the fixture person.
+ */
+export function notAPersonOf(req: http.IncomingMessage): boolean {
+  return !!agentPrincipalOf(req) || !!auditActorOf(req);
+}
+
+export function markOperatorAct(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): void {
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture) OPERATOR_ACTS.set(req, act);
+}
+
+export function operatorActOf(req: http.IncomingMessage): OperatorAct | null {
+  return OPERATOR_ACTS.get(req) ?? null;
+}
+
+/**
+ * Issue 814: a person-only check that also lets the test operator through
+ * for `act`, and only that act: a person, or a fixture session's request
+ * the gate let through as `act`. Every other caller is refused as
+ * notAPersonOf refuses it.
+ */
+export function personOrOperator(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): boolean {
+  if (!notAPersonOf(req)) return true;
+  return !agentPrincipalOf(req) && OPERATOR_ACTS.get(req) === act;
 }

@@ -9,6 +9,9 @@ export const clauses = [
 ];
 export const timeoutMs = 90000;
 
+// Read only (issue 845): reads doctor's sign-in line.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }

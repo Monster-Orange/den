@@ -26,7 +26,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "../server/helpers/den-auth.js";
+import { signInPage } from "../server/helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -102,7 +102,7 @@ async function open(b: Browser): Promise<Page> {
   });
   await ctx.addInitScript(spy, PIECES);
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(() => "denShell" in window, undefined, {
     timeout: 20_000,
   });

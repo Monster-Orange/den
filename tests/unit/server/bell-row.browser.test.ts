@@ -15,7 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
   startAgentsPageServer,
@@ -121,7 +121,7 @@ async function open(width: number): Promise<Page> {
   await p.route("**/api/notifications/read", (r) =>
     r.fulfill({ json: { ok: true } }),
   );
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/services"));
+  await signInPage(p, s!.stateDir, s!.base, "/services");
   await p.waitForSelector("#den-bell");
   return p;
 }
