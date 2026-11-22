@@ -2,7 +2,7 @@
  * den-ui: a preview of a page or a component (issue 789), drawn in a
  * sandboxed frame at a chosen width and theme. Framework-free.
  *
- *   previewHtml({ html, theme, mode, kitBase, title }) → string
+ *   previewHtml({ html, theme, mode, kitBase, origin, title }) → string
  *     the frame's whole document (its srcdoc): the kit's tokens.css and
  *     base.css, the theme's stylesheet (themes/<theme>.css, e.g. "sketch";
  *     none: the kit's own look), html in the body, and preview-frame.js,
@@ -66,6 +66,40 @@ function baseOf(kitBase) {
   return b;
 }
 
+/** The host's origin (scheme://host[:port]), for the frame's CSP. */
+function originOf(origin) {
+  if (origin == null) {
+    const here = typeof location === "object" ? location.origin : "";
+    return /^https?:\/\/[^/\s]+$/.test(here) ? here : null;
+  }
+  if (
+    typeof origin !== "string" ||
+    !/^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i.test(origin)
+  )
+    throw new TypeError(`preview: origin is like https://host, not ${origin}`);
+  return origin;
+}
+
+/**
+ * The frame's CSP: only the kit's own files (at origin + kitBase) load, and
+ * nothing calls out (connect-src, form-action). Not escaped: origin and
+ * kitBase are checked to URL characters, with no quote. The page's own inline
+ * scripts and styles still run. Path-only sources aren't valid CSP and
+ * 'self' never matches an opaque origin, so the host's origin is named.
+ */
+function cspOf(origin, base) {
+  const kit = origin ? `${origin}${base}` : "'none'";
+  return [
+    "default-src 'none'",
+    `style-src ${kit} 'unsafe-inline'`,
+    `script-src ${kit} 'unsafe-inline'`,
+    `img-src data: ${origin ? kit : ""}`.trim(),
+    `font-src ${kit}`,
+    "connect-src 'none'",
+    "form-action 'none'",
+  ].join("; ");
+}
+
 function widthOf(width) {
   const w = Number(width ?? 1440);
   if (!Number.isFinite(w) || w < 240 || w > 2560)
@@ -78,12 +112,14 @@ export function previewHtml(opts = {}) {
   const base = baseOf(opts.kitBase);
   const theme = previewTheme(opts.theme);
   const mode = modeOf(opts.mode);
+  const origin = originOf(opts.origin);
   const themeLink = theme
     ? `<link rel="stylesheet" id="den-pv-theme" href="${esc(`${base}themes/${theme}.css`)}">`
     : `<link rel="stylesheet" id="den-pv-theme" disabled>`;
   return (
     `<!doctype html><html lang="${esc(opts.lang ?? "en")}" data-mode="${mode}">` +
-    `<head><meta charset="utf-8">` +
+    `<head><meta http-equiv="Content-Security-Policy" content="${cspOf(origin, base)}">` +
+    `<meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>${esc(opts.title ?? "Preview")}</title>` +
     `<link rel="stylesheet" href="${esc(`${base}tokens.css`)}">` +
@@ -103,6 +139,7 @@ export function mountPreview(el, opts = {}) {
     theme: previewTheme(opts.theme),
     mode: modeOf(opts.mode),
     kitBase: baseOf(opts.kitBase),
+    origin: originOf(opts.origin),
     title: opts.title ?? "Preview",
     lang: opts.lang ?? "en",
     fit: opts.fit !== false,

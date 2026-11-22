@@ -574,7 +574,12 @@ never converted to HTML and back).
   storage), at a width (Hub's frames are 390, 768 and 1440; it scales
   down to fit, never up) and a theme. The width, theme and mode change
   with no reload. `kitBase` is where the kit is served (`/kit/` in Den,
-  `/static/den-ui/` in Hub).
+  `/static/den-ui/` in Hub). The frame's CSP lets only the kit's own files
+  load (from `origin` + `kitBase`; `origin` defaults to the host page's)
+  and blocks every network call and form post, so a previewed page can't
+  call out or load from another site. Its own inline scripts and styles
+  still run. The opaque origin keeps the host's cookies out only while
+  they are `SameSite=Lax` or `Strict`, as Den's are.
 
       import { mountPreview } from "@monster-orange/den-ui/preview";
       const pv = mountPreview(el, { html, width: 1440, theme: "sketch" });

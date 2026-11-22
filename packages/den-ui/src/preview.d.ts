@@ -15,6 +15,8 @@ export interface PreviewHtmlOptions {
   mode?: PreviewMode;
   /** Where the kit is served: "/kit/" (Den, the default), "/static/den-ui/" (Hub). */
   kitBase?: string;
+  /** The host's origin (https://host[:port]) for the frame's CSP; default: location.origin. */
+  origin?: string;
   title?: string;
   lang?: string;
 }
