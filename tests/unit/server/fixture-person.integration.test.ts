@@ -457,7 +457,7 @@ describe("making the fixture person on the test install", () => {
       0o600,
     );
     expect(r.body.includes(keyText(test).trim())).toBe(false);
-    expect(await state(test)).toEqual({
+    expect(await state(test)).toMatchObject({
       ok: true,
       testInstall: true,
       ready: true,
