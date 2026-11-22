@@ -72,6 +72,8 @@ jobs:
           RELEASE_BED_CREATORS: ${{ vars.RELEASE_BED_CREATORS }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A full commit id only: nothing that git could read as an option or a ref expression
+          printf '%s\n' "$PROMOTE" | grep -Eqx '[0-9a-f]{40}' || { echo "::error::promote must be a 40-character commit sha"; exit 1; }
           name=$(git show "$PROMOTE:package.json" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).name')
           case "$name" in "$NPM_SCOPE"/*) ;; *) echo "::error::$name isn't under the repository variable NPM_SCOPE ($NPM_SCOPE)"; exit 1;; esac
           # trusted publishing can't create a package: its first publish is by hand (CONTRIBUTING › Releasing)
@@ -101,6 +103,13 @@ jobs:
           ref: ${{ needs.check.outputs.ref }}
           fetch-depth: 0 # the dev tags and their trees
           fetch-tags: true
+      # Issue 922: main's own scripts decide, never the promoted tree's, in a job that can write or publish.
+      - name: Main's release scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-main
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.14.0
@@ -112,7 +121,8 @@ jobs:
           DEN_BED_REQUIRED: ${{ vars.DEN_BED_REQUIRED }}
           # whose status counts, when required: one login, default github-actions[bot] (the bed's own workflow token)
           DEN_BED_POSTER: ${{ vars.DEN_BED_POSTER }}
-        run: node scripts/release-tree-check.mjs "${{ needs.check.outputs.version }}"
+          VERSION: ${{ needs.check.outputs.version }}
+        run: node .release-main/scripts/release-tree-check.mjs "$VERSION"
 
   # The checks and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615), here
   # without the tests (issue 996).
@@ -132,6 +142,8 @@ jobs:
   tag:
     needs: [check, gates]
     if: github.ref == 'refs/heads/main' && needs.check.outputs.release == 'true'
+    # Issue 922: behind the release environment too, so a release turned down there leaves no v<version> tag.
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -142,10 +154,20 @@ jobs:
           ref: ${{ needs.check.outputs.ref }}
           fetch-depth: 0 # the history to place a tag in
           fetch-tags: true
+      # Issue 922: main's own scripts decide, never the promoted tree's, in a job that can write or publish.
+      - name: Main's release scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-main
+          persist-credentials: false
       # Every gated candidate of this version (its tags v<version>-dev.N) is in this commit's history: a candidate
       # that passed its gate and never merged stops the release.
       - name: The gated candidates are in this release
-        run: sh scripts/release-ancestry.sh "${{ needs.check.outputs.version }}" "${{ needs.check.outputs.ref }}"
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          REF: ${{ needs.check.outputs.ref }}
+        run: sh .release-main/scripts/release-ancestry.sh "$VERSION" "$REF"
       - name: The tag v<version>, on the promoted commit
         env:
           TAG: v${{ needs.check.outputs.version }}
@@ -188,7 +210,9 @@ jobs:
         run: cd release && sha256sum -c SHA256SUMS
       # "./": without it, npm reads `release/<file>` as a GitHub repository (owner/name) and tries git over ssh
       - name: Publish it on npm
-        run: npm publish "./release/${{ needs.gates.outputs.tarball }}" --access public --loglevel verbose
+        env:
+          TARBALL: ${{ needs.gates.outputs.tarball }}
+        run: npm publish "./release/$TARBALL" --access public --loglevel verbose
       # npm answers 202 and processes the upload before serving it (seen: ~20 min). Until then the version is
       # "staged": another publish gets 409, and a later run's check would not see it. So this job ends only when npm
       # serves the version, and nobody reruns publish in that window.
@@ -218,10 +242,11 @@ jobs:
           name: release
           path: release
       - name: The GitHub release, with the tarball and SHA256SUMS
-        run: gh release create "$TAG" "release/${{ needs.gates.outputs.tarball }}" release/SHA256SUMS release/release.json --repo "$GITHUB_REPOSITORY" --title "@monster-orange/den $TAG" --generate-notes --verify-tag
+        run: gh release create "$TAG" "release/$TARBALL" release/SHA256SUMS release/release.json --repo "$GITHUB_REPOSITORY" --title "@monster-orange/den $TAG" --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ needs.check.outputs.version }}
+          TARBALL: ${{ needs.gates.outputs.tarball }}
 
   # The UI kit, @monster-orange/den-ui (packages/den-ui), on its own version. It publishes only once the package
   # exists on npm (its first publish is by hand, from the den-ui/v<version> GitHub release's tarball) and a trusted
@@ -244,6 +269,13 @@ jobs:
           ref: ${{ needs.check.outputs.ref }}
           # The commit npm's copy of the kit was built from must be in the history.
           fetch-depth: 0
+      # Issue 922: main's own scripts decide, never the promoted tree's, in a job that can write or publish.
+      - name: Main's release scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-main
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.14.0
@@ -253,7 +285,7 @@ jobs:
       # Unchanged, a prerelease, or not on npm yet: it skips.
       - name: Is this den-ui version to publish?
         id: ui
-        run: node scripts/kit-version.mjs >> "$GITHUB_OUTPUT"
+        run: node .release-main/scripts/kit-version.mjs >> "$GITHUB_OUTPUT"
       - name: npm 11.21 (trusted publishing needs 11.5.1 or later)
         if: steps.ui.outputs.go == 'yes'
         run: npm install -g npm@11.21.0 && npm --version

@@ -48,6 +48,9 @@ const text = (f: string): string => fs.readFileSync(path.join(DIR, f), "utf8");
 const wf = (f: string): Workflow => yaml.parse(text(f)) as Workflow;
 const checkouts = (j: Job): Step[] =>
   (j.steps ?? []).filter((s) => s.uses?.startsWith("actions/checkout@"));
+/** The checkouts of the tree a job works on: not main's own scripts (.release-main). */
+const treeCheckouts = (j: Job): Step[] =>
+  checkouts(j).filter((s) => s.with?.path !== ".release-main");
 const REF = "${{ needs.check.outputs.ref }}";
 
 describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
@@ -89,7 +92,7 @@ describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
       "dev-commit": "${{ needs.check.outputs.dev_sha }}",
     });
     for (const j of ["tag", "den-ui"])
-      for (const co of checkouts(w.jobs[j]))
+      for (const co of treeCheckouts(w.jobs[j]))
         expect([j, co.with?.ref]).toEqual([j, REF]);
     // The tag goes on the promoted commit, never on the run's own commit.
     const tagText = JSON.stringify(w.jobs.tag);
@@ -99,18 +102,57 @@ describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
 
   it("the tested-tree check (issue 996) runs on the promoted commit, and the gates wait on it", () => {
     const tested = w.jobs.tested;
-    const cos = checkouts(tested);
+    const cos = treeCheckouts(tested);
     expect(cos.length).toBeGreaterThan(0);
     // release-tree-check.mjs checks HEAD: HEAD must be what publishes.
     for (const co of cos) expect(co.with?.ref).toBe(REF);
     expect(
       (tested.steps ?? []).some((st) =>
-        (st.run ?? "").includes("scripts/release-tree-check.mjs"),
+        (st.run ?? "").includes(".release-main/scripts/release-tree-check.mjs"),
       ),
     ).toBe(true);
     expect(String(w.jobs.gates.if)).toContain(
       "needs.tested.result == 'success'",
     );
+  });
+
+  it("a job that can write or publish runs main's own scripts on the promoted tree, never the promoted tree's", () => {
+    for (const [job, script] of [
+      ["tested", "release-tree-check.mjs"],
+      ["tag", "release-ancestry.sh"],
+      ["den-ui", "kit-version.mjs"],
+    ] as const) {
+      const steps = w.jobs[job].steps ?? [];
+      const main = checkouts(w.jobs[job]).find(
+        (co) => co.with?.path === ".release-main",
+      );
+      expect([job, main?.with?.ref]).toEqual([job, "${{ github.sha }}"]);
+      expect(main?.with?.["persist-credentials"]).toBe(false);
+      const runs = steps
+        .map((st) => st.run ?? "")
+        .filter((r) => r.includes(script));
+      expect([job, runs.length]).toEqual([job, 1]);
+      expect([job, runs[0]]).toEqual([
+        job,
+        expect.stringContaining(`.release-main/scripts/${script}`),
+      ]);
+    }
+  });
+
+  it("promote must be a 40-character sha before git reads it; no ${{ }} inside a run step", () => {
+    const check = JSON.stringify(w.jobs.check.steps);
+    expect(check).toContain("[0-9a-f]{40}");
+    for (const [name, j] of Object.entries(w.jobs))
+      for (const st of j.steps ?? [])
+        expect([name, st.name, /\$\{\{/.test(st.run ?? "")]).toEqual([
+          name,
+          st.name,
+          false,
+        ]);
+  });
+
+  it("the tag waits on the release environment, as the publish does", () => {
+    expect(w.jobs.tag.environment).toBe("release");
   });
 
   it("only main releases: the check refuses a dispatch from any other branch before anything builds", () => {

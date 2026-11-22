@@ -55,19 +55,30 @@ parent=$(git rev-parse -q --verify "$sha^1" 2> /dev/null) || fail "$sha has no p
 dev_tag=$(git tag --points-at "$parent" -l "v$version-dev.*" | sort -t. -k4,4n | tail -n 1)
 [ -n "$dev_tag" ] || fail "$sha's parent $(git rev-parse --short "$parent") carries no dev tag v$version-dev.N: only a tested candidate's version commit is released"
 
+# Its name is a dev tag of V, and the tag object's own name is that name: a
+# signed tag pushed again under another name still verifies, so an older
+# tested tree could otherwise ship as a new version.
+printf '%s\n' "$dev_tag" | grep -Eq "^v$(printf '%s' "$version" | sed 's/\./\\./g')-dev\.[0-9]+\$" ||
+  fail "$dev_tag isn't a dev tag of $version (v$version-dev.N)"
+
 # Signed: an annotated tag, by a key the allowed-signers file lists.
 [ "$(git cat-file -t "refs/tags/$dev_tag")" = tag ] || fail "$dev_tag is a lightweight tag: a candidate is an annotated, signed tag"
+own=$(git for-each-ref --format='%(tag)' "refs/tags/$dev_tag")
+[ "$own" = "$dev_tag" ] || fail "the tag at refs/tags/$dev_tag was made as $own: a tag pushed under another name isn't a candidate"
 [ -f "$signers" ] || fail "no allowed-signers file at $signers: no tag can be checked"
 git -c gpg.ssh.allowedSignersFile="$signers" verify-tag "$dev_tag" > /dev/null 2>&1 ||
   fail "$dev_tag isn't signed by a key in $signers: a candidate's tag must be signed by an allowed key"
 
 # The bed's PASS on the candidate's commit, from a listed tester.
 [ -n "$(echo $creators)" ] || fail "the repository variable RELEASE_BED_CREATORS lists no tester: no PASS can count"
-statuses=$(gh api "repos/$repo/commits/$parent/status" 2> /dev/null) || fail "GitHub couldn't be asked for $dev_tag's statuses"
+# The statuses list (newest first, each with its creator): the combined
+# /status endpoint names no creator.
+statuses=$(gh api "repos/$repo/commits/$parent/statuses?per_page=100" 2> /dev/null) || fail "GitHub couldn't be asked for $dev_tag's statuses"
 set -- $(printf '%s' "$statuses" | CTX="$context" node -e '
 let s = "";
 process.stdin.on("data", (d) => (s += d)).on("end", () => {
-  const all = JSON.parse(s).statuses ?? [];
+  const all = JSON.parse(s);
+  if (!Array.isArray(all)) throw new Error("not a status list");
   const x = all.find((t) => t.context === process.env.CTX);
   console.log(x ? `${x.state} ${x.creator?.login ?? "?"}` : "none -");
 });') || fail "GitHub's statuses for $dev_tag couldn't be read"

@@ -27,15 +27,22 @@ const SCRIPT = path.join(ROOT, "scripts", "release-promote.sh");
 const NAME = "@scope-x/pkg";
 const V = "1.2.3";
 
-// gh api repos/<repo>/commits/<sha>/status: GitHub's combined status for
-// that commit, from $GH_STATUS_DIR/<sha>.json (none: no statuses).
+// gh api: GitHub's two status endpoints for a commit, in their real
+// shapes. commits/<sha>/status is the combined status: its entries carry
+// no creator. commits/<sha>/statuses is the list, newest first, each with
+// creator.login. From $GH_STATUS_DIR/<sha>.{combined,list}.json (none: no
+// statuses).
 const GH_SHIM = `#!/bin/bash
 [ "$1" = api ] || { echo "gh shim: unexpected gh $*" >&2; exit 2; }
 case "$2" in
   repos/owner-x/repo-x/commits/*/status)
     s=\${2#repos/owner-x/repo-x/commits/}; s=\${s%/status}
-    f="$GH_STATUS_DIR/$s.json"
-    if [ -f "$f" ]; then cat "$f"; else echo '{"statuses":[]}'; fi ;;
+    f="$GH_STATUS_DIR/$s.combined.json"
+    if [ -f "$f" ]; then cat "$f"; else echo '{"state":"pending","statuses":[]}'; fi ;;
+  "repos/owner-x/repo-x/commits/"*"/statuses?per_page=100")
+    s=\${2#repos/owner-x/repo-x/commits/}; s=\${s%/statuses*}
+    f="$GH_STATUS_DIR/$s.list.json"
+    if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi ;;
   *) echo "gh shim: unexpected api $2" >&2; exit 2 ;;
 esac
 `;
@@ -65,15 +72,28 @@ function statuses(
   commit: string,
   list: { context: string; state: string; creator?: string }[],
 ): void {
+  // The combined status: one entry per context, and no creator (GitHub's
+  // shape).
+  const seen = new Set<string>();
   fs.writeFileSync(
-    path.join(statusDir, `${commit}.json`),
+    path.join(statusDir, `${commit}.combined.json`),
     JSON.stringify({
-      statuses: list.map((x) => ({
+      state: "success",
+      statuses: list
+        .filter((x) => !seen.has(x.context) && seen.add(x.context))
+        .map((x) => ({ context: x.context, state: x.state })),
+    }),
+  );
+  // The list: every status, newest first, each with its creator.
+  fs.writeFileSync(
+    path.join(statusDir, `${commit}.list.json`),
+    JSON.stringify(
+      list.map((x) => ({
         context: x.context,
         state: x.state,
         creator: { login: x.creator ?? TESTER },
       })),
-    }),
+    ),
   );
 }
 const PASS = [{ context: "release/bed", state: "success" }];
@@ -312,6 +332,19 @@ beforeAll(() => {
   git("tag", "v2.0.0-dev.1", sha.light);
   statuses(sha.light, PASS);
   sha.lightRelease = commit("2.0.0", {}, "2.0.0");
+  // An older tested candidate's signed tag, pushed again under a new
+  // version's dev tag name (the tag object still says its own name).
+  git("checkout", "-q", "--detach", sha.base);
+  sha.old = commit(`1.9.0-dev.4`, { "src/old.ts": "old\n" }, "old candidate");
+  signedTag("v1.9.0-dev.4", sha.old, key);
+  git(
+    "update-ref",
+    "refs/tags/v7.0.0-dev.1",
+    git("rev-parse", "refs/tags/v1.9.0-dev.4"),
+  );
+  git("tag", "-d", "v1.9.0-dev.4");
+  statuses(sha.old, PASS);
+  sha.renamedRelease = commit("7.0.0", {}, "7.0.0");
   git("checkout", "-q", "main");
 });
 
@@ -348,6 +381,21 @@ describe("release-promote.sh (issue 922)", () => {
     );
   });
 
+  it("refuses a signed tag pushed again under another name: the tag object's own name must be the dev tag's", () => {
+    // It still verifies: git verify-tag doesn't compare the names.
+    expect(() =>
+      git(
+        "-c",
+        `gpg.ssh.allowedSignersFile=${signers}`,
+        "verify-tag",
+        "v7.0.0-dev.1",
+      ),
+    ).not.toThrow();
+    const r = promote(sha.renamedRelease);
+    expect(r.code).toBe(1);
+    expect(r.text).toMatch(/was made as v1\.9\.0-dev\.4/);
+  });
+
   it("refuses main's HEAD: its parent is no dev tag", () => {
     const r = promote(sha.onMain);
     expect(r.code).toBe(1);
@@ -376,7 +424,8 @@ describe("release-promote.sh (issue 922)", () => {
       expect(r.text).toMatch(/::error::.*status is none/);
     } finally {
       statuses(sha.dev, PASS);
-      fs.rmSync(path.join(statusDir, `${sha.release}.json`));
+      for (const f of ["combined", "list"])
+        fs.rmSync(path.join(statusDir, `${sha.release}.${f}.json`));
     }
   });
 
