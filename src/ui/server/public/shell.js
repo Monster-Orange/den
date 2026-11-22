@@ -779,6 +779,18 @@
     "set.ui.testPersonReady": "The test person is set up.",
     "set.ui.testPersonMissing": "The test person isn't set up yet.",
     "set.ui.testPersonSetUp": "Set up test person",
+    "set.ui.testInstallNoMark":
+      "Not a test install: the test install mark is missing. A person adds web.test_install: true to {config} by hand.",
+    "set.ui.testInstallNoFlag":
+      "Not a test install: it wasn't started by the test launcher. Start it with {flag}=1 in its start environment.",
+    "set.ui.testInstallDefaultDir":
+      "Not a test install: it runs on the default state folder. Start it on a state folder of its own.",
+    "set.ui.testInstallOwned":
+      "Not a test install: it has an owner, or another person is signed in. A test install has neither.",
+    "set.ui.testPersonAgain": "Set up again",
+    "set.ui.testPersonAgainTitle": "Set up the test person again?",
+    "set.ui.testPersonAgainAsk":
+      "This makes a new key for the test person. Every current test-person sign-in ends, and live checks sign in again with the new key.",
     "set.ui.testInstallSignedIn":
       "The test install can only be read signed in, or on this machine.",
     "set.ui.noPairHost":

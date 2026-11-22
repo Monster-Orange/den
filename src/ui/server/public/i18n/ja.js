@@ -2809,6 +2809,18 @@
     "set.ui.testPersonReady": "テスト用の人物は設定済みです。",
     "set.ui.testPersonMissing": "テスト用の人物はまだ設定されていません。",
     "set.ui.testPersonSetUp": "テスト用の人物を設定",
+    "set.ui.testInstallNoMark":
+      "テスト用インストールではありません: テスト用インストールの印がありません。人が {config} に web.test_install: true を手作業で追加します。",
+    "set.ui.testInstallNoFlag":
+      "テスト用インストールではありません: テスト用ランチャーで起動されていません。起動環境に {flag}=1 を付けて起動してください。",
+    "set.ui.testInstallDefaultDir":
+      "テスト用インストールではありません: 既定の状態フォルダーで動いています。専用の状態フォルダーで起動してください。",
+    "set.ui.testInstallOwned":
+      "テスト用インストールではありません: オーナーがいるか、別の人がサインインしています。テスト用インストールにはどちらもありません。",
+    "set.ui.testPersonAgain": "もう一度設定",
+    "set.ui.testPersonAgainTitle": "テスト用の人物をもう一度設定しますか?",
+    "set.ui.testPersonAgainAsk":
+      "テスト用の人物に新しいキーを作ります。現在のテスト用の人物のサインインはすべて終了し、ライブチェックは新しいキーでもう一度サインインします。",
     "set.ui.testInstallSignedIn":
       "テスト用インストールは、サインイン中かこのマシン上でのみ読み取れます。",
     "set.ui.noPairHost":
