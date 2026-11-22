@@ -4,9 +4,11 @@
 // Clause 1 (the note after a restart): the bed's server agent stub (record
 // "server", project den-server; resumed, never started anew) shows Claude
 // Code's permission dialog. ui.restart_wait_seconds is set to 10 for this
-// check (ctx.userYml, put back after) and server_agent.self_update to auto
-// (put back after), so the agent's own den_restart_server restarts Den at
-// once and the next server has a note for it. Past the wait, nothing was
+// check (ctx.userYml, put back after). The agent's own den_restart_server
+// restarts Den at once only when the person's server_agent.self_update is
+// auto; the check never changes it (a person's setting). Otherwise the
+// restart waits for the person's Allow, so the clause is not run (skip
+// person), never a FAIL. Restarted so, the next server has a note for it. Past the wait, nothing was
 // typed into its terminal, the bell has the record:den-back-note-held
 // item, and the agent's waiting row is still there. Then the stub itself
 // clears its dialog (its screen back at its prompt; Den never answers
@@ -14,7 +16,9 @@
 // Allow fails the clause; the check never presses one.
 //
 // Clause 4: a message from the page (POST .../agents/<id>/say) to a stub
-// showing the dialog answers 409 dialog_open and types nothing.
+// showing the dialog answers 409 dialog_open and types nothing. The page's
+// say is refused to the fixture person (issue 810, 403 fixture_scope):
+// then the clause is not run (skip needs-fixture-say), never a FAIL.
 //
 // Clauses 2 (a Hub comment) and 3 (the tools note): the bed has no Hub and
 // can't change a tool list, so both skip. With a Hub, clause 2's stub
@@ -146,13 +150,14 @@ export async function setup(ctx) {
 async function restartNote(ctx) {
   const a = server(ctx);
   const r = {};
-  r.selfUpdate = (
-    await ctx.fetch("/api/settings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ server_agent_self_update: "auto" }),
-    })
-  ).status;
+  // The person's setting, read only. Not auto: the restart would wait for
+  // the person's Allow, which a check never presses.
+  const set = await ctx.api("/api/settings").catch(() => null);
+  r.selfUpdate = set?.server_agent_self_update ?? null;
+  if (r.selfUpdate !== "auto") {
+    r.needsAllow = true;
+    return r;
+  }
   // The bed's server agent: resumed, never started anew.
   r.runningMs = await a.running(30000);
   r.runtime = recordOf(ctx, SERVER)?.runtime ?? null;
@@ -329,17 +334,6 @@ export async function teardown(ctx, s) {
     await ctx.until(() => answering(ctx), 60000);
   }
   try {
-    await ctx.api("/api/settings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        server_agent_self_update: s?.selfUpdateWas ?? null,
-      }),
-    });
-  } catch {
-    /* the person's setting: put back on the next check's read */
-  }
-  try {
     await s?.yml?.close?.();
   } catch {
     /* none */
@@ -431,7 +425,14 @@ export function expect(r) {
     y.typed === "";
   const d4 = `runtime ${y.runtime}; ws ${y.ws}; status ${y.status} ${y.code}: ${y.error}; typed ${y.typed === null ? "(the stub can't say)" : JSON.stringify(y.typed)}; audit sent ${y.auditSent}`;
   return [
-    { clause: clauses[0], ok: c1, detail: d1 },
+    b.needsAllow
+      ? {
+          clause: clauses[0],
+          ok: null,
+          skip: "person",
+          detail: `server_agent.self_update is ${JSON.stringify(b.selfUpdate)}, so den_restart_server waits for the person's Allow; a check never presses one, and never changes the person's setting`,
+        }
+      : { clause: clauses[0], ok: c1, detail: d1 },
     hubRow(r?.hub),
     {
       clause: clauses[2],
@@ -440,13 +441,20 @@ export function expect(r) {
       detail:
         "the bed can't change an agent's tool list, so no tools note is sent",
     },
-    y.running === true && y.noDialog
+    y.status === 403 && y.code === "fixture_scope"
       ? {
           clause: clauses[3],
           ok: null,
-          skip: "needs-dialog",
-          detail: `${SAY}: ${NO_DIALOG}; no message sent`,
+          skip: "needs-fixture-say",
+          detail: `the page's say is refused to the fixture person (403 fixture_scope, issue 810); nothing was typed: ${JSON.stringify(y.typed)}`,
         }
-      : { clause: clauses[3], ok: c4, detail: d4 },
+      : y.running === true && y.noDialog
+        ? {
+            clause: clauses[3],
+            ok: null,
+            skip: "needs-dialog",
+            detail: `${SAY}: ${NO_DIALOG}; no message sent`,
+          }
+        : { clause: clauses[3], ok: c4, detail: d4 },
   ];
 }

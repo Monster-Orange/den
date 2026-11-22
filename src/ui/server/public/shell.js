@@ -213,6 +213,59 @@
     "v.old_link": "Open Tests",
     "v.err_load": "Verify couldn't load results.",
     "v.retry": "Try again",
+    // Issue 441: an outside runner's gate results on Checks.
+    "v.m_ran": "Ran {a} to {b}.",
+    "v.m_runner": "From an outside runner.",
+    "v.i_nothing":
+      "{t} ran on {e}, but no clause ran there. This is not a pass.",
+    "v.i_fail": "{t} on {e} failed: {a}, {b}, {c}.",
+    "v.i_pass": "{t} on {e} passed: {a}, {b}, {c}.",
+    "v.i_np": "{n} clauses passed",
+    "v.i_np.one": "{n} clause passed",
+    "v.i_nm": "{n} need a person",
+    "v.i_nm.one": "{n} needs a person",
+    "v.i_nf": "{n} failed",
+    "v.i_nf.one": "{n} failed",
+    "v.i_from": "From imported results.",
+    "v.i_cfg": "Imported results are off: {e}",
+    "v.i_b_failed": "Failed",
+    "v.i_b_passed": "Passed",
+    "v.i_nchecks": "{n} checks",
+    "v.i_nchecks.one": "{n} check",
+    "v.i_nclauses": "{n} clauses",
+    "v.i_nclauses.one": "{n} clause",
+    "v.i_sizes": "{a}, {b}.",
+    "v.n_passed": "passed",
+    "v.n_failed": "failed",
+    "v.n_needs": "needs you",
+    "v.n_cantrun": "couldn't run",
+    "v.i_failed_h": "Failed ({n})",
+    "v.i_cantrun_h": "Couldn't run ({n})",
+    "v.i_needs_h": "Needs you ({n})",
+    "v.i_needs_p":
+      "A check never makes a person's decision. These are yours to try on {e}.",
+    "v.i_issue": "issue {n}",
+    "v.i_checks_h": "Checks on this tag",
+    "v.i_chk": "{p} of {n} clauses passed",
+    "v.i_chk.one": "{p} of {n} clause passed",
+    "v.i_chk_needs": ", {n} need you",
+    "v.i_chk_needs.one": ", {n} needs you",
+    "v.i_on": "on {t}",
+    "v.i_allran": "Every clause here passed.",
+    "v.c_passed": "passed",
+    "v.c_failed": "failed",
+    "v.c_error": "error",
+    "v.c_needs": "Needs you",
+    "v.c_cantrun": "couldn't run",
+    "v.ct_result": "Result",
+    "v.ct_clause": "Clause",
+    "v.ct_note": "Note",
+    "v.ct_time": "Time",
+    "v.t_ms": "{n} ms",
+    "v.t_s": "{n} s",
+    "v.who_runner": "An outside runner",
+    "v.actor_runner": "outside runner",
+    "v.fd_imported": "sent its results for {t} on {e}.",
     "n.environments": "Environments",
     "n.releases": "Releases",
     "n.edge": "Edge",
@@ -696,6 +749,7 @@
     "set.ui.viaGithubAs": "signed in with GitHub (@{login})",
     "set.ui.viaGithub": "signed in with GitHub",
     "set.ui.viaCode": "approved with a code",
+    "set.ui.viaAgentView": "{agent}'s read-only view",
     "set.ui.viaClaim": "claimed with a setup link",
     "set.ui.viaLink": "signed in with a one-time link",
     "set.ui.unknownBrowser": "Unknown browser",
@@ -1706,6 +1760,10 @@
       "In a terminal on this computer, run this. It opens this page signed in:",
     "shell.signin.line": "Sign in to make changes here.",
     "shell.signin.btn": "Sign in",
+    "shell.view.title": "Read-only view",
+    "shell.view.line":
+      "{agent} is viewing these pages. Nothing can be changed here, and the view ends in a few minutes.",
+    "shell.view.off": "Read-only view: this changes nothing here",
     "err.signin.codeExpired": "This code expired.",
     "err.signin.codeDenied": "This computer was denied on {host}.",
     "err.signin.codeFailed": "{name} didn't give this page a code. Try again.",
@@ -1902,6 +1960,18 @@
     "set.agents.hub_link_all": "Unclear matches",
     "set.agents.hub_link_all.d":
       "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
+    "set.agents.hub_delivery_loop": "Hub delivery loop",
+    "set.agents.hub_delivery_loop.d":
+      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    "set.workspace.hub_delivery_loop": "Hub delivery loop: this project",
+    "set.workspace.hub_delivery_loop.d":
+      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+    "set.workspace.hub_delivery_loop.o.install": "As everywhere",
+    "set.workspace.hub_delivery_loop.o.on": "On",
+    "set.workspace.hub_delivery_loop.o.off": "Off",
+    "set.workspace.hub_delivery_loop_extra": "Added to the Hub delivery loop",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
     "ub.intro":
       "Den can't tell which Hub project fits these. Pick one for each, then press Link.",
     "ub.why.repos": "Two Hub projects share its repos",
@@ -2009,6 +2079,10 @@
     "set.server.gate_cpu_beside": "Unit test runs beside a browser test run",
     "set.server.gate_cpu_beside.d":
       "How many unit-test runs may run on this machine while a browser test run does, never more than the unit test runs at once. 0: a browser test run runs alone. A browser run on a test box doesn't count. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_cpu_beside_release":
+      "Unit test runs beside a release browser test run",
+    "set.server.gate_cpu_beside_release.d":
+      "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
@@ -2255,6 +2329,12 @@
     "set.access.approve_window": "Wrong-code window, in seconds",
     "set.access.approve_window.d":
       "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.agent_view": "Agents may view pages, read-only",
+    "set.access.agent_view.d":
+      "On, an agent running here may open these pages read-only, as itself, to look or take a screenshot (page_view). It changes nothing, and each page it opens is logged with its name. Off, the agent is told views are off. __DEN_CLI__ config web.agent_view=true",
+    "set.access.agent_view_minutes": "An agent's view lasts, in minutes",
+    "set.access.agent_view_minutes.d":
+      "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
@@ -2359,6 +2439,10 @@
     "ag.relaunchHandoff": "Relaunch from its last handoff",
     "ag.rc.autoAsk":
       "Due ({why}). Den asks it for its handoff when it is idle, then relaunches it.",
+    "ag.rc.waiting.one":
+      "Due ({why}). Den waits for the {n} background task it started to finish, then rotates it.",
+    "ag.rc.waiting":
+      "Due ({why}). Den waits for the {n} background tasks it started to finish, then rotates it.",
     "ag.rc.autoReady":
       "Due ({why}). Its handoff is ready: Den relaunches it when it is idle.",
     "ag.rc.ready": "Due ({why}). Its handoff is ready.",
@@ -3085,6 +3169,8 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
+    "bell.m.unaskedExit":
+      "{name} ended without Den asking (exit {code}): {why}",
     "bell.m.trust": "{name}: Waiting: trust this folder?",
     "bell.m.trustDeclined":
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
@@ -3152,6 +3238,8 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.toolsNoteHeld":
+      "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":
@@ -7947,6 +8035,7 @@
             csrf.token = b && typeof b.csrf === "string" ? b.csrf : null;
             applyIdentity(b);
             signinBanner(b);
+            viewMode(b);
             return csrf.token;
           },
           function () {
@@ -7955,6 +8044,66 @@
           },
         );
     return csrf.pending;
+  }
+  /**
+   * Issue 796: an agent's read-only view (GET /api/session `view`). One
+   * line says so, and no write control is live: every button, field and
+   * switch outside the rail is disabled as it appears. Tabs, menus and
+   * disclosures (they change nothing) and search boxes stay. The server
+   * refuses every write all the same, and the person's approval dialog
+   * never opens here.
+   */
+  var VIEW = null;
+  var VIEW_KEEP =
+    '[role="tab"],[aria-haspopup],[aria-expanded],[aria-controls],' +
+    '[data-nav],[data-visit],[data-den-view-ok],input[type="search"],' +
+    '[role="combobox"],[role="searchbox"]';
+  function viewLock(root) {
+    if (!VIEW || !root || !root.querySelectorAll) return;
+    var all = root.querySelectorAll(
+      'button,input,select,textarea,[contenteditable="true"]',
+    );
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (
+        (nav && nav.contains(el)) ||
+        el.closest("#den-banners") ||
+        el.matches(VIEW_KEEP)
+      )
+        continue;
+      if (el.isContentEditable) el.setAttribute("contenteditable", "false");
+      else el.disabled = true;
+      el.setAttribute("aria-disabled", "true");
+      el.setAttribute("data-den-view-off", "");
+      el.title = t("shell.view.off");
+    }
+  }
+  function viewMode(b) {
+    if (!b || !b.view || VIEW) return;
+    VIEW = b.view;
+    document.documentElement.setAttribute("data-den-view", "read-only");
+    hideBanner("signin");
+    showBanner("view", {
+      title: t("shell.view.title"),
+      text: t("shell.view.line", { agent: String(VIEW.agent || "") }),
+    });
+    apClose();
+    var run = function () {
+      viewLock(document);
+      if (typeof MutationObserver === "undefined") return;
+      new MutationObserver(function (list) {
+        for (var i = 0; i < list.length; i++)
+          for (var j = 0; j < list[i].addedNodes.length; j++) {
+            var n = list[i].addedNodes[j];
+            if (n.nodeType !== 1) continue;
+            if (n.matches && n.matches("button,input,select,textarea"))
+              viewLock(n.parentNode);
+            else viewLock(n);
+          }
+      }).observe(document.body, { childList: true, subtree: true });
+    };
+    if (document.body) run();
+    else document.addEventListener("DOMContentLoaded", run, { once: true });
   }
   /**
    * 0.4.71: a page read on this machine with no session (a bookmark, a
@@ -8427,6 +8576,8 @@
     apPoll();
   });
   function apPoll() {
+    // Issue 796: an agent's read-only view never opens the person's asks.
+    if (VIEW) return;
     // One ask at a time: a tick while the last is still open sends none.
     if (document.hidden || ap.busy || ap.polling) return;
     ap.polling = true;

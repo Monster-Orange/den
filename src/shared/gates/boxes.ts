@@ -281,6 +281,7 @@ export function assign(
       Pick<
         GateSettings,
         | "cpuSlotsBesideBrowser"
+        | "cpuSlotsBesideReleaseBrowser"
         | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
@@ -300,9 +301,9 @@ export function assign(
   const reserved = new Set<string>();
   const out: { id: string; box?: string }[] = [];
   const cap = (n: string) => boxes.find((b) => b.name === n);
-  const free = (place: string, kind: GateEntry["kind"]): boolean => {
-    if (reserved.has(key(place, kind))) return false;
-    if (place === "local") return room.fits(kind);
+  const free = (place: string, w: GateEntry): boolean => {
+    if (reserved.has(key(place, w.kind))) return false;
+    if (place === "local") return room.fits(w);
     const b = cap(place);
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
@@ -310,14 +311,14 @@ export function assign(
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
     const places = placesOf(w, boxes);
-    const at = places.find((p) => free(p, w.kind));
+    const at = places.find((p) => free(p, w));
     if (at === undefined) {
       for (const p of places) reserved.add(key(p, w.kind));
-      if (places.includes("local")) room.wait(w.kind);
+      if (places.includes("local")) room.wait(w);
       continue;
     }
     if (at === "local") {
-      room.take(w.kind);
+      room.take(w);
       out.push({ id: w.id });
     } else {
       used[at] = (used[at] ?? 0) + 1;
@@ -338,6 +339,7 @@ export function boxesWanted(
       Pick<
         GateSettings,
         | "cpuSlotsBesideBrowser"
+        | "cpuSlotsBesideReleaseBrowser"
         | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
