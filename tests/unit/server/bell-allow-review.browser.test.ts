@@ -136,6 +136,9 @@ describe("the bell's Allow row: Review", () => {
         allow: await box(p, "allow"),
         deny: await box(p, "deny"),
       };
+      // Den Design: a phone's finger needs 44 px to hit Review.
+      if (width < 600)
+        expect((await review.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 
       const press = () => (width < 600 ? review.tap() : review.click());
       await press();
@@ -149,6 +152,10 @@ describe("the bell's Allow row: Review", () => {
       expect(await det.isVisible()).toBe(true);
       const lines = await det.locator("[data-ap-line]").allTextContents();
       expect(lines.length).toBeGreaterThan(1);
+      // Den Design: a 1px border sets the lines apart on an unhovered row.
+      await expect(
+        det.evaluate((el) => getComputedStyle(el).borderTopWidth),
+      ).resolves.toBe("1px");
       expect(lines.some((l) => l.includes("box1"))).toBe(true);
       // The button keeps focus across the bell's repaint.
       await expect(
