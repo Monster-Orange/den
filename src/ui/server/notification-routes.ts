@@ -263,8 +263,9 @@ export async function handleNotificationRoutes(
     const prefs = (deps.prefs ?? bellPrefs)(null);
     const all = bellView(deps.store.list(), prefs);
     let done: DoneAgent[] = [];
-    // Issue 773: Done is the person's "finished" switch's too.
-    if (!prefs.off.includes("finished"))
+    // Issue 773: Done follows the "finished" switch when the person turned
+    // it off; its default (off for the updates) leaves Done on (mock v3).
+    if (!prefs.finishedChosenOff)
       try {
         done = deps.doneAgents?.(personKey(req)) ?? [];
       } catch {

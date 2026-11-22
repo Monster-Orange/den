@@ -589,6 +589,11 @@ export const BELL_FOLD_DAYS_DEFAULT = 7;
 export interface BellPrefs {
   off: BellSwitch[];
   foldDays: number;
+  /**
+   * Issue 773: true only when the person turned "finished" off themselves.
+   * Its default (off, for the updates) doesn't hide the bell's Done.
+   */
+  finishedChosenOff?: true;
 }
 
 /**
@@ -608,7 +613,9 @@ export function bellPrefs(user: unknown): BellPrefs {
   const foldDays = (BELL_FOLD_DAYS as readonly unknown[]).includes(d)
     ? (d as number)
     : BELL_FOLD_DAYS_DEFAULT;
-  return { off, foldDays };
+  return kinds.finished === false
+    ? { off, foldDays, finishedChosenOff: true }
+    : { off, foldDays };
 }
 
 /**

@@ -280,7 +280,16 @@ describe("after setup", () => {
     await row.waitFor({ timeout: 20_000 });
     // Its tag says Server; it has no group of its own.
     expect(await row.locator('[data-ptag="server"]').count()).toBe(1);
-    expect(await p.locator('#agl [data-ws="den-server"]').count()).toBe(0);
+    // (Its row carries data-ws too; a group of its own would sit outside
+    // the four bands.)
+    expect(
+      await p.evaluate(
+        () =>
+          [...document.querySelectorAll('#agl [data-ws="den-server"]')].filter(
+            (e) => !e.closest("[data-band]"),
+          ).length,
+      ),
+    ).toBe(0);
     // In one of the four bands, by its state.
     const band = await row.evaluate((e) =>
       e.closest("[data-band]")?.getAttribute("data-band"),

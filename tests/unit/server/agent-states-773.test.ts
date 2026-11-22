@@ -18,7 +18,11 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import type * as http from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
-import { NotificationStore } from "../../../src/shared/notifications.js";
+import {
+  NotificationStore,
+  bellPrefs,
+  type BellPrefs,
+} from "../../../src/shared/notifications.js";
 import { SeenMarks } from "../../../src/shared/seen-mark.js";
 import { Attention } from "../../../src/ui/server/attention.js";
 import {
@@ -398,7 +402,11 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
     expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
   });
 
-  async function bell(d: ReturnType<typeof mk>, off: string[] = []) {
+  async function bell(
+    d: ReturnType<typeof mk>,
+    off: string[] = [],
+    finishedChosenOff = false,
+  ) {
     const { r, out } = res();
     await handleNotificationRoutes(
       req("GET", "/api/notifications", undefined, "person:a"),
@@ -408,7 +416,11 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
         store: d.store,
         attention: d.a,
         seen: d.seen,
-        prefs: () => ({ off, foldDays: 7 }),
+        prefs: () => ({
+          off: off as BellPrefs["off"],
+          foldDays: 7,
+          ...(finishedChosenOff ? { finishedChosenOff: true } : {}),
+        }),
         doneAgents: (person) =>
           doneAgents([{ id: "builder", workspace: "north" }], person, d.deps),
       },
@@ -444,10 +456,23 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
     expect(finishedIn(b.updates.groups)).toEqual([agentSubject("other")]);
   });
 
-  it("the person's finished switch off: no Done section either", async () => {
+  it("the person's finished switch turned off: no Done section either", async () => {
     const d = mk();
     await d.a.event("builder", "north", { event: "finished" });
-    const b = await bell(d, ["finished"]);
+    const b = await bell(d, ["finished"], true);
     expect(b.done).toEqual([]);
+  });
+
+  it("finished off only by default (never set): Done still shows (mock v3: the bell counts Needs you plus Done)", async () => {
+    const d = mk();
+    await d.a.event("builder", "north", { event: "finished" });
+    expect(bellPrefs(null).off).toContain("finished");
+    expect(bellPrefs(null).finishedChosenOff).toBeUndefined();
+    expect(
+      bellPrefs({ notifications: { kinds: { finished: false } } })
+        .finishedChosenOff,
+    ).toBe(true);
+    const b = await bell(d, bellPrefs(null).off);
+    expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
   });
 });
