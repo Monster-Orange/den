@@ -16,6 +16,7 @@ export const REFUSAL_NOTE =
 
 interface HookInput {
   hook_event_name?: unknown;
+  tool_name?: unknown;
   tool_response?: unknown;
   error?: unknown;
 }

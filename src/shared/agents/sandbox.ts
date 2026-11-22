@@ -452,7 +452,7 @@ export interface SandboxWrap {
   /** Added to the session's env. */
   env: Record<string, string>;
   /** Which tool, when applied. */
-  tool?: "sandbox-exec" | "bwrap";
+  tool?: string;
   /** Why not, when not applied. */
   reason?: string;
 }
