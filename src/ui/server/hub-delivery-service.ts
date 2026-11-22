@@ -11,6 +11,8 @@
  * the agent's turn, never mid-turn. Hub's own deliveries need Hub.
  */
 import path from "node:path";
+import type * as AgentOps from "../cli/agent-ops.js";
+import type { AgentsResolved } from "../cli/agent-ops.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
@@ -98,6 +100,25 @@ const MARK_CODES: ReadonlySet<string> = new Set([
   "approval",
   "paused",
 ]);
+
+/**
+ * Issue 701, 962: why a busy agent holds its Hub deliveries, or null
+ * (mid-turn). A trust or permission dialog by its name; then Den's own
+ * holds (an Allow, a pause); then a list or a question on its screen,
+ * which the screen check reads as a dialog: the agent isn't at its prompt.
+ */
+export async function heldWhyOf(
+  ops: Pick<typeof AgentOps, "agentDialogKind" | "agentScreenShowsDialog">,
+  d: AgentsResolved,
+  id: string,
+  waitingWhy?: (id: string) => string | null,
+): Promise<HeldCode | null> {
+  const dialog = await ops.agentDialogKind(d, id);
+  if (dialog) return dialog;
+  const why = waitingWhy?.(id) ?? null;
+  if (why && MARK_CODES.has(why)) return why as HeldCode;
+  return (await ops.agentScreenShowsDialog(d, id)) ? "not_at_prompt" : null;
+}
 
 /** Issue 701: how long a held item waits before the bell says so, in s. */
 function heldBellAfter(why: HeldCode | undefined): number {
@@ -392,12 +413,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
       type: (id, text) => ops.typeIntoAgent(d, id, text),
       notAtPrompt: (id) => ops.heldNotAtPrompt(id),
-      why: async (id) => {
-        const dialog = await ops.agentDialogKind(d, id);
-        if (dialog) return dialog;
-        const why = o.waitingWhy?.(id) ?? null;
-        return why && MARK_CODES.has(why) ? (why as HeldCode) : null;
-      },
+      why: (id) => heldWhyOf(ops, d, id, (x) => o.waitingWhy?.(x) ?? null),
     },
     // Issue 701: the person's comment answers the agent's question.
     answered: (agent) => {
