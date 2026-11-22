@@ -82,6 +82,37 @@ describe("the CI check", () => {
     ).toBe(0);
   });
 
+  it("skips commits already on a shared branch (next/*, release/*): a release PR carries them (Builder 2, 11-22)", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "noclose-shared-"));
+    const git = (...a: string[]) =>
+      spawnSync(
+        "git",
+        ["-c", "user.email=t@example.com", "-c", "user.name=t", ...a],
+        { cwd: repo, encoding: "utf-8" },
+      ).stdout.trim();
+    git("init", "-q");
+    git("commit", "-q", "--allow-empty", "-m", "main");
+    const base = git("rev-parse", "HEAD");
+    git("commit", "-q", "--allow-empty", "-m", "old\n\nFixes #1");
+    git("update-ref", "refs/remotes/origin/next/queue", "HEAD");
+    const run = (range: string) =>
+      spawnSync("node", [SCRIPT, range], {
+        cwd: repo,
+        encoding: "utf-8",
+        env: { ...process.env, PR_TITLE: "", PR_BODY: "" },
+      });
+    const release = run(`${base}..refs/remotes/origin/next/queue`);
+    expect(release.status).toBe(0);
+    expect(release.stdout).toContain(
+      "1 commit already on a shared branch, not checked",
+    );
+    git("commit", "-q", "--allow-empty", "-m", "new\n\nFixes #2");
+    const feature = run(`${base}..HEAD`);
+    expect(feature.status).toBe(1);
+    expect(feature.stderr).toMatch(/commit [0-9a-f]{8}: Fixes #2/);
+    expect(feature.stderr).not.toContain("Fixes #1");
+  });
+
   it("fails on a commit in the range", () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), "noclose-"));
     const git = (...a: string[]) =>

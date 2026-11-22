@@ -8,6 +8,9 @@
  *
  *   PR_TITLE=… PR_BODY=… node scripts/no-close-keywords.mjs [<base>..<head>]
  *
+ * The title and body are always checked. A commit already on a shared
+ * branch (origin/next/*, origin/release/*) is not: it landed before.
+ *
  * Exits 1 with each hit and where it is.
  */
 import { execFileSync } from "node:child_process";
@@ -35,9 +38,41 @@ function main() {
     for (const h of closingRefs(text)) hits.push(`${where}: ${h}`);
   const range = process.argv[2];
   if (range) {
-    const log = execFileSync("git", ["log", "--format=%H%x00%B%x01", range], {
+    // Builder 2, 11-22: a commit already on a shared branch (next/*,
+    // release/*) was checked, or came before this rule, when it landed. A
+    // release PR (next/queue into main) carries them all, and history is
+    // never rewritten, so only commits new to every shared branch count.
+    const shared = execFileSync(
+      "git",
+      [
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/remotes/origin/next/",
+        "refs/remotes/origin/release/",
+      ],
+      { encoding: "utf-8" },
+    )
+      .split("\n")
+      .filter(Boolean);
+    const all = execFileSync("git", ["rev-list", "--count", range], {
       encoding: "utf-8",
-    });
+    }).trim();
+    const log = execFileSync(
+      "git",
+      [
+        "log",
+        "--format=%H%x00%B%x01",
+        range,
+        ...(shared.length ? ["--not", ...shared] : []),
+      ],
+      { encoding: "utf-8" },
+    );
+    const checked = log.split("\x01").filter((e) => e.trim()).length;
+    const skipped = Number(all) - checked;
+    if (skipped > 0)
+      console.log(
+        `${skipped} commit${skipped === 1 ? "" : "s"} already on a shared branch, not checked`,
+      );
     for (const entry of log.split("\x01")) {
       const [sha, body] = entry.trim().split("\0");
       if (!sha) continue;
