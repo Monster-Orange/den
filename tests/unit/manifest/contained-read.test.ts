@@ -17,6 +17,10 @@ import {
   rootRefusal,
 } from "../../../src/shared/manifest/contained-read.js";
 
+/** Run git in `cwd`; true when it succeeds. */
+const git = (cwd: string, args: string[]): boolean =>
+  spawnSync("git", args, { cwd, encoding: "utf-8" }).status === 0;
+
 const tmpDirs: string[] = [];
 function tempDir(): string {
   const dir = fs.realpathSync(
@@ -176,30 +180,77 @@ describe("rootRefusal", () => {
     expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
   });
 
-  it("a root whose .git file names a folder in a far too broad place is refused", () => {
+  it("a root whose .git file names an ordinary folder is refused", () => {
+    const home = tempDir();
+    const root = path.join(home, "work", "shop");
+    const plain = path.join(home, "work", "plain");
+    fs.mkdirSync(root, { recursive: true });
+    fs.mkdirSync(plain, { recursive: true });
+    fs.writeFileSync(path.join(root, ".git"), `gitdir: ${plain}\n`);
+    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+  });
+
+  it("a root whose .git file names a folder with only a HEAD file is refused", () => {
+    const home = tempDir();
+    const root = path.join(home, "work", "shop");
+    const half = path.join(home, "work", "half");
+    fs.mkdirSync(root, { recursive: true });
+    fs.mkdirSync(half, { recursive: true });
+    fs.writeFileSync(path.join(half, "HEAD"), "ref: refs/heads/main\n");
+    fs.writeFileSync(path.join(root, ".git"), `gitdir: ${half}\n`);
+    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+  });
+
+  it("a root whose .git file names a git folder in a far too broad place is refused", () => {
     const home = tempDir();
     const root = path.join(home, "work", "shop");
     fs.mkdirSync(root, { recursive: true });
-    fs.mkdirSync(path.join(home, ".git", "worktrees", "shop"), {
-      recursive: true,
-    });
-    fs.writeFileSync(
-      path.join(root, ".git"),
-      `gitdir: ${path.join(home, ".git", "worktrees", "shop")}\n`,
-    );
+    // A home folder kept in git, with a worktree's git folder in it.
+    const common = path.join(home, ".git");
+    fs.mkdirSync(path.join(common, "objects"), { recursive: true });
+    fs.writeFileSync(path.join(common, "HEAD"), "ref: refs/heads/main\n");
+    const admin = path.join(common, "worktrees", "shop");
+    fs.mkdirSync(admin, { recursive: true });
+    fs.writeFileSync(path.join(admin, "HEAD"), "ref: refs/heads/shop\n");
+    fs.writeFileSync(path.join(admin, "commondir"), "../..\n");
+    fs.writeFileSync(path.join(root, ".git"), `gitdir: ${admin}\n`);
     expect(rootRefusal(root, { home })).not.toBe(null);
   });
 
-  it("a real worktree's .git file still works", () => {
+  it("a real repo still works", () => {
+    const home = tempDir();
+    const repo = path.join(home, "work", "repo");
+    fs.mkdirSync(repo, { recursive: true });
+    expect(git(repo, ["init", "-q"])).toBe(true);
+    expect(rootRefusal(repo, { home })).toBe(null);
+  });
+
+  it("a real git worktree add checkout still works", () => {
     const home = tempDir();
     const main = path.join(home, "work", "main");
-    const admin = path.join(main, ".git", "worktrees", "wt");
-    fs.mkdirSync(admin, { recursive: true });
+    fs.mkdirSync(main, { recursive: true });
+    expect(git(main, ["init", "-q"])).toBe(true);
+    expect(
+      git(main, [
+        "-c",
+        "user.email=a@example.com",
+        "-c",
+        "user.name=a",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "init",
+      ]),
+    ).toBe(true);
     const wt = path.join(home, "work", "wt");
-    fs.mkdirSync(wt, { recursive: true });
-    fs.writeFileSync(path.join(wt, ".git"), `gitdir: ${admin}\n`);
+    expect(git(main, ["worktree", "add", "-q", wt, "-b", "wt"])).toBe(true);
     expect(rootRefusal(wt, { home })).toBe(null);
     // A relative gitdir, as git can write it, works too.
+    const line = fs.readFileSync(path.join(wt, ".git"), "utf-8");
+    const admin = line.replace(/^gitdir:\s*/, "").trim();
     fs.writeFileSync(
       path.join(wt, ".git"),
       `gitdir: ${path.relative(wt, admin)}\n`,

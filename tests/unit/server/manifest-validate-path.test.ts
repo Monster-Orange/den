@@ -5,6 +5,7 @@
  * the held manifests folder. A configured repo root that is far too broad
  * is never a root.
  */
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -242,6 +243,11 @@ describe("validateAtPath", () => {
   function worktree(main: string, wt: string) {
     const admin = path.join(main, ".git", "worktrees", "wt");
     fs.mkdirSync(admin, { recursive: true });
+    // A git folder as git lays one out: HEAD and objects in the main one,
+    // HEAD and commondir in the worktree's.
+    fs.mkdirSync(path.join(main, ".git", "objects"));
+    fs.writeFileSync(path.join(main, ".git", "HEAD"), "ref: refs/heads/main\n");
+    fs.writeFileSync(path.join(admin, "HEAD"), "ref: refs/heads/wt\n");
     fs.writeFileSync(
       path.join(main, ".git", "config"),
       originConfig("https://example.com/acme/store.git"),
@@ -263,6 +269,49 @@ describe("validateAtPath", () => {
       repoRoots: [wt, main],
     }).body as Body & { manifestLayers?: string[] };
     expect(body.manifestLayers).toEqual(["held"]);
+  });
+
+  it("a real git worktree add checkout validates with its origin", () => {
+    const main = path.join(tempDir(), "main");
+    fs.mkdirSync(main);
+    const run = (args: string[]) =>
+      spawnSync("git", args, { cwd: main, encoding: "utf-8" }).status;
+    expect(run(["init", "-q"])).toBe(0);
+    expect(
+      run(["remote", "add", "origin", "https://example.com/acme/store.git"]),
+    ).toBe(0);
+    expect(
+      run([
+        "-c",
+        "user.email=a@example.com",
+        "-c",
+        "user.name=a",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "init",
+      ]),
+    ).toBe(0);
+    const wt = path.join(tempDir(), "shop");
+    expect(run(["worktree", "add", "-q", wt, "-b", "wt"])).toBe(0);
+    fs.writeFileSync(path.join(held, "store.den.yml"), GOOD);
+    const r = validateAtPath(wt, { ...deps(), repoRoots: [wt, main] });
+    expect(r.status).toBe(200);
+    expect(
+      (r.body as Body & { manifestLayers?: string[] }).manifestLayers,
+    ).toEqual(["held"]);
+  });
+
+  it("a root whose .git file names an ordinary folder is refused", () => {
+    const root = path.join(tempDir(), "shop");
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, ".git"), `gitdir: ${outside}\n`);
+    fs.writeFileSync(path.join(root, ".den.yml"), GOOD);
+    const r = validateAtPath(root, { ...deps(), repoRoots: [root] });
+    expect(r.status).toBe(403);
   });
 
   it("a worktree whose main repo isn't configured falls back to the folder name", () => {
