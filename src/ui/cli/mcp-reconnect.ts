@@ -18,6 +18,7 @@ import { listRecords } from "../../shared/agents/records.js";
 import {
   AgentError,
   agentDialogKind,
+  agentScreenShowsDialog,
   agentInputState,
   heldNotAtPrompt,
   hubNow,
@@ -119,7 +120,10 @@ export function mcpReconnect(
       });
       if (r === true) return { told: true };
       if (r === false) hold("its screen didn't take it; Den tries again");
-    } else if (heldNotAtPrompt(id))
+    } else if (heldNotAtPrompt(id) || (await agentScreenShowsDialog(d, id)))
+      // Issue 954: a list or a question on screen reads as a dialog, not
+      // "not at its prompt" (issue 664's set), so it is asked here too:
+      // the note waits, and its person is belled once.
       hold("it isn't at its input prompt (a list or a question shows)");
     return null;
   };
