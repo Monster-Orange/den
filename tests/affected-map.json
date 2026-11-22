@@ -745,6 +745,10 @@
       "src/shared/health-poll.ts",
       "src/ui/server/index.ts",
       "src/ui/server/public/header.js"
+    ],
+    "tests/unit/server/issue-868-github-ask.browser.test.ts": [
+      "src/ui/server/github-setup-held.ts",
+      "src/ui/server/public/error-page.js"
     ]
   },
   "subjectless": [],

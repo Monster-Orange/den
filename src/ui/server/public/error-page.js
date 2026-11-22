@@ -25,6 +25,7 @@
 import { rankCommands } from "/topbar.js";
 import { timeHtml } from "/kit/time.js";
 import { buttonHtml } from "/kit/button.js";
+import { holdDots } from "/kit/busy.js";
 
 // Its words are the shell's catalog (shell.js MESSAGES, R19: the err.*
 // keys), so the page is in the page's language. "Copy details" is a
@@ -963,6 +964,9 @@ function wireGithubAsk(root, t, s) {
   const name = s.name || "Den";
   btn.addEventListener("click", (e) => {
     e.preventDefault();
+    if (btn.getAttribute("aria-busy") === "true") return;
+    // Busy in the button (the kit's dots); the page says the answer itself.
+    holdDots(btn);
     btn.setAttribute("aria-disabled", "true");
     btn.disabled = true;
     fetch("/api/signin/github-setup", {
@@ -991,6 +995,7 @@ function wireGithubAsk(root, t, s) {
         });
       })
       .finally(() => {
+        holdDots(btn, false);
         btn.removeAttribute("aria-disabled");
         btn.disabled = false;
       });
