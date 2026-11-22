@@ -273,22 +273,25 @@ export function operatorRefusal(o: {
   method: string;
   pathname: string;
   forwarded?: boolean;
-  /** The request carried the install's own edge's proof (request-guard: H1). */
-  edgeProved?: boolean;
+  /**
+   * Via the install's own edge, with its proof, from a client the edge
+   * attests is this machine (request-guard: GuardResult.edgeLocal).
+   */
+  edgeLocal?: boolean;
   ownShell?: (key: string) => boolean;
 }): OperatorRefusal | null {
   const act = operatorAct(o.method, o.pathname);
   if (!act) return "not_an_act";
   if (!o.operatorInstall) return "not_operator_install";
   // Issue 1034: attach and close of the operator's own shell may come through
-  // the install's own edge (proved, this machine's client: not beyond), so a
-  // live check proves the terminal path through the edge (gate 653). Every
+  // the install's own edge (proved, and it attests this machine's client), so
+  // a live check proves the terminal path through the edge (gate 653). Every
   // other act, and every other way in, stays loopback-only and unforwarded.
   const ownEdge =
     (act === "terminal-attach" || act === "terminal-close") &&
     o.via === "edge" &&
     !o.beyond &&
-    o.edgeProved === true;
+    o.edgeLocal === true;
   if (!ownEdge) {
     if (o.via !== "loopback" || o.beyond) return "not_loopback";
     if (o.forwarded) return "forwarded";
