@@ -52,7 +52,7 @@
  * search field with ⌘K inside), bellButtonHtml and bellPanelHtml (the
  * bell and its panel); and accountHtml (the rail's account entry).
  */
-import { esc, kitT } from "./strings.js";
+import { esc, kitT, safeId } from "./strings.js";
 import { icon } from "./icons.js";
 
 export { icon } from "./icons.js";
@@ -1072,8 +1072,6 @@ export function menuRowHtml(r) {
   );
 }
 
-/** An id made of safe characters: letters, digits, - and _. */
-const safeId = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "-");
 
 /** A host's words: text, or { key, vars } in the kit's tables (addStrings). */
 const words = (w, lang) =>
