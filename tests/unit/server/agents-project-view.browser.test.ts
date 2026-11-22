@@ -177,6 +177,21 @@ const listedT = (p: Page) =>
 const openParam = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
+/**
+ * Issue 983: until `state()` has read the same for `ticks` checks in a
+ * row, 100 ms apart (or 10 s).
+ */
+async function quiet(state: () => string, ticks: number): Promise<void> {
+  let last = state();
+  let same = 0;
+  await until(() => {
+    const now = state();
+    same = now === last ? same + 1 : 0;
+    last = now;
+    return same >= ticks;
+  }, 10_000);
+}
+
 /** Issue 983: until `cond` holds (Node-side state), or a timeout. */
 async function until(cond: () => boolean, ms: number): Promise<void> {
   const end = Date.now() + ms;
@@ -370,6 +385,10 @@ describe("#80: scope wins", () => {
     // Wait until some PTY has it (a loaded runner is slow), then hold the
     // stop-ship check as strict as ever: bo's, and no other.
     await until(() => reached().length > 0, 10_000);
+    // A stray copy to another PTY (the bug this guards) can land a few ms
+    // after bo's: wait until no PTY's writes have changed for 3 ticks in a
+    // row (about 300 ms of quiet), so it would be seen.
+    await quiet(() => s!.made.map((x) => x.writes.length).join(","), 3);
     expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
