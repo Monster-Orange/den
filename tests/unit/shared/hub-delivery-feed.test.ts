@@ -1,7 +1,7 @@
 /**
  * Issue 459: the delivery loop and app feed pointers: a pointer waits
  * while the agent is mid-turn and is typed once it is idle; pointers keep
- * their own seen store (a busy feed never pushes Hub's ids out); one
+ * their own seen store; one
  * paste holds at most pasteMaxChars (the rest go next); holds() says
  * whether an id still waits. Invented names only.
  */

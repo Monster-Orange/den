@@ -68,9 +68,8 @@ export const LOCAL_PREFIX = "inbox:";
 export const EMBED_PREFIX = `${LOCAL_PREFIX}embed:`;
 
 /**
- * Issue 459: an app feed's notice (Den's own, like a relayed message). The
- * loop keeps these ids in their own seen store, so a busy feed never
- * pushes Hub's ids out of the shared one.
+ * Issue 459: an app feed's pointer (Den's own, like a relayed message).
+ * The loop keeps these ids in a seen store of their own.
  */
 export const FEED_PREFIX = `${EMBED_PREFIX}feed:`;
 

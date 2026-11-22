@@ -495,7 +495,7 @@ export class AppFeeds {
   /**
    * Type the agent one pointer for what is unread: only when the last one
    * was typed, only when there is something new, and only when the
-   * feed's agent is in the feed's project now (an id may be reused).
+   * feed's agent is in the feed's project now.
    */
   private async point(key: string): Promise<void> {
     const r = this.feeds.get(key);

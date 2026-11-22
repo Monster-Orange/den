@@ -3,7 +3,7 @@
  * - the bearer goes only into the request's Authorization header (never a
  *   log, the Settings view /api serves, a file or what the agent sees);
  * - the agent is typed a pointer, never the app's text, and only while
- *   the feed's agent is in the feed's project (an id may be reused);
+ *   the feed's agent is in the feed's project;
  * - app_feed_read serves only the caller's own project's feeds that name
  *   it, capped per call;
  * - a missing secret, the stream limit and the store's cap are said in
@@ -250,7 +250,7 @@ describe("app feed service: pointer delivery", () => {
     expect(s.relayed[1].text).toMatch(/unread events/);
   });
 
-  it("an id reused in another project: the event is never delivered to the new agent", async () => {
+  it("the feed's agent is checked at delivery: one now in another project gets nothing", async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((r) => (release = r));
     const s = setup({
@@ -262,8 +262,7 @@ describe("app feed service: pointer delivery", () => {
     });
     s.svc.sync();
     await until(() => s.calls.length === 1);
-    // north's helper is removed; south makes one with the same id, all
-    // before the next sync.
+    // Between syncs, the feed's agent is in another project.
     s.projectOf["north-helper"] = "south";
     release();
     await until(() => s.logs.some((l) => l.includes("is not in north now")));
