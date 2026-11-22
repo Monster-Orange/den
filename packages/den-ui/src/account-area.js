@@ -525,6 +525,7 @@ export function mountAccountArea(el, opts = {}) {
         message: signOutAllBody(data, lang()),
         okLabel: kitT(lang(), "kit.aa.signOutAll"),
         danger: true,
+        sheet: true,
         opener: b,
       });
       if (!ok) return;
@@ -537,6 +538,7 @@ export function mountAccountArea(el, opts = {}) {
         message: kitT(lang(), "kit.aa.unlinkBody"),
         okLabel: kitT(lang(), "kit.aa.unlink"),
         danger: true,
+        sheet: true,
         opener: b,
       });
       if (!ok) return;

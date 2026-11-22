@@ -5,6 +5,8 @@ export interface DialogOptions {
   okLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  /** On a phone, rise from the bottom as a sheet, buttons stacked. */
+  sheet?: boolean;
   /** askText: the field's first text. */
   value?: string;
   /** askText: the field's own name (default: the title). */

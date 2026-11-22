@@ -359,6 +359,8 @@ export function askSpec(kind, opts, id) {
     role: kind === "text" ? "dialog" : "alertdialog",
     id,
     title: o.title ?? "",
+    // A sheet on a phone (dialog.css): the question rises from the bottom.
+    ...(o.sheet ? { className: "dk-sheet" } : {}),
     body: o.message ? `<p class="dk-text">${esc(o.message)}</p>` : "",
     extra:
       kind === "text"

@@ -202,3 +202,31 @@
     min-height: var(--tap);
   }
 }
+/* A question that asks for a sheet (askConfirm({ sheet: true })): on a
+   phone it rises from the bottom, full width, its buttons stacked with the
+   main one first and Cancel below (issue 310, the Account mock's B3). A
+   desktop keeps the centred dialog. */
+@media (max-width: 767px) {
+  .dk-dlg.dk-sheet {
+    top: auto;
+    bottom: 0;
+    transform: none;
+    width: 100vw;
+    max-width: 100vw;
+    margin: 0;
+    border-bottom: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  /* Cancel comes first in the markup: reversed, the main one is on top. */
+  .dk-sheet .dk-ft {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .dk-sheet .dk-ft > :first-child:not(.dk-btn) {
+    margin-right: 0;
+  }
+  .dk-sheet .dk-ft .dk-btn {
+    width: 100%;
+    min-height: var(--tap);
+  }
+}

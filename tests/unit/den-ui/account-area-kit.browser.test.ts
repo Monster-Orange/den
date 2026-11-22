@@ -256,6 +256,41 @@ describe("issue 310: the Account area in a browser", () => {
     await done(p);
   }, 60_000);
 
+  it("390: Sign out everywhere asks in a bottom sheet, danger first and Cancel below (mock B3)", async () => {
+    if (skip()) return;
+    const p = await open({ width: 390, query: "?account=devices" });
+    await p.click('.den-aa-pane:not([hidden]) [data-aa-act="sign-out-all"]');
+    const q = p.locator("dialog.dk-confirm[open]");
+    await q.waitFor();
+    const box = (await q.boundingBox())!;
+    const vh = p.viewportSize()!.height;
+    expect(Math.round(box.y + box.height)).toBe(vh);
+    expect(Math.round(box.width)).toBe(390);
+    const danger = (await q.locator(".dk-danger").boundingBox())!;
+    const cancel = (await q
+      .locator('[data-dk="cancel"], .dk-btn:not(.dk-danger)')
+      .first()
+      .boundingBox())!;
+    expect(danger.y + danger.height).toBeLessThanOrEqual(cancel.y);
+    expect(Math.round(danger.width)).toBe(Math.round(cancel.width));
+    expect(danger.height).toBeGreaterThanOrEqual(44);
+    await p.keyboard.press("Escape");
+    await done(p);
+  }, 60_000);
+
+  it("1280: the same question stays a centred dialog", async () => {
+    if (skip()) return;
+    const p = await open({ width: 1280, query: "?account=devices" });
+    await p.click('.den-aa-pane:not([hidden]) [data-aa-act="sign-out-all"]');
+    const q = p.locator("dialog.dk-confirm[open]");
+    await q.waitFor();
+    const box = (await q.boundingBox())!;
+    expect(box.width).toBeLessThan(1280);
+    expect(Math.round(box.y + box.height)).toBeLessThan(860);
+    await p.keyboard.press("Escape");
+    await done(p);
+  }, 60_000);
+
   it("a notification switch flips at once, and back when the host refuses", async () => {
     if (skip()) return;
     const p = await open({ query: "?account=notifications" });
