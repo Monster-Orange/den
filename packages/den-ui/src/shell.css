@@ -919,12 +919,23 @@ body.den-has-shell .den-upd {
 }
 /* Issue 1080: when the left part is too narrow for every crumb (the
    brand already given way), the optional crumb and its separator go
-   before anything runs under the search. */
+   before anything runs under the search. Its words stay in the group's
+   title (scopeHtml). */
 @container den-left (max-width: 300px) {
   .den-scope .den-opt,
   .den-scope .den-opt + .den-sep,
   .den-scope .den-opt + .den-scope-menu + .den-sep {
     display: none;
+  }
+  /* Then the keys go, and the last crumb's value (kept whole, issue 303,
+     while it fits) ends in "…" where the left part can't hold it: its cap
+     is the left part's own width less the mark, its separator, its
+     padding and its ▾. The whole value is in its menu. */
+  .den-scope .den-k {
+    display: none;
+  }
+  .den-scope .den-last .den-vn {
+    max-width: min(200px, calc(100cqi - 96px));
   }
 }
 /* A long value ends in an ellipsis; the whole value is in the menu. An

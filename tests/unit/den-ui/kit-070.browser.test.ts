@@ -125,7 +125,7 @@ if (!q.has("bare")) {
   if (q.has("narrow"))
     crumbs.splice(0, crumbs.length,
       { key: "org", label: "Company", value: "Fixture company name", optional: true },
-      { key: "ws", label: "Project", value: "All projects", menu: projects });
+      { key: "ws", label: "Project", value: q.get("narrow") === "long" ? "Quarterly planning for the north garden" : "All projects", menu: projects });
   if (!q.has("noenv") && !q.has("narrow")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
   model.slots = {
     start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml(),
@@ -919,12 +919,17 @@ for (const engine of ["chromium", "webkit"]) {
     // last never runs under the search. Each shown part's span is its box
     // joined with its shown descendants' boxes, each clipped by an
     // ancestor (up to the part) whose overflow-x isn't visible.
-    it.each([960, 1100])(
-      "issue 1080 at %ipx: the crumbs never draw over each other or under the search",
-      async (width) => {
+    it.each([
+      [960, "short"],
+      [1100, "short"],
+      // Review: a long last value (40 characters) at 960px.
+      [960, "long"],
+    ])(
+      "issue 1080 at %ipx, a %s last value: the crumbs never draw over each other or under the search",
+      async (width, last) => {
         const b = browsers[engine];
         if (!b) return;
-        const p = await open(b, "?narrow", width);
+        const p = await open(b, `?narrow=${last}`, width);
         const spans = await p.evaluate(() => {
           const shown = (el: Element) => {
             const r = el.getBoundingClientRect();
@@ -956,9 +961,12 @@ for (const engine of ["chromium", "webkit"]) {
             }
             return [l, r];
           };
-          const scope = document.querySelector(".den-top .den-scope")!;
+          // The scope group (the crumbs' parent), then the search.
+          const scope = document.querySelector(
+            '[data-nav-role="crumb"]',
+          )!.parentElement!;
           const parts = [...scope.children].filter(shown);
-          parts.push(document.querySelector(".den-top .den-search")!);
+          parts.push(document.getElementById("den-search")!);
           return parts.map((el) => [
             el.id || el.className,
             ...span(el).map((x) => Math.round(x * 10) / 10),
