@@ -17,7 +17,9 @@
  *    then (claimAtBirth) and wrote the creation record, sealed with the
  *    install's new secret for that folder. A mark added later by a config
  *    edit never makes one. It binds to loopback only, and an operator act
- *    that came through a proxy (forwarded headers) is refused.
+ *    that came through a proxy (forwarded headers) is refused, with one
+ *    exception (issue 1034): attaching or closing its own shell through
+ *    the install's own proved edge, from this machine.
  *  - At that same first start the server gives the install its fixture
  *    person, so a new test install needs no person's click.
  *
@@ -271,13 +273,26 @@ export function operatorRefusal(o: {
   method: string;
   pathname: string;
   forwarded?: boolean;
+  /** The request carried the install's own edge's proof (request-guard: H1). */
+  edgeProved?: boolean;
   ownShell?: (key: string) => boolean;
 }): OperatorRefusal | null {
   const act = operatorAct(o.method, o.pathname);
   if (!act) return "not_an_act";
   if (!o.operatorInstall) return "not_operator_install";
-  if (o.via !== "loopback" || o.beyond) return "not_loopback";
-  if (o.forwarded) return "forwarded";
+  // Issue 1034: attach and close of the operator's own shell may come through
+  // the install's own edge (proved, this machine's client: not beyond), so a
+  // live check proves the terminal path through the edge (gate 653). Every
+  // other act, and every other way in, stays loopback-only and unforwarded.
+  const ownEdge =
+    (act === "terminal-attach" || act === "terminal-close") &&
+    o.via === "edge" &&
+    !o.beyond &&
+    o.edgeProved === true;
+  if (!ownEdge) {
+    if (o.via !== "loopback" || o.beyond) return "not_loopback";
+    if (o.forwarded) return "forwarded";
+  }
   // say and relaunch reach this install's project agents only, never the
   // server agent (its held writes are not the checks' to drive).
   if (act === "agent-say" || act === "agent-relaunch") {
