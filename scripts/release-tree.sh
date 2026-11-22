@@ -10,8 +10,8 @@
 #   sh scripts/release-tree.sh <version> <sha>
 #
 # Files the release commit may change: CHANGELOG.md, and in package.json and
-# package-lock.json only lines that set a "version". Anything else differing
-# from the candidate fails, named.
+# package-lock.json only lines that set a "version", each added one to
+# <version> itself. Anything else differing from the candidate fails, named.
 #
 # Exit 0: the trees match, or no candidate was tagged (a warning, as the
 # ancestry check does). Exit 1: they differ (named). Exit 2: bad arguments.
@@ -42,8 +42,15 @@ for f in $(git diff --name-only "$newest^{commit}" "$sha"); do
   case "$f" in
     CHANGELOG.md) ;;
     package.json | package-lock.json)
-      # Only "version" lines may change.
-      other=$(git diff -U0 "$newest^{commit}" "$sha" -- "$f" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' | grep -vE '^[+-][[:space:]]*"version": "[^"]*",?$' || true)
+      # Only "version" lines may change, and each added one sets the release's own version.
+      other=$(git diff -U0 "$newest^{commit}" "$sha" -- "$f" | awk -v want="\"version\": \"$version\"" '
+        /^(\+\+\+|---) / { next }
+        /^[-+]/ {
+          line = substr($0, 2); sub(/^[[:space:]]+/, "", line); sub(/,$/, "", line)
+          if ($0 ~ /^-/ && line ~ /^"version": "[^"]*"$/) next
+          if ($0 ~ /^\+/ && line == want) next
+          print
+        }')
       [ -z "$other" ] || bad="$bad $f"
       ;;
     *) bad="$bad $f" ;;

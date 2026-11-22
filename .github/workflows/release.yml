@@ -152,7 +152,9 @@ jobs:
       # The release holds what its newest gated candidate held, apart from the version lines and the changelog:
       # work that reached main after the candidate was tagged stops the release.
       - name: The release is the gated candidate
-        run: sh scripts/release-tree.sh "${{ needs.check.outputs.version }}" "$GITHUB_SHA"
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: sh scripts/release-tree.sh "$VERSION" "$GITHUB_SHA"
       - name: The tag v<version>
         env:
           TAG: v${{ needs.check.outputs.version }}

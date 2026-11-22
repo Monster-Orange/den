@@ -40,8 +40,8 @@ const write = (file: string, text: string) =>
   fs.writeFileSync(path.join(repo, file), text);
 const pkg = (version: string, extra = "") =>
   `{\n  "name": "den",\n  "version": "${version}",${extra}\n  "private": true\n}\n`;
-const lock = (version: string, dep = "1.0.0") =>
-  `{\n  "name": "den",\n  "version": "${version}",\n  "packages": {\n    "node_modules/x": {\n      "version": "${dep}",\n      "integrity": "sha512-${dep}"\n    }\n  }\n}\n`;
+const lock = (version: string, dep = "1.0.0", integrity = dep) =>
+  `{\n  "name": "den",\n  "version": "${version}",\n  "packages": {\n    "node_modules/x": {\n      "version": "${dep}",\n      "integrity": "sha512-${integrity}"\n    }\n  }\n}\n`;
 const commitAll = (msg: string) => {
   git("add", "-A");
   git("commit", "-q", "-m", msg);
@@ -116,6 +116,25 @@ describe("release-tree.sh", () => {
     const r = check("1.2.0", rel);
     expect(r.status).toBe(1);
     expect(r.stdout + r.stderr).toMatch(/::error::.*package-lock\.json/);
+  });
+
+  it("a dependency's version line alone changes in the lockfile: fails", () => {
+    candidate(1);
+    write("package.json", pkg("1.2.0"));
+    write("package-lock.json", lock("1.2.0", "1.0.1", "1.0.0"));
+    const rel = commitAll("Den 1.2.0, with a hand-edited dependency version");
+    const r = check("1.2.0", rel);
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toMatch(/::error::.*package-lock\.json/);
+  });
+
+  it("package.json's version set to something other than the release's: fails", () => {
+    candidate(1);
+    write("package.json", pkg("1.2.1"));
+    write("package-lock.json", lock("1.2.0"));
+    const r = check("1.2.0", commitAll("Den 1.2.0, wrong version"));
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toMatch(/::error::.*package\.json/);
   });
 
   it("no candidate for this version: warns and passes, as the ancestry check does", () => {
