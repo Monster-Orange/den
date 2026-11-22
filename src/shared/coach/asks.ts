@@ -81,15 +81,16 @@ export function askProblems(
 ): string[] {
   const out: string[] = [];
   const body = String(text ?? "");
-  for (const id of bareIds(body))
-    out.push(`"${id}" is not explained.`);
+  for (const id of bareIds(body)) out.push(`"${id}" is not explained.`);
   const sentences = body
     .split(/(?<=[.!?])\s+|\n+/)
     .map((s) => s.replace(/^\s*(?:\d+[.)]|[-*+])\s+/, "").trim())
     .filter(Boolean);
   const longest = Math.max(0, ...sentences.map((s) => s.split(/\s+/).length));
   if (longest > maxWords)
-    out.push(`A sentence is long (${longest} words; keep each to ${maxWords}).`);
+    out.push(
+      `A sentence is long (${longest} words; keep each to ${maxWords}).`,
+    );
   const questions = body
     .split(/\n+/)
     .map((l) => l.trim())
@@ -119,7 +120,12 @@ function keep(text: string): string {
 const hashOf = (text: string) =>
   crypto
     .createHash("sha256")
-    .update(String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim())
+    .update(
+      String(text ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
     .digest("hex")
     .slice(0, 16);
 
@@ -139,8 +145,7 @@ function textOf(content: unknown): string {
 function peerOf(text: string): string | null {
   if (!text.startsWith("<cross-session-message")) return null;
   const head = text.slice(0, text.indexOf(">") + 1 || 600);
-  const m =
-    /\bfrom-name="([^"]*)"/.exec(head) ?? /\bfrom="([^"]*)"/.exec(head);
+  const m = /\bfrom-name="([^"]*)"/.exec(head) ?? /\bfrom="([^"]*)"/.exec(head);
   return m ? m[1] : "";
 }
 
@@ -287,7 +292,9 @@ export function askMetrics(
   return {
     asks: asks.length,
     asks_per_day: round2(asks.length / Math.max(1, days)),
-    ask_r12_pass_pct: asks.length ? Math.round((pass / asks.length) * 100) : 100,
+    ask_r12_pass_pct: asks.length
+      ? Math.round((pass / asks.length) * 100)
+      : 100,
     ask_wait_min: Math.round(median(waits)),
     asks_unanswered: asks.length - waits.length,
     sends: sends.length,

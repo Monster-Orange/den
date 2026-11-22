@@ -263,6 +263,13 @@ describe("agents.coach.findings settings", () => {
       polls_per_day: 20,
       denials_per_day: 5,
       transcript_mb: 1024,
+      // Slice T-c: asks and agent messages.
+      ask_r12_pass_pct: 80,
+      min_asks: 3,
+      ask_wait_min: 240,
+      sends_repeated: 3,
+      sends_no_reply_pct: 50,
+      min_sends: 5,
     });
     expect(checkCoachConfig(undefined).findings).toEqual(FINDING_DEFAULTS);
     expect(COACH_DEFAULTS.findings).toEqual(FINDING_DEFAULTS);

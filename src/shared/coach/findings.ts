@@ -192,7 +192,8 @@ function asksFindings(
     );
   if (t.sends_repeated > 0 && m.sends_repeated >= t.sends_repeated) {
     const count = new Map<string, number>();
-    for (const s of stats.sends) count.set(s.hash, (count.get(s.hash) ?? 0) + 1);
+    for (const s of stats.sends)
+      count.set(s.hash, (count.get(s.hash) ?? 0) + 1);
     const top = [...stats.sends]
       .filter((s, i, all) => all.findIndex((x) => x.hash === s.hash) === i)
       .filter((s) => (count.get(s.hash) ?? 0) > 1)
@@ -205,7 +206,9 @@ function asksFindings(
       top.map((s) => sample(s.at, s.text)),
     );
   }
-  const noReplyPct = m.sends ? Math.round((m.sends_no_reply / m.sends) * 100) : 0;
+  const noReplyPct = m.sends
+    ? Math.round((m.sends_no_reply / m.sends) * 100)
+    : 0;
   if (m.sends >= t.min_sends && noReplyPct >= t.sends_no_reply_pct)
     add(
       "msg_no_reply",

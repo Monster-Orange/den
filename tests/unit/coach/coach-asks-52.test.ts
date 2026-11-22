@@ -18,7 +18,10 @@ import {
   type AskStats,
 } from "../../../src/shared/coach/asks.js";
 import { coachFindings } from "../../../src/shared/coach/findings.js";
-import { coachWindow, type CoachReport } from "../../../src/shared/coach/breakdown.js";
+import {
+  coachWindow,
+  type CoachReport,
+} from "../../../src/shared/coach/breakdown.js";
 import {
   FINDING_DEFAULTS,
   checkCoachConfig,
@@ -76,9 +79,9 @@ describe("askProblems: an ask read against R12", () => {
   });
   it("flags a bare ID, and passes a glossed one", () => {
     expect(askProblems("Should I merge #931 now?").join(" ")).toMatch(/#931/);
-    expect(
-      askProblems("1. Merge #931 (the npm environment fix) now?"),
-    ).toEqual([]);
+    expect(askProblems("1. Merge #931 (the npm environment fix) now?")).toEqual(
+      [],
+    );
   });
   it("flags a sentence longer than the limit", () => {
     const long = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
@@ -104,8 +107,11 @@ describe("mineAsks: asks and messages from one transcript", () => {
   it("reads an ask_human call and the person's next prompt as its answer", async () => {
     const t0 = NOW - DAY;
     const f = transcript([
-      toolUse(t0, "mcp__lair__ask_human", { question: "1. Ship it today?" }),
-      prompt(t0 + 2 * MIN, '<cross-session-message from="x">peer</cross-session-message>'),
+      toolUse(t0, "mcp__den__ask_human", { question: "1. Ship it today?" }),
+      prompt(
+        t0 + 2 * MIN,
+        '<cross-session-message from="x">peer</cross-session-message>',
+      ),
       prompt(t0 + 30 * MIN, "yes"),
     ]);
     const s = await mineAsks(f, {});
@@ -122,7 +128,10 @@ describe("mineAsks: asks and messages from one transcript", () => {
     const t0 = NOW - DAY;
     const f = transcript([
       toolUse(t0, "AskUserQuestion", {
-        questions: [{ question: "Use the new page?" }, { question: "Turn on #12?" }],
+        questions: [
+          { question: "Use the new page?" },
+          { question: "Turn on #12?" },
+        ],
       }),
       toolResult(t0 + 5 * MIN, `tu${n}`),
     ]);
@@ -137,36 +146,45 @@ describe("mineAsks: asks and messages from one transcript", () => {
   it("reads sends to other agents, the same text twice, and replies", async () => {
     const t0 = NOW - DAY;
     const f = transcript([
-      toolUse(t0, "SendMessage", { to: "Den Builder", message: "Item 52: started." }),
-      toolUse(t0 + MIN, "SendMessage", { to: "Den Builder", message: "item 52:   started." }),
-      toolUse(t0 + 2 * MIN, "SendMessage", { to: "Reviewer B", message: "Diff ready." }),
+      toolUse(t0, "SendMessage", {
+        to: "Builder",
+        message: "Item 52: started.",
+      }),
+      toolUse(t0 + MIN, "SendMessage", {
+        to: "Builder",
+        message: "item 52:   started.",
+      }),
+      toolUse(t0 + 2 * MIN, "SendMessage", {
+        to: "Reviewer",
+        message: "Diff ready.",
+      }),
       prompt(
         t0 + 10 * MIN,
-        '<cross-session-message from="uds:/tmp/a.sock" from-name="lair-den:Den Builder">ok</cross-session-message>',
+        '<cross-session-message from="uds:/tmp/a.sock" from-name="shop:Builder">ok</cross-session-message>',
       ),
     ]);
     const s = await mineAsks(f, {});
     expect(s.sends.map((x) => x.to)).toEqual([
-      "Den Builder",
-      "Den Builder",
-      "Reviewer B",
+      "Builder",
+      "Builder",
+      "Reviewer",
     ]);
     expect(s.sends[0].hash).toBe(s.sends[1].hash);
     expect(s.received).toEqual([
-      { at: t0 + 10 * MIN, from: "lair-den:Den Builder" },
+      { at: t0 + 10 * MIN, from: "shop:Builder" },
     ]);
   });
 
   it("skips lines before `since`, and reads no asks from a subagent", async () => {
     const old = NOW - 10 * DAY;
     const f = transcript([
-      toolUse(old, "mcp__lair__ask_human", { question: "Old?" }),
-      toolUse(NOW - DAY, "mcp__lair__ask_human", { question: "New?" }),
+      toolUse(old, "mcp__den__ask_human", { question: "Old?" }),
+      toolUse(NOW - DAY, "mcp__den__ask_human", { question: "New?" }),
     ]);
     const s = await mineAsks(f, { since: NOW - 7 * DAY });
     expect(s.asks.map((a) => a.text)).toEqual(["New?"]);
     const sub = transcript(
-      [toolUse(NOW - DAY, "mcp__lair__ask_human", { question: "Sub?" })],
+      [toolUse(NOW - DAY, "mcp__den__ask_human", { question: "Sub?" })],
       true,
     );
     expect((await mineAsks(sub, {})).asks).toEqual([]);
@@ -174,7 +192,7 @@ describe("mineAsks: asks and messages from one transcript", () => {
 
   it("keeps each ask short and takes secrets out of it", async () => {
     const f = transcript([
-      toolUse(NOW - DAY, "mcp__lair__ask_human", {
+      toolUse(NOW - DAY, "mcp__den__ask_human", {
         question: `Use token ghp_${"a".repeat(36)} for it? ${"x".repeat(400)}`,
       }),
     ]);
@@ -189,17 +207,35 @@ describe("askMetrics: the counts over a window", () => {
     const t0 = NOW - DAY;
     const s: AskStats = {
       asks: [
-        { at: t0, tool: "ask_human", text: "a", problems: [], answeredAt: t0 + 10 * MIN },
-        { at: t0, tool: "ask_human", text: "b", problems: ["x"], answeredAt: t0 + 30 * MIN },
-        { at: t0, tool: "ask_human", text: "c", problems: [], answeredAt: t0 + 90 * MIN },
+        {
+          at: t0,
+          tool: "ask_human",
+          text: "a",
+          problems: [],
+          answeredAt: t0 + 10 * MIN,
+        },
+        {
+          at: t0,
+          tool: "ask_human",
+          text: "b",
+          problems: ["x"],
+          answeredAt: t0 + 30 * MIN,
+        },
+        {
+          at: t0,
+          tool: "ask_human",
+          text: "c",
+          problems: [],
+          answeredAt: t0 + 90 * MIN,
+        },
         { at: t0, tool: "ask_human", text: "d", problems: ["y"] },
       ],
       sends: [
-        { at: t0, to: "Den Builder", hash: "h1", text: "s" },
-        { at: t0 + MIN, to: "Den Builder", hash: "h1", text: "s" },
-        { at: t0 + 2 * MIN, to: "Reviewer B", hash: "h2", text: "r" },
+        { at: t0, to: "Builder", hash: "h1", text: "s" },
+        { at: t0 + MIN, to: "Builder", hash: "h1", text: "s" },
+        { at: t0 + 2 * MIN, to: "Reviewer", hash: "h2", text: "r" },
       ],
-      received: [{ at: t0 + 5 * MIN, from: "lair-den:Den Builder" }],
+      received: [{ at: t0 + 5 * MIN, from: "shop:Builder" }],
     };
     expect(askMetrics([s], 2)).toEqual({
       asks: 4,
@@ -278,7 +314,7 @@ describe("T-c findings", () => {
     }));
     const sends = Array.from({ length: 6 }, (_, i) => ({
       at: t0 + i * MIN,
-      to: "Den Builder",
+      to: "Builder",
       hash: "same",
       text: "Item 52: started.",
     }));
