@@ -54,6 +54,22 @@ export interface Notification {
    * language (`text` is the English, for the CLI and old pages).
    */
   msg?: NoteMsg;
+  /**
+   * Issue 1008: a question withdrawn once it was settled elsewhere: why,
+   * who withdrew it (`agent:<id>`, the agent that asked, or `person`) and
+   * when; `late` once an answer came after it. A settled row is read and
+   * no longer needs the person: the bell lists it with the updates.
+   */
+  settled?: Settled;
+}
+
+/** Issue 1008: how a withdrawn question was settled. */
+export interface Settled {
+  reason: string;
+  by: string;
+  /** ISO 8601. */
+  at: string;
+  late?: true;
 }
 
 /** A page string key (bell.m.*) and its values. */
@@ -391,6 +407,44 @@ export class NotificationStore {
   }
 
   /**
+   * Issue 1008: a question is settled: it stays, read, with why, who and
+   * when, and the text and key that say so. False when there is no such
+   * row, or it was settled already.
+   */
+  settle(
+    id: string,
+    s: { reason: string; by: string },
+    say: { text: string; msg: NoteMsg },
+  ): Notification | null {
+    const f = this.read();
+    const x = f.items.find((n) => n.id === id);
+    if (!x || x.settled) return null;
+    const at = this.now().toISOString();
+    x.settled = { reason: plain(s.reason), by: s.by, at };
+    x.read = true;
+    x.at = at;
+    x.text = plain(say.text);
+    const msg = cleanMsg(say.msg);
+    if (msg) x.msg = msg;
+    f.items.sort((a, b) => a.at.localeCompare(b.at));
+    this.write(f);
+    return { ...x };
+  }
+
+  /** Issue 1008: an answer came after the question was settled. */
+  settledLate(id: string, say: { text: string; msg: NoteMsg }): boolean {
+    const f = this.read();
+    const x = f.items.find((n) => n.id === id);
+    if (!x?.settled || x.settled.late) return false;
+    x.settled.late = true;
+    x.text = plain(say.text);
+    const msg = cleanMsg(say.msg);
+    if (msg) x.msg = msg;
+    this.write(f);
+    return true;
+  }
+
+  /**
    * #142: take items out whether read or not (opening an agent clears its
    * updates; a newer update ask replaces the older ones). How many went.
    */
@@ -645,11 +699,13 @@ export function bellView(
   const from = now - prefs.foldDays * 86_400_000;
   const old = (n: Notification) => Date.parse(n.at) < from;
   const fresh = shown.filter((n) => !old(n));
-  const recent = fresh.filter((n) => needsYou(n.kind));
+  // Issue 1008: a settled question no longer needs the person.
+  const needs = (n: Notification) => needsYou(n.kind) && !n.settled;
+  const recent = fresh.filter(needs);
   return {
     unread: recent.filter((n) => !n.read).length,
     recent,
-    updates: fresh.filter((n) => !needsYou(n.kind)),
+    updates: fresh.filter((n) => !needs(n)),
     older: shown.filter(old),
     off: prefs.off,
     foldDays: prefs.foldDays,

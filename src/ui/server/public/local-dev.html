@@ -228,11 +228,17 @@
       }
       /* A calm, neutral ground in both modes under any theme: the accent
          is the edge, not the fill. */
+      /* Issue 168: the edge is the project's colour; the one picked is a
+         shaded row with an outline and bold text, never an orange edge. */
+      .ws-item[data-pc] {
+        border-left-color: var(--pc);
+      }
       .ws-item.active {
-        border-left-color: var(--accent);
         color: var(--text);
         font-weight: 600;
-        background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+        background: var(--sunken);
+        outline: 2px solid var(--text);
+        outline-offset: -2px;
       }
       /* The CLI default (focus): a word, never a bare glyph. */
       /* 0.4.45: the project's name never wraps; its tags wrap under it. */
@@ -1599,7 +1605,13 @@
           orderProjects,
           projectLabel,
           projectNameSource,
+          projectColour,
         } from "/workspace-picker.js";
+        // Issue 168: a project's colour, chosen from its dot.
+        import {
+          colourDotHtml,
+          pickProjectColour,
+        } from "/project-colour-picker.js";
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
         // issue 133: Den's own dialogs, in the page's language, never the
         // browser's confirm(), prompt() or alert().
@@ -1748,8 +1760,12 @@
                 n !== "default"
                   ? `<button class="danger" data-action="delete">${escHtml(pT("pj.delete", "Delete"))}</button>`
                   : "";
-              return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}" data-action="select">
-          <span>${moves}<span class="ws-name" title="${escHtml(fromHub ? wsT("ws.named.hub", "Named in Hub") + " · " + n : n)}">${escHtml(shown)}</span>${isWsActive(n) ? ` <span class="ws-active-tag">${escHtml(pT("pj.activeTag", "(active)"))}</span>` : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
+              const pc = projectColour(wsData, n);
+              const dot = colourDotHtml(wsData, n, shown, (k, v) =>
+                pT(k, k, v),
+              );
+              return `<div class="ws-item ${n === activeWs ? "active" : ""}" data-name="${escHtml(n)}"${pc ? ` data-pc="${escHtml(pc)}"` : ""} data-action="select">
+          <span>${moves}${dot}<span class="ws-name" title="${escHtml(fromHub ? wsT("ws.named.hub", "Named in Hub") + " · " + n : n)}">${escHtml(shown)}</span>${isWsActive(n) ? ` <span class="ws-active-tag">${escHtml(pT("pj.activeTag", "(active)"))}</span>` : ""}${n === focusName() ? ` <span class="ws-cli-default" title="${escHtml(wsT("ws.focusTip", "CLI commands run here when you don't name a project. Picking a project in the top bar also makes it the CLI default."))}">${escHtml(wsT("ws.focus", "CLI default"))}</span>` : ""}</span>
           <span class="ws-item-right">
             <button class="ws-term-btn" title="${escHtml(pT("pj.openTerm", "Open in terminal"))}" data-open-term="${escHtml(dirPath)}">&#62;_</button>
             <button class="ws-open-btn" title="${escHtml(pT("pj.openEditor", "Open in editor"))}" data-open-path="${escHtml(wsData.codeWorkspacePaths?.[n] || dirPath)}">↗</button>
@@ -1898,6 +1914,23 @@
 
         // Event delegation for workspace list clicks (safe for names with any allowed chars).
         document.getElementById("ws-list").addEventListener("click", (e) => {
+          // Issue 168: the project's colour dot opens its colour choice.
+          const pcBtn = e.target.closest("[data-pc-pick]");
+          if (pcBtn) {
+            e.stopPropagation();
+            const slug = pcBtn.dataset.pcPick;
+            void pickProjectColour({
+              slug,
+              name: projectLabel(wsData, slug),
+              data: wsData,
+              opener: pcBtn,
+            }).then(async (saved) => {
+              if (!saved) return;
+              await loadWorkspaces();
+              await refreshWorkspacePill();
+            });
+            return;
+          }
           // ⋮ menu toggle
           const menuBtn = e.target.closest(".ws-menu-btn");
           if (menuBtn) {
@@ -2206,7 +2239,7 @@
             : "";
           content.innerHTML = `
         <div class="content-header">
-          <h2 title="${escHtml(wsName)}">${escHtml(projectLabel(wsData, wsName))}</h2>
+          <h2 title="${escHtml(wsName)}">${projectColour(wsData, wsName) ? `<span class="den-pc" data-pc="${escHtml(projectColour(wsData, wsName))}" aria-hidden="true"></span>` : ""}${escHtml(projectLabel(wsData, wsName))}</h2>
           ${
             isActive
               ? `<span class="badge active-ws"${isFocus ? ` title="${escHtml(wsT("ws.focusTip", ""))}"` : ""}>${escHtml(pT("pj.active", "active"))}${isFocus ? ` · ${escHtml(wsT("ws.focus", "CLI default"))}` : ""}</span>

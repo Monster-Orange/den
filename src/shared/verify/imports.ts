@@ -69,7 +69,17 @@ export function readImportSettings(raw: unknown): ImportSettings {
   const v = obj(raw);
   const d = IMPORT_DEFAULTS;
   let environments = d.environments;
-  if (v.environments !== undefined && v.environments !== null) {
+  const asMap = obj(v.environments);
+  if (Object.keys(asMap).length) {
+    // Issue 214: the map form (VERIFY-SPEC section 6), with `imported: true`.
+    const names = Object.keys(asMap);
+    const bad = names.find((e) => !ENV_RE.test(e));
+    if (bad)
+      throw new Error(
+        `verify.environments: environment names are lowercase letters, digits, . _ -, got ${JSON.stringify(bad)}`,
+      );
+    environments = names.filter((e) => obj(asMap[e]).imported === true);
+  } else if (v.environments !== undefined && v.environments !== null) {
     if (
       !Array.isArray(v.environments) ||
       !v.environments.every((e) => typeof e === "string" && ENV_RE.test(e))
