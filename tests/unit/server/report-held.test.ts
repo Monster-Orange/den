@@ -211,10 +211,11 @@ describe("issue 565: the held write `report`", () => {
     expect(r.body.askedBecause).toBe("critical");
     expect(filed()).toEqual([]);
     // The dialog says where, and that it is public.
+    expect(r.body.details?.join("\n")).toMatch(/^Goes to: acme-eng\/engine$/m);
+    // The next line says who can see it, as the dialog's key says it.
     expect(r.body.details?.join("\n")).toMatch(
-      /Goes to: acme-eng\/engine \(Public repository\)/,
+      /^Public repository: the text is visible to everyone/m,
     );
-    expect(r.body.details?.join("\n")).toMatch(/visible to everyone/);
     // Denied: nothing was sent.
     await queue.decide(r.body.id, "deny", "s1");
     expect(filed()).toEqual([]);

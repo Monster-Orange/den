@@ -30,15 +30,18 @@ import {
 import { draftStore } from "../../shared/report-store.js";
 import { REPORT_ID, pngOfDataUrl } from "../../shared/report-shots.js";
 import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
+import { line, reviewLines } from "../../shared/review-lines.js";
 
-/** The line under it: who can read what is posted. */
-const VISIBILITY_NOTE: Record<DestinationVisibility, string> = {
+/** Issue 205: the visibility line, as the Allow dialog's key says it. */
+const VISIBILITY_LINE: Record<DestinationVisibility, string> = {
   public:
-    "The text is visible to everyone; the screenshot isn't posted there. Secrets, tokens, emails, IP addresses and store references are removed first.",
-  private: "Only people with access to this repository can see it.",
-  internal: "Only people with access to this repository can see it.",
+    "Public repository: the text is visible to everyone; the screenshot isn't posted there. Secrets, tokens, emails, IP addresses and store references are removed first.",
+  private:
+    "Private repository: only people with access to this repository can see it.",
+  internal:
+    "Internal repository: only people with access to this repository can see it.",
   unknown:
-    "Den can't tell who can see this repository, so it is treated as public: the text may be visible to everyone. The screenshot isn't posted there.",
+    "Visibility not known: who can see this repository can't be told, so it is treated as public. The text may be visible to everyone; the screenshot isn't posted there.",
 };
 
 const str = (v: unknown): string | undefined =>
@@ -110,20 +113,6 @@ export function reportHeld(d: ReportRouteDeps): HeldAction {
       if (addTo !== undefined && addTo < 1)
         return { ok: false, error: "addTo: an issue number" };
       const where = `${repo} (${visibilityWords(vis)})`;
-      const lines: string[] = [
-        `Goes to: ${where}`,
-        `${visibilityWords(vis)}: ${VISIBILITY_NOTE[vis]}`,
-        addTo !== undefined
-          ? `Added as a comment to issue ${addTo}.`
-          : `Title: ${c.title}`,
-        "Filed on GitHub as you (your gh sign-in). What will be posted:",
-        c.body,
-        ...(shot
-          ? [
-              "With a screenshot the agent took. Den does not mask a screenshot: only the text above is scrubbed.",
-            ]
-          : []),
-      ];
       const visKey = {
         public: "pub",
         private: "priv",
@@ -145,15 +134,33 @@ export function reportHeld(d: ReportRouteDeps): HeldAction {
         },
         summary: `file a report on ${where}: ${c.title}`,
         params: { repo, vis: visibilityWords(vis), title: c.title },
-        details: lines,
-        detailKeys: [
-          { key: "ap.det.report.to", vars: { repo } },
-          { key: `ap.det.report.${visKey}` },
-          null,
-          { key: "ap.det.report.as" },
-          null,
-          ...(shot ? [{ key: "ap.det.report.shot" }] : []),
-        ],
+        // Issue 205: each line beside its key (review-lines.ts).
+        ...reviewLines([
+          line(`Goes to: ${repo}`, "ap.det.report.to", { repo }),
+          line(VISIBILITY_LINE[vis], `ap.det.report.${visKey}`),
+          addTo !== undefined
+            ? line(
+                `Added as a comment to issue ${addTo}.`,
+                "ap.det.report.addTo",
+                { n: String(addTo) },
+              )
+            : line(`Title: ${c.title}`, "ap.det.report.title", {
+                title: c.title,
+              }),
+          line(
+            "Filed on GitHub as you (your gh sign-in). What will be posted:",
+            "ap.det.report.as",
+          ),
+          line(c.body, "ap.det.asWritten", { v: c.body }),
+          ...(shot
+            ? [
+                line(
+                  "With a screenshot the agent took. It isn't masked: only the text above is scrubbed.",
+                  "ap.det.report.shot",
+                ),
+              ]
+            : []),
+        ]),
         // Issue 565: a public (or not known) destination is the person's own.
         personOnly: visibleToEveryone(vis),
       };

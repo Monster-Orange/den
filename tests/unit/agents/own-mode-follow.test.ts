@@ -138,7 +138,7 @@ describe("issue 199: project_mode names the agents that keep their own mode", ()
     expect(c.ownMode).toEqual([{ agent: "pinned", mode: "auto" }]);
     expect(c.choices).toEqual(["follow"]);
     expect(c.details).toContain(
-      "These keep their own mode and won't follow the project: pinned (own mode: auto)",
+      "These keep their own mode and won't follow the project: pinned (auto)",
     );
     // Off by default: the args don't clear anything.
     expect(c.args).toEqual({ project: "north", mode: "all" });

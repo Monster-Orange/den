@@ -62,6 +62,44 @@ export function checkHubAddress(
         : "no Hub address is set; nothing to clear",
     };
   const leaving = connected(d.readUser());
+  // Issue 205: each Review line with its message key.
+  type Line = [string, { key: string; vars?: Record<string, string> }];
+  const lines: Line[] = [
+    p.url
+      ? was
+        ? [
+            `Hub's address: ${was} → ${p.url}.`,
+            { key: "ap.det.hub_connect.set", vars: { was, url: p.url } },
+          ]
+        : [
+            `Hub's address: none → ${p.url}.`,
+            { key: "ap.det.hub_connect.setNew", vars: { url: p.url } },
+          ]
+      : [
+          `Hub's address ${was} is cleared; this Den stops using Hub.`,
+          { key: "ap.det.hub_connect.clear", vars: { was } },
+        ],
+    ...(leaving
+      ? [
+          [
+            "Den disconnects from the Hub it uses now first, so that Hub revokes its key.",
+            { key: "ap.det.hub_connect.leave" },
+          ] as Line,
+        ]
+      : []),
+    [
+      "Then Den restarts, and agents get Hub's tools when they next restart.",
+      { key: "ap.det.hub_connect.restart" },
+    ],
+    ...(p.url
+      ? [
+          [
+            "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
+            { key: "ap.det.hub_connect.connect" },
+          ] as Line,
+        ]
+      : []),
+  ];
   return {
     ok: true,
     // A different Hub, or none: agents lose Hub's tools until Connect.
@@ -69,22 +107,8 @@ export function checkHubAddress(
     args: { url: p.url },
     summary: p.url ? `set Hub's address to ${p.url}` : "clear Hub's address",
     params: { url: p.url ?? "", was },
-    details: [
-      p.url
-        ? `Hub's address: ${was || "none"} → ${p.url}.`
-        : `Hub's address ${was} is cleared; this Den stops using Hub.`,
-      ...(leaving
-        ? [
-            "Den disconnects from the Hub it uses now first, so that Hub revokes its key.",
-          ]
-        : []),
-      "Then Den restarts, and agents get Hub's tools when they next restart.",
-      ...(p.url
-        ? [
-            "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
-          ]
-        : []),
-    ],
+    details: lines.map((l) => l[0]),
+    detailKeys: lines.map((l) => l[1]),
   };
 }
 

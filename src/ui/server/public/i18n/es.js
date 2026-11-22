@@ -1880,21 +1880,127 @@
     "ap.do.report": "Enviar un reporte a {repo}: {title}",
     "ap.det.report.to": "Va a: {repo}",
     "ap.det.report.pub":
-      "Repositorio público: el texto y la captura los puede ver cualquiera. Antes se quitan secretos, tokens, correos, direcciones IP y referencias a almacenes.",
+      "Repositorio público: el texto lo puede ver cualquiera; la captura no se publica allí. Antes se quitan secretos, tokens, correos, direcciones IP y referencias a almacenes.",
     "ap.det.report.priv":
       "Repositorio privado: solo lo ven las personas con acceso a este repositorio.",
     "ap.det.report.int":
       "Repositorio interno: solo lo ven las personas con acceso a este repositorio.",
     "ap.det.report.unk":
-      "Visibilidad desconocida: __DEN_TITLE__ no sabe quién puede ver este repositorio, así que lo trata como público. El texto y la captura pueden ser visibles para cualquiera.",
+      "Visibilidad desconocida: no se sabe quién puede ver este repositorio, así que se trata como público. El texto puede ser visible para cualquiera; la captura no se publica allí.",
+    "ap.det.report.title": "Título: {title}",
+    "ap.det.report.addTo": "Se añade como comentario al issue {n}.",
     "ap.det.report.as":
       "Se publica en GitHub a tu nombre (con tu gh). Lo que se publicará:",
     "ap.det.report.shot":
-      "Con una captura que tomó el agente. __DEN_TITLE__ no enmascara las capturas: solo se limpia el texto de arriba.",
+      "Con una captura que tomó el agente. No se enmascara: solo se limpia el texto de arriba.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
       "Los mensajes que envió y que esperan el turno del agente se escriben igualmente.",
+    "ap.det.workspace_create.new":
+      'Un proyecto nuevo y vacío llamado "{name}", activado para que sus servicios puedan arrancar.',
+    "ap.det.service_try.activates":
+      'Primero activa el proyecto "{project}", para que pueda funcionar.',
+    "ap.det.service_try.up":
+      'Ejecuta el "up" local del servicio, como hace Iniciar en la página Servicios.',
+    "ap.det.service_try.reports":
+      "Den informa del código de salida y de las últimas líneas de su salida.",
+    "ap.det.den_restart.restart":
+      "Den se detiene y vuelve a arrancar en la misma dirección, con la versión instalada ahora.",
+    "ap.det.den.carryOn":
+      "Los agentes y las terminales siguen donde estaban; las páginas abiertas se vuelven a conectar.",
+    "ap.det.den_restart.told":
+      "Al agente que lo pidió se le avisa cuando Den vuelve.",
+    "ap.det.den_update.latest":
+      "Den obtiene de npm la última versión para esta distribución, la comprueba con doctor y arranca con ella.",
+    "ap.det.den_update.version":
+      "Den obtiene de npm la versión {version} para esta distribución, la comprueba con doctor y arranca con ella.",
+    "ap.det.den_update.rollback":
+      "Si la nueva versión no está lista a tiempo, Den vuelve por sí solo a la versión que usa ahora y dice por qué.",
+    "ap.det.repo_clone.fromBranch": "Desde: {source}, rama {branch}.",
+    "ap.det.repo_clone.from": "Desde: {source}, su rama predeterminada.",
+    "ap.det.repo_clone.gh":
+      "Con tu gh, ya conectado a GitHub (un repositorio de GitHub).",
+    "ap.det.repo_clone.git":
+      "Con git y tus propias credenciales (no gh: no es GitHub).",
+    "ap.det.repo_clone.into":
+      "En: {path} (una carpeta nueva; nada de lo que ya hay cambia).",
+    "ap.det.repo_clone.then":
+      "Después el agente redacta su manifiesto (manifest_draft) y pide añadirlo (repo_add): cada paso te lo vuelve a preguntar.",
+    "ap.det.agent_import.what": "Proyecto: {project}. Persona: {persona}.",
+    "ap.det.agent_import.whatRuntime":
+      "Proyecto: {project}. Persona: {persona}. Motor: {runtime}.",
+    "ap.det.agent_import.goesOn":
+      "La conversación sigue como un agente de Den, en la carpeta donde se ejecutaba, con el token, los hooks y las protecciones de Den.",
+    "ap.det.agent_import.refused":
+      "Se rechaza si sigue abierta en otra terminal, o si un agente ya la continúa.",
+    "ap.det.approval_policy.now": "Ahora: {v}.",
+    "ap.det.approval_policy.nowNone": "Ahora: ninguna.",
+    "ap.det.approval_policy.then": "Después: {v}.",
+    "ap.det.approval_policy.thenNone": "Después: ninguna.",
+    "ap.det.approval_policy.person":
+      "Solo una persona cambia la política de aprobación sin un Permitir: un agente siempre pregunta.",
+    "ap.det.pr_close.what": "Repositorio: {repo}. Pull request: {pr}.",
+    "ap.det.pr_close.comment": "Den la cierra con este comentario: {comment}",
+    "ap.det.pr_close.nothing": "No se fusiona nada y no se borra ninguna rama.",
+    "ap.det.hub_connect.set": "Dirección de Hub: {was} → {url}.",
+    "ap.det.hub_connect.setNew": "Dirección de Hub: ninguna → {url}.",
+    "ap.det.hub_connect.clear":
+      "Se borra la dirección de Hub {was}; este Den deja de usar Hub.",
+    "ap.det.hub_connect.leave":
+      "Den primero se desconecta del Hub que usa ahora, para que ese Hub revoque su clave.",
+    "ap.det.hub_connect.restart":
+      "Después Den se reinicia, y los agentes obtienen las herramientas de Hub cuando se reinicien.",
+    "ap.det.hub_connect.connect":
+      "Después te conectas en Ajustes › Hub: Conectar te inicia sesión en Hub allí.",
+    "ap.det.den_pin_commit.pr":
+      "Den hace commit de package.json y package-lock.json en la rama den/pin-{version} y abre una pull request.",
+    "ap.det.den_pin_commit.push":
+      "Den hace commit de package.json y package-lock.json y los sube a la rama remota de la rama.",
+    "ap.det.den_pin_commit.only":
+      "No se hace commit de nada más en la carpeta de la distribución.",
+    "ap.det.persona.local":
+      "Archivo: las personas propias de esta máquina (no se comparten con el proyecto)",
+    "ap.det.persona.newFile":
+      "Archivo: {file} (nuevo; haz commit para que los otros Den del proyecto lo tengan)",
+    "ap.det.persona.changedFile":
+      "Archivo: {file} (cambiado; haz commit para que los otros Den del proyecto lo tengan)",
+    "ap.det.persona.name": "Nombre: {v}",
+    "ap.det.persona.role": "Rol: {v}",
+    "ap.det.persona.category": "Categoría: {v}",
+    "ap.det.persona.description": "Descripción: {v}",
+    "ap.det.persona.runtime": "Motor: {v}",
+    "ap.det.persona.runtimeModel": "Motor: {v}, modelo {model} ({version})",
+    "ap.det.persona.mode": "Modo: {v}",
+    "ap.det.persona.commands": "Comandos permitidos: {v}",
+    "ap.det.persona.commandsNone": "Comandos permitidos: ninguno",
+    "ap.det.persona.instructions": "Instrucciones:",
+    "ap.det.asWritten": "{v}",
+    "ap.det.persona.field": "{field}: {v}",
+    "ap.det.persona.fieldNone": "{field}: ninguno",
+    "ap.det.persona.asItWillRead": "Así quedará:",
+    "ap.det.agent_create.persona": "Persona: {v}",
+    "ap.det.agent_create.project": "Proyecto: {v}",
+    "ap.det.agent_create.folder": "Carpeta: {v}",
+    "ap.det.agent_create.runtime": "Motor: {v}",
+    "ap.det.agent_create.mode": "Modo: {mode} (el del proyecto: {cap})",
+    "ap.det.agent.who": "Agente: {agent}, proyecto {project}",
+    "ap.det.agent.whoId": "Agente: {agent} ({id}), proyecto {project}",
+    "ap.det.agent_folder.from": "Desde: {v}",
+    "ap.det.agent_folder.to": "A: {v}",
+    "ap.det.agent_folder.running":
+      "Está en marcha: Den lo detiene, lo mueve y lo arranca de nuevo allí (una conversación nueva; la anterior queda en su historial).",
+    "ap.det.agent_folder.stopped":
+      "Está detenido y sigue así: su próximo arranque es una conversación nueva allí.",
+    "ap.det.agent_folder.self":
+      "Es el agente que lo pidió: se detiene cuando lo permites, y su respuesta para ti termina ahí.",
+    "ap.det.agent_mode.loosens": "Esto deja que {agent} actúe sin preguntarte.",
+    "ap.det.agent_mode.now": "Ahora: su propio modo, {mode}",
+    "ap.det.agent_mode.then": "Después: sigue al proyecto, {mode}",
+    "ap.det.agent_mode.running":
+      "Está en marcha: Den lo reinicia después de su turno, en la misma conversación, en {mode}.",
+    "ap.det.agent_mode.stopped":
+      "Está detenido: su próximo arranque es en {mode}.",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
