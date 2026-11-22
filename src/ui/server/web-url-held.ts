@@ -8,6 +8,7 @@
  * An address that doesn't answer is never written. Saved, it is confirmed
  * and audited, and takes effect without a restart.
  */
+import { line, reviewLines } from "../../shared/review-lines.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { checkWebUrl } from "../../shared/web-url-check.js";
 import { loopbackRefusal } from "../../shared/web-url-check.js";
@@ -50,25 +51,26 @@ export function webUrlSetAction(d: WebUrlHeldDeps): HeldAction {
         args: { url: ok.url },
         summary: `make ${ok.url} this Den's address`,
         params: { url: ok.url, from: from ?? "" },
-        details: [
+        ...reviewLines([
           from
-            ? `Now: ${from}${now?.confirmed ? "" : " (not confirmed)"}.`
-            : "Now: no address is set.",
-          `${ok.url} answers as this Den now: Den asked it for a one-time token, through its name.`,
-          "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
-        ],
-        detailKeys: [
-          from
-            ? {
-                key: now?.confirmed
-                  ? "ap.det.web_url_set.now"
-                  : "ap.det.web_url_set.nowUnconfirmed",
-                vars: { from },
-              }
-            : { key: "ap.det.web_url_set.none" },
-          { key: "ap.det.web_url_set.answers", vars: { url: ok.url } },
-          { key: "ap.det.web_url_set.saves" },
-        ],
+            ? now?.confirmed
+              ? line(`Now: ${from}.`, "ap.det.web_url_set.now", { from })
+              : line(
+                  `Now: ${from} (not confirmed).`,
+                  "ap.det.web_url_set.nowUnconfirmed",
+                  { from },
+                )
+            : line("Now: no address is set.", "ap.det.web_url_set.none"),
+          line(
+            `${ok.url} answers as this Den now: Den asked it for a one-time token, through its name.`,
+            "ap.det.web_url_set.answers",
+            { url: ok.url },
+          ),
+          line(
+            "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
+            "ap.det.web_url_set.saves",
+          ),
+        ]),
       };
     },
     // The queue checks again first: an address that stopped answering
