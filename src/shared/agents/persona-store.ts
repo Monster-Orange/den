@@ -227,7 +227,11 @@ export function checkPersonaInput(
 }
 
 /** The persona file for `input`: front matter (YAML) and its instructions. */
-export function personaMarkdown(id: string, input: PersonaInput): string {
+export function personaMarkdown(
+  id: string,
+  input: PersonaInput,
+  kept: Record<string, unknown> = {},
+): string {
   const fm: Record<string, unknown> = {
     name: id,
     ...(input.displayName ? { display_name: input.displayName } : {}),
@@ -247,7 +251,47 @@ export function personaMarkdown(id: string, input: PersonaInput): string {
       ? { allowed_commands: input.allowedCommands }
       : {}),
   };
+  // Issue 978: the keys the form doesn't manage, as the file had them.
+  for (const [k, v] of Object.entries(kept))
+    if (!(k in fm) && !MANAGED_KEYS.has(k)) fm[k] = v;
   return `---\n${yaml.stringify(fm).trimEnd()}\n---\n\n${input.instructions}\n`;
+}
+
+/**
+ * Issue 978: the front-matter keys the form writes, and the other
+ * spellings the reader takes for them. Every other key is the file's own.
+ */
+const MANAGED_KEYS: ReadonlySet<string> = new Set([
+  "name",
+  "id",
+  "display_name",
+  "role",
+  "category",
+  "description",
+  "runtime",
+  "model",
+  "model_version",
+  "version",
+  "permission_mode",
+  "allowed_commands",
+]);
+
+/**
+ * Issue 978: the front matter of the persona file at `file` (none, or
+ * unreadable: {}), so a rewrite keeps the keys the form doesn't manage.
+ */
+function keptFrontMatter(file: string): Record<string, unknown> {
+  try {
+    const m = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(
+      fs.readFileSync(file, "utf-8"),
+    );
+    const v = m ? (yaml.parse(m[1]) as unknown) : null;
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 function fileOf(stateDir: string, id: string): string {
@@ -268,7 +312,7 @@ export function writeLocalPersona(
   input: PersonaInput,
 ): string {
   const file = fileOf(stateDir, id);
-  writePrivate(file, personaMarkdown(id, input));
+  writePrivate(file, personaMarkdown(id, input, keptFrontMatter(file)));
   return file;
 }
 
@@ -295,7 +339,9 @@ export function writeProjectPersona(
   const file = projectPersonaFile(dir, id);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, personaMarkdown(id, input), { mode: 0o644 });
+  fs.writeFileSync(tmp, personaMarkdown(id, input, keptFrontMatter(file)), {
+    mode: 0o644,
+  });
   fs.renameSync(tmp, file);
   return file;
 }
