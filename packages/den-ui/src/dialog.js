@@ -141,9 +141,24 @@ export function focusBack(el) {
 }
 
 export const DIALOG_WORDS = {
-  en: { ok: "OK", cancel: "Cancel", close: "Close" },
-  es: { ok: "Aceptar", cancel: "Cancelar", close: "Cerrar" },
-  ja: { ok: "OK", cancel: "キャンセル", close: "閉じる" },
+  en: {
+    ok: "OK",
+    cancel: "Cancel",
+    close: "Close",
+    failed: "That didn't work. Try again.",
+  },
+  es: {
+    ok: "Aceptar",
+    cancel: "Cancelar",
+    close: "Cerrar",
+    failed: "No ha funcionado. Inténtalo de nuevo.",
+  },
+  ja: {
+    ok: "OK",
+    cancel: "キャンセル",
+    close: "閉じる",
+    failed: "うまくいきませんでした。もう一度お試しください。",
+  },
 };
 
 const hook = {
@@ -156,6 +171,16 @@ const hook = {
   css: null,
   hold: null,
 };
+
+/**
+ * Issue 1054: what a held action's failure says in its dialog: the error's
+ * own message, else the kit's "That didn't work. Try again." (never an
+ * empty alert).
+ */
+export function failedLine(err) {
+  const own = typeof err === "string" ? err : err?.message;
+  return typeof own === "string" && own.trim() ? own : dialogWord("failed");
+}
 
 /** Issue 1054: hold a button while its request runs; returns release(). */
 function holdFor(b) {
@@ -526,7 +551,7 @@ export function mountDialog(target, o = {}) {
         const line = document.createElement("p");
         line.className = "dk-err";
         line.setAttribute("role", "alert");
-        line.textContent = String(err?.message || err || "");
+        line.textContent = failedLine(err);
         d.querySelector(".dk-ft")?.before(line);
         btn?.focus?.();
       },

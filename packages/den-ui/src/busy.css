@@ -1,8 +1,9 @@
 /* den-ui: the working pop-up's look (busy.js). Tokens only (UK-1): no
    colour of its own. Linked, never injected: clean under style-src 'self'. */
-/* Issue 673: the pop-up's buttons are the kit's one button; its look comes
-   with the pop-up's, so a page that links only busy.css still has it. */
-@import url("button.css");
+/* Issue 673: the pop-up's buttons are the kit's one button (button.css).
+   The page links button.css itself (Den: on every page, KIT_PAGE_CSS),
+   never an @import here: that would ask for it by a second URL (issue
+   231). */
 .bz-dlg {
   font-family: var(--sans);
   position: fixed;

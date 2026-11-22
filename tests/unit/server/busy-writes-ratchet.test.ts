@@ -1,10 +1,11 @@
 /**
- * BUSY-1: a button that writes to Den goes through the working pop-up
- * (denShell.busyAction), whose request passes its `{ headers }` (the id
- * Try again resends). This counts, per page script, the writes that don't
- * (api("POST", …) and fetch(…, { method: "POST" }) without `{ headers }`),
- * against the count when BUSY-1 began. A new one fails here; moving one
- * onto the pop-up must lower its number, so the list only shrinks.
+ * BUSY-1, as issue 1054 left it: the writes sent outside busyAction,
+ * with no request id of the kit's (`{ headers }`, the id Try again
+ * resends). Since 1054 that is not a fault in itself: each must show its
+ * wait on screen (holdDots or holdRow) or give a reason (busy-ok), which
+ * busy-button-sweep-1054.test.ts checks for every write. This keeps the
+ * count per page script so a new bare write is seen and named, never
+ * slipped in; a change that moves writes either way updates its number.
  * Pages' own scripts (*.html) count too (issue 133: Delete project and
  * Remove service on the Projects and Services pages).
  */
@@ -15,7 +16,7 @@ import * as path from "path";
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 
 /**
- * The writes not yet on the pop-up, per file (0.4.46 BUSY-1). Issue 1054
+ * The writes outside busyAction, per file (0.4.46 BUSY-1). Issue 1054
  * took three off it on purpose, each held on screen instead (one more in
  * agents-page.js, local-dev.html and services.html): a drag's save holds
  * its row, and Delete project holds its last dialog's button.
@@ -66,7 +67,7 @@ export function writesOffThePopup(src: string): number {
   return n;
 }
 
-describe("BUSY-1: writes go through the working pop-up", () => {
+describe("BUSY-1: writes sent outside busyAction, counted", () => {
   it("counts a write without the pop-up's headers, and not one with them", () => {
     expect(writesOffThePopup('api("POST", "/api/x", {});')).toBe(1);
     expect(
@@ -80,7 +81,7 @@ describe("BUSY-1: writes go through the working pop-up", () => {
     expect(writesOffThePopup('api("GET", "/api/x");')).toBe(0);
   });
 
-  it("no page script has more writes off the pop-up than its number", () => {
+  it("each page script has exactly its number of writes outside busyAction", () => {
     const now: Record<string, number> = {};
     for (const f of fs
       .readdirSync(PUBLIC)
@@ -90,8 +91,8 @@ describe("BUSY-1: writes go through the working pop-up", () => {
       );
       if (n) now[f] = n;
     }
-    // A higher number: put the new button on denShell.busyAction. A lower
-    // one: lower LEFT to match (the list only shrinks).
+    // A different number: a write moved in or out of busyAction. Set LEFT
+    // to match; the 1054 sweep says whether its wait is shown.
     expect(now).toEqual({ ...LEFT, ...NO_SHELL });
   });
 
