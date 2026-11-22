@@ -10,6 +10,7 @@ import { coachBreakdown, type CoachReport } from "./breakdown.js";
 import { coachFindings } from "./findings.js";
 import type { CoachSettings } from "./settings.js";
 import { writeCoachReport } from "./store.js";
+import { judgeReport, type ModelRun } from "./judge.js";
 
 export interface CoachRunOptions {
   stateDir: string;
@@ -19,6 +20,8 @@ export interface CoachRunOptions {
   source?: (runtime: string) => UsageSource | undefined;
   /** agents.rotate.after_compactions (default: the org config's, else 3). */
   rotateAfter?: () => number;
+  /** Slice T-d's model call (default: the runtime's CLI). */
+  judgeRun?: ModelRun;
 }
 
 /** agents.rotate.after_compactions, as `usage` reads it; 3 on error. */
@@ -51,6 +54,7 @@ export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
     sentenceWords: o.settings.findings.sentence_words,
   });
   report.findings = coachFindings(report, o.settings.findings);
+  await judgeReport(report, o.settings.judge, o.judgeRun);
   stripEvidence(report);
   writeCoachReport(o.stateDir, report, o.settings.keep_runs);
   return report;

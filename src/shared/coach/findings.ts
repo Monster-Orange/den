@@ -38,7 +38,11 @@ export type FindingKind =
   | "ask_r12"
   | "ask_wait"
   | "msg_repeat"
-  | "msg_no_reply";
+  | "msg_no_reply"
+  // Slice T-d, judged on the cheap model (judge.ts).
+  | "repeat_ask"
+  | "trivial_ask"
+  | "relay";
 
 /** One instance a person can check: an ask or a message. */
 export interface FindingSample {
