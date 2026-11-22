@@ -92,6 +92,30 @@ export function redactReport(
   return out;
 }
 
+/**
+ * Issue 565: a destination's visibility in words, as the page's pill says
+ * them (the kit's kit.report.pub/priv/int/unk), for `<cli> report` and the
+ * agents' `report`. Not known is never called public or private.
+ */
+export const REPORT_VISIBILITY_WORDS: Readonly<Record<string, string>> = {
+  public: "Public repository",
+  private: "Private repository",
+  internal: "Internal repository",
+  unknown: "Visibility not known",
+};
+
+/** Issue 565: the words for `v` (anything else: not known). */
+export function visibilityWords(v: unknown): string {
+  return typeof v === "string" && Object.hasOwn(REPORT_VISIBILITY_WORDS, v)
+    ? REPORT_VISIBILITY_WORDS[v]!
+    : REPORT_VISIBILITY_WORDS.unknown!;
+}
+
+/** Issue 565: whether a report there may be read by anyone (not known: yes). */
+export function visibleToEveryone(v: unknown): boolean {
+  return v !== "private" && v !== "internal";
+}
+
 export type ReportKind = "bug" | "idea" | "question";
 
 export interface ReportForm {

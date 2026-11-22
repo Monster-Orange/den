@@ -90,6 +90,10 @@
  *     button). A form the page sends itself (its submit handler called
  *     preventDefault) is left alone.
  *
+ *   holdDots(button, on = true)
+ *     The dots alone, with no pop-up (issue 698): for a wait that says its
+ *     own words (a stream, a form with its own error line).
+ *
  * A button that never waits opts out with a reason, data-instant="<why>":
  * held without dots, its pop-up at OPEN_MS. An empty reason doesn't count
  * (instantProblems(html) is the check).
@@ -361,6 +365,17 @@ function holdButton(b, on, dots, later = false) {
   b.append(lbl, d);
   if (name == null && text) b.setAttribute("aria-label", text);
   held.set(b, { lbl, dots: d, name, timer });
+}
+
+/**
+ * Issue 698: the dots alone, for a wait that says its own words and is not
+ * one request through busyAction (a stream's output, a form that shows its
+ * own error): holdDots(button) holds it with dots at once, with no pop-up;
+ * holdDots(button, false) gives the label back. A label the page drew
+ * while it waited stays.
+ */
+export function holdDots(button, on = true) {
+  holdButton(button, on !== false, true);
 }
 
 export function busyAction(name, run, opts = {}) {

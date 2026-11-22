@@ -213,6 +213,14 @@ describe("session host", () => {
     );
   });
 
+  it("issue 482: the list says each session's folder (the Terminals list)", async () => {
+    const dir = stateDir();
+    await host(dir);
+    const c = await client(dir);
+    await c.start(spec("acme-north:shell"));
+    expect((await c.list())[0]).toMatchObject({ cwd: os.tmpdir() });
+  });
+
   it("passes write, resize and signal to the PTY, and reports the exit", async () => {
     const dir = stateDir();
     const { made } = await host(dir);

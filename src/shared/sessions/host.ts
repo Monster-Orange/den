@@ -440,6 +440,8 @@ export class SessionHost {
             name: rec.name,
             pid: rec.pid,
             startedAt: rec.startedAt,
+            // Issue 482: its folder (the Terminals list says it).
+            ...(typeof rec.cwd === "string" ? { cwd: rec.cwd } : {}),
             exited: true,
             ...(typeof rec.exitCode === "number"
               ? { exitCode: rec.exitCode }
@@ -801,6 +803,8 @@ export class SessionHost {
         name,
         pid: pty.pid,
         startedAt: new Date().toISOString(),
+        // Issue 482: its folder (the Terminals list says it).
+        cwd,
         ...(this.launchd ? { launchd: this.launchd } : {}),
       },
       cwd,

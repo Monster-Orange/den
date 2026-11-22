@@ -154,7 +154,7 @@ describe.each(ENGINES)("issue 796 in %s: an agent's read-only view", (e) => {
   it.each([
     ["Agents", "/agents", "#den-content"],
     ["Settings", "/settings", "#den-content"],
-    ["the terminal page", "/agents?terminal=1", "#den-content"],
+    ["Terminals", "/terminals", "#den-content"],
   ])(
     "opens %s read-only, with no live write buttons",
     async (_n, next, sel) => {
