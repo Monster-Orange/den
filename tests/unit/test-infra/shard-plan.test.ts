@@ -163,6 +163,44 @@ describe("issue 998: ci.yml's Nodes and shards", () => {
       ]);
   });
 
+  it("the run's `tested` record is written on a Node the pr matrix runs", () => {
+    const steps = doc.jobs.pr.steps as (Step & {
+      name?: string;
+      with?: Record<string, unknown>;
+    })[];
+    const rec = steps.filter(
+      (s) =>
+        s.name === "What this run tests" ||
+        (s as { with?: { name?: string } }).with?.name === "tested",
+    );
+    expect(rec).toHaveLength(2);
+    const nodes = doc.jobs.pr.strategy?.matrix?.node ?? [];
+    for (const s of rec) {
+      const m = /matrix\.node == '([\d.]+)'/.exec(s.if ?? "");
+      expect([s.if, m && nodes.includes(m[1])]).toEqual([s.if, true]);
+    }
+  });
+
+  it('the record says "all" exactly when the whole suite runs, and a large subset in shards runs only its own files', () => {
+    const rec = doc.jobs.pr.steps.find((s) =>
+      (s.run ?? "").includes("tested.json"),
+    );
+    // "all" comes from the selection being ALL, the one case the shards
+    // list and run every test file.
+    expect(rec?.run).toMatch(
+      /sel=affected\s*\n\s*if \[ "\$\(head -1 affected\.txt\)" = ALL \]; then sel=all; fi/,
+    );
+    const pick = doc.jobs["pr-shards"].steps
+      .map((s) => s.run ?? "")
+      .find((r) => r.includes("shard-plan.cjs"));
+    // ALL becomes every test file; any other selection stays its own list.
+    expect(pick).toMatch(
+      /if \[ "\$\(head -1 affected\.txt\)" = ALL \]; then\s*\n\s*npx jest --listTests[^\n]*> affected\.txt/,
+    );
+    expect(pick).toMatch(/shard-plan\.cjs --files affected\.txt --shard/);
+    expect(pick).not.toMatch(/: > affected\.txt/);
+  });
+
   it("the nightly Node 22 run keeps what a pull request ran on Node 22: the checks and the install smoke", () => {
     const nightly22 = Object.values(doc.jobs).filter(
       (j) =>
