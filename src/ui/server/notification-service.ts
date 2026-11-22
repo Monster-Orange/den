@@ -4,6 +4,8 @@
  * host (never starts one); a check every 2 s clears a waiting mark whose
  * agent's output moved.
  */
+import { projectDisplayName } from "../../shared/workspace-name.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import crypto from "node:crypto";
 import {
   listRecords,
@@ -372,8 +374,16 @@ export function notificationDeps(): {
             .filter(([, why]) => why !== "input")
             .map(([agent]) => agent),
         ),
+        // Mock v3: each Done row names its project as the person sees it.
+        doneProjectName(),
       ),
   };
+}
+
+/** The project names a Done row shows (one read of workspaces.yml). */
+function doneProjectName(): (ws: string) => string {
+  const ws = readWorkspacesFile().workspaces ?? {};
+  return (slug) => projectDisplayName(slug, ws[slug]);
 }
 
 /**

@@ -375,6 +375,20 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
       workspace: "south",
       link: "/agents?project=south&agent=early",
     });
+    // Mock v3: each row names its project as the person sees it, and the
+    // server agent is "Server".
+    const named = doneAgents(recs, "person:a", d.deps, new Set(), (ws) =>
+      ws === "south" ? "South Shop" : ws,
+    );
+    expect(named[0].project).toBe("South Shop");
+    expect(named[0].server).toBeUndefined();
+    await d.a.event("helper", "den-server", { event: "finished" });
+    const srv = doneAgents(
+      [{ id: "helper", workspace: "den-server" }],
+      "person:a",
+      d.deps,
+    );
+    expect(srv[0]).toMatchObject({ server: true, project: "den-server" });
     // A second person has seen none of them.
     expect(doneAgents(recs, "person:b", d.deps).map((x) => x.agent)).toEqual([
       "early",

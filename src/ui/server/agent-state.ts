@@ -12,6 +12,7 @@
  * Terminals keep them. `attnSince`: since when it waits (needs), when it
  * finished (done), since when it works, or its last finish (idle).
  */
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import type * as http from "http";
 import type { SeenMarks } from "../../shared/seen-mark.js";
 import { principalOf } from "./request-guard.js";
@@ -112,6 +113,10 @@ export interface DoneAgent {
   agent: string;
   name: string;
   workspace: string;
+  /** Its project's name as the person sees it (Hub's, its own, the slug). */
+  project: string;
+  /** The server agent (its tag is "Server"). */
+  server?: true;
   /** When its turn ended (ISO). */
   at: string;
   link: string;
@@ -133,6 +138,7 @@ export function doneAgents(
   person: string,
   d: AgentStateDeps,
   busy: ReadonlySet<string> = new Set(),
+  projectName: (ws: string) => string = (ws) => ws,
 ): DoneAgent[] {
   const working = d.working();
   const out: DoneAgent[] = [];
@@ -146,6 +152,8 @@ export function doneAgents(
       agent: r.id,
       name: r.displayName || r.id,
       workspace: r.workspace,
+      project: projectName(r.workspace),
+      ...(isServerScope(r.workspace) ? { server: true as const } : {}),
       at: latest.at,
       link: `/agents?project=${encodeURIComponent(r.workspace)}&agent=${encodeURIComponent(r.id)}`,
     });

@@ -206,8 +206,9 @@ function subjectHtml(scope, s, ui) {
 function doneRowHtml(d) {
   const link = safeLink(d.link);
   const text = tr("bell.doneRow", { name: d.name || d.agent });
-  const where =
-    d.workspace === "den-server" ? tr("bell.server") : d.workspace || "";
+  // Mock v3: "Server" for the server agent, as everywhere else; else the
+  // project's name as the person sees it.
+  const where = d.server ? tr("ag.tag.server") : d.project || d.workspace || "";
   return (
     `<div class="den-bell-row" data-kind="done" data-agent="${esc(d.agent)}">` +
     `<span class="den-dot ok" aria-hidden="true"></span>` +
