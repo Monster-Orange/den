@@ -109,7 +109,7 @@ export interface AgentRecord {
    * and why. It shows as interrupted (not stopped), so Resume and
    * restore-on-boot bring it back; cleared by a resume or a start.
    */
-  restartFailed?: { at: string; why: string };
+  restartFailed?: { at: string; why: string; relaunchTried?: boolean };
   /**
    * Issue 659: when Den saw its runtime ask whether to trust its folder
    * (the question on its screen, waiting for its person); cleared once

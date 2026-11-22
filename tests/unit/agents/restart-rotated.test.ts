@@ -26,6 +26,7 @@ import {
   stopAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
+import { setRotateValue } from "../../../src/shared/agents/rotate-settings.js";
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
@@ -91,6 +92,16 @@ async function live(r: Rig, id = "be-dev"): Promise<boolean> {
   }
 }
 
+function bell(r: Rig): Array<Record<string, unknown>> {
+  const f = path.join(r.stateDir, "notifications.json");
+  if (!fs.existsSync(f)) return [];
+  return (
+    JSON.parse(fs.readFileSync(f, "utf-8")) as {
+      items: Array<Record<string, unknown>>;
+    }
+  ).items.filter((n) => n.subject === "agent:be-dev");
+}
+
 describe("issue 923: restart of an agent due for rotation", () => {
   it("relaunches it from its handoff in a new conversation", async () => {
     const r = await rig();
@@ -118,6 +129,28 @@ describe("issue 923: restart of an agent due for rotation", () => {
   });
 });
 
+describe("issue 923: on_due ask", () => {
+  it("a restart doesn't relaunch it: the person is told, and the sweep leaves it", async () => {
+    const r = await rig();
+    const t1 = await started(r);
+    due(r);
+    setRotateValue(r.stateDir, "install", undefined, "on_due", "ask");
+    const d = resolveAgentsDeps(r.deps);
+    await expect(restartAgent(d, "be-dev", "north", "now")).rejects.toThrow(
+      /rotated after 3 compactions/,
+    );
+    expect(rec(r, "be-dev").restartFailed).toBeDefined();
+    expect(bell(r)).toEqual([
+      expect.objectContaining({
+        kind: "waiting",
+        msg: expect.objectContaining({ key: "bell.m.restartFailed" }),
+      }),
+    ]);
+    expect(await rotationTick(d, new Date())).toEqual([]);
+    expect(rec(r, "be-dev").resumeToken).toBe(t1);
+  });
+});
+
 describe("issue 923: the rotation sweep and a stopped, due agent", () => {
   it("relaunches one a failed Den restart left stopped", async () => {
     const r = await rig();
@@ -142,6 +175,37 @@ describe("issue 923: the rotation sweep and a stopped, due agent", () => {
     expect(rec(r, "be-dev").resumeToken).not.toBe(t1);
     expect(rec(r, "be-dev").restartFailed).toBeUndefined();
     expect(await live(r)).toBe(true);
+  });
+
+  it("a relaunch that fails is tried once: the person is told, then left be", async () => {
+    const r = await rig();
+    const t1 = await started(r);
+    due(r);
+    const d = resolveAgentsDeps(r.deps);
+    await stopAgent(d, "be-dev", "north");
+    const { stoppedAt: _s, ...rest } = rec(r, "be-dev");
+    writeRecord(r.stateDir, {
+      ...rest,
+      restartFailed: { at: new Date().toISOString(), why: "rotated" },
+    });
+    // Its folder gone: the relaunch is refused.
+    const cwd = rec(r, "be-dev").cwd;
+    fs.rmSync(cwd, { recursive: true, force: true });
+    const ev = await rotationTick(d, new Date());
+    expect(ev).toEqual([
+      expect.objectContaining({ kind: "failed", agent: "be-dev" }),
+    ]);
+    expect(rec(r, "be-dev").restartFailed).toMatchObject({
+      relaunchTried: true,
+    });
+    expect(String(rec(r, "be-dev").restartFailed?.why)).toMatch(
+      /relaunch from its handoff failed/,
+    );
+    expect(bell(r)).toHaveLength(1);
+    // The next sweep leaves it be: no retry, no second notice.
+    expect(await rotationTick(d, new Date())).toEqual([]);
+    expect(bell(r)).toHaveLength(1);
+    expect(rec(r, "be-dev").resumeToken).toBe(t1);
   });
 
   it("never relaunches one a person stopped", async () => {

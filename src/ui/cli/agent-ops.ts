@@ -1119,9 +1119,10 @@ export interface AgentRow {
   interruptedAt?: string;
   /**
    * Issues 124, 631: Den restarted it (or its terminal host) and it
-   * didn't come back: when, and why.
+   * didn't come back: when, and why. Issue 923: `relaunchTried`, the
+   * rotation sweep tried to relaunch it from its handoff once and failed.
    */
-  restartFailed?: { at: string; why: string };
+  restartFailed?: { at: string; why: string; relaunchTried?: boolean };
   /**
    * Issue 658: a handoff is on file (handoff.md, or one kept from a
    * relaunch) while no rotation is ready: Relaunch from its last handoff.
@@ -5893,8 +5894,10 @@ export interface Resumed extends Started {
 
 /**
  * Issue 923: relaunch agent `id` from its handoff when its rotation is
- * ready (due, the handoff passes, on_due not off): what a resume would
- * refuse. Undefined when it isn't, to resume as before.
+ * ready (due, the handoff passes) and Den may relaunch it (on_due auto,
+ * or a person asked for Relaunch now), as resumeOrRelaunch does.
+ * Undefined otherwise: on ask the resume is refused and the person is
+ * told (notBackAfterRestart); not ready, it resumes as before.
  */
 async function relaunchIfReady(
   d: AgentsResolved,
@@ -5902,7 +5905,8 @@ async function relaunchIfReady(
   ws: string,
 ): Promise<Resumed | undefined> {
   const rot = rotationOf(d, agentRecord(d, id, ws));
-  if (!rot?.ready || rot.onDue === "off") return undefined;
+  if (!rot?.ready || (rot.onDue !== "auto" && !rot.relaunchWanted))
+    return undefined;
   const r = await relaunchAgent(d, id, ws, {
     ...(rot.onDue === "auto" ? { auto: true } : {}),
   });
@@ -6729,13 +6733,18 @@ function notBackAfterRestart(
   id: string,
   ws: string,
   why: string,
+  o: { relaunchTried?: boolean } = {},
 ): void {
   const rec = readRecord(d.stateDir(), id);
   if (!rec) return;
   const { stoppedAt: _s, ...rest } = rec;
   writeRecord(d.stateDir(), {
     ...rest,
-    restartFailed: { at: new Date().toISOString(), why },
+    restartFailed: {
+      at: new Date().toISOString(),
+      why,
+      ...(o.relaunchTried ? { relaunchTried: true } : {}),
+    },
   });
   auditConfig(
     {
@@ -8764,13 +8773,30 @@ export async function rotationTick(
       if (!s || s.exited) {
         // Issue 923: a due agent that a Den restart stopped and left not
         // back (never one a person stopped) relaunches from a passing
-        // handoff. Nothing to ask: it isn't running.
-        if (!rec.restartFailed || rec.stoppedAt || rec.endedAt) continue;
+        // handoff, once. Nothing to ask: it isn't running. On ask the
+        // person was told when the restart failed.
+        const failed = rec.restartFailed;
+        if (!failed || failed.relaunchTried || rec.stoppedAt || rec.endedAt)
+          continue;
         const rot = rotationOf(d, rec);
-        if (!rot?.ready || rot.onDue === "off") continue;
-        const r = await relaunchAgent(d, rec.id, rec.workspace, {
-          ...(rot.onDue === "auto" ? { auto: true } : {}),
-        });
+        if (!rot?.ready || (rot.onDue !== "auto" && !rot.relaunchWanted))
+          continue;
+        let r: Relaunched;
+        try {
+          r = await relaunchAgent(d, rec.id, rec.workspace, {
+            ...(rot.onDue === "auto" ? { auto: true } : {}),
+          });
+        } catch (e) {
+          // One try: the person is told, and the sweep leaves it be.
+          notBackAfterRestart(
+            d,
+            rec.id,
+            rec.workspace,
+            `relaunch from its handoff failed: ${(e as Error).message}`,
+            { relaunchTried: true },
+          );
+          throw e;
+        }
         events.push({
           kind: "relaunched",
           ...who,
