@@ -99,6 +99,8 @@ type Btn = {
   lineHeight: string;
   fontFamily: string;
   height: number;
+  /** The kit's tap height for this width: --tap at 480px and under, else --tap-min. */
+  want: number;
   kbd: { fontSize: string; family: string } | null;
 };
 
@@ -112,6 +114,14 @@ function footerOf(p: Page, sel: string): Promise<Btn[]> {
     const rb = d ? [...d.querySelectorAll("[data-den-report]")].pop() : null;
     const foot = rb?.parentElement;
     if (!foot) return [];
+    // The token's own height, measured in the footer.
+    const probe = document.createElement("div");
+    probe.style.height = matchMedia("(max-width: 480px)").matches
+      ? "var(--tap)"
+      : "var(--tap-min)";
+    foot.appendChild(probe);
+    const want = Math.round(probe.getBoundingClientRect().height * 10) / 10;
+    probe.remove();
     return [...foot.children]
       .filter((b) => /^(BUTTON|A)$/.test(b.tagName))
       .filter((b) => b.getClientRects().length > 0)
@@ -125,6 +135,7 @@ function footerOf(p: Page, sel: string): Promise<Btn[]> {
           lineHeight: cs.lineHeight,
           fontFamily: cs.fontFamily,
           height: Math.round(b.getBoundingClientRect().height * 10) / 10,
+          want,
           kbd: kcs ? { fontSize: kcs.fontSize, family: kcs.fontFamily } : null,
         };
       });
@@ -142,6 +153,11 @@ export function mismatches(btns: Btn[]): string[] {
     for (const k of ["fontSize", "lineHeight", "fontFamily", "height"] as const)
       if (b[k] !== first[k])
         out.push(`${b.what} ${k} ${b[k]}, ${first.what} ${first[k]}`);
+  // Equal is not enough: each is the kit's tap height (Builder 2's review:
+  // at 390 wide the footer's own buttons fell to --tap-min, all equal).
+  for (const b of btns)
+    if (b.height !== b.want)
+      out.push(`${b.what} height ${b.height}, the tap height is ${b.want}`);
   for (const b of btns)
     if (b.kbd && parseFloat(b.kbd.fontSize) >= parseFloat(b.fontSize))
       out.push(`${b.what}: its key hint is ${b.kbd.fontSize}, not smaller`);
@@ -227,12 +243,18 @@ describe("issue 805: a kit dialog's footer buttons share one size and font", () 
   );
 
   it("the check can fail", () => {
-    const b = (what: string, height: number, fontSize = "13px"): Btn => ({
+    const b = (
+      what: string,
+      height: number,
+      fontSize = "13px",
+      want = 36,
+    ): Btn => ({
       what,
       fontSize,
       lineHeight: "normal",
       fontFamily: "x",
       height,
+      want,
       kbd: null,
     });
     expect(
@@ -240,6 +262,13 @@ describe("issue 805: a kit dialog's footer buttons share one size and font", () 
     ).not.toEqual([]);
     expect(
       mismatches([b("button.den-rb", 36, "12px"), b("button.dk-btn", 36)]),
+    ).not.toEqual([]);
+    // All equal, but under the tap height.
+    expect(
+      mismatches([
+        b("button.den-rb", 36, "13px", 44),
+        b("button.dk-btn", 36, "13px", 44),
+      ]),
     ).not.toEqual([]);
     expect(
       mismatches([b("button.den-rb", 36), b("button.dk-btn", 36)]),
