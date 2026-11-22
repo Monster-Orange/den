@@ -2109,6 +2109,11 @@
       "why": "tests that run scripts/release-ancestry.sh"
     },
     {
+      "when": ["scripts/release-tree.sh"],
+      "run": ["tests/unit/scripts/release-tree.test.ts"],
+      "why": "tests that run scripts/release-tree.sh"
+    },
+    {
       "when": ["scripts/release-dry-run.mjs"],
       "run": [
         "tests/unit/scripts/release-dry-run.test.ts",
