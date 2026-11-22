@@ -336,7 +336,15 @@ describe("issue 394: the rail says when the server's prefs are applied", () => {
       SHELL.indexOf("// The server's prefs win over the local copy."),
     );
     expect(block).toMatch(
-      /^[\s\S]*?if \(typeof fetch === "function" && !apiOff\(\)\)\s*fetch\("\/api\/settings"\)[\s\S]*?return markPrefsApplied\(\);[\s\S]*?markPrefsApplied\(\);\s*\}\)\s*\.catch\(markPrefsApplied\);\s*else markPrefsApplied\(\);/,
+      /^[\s\S]*?if \(typeof fetch === "function" && !apiOff\(\)\)\s*fetch\("\/api\/settings"\)[\s\S]*?return markPrefsApplied\(\);[\s\S]*?\.then\(markPrefsApplied, markPrefsApplied\);\s*\}\)\s*\.catch\(markPrefsApplied\);\s*else markPrefsApplied\(\);/,
+    );
+  });
+
+  it("a kept save resent on load is answered before the rail says applied", () => {
+    // The server's copy then has it too: a check that waits on the mark
+    // reads the resent save, not the copy from before it landed.
+    expect(SHELL).toMatch(
+      /Promise\.all\(\s*over\.resend\.map\(function \(r\) \{\s*return saveShell\(r\.patch, r\.at\);\s*\}\),?\s*\)\.then\(markPrefsApplied, markPrefsApplied\);/,
     );
     expect(SHELL).toMatch(
       /function markPrefsApplied\(\) \{[\s\S]*?getElementById\("den-rail"\)[\s\S]*?setAttribute\("data-prefs-applied", ""\)/,

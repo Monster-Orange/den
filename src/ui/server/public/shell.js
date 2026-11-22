@@ -9014,10 +9014,13 @@
         });
         remember();
         dockFromPrefs();
-        over.resend.forEach(function (r) {
-          saveShell(r.patch, r.at);
-        });
-        markPrefsApplied();
+        // A kept save is resent, and answered (or not), before the rail
+        // says applied: the server's copy then has it too.
+        Promise.all(
+          over.resend.map(function (r) {
+            return saveShell(r.patch, r.at);
+          }),
+        ).then(markPrefsApplied, markPrefsApplied);
       })
       .catch(markPrefsApplied);
   else markPrefsApplied();
