@@ -590,7 +590,7 @@ import { terminalLinkRedirect, terminalsPageHtml } from "./terminals-page.js";
 import {
   fixtureSave,
   mergeShellPrefs,
-  readFixturePins,
+  prunedFixturePins,
   writeFixturePins,
   pinnedItems,
   shellPrefs,
@@ -9007,6 +9007,11 @@ async function handleRequest(
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
+      // Issue 957: a pin dropped from user.yml leaves the fixture's record.
+      prunedFixturePins(
+        getStateDir(),
+        shellPrefs(user.shell, pinProjects()).pins,
+      );
       const editorList = editors.listEditors();
       const terminalList = editors.listTerminals();
       return sendJson(res, {
@@ -9374,7 +9379,8 @@ async function handleRequest(
           if (!sh.ok) return send400(res, sh.error);
           // Issue 946: a pin makes a held write on it wait for an Allow, so
           // the fixture person adds pins and takes off only its own.
-          const added = readFixturePins(getStateDir());
+          // Issue 957: only the fixture's pins still stored before this save.
+          const added = prunedFixturePins(getStateDir(), before.pins);
           if (fixture) {
             const f = fixtureSave(before.pins, sh.value.pins, added);
             sh.value.pins = f.pins;
