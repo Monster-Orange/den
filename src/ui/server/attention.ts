@@ -238,6 +238,12 @@ interface Waiting {
    * the agent's next turn ending with no question says it no longer asks.
    */
   turn?: boolean;
+  /**
+   * Issue 828: a question on the agent's screen (AskUserQuestion, an
+   * elicitation): its answer (a tool run, a prompt) or its turn's end
+   * ends it; never sent to the lead.
+   */
+  dialog?: boolean;
 }
 
 export class Attention {
@@ -328,6 +334,8 @@ export class Attention {
           input?: string;
           /** The ask is its turn's last line, not an ask_human call. */
           turn?: boolean;
+          /** Issue 828: a question on the agent's screen. */
+          dialog?: boolean;
         }
       | { event: "finished"; text?: string; question?: string }
       | {
@@ -371,13 +379,14 @@ export class Attention {
       // Issue 327: a new session has no dialog from before it; an ask
       // stays (Den holds the question, not the session).
       if (ev.from === "session") {
-        if (w.why !== "asked") this.clear(agent);
+        if (w.why !== "asked" || w.dialog) this.clear(agent);
         return;
       }
       if (this.now() - w.at < RESUME_AFTER_MS) return;
       // An ask is answered by a prompt (the person's reply), not by the
-      // ask_human call itself finishing.
-      if (w.why === "asked" && ev.from !== "prompt") return;
+      // ask_human call itself finishing. Issue 828: a question on screen
+      // is answered in it, and the agent goes on (a tool runs).
+      if (w.why === "asked" && ev.from !== "prompt" && !w.dialog) return;
       this.clear(agent);
       return;
     }
@@ -388,7 +397,7 @@ export class Attention {
       // own: this turn's end says again whether it asks (a hand-back with
       // "Decisions: none" doesn't), so it goes and this end decides.
       const prior = this.waiting.get(agent);
-      if (prior?.why === "asked" && !prior.turn) return;
+      if (prior?.why === "asked" && !prior.turn && !prior.dialog) return;
       // #142: a turn that ended on a question to its person needs them:
       // the question the hook said (issue 142, Claude Code's last answer),
       // else the one its transcript ends on.
@@ -431,6 +440,17 @@ export class Attention {
       return;
     }
     const prev = this.waiting.get(agent);
+    // Issue 828: the permission notice that comes with AskUserQuestion's
+    // dialog is that question, not a permission: a permission with no
+    // tool input (a Notification), or one naming AskUserQuestion. Another
+    // tool's PermissionRequest is its own wait.
+    if (
+      prev?.why === "asked" &&
+      prev.dialog &&
+      ev.why === "permission" &&
+      (!ev.input || /AskUserQuestion/.test(`${ev.what ?? ""} ${ev.text ?? ""}`))
+    )
+      return;
     // Issue 773: waiting is no turn under way. A hookless agent's idle
     // notice is its turn's end (its only one).
     this.working.delete(agent);
@@ -474,6 +494,7 @@ export class Attention {
                 name,
                 text: ev.text ?? "",
                 ...(ev.turn ? { turn: 1 } : {}),
+                ...(ev.dialog ? { dialog: 1 } : {}),
               },
             }
           : { key: "bell.m.input", vars: { name } };
@@ -490,7 +511,7 @@ export class Attention {
     // Den can type to; the same question again isn't told twice.
     const q = ev.text ?? "";
     const lead =
-      ev.why !== "asked"
+      ev.why !== "asked" || ev.dialog
         ? undefined
         : prev?.why === "asked" && prev.lead && prev.text === text
           ? prev.lead
@@ -527,6 +548,7 @@ export class Attention {
       input: what === cur?.what ? (cur?.input ?? ev.input) : ev.input,
       ...(lead ? { lead } : {}),
       ...(ev.why === "asked" && ev.turn ? { turn: true } : {}),
+      ...(ev.why === "asked" && ev.dialog ? { dialog: true } : {}),
     });
     if (lead) {
       let row: Notification | null | undefined = null;
@@ -888,7 +910,11 @@ export class Attention {
         const drop = () => this.d.store.remove((x) => x.id === n.id);
         // An ask ends with its agent stopped or removed; Den holds it
         // across its session ending by itself (as sweepEnded).
-        if (how === "stopped" || (how === "exited" && why !== "asked")) {
+        const dialog = why === "asked" && n.msg?.vars.dialog === 1;
+        if (
+          how === "stopped" ||
+          (how === "exited" && (why !== "asked" || dialog))
+        ) {
           drop();
           continue;
         }
@@ -918,6 +944,7 @@ export class Attention {
             : n.scope,
           byHook: !!this.d.hooked?.(agent),
           ...(why === "asked" && n.msg?.vars.turn === 1 ? { turn: true } : {}),
+          ...(dialog ? { dialog: true } : {}),
         });
       }
     } catch {
@@ -951,7 +978,7 @@ export class Attention {
     for (const [agent, how] of ended) {
       const w = this.waiting.get(agent);
       if (!w) continue;
-      if (how === "exited" && w.why === "asked") continue;
+      if (how === "exited" && w.why === "asked" && !w.dialog) continue;
       this.clear(agent);
     }
   }
