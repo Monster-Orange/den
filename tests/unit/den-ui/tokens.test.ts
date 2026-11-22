@@ -12,6 +12,7 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { colourLiterals } from "../helpers/colour-literals.js";
 
 const ROOT = path.join(__dirname, "../../..");
 const KIT = path.join(ROOT, "packages/den-ui");
@@ -179,18 +180,24 @@ describe("den-ui tokens (UK-1)", () => {
       }
     };
     walk(SRC);
-    const raw = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i;
+    // Issue 322: a hex colour anywhere, comments too, but an issue number
+    // in a comment ("issue #320", "(#311)"): colourLiterals.
+    const raw = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i;
     const hits = files
       .filter((f) => path.basename(f) !== "tokens.css")
-      .flatMap((f) =>
-        fs
-          .readFileSync(f, "utf-8")
-          .replace(/\/\*[\s\S]*?\*\//g, "")
-          .split("\n")
-          .map((l, i) => ({ l, at: `${path.relative(KIT, f)}:${i + 1}` }))
-          .filter((x) => raw.test(x.l))
-          .map((x) => x.at),
-      );
+      .flatMap((f) => {
+        const text = fs.readFileSync(f, "utf-8");
+        const at = (n: number) => `${path.relative(KIT, f)}:${n}`;
+        return [
+          ...colourLiterals(text).map((h) => at(h.line)),
+          ...text
+            .replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " "))
+            .split("\n")
+            .map((l, i) => ({ l, n: i + 1 }))
+            .filter((x) => raw.test(x.l))
+            .map((x) => at(x.n)),
+        ];
+      });
     expect(hits).toEqual([]);
   });
 

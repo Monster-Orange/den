@@ -6,7 +6,11 @@
  * ~/Library/Application Support/den/gate-slots (macOS), else
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
- *   settings.json     cpu_slots, overrun_margin_minutes,
+ *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
+ *                     cpu_slots_beside_release_browser (its follow-up),
+ *                     cpu_hold_load (issue 1009),
+ *                     local_browser_slots,
+ *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
  *                     803: class_order, class_map, class_windows (text)
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
@@ -52,6 +56,7 @@ import {
   readClasses,
 } from "./classes.js";
 import {
+  DEFAULT_ESTIMATE_MIN,
   GATE_DEFAULTS,
   byAsked,
   expectedStart,
@@ -91,7 +96,17 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
 
 export type GateSettingsPatch = {
   cpu_slots?: number | null;
+  /** Issue 751: cpu runs beside a browser run here; 0: it runs alone. */
+  cpu_slots_beside_browser?: number | null;
+  /** Issue 751 follow-up: cpu runs beside a release browser run (0). */
+  cpu_slots_beside_release_browser?: number | null;
+  /** Browser runs that may hold this machine at once (default 1). */
+  local_browser_slots?: number | null;
+  /** Issue 1009: cpu asks wait at this load under a release run (0: off). */
+  cpu_hold_load?: number | null;
   overrun_margin_minutes?: number | null;
+  /** Issue 993: held past this many times its estimate: the bell. */
+  overrun_bell_multiple?: number | null;
   remote_renew_seconds?: number | null;
   remote_lapse_seconds?: number | null;
   remote_max_slots?: number | null;
@@ -131,14 +146,25 @@ export const GATE_LIMITS: Record<
   { min: number; max: number; int: boolean }
 > = {
   cpu_slots: { min: 1, max: 64, int: true },
+  // Issue 751: 0 is "a browser run runs alone".
+  cpu_slots_beside_browser: { min: 0, max: 64, int: true },
+  // 0 (the default) is "a release browser run runs alone".
+  cpu_slots_beside_release_browser: { min: 0, max: 64, int: true },
+  // Each local browser run is in its own container; 1 is one at a time.
+  local_browser_slots: { min: 1, max: 64, int: true },
+  // Issue 1009: a 5-minute load average; 0 turns the hold off.
+  cpu_hold_load: { min: 0, max: 1024, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  // Issue 993: 1 is "as soon as it passes its estimate".
+  overrun_bell_multiple: { min: 1, max: 100, int: false },
   remote_renew_seconds: { min: 5, max: 3600, int: true },
   remote_lapse_seconds: { min: 10, max: 24 * 3600, int: true },
   remote_max_slots: { min: 1, max: 256, int: true },
   remote_max_asks: { min: 1, max: 256, int: true },
   // Issue 715: release priority. 0 turns it off; agents 1 yes, 0 no.
   priority_max: { min: 0, max: 16, int: true },
-  priority_pass_limit_minutes: { min: 1, max: 24 * 60, int: false },
+  // Issue 751: between marked runs only; 0: a marked run is never passed.
+  priority_pass_limit_minutes: { min: 0, max: 24 * 60, int: false },
   priority_agents: { min: 0, max: 1, int: true },
   // Issue 739: CI runners may ask for priority; 1 yes, 0 no.
   priority_runners: { min: 0, max: 1, int: true },
@@ -219,6 +245,38 @@ export type GateEvent =
   | "passed-unclaimed"
   | "yielded";
 
+/** Issue 963: one key's change: the value in effect before and after. */
+export interface GateSettingChange {
+  from: number | string | null;
+  to: number | string | null;
+}
+
+/** Issue 963: a settings change, in the slot log. */
+export interface GateSettingsRow {
+  at: string;
+  event: "settings";
+  /** Who changed it, named as an ask is (gate run's who). */
+  by: string;
+  changes: Record<string, GateSettingChange>;
+}
+
+/** A settings key's value in effect, as stored (true/false as 1/0). */
+function settingValue(s: GateSettings, key: string): number | string | null {
+  const camel = key.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+  const v = (s as unknown as Record<string, unknown>)[camel];
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (typeof v === "number" || typeof v === "string") return v;
+  return null;
+}
+
+/** Issue 999: the median of some minutes, to a whole minute. */
+function median(xs: number[]): number {
+  const v = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  const m = v.length % 2 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
+  return Math.max(1, Math.round(m));
+}
+
 export interface GateEventRow {
   at: string;
   event: GateEvent;
@@ -282,6 +340,11 @@ export interface GateStoreOpts {
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
   platform?: NodeJS.Platform;
+  /**
+   * Issue 1009: the machine's 5-minute load average (default
+   * os.loadavg()[1]); tests pass a stub.
+   */
+  load?: () => number;
 }
 
 /**
@@ -328,6 +391,7 @@ export class GateStore {
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
   private readonly probe: BoxProbe;
+  private readonly readLoad: () => number;
   readonly platform: NodeJS.Platform;
 
   constructor(o: GateStoreOpts = {}) {
@@ -337,10 +401,26 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.probe = o.probe ?? realBoxProbe;
+    this.readLoad = o.load ?? (() => os.loadavg()[1]!);
+  }
+
+  /** Issue 1009: the machine's 5-minute load average now (NaN: unread). */
+  load(): number {
+    try {
+      const n = this.readLoad();
+      return Number.isFinite(n) ? n : NaN;
+    } catch {
+      return NaN;
+    }
   }
 
   private get slots() {
     return path.join(this.dir, "slots");
+  }
+
+  /** Issue 993: the store's clock (ms), as its rules read the time. */
+  clock(): number {
+    return this.now();
   }
 
   settings(): GateSettings & BoxSettings {
@@ -362,9 +442,26 @@ export class GateStore {
       };
       return {
         cpuSlots: Math.floor(num("cpu_slots", GATE_DEFAULTS.cpuSlots)),
+        cpuSlotsBesideBrowser: Math.floor(
+          num("cpu_slots_beside_browser", GATE_DEFAULTS.cpuSlotsBesideBrowser),
+        ),
+        cpuSlotsBesideReleaseBrowser: Math.floor(
+          num(
+            "cpu_slots_beside_release_browser",
+            GATE_DEFAULTS.cpuSlotsBesideReleaseBrowser,
+          ),
+        ),
+        localBrowserSlots: Math.floor(
+          num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),
+        ),
+        cpuHoldLoad: num("cpu_hold_load", GATE_DEFAULTS.cpuHoldLoad),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
+        ),
+        overrunBellMultiple: num(
+          "overrun_bell_multiple",
+          GATE_DEFAULTS.overrunBellMultiple,
         ),
         ...leaseTimes(
           num("remote_renew_seconds", GATE_DEFAULTS.remoteRenewSeconds),
@@ -430,8 +527,41 @@ export class GateStore {
     }
   }
 
-  /** Writes the machine's settings; null clears a key (default again). */
-  writeSettings(patch: GateSettingsPatch): void {
+  /**
+   * Writes the machine's settings; null clears a key (default again).
+   * Issue 963: each change is in the slot log, with `by` (who changed it,
+   * named as an ask is), when, and each key's value before and after (the
+   * value in effect: a cleared key's is its default). No change, no row.
+   */
+  writeSettings(patch: GateSettingsPatch, by = "unknown"): void {
+    const before = this.settings();
+    this.writeSettingsFile(patch);
+    const after = this.settings();
+    const changes: Record<string, GateSettingChange> = {};
+    for (const k of Object.keys(patch)) {
+      const from = settingValue(before, k);
+      const to = settingValue(after, k);
+      if (from !== to) changes[k] = { from, to };
+    }
+    if (!Object.keys(changes).length) return;
+    fs.mkdirSync(this.dir, { recursive: true });
+    const row: GateSettingsRow = {
+      at: new Date(this.now()).toISOString(),
+      event: "settings",
+      by,
+      changes,
+    };
+    fs.appendFileSync(this.eventsFile, JSON.stringify(row) + "\n");
+  }
+
+  /** Issue 963: the slot log's settings changes, oldest first. */
+  settingsChanges(): GateSettingsRow[] {
+    return this.logRows().filter(
+      (r): r is GateSettingsRow => r.event === "settings",
+    );
+  }
+
+  private writeSettingsFile(patch: GateSettingsPatch): void {
     const file = path.join(this.dir, "settings.json");
     let cur: Record<string, unknown> = {};
     try {
@@ -475,13 +605,20 @@ export class GateStore {
     return at;
   }
 
+  /** The runs' rows (issue 963: never a settings change). */
   events(): GateEventRow[] {
+    return this.logRows().filter(
+      (r): r is GateEventRow => r.event !== "settings",
+    );
+  }
+
+  private logRows(): (GateEventRow | GateSettingsRow)[] {
     try {
       return fs
         .readFileSync(this.eventsFile, "utf-8")
         .split("\n")
         .filter(Boolean)
-        .map((l) => JSON.parse(l) as GateEventRow);
+        .map((l) => JSON.parse(l) as GateEventRow | GateSettingsRow);
     } catch {
       return [];
     }
@@ -642,7 +779,8 @@ export class GateStore {
     }
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
-    for (const g of assign(entries, s, now, caps.caps)) {
+    // Issue 1009: the machine's load, read once per pass.
+    for (const g of assign(entries, s, now, caps.caps, this.load())) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its
@@ -681,6 +819,73 @@ export class GateStore {
     return this.locked(() => this.settle());
   }
 
+  /**
+   * Issue 999: a run's estimate from the slot log's finished runs: the
+   * median of the label's last 10 (3 or more), else of the asker's last
+   * 10 of its kind, else none. The asker: the same `who`, or its agent.
+   */
+  measured(o: {
+    kind: GateKind;
+    label: string;
+    who: string;
+    actor?: string;
+  }): { minutes: number; from: "label" | "actor" } | null {
+    const done = this.events().filter(
+      (r) => r.event === "released" && typeof r.minutes === "number",
+    );
+    const last10 = (rows: GateEventRow[]) =>
+      rows.slice(-10).map((r) => r.minutes!);
+    const label = last10(
+      done.filter((r) => r.kind === o.kind && r.label === o.label),
+    );
+    if (label.length >= 3) return { minutes: median(label), from: "label" };
+    // Its agent's runs from any project, or the same asker in words.
+    const mine = last10(
+      done.filter(
+        (r) =>
+          r.kind === o.kind &&
+          (r.who === o.who || (!!o.actor && r.actor === o.actor)),
+      ),
+    );
+    return mine.length ? { minutes: median(mine), from: "actor" } : null;
+  }
+
+  /**
+   * Issue 999: the entry's estimate fields. None given: the measured
+   * median, else the kind's default. Given and over twice the median: kept
+   * and flagged, and the queue uses the median.
+   */
+  private estimateOf(o: {
+    kind: GateKind;
+    label: string;
+    who: string;
+    actor?: string;
+    estimateMin?: number;
+  }): Pick<
+    GateEntry,
+    "estimateMin" | "estimateFrom" | "expectedMin" | "expectedFrom" | "padded"
+  > {
+    const m = this.measured({
+      kind: o.kind,
+      label: o.label.slice(0, 120),
+      who: o.who.slice(0, 200),
+      ...(o.actor ? { actor: o.actor } : {}),
+    });
+    if (o.estimateMin === undefined)
+      return m
+        ? { estimateMin: m.minutes, estimateFrom: m.from }
+        : { estimateMin: DEFAULT_ESTIMATE_MIN, estimateFrom: "default" };
+    if (m && o.estimateMin > 2 * m.minutes)
+      return {
+        estimateMin: o.estimateMin,
+        estimateFrom: "given",
+        expectedMin: m.minutes,
+        expectedFrom: m.from,
+        padded: true,
+      };
+    return { estimateMin: o.estimateMin, estimateFrom: "given" };
+  }
+
   /** One slot now (after settling), or null when it is gone. */
   get(id: string): GateEntry | null {
     return this.list().find((e) => e.id === id) ?? null;
@@ -692,7 +897,8 @@ export class GateStore {
     who: string;
     label: string;
     pid: number;
-    estimateMin: number;
+    /** Issue 999: absent: the measured median, else the kind's default. */
+    estimateMin?: number;
     agent?: boolean;
     actor?: string;
     /** Issue 715: a release run a person waits on, and why. */
@@ -724,7 +930,7 @@ export class GateStore {
         label: o.label.slice(0, 120),
         pid: o.pid,
         askedAt: new Date(this.now()).toISOString(),
-        estimateMin: o.estimateMin,
+        ...this.estimateOf(o),
         ...(o.agent ? { agent: true } : {}),
         ...(o.actor && /^agent:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(o.actor)
           ? { actor: o.actor }

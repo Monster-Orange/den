@@ -51,10 +51,21 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     approve_attempts: true,
     approve_window_seconds: true,
   },
+  // Issue 796: agents' read-only page views.
+  web_agent_view: { on: true, minutes: true },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
+    // Issue 751: cpu runs beside a browser run.
+    cpu_slots_beside_browser: true,
+    // Its follow-up: cpu runs beside a release browser run.
+    cpu_slots_beside_release_browser: true,
+    // Issue 1009: cpu runs wait at this load under a release run.
+    cpu_hold_load: true,
+    local_browser_slots: true,
     overrun_margin_minutes: true,
+    // Issue 993: past this many times its estimate, in the bell.
+    overrun_bell_multiple: true,
     remote_renew_seconds: true,
     remote_lapse_seconds: true,
     remote_max_slots: true,
@@ -91,6 +102,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // issue_write: which roles write GitHub issues, and how many an hour.
+  agent_issue_writes: { roles: true, per_hour: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -134,7 +147,15 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     timeout_seconds: true,
     retries: true,
     backoff_seconds: true,
+  }, // The shared GitHub watcher's pace and API budget.
+  github: {
+    watch_interval_seconds: true,
+    watch_max_interval_seconds: true,
+    api_budget_floor: true,
+    watches_max: true,
   },
+  // Issue 742: how long a held write waits for the person's Allow.
+  held_writes: { wait_minutes: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -192,6 +213,8 @@ describe("the settings inventory (R21)", () => {
         "graph.workspaces",
         // HUB-1.5: Hub's tools without asking.
         "hub_allow_tools",
+        // Issue 158: the Hub delivery loop in agents' instructions.
+        "hub_delivery_loop",
         "hub_url",
         // The UI's language (R19, 0.3.0-dev.39).
         "language",
@@ -221,10 +244,17 @@ describe("the settings inventory (R21)", () => {
         "crash_loop.minutes",
         "crash_loop.max_wait_seconds",
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
+        "web_agent_view.minutes",
+        "web_agent_view.on",
         "web_bridge.listen",
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.
         "web_github.owner_name_timeout_seconds",
+        // The shared GitHub watcher's pace and API budget.
+        "github.watch_interval_seconds",
+        "github.watch_max_interval_seconds",
+        "github.api_budget_floor",
+        "github.watches_max",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",
@@ -238,10 +268,15 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.class_map",
         "gate_slots.class_order",
         "gate_slots.class_windows",
+        "gate_slots.cpu_hold_load",
         "gate_slots.cpu_slots",
+        "gate_slots.cpu_slots_beside_browser",
+        "gate_slots.cpu_slots_beside_release_browser",
+        "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
+        "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
         "gate_slots.priority_max",
@@ -261,6 +296,9 @@ describe("the settings inventory (R21)", () => {
         "reports.hub_timeout_seconds",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
+        // issue_write: which roles write GitHub issues, and how many an hour.
+        "agent_issue_writes.roles",
+        "agent_issue_writes.per_hour",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",
@@ -272,6 +310,14 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        "embed.feed_event_max_kb",
+        "embed.feed_events_per_minute",
+        "embed.feed_max_streams",
+        "embed.feed_keep_events",
+        "embed.feed_read_max_kb",
+        "embed.feed_list_timeout_seconds",
+        "embed.feed_list_max_mb",
+        "embed.paste_max_kb",
         // Issue 172: alerts outside the bell.
         "alerts.desktop",
         "alerts.phone",
@@ -303,6 +349,8 @@ describe("the settings inventory (R21)", () => {
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
         "agent_hooks.backoff_seconds",
+        // Issue 742: how long a held write waits for the person's Allow.
+        "held_writes.wait_minutes",
       ].sort(),
     );
   });

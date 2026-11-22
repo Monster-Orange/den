@@ -390,7 +390,7 @@ describe("the brittle-pattern ratchet (issue 839)", () => {
     const at = runs.findIndex((r) => r.includes("scripts/brittle-ratchet.mjs"));
     expect(at).toBeGreaterThan(runs.indexOf("npm run lint"));
     expect(runs[at]).toMatch(
-      /--base\s+"?\$\{\{\s*github\.event\.pull_request\.base\.sha\s*\}\}"?/,
+      /--base\s+"?\$\{\{\s*github\.event\.pull_request\.base\.sha\s*\|\|\s*github\.event\.merge_group\.base_sha\s*\}\}"?/,
     );
     const checkout = pr.find((st) =>
       (st.uses ?? "").startsWith("actions/checkout"),

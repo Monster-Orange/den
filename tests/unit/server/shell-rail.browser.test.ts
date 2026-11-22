@@ -562,7 +562,7 @@ describe("the scope breadcrumb (R4)", () => {
     });
     expect(await menuRows(p)).toEqual([
       { text: "All active (2)", role: "menuitemradio", checked: "false" },
-      { text: "ws-aCLI default", role: "menuitemradio", checked: "false" },
+      { text: "ws-a", role: "menuitemradio", checked: "false" },
       { text: "ws-b", role: "menuitemradio", checked: "true" },
       { text: "Manage projects…", role: "menuitem", checked: null },
     ]);
@@ -1031,7 +1031,8 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     await p.click("#ws-pill");
     await p.waitForSelector(".den-pop");
     const items = await axNames(p, "menuitemradio");
-    expect(items).toContain("default, CLI default");
+    // Issue 897: the row is named by the project alone, no "CLI default".
+    expect(items).toContain("default");
     await p.context().close();
   });
 

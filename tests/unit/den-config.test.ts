@@ -73,6 +73,17 @@ afterEach(() => {
 // ── readDenConfig ──────────────────────────────────────────────────────────
 
 describe("readDenConfig", () => {
+  it("issue 441: keeps the `verify:` block for Verify's own readers", () => {
+    mockFiles({
+      "config/den.yml":
+        "environments: [local]\nverify:\n  environments: [bed]\n  import:\n    max_clauses: 100\n",
+    });
+    expect(readDenConfig().verify).toEqual({
+      environments: ["bed"],
+      import: { max_clauses: 100 },
+    });
+  });
+
   it("includes local by default when no user.yml exists", () => {
     mockFiles({ "config/den.yml": DEN_YML_ALL });
     expect(readDenConfig().environments).toContain("local");

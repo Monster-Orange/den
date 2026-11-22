@@ -1,0 +1,14 @@
+{
+  // Issue 1012: the test files themselves, browser tests too. The typecheck
+  // config leaves out **/*.test.ts, so a test that imported a name its helper
+  // no longer exports passed `npm run typecheck` and failed only when it ran.
+  // Browser tests run callbacks in the page, so this project (only) has the
+  // DOM library. scripts/typecheck-tests.mjs holds it to a per-file baseline
+  // (tests/typecheck-baseline.json) that only goes down.
+  "extends": "./tsconfig.typecheck.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["tests/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

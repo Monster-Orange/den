@@ -107,15 +107,15 @@ function endOnTerm(r: Rig): void {
 describe("0.4.46: one mode for the install, applied on its own, kept through Den's restarts", () => {
   it("(1) the install's mode is under the agent's own and its project's, over the persona's", async () => {
     const r = await rig();
-    persona(r, "server");
+    persona(r, "builder");
     persona(r, "careful", "permission_mode: ask\n");
     let install: unknown = "auto";
     r.deps.installPermission = () => install;
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
     expect(modeOf(r.made[0].args)).toBe("auto");
-    expect(record(r, "server").overrides ?? []).not.toContain("permission");
+    expect(record(r, "builder").overrides ?? []).not.toContain("permission");
     // Over the persona's own mode.
     expect(
       await agents(r, "start", "-w", "north", "--persona", "careful"),
@@ -123,7 +123,7 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     expect(modeOf(r.made[1].args)).toBe("auto");
     // The project's is over it.
     r.wsPermission.south = "edits";
-    expect(await agents(r, "start", "-w", "south", "--persona", "server")).toBe(
+    expect(await agents(r, "start", "-w", "south", "--persona", "builder")).toBe(
       0,
     );
     expect(modeOf(r.made[2].args)).toBe("acceptEdits");
@@ -134,7 +134,7 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     ).toBe(0);
     expect(modeOf(r.made[3].args)).toBe("acceptEdits");
     r.wsPermission.south = undefined as unknown as string;
-    expect(await agents(r, "stop", "server", "-w", "north")).toBe(0);
+    expect(await agents(r, "stop", "builder", "-w", "north")).toBe(0);
     r.made[0].exit(0);
     await settle();
     expect(
@@ -155,16 +155,16 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
   it("(2) a change applies on its own after the turn, the same conversation; a mode chosen for an agent stays", async () => {
     const r = await rig();
     endOnTerm(r);
-    persona(r, "server");
+    persona(r, "builder");
     persona(r, "pinned");
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
     expect(await agents(r, "start", "-w", "north", "--persona", "pinned")).toBe(
       0,
     );
     expect(await agents(r, "permission", "pinned", "edits")).toBe(0);
-    await endedTurn(r, "server");
+    await endedTurn(r, "builder");
     await endedTurn(r, "pinned");
     const d = resolveAgentsDeps(r.deps);
     const mc = modeCheck(d, { pollMs: 20 });
@@ -175,31 +175,31 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     expect(modeOf(r.made.at(-1)!.args)).toBe("acceptEdits");
     await endedTurn(r, "pinned");
     expect(await mc.tick()).toEqual([]);
-    const token = record(r, "server").resumeToken;
+    const token = record(r, "builder").resumeToken;
     // The person sets the install's mode once.
     r.deps.installPermission = () => "auto";
     const d2 = resolveAgentsDeps(r.deps);
     const mc2 = modeCheck(d2, { pollMs: 20 });
-    expect(await mc2.tick()).toEqual(["server"]);
+    expect(await mc2.tick()).toEqual(["builder"]);
     await mc2.pending();
     const last = r.made.at(-1)!;
     expect(last.args.slice(0, 2)).toEqual(["--resume", token]);
     expect(modeOf(last.args)).toBe("auto");
-    expect(record(r, "server").permission).toBe("auto");
+    expect(record(r, "builder").permission).toBe("auto");
     expect(await mc2.tick()).toEqual([]);
   }, 30_000);
 
   it("drill (b): a record that says auto over a process started in ask is drift: restarted after its turn, in auto", async () => {
     const r = await rig();
     endOnTerm(r);
-    persona(r, "server");
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    persona(r, "builder");
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
-    await endedTurn(r, "server");
+    await endedTurn(r, "builder");
     expect(modeOf(r.made.at(-1)!.args)).toBe("default");
     // The record says auto, chosen for it, but nothing restarted it.
-    const file = path.join(r.stateDir, "agents", "server.json");
+    const file = path.join(r.stateDir, "agents", "builder.json");
     const rec = JSON.parse(fs.readFileSync(file, "utf-8"));
     fs.writeFileSync(
       file,
@@ -212,7 +212,7 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
       pollMs: 20,
       commandLineOf: () => launched,
     });
-    expect(await mc.tick()).toEqual(["server"]);
+    expect(await mc.tick()).toEqual(["builder"]);
     await mc.pending();
     const last = r.made.at(-1)!;
     expect(last.args.slice(0, 2)).toEqual(["--resume", token]);
@@ -222,11 +222,11 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
   it("drill (b): a command line that doesn't name the agent's conversation says nothing (the record counts)", async () => {
     const r = await rig();
     endOnTerm(r);
-    persona(r, "server");
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    persona(r, "builder");
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
-    await endedTurn(r, "server");
+    await endedTurn(r, "builder");
     const mc = modeCheck(resolveAgentsDeps(r.deps), {
       pollMs: 20,
       commandLineOf: () =>
@@ -238,13 +238,13 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
   it("a running agent whose mode Den doesn't know (none recorded, none on its command line) is not drift: never restarted", async () => {
     const r = await rig();
     endOnTerm(r);
-    persona(r, "server");
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    persona(r, "builder");
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
-    await endedTurn(r, "server");
+    await endedTurn(r, "builder");
     // A record with no mode (an older Den's, or one written by hand).
-    const file = path.join(r.stateDir, "agents", "server.json");
+    const file = path.join(r.stateDir, "agents", "builder.json");
     const rec = JSON.parse(fs.readFileSync(file, "utf-8"));
     delete rec.permission;
     fs.writeFileSync(file, JSON.stringify(rec));
@@ -262,11 +262,11 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
   it("MODE-3: the row says the mode it should run in and the one its process runs in", async () => {
     const r = await rig();
     endOnTerm(r);
-    persona(r, "server");
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    persona(r, "builder");
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
-    const file = path.join(r.stateDir, "agents", "server.json");
+    const file = path.join(r.stateDir, "agents", "builder.json");
     const rec = JSON.parse(fs.readFileSync(file, "utf-8"));
     const launched = ["claude", ...r.made.at(-1)!.args].join(" ");
     const d = resolveAgentsDeps(r.deps);
@@ -280,7 +280,7 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
         activeWorkspaces: () => ["north"],
         modeOf: () => modeResolver(d, () => launched),
       });
-    const row = () => rows().find((x) => x.agent === "server")!;
+    const row = () => rows().find((x) => x.agent === "builder")!;
     expect([row().mode, row().modeRunning]).toEqual(["ask", "ask"]);
     // Set to auto for it; its process still runs in ask: a mismatch.
     fs.writeFileSync(
@@ -290,7 +290,7 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
     expect([row().mode, row().modeRunning]).toEqual(["auto", "ask"]);
     // A process line that isn't its conversation: the record counts.
     const other = modeResolver(d, () => "claude --permission-mode default");
-    expect(other(record(r, "server") as never, 1)).toEqual({
+    expect(other(record(r, "builder") as never, 1)).toEqual({
       want: "auto",
       // Issue 225: where it comes from.
       source: "own",
@@ -303,8 +303,8 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
   it("MODE-3: an agent that isn't running has no mode on its row", async () => {
     const r = await rig();
     endOnTerm(r);
-    persona(r, "server");
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    persona(r, "builder");
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
     const d = resolveAgentsDeps(r.deps);
@@ -314,7 +314,7 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
       activeWorkspaces: () => ["north"],
       modeOf: () => modeResolver(d, () => null),
     });
-    const row = rows.find((x) => x.agent === "server")!;
+    const row = rows.find((x) => x.agent === "builder")!;
     expect(row).not.toHaveProperty("mode");
     expect(row).not.toHaveProperty("modeRunning");
   }, 30_000);
@@ -322,20 +322,20 @@ describe("0.4.46: one mode for the install, applied on its own, kept through Den
   it("(3) Den's after-turn restart and its restore after a restart keep the mode", async () => {
     const r = await rig();
     endOnTerm(r);
-    persona(r, "server");
+    persona(r, "builder");
     persona(r, "pinned");
     r.deps.installPermission = () => "auto";
-    expect(await agents(r, "start", "-w", "north", "--persona", "server")).toBe(
+    expect(await agents(r, "start", "-w", "north", "--persona", "builder")).toBe(
       0,
     );
     expect(await agents(r, "start", "-w", "north", "--persona", "pinned")).toBe(
       0,
     );
     expect(await agents(r, "permission", "pinned", "edits")).toBe(0);
-    await endedTurn(r, "server");
+    await endedTurn(r, "builder");
     await endedTurn(r, "pinned");
     const d = resolveAgentsDeps(r.deps);
-    await restartAgent(d, "server", "north", "after-turn", { pollMs: 20 });
+    await restartAgent(d, "builder", "north", "after-turn", { pollMs: 20 });
     expect(modeOf(r.made.at(-1)!.args)).toBe("auto");
     await restartAgent(d, "pinned", "north", "after-turn", { pollMs: 20 });
     expect(modeOf(r.made.at(-1)!.args)).toBe("acceptEdits");

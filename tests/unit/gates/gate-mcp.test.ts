@@ -15,6 +15,7 @@ import {
 } from "../../../src/ui/mcp/tools.js";
 import type { DenApi } from "../../../src/ui/mcp/api.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -137,9 +138,15 @@ describe("gate slots over MCP", () => {
     ]);
     expect(status.settings).toEqual({
       cpuSlots: 2,
+      cpuSlotsBesideBrowser: 2,
+      cpuSlotsBesideReleaseBrowser: 0,
+      // Issue 1009: cores × 4 / 3 on the machine the test runs on.
+      cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
+      localBrowserSlots: 1,
       overrunMarginMinutes: 15,
+      overrunBellMultiple: 2,
       priorityMax: 1,
-      priorityPassLimitMinutes: 60,
+      priorityPassLimitMinutes: 0,
       priorityAgents: true,
       priorityRunners: true,
       claimMinutes: 3,

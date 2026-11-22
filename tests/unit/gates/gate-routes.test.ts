@@ -10,6 +10,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 import { handleGateRoutes } from "../../../src/ui/server/gate-routes.js";
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 
@@ -92,9 +93,15 @@ describe("gate-slot routes", () => {
     expect(r.status).toBe(200);
     expect(r.json.settings).toEqual({
       cpuSlots: 2,
+      cpuSlotsBesideBrowser: 2,
+      cpuSlotsBesideReleaseBrowser: 0,
+      // Issue 1009: cores × 4 / 3 on the machine the test runs on.
+      cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
+      localBrowserSlots: 1,
       overrunMarginMinutes: 15,
+      overrunBellMultiple: 2,
       priorityMax: 1,
-      priorityPassLimitMinutes: 60,
+      priorityPassLimitMinutes: 0,
       priorityAgents: true,
       priorityRunners: true,
       claimMinutes: 3,

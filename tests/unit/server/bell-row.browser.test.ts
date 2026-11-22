@@ -9,6 +9,9 @@
  *      one accessible name, and Enter opens it.
  *   4. The controls inside a row (×N, ⊘) do their own thing and never
  *      open the row, by click or by Enter.
+ *   5. Issue 187: every row that opens on a click shows the pointer
+ *      cursor anywhere on it (its dot, its text, its time, the space
+ *      between), in en, es and ja.
  *
  * DEN_HELPERS_BROWSER=webkit runs it in WebKit; DEN_PW_WS connects to a
  * Playwright server instead of a local browser. Invented names only.
@@ -148,6 +151,36 @@ async function stays(p: Page): Promise<void> {
 
 const esc = (u: string) => u.replace(/[?]/g, "\\?");
 
+/**
+ * Issue 187: the cursor at every part of every row that opens on a click
+ * (the row itself, its dot, its text, its time), as "<part> <cursor>" for
+ * each one that isn't the pointer.
+ */
+async function notPointer(p: Page): Promise<string[]> {
+  return p.$$eval("#den-bell-pop [data-id][data-kind]", (rows) => {
+    const out: string[] = [];
+    let n = 0;
+    for (const r of rows) {
+      if (!r.querySelector('a[data-bell="open"]')) continue;
+      n++;
+      const parts: [string, Element | null][] = [
+        ["row", r],
+        ["dot", r.querySelector("[aria-hidden]")],
+        ["text", r.querySelector('a[data-bell="open"]')],
+        ["time", r.querySelector("time")],
+      ];
+      for (const [what, el] of parts) {
+        if (!el) continue;
+        const c = getComputedStyle(el).cursor;
+        if (c !== "pointer")
+          out.push(`${(r as HTMLElement).dataset.id} ${what} ${c}`);
+      }
+    }
+    if (!n) out.push("no row opens on a click");
+    return out;
+  });
+}
+
 describe.each([1280, 390])(
   "issue 93: a bell row opens on a click anywhere (%i px)",
   (width) => {
@@ -190,6 +223,16 @@ describe.each([1280, 390])(
       },
       90_000,
     );
+
+    it("issue 187: every row that opens shows the pointer cursor", async () => {
+      if (skip()) return;
+      const p = await open(width);
+      await openBell(p);
+      await p.locator('#den-bell-pop [data-bell="updates"]').click();
+      await p.locator('#den-bell-pop [data-kind="service"]').waitFor();
+      expect(await notPointer(p)).toEqual([]);
+      await p.context().close();
+    }, 90_000);
 
     it("Tab reaches the row's link: one name, a focus ring, and Enter opens it", async () => {
       if (skip()) return;
@@ -266,7 +309,7 @@ describe.each([1280, 390])(
   },
 );
 
-describe("issue 93: no Open in any row, in en, es and ja", () => {
+describe("issues 93, 187: no Open in any row, and the pointer on each, in en, es and ja", () => {
   it.each(["en", "es", "ja"])(
     "%s",
     async (lang) => {
@@ -292,6 +335,8 @@ describe("issue 93: no Open in any row, in en, es and ja", () => {
           els.map((e) => e.textContent ?? ""),
         );
         for (const t of texts) expect(t).not.toMatch(/\b(Open|Abrir)\b|開く/);
+        // Issue 187: and each row that opens shows the pointer.
+        expect(await notPointer(p)).toEqual([]);
         await p.context().close();
       } finally {
         await s!.settings({ language: null });

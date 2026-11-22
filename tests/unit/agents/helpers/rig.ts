@@ -137,6 +137,7 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     config: {
       maxConcurrent: 4,
       restartWaitMs: 120 * 60_000,
+      unaskedExitWindowMs: 10 * 60_000,
       personaPacks: [],
       agents: {},
       runtimeCatalog: [],
@@ -174,10 +175,14 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     hub: async () => null,
     // Never this machine's Hub token cache, nor its processes (0.4.48).
     hubProblem: () => null,
+    // Issue 1016: never this machine's web.url.
+    webUrl: () => null,
     processes: () => [],
     workspaceRepos: () => [],
     // Issue 335: never this machine's workspaces.yml.
     workspaceMcpServers: () => undefined,
+    // Issue 158: never this machine's workspaces.yml either.
+    workspaceHubLoop: () => undefined,
     // D52: Den's own address as agents reach it (never this machine's port).
     denBase: () => DEN_BASE,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).

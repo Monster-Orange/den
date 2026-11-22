@@ -40,6 +40,21 @@
       "src/ui/server/attention.ts",
       "src/ui/server/notification-routes.ts",
       "src/ui/server/session-routes.ts"
+    ],
+    "tests/unit/server/picker-tablet.browser.test.ts": [
+      "packages/den-ui/src/shell.css",
+      "packages/den-ui/src/shell-html.js",
+      "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/bell-allow-review.browser.test.ts": [
+      "src/ui/server/held-bell.ts",
+      "src/ui/server/public/bell.js",
+      "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/picker-tablet-981.browser.test.ts": [
+      "packages/den-ui/src/shell.css",
+      "packages/den-ui/inventory/nav-inventory.js",
+      "src/ui/server/public/shell.js"
     ]
   },
   "subjectless": [
@@ -206,7 +221,6 @@
     "tests/unit/server/terminal-recent.browser.test.ts",
     "tests/unit/server/terminal-reuse.browser.test.ts",
     "tests/unit/server/test-sources-nonblocking.integration.test.ts",
-    "tests/unit/server/theme-switch-isolation.test.ts",
     "tests/unit/server/update-pill.browser.test.ts",
     "tests/unit/server/verify-page.browser.test.ts",
     "tests/unit/server/view-scope.integration.test.ts",
@@ -231,6 +245,7 @@
         "src/ui/server/public/pty-refusal.js",
         "src/ui/server/public/shell-pick.js",
         "src/ui/server/public/term-drop.js",
+        "src/ui/server/public/terminals-list.js",
         "src/ui/server/public/transcript-view.js"
       ],
       "run": [
@@ -288,6 +303,7 @@
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -637,6 +653,7 @@
         "tests/unit/server/settings-signin.browser.test.ts",
         "tests/unit/server/settings-token-go.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-this-machine.browser.test.ts",
@@ -722,6 +739,7 @@
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -829,6 +847,7 @@
         "tests/unit/server/settings-hub-project.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
@@ -911,6 +930,7 @@
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1019,6 +1039,7 @@
         "tests/unit/server/settings-token-go.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-this-machine.browser.test.ts",
@@ -1288,6 +1309,7 @@
         "tests/unit/server/settings-token-go.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-this-machine.browser.test.ts",
@@ -1437,6 +1459,7 @@
         "tests/unit/server/update-security.test.ts",
         "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
+        "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -1468,6 +1491,14 @@
       "why": "tests that read examples/"
     },
     {
+      "when": ["scripts/brittle-ratchet.mjs"],
+      "run": [
+        "tests/unit/scripts/kit-version.test.ts",
+        "tests/unit/test-infra/brittle-ratchet.test.ts"
+      ],
+      "why": "tests that run scripts/brittle-ratchet.mjs"
+    },
+    {
       "when": ["scripts/ci-pw-install.sh"],
       "run": ["tests/unit/test-infra/pw-install.test.ts"],
       "why": "tests that run scripts/ci-pw-install.sh"
@@ -1493,6 +1524,11 @@
       "why": "tests that run scripts/gate-shape.mjs"
     },
     {
+      "when": ["scripts/kit-version.mjs"],
+      "run": ["tests/unit/scripts/kit-version.test.ts"],
+      "why": "tests that run scripts/kit-version.mjs"
+    },
+    {
       "when": ["scripts/org-name-commits.mjs"],
       "run": ["tests/unit/scripts/org-name-commits.test.ts"],
       "why": "tests that run scripts/org-name-commits.mjs"
@@ -1512,8 +1548,16 @@
     },
     {
       "when": ["scripts/release-dry-run.mjs"],
-      "run": ["tests/unit/scripts/release-dry-run.test.ts"],
+      "run": [
+        "tests/unit/scripts/release-dry-run.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/release-dry-run.mjs"
+    },
+    {
+      "when": ["scripts/release-tree-check.mjs", "scripts/ci-force-all.mjs"],
+      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "why": "tests that run scripts/release-tree-check.mjs"
     },
     {
       "when": ["scripts/setup-secrets.ts"],
@@ -1535,6 +1579,11 @@
         "tests/unit/server/i18n-pages.browser.test.ts"
       ],
       "why": "tests that run scripts/words.js"
+    },
+    {
+      "when": ["src/shared/agents/runtimes.ts"],
+      "run": ["tests/unit/agents/agent-shell-install-home.test.ts"],
+      "why": "starts Den as a process: its subject"
     },
     {
       "when": ["src/pillars/browser/setup.ts", "src/pillars/smoke/setup.ts"],
@@ -1641,6 +1690,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/shared/fixture-person.ts"],
+      "run": ["tests/unit/server/fixture-person.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": [
         "src/shared/hub-delivery-loop.ts",
         "src/shared/hub-delivery.ts",
@@ -1669,6 +1723,21 @@
       "run": [
         "tests/unit/server/issue-601-loopback-address.integration.test.ts"
       ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/pair-requests.ts",
+        "src/ui/server/pair-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/issue-819-device-approval.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/signin-methods.ts"],
+      "run": ["tests/unit/server/issue-868-signin-methods.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -1739,8 +1808,21 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/shared/fixture-person.ts"],
+      "run": ["tests/unit/server/shell-poll-in-flight.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/server/shutdown-guard.ts"],
       "run": ["tests/unit/server/shutdown-bounded.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/pair-requests.ts",
+        "src/ui/server/pair-routes.ts"
+      ],
+      "run": ["tests/unit/server/signed-in-request-limit.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

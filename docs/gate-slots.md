@@ -1,8 +1,59 @@
 # Gate slots
 
 One machine runs heavy test runs for many repos and installs, so they take
-turns. A browser suite holds the machine alone. Unit suites share it, 2 at a
-time by default. First come, first served. A run is never stopped by another.
+turns. Unit suites (`cpu`) share it, 2 at a time by default (`cpu_slots`).
+Browser and cpu runs wait in separate lines, first come, first served within
+each: a cpu run never waits behind a browser run, and a browser run never
+waits behind a cpu run. A run is never stopped by another.
+
+## cpu runs beside a browser run
+
+Up to `cpu_slots_beside_browser` cpu runs (default 2, never more than
+`cpu_slots`) may run on this machine while a browser run does. At 0, a
+browser run runs alone, as before. A browser run on a test box (below) does
+not hold this machine, so it doesn't count.
+
+A release-priority browser run uses `cpu_slots_beside_release_browser`
+instead (default 0): it runs alone, so other runs don't slow its checks.
+While one waits, cpu runs drain to that number and no new ones start; while
+one holds this machine, cpu runs wait for it. Other browser runs keep
+`cpu_slots_beside_browser`. `gate settings --cpu-slots-beside-release-browser N`
+sets it.
+
+Issue 1009: while the machine's 5-minute load average is at or above
+`cpu_hold_load` and a release-priority browser run holds a browser slot,
+here or on a test box (its app still runs here), cpu asks wait. The default
+is the machine's cores × 4 / 3 (24 on 18 cores); 0 turns it off. Holders
+are never stopped, and a release-priority cpu ask goes through (a release
+run's own next step never waits on it). A plain cpu ask is granted on the next pass once the load
+drops or the release run ends. `gate status` and the Gate panel say why:
+"waiting: load 38 ≥ 24 while a release run holds the browser slot".
+`gate settings --cpu-hold-load N` sets it.
+
+A browser run that waits only because more cpu runs hold the machine than
+may run beside it is never starved: while it waits, no new cpu run starts
+past that number. Once they drop to it, the browser run starts.
+
+```sh
+den gate settings --cpu-slots-beside-browser 0   # a browser run runs alone
+```
+
+## More than one browser run on this machine
+
+`local_browser_slots` (default 1) is how many browser runs may hold this
+machine at once, counted the way a test box's slots are. Each browser run
+here is in its own container, so a person may set it higher. A browser run
+on a test box doesn't use one. The cpu runs beside them stay at
+`cpu_slots_beside_browser` in all, however many browser runs hold. With
+more than one, `gate status` guesses a browser waiter's start from the slot
+that frees first.
+
+```sh
+den gate settings --local-browser-slots 2
+```
+
+`gate status`, `gate_slot_status` and the runner route's `place` give a
+waiting run's place in its own kind's line (1 is next).
 
 On the machine itself, wrap the run:
 
@@ -80,11 +131,14 @@ Use it only for a release run that the person marked, or that is for an
 issue the person reported. It goes to the front of its kind's waiting runs.
 
 - It never stops a run that holds a slot. It waits for that run to end.
+- It goes ahead of every plain waiting run of its kind, however long that
+  run has waited.
 - One such run per kind has priority at a time (`priority_max`, default 1).
   A second waits behind the first, then takes priority once the first
   starts.
-- It never passes a run that has waited `priority_pass_limit_minutes`
-  (default 60).
+- Between marked runs only: it never passes another marked run that has
+  waited `priority_pass_limit_minutes`. The default, 0, means it never
+  passes another marked run.
 - `priority_agents` (default 1) lets agents ask for it. At 0, only a person
   may. The MCP tool `gate_slot_request` takes `priority: "release"` and a
   `reason` too.
@@ -158,10 +212,14 @@ den gate settings --class-order "release, lane, other" \
 
 ## The order, all together
 
+0. Browser and cpu runs wait in separate lines; this order applies within
+   each. Up to `cpu_slots_beside_browser` cpu runs run beside a browser run
+   on this machine.
 1. A run that holds a slot is never taken back.
 2. A release-priority run (a person's, an agent's or a CI runner's) goes
-   first in its kind, past any class, but never past a run waiting longer
-   than `priority_pass_limit_minutes`.
+   first in its kind, past any class and any plain run, but never past
+   another marked run waiting longer than `priority_pass_limit_minutes`
+   (at 0, never past one).
 3. Then classes, highest first.
 4. Then yields: a run let ahead goes just ahead of the run that let it,
    never past a run that outranks it by 2 or 3.
@@ -343,6 +401,24 @@ out and takes only this machine's slot. The run is told what it got:
 `DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its Playwright server, when
 set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
 
+A test suite that starts its own server on a free port (Den's own browser
+suites do) names a loopback host (`127.0.0.1`, `localhost` or
+`<name>.localhost`) with `*` for the port. The `*` covers only the ports the
+run opened itself, never 80 or 443:
+
+```sh
+den gate run --kind browser --box mini --base-url 'http://127.0.0.1:*' -- npx jest tests/unit/server/x.browser.test.ts
+```
+
+Den's browser test helper (`tests/unit/helpers/browser.ts`) then connects
+to the box's `DEN_PW_WS`, sharing this machine's loopback with it, and holds
+every page to `DEN_GATE_ALLOW`. A `*` port covers the ports a server in the
+test process is listening on now, and the ports of child servers a helper
+saw answer (`startDenServer` claims its child's with `boxOwnPort(port)`).
+A port leaves when its server closes. Any other port on this machine is
+refused, and printed as `box guard: refused <url>`. A box run with no base
+URLs opens no browser.
+
 A CI runner that runs on a box asks for that box's slot by name
 (`"where": "box1"` in its `ask`), so the app, the browser and the tests
 all run on the box. The answer says `box` once it holds the slot.
@@ -380,7 +456,8 @@ machine as its loopback, where ports 80 and 443 may be live services. So:
 
 - `gate run --box …` needs `--base-url`: the app's loopback addresses
   (`localhost`, `*.localhost` or `127.0.0.1`), each with an explicit port
-  other than 80 or 443. Anything else is refused.
+  other than 80 or 443, or `*` for the ports the run opens itself (never
+  those two). Anything else is refused.
 - The run gets `DEN_GATE_ALLOW` (the allowed `host:port` list). Its
   Playwright setup guards every browser context with Den's
   `shared/gates/pw-guard` module (`guardBrowser`), so only those
@@ -396,3 +473,24 @@ slot's box and each box's state, with why a box is skipped. The slot log
 (`events.jsonl`) names the box on each grant and release. Both settings
 are in Settings › Server, or
 `den gate settings --box-check-timeout-seconds N --box-recheck-seconds N`.
+
+## Runs inside a held slot
+
+`gate run` gives its command three variables: `DEN_GATE_SLOT` (the
+slot's id), `DEN_GATE_SLOT_KIND` (`cpu` or `browser`) and
+`DEN_GATE_SLOT_BOX` (`local`, or the test box it runs on). A `gate run`
+started from inside that command, of the same kind and on the same place,
+runs inside the held slot at once: no second entry, no wait behind its
+own slot. It must run under the slot's run (its process or a child of
+it); a process that only sets `DEN_GATE_SLOT` waits in line as any other.
+A nested run of the other kind asks as before. A nested run never
+outlives its slot: when the outer run ends and gives the slot back, the
+nested command is stopped. Inside a held slot, `--browser-endpoint` is not
+used: the held slot's browser is. A slot an agent holds through Den's
+tools (not `gate run`) has no command to nest under, so it has no nested
+runs.
+
+A project's own lock helper can read the same variables: when
+`DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
+held slot and should not lock again.
+

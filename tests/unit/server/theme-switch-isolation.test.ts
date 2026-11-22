@@ -36,6 +36,8 @@ import { signIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { pageImport } from "./helpers/page-import.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { writeHostRefreshState } from "../../../src/shared/sessions/host-refresh-state.js";
+import { writeCheckState } from "../../../src/shared/update-check-state.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -83,8 +85,19 @@ function request(
 }
 
 /**
+ * Issue 748: the server's own state, which it writes on a timer, whatever a
+ * settings change does: the host refresh (host-refresh-state.ts) and the
+ * update check (update-check-state.ts). Paths are relative to tmp.
+ */
+const SERVER_TIMER_FILES = new Set([
+  path.join("home", ".den", "host-refresh.json"),
+  path.join("home", ".den", "server-agent", "update", "check.json"),
+]);
+
+/**
  * Every file of Den's (the distribution, and Den's state home DEN_HOME)
- * → sha256. Not the rest of the throwaway HOME: other tools' state.
+ * → sha256. Not the rest of the throwaway HOME: other tools' state. Not
+ * the server's timer writes (SERVER_TIMER_FILES).
  */
 function snapshot(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -93,7 +106,7 @@ function snapshot(): Record<string, string> {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) walk(abs);
-      else if (e.isFile())
+      else if (e.isFile() && !SERVER_TIMER_FILES.has(path.relative(tmp, abs)))
         out[path.relative(tmp, abs)] = createHash("sha256")
           .update(fs.readFileSync(abs))
           .digest("hex");
@@ -324,6 +337,27 @@ describe("switching theme or mode (criterion 5)", () => {
     }
     // Leave no pin for the tests after this one.
     await request("POST", "/api/settings", { appearance: { theme: null } });
+  });
+
+  // Issue 748: the server writes its own state on a timer (the host
+  // refresh, the update check). Such a write landing between two snapshots
+  // is not a settings change.
+  it("a timer write of the server's own state between snapshots isn't a change", async () => {
+    const before = snapshot();
+    const stateDir = path.join(tmp, "home", ".den");
+    writeHostRefreshState(stateDir, {
+      state: "waiting",
+      startedAt: new Date().toISOString(),
+      waitSeconds: 30,
+      pid: process.pid,
+      by: "start",
+    });
+    writeCheckState(stateDir, { everyMinutes: 60, next: null });
+    const r = await request("POST", "/api/settings", {
+      appearance: { theme: "nope" },
+    });
+    expect(r.status).toBe(400);
+    expect(snapshot()).toEqual(before);
   });
 
   it("refuses a theme that is not installed, writing nothing", async () => {

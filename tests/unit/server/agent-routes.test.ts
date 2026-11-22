@@ -24,6 +24,8 @@ import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { connectHost } from "../../../src/shared/sessions/client.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 
 interface Api {
   r: Rig;
@@ -1553,6 +1555,46 @@ describe("POST /api/workspaces/<ws>/sessions (Plain session, AG-10.1)", () => {
     expect(
       (await a.call("POST", "/api/workspaces/nowhere/sessions")).status,
     ).toBe(404);
+  });
+
+  it("issue 482: { replaces } (Restart) forgets the exited shell it replaces, never a running one", async () => {
+    const a = await api();
+    a.r.deps.maxSessions = () => 4;
+    a.r.deps.env = { ...a.r.deps.env, SHELL: "/bin/sh" };
+    const old = (await a.call("POST", "/api/workspaces/north/sessions")).json
+      .session as { id: string };
+    const live = (await a.call("POST", "/api/workspaces/north/sessions")).json
+      .session as { id: string };
+    a.r.made[0].exit(0);
+    await settle();
+    const c = await connectHost(sessionPaths(a.r.stateDir).socket);
+    try {
+      const ids = async () => (await c.list()).map((s) => s.ref.id);
+      // A running one is never forgotten.
+      const keep = await a.call("POST", "/api/workspaces/north/sessions", {
+        replaces: live.id,
+      });
+      expect(keep.status).toBe(200);
+      expect(await ids()).toContain(live.id);
+      // The exited one goes, in the same request that starts the new one.
+      const r = await a.call("POST", "/api/workspaces/north/sessions", {
+        cwd: a.r.wsDir("north"),
+        replaces: old.id,
+      });
+      expect(r.status).toBe(200);
+      const now = await ids();
+      expect(now).not.toContain(old.id);
+      expect(now).toContain((r.json.session as { id: string }).id);
+      expect(
+        (
+          await a.call("POST", "/api/workspaces/north/sessions", {
+            replaces: 7,
+          })
+        ).status,
+      ).toBe(400);
+    } finally {
+      c.close();
+    }
   });
 
   it("issue 503: no PTY to open is a 503 with code pty_open and the reason, audited", async () => {
