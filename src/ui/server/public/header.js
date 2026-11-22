@@ -87,6 +87,8 @@ if (typeof document !== "undefined")
 const _healthPoll = { visible: 5, hidden: 60 };
 let _healthPollRead = null;
 function _readHealthPoll() {
+  // SEC-1b: a refusal page makes no /api call; the defaults stand.
+  if (apiOff()) return Promise.resolve();
   _healthPollRead ??= fetch("/api/settings", { headers: { accept: "json" } })
     .then((r) => (r.ok ? r.json() : null))
     .then((s) => {
