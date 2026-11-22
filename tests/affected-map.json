@@ -214,7 +214,6 @@
     "tests/unit/server/terminal-recent.browser.test.ts",
     "tests/unit/server/terminal-reuse.browser.test.ts",
     "tests/unit/server/test-sources-nonblocking.integration.test.ts",
-    "tests/unit/server/theme-switch-isolation.test.ts",
     "tests/unit/server/update-pill.browser.test.ts",
     "tests/unit/server/verify-page.browser.test.ts",
     "tests/unit/server/view-scope.integration.test.ts",
