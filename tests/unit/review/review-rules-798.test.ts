@@ -16,6 +16,8 @@ import {
   matchReview,
   reviewAt,
   reviewLoosenings,
+  reviewRulesGuard,
+  reviewSchema,
   type Review,
   type ReviewPr,
 } from "../../../src/shared/review/rules.js";
@@ -412,5 +414,54 @@ describe("in the layered manifest", () => {
       "bare",
     );
     expect(reviewAt(repo, "bare")).toEqual({ file: null, review: undefined });
+  });
+});
+
+describe("a PR that edits the review rules", () => {
+  // The rules come from the base branch, so a PR that sets `rules: []`
+  // would pass under the old rules and turn reviews off once merged.
+  // Such a PR always gets one blocking review, whatever the rules say.
+  const core = reviewSchema.parse(CORE);
+  const base = { file: YML, review: core };
+
+  it("an unchanged section adds nothing", () => {
+    expect(reviewRulesGuard(base, { file: YML, review: core })).toBeNull();
+    expect(
+      reviewRulesGuard(
+        { file: null, review: undefined },
+        { file: null, review: undefined },
+      ),
+    ).toBeNull();
+  });
+
+  it("a removed, loosened, added or unreadable section gets a blocking review", () => {
+    const blocking = {
+      rule: "review-rules-changed",
+      reviews: 1,
+      lenses: ["governance"],
+      blocksMerge: true,
+    };
+    expect(
+      reviewRulesGuard(base, { file: YML, review: { rules: [] } }),
+    ).toEqual(blocking);
+    expect(reviewRulesGuard(base, { file: YML, review: undefined })).toEqual(
+      blocking,
+    );
+    expect(reviewRulesGuard({ file: null, review: undefined }, base)).toEqual(
+      blocking,
+    );
+    // A head whose section Den can't read is a change too.
+    expect(reviewRulesGuard(base, null)).toEqual(blocking);
+  });
+
+  it("a key order change alone is not a change", () => {
+    const reordered = {
+      rules: core.rules.map((r) => ({
+        require: r.require,
+        match: r.match,
+        name: r.name,
+      })),
+    };
+    expect(reviewRulesGuard(base, { file: YML, review: reordered })).toBeNull();
   });
 });
