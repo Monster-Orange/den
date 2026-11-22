@@ -2018,6 +2018,61 @@
     "set.workspace.mcp_servers.d":
       "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Cambia o quita uno aquí. Un agente lo pide con project_mcp_add, project_mcp_update o project_mcp_remove, y tú lo permites.",
     "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
+    "set.workspace.event_feeds": "Flujos de eventos de apps: este proyecto",
+    "set.workspace.event_feeds.d":
+      "Eventos que una app de este proyecto envía en su propio flujo, para un agente. Den escribe al agente una línea corta cuando hay sin leer, cuando está libre, nunca a mitad de turno; el agente los lee con app_feed_read. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade uno en agents.event_feeds; el bearer es un nombre de secrets.refs.",
+    "set.embed.feed_max_streams": "Flujos de apps leídos a la vez",
+    "set.embed.feed_max_streams.d":
+      "El máximo de flujos de eventos de apps que Den lee a la vez, en todos los proyectos. Por encima, un flujo no se lee y las notificaciones de su proyecto lo dicen.",
+    "set.embed.feed_event_max_kb": "Evento de flujo más grande",
+    "set.embed.feed_event_max_kb.d":
+      "El evento más grande que un flujo de app guarda para su agente. Uno mayor se guarda como un aviso de que llegó, sin sus datos, y las notificaciones del proyecto lo dicen.",
+    "set.embed.feed_events_per_minute": "Eventos de flujo por minuto",
+    "set.embed.feed_events_per_minute.d":
+      "Cuántos eventos lee Den de un flujo de app por minuto. Por encima, Den lee el resto según lo permita el ritmo, y las notificaciones del proyecto lo dicen.",
+    "feed.none": "Este proyecto no tiene flujos de eventos de apps.",
+    "feed.row": "{name} a {agent}: {url}",
+    "feed.last": "Último evento {time}.",
+    "feed.noEvents": "Aún no hay eventos.",
+    "set.embed.feed_keep_events": "Eventos que guarda un flujo de app",
+    "set.embed.feed_keep_events.d":
+      "El máximo de eventos que Den guarda para un flujo de app. Por encima, se van los más antiguos, y las notificaciones del proyecto lo dicen si alguno no se había leído.",
+    "set.embed.feed_read_max_kb": "Datos de flujo en una lectura",
+    "set.embed.feed_read_max_kb.d":
+      "El máximo de datos de eventos que da una llamada a app_feed_read. El agente lee el resto con otra llamada.",
+    "set.embed.feed_list_timeout": "Espera de la lista de un flujo",
+    "set.embed.feed_list_timeout.d":
+      "Cuánto espera Den la lista de eventos de una app (llena un hueco tras un corte) antes de volver a intentarlo más tarde.",
+    "set.embed.feed_list_max_mb": "Lista de flujo más grande",
+    "set.embed.feed_list_max_mb.d":
+      "La lista de eventos más grande que Den lee de una app de una vez. Una respuesta mayor se rechaza y se vuelve a intentar más tarde.",
+    "set.embed.paste_max_kb": "Texto máximo escrito en un agente de una vez",
+    "set.embed.paste_max_kb.d":
+      "El máximo de texto que Den escribe en un agente de una vez: comentarios de Hub, mensajes reenviados y líneas de flujos de apps. El resto se escribe después.",
+    "feed.unread": "Sin leer: {n}.",
+    "bell.m.appFeed.dropped":
+      "Flujo {name} para {agent}: se fueron eventos sin leer porque el flujo guarda como máximo su límite.",
+    "feed.problems":
+      "Entradas de agents.event_feeds que no se pueden leer: {n}.",
+    "feed.failed":
+      "No se pudieron leer los flujos de eventos de este proyecto.",
+    "feed.st.connecting": "Conectando",
+    "feed.st.connected": "Conectado",
+    "feed.st.retrying": "Reintentando",
+    "feed.st.no_secret": "Su bearer no está en el almacén de secretos",
+    "feed.st.over_limit": "No se lee: supera el límite de flujos",
+    "feed.st.no_agent": "No se lee: ese agente no está en este proyecto",
+    "feed.st.stopped": "Detenido",
+    "bell.m.appFeed.no_secret":
+      "Flujo {name} para {agent}: su bearer no se puede leer del almacén de secretos. Den sigue intentándolo.",
+    "bell.m.appFeed.rejected":
+      "Flujo {name} para {agent}: la app rechazó la petición de Den. Den sigue intentándolo.",
+    "bell.m.appFeed.too_big":
+      "Flujo {name} para {agent}: un evento superó el límite de tamaño. Se avisó al agente de que llegó, sin sus datos.",
+    "bell.m.appFeed.over_rate":
+      "Flujo {name} para {agent}: supera el límite de ritmo. Sus eventos esperan y se escriben según lo permita el ritmo.",
+    "bell.m.appFeed.over_streams":
+      "Flujo {name} para {agent}: no se lee, supera el límite de flujos leídos a la vez.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
     "pmcp.edit": "Cambiar",

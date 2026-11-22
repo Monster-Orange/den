@@ -2885,6 +2885,59 @@
     "set.workspace.mcp_servers.d":
       "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
     "pmcp.none": "No extra MCP servers for this project's agents.",
+    "set.workspace.event_feeds": "App event feeds: this project",
+    "set.workspace.event_feeds.d":
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+    "set.embed.feed_max_streams": "App feeds read at once",
+    "set.embed.feed_max_streams.d":
+      "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
+    "set.embed.feed_event_max_kb": "Largest app feed event",
+    "set.embed.feed_event_max_kb.d":
+      "The largest event an app feed keeps for its agent. A larger one is kept as a note that it came, without its data, and the project's notifications say so.",
+    "set.embed.feed_events_per_minute": "App feed events a minute",
+    "set.embed.feed_events_per_minute.d":
+      "How many events Den reads from one app feed in a minute. Past it, Den reads the rest as the rate allows, and the project's notifications say so.",
+    "feed.none": "No app event feeds for this project.",
+    "feed.row": "{name} to {agent}: {url}",
+    "feed.last": "Last event {time}.",
+    "feed.noEvents": "No events yet.",
+    "set.embed.feed_keep_events": "Events one app feed keeps",
+    "set.embed.feed_keep_events.d":
+      "The most events Den keeps for one app feed. Past it, the oldest go, and the project's notifications say so when one wasn't read yet.",
+    "set.embed.feed_read_max_kb": "Most app feed data in one read",
+    "set.embed.feed_read_max_kb.d":
+      "The most event data one app_feed_read call gives an agent. It reads the rest with another call.",
+    "set.embed.feed_list_timeout": "App feed list wait",
+    "set.embed.feed_list_timeout.d":
+      "How long Den waits for an app's list of events (it fills a gap after a cut) before it tries again later.",
+    "set.embed.feed_list_max_mb": "Largest app feed list answer",
+    "set.embed.feed_list_max_mb.d":
+      "The largest list of events Den reads from an app at once. A larger answer is refused and tried again later.",
+    "set.embed.paste_max_kb": "Most text typed into an agent at once",
+    "set.embed.paste_max_kb.d":
+      "The most text Den types into an agent in one go: Hub comments, relayed messages and app feed lines. The rest are typed next.",
+    "feed.unread": "Unread: {n}.",
+    "bell.m.appFeed.dropped":
+      "App feed {name} for {agent}: unread events went because the feed keeps at most its limit.",
+    "feed.problems": "Entries in agents.event_feeds that can't be read: {n}.",
+    "feed.failed": "Couldn't read this project's app event feeds.",
+    "feed.st.connecting": "Connecting",
+    "feed.st.connected": "Connected",
+    "feed.st.retrying": "Retrying",
+    "feed.st.no_secret": "Its bearer isn't in the secrets store",
+    "feed.st.over_limit": "Not read: over the limit of feeds",
+    "feed.st.no_agent": "Not read: no such agent in this project",
+    "feed.st.stopped": "Stopped",
+    "bell.m.appFeed.no_secret":
+      "App feed {name} for {agent}: its bearer can't be read from the secrets store. Den keeps trying.",
+    "bell.m.appFeed.rejected":
+      "App feed {name} for {agent}: the app refused Den's request. Den keeps trying.",
+    "bell.m.appFeed.too_big":
+      "App feed {name} for {agent}: an event was over the size limit. The agent was told it came, without its data.",
+    "bell.m.appFeed.over_rate":
+      "App feed {name} for {agent}: over the rate limit. Its events wait and are typed as the rate allows.",
+    "bell.m.appFeed.over_streams":
+      "App feed {name} for {agent}: not read, over the limit of feeds read at once.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "Couldn't read this project's MCP servers.",
     "pmcp.edit": "Change",

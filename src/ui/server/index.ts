@@ -17,6 +17,7 @@ import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
+import { handleAppFeedRoutes, isAppFeedPath } from "./app-feed-routes.js";
 import { githubWatchSettings } from "../../shared/github-watch/settings.js";
 import {
   handleGithubWatchRoutes,
@@ -128,6 +129,7 @@ import {
   parseAddress,
   readManifestAnyBranch,
   workspacesOverridingAgentMode,
+  workspaceEventFeedsRaw,
 } from "../../shared/environment-manager/workspaces.js";
 import {
   parseScope,
@@ -5608,6 +5610,11 @@ async function handleRequest(
     });
     return;
   }
+  // Issue 459: an agent reads its own app feeds (app_feed_read).
+  if (guard.ok && isAppFeedPath(pathname)) {
+    await handleAppFeedRoutes(req, res, pathname, url);
+    return;
+  }
   // Issue 796: an agent asks for a read-only view of these pages.
   if (guard.ok && pathname === "/api/agents/self/view") {
     if (req.method !== "POST") return sendMethodNotAllowed(res);
@@ -10539,6 +10546,55 @@ void CRASH_GATE.then(() =>
           bell: (n) => {
             notificationDeps().store.add(n);
           },
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
+    // Issue 459: a project's app event feeds, each to one of its agents,
+    // through the same loop as Hub's comments (typed when it is idle).
+    void hubChecked
+      .then(() =>
+        Promise.all([
+          import("./app-feed-service.js"),
+          import("./hub-delivery-service.js"),
+          import("../../shared/secrets/index.js"),
+        ]),
+      )
+      .then(([m, dl, sec]) =>
+        m.startAppFeeds({
+          projects: () => {
+            try {
+              return Object.keys(readWorkspacesFile().workspaces ?? {});
+            } catch {
+              return [];
+            }
+          },
+          feedsOf: (ws) => workspaceEventFeedsRaw(ws),
+          agentProject: (agent) =>
+            readAgentRecord(getStateDir(), agent)?.workspace ?? null,
+          secret: async (ref) => {
+            const sref = sec.namedSecretRef(ref);
+            if (!sref) return null;
+            return sec.getSecretsProvider().get(sref);
+          },
+          relay: (dv) => dl.relayMessage(dv),
+          seen: (id) => dl.relaySeen(id),
+          holds: (id) => dl.relayHolds(id),
+          limits: () => {
+            const e = embedSettings(readUserConfig());
+            return {
+              maxStreams: e.feed_max_streams,
+              eventMaxKb: e.feed_event_max_kb,
+              perMinute: e.feed_events_per_minute,
+              keepEvents: e.feed_keep_events,
+              readMaxKb: e.feed_read_max_kb,
+              listTimeoutSeconds: e.feed_list_timeout_seconds,
+              listMaxMb: e.feed_list_max_mb,
+            };
+          },
+          bell: (n) => {
+            notificationDeps().store.add(n);
+          },
+          stateDir: getStateDir(),
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
