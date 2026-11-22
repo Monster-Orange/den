@@ -2000,6 +2000,7 @@ function setLayout(layout) {
   paintList();
   writeUrl();
   if (layout === was) return;
+  // busy-ok: the layout is drawn at once; the save follows in the background
   api("POST", "/api/settings", { agents_layout: layout }).catch((err) =>
     window.denShell?.errorToast?.(err),
   );
@@ -2138,6 +2139,7 @@ function renameTab(tab) {
     tab.hidden = false;
     if (save && name !== (r.displayName || r.agent)) {
       try {
+        // busy-ok: the tab's own field saves on Enter or blur; no button waits
         await api("POST", agentPath(r, "name"), {
           name: name && name !== r.agent ? name : null,
         });
@@ -3248,7 +3250,9 @@ function stopAgent(p, button) {
 }
 
 async function stopAgentNow(r, button) {
-  button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     const out = await api(
       "POST",
@@ -3262,7 +3266,11 @@ async function stopAgentNow(r, button) {
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 /**
@@ -3272,27 +3280,25 @@ async function stopAgentNow(r, button) {
 async function closeShell(p, button) {
   const r = rowOf(p.id);
   if (!r || r.kind !== "session") return;
-  button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
     // Quiet: the pane's own "it keeps running" toast would be wrong here.
     closePane(p.id, { quiet: true });
     window.denShell?.toast?.(t("ag.shellClosed", { id: r.label ?? r.name }));
   } catch (err) {
-    button.disabled = false;
     window.denShell?.errorToast?.(err);
+  } finally {
+    void release();
   }
   await refresh();
 }
 
 /** Issue 448: the shell bar's New terminal: another shell in its project. */
 async function newShell(r, button) {
-  button.disabled = true;
-  try {
-    await openTerminal(r.workspace, { fresh: true });
-  } finally {
-    button.disabled = false;
-  }
+  await openTerminal(r.workspace, { fresh: true, button });
 }
 
 // ── Stopped agents (AG-14) ──────────────────────────────────────────────
@@ -3380,18 +3386,33 @@ const moveDir = (r, dir, focusRow) =>
 /**
  * The move, shown at once (the list is redrawn in the new order), then
  * POSTed; then the list again, "<name> moved to position N of M" for a
- * screen reader, and (from the list) focus on the moved row. A quick
- * answer shows no pop-up and no toast; a slow one gets the working
- * pop-up, as every write does.
+ * screen reader, and (from the list) focus on the moved row. Issue 1054:
+ * no pop-up and no toast. The moved row shows the kit's dots and
+ * aria-busy until the answer; a refusal puts it back (the list is read
+ * again) and says why under the list.
  */
 async function moveOrder(r, to, focusRow) {
   if (!to) return;
   showMoved(r, to);
-  const out = await window.denShell.busyAction(
-    "agent-order",
-    (headers) => api("POST", agentPath(r, "order"), { to }, { headers }),
-    { vars: { id: displayName(r) }, toastFast: false },
+  const row = st.root?.querySelector(
+    `#agl button.agr[data-id="${CSS.escape(r.id)}"]`,
   );
+  const release = window.denShell.holdRow?.(row) ?? (async () => {});
+  const errEl = st.root?.querySelector("#ag-order-err");
+  let out = false;
+  try {
+    await api("POST", agentPath(r, "order"), { to });
+    out = true;
+    if (errEl) errEl.hidden = true;
+  } catch (e) {
+    if (errEl) {
+      errEl.textContent =
+        `${t("busy.ordF", { id: displayName(r) })} ${e?.message || ""}`.trim();
+      errEl.hidden = false;
+    }
+  } finally {
+    await release();
+  }
   await refresh();
   if (!out) return;
   const now =
@@ -3678,7 +3699,9 @@ function relaunchNow(r, button) {
 }
 
 async function askRelaunch(r, button) {
-  if (button) button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     const out = await api("POST", agentPath(r, "handoff"), { relaunch: true });
     window.denShell?.toast?.(
@@ -3689,7 +3712,11 @@ async function askRelaunch(r, button) {
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 /** D28 Write handoff: the prompt, typed into its session at idle. */
@@ -3698,7 +3725,9 @@ function writeHandoff(r, button) {
 }
 
 async function writeHandoffNow(r, button) {
-  if (button) button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await api("POST", agentPath(r, "handoff"), {});
     window.denShell?.toast?.(t("ag.rc.asked", { id: r.agent }));
@@ -3708,7 +3737,11 @@ async function writeHandoffNow(r, button) {
       window.denShell?.toast?.(t("ag.rc.midTurn", { id: r.agent }));
     else window.denShell?.errorToast?.(err);
   }
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 /**
@@ -3727,6 +3760,7 @@ function restartResumeItem(r) {
 
 async function setRestartResume(r, on) {
   try {
+    // busy-ok: a check in the closed menu saves on select; the toast answers
     await api("POST", agentPath(r, "settings"), { resumeOnRestart: on });
     window.denShell?.toast?.(
       t(on ? "ag.rr.on" : "ag.rr.off", { id: displayName(r) }),
@@ -3742,7 +3776,9 @@ async function keepConversation(r, button) {
   const never = !!button
     ?.closest(".agacts, .agrot")
     ?.querySelector("[data-rot-never]")?.checked;
-  if (button) button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await api("POST", agentPath(r, "keep"), never ? { never: true } : {});
     window.denShell?.toast?.(
@@ -3751,7 +3787,11 @@ async function keepConversation(r, button) {
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 /**
@@ -3791,6 +3831,7 @@ function toastAutoRelaunches(rows) {
 /** Undo: the removed agents come back (POST /api/agents/restore). */
 async function undoRemove(ids) {
   try {
+    // busy-ok: fired from a toast's Undo, which is gone once it is pressed
     const out = await api("POST", "/api/agents/restore", { agents: ids });
     const back = out?.restored ?? [];
     if (back.length)
@@ -3811,7 +3852,9 @@ function removedToast(msg, ids) {
 
 /** Remove: one click, no confirm (AG-14.1b). */
 async function removeRow(r, button) {
-  if (button) button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     const out = await api("POST", agentPath(r, "remove"));
     if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
@@ -3824,6 +3867,8 @@ async function removeRow(r, button) {
   } catch (err) {
     window.denShell?.errorToast?.(err);
     await refresh();
+  } finally {
+    void release();
   }
 }
 
@@ -3833,14 +3878,17 @@ async function removeRow(r, button) {
  */
 async function removeShell(r, button) {
   if (!exitedShell(r)) return;
-  if (button) button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
     if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
     window.denShell?.toast?.(t("ag.removed", { id: r.label || r.name }));
   } catch (err) {
-    if (button) button.disabled = false;
     window.denShell?.errorToast?.(err);
+  } finally {
+    void release();
   }
   await refresh();
 }
@@ -3875,13 +3923,14 @@ async function restartShell(r, button) {
  */
 async function newTerminal(button) {
   const view = viewWorkspaces();
-  if (view.length === 1) return void openTerminal(view[0], { fresh: true });
+  if (view.length === 1)
+    return void openTerminal(view[0], { fresh: true, button });
   const choices = newTerminalChoices(
     st.data?.workspaces ?? [],
     st.data?.sessions ?? [],
     shellUsed(),
   );
-  if (!choices.length) return void openTerminal("", { fresh: true });
+  if (!choices.length) return void openTerminal("", { fresh: true, button });
   window.denShell?.openMenu?.(button, {
     label: t("tm.pick"),
     items: choices.map((ws) => ({
@@ -3902,7 +3951,9 @@ async function clearStopped(button) {
   ];
   const shells = visibleRows().filter(exitedShell);
   if (!workspaces.length && !shells.length) return;
-  button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     const out = workspaces.length
       ? await api("POST", "/api/agents/clear-stopped", { workspaces })
@@ -3940,7 +3991,7 @@ async function clearStopped(button) {
     window.denShell?.errorToast?.(err);
     await refresh();
   } finally {
-    button.disabled = false;
+    void release();
   }
 }
 
@@ -3954,7 +4005,9 @@ async function resumeAll(button) {
     ),
   ];
   if (!workspaces.length) return;
-  button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     const out = await window.denShell.api(
       "POST",
@@ -3968,7 +4021,11 @@ async function resumeAll(button) {
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 /**
@@ -3979,13 +4036,16 @@ async function resumeAll(button) {
 async function switchWorkspace(button) {
   const ws = st.data?.requested?.workspace;
   if (!ws) return;
-  button.disabled = true;
+  // The dots stay until the page reloads; an error gives the label back.
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await api("POST", "/api/workspaces", { name: ws, action: "activate" });
     await api("POST", "/api/scope", { scope: ws });
   } catch (err) {
     window.denShell?.errorToast?.(err);
-    button.disabled = false;
+    void release();
     return;
   }
   location.reload();
@@ -4590,7 +4650,9 @@ async function openLink(r, opener) {
   $d("#ag-ln-form").onsubmit = async (e) => {
     e.preventDefault();
     const go = $d("#ag-ln-go");
-    go.disabled = true;
+    const release = window.denShell?.holdDots
+      ? window.denShell.holdDots(go)
+      : () => {};
     try {
       await api("POST", agentPath(r, "link"), { repo: sel.value || null });
       close();
@@ -4600,7 +4662,7 @@ async function openLink(r, opener) {
       err.textContent = x?.message ?? String(x);
       err.hidden = false;
     } finally {
-      go.disabled = false;
+      void release();
     }
   };
   if (typeof dlg.showModal === "function") dlg.showModal();
@@ -4644,7 +4706,9 @@ function openRename(r, opener) {
     e.preventDefault();
     const name = input.value.trim();
     const go = $d("#ag-rn-go");
-    go.disabled = true;
+    const release = window.denShell?.holdDots
+      ? window.denShell.holdDots(go)
+      : () => {};
     try {
       await api("POST", agentPath(r, "name"), {
         name: name && name !== r.agent ? name : null,
@@ -4656,7 +4720,7 @@ function openRename(r, opener) {
       err.textContent = x?.message || String(x);
       err.hidden = false;
     } finally {
-      go.disabled = false;
+      void release();
     }
   };
   if (typeof dlg.showModal === "function") dlg.showModal();
@@ -4705,7 +4769,9 @@ function openMove(r, opener) {
     const to = sel.value;
     if (!to) return;
     const now = !running || $d("#ag-mv-now").checked;
-    go.disabled = true;
+    const release = window.denShell?.holdDots
+      ? window.denShell.holdDots(go)
+      : () => {};
     try {
       const out = await api("POST", agentPath(r, "move"), {
         to,
@@ -4724,7 +4790,7 @@ function openMove(r, opener) {
       err.textContent = x?.message || String(x);
       err.hidden = false;
     } finally {
-      go.disabled = false;
+      void release();
     }
   };
   if (typeof dlg.showModal === "function") dlg.showModal();
@@ -5049,8 +5115,9 @@ async function submitPersonaChange(when) {
   if (when) body.when = when;
   // Issue 698: the kit's dots on Go until the answer; the dialog says
   // what happened.
-  const release = window.denShell?.holdDots?.(go) ?? (async () => {});
-  go.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(go)
+    : async () => {};
   $d("#ag-err").hidden = true;
   try {
     const r = await api(
@@ -5115,8 +5182,9 @@ async function submitBringIn(ws) {
   const p = curPersona();
   if (!c || !p) return;
   // Issue 698: the kit's dots on Go until the answer.
-  const release = window.denShell?.holdDots?.(go) ?? (async () => {});
-  go.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(go)
+    : async () => {};
   try {
     const r = await api(
       "POST",
@@ -6058,6 +6126,7 @@ export async function mountAgentsPage(root) {
       .map((id) => rowOf(id))
       .filter((r) => r?.kind === "agent")
       .map((r) => r.agent);
+    // busy-ok: a background ping while the tab is looked at; no button
     if (agents.length)
       void api("POST", "/api/notifications/looking", { agents }).catch(
         () => {},
@@ -6141,7 +6210,7 @@ export async function mountAgentsPage(root) {
  * one used last) and takes the keyboard; a new one starts only when none
  * runs, or with `fresh` (the shell bar's New terminal).
  */
-async function openTerminal(asked = "", { fresh = false } = {}) {
+async function openTerminal(asked = "", { fresh = false, button = null } = {}) {
   // Issue 448: decide on the server's list as it is now (a shell may have
   // ended since this page's last list), and on when each was last typed in.
   if (!fresh) await refresh().catch(() => {});
@@ -6167,6 +6236,10 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     await bringShell(running.id);
     return;
   }
+  // Issue 1054: the pressed New terminal (when one was) holds the kit's dots.
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     const r = await api(
       "POST",
@@ -6180,6 +6253,8 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
   } catch (err) {
     // Issue 503: never silent; no PTY has its own words.
     window.denShell?.toast?.(terminalFailText(err, t));
+  } finally {
+    void release();
   }
 }
 

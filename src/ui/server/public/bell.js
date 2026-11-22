@@ -603,6 +603,7 @@ export function initBell(doc = document) {
     if (what === "open") {
       const id = el.closest("[data-id]")?.dataset.id;
       // Marked read first; the link then opens the agent.
+      // busy-ok: marked read in the background as the link opens
       if (id)
         void fetch("/api/notifications/read", {
           method: "POST",

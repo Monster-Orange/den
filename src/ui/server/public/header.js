@@ -507,6 +507,7 @@ async function _switchScope(value, focus, inView) {
     return;
   }
   try {
+    // busy-ok: picked from the scope menu, which has closed; the page reloads
     await window.denShell.api("POST", "/api/scope", { scope: value });
   } catch (err) {
     if (err?.denApi) {
@@ -538,6 +539,7 @@ export async function switchView(name) {
  */
 async function _setFocus(name) {
   try {
+    // busy-ok: the same menu pick, before the view is stored
     await window.denShell.api("POST", "/api/workspaces", {
       name,
       action: "focus",

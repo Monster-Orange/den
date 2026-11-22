@@ -341,6 +341,47 @@ describe.each(ENGINES)(
       await p.context().close();
     }, 60_000);
 
+    it("issue 1054: a move's save holds its row (dots, aria-busy), no pop-up; a refusal puts it back and says why inline", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine);
+      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
+      // The save is held here, then refused: no wait judged by the clock.
+      let release: () => void = () => {};
+      const go = new Promise<void>((r) => (release = r));
+      await p.route(
+        (u) =>
+          /\/api\/workspaces\/[^/]+\/agents\/[^/]+\/order$/.test(u.pathname),
+        async (r) => {
+          if (r.request().method() !== "POST") return r.fallback();
+          await go;
+          await r.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "The list changed meanwhile." }),
+          });
+        },
+      );
+      await p.locator(row(sid.cy)).focus();
+      await p.keyboard.press("Alt+ArrowUp");
+      try {
+        await p
+          .locator(`${row(sid.cy)}[aria-busy="true"] > .bz-dots.bz-row`)
+          .waitFor();
+        expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+      } finally {
+        release();
+      }
+      const err = p.locator("#ag-order-err");
+      await err.waitFor({ state: "visible" });
+      expect(await err.getAttribute("role")).toBe("alert");
+      expect(await err.textContent()).toMatch(/The list changed meanwhile\./);
+      await until(p, ["ada", "bo", "cy"]);
+      expect(await p.locator(`${row(sid.cy)}[aria-busy]`).count()).toBe(0);
+      expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+      await p.context().close();
+    }, 60_000);
+
     it("at 375: a touch drag moves a row; Alt+↓ is announced; Reorder's Up and Down are 44 px; no sideways scroll", async () => {
       if (skip()) return;
       resetOrder();

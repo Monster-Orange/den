@@ -14,21 +14,27 @@ import * as path from "path";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 
-/** The writes not yet on the pop-up, per file (0.4.46 BUSY-1). */
+/**
+ * The writes not yet on the pop-up, per file (0.4.46 BUSY-1). Issue 1054
+ * took three off it on purpose, each held on screen instead (one more in
+ * agents-page.js, local-dev.html and services.html): a drag's save holds
+ * its row, and Delete project holds its last dialog's button.
+ * busy-button-sweep-1054.test.ts checks every write shows its wait.
+ */
 const LEFT: Record<string, number> = {
   "agent-helpers.js": 1,
-  "agents-page.js": 23,
+  "agents-page.js": 24,
   "agents-section.js": 1,
   "appearance.js": 2,
   "bell.js": 1,
   "error-page.js": 4,
   "graph.js": 1,
   "header.js": 2,
-  "local-dev.html": 18,
+  "local-dev.html": 19,
   "persona-ui.js": 5,
   "release.html": 4,
   "server-agent-page.js": 4,
-  "services.html": 2,
+  "services.html": 3,
   "settings-registry.js": 15,
   "shell.js": 4,
   "svc-panel.js": 1,

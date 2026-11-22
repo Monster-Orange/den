@@ -1,10 +1,10 @@
 /**
- * Issue 133: the confirm actions on the Projects and Services pages send
- * their request through the working pop-up (denShell.busyAction): Delete
- * project and Remove service. Their answer is held here until the pop-up
- * shows (a slow answer), so no wait is judged by the clock: the pop-up is
- * open and working, the request carries the pop-up's request id (what Try
- * again resends), and it closes once the answer comes.
+ * Issue 1054 (was 133): the confirm actions on the Projects and Services
+ * pages show their wait on the button pressed, never a Working pop-up.
+ * Delete project: its last dialog stays open with its Delete (or Go) held
+ * until the answer, then closes. Remove service: its row's button is held.
+ * The answer is held here, so no wait is judged by the clock; the request
+ * still carries the kit's request id where it goes through busyAction.
  *
  * The real server and pages; the DELETE itself is answered here, so
  * nothing is deleted. Invented names only. DEN_PW_WS uses Den's own
@@ -114,49 +114,92 @@ async function hold(p: Page, method: string, pathname: string): Promise<Held> {
 }
 
 /**
- * Answer each shared confirm (askConfirm: its own data-dk-kind="confirm"),
- * the first with OK, every later one Cancel, until `done`. Waits for the
- * confirm to open and to go, never for time; any other pop-up is never
- * touched.
+ * Issue 1054: answer each of Delete project's dialogs with its own Delete
+ * (or Go), until the DELETE is sent from one: that dialog stays open with
+ * its pressed button held (the kit's dots, aria-busy) and no Working
+ * pop-up, then closes once the answer comes. Waits for dialogs and the
+ * request, never for time.
  */
-async function confirmFirst(p: Page, done: Promise<unknown>): Promise<void> {
+async function deleteFromLastDialog(p: Page, held: Held): Promise<void> {
+  const sent = held.id.then(() => true);
   const ask = p.locator('dialog[open][data-dk-kind="confirm"]');
-  let answer = "ok";
   for (;;) {
-    const opened = ask
-      .waitFor({ state: "visible", timeout: 30_000 })
-      .then(() => true);
-    // Once done, the wait still pending ends with the page: nothing to see.
-    opened.catch(() => {});
-    if (!(await Promise.race([opened, done.then(() => false)]))) return;
-    const id = await ask.getAttribute("id");
+    await ask.first().waitFor({ state: "visible", timeout: 30_000 });
+    const id = await ask.first().getAttribute("id");
     const one = p.locator(`dialog[id="${id}"]`);
-    await one.locator(`[data-dk="${answer}"]`).click();
+    const go = one.locator('[data-dk="ok"], [data-dk="go"]').first();
+    await go.click();
+    const gone = one
+      .waitFor({ state: "detached", timeout: 30_000 })
+      .then(() => false);
+    gone.catch(() => {});
+    if (!(await Promise.race([sent, gone]))) continue;
+    try {
+      await p.waitForFunction(
+        (dlg) =>
+          document
+            .querySelector(`dialog[id="${dlg}"] [aria-busy="true"]`)
+            ?.matches('[data-dk="ok"], [data-dk="go"]') ?? false,
+        id,
+        { timeout: 20_000 },
+      );
+      expect(await one.getAttribute("open")).not.toBeNull();
+      expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+    } finally {
+      held.answer();
+    }
     await one.waitFor({ state: "detached", timeout: 20_000 });
-    answer = "cancel";
+    return;
   }
 }
 
-/** The working pop-up shows while the answer is held, then closes. */
-async function expectWorking(p: Page, held: Held): Promise<void> {
-  const id = await held.id;
+/** Answer the first shared confirm with OK (Remove service's question). */
+async function confirmOk(p: Page): Promise<void> {
+  const ask = p.locator('dialog[open][data-dk-kind="confirm"]').first();
+  await ask.waitFor({ state: "visible", timeout: 30_000 });
+  await ask.locator('[data-dk="ok"]').click();
+}
+
+/**
+ * Issue 1054: the pressed button shows the wait on itself (aria-busy,
+ * disabled) while the answer is held, with no Working pop-up; it is given
+ * back once the answer comes.
+ */
+async function expectHeldButton(p: Page, held: Held): Promise<void> {
   try {
-    // The pop-up's request id: Try again resends it.
-    expect(id).not.toBe("");
-    const dlg = p.locator('den-busy dialog[open][data-state="working"]');
-    await dlg.waitFor({ state: "visible", timeout: 20_000 });
-    expect(await dlg.getByRole("progressbar").count()).toBe(1);
+    expect(await held.id).not.toBe("");
+    await p.waitForFunction(
+      () => {
+        const b = document.getElementById("cb-btn") as HTMLButtonElement | null;
+        return b?.getAttribute("aria-busy") === "true" && !!b.disabled;
+      },
+      undefined,
+      { timeout: 20_000 },
+    );
+    expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
   } finally {
     held.answer();
   }
-  await p.locator("den-busy dialog[open]").waitFor({
-    state: "detached",
-    timeout: 20_000,
+  await p.waitForFunction(
+    () => !document.getElementById("cb-btn")?.hasAttribute("aria-busy"),
+    undefined,
+    { timeout: 20_000 },
+  );
+}
+
+/** A button on the page to press, as the row's own Remove would be. */
+async function addButton(p: Page): Promise<void> {
+  await p.evaluate(() => {
+    const b = document.createElement("button");
+    b.id = "cb-btn";
+    b.className = "den-btn";
+    b.textContent = "Remove";
+    document.body.append(b);
   });
 }
 
-describe("issue 133: confirm actions go through the working pop-up", () => {
-  it("Projects page: Delete project, a slow answer shows the working pop-up", async () => {
+describe("issue 1054: confirm actions show their wait on the button pressed", () => {
+  it("Projects page: Delete project holds its last dialog's button, no pop-up", async () => {
     if (skip()) return;
     const p = await page("/local-dev?ws=south");
     const held = await hold(p, "DELETE", "/api/workspaces");
@@ -172,39 +215,35 @@ describe("issue 133: confirm actions go through the working pop-up", () => {
         () => null,
         (e: unknown) => String(e),
       );
-    const sent = held.id.then(() => true);
-    await confirmFirst(p, sent);
-    await expectWorking(p, held);
+    await deleteFromLastDialog(p, held);
     expect(await run).toBeNull();
     await p.context().close();
   }, 90_000);
 
-  it("Projects page: Remove service, a slow answer shows the working pop-up", async () => {
+  it("Projects page: Remove service holds its button, no pop-up", async () => {
     if (skip()) return;
     const p = await page("/local-dev?ws=north");
+    await addButton(p);
     const held = await hold(p, "DELETE", "/api/workspaces/services");
     const run = p
       .evaluate(() =>
         (
           window as unknown as {
-            removeService(w: string, a: string): Promise<void>;
+            removeService(w: string, a: string, b: Element): Promise<void>;
           }
-        ).removeService("north", "notes"),
+        ).removeService("north", "notes", document.getElementById("cb-btn")!),
       )
       .then(
         () => null,
         (e: unknown) => String(e),
       );
-    await confirmFirst(
-      p,
-      held.id.then(() => true),
-    );
-    await expectWorking(p, held);
+    await confirmOk(p);
+    await expectHeldButton(p, held);
     expect(await run).toBeNull();
     await p.context().close();
   }, 90_000);
 
-  it("Services page: Delete project, a slow answer shows the working pop-up", async () => {
+  it("Services page: Delete project holds its last dialog's button, no pop-up", async () => {
     if (skip()) return;
     const p = await page("/services");
     const held = await hold(p, "DELETE", "/api/workspaces");
@@ -218,30 +257,29 @@ describe("issue 133: confirm actions go through the working pop-up", () => {
         () => null,
         (e: unknown) => String(e),
       );
-    await confirmFirst(
-      p,
-      held.id.then(() => true),
-    );
-    await expectWorking(p, held);
+    await deleteFromLastDialog(p, held);
     expect(await run).toBeNull();
     await p.context().close();
   }, 90_000);
 
-  it("Services page: Remove service, a slow answer shows the working pop-up", async () => {
+  it("Services page: Remove service holds its button, no pop-up", async () => {
     if (skip()) return;
     const p = await page("/services");
+    await addButton(p);
     const held = await hold(p, "DELETE", "/api/workspaces/services");
     const run = p
       .evaluate(() =>
         (
-          window as unknown as { removeService(a: string): Promise<void> }
-        ).removeService("notes"),
+          window as unknown as {
+            removeService(a: string, b: Element): Promise<void>;
+          }
+        ).removeService("notes", document.getElementById("cb-btn")!),
       )
       .then(
         () => null,
         (e: unknown) => String(e),
       );
-    await expectWorking(p, held);
+    await expectHeldButton(p, held);
     expect(await run).toBeNull();
     await p.context().close();
   }, 90_000);
