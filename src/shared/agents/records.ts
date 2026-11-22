@@ -114,8 +114,9 @@ export interface AgentRecord {
    * read-only to it): the tool, or why not.
    */
   sandbox?:
-    | { applied: true; tool?: "sandbox-exec" | "bwrap" }
-    | { applied: false; reason?: string };
+    | { applied: true; tool?: string }
+    /** legacy: from before the sandbox, outside it until it is turned on. */
+    | { applied: false; legacy?: true; reason?: string };
   /** When its session was seen to end on its own (AG-14: "Exited"). */
   endedAt?: string;
   /** That session's exit code, when the host said it. */

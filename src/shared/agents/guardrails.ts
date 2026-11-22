@@ -275,6 +275,26 @@ export function attentionHooks(
 }
 
 /**
+ * Issue 936: every agent's note for a write its sandbox refused, after a
+ * tool and after a failed one (guardrails/sandbox-refusal.ts). It says
+ * nothing outside the sandbox.
+ */
+export function sandboxRefusalHooks(): Record<string, unknown[]> {
+  const entry = {
+    hooks: [
+      {
+        type: "command",
+        command: commandLine(
+          scriptEntrypoint("src/shared/agents/guardrails/sandbox-refusal.ts"),
+        ),
+        timeout: 10,
+      },
+    ],
+  };
+  return { PostToolUse: [entry], PostToolUseFailure: [entry] };
+}
+
+/**
  * Issue 609: at least `seconds` for each of `event`'s hooks (the Stop
  * hook's inbox check makes the same tries as the attention hook).
  */

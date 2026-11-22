@@ -4946,9 +4946,17 @@ runs as you, so each agent's session starts inside the OS sandbox:
   there (its Claude settings, its MCP config) don't.
 
 The start line and `<cli> agents doctor` name every agent that runs
-outside the sandbox, and why: no `bwrap` on this Linux machine, an
-agent started before the sandbox (restart it), or the setting below. A
-refused write inside the sandbox says what to use instead.
+outside the sandbox, and why: no `bwrap` on this Linux machine, an agent
+from before the sandbox, or the setting below. A write the sandbox
+refuses shows the agent a plain reason and what to use instead (a Den
+hook after each tool), never only a permission error.
+
+The sandbox is on for every agent started new. An agent that existed
+before your Den had the sandbox keeps starting as before until you turn
+it on: Den asks once, as a held write in the bell (Turn on), and
+`<cli> agents doctor` warns "Sandbox is off for N agents". Turn on sets
+`agents.sandbox: on` in `config/local/user.yml`; each of those agents goes
+into the sandbox at its next start, and one you set to `off` stays off.
 
 The sandbox is on by default. To turn it off, for every agent or for one,
 set it in `config/local/user.yml` (agents can't write that file). Den
@@ -4969,7 +4977,15 @@ check it works here, not only that it is installed.
 
 This first slice covers Den's state. It doesn't limit what a session can
 reach over the network on this machine, or files outside Den's state that
-you can write. Later slices do.
+you can write. Agents' messages to each other's sessions stay open inside
+it, so an agent can ask another session, which may run outside a sandbox,
+to act for it. Later slices do, when an agent runs as its own OS user.
+
+Migrating: nothing to do. Agents you start after the update run in the
+sandbox; your existing agents keep running as before until you Allow
+Turn on (or set `agents.sandbox: on`). On Linux, install `bubblewrap`
+(`bwrap`) first; without it agents start outside the sandbox and doctor
+says so, unless you set `agents.sandbox: required`.
 
 On macOS a program inside the sandbox can't start a sandbox of its own,
 so Claude Code's own Bash sandbox setting doesn't work in an agent's

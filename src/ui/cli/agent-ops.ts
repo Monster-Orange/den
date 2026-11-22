@@ -184,6 +184,11 @@ import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
 import { envKey, installLocationEnv, product } from "../../shared/product.js";
+import {
+  isFromBefore,
+  LEGACY_SANDBOX_REASON,
+  sandboxSetByPerson,
+} from "../../shared/agents/sandbox-rollout.js";
 import * as os from "os";
 import { redactSecrets } from "../../shared/redact.js";
 import {
@@ -3269,6 +3274,8 @@ function checkId(where: string, id: string): void {
 
 interface Launch {
   rec: Omit<AgentRecord, "session" | "startedAt">;
+  /** Issue 936: an agent that has a record already (resume, relaunch). */
+  existing?: boolean;
   argv: string[];
   env: Record<string, string>;
   /** The runtime's envPassthrough. */
@@ -3343,6 +3350,7 @@ async function startSession(
   });
   let info: SessionInfo;
   let box: SandboxWrap;
+  let legacy = false;
   try {
     // #70: the token in a file of the agent's own; the env names the file.
     const tokenFile = writeActorTokenFile(
@@ -3351,7 +3359,20 @@ async function startSession(
       minted.token,
     );
     // Issue 936: Den's state read-only to the session (the OS sandbox).
-    box = d.agentSandbox(launch.argv, launch.rec.id);
+    // An agent from before the sandbox starts outside it until the person
+    // turns it on (the rollout, sandbox-rollout.ts).
+    legacy =
+      launch.existing === true &&
+      isFromBefore(launch.rec as AgentRecord) &&
+      !sandboxSetByPerson(d.agentsConfig(), launch.rec.id);
+    box = legacy
+      ? {
+          applied: false,
+          argv: launch.argv,
+          env: {},
+          reason: LEGACY_SANDBOX_REASON,
+        }
+      : d.agentSandbox(launch.argv, launch.rec.id);
     if (!box.applied && sandboxRequired(d.agentsConfig(), launch.rec.id))
       throw refused(
         `agents start: ${launch.rec.id} needs the agent sandbox (agents.sandbox: required), and it can't apply here: ${box.reason ?? "no sandbox"}`,
@@ -3412,7 +3433,11 @@ async function startSession(
   // Issue 936: whether its session is sandboxed, and why not.
   rec.sandbox = box.applied
     ? { applied: true, ...(box.tool ? { tool: box.tool } : {}) }
-    : { applied: false, ...(box.reason ? { reason: box.reason } : {}) };
+    : {
+        applied: false,
+        ...(legacy ? { legacy: true as const } : {}),
+        ...(box.reason ? { reason: box.reason } : {}),
+      };
   writeRecord(d.stateDir(), rec);
   return {
     rec,
@@ -6479,6 +6504,7 @@ export async function resumeAgent(
             tokenEnv: rt.signInTokenEnv,
             grants,
             ...binDirOf(det),
+            existing: true,
           },
           prior,
           asFresh ? {} : { resumedAt: new Date().toISOString() },

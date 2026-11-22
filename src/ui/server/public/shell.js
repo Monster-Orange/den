@@ -2872,6 +2872,13 @@
     "ap.do.persona_update.project":
       "Change the persona {id} in project {where}: {fields}",
     "ap.do.den_pin_commit": "Commit the distribution's pin to Den {version}",
+    "ap.do.den_sandbox_on":
+      "Turn on the agent sandbox for {count} agents started before it (each at its next start)",
+    "ap.det.den_sandbox_on.sets":
+      "Sets agents.sandbox: on in config/local/user.yml.",
+    "ap.det.den_sandbox_on.next":
+      "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
+    "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",

@@ -63,6 +63,10 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
+  agentsCount,
+  legacyAgentIds,
+} from "../../shared/agents/sandbox-rollout.js";
+import {
   gatherApiOnly,
   readApiOnlyAudit,
   type ApiOnlyRules,
@@ -2470,6 +2474,8 @@ export interface SandboxReport {
   here: { applied: boolean; tool?: string; reason?: string };
   /** Agents (not stopped) whose session started outside it, and why. */
   outside: { id: string; project: string; reason: string }[];
+  /** The rollout: agents from before the sandbox, not turned on yet. */
+  fromBefore: number;
 }
 
 export function sandboxReport(d: AgentsResolved): SandboxReport {
@@ -2482,9 +2488,15 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
       reason:
         r.sandbox && !r.sandbox.applied
           ? (r.sandbox.reason ?? "no sandbox here")
-          : "started before the sandbox (restart it to apply)",
+          : "started before the sandbox",
     }));
+  // The rollout: agents from before it, outside it until it is turned on.
+  const fromBefore = legacyAgentIds(
+    listRecords(d.stateDir()),
+    d.agentsConfig(),
+  );
   return {
+    fromBefore: fromBefore.length,
     here: {
       applied: probe.applied,
       ...(probe.tool ? { tool: probe.tool } : {}),
@@ -2502,6 +2514,10 @@ export function sandboxLines(r: SandboxReport): string[] {
       ? `  ✓ on here (${r.here.tool ?? "the OS sandbox"})`
       : `  ⚠ not here: ${r.here.reason ?? "no sandbox"}`,
   );
+  if (r.fromBefore)
+    out.push(
+      `  ⚠ Sandbox is off for ${agentsCount(r.fromBefore)} (started before it): Allow Turn on in the bell, or set agents.sandbox: on in config/local/user.yml`,
+    );
   if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)
     out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);

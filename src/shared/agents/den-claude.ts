@@ -71,6 +71,7 @@ import {
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  sandboxRefusalHooks,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
@@ -639,7 +640,8 @@ function common(input: LaunchInput): {
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
   const hooks = mergeHooks(
-    baseHooks,
+    // Issue 936: a refused write in the sandbox says why, for every agent.
+    mergeHooks(baseHooks, sandboxRefusalHooks()),
     input.attention
       ? attentionHooks(
           input.attention.base,

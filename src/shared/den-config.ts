@@ -1029,6 +1029,18 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   writeUserConfig(next);
 }
 
+/**
+ * Issue 936, the rollout's Turn on: `agents.sandbox: on` in user.yml,
+ * keeping everything else there (an agent's own `off` stays).
+ */
+export function setUserSandboxOn(): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), sandbox: "on" },
+  } as UserConfig);
+}
+
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {
   try {
