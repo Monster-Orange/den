@@ -116,6 +116,8 @@ describe("agents doctor", () => {
       "",
       "Agents' tools     all current",
       "",
+      "Persona keys      every persona names its model's version model_version",
+      "",
       "Agents and their repos",
       "  every agent is linked to a repo",
       "",
