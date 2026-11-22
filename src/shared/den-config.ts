@@ -642,6 +642,12 @@ export interface UserConfig {
      * (shared/issue-write.ts).
      */
     issue_writes?: unknown;
+    /** Issue 974 (agents/env-hold.ts): the hold on secret-looking variables. */
+    env_hold?: unknown;
+    env_allow?: unknown;
+    env_allow_agents?: unknown;
+    env_guard?: unknown;
+    env_hold_existing?: unknown;
     issue_writes_per_hour?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
@@ -1022,6 +1028,38 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   if (Object.keys(agents).length) next.agents = agents;
   else delete next.agents;
   writeUserConfig(next);
+}
+
+/**
+ * Issue 974: agents.env_hold_existing: true in user.yml (the held write
+ * den_env_hold_on), keeping everything else there.
+ */
+export function setUserEnvHoldExisting(): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), env_hold_existing: true },
+  });
+}
+
+/**
+ * Issue 974: add `names` to agents.env_allow in user.yml (den_env_allow_keep),
+ * sorted, no repeats, keeping everything else there.
+ */
+export function addUserEnvAllow(names: readonly string[]): void {
+  const cfg = readUserConfig();
+  const was = Array.isArray(cfg.agents?.env_allow)
+    ? (cfg.agents!.env_allow as unknown[]).filter(
+        (n): n is string => typeof n === "string",
+      )
+    : [];
+  writeUserConfig({
+    ...cfg,
+    agents: {
+      ...(cfg.agents ?? {}),
+      env_allow: [...new Set([...was, ...names])].sort(),
+    },
+  });
 }
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
@@ -1811,11 +1849,8 @@ export interface AgentsConfig {
    */
   api_only_engines?: { clis?: unknown; dirs?: unknown };
   /**
-   * Issue 974 (agents/env-hold.ts): name patterns of variables held out of
-   * agent sessions (unset: `*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`,
-   * `OP_SESSION_*`; [] holds nothing back), `{ <agent id>: [NAME] }` names
-   * an agent keeps, and false to stop refusing commands that print the
-   * whole environment.
+   * Issue 974: these live in config/local/user.yml only (agents/env-hold.ts);
+   * set here, the config is refused, naming the file.
    */
   env_hold?: unknown;
   env_allow?: unknown;
@@ -1899,7 +1934,9 @@ export const AGENTS_RESERVED_KEYS = [
   // Issue 974: secret-looking variables held out of agent sessions.
   "env_hold",
   "env_allow",
+  "env_allow_agents",
   "env_guard",
+  "env_hold_existing",
 ];
 
 /**
@@ -2131,6 +2168,11 @@ export function readAgentsConfig(
   const c = config ?? readDenConfig();
   const u = user ?? (config ? {} : readUserConfigQuiet());
   const out = asConfigError(() => parseAgentsConfig(c));
+  // Issue 974: the env hold, from user.yml only.
+  out.envHold = asConfigError(
+    () => checkEnvHoldConfig((u.agents ?? {}) as Record<string, unknown>),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
   // A signing key is per machine: user.yml's agents.git wins.
   const mine = u.agents?.git;
   if (mine !== undefined && mine !== null) {
@@ -2258,7 +2300,17 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.exitedShellMinutes = exitedMin;
   }
-  out.envHold = checkEnvHoldConfig(raw);
+  for (const k of [
+    "env_hold",
+    "env_allow",
+    "env_allow_agents",
+    "env_guard",
+    "env_hold_existing",
+  ])
+    if ((raw as Record<string, unknown>)[k] !== undefined)
+      throw new Error(
+        `agents.${k}: set it in config/local/user.yml, never in the distribution's config (an agent can edit a repo)`,
+      );
   out.coach = checkCoachConfig(raw.coach);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [

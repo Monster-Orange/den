@@ -5948,6 +5948,72 @@ Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`
   Coach can count time lost to waiting. Ending a slot from a page also
   writes this install's audit, pointing to the slot log.
 
+## Secrets held out of agents
+
+Den holds secret-looking environment variables out of agent sessions
+(issue 974). It works in two layers:
+
+- **The session's own environment.** Every runtime gets this layer. A
+  variable whose name matches the list is left out of what the session
+  starts with.
+- **Each shell command.** A person's shell profile can set a token again
+  (zsh reads `~/.zshenv` for every shell). For den-claude agents, Den
+  writes `env-hold.sh` in the agent's files folder at every start. Claude
+  Code runs it before each Bash command, after the profile. It unsets every
+  matching variable, exported or not. Other runtimes get the first layer
+  only; `den doctor` says which runtimes get both.
+
+The match ignores case, and a name may end in `_` and a digit
+(`*_KEY` matches `AWS_KEY_2`). The default list is `*_TOKEN`, `*_SECRET`,
+`*_KEY`, `*_PASSWORD` and `OP_SESSION_*`. Den keeps only the exact names it
+set for that launch (its actor token file, its install location, and the
+signing settings it gave git). A `DEN_` prefix is no exemption. A person's
+credential (`DEN_PERSON_TOKEN`, `DEN_TEST_PERSON`, or a value holding a
+person token) is always unset, even when an allow-list names it.
+
+The settings live in `config/local`, which agents can't edit:
+
+```yaml
+# config/local/user.yml
+agents:
+  env_hold: ["*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD", "OP_SESSION_*"]
+  env_allow: [OP_SERVICE_ACCOUNT_TOKEN]   # every agent keeps these
+  env_allow_agents:                       # one agent keeps these
+    release-bot: [NPM_TOKEN]
+  env_guard: true          # refuse commands that print the whole environment
+  env_hold_existing: false # true: agents from before the hold get it too
+
+# config/local/workspaces.yml
+north:
+  agents:
+    env_allow: [NORTH_DEPLOY_KEY]         # this project's agents keep these
+```
+
+The three allow levels add up. `env_hold: []` holds nothing back, and
+`den doctor` says so. These keys in a distribution's `den.yml` are refused,
+with a message naming `user.yml`.
+
+**The guard.** A PreToolUse hook refuses `env`, `printenv`, `set`,
+`export -p`, `declare -x` and the like when they would print the whole
+environment, and says to run `printenv NAME` instead. It guards against
+printing by accident. It is not a boundary: an agent that means to read a
+variable can. `env_guard: false` turns it off.
+
+**Limit.** A Claude Code SessionStart hook that writes its own env file
+runs after `env-hold.sh`, so a variable such a hook exports is not held
+back.
+
+**Rollout.** Agents started after the update have the hold. An agent from
+before keeps its environment until a person turns it on. Den asks once in
+the bell with two held writes, each run only by the person's own Allow:
+
+- **Keep these** adds the named variables to `agents.env_allow` and turns
+  the hold on.
+- **Remove** sets `agents.env_hold_existing: true`.
+
+Each agent changes at its next start. Until then, `den doctor` lists each
+agent from before the hold with the names it still gets.
+
 ## Pinning and upgrading
 
 `package.json` pins an exact Den version (`create` writes the version that

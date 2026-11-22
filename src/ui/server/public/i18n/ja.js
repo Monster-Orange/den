@@ -2111,6 +2111,20 @@
     "ap.det.agent_mode.running":
       "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
     "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
+    "ap.do.den_env_hold_on":
+      "以前に起動した {count} 件のエージェントから、秘密らしい変数を外す (それぞれ次の起動時): {names}",
+    "ap.do.den_env_allow_keep":
+      "{names} をすべてのエージェントに残し、以前に起動した {count} 件のエージェントから残りを外す",
+    "ap.det.den_env_hold_on.sets":
+      "config/local/user.yml に agents.env_hold_existing: true を設定します。",
+    "ap.det.den_env_hold_on.next":
+      "各エージェントは次の起動時に失います。いま動いているものはそれまで保持します。",
+    "ap.det.den_env_hold_on.allow":
+      "agents.env_allow で残す名前はそのままです。",
+    "ap.det.den_env_allow_keep.adds":
+      "config/local/user.yml の agents.env_allow に {names} を追加します。ここのすべてのエージェントが受け取ります。",
+    "ap.det.den_env_allow_keep.on":
+      "agents.env_hold_existing: true を設定します。ほかの秘密らしい変数は、各エージェントの次の起動時に外されます。",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",

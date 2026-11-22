@@ -53,6 +53,12 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
+ *   den_env_hold_on   issue 974: agents.env_hold_existing: true in user.yml,
+ *                     for agents started before the hold ("Remove"). Den
+ *                     asks for it itself; only the person's Allow runs it
+ *   den_env_allow_keep issue 974: adds the named variables to
+ *                     agents.env_allow and turns the hold on ("Keep
+ *                     these"); critical, the person's own Allow only
  *   embed_key_create  issue 334: an app key for a web app's own server,
  *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
  *                     person's own ask and Allow only; the key is shown
@@ -235,6 +241,9 @@ export interface HeldActionDeps {
   report?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  /** Issue 974: den_env_hold_on and den_env_allow_keep (env-hold-rollout.ts). */
+  envHoldOn?: HeldOp;
+  envAllowKeep?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -653,6 +662,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const envHoldOn = op(
+    d.envHoldOn,
+    "this Den can't hold variables back from agents here",
+  );
+  const envAllowKeep = op(
+    d.envAllowKeep,
+    "this Den can't change which variables agents keep here",
+  );
   const gateRunnerToken = op(
     d.gateRunnerToken,
     "this Den can't make gate runner tokens here",
@@ -1014,6 +1031,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       }),
     },
     den_pin_commit: pinCommit,
+    den_env_hold_on: envHoldOn,
+    den_env_allow_keep: envAllowKeep,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,

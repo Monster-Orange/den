@@ -109,6 +109,12 @@ export interface AgentRecord {
    * a token. Unset: none was picked (desktop sign-in, or no token).
    */
   signIn?: { id: string; label: string };
+  /**
+   * Issue 974: whether its session holds secret-looking variables back
+   * (agents/env-hold.ts). legacy: from before the hold, which keeps its
+   * environment until a person turns it on (env-hold-rollout.ts).
+   */
+  envHold?: { applied: boolean; legacy?: true };
   /** When its session was seen to end on its own (AG-14: "Exited"). */
   endedAt?: string;
   /** That session's exit code, when the host said it. */

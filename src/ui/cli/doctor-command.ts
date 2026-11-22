@@ -31,6 +31,10 @@ import { loopbackRefusal } from "../../shared/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import { envHoldLines, shellEnvNames } from "./doctor-env-hold.js";
+import { wouldHold } from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { listRecords as listAgentRecords } from "../../shared/agents/records.js";
+import { workspaceEntryRaw } from "../../shared/environment-manager/workspaces.js";
 import {
   agentsKeepRunningAfterLogout,
   readAgentsConfig,
@@ -1995,10 +1999,31 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // Issue 974: what is held out of agent sessions, by name.
   try {
     const hold = readAgentsConfig().envHold;
-    if (hold)
-      for (const l of envHoldLines(readBrand().name, hold, shellEnvNames())
+    if (hold) {
+      const present = shellEnvNames();
+      const legacy = wouldHold(
+        listAgentRecords(getStateDir()),
+        hold,
+        present,
+        (ws) => {
+          try {
+            return checkProjectEnvAllow(
+              ws,
+              (
+                workspaceEntryRaw(ws) as
+                  | { agents?: { env_allow?: unknown } }
+                  | undefined
+              )?.agents?.env_allow,
+            );
+          } catch {
+            return [];
+          }
+        },
+      );
+      for (const l of envHoldLines(readBrand().name, hold, present, legacy)
         .lines)
         console.log(l);
+    }
   } catch {
     // A bad agents: block is configLines' row.
   }

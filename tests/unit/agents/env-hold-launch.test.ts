@@ -76,7 +76,13 @@ const bare: Persona = {
   id: "bare",
   guardrails: { hooks: false, instructions: false },
 };
-const hold = { hold: [...DEFAULT_ENV_HOLD], allow: [], guard: true };
+const hold = {
+  on: true,
+  hold: [...DEFAULT_ENV_HOLD],
+  allow: [],
+  own: [],
+  guard: true,
+};
 
 describe("a launch with the hold", () => {
   it("writes env-hold.sh in its files folder and names it in CLAUDE_ENV_FILE", () => {
@@ -115,5 +121,16 @@ describe("a launch with the hold", () => {
   it("with its guardrails off and the guard off, no PreToolUse hook is added", () => {
     const l = launch(bare, { ...hold, guard: false });
     expect(l.pretool).toEqual([]);
+  });
+});
+
+describe("an agent from before the hold", () => {
+  it("gets no env-hold.sh and no CLAUDE_ENV_FILE, and keeps the guard", () => {
+    const l = launch(planner, { ...hold, on: false, hold: [] });
+    expect(l.env).not.toHaveProperty("CLAUDE_ENV_FILE");
+    expect(Object.keys(l.files).some((f) => f.endsWith(ENV_HOLD_FILE))).toBe(
+      false,
+    );
+    expect(l.pretool.length).toBeGreaterThan(0);
   });
 });

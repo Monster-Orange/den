@@ -1,14 +1,17 @@
 /**
- * Issue 974: doctor's rows on the variables held out of agent sessions.
- * Which names in Den's environment and in a shell's (after the person's
- * profile) are held back, which an agent's opt-in lets through, and when
- * the list is empty or the guard is off. Names only: never a value.
+ * Issue 974: doctor's rows on the variables held out of agents. Which
+ * names a session would see (Den's environment and a shell's, after the
+ * person's profile) are held back, which the allow-lists let through, each
+ * agent from before the hold with the names it still gets (⚠), when the
+ * list is empty or the guard is off, and which runtimes get the shell
+ * layer. Names only: never a value.
  */
 import { spawnSync } from "child_process";
 import {
   holdOutcome,
   type EnvHoldSettings,
 } from "../../shared/agents/env-hold.js";
+import { agentsCount } from "../../shared/agents/env-hold-rollout.js";
 
 /**
  * The names a session's shell starts with: Den's own environment's, and
@@ -33,19 +36,24 @@ export function shellEnvNames(env: NodeJS.ProcessEnv = process.env): string[] {
   return [...names];
 }
 
-/** The lines (and onboarding rows) doctor prints for the hold. */
+/** The runtimes whose shell commands run Den's env-hold.sh. */
+export const SHELL_LAYER_RUNTIMES = ["den-claude"];
+
+/** The lines doctor prints for the hold. */
 export function envHoldLines(
   title: string,
   s: EnvHoldSettings,
   names: readonly string[],
-): { lines: string[] } {
+  /** Agents from before the hold, with the names each still gets. */
+  legacy: readonly { id: string; names: string[] }[] = [],
+): { lines: string[]; problem: boolean } {
   const lines = ["", `${title} doctor: secrets held out of agents`, ""];
   if (!s.hold.length)
     lines.push(
       "  env hold  ⚠  secret list is empty: nothing is held back (agents.env_hold: [])",
     );
   else {
-    const { held } = holdOutcome(names, s.hold);
+    const { held, allowed } = holdOutcome(names, s.hold, s.allowAll);
     lines.push(
       `  env hold  ✓  ${s.holdSet ? "agents.env_hold" : "default list"}: ${s.hold.join(", ")}`,
     );
@@ -54,18 +62,34 @@ export function envHoldLines(
         ? `  env hold  ✓  held back: ${held.join(", ")}`
         : "  env hold  ✓  held back: none here now",
     );
+    if (allowed.length)
+      lines.push(
+        `  env hold  ℹ  every agent: let through: ${allowed.join(", ")} (agents.env_allow)`,
+      );
     for (const id of Object.keys(s.allow).sort()) {
-      const { allowed } = holdOutcome(names, s.hold, s.allow[id]);
-      if (allowed.length)
+      const r = holdOutcome(names, s.hold, s.allow[id]);
+      if (r.allowed.length)
         lines.push(
-          `  env hold  ℹ  ${id}: let through: ${allowed.join(", ")} (agents.env_allow)`,
+          `  env hold  ℹ  ${id}: let through: ${r.allowed.join(", ")} (agents.env_allow_agents)`,
+        );
+    }
+    lines.push(
+      `  env hold  ℹ  shell commands hold them back for ${SHELL_LAYER_RUNTIMES.join(", ")}; other runtimes hold them back only from what the agent starts with`,
+    );
+    if (legacy.length) {
+      lines.push(
+        `  env hold  ⚠  ${agentsCount(legacy.length)} started before the hold still get them: Allow Keep these or Remove in the bell`,
+      );
+      for (const r of legacy)
+        lines.push(
+          `  env hold  ⚠    ${r.id}: ${r.names.length ? r.names.join(", ") : "none here now"}`,
         );
     }
   }
   lines.push(
     s.guard
-      ? "  env guard ✓  commands that print the whole environment are refused"
+      ? "  env guard ✓  commands that print the whole environment are refused (a guard against printing by accident, not a boundary)"
       : "  env guard ⚠  agents.env_guard is false: commands that print the whole environment run",
   );
-  return { lines };
+  return { lines, problem: false };
 }

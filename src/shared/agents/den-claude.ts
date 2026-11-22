@@ -855,19 +855,21 @@ export function transcriptFile(
 
 /**
  * Issue 974: the script that holds secret-looking variables out of each
- * shell command, in the agent's files folder, and CLAUDE_ENV_FILE naming
- * it (Claude Code runs that file before every Bash command, after the
- * shell's profile). None when the launch has no hold.
+ * shell command, in the agent's files folder (written at every start), and
+ * CLAUDE_ENV_FILE naming it (Claude Code runs that file before every Bash
+ * command, after the shell's profile, and before any env file a hook
+ * wrote). None when the launch has no hold, or the agent is from before it.
  */
 function envHold(input: LaunchInput): {
   env: Record<string, string>;
   files: Record<string, string>;
 } {
-  if (!input.envHold) return { env: {}, files: {} };
+  if (!input.envHold?.on) return { env: {}, files: {} };
   const file = path.join(input.filesDir, ENV_HOLD_FILE);
+  const h = input.envHold;
   return {
     env: { CLAUDE_ENV_FILE: file },
-    files: { [file]: envHoldScript(input.envHold.hold, input.envHold.allow) },
+    files: { [file]: envHoldScript(h.hold, h.allow, h.own) },
   };
 }
 

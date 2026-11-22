@@ -213,6 +213,8 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserEnvHoldExisting,
+  addUserEnvAllow,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
   isProductionEnv,
@@ -1272,7 +1274,19 @@ import {
   issueWriteSettings,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
-import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
+import {
+  listRecords as listAgentRecords,
+  readRecord as readAgentRecord,
+} from "../../shared/agents/records.js";
+import {
+  askEnvHold,
+  envAllowKeepOp,
+  envHoldOnOp,
+  wouldHold,
+} from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { shellEnvNames } from "../cli/doctor-env-hold.js";
+import { workspaceEntryRaw as workspaceEntryOf } from "../../shared/environment-manager/workspaces.js";
 import {
   approvalsView,
   patchApprovals,
@@ -4633,6 +4647,9 @@ function approvalDeps(): ApprovalDeps {
     },
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    // Issue 974: Keep these / Remove, for agents from before the env hold.
+    envHoldOn: envHoldOnOp(envHoldOpDeps()),
+    envAllowKeep: envAllowKeepOp(envHoldOpDeps()),
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
@@ -4941,6 +4958,66 @@ async function runPinCommit(
 }
 
 /** #176: den_pin_commit, held for the person when the policy says ask. */
+/**
+ * Issue 974: the agents from before the env hold and the names each still
+ * gets (names only), and the user.yml writes the two held writes make.
+ */
+function envHoldOpDeps(): import("../../shared/agents/env-hold-rollout.js").EnvHoldOpDeps {
+  return {
+    rows: () => {
+      const s = readAgentsConfig().envHold;
+      if (!s) return [];
+      return wouldHold(
+        listAgentRecords(getStateDir()),
+        s,
+        shellEnvNames(),
+        (ws) => {
+          try {
+            return checkProjectEnvAllow(
+              ws,
+              (
+                workspaceEntryOf(ws) as
+                  | { agents?: { env_allow?: unknown } }
+                  | undefined
+              )?.agents?.env_allow,
+            );
+          } catch {
+            return [];
+          }
+        },
+      ).filter((r) => r.names.length > 0);
+    },
+    turnOn: () => setUserEnvHoldExisting(),
+    keep: (names) => addUserEnvAllow(names),
+  };
+}
+
+/**
+ * Issue 974, the rollout: Den asks once, in the bell, to keep or hold back
+ * the variables agents from before the hold still get; then each hour,
+ * should the person have let it lapse. Best effort.
+ */
+function startEnvHoldAsk(): void {
+  const ask = () => {
+    try {
+      const ap = approvalDeps();
+      const deps = envHoldOpDeps();
+      void askEnvHold(
+        ap.queue,
+        envAllowKeepOp(deps),
+        envHoldOnOp(deps),
+        deps.rows,
+      ).then((asked) => {
+        if (asked) syncHeldWrites();
+      });
+    } catch {
+      /* no queue here: doctor still says it */
+    }
+  };
+  ask();
+  setInterval(ask, 60 * 60_000).unref();
+}
+
 function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
   return {
     check: (a) => {
@@ -10666,6 +10743,8 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    // Issue 974: Keep these / Remove for agents from before the env hold.
+    startEnvHoldAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
     // web.owner_name_timeout_seconds: how long it waits.

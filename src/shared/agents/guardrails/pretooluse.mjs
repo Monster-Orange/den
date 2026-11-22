@@ -61,7 +61,10 @@ const SLEEP_HINT =
 const ENV_HINT =
   "It prints the whole environment, secrets included, into the " +
   "conversation. Run `printenv NAME` for one variable instead (it still " +
-  "answers), or `printenv NAME1 NAME2` for a few.";
+  "answers), or `printenv NAME1 NAME2` for a few. A secret-looking " +
+  "variable Den holds back is empty here: if you need one, ask your " +
+  "person to add its name to agents.env_allow_agents.<your id> (or " +
+  "agents.env_allow) in config/local/user.yml.";
 
 /** env's options that take a value as the next word (or `--opt=value`). */
 const ENV_VALUE_OPTS = new Set([

@@ -32,10 +32,13 @@ export const clauses = [
 export const timeoutMs = 240000;
 
 const CANARY = "canary-974-not-a-real-secret";
-// The default list (agents/env-hold.ts), and Den's own names.
+// The default list (agents/env-hold.ts), and the exact names Den sets for
+// a launch (its actor, its actor token file, its install location, git's
+// signing settings). Any other DEN_ or GIT_CONFIG_ name counts.
 const HELD =
   /^(.*_TOKEN|.*_SECRET|.*_KEY|.*_PASSWORD|OP_SESSION_.*)(_[0-9].*)?$/i;
-const OWN = /^(DEN_|GIT_CONFIG_)/;
+const OWN =
+  /^(DEN_AGENT|DEN_ACTOR_TOKEN_FILE|DEN_ROOT|DEN_HOME|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_[0-9]+|GIT_CONFIG_VALUE_[0-9]+)$/;
 
 const fresh = () =>
   `gate-974-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

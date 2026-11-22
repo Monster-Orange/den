@@ -2165,6 +2165,20 @@
       "Está en marcha: Den lo reinicia después de su turno, en la misma conversación, en {mode}.",
     "ap.det.agent_mode.stopped":
       "Está detenido: su próximo arranque es en {mode}.",
+    "ap.do.den_env_hold_on":
+      "Retener las variables que parecen secretos de {count} agentes iniciados antes (cada uno en su próximo inicio): {names}",
+    "ap.do.den_env_allow_keep":
+      "Conservar {names} para todos los agentes y retener el resto de {count} agentes iniciados antes",
+    "ap.det.den_env_hold_on.sets":
+      "Pone agents.env_hold_existing: true en config/local/user.yml.",
+    "ap.det.den_env_hold_on.next":
+      "Cada agente las pierde en su próximo inicio; uno que ya está en marcha las conserva hasta entonces.",
+    "ap.det.den_env_hold_on.allow":
+      "Los nombres que conserva por agents.env_allow se quedan.",
+    "ap.det.den_env_allow_keep.adds":
+      "Añade {names} a agents.env_allow en config/local/user.yml: todos los agentes de aquí las reciben.",
+    "ap.det.den_env_allow_keep.on":
+      "Pone agents.env_hold_existing: true: las demás variables que parecen secretos se retienen de cada agente en su próximo inicio.",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",

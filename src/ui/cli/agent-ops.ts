@@ -237,9 +237,15 @@ import {
   type Override,
 } from "../../shared/agents/records.js";
 import {
+  allowedFor as envAllowedFor,
+  checkProjectEnvAllow,
   defaultEnvHold,
   type EnvHoldSettings,
 } from "../../shared/agents/env-hold.js";
+import {
+  envHoldMark,
+  holdOnAtStart,
+} from "../../shared/agents/env-hold-rollout.js";
 import {
   agentSessionEnv,
   DEFAULT_RUNTIME_ID,
@@ -252,7 +258,11 @@ import {
   type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
-import { agentGitEnv } from "../../shared/agents/git-signing.js";
+import {
+  agentGitEnv,
+  type AgentGitSettings,
+} from "../../shared/agents/git-signing.js";
+import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 import {
   noteHubMcpInit,
   readHubMcpInit,
@@ -499,6 +509,8 @@ export interface AgentsDeps extends SessionsDeps {
    * when it has none.
    */
   workspaceHubLoop?: (ws: string) => unknown;
+  /** Issue 974: a project's agents.env_allow (workspaces.yml), as written. */
+  workspaceEnvAllow?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
@@ -547,6 +559,7 @@ export interface AgentsResolved extends Resolved {
   } | null>;
   workspaceRepos: (ws: string) => string[];
   workspaceHubLoop: (ws: string) => unknown;
+  workspaceEnvAllow: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
   secretRefSet: (name: string) => boolean;
@@ -888,6 +901,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
     workspaceHubLoop: d.workspaceHubLoop ?? workspaceEntryRaw,
+    workspaceEnvAllow: d.workspaceEnvAllow ?? workspaceEnvAllowOf,
     workspaceMcpServers:
       d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
     saveWorkspaceMcpServers:
@@ -3258,6 +3272,15 @@ async function startSession(
   extra: Partial<AgentRecord>,
 ): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
   if (old?.exited) await c.forget(old.ref.id);
+  // Issue 974: read before the record is written (a new agent has none).
+  const cfgNow = d.agentsConfig();
+  const hold = agentEnvHold(
+    d,
+    cfgNow.envHold,
+    launch.rec.id,
+    launch.rec.workspace,
+    cfgNow.git,
+  );
   // Issue 163 (b): read before the token is minted (nothing to revoke).
   const signIn = await d.agentSignIn(
     launch.tokenEnv,
@@ -3296,8 +3319,8 @@ async function startSession(
             // agents.git.signing_key: its commits signed with that key.
             agentGitEnv(d.agentsConfig().git),
             signIn.env,
-            // Issue 974: secret-looking names held back; its opt-ins kept.
-            agentEnvHold(d.agentsConfig().envHold, launch.rec.id),
+            // Issue 974: secret-looking names held back; its allowed kept.
+            hold,
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
@@ -3329,6 +3352,8 @@ async function startSession(
   delete rec.trustDeclined;
   // Issue 252: it runs in `permission` now.
   delete rec.startedIn;
+  // Issue 974: whether this session holds secret-looking variables back.
+  rec.envHold = envHoldMark(hold.on);
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
   else delete rec.signIn;
@@ -3477,7 +3502,7 @@ function launchInput(
     // Issue 974: secret-looking variables held out of each shell command,
     // and the guard on commands that print the whole environment.
     envHold: {
-      ...agentEnvHold(cfg.envHold, id),
+      ...agentEnvHold(d, cfg.envHold, id, ws, cfg.git),
       guard: cfg.envHold?.guard ?? true,
     },
     // D47: services it may reach only through their API.
@@ -3507,15 +3532,52 @@ function launchInput(
 }
 
 /**
- * Issue 974: the patterns agent `id` has held back (agents.env_hold, or the
- * default list) and the names it keeps (agents.env_allow.<id>).
+ * Issue 974: what this start of agent `id` holds back. `on`: a new agent,
+ * one that has had the hold, or every one once agents.env_hold_existing is
+ * true (env-hold-rollout.ts); an agent from before keeps its environment as
+ * it was (nothing held). `allow`: the install's, its project's and its own
+ * names, added up. `own`: the exact names Den sets for this launch.
  */
 export function agentEnvHold(
+  d: Pick<AgentsResolved, "stateDir" | "env"> & {
+    workspaceEnvAllow?: (ws: string) => unknown;
+  },
   s: EnvHoldSettings | undefined,
   id: string,
-): { hold: string[]; allow: string[] } {
+  ws: string,
+  git?: AgentGitSettings,
+): { on: boolean; hold: string[]; allow: string[]; own: string[] } {
   const settings = s ?? defaultEnvHold();
-  return { hold: [...settings.hold], allow: [...(settings.allow[id] ?? [])] };
+  const on = holdOnAtStart(readRecord(d.stateDir(), id), settings);
+  let project: string[] = [];
+  try {
+    project = checkProjectEnvAllow(
+      ws,
+      (d.workspaceEnvAllow ?? workspaceEnvAllowOf)(ws),
+    );
+  } catch {
+    // A bad entry is doctor's row; this start keeps none of it.
+    project = [];
+  }
+  return {
+    on,
+    hold: on ? [...settings.hold] : [],
+    allow: envAllowedFor(settings, id, project),
+    own: [
+      AGENT_ACTOR_ENV,
+      ACTOR_TOKEN_FILE_ENV,
+      ...Object.keys(installLocationEnv(d.env)),
+      ...Object.keys(agentGitEnv(git)),
+    ],
+  };
+}
+
+/** workspaces.yml <project>.agents.env_allow, as written. */
+function workspaceEnvAllowOf(ws: string): unknown {
+  const e = workspaceEntryRaw(ws) as
+    | { agents?: { env_allow?: unknown } }
+    | undefined;
+  return e?.agents?.env_allow;
 }
 
 /** The model a runtime is given: a pinned version, else the model. */
