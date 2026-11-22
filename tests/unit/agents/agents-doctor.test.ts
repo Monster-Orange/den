@@ -98,6 +98,7 @@ describe("agents doctor", () => {
       ...missing("codex", "Codex CLI, OpenAI", "codex"),
       ...missing("gemini", "Gemini CLI, Google", "gemini"),
       ...missing("grok", "Grok Build, xAI", "grok"),
+      ...missing("antigravity", "Antigravity CLI, Google", "agy"),
       "generic (Generic command)",
       "  status    ✓ available",
       "  path      none to find (the persona's argv)",

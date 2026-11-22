@@ -604,6 +604,7 @@ describe("the runtime catalog's routes (AG-0.5)", () => {
       "codex",
       "gemini",
       "grok",
+      "antigravity",
       "generic",
     ]);
     expect(plain[1]).toMatchObject({ source: "PATH", version: "0.50.0" });

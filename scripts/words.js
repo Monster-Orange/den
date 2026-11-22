@@ -82,6 +82,8 @@ export const VENDOR_NAMES = [
   "xAI",
   "Grok Build",
   "Grok",
+  "Antigravity CLI",
+  "Antigravity",
 ];
 
 const VENDOR = `(?:\\$?\\{[^{}]*\\}|\\b(?:${[...VENDOR_NAMES]
