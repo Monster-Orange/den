@@ -13,6 +13,9 @@ import type { EdgeConfig } from "../edge/types.js";
 import type { ResolvedProject, StackConfig } from "./types.js";
 
 import { product } from "../product.js";
+
+/** D53: Den's mark on each container of a stack it starts (runtime.ts). */
+export const DEN_OWNER_LABEL = "den.stack.owner";
 const NAME_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 export function assertStackName(n: string): void {
@@ -132,6 +135,8 @@ export function renderOverride(
   stack: StackConfig,
   resolved: ResolvedProject,
   ws: string,
+  /** D53: this install's mark, on every container (DEN_OWNER_LABEL). */
+  owner?: string,
 ): string {
   const links = stack.uses.map((p) => ({
     net: linkNetwork(stack.name, p, ws),
@@ -152,6 +157,12 @@ export function renderOverride(
   ];
   for (const [svc, def] of Object.entries(resolved.services).sort()) {
     const body: string[] = [];
+    // Compose merges labels by key: the project's own stay.
+    if (owner)
+      body.push(
+        "    labels:",
+        `      ${JSON.stringify(DEN_OWNER_LABEL)}: ${JSON.stringify(owner)}`,
+      );
     if (def.ports && def.ports.length) body.push("    ports: !reset []");
     if (def.container_name) body.push("    container_name: !reset null");
     const check = stack.healthchecks?.[svc];

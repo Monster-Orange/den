@@ -126,7 +126,11 @@ Reads (they change nothing):
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
+- `page_view`: a one-time link to open this Den's own pages read-only, as
+  you, to look, take a screenshot or check a fix. It changes nothing, and
+  ends in a few minutes.
 - `notifications_list`: your person's bell.
+- `app_feed_read`: the events an app's feed sent you, when Den types you that some are unread (only your own project's feeds that name you).
 - `approval_check`: where one of your held asks stands.
 - `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
@@ -134,6 +138,14 @@ Reads (they change nothing):
   as `<cli> gate run -- <command>` instead. A release run your person
   waits on (they marked it, or it's for an issue they reported) may ask
   with `priority: "release"` and a `reason`; never a routine run.
+- `gate_slot_yield`: your waiting slot lets one waiting slot behind it go
+  just ahead of yours; you keep your place otherwise. Use it instead of
+  giving your place back and asking again at the back.
+- `github_watch`: Den tells you once when a pull request's checks or a
+  workflow run finish, with each failure's URL. Use it instead of
+  `gh pr checks --watch` or `gh run watch`: one watcher for every agent
+  here, under one GitHub API budget. `github_watch_list` and
+  `github_watch_cancel` show and stop your own watches.
 
 Hub files (through Den, as you; when Hub is connected):
 
@@ -141,6 +153,12 @@ Hub files (through Den, as you; when Hub is connected):
   image or doc, sent in parts. Publish files through it, never by pasting
   a page's text into one call.
 - `hub_pull`: fetch a version's files into a folder, each hash checked.
+
+Direct writes (they run at once, audited, as you):
+
+- `issue_write`: create an issue, comment, label or set a milestone in a
+  project's GitHub repo (name the project). Den adds a line naming you to
+  what you write. It never closes, deletes, transfers or locks an issue.
 
 Held (each waits for the person's Allow):
 
@@ -182,10 +200,18 @@ Held (each waits for the person's Allow):
 - `pr_close`: close a stale or superseded pull request after a Hub note,
   with a comment saying why. It runs at once unless the person watches or
   pinned the repo.
+- `report`: report an issue with Den, as the Report button does (with no
+  title it lists the destinations and who can see each). To a public
+  destination it waits for the person's Allow; to a private one the
+  approval policy decides. Never put a secret in a report.
 - `gate_runner_token_create`: a token a CI job in a runner VM uses to take
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as
   the CI system's secret at once, and never print it.
+- `gate_box_set`, `gate_box_remove`: ask to add, replace or remove a test
+  box (another machine whose browsers take gate slots;
+  docs/gate-slots.md). Den checks the box first; it waits for the
+  person's Allow, and nothing changes until then.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the

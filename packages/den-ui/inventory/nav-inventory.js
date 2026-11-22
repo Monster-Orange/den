@@ -596,7 +596,8 @@ const COLUMN = ["rail", "foot"];
  * The search's slot for a viewport width (issue 303, "the search never
  * moves"): its x and width are a function of the viewport only, the same
  * in any host. Above 720px: the left part is 444px, less what the bar
- * needs for the search and the kit's right group (TOP_RIGHT_MIN);
+ * needs for the search and the kit's right group (TOP_RIGHT_MIN); under
+ * 944px the search narrows first, so the left part keeps TOP_LEFT_MIN;
  * 481–720px: 200px; up to 480px: 62px. The bar's padding is 12px and
  * its column gap 8px. Mirrors shell.css's .den-top columns (defaults).
  * Issue 302, a phone (phone.css, under 768px): the bar's sides are 8px
@@ -604,16 +605,22 @@ const COLUMN = ["rail", "foot"];
  * each 44px) and the search a 44px button.
  */
 export const TOP_RIGHT_MIN = 380;
+/** The left part's least width above 720px, before the search gives way (issue 981). */
+export const TOP_LEFT_MIN = 220;
+/** The search's least width: its icon (issue 981). */
+export const SEARCH_MIN = 56;
 export function searchSlot(viewportW) {
   const phone = viewportW < 768;
   const pad = phone ? 8 : 12;
   const gap = phone ? 6 : 8;
   if (viewportW > 720) {
-    const left = Math.max(
-      0,
-      Math.min(444, viewportW - 2 * pad - 304 - 2 * gap - TOP_RIGHT_MIN),
-    );
-    return { x: pad + left + gap, w: 304 };
+    // Issue 981: the search gives way before the left part does: the left
+    // part (the crumbs, the project picker in them) keeps TOP_LEFT_MIN
+    // while the search narrows, down to its icon (SEARCH_MIN).
+    const room = viewportW - 2 * pad - 2 * gap - TOP_RIGHT_MIN;
+    const w = Math.max(SEARCH_MIN, Math.min(304, room - TOP_LEFT_MIN));
+    const left = Math.max(0, Math.min(444, room - w));
+    return { x: pad + left + gap, w };
   }
   if (viewportW < 480) return { x: pad + 94 + gap, w: 44 };
   return { x: pad + 200 + gap, w: 54 };

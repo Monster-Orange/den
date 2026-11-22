@@ -104,6 +104,7 @@ describe("MODE-5: Settings rows that were the command line's", () => {
         "crash_loop",
         "web_bridge",
         "web_ready",
+        "web_pairing",
         "agents_list",
         "agent_context",
         "feedback",
@@ -177,6 +178,49 @@ describe("MODE-5: Settings rows that were the command line's", () => {
       (user().panes as Record<string, unknown>).reconnect_max_failures,
     ).toBeUndefined();
     expect((await s.settingsGet()).crash_loop).toMatchObject({ restarts: 5 });
+  });
+
+  it("issue 819: the new-device limits are Settings with permissive defaults: set, shown, refused out of range, an agent can't", async () => {
+    expect((await s.settingsGet()).web_pairing).toEqual({
+      requestsPerMinute: 30,
+      approveAttempts: 10,
+      approveWindowSeconds: 30,
+    });
+    expect(
+      await s.settings({
+        web_pairing: { requests_per_minute: 5, approve_window_seconds: 60 },
+      }),
+    ).toBe(200);
+    expect(user()).toMatchObject({
+      web: { pair_requests_per_minute: 5, approve_window_seconds: 60 },
+    });
+    expect((await s.settingsGet()).web_pairing).toEqual({
+      requestsPerMinute: 5,
+      approveAttempts: 10,
+      approveWindowSeconds: 60,
+    });
+    const before = JSON.stringify(user());
+    for (const bad of [
+      { web_pairing: { approve_attempts: 0 } },
+      { web_pairing: { requests_per_minute: 2.5 } },
+      { web_pairing: { speed: 1 } },
+    ])
+      expect([bad, await s.settings(bad)]).toEqual([bad, 400]);
+    const r = await asAgent({ web_pairing: { approve_attempts: 999 } });
+    expect(r.status).toBe(403);
+    expect(JSON.stringify(user())).toBe(before);
+    expect(
+      await s.settings({
+        web_pairing: {
+          requests_per_minute: null,
+          approve_window_seconds: null,
+        },
+      }),
+    ).toBe(200);
+    expect((await s.settingsGet()).web_pairing).toMatchObject({
+      requestsPerMinute: 30,
+      approveWindowSeconds: 30,
+    });
   });
 
   it("out of range, the wrong type or an unknown limit is refused, and nothing is written", async () => {

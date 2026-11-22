@@ -84,6 +84,11 @@ export interface AgentMcp {
     /** hub.allow_tools: its tools run without asking (default on). */
     allowTools?: boolean;
     /**
+     * Issue 158: the Hub delivery loop's text for its instructions (Den's
+     * copy, then the project's addition); absent when it is off.
+     */
+    loop?: string;
+    /**
      * D41: Den's proxy to Hub (<den>/hub) for the Stop hook's inbox check;
      * absent when hub.inbox_on_stop is off. No token: the hook sends the
      * agent's own Den token, from its env.
@@ -184,6 +189,11 @@ export interface LaunchInput {
    * Nothing outside Den's MCP server is allowed by it.
    */
   denToolsAllowed?: boolean;
+  /**
+   * Issue 1016: the install's address for people (web.url), for the role
+   * prompt's address line; absent or null: not set.
+   */
+  webUrl?: string | null;
   /**
    * The new conversation's first prompt (a relaunch from handoff.md).
    * Only a runtime with `firstPrompt: true` is given one.

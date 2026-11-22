@@ -16,12 +16,13 @@ import {
   typesText,
 } from "../../../packages/den-ui/src/phone.js";
 
-const el = (tagName: string, attrs: Record<string, string> = {}) => ({
-  tagName,
-  type: attrs.type ?? "text",
-  isContentEditable: false,
-  getAttribute: (n: string) => attrs[n] ?? null,
-});
+const el = (tagName: string, attrs: Record<string, string> = {}) =>
+  ({
+    tagName,
+    type: attrs.type ?? "text",
+    isContentEditable: false,
+    getAttribute: (n: string) => attrs[n] ?? null,
+  }) as unknown as Element;
 
 describe("issue 302: the phone kit", () => {
   it("a text field types; a button-like input doesn't", () => {

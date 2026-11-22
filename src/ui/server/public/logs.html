@@ -1367,8 +1367,11 @@
           let loginEs = null;
 
           btn.addEventListener("click", () => {
+            // Issue 698: the kit's dots on the button while it signs in;
+            // the output under it says what is happening.
+            const release =
+              window.denShell?.holdDots?.(btn) ?? (async () => {});
             btn.disabled = true;
-            btn.textContent = t("lg.aws.authenticating");
             authOut.style.display = "block";
             authOut.textContent = "";
             loginEs = new EventSource(
@@ -1387,6 +1390,7 @@
                   logStreams.delete(key);
                   openLog(repo, service);
                 } else {
+                  void release();
                   btn.disabled = false;
                   btn.textContent = t("lg.aws.retry");
                   authOut.textContent += `--- ${t("lg.aws.failed")} ---\n`;
@@ -1395,6 +1399,7 @@
             };
             loginEs.onerror = () => {
               loginEs.close();
+              void release();
               btn.disabled = false;
               btn.textContent = t("lg.aws.retry");
               authOut.textContent += `--- ${t("lg.aws.connErr")} ---\n`;

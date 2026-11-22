@@ -263,18 +263,11 @@ describe("in CI", () => {
     const shardStep = jobs["pr-shards"].steps.find(
       (s) => s.env?.DEN_TEST_QUARANTINE === "only",
     );
-    // The big pull-request run splits as many ways as main's tests job, and
-    // has the same room: in four parts a shard ran past a 20-min limit.
-    const pick = (
-      jobs.pr.steps.find((s) => s.id === "select")?.run ?? ""
-    ).match(/shards=\[([\d,]+)\]/);
-    const n = pick ? pick[1].split(",").length : 0;
-    expect(n).toBe(wf("ci.yml").jobs.tests.strategy!.matrix.shard.length);
-    for (const st of jobs["pr-shards"].steps.filter((s) =>
-      (s.run ?? "").includes("--shard="),
-    ))
-      expect(st.run).toContain(`--shard=\${{ matrix.shard }}/${n}`);
-    expect(shardStep?.run).toContain(`--shard=\${{ matrix.shard }}/${n}`);
+    // Issue 998: the big pull-request run splits as many ways as its plan
+    // (scripts/shard-plan.cjs, the pr job's shard_count), quarantined step too.
+    expect(shardStep?.run).toContain(
+      "--shard=${{ matrix.shard }}/${{ needs.pr.outputs.shard_count }}",
+    );
     expect(jobs["pr-shards"]["timeout-minutes"]).toBeGreaterThanOrEqual(30);
   });
   it("the release never sets it", () => {

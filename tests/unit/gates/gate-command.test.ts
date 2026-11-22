@@ -14,6 +14,7 @@ import {
   type GateRun,
 } from "../../../src/ui/cli/gate-command.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 
 const tmps: string[] = [];
 const kids: ChildProcess[] = [];
@@ -60,7 +61,11 @@ function deps(over: Partial<GateDeps> = {}) {
   const beats: (() => void)[] = [];
   let handler: ((s: NodeJS.Signals) => void) | undefined;
   const d: GateDeps = {
-    store: new GateStore({ dir, alive: () => true }),
+    store: new GateStore({
+      platform: "linux",
+      dir,
+      alive: () => true,
+    }),
     env: {},
     out: (l) => out.push(l),
     err: (l) => err.push(l),
@@ -147,6 +152,8 @@ describe("gate run", () => {
 
   it("waits while another run holds the machine, saying who and until when, then runs", async () => {
     const t = deps();
+    // Issue 751: a browser run runs alone only at 0 beside it.
+    t.d.store.writeSettings({ cpu_slots_beside_browser: 0 });
     const other = t.d.store.ask({
       kind: "browser",
       who: "Den · other-repo · a person",
@@ -211,12 +218,21 @@ describe("gate run", () => {
 
   it("a real run killed with SIGTERM stops its command and gives its slot back", async () => {
     const dir = tmp();
-    const store = new GateStore({ dir });
+    const store = new GateStore({
+      platform: "linux",
+      dir,
+    });
     const k = spawn(
       process.execPath,
       ["--import", "tsx", path.join(__dirname, "run-child.ts")],
       {
-        env: { ...process.env, DEN_GATE_DIR: dir, TSX_DISABLE_CACHE: "1" },
+        env: {
+          ...process.env,
+          DEN_GATE_DIR: dir,
+          TSX_DISABLE_CACHE: "1",
+          // A browser run declares a container browser (macOS hosts).
+          DEN_PW_WS: "ws://127.0.0.1:9",
+        },
         stdio: ["ignore", "ignore", "pipe"],
       },
     );
@@ -249,12 +265,21 @@ describe("gate run", () => {
 
   it("a real wrapper killed with SIGKILL: the slot stays while its run goes on, then frees at once", async () => {
     const dir = tmp();
-    const store = new GateStore({ dir });
+    const store = new GateStore({
+      platform: "linux",
+      dir,
+    });
     const k = spawn(
       process.execPath,
       ["--import", "tsx", path.join(__dirname, "run-child.ts")],
       {
-        env: { ...process.env, DEN_GATE_DIR: dir, TSX_DISABLE_CACHE: "1" },
+        env: {
+          ...process.env,
+          DEN_GATE_DIR: dir,
+          TSX_DISABLE_CACHE: "1",
+          // A browser run declares a container browser (macOS hosts).
+          DEN_PW_WS: "ws://127.0.0.1:9",
+        },
         stdio: ["ignore", "ignore", "pipe"],
       },
     );
@@ -295,6 +320,7 @@ describe("gate run", () => {
     const r = fakeRun();
     const t = deps({ now: () => now, exec: () => r.run });
     t.d.store = new GateStore({
+      platform: "linux",
       dir: t.d.store.dir,
       alive: () => true,
       now: () => now,
@@ -369,7 +395,7 @@ describe("gate end and settings: a person's only", () => {
     expect(t.d.store.settings().cpuSlots).toBe(2);
     expect(await cmdGate(["settings", "--cpu-slots", "4"], t.d)).toBe(0);
     expect(t.out.at(-1)).toBe(
-      "cpu slots 4 · flagged 15 min past its estimate · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past a run waiting 60 min, agents and people may ask",
+      `cpu slots 4, 2 beside a browser run, none beside a release one · browser runs at once here 1 · cpu runs wait at load ${GATE_DEFAULTS.cpuHoldLoad} while a release browser run holds · flagged 15 min past its estimate, in the bell past 2× it · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past another marked run, agents and people may ask · test boxes checked within 8 s, a held or unreachable one checked again after 30 s · browser runs need a container: no`,
     );
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });
@@ -380,6 +406,8 @@ describe("gate status", () => {
     const t = deps();
     expect(await cmdGate(["status"], t.d)).toBe(0);
     expect(t.out).toEqual(["No gate runs hold or wait."]);
+    // Issue 751: a browser run runs alone only at 0 beside it.
+    t.d.store.writeSettings({ cpu_slots_beside_browser: 0 });
     const a = t.d.store.ask({
       kind: "browser",
       who: "A",

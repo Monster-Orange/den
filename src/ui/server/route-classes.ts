@@ -73,6 +73,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/graph.html",
     "/agents",
     "/agents.html",
+    // Issue 482: the Terminals page.
+    "/terminals",
     "/server-agent",
     "/server-agent.html",
     "/tests",
@@ -428,6 +430,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),
+  M(
+    ["POST"],
+    "/api/web/test-person",
+    "issue 636: a test bed's CLI starts a --test-person command (the person's token, on a test bed only)",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",
@@ -598,6 +605,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/mcp-servers",
     "issue 335: a project's extra MCP servers, names and urls only (an agent adds one with project_mcp_add)",
   ),
+  R(
+    "/api/workspaces/:ws/event-feeds",
+    "issue 459: a project's app event feeds and their state, names, agents and urls only",
+  ),
   M(
     ["POST", "DELETE"],
     "/api/workspaces/:ws/mcp-servers/:name",
@@ -730,13 +741,59 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 621: a person revokes a runner token; it answers 401 at once",
   ),
   R(
+    "/api/gate-slots/boxes",
+    "Issue 625: the test boxes (browser slots on other machines) as set; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes",
+    "Issue 625: a person adds or replaces a test box; never an agent",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes/remove",
+    "Issue 625: a person removes a test box; its running slots finish",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
+  ),
+  R(
+    "/api/agents/self/app-feeds",
+    "issue 459: an agent's own app feeds and their unread counts (its own token only)",
+  ),
+  R(
+    "/api/agents/self/app-feeds/:name",
+    "issue 459: an agent's own app feed's events, capped per call (its own token only)",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/view",
+    "Issue 796: an agent (its own token only) asks for a read-only view of these pages; a one-time link",
   ),
   M(
     ["POST"],
     "/api/agents/self/attention",
     "NT-1: an agent (its own token only) says it waits for its person or finished its turn",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/issue-write",
+    "issue_write: an agent (its own token only) writes a GitHub issue in its own project's repos; audited",
+  ),
+  R(
+    "/api/agents/self/github-watches",
+    "An agent's own watches in the shared GitHub watcher (its token only); reads Den's state, asks GitHub nothing",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/github-watches",
+    "An agent asks the shared GitHub watcher to watch a pull request's checks or a run in its project's repo; one GitHub call at most",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/github-watches/cancel",
+    "An agent stops one of its own GitHub watches",
   ),
   M(["POST"], "/api/notifications/read", "NT-3: mark notifications read"),
   M(["POST"], "/api/notifications/clear", "NT-3: clear the read ones"),
@@ -767,6 +824,20 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/alerts/unsubscribe",
     "Issue 172: a person stops push alerts to a device",
+  ),
+  R(
+    "/api/alerts/devices",
+    "Issue 172: the person's devices that get push (what each is, its push service, when added); never an endpoint, never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/test",
+    "Issue 172: a person sends a test alert to each device that gets push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/forget",
+    "Issue 172: a person stops push alerts to one device, by its id",
   ),
   R(
     "/api/hub/link-suggestions",
@@ -1075,6 +1146,9 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
+  "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
+  "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],

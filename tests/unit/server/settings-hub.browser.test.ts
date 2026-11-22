@@ -22,7 +22,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -182,7 +182,7 @@ async function page(answer?: unknown, width = 1440): Promise<Page> {
       }),
     );
   const answered = p.waitForResponse((r) => r.url().endsWith("/api/hub"));
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await answered;
   await p.waitForSelector('[data-setting="agents.hub"]');
   return p;

@@ -45,6 +45,7 @@ import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import { checkCommands } from "./permissions.js";
 import { DEN_ROLES, REGISTRY_ID_RE } from "./roles.js";
 import { enginePath } from "../engine.js";
+import { addressBriefLine } from "../agent-links.js";
 import {
   SERVER_PACK_DIR,
   SERVER_PERSONA_ID,
@@ -419,6 +420,8 @@ export function rolePrompt(
   agentId: string,
   workspace: string,
   mcpName: string,
+  /** Issue 1016: the install's address for people (web.url), null unset. */
+  webUrl: string | null = null,
 ): string {
   const lines = isServerScope(workspace)
     ? [
@@ -433,6 +436,8 @@ export function rolePrompt(
   lines.push(
     "When you need your person's decision, call ask_human with the question, then end your turn: their answer comes as your next input.",
   );
+  // Issue 1016: the address people open; links on it, never loopback.
+  lines.push(addressBriefLine(webUrl));
   if (persona.context.length)
     lines.push(`Read first: ${persona.context.join("; ")}.`);
   const shared = persona.guardrails?.instructions

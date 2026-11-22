@@ -13,7 +13,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -101,7 +101,7 @@ async function page(
       });
     });
   if (language) {
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+    await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
     await p.evaluate(
       (l) =>
         (
@@ -114,7 +114,7 @@ async function page(
       language,
     );
     await p.reload();
-  } else await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+  } else await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
   try {
     await p.waitForSelector(`${ROW} [data-hubla]`);
   } catch (e) {

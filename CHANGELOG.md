@@ -4,11 +4,117 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.79] - unreleased
+## [0.4.84] - 2026-11-22
+
+This release includes 0.4.83, which was not published.
+
+### Changed
+
+- Tests: the agents page's stop-ship typing check waits for the reloaded pane's terminal, then for the typing, instead of a fixed pause. (issue 983)
+
+- Gate: a test box can run Den's own browser suites. `gate run --box … --base-url http://127.0.0.1:*` covers the ports the run opens itself, never 80 or 443, and the browser test helper holds a box's pages to the run's base URLs. (issue 991)
+
+## [0.4.83] - 2026-11-22
+
+### Added
+
+- Terminals: shells have their own Terminals page and list, apart from agents. Running ones first, then exited ones with Restart and Remove. (issue 482)
+- Notifications: Settings lists the devices that get push alerts, with Send a test alert and Forget. (issue 172)
+- Agents: an agent can file a report through Report, with `den report` or the MCP `report` tool. A public destination waits for the person's Allow. (issue 565)
+- Buttons that wait on the server show pulsing dots in place of their label until it answers. The UI kit is 0.9.2. (issue 698)
+- a test install created as one (empty state folder, launch flag, mark) gets its fixture person at creation, and on loopback its fixture session may open, use and close its own test terminals (Den's fixed stub, never a shell), and message and relaunch project agents, as the test operator (audited `test:operator`); any other install refuses it. Changed: starting a plain session or setting a runtime path refuses every agent claim, the fixture person's too.
+- `create --hub <url>` writes hub.url into the new distribution's org config.
+- Agents can open a read-only view of their own Den's pages (MCP `page_view`), on this machine for a few minutes. Every write is refused, and views are logged with the agent's name. Settings › Access turns it off.
+- An app's server-sent events feed can be delivered to one project agent. Den types a pointer when the agent is idle, the agent reads the events with the new app_feed_read tool, the state is in Settings and the limits are Settings (issue 459).
+- Den can read from an agent's screen whether Codex, Gemini, Grok or Claude (with hooks off) is working, waiting for you, or idle, using rule sets ported from herdr (Apache-2.0), shipped with Den and listed in THIRD_PARTY_NOTICES.
+- Gate: `gate run` gives its command `DEN_GATE_SLOT`, `DEN_GATE_SLOT_KIND` and `DEN_GATE_SLOT_BOX`; a nested `gate run` of the same kind and place runs inside the held slot instead of waiting behind it (issue 928).
+
+### Changed
+
+- The Hub delivery loop is built into every agent's instructions in projects connected to Hub. It is on by default, can be turned off in Settings › Hub or per project, and a project can add its own text.
+- Gate slots: a release-priority browser run runs alone by default; `cpu_slots_beside_release_browser` (default 0) sets how many cpu runs may run beside it. Other browser runs keep `cpu_slots_beside_browser` (issue 751).
+- Agents: restarting an agent whose rotation is due (for example when a connected tool server's tools change) relaunches it from its handoff in a new conversation instead of leaving it stopped; the rotation sweep also brings back a due agent a restart left stopped (issue 923).
+- Agents: an agent whose session ends without Den asking (a signal from outside, a crash) is recorded in the audit trail, shown in the bell, and brought back once (from its handoff when its rotation is ready); exit 0 is left down. New setting `agents.unasked_exit_window_minutes` (default 10; 0: record and tell only) (issue 926).
+- Session rotation waits for an agent's running sub-agents, workflows and gate runs (up to agents.rotation_wait_minutes, default 4 h); a forced rotation's handoff must list each one, and the new conversation starts them again.
+- Agents: when Den reconnects an agent's Hub tools while a dialog waits for its person, its note waits too, and the bell says so.
+- An owner's Hub approval clears the bell's questions that name it as soon as it arrives, and other agents in the project whose question named it are told.
+- Allow dialog: every held write's Review lines are shown in the page's language (es, ja), not only project_mode's. (issue 205)
+- Stacks: Den acts only on the Compose projects it started. Up, down and restart (and Start, Stop and Restart on the page and in ⌘K) are refused when a stack's project has containers Den didn't start for it, naming them; doctor warns when two stacks share a project name or a project runs others' containers. (issue 39)
+- Validate checks every file it opens where it really is and reads that same file; doctor flags a repo root that is far too broad.
+- Held writes waiting for your Allow lead Needs you. (issue 746)
+- Held writes: how long a request waits for the person is a setting, `held_writes.wait_minutes` (default 24 hours), and waiting requests survive a restart; one a restart can't bring back answers lost. (issue 742)
+- Hub deliveries: Den logs each one's outcome (no content) in hub/deliveries.jsonl, and doctor shows the last 24 hours.
+- Test installs: the fixture person's say and relaunch reach only the bed's own agents, which Den marks when it starts them on the test-person path; it reads only screenshots it filed and can't take off a person's pins. (issues 943, 946, 956)
+- Updates: when a project's agent asks to update Den, the update waits for a person's Allow (a held write). Only the Den agent (id `server`, with the token's server scope) can update with no person, when that setting is on. A project agent can't be created with the id `server`; a persona named `server` needs `--id`. (PR 877)
+- Project drop-down: no "CLI default" tag beside the picked project. Picking a project still makes it the CLI default, and the Projects page still shows the tag. (issue 897)
+
+### Fixed
+
+- Pins save again from live checks on a test install: the fixture person may write the rail's own prefs, nothing else that is a person's.
+- Agents at phone width: the "server isn't responding" banner no longer pushes the To line under the open runs dock.
+- Den's note after it restarts an agent for Hub's tools now waits and rings the bell when the agent shows a list or a question, instead of waiting silently.
+- Bell: a "waits for you" question goes as soon as it is answered.
+- Report: the repository pill follows the destination's real visibility; a private one gets no public warning.
+
+
+## [0.4.82] - 2026-11-22
+
+### Added
+- CLI: on a test bed (`create --test-bed`), `--test-person` lets a test driver's command line act as the person, on the record (audit `via: test-person`); refused on any other install; `doctor` shows whether an install is a test bed (issue 636).
+
+- Agents: `issue_write` lets an agent create an issue, comment, label or set a milestone in one of its own project's GitHub repos, at once and audited. It never closes, reopens, deletes, transfers or locks. Which persona roles may use it is the person-only setting `agents.issue_writes`; `agents.issue_writes_per_hour` (default 60) limits the whole install. Each issue and comment says which agent and install wrote it.
+- Agents: one shared GitHub watcher per install. `github_watch` (a pull request's checks or a run in the agent's project), `github_watch_list` and `github_watch_cancel`. Den tells the agent once when it finishes, with each failed check. It backs off while nothing changes and stops polling near the GitHub API budget. New settings: `github.watch_interval_seconds` (60), `github.watch_max_interval_seconds` (300), `github.api_budget_floor` (500), `github.watches_max` (50). Doctor and `github status` show the budget.
+- Gate slots: `local_browser_slots` (default 1): browser runs that may hold this machine at once. Browser runs on a test box don't use one. (issue 751)
+
+### Changed
+
+- Gate slots: cpu and browser runs wait in separate lines. A cpu run no longer waits behind every queued browser run, and a browser run never waits behind a cpu run. (issue 751)
+- Gate slots: up to `cpu_slots_beside_browser` cpu runs (new setting, default 2) run beside the browser runs on this machine. 0 keeps the old rule: a browser run runs alone. A browser run on a test box doesn't count. (issue 751)
+- Gate slots: a release-priority run passes every plain waiting run of its kind, however long it has waited. `priority_pass_limit_minutes` now defaults to 0 and applies only between release-priority runs. (issue 751)
+
+- Agents: when an agent exits right after it starts, the page shows the lines it printed, not just its exit code (issue 89).
+- Tests: browser tests no longer assume the browser runs on the same machine (issue 191).
+
+### Migrations
+
+- None required. To keep the old gate rules, set `cpu_slots_beside_browser` to 0 and `priority_pass_limit_minutes` to 60.
+
+## [0.4.81] - 2026-11-21
+
+### Changed
+
+- Sign-in: a new device asks to sign in, and a person already signed in approves it by typing the code the new device shows (Settings › Access, or the pop-up). Sign-in links open the request rather than signing in at once. The code stays on the new device's screen: `web login` names the device and its address, never its code. A request that is refused for being too many no longer uses up the link. (issue 819)
+- Sign-in page: a browser that isn't signed in gets a page listing this install's ways in (GitHub sign-in, asking from this device, a link from a terminal on the host), each marked set up or not. From another machine with none that works, it says so and how to fix it. API callers get the same 401 as before. (issue 868)
+
+### Fixed
+
+- Address: the one-time address Den takes from its edge prefers a route the distribution names over the route Den makes from the brand, so an install no longer takes a name only its own host can open. An address taken that way is corrected once at start, with an audit row; a confirmed address, or one a person set, is never changed. Doctor's unconfirmed-address row lists the other edge addresses.
+- `web url` no longer says to restart the web server: the address is in use as soon as it is saved.
+
+## [0.4.80] - 2026-11-21
+
+### Added
+
+- Gate slots: CI runners ask for release priority over HTTP, as `gate run --priority release` does. (issue 739)
+- Gate slots held over MCP: the agent is told when its slot is granted, a slot never claimed passes to the next run, and a held slot has a lease. (issue 714)
+- Test boxes: a browser slot per test box. An agent asks to add or remove a box with the held writes `gate_box_set` and `gate_box_remove`. Nothing changes until a person Allows it in the browser, and the card shows every field. (issue 625)
+- `gate yield <my-id> --to <their-id>` and the MCP tool `gate_slot_yield`: the owner of a waiting entry lets one waiting entry behind it go just ahead. Never a holder; the slot log records it. (issue 795)
+- Priority classes per project, with optional windows. New settings `class_order`, `class_map` and `class_windows`. A higher class goes first among waiting runs; nothing is pre-empted. With no classes set, the queue works as before. (issue 803)
+
+### Changed
+
+- Gate: on macOS a browser slot needs a container browser (a `ws://` or `wss://` address, or `self`). A browser started on a shared Mac can take its window server down and sign every session out.
+
+### Checks
+
+- The bed's touched run of v0.4.80-dev.2 (715 and 726): 715 passes 5 of 5. Its two reds are the same as on 0.4.79 and nothing in this release touches them: 653's terminal attach over https gets a 403 (being proven as the test person's scope), and 726 skips because a throwaway Den has no person session (issue 814). Released on "no new red against the last release".
+
+## [0.4.79] - 2026-11-21
 
 ### Changed
 
 - Sign-in: Den prints a sign-in link or code only in a terminal. Where there is none (a script, a service log), `den web up` prints the address and says to run `den web login` in a terminal.
+- The UI kit (`@monster-orange/den-ui`) is published as 0.9.1. It carries 0.4.78's pop-up font fix to apps that use the kit from npm.
 
 ## [0.4.78] - 2026-11-21
 

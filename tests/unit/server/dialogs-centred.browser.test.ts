@@ -9,7 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -128,7 +128,7 @@ describe("D68: dialogs open centred", () => {
             reducedMotion: "reduce",
           });
           const p = await ctx.newPage();
-          await p.goto(signInUrl(s!.stateDir, s!.base, path));
+          await signInPage(p, s!.stateDir, s!.base, path);
           await p.waitForFunction(() => "denShell" in window, undefined, {
             timeout: 20_000,
           });

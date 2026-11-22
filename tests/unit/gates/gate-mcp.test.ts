@@ -15,6 +15,7 @@ import {
 } from "../../../src/ui/mcp/tools.js";
 import type { DenApi } from "../../../src/ui/mcp/api.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -47,7 +48,11 @@ function ctx(dir?: string, actor = "agent:coder"): ToolContext {
     } as unknown as ToolContext["cfg"],
     cli: "acme",
     scope: { workspace: "north", actor },
-    gates: new GateStore({ dir: d, alive: () => true }),
+    gates: new GateStore({
+      platform: "linux",
+      dir: d,
+      alive: () => true,
+    }),
   };
 }
 
@@ -133,14 +138,28 @@ describe("gate slots over MCP", () => {
     ]);
     expect(status.settings).toEqual({
       cpuSlots: 2,
+      cpuSlotsBesideBrowser: 2,
+      cpuSlotsBesideReleaseBrowser: 0,
+      // Issue 1009: cores × 4 / 3 on the machine the test runs on.
+      cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
+      localBrowserSlots: 1,
       overrunMarginMinutes: 15,
+      overrunBellMultiple: 2,
       priorityMax: 1,
-      priorityPassLimitMinutes: 60,
+      priorityPassLimitMinutes: 0,
       priorityAgents: true,
+      priorityRunners: true,
+      claimMinutes: 3,
+      mcpRenewMinutes: 5,
+      mcpLapseMinutes: 15,
+      mcpGraceMinutes: 15,
+      browserRequiresContainer: false,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,
+      boxCheckTimeoutSeconds: 8,
+      boxRecheckSeconds: 30,
     });
   });
 
@@ -160,5 +179,61 @@ describe("gate slots over MCP", () => {
       (await callTool("gate_slot_request", { id: other.id }, c)).isError,
     ).toBe(true);
     expect(c.gates!.list().map((e) => e.id)).toEqual([other.id]);
+  });
+});
+
+describe("issue 1023: gate_slot_release and a gate run's own entry", () => {
+  /** An entry as `gate run` from an agent's shell makes it. */
+  const cliEntry = (c: ToolContext, actor?: string) =>
+    c.gates!.ask({
+      kind: "browser",
+      who: `Den · north · ${actor ?? "a person"}`,
+      label: "e2e",
+      pid: 7,
+      estimateMin: 6,
+      agent: !!actor,
+      project: "north",
+      ...(actor ? { actor } : {}),
+    });
+
+  it("the same agent frees the entry its own gate run made", async () => {
+    const c = ctx(undefined, "agent:coder");
+    const e = cliEntry(c, "agent:coder");
+    const r = await callTool("gate_slot_release", { id: e.id }, c);
+    expect(r.isError).toBeFalsy();
+    expect(json(r)).toEqual({ released: true });
+    expect(c.gates!.list()).toEqual([]);
+    expect(c.gates!.events().map((x) => x.event)).toEqual([
+      "asked",
+      "granted",
+      "released",
+    ]);
+  });
+
+  it("another agent, or a person's entry, is refused and stays", async () => {
+    const c = ctx(undefined, "agent:other");
+    const theirs = cliEntry(c, "agent:coder");
+    const persons = cliEntry(c);
+    for (const id of [theirs.id, persons.id]) {
+      const r = await callTool("gate_slot_release", { id }, c);
+      expect(r.isError).toBe(true);
+      expect(r.text).toContain("that slot isn't yours");
+    }
+    expect(c.gates!.list().map((x) => x.id)).toEqual([theirs.id, persons.id]);
+  });
+
+  it("a CI runner's entry with the same name is never the agent's", async () => {
+    const c = ctx(undefined, "agent:coder");
+    const e = c.gates!.askRemote({
+      kind: "cpu",
+      who: "runner",
+      label: "ci",
+      estimateMin: 5,
+      runner: "agent:coder",
+      tokenId: "t1",
+    });
+    const r = await callTool("gate_slot_release", { id: e.id }, c);
+    expect(r.isError).toBe(true);
+    expect(c.gates!.list().map((x) => x.id)).toEqual([e.id]);
   });
 });
