@@ -359,4 +359,44 @@ describe("P0-D2: an approval clears the questions that name it", () => {
     expect(got.map((c) => c.agent)).toEqual(["ag-2"]);
     expect(a.waitingNow().get("ag-1")).toBe("asked");
   });
+
+  it("Hub's held.state says whether an allowed change landed; the words only without it", () => {
+    const r = {
+      id: "h10",
+      kind: "held",
+      decision: "allowed",
+      held_id: HELD,
+      held: { id: HELD, kind: "built.signoff", state: "failed", url: URL },
+      agent: "ag-1",
+      project: "web",
+      thread: { kind: "held", id: HELD, url: URL },
+      author: {
+        id: "u_me",
+        login: "pat",
+        name: "Pat Example",
+        kind: "person",
+        verified: "hub_session",
+      },
+      body: "Allowed and applied.",
+      created_at: "2026-01-02T03:00:00Z",
+    };
+    const failed = parseDelivery(r)!;
+    expect(failed.heldState).toBe("failed");
+    expect(heldOutcome(failed)).toBe("failed");
+    expect(parseDelivery(deliveryRaw(failed))?.heldState).toBe("failed");
+    const applied = parseDelivery({
+      ...r,
+      held: { ...r.held, state: "applied" },
+      body: "The apply failed.",
+    })!;
+    expect(heldOutcome(applied)).toBe("allowed");
+    const noHeld = parseDelivery({
+      ...r,
+      held: undefined,
+      body: "The apply failed.",
+    })!;
+    expect(heldOutcome(noHeld)).toBe("failed");
+    // held.id names the held write when held_id is missing.
+    expect(parseDelivery({ ...r, held_id: undefined })?.heldId).toBe(HELD);
+  });
 });
