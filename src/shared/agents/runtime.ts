@@ -190,6 +190,11 @@ export interface LaunchInput {
    */
   denToolsAllowed?: boolean;
   /**
+   * Issue 1016: the install's address for people (web.url), for the role
+   * prompt's address line; absent or null: not set.
+   */
+  webUrl?: string | null;
+  /**
    * The new conversation's first prompt (a relaunch from handoff.md).
    * Only a runtime with `firstPrompt: true` is given one.
    */
