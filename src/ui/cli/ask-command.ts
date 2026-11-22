@@ -87,7 +87,7 @@ export async function cmdAsk(
     });
   } catch (e) {
     io.err(
-      `${cli} ask withdraw: ${product().title}'s web server didn't answer (${(e as Error).message}).`,
+      `${cli} ask withdraw: this install's ${product().title} didn't answer (${(e as Error).message}).`,
     );
     return 1;
   }
