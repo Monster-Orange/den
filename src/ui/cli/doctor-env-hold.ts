@@ -39,7 +39,7 @@ export function envHoldLines(
   s: EnvHoldSettings,
   names: readonly string[],
 ): { lines: string[] } {
-  const lines = ["", `${title} doctor: secrets held out of agent sessions`, ""];
+  const lines = ["", `${title} doctor: secrets held out of agents`, ""];
   if (!s.hold.length)
     lines.push(
       "  env hold  ⚠  secret list is empty: nothing is held back (agents.env_hold: [])",
