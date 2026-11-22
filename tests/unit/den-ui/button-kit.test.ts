@@ -93,14 +93,14 @@ describe("button.css", () => {
     };
     // Den's values, value for value (they were in Den's frame script).
     expect(rule(".den-btn")).toBe(
-      "border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text);",
+      "border: 1px var(--edge-style, solid) var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text);",
     );
     // Issue 699: a held button (aria-busy) has no hover change.
     expect(rule('.den-btn:not([aria-busy="true"]):hover')).toBe(
       "border-color: var(--border-strong);",
     );
     expect(rule(".den-btn.primary")).toBe(
-      "background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent);",
+      "background: var(--primary-bg, var(--accent-fill)); border-color: var(--primary-border, var(--accent-fill)); color: var(--primary-text, var(--on-accent));",
     );
     expect(rule(".den-btn.sm")).toBe("padding: 2px 9px; font-size: 12.5px;");
     expect(rule('.den-btn:disabled, a.den-btn[aria-disabled="true"]')).toBe(

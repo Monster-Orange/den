@@ -29,6 +29,9 @@ import {
 } from "../../../src/ui/server/theme-runtime.js";
 
 const ROOT = path.resolve(__dirname, "../../..");
+// The schema is read from the engine root: this checkout's, whichever
+// node_modules jest runs from.
+process.env.DEN_ENGINE_ROOT = ROOT;
 const KIT = path.join(ROOT, "packages/den-ui/src");
 const SKETCH_DIR = path.join(KIT, "themes/sketch");
 const read = (p: string) => fs.readFileSync(p, "utf8");
@@ -37,7 +40,8 @@ const json = (p: string) => JSON.parse(read(p)) as ThemeManifest;
 /** The custom properties a CSS block sets, by name (the first block that has it). */
 function propsOf(css: string, selector: RegExp): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const m of bare.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
     if (!selector.test(m[1].trim())) continue;
     for (const d of m[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g))
       if (!(d[1] in out)) out[d[1]] = d[2].trim();
@@ -61,7 +65,8 @@ function resolve(value: string, vars: Record<string, string>): string {
 
 /** One declaration's value in a rule whose selector list names `sel`. */
 function declOf(css: string, sel: string, prop: string): string | null {
-  for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const m of bare.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
     const sels = m[1].split(",").map((s) => s.trim());
     if (!sels.includes(sel)) continue;
     const d = new RegExp(`(?:^|;|\\s)${prop}\\s*:\\s*([^;]+);`).exec(m[2]);
@@ -129,7 +134,7 @@ describe("issue 788: themes without the new keys draw as before", () => {
 
   it("the kit's own defaults (no theme CSS) are the same: solid, filled", () => {
     const tokens = read(path.join(KIT, "tokens.css"));
-    const root = propsOf(tokens, /^:root$/m);
+    const root = propsOf(tokens, /^:where\(:root\)$/);
     expect(root["--edge-style"]).toBe("solid");
     expect(root["--primary-bg"]).toBe("var(--accent-fill)");
     expect(root["--primary-border"]).toBe("var(--accent-fill)");
@@ -226,7 +231,11 @@ describe("issue 788: the schema and its doc", () => {
 
   it("the theme doc lists both keys, their defaults and 0.4.88", () => {
     const doc = read(path.join(ROOT, "docs/distributions.md"));
-    expect(doc).toMatch(/`edge`[^\n]*`solid`[^\n]*`dashed`[^\n]*0\.4\.88/);
-    expect(doc).toMatch(/`buttons`[^\n]*`filled`[^\n]*`outline`[^\n]*0\.4\.88/);
+    expect(doc).toMatch(
+      /`edge`: `solid` \(the default\) or `dashed`[^]{0,120}0\.4\.88/,
+    );
+    expect(doc).toMatch(
+      /`buttons`: `filled` \(the default\) or `outline`[^]{0,240}0\.4\.88/,
+    );
   });
 });

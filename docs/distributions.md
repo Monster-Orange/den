@@ -1809,6 +1809,18 @@ and the guide to making your own
   text in `accent-text`. Two colors are optional in each mode: `info`
   (neutral notes, text at 4.5:1) and `violet` (cross-group edges, 3:1),
   checked when a theme sets them; unset, the UI kit's defaults hold.
+- `shape` (optional): `radius`, `radius-button` and `density`, and two
+  keys for how the kit draws edges and buttons:
+  - `edge`: `solid` (the default) or `dashed`. Every kit border uses it.
+    Added in 0.4.88.
+  - `buttons`: `filled` (the default) or `outline`. With `outline`, the
+    primary and danger buttons have no fill: a `border-strong` edge and
+    `text` words, danger in `bad`. Added in 0.4.88.
+
+  A theme that sets neither draws as before. The built-in `sketch` theme
+  (greys only, dashed, outline, one face) ships in the UI kit as
+  `themes/sketch.css`, so a page with the kit and no Den server can link
+  it after `tokens.css`.
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a

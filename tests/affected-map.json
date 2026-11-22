@@ -1985,6 +1985,7 @@
         "tests/unit/cli/repo-add.integration.test.ts",
         "tests/unit/cli/up-multi-service-dep.integration.test.ts",
         "tests/unit/den-ui/site-head-kit.test.ts",
+        "tests/unit/den-ui/sketch-theme-788.test.ts",
         "tests/unit/edge/ca.test.ts",
         "tests/unit/environment-manager/workspace-manager.test.ts",
         "tests/unit/environment/env-selector.test.ts",
@@ -2044,6 +2045,11 @@
         "tests/unit/test-infra/brittle-ratchet.test.ts"
       ],
       "why": "tests that run scripts/brittle-ratchet.mjs"
+    },
+    {
+      "when": ["scripts/build-sketch-theme.ts"],
+      "run": ["tests/unit/den-ui/sketch-theme-788.test.ts"],
+      "why": "tests that run scripts/build-sketch-theme.ts"
     },
     {
       "when": ["scripts/ci-force-all.mjs"],
