@@ -3,9 +3,9 @@
    product's Yes/No questions and large dialogs. Tokens only (UK-1): the
    theme's radius, backdrop and font, no number of its own for them.
    Linked, never injected: clean under style-src 'self'. */
-/* Issue 673: the actions are the kit's one button; its look comes with
-   the dialog's, so a page that links only dialog.css still has it. */
-@import url("button.css");
+/* Issue 673: the actions are the kit's one button (button.css). The page
+   links button.css itself (Den: on every page, KIT_PAGE_CSS), never an
+   @import here: that would ask for it by a second URL (issue 231). */
 /* Issue 793: its own font, so it never takes the page's (or the
    browser's serif); the kit's stack when a theme has no --sans. */
 .dk-dlg {

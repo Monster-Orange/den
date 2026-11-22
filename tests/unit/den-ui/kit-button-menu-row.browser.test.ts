@@ -315,7 +315,8 @@ describe("the general button (button.css)", () => {
       const kit = await open({ look: "kit", mode });
       const want = await styles(den, ".den-btn");
       const have = await styles(kit, ".den-btn");
-      expect(want.length).toBe(7);
+      // Issue 673: danger is the eighth.
+      expect(want.length).toBe(8);
       expect(have).toEqual(want);
       // Hover, too.
       for (const p of [den, kit]) await p.hover("#b-sec");
