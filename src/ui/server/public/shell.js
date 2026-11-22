@@ -3078,6 +3078,18 @@
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.heldLapsed":
+      "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
+    "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
+    "bell.ap.h": "Waiting for your Allow",
+    "bell.ap.row": "{name} asks: {what}",
+    "bell.ap.rowAsk": "Asked: {what}",
+    "bell.ap.waits": "Waiting {ago} · expires {time}",
+    "bell.ap.allow": "Allow",
+    "bell.ap.deny": "Deny",
+    "bell.ap.done": "Allowed: {what}",
+    "bell.ap.denied": "Denied: {what}",
+    "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",

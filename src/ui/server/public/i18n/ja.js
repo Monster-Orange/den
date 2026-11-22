@@ -2162,6 +2162,19 @@
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
+    "bell.m.heldLapsed":
+      "{name} の依頼は応答がないまま期限切れになりました: {what}。何も実行していません。エージェントにもう一度依頼するよう伝えました。",
+    "bell.m.heldLapsedAsk":
+      "依頼が応答のないまま期限切れになりました: {what}。何も実行していません。",
+    "bell.ap.h": "あなたの許可待ち",
+    "bell.ap.row": "{name} の依頼: {what}",
+    "bell.ap.rowAsk": "依頼: {what}",
+    "bell.ap.waits": "{ago} 待機中 · 期限 {time}",
+    "bell.ap.allow": "許可",
+    "bell.ap.deny": "拒否",
+    "bell.ap.done": "許可しました: {what}",
+    "bell.ap.denied": "拒否しました: {what}",
+    "bell.ap.failed": "うまくいきませんでした: {error}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
