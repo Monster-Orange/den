@@ -16,6 +16,7 @@ import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { denAuth } from "./helpers/den-auth.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { GateStore } from "../../../src/shared/gates/store.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let browser: Browser | null = null;
@@ -23,6 +24,7 @@ let tmp = "";
 let stateDir = "";
 let port = 0;
 let server: ChildProcess;
+let leftBehind = "";
 
 beforeAll(async () => {
   try {
@@ -33,6 +35,19 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
+  // A slot another test in this worker left in its gate folder, held an
+  // hour on a 1-minute estimate: this suite's server must never see it (it
+  // would be an overrun row in the bell, under the Allow row).
+  leftBehind = new GateStore({
+    dir: process.env.DEN_GATE_DIR,
+    now: () => Date.now() - 60 * 60_000,
+  }).ask({
+    kind: "cpu",
+    who: "another test",
+    label: "left behind",
+    pid: process.pid,
+    estimateMin: 1,
+  }).id;
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-bar-")));
   const root = path.join(tmp, "dist");
   stateDir = path.join(tmp, "home", ".den");
@@ -76,6 +91,9 @@ afterAll(async () => {
     servers: [server],
     after: () => {
       if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+      // The worker's later tests don't inherit the seeded slot.
+      if (leftBehind)
+        new GateStore({ dir: process.env.DEN_GATE_DIR }).release(leftBehind);
     },
   });
 });
@@ -124,6 +142,13 @@ const box = async (p: Page, bell: string) =>
   (await row(p).locator(`[data-bell="${bell}"]`).boundingBox())!;
 
 describe("the bell's Allow row: Review", () => {
+  it("a slot in the worker's gate folder never reaches this server's bell", async () => {
+    if (skip()) return;
+    const p = await bellAt(1440);
+    expect(await p.locator('[data-kind="gate_overrun"]').count()).toBe(0);
+    await p.context().close();
+  });
+
   for (const width of [390, 1440])
     it(`at ${width}: a tap opens the lines and another closes them; Allow and Deny stay put`, async () => {
       if (skip()) return;

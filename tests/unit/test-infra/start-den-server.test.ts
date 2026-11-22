@@ -21,7 +21,11 @@ const FAKE = `
 const http = require("http");
 http.createServer((q, s) => {
   s.setHeader("Content-Type", "application/json");
-  s.end(JSON.stringify({ root: process.env.DEN_ROOT, pid: process.pid }));
+  s.end(JSON.stringify({
+    root: process.env.DEN_ROOT,
+    pid: process.pid,
+    gateDir: process.env.DEN_GATE_DIR,
+  }));
 }).listen(Number(process.env.PORT), "localhost");
 `;
 
@@ -99,5 +103,56 @@ ${FAKE}`;
       // den#143: the exit code too, so a flake names its cause.
       /try 1 on port \d+: it exited \(exit code 1\)\nbad config/,
     );
+  });
+
+  it("a server gets its own gate folder, never the worker's shared one", async () => {
+    // A slot another test left in the worker's folder must never show in
+    // this server's bell (an overrun row moved a bell test's buttons).
+    const shared = process.env.DEN_GATE_DIR!;
+    expect(shared).toBeTruthy();
+    const root = tmpRoot();
+    const started = await startDenServer(
+      process.execPath,
+      ["-e", FAKE],
+      { cwd: root, env: { ...process.env, DEN_ROOT: root } },
+      { timeoutMs: 10_000 },
+    );
+    cleanup.push(() => stopServer(started.server));
+    const info = await new Promise<{ gateDir?: string }>((r, j) =>
+      http
+        .get(`http://localhost:${started.port}/api/server-info`, (res) => {
+          let b = "";
+          res.on("data", (d: Buffer) => (b += d.toString()));
+          res.on("end", () => r(JSON.parse(b)));
+        })
+        .on("error", j),
+    );
+    expect(info.gateDir).toBeTruthy();
+    expect(path.resolve(info.gateDir!)).not.toBe(path.resolve(shared));
+  });
+
+  it("a gate folder the test chose itself is kept", async () => {
+    const root = tmpRoot();
+    const mine = path.join(root, "my-gates");
+    const started = await startDenServer(
+      process.execPath,
+      ["-e", FAKE],
+      {
+        cwd: root,
+        env: { ...process.env, DEN_ROOT: root, DEN_GATE_DIR: mine },
+      },
+      { timeoutMs: 10_000 },
+    );
+    cleanup.push(() => stopServer(started.server));
+    const info = await new Promise<{ gateDir?: string }>((r, j) =>
+      http
+        .get(`http://localhost:${started.port}/api/server-info`, (res) => {
+          let b = "";
+          res.on("data", (d: Buffer) => (b += d.toString()));
+          res.on("end", () => r(JSON.parse(b)));
+        })
+        .on("error", j),
+    );
+    expect(info.gateDir).toBe(mine);
   });
 });
