@@ -740,6 +740,11 @@
     ],
     "tests/unit/server/scope-retry-1051.browser.test.ts": [
       "src/ui/server/public/header.js"
+    ],
+    "tests/unit/server/health-poll-1022.browser.test.ts": [
+      "src/shared/health-poll.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/public/header.js"
     ]
   },
   "subjectless": [],
@@ -1079,6 +1084,7 @@
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/edge-page.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
+        "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -1644,6 +1650,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -1795,6 +1802,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -2902,6 +2910,15 @@
         "src/ui/server/health-row.ts"
       ],
       "run": ["tests/unit/server/health-pending.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/health-poll.ts",
+        "src/ui/server/index.ts",
+        "src/ui/server/public/header.js"
+      ],
+      "run": ["tests/unit/server/health-poll-1022.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
