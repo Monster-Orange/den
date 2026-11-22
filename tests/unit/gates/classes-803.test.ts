@@ -19,6 +19,7 @@ import {
 } from "../../../src/shared/gates/rules.js";
 import { BOX_DEFAULTS } from "../../../src/shared/gates/boxes.js";
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
+import { parseClassMap } from "../../../src/shared/gates/classes.js";
 import { gateView } from "../../../src/shared/gates/view.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
 import { callTool, type ToolContext } from "../../../src/ui/mcp/tools.js";
@@ -186,6 +187,12 @@ describe("the default example (11-20): within P0, release before lane", () => {
     expect(checkGatePatch({ class_map: P.class_map }).ok).toBe(true);
     const bad = checkGatePatch({ class_map: "platform label:=p0" });
     expect(bad.ok).toBe(false);
+  });
+
+  it("'* label:<pattern>' is for every project, like 'label:<pattern>'", () => {
+    expect(parseClassMap("* label:release*=p0")).toEqual(
+      parseClassMap("label:release*=p0"),
+    );
   });
 });
 

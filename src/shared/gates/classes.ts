@@ -86,7 +86,12 @@ export function parseClassMap(s: string): MapRule[] | string {
       if (!pattern || pattern.length > 120)
         return `"${it}" needs a label pattern`;
       if (scoped[1]!.length > 120) return `"${it}": the project name is long`;
-      out.push({ project: scoped[1]!, label: pattern, class: cls });
+      // "* label:<pattern>" is every project, as "label:<pattern>" is.
+      out.push(
+        scoped[1] === "*"
+          ? { label: pattern, class: cls }
+          : { project: scoped[1]!, label: pattern, class: cls },
+      );
     } else if (key.startsWith("label:")) {
       const pattern = key.slice(6).trim();
       if (!pattern || pattern.length > 120)
