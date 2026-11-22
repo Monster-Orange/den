@@ -186,6 +186,7 @@ import {
   rotationSettings,
   setRotationSetting,
   rotationTick,
+  exitTick,
   trustTick,
   TRUST_DECLINED,
   TRUST_WAITING,
@@ -2455,6 +2456,20 @@ export function startAgentUpkeep(
             `  ⚠ ${who} wrote no handoff after 2 asks: its callout asks the person`,
           );
         else log(`  ⚠ rotation of ${who}: ${e.why}`);
+      }
+      // Issue 926: a session that ended without Den asking: recorded,
+      // told, and brought back once (exit 0 is left down).
+      for (const e of await exitTick(d)) {
+        const who = `${e.agent} in ${e.workspace}`;
+        if (e.kind === "resumed" || e.kind === "relaunched")
+          log(
+            `Agent ${who} ended without Den asking (exit ${e.code}); ${e.kind === "relaunched" ? "relaunched from its handoff" : "resumed"}`,
+          );
+        else if (e.kind === "left")
+          log(
+            `  ⚠ agent ${who} ended without Den asking (exit ${e.code}): ${e.why}`,
+          );
+        else log(`Agent ${who} quit by itself (exit 0)`);
       }
       // Issue 658: a relaunch whose conversation was never written (it
       // ended at the folder-trust question, say) can relaunch again.

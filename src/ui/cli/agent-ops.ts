@@ -116,6 +116,7 @@ import {
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
+  UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
   setUserRuntimeBin,
   userConfigPath,
@@ -9017,6 +9018,165 @@ export async function resumeOrRelaunch(
       }),
     };
   return { kind: "resumed", s: await resumeAgent(d, id, ws) };
+}
+
+/** Issue 926: what the exit sweep did about one agent. */
+export type ExitEvent = {
+  agent: string;
+  workspace: string;
+  /** The ended session's exit code (128 + signal for a signal). */
+  code: number;
+} & (
+  | { kind: "recorded" } // exit 0: it quit by itself; left down
+  | { kind: "resumed" | "relaunched" }
+  | { kind: "left"; why: string } // told, not brought back
+);
+
+/** Issue 926: how long after an exit the sweep looks at it. */
+const EXIT_SEEN_MS = 5_000;
+
+/** Issue 926: when the sweep first saw each exit with no time from its host. */
+const exitFirstSeen = new Map<string, number>();
+
+/**
+ * Issue 926: when session `s` ended: its host's exit time, else when the
+ * sweep first saw it ended (`now` the first time).
+ */
+export function exitSeenAt(s: SessionInfo, now: Date): number {
+  const t = s.exitedAt ? Date.parse(s.exitedAt) : NaN;
+  if (Number.isFinite(t)) return t;
+  const seen = exitFirstSeen.get(s.ref.id);
+  if (seen !== undefined) return seen;
+  exitFirstSeen.set(s.ref.id, now.getTime());
+  return now.getTime();
+}
+
+/** Issue 926: agents.unasked_exit_window_minutes, in ms. */
+function unaskedExitWindowOf(d: AgentsResolved): number {
+  try {
+    return d.agentsConfig().unaskedExitWindowMs;
+  } catch {
+    return UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000;
+  }
+}
+
+/**
+ * Issue 926: agents whose session ended without Den asking (no stop,
+ * restart or relaunch from Den or a person: a signal from outside, a
+ * crash). Each gets one audit row. Exit 0 (it quit by itself) is left
+ * down. Otherwise the person is told, and Den brings it back once
+ * (resumeOrRelaunch: from its handoff when its rotation is ready); a
+ * second such exit within agents.unasked_exit_window_minutes is told and
+ * left down. A host that went down (no exit code) is restore-on-boot's.
+ */
+export async function exitTick(
+  d: AgentsResolved,
+  now: Date = new Date(),
+): Promise<ExitEvent[]> {
+  const out: ExitEvent[] = [];
+  let sessions: SessionInfo[];
+  try {
+    sessions = await hostSessions(d);
+  } catch {
+    return out;
+  }
+  const byId = new Map(sessions.map((x) => [x.ref.id, x]));
+  const windowMs = unaskedExitWindowOf(d);
+  for (const rec of listRecords(d.stateDir())) {
+    const s = rec.session ? byId.get(rec.session.id) : undefined;
+    if (!s?.exited || s.exitCode === undefined) continue;
+    // Asked for: a stop (Den's or a person's), or a restart left not back.
+    if (rec.stoppedAt || rec.restartFailed) continue;
+    if (rec.unaskedExit?.session === s.ref.id) continue; // seen
+    // A stop marks its record just after its TERM: give it time to. A
+    // host that gives no exit time: from when the sweep first saw it.
+    if (now.getTime() - exitSeenAt(s, now) < EXIT_SEEN_MS) continue;
+    const e = await lockAgent(d, rec.id, () =>
+      unaskedExit(d, s, now, windowMs),
+    );
+    if (e) out.push(e);
+  }
+  return out;
+}
+
+/** Issue 926: one agent's unasked exit, under its lock; undefined: none. */
+async function unaskedExit(
+  d: AgentsResolved,
+  s: SessionInfo,
+  now: Date,
+  windowMs: number,
+): Promise<ExitEvent | undefined> {
+  {
+    // Again under the lock: a stop or restart may have marked it since.
+    const rec = listRecords(d.stateDir()).find(
+      (r) => r.session?.id === s.ref.id,
+    );
+    if (!rec || rec.stoppedAt || rec.restartFailed) return undefined;
+    if (rec.unaskedExit?.session === s.ref.id) return undefined;
+    const code = s.exitCode ?? 0;
+    const who = { agent: rec.id, workspace: rec.workspace, code };
+    const prev = rec.unaskedExit;
+    const at = now.toISOString();
+    writeRecord(d.stateDir(), {
+      ...rec,
+      unaskedExit: { at, session: s.ref.id, code },
+    });
+    auditConfig(
+      {
+        verb: "agents",
+        detail: `agent ${rec.id} in ${rec.workspace} ended without Den asking (exit ${code})`,
+        ...(code === 0 ? {} : { outcome: "refused" as const }),
+        ...(code === 0 ? {} : { reason: `exit ${code}` }),
+      },
+      d.stateDir(),
+    );
+    if (code === 0) {
+      return { kind: "recorded", ...who };
+    }
+    const name = rec.displayName || rec.persona || rec.id;
+    const tell = (kind: "waiting" | "finished", why: string) => {
+      try {
+        new NotificationStore(d.stateDir()).add({
+          kind,
+          subject: `agent:${rec.id}`,
+          scope: `workspace/${rec.workspace}`,
+          text: `${name} ended without Den asking (exit ${code}): ${why}`,
+          msg: { key: "bell.m.unaskedExit", vars: { name, code, why } },
+          link: `/agents?ws=${encodeURIComponent(rec.workspace)}`,
+        });
+      } catch {
+        /* best effort: the audit row and the row's state still say so */
+      }
+    };
+    const recent =
+      prev !== undefined && now.getTime() - Date.parse(prev.at) < windowMs;
+    if (windowMs <= 0 || recent) {
+      const why = recent
+        ? "it ended again soon after Den brought it back, so it is left down"
+        : "bringing it back is off";
+      tell("waiting", why);
+      return { kind: "left", ...who, why };
+    }
+    try {
+      const r = await resumeOrRelaunch(d, rec.id, rec.workspace);
+      const back = agentRecord(d, rec.id, rec.workspace);
+      writeRecord(d.stateDir(), {
+        ...back,
+        unaskedExit: { at, session: s.ref.id, code, back: true },
+      });
+      tell(
+        "finished",
+        r.kind === "relaunched"
+          ? "Den relaunched it from its handoff"
+          : "Den resumed it",
+      );
+      return { kind: r.kind, ...who };
+    } catch (e) {
+      const why = `Den couldn't bring it back: ${(e as Error).message}`;
+      tell("waiting", why);
+      return { kind: "left", ...who, why };
+    }
+  }
 }
 
 /** D28: the rotation settings, and agent `agent`'s effective values. */

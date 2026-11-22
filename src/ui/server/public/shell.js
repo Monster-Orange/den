@@ -3053,6 +3053,8 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
+    "bell.m.unaskedExit":
+      "{name} ended without Den asking (exit {code}): {why}",
     "bell.m.trust": "{name}: Waiting: trust this folder?",
     "bell.m.trustDeclined":
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",

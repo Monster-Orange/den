@@ -137,6 +137,7 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     config: {
       maxConcurrent: 4,
       restartWaitMs: 120 * 60_000,
+      unaskedExitWindowMs: 10 * 60_000,
       personaPacks: [],
       agents: {},
       runtimeCatalog: [],

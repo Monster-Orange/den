@@ -1768,6 +1768,12 @@ export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
 export const RESTART_WAIT_MINUTES_DEFAULT = 120;
 
+/**
+ * Issue 926: agents.unasked_exit_window_minutes when unset: an agent whose
+ * session ends without Den asking is brought back once in this window.
+ */
+export const UNASKED_EXIT_WINDOW_MINUTES_DEFAULT = 10;
+
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
 
@@ -1786,6 +1792,8 @@ export const AGENTS_RESERVED_KEYS = [
   // D39: how far back the mid-turn check reads.
   "turn_read_max_mb",
   "restart_wait_minutes",
+  // Issue 926: bring back an agent whose session ended without Den asking.
+  "unasked_exit_window_minutes",
   // Issue 218: how long a change waits for another process's on one agent.
   "lock_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
@@ -1862,6 +1870,13 @@ export interface ResolvedAgentsConfig {
    * restart is skipped and tried later; nothing is ever cut off.
    */
   restartWaitMs: number;
+  /**
+   * Issue 926: agents.unasked_exit_window_minutes (default 10). An agent
+   * whose session ends without Den asking (not exit 0) is brought back
+   * once; a second such exit within this window is told, not brought
+   * back. 0: never brought back (still recorded and told).
+   */
+  unaskedExitWindowMs: number;
   /**
    * Issue 218: agents.lock_wait_minutes (default LOCK_WAIT_MINUTES_DEFAULT):
    * how long a change to an agent waits while another process changes it.
@@ -2057,6 +2072,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
+    unaskedExitWindowMs: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000,
     tokenBinding: tb !== false,
     tokenPeerWaitMs: typeof pw === "number" ? pw : TOKEN_PEER_WAIT_MS_DEFAULT,
     personaPacks: [],
@@ -2104,6 +2120,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.restart_wait_minutes: minutes, above 0 (got ${JSON.stringify(rw)})`,
       );
     out.restartWaitMs = Math.round(rw * 60_000);
+  }
+  const uw = raw.unasked_exit_window_minutes;
+  if (uw !== undefined && uw !== null) {
+    if (typeof uw !== "number" || !Number.isFinite(uw) || uw < 0)
+      throw new Error(
+        `agents.unasked_exit_window_minutes: minutes, 0 or more (got ${JSON.stringify(uw)})`,
+      );
+    out.unaskedExitWindowMs = Math.round(uw * 60_000);
   }
   const lw = raw.lock_wait_minutes;
   if (lw !== undefined && lw !== null) {
