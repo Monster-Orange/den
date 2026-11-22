@@ -1286,6 +1286,13 @@
     "set.agents.approvals_critical": "Crítico",
     "set.agents.approvals_critical.d":
       "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.server.health_poll": "Comprobaciones de salud mientras miras",
+    "set.server.health_poll.d":
+      "Cada cuánto una página abierta y visible comprueba la salud de cada servicio: de 2 a 300 segundos. __DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden":
+      "Comprobaciones de salud en una pestaña oculta",
+    "set.server.health_poll_hidden.d":
+      "Cada cuánto una página en una pestaña oculta comprueba la salud: de 10 a 3600 segundos. Sin ninguna página a la vista, las comprobaciones se ejecutan como mucho con esa frecuencia. Al volver a la vista, la página comprueba enseguida. __DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",

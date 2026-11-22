@@ -52,6 +52,7 @@
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
+ *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
  *     api_budget_floor?, watches_max? }
  *                                     user.yml github.* (the shared GitHub
@@ -73,6 +74,7 @@ import {
 } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { HELD_WAIT_MINUTES, SHELL_PATH_TIMEOUT } from "./den-config.js";
+import { HEALTH_POLL } from "./health-poll.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
@@ -148,6 +150,8 @@ export const PERSON_ONLY_SETTINGS = [
   "approvals_critical",
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes",
+  // Issue 1022: how often the page polls health, visible and hidden.
+  "health_poll",
 ] as const;
 
 /**
@@ -404,6 +408,16 @@ const HELD_WRITES: Record<string, Limit> = {
     max: HELD_WAIT_MINUTES.max,
     int: true,
   },
+};
+
+/** Issue 1022: user.yml health_poll.* (health-poll.ts). */
+const HEALTH_POLL_LIMITS: Record<string, Limit> = {
+  visible_seconds: {
+    key: "visible_seconds",
+    ...HEALTH_POLL.visible,
+    int: true,
+  },
+  hidden_seconds: { key: "hidden_seconds", ...HEALTH_POLL.hidden, int: true },
 };
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
@@ -729,6 +743,14 @@ export function patchCliRows(
       "held_writes",
       HELD_WRITES,
       body.held_writes,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "health_poll",
+      "health_poll",
+      HEALTH_POLL_LIMITS,
+      body.health_poll,
       apply,
     ) ??
     patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);

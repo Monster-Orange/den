@@ -675,6 +675,20 @@ that a container existed, running or not).
 `service`, with both forms at once, or with a key of another type (`cmd`,
 `url`), and says which.
 
+### How often the checks run
+
+An open page checks health every 5 seconds while it is in view, and every
+60 seconds while its tab is hidden. Back in view, it checks at once. A
+hidden page's poll says so, and the server keeps its last answer for the
+slow interval: with no page in view, the checks run at most once a minute.
+Both are Settings (Settings > Server), or in `user.yml`:
+
+```yaml
+health_poll:
+  visible_seconds: 5 # 2 to 300
+  hidden_seconds: 60 # 10 to 3600
+```
+
 ### The Environments page
 
 The Environments page lists every service's row at once, each cell pulsing

@@ -11,6 +11,10 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  healthCacheTtlMs,
+  healthPollSeconds,
+} from "../../shared/health-poll.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
@@ -721,7 +725,6 @@ function healthForViewer(
   return (r) => ({ ...rewrite(r), inView: inView(r.workspaces) });
 }
 
-const HEALTH_CACHE_TTL_MS = 8_000;
 /** Consecutive timed-out health cycles per check (see TimeoutStreaks). */
 const healthTimeouts = new TimeoutStreaks();
 const healthCache = new Map<string, { results: HealthResult[]; at: number }>();
@@ -6911,7 +6914,9 @@ async function handleRequest(
     const refresh = url.searchParams.get("refresh") === "1";
     const cacheKey = healthCacheKey(env, wsParam);
     const hit = refresh ? null : healthCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+    // Issue 1022: a hidden page's poll keeps the answer for the slow interval.
+    const ttl = healthCacheTtlMs(url.searchParams.get("hidden") === "1");
+    if (hit && Date.now() - hit.at < ttl) {
       return sendJson(res, hit.results.map(forViewer));
     }
     return sendJson(
@@ -6940,7 +6945,9 @@ async function handleRequest(
     const refresh = url.searchParams.get("refresh") === "1";
     const cacheKey = healthCacheKey(env, wsParam);
     const hit = refresh ? null : healthCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+    // Issue 1022: a hidden page's poll keeps the answer for the slow interval.
+    const ttl = healthCacheTtlMs(url.searchParams.get("hidden") === "1");
+    if (hit && Date.now() - hit.at < ttl) {
       // Cached: replay in one go. Nothing to stagger — it's already known.
       for (const r of hit.results)
         send({ type: "result", result: forViewer(r) });
@@ -9051,6 +9058,8 @@ async function handleRequest(
         time_zone: timeZonePref(user.time_zone),
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // Issue 1022: how often the page polls health, visible and hidden.
+        health_poll: healthPollSeconds(() => user),
         // Issue 158: the Hub delivery loop in agents' instructions.
         hub_delivery_loop:
           (
@@ -9158,6 +9167,7 @@ async function handleRequest(
           process_lookup?: unknown;
           agent_hooks?: unknown;
           held_writes?: unknown;
+          health_poll?: unknown;
           github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
@@ -9222,6 +9232,7 @@ async function handleRequest(
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
             held_writes: body.held_writes,
+            health_poll: body.health_poll,
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);

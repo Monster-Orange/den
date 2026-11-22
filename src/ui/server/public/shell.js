@@ -2314,6 +2314,12 @@
     "set.agents.approvals_critical": "Critical",
     "set.agents.approvals_critical.d":
       "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    "set.server.health_poll": "Health checks while you look",
+    "set.server.health_poll.d":
+      "How often an open, visible page checks every service's health: 2 to 300 seconds. __DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden": "Health checks in a hidden tab",
+    "set.server.health_poll_hidden.d":
+      "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",

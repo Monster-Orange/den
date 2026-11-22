@@ -372,6 +372,11 @@ export interface UserConfig {
    */
   held_writes?: { wait_minutes?: unknown };
   /**
+   * Issue 1022: how often the page polls health, visible (default 5 s, 2
+   * to 300) and hidden (default 60 s, 10 to 3600). health-poll.ts.
+   */
+  health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
+  /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
    */

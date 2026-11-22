@@ -1240,6 +1240,12 @@
     "set.agents.approvals_critical": "重要な書き込み",
     "set.agents.approvals_critical.d":
       "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "set.server.health_poll": "表示中のヘルスチェック",
+    "set.server.health_poll.d":
+      "開いて表示中のページが各サービスのヘルスを確認する間隔: 2〜300 秒。__DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden": "非表示タブでのヘルスチェック",
+    "set.server.health_poll_hidden.d":
+      "非表示のタブにあるページがヘルスを確認する間隔: 10〜3600 秒。表示中のページがないとき、チェックは最大でもこの間隔でしか実行されません。表示に戻ると、すぐに確認します。__DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
