@@ -67,12 +67,12 @@ export function agentLinks(url: string, ws: string, id: string): AgentLinks {
 
 /** What an agent is told when the address isn't set. */
 export function addressNotSetNote(): string {
-  return `This Den's address for people (web.url) is not set, so there are no links to give. A person sets it in Settings › Server (${ADDRESS_SETTING_PAGE}). Never give a localhost or 127.0.0.1 link: it works only on this machine.`;
+  return `This Den's address for people (web.url) is not set, so there are no links to give. A person sets it in Settings › Server (${ADDRESS_SETTING_PAGE}). Never give a localhost or 127.0.0.1 link: it works only on this machine.`; // words-ok: Server is the Settings category's own label
 }
 
 /** Issue 1016: the start brief's one line about the address. */
 export function addressBriefLine(url: string | null): string {
   return url
     ? `Den's address for people: ${url}. Give full links, never 127.0.0.1.`
-    : `Den's address for people is not set (Settings › Server, ${ADDRESS_SETTING_PAGE}): give no links, never 127.0.0.1.`;
+    : `Den's address for people is not set (Settings › Server, ${ADDRESS_SETTING_PAGE}): give no links, never 127.0.0.1.`; // words-ok: Server is the Settings category's own label
 }
