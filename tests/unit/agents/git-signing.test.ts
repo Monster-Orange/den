@@ -85,7 +85,7 @@ describe("agents.git.signing_key: the setting", () => {
 
   it("gh's line names the .pub, as a signing key", () => {
     expect(signingKeyAddLine({ signingKey: "/k/den_agents" })).toBe(
-      'gh ssh-key add "/k/den_agents.pub" --type signing --title "Den agents"',
+      `gh ssh-key add '/k/den_agents.pub' --type signing --title "Den agents"`,
     );
   });
 });
@@ -111,16 +111,20 @@ describe("an agent's env", () => {
     expect(Object.keys(env).filter((k) => k.startsWith("GIT_"))).toEqual([]);
   });
 
-  it("set: gpg.format ssh, the key, commit.gpgsign true, past every scrub", () => {
+  it("set: gpg.format ssh, the key, commit.gpgsign true, the other signers false, past every scrub", () => {
     const g = agentGitEnv({ signingKey: key });
     expect(g).toEqual({
-      GIT_CONFIG_COUNT: "3",
+      GIT_CONFIG_COUNT: "5",
       GIT_CONFIG_KEY_0: "gpg.format",
       GIT_CONFIG_VALUE_0: "ssh",
       GIT_CONFIG_KEY_1: "user.signingkey",
       GIT_CONFIG_VALUE_1: key,
       GIT_CONFIG_KEY_2: "commit.gpgsign",
       GIT_CONFIG_VALUE_2: "true",
+      GIT_CONFIG_KEY_3: "gpg.program",
+      GIT_CONFIG_VALUE_3: "false",
+      GIT_CONFIG_KEY_4: "gpg.x509.program",
+      GIT_CONFIG_VALUE_4: "false",
     });
     const env = agentSessionEnv({ PATH: "/bin", HOME: "/h" }, {}, {}, "a1", undefined, [], g);
     for (const [k, v] of Object.entries(g)) expect(env[k]).toBe(v);
@@ -194,7 +198,7 @@ describe("agents start", () => {
     r.config.git = { signingKey: key };
     expect(await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps)).toBe(0);
     const env = r.made[0].opts.env;
-    expect(env.GIT_CONFIG_COUNT).toBe("3");
+    expect(env.GIT_CONFIG_COUNT).toBe("5");
     expect(env.GIT_CONFIG_VALUE_1).toBe(key);
     expect(env.GIT_CONFIG_VALUE_2).toBe("true");
     const r2 = await rig();
@@ -215,7 +219,7 @@ describe("doctor's signing row", () => {
     const r = signingLines("Acme", () => ({ signingKey: key }), (g) => checkAgentSigning(g, { tmp: dir }));
     expect(r.problem).toBe(false);
     expect(r.lines.join("\n")).toContain(`signing  ✓  commits sign with ${key} and verify`);
-    expect(r.lines.join("\n")).toContain(`gh ssh-key add "${key}.pub" --type signing`);
+    expect(r.lines.join("\n")).toContain(`gh ssh-key add '${key}.pub' --type signing`);
     expect(r.lines.join("\n")).toContain("admin:ssh_signing_key");
     expect(r.checks).toEqual([
       expect.objectContaining({ id: "agents:signing", status: "ok", fix: signingKeyAddLine({ signingKey: key }) }),
