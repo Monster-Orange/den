@@ -92,6 +92,7 @@
  *                     its wait, restart, resumes and audit. Doctor's fix,
  *                     never `sessions host --stop`. The person's own Allow
  */
+import { line, reviewLines } from "../../shared/review-lines.js";
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
   cloneTarget,
@@ -308,6 +309,9 @@ function draftError(r: RepoAddResult): string {
     .join(" ");
 }
 
+const CARRY_ON =
+  "Agents and terminals carry on where they were; open pages reconnect.";
+
 export function heldActions(d: HeldActionDeps): HeldActions {
   /**
    * D70: a workspace given by name ("back office") or slug, as its key; a
@@ -330,9 +334,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         args: { name },
         summary: `create the project "${name}"`,
         params: { name },
-        details: [
-          `A new, empty project named "${name}", made active so its services can start.`,
-        ],
+        ...reviewLines([
+          line(
+            `A new, empty project named "${name}", made active so its services can start.`,
+            "ap.det.workspace_create.new",
+            { name },
+          ),
+        ]),
       };
     },
     async run(a) {
@@ -459,13 +467,25 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           ...(workspace ? { workspace } : {}),
           ...(activates ? { activates: "1" } : {}),
         },
-        details: [
+        ...reviewLines([
           ...(activates
-            ? [`Activates the project "${workspace}" first, so it can run.`]
+            ? [
+                line(
+                  `Activates the project "${workspace}" first, so it can run.`,
+                  "ap.det.service_try.activates",
+                  { project: workspace! },
+                ),
+              ]
             : []),
-          `Runs the service's local "up", as the Services page's Start does.`,
-          `Den reports the exit code and the last lines of its output.`,
-        ],
+          line(
+            `Runs the service's local "up", as the Services page's Start does.`,
+            "ap.det.service_try.up",
+          ),
+          line(
+            `Den reports the exit code and the last lines of its output.`,
+            "ap.det.service_try.reports",
+          ),
+        ]),
       };
     },
     async run(a) {
@@ -492,11 +512,17 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         args: { reason },
         summary: `restart Den (${reason})`,
         params: { reason },
-        details: [
-          "Den stops and starts again at the same address, on the version installed now.",
-          "Agents and terminals carry on where they were; open pages reconnect.",
-          "The agent that asked is told when Den is back.",
-        ],
+        ...reviewLines([
+          line(
+            "Den stops and starts again at the same address, on the version installed now.",
+            "ap.det.den_restart.restart",
+          ),
+          line(CARRY_ON, "ap.det.den.carryOn"),
+          line(
+            "The agent that asked is told when Den is back.",
+            "ap.det.den_restart.told",
+          ),
+        ]),
       };
     },
     async run(a, asked) {
@@ -523,11 +549,23 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         args: { version, reason },
         summary: `update Den to ${version} (${reason})`,
         params: { version, reason },
-        details: [
-          `Den gets ${version === "latest" ? "the latest version" : `version ${version}`} from npm for this distribution, checks it with doctor, and restarts on it.`,
-          "If the new version isn't up in time, Den rolls back by itself to the version it runs now, and says why.",
-          "Agents and terminals carry on where they were; open pages reconnect.",
-        ],
+        ...reviewLines([
+          version === "latest"
+            ? line(
+                "Den gets the latest version from npm for this distribution, checks it with doctor, and restarts on it.",
+                "ap.det.den_update.latest",
+              )
+            : line(
+                `Den gets version ${version} from npm for this distribution, checks it with doctor, and restarts on it.`,
+                "ap.det.den_update.version",
+                { version },
+              ),
+          line(
+            "If the new version isn't up in time, Den rolls back by itself to the version it runs now, and says why.",
+            "ap.det.den_update.rollback",
+          ),
+          line(CARRY_ON, "ap.det.den.carryOn"),
+        ]),
       };
     },
     async run(a, asked) {
@@ -651,14 +689,37 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         },
         summary: `clone ${t.shown} into ${t.dest}`,
         params: { source: t.shown, path: t.dest },
-        details: [
-          `From: ${t.shown}${t.branch ? `, branch ${t.branch}` : ", its default branch"}.`,
+        ...reviewLines([
+          t.branch
+            ? line(
+                `From: ${t.shown}, branch ${t.branch}.`,
+                "ap.det.repo_clone.fromBranch",
+                { source: t.shown, branch: t.branch },
+              )
+            : line(
+                `From: ${t.shown}, its default branch.`,
+                "ap.det.repo_clone.from",
+                { source: t.shown },
+              ),
           t.gh
-            ? "With your gh login (a GitHub repo)."
-            : "With git and your own credentials (not gh: it isn't GitHub).",
-          `Into: ${t.dest} (a new folder; nothing there changes).`,
-          "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
-        ],
+            ? line(
+                "With your gh login (a GitHub repo).",
+                "ap.det.repo_clone.gh",
+              )
+            : line(
+                "With git and your own credentials (not gh: it isn't GitHub).",
+                "ap.det.repo_clone.git",
+              ),
+          line(
+            `Into: ${t.dest} (a new folder; nothing there changes).`,
+            "ap.det.repo_clone.into",
+            { path: t.dest },
+          ),
+          line(
+            "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
+            "ap.det.repo_clone.then",
+          ),
+        ]),
       };
     },
     async run(a) {
@@ -716,11 +777,27 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         args: { project, session, persona, ...(runtime ? { runtime } : {}) },
         summary: `bring in conversation ${session} as a ${persona} agent of project "${project}"`,
         params: { session, persona, project },
-        details: [
-          `Project: ${project}. Persona: ${persona}${runtime ? `. Runtime: ${runtime}` : ""}.`,
-          "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
-          "Refused if it is still open in another terminal, or an agent already continues it.",
-        ],
+        ...reviewLines([
+          runtime
+            ? line(
+                `Project: ${project}. Persona: ${persona}. Runtime: ${runtime}.`,
+                "ap.det.agent_import.whatRuntime",
+                { project, persona, runtime },
+              )
+            : line(
+                `Project: ${project}. Persona: ${persona}.`,
+                "ap.det.agent_import.what",
+                { project, persona },
+              ),
+          line(
+            "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
+            "ap.det.agent_import.goesOn",
+          ),
+          line(
+            "Refused if it is still open in another terminal, or an agent already continues it.",
+            "ap.det.agent_import.refused",
+          ),
+        ]),
       };
     },
     async run(a) {
@@ -797,11 +874,20 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         params: project
           ? { inProject: "1", where: project, to: shown }
           : { to: shown },
-        details: [
-          `Now: ${now}.`,
-          `Then: ${shown}.`,
-          "Only a person changes the approval policy without an Allow: an agent always asks.",
-        ],
+        ...reviewLines([
+          now === "none"
+            ? line("Now: none.", "ap.det.approval_policy.nowNone")
+            : line(`Now: ${now}.`, "ap.det.approval_policy.now", { v: now }),
+          next
+            ? line(`Then: ${shown}.`, "ap.det.approval_policy.then", {
+                v: shown,
+              })
+            : line("Then: none.", "ap.det.approval_policy.thenNone"),
+          line(
+            "Only a person changes the approval policy without an Allow: an agent always asks.",
+            "ap.det.approval_policy.person",
+          ),
+        ]),
         personOnly: true,
       };
     },
@@ -856,16 +942,31 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           error:
             "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
         };
+      const prNo = String(pr);
       return {
         ok: true,
         args: { ...(project ? { project } : {}), repo, pr, comment },
         summary: `close pull request ${pr} on ${repo}: ${comment}`,
         params: { repo, pr: String(pr), comment },
-        details: [
-          `Repo: ${repo}. Pull request: ${pr}.`,
-          `Den closes it with this comment: ${comment}`,
-          "Nothing is merged and no branch is deleted.",
-        ],
+        ...reviewLines([
+          line(
+            `Repo: ${repo}. Pull request: ${prNo}.`,
+            "ap.det.pr_close.what",
+            {
+              repo,
+              pr: prNo,
+            },
+          ),
+          line(
+            `Den closes it with this comment: ${comment}`,
+            "ap.det.pr_close.comment",
+            { comment },
+          ),
+          line(
+            "Nothing is merged and no branch is deleted.",
+            "ap.det.pr_close.nothing",
+          ),
+        ]),
       };
     },
     async run(a) {

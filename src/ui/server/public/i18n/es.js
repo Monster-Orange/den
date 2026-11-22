@@ -865,6 +865,10 @@
       "En una terminal de este ordenador, ejecuta esto. Abre esta página con la sesión iniciada:",
     "shell.signin.line": "Inicia sesión para hacer cambios aquí.",
     "shell.signin.btn": "Iniciar sesión",
+    "shell.view.title": "Vista de solo lectura",
+    "shell.view.line":
+      "{agent} está viendo estas páginas. Aquí no se puede cambiar nada, y la vista termina en unos minutos.",
+    "shell.view.off": "Vista de solo lectura: esto no cambia nada aquí",
     "err.signin.codeExpired": "Este código caducó.",
     "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
     "err.signin.codeFailed":
@@ -1258,6 +1262,9 @@
     "set.agents.approvals_critical": "Crítico",
     "set.agents.approvals_critical.d":
       "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.agents.held_wait": "Las solicitudes esperan tu permiso",
+    "set.agents.held_wait.d":
+      "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.agents.issue_writes": "Quién escribe issues de GitHub",
     "set.agents.issue_writes.d":
       "Los roles cuyos agentes pueden crear issues, comentar, poner etiquetas y fijar hitos en los repositorios de GitHub de su propio proyecto, al momento y con registro. Separados por comas; vacío: ninguno. Sin definir: planner, orchestrator, lead, sde, builder, reviewer e install (el agente propio de __DEN_TITLE__). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
@@ -1462,6 +1469,13 @@
       "Intervalo de códigos incorrectos, en segundos",
     "set.access.approve_window.d":
       "Durante cuánto tiempo se cuentan los códigos incorrectos. Cuando pasa, se puede volver a intentar aprobar. __DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.agent_view": "Los agentes pueden ver las páginas, solo lectura",
+    "set.access.agent_view.d":
+      "Activado, un agente que funciona aquí puede abrir estas páginas en solo lectura, como él mismo, para mirar o hacer una captura (page_view). No cambia nada, y cada página que abre queda registrada con su nombre. Desactivado, se le dice al agente que las vistas están desactivadas. __DEN_CLI__ config web.agent_view=true",
+    "set.access.agent_view_minutes":
+      "Duración de la vista de un agente, en minutos",
+    "set.access.agent_view_minutes.d":
+      "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
@@ -1554,6 +1568,10 @@
     "ag.relaunchHandoff": "Relanzar desde su último traspaso",
     "ag.rc.autoAsk":
       "Toca rotar ({why}). Den le pide el traspaso cuando esté libre y luego lo relanza.",
+    "ag.rc.waiting.one":
+      "Toca rotar ({why}). Den espera a que termine {n} tarea en segundo plano que inició y luego lo rota.",
+    "ag.rc.waiting":
+      "Toca rotar ({why}). Den espera a que terminen las {n} tareas en segundo plano que inició y luego lo rota.",
     "ag.rc.autoReady":
       "Toca rotar ({why}). Su traspaso está listo: Den lo relanza cuando esté libre.",
     "ag.rc.ready": "Toca rotar ({why}). Su traspaso está listo.",
@@ -1863,6 +1881,110 @@
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
       "Los mensajes que envió y que esperan el turno del agente se escriben igualmente.",
+    "ap.det.workspace_create.new":
+      'Un proyecto nuevo y vacío llamado "{name}", activado para que sus servicios puedan arrancar.',
+    "ap.det.service_try.activates":
+      'Primero activa el proyecto "{project}", para que pueda funcionar.',
+    "ap.det.service_try.up":
+      'Ejecuta el "up" local del servicio, como hace Iniciar en la página Servicios.',
+    "ap.det.service_try.reports":
+      "Den informa del código de salida y de las últimas líneas de su salida.",
+    "ap.det.den_restart.restart":
+      "Den se detiene y vuelve a arrancar en la misma dirección, con la versión instalada ahora.",
+    "ap.det.den.carryOn":
+      "Los agentes y las terminales siguen donde estaban; las páginas abiertas se vuelven a conectar.",
+    "ap.det.den_restart.told":
+      "Al agente que lo pidió se le avisa cuando Den vuelve.",
+    "ap.det.den_update.latest":
+      "Den obtiene de npm la última versión para esta distribución, la comprueba con doctor y arranca con ella.",
+    "ap.det.den_update.version":
+      "Den obtiene de npm la versión {version} para esta distribución, la comprueba con doctor y arranca con ella.",
+    "ap.det.den_update.rollback":
+      "Si la nueva versión no está lista a tiempo, Den vuelve por sí solo a la versión que usa ahora y dice por qué.",
+    "ap.det.repo_clone.fromBranch": "Desde: {source}, rama {branch}.",
+    "ap.det.repo_clone.from": "Desde: {source}, su rama predeterminada.",
+    "ap.det.repo_clone.gh":
+      "Con tu gh, ya conectado a GitHub (un repositorio de GitHub).",
+    "ap.det.repo_clone.git":
+      "Con git y tus propias credenciales (no gh: no es GitHub).",
+    "ap.det.repo_clone.into":
+      "En: {path} (una carpeta nueva; nada de lo que ya hay cambia).",
+    "ap.det.repo_clone.then":
+      "Después el agente redacta su manifiesto (manifest_draft) y pide añadirlo (repo_add): cada paso te lo vuelve a preguntar.",
+    "ap.det.agent_import.what": "Proyecto: {project}. Persona: {persona}.",
+    "ap.det.agent_import.whatRuntime":
+      "Proyecto: {project}. Persona: {persona}. Motor: {runtime}.",
+    "ap.det.agent_import.goesOn":
+      "La conversación sigue como un agente de Den, en la carpeta donde se ejecutaba, con el token, los hooks y las protecciones de Den.",
+    "ap.det.agent_import.refused":
+      "Se rechaza si sigue abierta en otra terminal, o si un agente ya la continúa.",
+    "ap.det.approval_policy.now": "Ahora: {v}.",
+    "ap.det.approval_policy.nowNone": "Ahora: ninguna.",
+    "ap.det.approval_policy.then": "Después: {v}.",
+    "ap.det.approval_policy.thenNone": "Después: ninguna.",
+    "ap.det.approval_policy.person":
+      "Solo una persona cambia la política de aprobación sin un Permitir: un agente siempre pregunta.",
+    "ap.det.pr_close.what": "Repositorio: {repo}. Pull request: {pr}.",
+    "ap.det.pr_close.comment": "Den la cierra con este comentario: {comment}",
+    "ap.det.pr_close.nothing": "No se fusiona nada y no se borra ninguna rama.",
+    "ap.det.hub_connect.set": "Dirección de Hub: {was} → {url}.",
+    "ap.det.hub_connect.setNew": "Dirección de Hub: ninguna → {url}.",
+    "ap.det.hub_connect.clear":
+      "Se borra la dirección de Hub {was}; este Den deja de usar Hub.",
+    "ap.det.hub_connect.leave":
+      "Den primero se desconecta del Hub que usa ahora, para que ese Hub revoque su clave.",
+    "ap.det.hub_connect.restart":
+      "Después Den se reinicia, y los agentes obtienen las herramientas de Hub cuando se reinicien.",
+    "ap.det.hub_connect.connect":
+      "Después te conectas en Ajustes › Hub: Conectar te inicia sesión en Hub allí.",
+    "ap.det.den_pin_commit.pr":
+      "Den hace commit de package.json y package-lock.json en la rama den/pin-{version} y abre una pull request.",
+    "ap.det.den_pin_commit.push":
+      "Den hace commit de package.json y package-lock.json y los sube a la rama remota de la rama.",
+    "ap.det.den_pin_commit.only":
+      "No se hace commit de nada más en la carpeta de la distribución.",
+    "ap.det.persona.local":
+      "Archivo: las personas propias de esta máquina (no se comparten con el proyecto)",
+    "ap.det.persona.newFile":
+      "Archivo: {file} (nuevo; haz commit para que los otros Den del proyecto lo tengan)",
+    "ap.det.persona.changedFile":
+      "Archivo: {file} (cambiado; haz commit para que los otros Den del proyecto lo tengan)",
+    "ap.det.persona.name": "Nombre: {v}",
+    "ap.det.persona.role": "Rol: {v}",
+    "ap.det.persona.category": "Categoría: {v}",
+    "ap.det.persona.description": "Descripción: {v}",
+    "ap.det.persona.runtime": "Motor: {v}",
+    "ap.det.persona.runtimeModel": "Motor: {v}, modelo {model} ({version})",
+    "ap.det.persona.mode": "Modo: {v}",
+    "ap.det.persona.commands": "Comandos permitidos: {v}",
+    "ap.det.persona.commandsNone": "Comandos permitidos: ninguno",
+    "ap.det.persona.instructions": "Instrucciones:",
+    "ap.det.asWritten": "{v}",
+    "ap.det.persona.field": "{field}: {v}",
+    "ap.det.persona.fieldNone": "{field}: ninguno",
+    "ap.det.persona.asItWillRead": "Así quedará:",
+    "ap.det.agent_create.persona": "Persona: {v}",
+    "ap.det.agent_create.project": "Proyecto: {v}",
+    "ap.det.agent_create.folder": "Carpeta: {v}",
+    "ap.det.agent_create.runtime": "Motor: {v}",
+    "ap.det.agent_create.mode": "Modo: {mode} (el del proyecto: {cap})",
+    "ap.det.agent.who": "Agente: {agent}, proyecto {project}",
+    "ap.det.agent.whoId": "Agente: {agent} ({id}), proyecto {project}",
+    "ap.det.agent_folder.from": "Desde: {v}",
+    "ap.det.agent_folder.to": "A: {v}",
+    "ap.det.agent_folder.running":
+      "Está en marcha: Den lo detiene, lo mueve y lo arranca de nuevo allí (una conversación nueva; la anterior queda en su historial).",
+    "ap.det.agent_folder.stopped":
+      "Está detenido y sigue así: su próximo arranque es una conversación nueva allí.",
+    "ap.det.agent_folder.self":
+      "Es el agente que lo pidió: se detiene cuando lo permites, y su respuesta para ti termina ahí.",
+    "ap.det.agent_mode.loosens": "Esto deja que {agent} actúe sin preguntarte.",
+    "ap.det.agent_mode.now": "Ahora: su propio modo, {mode}",
+    "ap.det.agent_mode.then": "Después: sigue al proyecto, {mode}",
+    "ap.det.agent_mode.running":
+      "Está en marcha: Den lo reinicia después de su turno, en la misma conversación, en {mode}.",
+    "ap.det.agent_mode.stopped":
+      "Está detenido: su próximo arranque es en {mode}.",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
@@ -1986,6 +2108,61 @@
     "set.workspace.mcp_servers.d":
       "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Cambia o quita uno aquí. Un agente lo pide con project_mcp_add, project_mcp_update o project_mcp_remove, y tú lo permites.",
     "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
+    "set.workspace.event_feeds": "Flujos de eventos de apps: este proyecto",
+    "set.workspace.event_feeds.d":
+      "Eventos que una app de este proyecto envía en su propio flujo, para un agente. Den escribe al agente una línea corta cuando hay sin leer, cuando está libre, nunca a mitad de turno; el agente los lee con app_feed_read. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade uno en agents.event_feeds; el bearer es un nombre de secrets.refs.",
+    "set.embed.feed_max_streams": "Flujos de apps leídos a la vez",
+    "set.embed.feed_max_streams.d":
+      "El máximo de flujos de eventos de apps que Den lee a la vez, en todos los proyectos. Por encima, un flujo no se lee y las notificaciones de su proyecto lo dicen.",
+    "set.embed.feed_event_max_kb": "Evento de flujo más grande",
+    "set.embed.feed_event_max_kb.d":
+      "El evento más grande que un flujo de app guarda para su agente. Uno mayor se guarda como un aviso de que llegó, sin sus datos, y las notificaciones del proyecto lo dicen.",
+    "set.embed.feed_events_per_minute": "Eventos de flujo por minuto",
+    "set.embed.feed_events_per_minute.d":
+      "Cuántos eventos lee Den de un flujo de app por minuto. Por encima, Den lee el resto según lo permita el ritmo, y las notificaciones del proyecto lo dicen.",
+    "feed.none": "Este proyecto no tiene flujos de eventos de apps.",
+    "feed.row": "{name} a {agent}: {url}",
+    "feed.last": "Último evento {time}.",
+    "feed.noEvents": "Aún no hay eventos.",
+    "set.embed.feed_keep_events": "Eventos que guarda un flujo de app",
+    "set.embed.feed_keep_events.d":
+      "El máximo de eventos que Den guarda para un flujo de app. Por encima, se van los más antiguos, y las notificaciones del proyecto lo dicen si alguno no se había leído.",
+    "set.embed.feed_read_max_kb": "Datos de flujo en una lectura",
+    "set.embed.feed_read_max_kb.d":
+      "El máximo de datos de eventos que da una llamada a app_feed_read. El agente lee el resto con otra llamada.",
+    "set.embed.feed_list_timeout": "Espera de la lista de un flujo",
+    "set.embed.feed_list_timeout.d":
+      "Cuánto espera Den la lista de eventos de una app (llena un hueco tras un corte) antes de volver a intentarlo más tarde.",
+    "set.embed.feed_list_max_mb": "Lista de flujo más grande",
+    "set.embed.feed_list_max_mb.d":
+      "La lista de eventos más grande que Den lee de una app de una vez. Una respuesta mayor se rechaza y se vuelve a intentar más tarde.",
+    "set.embed.paste_max_kb": "Texto máximo escrito en un agente de una vez",
+    "set.embed.paste_max_kb.d":
+      "El máximo de texto que Den escribe en un agente de una vez: comentarios de Hub, mensajes reenviados y líneas de flujos de apps. El resto se escribe después.",
+    "feed.unread": "Sin leer: {n}.",
+    "bell.m.appFeed.dropped":
+      "Flujo {name} para {agent}: se fueron eventos sin leer porque el flujo guarda como máximo su límite.",
+    "feed.problems":
+      "Entradas de agents.event_feeds que no se pueden leer: {n}.",
+    "feed.failed":
+      "No se pudieron leer los flujos de eventos de este proyecto.",
+    "feed.st.connecting": "Conectando",
+    "feed.st.connected": "Conectado",
+    "feed.st.retrying": "Reintentando",
+    "feed.st.no_secret": "Su bearer no está en el almacén de secretos",
+    "feed.st.over_limit": "No se lee: supera el límite de flujos",
+    "feed.st.no_agent": "No se lee: ese agente no está en este proyecto",
+    "feed.st.stopped": "Detenido",
+    "bell.m.appFeed.no_secret":
+      "Flujo {name} para {agent}: su bearer no se puede leer del almacén de secretos. Den sigue intentándolo.",
+    "bell.m.appFeed.rejected":
+      "Flujo {name} para {agent}: la app rechazó la petición de Den. Den sigue intentándolo.",
+    "bell.m.appFeed.too_big":
+      "Flujo {name} para {agent}: un evento superó el límite de tamaño. Se avisó al agente de que llegó, sin sus datos.",
+    "bell.m.appFeed.over_rate":
+      "Flujo {name} para {agent}: supera el límite de ritmo. Sus eventos esperan y se escriben según lo permita el ritmo.",
+    "bell.m.appFeed.over_streams":
+      "Flujo {name} para {agent}: no se lee, supera el límite de flujos leídos a la vez.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
     "pmcp.edit": "Cambiar",
@@ -2220,6 +2397,25 @@
     "bell.m.gateLapsed":
       'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.heldLapsed":
+      "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
+    "bell.m.heldLapsedAsk":
+      "Una solicitud venció sin respuesta: {what}. No se ejecutó nada.",
+    "bell.m.heldLost":
+      "La solicitud de {name} se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella; se le pidió al agente que vuelva a pedirlo.",
+    "bell.m.heldLostAsk":
+      "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
+    "bell.m.heldLostAll":
+      "Las solicitudes que esperaban tu permiso no se pudieron recuperar tras un reinicio. Se perdieron; los agentes que vuelvan a pedirlo aparecerán aquí.",
+    "bell.ap.h": "Esperan tu permiso",
+    "bell.ap.row": "{name} pide: {what}",
+    "bell.ap.rowAsk": "Pedido: {what}",
+    "bell.ap.waits": "Espera desde hace {ago} · vence {time}",
+    "bell.ap.allow": "Permitir",
+    "bell.ap.deny": "Denegar",
+    "bell.ap.done": "Permitido: {what}",
+    "bell.ap.denied": "Denegado: {what}",
+    "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
@@ -2924,6 +3120,7 @@
     "set.ui.viaGithubAs": "sesión iniciada con GitHub (@{login})",
     "set.ui.viaGithub": "sesión iniciada con GitHub",
     "set.ui.viaCode": "aprobado con un código",
+    "set.ui.viaAgentView": "vista de solo lectura de {agent}",
     "set.ui.viaClaim": "reclamado con un enlace de configuración",
     "set.ui.viaLink": "sesión iniciada con un enlace de un solo uso",
     "set.ui.unknownBrowser": "Navegador desconocido",
