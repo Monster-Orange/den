@@ -64,6 +64,8 @@ import { recordAction } from "./audit.js";
 import { heldWaiting } from "./held-bell.js";
 import type { GateOverrunWaiting } from "./gate-overrun-bell.js";
 import type { AlertFeed } from "./alert-feed.js";
+import type { AlertHandoff } from "./alert-handoff.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import {
   deviceId,
   deviceOf,
@@ -99,6 +101,9 @@ export const NOTIFICATION_PATHS = [
   "/api/alerts/devices",
   "/api/alerts/test",
   "/api/alerts/forget",
+  "/api/alerts/stream",
+  "/api/alerts/presence",
+  "/api/alerts/ack",
 ] as const;
 
 export const isNotificationPath = (p: string) =>
@@ -120,6 +125,11 @@ export interface NotificationRouteDeps {
     /** A test alert to every device: each one's push service's answer. */
     test?: () => Promise<{ endpoint: string; status: number }[]>;
   };
+  /**
+   * Issue 774 row 7b: an open tab shows an alert first; the push to that
+   * same device waits (alert-handoff.ts).
+   */
+  handoff?: AlertHandoff;
   /**
    * Issue 746: the held writes waiting on the person (the approval
    * queue's pending()); they lead `waiting`, kind "allow".
@@ -175,6 +185,17 @@ const refuse = (
   code: string,
   error: string,
 ) => sendJson(res, { ok: false, code, error }, status);
+
+/**
+ * Issue 774: the person an open tab speaks for, or null: never an agent's
+ * token, never the fixture (test) session.
+ */
+function tabPerson(req: http.IncomingMessage, agent: unknown): string | null {
+  if (agent) return null;
+  const p = personKey(req);
+  if (p === FIXTURE_PRINCIPAL || !p.startsWith("person:")) return null;
+  return p;
+}
 
 const str = (v: unknown, max = 300) =>
   typeof v === "string" && v ? v.slice(0, max) : undefined;
@@ -445,6 +466,42 @@ export async function handleNotificationRoutes(
     return true;
   }
 
+  if (pathname === "/api/alerts/stream") {
+    if (method !== "GET")
+      return (refuse(res, 405, "method", "GET only."), true);
+    const person = tabPerson(req, agent);
+    if (!person || !deps.handoff) {
+      refuse(res, 403, "person_only", "Alerts are the person's.");
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+    });
+    const handoff = deps.handoff;
+    let tab = "";
+    let beat: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (beat) clearInterval(beat);
+      beat = null;
+      if (tab) handoff.close(tab);
+    };
+    tab = handoff.open(
+      person,
+      (e) => void res.write(`data: ${JSON.stringify(e)}\n\n`),
+      () => {
+        stop();
+        res.end();
+      },
+    );
+    // A comment line keeps proxies from closing a quiet stream.
+    beat = setInterval(() => void res.write(": beat\n\n"), 25_000);
+    beat.unref?.();
+    req.on("close", stop);
+    return true;
+  }
+
   if (pathname === "/api/alerts/devices") {
     if (method !== "GET")
       return (refuse(res, 405, "method", "GET only."), true);
@@ -544,8 +601,51 @@ export async function handleNotificationRoutes(
       );
       return true;
     }
-    deps.push.subs.add({ ...sub, device: deviceOf(req.headers["user-agent"]) });
+    const who = tabPerson(req, agent);
+    deps.push.subs.add({
+      ...sub,
+      device: deviceOf(req.headers["user-agent"]),
+      ...(who ? { person: who } : {}),
+    });
     sendJson(res, { ok: true });
+    return true;
+  }
+  if (pathname === "/api/alerts/presence" || pathname === "/api/alerts/ack") {
+    const person = tabPerson(req, agent);
+    const tab = str(b.tab, 64);
+    if (!person || !deps.handoff || !tab) {
+      refuse(res, 403, "forbidden", "Not this person's tab.");
+      return true;
+    }
+    if (pathname === "/api/alerts/ack") {
+      const id = str(b.id, 200);
+      const r = id ? deps.handoff.ack(tab, person, id) : "not_pending";
+      if (r === "forbidden")
+        refuse(res, 403, "forbidden", "Not this person's tab.");
+      else if (r === "not_pending")
+        refuse(
+          res,
+          409,
+          "not_pending",
+          "Nothing of that alert waits on this tab.",
+        );
+      else sendJson(res, { ok: true });
+      return true;
+    }
+    const endpoint =
+      b.endpoint === null ? null : str(b.endpoint, 2048) || undefined;
+    const subs = deps.push?.subs.list() ?? [];
+    const r = deps.handoff.presence(
+      tab,
+      person,
+      { endpoint, visible: b.visible === true },
+      (e) => subs.some((s) => s.endpoint === e && s.person === person),
+    );
+    if (r === "forbidden")
+      refuse(res, 403, "forbidden", "Not this person's tab.");
+    else if (r === "not_yours")
+      refuse(res, 403, "not_yours", "That device is not one of this person's.");
+    else sendJson(res, { ok: true, claimed: !!endpoint });
     return true;
   }
   if (pathname === "/api/alerts/unsubscribe") {

@@ -127,6 +127,11 @@ export class AlertFeed {
     return a;
   }
 
+  /** The newest alert's number (0: none yet). */
+  latest(): number {
+    return this.seq;
+  }
+
   /**
    * What a tab reads: the alerts after `after` (none on its first read,
    * `after` null: it starts from now), the number to ask after next, and

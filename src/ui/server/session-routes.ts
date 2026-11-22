@@ -1711,18 +1711,26 @@ export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
 
 /** How long open tabs share one needs-you count (each polls every 5 s). */
 const NEEDS_SHARED_MS = 2000;
-let needsShared: { at: number; n: Promise<number> } | null = null;
+let needsShared: { at: number; key: unknown; n: Promise<number> } | null = null;
 
 /**
  * needsYouNow, shared for NEEDS_SHARED_MS: several open tabs polling
- * GET /api/alerts list the host's sessions once between them.
+ * GET /api/alerts list the host's sessions once between them. `key` is
+ * the alert feed's seq: a new alert since lists again, so it never
+ * carries the count from before it.
  */
 export function needsYouShared(
   deps: SessionRouteDeps,
   now: () => number = Date.now,
+  key?: unknown,
 ): Promise<number> {
   const t = now();
-  if (needsShared && t - needsShared.at < NEEDS_SHARED_MS) return needsShared.n;
-  needsShared = { at: t, n: needsYouNow(deps) };
+  if (
+    needsShared &&
+    needsShared.key === key &&
+    t - needsShared.at < NEEDS_SHARED_MS
+  )
+    return needsShared.n;
+  needsShared = { at: t, key, n: needsYouNow(deps) };
   return needsShared.n;
 }

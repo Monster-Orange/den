@@ -22,6 +22,7 @@ import {
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
+import { AlertHandoff } from "./alert-handoff.js";
 import { AlertFeed } from "./alert-feed.js";
 import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
 import { uiLanguage } from "./ui-language.js";
@@ -274,6 +275,16 @@ export function pushDeps(): {
   };
 }
 
+let handoff: AlertHandoff | null = null;
+/** Issue 774 row 7b: the open tabs that show an alert before its push. */
+export function alertHandoff(): AlertHandoff {
+  handoff ??= new AlertHandoff({
+    windowMs: () => alertPrefs(readUserConfig()).tabFirstSeconds * 1000,
+    maxTabs: () => alertPrefs(readUserConfig()).maxStreams,
+  });
+  return handoff;
+}
+
 export function alertFeed(): AlertFeed {
   alerts ??= new AlertFeed({
     prefs: () => alertPrefs(readUserConfig()),
@@ -289,17 +300,26 @@ export function alertFeed(): AlertFeed {
       ),
     // Issue 774: the heading is the bell's words, the line under it the
     // project (as an open tab shows it).
-    push: (a, prefs) =>
-      pushAll(
-        { title: a.body, body: a.project, link: a.link, tag: a.id },
-        {
-          subs: pushDeps().subs,
-          keys: () => vapidKeys(getStateDir()),
-          subject: pushSubject(),
-          timeoutMs: prefs.pushTimeoutSeconds * 1000,
-          ttlSeconds: prefs.pushTtlSeconds,
-        },
-      ),
+    // Issue 774 row 7b: a device with a visible Den tab gets the alert
+    // there first; its push goes only if no tab acks it in time.
+    push: async (a, prefs) => {
+      const send = (only: string[]) =>
+        void pushAll(
+          { title: a.body, body: a.project, link: a.link, tag: a.id },
+          {
+            subs: pushDeps().subs,
+            keys: () => vapidKeys(getStateDir()),
+            subject: pushSubject(),
+            timeoutMs: prefs.pushTimeoutSeconds * 1000,
+            ttlSeconds: prefs.pushTtlSeconds,
+            only,
+          },
+        ).catch(() => undefined);
+      const all = pushDeps()
+        .subs.list()
+        .map((x) => x.endpoint);
+      if (all.length) alertHandoff().deliver(a, all, send);
+    },
   });
   return alerts;
 }
@@ -309,6 +329,7 @@ export function notificationDeps(): {
   attention: Attention;
   alerts: AlertFeed;
   push: ReturnType<typeof pushDeps>;
+  handoff: AlertHandoff;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
   seen: ReturnType<typeof seenMarks>;
@@ -354,6 +375,7 @@ export function notificationDeps(): {
     timer.unref();
   }
   return {
+    handoff: alertHandoff(),
     store,
     attention,
     alerts: alertFeed(),

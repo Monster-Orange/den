@@ -111,4 +111,28 @@ describe("the tab count shares one list for a moment (every tab polls every 5 s)
     await needsYouShared(deps, now);
     expect(lists).toBe(2);
   });
+
+  it("a new alert since (the feed moved on) lists again at once: an alert never carries the old count", async () => {
+    const { needsYouShared } =
+      await import("../../../src/ui/server/session-routes.js");
+    let lists = 0;
+    const deps = {
+      connectExisting: async () => ({
+        list: async () => {
+          lists += 1;
+          return [];
+        },
+        close: () => undefined,
+      }),
+    } as never;
+    let t = 5_000_000;
+    const now = () => t;
+    await needsYouShared(deps, now, 7);
+    t += 500;
+    await needsYouShared(deps, now, 7);
+    expect(lists).toBe(1);
+    t += 500;
+    await needsYouShared(deps, now, 8);
+    expect(lists).toBe(2);
+  });
 });

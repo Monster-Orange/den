@@ -5139,7 +5139,8 @@ function waitingAgentIds(): Set<string> {
  * isNeedsYouRow), so the tab, the rail and the Agents page agree.
  */
 function needsYouCount(): Promise<number> {
-  return needsYouShared(sessionListDeps());
+  // Issue 774: a new alert since the last list lists again.
+  return needsYouShared(sessionListDeps(), Date.now, alertFeed().latest());
 }
 
 /** The Agents list's deps (session-routes.ts), shared with the tab count. */
