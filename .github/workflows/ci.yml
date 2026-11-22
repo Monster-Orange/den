@@ -58,7 +58,12 @@ jobs:
   # dialog ratchets: scripts/fast-checks.json) run first, in under a minute,
   # on every push and pull request. The test jobs and shards wait for this
   # one, so such a failure shows in a minute or two, not after a shard.
-  # The pre-push hook runs the same list (scripts/fast-checks.mjs).
+  # The pre-push hook runs the same list (scripts/fast-checks.mjs). The
+  # jobs after it leave its checks out (scripts/affected-tests.mjs and
+  # shard-plan.cjs drop its jest files), so each runs once per tree.
+  # `fast` must be on the branch's required checks: when it fails, pr and
+  # pr-shards are skipped, and GitHub counts a skipped required check as
+  # passing.
   fast:
     runs-on: ubuntu-latest
     timeout-minutes: 5

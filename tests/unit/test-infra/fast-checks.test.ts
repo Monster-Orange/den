@@ -123,6 +123,76 @@ describe("issue 843: the fast static checks", () => {
     expect(needs(ci.jobs.checks)).toContain("fast");
   });
 
+  describe("the pull request's subset and shards leave out what `fast` ran", () => {
+    const fastFile = list.jest[0];
+    const other = "tests/unit/server/server-smoke.test.ts";
+
+    // affected-tests.mjs is an ES module: run it in a child Node.
+    const affected = (code: string): unknown => {
+      const r = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `const m = await import(${JSON.stringify(
+            path.join(ROOT, "scripts", "affected-tests.mjs"),
+          )}); ${code}`,
+        ],
+        { cwd: ROOT, encoding: "utf-8" },
+      );
+      expect(r.stderr).toBe("");
+      return JSON.parse(r.stdout);
+    };
+
+    it("affected-tests: ranFirstTests() is the list's jest files", () => {
+      expect(
+        affected("console.log(JSON.stringify(m.ranFirstTests()));"),
+      ).toEqual(list.jest);
+    });
+
+    it("affected-tests: a selection never holds a file `fast` ran, even one the change touched", () => {
+      const input = {
+        changed: [fastFile, other],
+        allTests: [fastFile, other],
+        related: [fastFile],
+        map: { everything: [], rules: [], smoke: [] },
+        ranFirst: list.jest,
+      };
+      expect(
+        affected(
+          `const sel = m.selectTests(${JSON.stringify(input)}); console.log(JSON.stringify([...sel.files.keys()]));`,
+        ),
+      ).toEqual([other]);
+    });
+
+    it("shard-plan: the shards never hold a file `fast` ran (the whole-suite list included)", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-fast-shards-"));
+      try {
+        const files = path.join(dir, "files.txt");
+        fs.writeFileSync(files, [fastFile, other].join("\n") + "\n");
+        const out: string[] = [];
+        for (let shard = 1; shard <= 6; shard++) {
+          const r = spawnSync(
+            process.execPath,
+            [
+              path.join(ROOT, "scripts", "shard-plan.cjs"),
+              "--files",
+              files,
+              "--shard",
+              String(shard),
+            ],
+            { cwd: ROOT, encoding: "utf-8" },
+          );
+          expect(r.status).toBe(0);
+          out.push(...r.stdout.split("\n").filter(Boolean));
+        }
+        expect(out).toEqual([other]);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   it(".husky/pre-push runs the same list, with DEN_PREPUSH_FAST=0 to skip it", () => {
     const hook = fs.readFileSync(
       path.join(ROOT, ".husky", "pre-push"),
