@@ -8,7 +8,7 @@ import chalk from "chalk";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import { webProbeTarget } from "../../shared/web-dial.js";
+import { denWebBase, webProbeTarget } from "../../shared/web-dial.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
@@ -18,7 +18,13 @@ import {
   secretsProcessEnv,
   type SecretsConfig,
 } from "../../shared/secrets/index.js";
-import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
+import {
+  getDistRoot,
+  getEngineRoot,
+  getProfile,
+  getStateDir,
+} from "../../shared/paths.js";
+import { envName } from "../../shared/profile.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
 import {
   cliAuthHeaders,
@@ -95,6 +101,10 @@ import {
   FIXTURE_LABEL,
   fixtureLoginLink,
 } from "../../shared/fixture-person.js";
+import {
+  FIXTURE_SETUP_SECRET_ENV_KEY,
+  FROM_SETUP_SECRET_FLAG,
+} from "../../shared/fixture-setup-secret.js";
 import {
   personHereRefusal,
   terminalRefusal,
@@ -2989,10 +2999,78 @@ function testInstallNow(io: FixtureIo): boolean {
 }
 
 const FIXTURE_PERSON_HELP = () =>
-  `Usage: ${product().cli} web fixture-person\n` +
+  `Usage: ${product().cli} web fixture-person [${FROM_SETUP_SECRET_FLAG} [--port <port>]]\n` +
   "  Setting up the fixture person live checks sign in as is a button: on a test\n" +
   "  install, sign in and press Settings › Access › Set up test person in your\n" +
-  "  browser. This command does nothing else.\n";
+  "  browser.\n" +
+  `  ${FROM_SETUP_SECRET_FLAG}: on a test install started with the\n` +
+  `  launcher's one-time setup value (${setupSecretEnvName()}), sends this\n` +
+  "  command's own copy of it, once, and the install makes the fixture person.\n";
+
+const setupSecretEnvName = () =>
+  envName(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY);
+
+/**
+ * Issue 1018: `web fixture-person --from-setup-secret`: sends the CLI's
+ * own copy of the launcher's setup value (from its environment, never an
+ * argument, which other processes can read) to the server, once. The
+ * server checks everything; this never prints the value.
+ */
+async function fixturePersonFromSetupSecret(
+  args: string[],
+  io: FixtureIo,
+): Promise<number> {
+  let port: number | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const v =
+      a === "--port" ? args[++i] : a.startsWith("--port=") ? a.slice(7) : null;
+    const n = v === null ? NaN : Number(v);
+    if (Number.isInteger(n) && n >= 1 && n <= 65535) port = n;
+    else {
+      io.err(FIXTURE_PERSON_HELP());
+      return 2;
+    }
+  }
+  const name = setupSecretEnvName();
+  const value = process.env[name];
+  delete process.env[name];
+  if (!value) {
+    io.err(
+      `${product().cli}: ${FROM_SETUP_SECRET_FLAG} sends the setup value from this command's environment (${name}), and it isn't set. Nothing was sent.\n`,
+    );
+    return 2;
+  }
+  const base = denWebBase(port ?? configuredPort());
+  let r: Response;
+  try {
+    r = await fetch(`${base}/api/web/fixture-person/setup-secret`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...cliAuthHeaders() },
+      body: JSON.stringify({ secret: value }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    io.err(
+      `${product().cli}: the test install's web app isn't running, so the setup value wasn't sent. Start it (\`${product().cli} web up\`).\n`,
+    );
+    return 1;
+  }
+  const b = (await r.json().catch(() => null)) as {
+    ok?: boolean;
+    error?: string;
+  } | null;
+  if (r.ok && b?.ok) {
+    io.out(
+      `The ${FIXTURE_LABEL} is set up. Sign in as it with \`${product().cli} web fixture-login\`.\n`,
+    );
+    return 0;
+  }
+  io.err(
+    `${product().cli}: ${b?.error ?? `the setup value was refused (the web app answered ${r.status})`}\n`,
+  );
+  return 1;
+}
 
 /**
  * `<cli> web fixture-person` (issue 810): setup is Settings' Set up test
@@ -3007,6 +3085,8 @@ export function cmdWebFixturePerson(
     io.out(FIXTURE_PERSON_HELP());
     return Promise.resolve(0);
   }
+  if (args[0] === FROM_SETUP_SECRET_FLAG)
+    return fixturePersonFromSetupSecret(args.slice(1), io);
   io.err(
     `${product().cli}: setting up the ${FIXTURE_LABEL} is a button, not a command: ` +
       "on a test install, sign in and press Settings › Access › Set up test person in your browser.\n",
