@@ -177,10 +177,16 @@ function versionSkip(
     return b.versions.some((v) => pwServes(v, client))
       ? ""
       : `client ${client}: box serves ${b.versions.join(", ")}`;
-  return b.version && client !== b.version
+  // Issue 1033: Playwright's remote connect needs the same major.minor
+  // only, so a 1.61.0 client takes a box that declares 1.61.1.
+  return b.version && majorMinor(client) !== majorMinor(b.version)
     ? `client ${client} ≠ server ${b.version}`
     : "";
 }
+
+/** Issue 1033: a version's major.minor ("1.61.2" → "1.61"). */
+const majorMinor = (v: string) =>
+  v.split("-")[0]!.split(".").slice(0, 2).join(".");
 
 /** A ws:// or wss:// address with a host and no login; or what is wrong. */
 function wsProblem(pw: string): string {
@@ -825,6 +831,12 @@ export function defaultPlace(o: {
   if (o.ownBrowser) return { why: o.ownBrowser };
   if (!o.baseUrl)
     return { why: "no --base-url, so a test box can't reach the app" };
+  // Issue 1033: which box server it needs can't be said; a box would
+  // refuse it at connect (HTTP 428). Only an explicit --box takes one.
+  if (!o.pwVersion)
+    return {
+      why: "this run's Playwright version is unknown: pass --pw-version",
+    };
   const skips = o.boxes.map((b) => ({
     name: b.name,
     reason: defaultSkip(b, o.pwVersion),

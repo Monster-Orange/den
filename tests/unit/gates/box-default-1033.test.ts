@@ -550,3 +550,80 @@ describe("a default pick skips a box that can't serve the run", () => {
     },
   );
 });
+
+describe("a box's one Playwright version matches by major.minor", () => {
+  const box = (v: string) =>
+    storeWith([
+      {
+        name: "b1",
+        playwright: "ws://b1.test:3000",
+        playwright_version: v,
+      },
+    ]);
+  const runAs = (v: string) => [
+    "run",
+    "--kind",
+    "browser",
+    "--label",
+    "e2e",
+    "--pw-version",
+    v,
+    ...BASE,
+    "--",
+    "npm",
+    "test",
+  ];
+
+  it("a 1.61.0 client takes a box that declares 1.61.1", async () => {
+    const store = box("1.61.1");
+    holdHost(store);
+    const t = deps(store);
+    expect(await cmdGate(runAs("1.61.0"), t.d)).toBe(0);
+    expect(t.ran[0]!.env?.DEN_GATE_BOX).toBe("b1");
+  });
+
+  it("a 1.62.0 client is skipped from it, saying why", async () => {
+    const store = box("1.61.1");
+    const t = deps(store);
+    expect(await cmdGate(runAs("1.62.0"), t.d)).toBe(0);
+    expect(t.ran[0]!.env?.DEN_GATE_SLOT_BOX).toBe("local");
+    expect(t.err).toContain(
+      "gate: stays on this machine: no test box can take it: box b1: client 1.62.0 ≠ server 1.61.1",
+    );
+  });
+});
+
+describe("a run whose Playwright version is unknown", () => {
+  const noVersion = (more: string[] = []) => [
+    "run",
+    "--kind",
+    "browser",
+    "--label",
+    "e2e",
+    ...more,
+    ...BASE,
+    "--",
+    "npm",
+    "test",
+  ];
+
+  it("by default: stays on this machine, saying so", async () => {
+    const store = storeWith();
+    holdHost(store);
+    const t = deps(store);
+    expect(await cmdGate(noVersion(), t.d)).toBe(1);
+    expect(t.err).toContain("gate: waited for this machine's slot");
+    expect(t.ran).toEqual([]);
+    expect(t.err).toContain(
+      "gate: stays on this machine: this run's Playwright version is unknown: pass --pw-version",
+    );
+  });
+
+  it("an explicit --box keeps the rule as before: a one-address box takes it", async () => {
+    const store = storeWith();
+    holdHost(store);
+    const t = deps(store);
+    expect(await cmdGate(noVersion(["--box", "b1"]), t.d)).toBe(0);
+    expect(t.ran[0]!.env?.DEN_GATE_BOX).toBe("b1");
+  });
+});
