@@ -186,9 +186,7 @@ async function open(
     await ctx.route("**/api/*/config", async (r) => {
       await new Promise((res) => setTimeout(res, configDelayMs));
       await r.continue();
-      served();
     });
-  else served();
   // A signed-in browser: its picks write (a write needs a sign-in on this
   // machine too, 0.4.71).
   await signIn(ctx, stateDir(), base());
@@ -203,6 +201,10 @@ async function open(
     }
   }, latest ?? "");
   const p = await ctx.newPage();
+  // The page has read its config's answer (its handler runs next).
+  p.on("requestfinished", (r) => {
+    if (/^\/api\/[^/]+\/config$/.test(new URL(r.url()).pathname)) served();
+  });
   const writes: string[] = [];
   p.on("request", (r) => {
     if (r.method() !== "GET")
@@ -211,11 +213,22 @@ async function open(
       );
   });
   await p.goto(`http://127.0.0.1:${port}${url}`);
-  await p.waitForSelector("#ws-pill", { state: "attached" });
+  await settled(p);
   await p.evaluate(() =>
     (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
   );
   return { p, writes, configServed };
+}
+
+/**
+ * Issue 1044: the page has painted its own top bar: the project button
+ * (from /api/workspaces) and the company crumb (from its config). Until
+ * then a late answer repaints over whatever the test set, e.g. the page's
+ * one company turns the test's company menu back into a label.
+ */
+async function settled(p: Page): Promise<void> {
+  await p.waitForSelector("#ws-pill:not([hidden])");
+  await p.waitForSelector("#org-crumb:not([hidden])", { state: "attached" });
 }
 
 const LONG = "a-project-whose-name-is-far-too-long-for-the-menu-row";
@@ -291,6 +304,7 @@ describe.each([
           });
         }, zoom);
         await p.reload();
+        await settled(p);
       }
       await p.waitForSelector("#ws-pill:not([hidden])");
       for (const name of ["ws-b", LONG]) {
@@ -360,6 +374,7 @@ describe.each([
           });
         }, zoom);
         await p.reload();
+        await settled(p);
       }
       for (const [picked, name] of [
         ["acme", "Acme"],
@@ -408,7 +423,10 @@ describe.each([
       // companies set above are still a menu (the page's one company never
       // turns the crumb back into a label under the test).
       await configServed;
-      await p.evaluate(() => new Promise((res) => setTimeout(res, 300)));
+      // One frame: the page's config handler has painted.
+      await p.evaluate(
+        () => new Promise((res) => requestAnimationFrame(() => res(null))),
+      );
       expect(await p.locator("#org-crumb[aria-haspopup]").count()).toBe(1);
       await p.context().close();
     }, 60_000);
