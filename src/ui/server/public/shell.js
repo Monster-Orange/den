@@ -3530,6 +3530,8 @@
       "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
     "bell.m.heldLostAsk":
       "A request was lost at a restart: {what}. Nothing ran from it.",
+    "bell.m.restartsWaiting":
+      "{n} agents waiting to restart, a few at a time",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
     "bell.go.h": "Test slots past their estimate",

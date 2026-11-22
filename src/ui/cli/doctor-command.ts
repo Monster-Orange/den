@@ -51,6 +51,10 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
+  readRestartsWaiting,
+  type RestartsWaiting,
+} from "../server/restart-queue-service.js";
+import {
   readTestResolveState,
   testResolveDoctorLine,
 } from "../../shared/test-resolve.js";
@@ -406,6 +410,23 @@ export function approvalsLines(read: () => boolean): {
       problem: true,
     };
   }
+}
+
+/**
+ * Issue 1129: agents waiting in the restart queue, as doctor prints them.
+ * Informational: the queue starts them a few at a time on its own.
+ */
+export function restartsWaitingLines(
+  read: () => RestartsWaiting | null,
+): string[] {
+  const w = read();
+  if (!w || w.waiting <= 0) return [];
+  const names = w.ids.slice(0, 5).join(", ");
+  const more = w.ids.length > 5 ? ` and ${w.ids.length - 5} more` : "";
+  return [
+    "",
+    `  ℹ ${w.waiting} agent${w.waiting === 1 ? "" : "s"} waiting to restart, a few at a time (as of ${w.at}): ${names}${more}`,
+  ];
 }
 
 /** Informational lines after the rows: never a failure. */
@@ -1931,6 +1952,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
   const held = approvalsLines(() => readMcpConfig().approvals);
   for (const l of held.lines) console.log(l);
+  // Issue 1129: agents the restart queue still holds.
+  for (const l of restartsWaitingLines(() =>
+    readRestartsWaiting(getStateDir()),
+  ))
+    console.log(l);
   // D17: who can connect GitHub to this instance from the browser.
   const owner = await ownerCheck();
   console.log("");
