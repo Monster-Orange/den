@@ -25,9 +25,13 @@ import {
 import {
   fitChips,
   fitCrumbLabels,
+  keepChipsMenu,
+  standInChip,
 } from "../../../packages/den-ui/src/shell-client.js";
 import {
   compareNav,
+  searchSlot,
+  topSlotDiffs,
   NAV_INVENTORY_VERSION,
   NAV_THEME,
   type NavElement,
@@ -319,5 +323,106 @@ describe("5. crumb labels cut cleanly", () => {
     const ls = labels([[30, 56]]);
     fitCrumbLabels(io(ls, 40));
     expect(ls[0].cut).toBe(true);
+  });
+});
+
+describe("review of PR 918", () => {
+  it("1. a re-fit keeps ⋯'s menu open while the same chips are behind it", () => {
+    const a = { id: "a" };
+    const b = { id: "b" };
+    expect(keepChipsMenu([a, b], [a, b])).toBe(true);
+    // Another set behind ⋯, or none: its rows are stale, so it closes.
+    expect(keepChipsMenu([a, b], [b])).toBe(false);
+    expect(keepChipsMenu([a], [a, b])).toBe(false);
+    expect(keepChipsMenu([a], [])).toBe(false);
+  });
+
+  it("2. a chip behind ⋯ stands in at ⋯: its box and its focus are ⋯'s", () => {
+    let focused = "";
+    const more = {
+      getBoundingClientRect: () => ({ x: 900, y: 8, width: 28, height: 28 }),
+      focus: () => (focused = "more"),
+    };
+    const chip = {
+      getBoundingClientRect: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+      focus: () => (focused = "chip"),
+    } as Record<string, unknown> & {
+      getBoundingClientRect(): { x: number };
+      focus(): void;
+    };
+    const own = chip.getBoundingClientRect;
+    standInChip(chip, more);
+    expect(chip.getBoundingClientRect().x).toBe(900);
+    chip.focus();
+    expect(focused).toBe("more");
+    // Shown again: its own box and focus.
+    standInChip(chip, null);
+    chip.focus();
+    expect(focused).toBe("chip");
+    expect(chip.getBoundingClientRect).toBe(own);
+  });
+
+  it("3. the slot checks measure from the bar (a 20px side margin is no difference)", () => {
+    const vw = 1100;
+    const bw = vw - 40;
+    const el = (key: string, x: number, w: number, extra = {}) => ({
+      key,
+      parent: key === "header.den-top" ? null : "header.den-top",
+      slot: "top",
+      role: "button",
+      tag: key === "header.den-top" ? "header" : "button",
+      name: "",
+      classes: [],
+      box: { x, y: 8, w, h: 32 },
+      style: {},
+      ...extra,
+    });
+    // The right group from the bar's right edge, the search in its slot,
+    // all 20px in from the window.
+    const ap = 20 + bw - 12 - 40;
+    const ver = ap - 4 - 64;
+    const bell = ver - 4 - 34;
+    const rb = bell - 4 - 90;
+    const search = searchSlot(vw, bw);
+    const snap = {
+      version: NAV_INVENTORY_VERSION,
+      viewport: { w: vw, h: 800 },
+      env: { userAgent: "test", faces: {}, theme: NAV_THEME },
+      elements: [
+        el("header.den-top", 20, bw),
+        el("#den-search", 20 + search.x, search.w, { classes: ["den-search"] }),
+        el("button.rb", rb, 90, { classes: ["den-rb-top"] }),
+        el("#den-bell", bell, 34),
+        el("#version-pill", ver, 64),
+        el("#appearance-btn", ap, 40),
+      ],
+      tokens: {},
+    } as unknown as NavSnapshot;
+    expect(topSlotDiffs(snap)).toEqual([]);
+    // The bar's own width sets the search's slot, not the window's.
+    expect(search.x).toBeLessThan(searchSlot(vw).x);
+  });
+
+  it("4. a chip's link is http, https or relative; any other scheme is no link", () => {
+    for (const ok of [
+      "/runs",
+      "#x",
+      "?a=1",
+      "runs/2",
+      "https://a.test/x",
+      "http://a.test",
+    ])
+      expect(chipHtml({ id: "c", text: "x", href: ok })).toMatch(/^<a /);
+    for (const bad of [
+      "javascript:alert(1)",
+      " JavaScript:x",
+      "data:text/html,x",
+      "vbscript:x",
+      "file:///etc",
+    ]) {
+      const h = chipHtml({ id: "c", text: "x", href: bad });
+      expect([bad, h.startsWith("<button")]).toEqual([bad, true]);
+      expect(h).not.toContain("href");
+    }
   });
 });

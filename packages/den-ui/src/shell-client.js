@@ -122,6 +122,47 @@ export function fitChips(io) {
 }
 
 /**
+ * Issue 313 (review): whether ⋯'s open menu stays open across a re-fit:
+ * the same chips, in the same order, are behind it, and some are.
+ */
+export function keepChipsMenu(before, after) {
+  return (
+    after.length > 0 &&
+    before.length === after.length &&
+    before.every((c, i) => c === after[i])
+  );
+}
+
+/**
+ * Issue 313 (review): a chip behind ⋯ stands in at `at` (⋯): its box
+ * (getBoundingClientRect) and its focus() are ⋯'s, so a host's pop-up
+ * for it is placed by ⋯ and gives focus back to ⋯. `at` null: its own
+ * again.
+ */
+export function standInChip(chip, at) {
+  if (!chip) return;
+  const own = (k) => Object.prototype.hasOwnProperty.call(chip, k);
+  if (at) {
+    if (!chip.__denStandIn)
+      chip.__denOwn = {
+        rect: own("getBoundingClientRect") ? chip.getBoundingClientRect : null,
+        focus: own("focus") ? chip.focus : null,
+      };
+    chip.__denStandIn = at;
+    chip.getBoundingClientRect = () => at.getBoundingClientRect();
+    chip.focus = (o) => at.focus(o);
+  } else if (chip.__denStandIn) {
+    const was = chip.__denOwn || {};
+    if (was.rect) chip.getBoundingClientRect = was.rect;
+    else delete chip.getBoundingClientRect;
+    if (was.focus) chip.focus = was.focus;
+    else delete chip.focus;
+    delete chip.__denStandIn;
+    delete chip.__denOwn;
+  }
+}
+
+/**
  * Issue 313: a crumb's label ends in whole letters and "…", or hides. io:
  * { labels(), min() (the least width, px), width(label) (-1: not drawn),
  * whole(label) (its words fit), setCut(label, on) }. Every label shows
@@ -280,6 +321,8 @@ export function hydrateShell(root, opts = {}) {
       }
       return false;
     };
+    const before = overChips;
+    const hadFocus = !!more && document.activeElement === more;
     overChips = fitChips({
       chips: () => chips,
       overflows: outside,
@@ -291,12 +334,18 @@ export function hydrateShell(root, opts = {}) {
         if (!on && !more) return;
         const b = moreButton();
         if (on) b.setAttribute("data-den-on", "");
-        else {
-          b.removeAttribute("data-den-on");
-          if (moreMenu) moreMenu.close(false);
-        }
+        else b.removeAttribute("data-den-on");
       },
     });
+    // A chip behind ⋯ stands in at ⋯ (its box, its focus), so what its
+    // click opens is placed by ⋯ and gives focus back to it.
+    for (const c of chips) standInChip(c, overChips.includes(c) ? more : null);
+    // A re-fit (a chip's words repainted, say) keeps an open menu while
+    // the same chips are behind ⋯; another set makes its rows stale.
+    if (moreMenu && moreMenu.isOpen() && !keepChipsMenu(before, overChips))
+      moreMenu.close(false);
+    if (hadFocus && overChips.length && document.activeElement !== more)
+      more.focus({ preventScroll: true });
   }
 
   // Issue 313: a crumb's label that gives way ends in "…"; narrower than

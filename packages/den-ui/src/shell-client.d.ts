@@ -52,6 +52,13 @@ export declare function fitCrumbLabels<L>(io: {
   whole(label: L): boolean;
   setCut(label: L, on: boolean): void;
 }): L[];
+/** Issue 313: ⋯'s open menu stays open across a re-fit with the same chips behind it. */
+export declare function keepChipsMenu<C>(before: C[], after: C[]): boolean;
+/** Issue 313: a chip behind ⋯ takes ⋯'s box and focus (at null: its own again). */
+export declare function standInChip(
+  chip: object | null,
+  at: { getBoundingClientRect(): unknown; focus(o?: unknown): void } | null,
+): void;
 /** Issue 313: repaint a chip from new data, in place. */
 export declare function setChip(el: Element | null, c?: Chip): void;
 export declare function hydrateShell(

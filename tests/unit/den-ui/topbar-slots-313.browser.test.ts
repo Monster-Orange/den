@@ -111,8 +111,14 @@ const model = {
 window.shell = DenUI.mount(document.getElementById("den-shell"), model);
 document.addEventListener("click", (e) => {
   const c = e.target.closest && e.target.closest('[data-nav-kit="chip"]');
-  if (c) window.clicked.push(c.id);
+  if (!c) return;
+  window.clicked.push(c.id);
+  // A host's pop-up for the chip: placed by its box, focus back to it.
+  window.placedAt = Math.round(c.getBoundingClientRect().x);
+  c.focus();
+  window.focusAfter = document.activeElement && document.activeElement.id;
 });
+window.DenUI = DenUI;
 document.fonts.ready.then(() => { window.shell.fitTop(); window.ready = true; });
 `;
 
@@ -237,6 +243,26 @@ for (const engine of ["chromium", "webkit"]) {
       const menu = p.getByRole("menu");
       await menu.waitFor();
       expect(await menu.getByRole("menuitem").count()).toBe(s.over.length);
+      // Review 1: a chip repainted (a health poll, say) re-fits the bar,
+      // and the open menu stays open with focus in it.
+      const stays = await p.evaluate(async () => {
+        const w = window as unknown as {
+          DenUI: { setChip: (el: Element | null, c: object) => void };
+        };
+        for (const id of ["chip-0", "chip-7"])
+          w.DenUI.setChip(document.getElementById(id), {
+            dot: "bad",
+            text: "Status number " + id.slice(5) + " is fine",
+          });
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+        const m = document.querySelector('[role="menu"]');
+        return {
+          open: !!m && m.isConnected,
+          focusIn: !!m && m.contains(document.activeElement),
+        };
+      });
+      expect(stays).toEqual({ open: true, focusIn: true });
       const last = s.over[s.over.length - 1]!;
       await menu
         .getByRole("menuitem", {
@@ -246,6 +272,17 @@ for (const engine of ["chromium", "webkit"]) {
       expect(
         await p.evaluate(() => (window as { clicked?: string[] }).clicked),
       ).toEqual([last]);
+      // Review 2: the chip's pop-up is placed by ⋯, and focus goes back
+      // to ⋯, not to a hidden chip (or the page).
+      const at = await p.evaluate(() => {
+        const w = window as unknown as { placedAt: number; focusAfter: string };
+        const more = document.getElementById("den-chips-more")!;
+        return {
+          placed: w.placedAt === Math.round(more.getBoundingClientRect().x),
+          focus: w.focusAfter,
+        };
+      });
+      expect(at).toEqual({ placed: true, focus: "den-chips-more" });
       // Wider: every chip comes back, and ⋯ goes.
       await p.setViewportSize({ width: 2400, height: 800 });
       await p.waitForFunction(

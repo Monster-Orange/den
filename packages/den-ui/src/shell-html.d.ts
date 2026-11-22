@@ -110,6 +110,8 @@ export interface Chip {
 export declare const CHIP_DOTS: readonly string[];
 export declare const CHIP_TONES: readonly ("bad" | "warn")[];
 export declare function chipHtml(c?: Chip): string;
+/** Issue 313: a chip's link, http, https or relative only; else null. */
+export declare function safeChipHref(href: unknown): string | null;
 /** A chip's inside (its dot or icon, then its words). */
 export declare function chipInnerHtml(c?: Chip): string;
 export interface Slots {

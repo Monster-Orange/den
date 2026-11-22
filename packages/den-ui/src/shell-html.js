@@ -396,11 +396,27 @@ export function chipInnerHtml(c = {}) {
  * the plain dot); `icon`: "key" in place of the dot; `tone`: "bad" or
  * "warn" (its border); `title`, `name`: its tooltip and accessible name;
  * `popup`: "dialog" or "menu" (aria-haspopup, aria-expanded false);
- * `busy`: aria-busy; `href`: a link, else a button. Any other value is
+ * `busy`: aria-busy; `href`: a link (http, https or relative only:
+ * safeChipHref), else a button. Any other value is
  * dropped. The kit stamps it data-nav-kit="chip".
  */
+/**
+ * Issue 313 (review): a link a chip may follow: http, https or relative
+ * (no scheme). Anything else (javascript:, data:, file:…) is null.
+ */
+export function safeChipHref(href) {
+  if (href == null) return null;
+  const h = String(href).trim();
+  // Browsers drop tabs and newlines in a URL: so does the check.
+  const bare = h.replace(/[\t\n\r]/g, "");
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(bare);
+  if (scheme && !/^https?$/i.test(scheme[1])) return null;
+  return h;
+}
+
 export function chipHtml(c = {}) {
-  const link = c.href != null;
+  const href = safeChipHref(c.href);
+  const link = href != null;
   const tone = CHIP_TONES.includes(c.tone) ? " " + c.tone : "";
   return (
     (link ? "<a" : '<button type="button"') +
@@ -409,7 +425,7 @@ export function chipHtml(c = {}) {
     '"' +
     (c.id != null ? ' id="' + esc(safeId(c.id)) + '"' : "") +
     ' data-nav-kit="chip"' +
-    (link ? ' href="' + esc(c.href) + '"' : "") +
+    (link ? ' href="' + esc(href) + '"' : "") +
     (CHIP_POPUPS.includes(c.popup)
       ? ' aria-haspopup="' + c.popup + '" aria-expanded="false"'
       : "") +

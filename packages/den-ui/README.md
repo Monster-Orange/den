@@ -738,7 +738,8 @@ short?, title?, name?, popup?, busy?, hidden?, href? })` draws a status
   icon (`key`), then its words; `tone` (`bad`, `warn`) is its border;
   `lead` (or all the words, with `short`) hides at 860px; `popup` is
   `dialog` or `menu`; with `href` it is a link. Any other value is
-  dropped. `setChip(el, data)` (shell-client.js) repaints one in place,
+  dropped; a link is http, https or relative only (`safeChipHref`),
+  else the chip is a button. `setChip(el, data)` (shell-client.js) repaints one in place,
   its listeners kept. The chip's look is the kit's (`.den-chip` in
   shell.css): a host deletes its own copy.
 - **Slots as data.** `slots.end` (or `chips`) takes a list of chips'
@@ -747,16 +748,19 @@ short?, title?, name?, popup?, busy?, hidden?, href? })` draws a status
   draws, for this release.
 - **The ⋯ overflow.** Chips that don't fit, even given way to their dot
   and "…", go behind ⋯ (the last first): a kit menu ("More in the bar")
-  that names each; a pick clicks the chip itself. Wider again, they come
+  that names each; a pick clicks the chip itself, which stands in at ⋯
+  while it is behind it (its box and its focus are ⋯'s), so what it opens
+  is placed by ⋯ and gives focus back to ⋯. A repaint that leaves the
+  same chips behind ⋯ keeps an open menu open. Wider again, they come
   back. ⋯ sits last in `div.den-end`, so the kit's buttons never move.
   `fitChips(io)` is the rule; `shell.fitTop()` runs it now.
 - **Crumb labels cut cleanly.** A label that gives way ends in whole
   letters and "…"; one narrower than `--den-crumb-label-min` (24px, on
   `.den-top`) hides, so no part of a glyph ever shows.
 - **The inventory and a host's own HTML.** `compareNav` measures every
-  box from the top bar's corner (`atBar`), the slot checks too: a banner
-  above the bar, or a wrapper that moves it, moves the whole nav and is
-  no difference. One element moved inside the bar
+  box from the top bar's corner (`atBar`), and the slot checks use the
+  bar's own width: a banner above the bar, or a wrapper with a side
+  margin, moves the whole nav and is no difference. One element moved inside the bar
   still is.
 
 ## 0.7.1
