@@ -1251,7 +1251,10 @@ import {
   issueWriteSettings,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
-import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
+import {
+  listRecords,
+  readRecord as readAgentRecord,
+} from "../../shared/agents/records.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1286,7 +1289,10 @@ import {
   type VerifyServerDeps,
 } from "./verify-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
-import { sessionRootPids } from "../../shared/person-here.js";
+import {
+  agentSessionRoots,
+  sessionRootPids,
+} from "../../shared/person-here.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
 
 /** Sign-in: Den's own processes, this server always among them. */
@@ -1297,6 +1303,7 @@ function denPidsNow(): number[] | null {
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
+  personTokenPlace,
   callerLine,
   callerPid,
   forwardedRequest,
@@ -2208,6 +2215,35 @@ const GUARD: GuardContext = {
   edgeProved: (req) => EDGE_PROVED(req),
   // Issue 636: the test-person path, on a test bed (issue 810's binding).
   testBed: () => testInstallNow(),
+  // The person's token only from outside every agent's processes.
+  personTokenFrom: (req) => {
+    const from = personTokenPlace({
+      loopback: isLoopbackAddress(req.socket?.remoteAddress),
+      forwarded: forwardedRequest(req, GUARD),
+      line: callerLine(req),
+      roots: agentSessionRoots(
+        getStateDir(),
+        listRecords(getStateDir()).flatMap((r) =>
+          r.session?.id ? [r.session.id] : [],
+        ),
+      ),
+    });
+    if (from !== "ok")
+      recordAction(
+        null,
+        {
+          verb: "person-token",
+          detail: `the person's token from ${from === "in_agent" ? "an agent's processes" : "a process Den couldn't place"} (pid ${callerPid(req) ?? "?"}): ${req.method ?? "GET"} ${new URL(req.url ?? "/", "http://x").pathname}`,
+          outcome: "refused" as const,
+          reason:
+            from === "in_agent"
+              ? "person_token_in_agent"
+              : "person_token_unplaced",
+        },
+        "person",
+      );
+    return from;
+  },
 };
 
 // ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────

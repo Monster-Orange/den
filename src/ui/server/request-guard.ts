@@ -249,6 +249,13 @@ export interface GuardContext {
    * test install binding). Unset: never (the test-person path is refused).
    */
   testBed?: () => boolean;
+  /**
+   * Where a request with the person's token came from (personTokenPlace):
+   * "in_agent" or "unknown" refuses it. Unset: not checked.
+   */
+  personTokenFrom?: (
+    req: http.IncomingMessage,
+  ) => "ok" | "in_agent" | "unknown";
 }
 
 export type GuardResult =
@@ -285,6 +292,8 @@ export type GuardResult =
         | "embed_key_scope"
         | "runner_scope"
         | "test_person_refused"
+        | "person_token_in_agent"
+        | "person_token_unplaced"
         | "not_test_bed";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
@@ -734,6 +743,25 @@ export function checkRequest(
         principal,
       };
     principal = { ...principal, testPerson: true };
+  }
+  // The person's token counts only from outside every agent's processes,
+  // whatever the caller's environment says (the test bed's test-person
+  // path, above, is the one exception).
+  if (principal?.kind === "person" && !principal.testPerson && bearer) {
+    const from = ctx.personTokenFrom?.(req) ?? "ok";
+    if (from !== "ok")
+      return {
+        ok: false,
+        status: 403,
+        code:
+          from === "in_agent"
+            ? "person_token_in_agent"
+            : "person_token_unplaced",
+        error:
+          from === "in_agent"
+            ? "The person's token works only from the person's own terminal, and this call came from an agent's processes. Nothing ran."
+            : "Den couldn't tell which process sent the person's token, so it was refused. Try again; if it keeps happening, run the command in your own terminal. Nothing ran.",
+      };
   }
   // Once Den's own named https address works, sessions count only when
   // minted on it: none on a loopback name, and none minted elsewhere.

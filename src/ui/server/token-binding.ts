@@ -206,9 +206,30 @@ export function agentPeerWait(
   binding: { on: boolean; waitMs: number },
 ): number | null {
   const auth = req.headers?.authorization;
-  if (!auth || !binding.on) return null;
+  if (!auth) return null;
   const m = /^Bearer\s+(\S+)\s*$/i.exec(auth);
-  return m && m[1].startsWith(ACTOR_TOKEN_PREFIX) ? binding.waitMs : null;
+  if (!m) return null;
+  // The person's token is placed always (personTokenPlace); an agent's
+  // only with binding on.
+  if (!m[1].startsWith(ACTOR_TOKEN_PREFIX)) return binding.waitMs;
+  return binding.on ? binding.waitMs : null;
+}
+
+/**
+ * Where the person's token came from: "in_agent" when the caller's line
+ * holds a running agent's session root, "unknown" when Den can't read
+ * the line or the roots (refused all the same), else "ok". Not on
+ * loopback, or through the edge: "ok" (the peer isn't the caller).
+ */
+export function personTokenPlace(o: {
+  loopback: boolean;
+  forwarded: boolean;
+  line: number[] | null;
+  roots: number[] | null;
+}): "ok" | "in_agent" | "unknown" {
+  if (!o.loopback || o.forwarded) return "ok";
+  if (!o.line || o.line.length === 0 || !o.roots) return "unknown";
+  return o.line.some((p) => o.roots!.includes(p)) ? "in_agent" : "ok";
 }
 
 /** Issue 609: each reason as the audit says it. */

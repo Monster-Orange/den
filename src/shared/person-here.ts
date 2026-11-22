@@ -73,6 +73,36 @@ export function sessionRootPids(stateDir: string): number[] | null {
   return pids;
 }
 
+/**
+ * The root pids of the running sessions among `ids` (agents' sessions;
+ * a shell on the Terminals page isn't one); null when a record can't be
+ * read. A session with no record, or one that ended, has none.
+ */
+export function agentSessionRoots(
+  stateDir: string,
+  ids: readonly string[],
+): number[] | null {
+  const dir = sessionPaths(stateDir).dir;
+  const pids: number[] = [];
+  for (const id of ids) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) continue;
+    let rec: { pid?: unknown; exited?: unknown };
+    try {
+      rec = JSON.parse(
+        fs.readFileSync(path.join(dir, `${id}.json`), "utf-8"),
+      ) as { pid?: unknown; exited?: unknown };
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+      return null;
+    }
+    if (!rec || typeof rec !== "object") return null;
+    if (rec.exited === true) continue;
+    if (!Number.isInteger(rec.pid) || (rec.pid as number) <= 0) return null;
+    pids.push(rec.pid as number);
+  }
+  return pids;
+}
+
 export interface PersonHereDeps {
   env?: NodeJS.ProcessEnv;
   /** The install's state dir (its session host's records). */
