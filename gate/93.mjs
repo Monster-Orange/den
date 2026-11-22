@@ -255,13 +255,17 @@ export async function run(ctx, state) {
     let noBox;
     if (n === 1) {
       // Issue 187: the cursor a person sees over the row's parts.
+      // A row that opens: its text is its link (data-bell="open"), its dot
+      // the aria-hidden mark, its time the <time>.
       const cur = await r
-        .first()
         .evaluate((row) => {
-          const c = (el) => (el ? getComputedStyle(el).cursor : null);
+          const c = (el) =>
+            el
+              ? el.ownerDocument.defaultView.getComputedStyle(el).cursor
+              : null;
           return {
-            row: c(row.querySelector(".den-bell-t, a") ?? row),
-            dot: c(row.querySelector(".den-dot")),
+            row: c(row.querySelector('[data-bell="open"]')),
+            dot: c(row.querySelector('[aria-hidden="true"]')),
             time: c(row.querySelector("time")),
           };
         })
