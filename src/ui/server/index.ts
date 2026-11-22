@@ -3792,8 +3792,12 @@ function coachRouteDeps(): CoachRouteDeps {
     notAPerson: notAPersonOf,
     settings: coachSettingsNow,
     latest: () => readCoachReport(getStateDir()),
-    run: () =>
-      runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
+    run: (progress) =>
+      runCoach({
+        stateDir: getStateDir(),
+        settings: coachSettingsNow(),
+        ...(progress ? { progress } : {}),
+      }),
     audit: (req, e) =>
       void recordAction(auditActorOf(req), e, principalOf(req)),
     findings: (report) => ({

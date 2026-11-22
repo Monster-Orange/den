@@ -84,6 +84,8 @@ describe("the Coach's routes", () => {
         settings: { ...COACH_DEFAULTS, enabled: true },
         report: null,
         running: false,
+        progress: null,
+        failed: null,
         findings: [],
         dismissed: [],
       },

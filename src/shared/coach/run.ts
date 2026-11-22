@@ -24,6 +24,8 @@ export interface CoachRunOptions {
   source?: (runtime: string) => UsageSource | undefined;
   /** agents.rotate.after_compactions (default: the org config's, else 3). */
   rotateAfter?: () => number;
+  /** How many agents are read so far (the Coach tab's Running state). */
+  progress?: (done: number, total: number) => void;
   /** Slice T-d's model call (default: the runtime's CLI). */
   judgeRun?: ModelRun;
 }
@@ -56,6 +58,7 @@ export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
     ...(o.source ? { source: o.source } : {}),
     after: (o.rotateAfter ?? rotateLimit)(),
     sentenceWords: o.settings.findings.sentence_words,
+    ...(o.progress ? { progress: o.progress } : {}),
   });
   report.findings = coachFindings(report, o.settings.findings);
   const now = Date.parse(report.ranAt);

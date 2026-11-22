@@ -45,8 +45,12 @@ export interface CoachRouteDeps {
   notAPerson: (req: http.IncomingMessage) => boolean;
   settings: () => CoachSettings;
   latest: () => CoachReport | null;
-  /** Run the Coach and save its report (coach run). */
-  run: () => Promise<CoachReport>;
+  /** Run the Coach and save its report (coach run), telling its progress. */
+  run: (
+    progress?: (done: number, total: number) => void,
+  ) => Promise<CoachReport>;
+  /** ms since the epoch (default: Date.now). */
+  now?: () => number;
   audit: (req: http.IncomingMessage, e: CoachAuditEntry) => void;
   /** The report's open findings, and the dismissals (findings.ts). */
   findings: (report: CoachReport | null) => {
@@ -58,6 +62,13 @@ export interface CoachRouteDeps {
 }
 
 let running: Promise<unknown> | null = null;
+/** The run going now: agents read of all (the Running state). */
+let progress: { done: number; total: number } | null = null;
+/**
+ * The last run, when it failed (the Failed state, with the report before
+ * it): kept until a run succeeds. In memory: a restart starts clean.
+ */
+let failed: { at: string; error: string } | null = null;
 
 /** Handle `pathname` if it is a Coach route; false when it isn't one. */
 export async function handleCoachRoute(
@@ -80,6 +91,8 @@ export async function handleCoachRoute(
       settings: d.settings(),
       report,
       running: running !== null,
+      progress: running ? progress : null,
+      failed,
       findings: f.open,
       dismissed: f.dismissed,
     });
@@ -120,13 +133,21 @@ export async function handleCoachRoute(
       "already_running",
       "The Coach is running now. Its report shows here when it ends.",
     );
-  const run = d.run();
+  progress = null;
+  const run = d.run((done, total) => {
+    progress = { done, total };
+  });
   running = run;
   try {
     const report = await run;
+    failed = null;
     d.audit(req, { verb: "coach-run", detail: "Coach run (read-only)" });
     d.sendJson(res, { ok: true, report });
   } catch (e) {
+    failed = {
+      at: new Date((d.now ?? Date.now)()).toISOString(),
+      error: String((e as Error)?.message ?? e).slice(0, 300),
+    };
     d.sendJson(
       res,
       {
@@ -138,6 +159,7 @@ export async function handleCoachRoute(
     );
   } finally {
     running = null;
+    progress = null;
   }
   return true;
 }
