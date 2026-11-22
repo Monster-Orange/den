@@ -207,28 +207,35 @@ describe("issue 773 Counts: the sub-line and the rail", () => {
   });
 });
 
-describe("issue 773 (mock v3 rules): A to Z inside Working and Idle", () => {
-  it("a saved drag order (place) does not move rows inside a band: same input, same order", async () => {
+describe("issue 773 + issue 96: the person's drag order inside a band", () => {
+  it("a project's dragged order holds inside each band; bands still come first", async () => {
     const { bandsOf } = await mod();
-    const rows = [
+    const b = bandsOf([
       ag("alpha", "idle", { place: 2 }),
       ag("zeta", "idle", { place: 0 }),
       ag("planner", "needs", { attnSince: T(3), place: 3 }),
       ag("mid", "idle", { place: 1 }),
-      ag("worker", "working", { place: 0 }),
-      ag("beta", "working", { place: 1 }),
-    ];
-    const b = bandsOf(rows);
-    expect(b.map((x) => x.state)).toEqual(["needs", "working", "idle"]);
-    expect(b[1].rows.map((r) => r.agent)).toEqual(["beta", "worker"]);
-    expect(b[2].rows.map((r) => r.agent)).toEqual(["alpha", "mid", "zeta"]);
-    expect(bandsOf([...rows].reverse())).toEqual(b);
+    ]);
+    expect(b.map((x) => x.state)).toEqual(["needs", "idle"]);
+    expect(b[1].rows.map((r) => r.agent)).toEqual(["zeta", "mid", "alpha"]);
   });
 
-  it("no in-band moves: the page has nothing to move a running row among", async () => {
-    const m = await mod();
-    expect("bandGroup" in m).toBe(false);
-    expect("personOrdered" in m).toBe(false);
+  it("bandGroup: the ids a running row moves among: its project, its band, as shown", async () => {
+    const { bandGroup } = await mod();
+    const rows = [
+      ag("alpha", "idle", { place: 1 }),
+      ag("zeta", "idle", { place: 0 }),
+      ag("other", "idle", { workspace: "south" }),
+      ag("planner", "needs", { attnSince: T(3) }),
+    ];
+    expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
+    // Needs you and Done keep the longest wait first: nothing moves there.
+    expect(bandGroup(rows, rows[3])).toEqual([]);
+    const done = [
+      ag("b1", "done", { attnSince: T(1) }),
+      ag("b2", "done", { attnSince: T(2) }),
+    ];
+    expect(bandGroup(done, done[0])).toEqual([]);
   });
 });
 

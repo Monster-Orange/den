@@ -135,11 +135,13 @@ import { makeComposer } from "/agent-composer.js";
 import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
 import {
   attnSub,
+  bandGroup,
   bandsOf,
   chipHtml,
   markHtml,
   metaHtml,
   needsWhy,
+  personOrdered,
   railNeeds,
   rowState,
   sinceShort,
@@ -240,6 +242,7 @@ const st = {
   /** Issue 226: on a phone, whether the Stopped group's agents show them. */
   reorderStopped: false,
   // Issue 96 (issue 773): the band a phone's Reorder is on, or null.
+  reorderBand: null,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
   reconnect: reconnectOptions(undefined),
   /** 0.4.45: /api/workspaces, for the projects' names (projName). */
@@ -1340,9 +1343,19 @@ function paintList() {
             .map(
               (b) =>
                 `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(t(`ag.band.${b.state}`))}</span><span class="n" data-count>${esc(b.rows.length)}</span></div>` +
-                // Issue 773 (mock v3): the bands' order is the rule's (A to
-                // Z, or the longest wait first): no drag or Reorder in them.
-                b.rows.map(rowHtml).join("") +
+                reorderBandHtml(b) +
+                b.rows
+                  .map((r) =>
+                    // Issue 96: a phone's Reorder gives the band's rows Up and Down.
+                    orderRowHtml(
+                      rowHtml(r),
+                      r,
+                      phone() &&
+                        st.reorderBand === b.state &&
+                        runningMovable(r),
+                    ),
+                  )
+                  .join("") +
                 `</div>`,
             )
             .join("") + stoppedGroupHtml(stopped)
@@ -3419,24 +3432,49 @@ async function newShell(r, button) {
 const agentPath = (r, verb) =>
   `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
 
-// ── Issue 96: a project's stopped agents in the person's order ────────
+// ── Issue 96: a project's agents in the person's order ─────────────────
 // A grip and a pointer drag (mouse, pen and touch), ⋯ Move up, Move down
-// and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in the
-// Stopped group's header. A row moves inside its group (agent-order.js);
-// the server stores the order in the person's user config and every list
-// follows. Issue 773 (mock v3): a running agent is in a band, whose order
-// is the rule's (A to Z in Working and Idle, the longest wait first in
-// Needs you and Done), so it has no grip and no moves.
+// and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in
+// Working's and Idle's headers and the Stopped group's. A row moves inside its group (agent-order.js; issue
+// 773: a running one inside its band, among its project's agents); the
+// server stores the order in the person's user config and every list
+// follows. The bands still set the order between bands.
 
-/** The agent ids of r's group: a stopped one's, in the Stopped group. */
+/**
+ * The agent ids of r's group, as the list shows them. Issue 773: a running
+ * agent moves among its project's agents in its band (the bands set the
+ * order between bands); a stopped one in the Stopped group, as before.
+ */
 const groupOf = (r) =>
-  inStopped(r) ? orderGroup(st.data?.sessions ?? [], r, inStopped) : [];
+  inStopped(r)
+    ? orderGroup(st.data?.sessions ?? [], r, inStopped)
+    : bandGroup(
+        (st.data?.sessions ?? []).filter((s) => !inStopped(s)),
+        r,
+        { seenNow: seenMap() },
+      );
 
 /** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
 const gripHtml = (r) =>
-  orderable(r, SERVER_WS) && inStopped(r)
+  // Issue 773: none in Needs you and Done (their order is the wait's).
+  orderable(r, SERVER_WS) && (inStopped(r) || groupOf(r).length > 0)
     ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
     : "";
+
+/** Issue 96: a running row that can move: two or more in its group. */
+const runningMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
+
+/**
+ * Issue 96 (issue 773: per band): a phone's Reorder (or Done) in a band
+ * the person orders (Working, Idle), when a project has two agents in it.
+ */
+function reorderBandHtml(b) {
+  if (!phone() || !personOrdered(b.state) || !b.rows.some(runningMovable))
+    return "";
+  const on = st.reorderBand === b.state;
+  const band = t(`ag.band.${b.state}`);
+  return `<div class="agord-sb"><button type="button" class="den-btn sm agord-t" data-act="reorder" data-band="${esc(b.state)}" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderBand", { band }))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button></div>`;
+}
 
 /**
  * Issue 226: a phone's Reorder (or Done) for the Stopped group, when one
@@ -5896,6 +5934,10 @@ export async function mountAgentsPage(root) {
       if (which === "reorder") {
         if (act.hasAttribute("data-stopped"))
           st.reorderStopped = !st.reorderStopped;
+        // Issue 773: a band the person orders (Working, Idle).
+        else if (act.dataset.band)
+          st.reorderBand =
+            st.reorderBand === act.dataset.band ? null : act.dataset.band;
         paintList();
         return;
       }

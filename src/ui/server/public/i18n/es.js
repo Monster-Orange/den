@@ -3010,6 +3010,7 @@
     "ag.ord.upOne": "Subir {id}",
     "ag.ord.downOne": "Bajar {id}",
     "ag.ord.reorder": "Reordenar",
+    "ag.ord.reorderBand": "Reordenar los agentes en {band}",
     "ag.ord.reorderStopped": "Reordenar los agentes detenidos",
     "ag.ord.done": "Listo",
     "ag.ord.grip": "Arrastra para cambiar su orden en el proyecto",
