@@ -46,7 +46,7 @@ describe("state-writes gate", () => {
   it("fails on a plain write of a file the list doesn't name", () => {
     const r = run(tree({ "src/shared/notes.ts": PLAIN }));
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain("src/shared/notes.ts: 1 fs.writeFileSync");
+    expect(r.stderr).toContain("src/shared/notes.ts: 1 plain whole-file write");
   });
 
   it("passes writes through atomic-write, and atomic-write itself", () => {
@@ -66,7 +66,30 @@ describe("state-writes gate", () => {
     expect(run(tree({ "src/ui/open.ts": PLAIN }, allow)).status).toBe(0);
     const r = run(tree({ "src/ui/open.ts": PLAIN + PLAIN }, allow));
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain("2 fs.writeFileSync call(s), 1 allowed");
+    expect(r.stderr).toContain("2 plain whole-file write(s), 1 allowed");
+  });
+
+  it("an async whole-file write counts too: fs.promises.writeFile, writeFile from fs/promises", () => {
+    const ns =
+      'import * as fs from "fs";\nawait fs.promises.writeFile(f, "x");\n';
+    const named =
+      'import { mkdir, writeFile } from "fs/promises";\nawait writeFile(f, "x");\n';
+    const r = run(tree({ "src/a.ts": ns, "src/b.ts": named }));
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("src/a.ts: 1 plain whole-file write(s)");
+    expect(r.stderr).toContain("src/b.ts: 1 plain whole-file write(s)");
+  });
+
+  it("appends, and a local function named writeFile, never count", () => {
+    const r = run(
+      tree({
+        "src/log.ts":
+          'import * as fs from "fs";\nfs.appendFileSync(f, "line\\n");\n',
+        "src/own.ts":
+          "function writeFile(d: string) { return d; }\nwriteFile(dir);\n",
+      }),
+    );
+    expect(r.status).toBe(0);
   });
 
   it("tests and comments never count", () => {

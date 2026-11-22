@@ -1,4 +1,12 @@
 {
+  "src/pillars/journeys/report/junit.ts": {
+    "count": 1,
+    "reason": "test tooling: a journeys run's JUnit report in its report folder"
+  },
+  "src/pillars/journeys/report/results.ts": {
+    "count": 1,
+    "reason": "test tooling: a journeys run's results file in its report folder"
+  },
   "src/pillars/journeys/runner.ts": {
     "count": 1,
     "reason": "test tooling: a journey's transcript in its report folder"
@@ -42,6 +50,10 @@
   "src/shared/hub-files.ts": {
     "count": 2,
     "reason": "hub pull: files written into the folder the person names, not state"
+  },
+  "src/shared/results/result-writer.ts": {
+    "count": 1,
+    "reason": "test results: the index is written to a temp file and renamed, async"
   },
   "src/ui/cli/create.ts": {
     "count": 2,

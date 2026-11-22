@@ -5,8 +5,9 @@
  * fs.writeFileSync empties the file first: a crash, a power loss or a full
  * disk in that window leaves the person's state empty or half-written.
  *
- * The check counts `writeFileSync(` per source file under src/ (tests left
- * out) and fails when a file has more than its allow-list entry lets it
+ * The check counts plain whole-file writes (`writeFileSync(`, and the async
+ * fs.promises.writeFile / writeFile from fs/promises) per source file under
+ * src/ (tests left out) and fails when a file has more than its allow-list entry lets it
  * have. A file with no entry may have none. Each entry names a reason: a
  * temp file, a file in the person's repo, a one-off export, test tooling.
  * An entry that allows more than the file now has is reported, so the list
@@ -28,6 +29,12 @@ const SOURCE = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
 const TEST = /(\.test\.|\.spec\.|\.browser\.|__tests__)/;
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage"]);
 const CALL = /\bwriteFileSync\s*\(/g;
+/** An async whole-file write through a namespace: fs.promises.writeFile(, fsp.writeFile(. */
+const ASYNC_NS = /\b(?:promises|fsp|fs)\.writeFile\s*\(/g;
+/** writeFile imported by name from fs/promises (or fs): then a bare writeFile( counts. */
+const ASYNC_IMPORT =
+  /\bimport\s*\{[^}]*\bwriteFile\b[^}]*\}\s*from\s*["'](?:node:)?fs(?:\/promises)?["']/;
+const ASYNC_BARE = /(?<![.\w])writeFile\s*\(/g;
 /** The one file that may write plainly: it is the safe way. */
 export const ATOMIC_WRITE = "src/shared/atomic-write.ts";
 
@@ -38,9 +45,16 @@ function stripComments(text) {
     .replace(/(^|[^:\\])\/\/.*$/gm, "$1");
 }
 
-/** `writeFileSync(` calls in `text`, comments left out. */
+/**
+ * Plain whole-file writes in `text`, comments left out: `writeFileSync(`,
+ * and the async ones (fs.promises.writeFile, writeFile from fs/promises),
+ * which empty the file first in the same way. appendFileSync never counts:
+ * a log is appended to, never replaced.
+ */
 export function countWrites(text) {
-  return (stripComments(text).match(CALL) ?? []).length;
+  const t = stripComments(text);
+  const n = (re) => (t.match(re) ?? []).length;
+  return n(CALL) + n(ASYNC_NS) + (ASYNC_IMPORT.test(t) ? n(ASYNC_BARE) : 0);
 }
 
 function walk(dir, out) {
@@ -129,7 +143,7 @@ function main(argv) {
       );
     for (const o of r.over)
       console.error(
-        `${o.file}: ${o.count} fs.writeFileSync call(s), ${o.allowed} allowed. ` +
+        `${o.file}: ${o.count} plain whole-file write(s), ${o.allowed} allowed. ` +
           `Write state with writeFileAtomic (${ATOMIC_WRITE}); ` +
           `for a temp file or a file outside the state folder, add an entry with its reason to scripts/state-writes-allow.json.`,
       );
