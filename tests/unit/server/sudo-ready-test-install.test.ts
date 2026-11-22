@@ -13,7 +13,7 @@ import * as path from "path";
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-sudo-ready-"));
 const log = path.join(dir, "ran");
 const fake = path.join(dir, "sudo");
-fs.writeFileSync(fake, `#!/bin/sh\necho "$@" >> '${log}'\nexit 0\n`, {
+fs.writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexit 0\n`, {
   mode: 0o755,
 });
 const before = process.env.DEN_SYSTEM_SUDO;
