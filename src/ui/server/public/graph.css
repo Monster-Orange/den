@@ -660,23 +660,23 @@ path.dg-flow.cross {
 .dg-panel[hidden] {
   display: none !important;
 }
-.dg.dg-modal-back {
-  position: fixed;
-  inset: 0;
-  height: auto;
-  grid-template-rows: none;
-  background: rgb(0 0 0 / 0.6);
-  z-index: 900;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+/* Issue 837: popped out, the panel is drawn in the kit's dialog (its
+   frame, backdrop, Close and Report); the body holds the same panel. */
+.dk-dlg.dg-pop {
+  width: min(720px, calc(100vw - 32px));
 }
-.dg-modal-back .dg-panel {
-  width: min(720px, 100%);
-  max-height: min(86vh, 900px);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
+.dg-pop .dk-body {
+  padding: 0;
+}
+.dg.dg-pop-root {
+  display: block;
+  height: auto;
+  background: none;
+}
+.dg-pop-root .dg-panel {
+  width: auto;
+  border-left: 0;
+  overflow: visible;
 }
 .dg-resize {
   position: absolute;

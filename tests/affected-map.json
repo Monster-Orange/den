@@ -34,6 +34,12 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/graph-popout-837.browser.test.ts": [
+      "packages/den-ui/src/dialog.js",
+      "src/ui/server/public/graph.css",
+      "src/ui/server/public/graph.js",
+      "src/ui/server/public/panel.js"
+    ],
     "tests/unit/server/test-operator-edge.integration.test.ts": [
       "src/shared/test-operator.ts",
       "src/ui/server/index.ts",
@@ -449,6 +455,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -625,6 +632,7 @@
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -826,6 +834,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -1007,6 +1016,7 @@
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -1129,6 +1139,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -1278,6 +1289,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -1377,6 +1389,7 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -1762,6 +1775,16 @@
     {
       "when": ["src/shared/fixture-person.ts"],
       "run": ["tests/unit/server/fixture-person.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/dialog.js",
+        "src/ui/server/public/graph.css",
+        "src/ui/server/public/graph.js",
+        "src/ui/server/public/panel.js"
+      ],
+      "run": ["tests/unit/server/graph-popout-837.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

@@ -385,10 +385,9 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     await p.click(".dg-card");
     await p.waitForSelector(".dg-panel:not([hidden])");
     await p.click(".dg-panel [data-popout]");
-    await p.waitForSelector(".dg-panel[role=dialog]");
-    const tabs = p.locator(
-      '.dg-panel[role=dialog] [role="tab"][aria-selected="false"]',
-    );
+    // Issue 837: the kit's dialog.
+    await p.waitForSelector("dialog.dg-pop[open]");
+    const tabs = p.locator('dialog.dg-pop [role="tab"][aria-selected="false"]');
     if (await tabs.count()) await tabs.first().click();
     await p.waitForTimeout(300);
     await p.keyboard.press("Escape");

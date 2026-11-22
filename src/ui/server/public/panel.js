@@ -713,12 +713,6 @@ export function disposePanel() {
   disposers = [];
 }
 
-/**
- * den#143: popped out, the details are a pop-up: their Report footer is
- * drawn with them, so a repaint (another node, another tab) keeps it.
- */
-const popReport = () => window.denShell?.reportFoot?.() ?? "";
-
 /** Fill `el` with the panel for `sel`. Returns false if the selection is gone. */
 export function renderPanel(el, sel) {
   disposePanel();
@@ -761,17 +755,22 @@ export function renderPanel(el, sel) {
       : ok === false
         ? "bad"
         : "";
-  const popLabel = st.popped
-    ? gw("gr.dock", "Dock as side panel")
-    : gw("gr.popout", "Expand to pop-up");
+  const popLabel = gw("gr.popout", "Expand to pop-up");
+  const title = kind === "repo" ? x.repo : x.name;
+  // Issue 837: popped out, the kit's dialog has the heading, Dock, Close
+  // and Report; the panel keeps the rest.
+  el.dataset.title = title;
+  const hbtns = st.popped
+    ? `<span class="dg-hbtns">${pinButton(kind === "repo" ? x.repo : x.id)}</span>`
+    : `<span class="dg-hbtns">${pinButton(kind === "repo" ? x.repo : x.id)}<button class="dg-ib" data-popout title="${esc(popLabel)}" aria-label="${esc(popLabel)}">⤢</button><button class="dg-ib" data-close aria-label="${esc(gw("gr.closeDetails", "Close details"))}">×</button></span>`;
   el.innerHTML = `${st.popped ? "" : `<div class="dg-resize" data-resize title="${esc(gw("gr.resize", "Drag to resize"))}"></div>`}<div class="dg-dh">
     <nav class="dg-crumbs" aria-label="${esc(gw("gr.location", "Location"))}"><span class="dg-crumb-org"><i style="background:${esc(org.color)}"></i>${esc(org.label)}</span> › <span>${esc(s0.app)}</span>${kind === "service" && m.byRepo.get(x.repo).length > 1 ? ` › <button data-goto-repo-panel="${esc(x.repo)}">${esc(x.repo)}</button>` : ""}</nav>
-    <div class="t"><h2>${esc(kind === "repo" ? x.repo : x.name)}</h2><span class="dg-pill ${pillCls}">${esc(word)}</span>${place !== "local" || m.mixed ? `<span class="dg-badge ${place}">${esc(placeLabel)}</span>` : ""}
-      <span class="dg-hbtns">${pinButton(kind === "repo" ? x.repo : x.id)}<button class="dg-ib" data-popout title="${esc(popLabel)}" aria-label="${esc(popLabel)}">${st.popped ? "⇲" : "⤢"}</button><button class="dg-ib" data-close aria-label="${esc(gw("gr.closeDetails", "Close details"))}">×</button></span></div>
+    <div class="t">${st.popped ? "" : `<h2>${esc(title)}</h2>`}<span class="dg-pill ${pillCls}">${esc(word)}</span>${place !== "local" || m.mixed ? `<span class="dg-badge ${place}">${esc(placeLabel)}</span>` : ""}
+      ${hbtns}</div>
     <div class="sub">${esc(kind === "repo" ? `${gw("gr.services", "{n} services", { n: x.services.length })} · ${s0.path}` : x.id)}</div>
     ${actionBar(x)}
     <div class="dg-tabs" role="tablist">${tabs.map((t) => `<button role="tab" aria-selected="${t.id === st.tab}" data-tab="${t.id}">${esc(tabLabel(t))}</button>`).join("")}</div>
-  </div><div class="dg-pbody" role="tabpanel"></div>${st.popped ? popReport() : ""}`;
+  </div><div class="dg-pbody" role="tabpanel"></div>`;
   const body = el.querySelector(".dg-pbody");
   for (const c of SECTIONS.filter(
     (c) => c.tab === st.tab && c.for.includes(kind) && (!c.when || c.when(x)),
