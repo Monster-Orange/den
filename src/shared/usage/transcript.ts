@@ -161,12 +161,13 @@ function headType(line: string): string | null {
 
 /**
  * Mine `file`. `since`: only messages at or after it count (a session that
- * runs for weeks contributes its recent calls). Lines it can't parse are
+ * runs for weeks contributes its recent calls). `seen`: message ids already
+ * counted for this agent, shared across its files (issue 52). Lines it can't parse are
  * skipped.
  */
 export async function mineTranscript(
   file: string,
-  opts: { since?: number } = {},
+  opts: { since?: number; seen?: Set<string> } = {},
 ): Promise<TranscriptStats> {
   const r: TranscriptStats = {
     file,
@@ -187,7 +188,7 @@ export async function mineTranscript(
     activeSeconds: 0,
     prMerges: [],
   };
-  const seen = new Set<string>();
+  const seen = opts.seen ?? new Set<string>();
   const toolNames = new Map<string, string>();
   /** Tool-use ids of the commands whose result decides an outcome. */
   const tests = new Map<string, number>();

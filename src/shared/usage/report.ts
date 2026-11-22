@@ -21,10 +21,11 @@
  *
  * Everything is read and written on this machine; nothing is sent.
  */
-import type {
-  AgentOutcome,
-  AgentRecord,
-  AgentUsage,
+import {
+  conversationsOf,
+  type AgentOutcome,
+  type AgentRecord,
+  type AgentUsage,
 } from "../agents/records.js";
 import { sourceFor, type UsageSource } from "./sources.js";
 import type { TranscriptStats } from "./transcript.js";
@@ -152,8 +153,8 @@ async function mergeVerified(
 }
 
 /**
- * Each record's usage and outcome, from its runtime's transcripts (by its
- * resumeToken). `source` picks the reader (default: the one for its runtime).
+ * Each record's usage and outcome, from its runtime's transcripts (every
+ * conversation it has had, issue 52). `source` picks the reader (default: the one for its runtime).
  */
 export async function agentUsage(
   records: readonly AgentRecord[],
@@ -188,7 +189,8 @@ export async function agentUsage(
       });
       continue;
     }
-    if (!rec.resumeToken) {
+    const ids = conversationsOf(rec).map((c) => c.id);
+    if (!ids.length) {
       rows.push({
         ...base,
         why: "no conversation id to join on",
@@ -197,8 +199,14 @@ export async function agentUsage(
       });
       continue;
     }
-    const files = src.agentFiles(rec.resumeToken, opts.env);
-    const stats = await Promise.all(files.map((f) => src.mine(f)));
+    // Issue 52: every conversation it has had, each call once (a resumed
+    // conversation can carry the earlier one's messages).
+    const files = [
+      ...new Set(ids.flatMap((id) => src.agentFiles(id, opts.env))),
+    ];
+    const seen = new Set<string>();
+    const stats: TranscriptStats[] = [];
+    for (const f of files) stats.push(await src.mine(f, { seen }));
     if (!stats.length) {
       rows.push({
         ...base,

@@ -131,6 +131,12 @@ export interface AgentRecord {
    */
   rotations?: RotationEntry[];
   /**
+   * Issue 52 (Coach): every conversation it has had, oldest first, one per
+   * resume token; kept by writeRecord (withConversations). A record from
+   * before has none stored: conversationsOf backfills it.
+   */
+  conversations?: ConversationEntry[];
+  /**
    * The name a person gave it (AG-4b: double-click its tab), shown in the
    * Agents tab, its tabs, ⌘K and the agent lists; the id never changes.
    * checkDisplayName says what one may be.
@@ -300,10 +306,108 @@ function recordFile(stateDir: string, id: string): string {
   return path.join(agentsDir(stateDir), `${id}.json`);
 }
 
+/** Why a conversation began (issue 52). */
+export type ConversationWhy = "start" | "fresh" | "rotation" | "bring-in";
+
+/** One conversation an agent had: its resume token, and when (issue 52). */
+export interface ConversationEntry {
+  id: string;
+  /** When it began (ISO 8601). */
+  from: string;
+  /** When the next one replaced it; absent for the current one. */
+  to?: string;
+  why: ConversationWhy;
+  /** Rebuilt from the resume token and rotations of a record from before. */
+  backfilled?: true;
+}
+
+/**
+ * A record's conversations: the stored list, or, for a record from before
+ * the list, one rebuilt from its rotations (each names the conversation
+ * that ended, at its time) and its resume token.
+ */
+export function conversationsOf(rec: AgentRecord): ConversationEntry[] {
+  if (rec.conversations) return rec.conversations;
+  const out: ConversationEntry[] = [];
+  const first: ConversationWhy = rec.broughtInAt ? "bring-in" : "start";
+  let from = rec.broughtInAt ?? rec.startedAt;
+  for (const r of rec.rotations ?? []) {
+    if (!r.conversation || out.some((c) => c.id === r.conversation)) continue;
+    // startedAt moves with each launch: never later than the end.
+    const begin = out.length === 0 && from > r.at ? r.at : from;
+    out.push({
+      id: r.conversation,
+      from: begin,
+      to: r.at,
+      why: out.length === 0 ? first : "rotation",
+      backfilled: true,
+    });
+    from = r.at;
+  }
+  if (rec.resumeToken && !out.some((c) => c.id === rec.resumeToken))
+    out.push({
+      id: rec.resumeToken,
+      from,
+      why: out.length === 0 ? first : "rotation",
+      backfilled: true,
+    });
+  return out;
+}
+
+/**
+ * `next` as it should be stored over `prev` (null: a new record): when its
+ * resume token is new, the current conversation ends `now` and one begins,
+ * with why: a bring-in (broughtInAt is new), a rotation (a new rotation
+ * entry, or the last one names this token as its next), a start (the
+ * first), else a Start fresh. A writer that dropped the list keeps the
+ * stored one.
+ */
+export function withConversations(
+  prev: AgentRecord | null,
+  next: AgentRecord,
+  now: string,
+): AgentRecord {
+  // A writer holding an older copy never shortens the stored list.
+  const stored = prev ? conversationsOf(prev) : [];
+  const known =
+    next.conversations && next.conversations.length >= stored.length
+      ? next.conversations
+      : stored;
+  const token = next.resumeToken;
+  if (!token) return known.length ? { ...next, conversations: known } : next;
+  if (known.some((c) => c.id === token))
+    return { ...next, conversations: known };
+  const rots = next.rotations ?? [];
+  const why: ConversationWhy =
+    next.broughtInAt && next.broughtInAt !== prev?.broughtInAt
+      ? "bring-in"
+      : rots.length > (prev?.rotations?.length ?? 0) ||
+          rots[rots.length - 1]?.next === token
+        ? "rotation"
+        : known.length === 0
+          ? "start"
+          : "fresh";
+  const list = known.map((c, i) =>
+    i === known.length - 1 && !c.to ? { ...c, to: now } : c,
+  );
+  list.push({ id: token, from: now, why });
+  return { ...next, conversations: list };
+}
+
 export function writeRecord(stateDir: string, rec: AgentRecord): void {
+  let prev: AgentRecord | null = null;
+  try {
+    prev = readRecord(stateDir, rec.id);
+  } catch {
+    prev = null; // unreadable: the list starts over from this write
+  }
   writePrivate(
     recordFile(stateDir, rec.id),
-    JSON.stringify(rec, null, 2) + "\n",
+    JSON.stringify(
+      withConversations(prev, rec, new Date().toISOString()),
+      null,
+      2,
+    ) + "\n",
   );
 }
 

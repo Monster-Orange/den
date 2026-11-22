@@ -30,7 +30,15 @@ export interface UsageSource {
   agentFiles(resumeToken: string, env?: NodeJS.ProcessEnv): string[];
   /** Every transcript changed since `since` (ms since the epoch). */
   files(since: number, env?: NodeJS.ProcessEnv): string[];
-  mine(file: string, opts?: { since?: number }): Promise<TranscriptStats>;
+  /**
+   * `seen`: message ids already counted for this agent (issue 52), shared
+   * across its files so a call copied into a resumed conversation counts
+   * once; a source may ignore it.
+   */
+  mine(
+    file: string,
+    opts?: { since?: number; seen?: Set<string> },
+  ): Promise<TranscriptStats>;
 }
 
 /** A conversation id as Claude Code names its files: never a path. */
