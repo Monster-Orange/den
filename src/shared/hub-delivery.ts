@@ -37,6 +37,10 @@ export interface Delivery {
    * whether it is an edit request is Den's own owner check (SEC-3).
    */
   intent?: "edit" | "info";
+  /** A held decision's outcome, when Hub sends it (P0-D2). */
+  decision?: "allowed" | "denied";
+  /** The held write a held decision is about, when Hub sends it. */
+  heldId?: string;
   agent: string;
   project: string;
   thread: { kind: string; id: string; url: string; artifact?: string };
@@ -160,6 +164,8 @@ export function deliveryRaw(d: Delivery): Record<string, unknown> {
     ...(d.kind ? { kind: d.kind } : {}),
     ...(d.version !== undefined ? { version: d.version } : {}),
     ...(d.intent ? { intent: d.intent } : {}),
+    ...(d.decision ? { decision: d.decision } : {}),
+    ...(d.heldId ? { held_id: d.heldId } : {}),
     agent: d.agent,
     project: d.project,
     thread: d.thread,
@@ -238,6 +244,12 @@ export function parseDelivery(v: unknown): Delivery | null {
     body: s(r.body, MAX_BODY),
     createdAt: line(s(r.created_at, 64)),
     ...(r.intent === "edit" || r.intent === "info" ? { intent: r.intent } : {}),
+    ...(r.decision === "allowed" || r.decision === "denied"
+      ? { decision: r.decision }
+      : {}),
+    ...(typeof r.held_id === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(r.held_id)
+      ? { heldId: r.held_id }
+      : {}),
   };
   const rw = readReplyWith(r.reply_with);
   if (rw) d.replyWith = rw;
@@ -267,13 +279,34 @@ export function stripLookalikes(body: string): string {
 /** Hub's info note on an approval, until it sends kinds (P0-D2). */
 const APPROVED_COMMENT = /\bapproved v(\d+) of\b/i;
 /**
- * A held decision says yes only in these words, until Hub sends a decision
- * field: anything else (a deny, "not allowed", a plain "No") is no
- * approval.
+ * Without Hub's decision field, a held decision says yes only in an exact
+ * form: its whole text (quoted lines aside) is "Allowed", "Approved" or
+ * "Applied", or one of its lines is "Decision: allowed". Words anywhere
+ * else ("approved by nobody", "Allowed: false") are no yes.
  */
-const HELD_YES = /\b(allowed|approved|applied)\b/i;
-const HELD_NOT =
-  /\b(not|no|never|denied|deny|rejected|declined|refused|disallowed)\b/i;
+const HELD_YES_BODY = /^(allowed|approved|applied)\.?$/i;
+const HELD_YES_LINE = /^decision:\s*allowed\.?$/i;
+function heldSaysYes(body: string): boolean {
+  const lines = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith(">"));
+  if (lines.length === 1 && HELD_YES_BODY.test(lines[0])) return true;
+  return lines.some((l) => HELD_YES_LINE.test(l));
+}
+
+/**
+ * P0-D2: how a held decision was decided, from Hub's decision field:
+ * allowed, allowed but its apply failed, or denied. Undefined without
+ * the field.
+ */
+export function heldOutcome(
+  d: Delivery,
+): "allowed" | "failed" | "denied" | undefined {
+  if (d.kind !== "held" || !d.decision) return undefined;
+  if (d.decision === "denied") return "denied";
+  return /\bfail(ed|s|ure)?\b/i.test(d.body) ? "failed" : "allowed";
+}
 /** A held write's id, as Hub names it. */
 const HELD_ID =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
@@ -288,7 +321,11 @@ const HELD_ID =
 export function isApproval(d: Delivery, o: DeliveryOwner | null): boolean {
   if (!o || !isOwner(d.author, o)) return false;
   if (d.kind === "approve") return true;
-  if (d.kind === "held") return HELD_YES.test(d.body) && !HELD_NOT.test(d.body);
+  if (d.kind === "held") {
+    // Hub's field: the person answered, yes or no; its question goes.
+    if (d.decision) return true;
+    return heldSaysYes(d.body);
+  }
   if (d.kind && d.kind !== "comment") return false;
   if (d.intent !== "info") return false;
   const m = APPROVED_COMMENT.exec(d.body);
@@ -327,7 +364,9 @@ export function mayBeApproval(d: Delivery): boolean {
  * (under 6 characters) are left out: they would match by chance.
  */
 export function approvalKeys(d: Delivery): string[] {
-  const keys = [d.thread.url, d.thread.id];
+  // Hub's decision field names its held write: that id alone matches.
+  if (d.kind === "held" && d.decision && d.heldId) return [d.heldId];
+  const keys = [d.thread.url, d.thread.id, d.heldId ?? ""];
   for (const m of d.body.match(HELD_ID) ?? []) keys.push(m.toLowerCase());
   return [...new Set(keys.map((k) => k.trim()).filter((k) => k.length >= 6))];
 }
@@ -339,11 +378,26 @@ export function approvalKeys(d: Delivery): string[] {
 export function approvalNoticeText(d: Delivery, o: DeliveryOwner): string {
   const art = d.thread.artifact ? `"${line(d.thread.artifact)}"` : "a Hub doc";
   const ver = d.version !== undefined ? `, version ${d.version}` : "";
-  const what = d.kind === "held" ? "decided a held change on" : "approved";
+  const out = heldOutcome(d);
+  const what =
+    out === "denied"
+      ? "said no to a held change on"
+      : out
+        ? "allowed a held change on"
+        : d.kind === "held"
+          ? "decided a held change on"
+          : "approved";
   const link = d.thread.url || "(no link)";
   return [
     `from: Den (this install · via: Hub decision ${link})`,
     `${d.author.name} (${who(d.author, o)}) ${what} ${art}${ver}. Link: ${link}`,
+    ...(out === "failed"
+      ? [
+          "The change didn't land: its apply failed. Check it before you rely on it.",
+        ]
+      : out === "denied"
+        ? ["They said no: don't go ahead with it."]
+        : []),
     "Your open question named it, so Den cleared it from the bell. Read the decision as information, then carry on.",
   ].join("\n");
 }

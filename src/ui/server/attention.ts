@@ -540,8 +540,14 @@ export class Attention {
       const key = keys.find((k) => namesKey(w.text, k));
       if (!key) continue;
       // A question about another version of the doc isn't answered.
-      const asked = askedVersion(w.text);
-      if (version !== undefined && asked !== undefined && asked !== version)
+      // One version asked and it is this one, or none: answered. Several
+      // (v2 or v3?) or another: the person still has to say which.
+      const asked = askedVersions(w.text);
+      if (
+        version !== undefined &&
+        asked.size &&
+        (asked.size > 1 || !asked.has(version))
+      )
         continue;
       this.clear(a);
       out.push({ agent: a, key });
@@ -779,8 +785,14 @@ function namesKey(text: string, key: string): boolean {
   );
 }
 
-/** P0-D2: the version a question names ("v3", "version 3"), if one. */
-function askedVersion(text: string): number | undefined {
-  const m = /\b(?:v|version\s+)(\d+)\b/i.exec(text);
-  return m ? Number(m[1]) : undefined;
+/**
+ * P0-D2: the versions a question names ("v3", "version 3"), links aside
+ * (a "/v4/" inside a URL is no version asked about).
+ */
+function askedVersions(text: string): Set<number> {
+  const plain = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  const out = new Set<number>();
+  for (const m of plain.matchAll(/\b(?:v|version\s+)(\d+)\b/gi))
+    out.add(Number(m[1]));
+  return out;
 }
