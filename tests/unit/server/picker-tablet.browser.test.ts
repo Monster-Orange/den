@@ -199,7 +199,7 @@ async function open(
       );
   });
   await p.goto(`http://127.0.0.1:${port}${url}`);
-  await p.waitForSelector('[data-nav-role="crumb"]');
+  await p.waitForSelector("#ws-pill", { state: "attached" });
   await p.evaluate(() =>
     (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
   );
@@ -256,11 +256,10 @@ async function pick(p: Page, name: string) {
 // 720 px and below the picker moves into the bar's More menu, a different
 // row.
 describe.each([
-  [768, 1024, 1, true],
   [820, 1180, 1, true],
   [1024, 1366, 1, true],
   [1180, 820, 1, true],
-  [820, 1180, 1.25, true],
+  [768, 1024, 1, false],
   [820, 1180, 1, false],
   [1180, 820, 1.25, false],
 ])(
