@@ -27,6 +27,7 @@ import {
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
 import { FIRST_RUN_FILE } from "../../../src/ui/server/first-run.js";
+import { ROUTES } from "../../../src/ui/server/route-classes.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -108,6 +109,35 @@ function call(
     req.on("error", reject);
     req.on("timeout", () => req.destroy(new Error(`timeout: ${p}`)));
     req.end(payload);
+  });
+}
+
+/**
+ * A GET's status within a few seconds; a route that streams (it answers
+ * and stays open) reads as 200, one that never answers as 0.
+ */
+function quick(p: string, headers: Record<string, string>): Promise<number> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        host: "localhost",
+        port,
+        path: p,
+        method: "GET",
+        agent: false,
+        headers: { host: `localhost:${port}`, connection: "close", ...headers },
+      },
+      (res) => {
+        resolve(res.statusCode ?? 0);
+        res.destroy();
+      },
+    );
+    req.setTimeout(5_000, () => {
+      req.destroy();
+      resolve(0);
+    });
+    req.on("error", () => resolve(0));
+    req.end();
   });
 }
 
@@ -423,6 +453,54 @@ describe("clause 4: off per install", () => {
       "sec-fetch-site": "same-origin",
     });
     expect(r.json.web_agent_view).toEqual({ on: true, minutes: 10 });
+  });
+});
+
+describe("a view gets nothing an agent's token is refused", () => {
+  it("the sign-in pages are closed to it", async () => {
+    const v = await openView();
+    const r = await call(
+      "GET",
+      `/attest?return=${encodeURIComponent("https://den.example.test/")}`,
+      { cookie: v.cookie, ...nav },
+    );
+    expect([r.status, r.json.code]).toEqual([403, "agent_view"]);
+    expect(String(r.headers.location ?? "")).toBe("");
+  });
+
+  it("every read-only route: when the agent's token is refused, so is its view", async () => {
+    const v = await openView();
+    const read = { cookie: v.cookie, "sec-fetch-site": "same-origin" };
+    const paths = ROUTES.filter(
+      (r) =>
+        r.cls === "readonly" &&
+        r.methods.includes("GET") &&
+        r.path.startsWith("/api/"),
+    ).map((r) => r.path.replace(/:[A-Za-z_]+/g, "x1").replace(/\*$/, "x1"));
+    expect(paths.length).toBeGreaterThan(50);
+    const leaks: string[] = [];
+    for (const p of paths) {
+      if (p === "/api/session" || p.startsWith("/api/session/")) continue;
+      const a = await quick(p, asAgent());
+      if (a !== 403) continue;
+      const b = await quick(p, read);
+      // A route that never answers the view (0) is no leak.
+      if (b >= 200 && b < 400) leaks.push(`${p}: agent ${a}, view ${b}`);
+    }
+    expect(leaks).toEqual([]);
+  }, 120_000);
+
+  it("person-only reads, by name", async () => {
+    const v = await openView();
+    const read = { cookie: v.cookie, "sec-fetch-site": "same-origin" };
+    for (const p of [
+      "/api/alerts",
+      "/api/alerts/push-key",
+      "/api/embed/app-keys",
+    ]) {
+      const r = await call("GET", p, read);
+      expect([p, r.status]).toEqual([p, 403]);
+    }
   });
 });
 

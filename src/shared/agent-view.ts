@@ -113,6 +113,27 @@ export function agentViewOffText(cli: string): string {
   return `Agents' read-only page views are off on this install (Settings › Access, or \`${cli} config web.agent_view=true\` to turn them on). Ask your person to look at the page, or to turn views on.`;
 }
 
+/** Sign-in pages and steps: a view never opens them, whatever their class. */
+const VIEW_SIGNIN_DENY: readonly RegExp[] = [
+  /^\/attest$/,
+  /^\/signin$/,
+  /^\/api\/github\/signin(?:\/|$)/,
+  /^\/api\/signin\//,
+  /^\/hub\/callback$/,
+  /^\/embed\/connect$/,
+  /^\/api\/web-url\/probe$/,
+];
+
+/**
+ * Whether a request is an agent's view link (`/auth?agent_view=…`): it
+ * opens on loopback only, so it is never sent on to Den's named address.
+ */
+export function isAgentViewLink(url: URL): boolean {
+  return (
+    url.pathname === "/auth" && url.searchParams.has(AGENT_VIEW_LINK_PARAM)
+  );
+}
+
 /**
  * Why an agent's view may not make this request, or null when it may. An
  * allow-list: a page or asset (a GET off /api/ that isn't `mutating` or
@@ -131,7 +152,11 @@ export function agentViewScopeRefusal(
   const m = method.toUpperCase();
   const refused = agentViewRefusedText(agent);
   if (m === "GET" || m === "HEAD") {
-    if (FIXTURE_READ_DENY.some((re) => re.test(pathname))) return refused;
+    if (
+      FIXTURE_READ_DENY.some((re) => re.test(pathname)) ||
+      VIEW_SIGNIN_DENY.some((re) => re.test(pathname))
+    )
+      return refused;
     if (!pathname.startsWith("/api/"))
       return cls === "mutating" || cls === "shell-grade" ? refused : null;
     return cls === "readonly" ? null : refused;

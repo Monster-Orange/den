@@ -16,6 +16,7 @@ import {
   PERSON_ONLY_SETTINGS,
 } from "../../../src/shared/settings-cli-rows.js";
 import {
+  agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
   principalOf,
@@ -96,6 +97,15 @@ describe("clause 3: a view is the agent, never the person", () => {
       workspace: "north",
     });
     expect(notAPersonOf(r)).toBe(true);
+    // Every handler that refuses an agent's token, or scopes it to its
+    // project, does the same for its view: one check, in one place.
+    expect(agentPrincipalOf(r)).toMatchObject({
+      kind: "agent",
+      actor: "agent:builder",
+      workspace: "north",
+      grants: [],
+    });
+    expect(auditActorOf(r)).toMatchObject({ client: "page view (read-only)" });
   });
 
   it("first run: a view is never a person's sign-in", () => {

@@ -294,6 +294,7 @@ import {
 import {
   agentPrincipalOf,
   AGENT_VIEW_CLIENT,
+  agentRefusal,
   auditActorOf,
   notAPersonOf,
   bindRefusal,
@@ -311,6 +312,7 @@ import {
   type GuardContext,
   type GuardResult,
   type Via,
+  viewAgent,
 } from "./request-guard.js";
 import {
   clientRequestId,
@@ -371,6 +373,7 @@ import {
   agentViewOffText,
   agentViewRefusedText,
   agentViewScopeRefusal,
+  isAgentViewLink,
 } from "../../shared/agent-view.js";
 import {
   inTestPersonScope,
@@ -2563,6 +2566,8 @@ function sendToNamedAddress(
 ): boolean {
   // Once proven, sign-in on every other host goes to the address.
   if (!guard.ok) return false;
+  // Issue 796: an agent's view link opens on loopback only.
+  if (isAgentViewLink(url)) return false;
   const method = (req.method ?? "GET").toUpperCase();
   const get = method === "GET" || method === "HEAD";
   // /auth on every method it answers (a code's POST too: it mints a
@@ -3551,7 +3556,7 @@ function handleAgentViewAuth(
   if (req.method !== "GET")
     return refuse(405, "method", "Open the view link with GET.");
   const g = checkRequest(req, GUARD, product().cli, product().title);
-  if (!g.ok || g.beyond)
+  if (!g.ok || g.beyond || g.via !== "loopback")
     return refuse(
       403,
       "agent_view_loopback",
@@ -5082,9 +5087,22 @@ async function handleRequest(
   ) {
     const v = guard.principal.view;
     const m = req.method ?? "GET";
+    const cls = routeClass(m, pathname);
+    // And whatever an agent's own token is refused (agentRefusal), as
+    // that agent: a view never reaches more than its agent does.
     const why = guard.beyond
       ? agentViewRefusedText(v.agent)
-      : agentViewScopeRefusal(m, pathname, routeClass(m, pathname), v.agent);
+      : (agentViewScopeRefusal(m, pathname, cls, v.agent) ??
+        ((m.toUpperCase() === "GET" || m.toUpperCase() === "HEAD") &&
+        agentRefusal(
+          viewAgent(v),
+          m.toUpperCase(),
+          pathname,
+          cls ?? "readonly",
+          url.searchParams,
+        )
+          ? agentViewRefusedText(v.agent)
+          : null));
     if (why) {
       auditAgentView(
         v.agent,

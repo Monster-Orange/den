@@ -1244,7 +1244,26 @@ export function agentPrincipalOf(
   req: http.IncomingMessage,
 ): AgentPrincipal | null {
   const p = PRINCIPALS.get(req);
-  return p?.kind === "agent" ? p : null;
+  if (p?.kind === "agent") return p;
+  // Issue 796: an agent's read-only view is that agent everywhere a
+  // handler refuses an agent's token or scopes it to its project, so no
+  // handler can forget it. It carries no grants.
+  if (p?.kind === "person-browser" && p.view) return viewAgent(p.view);
+  return null;
+}
+
+/** Issue 796: the agent an agent's view stands for (agentRefusal's shape). */
+export function viewAgent(v: {
+  agent: string;
+  workspace: string;
+}): AgentPrincipal {
+  return {
+    kind: "agent",
+    actor: v.agent as `agent:${string}`,
+    workspace: v.workspace,
+    grants: [],
+    session: { name: "" },
+  };
 }
 
 /**
@@ -1277,6 +1296,19 @@ export function principalOf(req: http.IncomingMessage): string | undefined {
  */
 export function auditActorOf(req: http.IncomingMessage): Actor {
   const claimed = actorFromHeaders(req.headers);
+  const p = PRINCIPALS.get(req);
+  // Issue 796: an agent's read-only view, named as that agent (its session
+  // was minted for the agent's own token), never the person.
+  if (p?.kind === "person-browser" && p.view)
+    return {
+      kind: "agent",
+      client: AGENT_VIEW_CLIENT,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      agent: p.view.agent as `agent:${string}`,
+      workspace: p.view.workspace,
+    };
   const agent = agentPrincipalOf(req);
   if (agent) {
     const actor: AgentActor = {
@@ -1293,19 +1325,6 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
   // Issue 810: the fixture person is never the person. Every person-only
   // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
   // it, and the audit keeps it as a claim, labelled as such.
-  const p = PRINCIPALS.get(req);
-  // Issue 796: an agent's read-only view, named as that agent (its session
-  // was minted for the agent's own token), never the person.
-  if (p?.kind === "person-browser" && p.view)
-    return {
-      kind: "agent",
-      client: AGENT_VIEW_CLIENT,
-      clientVersion: "-",
-      mcpPid: null,
-      session: "",
-      agent: p.view.agent as `agent:${string}`,
-      workspace: p.view.workspace,
-    };
   if (p?.kind === "person-browser" && p.fixture)
     return {
       kind: "agent",
