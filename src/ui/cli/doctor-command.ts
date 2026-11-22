@@ -688,6 +688,10 @@ export function hubDeliveryLines(
   h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
   now: number,
   minutes: number,
+  /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
+  journal:
+    | import("../../shared/hub-delivery-journal.js").JournalSummary
+    | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
   const alert = deliveryAlert(h, now, minutes);
@@ -700,6 +704,26 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
+  if (journal) {
+    const words: [keyof typeof journal.counts, string][] = [
+      ["typed", "typed"],
+      ["held", "held"],
+      ["passed", "passed over"],
+      ["refused", "refused"],
+      ["failed", "failed"],
+      ["no-answer", "no answer"],
+    ];
+    const said = words
+      .filter(([k]) => journal.counts[k])
+      .map(([k, w]) => `${journal.counts[k]} ${w}`);
+    parts.push(
+      `last 24 h: ${said.length ? said.join(", ") : "none"}` +
+        (journal.lastTypedAt !== null
+          ? `, last typed ${agoText(now - journal.lastTypedAt)}`
+          : "") +
+        ` (log: ${journal.file})`,
+    );
+  }
   const detail = alert
     ? `Hub comments aren't arriving: ${TROUBLE_TEXT[alert]} (${parts.join("; ")})`
     : parts.join("; ");
@@ -721,12 +745,18 @@ async function hubDeliveryDoctor(): Promise<
   } catch {
     /* the Hub row says what's wrong with the hub block */
   }
+  const { journalSummary } =
+    await import("../../shared/hub-delivery-journal.js");
   return hubDeliveryLines(
     readDeliveryHealth(
       path.join(getStateDir(), "hub", "deliveries-health.json"),
     ),
     Date.now(),
     minutes,
+    journalSummary(
+      path.join(getStateDir(), "hub", "deliveries.jsonl"),
+      Date.now(),
+    ),
   );
 }
 

@@ -296,6 +296,11 @@ export function isApproval(d: Delivery, o: DeliveryOwner | null): boolean {
  * question that mentions a title may be about something else. Short ones
  * (under 6 characters) are left out: they would match by chance.
  */
+/** P0-D4: the held write ids Hub's text names, lower case, each once. */
+export function heldIdsIn(body: string): string[] {
+  return [...new Set((body.match(HELD_ID) ?? []).map((m) => m.toLowerCase()))];
+}
+
 export function approvalKeys(d: Delivery): string[] {
   const keys = [d.thread.url, d.thread.id];
   for (const m of d.body.match(HELD_ID) ?? []) keys.push(m.toLowerCase());
