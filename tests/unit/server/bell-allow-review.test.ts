@@ -105,7 +105,9 @@ async function needs(lang: string, open: string[] = []): Promise<string> {
 
 /** The details lines the row shows, as text. */
 const shown = (html: string): string[] =>
-  [...html.matchAll(/<div class="den-bell-detl">([^<]*)<\/div>/g)].map((m) =>
+  [
+    ...html.matchAll(/<div class="den-bell-detl" data-ap-line>([^<]*)<\/div>/g),
+  ].map((m) =>
     m[1]
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
@@ -125,7 +127,9 @@ describe("the bell's Allow row: Review", () => {
     expect(html).toMatch(
       new RegExp(`data-bell="review" data-ap="${ID}" aria-expanded="false"`),
     );
-    expect(html).toMatch(/<div class="den-bell-det" id="[^"]+" hidden>/);
+    expect(html).toMatch(
+      /<div class="den-bell-det" data-ap-det id="[^"]+" hidden>/,
+    );
     // Review sits in the row's text, so Allow and Deny keep their place:
     // still the row's last two elements, right after the text, in order.
     expect([...html.matchAll(/data-bell="(\w+)"/g)].map((m) => m[1])).toEqual([
@@ -142,7 +146,9 @@ describe("the bell's Allow row: Review", () => {
     for (const lang of UI_LANGUAGES) {
       const html = await needs(lang, [ID]);
       expect(html).toContain(`data-ap="${ID}" aria-expanded="true"`);
-      expect(html).not.toMatch(/<div class="den-bell-det" id="[^"]+" hidden>/);
+      expect(html).not.toMatch(
+        /<div class="den-bell-det" data-ap-det id="[^"]+" hidden>/,
+      );
       const dialog = shellFor(lang).lines(held);
       expect(dialog.length).toBe((held.details as string[]).length);
       expect(shown(html)).toEqual(dialog);
