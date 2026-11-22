@@ -4319,6 +4319,8 @@ let approvals: ApprovalDeps | null = null;
 function approvalDeps(): ApprovalDeps {
   if (approvals) return approvals;
   const actions = heldActions({
+    // Issue 577: a refusal's English names this product.
+    title: () => product().title,
     rules: () => processPathRules(getStateDir()),
     validate: (m) => validateManifest(m),
     workspaceCreateRefusal,

@@ -2873,6 +2873,37 @@
     "ag.bring.now": "just now",
     "ag.bring.min": "{n} min ago",
     "ag.bring.h": "{n} h ago",
+    // Issue 577: held writes' refusals.
+    "ap.err.giveService": "give service: <repo> or <repo>/<service>",
+    "ap.err.projectName": "project \"{project}\" needs at least one letter or digit",
+    "ap.err.noProject": "there is no project \"{project}\"",
+    "ap.err.giveReason": "give reason (one line: why)",
+    "ap.err.reasonLong": "reason is at most {max} characters",
+    "ap.err.cantRestart": "this __DEN_TITLE__ can't restart itself",
+    "ap.err.versionForm": "version: latest, or one like 0.4.44",
+    "ap.err.cantUpdate": "this __DEN_TITLE__ can't update itself",
+    "ap.err.cantStartAgents": "this __DEN_TITLE__ can't start agents here",
+    "ap.err.cantPersonas": "this __DEN_TITLE__ can't change personas here",
+    "ap.err.cantHubLink": "this __DEN_TITLE__ can't link projects to Hub here",
+    "ap.err.cantClone": "this __DEN_TITLE__ can't clone repos here",
+    "ap.err.reposShared": "the repos folder is shared by every project: __DEN_TITLE__'s own agent or a person asks to clone into it, not {agent}",
+    "ap.err.reposSharedAgent": "the repos folder is shared by every project: __DEN_TITLE__'s own agent or a person asks to clone into it, not a project's agent",
+    "ap.err.cantImport": "this __DEN_TITLE__ can't bring in conversations here",
+    "ap.err.nameProject": "name the project",
+    "ap.err.importOwn": "a project's agent brings conversations into its own project ({own}), not {project}",
+    "ap.err.sessionId": "`session` must be a conversation id",
+    "ap.err.namePersona": "name the persona to run it as",
+    "ap.err.runtimeId": "runtime must be a runtime id",
+    "ap.err.cantPolicy": "this __DEN_TITLE__ can't change the approval policy here",
+    "ap.err.policyOwn": "a project's agent asks about its own project ({own}), not {project}",
+    "ap.err.policyInstall": "the install's policy is every project's: __DEN_TITLE__'s own agent or a person asks to change it; name your project to change its own",
+    "ap.err.policyForm": "approvals: { policy, writes, watch, critical }, or null to clear it",
+    "ap.err.cantClosePr": "this __DEN_TITLE__ can't close pull requests here",
+    "ap.err.closePrOwn": "a project's agent closes pull requests for its own project ({own}), not {project}",
+    "ap.err.repoForm": "repo: a GitHub repo, owner/name",
+    "ap.err.prNumber": "pr: the pull request number",
+    "ap.err.commentForm": "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
+    "ap.err.cantReport": "this __DEN_TITLE__ can't file reports here",
     "ap.title": "{agent} wants to:",
     "ap.agent": "The {name} agent",
     "ap.noAgent": "Something on this machine (no agent identity)",
@@ -2987,6 +3018,16 @@
       'Activates the project "{project}" first, so it can run.',
     "ap.det.service_try.up":
       "Runs the service's local \"up\", as the Services page's Start does.",
+    // Issue 577: repo add's Review lines.
+    "ap.det.repo_add.folder": "Folder: {folder} (your checkout; Den never changes the repo).",
+    "ap.det.repo_add.project": "Project: {project}.",
+    "ap.det.repo_add.projectNew": "Project: {project} (new).",
+    "ap.det.repo_add.manifestRepo": "Manifest: the repo's own ({file}).",
+    "ap.det.repo_add.manifestSide": "Manifest: a side-car Den writes in this distribution's manifests/ folder ({file}):",
+    "ap.det.repo_add.manifestSideNew": "Manifest: a side-car Den writes in this distribution's manifests/ folder:",
+    "ap.det.repo_add.yaml": "  {line}",
+    "ap.det.repo_add.services": "Services: {services}.",
+    "ap.det.repo_add.noServices": "Services: none. It runs nothing: nothing starts or is checked; agents can work in it.",
     "ap.det.service_try.reports":
       "Den reports the exit code and the last lines of its output.",
     "ap.det.den_restart.restart":
@@ -4579,6 +4620,17 @@
     });
   }
   window.denApDetailLines = apDetailLines;
+
+  /**
+   * Issue 577: a held write's refusal as the page shows it: its key in the
+   * page's language when it has one (errorKey), else its English as sent.
+   */
+  function apRefusal(r) {
+    var k = r && r.errorKey;
+    if (k && typeof k.key === "string") return t(k.key, k.vars || {});
+    return String((r && r.error) || "?");
+  }
+  window.denApRefusal = apRefusal;
 
   /**
    * A built-in text's words in this page's language (0.4.45): `en` is the
@@ -8919,7 +8971,7 @@
           }
           var res = x.b.result;
           if (decision === "allow" && res && res.ok === false)
-            toast(t("ap.failed", { error: res.error || "?" }));
+            toast(t("ap.failed", { error: apRefusal(res) }));
           else if (decision === "allow" && res && res.restarting) {
             // SRV-1a: Den restarts now: the in-place wait, as Restart Den.
             apClose();

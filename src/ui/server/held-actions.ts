@@ -95,6 +95,7 @@
  *                     does (report-held.ts): to a public destination the
  *                     person's own Allow, to a private one the policy
  */
+import { refusal, type RefusalKey } from "../../shared/held-refusal-words.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -149,6 +150,8 @@ export interface HeldActionDeps {
   workspaceExists: (name: string) => boolean;
   /** Where `repo add` puts a repo with no -w: the focused one, else `default`. */
   defaultWorkspace: () => string;
+  /** Issue 577: the product's title, for a refusal's English (Den). */
+  title?: () => string;
   /** The service `up` would start, or why it can't (the exec route's checks). */
   serviceTarget: (
     service: string,
@@ -318,6 +321,9 @@ const CARRY_ON =
   "Agents and terminals carry on where they were; open pages reconnect.";
 
 export function heldActions(d: HeldActionDeps): HeldActions {
+  // Issue 577: a refusal in English (with this product's title) and its key.
+  const no = (key: RefusalKey, vars?: Record<string, string>) =>
+    refusal(key, vars, d.title?.() ?? "Den");
   /**
    * D70: a workspace given by name ("back office") or slug, as its key; a
    * new one by the slug of what was typed. Undefined: none given.
@@ -393,22 +399,57 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           : d.defaultWorkspace();
       const isNew = !d.workspaceExists(ws);
       const folder = shown(where.dir, rules.home);
-      const details = [
-        `Folder: ${folder} (your checkout; Den never changes the repo).`,
-        `Project: ${ws}${isNew ? " (new)" : ""}.`,
+      // Issue 577: each Review line beside its key, as issue 205's are.
+      const manifestFile = draft.manifest?.file
+        ? path.basename(draft.manifest.file)
+        : "";
+      const services = draft.services?.join(", ") ?? "";
+      const review = reviewLines([
+        line(
+          `Folder: ${folder} (your checkout; Den never changes the repo).`,
+          "ap.det.repo_add.folder",
+          { folder },
+        ),
+        isNew
+          ? line(`Project: ${ws} (new).`, "ap.det.repo_add.projectNew", {
+              project: ws,
+            })
+          : line(`Project: ${ws}.`, "ap.det.repo_add.project", {
+              project: ws,
+            }),
         draft.manifest?.source === "repo"
-          ? `Manifest: the repo's own (${path.basename(draft.manifest.file)}).`
-          : `Manifest: a side-car Den writes in this distribution's manifests/ folder${draft.manifest?.file ? ` (${path.basename(draft.manifest.file)})` : ""}:`,
+          ? line(
+              `Manifest: the repo's own (${manifestFile}).`,
+              "ap.det.repo_add.manifestRepo",
+              { file: manifestFile },
+            )
+          : manifestFile
+            ? line(
+                `Manifest: a side-car Den writes in this distribution's manifests/ folder (${manifestFile}):`,
+                "ap.det.repo_add.manifestSide",
+                { file: manifestFile },
+              )
+            : line(
+                `Manifest: a side-car Den writes in this distribution's manifests/ folder:`,
+                "ap.det.repo_add.manifestSideNew",
+              ),
         ...(draft.draft
           ? draft.draft
               .replace(/\n$/, "")
               .split("\n")
-              .map((l) => `  ${l}`)
+              .map((yaml) =>
+                line(`  ${yaml}`, "ap.det.repo_add.yaml", { line: yaml }),
+              )
           : []),
-        draft.services?.length
-          ? `Services: ${draft.services.join(", ")}.`
-          : "Services: none. It runs nothing: nothing starts or is checked; agents can work in it.",
-      ];
+        services
+          ? line(`Services: ${services}.`, "ap.det.repo_add.services", {
+              services,
+            })
+          : line(
+              "Services: none. It runs nothing: nothing starts or is checked; agents can work in it.",
+              "ap.det.repo_add.noServices",
+            ),
+      ]);
       return {
         ok: true,
         args: {
@@ -423,7 +464,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           workspace: ws,
           ...(isNew ? { isNew: "1" } : {}),
         },
-        details,
+        ...review,
       };
     },
     async run(a) {
@@ -449,16 +490,12 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const serviceTry: HeldAction = {
     check(a): HeldCheck {
       const service = str(a.service);
-      if (!service)
-        return { ok: false, error: "give service: <repo> or <repo>/<service>" };
+      if (!service) return no("ap.err.giveService");
       const workspace = wsArg(a.workspace);
       if (workspace !== undefined && !NAME_RE.test(workspace))
-        return {
-          ok: false,
-          error: `project "${str(a.workspace)}" needs at least one letter or digit`,
-        };
+        return no("ap.err.projectName", { project: String(str(a.workspace)) });
       if (workspace !== undefined && !d.workspaceExists(workspace))
-        return { ok: false, error: `there is no project "${workspace}"` };
+        return no("ap.err.noProject", { project: workspace });
       const t = d.serviceTarget(service, workspace);
       if (!t.ok) return { ok: false, error: t.error };
       const activates =
@@ -504,14 +541,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const denRestart: HeldAction = {
     check(a): HeldCheck {
       const reason = str(a.reason)?.replace(/\s+/g, " ");
-      if (!reason) return { ok: false, error: "give reason (one line: why)" };
+      if (!reason) return no("ap.err.giveReason");
       if (reason.length > RESTART_REASON_MAX)
-        return {
-          ok: false,
-          error: `reason is at most ${RESTART_REASON_MAX} characters`,
-        };
-      if (!d.restartDen)
-        return { ok: false, error: "this Den can't restart itself" };
+        return no("ap.err.reasonLong", { max: String(RESTART_REASON_MAX) });
+      if (!d.restartDen) return no("ap.err.cantRestart");
       return {
         ok: true,
         args: { reason },
@@ -538,17 +571,12 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const denUpdate: HeldAction = {
     check(a): HeldCheck {
       const reason = str(a.reason)?.replace(/\s+/g, " ");
-      if (!reason) return { ok: false, error: "give reason (one line: why)" };
+      if (!reason) return no("ap.err.giveReason");
       if (reason.length > RESTART_REASON_MAX)
-        return {
-          ok: false,
-          error: `reason is at most ${RESTART_REASON_MAX} characters`,
-        };
+        return no("ap.err.reasonLong", { max: String(RESTART_REASON_MAX) });
       const version = str(a.version) ?? "latest";
-      if (!UPDATE_SPEC_RE.test(version))
-        return { ok: false, error: "version: latest, or one like 0.4.44" };
-      if (!d.updateDen)
-        return { ok: false, error: "this Den can't update itself" };
+      if (!UPDATE_SPEC_RE.test(version)) return no("ap.err.versionForm");
+      if (!d.updateDen) return no("ap.err.cantUpdate");
       return {
         ok: true,
         args: { version, reason },
@@ -580,8 +608,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
 
   const agentCreate: HeldAction = {
     check(a, who): HeldCheck {
-      if (!d.agentCreate)
-        return { ok: false, error: "this Den can't start agents here" };
+      if (!d.agentCreate) return no("ap.err.cantStartAgents");
       const c = d.agentCreate.check(a, who);
       return c.ok ? { ...c, args: { ...c.args } } : c;
     },
@@ -590,10 +617,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
-  const noPersonas = {
-    ok: false as const,
-    error: "this Den can't change personas here",
-  };
+  const noPersonas = no("ap.err.cantPersonas");
   const personaCreate: HeldAction = {
     check: (a, who): HeldCheck =>
       d.personas ? d.personas.checkCreate(a, who) : noPersonas,
@@ -633,9 +657,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const hubCreate = op(d.hubCreate, "this Den can't ask Hub for projects here");
   const hubLink: HeldAction = {
     check: (a, who) =>
-      d.hubLink
-        ? d.hubLink.check(a, who)
-        : { ok: false, error: "this Den can't link projects to Hub here" },
+      d.hubLink ? d.hubLink.check(a, who) : no("ap.err.cantHubLink"),
     run: (a, asked) => d.hubLink!.run(a, asked),
   };
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
@@ -669,13 +691,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
-      if (!d.reposRoot)
-        return { ok: false, error: "this Den can't clone repos here" };
+      if (!d.reposRoot) return no("ap.err.cantClone");
       if (who?.project && !isServerScope(who.project))
-        return {
-          ok: false,
-          error: `the repos folder is shared by every project: Den's own agent or a person asks to clone into it, not ${who.agent ?? "a project's agent"}`,
-        };
+        return who.agent
+          ? no("ap.err.reposShared", { agent: who.agent })
+          : no("ap.err.reposSharedAgent");
       const t = cloneTarget(
         {
           source: str(a.source) ?? "",
@@ -749,34 +769,24 @@ export function heldActions(d: HeldActionDeps): HeldActions {
 
   const agentImport: HeldAction = {
     check(a, who): HeldCheck {
-      if (!d.agentImport)
-        return {
-          ok: false,
-          error: "this Den can't bring in conversations here",
-        };
+      if (!d.agentImport) return no("ap.err.cantImport");
       const project = wsArg(a.project ?? a.workspace) ?? who?.project;
-      if (!project || !NAME_RE.test(project))
-        return { ok: false, error: "name the project" };
+      if (!project || !NAME_RE.test(project)) return no("ap.err.nameProject");
       if (
         who?.project &&
         !isServerScope(who.project) &&
         project !== who.project
       )
-        return {
-          ok: false,
-          error: `a project's agent brings conversations into its own project (${who.project}), not ${project}`,
-        };
+        return no("ap.err.importOwn", { own: who.project, project });
       if (!d.workspaceExists(project))
-        return { ok: false, error: `there is no project "${project}"` };
+        return no("ap.err.noProject", { project });
       const session = str(a.session);
-      if (!session || !SESSION_RE.test(session))
-        return { ok: false, error: "`session` must be a conversation id" };
+      if (!session || !SESSION_RE.test(session)) return no("ap.err.sessionId");
       const persona = str(a.persona);
-      if (!persona || !NAME_RE.test(persona))
-        return { ok: false, error: "name the persona to run it as" };
+      if (!persona || !NAME_RE.test(persona)) return no("ap.err.namePersona");
       const runtime = str(a.runtime);
       if (runtime !== undefined && !NAME_RE.test(runtime))
-        return { ok: false, error: "runtime must be a runtime id" };
+        return no("ap.err.runtimeId");
       return {
         ok: true,
         args: { project, session, persona, ...(runtime ? { runtime } : {}) },
@@ -817,37 +827,22 @@ export function heldActions(d: HeldActionDeps): HeldActions {
 
   const approvalPolicy: HeldAction = {
     check(a, who): HeldCheck {
-      if (!d.approvalPolicy)
-        return {
-          ok: false,
-          error: "this Den can't change the approval policy here",
-        };
+      if (!d.approvalPolicy) return no("ap.err.cantPolicy");
       const project = wsArg(a.project);
       if (project !== undefined) {
         if (!NAME_RE.test(project) || !d.workspaceExists(project))
-          return { ok: false, error: `there is no project "${project}"` };
+          return no("ap.err.noProject", { project });
         if (
           who?.project &&
           !isServerScope(who.project) &&
           project !== who.project
         )
-          return {
-            ok: false,
-            error: `a project's agent asks about its own project (${who.project}), not ${project}`,
-          };
+          return no("ap.err.policyOwn", { own: who.project, project });
       } else if (who?.project && !isServerScope(who.project))
-        return {
-          ok: false,
-          error:
-            "the install's policy is every project's: Den's own agent or a person asks to change it; name your project to change its own",
-        };
+        return no("ap.err.policyInstall");
       const raw = a.approvals;
       if (raw !== null && (typeof raw !== "object" || Array.isArray(raw)))
-        return {
-          ok: false,
-          error:
-            "approvals: { policy, writes, watch, critical }, or null to clear it",
-        };
+        return no("ap.err.policyForm");
       let next: PolicySetting | undefined;
       try {
         next =
@@ -913,40 +908,29 @@ export function heldActions(d: HeldActionDeps): HeldActions {
 
   const prClose: HeldAction = {
     check(a, who): HeldCheck {
-      if (!d.prClose)
-        return { ok: false, error: "this Den can't close pull requests here" };
+      if (!d.prClose) return no("ap.err.cantClosePr");
       const project = wsArg(a.project) ?? who?.project;
       if (project !== undefined) {
         if (!NAME_RE.test(project) || !d.workspaceExists(project))
-          return { ok: false, error: `there is no project "${project}"` };
+          return no("ap.err.noProject", { project });
         if (
           who?.project &&
           !isServerScope(who.project) &&
           project !== who.project
         )
-          return {
-            ok: false,
-            error: `a project's agent closes pull requests for its own project (${who.project}), not ${project}`,
-          };
+          return no("ap.err.closePrOwn", { own: who.project, project });
       }
       const repo = str(a.repo);
-      if (!repo || !GH_REPO_RE.test(repo))
-        return { ok: false, error: "repo: a GitHub repo, owner/name" };
+      if (!repo || !GH_REPO_RE.test(repo)) return no("ap.err.repoForm");
       const pr =
         typeof a.pr === "number"
           ? a.pr
           : typeof a.pr === "string" && /^\d+$/.test(a.pr.trim())
             ? Number(a.pr.trim())
             : NaN;
-      if (!Number.isSafeInteger(pr) || pr < 1)
-        return { ok: false, error: "pr: the pull request number" };
+      if (!Number.isSafeInteger(pr) || pr < 1) return no("ap.err.prNumber");
       const comment = str(a.comment);
-      if (!comment)
-        return {
-          ok: false,
-          error:
-            "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
-        };
+      if (!comment) return no("ap.err.commentForm");
       const prNo = String(pr);
       return {
         ok: true,
@@ -1007,11 +991,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     approval_policy: approvalPolicy,
     pr_close: prClose,
     report: d.report ?? {
-      check: () => ({ ok: false, error: "this Den can't file reports here" }),
-      run: async () => ({
-        ok: false,
-        error: "this Den can't file reports here",
-      }),
+      check: () => no("ap.err.cantReport"),
+      run: async () => no("ap.err.cantReport"),
     },
     den_pin_commit: pinCommit,
     embed_key_create: appKeyCreate,

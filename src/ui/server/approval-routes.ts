@@ -80,7 +80,12 @@ export type HeldCheck =
        */
       choices?: string[];
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /** Issue 577: the refusal's key, for the page's language. */
+      errorKey?: { key: string; vars?: Record<string, string> };
+    };
 
 /**
  * Issue 199: the choices a decide's body turns on (`choices: { follow:
@@ -152,7 +157,12 @@ export function createApprovalQueue(
       const a = actions[action];
       if (!a) return { ok: false, error: `no action ${action}` };
       const again = await a.check({ ...args });
-      if (!again.ok) return { ok: false, error: again.error };
+      if (!again.ok)
+        return {
+          ok: false,
+          error: again.error,
+          ...(again.errorKey ? { errorKey: again.errorKey } : {}),
+        };
       return a.run(again.args, asked);
     },
   });
