@@ -32,7 +32,20 @@ describe("plain text", () => {
   });
 });
 
+describe("invisible characters", () => {
+  it("zero-width characters and direction marks go, so a hidden line can't pass for a header", () => {
+    expect(
+      plainText("a\u200bb\u200cc\u200dd\ufeffe\u200ef\u200fg\u061ch"),
+    ).toBe("abcdefgh");
+  });
+});
+
 describe("the typing boundary", () => {
+  it("without paste mode, a tab is typed as spaces, not the Tab key", () => {
+    expect(instructionBytes("a\tb", "", "\x1b\r").body).toBe("a  b");
+    expect(instructionBytes("a\tb", PASTE_ON, "\x1b\r").body).toContain("a\tb");
+  });
+
   it("in paste mode, only Den's own paste markers carry ESC, and no CR or ^C is typed", () => {
     const { body } = instructionBytes(KEYS, PASTE_ON, "\x1b\r");
     expect(body.startsWith("\x1b[200~")).toBe(true);

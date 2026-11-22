@@ -8061,7 +8061,9 @@ export function instructionBytes(
   // Plain text only: nothing in it can act as a key.
   const t = plainText(text);
   return {
-    body: paste ? `\x1b[200~${t}\x1b[201~` : t.split("\n").join(softNewline),
+    body: paste
+      ? `\x1b[200~${t}\x1b[201~`
+      : t.replace(/\t/g, "  ").split("\n").join(softNewline),
     enter: "\r",
   };
 }

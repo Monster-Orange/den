@@ -153,7 +153,6 @@ function readAuthor(v: unknown): DeliveryAuthor | null {
   };
 }
 
-/** A delivery from Hub's stream or list, or null when it isn't one. */
 /**
  * A delivery with every field Den may type cleaned: one plain line for
  * names, ids and titles, plain text for bodies. Deliveries Den builds
@@ -250,6 +249,7 @@ function readReplyWith(v: unknown): ReplyWith[] | undefined {
   return out.length ? out : undefined;
 }
 
+/** A delivery from Hub's stream or list, or null when it isn't one. */
 export function parseDelivery(v: unknown): Delivery | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
