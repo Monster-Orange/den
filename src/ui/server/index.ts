@@ -565,7 +565,10 @@ import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
 import {
+  fixtureSave,
   mergeShellPrefs,
+  readFixturePins,
+  writeFixturePins,
   pinnedItems,
   shellPrefs,
   storedShell,
@@ -8870,17 +8873,27 @@ async function handleRequest(
         // goes too, so setting a pref and clearing it again leaves the
         // file byte-identical.
         // The rail's pins and collapse (R14): a view preference only.
-        if (body.shell === null) delete user.shell;
-        else if (body.shell !== undefined) {
+        // Issue 946: the fixture person's null clears only its own pins.
+        const shellBody =
+          body.shell === null && fixture ? { pins: [] } : body.shell;
+        if (shellBody === null) {
+          delete user.shell;
+          writeFixturePins(getStateDir(), [], []);
+        } else if (shellBody !== undefined) {
           // Issue 402: old id-only pins (stored, or posted by an older
           // page) migrate on the way through.
           const projectsOf = pinProjects();
-          const sh = mergeShellPrefs(
-            shellPrefs(user.shell, projectsOf),
-            body.shell,
-            projectsOf,
-          );
+          const before = shellPrefs(user.shell, projectsOf);
+          const sh = mergeShellPrefs(before, shellBody, projectsOf);
           if (!sh.ok) return send400(res, sh.error);
+          // Issue 946: a pin makes a held write on it wait for an Allow, so
+          // the fixture person adds pins and takes off only its own.
+          const added = readFixturePins(getStateDir());
+          if (fixture) {
+            const f = fixtureSave(before.pins, sh.value.pins, added);
+            sh.value.pins = f.pins;
+            writeFixturePins(getStateDir(), f.added, f.pins);
+          } else writeFixturePins(getStateDir(), added, sh.value.pins);
           const stored = storedShell(sh.value);
           if (stored) user.shell = stored as UserConfig["shell"];
           else delete user.shell;
