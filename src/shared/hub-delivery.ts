@@ -41,6 +41,8 @@ export interface Delivery {
   decision?: "allowed" | "denied";
   /** The held write a held decision is about, when Hub sends it. */
   heldId?: string;
+  /** Hub's held.state: whether an allowed change landed. */
+  heldState?: "applied" | "failed" | "refused";
   agent: string;
   project: string;
   thread: { kind: string; id: string; url: string; artifact?: string };
@@ -166,6 +168,7 @@ export function deliveryRaw(d: Delivery): Record<string, unknown> {
     ...(d.intent ? { intent: d.intent } : {}),
     ...(d.decision ? { decision: d.decision } : {}),
     ...(d.heldId ? { held_id: d.heldId } : {}),
+    ...(d.heldState ? { held: { state: d.heldState } } : {}),
     agent: d.agent,
     project: d.project,
     thread: d.thread,
@@ -247,10 +250,21 @@ export function parseDelivery(v: unknown): Delivery | null {
     ...(r.decision === "allowed" || r.decision === "denied"
       ? { decision: r.decision }
       : {}),
-    ...(typeof r.held_id === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(r.held_id)
-      ? { heldId: r.held_id }
-      : {}),
   };
+  // Hub's held_id, else its held.id; held.state when it is one Hub sends.
+  const held =
+    r.held && typeof r.held === "object"
+      ? (r.held as Record<string, unknown>)
+      : null;
+  const hid = typeof r.held_id === "string" ? r.held_id : held?.id;
+  if (typeof hid === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(hid))
+    d.heldId = hid;
+  if (
+    held?.state === "applied" ||
+    held?.state === "failed" ||
+    held?.state === "refused"
+  )
+    d.heldState = held.state;
   const rw = readReplyWith(r.reply_with);
   if (rw) d.replyWith = rw;
   const f = r.forwarded as Record<string, unknown> | undefined;
@@ -305,6 +319,8 @@ export function heldOutcome(
 ): "allowed" | "failed" | "denied" | undefined {
   if (d.kind !== "held" || !d.decision) return undefined;
   if (d.decision === "denied") return "denied";
+  // Hub's held.state; its words only when Hub sends no held block.
+  if (d.heldState) return d.heldState === "failed" ? "failed" : "allowed";
   return /\bfail(ed|s|ure)?\b/i.test(d.body) ? "failed" : "allowed";
 }
 /** A held write's id, as Hub names it. */
