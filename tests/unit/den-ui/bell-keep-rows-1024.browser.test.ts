@@ -36,10 +36,10 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-/** A row waiting for Allow, as Den's bell draws one; `extra` changes it. */
-const allowRow = (id: string, extra = "") =>
-  `<div class="den-bell-row den-bell-allow" data-kind="allow" data-ap-row="${id}">` +
-  `<span class="den-bell-t">An agent asks to add a test box${extra}</span>` +
+/** A row waiting for Allow, as Den's bell draws one; `rev` changes it. */
+const allowRow = (id: string, rev = "1") =>
+  `<div class="den-bell-row den-bell-allow" data-kind="allow" data-ap-row="${id}" data-rev="${rev}">` +
+  `<span class="den-bell-t" data-line>An agent asks to add a test box (${rev})</span>` +
   `<button type="button" class="den-btn" data-bell="allow" data-ap="${id}">Allow</button>` +
   `<button type="button" class="den-btn" data-bell="deny" data-ap="${id}">Deny</button>` +
   `</div>`;
@@ -147,12 +147,12 @@ describe("the bell keeps an unchanged row across a repaint (issue 1024)", () => 
     await mark(p);
     await repaint(
       p,
-      panel(allowRow("a1"), allowRow("a2", " (2 more lines)"), allowRow("a4")),
+      panel(allowRow("a1"), allowRow("a2", "2"), allowRow("a4")),
     );
     expect(await marks(p)).toEqual(["a1:1", "a2:new", "a4:new"]);
     await expect(
-      p.locator('[data-ap-row="a2"] .den-bell-t').textContent(),
-    ).resolves.toContain("(2 more lines)");
+      p.locator('[data-ap-row="a2"]').getAttribute("data-rev"),
+    ).resolves.toBe("2");
     await p.context().close();
   });
 
