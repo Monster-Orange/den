@@ -227,6 +227,12 @@ describe("issue 773 + issue 96: the person's drag order inside a band", () => {
       ag("planner", "needs", { attnSince: T(3) }),
     ];
     expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
-    expect(bandGroup(rows, rows[3])).toEqual(["planner"]);
+    // Needs you and Done keep the longest wait first: nothing moves there.
+    expect(bandGroup(rows, rows[3])).toEqual([]);
+    const done = [
+      ag("b1", "done", { attnSince: T(1) }),
+      ag("b2", "done", { attnSince: T(2) }),
+    ];
+    expect(bandGroup(done, done[0])).toEqual([]);
   });
 });

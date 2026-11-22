@@ -218,6 +218,37 @@ async function moved(p: Page, act: () => Promise<unknown>): Promise<void> {
   );
 }
 
+/** A touch drag: pointer events with pointerType "touch", as a finger sends. */
+async function touchDrag(p: Page, from: string, to: string): Promise<void> {
+  await p.evaluate(
+    ([g, r]) => {
+      const el = document.querySelector(g) as HTMLElement;
+      const target = document.querySelector(r) as HTMLElement;
+      const a = el.getBoundingClientRect();
+      const b = target.getBoundingClientRect();
+      const at = (type: string, x: number, y: number) =>
+        el.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 7,
+            pointerType: "touch",
+            isPrimary: true,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      const x0 = a.left + a.width / 2;
+      const y0 = a.top + a.height / 2;
+      at("pointerdown", x0, y0);
+      at("pointermove", x0, y0 - 10);
+      at("pointermove", b.left + 40, b.top + b.height / 4);
+      at("pointerup", b.left + 40, b.top + b.height / 4);
+    },
+    [`${row(from)} [data-grip]`, row(to)],
+  );
+}
+
 describe.each(ENGINES)(
   "Issue 96 in %s: a project's agents in your order",
   (engine) => {
@@ -257,6 +288,127 @@ describe.each(ENGINES)(
       await p.reload();
       await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
       await until(p, ["cy", "bo", "ada"]);
+      resetOrder();
+      await p.context().close();
+    }, 60_000);
+
+    it("issue 96: a Den restart keeps your order; the Projects page follows", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine);
+      await until(p, ["ada", "bo", "cy"]);
+      await moved(p, () => mouseDrag(p, sid.cy, sid.ada));
+      await until(p, ["cy", "ada", "bo"]);
+      expect(await p.locator("#agl [data-drop]").count()).toBe(0);
+      // Stored in the person's user config, by agent id.
+      // (Issue 226's stopped dee and eve are saved in it too.)
+      expect(
+        userYml().agents?.order?.north?.filter((x) => sid[x] !== undefined),
+      ).toEqual(["cy", "ada", "bo"]);
+      // A Den restart reads it again.
+      await s!.webDown();
+      await s!.webUp();
+      await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
+      await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
+      await until(p, ["cy", "ada", "bo"]);
+      // The Projects page's agents follow the same order.
+      await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
+      const projectRows =
+        '#agents-section[data-ws="north"] #agent-table tr[data-agent]';
+      await p.waitForSelector(projectRows, { timeout: 20_000 });
+      // (Its running ones; issue 226's stopped dee and eve are listed too.)
+      expect(
+        (
+          await p.$$eval(projectRows, (rs) =>
+            rs.map((r) => (r as HTMLElement).dataset.agent ?? ""),
+          )
+        ).filter((x) => sid[x] !== undefined),
+      ).toEqual(["cy", "ada", "bo"]);
+      resetOrder();
+      await p.context().close();
+    }, 90_000);
+
+    it("issue 96: Alt+↑ moves the focused row; the live region says where; the grip is named; no working pop-up; the first can't go up", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine);
+      await until(p, ["ada", "bo", "cy"]);
+      // Named for its agent (its name, else its persona).
+      const grip = p.locator(`${row(sid.cy)} [data-grip]`);
+      expect(await grip.getAttribute("aria-label")).toBe(
+        await p.evaluate(() =>
+          (
+            window as unknown as {
+              denShell: { t: (k: string, v: object) => string };
+            }
+          ).denShell.t("ag.ord.gripOne", { id: "planner" }),
+        ),
+      );
+      expect(await grip.getAttribute("role")).toBe("img");
+      await p.locator(row(sid.cy)).focus();
+      await moved(p, () => p.keyboard.press("Alt+ArrowUp"));
+      await until(p, ["ada", "cy", "bo"]);
+      expect(await p.textContent("#ag-order-live")).toMatch(
+        /planner moved to position 2 of 3/,
+      );
+      expect(
+        await p.evaluate(() => document.activeElement?.getAttribute("data-id")),
+      ).toBe(sid.cy);
+      expect(await p.getAttribute("#ag-order-live", "aria-live")).toBe(
+        "polite",
+      );
+      // No working pop-up for a quick move.
+      expect(await p.locator("den-busy[open]").count()).toBe(0);
+      // The first can't go up: no save is asked, nothing changes.
+      let posts = 0;
+      p.on("request", (r) => {
+        if (r.method() === "POST" && /\/order$/.test(r.url())) posts++;
+      });
+      await p.locator(row(sid.ada)).focus();
+      await p.keyboard.press("Alt+ArrowUp");
+      await p.evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => r(null))),
+      );
+      expect(posts).toBe(0);
+      expect(await order(p)).toEqual(["ada", "cy", "bo"]);
+      resetOrder();
+      await p.context().close();
+    }, 60_000);
+
+    it("issue 96, at 375: a touch drag moves a row; Alt+↓ is announced; Idle's Reorder gives 44 px Up and Down; no sideways scroll", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine, 375, true);
+      await until(p, ["ada", "bo", "cy"]);
+      await moved(p, () => touchDrag(p, sid.bo, sid.ada));
+      await until(p, ["bo", "ada", "cy"]);
+      await p.locator(row(sid.bo)).focus();
+      await moved(p, () => p.keyboard.press("Alt+ArrowDown"));
+      await until(p, ["ada", "bo", "cy"]);
+      const band = '#agl [data-band="idle"]';
+      const reorder = p.locator(`${band} [data-act="reorder"]`);
+      await reorder.click();
+      expect(await reorder.getAttribute("aria-pressed")).toBe("true");
+      const up = p.locator(`${band} [data-agent="cy"] [data-act="ord-up"]`);
+      const down = p.locator(`${band} [data-agent="cy"] [data-act="ord-down"]`);
+      await up.waitFor();
+      for (const b of [up, down]) {
+        const box = (await b.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+      expect(await down.getAttribute("aria-disabled")).toBe("true");
+      await moved(p, () => up.click());
+      await until(p, ["ada", "cy", "bo"]);
+      await reorder.click();
+      expect(await p.locator(`${band} [data-act="ord-up"]`).count()).toBe(0);
+      expect(
+        await p.evaluate(
+          () =>
+            document.documentElement.scrollWidth <=
+            document.documentElement.clientWidth,
+        ),
+      ).toBe(true);
       resetOrder();
       await p.context().close();
     }, 60_000);

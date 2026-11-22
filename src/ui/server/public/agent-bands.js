@@ -21,6 +21,7 @@
  */
 import {
   ATTENTION_STATES,
+  ATTENTION_TABLE,
   attentionCounts,
   sortByAttention,
 } from "/kit/attention.js";
@@ -81,16 +82,22 @@ export function bandsOf(rows, { seenNow } = {}) {
 
 /**
  * Issue 96: the agent ids a running row moves among: the agents of its
- * project in its band, as the band shows them.
+ * project in its band, as the band shows them. Issue 773: none in Needs
+ * you and Done (the longest wait first there, always).
  */
 export function bandGroup(rows, r, { seenNow } = {}) {
   if (!r || r.kind !== "agent" || !r.agent) return [];
   const state = rowState(r, seenNow);
+  if (!personOrdered(state)) return [];
   const band = bandsOf(rows, { seenNow }).find((b) => b.state === state);
   return (band?.rows ?? [])
     .filter((s) => s.kind === "agent" && s.agent && s.workspace === r.workspace)
     .map((s) => s.agent);
 }
+
+/** Issue 773: a band the person orders (Working, Idle), by the table. */
+export const personOrdered = (state) =>
+  ATTENTION_TABLE[state]?.order === "name";
 
 const MARK = {
   needs: ["need", "!"],
