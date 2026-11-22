@@ -2451,6 +2451,10 @@ export function startAgentUpkeep(
           log(`Relaunched ${who} from its handoff after ${e.why}`);
         } else if (e.kind === "asked")
           log(`Asked ${who} for its handoff (${e.asked} of 2)`);
+        else if (e.kind === "waiting")
+          log(
+            `Rotation of ${who} waits: ${e.running} background item(s) it started still run`,
+          );
         else if (e.kind === "fell-back")
           log(
             `  ⚠ ${who} wrote no handoff after 2 asks: its callout asks the person`,

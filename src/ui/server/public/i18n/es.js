@@ -1554,6 +1554,10 @@
     "ag.relaunchHandoff": "Relanzar desde su último traspaso",
     "ag.rc.autoAsk":
       "Toca rotar ({why}). Den le pide el traspaso cuando esté libre y luego lo relanza.",
+    "ag.rc.waiting.one":
+      "Toca rotar ({why}). Den espera a que termine {n} tarea en segundo plano que inició y luego lo rota.",
+    "ag.rc.waiting":
+      "Toca rotar ({why}). Den espera a que terminen las {n} tareas en segundo plano que inició y luego lo rota.",
     "ag.rc.autoReady":
       "Toca rotar ({why}). Su traspaso está listo: Den lo relanza cuando esté libre.",
     "ag.rc.ready": "Toca rotar ({why}). Su traspaso está listo.",
