@@ -305,6 +305,52 @@ export function mergeHooks(
 }
 
 /**
+ * Issue 974: the PreToolUse hook with the env guard alone, for an agent
+ * whose persona has no guardrail hooks and no API-only rules: it refuses a
+ * command that prints the whole environment (`--no-guardrails`: no log or
+ * sleep checks).
+ */
+export function envGuardHooks(
+  dir: string = GUARDRAILS_DIR,
+  node: string = process.execPath,
+): Record<string, unknown[]> {
+  return {
+    PreToolUse: [
+      {
+        matcher: "Bash",
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: node,
+              args: [path.join(dir, "pretooluse.mjs"), "--no-guardrails"],
+            }),
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** The flag that turns the env guard off (agents.env_guard: false). */
+export const NO_ENV_GUARD_FLAG = "--no-env-guard";
+
+/**
+ * Issue 974: `hooks` with --no-env-guard on each command that runs Den's
+ * PreToolUse script (agents.env_guard: false). Changed in place.
+ */
+export function withoutEnvGuard(hooks: Record<string, unknown>): void {
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${NO_ENV_GUARD_FLAG}`;
+}
+
+/**
  * D47 for an agent whose persona has no guardrail hooks: the PreToolUse
  * hook with the API-only check alone (`--no-guardrails`: no log or sleep
  * checks).

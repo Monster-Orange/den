@@ -237,6 +237,10 @@ import {
   type Override,
 } from "../../shared/agents/records.js";
 import {
+  defaultEnvHold,
+  type EnvHoldSettings,
+} from "../../shared/agents/env-hold.js";
+import {
   agentSessionEnv,
   DEFAULT_RUNTIME_ID,
   getRuntime,
@@ -3292,6 +3296,8 @@ async function startSession(
             // agents.git.signing_key: its commits signed with that key.
             agentGitEnv(d.agentsConfig().git),
             signIn.env,
+            // Issue 974: secret-looking names held back; its opt-ins kept.
+            agentEnvHold(d.agentsConfig().envHold, launch.rec.id),
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
@@ -3468,6 +3474,12 @@ function launchInput(
       return sub.model ? { subagentModel: sub.model } : {};
     })(),
     ...(cfg.subagents?.claudeAiConnectors ? { claudeAiConnectors: true } : {}),
+    // Issue 974: secret-looking variables held out of each shell command,
+    // and the guard on commands that print the whole environment.
+    envHold: {
+      ...agentEnvHold(cfg.envHold, id),
+      guard: cfg.envHold?.guard ?? true,
+    },
     // D47: services it may reach only through their API.
     ...(() => {
       try {
@@ -3492,6 +3504,18 @@ function launchInput(
       call: hookCallSettings(readUserConfig),
     },
   };
+}
+
+/**
+ * Issue 974: the patterns agent `id` has held back (agents.env_hold, or the
+ * default list) and the names it keeps (agents.env_allow.<id>).
+ */
+export function agentEnvHold(
+  s: EnvHoldSettings | undefined,
+  id: string,
+): { hold: string[]; allow: string[] } {
+  const settings = s ?? defaultEnvHold();
+  return { hold: [...settings.hold], allow: [...(settings.allow[id] ?? [])] };
 }
 
 /** The model a runtime is given: a pinned version, else the model. */

@@ -71,7 +71,10 @@ import {
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  envGuardHooks,
+  withoutEnvGuard,
 } from "./guardrails.js";
+import { ENV_HOLD_FILE, envHoldScript } from "./env-hold.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
@@ -631,15 +634,23 @@ function common(input: LaunchInput): {
           inbox && { ...inbox, files: input.filesDir },
         )
       : null;
+  // Issue 974: the env guard for every agent, whatever its persona's
+  // guardrails; agents.env_guard: false turns it off.
+  const envGuard = input.envHold?.guard;
+  const guarded =
+    envGuard === true && !baseHooks?.PreToolUse
+      ? mergeHooks(baseHooks, envGuardHooks(GUARDRAILS_DIR, process.execPath))
+      : baseHooks;
+  if (envGuard === false && guarded) withoutEnvGuard(guarded);
   // NT-1: every agent tells Den when it waits for its person.
-  if (inbox && baseHooks)
+  if (inbox && guarded)
     widenHookTimeouts(
-      baseHooks,
+      guarded,
       "Stop",
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
   const hooks = mergeHooks(
-    baseHooks,
+    guarded,
     input.attention
       ? attentionHooks(
           input.attention.base,
@@ -842,6 +853,24 @@ export function transcriptFile(
   return null;
 }
 
+/**
+ * Issue 974: the script that holds secret-looking variables out of each
+ * shell command, in the agent's files folder, and CLAUDE_ENV_FILE naming
+ * it (Claude Code runs that file before every Bash command, after the
+ * shell's profile). None when the launch has no hold.
+ */
+function envHold(input: LaunchInput): {
+  env: Record<string, string>;
+  files: Record<string, string>;
+} {
+  if (!input.envHold) return { env: {}, files: {} };
+  const file = path.join(input.filesDir, ENV_HOLD_FILE);
+  return {
+    env: { CLAUDE_ENV_FILE: file },
+    files: { [file]: envHoldScript(input.envHold.hold, input.envHold.allow) },
+  };
+}
+
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
   label: DEN_CLAUDE_CATALOG.name,
@@ -871,8 +900,8 @@ export const denClaude: Runtime = {
         ...c.argv,
         ...firstPromptArg(input.firstPrompt),
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       resumeToken: id,
       warnings: [...c.warnings, ...modeWarnings],
     };
@@ -890,8 +919,8 @@ export const denClaude: Runtime = {
         ...nameArg(input.sessionLabel),
         ...c.argv,
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       warnings: [...c.warnings, ...modeWarnings],
     };
   },

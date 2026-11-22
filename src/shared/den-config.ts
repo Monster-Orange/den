@@ -9,6 +9,10 @@
  */
 
 import { checkCoachConfig, type CoachSettings } from "./coach/settings.js";
+import {
+  checkEnvHoldConfig,
+  type EnvHoldSettings,
+} from "./agents/env-hold.js";
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
@@ -1810,6 +1814,16 @@ export interface AgentsConfig {
    */
   api_only_engines?: { clis?: unknown; dirs?: unknown };
   /**
+   * Issue 974 (agents/env-hold.ts): name patterns of variables held out of
+   * agent sessions (unset: `*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`,
+   * `OP_SESSION_*`; [] holds nothing back), `{ <agent id>: [NAME] }` names
+   * an agent keeps, and false to stop refusing commands that print the
+   * whole environment.
+   */
+  env_hold?: unknown;
+  env_allow?: unknown;
+  env_guard?: unknown;
+  /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
    * never grants itself one.
@@ -1885,6 +1899,10 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  // Issue 974: secret-looking variables held out of agent sessions.
+  "env_hold",
+  "env_allow",
+  "env_guard",
 ];
 
 /**
@@ -1975,6 +1993,11 @@ export interface ResolvedAgentsConfig {
   roles?: RolesConfig;
   /** den#3: agents.subagents and agents.claude_ai_connectors, defaults applied. */
   subagents?: SubagentSettings;
+  /**
+   * Issue 974: agents.env_hold, env_allow and env_guard checked
+   * (agents/env-hold.ts); unset: the default list, the guard on.
+   */
+  envHold?: EnvHoldSettings;
 }
 
 /** `agents.helpers` (D32) checked; a bad key or value throws naming it. */
@@ -2238,6 +2261,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.exitedShellMinutes = exitedMin;
   }
+  out.envHold = checkEnvHoldConfig(raw);
   out.coach = checkCoachConfig(raw.coach);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [

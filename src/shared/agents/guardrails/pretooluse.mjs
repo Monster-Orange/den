@@ -12,7 +12,13 @@
  * permission flow decide. Any error here exits 0: a broken hook never
  * blocks anything.
  *
- * It blocks exactly two things, and nothing else:
+ * Issue 974: it also refuses a command that prints the whole environment
+ * (a bare `env`, `printenv`, `set`, `export`, `export -p`, `declare -x`,
+ * `typeset -x`, anywhere in a pipeline or list), saying what to run
+ * instead. That one runs even with the other guardrails off
+ * (--no-guardrails); --no-env-guard (agents.env_guard: false) turns it off.
+ *
+ * Besides that, it blocks exactly two things, and nothing else:
  *
  *   1. Whole-file reads of a log or a large file into the conversation:
  *      - Read with no `limit`;
@@ -51,6 +57,92 @@ const SLEEP_HINT =
   "run_in_background (you are told when it ends), or use a wait primitive " +
   "(the Monitor tool with an until-condition, or the command's own --wait). " +
   "Do not loop on sleep.";
+
+const ENV_HINT =
+  "It prints the whole environment, secrets included, into the " +
+  "conversation. Run `printenv NAME` for one variable instead (it still " +
+  "answers), or `printenv NAME1 NAME2` for a few.";
+
+/** env's options that take a value as the next word (or `--opt=value`). */
+const ENV_VALUE_OPTS = new Set(["-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-P"]);
+
+/** Whether `env <args>` runs no command, so prints the environment. */
+function envPrintsAll(args) {
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j];
+    if (a === "--") return j + 1 >= args.length;
+    if (ENV_VALUE_OPTS.has(a)) {
+      // -S/--split-string's value is a command line to run.
+      if (a === "-S" || a === "--split-string") return false;
+      j++;
+      continue;
+    }
+    if (a.startsWith("-")) {
+      if (/^(-S|--split-string=)/.test(a)) return false;
+      continue;
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) continue;
+    return false;
+  }
+  return true;
+}
+
+/** The words after a command's leading options. */
+const operands = (args) => args.filter((a) => !a.startsWith("-") && !a.startsWith("+"));
+
+/** Why this stage prints the whole environment, or null. */
+function dumpsEnv(words) {
+  let w = words;
+  // sudo/doas run the rest: look at that.
+  while (w.length && (base(w[0]) === "sudo" || base(w[0]) === "doas")) {
+    w = w.slice(1);
+    while (w.length && w[0].startsWith("-")) w = w.slice(1);
+  }
+  const cmd = base(w[0] ?? "");
+  const args = w.slice(1);
+  if (cmd === "env") return envPrintsAll(args);
+  if (cmd === "printenv") return operands(args).length === 0;
+  if (cmd === "set") return args.length === 0;
+  if (cmd === "export") return operands(args).length === 0;
+  if (cmd === "declare" || cmd === "typeset") {
+    // -f/-F print functions, not variables.
+    if (args.some((a) => /^-[a-zA-Z]*[fF]/.test(a))) return false;
+    return operands(args).length === 0;
+  }
+  // sh -c '...': the command line it runs.
+  if (["sh", "bash", "zsh", "dash", "ksh"].includes(cmd)) {
+    const c = args.indexOf("-c");
+    if (c >= 0 && args[c + 1] !== undefined)
+      return envDumpCommand(args[c + 1]) !== null;
+  }
+  return false;
+}
+
+/** The reason to refuse this Bash command for printing the environment, or null. */
+export function envDumpCommand(command) {
+  let pipelines;
+  try {
+    pipelines = parseShell(String(command ?? ""));
+  } catch {
+    return null;
+  }
+  for (const stages of pipelines)
+    for (const st of stages)
+      if (dumpsEnv(st.words))
+        return `Den refused \`${String(command).trim()}\`. ${ENV_HINT}`;
+  return null;
+}
+
+/** Issue 974: the env guard's reason to refuse this tool call, or null. */
+export function envDumpDecision(input) {
+  if (!input || typeof input !== "object" || input.tool_name !== "Bash")
+    return null;
+  const ti =
+    input.tool_input && typeof input.tool_input === "object"
+      ? input.tool_input
+      : {};
+  return envDumpCommand(ti.command);
+}
 
 /** Is this path a log: *.log, .dev-metrics/*.jsonl, or a transcript? */
 export function isLogPath(p) {
@@ -438,6 +530,9 @@ async function main() {
         reason = apiOnlyMessage(r);
       }
     }
+    // Issue 974: the env guard, unless agents.env_guard is false.
+    if (!process.argv.includes("--no-env-guard"))
+      reason ??= envDumpDecision(input);
     if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
   } catch {
     reason = null;

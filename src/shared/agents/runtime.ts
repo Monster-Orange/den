@@ -167,6 +167,13 @@ export interface LaunchInput {
    */
   apiOnly?: { rules: string; audit: string };
   /**
+   * Issue 974: the patterns of secret-looking variables held out of each
+   * shell command (agents.env_hold), the names this agent keeps
+   * (agents.env_allow), and whether commands that print the whole
+   * environment are refused (agents.env_guard). Absent: neither is set up.
+   */
+  envHold?: { hold: string[]; allow: string[]; guard: boolean };
+  /**
    * Session rotation (den#4): the compactions after which this agent's
    * session rotates (0: never). Den's hooks count them. Default 3.
    */

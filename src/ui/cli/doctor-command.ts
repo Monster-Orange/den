@@ -30,6 +30,7 @@ import { rankFindings, readWebUrl } from "../../shared/web-url.js";
 import { loopbackRefusal } from "../../shared/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
+import { envHoldLines, shellEnvNames } from "./doctor-env-hold.js";
 import {
   agentsKeepRunningAfterLogout,
   readAgentsConfig,
@@ -1991,6 +1992,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
+  // Issue 974: what is held out of agent sessions, by name.
+  try {
+    const hold = readAgentsConfig().envHold;
+    if (hold)
+      for (const l of envHoldLines(readBrand().name, hold, shellEnvNames())
+        .lines)
+        console.log(l);
+  } catch {
+    // A bad agents: block is configLines' row.
+  }
   const checked = await doctorAddress(product().cli);
   const edges = await edgeAddresses();
   const addr = addressLines(
