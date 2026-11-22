@@ -581,6 +581,10 @@ export function mountAccountArea(el, opts = {}) {
   draw(
     opts.current ?? accountSectionOf(location.search, sections()) ?? undefined,
   );
+  // Issue 310: the section it opens on goes in the address too, not only
+  // a section picked later (?account=<section>, so a reload or a shared
+  // link opens the same place).
+  setAddress(current());
   el.addEventListener("click", onClick);
   el.addEventListener("change", onChange);
   el.addEventListener("input", onInput);
