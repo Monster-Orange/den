@@ -121,7 +121,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
   async function connected(p: Page, id: string) {
     await p.waitForFunction(
       (i) =>
-        [...document.querySelectorAll(`.pane[data-id="${i}"]`)].some((el) =>
+        [...document.querySelectorAll(`section[data-id="${i}"]`)].some((el) =>
           (el.textContent ?? "").includes("$"),
         ),
       id,
