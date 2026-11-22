@@ -582,7 +582,6 @@ export function hydrateSearch(btn, opts = {}) {
   };
 }
 
-/** The bell and its panel (see the top). */
 /**
  * Issue 1024: what a bell row is known by, across repaints.
  * @param {Node} n
@@ -665,6 +664,7 @@ export function patchChildren(live, next) {
   for (const c of [...live.childNodes]) if (!used.has(c)) c.remove();
 }
 
+/** The bell and its panel (see the top). */
 export function hydrateBell(btn, opts = {}) {
   const lang = () =>
     typeof opts.lang === "function" ? opts.lang() : opts.lang;
