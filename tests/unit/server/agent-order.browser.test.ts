@@ -358,16 +358,26 @@ describe.each(ENGINES)(
           await r.fulfill({
             status: 409,
             contentType: "application/json",
-            body: JSON.stringify({ error: "The list changed meanwhile." }),
+            // A made-up refusal, so the line is known to be the server's.
+            body: JSON.stringify({ error: "order-refused-1054" }),
           });
         },
       );
       await p.locator(row(sid.cy)).focus();
       await p.keyboard.press("Alt+ArrowUp");
       try {
-        await p
-          .locator(`${row(sid.cy)}[aria-busy="true"] > .bz-dots.bz-row`)
-          .waitFor();
+        await p.locator(`${row(sid.cy)}[aria-busy="true"]`).waitFor();
+        // The kit's dots at the row's end: three dots, hidden from a
+        // screen reader (aria-busy says it).
+        expect(
+          await p.locator(row(sid.cy)).evaluate((el) => {
+            const d = el.lastElementChild;
+            return [
+              d?.getAttribute("aria-hidden"),
+              d?.querySelectorAll("i").length,
+            ];
+          }),
+        ).toEqual(["true", 3]);
         expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
       } finally {
         release();
@@ -375,7 +385,7 @@ describe.each(ENGINES)(
       const err = p.locator("#ag-order-err");
       await err.waitFor({ state: "visible" });
       expect(await err.getAttribute("role")).toBe("alert");
-      expect(await err.textContent()).toMatch(/The list changed meanwhile\./);
+      expect(await err.textContent()).toContain("order-refused-1054");
       await until(p, ["ada", "bo", "cy"]);
       expect(await p.locator(`${row(sid.cy)}[aria-busy]`).count()).toBe(0);
       expect(await p.locator("den-busy dialog[open]").count()).toBe(0);

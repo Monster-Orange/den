@@ -124,10 +124,12 @@ async function deleteFromLastDialog(p: Page, held: Held): Promise<void> {
   const sent = held.id.then(() => true);
   const ask = p.locator('dialog[open][data-dk-kind="confirm"]');
   for (;;) {
-    await ask.first().waitFor({ state: "visible", timeout: 30_000 });
-    const id = await ask.first().getAttribute("id");
+    // One confirm is open at a time: each step's opens as the last goes.
+    await ask.waitFor({ state: "visible", timeout: 30_000 });
+    const id = await ask.getAttribute("id");
     const one = p.locator(`dialog[id="${id}"]`);
-    const go = one.locator('[data-dk="ok"], [data-dk="go"]').first();
+    // Its main action: OK on a confirm, Go on the agents question.
+    const go = one.locator('[data-dk="ok"], [data-dk="go"]');
     await go.click();
     const gone = one
       .waitFor({ state: "detached", timeout: 30_000 })
@@ -155,7 +157,7 @@ async function deleteFromLastDialog(p: Page, held: Held): Promise<void> {
 
 /** Answer the first shared confirm with OK (Remove service's question). */
 async function confirmOk(p: Page): Promise<void> {
-  const ask = p.locator('dialog[open][data-dk-kind="confirm"]').first();
+  const ask = p.locator('dialog[open][data-dk-kind="confirm"]');
   await ask.waitFor({ state: "visible", timeout: 30_000 });
   await ask.locator('[data-dk="ok"]').click();
 }
