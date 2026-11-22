@@ -91,6 +91,10 @@
  *                     idle (host-restart-held.ts): the web start's refresh,
  *                     its wait, restart, resumes and audit. Doctor's fix,
  *                     never `sessions host --stop`. The person's own Allow
+ *   keep_running      issue 592: Keep agents running after logout, the
+ *                     server agent's offer (keep-running-held.ts): Settings
+ *                     › Apply's code; the Allow's browser gives the admin
+ *                     password (needsSudo). The person's own Allow
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -200,6 +204,8 @@ export interface HeldActionDeps {
   gateBoxRemove?: HeldOp;
   /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
   terminalHostRestart?: HeldOp;
+  /** Issue 592: keep_running (keep-running-held.ts keepRunningHeld). */
+  keepRunning?: HeldAction;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -264,6 +270,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "keep_running",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -907,5 +914,12 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     gate_box_set: gateBoxSet,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    keep_running: d.keepRunning ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't change how it runs here",
+      }),
+      run: () => Promise.resolve({ ok: false, error: "not here" }),
+    },
   };
 }

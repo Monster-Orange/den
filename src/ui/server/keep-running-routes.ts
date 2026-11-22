@@ -57,6 +57,91 @@ export function installRunsSudo(
   return mode === "always" || installed === "always";
 }
 
+/** What applying the Setting needs: the route's deps, less the HTTP. */
+export type KeepRunningCore = Pick<
+  KeepRunningDeps,
+  | "platform"
+  | "installed"
+  | "sudoReady"
+  | "current"
+  | "save"
+  | "install"
+  | "cli"
+>;
+
+/** The answer Apply gives: its status and body (the route's answers above). */
+export interface KeepRunningAnswer {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+/**
+ * Settings › Apply's code (issue 163), shared with the held write
+ * keep_running (issue 592, keep-running-held.ts): save the Setting and
+ * re-install Den's jobs in its mode. Never asks for anything itself: with
+ * sudo not ready the answer is needsSudo and nothing is saved or run.
+ */
+export async function applyKeepRunningMode(
+  on: boolean,
+  d: KeepRunningCore,
+): Promise<KeepRunningAnswer> {
+  const answer = (body: Record<string, unknown>, status = 200) => ({
+    status,
+    body,
+  });
+  if (d.platform() !== "darwin")
+    return answer(
+      {
+        ok: false,
+        error: "keeping agents running after logout is for macOS (launchd)",
+      },
+      409,
+    );
+  const mode: ServiceMode = on ? "always" : "login";
+  const installed = d.installed();
+  const command = `${d.cli} service install --mode ${mode}`;
+  if (installed === null) {
+    d.save(on);
+    return answer({
+      ok: true,
+      applied: false,
+      mode,
+      message: `Saved. Den isn't running as a service yet: ${command} applies it.`,
+    });
+  }
+  if (installed === mode) {
+    d.save(on);
+    return answer({
+      ok: true,
+      applied: false,
+      mode,
+      message: "Saved. Den already runs this way.",
+    });
+  }
+  if (installRunsSudo(mode, installed) && !d.sudoReady())
+    return answer({ ok: false, needsSudo: { command } });
+  const before = d.current?.();
+  d.save(on);
+  let code: number;
+  try {
+    code = await d.install(mode);
+  } catch (e) {
+    d.save(before ?? null);
+    return answer({ ok: false, error: (e as Error).message }, 500);
+  }
+  if (code !== 0) {
+    d.save(before ?? null);
+    return answer(
+      {
+        ok: false,
+        error: `${command} did not start (exit ${code}). Nothing changed.`,
+      },
+      500,
+    );
+  }
+  return answer({ ok: true, applied: true, mode });
+}
+
 export function handleKeepRunningRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -80,60 +165,8 @@ export function handleKeepRunningRoutes(
     }
     if (typeof body.on !== "boolean")
       return d.sendJson(res, { ok: false, error: "on is true or false" }, 400);
-    if (d.platform() !== "darwin")
-      return d.sendJson(
-        res,
-        {
-          ok: false,
-          error: "keeping agents running after logout is for macOS (launchd)",
-        },
-        409,
-      );
-    const on = body.on;
-    const mode: ServiceMode = on ? "always" : "login";
-    const installed = d.installed();
-    const command = `${d.cli} service install --mode ${mode}`;
-    if (installed === null) {
-      d.save(on);
-      return d.sendJson(res, {
-        ok: true,
-        applied: false,
-        mode,
-        message: `Saved. Den isn't running as a service yet: ${command} applies it.`,
-      });
-    }
-    if (installed === mode) {
-      d.save(on);
-      return d.sendJson(res, {
-        ok: true,
-        applied: false,
-        mode,
-        message: "Saved. Den already runs this way.",
-      });
-    }
-    if (installRunsSudo(mode, installed) && !d.sudoReady())
-      return d.sendJson(res, { ok: false, needsSudo: { command } });
-    const before = d.current?.();
-    d.save(on);
-    let code: number;
-    try {
-      code = await d.install(mode);
-    } catch (e) {
-      d.save(before ?? null);
-      return d.sendJson(res, { ok: false, error: (e as Error).message }, 500);
-    }
-    if (code !== 0) {
-      d.save(before ?? null);
-      return d.sendJson(
-        res,
-        {
-          ok: false,
-          error: `${command} did not start (exit ${code}). Nothing changed.`,
-        },
-        500,
-      );
-    }
-    return d.sendJson(res, { ok: true, applied: true, mode });
+    const r = await applyKeepRunningMode(body.on, d);
+    return d.sendJson(res, r.body, r.status);
   })().catch((e) => {
     if (!res.headersSent)
       d.sendJson(res, { ok: false, error: (e as Error).message }, 500);

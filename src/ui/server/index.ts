@@ -401,7 +401,9 @@ import {
   handleKeepRunningRoutes,
   handleSignInTokenRoute,
   noteKeepRunningOffer,
+  type KeepRunningCore,
 } from "./keep-running-routes.js";
+import { keepRunningHeld } from "./keep-running-held.js";
 import { handleEdgeUpRoute } from "./edge-up-routes.js";
 import { handleAddressRoutes } from "./address-routes.js";
 import { identityKey } from "../../shared/den-identity.js";
@@ -3595,6 +3597,43 @@ function declaredCommand<T>(
 }
 
 // ── ON-3: the writes held for the person (approval-routes.ts) ─────────────────
+/**
+ * Issue 163: what Settings › Apply needs to switch how Den runs; issue
+ * 592: the held write keep_running runs the same code.
+ */
+function keepRunningCore(): KeepRunningCore {
+  return {
+    platform: () => process.platform,
+    installed: installedServiceMode,
+    sudoReady: () => hasSudoPassword() || hasPasswordlessSudo(),
+    current: () => {
+      try {
+        return agentsKeepRunningAfterLogout();
+      } catch {
+        return undefined;
+      }
+    },
+    save: (on) => {
+      const user = readUserConfig() as Record<string, unknown>;
+      const r = patchCliRows(user, { keep_running_after_logout: on });
+      if (!r.ok) throw new Error(r.error);
+      writeUserConfig(user as UserConfig);
+    },
+    install: (mode) =>
+      cmdService(["install", "--mode", mode], {
+        handOff: true,
+        // install.sh replaces this server's job: detached, with the
+        // sudo shim on its PATH (LK-0).
+        run: detachedRunner(
+          path.join(getStateDir(), "logs", "service-apply.log"),
+          () => getSudoEnv(),
+        ),
+        log: (l) => serverLog(l, "lifecycle"),
+      }),
+    cli: product().cli,
+  };
+}
+
 type ApprovalDeps = {
   queue: ApprovalQueue;
   actions: HeldActions;
@@ -3604,6 +3643,7 @@ type ApprovalDeps = {
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  sudoReady: () => boolean;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -3944,6 +3984,16 @@ function approvalDeps(): ApprovalDeps {
     })(),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
+    // Issue 592: the server agent offers Keep agents running after logout;
+    // the Allow runs Settings › Apply's code.
+    keepRunning: keepRunningHeld({
+      ...keepRunningCore(),
+      tokenSet: async () => {
+        const v = await agentSigninView();
+        return v ? v.configured === true : null;
+      },
+      stateDir: () => getStateDir(),
+    }),
     terminalHostRestart: hostRestartOp({
       refreshing: terminalHostRefreshing,
       waitSeconds: () => {
@@ -3996,6 +4046,8 @@ function approvalDeps(): ApprovalDeps {
   approvals = {
     actions,
     queue: createApprovalQueue(actions, () => getStateDir()),
+    // Issue 592: an Allow whose run needs sudo asks the browser first.
+    sudoReady: () => hasSudoPassword() || hasPasswordlessSudo(),
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
@@ -5354,34 +5406,7 @@ async function handleRequest(
   if (
     handleKeepRunningRoutes(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
-      platform: () => process.platform,
-      installed: installedServiceMode,
-      sudoReady: () => hasSudoPassword() || hasPasswordlessSudo(),
-      current: () => {
-        try {
-          return agentsKeepRunningAfterLogout();
-        } catch {
-          return undefined;
-        }
-      },
-      save: (on) => {
-        const user = readUserConfig() as Record<string, unknown>;
-        const r = patchCliRows(user, { keep_running_after_logout: on });
-        if (!r.ok) throw new Error(r.error);
-        writeUserConfig(user as UserConfig);
-      },
-      install: (mode) =>
-        cmdService(["install", "--mode", mode], {
-          handOff: true,
-          // install.sh replaces this server's job: detached, with the
-          // sudo shim on its PATH (LK-0).
-          run: detachedRunner(
-            path.join(getStateDir(), "logs", "service-apply.log"),
-            () => getSudoEnv(),
-          ),
-          log: (l) => serverLog(l, "lifecycle"),
-        }),
-      cli: product().cli,
+      ...keepRunningCore(),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
     })

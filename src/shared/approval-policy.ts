@@ -200,6 +200,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
   },
+  keep_running: {
+    risk: "critical",
+    why: "changes how Den runs (its launchd jobs) and needs the admin password: a person's own Allow",
+  },
   approval_policy: {
     risk: "critical",
     why: "changes the approval policy itself: a person's only",

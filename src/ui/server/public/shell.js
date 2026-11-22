@@ -2607,6 +2607,18 @@
     "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.keep_running": "Switch how Den runs: {from} → {to}",
+    "ap.det.keep_running.mode": "How Den runs: {from} → {to}.",
+    "ap.det.keep_running.restart":
+      "Den restarts; running agents come back where they were.",
+    "ap.det.keep_running.sudo":
+      "The admin password is asked once, in this browser, when you Allow. The agent never sees it.",
+    "ap.det.keep_running.token":
+      "After logout, agents sign in with the long-lived token in Settings › Agents › Sign-in token.",
+    "ap.det.keep_running.noToken":
+      "No sign-in token is set: agents won't be able to sign in after you log out. Set one in Settings › Agents › Sign-in token.",
+    "ap.link.signinToken": "Open Settings › Sign-in token",
+    "ap.sudoNeeded": "Nothing ran: it needs the admin password.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -8053,6 +8065,7 @@
       '<span id="den-ap-follow-l"></span></label>' +
       "</div>" +
       '<pre class="den-ap-det" id="den-ap-det" hidden></pre>' +
+      '<p class="help" id="den-ap-link-row" hidden><a id="den-ap-link"></a></p>' +
       '<p class="help" id="den-ap-waits"></p>' +
       '<p class="err" id="den-ap-err" role="alert" hidden></p>' +
       '<div class="btns">' +
@@ -8133,6 +8146,22 @@
       li.textContent = t("ap.own.item", { agent: o.agent, mode: o.mode });
       ol.appendChild(li);
     });
+    // Issue 592: one link the Review offers (a Settings row on this Den).
+    var lk = a.link;
+    var lkOk =
+      !!lk &&
+      typeof lk.href === "string" &&
+      lk.href.charAt(0) === "/" &&
+      lk.href.charAt(1) !== "/";
+    $("den-ap-link-row").hidden = !lkOk;
+    var la = $("den-ap-link");
+    if (lkOk) {
+      la.setAttribute("href", lk.href);
+      la.textContent = t(lk.key);
+    } else {
+      la.removeAttribute("href");
+      la.textContent = "";
+    }
     var offers = (a.choices || []).indexOf("follow") >= 0;
     $("den-ap-follow-row").hidden = !offers;
     $("den-ap-follow-l").textContent = t("ap.own.follow");
@@ -8192,6 +8221,23 @@
       })
       .then(
         function (x) {
+          // Issue 592: the run needs the admin password: this browser
+          // asks with the existing dialog, then Allows again. Nothing ran.
+          if (!x.ok && x.b.code === "needs_sudo" && decision === "allow") {
+            return import("/topbar.js")
+              .then(function (m) {
+                return m.askSudo(x.b.needsSudo || {});
+              })
+              .then(function (given) {
+                if (!given) {
+                  apError(t("ap.sudoNeeded"));
+                  return;
+                }
+                ap.busy = false;
+                apDecide("allow");
+                return "again";
+              });
+          }
           if (!x.ok) {
             apError(x.b.error || t("ap.failed", { error: x.b.code || "?" }));
             return;
@@ -8227,7 +8273,9 @@
           apError(String((e && e.message) || e));
         },
       )
-      .then(function () {
+      .then(function (again) {
+        // An Allow sent again after the password keeps the buttons off.
+        if (again === "again") return;
         ap.busy = false;
         for (var j = 0; j < btns.length; j++) btns[j].disabled = false;
       });

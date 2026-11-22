@@ -379,6 +379,131 @@ describe("the approval dialog (ON-3)", () => {
     }
   }, 90_000);
 
+  it("issue 592: keep_running's Allow asks this browser for the admin password, then runs", async () => {
+    if (skip()) return;
+    const p = await page(true);
+    // keep_running is macOS's (launchd): the page's part only. What waits,
+    // the decide and the password are the server's answers, faked here.
+    const id = "KeepRunningAsk01";
+    const item = {
+      id,
+      action: "keep_running",
+      agent: "server",
+      summary: "keep agents running after logout",
+      params: { from: "login", to: "always" },
+      details: [
+        "How Den runs: login → always.",
+        "Den restarts; running agents come back where they were.",
+        "The admin password is asked once, in this browser, when you Allow. The agent never sees it.",
+        "No sign-in token is set: agents won't be able to sign in after you log out. Set one in Settings › Agents › Sign-in token.",
+      ],
+      detailKeys: [
+        {
+          key: "ap.det.keep_running.mode",
+          vars: { from: "login", to: "always" },
+        },
+        { key: "ap.det.keep_running.restart" },
+        { key: "ap.det.keep_running.sudo" },
+        { key: "ap.det.keep_running.noToken" },
+      ],
+      link: {
+        href: "/settings#agents.keep_running",
+        key: "ap.link.signinToken",
+      },
+      state: "pending",
+      requestedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    let done = false;
+    await p.route("**/api/approvals", (r) =>
+      r.request().method() === "GET"
+        ? r.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ ok: true, pending: done ? [] : [item] }),
+          })
+        : r.fallback(),
+    );
+    const decides: string[] = [];
+    let passwordSet = false;
+    await p.route(`**/api/approvals/${id}/decide`, (r) => {
+      decides.push(r.request().postData() ?? "");
+      if (!passwordSet)
+        return r.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            code: "needs_sudo",
+            error: "needs the admin password",
+            needsSudo: { command: "den service install --mode always" },
+          }),
+        });
+      done = true;
+      return r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          ...item,
+          state: "done",
+          result: { ok: true, applied: true, mode: "always" },
+        }),
+      });
+    });
+    await p.route("**/api/sudo-password/status", (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ set: passwordSet }),
+      }),
+    );
+    const typed: string[] = [];
+    await p.route("**/api/sudo-password", (r) => {
+      if (r.request().method() !== "POST") return r.fallback();
+      typed.push(
+        String(
+          (JSON.parse(r.request().postData() ?? "{}") as { password?: string })
+            .password,
+        ),
+      );
+      passwordSet = true;
+      return r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+    });
+    await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+    expect(await p.textContent("#den-ap-what")).toBe(
+      "Switch how Den runs: login → always",
+    );
+    await p.click("#den-ap-review");
+    const det = (await p.textContent("#den-ap-det")) ?? "";
+    expect(det).toContain("How Den runs: login → always.");
+    expect(det).toContain("admin password");
+    expect(det).toContain("No sign-in token is set");
+    expect(await p.isVisible("#den-ap-link")).toBe(true);
+    expect(await p.getAttribute("#den-ap-link", "href")).toBe(
+      "/settings#agents.keep_running",
+    );
+    expect(await p.textContent("#den-ap-link")).toBe(
+      "Open Settings › Sign-in token",
+    );
+    await p.click("#den-ap-allow");
+    // The existing password dialog, in this browser.
+    await p.waitForSelector("#den-lock-pw", { timeout: 15_000 });
+    expect(decides).toHaveLength(1);
+    await p.fill("#den-lock-pw", "pw-for-test");
+    await p.click("#den-lock-go");
+    await closed(p);
+    expect(typed).toEqual(["pw-for-test"]);
+    // Allowed again once the password was set; the decide never carries it.
+    expect(decides).toHaveLength(2);
+    for (const d of decides) expect(d).not.toContain("pw-for-test");
+    await p.context().close();
+  }, 90_000);
+
   it("raised no page errors", () => {
     expect(errors).toEqual([]);
   });
