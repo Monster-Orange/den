@@ -343,7 +343,7 @@ describe("#80: scope wins", () => {
     await p.waitForFunction(
       (i) =>
         (
-          document.querySelector(`.pane[data-id="${i}"]`)?.textContent ?? ""
+          document.querySelector(`section[data-id="${i}"]`)?.textContent ?? ""
         ).includes("bo ready"),
       sid.bo,
       { timeout: 20_000 },
