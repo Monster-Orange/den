@@ -30,6 +30,7 @@ import {
   type McpAction,
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
+import { peopleAddress } from "../../shared/agent-links.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
 import { checkIssueWrite } from "../../shared/issue-write.js";
@@ -1955,7 +1956,9 @@ async function askPerson(
   // Issue 1016: the full Allow link on Den's address, when the server
   // gives one (web.url set); never made up here.
   const allowLink =
-    typeof asked?.allowLink === "string" ? asked.allowLink : null;
+    typeof asked?.allowLink === "string" && peopleAddress(asked.allowLink)
+      ? asked.allowLink
+      : null;
   const waitingWithLink = allowLink
     ? (x: string) => `${waiting(x)} The person Allows it at ${allowLink}`
     : waiting;

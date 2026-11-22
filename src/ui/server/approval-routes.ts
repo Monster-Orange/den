@@ -40,7 +40,7 @@ import {
 import type { NotificationStore } from "../../shared/notifications.js";
 import { recordAction } from "./audit.js";
 import { readBody, sendJson } from "./http-helpers.js";
-import { allowPath, fullLink } from "../../shared/agent-links.js";
+import { allowLink } from "../../shared/agent-links.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -267,7 +267,8 @@ function allowLinkOf(
   } catch {
     return {};
   }
-  return url ? { allowLink: fullLink(url, allowPath(a.agent, project)) } : {};
+  const link = allowLink(url, a.agent, project);
+  return link ? { allowLink: link } : {};
 }
 
 /** Issue 334: drop a run result's `once` part (shown to the Allow only). */

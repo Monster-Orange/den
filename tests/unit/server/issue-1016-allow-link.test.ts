@@ -151,6 +151,21 @@ const ctx = (api: DenApi): ToolContext => ({
   scope: { workspace: "north", actor: "agent:planner" },
 });
 
+describe("issue 1016: a loopback web.url gives no Allow link", () => {
+  for (const stored of ["http://127.0.0.1:4000", "http://localhost:4000"])
+    it(`${stored}: the ask and its read carry none`, async () => {
+      webUrl = stored;
+      const r = await ask();
+      const a = (await r.json()) as Record<string, unknown>;
+      expect(a.state).toBe("pending");
+      expect("allowLink" in a).toBe(false);
+      const one = (await (
+        await fetch(`${base}/api/approvals/${String(a.id)}`)
+      ).json()) as Record<string, unknown>;
+      expect("allowLink" in one).toBe(false);
+    });
+});
+
 describe("issue 1016: the MCP held write's answer carries the Allow link", () => {
   it("still waiting: the answer gives the full Allow link", async () => {
     const link = `${ADDRESS}/agents?project=north&agent=planner`;
@@ -162,6 +177,22 @@ describe("issue 1016: the MCP held write's answer carries the Allow link", () =>
     expect(r.isError).toBe(false);
     expect(r.text).toContain(`request ${ID}`);
     expect(r.text).toContain(`The person Allows it at ${link}`);
+  });
+
+  it("a loopback link from the server: none in the answer", async () => {
+    const r = await callTool(
+      "agent_create",
+      { persona: "planner" },
+      ctx(
+        fakeApi({
+          id: ID,
+          state: "pending",
+          allowLink: "http://127.0.0.1:4000/agents?project=north&agent=planner",
+        }),
+      ),
+    );
+    expect(r.text).toContain(`request ${ID}`);
+    expect(r.text).not.toMatch(/https?:\/\//);
   });
 
   it("no link from the server (web.url unset): none in the answer", async () => {

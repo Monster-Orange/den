@@ -6,6 +6,7 @@
  * told where the person sets it.
  */
 import { isServerScope } from "./agents/server-agent.js";
+import { isLoopbackUrl } from "./web-url-check.js";
 
 /** The Settings page where the address (web.url) is set. */
 export const ADDRESS_SETTING_PAGE = "/settings#server.address";
@@ -25,6 +26,27 @@ export function allowPath(
   return `/agents?${q.toString()}`;
 }
 
+/**
+ * The one gate every link and the brief line go through: `url` as an
+ * address people can open, or null. A loopback one (127.0.0.0/8, ::1,
+ * localhost, *.localhost, 0.0.0.0) opens only on this machine, so it
+ * counts as unset, whatever was stored.
+ */
+export function peopleAddress(url: string | null | undefined): string | null {
+  if (typeof url !== "string" || !url.trim()) return null;
+  return isLoopbackUrl(url) ? null : url;
+}
+
+/** `url`'s full Allow link for agent `agent` in `project`; null without an address. */
+export function allowLink(
+  url: string | null | undefined,
+  agent: string | undefined,
+  project: string | undefined,
+): string | null {
+  const at = peopleAddress(url);
+  return at ? fullLink(at, allowPath(agent, project)) : null;
+}
+
 /** `path` on the address `url` (an origin, no trailing slash). */
 export function fullLink(url: string, path: string): string {
   return `${url.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
@@ -42,12 +64,18 @@ export interface AgentLinks {
   allow: string;
 }
 
-/** Agent `id` in project `ws`'s links on the address `url`. */
-export function agentLinks(url: string, ws: string, id: string): AgentLinks {
+/** Agent `id` in project `ws`'s links on `url`; null when it isn't an address people open. */
+export function agentLinks(
+  url: string | null | undefined,
+  ws: string,
+  id: string,
+): AgentLinks | null {
+  const at = peopleAddress(url);
+  if (!at) return null;
   const server = isServerScope(ws);
   return {
     agent: fullLink(
-      url,
+      at,
       server
         ? "/server-agent"
         : `/p/${encodeURIComponent(ws)}/agents/${encodeURIComponent(id)}`,
@@ -56,12 +84,12 @@ export function agentLinks(url: string, ws: string, id: string): AgentLinks {
       ? {}
       : {
           project: fullLink(
-            url,
+            at,
             `/agents?${new URLSearchParams({ project: ws }).toString()}`,
           ),
         }),
-    notifications: fullLink(url, "/settings#notifications"),
-    allow: fullLink(url, allowPath(id, server ? undefined : ws)),
+    notifications: fullLink(at, "/settings#notifications"),
+    allow: fullLink(at, allowPath(id, server ? undefined : ws)),
   };
 }
 
@@ -71,8 +99,9 @@ export function addressNotSetNote(): string {
 }
 
 /** Issue 1016: the start brief's one line about the address. */
-export function addressBriefLine(url: string | null): string {
-  return url
-    ? `Den's address for people: ${url}. Give full links, never 127.0.0.1.`
+export function addressBriefLine(url: string | null | undefined): string {
+  const at = peopleAddress(url);
+  return at
+    ? `Den's address for people: ${at}. Give full links, never 127.0.0.1.`
     : `Den's address for people is not set (Settings › Server, ${ADDRESS_SETTING_PAGE}): give no links, never 127.0.0.1.`; // words-ok: Server is the Settings category's own label
 }

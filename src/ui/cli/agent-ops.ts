@@ -55,6 +55,7 @@ import {
   addressBriefLine,
   addressNotSetNote,
   agentLinks,
+  peopleAddress,
   type AgentLinks,
 } from "../../shared/agent-links.js";
 import { readWebUrl } from "../../shared/web-url.js";
@@ -1770,21 +1771,25 @@ export async function agentTools(
   // Issue 1016: the address people open, and full links on it; never
   // guessed when it isn't set.
   const webUrl = safeWebUrl(d);
+  const links = agentLinks(webUrl, rec.workspace, rec.id);
   return {
     agent: rec.id,
     workspace: rec.workspace,
     hub: { connected, loaded, restart },
     note,
     webUrl,
-    ...(webUrl ? { links: agentLinks(webUrl, rec.workspace, rec.id) } : {}),
+    ...(links ? { links } : {}),
     address: webUrl ? addressBriefLine(webUrl) : addressNotSetNote(),
   };
 }
 
-/** Issue 1016: web.url, or null when it isn't set or can't be read. */
+/**
+ * Issue 1016: web.url as an address people open, or null when it isn't
+ * set, can't be read, or is loopback (peopleAddress).
+ */
 function safeWebUrl(d: AgentsResolved): string | null {
   try {
-    return d.webUrl() || null;
+    return peopleAddress(d.webUrl());
   } catch {
     return null;
   }

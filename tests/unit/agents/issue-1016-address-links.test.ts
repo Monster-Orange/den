@@ -121,3 +121,18 @@ describe("issue 1016: the start brief carries the address line", () => {
     expect(brief.replace("never 127.0.0.1", "")).not.toMatch(LOOPBACK);
   });
 });
+
+describe("issue 1016: a loopback web.url counts as unset", () => {
+  for (const stored of ["http://127.0.0.1:4000", "http://localhost:4000"])
+    it(`${stored}: no links in whoami, and the brief has the unset line`, async () => {
+      const r = await started(stored);
+      const t = await agentTools(resolveAgentsDeps(r.deps), "planner", "north");
+      expect(t.webUrl).toBeNull();
+      expect(t.links).toBeUndefined();
+      expect(t.address).toMatch(/not set/);
+      expect(JSON.stringify(t)).not.toMatch(/https?:\/\//);
+      const brief = argAfter(r.made[0].args, "--append-system-prompt");
+      expect(brief).toContain("Den's address for people is not set");
+      expect(brief).not.toContain(stored);
+    });
+});
