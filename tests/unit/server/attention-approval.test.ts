@@ -81,6 +81,31 @@ describe("P0-D2: which deliveries are approvals", () => {
     ).toBe(true);
   });
 
+  it("not an owner comment that only says it (no Hub info note), a deny, or another version's approval", () => {
+    expect(
+      isApproval(
+        dv({ kind: undefined, body: "@pat approved v3 of Pricing page" }),
+        OWNER,
+      ),
+    ).toBe(false);
+    for (const body of [`denied ${HELD}`, `rejected ${HELD}`, "Declined."])
+      expect([body, isApproval(dv({ kind: "held", body }), OWNER)]).toEqual([
+        body,
+        false,
+      ]);
+    expect(
+      isApproval(
+        dv({
+          kind: undefined,
+          intent: "info",
+          version: 4,
+          body: "@pat approved v3 of Pricing page",
+        }),
+        OWNER,
+      ),
+    ).toBe(false);
+  });
+
   it("not a plain comment, a change request, or someone else's approval", () => {
     expect(isApproval(dv({ kind: undefined, body: "looks good" }), OWNER)).toBe(
       false,
@@ -91,18 +116,20 @@ describe("P0-D2: which deliveries are approvals", () => {
     expect(isApproval(other, OWNER)).toBe(false);
   });
 
-  it("its keys: the link, the doc's title, and any held id in the body", () => {
-    expect(approvalKeys(dv({ kind: "held", body: `applied ${HELD}` }))).toEqual(
-      expect.arrayContaining([URL, "Pricing page", HELD]),
-    );
+  it("its keys: the link, the thread and any held id in the body; never the doc's title", () => {
+    const k = approvalKeys(dv({ kind: "held", body: `applied ${HELD}` }));
+    expect(k).toEqual(expect.arrayContaining([URL, HELD]));
+    expect(k).not.toContain("Pricing page");
   });
 });
 
 describe("P0-D2: an approval clears the questions that name it", () => {
   it("the agent's own question about that doc goes, and its row", async () => {
     const { store, a } = mk();
-    await ask(a, "ag-1", "web", "1. Is the Pricing page ready to approve?");
-    expect(a.approvedAbout("ag-1", "web", approvalKeys(dv()))).toEqual([]);
+    await ask(a, "ag-1", "web", `1. Is ${URL} ready to approve?`);
+    expect(a.approvedAbout("ag-1", "web", approvalKeys(dv()))).toEqual([
+      { agent: "ag-1", key: URL },
+    ]);
     expect(a.waitingNow().has("ag-1")).toBe(false);
     expect(
       store
@@ -111,9 +138,9 @@ describe("P0-D2: an approval clears the questions that name it", () => {
     ).toHaveLength(0);
   });
 
-  it("its question about something else stays", async () => {
+  it("its question about something else stays, even one naming the doc's title", async () => {
     const { a } = mk();
-    await ask(a, "ag-1", "web", "1. Shall I start the checkout page?");
+    await ask(a, "ag-1", "web", "1. Shall I start the Pricing page's footer?");
     a.approvedAbout("ag-1", "web", approvalKeys(dv()));
     expect(a.waitingNow().get("ag-1")).toBe("asked");
   });
@@ -129,7 +156,9 @@ describe("P0-D2: an approval clears the questions that name it", () => {
       `1. Do you allow the sign-off (held ${HELD})?`,
     );
     await ask(a, "ag-4", "web", "1. Shall I start the checkout page?");
-    expect(a.approvedAbout("ag-1", "web", keys)).toEqual(["ag-2"]);
+    expect(a.approvedAbout("ag-1", "web", keys)).toEqual([
+      { agent: "ag-2", key: HELD },
+    ]);
     expect(a.waitingNow().has("ag-2")).toBe(false);
     expect(a.waitingNow().get("ag-3")).toBe("asked");
     expect(a.waitingNow().get("ag-4")).toBe("asked");

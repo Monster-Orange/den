@@ -414,6 +414,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
           settleApproval(dv, {
             approvedAbout: (a, ws, keys) =>
               notificationDeps().attention.approvedAbout(a, ws, keys),
+            log: (l) => o.log(l),
             workspaceOf: (a) => readRecord(getStateDir(), a)?.workspace ?? null,
             owner: () => owner,
             takeLocal: (x) =>

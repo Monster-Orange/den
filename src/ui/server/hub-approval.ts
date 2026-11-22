@@ -13,7 +13,13 @@ import {
 } from "../../shared/hub-delivery.js";
 
 export interface SettleDeps {
-  approvedAbout: (agent: string, workspace: string, keys: string[]) => string[];
+  approvedAbout: (
+    agent: string,
+    workspace: string,
+    keys: string[],
+  ) => { agent: string; key: string }[];
+  /** An audit line per question cleared: who, which delivery, which key. */
+  log: (line: string) => void;
   /** The agent's Den project, or null when Den has no record of it. */
   workspaceOf: (agent: string) => string | null;
   owner: () => DeliveryOwner | null;
@@ -27,12 +33,17 @@ export async function settleApproval(
   const ws = d.workspaceOf(dv.agent);
   const o = d.owner();
   if (!ws || !o) return;
-  const others = d.approvedAbout(dv.agent, ws, approvalKeys(dv));
-  for (const agent of others)
-    await d.takeLocal({
-      ...dv,
-      id: `${LOCAL_PREFIX}approval:${dv.id}:${agent}`,
-      agent,
-      text: approvalNoticeText(dv, o),
-    });
+  for (const c of d.approvedAbout(dv.agent, ws, approvalKeys(dv))) {
+    const other = c.agent !== dv.agent;
+    d.log(
+      `hub approval: cleared ${c.agent}'s question (delivery ${dv.id}, kind ${dv.kind ?? "comment"}, names ${c.key})${other ? "; told it" : ""}`,
+    );
+    if (other)
+      await d.takeLocal({
+        ...dv,
+        id: `${LOCAL_PREFIX}approval:${dv.id}:${c.agent}`,
+        agent: c.agent,
+        text: approvalNoticeText(dv, o),
+      });
+  }
 }

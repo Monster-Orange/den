@@ -43,8 +43,9 @@ const raw = (id: string, o: Record<string, unknown> = {}) => ({
   ...o,
 });
 
-function setup() {
+function setup(known = true) {
   const approved: Delivery[] = [];
+  const who = { known, asked: 0 };
   const hub: DeliveryHub = {
     stream: () => {
       throw Object.assign(new Error("no stream"), { kind: "refused" });
@@ -59,11 +60,14 @@ function setup() {
       why: async () => null,
       type: async () => true,
     },
-    owner: () => ({ ownerId: "u_me", company: "Acme" }),
+    ownerWanted: () => {
+      who.asked++;
+    },
+    owner: () => (who.known ? { ownerId: "u_me", company: "Acme" } : null),
     seen: new SeenDeliveries(path.join(dir, "seen.json")),
     approved: (d: Delivery) => approved.push(d),
   } as ConstructorParameters<typeof DeliveryLoop>[0]);
-  return { loop, approved };
+  return { loop, approved, who };
 }
 
 describe("P0-D2: approvals reach Den on arrival", () => {
@@ -80,6 +84,8 @@ describe("P0-D2: approvals reach Den on arrival", () => {
       raw("c1", { intent: "info", body: "@pat approved v3 of Pricing page" }),
     );
     await loop.take(raw("h1", { kind: "held", body: "applied" }));
+    await loop.take(raw("h2", { kind: "held", body: "denied" }));
+    await loop.take(raw("c3", { body: "@pat approved v3 of Pricing page" }));
     await loop.take(raw("c2", { body: "nice work" }));
     expect(approved.map((d) => d.id)).toEqual(["c1", "h1"]);
   });
@@ -99,5 +105,19 @@ describe("P0-D2: approvals reach Den on arrival", () => {
       }),
     );
     expect(approved).toEqual([]);
+  });
+
+  it("one that arrives before Den knows its person counts once it does, once", async () => {
+    const { loop, approved, who } = setup(false);
+    await loop.take(raw("a3", { kind: "approve", version: 1 }));
+    await loop.take(raw("c4", { body: "nice work" }));
+    await loop.pump();
+    expect(approved).toEqual([]);
+    // The agent is busy: the loop asks for its person itself.
+    expect(who.asked).toBeGreaterThan(0);
+    who.known = true;
+    await loop.pump();
+    await loop.pump();
+    expect(approved.map((d) => d.id)).toEqual(["a3"]);
   });
 });

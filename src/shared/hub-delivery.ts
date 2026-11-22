@@ -264,30 +264,40 @@ export function stripLookalikes(body: string): string {
     .join("\n");
 }
 
-/** Hub's info comment on an approval, until it sends kinds (P0-D2). */
-const APPROVED_COMMENT = /\bapproved v\d+ of\b/i;
+/** Hub's info note on an approval, until it sends kinds (P0-D2). */
+const APPROVED_COMMENT = /\bapproved v(\d+) of\b/i;
+/** A held decision that said no. */
+const HELD_NO = /\b(denied|deny|rejected|declined|refused)\b/i;
 /** A held write's id, as Hub names it. */
 const HELD_ID =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
 /**
  * P0-D2: whether `d` is the owner's approval: kind "approve", a held
- * decision (kind "held"), or, until Hub sends kinds, its "approved vN of"
- * comment. Someone else's never is.
+ * decision that didn't say no (kind "held"), or, until Hub sends kinds,
+ * Hub's own "approved vN of" info note (intent "info"), on the version the
+ * delivery names when it names one. Someone else's never is, and neither
+ * is an owner's comment that only says the words.
  */
 export function isApproval(d: Delivery, o: DeliveryOwner | null): boolean {
   if (!o || !isOwner(d.author, o)) return false;
-  if (d.kind === "approve" || d.kind === "held") return true;
-  return (!d.kind || d.kind === "comment") && APPROVED_COMMENT.test(d.body);
+  if (d.kind === "approve") return true;
+  if (d.kind === "held") return !HELD_NO.test(d.body);
+  if (d.kind && d.kind !== "comment") return false;
+  if (d.intent !== "info") return false;
+  const m = APPROVED_COMMENT.exec(d.body);
+  if (!m) return false;
+  return d.version === undefined || Number(m[1]) === d.version;
 }
 
 /**
  * P0-D2: what a question names when it is about this approval: its link,
- * its thread, the doc's title, and any held id Hub's text gives. Short
- * ones (under 6 characters) are left out: they would match by chance.
+ * its thread, and any held id Hub's text gives. Never the doc's title: a
+ * question that mentions a title may be about something else. Short ones
+ * (under 6 characters) are left out: they would match by chance.
  */
 export function approvalKeys(d: Delivery): string[] {
-  const keys = [d.thread.url, d.thread.id, d.thread.artifact ?? ""];
+  const keys = [d.thread.url, d.thread.id];
   for (const m of d.body.match(HELD_ID) ?? []) keys.push(m.toLowerCase());
   return [...new Set(keys.map((k) => k.trim()).filter((k) => k.length >= 6))];
 }

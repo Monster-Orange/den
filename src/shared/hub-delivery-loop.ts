@@ -243,6 +243,8 @@ export class DeliveryLoop {
   private readonly active = new Map<string, Active>();
   /** The last state each delivery was acked with (a repeat is re-acked). */
   private readonly states = new Map<string, AckState>();
+  /** P0-D2: deliveries taken before Den knew its person, to check then. */
+  private approvalLater: Delivery[] = [];
   /** Ids Hub answered 410 for (sent again, or withdrawn): never acked again. */
   private readonly superseded = new Set<string>();
   /** Issue 701: the reason each held delivery was last acked `queued` with. */
@@ -557,13 +559,7 @@ export class DeliveryLoop {
         /* the hook's own trouble never stops a delivery */
       }
     }
-    if (isApproval(dv, this.d.owner())) {
-      try {
-        this.d.approved?.(dv);
-      } catch {
-        /* the bell's trouble never stops a delivery */
-      }
-    }
+    this.checkApproval(dv);
     const at = Date.parse(dv.createdAt);
     if (dv.thread.id && Number.isFinite(at))
       this.threadsAt.set(
@@ -640,7 +636,33 @@ export class DeliveryLoop {
   }
 
   /** Every agent with work: hand over, beat, finish. Run on a tick. */
+  /**
+   * P0-D2: tell Den of an owner's approval. Before Den knows its person
+   * (Hub's whoami), a delivery is kept and checked at the next pump that
+   * does, so an approval that came early still counts, once.
+   */
+  private checkApproval(dv: Delivery): void {
+    const o = this.d.owner();
+    if (!o) {
+      if (this.approvalLater.length < 500) this.approvalLater.push(dv);
+      return;
+    }
+    if (!isApproval(dv, o)) return;
+    try {
+      this.d.approved?.(dv);
+    } catch {
+      /* the bell's trouble never stops a delivery */
+    }
+  }
+
   async pump(): Promise<void> {
+    if (this.approvalLater.length) {
+      if (this.d.owner()) {
+        const later = this.approvalLater;
+        this.approvalLater = [];
+        for (const dv of later) this.checkApproval(dv);
+      } else this.d.ownerWanted?.(); // the agent may be busy for hours
+    }
     const agents = new Set([...this.queue.keys(), ...this.active.keys()]);
     // Issue 701: each on its own; one that hangs never holds the others.
     await Promise.all([...agents].map((a) => this.pumpAgent(a)));

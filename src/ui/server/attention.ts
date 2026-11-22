@@ -524,18 +524,24 @@ export class Attention {
    * P0-D2: an approval came for `agent`'s doc or held write (`keys`, from
    * approvalKeys). Its question that names one of them goes, and so does
    * a question of another agent in `workspace` that names one. Returns
-   * those other agents (Den tells them). A dialog (permission) stays.
+   * each agent cleared and the key its question named (Den tells the
+   * others, and logs each). A dialog (permission) stays.
    */
-  approvedAbout(agent: string, workspace: string, keys: string[]): string[] {
-    const others: string[] = [];
+  approvedAbout(
+    agent: string,
+    workspace: string,
+    keys: string[],
+  ): { agent: string; key: string }[] {
+    const out: { agent: string; key: string }[] = [];
     for (const [a, w] of [...this.waiting]) {
       if (w.why !== "asked") continue;
       if (a !== agent && w.workspace !== workspace) continue;
-      if (!keys.some((k) => namesKey(w.text, k))) continue;
+      const key = keys.find((k) => namesKey(w.text, k));
+      if (!key) continue;
       this.clear(a);
-      if (a !== agent) others.push(a);
+      out.push({ agent: a, key });
     }
-    return others;
+    return out;
   }
 
   private clear(agent: string): void {
