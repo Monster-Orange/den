@@ -46,6 +46,10 @@ const LEGACY: Record<string, number> = {
  * Issue 793: full-window layers that stay, per file, each with why. A
  * count may only go down; a new layer is a pop-up, and goes through the
  * kit's frame (dialogHtml, mountDialog, askConfirm).
+ *
+ * Issue 806: Add Service moved onto the kit's frame (add-service.js), so
+ * local-dev.html is off this list and may never come back. The two left
+ * were reviewed then and stay, each for the reason it gives.
  */
 const OVERLAYS: Record<string, { n: number; why: string }> = {
   "shell.js": {
@@ -55,10 +59,6 @@ const OVERLAYS: Record<string, { n: number; why: string }> = {
   "graph.css": {
     n: 1,
     why: "the graph's details panel popped out (.dg-modal-back): the side panel itself, inside the graph's own .dg root, which sets the font",
-  },
-  "local-dev.html": {
-    n: 1,
-    why: "Add Service (.add-svc-backdrop): a two-tab chooser not moved yet; its page's <body> sets the font",
   },
 };
 
@@ -196,6 +196,17 @@ describe("issue 793: no page draws a full-window pop-up of its own", () => {
     expect(overlays("/* position: fixed; inset: 0 */ .x { color: red }")).toBe(
       0,
     );
+  });
+
+  it("issue 806: Add Service is the kit's dialog, never a layer of its own", () => {
+    expect(Object.keys(OVERLAYS)).not.toContain("local-dev.html");
+    expect(
+      overlays(fs.readFileSync(path.join(PUBLIC, "local-dev.html"), "utf-8")),
+    ).toBe(0);
+    const mod = fs.readFileSync(path.join(PUBLIC, "add-service.js"), "utf-8");
+    expect(overlays(mod) + offences(mod)).toBe(0);
+    expect(mod).toMatch(/\bdialogHtml\(/);
+    expect(mod).toMatch(/\bmountDialog\(/);
   });
 
   it("each layer that stays is still there and has its reason", () => {
