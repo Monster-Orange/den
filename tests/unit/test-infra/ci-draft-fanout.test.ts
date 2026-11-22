@@ -68,11 +68,24 @@ describe("draft pull requests and shard fan-out (testing policy 1)", () => {
 
   it("the pr job picks browser=skip for a draft unless the run must be the whole suite", () => {
     const select = ci.jobs.pr.steps.find((s) => s.id === "select")!;
-    expect(select.env?.DRAFT).toBe("${{ github.event.pull_request.draft }}");
+    expect(select.env?.DRAFT).toBe(
+      "${{ github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'ci:full') }}",
+    );
     expect(select.run).toMatch(/DRAFT" = true/);
     expect(select.run).toMatch(/DEN_TEST_BROWSER=skip" >> "\$GITHUB_ENV"/);
     expect(ci.jobs.pr.outputs?.browser).toBe("${{ steps.select.outputs.browser }}");
     expect(ci.jobs.pr.outputs?.force_all).toBe("${{ steps.select.outputs.force_all }}");
+  });
+
+  it("a draft with the ci:full label runs the browser specs (PR 994, the queue's own run)", () => {
+    const select = ci.jobs.pr.steps.find((s) => s.id === "select")!;
+    expect(select.env?.DRAFT).toContain("!contains(github.event.pull_request.labels.*.name, 'ci:full')");
+  });
+
+  it("tested.json records whether the browser specs ran", () => {
+    const what = ci.jobs.pr.steps.find((s) => s.name === "What this run tests")!;
+    expect(what.run).toMatch(/"browser":"%s"/);
+    expect(what.run).toMatch(/\$\{DEN_TEST_BROWSER:-run\}/);
   });
 
   it("pr-shards skips the browser specs and Playwright when pr says so", () => {

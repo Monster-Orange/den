@@ -297,7 +297,9 @@ jobs:
         id: select
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          DRAFT: ${{ github.event.pull_request.draft }}
+          # A draft with the ci:full label runs like a ready one: PR 994, the
+          # queue's own run (next/queue into main), is a draft so it never merges.
+          DRAFT: ${{ github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'ci:full') }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
           # Issue 996: the merge queue, and a change to package.json's version
@@ -310,7 +312,8 @@ jobs:
           elif [ "$DRAFT" = true ]; then
             # Testing policy 1: a draft runs static checks and unit tests
             # only (jest.config.js, DEN_TEST_BROWSER). Ready for review
-            # starts the full run.
+            # starts the full run, and so does the ci:full label (read at the
+            # next push).
             export DEN_TEST_BROWSER=skip
             echo "DEN_TEST_BROWSER=skip" >> "$GITHUB_ENV"
             echo 'browser=skip' >> "$GITHUB_OUTPUT"
@@ -355,8 +358,8 @@ jobs:
           if [ "$(head -1 affected.txt)" = ALL ]; then sel=all; fi
           # A draft's run leaves out the browser specs: never the whole suite.
           if [ "${DEN_TEST_BROWSER:-}" = skip ]; then sel=affected; fi
-          printf '{"tree":"%s","selection":"%s","attempt":%s,"event":"%s"}\n' \
-            "$(git rev-parse 'HEAD^{tree}')" "$sel" "${{ github.run_attempt }}" "$GITHUB_EVENT_NAME" > tested.json
+          printf '{"tree":"%s","selection":"%s","browser":"%s","attempt":%s,"event":"%s"}\n' \
+            "$(git rev-parse 'HEAD^{tree}')" "$sel" "${DEN_TEST_BROWSER:-run}" "${{ github.run_attempt }}" "$GITHUB_EVENT_NAME" > tested.json
           cat tested.json
       - if: matrix.node == '24.13.0'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
