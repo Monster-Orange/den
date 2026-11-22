@@ -140,6 +140,8 @@ const READ_ROUTES = new Set([
   "/api/onboard/manifest",
   // NT (MCP notifications_list): the bell, read as the agent sees it.
   "/api/notifications",
+  // FB-6 (MCP feedback_diagnostics): what a report can include.
+  "/api/report/diagnostics",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
@@ -157,6 +159,9 @@ const ACTION_ROUTES: Record<string, string> = {
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",
   "/api/verify/run": "POST",
+  // FB-6 (MCP feedback_report): saves the agent's report as a draft; only
+  // a person sends one (the send routes are never reached).
+  "/api/report/drafts": "POST",
 };
 
 /**

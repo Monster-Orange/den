@@ -1077,6 +1077,57 @@ const READ_TOOLS: DenTool[] = [
       return api.get(`/api/report/shots/${id}`);
     },
   ),
+  read(
+    "feedback_diagnostics",
+    "What a report can include",
+    "FB-6: the sections a report from this install can include (Den's version, the machine), as the exact text the Report form shows. Pass the names you want to feedback_report's `include`. Reads only.",
+    {},
+    async (_a, { api }) => api.get("/api/report/diagnostics"),
+  ),
+  read(
+    "feedback_report",
+    "Draft a report for your person",
+    "FB-6: write up a bug, an idea or a question about this Den as a report. It is saved as a draft on this install, marked as yours: it goes to GitHub only when your person opens it in My reports, reviews the exact text and sends it. Redaction is on. `include` names sections from feedback_diagnostics.",
+    {
+      kind: z
+        .enum(["bug", "idea", "question"])
+        .describe("bug, idea or question"),
+      title: z.string().describe("A short title, at most 200 characters"),
+      description: z
+        .string()
+        .optional()
+        .describe("What happened and how to see it again"),
+      include: z
+        .array(z.string())
+        .optional()
+        .describe("Section names from feedback_diagnostics to include"),
+    },
+    async (a, { api }) => {
+      const kind = str(a.kind);
+      if (kind !== "bug" && kind !== "idea" && kind !== "question")
+        throw new Refusal("feedback_report: kind is bug, idea or question.");
+      const title = (str(a.title) ?? "").trim();
+      if (!title) throw new Refusal("feedback_report: give it a title.");
+      if (title.length > 200)
+        throw new Refusal(
+          "feedback_report: a title is at most 200 characters; put the rest in the description.",
+        );
+      const description = str(a.description) ?? "";
+      const sections: Record<string, boolean> = {};
+      if (Array.isArray(a.include))
+        for (const n of a.include)
+          if (typeof n === "string") sections[n] = true;
+      const r = (await api.get("/api/report/drafts", {}, "POST", {
+        kind,
+        title,
+        description,
+        sections,
+        redact: true,
+      })) as { draft?: { id?: unknown } } | null;
+      const id = typeof r?.draft?.id === "string" ? r.draft.id : "?";
+      return `Saved as draft ${id}. It stays a draft until your person opens it in My reports, reviews it and sends it; tell them it is there.`;
+    },
+  ),
 ];
 
 /** The `path` argument, or a refusal before anything is asked. */

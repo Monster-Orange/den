@@ -78,7 +78,8 @@ import {
   shotStore,
 } from "../../shared/report-shots.js";
 import type { ReportShotHub, UploadWhy } from "./report-shot-hub.js";
-import type { GuardResult } from "./request-guard.js";
+import type { AgentPrincipal, GuardResult } from "./request-guard.js";
+import type { Actor } from "../../shared/agent-actor.js";
 import { approverAllowed } from "./approvals.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 
@@ -403,6 +404,21 @@ async function afterFiling(
 const FLOW_PATH = /^\/api\/report\/github-send\/([A-Za-z0-9_-]{16,64})$/;
 /** GET /api/report/shots/<id> (issue 403). */
 const SHOT_PATH = /^\/api\/report\/shots\/([a-f0-9]{16})$/;
+/**
+ * FB-6: the agent a request comes from, by name (a draft's `by` is
+ * `agent:<name>`), or null for a person: an actor token's agent, else the
+ * agent or client a request claims (never the person).
+ */
+export function reportAgentName(
+  principal: AgentPrincipal | null,
+  claimed: Actor,
+): string | null {
+  const bare = (s: string) => s.replace(/^agent:/, "");
+  if (principal) return bare(principal.actor);
+  if (!claimed) return null;
+  return bare(claimed.agent || claimed.client || "") || "agent";
+}
+
 /** GET and DELETE /api/report/drafts/<id>. */
 const DRAFT_PATH = /^\/api\/report\/drafts\/([a-f0-9]{16})$/;
 

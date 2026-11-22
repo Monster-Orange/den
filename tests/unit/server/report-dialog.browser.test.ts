@@ -625,6 +625,76 @@ describe("FB: Report an issue, the dialog", () => {
     await p.context().close();
   });
 
+  it("the user menu (◐ ▾) has Report an issue and My reports; Report an issue opens the dialog", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    await p.click("#appearance-btn");
+    await p.waitForSelector(".den-pop");
+    const rows = await p.$$eval(".den-pop .den-mi", (r) =>
+      r.map((x) => x.textContent?.trim()),
+    );
+    expect(rows).toEqual(
+      expect.arrayContaining(["Report an issue", "My reports"]),
+    );
+    await p.click('.den-pop .den-mi:has-text("Report an issue")');
+    await dlg(p).waitFor();
+    expect(await dlg(p).getAttribute("aria-label")).toBe("Report an issue");
+    await p.context().close();
+  });
+
+  it("each Include section has its (i) saying how it is used, and Remember my choices keeps them for the next report", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).waitFor();
+    await dlg(p).locator('[data-f="title"]').fill("Remembered");
+    await dlg(p).locator('[data-act="next"]').click();
+    await dlg(p).locator("[data-sec]").first().waitFor();
+    // The (i): on every section, its words filled in (never a {placeholder}).
+    const secs = await dlg(p).locator("details summary").count();
+    expect(secs).toBe(4);
+    const infos = await dlg(p)
+      .locator("summary .fb-i")
+      .evaluateAll((els) => els.map((e) => e.getAttribute("title") ?? ""));
+    expect(infos).toHaveLength(4);
+    for (const i of infos) {
+      expect(i).toMatch(/uses this/);
+      expect(i).not.toMatch(/[{}]/);
+    }
+    // How each server section is used, under it.
+    for (const n of ["Machine", "Browser", "Page"]) {
+      const use = await dlg(p)
+        .locator("details", { has: p.locator("summary b", { hasText: n }) })
+        .locator(".fb-fine")
+        .first()
+        .textContent();
+      expect((use ?? "").trim()).not.toBe("");
+    }
+    // Leave only Machine ticked, remember it, and go to Review.
+    await dlg(p).locator('[data-act="none"]').click();
+    await dlg(p).locator('[data-sec="Machine"]').check();
+    await dlg(p).locator('[data-f="remember"]').check();
+    await dlg(p).locator('[data-act="review"]').click();
+    await dlg(p).locator("[data-preview]").first().waitFor();
+    // A new page in the same browser: the next report starts with them.
+    await p.reload();
+    await p.waitForFunction(
+      () => !!(window as { denShell?: unknown }).denShell,
+    );
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).waitFor();
+    await dlg(p).locator('[data-f="title"]').fill("Again");
+    await dlg(p).locator('[data-act="next"]').click();
+    await dlg(p).locator("[data-sec]").first().waitFor();
+    expect(
+      await dlg(p)
+        .locator("[data-sec]:checked")
+        .evaluateAll((els) => els.map((e) => e.getAttribute("data-sec"))),
+    ).toEqual(["Machine"]);
+    expect(await dlg(p).locator('[data-f="remember"]').isChecked()).toBe(true);
+    await p.context().close();
+  });
+
   it("no page errors", () => {
     expect(errors).toEqual([]);
   });

@@ -295,7 +295,13 @@ const denShell = {
     { id: "ja", name: "日本語" },
   ],
   setLanguage: (id: string) => languagePicks.push(id),
+  // FB (den#81): Report an issue and My reports, from the user menu too.
+  reportsOn: () => reportsOn,
+  report: () => void reportOpens.push("report"),
+  myReports: () => void reportOpens.push("mine"),
 };
+let reportsOn = true;
+const reportOpens: string[] = [];
 
 beforeAll(async () => {
   const link = head.appendChild(new El("link"));
@@ -482,7 +488,7 @@ describe("the user menu (initAppearance, R10)", () => {
     expect(img()?.alt).toBe("");
   });
 
-  it("hands the kit's ◐ ▾ its menu once: Appearance, Theme, Language, Restart, All settings", async () => {
+  it("hands the kit's ◐ ▾ its menu once: Appearance, Theme, Language, Report, My reports, Restart, All settings", async () => {
     // The kit draws ◐ ▾ (den-ui 0.7.0); Den wires it once, and only it.
     const btn = header.children.at(-1)!;
     expect(hooked).toHaveLength(1);
@@ -518,11 +524,33 @@ describe("the user menu (initAppearance, R10)", () => {
       "English ✓",
       "日本語",
       "--",
+      // FB (den#81): the user menu's Report an issue and My reports.
+      "Report an issue",
+      "My reports",
       // D64: Restart Den, always here.
       "Restart Den…",
       // The Settings page (R21), at Appearance.
       "All settings → /settings#appearance",
     ]);
+  });
+
+  it("Report an issue and My reports open the shell's Report and My reports (den#81)", async () => {
+    reportOpens.length = 0;
+    await row("Report an issue").onSelect!();
+    await row("My reports").onSelect!();
+    expect(reportOpens).toEqual(["report", "mine"]);
+  });
+
+  it("with reports off (feedback.enabled: false) neither is in the menu", () => {
+    reportsOn = false;
+    try {
+      const labels = items().map((i) => i.label);
+      expect(labels).not.toContain("Report an issue");
+      expect(labels).not.toContain("My reports");
+      expect(labels).toContain("Restart Den…");
+    } finally {
+      reportsOn = true;
+    }
   });
 
   it("redraws the mark on a mode switch and a live theme switch", async () => {

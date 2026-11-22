@@ -440,6 +440,7 @@ import {
   handleReportRoutes,
   machineSection,
   publicSearchOpen,
+  reportAgentName,
   runGh,
   shotReaderOf,
 } from "./report-routes.js";
@@ -5416,10 +5417,8 @@ async function handleRequest(
         Den: `${product().cli} ${engineVersion() ?? "?"}`,
         Machine: machineSection(),
       }),
-      agentOf: (r) => {
-        const a = agentPrincipalOf(r) || auditActorOf(r);
-        return a ? String(a) : null;
-      },
+      // FB-6: by name, so an agent's draft says whose it is.
+      agentOf: (r) => reportAgentName(agentPrincipalOf(r), auditActorOf(r)),
       personOf: () => "person",
       flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
       searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),

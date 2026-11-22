@@ -8766,6 +8766,10 @@
     report: openReport,
     /** FB: My reports (the person's reports and the drafts). */
     myReports: openMyReports,
+    /** FB: whether reports are on (feedback.enabled), for the user menu. */
+    reportsOn: function () {
+      return !state.reportOff;
+    },
     /**
      * FB: the footer Report button's HTML ("" when reports are off);
      * reportButton(true): first in a pop-up's own button row (issue 143).

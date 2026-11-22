@@ -1031,6 +1031,9 @@ describe("the user menu (R10) and Runs (R7)", () => {
       "English ✓",
       "日本語",
       "Español",
+      // FB (den#81): Report an issue and My reports, one more way in.
+      "Report an issue",
+      "My reports",
       "Restart Den…",
       "All settings",
     ]);

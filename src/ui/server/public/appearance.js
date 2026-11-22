@@ -48,6 +48,8 @@ export const EN_FALLBACK = {
   "theme.invalid": "Your theme {id} isn't valid ({why}), so {inUse} is in use",
   "theme.invalidBare": "Your theme {id} isn't valid, so {inUse} is in use",
   "rd.menu": "Restart Den…",
+  "fb.palette": "Report an issue",
+  "fb.mine": "My reports",
 };
 function t(key, vars) {
   const sh = typeof window !== "undefined" ? window.denShell : null;
@@ -371,8 +373,9 @@ export async function setTheme(value) {
 
 /**
  * ◐ ▾'s menu, for the kit (den-ui 0.7.0, hydrateAppearance): Appearance,
- * Theme (with "Org default" and any notice), Language, then Restart Den…
- * and All settings.
+ * Theme (with "Org default" and any notice), Language, then Report an
+ * issue and My reports (den#81, unless reports are off), Restart Den… and
+ * All settings.
  */
 export function appearanceMenu() {
   const opts = themeOptions(st.themes, st.prefsTheme, st.orgDefault);
@@ -397,6 +400,14 @@ export function appearanceMenu() {
         }))
       : [],
     items: [
+      // FB (den#81): the user menu is one more way in to Report an issue
+      // and My reports (the top bar's Report and ⌘K stay).
+      ...(sh?.report && sh?.reportsOn?.() !== false
+        ? [
+            { label: t("fb.palette"), id: "report" },
+            { label: t("fb.mine"), id: "my-reports" },
+          ]
+        : []),
       // D64: always here, not only when the server is stale.
       { label: t("rd.menu"), id: "restart" },
       // "All settings": the Settings page, at Appearance (R10, R21).
@@ -417,6 +428,8 @@ export function appearancePick(kind, value) {
   const sh = typeof window !== "undefined" ? window.denShell : null;
   if (kind === "language")
     return value === (sh?.lang?.() ?? "en") ? null : sh?.setLanguage?.(value);
+  if (kind === "item" && value === "report") return sh?.report?.();
+  if (kind === "item" && value === "my-reports") return sh?.myReports?.();
   if (kind === "item" && value === "restart")
     return void restartDen({ from: "menu" });
   return null;

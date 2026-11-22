@@ -125,6 +125,9 @@ Reads (they change nothing):
 - `report_screenshot`: the masked screenshot of a report filed from this
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
+- `feedback_diagnostics`, `feedback_report`: write up a bug, an idea or a
+  question about this Den as a report. It stays a draft until your person
+  sends it from My reports.
 - `ask_human`: ask your person a question.
 - `notifications_list`: your person's bell.
 - `approval_check`: where one of your held asks stands.

@@ -628,3 +628,44 @@ describe("FB: the kind's label (bug, enhancement, question)", () => {
     expect(labelLookups).toEqual([]);
   });
 });
+
+describe("FB-6: an agent's draft names the agent", () => {
+  it("an actor token's agent by its id, a claimed one by its agent or client, a person as null", async () => {
+    const { reportAgentName } =
+      await import("../../../src/ui/server/report-routes.js");
+    expect(
+      reportAgentName(
+        {
+          kind: "agent",
+          actor: "agent:builder",
+          workspace: "north",
+          grants: [],
+          session: { name: "s" },
+        },
+        null,
+      ),
+    ).toBe("builder");
+    expect(
+      reportAgentName(null, {
+        kind: "agent",
+        client: "claude-code",
+        clientVersion: "1",
+        mcpPid: 1,
+        session: "x",
+        agent: "agent:tester",
+        unverified: true,
+      }),
+    ).toBe("tester");
+    expect(
+      reportAgentName(null, {
+        kind: "agent",
+        client: "claude-code",
+        clientVersion: "1",
+        mcpPid: 1,
+        session: "x",
+        unverified: true,
+      }),
+    ).toBe("claude-code");
+    expect(reportAgentName(null, null)).toBeNull();
+  });
+});
