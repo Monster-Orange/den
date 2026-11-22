@@ -14,8 +14,12 @@ import {
   PushSubscriptions,
   SUBSCRIPTIONS_FILE,
   VAPID_FILE,
+  deviceId,
+  deviceOf,
   parseSubscription,
   pushAll,
+  pushEach,
+  pushService,
   vapidKeys,
 } from "../../../src/ui/server/web-push.js";
 import { startPushStub, type PushStub } from "./helpers/push-stub.js";
@@ -100,6 +104,61 @@ describe("issue 172 S2: Web Push", () => {
     expect(await pushAll(msg, o)).toEqual([410]);
     expect(subs.list()).toEqual([]);
     stub.answer = 201;
+  });
+});
+
+describe("issue 172: the person's devices, and a test alert to each", () => {
+  it("a device is named by its push service and what it is, never its endpoint", () => {
+    const e = "https://web.push.apple.com/QA1b2c3";
+    expect(deviceId(e)).toMatch(/^[0-9a-f]{16}$/);
+    expect(deviceId(e)).toBe(deviceId(e));
+    expect(deviceId(e)).not.toBe(deviceId(e + "x"));
+    expect(pushService(e)).toBe("apple");
+    expect(pushService("https://fcm.googleapis.com/fcm/send/x")).toBe("google");
+    expect(
+      pushService("https://updates.push.services.mozilla.com/wpush/v2/x"),
+    ).toBe("mozilla");
+    expect(pushService("https://wns2-by3p.notify.windows.com/w/?token=x")).toBe(
+      "microsoft",
+    );
+    expect(pushService("http://127.0.0.1:9/push/device-1")).toBe("other");
+    expect(
+      deviceOf(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+      ),
+    ).toBe("iPhone");
+    expect(
+      deviceOf("Mozilla/5.0 (Linux; Android 15; Pixel 9) Chrome/131"),
+    ).toBe("Android");
+    expect(
+      deviceOf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/131"),
+    ).toBe("Mac");
+    expect(deviceOf("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).toBe(
+      "Windows",
+    );
+    expect(deviceOf(undefined)).toBe("");
+  });
+
+  it("pushEach says, per device, what its push service answered", async () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "den-push-each-"));
+    try {
+      const subs = new PushSubscriptions(d);
+      subs.add({ ...parseSubscription(stub.subscription)!, device: "iPhone" });
+      expect(subs.list()[0]).toMatchObject({ device: "iPhone" });
+      const o = {
+        subs,
+        keys: () => vapidKeys(d),
+        subject: "mailto:alerts@localhost",
+        timeoutMs: 10_000,
+        ttlSeconds: 600,
+      };
+      const r = await pushEach(msg, o);
+      expect(r).toEqual([
+        { endpoint: stub.subscription.endpoint, status: 201 },
+      ]);
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
   });
 });
 

@@ -337,8 +337,13 @@ describe("clause 2: viewing only, by route class", () => {
   it("opens Agents, Settings and Terminals, and reads the API", async () => {
     const v = await openView();
     const page = { cookie: v.cookie, ...nav };
-    for (const p of ["/agents", "/settings", "/agents?terminal=1"])
+    for (const p of ["/agents", "/settings", "/terminals"])
       expect([p, (await call("GET", p, page)).status]).toEqual([p, 200]);
+    // Issue 482: the old terminal page's address goes on to Terminals,
+    // which the view may open (above).
+    const old = await call("GET", "/agents?terminal=1", page);
+    expect(old.status).toBe(302);
+    expect(String(old.headers.location ?? "")).toMatch(/^\/terminals(\?|$)/);
     const read = { cookie: v.cookie, "sec-fetch-site": "same-origin" };
     expect((await call("GET", "/api/settings", read)).status).toBe(200);
   });
