@@ -1,0 +1,31 @@
+# Issue 478: a push to main cancels an older main CI run it supersedes (scripts/ci-supersede.mjs). ci.yml's own
+# concurrency group never cancels a main run, so its newer run waits, pending, behind the older one; this workflow
+# isn't in that group, so it runs at once. Only a run whose commit this push descends from is cancelled, never a
+# release commit's run (release.yml depends on it). Every decision is logged in this run and its summary. Pull-request
+# runs and release.yml's own concurrency are untouched.
+name: ci supersede
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  supersede:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the older runs' commits, to tell whether this push descends from them
+          fetch-depth: 50
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+      - name: Cancel superseded main CI runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/ci-supersede.mjs

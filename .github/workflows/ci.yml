@@ -18,8 +18,9 @@ permissions:
 
 # A newer push to the same pull request cancels the older run: only the
 # newest commit's result counts, and the old run held runner slots other
-# PRs were queued for. Pushes to main are never cancelled (each main
-# commit gets its full run).
+# PRs were queued for. This group never cancels a main run; issue 478:
+# ci-supersede.yml cancels an older main run a newer push contains
+# (never a release commit's run).
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
