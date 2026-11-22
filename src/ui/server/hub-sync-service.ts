@@ -128,6 +128,16 @@ export function startMcpReconnect(
 ): void {
   let rc: import("../cli/mcp-reconnect.js").McpReconnect | null = null;
   let busy = false;
+  // Issue 629: a note held before Den restarted waits no more.
+  void (async () => {
+    try {
+      const { notificationDeps } = await import("./notification-service.js");
+      const u = await import("./update-check.js");
+      u.clearToolsNotesHeld(notificationDeps().store);
+    } catch {
+      /* the bell is best effort */
+    }
+  })();
   const run = async () => {
     if (busy) return;
     busy = true;

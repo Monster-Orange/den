@@ -95,6 +95,15 @@ async function startedWhileHubFailed() {
   return { r, d: resolveAgentsDeps(r.deps), token };
 }
 
+/** Wait (at most `ms`) for `ok`; fails the test if it never holds. */
+async function until(ok: () => boolean, ms: number): Promise<void> {
+  const end = Date.now() + ms;
+  while (!ok()) {
+    if (Date.now() > end) throw new Error("timed out waiting");
+    await new Promise((res) => setTimeout(res, 25));
+  }
+}
+
 const typed = (r: Rig, i: number) =>
   Buffer.concat(r.made[i]?.writes ?? []).toString("utf-8");
 
@@ -123,6 +132,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
       await new Promise((res) => setTimeout(res, 20));
     r.made[1]?.emit("> ");
     await rc.pending();
+    await until(() => rc.waiting().length === 0, 15_000);
     expect(r.made).toHaveLength(2);
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
     expect(typed(r, 1)).toContain(RECONNECTED_LINE);
@@ -174,21 +184,176 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     // The person answers: the dialog goes, its prompt shows.
     r.made[1].emit("\x1b[2J\x1b[H> ");
     await rc.pending();
+    await until(() => rc.waiting().length === 0, 15_000);
     expect(typed(r, 1)).toContain(RECONNECTED_LINE);
     expect(cleared).toEqual(["planner"]);
   }, 30_000);
 
+  it("issue 629: a choice list that isn't a trust or permission dialog: the note is kept and belled, not dropped, and typed once it goes", async () => {
+    const { r, d } = await startedWhileHubFailed();
+    const held: string[] = [];
+    const cleared: string[] = [];
+    const lines: string[] = [];
+    const rc = mcpReconnect(d, {
+      hubUp: async () => true,
+      attempts: () => 3,
+      pollMs: 20,
+      heldPollMs: 50,
+      held: (id, ws) => held.push(`${id}@${ws}`),
+      cleared: (id) => cleared.push(id),
+      log: (l) => lines.push(l),
+    });
+    expect(await rc.tick()).toEqual(["planner"]);
+    for (let i = 0; i < 250 && r.made.length < 2; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    // The restarted agent shows a list to pick from (not its prompt).
+    r.made[1].emit(
+      "Which one?\r\n❯ 1. The first\r\n  2. The second\r\n  3. The third\r\n",
+    );
+    for (let i = 0; i < 400 && held.length === 0; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    expect(held).toEqual(["planner@north"]);
+    expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
+    // Its log says what holds it, never that it stopped.
+    expect(lines.join("\n")).not.toMatch(/it stopped/);
+    r.made[1].emit("\x1b[2J\x1b[H> ");
+    await rc.pending();
+    await until(() => rc.waiting().length === 0, 15_000);
+    expect(typed(r, 1)).toContain(RECONNECTED_LINE);
+    expect(cleared).toEqual(["planner"]);
+  }, 30_000);
+
+  it("issue 629: mid-turn, nothing is typed until the agent is idle; a plain turn rings no bell", async () => {
+    const { r, d, token } = await startedWhileHubFailed();
+    const held: string[] = [];
+    const file = path.join(
+      r.dir,
+      "claude-config",
+      "projects",
+      "-work",
+      `${token}.jsonl`,
+    );
+    // The restarted agent starts a turn at once (its transcript says so,
+    // before Den first looks), which goes on past the first try's 10 s: a
+    // spinner above its input box, redrawn every 200 ms.
+    let spin = true;
+    const push = r.made.push.bind(r.made);
+    r.made.push = (...ps) => {
+      const n = push(...ps);
+      if (n === 2) {
+        fs.appendFileSync(
+          file,
+          JSON.stringify({
+            type: "user",
+            cwd: r.wsDir("north"),
+            message: { content: "Build it" },
+          }) + "\n",
+        );
+        void (async () => {
+          while (spin) {
+            r.made[1]?.emit("\r✻ Working… (esc to interrupt)\r\n> ");
+            await new Promise((res) => setTimeout(res, 200));
+          }
+        })();
+      }
+      return n;
+    };
+    const rc = mcpReconnect(d, {
+      hubUp: async () => true,
+      attempts: () => 3,
+      pollMs: 20,
+      heldPollMs: 50,
+      held: (id) => held.push(id),
+      log: () => undefined,
+    });
+    expect(await rc.tick()).toEqual(["planner"]);
+    for (let i = 0; i < 750 && r.made.length < 2; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    const at = Date.now();
+    try {
+      while (Date.now() - at < 12_000) {
+        expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
+        await new Promise((res) => setTimeout(res, 250));
+      }
+      expect(held).toEqual([]);
+      // Queued, not a call that waits for it.
+      expect(rc.waiting()).toEqual(["planner"]);
+    } finally {
+      spin = false;
+    }
+    // Its turn ends.
+    fs.appendFileSync(
+      file,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          model: "opus",
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "Built." }],
+        },
+      }) + "\n",
+    );
+    r.made[1].emit("\x1b[2J\x1b[H> ");
+    await until(() => rc.waiting().length === 0, 15_000);
+    expect(typed(r, 1)).toContain(RECONNECTED_LINE);
+  }, 45_000);
+
+  it("issue 629: an agent that never shows its prompt: the restart's call ends, the note stays queued and belled, nothing hangs", async () => {
+    const { r, d } = await startedWhileHubFailed();
+    const held: string[] = [];
+    const cleared: string[] = [];
+    const rc = mcpReconnect(d, {
+      hubUp: async () => true,
+      attempts: () => 3,
+      pollMs: 20,
+      heldPollMs: 50,
+      held: (id) => held.push(id),
+      cleared: (id) => cleared.push(id),
+      log: () => undefined,
+    });
+    expect(await rc.tick()).toEqual(["planner"]);
+    for (let i = 0; i < 250 && r.made.length < 2; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    // A list to pick from, and nobody ever picks.
+    r.made[1].emit(
+      "Which one?\r\n❯ 1. The first\r\n  2. The second\r\n  3. The third\r\n",
+    );
+    // pending() ends: the note is queued, not a blocked call.
+    const ended = await Promise.race([
+      rc.pending().then(() => "ended"),
+      new Promise((res) => setTimeout(() => res("hung"), 15_000).unref()),
+    ]);
+    expect(ended).toBe("ended");
+    await until(() => held.length > 0, 10_000);
+    await new Promise((res) => setTimeout(res, 500));
+    expect(rc.waiting()).toEqual(["planner"]);
+    expect(held).toEqual(["planner"]);
+    expect(cleared).toEqual([]);
+    expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
+    // While it waits, Den doesn't restart it again for the same tools.
+    expect(await rc.tick()).toEqual([]);
+    expect(r.made).toHaveLength(2);
+  }, 40_000);
+
   it("stops after hub.mcp_retry_attempts restarts that didn't bring them; 0 never stops", async () => {
-    const { d } = await startedWhileHubFailed();
+    const { r, d } = await startedWhileHubFailed();
     const missing = async () => [{ id: "planner", workspace: "north" }];
     const once = mcpReconnect(d, {
       hubUp: async () => true,
       attempts: () => 1,
       missing,
       pollMs: 20,
+      heldPollMs: 50,
     });
     expect(await once.tick()).toEqual(["planner"]);
+    // Issue 629: its note waits for its input prompt (never dropped while
+    // it runs), so the restarted agent shows it.
+    for (let i = 0; i < 750 && r.made.length < 2; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    expect(r.made.length).toBeGreaterThanOrEqual(2);
+    r.made[1].emit("> ");
     await once.pending();
+    await until(() => once.waiting().length === 0, 15_000);
     expect(await once.tick()).toEqual([]);
     const always = mcpReconnect(d, {
       hubUp: async () => true,

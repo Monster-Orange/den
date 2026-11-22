@@ -6,6 +6,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   TOOLS_NOTE_HELD_SUBJECT,
+  clearToolsNotesHeld,
   toolsNoteHeldNote,
 } from "../../../src/ui/server/update-check.js";
 
@@ -26,5 +27,24 @@ describe("the tools note waits: the bell", () => {
       }),
     ]);
     expect(String(added[0].text)).toMatch(/waits until you answer planner/);
+  });
+});
+
+describe("the tools note waits: after Den restarts", () => {
+  it("every waiting-note bell item is cleared (the loop that kept it is gone); others stay", () => {
+    let items = [
+      { subject: `${TOOLS_NOTE_HELD_SUBJECT}:planner` },
+      { subject: `${TOOLS_NOTE_HELD_SUBJECT}:builder` },
+      { subject: "record:something-else" },
+    ];
+    const store = {
+      remove: (pred: (n: { subject: string }) => boolean) => {
+        const before = items.length;
+        items = items.filter((n) => !pred(n));
+        return before - items.length;
+      },
+    };
+    expect(clearToolsNotesHeld(store as never)).toBe(2);
+    expect(items.map((n) => n.subject)).toEqual(["record:something-else"]);
   });
 });

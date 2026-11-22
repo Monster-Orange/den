@@ -18,6 +18,8 @@ import { listRecords } from "../../shared/agents/records.js";
 import {
   AgentError,
   agentDialogKind,
+  agentInputState,
+  heldNotAtPrompt,
   hubNow,
   restartAgent,
   typeIntoAgent,
@@ -53,8 +55,13 @@ export async function hubToolsMissing(
 export interface McpReconnect {
   /** One pass: the agents it began restarting. */
   tick(): Promise<string[]>;
-  /** Restarts under way (they wait for the agent's turn to end). */
+  /**
+   * Restarts under way (they wait for the agent's turn to end, then look
+   * once at whether it can take its note).
+   */
   pending(): Promise<void>;
+  /** Issue 629: agents whose note is queued, waiting for them to take it. */
+  waiting(): string[];
 }
 
 export function mcpReconnect(
@@ -78,28 +85,71 @@ export function mcpReconnect(
     heldPollMs?: number;
   },
 ): McpReconnect {
-  /** Type the line; while a dialog for its person is open, keep it. */
-  const tell = async (id: string, workspace: string): Promise<boolean> => {
-    let held = false;
-    for (;;) {
-      if (await typeIntoAgent(d, id, RECONNECTED_LINE)) {
-        if (held) opts.cleared?.(id);
-        return true;
-      }
-      // Not typed: a dialog for its person (kept), or it went (dropped).
-      if (!(await agentDialogKind(d, id))) {
-        if (held) opts.cleared?.(id);
-        return false;
-      }
-      if (!held) {
-        held = true;
-        opts.held?.(id, workspace);
+  /**
+   * Issue 629: one look at the agent. Type the line if it is idle. While it
+   * can't take it (a dialog for its person, a list, not at its prompt, or
+   * the screen refused it), bell once and keep waiting (null); a plain turn
+   * waits with no bell. Done only when typed, or when the agent stops or
+   * goes: what it says is why.
+   */
+  const look = async (
+    id: string,
+    hold: (why: string) => void,
+  ): Promise<{ told: true } | { told: false; why: string } | null> => {
+    const dialog = await agentDialogKind(d, id);
+    if (dialog) return (hold(`its person's ${dialog} dialog is open`), null);
+    const st = await agentInputState(d, id, new Set(), 1500);
+    if (st === "missing") return { told: false, why: "it is gone" };
+    if (st === "stopped") return { told: false, why: "it stopped" };
+    if (st === "idle") {
+      if (await typeIntoAgent(d, id, RECONNECTED_LINE)) return { told: true };
+      hold("its screen didn't take it; Den tries again");
+    } else if (heldNotAtPrompt(id))
+      hold("it isn't at its input prompt (a list or a question shows)");
+    return null;
+  };
+  /**
+   * The notes that wait for their agent. A note is queued, not a call that
+   * waits: each look is scheduled on an unref'd timer, so a restart's
+   * promise (pending()) ends after the first look whatever the agent does.
+   * No time limit: it waits as long as its agent runs.
+   */
+  const notes = new Map<string, { held: boolean }>();
+  const told = (id: string, t: { told: true } | { told: false; why: string }) =>
+    opts.log?.(
+      t.told
+        ? `agent ${id}: restarted to load Hub's tools`
+        : `agent ${id}: restarted to load Hub's tools; its note wasn't typed (${t.why})`,
+    );
+  const tell = async (id: string, workspace: string): Promise<void> => {
+    const n = { held: false };
+    notes.set(id, n);
+    const hold = (why: string) => {
+      if (n.held) return;
+      n.held = true;
+      opts.held?.(id, workspace);
+      opts.log?.(`agent ${id}: Den's note about Hub's tools waits: ${why}`);
+    };
+    const step = async (): Promise<void> => {
+      if (notes.get(id) !== n) return;
+      let t: Awaited<ReturnType<typeof look>> = null;
+      try {
+        t = await look(id, hold);
+      } catch (err) {
         opts.log?.(
-          `agent ${id}: Den's note about Hub's tools waits until its person answers its dialog`,
+          `agent ${id}: Den's note about Hub's tools: ${(err as Error)?.message ?? err}; Den tries again`,
         );
       }
-      await new Promise((r) => setTimeout(r, opts.heldPollMs ?? 2000));
-    }
+      if (notes.get(id) !== n) return;
+      if (t) {
+        notes.delete(id);
+        if (n.held) opts.cleared?.(id);
+        told(id, t);
+        return;
+      }
+      setTimeout(() => void step(), opts.heldPollMs ?? 2000).unref();
+    };
+    await step();
   };
   const tries = new Map<string, number>();
   const running = new Map<string, Promise<void>>();
@@ -113,7 +163,8 @@ export function mcpReconnect(
       const max = opts.attempts();
       const began: string[] = [];
       for (const m of missing) {
-        if (running.has(m.id)) continue;
+        // A note still queued: its restart is under way (issue 629).
+        if (running.has(m.id) || notes.has(m.id)) continue;
         const n = tries.get(m.id) ?? 0;
         if (max > 0 && n >= max) continue;
         tries.set(m.id, n + 1);
@@ -122,13 +173,6 @@ export function mcpReconnect(
           pollMs: opts.pollMs,
         })
           .then(() => tell(m.id, m.workspace))
-          .then((told) =>
-            opts.log?.(
-              told
-                ? `agent ${m.id}: restarted to load Hub's tools`
-                : `agent ${m.id}: restarted to load Hub's tools; its note wasn't typed (it stopped)`,
-            ),
-          )
           .catch((err: unknown) => {
             // 0.4.48: still working (a turn, or a job it left running) when
             // agents.restart_wait_minutes ran out: skipped, tried again on a
@@ -151,6 +195,9 @@ export function mcpReconnect(
     },
     async pending() {
       await Promise.all([...running.values()]);
+    },
+    waiting() {
+      return [...notes.keys()];
     },
   };
 }

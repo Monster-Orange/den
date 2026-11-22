@@ -233,6 +233,19 @@ export function toolsNoteHeldNote(
   });
 }
 
+/**
+ * Issue 629: clear every waiting-note bell item. The loop that kept a note
+ * is in memory: after Den restarts, nothing waits any more, so an item
+ * left over would never go. How many it cleared.
+ */
+export function clearToolsNotesHeld(
+  store: Pick<NotificationStore, "remove">,
+): number {
+  return store.remove((x) =>
+    x.subject.startsWith(`${TOOLS_NOTE_HELD_SUBJECT}:`),
+  );
+}
+
 /** Issue 562 review: the bell line after a restart that stopped waiting. */
 export const RESTARTED_WORKING_SUBJECT = "record:den-update-restarted-working";
 
