@@ -738,7 +738,8 @@ describe("ci.yml (issue 398)", () => {
       text.indexOf("affected-tests.mjs"),
     );
     expect(text).toMatch(
-      /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --summary "\$GITHUB_STEP_SUMMARY"/,
+      // Issue 844: --direct writes the tests that run first.
+      /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --direct direct\.txt --summary "\$GITHUB_STEP_SUMMARY"/,
     );
     for (const name of ["pr", "pr-shards"]) {
       // Issue 998: Node 24 only (the Node installs run); Node 22 runs

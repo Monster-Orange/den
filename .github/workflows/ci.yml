@@ -274,6 +274,11 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # Issue 844: actions: read for the run's start time (the first red's
+    # line in the summary).
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -325,7 +330,12 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
-          node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
+          # Issue 844: direct.txt, the directly affected tests, which run
+          # first (the "direct" step below); the shards wait for this job.
+          node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --direct direct.txt --summary "$GITHUB_STEP_SUMMARY"
+          if grep -q '\.browser\.test\.ts$' direct.txt; then
+            echo 'direct_browser=true' >> "$GITHUB_OUTPUT"
+          fi
           # Issue 996: the merge queue, and a change to package.json's version
           # (a dev-tag or release commit), run the whole suite: a release may
           # be cut from what they tested.
@@ -343,7 +353,9 @@ jobs:
             if [ "$(head -1 affected.txt)" = ALL ]; then
               npx jest --listTests | sed "s#^$PWD/##" | sort > plan-files.txt
             else
-              cp affected.txt plan-files.txt
+              # Issue 844: a subset's shards leave out what ran first here,
+              # as pr-shards does: the same files give the same plan.
+              grep -vxF -f direct.txt affected.txt > plan-files.txt || true
             fi
             count=$(node scripts/shard-plan.cjs --files plan-files.txt --count)
             node scripts/shard-plan.cjs --files plan-files.txt --summary >> "$GITHUB_STEP_SUMMARY"
@@ -379,10 +391,12 @@ jobs:
           path: tested.json
           if-no-files-found: error
           retention-days: 90
-      - if: steps.select.outputs.shards == '[]'
+      # Playwright when this job runs browser specs: its subset, or a
+      # browser spec among the directly affected tests (issue 844).
+      - if: steps.select.outputs.shards == '[]' || steps.select.outputs.direct_browser == 'true'
         id: pw
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
-      - if: steps.select.outputs.shards == '[]'
+      - if: steps.select.outputs.shards == '[]' || steps.select.outputs.direct_browser == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -391,15 +405,39 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
           restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
-        if: steps.select.outputs.shards == '[]'
+        if: steps.select.outputs.shards == '[]' || steps.select.outputs.direct_browser == 'true'
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
+      # Issue 844: the directly affected tests first, whether the rest runs
+      # here or in the shards (pr-shards waits for this job, so a red here
+      # comes before any shard starts). Docker's files run with the rest.
+      - name: The directly affected tests, first
+        id: direct
+        env:
+          DEN_TEST_DOCKER: skip
+          DEN455_SHOTS: ${{ runner.temp }}/den455-shots
+        run: |
+          [ -s direct.txt ] || { echo "no directly affected tests"; exit 0; }
+          mapfile -t files < direct.txt && npm test -- --passWithNoTests "${files[@]}"
+      # Issue 844: how long after the run started the first red came.
+      - name: Time to first red
+        if: ${{ failure() && steps.direct.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          start=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at 2>/dev/null || true)
+          node scripts/ci-first-red.mjs "$start" "the directly affected tests" >> "$GITHUB_STEP_SUMMARY"
       # Issue 296: the files that start Docker containers run after the rest.
+      # Issue 844: the rest leaves out what ran first; with nothing left it
+      # runs nothing (jest with no files would run them all).
       - if: steps.select.outputs.shards == '[]'
         env:
           DEN_TEST_DOCKER: skip
           DEN455_SHOTS: ${{ runner.temp }}/den455-shots
-        run: mapfile -t files < affected.txt && npm test -- --passWithNoTests "${files[@]}"
+        run: |
+          mapfile -t files < <(grep -vxF -f direct.txt affected.txt || true)
+          [ "${#files[@]}" -gt 0 ] || { echo "nothing left after the direct tests"; exit 0; }
+          npm test -- --passWithNoTests "${files[@]}"
       # Issue 455: the address banner's and Edge card's screenshots (only
       # address-banner.browser.test.ts writes them, when DEN455_SHOTS is
       # set), for design review. Nothing when that suite didn't run here.
@@ -452,9 +490,15 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
-          node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
+          node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --direct direct.txt
           # Issue 996: as the pr job picks (the merge queue, a version change).
           if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then echo ALL > affected.txt; fi
+          # Issue 844: a subset leaves out what the pr job ran first (it
+          # passed, or this job wouldn't run). ALL keeps every file.
+          if [ "$(head -1 affected.txt)" != ALL ]; then
+            grep -vxF -f direct.txt affected.txt > rest.txt || true
+            mv rest.txt affected.txt
+          fi
           # ALL: every test file, listed, so the plan can split them.
           if [ "$(head -1 affected.txt)" = ALL ]; then
             npx jest --listTests | sed "s#^$PWD/##" | sort > affected.txt

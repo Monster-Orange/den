@@ -17,13 +17,15 @@
  *             guard, package.json, jest config, CI...).
  *
  *   node scripts/affected-tests.mjs <base> <head> [--out <file>]
- *        [--summary <file>] [--map <file>]
+ *        [--direct <file>] [--summary <file>] [--map <file>]
  *
  * The change is `git diff --name-only <base>...<head>` (what the pull
  * request changes). The map's page rules are also rebuilt from the code
  * (scripts/affected-map.mjs) and added, so a stale map never runs less. Prints one line per test file with its reasons, or ALL
  * with the files that caused it. --out writes the bare list (or the word
- * ALL) for jest; --summary appends a Markdown table (the job summary).
+ * ALL) for jest; --direct writes the directly affected tests (issue 844:
+ * directTests), which run first; --summary appends a Markdown table (the
+ * job summary).
  */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -182,6 +184,52 @@ export function selectTests({
 }
 
 /**
+ * Issue 844: the tests a change affects directly, which a pull request
+ * runs first (one step in the pr job; the shards wait for it): a changed
+ * test file, the tests the map's rules name for a changed file, and the
+ * test named like a changed source file (widget.ts → widget.test.ts, or
+ * widget.browser.test.ts) that jest also relates to it. Never the importers
+ * further away, the smoke set or "everything". Leaves out what `fast` ran
+ * (issue 843). In the order found, each once.
+ */
+/** Issue 844: a map rule naming more tests than this isn't direct. */
+export const DIRECT_RULE_MAX = 10;
+
+export function directTests({
+  changed,
+  allTests,
+  related,
+  map,
+  ranFirst = [],
+}) {
+  const skip = new Set(ranFirst);
+  const tests = allTests.filter((f) => !skip.has(f));
+  const known = new Set(tests);
+  const out = [];
+  const add = (f) => {
+    if (known.has(f) && !out.includes(f)) out.push(f);
+  };
+  for (const f of changed) add(f);
+  for (const rule of map.rules ?? []) {
+    if (!changed.some(matcher(rule.when))) continue;
+    const run = matcher(rule.run);
+    const hits = tests.filter(run);
+    // A rule naming many tests is a fan-out (the docs, read by dozens):
+    // they run with the rest, not first.
+    if (hits.length <= DIRECT_RULE_MAX) hits.forEach(add);
+  }
+  const rel = new Set(related);
+  const stem = (f) =>
+    path.basename(f).replace(/(\.browser)?(\.test)?\.[cm]?[jt]sx?$/, "");
+  for (const f of changed) {
+    if (known.has(f)) continue;
+    const s = stem(f);
+    for (const t of tests) if (rel.has(t) && stem(t) === s) add(t);
+  }
+  return out;
+}
+
+/**
  * The catalog entries a diff of public/i18n/*.js adds or removes:
  * `"key": "text",` lines (either quote), as { keys, texts }.
  */
@@ -325,7 +373,7 @@ function jestImporters(file, cwd = ROOT) {
 
 async function main(argv) {
   const pos = [];
-  const opt = { out: "", summary: "", map: DEFAULT_MAP };
+  const opt = { out: "", direct: "", summary: "", map: DEFAULT_MAP };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k.startsWith("--")) opt[k.slice(2)] = argv[++i];
@@ -334,7 +382,7 @@ async function main(argv) {
   const [base, head] = pos;
   if (!base || !head) {
     console.error(
-      "usage: affected-tests.mjs <base> <head> [--out <file>] [--summary <file>] [--map <file>]",
+      "usage: affected-tests.mjs <base> <head> [--out <file>] [--direct <file>] [--summary <file>] [--map <file>]",
     );
     return 2;
   }
@@ -406,6 +454,16 @@ async function main(argv) {
       opt.out,
       sel.all ? "ALL\n" : [...sel.files.keys()].join("\n") + "\n",
     );
+  if (opt.direct) {
+    const direct = directTests({
+      changed,
+      allTests,
+      related,
+      map,
+      ranFirst: ranFirstTests(),
+    });
+    fs.writeFileSync(opt.direct, direct.length ? direct.join("\n") + "\n" : "");
+  }
   if (opt.summary)
     fs.appendFileSync(opt.summary, summaryMarkdown(sel, changed.length));
   return 0;
