@@ -32,6 +32,7 @@ import { writeFileAtomic } from "../atomic-write.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
+  BOX_NAME_RE,
   assign,
   boxCapOf,
   boxesOf,
@@ -947,6 +948,8 @@ export class GateStore {
     browserEndpoint?: string;
     /** Issue 1033: why a run that could go to a box stays here. */
     hostWhy?: string;
+    /** Issue 1033: a default pick's boxes (the others can't serve it). */
+    onlyBoxes?: string[];
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -978,6 +981,13 @@ export class GateStore {
         ...browserEndpointOf(o.kind, o.browserEndpoint),
         ...(o.kind === "browser" && o.hostWhy
           ? { hostWhy: oneLineOf(o.hostWhy) }
+          : {}),
+        ...(o.kind === "browser" && o.where === "any" && o.onlyBoxes
+          ? {
+              onlyBoxes: o.onlyBoxes
+                .filter((n) => BOX_NAME_RE.test(n))
+                .slice(0, 64),
+            }
           : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });

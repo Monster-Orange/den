@@ -145,6 +145,11 @@ export interface GateEntry {
    * default but stays on this machine: why, in one line.
    */
   hostWhy?: string;
+  /**
+   * Issue 1033: a default pick (where "any") may take only these boxes:
+   * the others can't serve it (no ssh, no declared Playwright version).
+   */
+  onlyBoxes?: string[];
   box?: string;
   boxTimeScale?: number;
   /**

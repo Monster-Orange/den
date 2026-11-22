@@ -403,7 +403,12 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
   if (e.kind !== "browser") return ["local"];
   const w = e.where ?? "local";
   if (w === "local") return ["local"];
-  const fits = boxes.filter((b) => !versionSkip(e.pwVersion, b));
+  // Issue 1033: a default pick names the boxes that can serve it.
+  const fits = boxes.filter(
+    (b) =>
+      !versionSkip(e.pwVersion, b) &&
+      (!e.onlyBoxes || e.onlyBoxes.includes(b.name)),
+  );
   if (w === "any") return ["local", ...fits.map((b) => b.name)];
   return fits.some((b) => b.name === w) ? [w] : [];
 }
@@ -799,7 +804,14 @@ export function defaultPlace(o: {
    * one in its environment): why it stays here, in words.
    */
   ownBrowser?: string;
-}): { where?: "any"; why?: string } {
+}): {
+  where?: "any";
+  why?: string;
+  /** The boxes it may take (where "any"), when some are skipped. */
+  only?: string[];
+  /** Those skipped, and why, in one line. */
+  skipped?: string;
+} {
   if (o.setting === "local" || !o.boxes.length) return {};
   const rule = hostOnlyMatch(o, o.hostOnly);
   if (rule)
@@ -813,15 +825,37 @@ export function defaultPlace(o: {
     return { why: "no --base-url, so a test box can't reach the app" };
   const skips = o.boxes.map((b) => ({
     name: b.name,
-    reason: boxSkipReason({ pwVersion: o.pwVersion }, b),
+    reason: defaultSkip(b, o.pwVersion),
   }));
+  const said = skips
+    .filter((x) => x.reason)
+    .map((x) => x.reason)
+    .join("; ");
   if (skips.every((x) => x.reason))
-    return {
-      why: oneLine(
-        `no test box serves ${o.pwVersion ? `Playwright ${o.pwVersion}` : "this run's Playwright"} (${skips
-          .map((x) => `${x.name}: ${x.reason}`)
-          .join("; ")})`,
-      ),
-    };
-  return { where: "any" };
+    return { why: oneLine(`no test box can take it: ${said}`) };
+  if (!said) return { where: "any" };
+  return {
+    where: "any",
+    only: skips.filter((x) => !x.reason).map((x) => x.name),
+    skipped: oneLine(said),
+  };
+}
+
+/**
+ * Issue 1033: why a default pick can't send a run with --base-url to this
+ * box, or "". Only an explicit --box <name> takes such a box (as before):
+ *   no ssh: the box can't reach this machine's ports, so the run's own
+ *     servers here refuse its browser;
+ *   no declared Playwright version (playwright_version or
+ *     playwright_endpoints): its server refuses a client of another
+ *     version (HTTP 428), and which one it runs can't be said;
+ *   a declared version that doesn't serve the run's (clause 11).
+ */
+function defaultSkip(b: GateBox, pwVersion: string | undefined): string {
+  if (!b.ssh)
+    return `box ${b.name} has no ssh, so it can't reach this machine's ports`;
+  if (!b.playwright_version && !b.playwright_endpoints)
+    return `box ${b.name} declares no Playwright version`;
+  const v = boxSkipReason({ pwVersion }, b);
+  return v ? `box ${b.name}: ${v}` : "";
 }

@@ -121,7 +121,14 @@ export function gateView(store: GateStore, now = Date.now()) {
     if (e.grantedAt || !e.where) return [];
     return boxes
       .filter((b) => e.where === "any" || e.where === b.name)
-      .map((b) => ({ box: b.name, reason: boxSkipReason(e, b) }))
+      .map((b) => ({
+        box: b.name,
+        // Issue 1033: a default pick leaves out a box that can't serve it.
+        reason:
+          e.onlyBoxes && !e.onlyBoxes.includes(b.name)
+            ? "no ssh or no declared Playwright version: a run takes it only with --box"
+            : boxSkipReason(e, b),
+      }))
       .filter((x) => x.reason);
   };
   const held = windowHeld(all, settings.classes, now);

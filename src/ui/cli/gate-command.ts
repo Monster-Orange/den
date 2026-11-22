@@ -672,6 +672,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // Issue 1033: no --box: the first free browser slot, here or on a test
   // box; or here, saying why in one line (never a failure for it).
   let hostWhy: string | undefined;
+  let onlyBoxes: string[] | undefined;
   if (anyByDefault && d.store.boxes().length) {
     const badUrl = urls.map(checkBaseUrl).find(Boolean);
     const pick = badUrl
@@ -697,7 +698,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         });
     where = pick.where;
     hostWhy = pick.why;
+    onlyBoxes = pick.only;
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
+    if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
   const verdict = browserSlotCheck({
     kind: kind as GateKind,
@@ -783,6 +786,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(pwVersion ? { pwVersion } : {}),
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       ...(hostWhy ? { hostWhy } : {}),
+      ...(onlyBoxes ? { onlyBoxes } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
