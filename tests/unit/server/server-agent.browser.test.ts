@@ -289,6 +289,19 @@ describe("after setup", () => {
     await p.context().close();
   }, 60_000);
 
+  it("one project's view leaves it out: only All projects lists it (issue 773)", async () => {
+    if (!browser) return;
+    const p = await open(s!, "/agents?ws=north");
+    await p.waitForSelector("#agl:not([aria-busy])", { timeout: 20_000 });
+    await p.waitForTimeout(500);
+    expect(
+      await p
+        .locator("#agl button[data-kind]", { hasText: "Acme agent" })
+        .count(),
+    ).toBe(0);
+    await p.context().close();
+  }, 60_000);
+
   it("⌘K has Ask the Acme agent, which opens it", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");

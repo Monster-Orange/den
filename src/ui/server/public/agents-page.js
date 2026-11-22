@@ -422,12 +422,19 @@ const urlWorkspace = () => {
  * or isn't known: never All in its place), else the scope bar's view.
  */
 function viewWorkspaces() {
+  return pickedWorkspace() ? [pickedWorkspace()] : (st.data?.workspaces ?? []);
+}
+
+/**
+ * The one project the view is on (?ws=, or the scope bar's pick), or null
+ * on All projects.
+ */
+function pickedWorkspace() {
   const all = st.data?.workspaces ?? [];
   const ws = urlWorkspace();
-  if (ws) return [ws];
-  if (st.scope && st.scope !== "all" && all.includes(st.scope))
-    return [st.scope];
-  return all;
+  if (ws) return ws;
+  if (st.scope && st.scope !== "all" && all.includes(st.scope)) return st.scope;
+  return null;
 }
 
 function stateTone(r) {
@@ -1171,12 +1178,15 @@ function paintList() {
     );
     return;
   }
-  // ON-6: the server agent's group, "Server", first, whatever the view.
+  // ON-6: the server agent, tagged Server. Issue 773: in All projects
+  // only; one project's view shows only its own agents.
   // D71: agents whose workspace was deleted, under its old name.
   const orphans = st.data.sessions.filter((s) => s.orphan);
   const shown = [
     ...new Set([
-      ...(st.data.sessions.some((s) => s.server) ? [SERVER_WS] : []),
+      ...(!pickedWorkspace() && st.data.sessions.some((s) => s.server)
+        ? [SERVER_WS]
+        : []),
       ...viewWorkspaces(),
       ...orphans.map((s) => s.workspace),
     ]),
@@ -1318,7 +1328,7 @@ function stoppedGroupHtml(rows) {
 
 /**
  * #80: whether session `s` belongs in this view: the view's projects, the
- * server agent (it spans projects) and an agent whose project was deleted
+ * server agent (it spans projects; issue 773: in All projects only) and an agent whose project was deleted
  * (D71). 0.4.44 added the open tabs' projects too, which mixed another
  * project's agents into a project's list; a tab from another project is
  * now left out instead (hideOtherProjects), so the list always has the
@@ -1326,7 +1336,9 @@ function stoppedGroupHtml(rows) {
  */
 function inView(s) {
   if (!s) return false;
-  if (s.server || s.workspace === SERVER_WS || s.orphan) return true;
+  // Issue 773: the server agent in All projects only.
+  if (s.server || s.workspace === SERVER_WS) return !pickedWorkspace();
+  if (s.orphan) return true;
   return viewWorkspaces().includes(s.workspace);
 }
 
