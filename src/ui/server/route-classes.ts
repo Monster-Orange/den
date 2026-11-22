@@ -788,6 +788,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/gate-slots/boxes/remove",
     "Issue 625: a person removes a test box; its running slots finish",
   ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes/enable",
+    "Issue 625: a person turns a test box on or off; off, it gets no slot and no contact",
+  ),
   R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
@@ -835,6 +840,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/notifications/mute",
     "NT-3: mute an agent or a project for a time",
+  ),
+  M(
+    ["POST"],
+    "/api/notifications/withdraw",
+    "Issue 1008: withdraw a question settled elsewhere (the agent that asked, or the person); audited",
   ),
   M(
     ["POST"],
