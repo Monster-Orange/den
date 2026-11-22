@@ -57,7 +57,14 @@ beforeAll(async () => {
         NO_COLOR: "1",
       },
     },
-    { timeoutMs: 60_000 },
+    {
+      timeoutMs: 60_000,
+      // A test box's run names the app's address ahead (the gate's
+      // --base-url): DEN_TEST_PORT fixes the port; else any free one.
+      ...(process.env.DEN_TEST_PORT
+        ? { pickPort: () => Promise.resolve(Number(process.env.DEN_TEST_PORT)) }
+        : {}),
+    },
   );
   server = started.server;
   port = started.port;
@@ -147,12 +154,11 @@ describe("the bell's Allow row: Review", () => {
       await expect(
         p.evaluate(() => (document.activeElement as HTMLElement)?.dataset.bell),
       ).resolves.toBe("review");
-      // Allow and Deny: the same x and size; open, they may move down with
-      // the row's text only if the row wraps (phone), never sideways.
+      // Allow and Deny don't move: the same place and size, open or closed.
       for (const k of ["allow", "deny"] as const) {
         const now = await box(p, k);
-        expect(Math.round(now.x)).toBe(Math.round(before[k].x));
-        expect(Math.round(now.width)).toBe(Math.round(before[k].width));
+        for (const d of ["x", "y", "width", "height"] as const)
+          expect(Math.round(now[d])).toBe(Math.round(before[k][d]));
       }
       // Nothing runs off the panel's right edge.
       const pop = (await p.locator("#den-bell-pop").boundingBox())!;
