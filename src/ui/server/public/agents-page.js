@@ -1335,7 +1335,9 @@ function paintList() {
                     orderRowHtml(
                       rowHtml(r),
                       r,
-                      phone() && st.reorderBand === b.state && runningMovable(r),
+                      phone() &&
+                        st.reorderBand === b.state &&
+                        runningMovable(r),
                     ),
                   )
                   .join("") +

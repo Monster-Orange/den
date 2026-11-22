@@ -164,9 +164,8 @@ async function open(next: string): Promise<Page> {
 const listed = (p: Page) =>
   p.$$eval(
     "#agl .agband button.agr[data-ws], #agl [data-stopped] .agst[data-ws]",
-    (xs) => [
-    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
-  ]);
+    (xs) => [...new Set(xs.map((x) => (x as HTMLElement).dataset.ws))],
+  );
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),
