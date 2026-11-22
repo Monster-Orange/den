@@ -438,11 +438,10 @@ function patchSessions(
 ): string | null {
   if (value === undefined) return null;
   const keys: readonly string[] = SESSIONS_SETTINGS_KEYS;
-  if (!isObj(value))
-    return `sessions takes the terminal limits: ${keys.join(", ")}`; // words-ok: the config key people type
+  if (!isObj(value)) return `the terminal limits are ${keys.join(", ")}`;
   for (const [k, v] of Object.entries(value)) {
     if (!keys.includes(k))
-      return `sessions.${k} is not a terminal limit (${keys.join(", ")})`; // words-ok: the config key people type
+      return `${k} is not a terminal limit (${keys.join(", ")})`;
     if (v === null) continue;
     const e = sessionsValueError(k, v);
     if (e) return e;
