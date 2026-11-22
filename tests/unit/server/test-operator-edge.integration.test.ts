@@ -193,7 +193,10 @@ beforeAll(async () => {
   s = await startAgentsPageServer({
     testInstall: true,
     edgeProof: true,
-    userYml: `web:\n  url: https://${NAMED}\n`,
+    // An install that counts an edge client it can't place as local (Docker
+    // Desktop, OrbStack): the operator still needs the edge to attest this
+    // machine (review of issue 1034).
+    userYml: `web:\n  url: https://${NAMED}\n  edge_unattested: local\n`,
   });
   fx = await fixtureSession({});
   fe = await fixtureSession({ host: NAMED, ...EDGE });
@@ -253,6 +256,21 @@ describe("nothing else widens through the edge", () => {
       viaEdge({ "x-forwarded-proto": "wss", "x-forwarded-for": "203.0.113.7" }),
     );
     expect(st).toBe(403);
+  }, 30_000);
+
+  it("a client the edge can't place (unattested, counted local here): refused", async () => {
+    const id = await ownShell();
+    // OrbStack presents the host to its containers as 0.250.250.254, and any
+    // other machine's request through it can look the same.
+    expect(
+      await attach(
+        id,
+        viaEdge({
+          "x-forwarded-proto": "wss",
+          "x-forwarded-for": "0.250.250.254",
+        }),
+      ),
+    ).toBe(403);
   }, 30_000);
 
   it("the edge's headers without its proof: refused", async () => {

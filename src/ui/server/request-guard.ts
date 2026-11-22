@@ -271,8 +271,13 @@ export type GuardResult =
       via: Via;
       /** Beyond loopback: the edge, a LAN name, or a non-loopback peer. */
       beyond: boolean;
-      /** Via the edge, with the install's own edge's proof (H1; issue 1034). */
-      edgeProved: boolean;
+      /**
+       * Via the edge, with the install's own edge's proof (H1), and the edge
+       * attests the client is this machine (edgeClient "local"): never an
+       * unattested client, even where web.edge_unattested counts it local.
+       * Issue 1034: the test operator's own shell through the edge.
+       */
+      edgeLocal: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
       /**
@@ -821,7 +826,7 @@ export function checkRequest(
     principal: p,
     via,
     beyond,
-    edgeProved: proved,
+    edgeLocal: proved && who === "local",
     session,
     ...(client ? { client: normAddress(client) } : {}),
   });
@@ -904,7 +909,7 @@ export function checkRequest(
       principal: null,
       via,
       beyond,
-      edgeProved: proved,
+      edgeLocal: proved && who === "local",
       session: null,
       ending,
       ...(client ? { client: normAddress(client) } : {}),
