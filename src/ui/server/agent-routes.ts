@@ -112,6 +112,7 @@ import {
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
+import { rememberOperatorShell } from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
@@ -185,6 +186,7 @@ import {
   rotationSettings,
   setRotationSetting,
   rotationTick,
+  exitTick,
   trustTick,
   TRUST_DECLINED,
   TRUST_WAITING,
@@ -225,6 +227,9 @@ import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
   auditActorOf,
+  notAPersonOf,
+  operatorActOf,
+  personOrOperator,
   principalOf,
 } from "./request-guard.js";
 import {
@@ -273,6 +278,8 @@ const AGENTS_PATH =
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
+/** Issue 459: GET a project's app event feeds and their state. */
+const EVENT_FEEDS_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds$/;
 /** Issue 352: one of them, changed or removed by a person. */
 const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
@@ -420,6 +427,35 @@ function restarted(what: string, s: { already?: { at: string } }): string {
     : what;
 }
 
+/** Issue 89: how many of its last lines the error's own words carry. */
+const EARLY_LINES_SAID = 3;
+
+/**
+ * Issue 89: the answer to a start (or resume) whose agent exited at once:
+ * its exit code and its last lines (redacted) in the words every page and
+ * pop-up shows, and all of its tail for a page to show line by line.
+ */
+export function earlyExitAnswer(
+  id: string,
+  early: NonNullable<Started["early"]>,
+  warnings: readonly string[] = [],
+): Record<string, unknown> {
+  const code = early.exitCode === undefined ? "" : ` (exit ${early.exitCode})`;
+  const last = early.tail.slice(-EARLY_LINES_SAID);
+  const said = last.length
+    ? `. Its last ${last.length === 1 ? "line" : `${last.length} lines`}: ${last.join(" / ")}`
+    : ". It printed nothing";
+  return {
+    ok: false,
+    error: `agent ${id} exited at once${code}${said}`,
+    code: "exited_at_once",
+    ...(early.exitCode === undefined ? {} : { exitCode: early.exitCode }),
+    tail: early.tail,
+    session: early.sessionName,
+    ...(warnings.length ? { warnings } : {}),
+  };
+}
+
 function sendStarted(
   res: http.ServerResponse,
   s: Started & { fresh?: boolean },
@@ -427,20 +463,7 @@ function sendStarted(
   extra: Record<string, unknown> = {},
 ): void {
   if (s.early) {
-    const code =
-      s.early.exitCode === undefined ? "" : ` (exit ${s.early.exitCode})`;
-    sendJson(
-      res,
-      {
-        ok: false,
-        error: `agent ${s.rec.id} exited at once${code}`,
-        code: "exited_at_once",
-        tail: s.early.tail,
-        session: s.early.sessionName,
-        ...(s.warnings.length ? { warnings: s.warnings } : {}),
-      },
-      502,
-    );
+    sendJson(res, earlyExitAnswer(s.rec.id, s.early, s.warnings), 502);
     return;
   }
   sendJson(res, {
@@ -586,6 +609,8 @@ export async function handleAgentRoutes(
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
   const mcpp = MCP_SERVERS_PATH.exec(pathname);
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
+  const efp = EVENT_FEEDS_PATH.exec(pathname);
+  if (efp) return eventFeedsRoute(req, res, efp[1], webDeps(deps.agents));
   const mcp1 = MCP_SERVER_PATH.exec(pathname);
   if (mcp1)
     return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
@@ -963,6 +988,21 @@ export async function handleAgentRoutes(
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Any other agent: refused, as a
+    // person-only act is.
+    const opAct = operatorActOf(req);
+    if (
+      (opAct === "agent-say" || opAct === "agent-relaunch") &&
+      (id === undefined || agentRecord(d, id, ws).testBed !== true)
+    )
+      throw new AgentError(
+        opAct === "agent-say"
+          ? "only a person can send an agent a message"
+          : "only a person can relaunch an agent",
+        { status: 403 },
+      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
@@ -1002,7 +1042,7 @@ export async function handleAgentRoutes(
       });
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
-    if (verb === "say" && (agent || actor))
+    if (verb === "say" && !personOrOperator(req, "agent-say"))
       throw new AgentError("only a person can send an agent a message", {
         status: 403,
       });
@@ -1838,10 +1878,13 @@ async function plainSession(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person,
+    // except as the test operator's terminal-start.
+    if (!personOrOperator(req, "terminal-start"))
       throw new AgentError("an agent can't start a session from the page", {
         status: 403,
       });
+    const operator = operatorActOf(req) === "terminal-start";
     // Issue 479: an optional { cwd } (Open a terminal there). No body,
     // or none of it: the project's folder, as before.
     const raw = await readBody(req).catch(() => "");
@@ -1856,8 +1899,26 @@ async function plainSession(
     const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
     if (b.cwd !== undefined && typeof b.cwd !== "string")
       throw new AgentError("cwd must be a string", { usage: true });
+    // Issue 482: { replaces } (Restart): the exited terminal it replaces.
+    if (b.replaces !== undefined && typeof b.replaces !== "string")
+      throw new AgentError("replaces must be a string", { usage: true });
     const cwd = b.cwd as string | undefined;
-    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    const replaces = b.replaces as string | undefined;
+    // Issue 814: the test operator's terminal (Den's fixed stub, never a
+    // shell) opens in the project's folder only, remembered by host id.
+    if (operator && (cwd !== undefined || replaces !== undefined))
+      throw new AgentError(
+        "the test operator's terminal takes no cwd or replaces",
+        { status: 403 },
+      );
+    const { info } = await startPlainSession(
+      d,
+      ws,
+      operator
+        ? { operator: true }
+        : { ...(cwd ? { cwd } : {}), ...(replaces ? { replaces } : {}) },
+    );
+    if (operator) rememberOperatorShell(info.ref.id);
     what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {
@@ -1895,7 +1956,9 @@ async function runtimePath(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person
+    // (it was let through here by its unverified claim).
+    if (notAPersonOf(req))
       throw new AgentError("an agent can't set a runtime's path", {
         status: 403,
       });
@@ -2414,11 +2477,29 @@ export function startAgentUpkeep(
           log(`Relaunched ${who} from its handoff after ${e.why}`);
         } else if (e.kind === "asked")
           log(`Asked ${who} for its handoff (${e.asked} of 2)`);
+        else if (e.kind === "waiting")
+          log(
+            `Rotation of ${who} waits: ${e.running} background item(s) it started still run`,
+          );
         else if (e.kind === "fell-back")
           log(
             `  ⚠ ${who} wrote no handoff after 2 asks: its callout asks the person`,
           );
         else log(`  ⚠ rotation of ${who}: ${e.why}`);
+      }
+      // Issue 926: a session that ended without Den asking: recorded,
+      // told, and brought back once (exit 0 is left down).
+      for (const e of await exitTick(d)) {
+        const who = `${e.agent} in ${e.workspace}`;
+        if (e.kind === "resumed" || e.kind === "relaunched")
+          log(
+            `Agent ${who} ended without Den asking (exit ${e.code}); ${e.kind === "relaunched" ? "relaunched from its handoff" : "resumed"}`,
+          );
+        else if (e.kind === "left")
+          log(
+            `  ⚠ agent ${who} ended without Den asking (exit ${e.code}): ${e.why}`,
+          );
+        else log(`Agent ${who} quit by itself (exit 0)`);
       }
       // Issue 658: a relaunch whose conversation was never written (it
       // ended at the folder-trust question, say) can relaunch again.
@@ -2791,6 +2872,34 @@ async function mcpServersRoute(
     return true;
   }
   sendJson(res, { ok: true, ...projectMcpView(d, ws) });
+  return true;
+}
+
+/**
+ * Issue 459: GET /api/workspaces/:ws/event-feeds: the project's app event
+ * feeds with their state (connected, retrying, last event time); names,
+ * agents and urls only, never a bearer or its value.
+ */
+async function eventFeedsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  const { appFeedsView } = await import("./app-feed-service.js");
+  sendJson(res, { ok: true, ...appFeedsView(ws) });
   return true;
 }
 

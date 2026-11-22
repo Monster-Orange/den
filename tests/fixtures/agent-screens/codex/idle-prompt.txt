@@ -1,0 +1,10 @@
+╭───────────────────────────────────────╮
+│ >_ OpenAI Codex                       │
+│                                       │
+│ model:     <model>                    │
+│ directory: ~/web                      │
+╰───────────────────────────────────────╯
+
+› Ask Codex to do anything
+
+  ? for shortcuts

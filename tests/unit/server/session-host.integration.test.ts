@@ -35,6 +35,11 @@ import {
   WebSessionStore,
 } from "../../../src/shared/web-session.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import {
+  bindActorSession,
+  mintActorToken,
+} from "../../../src/shared/actor-token.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 
@@ -201,6 +206,9 @@ async function boot(lan: boolean): Promise<void> {
       "  org: acme",
       "  domain: acme.test",
       "  tls: none",
+      // Issue 796: an agent's token from this test process.
+      "agents:",
+      "  token_binding: false",
       "",
     ].join("\n"),
   );
@@ -388,6 +396,70 @@ describe("once it works: no session on a loopback name", () => {
   it("a plain read on loopback stays open", async () => {
     const r = await call("GET", "/api/settings", local());
     expect(r.status).toBe(200);
+  });
+});
+
+describe("once it works: an agent's read-only view stays on loopback", () => {
+  /** An agent's token, bound to a session that runs, as Den's start does. */
+  const agentToken = () => {
+    const dir = sessionPaths(stateDir).dir;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "s-viewer.json"), "{}");
+    const t = mintActorToken(stateDir, {
+      agentId: "viewer",
+      workspace: "north",
+      sessionName: "viewer",
+    });
+    bindActorSession(stateDir, t.key, "s-viewer");
+    return t.token;
+  };
+  const viewLink = async () => {
+    const r = await call(
+      "POST",
+      "/api/agents/self/view",
+      { ...local(), authorization: `Bearer ${agentToken()}` },
+      JSON.stringify({ next: "/agents" }),
+    );
+    expect(r.status).toBe(200);
+    const u = new URL(String((JSON.parse(r.body) as { url: string }).url));
+    return `${u.pathname}${u.search}`;
+  };
+
+  it("its link opens on loopback, never sent to the named address, and the view counts there", async () => {
+    const r = await call("GET", await viewLink(), { ...local(), ...nav });
+    expect([r.status, String(r.headers.location)]).toEqual([303, "/agents"]);
+    const cookie = sessionLine(r).split(";")[0];
+    expect(cookie).not.toBe("");
+    const me = await call("GET", "/api/session", {
+      ...local(),
+      cookie,
+      "sec-fetch-site": "same-origin",
+    });
+    const body = JSON.parse(me.body) as {
+      csrf?: string;
+      view?: { readOnly?: boolean };
+    };
+    expect(body.view?.readOnly).toBe(true);
+    // Signed out again: the install holds only the sessions the rest make.
+    const out = await call(
+      "POST",
+      "/api/session/logout",
+      {
+        ...local(),
+        cookie,
+        origin: `http://localhost:${port}`,
+        "x-den-csrf": body.csrf ?? "",
+        "sec-fetch-site": "same-origin",
+      },
+      "{}",
+    );
+    expect(out.status).toBe(200);
+  });
+
+  it("its link opened through the edge is refused, and makes no session", async () => {
+    const r = await call("GET", await viewLink(), { ...named(), ...nav });
+    expect(r.status === 303).toBe(false);
+    expect(sessionLine(r)).toBe("");
   });
 });
 

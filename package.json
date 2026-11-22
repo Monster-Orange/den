@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.81",
+  "version": "0.4.82",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -26,6 +26,7 @@
     "scripts/setup-secrets.ts",
     "scripts/view-results.js",
     "LICENSE",
+    "THIRD_PARTY_NOTICES",
     "README.md",
     "CHANGELOG.md",
     "docs/",

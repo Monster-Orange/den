@@ -19,6 +19,7 @@ import {
   type Delivery,
   type DeliveryOwner,
 } from "../../shared/hub-delivery.js";
+import { appendJournal } from "../../shared/hub-delivery-journal.js";
 import { hubCommentsBell } from "./hub-comments-bell.js";
 import {
   DeliveryLoop,
@@ -38,6 +39,8 @@ import {
   type InboxSettings,
 } from "../../shared/hub-inbox-watch.js";
 import { getStateDir } from "../../shared/paths.js";
+import { readUserConfig } from "../../shared/den-config.js";
+import { embedSettings } from "./embed-settings.js";
 
 const PUMP_MS = 2000;
 /** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
@@ -403,6 +406,26 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
         )
         .catch(() => undefined);
     },
+    // P0-D2: an owner's approval clears the questions that name it, on
+    // arrival; another agent whose question named it is told.
+    approved: (dv) => {
+      void Promise.all([
+        import("./notification-service.js"),
+        import("./hub-approval.js"),
+      ])
+        .then(([{ notificationDeps }, { settleApproval }]) =>
+          settleApproval(dv, {
+            approvedAbout: (a, ws, keys, version) =>
+              notificationDeps().attention.approvedAbout(a, ws, keys, version),
+            log: (l) => o.log(l),
+            workspaceOf: (a) => readRecord(getStateDir(), a)?.workspace ?? null,
+            owner: () => owner,
+            takeLocal: (x) =>
+              loop ? loop.takeLocal(x) : Promise.resolve(false),
+          }),
+        )
+        .catch(() => undefined);
+    },
     // Issue 664: text held because the agent isn't at its prompt: the
     // bell says so once it has waited hub.delivery_held_note_seconds, and
     // keeps saying it (refreshed each minute) until it's typed.
@@ -428,9 +451,24 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
     ),
+    // Issue 459: app feed pointers keep their own seen ids.
+    feedSeen: new SeenDeliveries(
+      path.join(getStateDir(), "hub", "feed-pointers-seen.json"),
+    ),
+    // Issue 459: one paste holds at most embed.paste_max_kb.
+    pasteMaxChars: () => {
+      try {
+        return embedSettings(readUserConfig()).paste_max_kb * 1024;
+      } catch {
+        return 256 * 1024;
+      }
+    },
     heartbeatMs: o.heartbeatSeconds * 1000,
     pollMs: o.pollSeconds * 1000,
     log: o.log,
+    // P0-D4: every delivery's outcome, for doctor (no body or name).
+    journal: (e) =>
+      appendJournal(path.join(getStateDir(), "hub", "deliveries.jsonl"), e),
     // Issue 702: doctor reads the path's health from a file.
     onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
     health0: {
@@ -510,6 +548,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
   };
   // A new connection may be a different person: never keep the old one.
   owner = null;
+  loop?.ownerReset();
   ownerAskedAt = 0;
   await askOwner();
   startHubNotes(o.log);
@@ -561,6 +600,16 @@ export async function relayMessage(dv: Delivery): Promise<boolean> {
   if (!lastOpts) return false;
   const l = await ensureLoop(lastOpts);
   return l.takeLocal(dv);
+}
+
+/** Issue 459: whether the loop has taken (or passed over) Den's own item `id`. */
+export function relaySeen(id: string): boolean {
+  return loop?.seenLocal(id) ?? false;
+}
+
+/** Issue 459: whether the loop still waits to type (or is typing) `id`. */
+export function relayHolds(id: string): boolean {
+  return loop?.holds(id) ?? false;
 }
 
 /** Issue 334: how many relayed messages wait for `agent`. */

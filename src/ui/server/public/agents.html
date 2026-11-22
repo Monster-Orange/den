@@ -1043,6 +1043,47 @@
         color: var(--muted);
         font-size: 12.5px;
       }
+      /* Issue 482: the Terminals page's rows. The whole row is its open
+         button; an exited one's Restart and Remove sit beside it, full
+         strength, while the row itself is dimmed. */
+      .tmrow {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .tmrow > .agr {
+        flex: 1 1 0;
+        min-width: min(100%, 12em);
+      }
+      .tmrow > .agacts {
+        flex: none;
+        flex-wrap: nowrap;
+        gap: 4px;
+        padding: 0 8px 0 0;
+      }
+      .tmrow.exited > .agr {
+        opacity: 0.55;
+      }
+      .tmrow .proj {
+        color: var(--muted);
+      }
+      .agl .tmnone {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .agl .tmnone strong {
+        color: var(--text);
+      }
+      /* A phone: rows at least 64px, their buttons 44px (the mock). */
+      @media (max-width: 480px) {
+        .tmrow > .agr {
+          min-height: 64px;
+        }
+        .tmrow > .agacts .den-btn {
+          min-height: 44px;
+        }
+      }
       dialog.ag-dlg {
         /* The approved mock's Start agent dialog (AG-0.5), measured on
            den-shell.html: .dlg.wide, min(600px, 100%) of content in a
@@ -1139,6 +1180,24 @@
         border-radius: var(--radius-button);
         padding: 6px 8px;
       }
+      /* Issue 89: what a failed start printed, line by line. */
+      #ag-err .ag-tail-h,
+      #ag-err .ag-tail {
+        display: block;
+        margin-top: 6px;
+      }
+      #ag-err .ag-tail {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 12em;
+        overflow: auto;
+        font: 12px/1.4 var(--mono);
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 6px 8px;
+      }
       .ag-dlg .btns {
         display: flex;
         gap: 8px;
@@ -1170,6 +1229,18 @@
            260px ran about 56px under it. Shut, it keeps its 260px. */
         body:has(.den-dock.open) .pane {
           min-height: 180px;
+        }
+        /* Issue 194: a banner (Den's server isn't responding) pushes the
+           page down. While it shows, the pane gives way to its own minimum
+           (its bar and the To line) and the list to about one row (it
+           scrolls), so the To line stays above the open dock. At 390x844
+           the list's two-row floor was what held it 26px too tall; with
+           room to spare both rows still fill as before. */
+        body:has(.den-dock.open):has(#den-banners:not([hidden])) .pane {
+          min-height: 0;
+        }
+        body:has(.den-dock.open):has(#den-banners:not([hidden])) .agx {
+          grid-template-rows: minmax(3rem, max-content) minmax(min-content, 1fr);
         }
         /* A pane's height comes from its row, never its terminal's (a
            24-row terminal held it taller than the screen, under the dock). */

@@ -499,7 +499,10 @@ export async function mountSettings(deps) {
           ? `<span class="set-unit" aria-hidden="true">${esc(c.unit)}</span>`
           : "");
     } else if (t === "text") {
-      ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}" ${desc}>`;
+      // Issue 158: a field may stop at the server's limit.
+      const ml = r.control.maxLength;
+      const max = Number.isInteger(ml) ? ` maxlength="${ml}"` : "";
+      ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}"${max} ${desc}>`;
     } else if (t === "toggle") {
       ctl = `<input type="checkbox" class="set-check" id="${cid}" data-focus-key="${id}"${v ? " checked" : ""} ${desc}>`;
       // Bell v6: a switch may say what being off means (waiting).
