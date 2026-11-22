@@ -158,6 +158,9 @@ export class SeenMarks {
 
 const stores = new Map<string, SeenMarks>();
 
+/** Issue 773: an agent's seen-mark subject (its finished work). */
+export const agentSeenSubject = (id: string): string => `agent:${id}`;
+
 /** The one store for `stateDir` (default: Den's state folder). */
 export function seenMarks(stateDir: string = getStateDir()): SeenMarks {
   let s = stores.get(stateDir);

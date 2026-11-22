@@ -14,7 +14,7 @@
  */
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import type * as http from "http";
-import type { SeenMarks } from "../../shared/seen-mark.js";
+import { agentSeenSubject, type SeenMarks } from "../../shared/seen-mark.js";
 import { principalOf } from "./request-guard.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import { osUser } from "../../shared/web-secret.js";
@@ -32,7 +32,7 @@ export interface AgentStateDeps {
 }
 
 /** The seen mark's subject for agent `id`. */
-export const agentSubject = (id: string): string => `agent:${id}`;
+export const agentSubject = agentSeenSubject;
 
 /**
  * Whose seen marks a request reads and writes: the person it proved
