@@ -55,7 +55,7 @@
  *                     when the approval policy says ask; routine
  *   den_env_hold_on   issue 974: agents.env_hold_existing: true in user.yml,
  *                     for agents started before the hold ("Remove"). Den
- *                     asks for it itself; only the person's Allow runs it
+ *                     asks for it itself; critical, the person's own Allow
  *   den_env_allow_keep issue 974: adds the named variables to
  *                     agents.env_allow and turns the hold on ("Keep
  *                     these"); critical, the person's own Allow only
@@ -279,6 +279,9 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  // Issue 974: which secrets agents get is the person's call, both ways.
+  "den_env_hold_on",
+  "den_env_allow_keep",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */

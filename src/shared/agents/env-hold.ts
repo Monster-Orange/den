@@ -243,7 +243,7 @@ function shellGlob(p: string): string {
 /**
  * The script the agent's shell runs before each command (sh, bash and zsh
  * alike). It walks the shell's own variable names (zsh: its parameters;
- * bash: compgen -v; sh: env), so a profile's variable is found exported or
+ * bash: compgen -v; sh: set), so a profile's variable is found exported or
  * not. A person's credential is unset first; then every name the patterns
  * match, the allowed names and Den's own exact names (`own`) aside.
  * Patterns and names are checked (checkEnvHoldConfig), so nothing here
@@ -282,7 +282,8 @@ export function envHoldScript(
     "__den_names() {",
     "  if [ -n \"${ZSH_VERSION:-}\" ]; then eval 'print -rl -- ${(k)parameters}'",
     '  elif [ -n "${BASH_VERSION:-}" ]; then compgen -v',
-    "  else env | sed -n 's/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p'",
+    // sh (dash): `set` lists unexported variables too, unlike `env`.
+    "  else set | sed -n 's/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p'",
     "  fi",
     "}",
     "for __den_n in $(__den_names); do",

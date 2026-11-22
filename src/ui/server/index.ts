@@ -4957,7 +4957,6 @@ async function runPinCommit(
   });
 }
 
-/** #176: den_pin_commit, held for the person when the policy says ask. */
 /**
  * Issue 974: the agents from before the env hold and the names each still
  * gets (names only), and the user.yml writes the two held writes make.
@@ -5018,6 +5017,7 @@ function startEnvHoldAsk(): void {
   setInterval(ask, 60 * 60_000).unref();
 }
 
+/** #176: den_pin_commit, held for the person when the policy says ask. */
 function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
   return {
     check: (a) => {

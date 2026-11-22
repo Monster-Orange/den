@@ -276,7 +276,7 @@ describe("the shell, after a profile sets the canary again", () => {
     "PLAIN_VALUE",
   ];
 
-  it.each(["/bin/sh", "/bin/bash", "/bin/zsh"])(
+  it.each(["/bin/sh", "/bin/bash", "/bin/zsh", "/bin/dash", "/usr/bin/dash"])(
     "%s: the canary is gone (exported or not, DEN_ prefix or not, a person's credential even when allowed); allowed, Den's exact and plain names stay",
     (shell) => {
       const out = inShell(shell, profile, file, `env; ${show(names)}`);

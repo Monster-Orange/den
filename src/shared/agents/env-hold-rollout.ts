@@ -18,7 +18,12 @@
  */
 
 import { type DetailKey, line, reviewLines } from "../review-lines.js";
-import { allowedFor, holdOutcome, type EnvHoldSettings } from "./env-hold.js";
+import {
+  allowedFor,
+  holdOutcome,
+  PERSON_CREDENTIAL_NAMES,
+  type EnvHoldSettings,
+} from "./env-hold.js";
 
 export const ENV_HOLD_ON_ACTION = "den_env_hold_on";
 export const ENV_ALLOW_KEEP_ACTION = "den_env_allow_keep";
@@ -90,7 +95,8 @@ export function wouldHold(
         present,
         s.hold,
         allowedFor(s, r.id, r.workspace ? projectAllow(r.workspace) : []),
-      ).held,
+        // A person's credential is never offered to keep.
+      ).held.filter((n) => !PERSON_CREDENTIAL_NAMES.includes(n)),
     }));
 }
 
@@ -189,6 +195,10 @@ export function envAllowKeepOp(d: EnvHoldOpDeps): EnvHoldOp {
     for (const n of raw) {
       if (typeof n !== "string" || !NAME_RE.test(n))
         return { error: `names: "${String(n)}" is not a variable name` };
+      if (PERSON_CREDENTIAL_NAMES.includes(n))
+        return {
+          error: `names: ${n} is a person's credential; no agent keeps it`,
+        };
       names.push(n);
     }
     const would = new Set(heldUnion(d.rows()));

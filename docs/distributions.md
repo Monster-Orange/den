@@ -5999,16 +5999,26 @@ environment, and says to run `printenv NAME` instead. It guards against
 printing by accident. It is not a boundary: an agent that means to read a
 variable can. `env_guard: false` turns it off.
 
-**Limit.** A Claude Code SessionStart hook that writes its own env file
-runs after `env-hold.sh`, so a variable such a hook exports is not held
-back.
+The script reads the shell's own variable list (zsh's parameters, bash's
+`compgen -v`, and `set` in a plain sh such as dash), so it finds a
+variable the profile set without exporting it.
+
+**Limits.**
+
+- A Claude Code SessionStart hook that writes its own env file runs after
+  `env-hold.sh`, so a variable such a hook exports is not held back.
+- Den keeps its own `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n` and
+  `GIT_CONFIG_VALUE_n` by name. A profile that sets `GIT_CONFIG_COUNT`
+  higher than Den's has its extra keys held back, and git then stops on the
+  missing key. Remove that from the profile, or give git those settings in
+  a config file.
 
 **Rollout.** Agents started after the update have the hold. An agent from
 before keeps its environment until a person turns it on. Den asks once in
 the bell with two held writes, each run only by the person's own Allow:
 
 - **Keep these** adds the named variables to `agents.env_allow` and turns
-  the hold on.
+  the hold on. A person's credential is never offered.
 - **Remove** sets `agents.env_hold_existing: true`.
 
 Each agent changes at its next start. Until then, `den doctor` lists each

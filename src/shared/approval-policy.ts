@@ -167,12 +167,12 @@ export const HELD_WRITE_RISK: Readonly<
   },
   repo_clone: { risk: "routine", why: "clones a repo into a new folder" },
   den_env_hold_on: {
-    risk: "routine",
-    why: "holds secret-looking variables back from agents started before the hold: it narrows what they get",
+    risk: "critical",
+    why: "changes what every agent started before the hold gets at its next start: a person's own Allow (CRITICAL_HELD_ACTIONS)",
   },
   den_env_allow_keep: {
     risk: "critical",
-    why: "lets every agent keep the named variables: it widens what agents get",
+    why: "lets every agent keep the named variables: it widens what agents get (CRITICAL_HELD_ACTIONS)",
   },
   den_pin_commit: {
     risk: "routine",
