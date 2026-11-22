@@ -21,6 +21,25 @@ messages and the pushed commit's files. They read the patterns from
 shell variables, so the file is the reliable one). Without any of them the
 hooks pass quietly. A file that is named but missing stops the push.
 
+`pre-push` also runs, on each pushed commit (in a throwaway checkout of
+it, so uncommitted changes don't count), the fast checks CI would fail on
+a minute later (issue 185), in seconds and without a browser:
+
+- `tests/unit/version-sync.test.ts` (a CHANGELOG section with no version
+  bump, or a lock that disagrees);
+- `tests/unit/cli/no-localhost-in-cli-output.test.ts` (the CLI never
+  prints `localhost` to a person);
+- `node scripts/words-gate.mjs` against where the branch left main;
+- no new commit says Closes, Fixes or Resolves for an issue that is still
+  open (asked with `gh`; if `gh` can't say, the push stops too). An issue
+  closes after its release is live and the person who reported it has
+  seen it, and GitHub closes it from a commit message as soon as the
+  commit reaches main, so commits say `Refs #N`.
+
+It names each check that fails. `DEN_PREPUSH_CHECKS=0` skips these (the
+org-name checks still run); `--no-verify` skips the hook, as with any git
+hook. The checks are `scripts/pre-push-checks.mjs`.
+
 ## Layout
 
 | Path                                                      | What lives there                                                                                                                                                                               |
