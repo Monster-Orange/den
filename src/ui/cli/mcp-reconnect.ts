@@ -83,6 +83,13 @@ export function mcpReconnect(
     cleared?: (id: string) => void;
     /** How often a kept note looks at the dialog again (tests). */
     heldPollMs?: number;
+    /**
+     * Schedules a kept note's next look in `ms` (default: an unref'd
+     * timer). Tests run the looks themselves, with no clock.
+     */
+    later?: (look: () => Promise<void>, ms: number) => void;
+    /** How long its output must be still to count as waiting (tests). */
+    quietMs?: number;
   },
 ): McpReconnect {
   /**
@@ -98,7 +105,7 @@ export function mcpReconnect(
   ): Promise<{ told: true } | { told: false; why: string } | null> => {
     const dialog = await agentDialogKind(d, id);
     if (dialog) return (hold(`its person's ${dialog} dialog is open`), null);
-    const st = await agentInputState(d, id, new Set(), 1500);
+    const st = await agentInputState(d, id, new Set(), opts.quietMs ?? 1500);
     if (st === "missing") return { told: false, why: "it is gone" };
     if (st === "stopped") return { told: false, why: "it stopped" };
     if (st === "idle") {
@@ -107,7 +114,8 @@ export function mcpReconnect(
       const r = await typeIntoAgent(d, id, RECONNECTED_LINE, {
         ready: async () =>
           !(await agentDialogKind(d, id)) &&
-          (await agentInputState(d, id, new Set(), 1500)) === "idle",
+          (await agentInputState(d, id, new Set(), opts.quietMs ?? 1500)) ===
+            "idle",
       });
       if (r === true) return { told: true };
       if (r === false) hold("its screen didn't take it; Den tries again");
@@ -154,7 +162,10 @@ export function mcpReconnect(
         told(id, t);
         return;
       }
-      setTimeout(() => void step(), opts.heldPollMs ?? 2000).unref();
+      (opts.later ?? ((f, ms) => void setTimeout(() => void f(), ms).unref()))(
+        step,
+        opts.heldPollMs ?? 2000,
+      );
     };
     await step();
   };

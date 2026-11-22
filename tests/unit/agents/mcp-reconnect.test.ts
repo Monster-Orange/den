@@ -393,30 +393,39 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     const { r, d } = await startedWhileHubFailed();
     const held: string[] = [];
     const cleared: string[] = [];
+    // The note's looks are run here, one at a time: no clock.
+    const looks: (() => Promise<void>)[] = [];
     const rc = mcpReconnect(d, {
       hubUp: async () => true,
       attempts: () => 3,
       pollMs: 20,
-      heldPollMs: 50,
       held: (id) => held.push(id),
       cleared: (id) => cleared.push(id),
+      later: (look) => void looks.push(look),
+      quietMs: 0,
       log: () => undefined,
     });
     expect(await rc.tick()).toEqual(["planner"]);
-    for (let i = 0; i < 250 && r.made.length < 2; i++)
-      await new Promise((res) => setTimeout(res, 20));
-    // A list to pick from, and nobody ever picks.
+    // pending() ends after the first look: the note is queued, not a
+    // blocked call.
+    await rc.pending();
+    expect(rc.waiting()).toEqual(["planner"]);
+    // It shows a list to pick from, and nobody picks.
     r.made[1].emit(
       "Which one?\r\n❯ 1. The first\r\n  2. The second\r\n  3. The third\r\n",
     );
-    // pending() ends: the note is queued, not a blocked call.
-    const ended = await Promise.race([
-      rc.pending().then(() => "ended"),
-      new Promise((res) => setTimeout(() => res("hung"), 15_000).unref()),
-    ]);
-    expect(ended).toBe("ended");
-    await until(() => held.length > 0, 10_000);
-    await new Promise((res) => setTimeout(res, 500));
+    const next = async () => {
+      expect(looks).toHaveLength(1);
+      await looks.shift()!();
+    };
+    // Once a look sees it, it bells (the list reaches the screen's copy
+    // in a few looks at most).
+    for (let i = 0; i < 50 && held.length === 0; i++) await next();
+    expect(held).toEqual(["planner"]);
+    // Every later look keeps it waiting, schedules the next, and never
+    // bells again.
+    for (let i = 0; i < 5; i++) await next();
+    expect(looks).toHaveLength(1);
     expect(rc.waiting()).toEqual(["planner"]);
     expect(held).toEqual(["planner"]);
     expect(cleared).toEqual([]);
