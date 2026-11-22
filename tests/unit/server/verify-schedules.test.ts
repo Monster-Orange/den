@@ -430,6 +430,43 @@ describe("issue 964: another server on the same state folder", () => {
   });
 });
 
+describe("issue 964: taking an Allow back", () => {
+  it("a person takes it back: no runs until a new Allow; an agent can't", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    asAgent = true;
+    expect(
+      (await post("/api/verify/schedules/revoke", { project: "north", id }))
+        .status,
+    ).toBe(403);
+    asAgent = false;
+    const r = await post("/api/verify/schedules/revoke", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.schedule).toMatchObject({
+      state: "needs-allow",
+      allow: null,
+    });
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+    const notes = await tick(at(22, 2, 1));
+    expect(notes.find((n) => n.schedule === id)).toMatchObject({
+      action: "skip",
+      reason: "needs-allow",
+    });
+    expect(cmds).not.toContain("web/speed");
+    const again = await post("/api/verify/schedules/revoke", {
+      project: "north",
+      id,
+    });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("no_allow");
+  });
+});
+
 describe("issue 964: Run now", () => {
   it("leaves the schedule's next due run alone", async () => {
     await tick(at(21, 12));

@@ -156,6 +156,8 @@
     "v.sch_decline": "Rechazar",
     "v.sch_decline_h":
       "Rechazar deja la programación en pausa. Nada corre hasta que alguien la permita.",
+    "v.sch_revoke": "Retirar permiso",
+    "v.sch_revoked": "Permiso retirado. La programación espera uno nuevo.",
     "v.sch_run": "Correr ahora",
     "v.sch_runs": "Ver corridas",
     "v.sch_ch_h": "Qué cambió",

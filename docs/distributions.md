@@ -793,7 +793,9 @@ verify:
   the plan changes (a module, its command or the scripts it names, what it
   writes, its health URLs, the environment's method rule, the times or the
   window). It ends after `verify.schedule.allow_expiry`. An agent
-  can't give or use one: the routes refuse an agent's token.
+  can't give or use one: the routes refuse an agent's token. A person can take an
+  Allow back with **Take back Allow** on its row. The schedule then waits
+  for a new one.
 - Production schedules are off until `verify.schedule.production.enabled`
   is true. Then a schedule may run there no more often than
   `min_interval`, and only to the hosts in `hosts` when that list is set.

@@ -29,6 +29,7 @@ import {
   listSchedules,
   mayRun,
   readAllows,
+  removeAllow,
   readScheduleSettings,
   scheduleState,
   writeAllow,
@@ -502,7 +503,8 @@ export function isSchedulePath(pathname: string): boolean {
   return (
     pathname === "/api/verify/schedules" ||
     pathname === "/api/verify/schedules/allow" ||
-    pathname === "/api/verify/schedules/run"
+    pathname === "/api/verify/schedules/run" ||
+    pathname === "/api/verify/schedules/revoke"
   );
 }
 
@@ -603,6 +605,28 @@ export async function handleScheduleRoutes(
     return true;
   }
   const allows = readAllows(d.stateDir(), p.project);
+  if (pathname === "/api/verify/schedules/revoke") {
+    // Issue 964: the person takes the Allow back; the schedule waits for a new one.
+    if (!allows[s.id]) {
+      sendJson(
+        res,
+        {
+          ok: false,
+          code: "no_allow",
+          error: "This schedule has no Allow to take back.",
+        },
+        409,
+      );
+      return true;
+    }
+    removeAllow(d.stateDir(), p.project, s.id);
+    const runs = readScheduleRuns(d.stateDir(), p.project);
+    sendJson(res, {
+      ok: true,
+      schedule: rowOf(s, undefined, runs[s.id] ?? {}, now, set),
+    });
+    return true;
+  }
   if (pathname === "/api/verify/schedules/allow") {
     const lim = scheduleLimit(s, set);
     if (lim) {

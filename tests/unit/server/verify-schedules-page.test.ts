@@ -322,6 +322,19 @@ describe("issue 214: Schedules (S11)", () => {
     expect(host).toContain("<code>169.254.169.254</code>");
   });
 
+  it("issue 964: a row with an Allow offers to take it back", () => {
+    const html = schedulesView(SV);
+    for (const r of SV.schedules as any[]) {
+      const row = rowOf(html, r.id);
+      if (r.allow)
+        expect(row).toContain(
+          `data-sch-revoke="${r.id}">Take back Allow</button>`,
+        );
+      else expect(row).not.toMatch(/data-sch-revoke=/);
+    }
+    expect((SV.schedules as any[]).some((r) => r.allow)).toBe(true);
+  });
+
   it("a name or a module from the repo stays plain text", () => {
     const html = schedulesView({
       ...SV,

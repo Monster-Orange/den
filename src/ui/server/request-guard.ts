@@ -942,6 +942,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Issue 214: a schedule's standing Allow, and running it now: a person's.
   "/api/verify/schedules/allow",
   "/api/verify/schedules/run",
+  // Issue 964: taking an Allow back: a person's too.
+  "/api/verify/schedules/revoke",
   "/api/settings",
   "/api/scope",
   "/api/web-url",

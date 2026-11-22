@@ -163,6 +163,21 @@ describe("every route that changes something is a person's, or listed for agents
       expect([q, run(q)]).toEqual([q, expect.stringMatching(/only/)]);
   });
 
+  it("issue 964: the schedule routes are classed writes an agent's token is refused", () => {
+    for (const p of [
+      "/api/verify/schedules/allow",
+      "/api/verify/schedules/run",
+      "/api/verify/schedules/revoke",
+    ]) {
+      const r = ROUTES.find((x) => x.path === p);
+      expect([p, r?.cls]).toEqual([p, "mutating"]);
+      expect([p, agentRefusal(agent, "POST", p, "mutating")]).toEqual([
+        p,
+        expect.any(String),
+      ]);
+    }
+  });
+
   it("each listed one is a write route an agent does reach", () => {
     const open = new Set(
       writes()

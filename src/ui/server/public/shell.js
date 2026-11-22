@@ -268,6 +268,8 @@
     "v.sch_decline": "Decline",
     "v.sch_decline_h":
       "Decline leaves the schedule paused. Nothing runs until someone allows it.",
+    "v.sch_revoke": "Take back Allow",
+    "v.sch_revoked": "Allow taken back. The schedule waits for a new one.",
     "v.sch_run": "Run now",
     "v.sch_runs": "See runs",
     "v.sch_ch_h": "What changed",

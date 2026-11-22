@@ -811,6 +811,9 @@ function scheduleRow(row, sv, open) {
     (row.needsAllow && !row.limit && ASKS.has(row.state)
       ? `<button type="button" class="den-btn${row.runs ? "" : " primary"}" data-sch-ask="${esc(row.id)}" aria-expanded="${open === row.id}">${esc(t("v.sch_ask"))}</button>`
       : "") +
+    (row.allow
+      ? `<button type="button" class="den-btn" data-sch-revoke="${esc(row.id)}">${esc(t("v.sch_revoke"))}</button>`
+      : "") +
     (row.runs
       ? `<button type="button" class="den-btn" data-sch-run="${esc(row.id)}">${esc(t("v.sch_run"))}</button>`
       : "") +
@@ -953,7 +956,13 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
       note = t("v.sch_err", { e: e.message });
     }
     if (done) {
-      note = t(path === "allow" ? "v.sch_allowed" : "v.sch_started");
+      note = t(
+        path === "allow"
+          ? "v.sch_allowed"
+          : path === "revoke"
+            ? "v.sch_revoked"
+            : "v.sch_started",
+      );
       if (path === "allow") open = null;
     }
     try {
@@ -971,7 +980,7 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
       return;
     }
     const b = el?.closest(
-      "button[data-sch-ask], button[data-sch-allow], button[data-sch-decline], button[data-sch-run]",
+      "button[data-sch-ask], button[data-sch-allow], button[data-sch-decline], button[data-sch-run], button[data-sch-revoke]",
     );
     if (b) {
       const ask = b.getAttribute("data-sch-ask");
@@ -993,7 +1002,9 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
         return;
       }
       const allow = b.getAttribute("data-sch-allow");
+      const revoke = b.getAttribute("data-sch-revoke");
       if (allow !== null) void act("allow", allow, b);
+      else if (revoke !== null) void act("revoke", revoke, b);
       else void act("run", b.getAttribute("data-sch-run"), b);
       return;
     }
