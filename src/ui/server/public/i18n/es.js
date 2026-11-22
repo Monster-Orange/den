@@ -3439,7 +3439,7 @@
     "set.ui.copy": "Copiar",
     "set.ui.saveOrigins": "Guardar lista",
     "toast.layoutChanged":
-      "Tu diseño se restauró desde una copia, así que ahora se ve esa. Vuelve a hacer tu cambio.",
+      "Tu diseño cambió en otra ventana, así que esta lo muestra ahora. Vuelve a hacer tu cambio.",
     "set.layout.none":
       "Aún no hay copias: se guarda una cuando cambia tu diseño.",
     "set.layout.row": "{when}: {pins} fijados, {hidden} ocultos",

@@ -946,7 +946,7 @@
     "set.ui.copy": "Copy",
     "set.ui.saveOrigins": "Save list",
     "toast.layoutChanged":
-      "Your layout was put back from a snapshot, so it shows that one now. Make your change again.",
+      "Your layout changed in another window, so this one shows it now. Make your change again.",
     "set.layout.none":
       "No snapshots yet: one is kept when your layout changes.",
     "set.layout.row": "{when}: {pins} pinned, {hidden} hidden",
@@ -5015,9 +5015,10 @@
   }
   /**
    * Issue 786: the stored layout's revision this page has (GET
-   * /api/settings shell_rev). A save sends it (X-Den-Layout-Rev); one refused because the
-   * layout was put back meanwhile (409 layout_changed) shows the stored
-   * layout instead of writing this page's older copy over it.
+   * /api/settings shell_rev). A save sends it (X-Den-Layout-Rev). One
+   * refused because the layout changed meanwhile, in another window or by
+   * a restore (409 layout_changed), shows the stored layout instead of
+   * writing this page's older copy over it.
    */
   var shellRev = null;
   function adoptServerShell(sh) {
@@ -5033,38 +5034,86 @@
     remember();
     dockFromPrefs();
   }
-  function saveShell(patch) {
-    remember();
-    if (typeof fetch !== "function") return Promise.resolve();
+  // ── shellSaveQueue (issue 786; layout-save-queue.test.ts runs it) ──
+  /**
+   * Layout saves one at a time: while one is on its way, later patches
+   * merge (the last value of a key wins) and go together once it answers,
+   * so each carries the revision the last answer gave and a page's own
+   * quick changes never refuse each other. `post(patch)` sends one and
+   * resolves true when it was saved; every save it covers resolves so.
+   */
+  function shellSaveQueue(post) {
+    var inFlight = false;
+    var pending = null;
+    var waiters = [];
+    function pump() {
+      if (!pending) {
+        inFlight = false;
+        return;
+      }
+      inFlight = true;
+      var patch = pending;
+      var ws = waiters;
+      pending = null;
+      waiters = [];
+      Promise.resolve()
+        .then(function () {
+          return post(patch);
+        })
+        .catch(function () {
+          return false;
+        })
+        .then(function (ok) {
+          ws.forEach(function (w) {
+            w(ok);
+          });
+          pump();
+        });
+    }
+    return function save(patch) {
+      pending = pending || {};
+      for (var k in patch)
+        if (Object.prototype.hasOwnProperty.call(patch, k))
+          pending[k] = patch[k];
+      return new Promise(function (res) {
+        waiters.push(res);
+        if (!inFlight) pump();
+      });
+    };
+  }
+  // ── end shellSaveQueue ──
+  function postShell(patch) {
     var headers = { "Content-Type": "application/json" };
     if (shellRev) headers["X-Den-Layout-Rev"] = shellRev;
     return fetch("/api/settings", {
       method: "POST",
       headers: headers,
       body: JSON.stringify({ shell: patch }),
-    })
-      .then(function (r) {
-        if (!r) return false;
-        var ok = r.ok !== false;
-        if (typeof r.json !== "function") return ok;
-        return r
-          .json()
-          .catch(function () {
-            return null;
-          })
-          .then(function (j) {
-            if (j && typeof j.shell_rev === "string") shellRev = j.shell_rev;
-            if (r.status === 409 && j && j.error === "layout_changed") {
-              if (j.shell) adoptServerShell(j.shell);
-              toast(t("toast.layoutChanged"));
-              return false;
-            }
-            return ok;
-          });
-      })
-      .catch(function () {
-        return false;
-      });
+    }).then(function (r) {
+      if (!r) return false;
+      var ok = r.ok !== false;
+      if (typeof r.json !== "function") return ok;
+      return r
+        .json()
+        .catch(function () {
+          return null;
+        })
+        .then(function (j) {
+          if (j && typeof j.shell_rev === "string") shellRev = j.shell_rev;
+          if (r.status === 409 && j && j.error === "layout_changed") {
+            if (j.shell) adoptServerShell(j.shell);
+            toast(t("toast.layoutChanged"));
+            return false;
+          }
+          return ok;
+        });
+    });
+  }
+  var queueShell = shellSaveQueue(postShell);
+  function saveShell(patch) {
+    remember();
+    if (typeof fetch !== "function") return Promise.resolve();
+    return queueShell(patch);
   }
   /**
    * Issue 402: pins as the server and older copies hold them: { item,
