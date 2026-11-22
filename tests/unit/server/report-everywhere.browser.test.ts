@@ -410,7 +410,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     await p.waitForSelector("#den-lock-pop");
     await p.waitForTimeout(300);
     expect((await reportSeen(p)).sort()).toEqual(
-      ["#den-bell-pop", "#den-lock-pop", ".dg-panel[role=dialog]"].sort(),
+      ["#den-bell-pop", "#den-lock-pop", "dialog#dg-pop"].sort(),
     );
     expect(await reportMisses(p)).toEqual([]);
     await ctx.close();
