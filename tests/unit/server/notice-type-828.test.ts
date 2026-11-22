@@ -143,6 +143,21 @@ describe("issue 828, clause 2: AskUserQuestion is its question", () => {
     expect(told).toEqual([]);
   });
 
+  it("a permission for another tool while the question waits: the permission shows", async () => {
+    const { store, a } = mk();
+    await send(a, askTool);
+    clock += RESUME_AFTER_MS - 500;
+    await send(a, {
+      hook_event_name: "PermissionRequest",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    });
+    expect(a.waitingNow().get("ag-1")).toBe("permission");
+    expect(
+      waitingRows(store).some((n) => /permission: Bash/.test(n.text)),
+    ).toBe(true);
+  });
+
   it("its answer ends it: the tool's run, or the person's prompt", async () => {
     const { a } = mk();
     await send(a, askTool);
