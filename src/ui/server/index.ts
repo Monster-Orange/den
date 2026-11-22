@@ -436,6 +436,7 @@ import {
   readWebUrl,
   setWebUrl,
 } from "../../shared/web-url.js";
+import { peopleWebUrl } from "../../shared/agent-links.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
@@ -4083,6 +4084,7 @@ type ApprovalDeps = {
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  webUrl: () => string | null;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -4514,6 +4516,8 @@ function approvalDeps(): ApprovalDeps {
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
     // Issue 142: a held write counts in the bell while it waits.
     changed: syncHeldWrites,
+    // Issue 1016: an agent's held write carries its full Allow link.
+    webUrl: () => peopleWebUrl(),
   };
   return approvals;
 }

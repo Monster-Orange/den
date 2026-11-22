@@ -691,6 +691,7 @@ function common(input: LaunchInput): {
         input.agentId,
         input.workspace.name,
         input.mcp.name,
+        input.webUrl ?? null,
       ) +
         (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : "") +
         // Issue 158: the Hub delivery loop, after the Hub line.

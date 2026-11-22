@@ -259,7 +259,14 @@ describe("nav inventory: red cases on the reference", () => {
     expect(searchSlot(1280)).toEqual({ x: 464, w: 304 });
     expect(searchSlot(1100)).toEqual({ x: 396, w: 304 });
     expect(searchSlot(960)).toEqual({ x: 256, w: 304 });
-    expect(searchSlot(800)).toEqual({ x: 96, w: 304 });
+    // Issue 981: under 944px the search gives way before the crumbs do
+    // (the left part keeps 220px, the project picker in it); down to its
+    // icon (56px) where the page is zoomed.
+    expect(searchSlot(944)).toEqual({ x: 240, w: 304 });
+    expect(searchSlot(820)).toEqual({ x: 240, w: 180 });
+    expect(searchSlot(800)).toEqual({ x: 240, w: 160 });
+    expect(searchSlot(768)).toEqual({ x: 240, w: 128 });
+    expect(searchSlot(721)).toEqual({ x: 240, w: 81 });
     expect(searchSlot(390)).toEqual({ x: 82, w: 54 });
     expect(searchSlot(600)).toEqual({ x: 220, w: 54 });
   });

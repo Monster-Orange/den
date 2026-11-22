@@ -105,6 +105,23 @@ beforeAll(async () => {
   server = started.server;
   port = started.port;
   serverOut = started.out;
+  // Issue 197: the one failure was the first cold page load drawing no
+  // card in 30 s on a starved CI shard. The server's first-time work for
+  // the Graph page (deriving the graph, the services, the deps check) is
+  // done here, once, before any browser waits on it; the waits are the
+  // same as before.
+  const headers = denAuth(path.join(tmp, "home", ".den"));
+  for (const p of [
+    "/api/workspaces",
+    "/api/services?env=local",
+    "/api/graph?workspace=main",
+    "/api/applications?workspace=main",
+    "/api/workspaces/deps-check?workspace=main",
+  ]) {
+    const r = await fetch(api(p), { headers });
+    await r.arrayBuffer();
+    if (!r.ok) throw new Error(`warming ${p}: ${r.status}`);
+  }
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
