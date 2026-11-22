@@ -172,7 +172,8 @@ async function phone(
       /* none */
     }
   }, latest);
-  // The page's fetches in flight (denInFlight), for settled().
+  // The page's fetches in flight (denInFlight), for settled(). It must be
+  // an init script: it wraps fetch before any page script runs.
   await ctx.addInitScript(() => {
     const w = window as unknown as { denInFlight: number };
     w.denInFlight = 0;

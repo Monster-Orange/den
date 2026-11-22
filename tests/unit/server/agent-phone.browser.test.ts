@@ -474,11 +474,20 @@ describe.each(ENGINES)(
           );
         // The shell's saved choice (its GET /api/settings) arriving is when
         // the dock would open late.
-        const prefs = p.waitForResponse(
-          (r) =>
-            new URL(r.url()).pathname === "/api/settings" &&
-            r.request().method() === "GET",
-        );
+        // A bounded wait with its own message: a shell that served the
+        // settings from a cache (no GET) fails here, not as a case timeout.
+        const prefs = p
+          .waitForResponse(
+            (r) =>
+              new URL(r.url()).pathname === "/api/settings" &&
+              r.request().method() === "GET",
+            { timeout: 20_000 },
+          )
+          .catch(() => {
+            throw new Error(
+              "no GET /api/settings within 20 s: the shell's saved choice never arrived",
+            );
+          });
         await openAgent(p, "scout");
         // Frame 2: no dock with an agent open, and never drawn open.
         expect(await p.locator("#den-dock").isVisible()).toBe(false);
