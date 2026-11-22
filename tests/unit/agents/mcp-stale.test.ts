@@ -670,9 +670,9 @@ describe("D44: MCP whoami", () => {
 describe("issue 749: an agent whose Hub tools failed to load shows it on its row", () => {
   it("the agents list and the page's list (/api/sessions) both carry the server and its error; a stopped one doesn't", async () => {
     const r = await rig({ hub: async () => ({ url: HUB, token: TOKEN }) });
-    expect(await agents(r, "start", "-w", "north", "--persona", "planner")).toBe(
-      0,
-    );
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
     await settle();
     const d = resolveAgentsDeps(r.deps);
     const plain = (await listAgents(d, "north")).find(
@@ -695,6 +695,19 @@ describe("issue 749: an agent whose Hub tools failed to load shows it on its row
       (x) => x.agent === "planner",
     )!;
     expect(row.mcpFailed).toEqual(want);
+    // A lead reads its members with `den agents list`, as JSON or plain.
+    r.out.length = 0;
+    expect(await agents(r, "list", "-w", "north", "--json")).toBe(0);
+    const listed = JSON.parse(r.out.join("\n")) as {
+      agent: string;
+      mcpFailed?: unknown;
+    }[];
+    expect(listed.find((x) => x.agent === "planner")!.mcpFailed).toEqual(want);
+    r.out.length = 0;
+    expect(await agents(r, "list", "-w", "north")).toBe(0);
+    expect(r.out.join("\n")).toContain(
+      "planner: hub's tools didn't load (listing Hub's tools failed (hub (500): Internal Server Error)); it can't use them until it restarts (same conversation)",
+    );
     const c = await r.deps.connect!();
     const sessions = await c.list();
     c.close();

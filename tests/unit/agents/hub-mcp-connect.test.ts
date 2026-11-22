@@ -388,7 +388,9 @@ describe("issue 749: Hub connected but listing its tools failed", () => {
     expect(t.note).toContain(
       "listing Hub's tools failed (hub (500): Internal Server Error)",
     );
-    expect(mcpLoadFailures(r.stateDir, readRecord(r.stateDir, "planner")!)).toEqual([
+    expect(
+      mcpLoadFailures(r.stateDir, readRecord(r.stateDir, "planner")!),
+    ).toEqual([
       {
         server: "hub",
         error: "listing Hub's tools failed (hub (500): Internal Server Error)",
@@ -401,13 +403,18 @@ describe("issue 749: Hub connected but listing its tools failed", () => {
     const { r, d } = await started();
     noteHubMcpInit(r.stateDir, "planner", { ok: true });
     noteHubMcpTools(r.stateDir, "planner", { ok: false, error: "x" });
+    expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(false);
     noteHubMcpTools(r.stateDir, "planner", { ok: true });
     expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(true);
     noteHubMcpTools(r.stateDir, "planner", { ok: false, error: "x" });
+    expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(false);
     noteHubMcpInit(r.stateDir, "planner", { ok: true });
     expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(true);
     // A listing that worked never hides a connect that failed.
-    noteHubMcpInit(r.stateDir, "planner", { ok: false, error: "hub (502): Bad Gateway" });
+    noteHubMcpInit(r.stateDir, "planner", {
+      ok: false,
+      error: "hub (502): Bad Gateway",
+    });
     noteHubMcpTools(r.stateDir, "planner", { ok: true });
     expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(false);
   });

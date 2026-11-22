@@ -8,6 +8,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { HUB_SERVER } from "../hub.js";
 import { agentFilesDir } from "./records.js";
 
 export interface HubMcpInit {
@@ -21,6 +22,11 @@ export interface HubMcpInit {
    * connect), so the file says how its calls go now.
    */
   last?: HubMcpCall;
+  /**
+   * Issue 749: false when the connect worked but listing Hub's tools
+   * failed (tools/list), so the session has no hub_* tools either.
+   */
+  tools?: false;
 }
 
 export interface HubMcpCall {
@@ -55,6 +61,60 @@ export function noteHubMcpCall(
 ): void {
   // No connect noted yet: only the call (never read as a connect).
   write(stateDir, agentId, { ...readRaw(stateDir, agentId), last: note(o) });
+}
+
+/**
+ * Issue 749: the proxy's note of an agent's tools/list. A connect that
+ * worked is no use when its tool listing failed: the runtime runs on with
+ * none of Hub's tools, so the note reads as a failed connect (whoami says
+ * not loaded, restart; Den's reconnect restarts it once Hub answers). A
+ * listing that worked clears only a failure of its own kind.
+ */
+export function noteHubMcpTools(
+  stateDir: string,
+  agentId: string,
+  o: { ok: boolean; error?: string },
+): void {
+  const had = readRaw(stateDir, agentId);
+  const last = had?.last;
+  if (!o.ok) {
+    write(stateDir, agentId, {
+      ...note({
+        ok: false,
+        error: `listing Hub's tools failed (${o.error ?? "an error"})`,
+      }),
+      tools: false,
+      ...(last ? { last } : {}),
+    });
+    return;
+  }
+  if (had?.tools === false)
+    write(stateDir, agentId, {
+      ...note({ ok: true }),
+      ...(last ? { last } : {}),
+    });
+}
+
+/** Issue 749: an MCP server whose tools this agent's session didn't get. */
+export interface McpLoadFailure {
+  server: string;
+  error: string;
+  at: string;
+}
+
+/**
+ * Issue 749: the MCP servers whose tools failed to load in the agent's
+ * current session (a note from before it started doesn't count). Hub's
+ * only, for now: Den sees Hub's calls through its proxy and no others.
+ */
+export function mcpLoadFailures(
+  stateDir: string,
+  rec: { id: string; startedAt: string },
+): McpLoadFailure[] {
+  const init = readHubMcpInit(stateDir, rec.id);
+  if (!init || init.ok || Date.parse(init.at) < Date.parse(rec.startedAt))
+    return [];
+  return [{ server: HUB_SERVER, error: init.error ?? "an error", at: init.at }];
 }
 
 function note(o: { ok: boolean; error?: string }): HubMcpCall {

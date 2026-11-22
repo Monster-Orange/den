@@ -2179,16 +2179,26 @@ function apiOnlyTag(r) {
 /**
  * D44: a running agent whose MCP servers are out of date (Hub connected or
  * disconnected since it launched): a tag, and on the pane bar Restart (at
- * its next idle, same conversation).
+ * its next idle, same conversation). Issue 749: so does one whose session
+ * failed to load a server's tools, with the error in the tag's title.
  */
 function mcpStaleTag(r, withButton) {
   // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
   if (r?.kind === "agent" && r.toolsRestarting)
     return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
-  const sx = r?.kind === "agent" && !isStopped(r) ? r.mcpStale : null;
-  if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
-  const k = sx.adds?.length ? "adds" : "drops";
-  const tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  const live = r?.kind === "agent" && !isStopped(r);
+  // Issue 749: its session didn't get a server's tools (the error says why).
+  const fx = live && Array.isArray(r.mcpFailed) ? r.mcpFailed[0] : null;
+  const sx = live ? r.mcpStale : null;
+  let tag;
+  if (fx) {
+    const tip = t("ag.mcp.failedTip", { error: String(fx.error ?? "") });
+    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
+  } else {
+    if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
+    const k = sx.adds?.length ? "adds" : "drops";
+    tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  }
   if (!withButton) return tag;
   return (
     `<span class="agstale">${tag}` +

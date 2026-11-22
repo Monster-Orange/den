@@ -1348,6 +1348,7 @@ import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
   noteHubMcpCall,
   noteHubMcpInit,
+  noteHubMcpTools,
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
@@ -8903,6 +8904,9 @@ async function handleRequest(
     await handleHubProxy(req, res, pathname, {
       upstream: (who) => hubUpstream(agentWebDeps(), who),
       onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
+      // Issue 749: a tool listing that failed leaves it without Hub's tools.
+      onMcpToolsList: (agentId, o) =>
+        noteHubMcpTools(getStateDir(), agentId, o),
       // 0.4.48: Hub turned the token down through an agent's call: let the
       // next call read it again (at most once a minute), as Den's own
       // status check does; and the agent's note says how its calls go.

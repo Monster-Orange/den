@@ -1925,6 +1925,9 @@
     "ag.mcp.drops": "Las herramientas de Hub se van al reiniciar",
     "ag.mcp.dropsTip":
       "Hub se desconectó después de que este agente empezó; sus herramientas de Hub ya no funcionan. Reiniciar mantiene su conversación y espera a que termine su turno.",
+    "ag.mcp.failed": "Las herramientas de Hub no cargaron",
+    "ag.mcp.failedTip":
+      "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":

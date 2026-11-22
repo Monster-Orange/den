@@ -13,7 +13,8 @@
  * one is open the note is kept (held: the bell says it waits) and typed
  * once the person has answered (cleared: the bell item goes).
  */
-import { readHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
+import { mcpLoadFailures } from "../../shared/agents/hub-mcp-connect.js";
+import { HUB_SERVER } from "../../shared/hub.js";
 import { listRecords } from "../../shared/agents/records.js";
 import {
   AgentError,
@@ -31,7 +32,7 @@ import {
 export const RECONNECTED_LINE =
   "Den restarted you to load Hub's tools (hub_*): Hub didn't answer when you started. This is the same conversation; carry on.";
 
-/** Running agents whose Hub connect failed since they started. */
+/** Running agents whose Hub tools failed to load since they started. */
 export async function hubToolsMissing(
   d: AgentsResolved,
 ): Promise<{ id: string; workspace: string }[]> {
@@ -46,8 +47,8 @@ export async function hubToolsMissing(
   const out: { id: string; workspace: string }[] = [];
   for (const rec of listRecords(d.stateDir())) {
     if (!live.some((s) => s.ref.id === rec.session.id)) continue;
-    const init = readHubMcpInit(d.stateDir(), rec.id);
-    if (init && !init.ok && Date.parse(init.at) >= Date.parse(rec.startedAt))
+    // Issue 749: a connect that failed, or a tool listing that did.
+    if (mcpLoadFailures(d.stateDir(), rec).some((f) => f.server === HUB_SERVER))
       out.push({ id: rec.id, workspace: rec.workspace });
   }
   return out;

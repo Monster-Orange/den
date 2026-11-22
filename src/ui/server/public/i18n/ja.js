@@ -1868,6 +1868,9 @@
     "ag.mcp.drops": "再起動で Hub のツールが外れます",
     "ag.mcp.dropsTip":
       "このエージェントの起動後に Hub が切断されたため、Hub のツールはもう動きません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.failed": "Hub のツールを読み込めませんでした",
+    "ag.mcp.failedTip":
+      "このエージェントは起動時に Hub のツールを読み込めませんでした（{error}）。そのため Hub からは連絡できません。再起動しても会話は続き、ターンの終わりを待ちます。",
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
