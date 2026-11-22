@@ -2004,6 +2004,7 @@
         "tests/unit/edge/ca.test.ts",
         "tests/unit/environment-manager/workspace-manager.test.ts",
         "tests/unit/environment/env-selector.test.ts",
+        "tests/unit/gates/pw-guard-export-1010.test.ts",
         "tests/unit/install-skill.test.ts",
         "tests/unit/journeys/ledger.test.ts",
         "tests/unit/journeys/manifest-discovery.test.ts",
@@ -2031,7 +2032,9 @@
       "when": ["CHANGELOG.md"],
       "run": [
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/gates/pw-guard-export-1010.test.ts",
         "tests/unit/scripts/release-dry-run.test.ts",
+        "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
         "tests/unit/server/whats-new-dialog.browser.test.ts",
         "tests/unit/version-sync.test.ts"
@@ -2048,6 +2051,7 @@
         "tests/unit/create.test.ts",
         "tests/unit/edge/included.test.ts",
         "tests/unit/scripts/release-dry-run.test.ts",
+        "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/keep-running-routes.test.ts",
         "tests/unit/shared/managed-repos-org.test.ts"
       ],
@@ -2060,6 +2064,11 @@
         "tests/unit/test-infra/brittle-ratchet.test.ts"
       ],
       "why": "tests that run scripts/brittle-ratchet.mjs"
+    },
+    {
+      "when": ["scripts/build-pw-guard.mjs"],
+      "run": ["tests/unit/gates/pw-guard-export-1010.test.ts"],
+      "why": "tests that run scripts/build-pw-guard.mjs"
     },
     {
       "when": ["scripts/ci-force-all.mjs"],
@@ -2125,14 +2134,10 @@
       "why": "tests that run scripts/release-ancestry.sh"
     },
     {
-      "when": ["scripts/release-tree.sh"],
-      "run": ["tests/unit/scripts/release-tree.test.ts"],
-      "why": "tests that run scripts/release-tree.sh"
-    },
-    {
       "when": ["scripts/release-dry-run.mjs"],
       "run": [
         "tests/unit/scripts/release-dry-run.test.ts",
+        "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/test-infra/release-tree-check.test.ts"
       ],
       "why": "tests that run scripts/release-dry-run.mjs"
@@ -2141,6 +2146,11 @@
       "when": ["scripts/release-tree-check.mjs"],
       "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
       "why": "tests that run scripts/release-tree-check.mjs"
+    },
+    {
+      "when": ["scripts/release-tree.sh"],
+      "run": ["tests/unit/scripts/release-tree.test.ts"],
+      "why": "tests that run scripts/release-tree.sh"
     },
     {
       "when": ["scripts/setup-secrets.ts"],
@@ -3659,6 +3669,11 @@
     {
       "when": ["src/shared/test-person.ts", "src/ui/cli/test-person.ts"],
       "run": ["tests/unit/server/test-person.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/test-resolve.ts"],
+      "run": ["tests/unit/server/test-resolve.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
