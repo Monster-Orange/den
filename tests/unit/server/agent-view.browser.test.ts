@@ -176,8 +176,8 @@ describe.each(ENGINES)("issue 796 in %s: an agent's read-only view", (e) => {
           document.documentElement.getAttribute("data-den-view"),
         ),
       ).toBe("read-only");
-      // Let the page draw its rows, then nothing that writes may be live.
-      await p.waitForTimeout(1_500);
+      // Once the page has drawn its rows, nothing that writes may be live.
+      await p.waitForLoadState("networkidle");
       expect(await liveWrites(p)).toEqual([]);
       await p.context().close();
     },

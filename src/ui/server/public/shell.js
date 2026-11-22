@@ -7859,7 +7859,11 @@
     );
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
-      if (el.closest(".den-rail,#den-banners") || el.matches(VIEW_KEEP))
+      if (
+        (nav && nav.contains(el)) ||
+        el.closest("#den-banners") ||
+        el.matches(VIEW_KEEP)
+      )
         continue;
       if (el.isContentEditable) el.setAttribute("contenteditable", "false");
       else el.disabled = true;
