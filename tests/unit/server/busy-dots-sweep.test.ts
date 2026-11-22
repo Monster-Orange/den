@@ -191,3 +191,28 @@ describe("issue 698: every Den button that waits shows the kit's dots", () => {
     expect(all["busy-den.js"]).toMatch(/export\s*\{[^}]*\bholdDots\b/);
   });
 });
+
+describe("issue 698: the approval buttons hold the dots", () => {
+  const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
+  const body = (src: string, start: RegExp, end: RegExp) => {
+    const a = src.search(start);
+    expect(a).toBeGreaterThanOrEqual(0);
+    const rest = src.slice(a);
+    const b = rest.search(end);
+    return b > 0 ? rest.slice(0, b) : rest;
+  };
+
+  it("the Allow card's Allow and Deny (apDecide) hold the pressed button's dots", () => {
+    const f = body(read("shell.js"), /function apDecide\(/, /\n  function /);
+    expect(f).toMatch(/holdDots\(/);
+  });
+
+  it("Settings' Approve and Deny for a computer hold the button's dots", () => {
+    const f = body(
+      read("settings-registry.js"),
+      /const act = \(btn, path, body\) =>/,
+      /\n        };\n/,
+    );
+    expect(f).toMatch(/holdDots\?\.\(btn\)/);
+  });
+});

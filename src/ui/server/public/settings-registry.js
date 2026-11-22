@@ -1125,13 +1125,17 @@ function drawWaiting(host, ctx) {
           : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve."))}</output>`;
         const act = (btn, path, body) => {
           btn.disabled = true;
+          // Issue 698: the kit's dots on the button until the server answers.
+          const release = window.denShell?.holdDots?.(btn) ?? (async () => {});
           ctx.shell
             .api("POST", path, body)
-            .then(() => {
+            .then(async () => {
+              await release();
               shown = "";
               load();
             })
-            .catch((e) => {
+            .catch(async (e) => {
+              await release();
               btn.disabled = false;
               const out = host.querySelector("#set-waiting-out");
               if (out)

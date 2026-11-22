@@ -34,11 +34,11 @@ import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
 /** The line under it: who can read what is posted. */
 const VISIBILITY_NOTE: Record<DestinationVisibility, string> = {
   public:
-    "The text and the screenshot are visible to everyone. Secrets, tokens, emails, IP addresses and store references are removed first.",
+    "The text is visible to everyone; the screenshot isn't posted there. Secrets, tokens, emails, IP addresses and store references are removed first.",
   private: "Only people with access to this repository can see it.",
   internal: "Only people with access to this repository can see it.",
   unknown:
-    "Den can't tell who can see this repository, so it is treated as public: the text and the screenshot may be visible to everyone.",
+    "Den can't tell who can see this repository, so it is treated as public: the text may be visible to everyone. The screenshot isn't posted there.",
 };
 
 const str = (v: unknown): string | undefined =>

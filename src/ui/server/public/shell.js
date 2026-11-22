@@ -8327,6 +8327,9 @@
     ap.busy = true;
     var btns = ap.dlg.querySelectorAll("button");
     for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    // Issue 698: the button pressed shows the kit's dots until the answer.
+    var pressed = $(decision === "allow" ? "den-ap-allow" : "den-ap-deny");
+    var releaseDots = window.denShell.holdDots(pressed);
     // Issue 199: the person's choice, sent with Allow only.
     var follow =
       decision === "allow" &&
@@ -8388,6 +8391,9 @@
           apError(String((e && e.message) || e));
         },
       )
+      .then(function () {
+        return releaseDots();
+      })
       .then(function () {
         ap.busy = false;
         for (var j = 0; j < btns.length; j++) btns[j].disabled = false;
