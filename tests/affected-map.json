@@ -33,7 +33,13 @@
     "tests/unit/server/ui-assets.test.ts",
     "tests/unit/server/route-classes.test.ts"
   ],
-  "subjects": {},
+  "subjects": {
+    "tests/unit/server/bell-allow-review.browser.test.ts": [
+      "src/ui/server/held-bell.ts",
+      "src/ui/server/public/bell.js",
+      "src/ui/server/public/shell.js"
+    ]
+  },
   "subjectless": [
     "tests/unit/cli/address-455-unchecked.integration.test.ts",
     "tests/unit/cli/dev-metrics-cli-ship.integration.test.ts",
