@@ -291,6 +291,23 @@ for (const engine of ["chromium", "webkit"]) {
         undefined,
         { timeout: 5000 },
       );
+      // Review 3: once it settles, the fit stops: nothing behind ⋯ or on
+      // it changes for ten frames (one re-fit per real change, no loop).
+      const flips = await p.evaluate(async () => {
+        const more = document.getElementById("den-chips-more")!;
+        let n = 0;
+        const mo = new MutationObserver((ms) => (n += ms.length));
+        mo.observe(more.parentElement!, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["data-den-on", "data-den-over"],
+        });
+        for (let i = 0; i < 10; i++)
+          await new Promise((r) => requestAnimationFrame(() => r(null)));
+        mo.disconnect();
+        return n;
+      });
+      expect(flips).toBe(0);
       const w = await chipState(p);
       expect(w.over).toEqual([]);
       expect(w.outside).toEqual([]);

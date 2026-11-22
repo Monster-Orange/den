@@ -104,7 +104,8 @@ import { focusBack } from "./dialog.js";
  * Issue 313: the chips that don't fit go behind ⋯, the last first. io:
  * { chips() (the shown chips, in order), overflows() (true while what is
  * shown runs past the group), setOver(chip, on), showMore(on) }. Every
- * chip comes back first, so a wider bar shows them all again.
+ * chip comes back first, so a wider bar shows them all again. ⋯ shows
+ * only with a chip behind it.
  * → the chips behind ⋯, in order.
  */
 export function fitChips(io) {
@@ -113,8 +114,15 @@ export function fitChips(io) {
   io.showMore(false);
   if (!io.overflows()) return [];
   io.showMore(true);
+  // Once ⋯ shows, at least one chip goes behind it: the chips may shrink
+  // to make room for ⋯, so the bar can read as fitting with ⋯ shown while
+  // it spills with ⋯ hidden. ⋯ is never shown empty, and nothing spills.
   const over = [];
-  for (let i = chips.length - 1; i >= 0 && io.overflows(); i--) {
+  for (
+    let i = chips.length - 1;
+    i >= 0 && (!over.length || io.overflows());
+    i--
+  ) {
     io.setOver(chips[i], true);
     over.unshift(chips[i]);
   }
@@ -302,7 +310,8 @@ export function hydrateShell(root, opts = {}) {
     });
     return more;
   }
-  function fitHostChips() {
+  let settle = 0;
+  function fitHostChips(settling) {
     if (!end || !end.getClientRects().length) return;
     const chips = Array.prototype.filter.call(
       end.children,
@@ -346,6 +355,23 @@ export function hydrateShell(root, opts = {}) {
       moreMenu.close(false);
     if (hadFocus && overChips.length && document.activeElement !== more)
       more.focus({ preventScroll: true });
+    // A fit that moved chips can measure a bar still settling (the chips
+    // shrink and grow around ⋯): fit once more on the next frame. A
+    // settling fit never asks for another, so one real change makes at
+    // most two fits, never a loop.
+    const same =
+      before.length === overChips.length &&
+      before.every((c, i) => c === overChips[i]);
+    if (
+      !same &&
+      !settling &&
+      !settle &&
+      typeof requestAnimationFrame === "function"
+    )
+      settle = requestAnimationFrame(() => {
+        settle = 0;
+        fitHostChips(true);
+      });
   }
 
   // Issue 313: a crumb's label that gives way ends in "…"; narrower than

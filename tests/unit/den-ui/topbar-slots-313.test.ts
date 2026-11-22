@@ -208,6 +208,16 @@ describe("2. the ⋯ overflow (fitChips)", () => {
     expect(wide.chips.every((c) => !c.over)).toBe(true);
   });
 
+  it("⋯ never shows empty, and nothing spills: over with ⋯ hidden, fits once ⋯ shows", () => {
+    const r = fakeRow([60, 60], 200);
+    // The chips shrink to make room for ⋯, so the bar reads as fitting
+    // once ⋯ shows. Hiding ⋯ again would spill; one chip goes behind it.
+    r.io.overflows = () => !r.more.on;
+    expect(fitChips(r.io)).toEqual([r.chips[1]]);
+    expect(r.more.on).toBe(true);
+    expect(r.io.overflows()).toBe(false);
+  });
+
   it("not even one fits: all go behind ⋯", () => {
     const r = fakeRow([60, 60], 40);
     expect(fitChips(r.io)).toEqual(r.chips);
