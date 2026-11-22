@@ -9549,6 +9549,9 @@
     ".den-bell-det { display: block; margin-top: 4px; padding: 6px 8px; border-radius: 6px;",
     "  background: var(--surface-2, var(--surface)); color: var(--text); font-size: 12.5px; }",
     ".den-bell-det[hidden] { display: none; }",
+    // Allow and Deny stay put when Review opens: the row keeps to its top,
+    // on a phone too (the kit centers a phone's rows).
+    ".den-bell-row.den-bell-allow { align-items: flex-start; }",
     ".den-bell-detl { overflow-wrap: anywhere; }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
