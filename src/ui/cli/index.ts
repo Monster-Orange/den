@@ -809,6 +809,13 @@ class DenCLI {
       try {
         const parsed = parseCliArgs(args);
         telCmd = telemetryCommandName(parsed.command);
+        // Issue 636: a test bed's driver acting as the person; refused
+        // (and nothing runs) anywhere else.
+        if (parsed.flags.testPerson) {
+          const { enterTestPerson, testPersonCommand } =
+            await import("./test-person.js");
+          await enterTestPerson(testPersonCommand(parsed.command, parsed.args));
+        }
         if (!this.applyGlobalFlags(parsed)) return;
         this.prepareServiceCommand(parsed.command);
         await this.handleCommand(
@@ -5496,6 +5503,9 @@ class DenCLI {
     console.log("  --no-tabs              Force daemon mode for up/restart");
     console.log(
       "  --skip-secrets       Skip local secrets preflight for up/restart/logs",
+    );
+    console.log(
+      "  --test-person          On a test bed only: act as the person (live checks)",
     );
     console.log("\nExamples:");
     console.log(`  ${product().cli} --help`);

@@ -14,6 +14,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { getStateDir } from "./paths.js";
+import { auditVia } from "./test-person.js";
 
 export interface ConfigAuditRow {
   /** issue 216: "agents" is a restart, stop or resume from the CLI. */
@@ -50,6 +51,8 @@ const appendRow: Sink = (row, stateDir) => {
         ts: new Date().toISOString(),
         actor: "user",
         principal: processWho(),
+        // Issue 636: a CLI on a test bed's test-person path.
+        ...(auditVia() ? { via: auditVia() } : {}),
         verb: row.verb,
         detail: row.detail,
         ...(row.outcome ? { outcome: row.outcome } : {}),
