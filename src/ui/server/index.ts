@@ -91,6 +91,14 @@ import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
+import {
+  TEST_RESOLVE_ENV_KEY,
+  parseTestResolve,
+  setTestResolve,
+  testResolveIgnored,
+  testResolver,
+  writeTestResolveState,
+} from "../../shared/test-resolve.js";
 import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
@@ -3373,6 +3381,25 @@ const TEST_INSTALL_LAUNCH_FLAG = (() => {
 })();
 
 /**
+ * Issue 1073: the launcher's name map for Den's own address checks, read
+ * once from the server's start environment (never a file, a setting or a
+ * request) and taken out of it like the flag above. It counts only while
+ * this install is a test install (asked at every lookup); otherwise it is
+ * ignored, and the log and doctor say so.
+ */
+const TEST_RESOLVE = (() => {
+  const name = envName(getProfile(), TEST_RESOLVE_ENV_KEY);
+  const raw = readEnv(getProfile(), TEST_RESOLVE_ENV_KEY);
+  delete process.env[name];
+  if (raw === undefined || raw.trim() === "") return null;
+  const parsed = parseTestResolve(raw);
+  if (!parsed.ok) return { name, ignored: parsed.error };
+  if (!TEST_INSTALL_LAUNCH_FLAG)
+    return { name, ignored: "this install wasn't started as a test install" };
+  return { name, map: parsed.map };
+})();
+
+/**
  * Issue 1018: the launcher's one-time setup value, read once from the
  * server's own start environment and taken out of process.env, like the
  * flag, so nothing this server starts (agents, terminals) inherits it.
@@ -3432,6 +3459,25 @@ function testInstallNow(except?: string): boolean {
       ),
   }).ok;
 }
+
+// Issue 1073: install the name map's hook, and tell the log and doctor.
+if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
+  setTestResolve(testResolver(TEST_RESOLVE.map, () => testInstallNow()));
+  writeTestResolveState(getStateDir(), {
+    state: "used",
+    names: [...TEST_RESOLVE.map.keys()],
+  });
+} else if (TEST_RESOLVE && "ignored" in TEST_RESOLVE && TEST_RESOLVE.ignored) {
+  serverLog(
+    `  ${testResolveIgnored(TEST_RESOLVE.name, TEST_RESOLVE.ignored)}`,
+    "lifecycle",
+  );
+  writeTestResolveState(getStateDir(), {
+    state: "ignored",
+    env: TEST_RESOLVE.name,
+    why: TEST_RESOLVE.ignored,
+  });
+} else writeTestResolveState(getStateDir(), null);
 
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
