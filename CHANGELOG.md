@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [Unreleased]
+
+### Added
+
+- Settings: the terminal limits are rows in Settings › Server and `config sessions.<key>` keys: terminals at once (`sessions.max_concurrent`), the close grace (`close_grace_seconds`), the close after a program ends (`pty_close_seconds`), and doctor's two terminal warnings (`pty_warn_above`, `pty_machine_warn_percent`). They save to user.yml and win over den.yml, key by key. `config sessions.<key>` with no value prints the value in force. Person-only. (issue 532)
+
 ## [0.4.82] - 2026-11-22
 
 ### Added
