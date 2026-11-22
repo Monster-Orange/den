@@ -41,10 +41,31 @@ function ignoreWith(env: Record<string, string>): string[] {
       "-e",
       "console.log(JSON.stringify((await import('./jest.config.js')).default.testPathIgnorePatterns ?? []));",
     ],
-    { cwd: ROOT, encoding: "utf-8", env: { ...process.env, DEN_TEST_DOCKER: "", DEN_TEST_QUARANTINE: "", ...env } },
+    // A clean base: CI's own draft run sets DEN_TEST_BROWSER=skip for this very test.
+    { cwd: ROOT, encoding: "utf-8", env: { ...process.env, DEN_TEST_DOCKER: "", DEN_TEST_QUARANTINE: "", DEN_TEST_BROWSER: "", ...env } },
   );
   return JSON.parse(out) as string[];
 }
+/** The browser files not named *.browser.test.ts (an ES module: a child Node). */
+const BROWSER_SUITES = JSON.parse(
+  execFileSync(
+    process.execPath,
+    ["--input-type=module", "-e", "console.log(JSON.stringify((await import('./tests/browser-suites.mjs')).BROWSER_SUITES));"],
+    { cwd: ROOT, encoding: "utf-8" },
+  ),
+) as string[];
+
+/** Every *.test.ts under tests/, relative to the checkout. */
+function testFiles(dir = path.join(ROOT, "tests")): string[] {
+  const out: string[] = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...testFiles(p));
+    else if (e.name.endsWith(".test.ts")) out.push(path.relative(ROOT, p).split(path.sep).join("/"));
+  }
+  return out;
+}
+
 const ignored = (patterns: string[], file: string) =>
   patterns.some((p) => new RegExp(p).test(`/repo/${file}`));
 
@@ -54,6 +75,29 @@ describe("draft pull requests and shard fan-out (testing policy 1)", () => {
     expect(ignored(p, "tests/unit/den-ui/nav-inventory.browser.test.ts")).toBe(true);
     expect(ignored(p, "tests/unit/scripts/no-close-keywords.test.ts")).toBe(false);
     expect(ignored(ignoreWith({}), "tests/unit/den-ui/nav-inventory.browser.test.ts")).toBe(false);
+  });
+
+  it("DEN_TEST_BROWSER=skip also leaves out the browser files tests/browser-suites.mjs lists", () => {
+    const p = ignoreWith({ DEN_TEST_BROWSER: "skip" });
+    for (const f of BROWSER_SUITES) expect(ignored(p, f)).toBe(true);
+    expect(ignored(p, "tests/unit/pw-launch-check.test.ts")).toBe(false);
+  });
+
+  it("every test file that launches a browser is named *.browser.test.ts or listed", () => {
+    const launches = testFiles()
+      .filter((f) => !f.endsWith(".browser.test.ts"))
+      // The helper's own test: a fake BrowserType, and launch code only as fixture text.
+      .filter((f) => f !== "tests/unit/pw-launch-check.test.ts")
+      .filter((f) => {
+        const text = fs.readFileSync(path.join(ROOT, f), "utf-8");
+        // A value import of Playwright (not `import type`) and a launch through the helper.
+        return (
+          /^import (?!type )[^;]*from ["']playwright["']|import\(["']playwright["']\)/m.test(text) &&
+          /launchBrowser\(/.test(text)
+        );
+      })
+      .sort();
+    expect(launches).toEqual([...BROWSER_SUITES].sort());
   });
 
   it("refuses any other DEN_TEST_BROWSER value", () => {
