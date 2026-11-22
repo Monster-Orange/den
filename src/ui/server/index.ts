@@ -1286,6 +1286,7 @@ import {
   backMessage,
   recordPageRestart,
   restartMarkerPath,
+  selfUpdateAutoAllow,
   takeRestartMarker,
   tellBack,
   writeRestartMarker,
@@ -4000,12 +4001,9 @@ function approvalDeps(): ApprovalDeps {
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
     // SRV-1a: the server agent's own restart, per server_agent.self_update.
+    // A project's agent's den_update always waits for a person.
     autoAllow: (action, agent) =>
-      (action === "den_restart" || action === "den_update") &&
-      agent === SERVER_AGENT_ID &&
-      selfUpdateAuto()
-        ? "server_agent.self_update: auto"
-        : null,
+      selfUpdateAutoAllow(action, agent, selfUpdateAuto),
     // Issue 160: the approval policy, the person's (user.yml) and each
     // project's (workspaces.yml), read per ask. A bad value throws: held.
     // Issue 160: what the write is on, against what the person watches

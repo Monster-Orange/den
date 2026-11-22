@@ -3441,7 +3441,10 @@ project may take that name.
   stays behind that.
 - **It updates Den** (0.4.44, `den_update { version, reason }`, the held
   action `den_update`). Held for the person like `den_restart`, under
-  the same `server_agent.self_update`. Allowed, Den saves the version it
+  the same `server_agent.self_update`. A project's agent may ask too
+  (0.4.83): its ask is always held for a person's Allow in the browser,
+  whatever `server_agent.self_update` or the approval policy says, and
+  the answer tells it so; no agent Allows it. Allowed, Den saves the version it
   runs now, installs `<version>` exactly from npm in the distribution
   (`npm install --save-exact`), runs `doctor --json`, and restarts.
   `version` is `latest` or an exact version such as `0.4.44` (default
