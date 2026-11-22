@@ -61,10 +61,18 @@ describe("issue 1080: scope crumbs never draw over each other or under the searc
       /@container den-left \(max-width: 300px\)\s*\{([\s\S]*?)\n\}/,
     );
     expect(q).not.toBeNull();
+    // Its separator goes; the crumb itself is hidden from sight only, so
+    // a screen reader still hears it (Den Design, review).
     expect(q![1]).toMatch(
-      /\.den-scope \.den-opt,\s*\.den-scope \.den-opt \+ \.den-sep/,
+      /\.den-scope \.den-opt \+ \.den-sep,\s*\.den-scope \.den-opt \+ \.den-scope-menu \+ \.den-sep\s*\{\s*display:\s*none/,
     );
-    expect(q![1]).toMatch(/display:\s*none/);
+    const hid = q![1].match(
+      /\.den-scope \.den-opt,\s*\.den-scope \.den-k\s*\{([^}]*)\}/,
+    );
+    expect(hid).not.toBeNull();
+    expect(hid![1]).toMatch(/position:\s*absolute/);
+    expect(hid![1]).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(hid![1]).not.toMatch(/display:\s*none/);
   });
 
   it("the last crumb is still kept whole (issue 303)", () => {
@@ -83,9 +91,11 @@ describe("issue 1080: a long last crumb on a narrow left part", () => {
       /@container den-left \(max-width: 300px\)\s*\{([\s\S]*?)\n\}/,
     )?.[1] ?? "";
   it("its key goes and its value is capped by the left part's width", () => {
-    expect(q()).toMatch(/\.den-scope \.den-k\s*\{\s*display:\s*none/);
+    // Hidden from sight only: a screen reader still hears the key.
+    expect(q()).not.toMatch(/\.den-scope \.den-k\s*\{\s*display:\s*none/);
     expect(q()).toMatch(
-      /\.den-scope \.den-last \.den-vn\s*\{[^}]*max-width:\s*min\(200px,\s*calc\(100cqi - 96px\)\)/,
+      // Never under 7ch: 6 characters and its "…" (Den Design).
+      /\.den-scope \.den-last \.den-vn\s*\{[^}]*max-width:\s*min\(\s*200px,\s*max\(7ch,\s*calc\(100cqi - 96px\)\)\s*\)/,
     );
   });
   it("the left part never clips: a crumb's menu hangs past it", () => {

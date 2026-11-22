@@ -922,20 +922,32 @@ body.den-has-shell .den-upd {
    before anything runs under the search. Its words stay in the group's
    title (scopeHtml). */
 @container den-left (max-width: 300px) {
+  /* The optional crumb and the keys are hidden from sight only: a screen
+     reader still hears "Company: …" and "PROJECT" (out of the grid, so
+     they take no room). The separator after the optional crumb goes. */
   .den-scope .den-opt,
+  .den-scope .den-k {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .den-scope .den-opt + .den-sep,
   .den-scope .den-opt + .den-scope-menu + .den-sep {
     display: none;
   }
-  /* Then the keys go, and the last crumb's value (kept whole, issue 303,
-     while it fits) ends in "…" where the left part can't hold it: its cap
-     is the left part's own width less the mark, its separator, its
-     padding and its ▾. The whole value is in its menu. */
-  .den-scope .den-k {
-    display: none;
-  }
+  /* The last crumb's value (kept whole, issue 303, while it fits) ends in
+     "…" where the left part can't hold it: its cap is the left part's
+     own width less the mark, its separator, its padding and its ▾, and
+     never under 7ch (6 characters and its "…"). The whole value is in
+     its menu. */
   .den-scope .den-last .den-vn {
-    max-width: min(200px, calc(100cqi - 96px));
+    max-width: min(200px, max(7ch, calc(100cqi - 96px)));
   }
 }
 /* A long value ends in an ellipsis; the whole value is in the menu. An
