@@ -195,6 +195,64 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
+/**
+ * Issue 746: the held writes waiting for the person's Allow (`waiting`
+ * entries of kind "allow"), oldest first.
+ */
+export function allowsOf(b) {
+  return (b?.waiting ?? []).filter(
+    (w) => w && w.kind === "allow" && typeof w.id === "string" && w.id,
+  );
+}
+
+/**
+ * Issue 746: one held write's row, first in Needs you: what it is, who
+ * asked, how long it has waited and when it expires, and Allow and Deny.
+ */
+function allowRowHtml(w) {
+  const what = String(w.what ?? w.action ?? "");
+  const text = w.agent
+    ? tr("bell.ap.row", { name: w.agent, what })
+    : tr("bell.ap.rowAsk", { what });
+  const waits =
+    typeof w.since === "string" && typeof w.expiresAt === "string"
+      ? tr("bell.ap.waits", {
+          ago: bellAgo(w.since),
+          time: formatTime(w.expiresAt),
+        })
+      : "";
+  return (
+    `<div class="den-bell-row den-bell-allow" data-kind="allow" data-ap-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t">${esc(text)}${waits ? `<span class="den-bell-sub">${esc(waits)}</span>` : ""}</span>` +
+    `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
+    `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
+    `</div>`
+  );
+}
+
+/** Issue 746: the Allow rows' own group, heading Needs you. */
+function allowsHtml(allows) {
+  if (!allows.length) return "";
+  return (
+    `<section data-scope="allow"><div class="den-bell-sc"><span>${esc(tr("bell.ap.h"))}</span></div>` +
+    allows.map(allowRowHtml).join("") +
+    `</section>`
+  );
+}
+
+/** Issue 746: groups without the held items an Allow row already shows. */
+function withoutAllowed(groups, allows) {
+  if (!allows.length) return groups;
+  const shown = new Set(allows.map((w) => `record:held-${w.id}`));
+  return groups
+    .map((g) => ({
+      ...g,
+      subjects: (g.subjects ?? []).filter((s) => !shown.has(s.subject)),
+    }))
+    .filter((g) => g.subjects.length);
+}
+
 /** `needs`: issue 101, a Needs you group has no Mark read. */
 function groupsHtml(groups, ui, needs = false) {
   return groups
@@ -236,7 +294,9 @@ export function bellPanel(b, ui = {}) {
     updates: !!ui.updates,
     ask: ui.ask,
   };
-  const groups = b?.groups ?? [];
+  // Issue 746: what waits for the person's Allow leads Needs you.
+  const allows = allowsOf(b);
+  const groups = withoutAllowed(b?.groups ?? [], allows);
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
@@ -259,7 +319,7 @@ export function bellPanel(b, ui = {}) {
     ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
       (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
     : "";
-  if (!groups.length && !older.count && !updates.count)
+  if (!allows.length && !groups.length && !older.count && !updates.count)
     return {
       ...panel,
       items: [],
@@ -278,7 +338,7 @@ export function bellPanel(b, ui = {}) {
   return {
     ...panel,
     sections: {
-      needs: groupsHtml(groups, u, true),
+      needs: allowsHtml(allows) + groupsHtml(groups, u, true),
       earlier:
         updatesHtml +
         (older.count
@@ -314,6 +374,55 @@ async function post(path, body) {
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
+}
+
+/**
+ * Issue 746: Allow or Deny from a Needs you row, through the same decide
+ * route as the Allow dialog (the page's fetch adds the session's CSRF
+ * token and approval key). A toast says what happened.
+ */
+async function decideHeld(el, decision) {
+  const id = el.dataset.ap;
+  if (!id) return;
+  const btns = el
+    .closest(".den-bell-row")
+    ?.querySelectorAll("button[data-ap]") ?? [el];
+  for (const b of btns) b.disabled = true;
+  const again = () => {
+    for (const b of btns) b.disabled = false;
+  };
+  const shell = window.denShell;
+  // BUSY-1: the write goes through the working pop-up, which shows a
+  // refusal itself and resolves null then.
+  const path = `/api/approvals/${encodeURIComponent(id)}/decide`;
+  const run = (headers) => shell.api("POST", path, { decision }, { headers });
+  let j = null;
+  try {
+    j = shell?.busyAction
+      ? await shell.busyAction(`decide-${decision}`, run, { button: el })
+      : await run({});
+  } catch (err) {
+    shell?.errorToast?.(err);
+    again();
+    return;
+  }
+  if (!j) return again();
+  const res = j.result;
+  if (decision === "allow" && res && res.ok === false)
+    shell?.toast?.(tr("bell.ap.failed", { error: res.error || "?" }));
+  else
+    shell?.toast?.(
+      tr(decision === "allow" ? "bell.ap.done" : "bell.ap.denied", {
+        what: j.summary ?? "",
+      }),
+    );
+  // The page that asked hears what ran, as from the Allow dialog.
+  if (decision === "allow" && res && res.ok !== false)
+    window.dispatchEvent(
+      new CustomEvent("den:approval-done", {
+        detail: { id, action: j.action, result: res },
+      }),
+    );
 }
 
 /** Wire the bell on this page; a page without #den-bell does nothing. */
@@ -400,6 +509,11 @@ export function initBell(doc = document) {
       return;
     }
     e.preventDefault();
+    if (what === "allow" || what === "deny") {
+      await decideHeld(el, what);
+      await refresh();
+      return;
+    }
     if (what === "all") await post("/api/notifications/read", { all: true });
     else if (what === "clear") await post("/api/notifications/clear", {});
     else if (what === "scope")

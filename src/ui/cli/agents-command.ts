@@ -369,7 +369,7 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
       r.persona ?? "-",
       r.runtime ?? "-",
       r.rotation?.due
-        ? `${r.state}, ${r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
+        ? `${r.state}, ${r.rotation.waiting ? `waits for ${r.rotation.waiting} background item(s)` : r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
         : r.restartFailed
           ? // Issue 631: why it didn't come back.
             `${r.state}: didn't come back after a restart (${r.restartFailed.why})`
@@ -749,9 +749,11 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
       const code = report(
         d,
         s,
-        s.fresh
-          ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
-          : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+        s.relaunched
+          ? `restarted agent ${s.rec.id}; it had rotated (${s.relaunched.why}), so it relaunched from its handoff in a new conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`
+          : s.fresh
+            ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
+            : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
       );
       return {
         code,

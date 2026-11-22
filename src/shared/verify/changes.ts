@@ -12,7 +12,8 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-export type ResultState = "passed" | "failed" | "error" | "blocked";
+/** "notrun": an imported check where nothing ran (issue 441, clause 3). */
+export type ResultState = "passed" | "failed" | "error" | "blocked" | "notrun";
 
 /** A module's latest result on one environment. */
 export interface LatestResult {

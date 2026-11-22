@@ -1236,6 +1236,18 @@
         body:has(.den-dock.open) .pane {
           min-height: 180px;
         }
+        /* Issue 194: a banner (Den's server isn't responding) pushes the
+           page down. While it shows, the pane gives way to its own minimum
+           (its bar and the To line) and the list to about one row (it
+           scrolls), so the To line stays above the open dock. At 390x844
+           the list's two-row floor was what held it 26px too tall; with
+           room to spare both rows still fill as before. */
+        body:has(.den-dock.open):has(#den-banners:not([hidden])) .pane {
+          min-height: 0;
+        }
+        body:has(.den-dock.open):has(#den-banners:not([hidden])) .agx {
+          grid-template-rows: minmax(3rem, max-content) minmax(min-content, 1fr);
+        }
         /* A pane's height comes from its row, never its terminal's (a
            24-row terminal held it taller than the screen, under the dock). */
         .pane .term {

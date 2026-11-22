@@ -12,6 +12,12 @@
  *
  * A line that must keep a word (a protocol's name, quoted output of another
  * tool) ends with the comment `words-ok: <why>`.
+ *
+ * Issue 770: src/shared/agents/detect/rules is left out (VENDORED): it
+ * holds other products' screen text, which a rule must match exactly.
+ * Only while every file there starts with the header naming it vendored
+ * screen text and its source (`vendored-screen-text: <source>`); a file
+ * there without it fails the gate.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -53,6 +59,37 @@ if (!base) {
   }
 }
 
+/** Issue 770: other products' screen text, left out of the gate. */
+const VENDORED = "src/shared/agents/detect/rules";
+const VENDORED_HEADER = /^\/\*\*[\s\S]{0,1500}?vendored-screen-text: \S/;
+
+let unmarked = 0;
+const changedVendored = git(
+  "diff",
+  "--name-only",
+  "--diff-filter=AM",
+  base,
+  "--",
+  VENDORED,
+)
+  .split("\n")
+  .filter(Boolean);
+for (const f of changedVendored) {
+  let head = "";
+  try {
+    head = readFileSync(f, "utf-8").slice(0, 2000);
+  } catch {
+    /* gone from the working tree: git's copy is what counts */
+    head = git("show", `HEAD:${f}`).slice(0, 2000);
+  }
+  if (!VENDORED_HEADER.test(head)) {
+    unmarked++;
+    console.error(
+      `${f}: in ${VENDORED}/, which the gate leaves out, but it has no header saying it holds another product's screen text (vendored-screen-text: <source>)`,
+    );
+  }
+}
+
 const diff = git(
   "diff",
   "-U0",
@@ -64,6 +101,7 @@ const diff = git(
   "src/**/*.ts",
   "src/**/*.js",
   "src/**/*.html",
+  `:(exclude)${VENDORED}/**`,
 );
 
 /** A page's lines inside <script>…</script> (1-based), read as code. */
@@ -161,6 +199,12 @@ for (const raw of diff.split("\n")) {
   }
 }
 
+if (unmarked) {
+  console.error(
+    `\nwords gate: ${unmarked} file(s) in ${VENDORED}/ without the vendored-screen-text header.`,
+  );
+  process.exit(1);
+}
 if (hits) {
   console.error(
     `\nwords gate: ${hits} added string(s) use a word people never see (LOGICAL-ERD.md). Reword, or end the line with \`// words-ok: <why>\`.`,

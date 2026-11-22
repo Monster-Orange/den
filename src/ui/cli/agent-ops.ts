@@ -50,6 +50,13 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { auditVia } from "../../shared/test-person.js";
+import {
+  line as rl,
+  reviewLines as review,
+  type DetailKey,
+  type ReviewLine,
+} from "../../shared/review-lines.js";
 import {
   agentOrderOf,
   inAgentOrder,
@@ -116,6 +123,8 @@ import {
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
+  ROTATION_WAIT_MINUTES_DEFAULT,
+  UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
   setUserRuntimeBin,
   userConfigPath,
@@ -137,8 +146,10 @@ import {
   setWorkspaceAgentPermission,
   workspacePermissionKey,
   workspaceMcpServersRaw,
+  workspaceEntryRaw,
   setWorkspaceMcpServers,
 } from "../../shared/environment-manager/workspaces.js";
+import { hubLoopPrompt, projectHubLoop } from "../../shared/hub-loop.js";
 import { namedSecretRef } from "../../shared/secrets/index.js";
 import {
   checkProjectMcpServer,
@@ -157,6 +168,10 @@ import {
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
+import {
+  operatorStubArgv,
+  operatorStubEnv,
+} from "../../shared/test-operator.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
@@ -256,8 +271,13 @@ import {
 } from "../../shared/agents/rotate-settings.js";
 import {
   archiveHandoff,
+  clearWaiting,
   keepConversation,
   noteAsked,
+  noteLeftAsked,
+  noteLeftRunning,
+  noteWaiting,
+  type LeftRunning,
   noteFellBack,
   rotationInstruction,
   syncAfter,
@@ -425,6 +445,8 @@ export interface AgentsDeps extends SessionsDeps {
     mcpUrl?: string;
     /** D41: hub.inbox_on_stop (default nudge). */
     inboxOnStop?: "nudge" | "off";
+    /** Issue 158: hub.delivery_loop (default on). */
+    deliveryLoop?: boolean;
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
@@ -454,6 +476,12 @@ export interface AgentsDeps extends SessionsDeps {
    * workspaces.yml's; undefined: unset). Checked where it is used.
    */
   workspaceMcpServers?: (ws: string) => unknown;
+  /**
+   * Issue 158: project `ws`'s workspaces.yml entry, for its Hub delivery
+   * loop setting (hub_delivery_loop, hub_delivery_loop_extra); undefined
+   * when it has none.
+   */
+  workspaceHubLoop?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
@@ -497,8 +525,10 @@ export interface AgentsResolved extends Resolved {
     allowTools?: boolean;
     mcpUrl?: string;
     inboxOnStop?: "nudge" | "off";
+    deliveryLoop?: boolean;
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  workspaceHubLoop: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
   secretRefSet: (name: string) => boolean;
@@ -655,13 +685,25 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
  */
 export async function agentHub(
   d: AgentsResolved,
+  ws?: string,
 ): Promise<AgentMcp["hub"] | undefined> {
   const h = await d.hub().catch(() => null);
   if (!h) return undefined;
   const proxy = denHubProxy(d);
+  // Issue 158: the Hub delivery loop, on unless the project or the
+  // install turned it off.
+  let project = projectHubLoop(undefined);
+  try {
+    if (ws) project = projectHubLoop(d.workspaceHubLoop(ws));
+  } catch {
+    // Unreadable workspaces.yml: as the install. So a project a person
+    // turned off gets the loop back until it reads again (the next start).
+  }
+  const loop = hubLoopPrompt(h.deliveryLoop !== false, project);
   return {
     name: HUB_SERVER,
     url: `${proxy}/mcp`,
+    ...(loop ? { loop } : {}),
     allowTools: h.allowTools !== false,
     // D41: the Stop hook's inbox check, through Den's proxy too.
     ...(h.inboxOnStop !== "off" ? { inboxBase: proxy } : {}),
@@ -826,6 +868,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    workspaceHubLoop: d.workspaceHubLoop ?? workspaceEntryRaw,
     workspaceMcpServers:
       d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
     saveWorkspaceMcpServers:
@@ -944,6 +987,7 @@ async function defaultHub(): Promise<{
   allowTools: boolean;
   mcpUrl: string;
   inboxOnStop: "nudge" | "off";
+  deliveryLoop: boolean;
 } | null> {
   const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
   let cfg;
@@ -961,6 +1005,7 @@ async function defaultHub(): Promise<{
         allowTools: cfg.allowTools,
         mcpUrl: cfg.mcpUrl,
         inboxOnStop: cfg.inboxOnStop,
+        deliveryLoop: cfg.deliveryLoop,
       }
     : null;
 }
@@ -1119,9 +1164,10 @@ export interface AgentRow {
   interruptedAt?: string;
   /**
    * Issues 124, 631: Den restarted it (or its terminal host) and it
-   * didn't come back: when, and why.
+   * didn't come back: when, and why. Issue 923: `relaunchTried`, the
+   * rotation sweep tried to relaunch it from its handoff once and failed.
    */
-  restartFailed?: { at: string; why: string };
+  restartFailed?: { at: string; why: string; relaunchTried?: boolean };
   /**
    * Issue 658: a handoff is on file (handoff.md, or one kept from a
    * relaunch) while no rotation is ready: Relaunch from its last handoff.
@@ -2304,6 +2350,8 @@ export type PersonaHeldCheck =
       summary: string;
       params: Record<string, string>;
       details: string[];
+      /** Issue 205: one message key per details line. */
+      detailKeys: DetailKey[];
       args: Record<string, unknown>;
     }
   | { ok: false; error: string };
@@ -2315,17 +2363,45 @@ export interface PersonaAsker {
 }
 
 /** The Review's lines for a persona: its fields, then its instructions in full. */
-function personaReview(input: PersonaInput): string[] {
+function personaReview(input: PersonaInput): ReviewLine[] {
+  const cmds = input.allowedCommands.join(", ");
   return [
-    ...(input.displayName ? [`Name: ${input.displayName}`] : []),
-    `Role: ${input.role}`,
-    `Category: ${input.category}`,
-    `Description: ${input.description}`,
-    `Runtime: ${input.runtime}${input.model ? `, model ${input.model} (${input.version})` : ""}`,
-    `Mode: ${input.permission}`,
-    `Allowed commands: ${input.allowedCommands.join(", ") || "none"}`,
-    "Instructions:",
-    input.instructions,
+    ...(input.displayName
+      ? [
+          rl(`Name: ${input.displayName}`, "ap.det.persona.name", {
+            v: input.displayName,
+          }),
+        ]
+      : []),
+    rl(`Role: ${input.role}`, "ap.det.persona.role", { v: input.role }),
+    rl(`Category: ${input.category}`, "ap.det.persona.category", {
+      v: input.category,
+    }),
+    rl(`Description: ${input.description}`, "ap.det.persona.description", {
+      v: input.description,
+    }),
+    input.model
+      ? rl(
+          `Runtime: ${input.runtime}, model ${input.model} (${input.version})`,
+          "ap.det.persona.runtimeModel",
+          {
+            v: input.runtime,
+            model: input.model,
+            version: String(input.version ?? ""),
+          },
+        )
+      : rl(`Runtime: ${input.runtime}`, "ap.det.persona.runtime", {
+          v: input.runtime,
+        }),
+    rl(`Mode: ${input.permission}`, "ap.det.persona.mode", {
+      v: input.permission,
+    }),
+    cmds
+      ? rl(`Allowed commands: ${cmds}`, "ap.det.persona.commands", { v: cmds })
+      : rl("Allowed commands: none", "ap.det.persona.commandsNone"),
+    rl("Instructions:", "ap.det.persona.instructions"),
+    // The persona's own words: shown as written, in any language.
+    rl(input.instructions, "ap.det.asWritten", { v: input.instructions }),
   ];
 }
 
@@ -2334,8 +2410,10 @@ const heldError = (e: unknown): { ok: false; error: string } => ({
   error: (e as Error).message,
 });
 
-const LOCAL_FILE_LINE =
-  "File: this machine's own personas (not shared with the project)";
+const LOCAL_FILE_LINE: ReviewLine = rl(
+  "File: this machine's own personas (not shared with the project)",
+  "ap.det.persona.local",
+);
 
 /** A project's agent: the project it works in (never Den's own scope). */
 const projectOfAsker = (who: PersonaAsker): string | undefined =>
@@ -2424,7 +2502,8 @@ export function checkPersonaCreate(
         ok: true,
         summary: `add persona ${name} (${id})`,
         params: { name, id },
-        details: [LOCAL_FILE_LINE, ...personaReview(input)],
+        details: [LOCAL_FILE_LINE, ...personaReview(input)].map((l) => l[0]),
+        detailKeys: [LOCAL_FILE_LINE, ...personaReview(input)].map((l) => l[1]),
         args: { ...input },
       };
     const where = `${home.ws} › ${home.repo}`;
@@ -2433,10 +2512,14 @@ export function checkPersonaCreate(
       ok: true,
       summary: `add persona ${name} (${id}) to project ${where}`,
       params: { name, id, where, inProject: "1" },
-      details: [
-        `File: ${file} (new; commit it so the project's other Dens get it)`,
+      ...review([
+        rl(
+          `File: ${file} (new; commit it so the project's other Dens get it)`,
+          "ap.det.persona.newFile",
+          { file },
+        ),
         ...personaReview(input),
-      ],
+      ]),
       args: { ...input, project: home.ws, repo: home.repo! },
     };
   } catch (e) {
@@ -2553,17 +2636,24 @@ export function checkPersonaUpdate(
       ok: true,
       summary: `change persona ${id}: ${fields}${where ? ` in project ${where}` : ""}`,
       params: { id, fields, ...(where ? { where, inProject: "1" } : {}) },
-      details: [
+      ...review([
         inProject
-          ? `File: ${p.source} (changed; commit it so the project's other Dens get it)`
+          ? rl(
+              `File: ${p.source} (changed; commit it so the project's other Dens get it)`,
+              "ap.det.persona.changedFile",
+              { file: String(p.source) },
+            )
           : LOCAL_FILE_LINE,
-        ...changed.map((k) => {
+        ...changed.map((k): ReviewLine => {
           const v = (input as unknown as Record<string, unknown>)[k];
-          return `${k}: ${Array.isArray(v) ? v.join(", ") || "none" : String(v ?? "")}`;
+          const said = Array.isArray(v) ? v.join(", ") : String(v ?? "");
+          return said || !Array.isArray(v)
+            ? rl(`${k}: ${said}`, "ap.det.persona.field", { field: k, v: said })
+            : rl(`${k}: none`, "ap.det.persona.fieldNone", { field: k });
         }),
-        "As it will read:",
+        rl("As it will read:", "ap.det.persona.asItWillRead"),
         ...personaReview(input),
-      ],
+      ]),
       args: { id, ...input, ...(inProject ? { project: ws } : {}) },
     };
   } catch (e) {
@@ -3759,7 +3849,7 @@ export async function startAgent(
       },
     );
     // HUB-1.5: Den Hub's MCP server, when hub.url is set.
-    const hub = await agentHub(d);
+    const hub = await agentHub(d, ws);
     const input = {
       ...base,
       ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
@@ -3859,6 +3949,10 @@ export async function startAgent(
               ? { resumeToken: out.resumeToken, launched: true }
               : {}),
             ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
+            // Issue 943: started on the test-person path, never brought in.
+            ...(auditVia() === "test-person" && !more.bringIn
+              ? { testBed: true as const }
+              : {}),
             // D56: started outside its project, brought in by an ask naming
             // that folder.
             ...(more.bringIn?.outside ? { outside: true } : {}),
@@ -4488,6 +4582,8 @@ export type AgentCreateCheck =
       /** The summary's parts, for the Allow dialog to word in its language. */
       params: Record<string, string>;
       details: string[];
+      /** Issue 205: one message key per details line. */
+      detailKeys: DetailKey[];
       args: AgentCreateArgs;
     }
   | { ok: false; error: string };
@@ -4575,13 +4671,23 @@ export function checkAgentCreate(
       ok: true,
       summary: `start agent ${shown} (${persona.id}) in ${where}, mode ${mode}${runtime ? `, runtime ${runtime}` : ""}`,
       params: { name: shown, persona: persona.id, where, mode },
-      details: [
-        `Persona: ${persona.id}`,
-        `Project: ${ws}`,
-        `Folder: ${dir ?? d.workspaceDir(ws)}`,
-        `Runtime: ${rt}`,
-        `Mode: ${mode} (the project's: ${cap})`,
-      ],
+      ...review([
+        rl(`Persona: ${persona.id}`, "ap.det.agent_create.persona", {
+          v: persona.id,
+        }),
+        rl(`Project: ${ws}`, "ap.det.agent_create.project", { v: ws }),
+        rl(
+          `Folder: ${dir ?? d.workspaceDir(ws)}`,
+          "ap.det.agent_create.folder",
+          { v: dir ?? d.workspaceDir(ws) },
+        ),
+        rl(`Runtime: ${rt}`, "ap.det.agent_create.runtime", { v: rt }),
+        rl(
+          `Mode: ${mode} (the project's: ${cap})`,
+          "ap.det.agent_create.mode",
+          { mode, cap: String(cap) },
+        ),
+      ]),
       args: {
         project: ws,
         persona: persona.id,
@@ -4754,9 +4860,20 @@ function folderTarget(
 }
 
 /** A details line as a message key with its words (the page's t()). */
-export interface DetailKey {
-  key: string;
-  vars?: Record<string, string>;
+export type { DetailKey };
+
+/** Issue 205: "Agent: name (id), project p", as a Review line. */
+function agentLine(shown: string, id: string, project: string): ReviewLine {
+  return shown !== id
+    ? rl(`Agent: ${shown} (${id}), project ${project}`, "ap.det.agent.whoId", {
+        agent: shown,
+        id,
+        project,
+      })
+    : rl(`Agent: ${shown}, project ${project}`, "ap.det.agent.who", {
+        agent: shown,
+        project,
+      });
 }
 
 /** SRV-P4: a held write's check (project_mode, agent_folder). */
@@ -4964,9 +5081,8 @@ export function checkProjectMode(
     const rankAfter =
       after === undefined ? INTENT_RANK.all + 1 : INTENT_RANK[after];
     const widensOwn = ownMode.some((o) => rankAfter > INTENT_RANK[o.mode]);
-    const ownList = ownMode
-      .map((o) => `${o.agent} (own mode: ${o.mode})`)
-      .join(", ");
+    // One list for the line and its key: the same in every language.
+    const ownList = ownMode.map((o) => `${o.agent} (${o.mode})`).join(", ");
     // Each line in English, with its key for the Allow dialog's language.
     const lines: [string, DetailKey][] = [
       ...(loosens
@@ -4995,9 +5111,7 @@ export function checkProjectMode(
               `These keep their own mode and won't follow the project: ${ownList}`,
               {
                 key: "ap.pm.own",
-                vars: {
-                  list: ownMode.map((o) => `${o.agent} (${o.mode})`).join(", "),
-                },
+                vars: { list: ownList },
               },
             ] as [string, DetailKey],
           ]
@@ -5498,19 +5612,32 @@ export function checkAgentFolder(
       ok: true,
       summary: `move agent ${shown} to ${where}`,
       params: { agent: shown, where },
-      details: [
-        `Agent: ${shown}${shown !== id ? ` (${id})` : ""}, project ${rec.workspace}`,
-        `From: ${rec.cwd ?? d.workspaceDir(rec.workspace)}`,
-        `To: ${t.dir}`,
+      ...review([
+        agentLine(shown, id, rec.workspace),
+        rl(
+          `From: ${rec.cwd ?? d.workspaceDir(rec.workspace)}`,
+          "ap.det.agent_folder.from",
+          { v: rec.cwd ?? d.workspaceDir(rec.workspace) },
+        ),
+        rl(`To: ${t.dir}`, "ap.det.agent_folder.to", { v: t.dir }),
         running
-          ? "It is running: Den stops it, moves it, and starts it fresh there (a new conversation; the old one stays in its history)."
-          : "It is stopped and stays so: its next start is a new conversation there.",
+          ? rl(
+              "It is running: Den stops it, moves it, and starts it fresh there (a new conversation; the old one stays in its history).",
+              "ap.det.agent_folder.running",
+            )
+          : rl(
+              "It is stopped and stays so: its next start is a new conversation there.",
+              "ap.det.agent_folder.stopped",
+            ),
         ...(who.agent === id
           ? [
-              "This is the agent that asked: it stops when you Allow, and its answer to you ends there.",
+              rl(
+                "This is the agent that asked: it stops when you Allow, and its answer to you ends there.",
+                "ap.det.agent_folder.self",
+              ),
             ]
           : []),
-      ],
+      ]),
       args: {
         agent: id,
         project: rec.workspace,
@@ -5637,15 +5764,35 @@ export function checkAgentMode(
         to,
         ...(loosens ? { loosens: "1" } : {}),
       },
-      details: [
-        ...(loosens ? [`This lets ${shown} act without asking you.`] : []),
-        `Agent: ${shown}${shown !== id ? ` (${id})` : ""}, project ${rec.workspace}`,
-        `Now: its own mode, ${own}`,
-        `Then: it follows the project, ${to}`,
+      ...review([
+        ...(loosens
+          ? [
+              rl(
+                `This lets ${shown} act without asking you.`,
+                "ap.det.agent_mode.loosens",
+                { agent: shown },
+              ),
+            ]
+          : []),
+        agentLine(shown, id, rec.workspace),
+        rl(`Now: its own mode, ${own}`, "ap.det.agent_mode.now", {
+          mode: own,
+        }),
+        rl(`Then: it follows the project, ${to}`, "ap.det.agent_mode.then", {
+          mode: to,
+        }),
         running
-          ? `It is running: Den restarts it after its turn, on the same conversation, in ${to}.`
-          : `It is stopped: its next start is in ${to}.`,
-      ],
+          ? rl(
+              `It is running: Den restarts it after its turn, on the same conversation, in ${to}.`,
+              "ap.det.agent_mode.running",
+              { mode: to },
+            )
+          : rl(
+              `It is stopped: its next start is in ${to}.`,
+              "ap.det.agent_mode.stopped",
+              { mode: to },
+            ),
+      ]),
       args: { agent: id, project: rec.workspace },
     };
   } catch (e) {
@@ -5884,6 +6031,38 @@ export interface Resumed extends Started {
    * this one didn't restart it again. `at`: when that session started.
    */
   already?: { at: string; note: string };
+  /**
+   * Issue 923: its rotation was ready, so the restart relaunched it from
+   * its handoff in a new conversation (why it rotated, where it was kept).
+   */
+  relaunched?: { why: string; handoff: string };
+}
+
+/**
+ * Issue 923: relaunch agent `id` from its handoff when its rotation is
+ * ready (due, the handoff passes) and Den may relaunch it (on_due auto,
+ * or a person asked for Relaunch now), as resumeOrRelaunch does.
+ * Undefined otherwise: on ask the resume is refused and the person is
+ * told (notBackAfterRestart); not ready, it resumes as before.
+ */
+async function relaunchIfReady(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+): Promise<Resumed | undefined> {
+  const rot = rotationOf(d, agentRecord(d, id, ws));
+  if (!rot?.ready || (rot.onDue !== "auto" && !rot.relaunchWanted))
+    return undefined;
+  const r = await relaunchAgent(d, id, ws, {
+    ...(rot.onDue === "auto" ? { auto: true } : {}),
+  });
+  const { why, handoff, reason: _reason, ...started } = r;
+  return {
+    ...started,
+    fresh: true,
+    newConversation: true,
+    relaunched: { why, handoff },
+  };
 }
 
 /** Issue 216: what a restart says when another request already did it. */
@@ -6011,7 +6190,7 @@ export async function resumeAgent(
       // Resume in the cwd the agent had, wherever the workspace points now.
       // D24 (and D25: a rename since) the name peers see it by.
       const peerName = peerSessionName(d.cli, rec.workspace, rec);
-      const hub = await agentHub(d);
+      const hub = await agentHub(d, rec.workspace);
       const at = {
         ...input,
         ...(hub ? { mcp: { ...input.mcp, hub } } : {}),
@@ -6402,6 +6581,62 @@ function restartWaitOf(d: AgentsResolved): number {
   }
 }
 
+/** Issue 914: agents.rotation_wait_minutes, in ms (its default if unreadable). */
+function rotationWaitOf(d: AgentsResolved): number {
+  try {
+    return (
+      d.agentsConfig().rotationWaitMs ?? ROTATION_WAIT_MINUTES_DEFAULT * 60_000
+    );
+  } catch {
+    return ROTATION_WAIT_MINUTES_DEFAULT * 60_000;
+  }
+}
+
+/**
+ * Issue 914: the background work agent `rec` has running under live
+ * session `s`: its active helpers (running or idle, of this session) and
+ * the jobs it left running (background shells). Empty when its runtime
+ * can't tell. Never throws.
+ */
+async function leftRunningOf(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  s: SessionInfo,
+): Promise<LeftRunning[]> {
+  const rt = getRuntime(rec.runtime);
+  const out: LeftRunning[] = [];
+  const since = liveSince(s, rec);
+  try {
+    for (const h of rt?.helpers?.(rec, {
+      env: d.env,
+      settings: helperSettings(d),
+      agentLive: true,
+      ...(since !== undefined ? { liveSince: since } : {}),
+    }) ?? [])
+      if (!h.earlier && (h.status === "running" || h.status === "idle"))
+        out.push({
+          kind: "helper",
+          id: h.id,
+          what: h.description ?? h.workflow?.label ?? h.type ?? "",
+          ...(h.branch ? { branch: h.branch } : {}),
+        });
+  } catch {
+    /* its helpers can't be read: none counted */
+  }
+  try {
+    if (rt?.jobPattern && s.pid)
+      for (const j of jobsUnder(s.pid, rt.jobPattern, d.processes()))
+        out.push({
+          kind: "job",
+          id: String(j.pid),
+          what: `a background shell, running ${Math.round((j.secs ?? 0) / 60)} min`,
+        });
+  } catch {
+    /* no process list: none counted */
+  }
+  return out;
+}
+
 /** Issue 218: agents.lock_wait_minutes, in ms (its default if unreadable). */
 function lockWaitOf(d: AgentsResolved): number {
   try {
@@ -6650,7 +6885,11 @@ export async function restartAgent(
     // Issue 124: a resume that fails never leaves it stopped by Den.
     let out: Resumed;
     try {
-      out = await resumeAgent(d, rec.id, rec.workspace);
+      // Issue 923: its rotation is ready, so a resume is bound to be
+      // refused. Den stopped it: it relaunches from its handoff instead.
+      out =
+        (await relaunchIfReady(d, rec.id, rec.workspace)) ??
+        (await resumeAgent(d, rec.id, rec.workspace));
     } catch (e) {
       if (stopped.session)
         notBackAfterRestart(d, rec.id, rec.workspace, (e as Error).message);
@@ -6696,13 +6935,18 @@ function notBackAfterRestart(
   id: string,
   ws: string,
   why: string,
+  o: { relaunchTried?: boolean } = {},
 ): void {
   const rec = readRecord(d.stateDir(), id);
   if (!rec) return;
   const { stoppedAt: _s, ...rest } = rec;
   writeRecord(d.stateDir(), {
     ...rest,
-    restartFailed: { at: new Date().toISOString(), why },
+    restartFailed: {
+      at: new Date().toISOString(),
+      why,
+      ...(o.relaunchTried ? { relaunchTried: true } : {}),
+    },
   });
   auditConfig(
     {
@@ -7566,7 +7810,12 @@ export async function relaunchAgent(
         ...(folder ? { folder } : {}),
       },
       {
-        firstPrompt: handoffPrompt(h.text!, reason, compactions),
+        firstPrompt: handoffPrompt(
+          h.text!,
+          reason,
+          compactions,
+          manual ? [] : (before?.leftRunning ?? []),
+        ),
         rotations: [...(rec.rotations ?? []), entry],
         beforeLaunch: () => {
           kept = archive
@@ -8577,15 +8826,33 @@ const TRUST_MAX_MOVES = 4;
  * quiet (as a first instruction is, AG-10.1). False when it isn't running,
  * or its screen ends with a dialog for its person (never typed into).
  */
+export function typeIntoAgent(
+  d: AgentsResolved,
+  id: string,
+  text: string,
+): Promise<boolean>;
+/**
+ * Issue 629: with `ready`, it is asked once this text's turn in the queue
+ * comes (what was typed just ahead may have started a turn); "not-ready"
+ * when it says no, and nothing is typed.
+ */
+export function typeIntoAgent(
+  d: AgentsResolved,
+  id: string,
+  text: string,
+  opts: { ready: () => Promise<boolean> },
+): Promise<boolean | "not-ready">;
 export async function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-): Promise<boolean> {
+  opts?: { ready: () => Promise<boolean> },
+): Promise<boolean | "not-ready"> {
   // Everything Den types into one agent (Hub comments, the tools note)
   // goes one at a time: two texts at once would land mixed in the pane.
   const before = typing.get(id) ?? Promise.resolve();
-  const mine = before.then(async () => {
+  const mine = before.then(async (): Promise<boolean | "not-ready"> => {
+    if (opts && !(await opts.ready())) return "not-ready";
     const rec = readRecord(d.stateDir(), id);
     if (!rec) return false;
     return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
@@ -8620,7 +8887,7 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
-  opts: { cwd?: string } = {},
+  opts: { cwd?: string; operator?: boolean } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
@@ -8657,8 +8924,10 @@ export async function startPlainSession(
         {
           name,
           cwd: dir,
-          argv: [shell, "-l"],
-          env: plainSessionEnv(d.env),
+          // Issue 814, the Builder's decision (a): the test operator's
+          // terminal is Den's fixed stub, never a shell, with its own env.
+          argv: opts.operator ? operatorStubArgv() : [shell, "-l"],
+          env: opts.operator ? operatorStubEnv() : plainSessionEnv(d.env),
           cols: 80,
           rows: 24,
         },
@@ -8688,6 +8957,8 @@ export const ROTATION_MAX_ASKS = 2;
 
 export type RotationEvent =
   | { kind: "asked"; agent: string; workspace: string; asked: number }
+  /** Issue 914: due, turn over, background work still running: it waits. */
+  | { kind: "waiting"; agent: string; workspace: string; running: number }
   | { kind: "fell-back"; agent: string; workspace: string }
   | {
       kind: "relaunched";
@@ -8726,9 +8997,43 @@ export async function rotationTick(
     const who = { agent: rec.id, workspace: rec.workspace };
     try {
       const s = rec.session ? sessionOf(sessions, rec) : undefined;
-      if (!s || s.exited) continue;
       const pol = policyOf(rec);
       if (!pol) continue;
+      if (!s || s.exited) {
+        // Issue 923: a due agent that a Den restart stopped and left not
+        // back (never one a person stopped) relaunches from a passing
+        // handoff, once. Nothing to ask: it isn't running. On ask the
+        // person was told when the restart failed.
+        const failed = rec.restartFailed;
+        if (!failed || failed.relaunchTried || rec.stoppedAt || rec.endedAt)
+          continue;
+        const rot = rotationOf(d, rec);
+        if (!rot?.ready || (rot.onDue !== "auto" && !rot.relaunchWanted))
+          continue;
+        let r: Relaunched;
+        try {
+          r = await relaunchAgent(d, rec.id, rec.workspace, {
+            ...(rot.onDue === "auto" ? { auto: true } : {}),
+          });
+        } catch (e) {
+          // One try: the person is told, and the sweep leaves it be.
+          notBackAfterRestart(
+            d,
+            rec.id,
+            rec.workspace,
+            `relaunch from its handoff failed: ${(e as Error).message}`,
+            { relaunchTried: true },
+          );
+          throw e;
+        }
+        events.push({
+          kind: "relaunched",
+          ...who,
+          why: r.why,
+          ...(rec.resumeToken ? { old: rec.resumeToken } : {}),
+        });
+        continue;
+      }
       const files = agentFilesDir(d.stateDir(), rec.id);
       const st = readRotation(files);
       if (!st) continue;
@@ -8744,8 +9049,28 @@ export async function rotationTick(
       // Relaunch now, asked before the handoff, relaunches whatever on_due says.
       const wanted = rot.relaunchWanted === true;
       if (!wanted && (pol.onDue !== "auto" || rot.fellBack)) continue;
-      if ((await agentBusy(d, rec)) !== false) continue;
-      if (rot.handoff === "ok") {
+      // Its turn first: never mid-turn (unknown counts as busy).
+      if ((await agentTurnBusy(d, rec, s)) !== false) continue;
+      // Issue 914: then the background work it left running (helpers,
+      // jobs such as a gate run): the rotation waits for it, at most
+      // agents.rotation_wait_minutes, then goes ahead with a handoff
+      // that lists each one.
+      const left = await leftRunningOf(d, rec, s);
+      // Forced, and its listing handoff not asked for yet: asked once,
+      // whatever the person's Relaunch now or the gap between asks.
+      let mustAsk = false;
+      if (!left.length) clearWaiting(files);
+      else {
+        const was = readRotation(files)?.waitingSince;
+        const since = noteWaiting(files, now, left.length);
+        if (now.getTime() - since < rotationWaitOf(d)) {
+          if (!was)
+            events.push({ kind: "waiting", ...who, running: left.length });
+          continue;
+        }
+        mustAsk = noteLeftRunning(files, left);
+      }
+      if (readHandoff(files).status === "ok") {
         const r = await relaunchAgent(d, rec.id, rec.workspace, {
           auto: true,
         });
@@ -8757,13 +9082,15 @@ export async function rotationTick(
         });
         continue;
       }
-      const last = st.askedAt ? Date.parse(st.askedAt) : 0;
-      if (now.getTime() - last < gap) continue;
-      if (wanted) continue; // asked once, by the person: no more asks
-      if ((st.asked ?? 0) >= ROTATION_MAX_ASKS) {
-        noteFellBack(files);
-        events.push({ kind: "fell-back", ...who });
-        continue;
+      if (!mustAsk) {
+        const last = st.askedAt ? Date.parse(st.askedAt) : 0;
+        if (now.getTime() - last < gap) continue;
+        if (wanted) continue; // asked once, by the person: no more asks
+        if ((st.asked ?? 0) >= ROTATION_MAX_ASKS) {
+          noteFellBack(files);
+          events.push({ kind: "fell-back", ...who });
+          continue;
+        }
       }
       const text = rotationInstruction(files, rot.due, rot.compactions);
       if (
@@ -8772,7 +9099,8 @@ export async function rotationTick(
           maxMs: 5000,
         })
       ) {
-        const n = noteAsked(files, now);
+        const n = noteAsked(files, now, wanted);
+        if (mustAsk) noteLeftAsked(files);
         events.push({ kind: "asked", ...who, asked: n?.asked ?? 1 });
       }
     } catch (e) {
@@ -8890,6 +9218,165 @@ export async function resumeOrRelaunch(
       }),
     };
   return { kind: "resumed", s: await resumeAgent(d, id, ws) };
+}
+
+/** Issue 926: what the exit sweep did about one agent. */
+export type ExitEvent = {
+  agent: string;
+  workspace: string;
+  /** The ended session's exit code (128 + signal for a signal). */
+  code: number;
+} & (
+  | { kind: "recorded" } // exit 0: it quit by itself; left down
+  | { kind: "resumed" | "relaunched" }
+  | { kind: "left"; why: string } // told, not brought back
+);
+
+/** Issue 926: how long after an exit the sweep looks at it. */
+const EXIT_SEEN_MS = 5_000;
+
+/** Issue 926: when the sweep first saw each exit with no time from its host. */
+const exitFirstSeen = new Map<string, number>();
+
+/**
+ * Issue 926: when session `s` ended: its host's exit time, else when the
+ * sweep first saw it ended (`now` the first time).
+ */
+export function exitSeenAt(s: SessionInfo, now: Date): number {
+  const t = s.exitedAt ? Date.parse(s.exitedAt) : NaN;
+  if (Number.isFinite(t)) return t;
+  const seen = exitFirstSeen.get(s.ref.id);
+  if (seen !== undefined) return seen;
+  exitFirstSeen.set(s.ref.id, now.getTime());
+  return now.getTime();
+}
+
+/** Issue 926: agents.unasked_exit_window_minutes, in ms. */
+function unaskedExitWindowOf(d: AgentsResolved): number {
+  try {
+    return d.agentsConfig().unaskedExitWindowMs;
+  } catch {
+    return UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000;
+  }
+}
+
+/**
+ * Issue 926: agents whose session ended without Den asking (no stop,
+ * restart or relaunch from Den or a person: a signal from outside, a
+ * crash). Each gets one audit row. Exit 0 (it quit by itself) is left
+ * down. Otherwise the person is told, and Den brings it back once
+ * (resumeOrRelaunch: from its handoff when its rotation is ready); a
+ * second such exit within agents.unasked_exit_window_minutes is told and
+ * left down. A host that went down (no exit code) is restore-on-boot's.
+ */
+export async function exitTick(
+  d: AgentsResolved,
+  now: Date = new Date(),
+): Promise<ExitEvent[]> {
+  const out: ExitEvent[] = [];
+  let sessions: SessionInfo[];
+  try {
+    sessions = await hostSessions(d);
+  } catch {
+    return out;
+  }
+  const byId = new Map(sessions.map((x) => [x.ref.id, x]));
+  const windowMs = unaskedExitWindowOf(d);
+  for (const rec of listRecords(d.stateDir())) {
+    const s = rec.session ? byId.get(rec.session.id) : undefined;
+    if (!s?.exited || s.exitCode === undefined) continue;
+    // Asked for: a stop (Den's or a person's), or a restart left not back.
+    if (rec.stoppedAt || rec.restartFailed) continue;
+    if (rec.unaskedExit?.session === s.ref.id) continue; // seen
+    // A stop marks its record just after its TERM: give it time to. A
+    // host that gives no exit time: from when the sweep first saw it.
+    if (now.getTime() - exitSeenAt(s, now) < EXIT_SEEN_MS) continue;
+    const e = await lockAgent(d, rec.id, () =>
+      unaskedExit(d, s, now, windowMs),
+    );
+    if (e) out.push(e);
+  }
+  return out;
+}
+
+/** Issue 926: one agent's unasked exit, under its lock; undefined: none. */
+async function unaskedExit(
+  d: AgentsResolved,
+  s: SessionInfo,
+  now: Date,
+  windowMs: number,
+): Promise<ExitEvent | undefined> {
+  {
+    // Again under the lock: a stop or restart may have marked it since.
+    const rec = listRecords(d.stateDir()).find(
+      (r) => r.session?.id === s.ref.id,
+    );
+    if (!rec || rec.stoppedAt || rec.restartFailed) return undefined;
+    if (rec.unaskedExit?.session === s.ref.id) return undefined;
+    const code = s.exitCode ?? 0;
+    const who = { agent: rec.id, workspace: rec.workspace, code };
+    const prev = rec.unaskedExit;
+    const at = now.toISOString();
+    writeRecord(d.stateDir(), {
+      ...rec,
+      unaskedExit: { at, session: s.ref.id, code },
+    });
+    auditConfig(
+      {
+        verb: "agents",
+        detail: `agent ${rec.id} in ${rec.workspace} ended without Den asking (exit ${code})`,
+        ...(code === 0 ? {} : { outcome: "refused" as const }),
+        ...(code === 0 ? {} : { reason: `exit ${code}` }),
+      },
+      d.stateDir(),
+    );
+    if (code === 0) {
+      return { kind: "recorded", ...who };
+    }
+    const name = rec.displayName || rec.persona || rec.id;
+    const tell = (kind: "waiting" | "finished", why: string) => {
+      try {
+        new NotificationStore(d.stateDir()).add({
+          kind,
+          subject: `agent:${rec.id}`,
+          scope: `workspace/${rec.workspace}`,
+          text: `${name} ended without Den asking (exit ${code}): ${why}`,
+          msg: { key: "bell.m.unaskedExit", vars: { name, code, why } },
+          link: `/agents?ws=${encodeURIComponent(rec.workspace)}`,
+        });
+      } catch {
+        /* best effort: the audit row and the row's state still say so */
+      }
+    };
+    const recent =
+      prev !== undefined && now.getTime() - Date.parse(prev.at) < windowMs;
+    if (windowMs <= 0 || recent) {
+      const why = recent
+        ? "it ended again soon after Den brought it back, so it is left down"
+        : "bringing it back is off";
+      tell("waiting", why);
+      return { kind: "left", ...who, why };
+    }
+    try {
+      const r = await resumeOrRelaunch(d, rec.id, rec.workspace);
+      const back = agentRecord(d, rec.id, rec.workspace);
+      writeRecord(d.stateDir(), {
+        ...back,
+        unaskedExit: { at, session: s.ref.id, code, back: true },
+      });
+      tell(
+        "finished",
+        r.kind === "relaunched"
+          ? "Den relaunched it from its handoff"
+          : "Den resumed it",
+      );
+      return { kind: r.kind, ...who };
+    } catch (e) {
+      const why = `Den couldn't bring it back: ${(e as Error).message}`;
+      tell("waiting", why);
+      return { kind: "left", ...who, why };
+    }
+  }
 }
 
 /** D28: the rotation settings, and agent `agent`'s effective values. */

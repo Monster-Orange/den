@@ -1,0 +1,6 @@
+ You: fix the failing parser test
+
+ ⠹ Thinking…  [stop]
+
+ ┃ >
+ ctrl+.:shortcuts  esc:cancel

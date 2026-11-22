@@ -142,6 +142,13 @@ import {
 } from "../../shared/constants.js";
 
 import { product } from "../../shared/product.js";
+import { patchProjectHubLoop, projectHubLoop } from "../../shared/hub-loop.js";
+
+/** Issue 158: a project's Hub delivery loop setting, as the API says it. */
+const hubLoopFields = (ws: unknown) => {
+  const l = projectHubLoop(ws);
+  return { hub_delivery_loop: l.on, hub_delivery_loop_extra: l.extra };
+};
 // Anchored to the den root, NOT process.cwd(): ws.directory values are
 // stored relative to this and written back via path.relative below — a
 // cwd-started-elsewhere server would resolve and persist garbage paths.
@@ -1112,9 +1119,12 @@ export async function handleWorkspaceRoutes(
 
   // ── API: workspace settings ──────────────────────────────────────────────
   // GET  /api/workspaces/settings?workspace=<name>  → { editor,
-  //        approvals_policy, approvals_watch, approvals_critical }
+  //        approvals_policy, approvals_watch, approvals_critical,
+  //        hub_delivery_loop, hub_delivery_loop_extra }
   // POST /api/workspaces/settings  body: { workspace, editor?,
-  //        approvals_policy?, approvals_watch?, approvals_critical? }
+  //        approvals_policy?, approvals_watch?, approvals_critical?,
+  //        hub_delivery_loop?, hub_delivery_loop_extra? }
+  // Issue 158: hub_delivery_loop true | false | null (as the install).
   // Issue 160: the approvals_* are the project's approval policy
   // (workspaces.yml <project>.approvals), a person's only.
   if (pathname === "/api/workspaces/settings") {
@@ -1122,12 +1132,17 @@ export async function handleWorkspaceRoutes(
       const wsName =
         url.searchParams.get("workspace") ?? getActiveWorkspace()?.name;
       if (!wsName)
-        return sendJson(res, { editor: null, ...projectApprovals(undefined) });
+        return sendJson(res, {
+          editor: null,
+          ...projectApprovals(undefined),
+          ...hubLoopFields(undefined),
+        });
       const file = readWorkspacesFile();
       const ws = file.workspaces[wsName];
       return sendJson(res, {
         editor: ws?.editor ?? null,
         ...projectApprovals(ws?.approvals),
+        ...hubLoopFields(ws),
       });
     }
     if (req.method === "POST") {
@@ -1138,26 +1153,44 @@ export async function handleWorkspaceRoutes(
           approvals_policy?: unknown;
           approvals_watch?: unknown;
           approvals_critical?: unknown;
+          hub_delivery_loop?: unknown;
+          hub_delivery_loop_extra?: unknown;
         };
         const wsName = body.workspace ?? getActiveWorkspace()?.name;
         if (!wsName) return send400(res, "a project is required");
         const file = readWorkspacesFile();
         const ws = file.workspaces[wsName];
         if (!ws) return send400(res, `Project "${wsName}" not found`);
+        // Issue 158: the Hub delivery loop's setting is a person's too (an
+        // agent never drops the loop from its own instructions).
         const policyKeys = (
-          ["approvals_policy", "approvals_watch", "approvals_critical"] as const
+          [
+            "approvals_policy",
+            "approvals_watch",
+            "approvals_critical",
+            "hub_delivery_loop",
+            "hub_delivery_loop_extra",
+          ] as const
         ).filter((k) => body[k] !== undefined);
         // Issue 160: the approval policy is a person's: an agent (or a
-        // command-line token) asks with approval_policy instead.
-        if (policyKeys.length && (agentPrincipalOf(req) || auditActorOf(req)))
+        // command-line token) asks with approval_policy instead. Issue
+        // 158: the Hub delivery loop is a person's too, and no tool sets
+        // it: a person changes it in Project setup.
+        if (policyKeys.length && (agentPrincipalOf(req) || auditActorOf(req))) {
+          const loop = policyKeys.some((k) =>
+            k.startsWith("hub_delivery_loop"),
+          );
           return sendJson(
             res,
             {
               ok: false,
-              error: `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
+              error: loop
+                ? `only a person can change ${policyKeys.join(", ")}, in Project setup`
+                : `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
             },
             403,
           );
+        }
         if (body.editor === null || body.editor === "") {
           delete ws.editor;
         } else if (body.editor !== undefined) {
@@ -1165,7 +1198,21 @@ export async function handleWorkspaceRoutes(
             return send400(res, `Unknown editor "${body.editor}"`);
           ws.editor = body.editor;
         }
-        if (policyKeys.length) {
+        if (
+          body.hub_delivery_loop !== undefined ||
+          body.hub_delivery_loop_extra !== undefined
+        ) {
+          const h = patchProjectHubLoop(
+            ws as unknown as Record<string, unknown>,
+            body,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
+        if (
+          body.approvals_policy !== undefined ||
+          body.approvals_watch !== undefined ||
+          body.approvals_critical !== undefined
+        ) {
           const a = patchApprovals(
             ws.approvals,
             {
@@ -1184,6 +1231,7 @@ export async function handleWorkspaceRoutes(
           ok: true,
           editor: ws.editor ?? null,
           ...projectApprovals(ws.approvals),
+          ...hubLoopFields(ws),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);

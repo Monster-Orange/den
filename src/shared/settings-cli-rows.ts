@@ -24,6 +24,9 @@
  *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
  *                                     web.approve_window_seconds (issue 819)
+ *   web_agent_view: { on?: boolean, minutes? }
+ *                                     user.yml web.agent_view,
+ *                                     web.agent_view_minutes (issue 796)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agents_shell: { path_timeout_seconds? }
@@ -48,6 +51,7 @@
  *                                     user.yml process_lookup.* (issue 609)
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
+ *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
  *     api_budget_floor?, watches_max? }
  *                                     user.yml github.* (the shared GitHub
@@ -62,9 +66,13 @@ import {
   SHOT_KEEP_DAYS_MIN,
   SHOT_LIMITS,
 } from "./report-shots.js";
-import { PAIR_LIMITS, WEB_WAIT_RANGE } from "./web-session.js";
+import {
+  AGENT_VIEW_RANGE,
+  PAIR_LIMITS,
+  WEB_WAIT_RANGE,
+} from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
-import { SHELL_PATH_TIMEOUT } from "./den-config.js";
+import { HELD_WAIT_MINUTES, SHELL_PATH_TIMEOUT } from "./den-config.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
@@ -87,6 +95,8 @@ export const PERSON_ONLY_SETTINGS = [
   "web_ready",
   // Issue 819: how many new-device requests and wrong codes are allowed.
   "web_pairing",
+  // Issue 796: whether agents may view this Den's pages, read-only.
+  "web_agent_view",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -102,6 +112,8 @@ export const PERSON_ONLY_SETTINGS = [
   "agent_context",
   // Review M5 (0.4.46): what agents may do without asking.
   "hub_allow_tools",
+  // Issue 158: the Hub delivery loop in every agent's instructions.
+  "hub_delivery_loop",
   // Issue 267: Hub's address (an agent asks with hub_connect).
   "hub_url",
   // The programs Den runs when a person opens a file or a terminal.
@@ -134,7 +146,22 @@ export const PERSON_ONLY_SETTINGS = [
   "approvals_policy",
   "approvals_watch",
   "approvals_critical",
+  // Issue 742: how long a held write waits for the person's Allow.
+  "held_writes",
 ] as const;
+
+/**
+ * Issue 402: the person-only fields a test install's fixture person may
+ * still change, as its pages do: the rail's prefs (pins, collapse, order,
+ * dock), which a live check sets by pressing ☆/★. Never an agent's token
+ * or a claimed agent, and never a field that names a program.
+ *
+ * Issue 946: pins are more than a view: a held write on a pinned item
+ * waits for an Allow (approval-policy.ts). So the fixture person adds pins
+ * and takes off only the ones it added (shell-prefs.ts fixtureSave); the
+ * person's own pins always stay.
+ */
+export const FIXTURE_PAGE_SETTINGS: readonly string[] = ["shell"];
 
 /**
  * The POST /api/settings fields anyone signed in may change, agents too,
@@ -275,6 +302,11 @@ const WEB_PAIRING: Record<string, Limit> = {
   },
 };
 
+/** Issue 796: how long an agent's read-only view lasts (agent-view.ts). */
+const WEB_AGENT_VIEW: Record<string, Limit> = {
+  minutes: { key: "agent_view_minutes", ...AGENT_VIEW_RANGE, int: true },
+};
+
 const AGENTS_LIST: Record<string, Limit> = {
   host_timeout_seconds: {
     key: "host_timeout_seconds",
@@ -363,6 +395,16 @@ const GITHUB_WATCH: Record<string, Limit> = Object.fromEntries(
 const AGENT_CONTEXT: Record<string, Limit> = Object.fromEntries(
   Object.entries(CONTEXT_WATCH_KEYS).map(([k, l]) => [k, { key: k, ...l }]),
 );
+
+/** Issue 742: user.yml held_writes.wait_minutes (den-config.ts). */
+const HELD_WRITES: Record<string, Limit> = {
+  wait_minutes: {
+    key: "wait_minutes",
+    min: HELD_WAIT_MINUTES.min,
+    max: HELD_WAIT_MINUTES.max,
+    int: true,
+  },
+};
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
 const LOG_LINES = { min: 1000, max: 1_000_000 };
@@ -514,6 +556,25 @@ export function patchCliRows(
       });
     if (Object.keys(rest).length) bridgeRest = rest;
   }
+  // Issue 796: web.agent_view (a switch) and how long a view lasts.
+  const av = body.web_agent_view;
+  let viewRest: unknown = undefined;
+  if (av !== undefined) {
+    if (!isObj(av))
+      return { ok: false, error: "web_agent_view is an object: on, minutes" };
+    const { on, ...rest } = av;
+    if (on !== undefined && on !== null && typeof on !== "boolean")
+      return { ok: false, error: "web_agent_view.on is true, false or null" };
+    if (on !== undefined)
+      apply.push(() => {
+        const w = isObj(user.web) ? { ...user.web } : {};
+        if (on === null) delete w.agent_view;
+        else w.agent_view = on;
+        if (Object.keys(w).length) user.web = w;
+        else delete user.web;
+      });
+    if (Object.keys(rest).length) viewRest = rest;
+  }
   // Issue 278: agent_context.pause_after_loop (a switch) and its numbers.
   const ac = body.agent_context;
   let contextRest: unknown = undefined;
@@ -605,6 +666,14 @@ export function patchCliRows(
     ) ??
     patchBlock(
       user,
+      "web_agent_view",
+      "web",
+      WEB_AGENT_VIEW,
+      viewRest,
+      apply,
+    ) ??
+    patchBlock(
+      user,
       "panes_reconnect",
       "panes",
       panes,
@@ -652,6 +721,14 @@ export function patchCliRows(
       "agent_hooks",
       AGENT_HOOKS,
       body.agent_hooks,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "held_writes",
+      "held_writes",
+      HELD_WRITES,
+      body.held_writes,
       apply,
     ) ??
     patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);
