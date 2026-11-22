@@ -4922,6 +4922,48 @@ the server audits their calls as the agent, from the token, never from a
 header (agent headers without the token are recorded as an unverified
 claim).
 
+**Den's state is read-only to an agent's session** (issue 936). An agent
+runs as you, so each agent's session starts inside the OS sandbox:
+`sandbox-exec` on macOS, `bwrap` (bubblewrap) on Linux. Inside it:
+
+- Den's state folder and the install's `config/local` (where `user.yml`
+  is) can't be written. The agent can't change its own record, its mode or
+  the settings. Den's server does the writing an agent asks for: its MCP
+  server is a client of the server.
+- The gate store's settings (the machine's gate settings and test boxes)
+  can't be written. Its slot queue can, so `gate run` and the MCP slot
+  tools work as before.
+- Den's private files and other agents' files can't be read. The agent's
+  own token can.
+- The terminal host's socket can't be reached. A session started there
+  would run outside the sandbox. So `<cli> agents list`, `start` and
+  `stop` don't work from an agent's shell. An agent starts another with
+  the `agent_create` tool.
+- The agent's own folder (`<state>/agent-files/<id>`) stays writable:
+  `handoff.md`, its notes, the hooks' counts. The launch files Den writes
+  there (its Claude settings, its MCP config) don't.
+
+The start line and `<cli> agents doctor` name every agent that runs
+outside the sandbox, and why: no `bwrap` on this Linux machine, an
+agent started before the sandbox (restart it), or the setting below. A
+refused write inside the sandbox says what to use instead.
+
+The sandbox is on by default. To turn it off, for every agent or for one,
+set it in `config/local/user.yml` (agents can't write that file). Den
+refuses this setting in the distribution's config, since agents may edit
+that file:
+
+```yaml
+agents:
+  sandbox: on # or off
+  some-agent:
+    sandbox: off # this agent's sessions start outside it
+```
+
+On macOS a program inside the sandbox can't start a sandbox of its own,
+so Claude Code's own Bash sandbox setting doesn't work in an agent's
+session. Den's sandbox covers that session.
+
 **The token counts only from the agent's own processes.** For each
 connection, Den finds the process on the other end (macOS: `lsof`;
 Linux: `/proc`). It then checks that process runs inside the agent's

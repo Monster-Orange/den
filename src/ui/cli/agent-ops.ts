@@ -358,6 +358,12 @@ import {
 import { denWebBase } from "../../shared/web-dial.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
+  sandboxFor,
+  sandboxSetting,
+  type SandboxWrap,
+} from "../../shared/agents/sandbox.js";
+import { gateDir } from "../../shared/gates/store.js";
+import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
   agentTokenRef,
@@ -374,6 +380,11 @@ import {
 
 export interface AgentsDeps extends SessionsDeps {
   agentsConfig?: () => ResolvedAgentsConfig;
+  /**
+   * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
+   * read-only to it). Default: sandboxFor with the person's setting.
+   */
+  agentSandbox?: AgentSandboxFn;
   distRoot?: () => string;
   /** SRV-1b: the server agent's folder (server_agent.folder, resolved). */
   serverAgentFolder?: () => string;
@@ -508,8 +519,12 @@ export interface AgentsDeps extends SessionsDeps {
   denBase?: () => string;
 }
 
+/** Issue 936: an agent's argv, wrapped (or not, and why). */
+export type AgentSandboxFn = (argv: string[], agentId: string) => SandboxWrap;
+
 export interface AgentsResolved extends Resolved {
   agentsConfig: () => ResolvedAgentsConfig;
+  agentSandbox: AgentSandboxFn;
   distRoot: () => string;
   serverAgentFolder: () => string;
   workspaceDir: (ws: string) => string;
@@ -831,6 +846,24 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   return withServerScope({
     ...base,
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
+    agentSandbox:
+      d.agentSandbox ??
+      ((argv, agentId) =>
+        sandboxFor(
+          argv,
+          {
+            stateDir: base.stateDir(),
+            distRoot: (d.distRoot ?? getDistRoot)(),
+            gateDir: gateDir(base.env),
+            agentId,
+          },
+          {
+            on: sandboxSetting(
+              (d.agentsConfig ?? (() => readAgentsConfig()))(),
+              agentId,
+            ),
+          },
+        )),
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:
       d.serverAgentFolder ??
@@ -3252,7 +3285,12 @@ async function startSession(
   launch: Launch,
   old: SessionInfo | undefined,
   extra: Partial<AgentRecord>,
-): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
+): Promise<{
+  rec: AgentRecord;
+  info: SessionInfo;
+  signInWarning?: string;
+  sandboxWarning?: string;
+}> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
   const signIn = await d.agentSignIn(
@@ -3268,6 +3306,7 @@ async function startSession(
     sessionName: launch.rec.sessionName,
   });
   let info: SessionInfo;
+  let box: SandboxWrap;
   try {
     // #70: the token in a file of the agent's own; the env names the file.
     const tokenFile = writeActorTokenFile(
@@ -3275,12 +3314,14 @@ async function startSession(
       launch.rec.id,
       minted.token,
     );
+    // Issue 936: Den's state read-only to the session (the OS sandbox).
+    box = d.agentSandbox(launch.argv, launch.rec.id);
     info = await c
       .start(
         {
           name: launch.rec.sessionName,
           cwd: launch.rec.cwd,
-          argv: launch.argv,
+          argv: box.argv,
           // Never the caller's whole env: the allowlist, then the runtime's.
           env: agentSessionEnv(
             d.env,
@@ -3290,7 +3331,7 @@ async function startSession(
             tokenFile,
             launch.binDir ? [launch.binDir] : [],
             // agents.git.signing_key: its commits signed with that key.
-            agentGitEnv(d.agentsConfig().git),
+            { ...agentGitEnv(d.agentsConfig().git), ...box.env },
             signIn.env,
           ),
           cols: (tty && d.stdout.columns) || 80,
@@ -3326,11 +3367,21 @@ async function startSession(
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
   else delete rec.signIn;
+  // Issue 936: whether its session is sandboxed, and why not.
+  rec.sandbox = box.applied
+    ? { applied: true, ...(box.tool ? { tool: box.tool } : {}) }
+    : { applied: false, ...(box.reason ? { reason: box.reason } : {}) };
   writeRecord(d.stateDir(), rec);
   return {
     rec,
     info,
     ...(signIn.warning ? { signInWarning: signIn.warning } : {}),
+    // Issue 936: the start line names an agent that runs unsandboxed.
+    ...(box.applied
+      ? {}
+      : {
+          sandboxWarning: `${rec.id} runs outside the agent sandbox (Den's state is writable to it): ${box.reason ?? "no sandbox here"}`,
+        }),
   };
 }
 
@@ -3991,7 +4042,7 @@ export async function startAgent(
         model: ch.model,
         version: ch.version,
       });
-      const { rec, info, signInWarning } = await startSession(
+      const { rec, info, signInWarning, sandboxWarning } = await startSession(
         d,
         c,
         {
@@ -4076,6 +4127,7 @@ export async function startAgent(
           ...unexpressed,
           ...sized,
           ...(signInWarning ? [signInWarning] : []),
+          ...(sandboxWarning ? [sandboxWarning] : []),
         ],
         early,
       };
@@ -6361,6 +6413,7 @@ export async function resumeAgent(
           rec: next,
           info,
           signInWarning,
+          sandboxWarning,
         } = await startSession(
           d,
           c,
@@ -6389,7 +6442,7 @@ export async function resumeAgent(
           asFresh ? {} : { resumedAt: new Date().toISOString() },
         );
         const early = await exitedAtOnce(d, c, info);
-        return { out, next, info, early, signInWarning };
+        return { out, next, info, early, signInWarning, sandboxWarning };
       };
       let fresh = !known && Boolean(token);
       let newConversation = false;
@@ -6455,6 +6508,7 @@ export async function resumeAgent(
         warnings: [
           ...(r.out.warnings ?? []),
           ...(r.signInWarning ? [r.signInWarning] : []),
+          ...(r.sandboxWarning ? [r.sandboxWarning] : []),
         ],
         early: r.early,
         fresh,

@@ -2335,11 +2335,19 @@ async function doctor(
   } catch {
     /* records unreadable: nothing to say */
   }
+  // Issue 936: whether agents' sessions start in the sandbox here.
+  let sandbox: SandboxReport | null = null;
+  try {
+    sandbox = sandboxReport(d);
+  } catch {
+    /* records unreadable: nothing to say */
+  }
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
         {
           runtimes: rts,
+          ...(sandbox ? { sandbox } : {}),
           subagents: {
             ...subagentsReport(d),
             // den#3: forced needs Claude Code 2.1.257+ (null: unknown).
@@ -2420,6 +2428,10 @@ async function doctor(
     for (const l of linkLines(links, d.cli)) d.out(l);
     d.out("");
   }
+  if (sandbox) {
+    for (const l of sandboxLines(sandbox)) d.out(l);
+    d.out("");
+  }
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
@@ -2449,6 +2461,49 @@ export function personaVersionLines(
       `Persona keys      ${differ.length} ${differ.length === 1 ? "persona gives" : "personas give"} model_version and version different values; older Dens read \`version:\`, so they run another model version:`,
       ...differ.map((p) => `  ${p.id} (${p.source})`),
     );
+  return out;
+}
+
+/** Issue 936: the sandbox on this machine, and the agents outside it. */
+export interface SandboxReport {
+  /** A new agent's session here: sandboxed, and how; or why not. */
+  here: { applied: boolean; tool?: string; reason?: string };
+  /** Agents (not stopped) whose session started outside it, and why. */
+  outside: { id: string; project: string; reason: string }[];
+}
+
+export function sandboxReport(d: AgentsResolved): SandboxReport {
+  const probe = d.agentSandbox(["true"], "doctor-probe");
+  const outside = listRecords(d.stateDir())
+    .filter((r) => r.session && !r.stoppedAt && r.sandbox?.applied !== true)
+    .map((r) => ({
+      id: r.id,
+      project: r.workspace,
+      reason:
+        r.sandbox && !r.sandbox.applied
+          ? (r.sandbox.reason ?? "no sandbox here")
+          : "started before the sandbox (restart it to apply)",
+    }));
+  return {
+    here: {
+      applied: probe.applied,
+      ...(probe.tool ? { tool: probe.tool } : {}),
+      ...(probe.reason ? { reason: probe.reason } : {}),
+    },
+    outside,
+  };
+}
+
+export function sandboxLines(r: SandboxReport): string[] {
+  const out = ["Agent sandbox (agents can't write Den's state)"];
+  out.push(
+    r.here.applied
+      ? `  on here (${r.here.tool ?? "the OS sandbox"})`
+      : `  not here: ${r.here.reason ?? "no sandbox"}`,
+  );
+  if (!r.outside.length) out.push("  every running agent is inside it");
+  for (const x of r.outside)
+    out.push(`  ${x.id} (${x.project}) runs outside it: ${x.reason}`);
   return out;
 }
 
