@@ -4,9 +4,10 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.82] - unreleased
+## [0.4.82] - 2026-11-22
 
 ### Added
+- CLI: on a test bed (`create --test-bed`), `--test-person` lets a test driver's command line act as the person, on the record (audit `via: test-person`); refused on any other install; `doctor` shows whether an install is a test bed (issue 636).
 
 - Agents: `issue_write` lets an agent create an issue, comment, label or set a milestone in one of its own project's GitHub repos, at once and audited. It never closes, reopens, deletes, transfers or locks. Which persona roles may use it is the person-only setting `agents.issue_writes`; `agents.issue_writes_per_hour` (default 60) limits the whole install. Each issue and comment says which agent and install wrote it.
 - Agents: one shared GitHub watcher per install. `github_watch` (a pull request's checks or a run in the agent's project), `github_watch_list` and `github_watch_cancel`. Den tells the agent once when it finishes, with each failed check. It backs off while nothing changes and stops polling near the GitHub API budget. New settings: `github.watch_interval_seconds` (60), `github.watch_max_interval_seconds` (300), `github.api_budget_floor` (500), `github.watches_max` (50). Doctor and `github status` show the budget.
@@ -21,6 +22,9 @@ config and manifest changes a distribution must make to move to it under
 - Gate slots: up to `cpu_slots_beside_browser` cpu runs (new setting, default 2) run beside the browser runs on this machine. 0 keeps the old rule: a browser run runs alone. A browser run on a test box doesn't count. (issue 751)
 - Gate slots: a release-priority run passes every plain waiting run of its kind, however long it has waited. `priority_pass_limit_minutes` now defaults to 0 and applies only between release-priority runs. (issue 751)
 - Buttons that wait on the server show pulsing dots in place of their label until it answers. The UI kit is 0.9.2. (issue 698)
+
+- Agents: when an agent exits right after it starts, the page shows the lines it printed, not just its exit code (issue 89).
+- Tests: browser tests no longer assume the browser runs on the same machine (issue 191).
 
 ### Migrations
 

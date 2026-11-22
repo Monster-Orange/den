@@ -80,6 +80,11 @@ import {
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+import {
+  notTestBedRefusal,
+  TEST_PERSON_HEADER,
+  testPersonCredentialRefusal,
+} from "../../shared/test-person.js";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
@@ -125,7 +130,12 @@ export interface RunnerPrincipal {
 
 /** Who a request proved itself to be. */
 export type Principal =
-  | { kind: "person"; actor: `person:${string}` }
+  | {
+      kind: "person";
+      actor: `person:${string}`;
+      /** Issue 636: a test bed's CLI, on the test-person path. */
+      testPerson?: true;
+    }
   | AgentPrincipal
   | {
       kind: "person-browser";
@@ -234,6 +244,11 @@ export interface GuardContext {
    * whatever web.edge_unattested says. Unset: no proof (fails closed).
    */
   edgeProved?: (req: http.IncomingMessage) => boolean;
+  /**
+   * Issue 636: whether this install is a test bed right now (issue 810's
+   * test install binding). Unset: never (the test-person path is refused).
+   */
+  testBed?: () => boolean;
 }
 
 export type GuardResult =
@@ -268,13 +283,15 @@ export type GuardResult =
         | "cross_site"
         | "agent_forbidden"
         | "embed_key_scope"
-        | "runner_scope";
+        | "runner_scope"
+        | "test_person_refused"
+        | "not_test_bed";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
       via?: Via;
       beyond?: boolean;
-      /** agent_forbidden: the agent refused, for the audit. */
+      /** agent_forbidden: the agent refused; not_test_bed: the person. For the audit. */
       principal?: Principal;
     };
 
@@ -696,6 +713,27 @@ export function checkRequest(
       };
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
+  }
+  // Issue 636: the test-person path counts only with the person's own
+  // token, from this machine, on a test bed. Anything else is refused
+  // here, before any route runs.
+  if (header(req, TEST_PERSON_HEADER) !== undefined) {
+    if (principal?.kind !== "person" || beyond)
+      return {
+        ok: false,
+        status: 403,
+        code: "test_person_refused",
+        error: testPersonCredentialRefusal(),
+      };
+    if (!ctx.testBed?.())
+      return {
+        ok: false,
+        status: 403,
+        code: "not_test_bed",
+        error: notTestBedRefusal(),
+        principal,
+      };
+    principal = { ...principal, testPerson: true };
   }
   // Once Den's own named https address works, sessions count only when
   // minted on it: none on a loopback name, and none minted elsewhere.
