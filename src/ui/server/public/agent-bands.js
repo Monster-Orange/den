@@ -14,6 +14,8 @@
  *   tagHtml(r, {all, name})  the project tag (All projects), "Server"
  *   attnSub(rows, scope)     the sub-line: each state above zero
  *   railNeeds(rows)          the rail's count: Needs you only
+ *   sinceShort(iso, now?)    "3 min", "2 h": Needs you's and Working's time
+ *   needsWhy(r)              "asks to run a command", "asked you a question"
  */
 import {
   ATTENTION_STATES,
@@ -155,6 +157,37 @@ export function attnSub(rows, scope, seenNow) {
       );
   if (scope) parts.push(scope);
   return parts.join(" · ");
+}
+
+/**
+ * Mock v3: how long a row has been in Needs you or Working, without
+ * "ago" ("3 min", "2 h"); the bell's own words.
+ * @param {string | undefined} iso
+ * @param {number} [now]
+ */
+export function sinceShort(iso, now = Date.now()) {
+  const ms = now - Date.parse(String(iso ?? ""));
+  if (!Number.isFinite(ms)) return "";
+  const m = Math.round(ms / 60000);
+  if (m < 1) return t("bell.now");
+  if (m < 60) return t("bell.min", { n: m });
+  return t("bell.h", { n: Math.round(m / 60) });
+}
+
+/**
+ * Mock v3: what a Needs you row waits on, on its second line: a
+ * permission for Bash "asks to run a command", for another tool "asks to
+ * use <tool>"; else the wait's own words ("asked you a question").
+ * @param {BandRow} r
+ */
+export function needsWhy(r) {
+  const why = r?.waitingWhy;
+  if (!why) return "";
+  if (why === "permission" && r.attnWhat)
+    return r.attnWhat === "Bash"
+      ? t("ag.whyLong.command")
+      : t("ag.whyLong.tool", { tool: r.attnWhat });
+  return t(`ag.whyLong.${why}`);
 }
 
 /** The rail's Agents count: the agents that need the person. */

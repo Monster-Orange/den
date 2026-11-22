@@ -216,6 +216,18 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     const tag = (k: string) => row(k).locator('[data-ptag="project"]');
     expect(await tag("planner").textContent()).toBe("north");
     expect(await tag("reviewer").textContent()).toBe("south");
+    // Line 2 as mock v3 draws it: what a need asks, and Needs you's and
+    // Working's time with no "ago" ("3 min"; just now: "now").
+    const meta = async (k: string) =>
+      ((await row(k).locator(".meta").textContent()) ?? "").replace(
+        (await tag(k).textContent()) ?? "",
+        "",
+      );
+    expect(await meta("planner")).toMatch(
+      /^[Cc]laude · asks to run a command · (now|\d+ min)$/,
+    );
+    expect(await meta("reviewer")).toMatch(/^[Cc]laude · (now|\d+ min)$/);
+    expect(await meta("builder")).toMatch(/^[Cc]laude · finished /);
     // The sub-line: each state above zero.
     const sub = (await p.textContent("#ag-count")) ?? "";
     expect(sub).toMatch(/^\d+ agents · /);

@@ -69,6 +69,7 @@ function mk(seen = new SeenMarks(dir), hooked = true) {
     seen,
     working: () => a.workingNow(),
     waitingSince: (agent) => a.waitingDetail(agent)?.since,
+    waitingWhat: (agent) => a.waitingDetail(agent)?.what,
   };
   return { store, a, seen, deps };
 }
@@ -291,6 +292,8 @@ describe("issue 773: Needs you", () => {
     );
     expect(s?.attn).toBe("needs");
     expect(s?.attnSince).toBe(new Date(clock).toISOString());
+    // Mock v3: what it asks to do ("asks to run a command" for Bash).
+    expect(s?.attnWhat).toBe("Bash");
     for (const why of ["asked", "approval", "trust"])
       expect(
         agentStateOf(

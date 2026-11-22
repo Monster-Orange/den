@@ -386,6 +386,7 @@ export function agentStateDeps(): AgentStateDeps {
     seen: seenMarks(getStateDir()),
     working: () => a.workingNow(),
     waitingSince: (agent) => a.waitingDetail(agent)?.since,
+    waitingWhat: (agent) => a.waitingDetail(agent)?.what,
   };
 }
 

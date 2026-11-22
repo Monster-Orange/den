@@ -229,3 +229,35 @@ describe("issue 773 (mock v3 rules): A to Z inside Working and Idle", () => {
     expect("personOrdered" in m).toBe(false);
   });
 });
+
+describe("issue 773 (mock v3): a row's second line", () => {
+  const now = Date.UTC(2026, 10, 20, 10, 30);
+  it("Needs you and Working say how long, without 'ago': '3 min', '2 h'", async () => {
+    const { sinceShort } = await mod();
+    expect(sinceShort(new Date(now - 3 * 60_000).toISOString(), now)).toBe(
+      "[bell.min:3]",
+    );
+    expect(sinceShort(new Date(now - 2 * 3600_000).toISOString(), now)).toBe(
+      "[bell.h:2]",
+    );
+    expect(sinceShort(new Date(now - 10_000).toISOString(), now)).toBe(
+      "[bell.now]",
+    );
+    expect(sinceShort("not a time", now)).toBe("");
+  });
+
+  it("a permission says what it asks: a command for Bash, else the tool", async () => {
+    const { needsWhy } = await mod();
+    expect(needsWhy({ waitingWhy: "permission", attnWhat: "Bash" })).toBe(
+      "[ag.whyLong.command]",
+    );
+    expect(needsWhy({ waitingWhy: "permission", attnWhat: "Edit" })).toBe(
+      "[ag.whyLong.tool:Edit]",
+    );
+    expect(needsWhy({ waitingWhy: "permission" })).toBe(
+      "[ag.whyLong.permission]",
+    );
+    expect(needsWhy({ waitingWhy: "asked" })).toBe("[ag.whyLong.asked]");
+    expect(needsWhy({})).toBe("");
+  });
+});

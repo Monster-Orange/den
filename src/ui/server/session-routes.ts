@@ -474,6 +474,8 @@ export interface ListedSession {
    */
   attn?: "needs" | "done" | "working" | "idle";
   attnSince?: string;
+  /** Issue 773: what it waits to do (Needs you: a permission's tool). */
+  attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;

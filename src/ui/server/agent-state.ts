@@ -26,6 +26,8 @@ export interface AgentStateDeps {
   working: () => ReadonlyMap<string, number>;
   /** Since when `agent` waits (an ISO time), when known. */
   waitingSince?: (agent: string) => string | undefined;
+  /** What `agent` waits to do (a permission's tool, e.g. "Bash"), when known. */
+  waitingWhat?: (agent: string) => string | undefined;
 }
 
 /** The seen mark's subject for agent `id`. */
@@ -60,7 +62,7 @@ export function agentStateOf(
   row: RowLike,
   person: string,
   d: AgentStateDeps,
-): { attn: AgentAttn; attnSince?: string } | null {
+): { attn: AgentAttn; attnSince?: string; attnWhat?: string } | null {
   if (row.kind !== "agent" || !row.agent || row.state !== "running")
     return null;
   const id = row.agent;
@@ -86,7 +88,12 @@ export function agentStateOf(
         : attn === "working" && workingAt !== undefined
           ? new Date(workingAt).toISOString()
           : latest?.at;
-  return { attn, ...(since ? { attnSince: since } : {}) };
+  const what = attn === "needs" ? d.waitingWhat?.(id) : undefined;
+  return {
+    attn,
+    ...(since ? { attnSince: since } : {}),
+    ...(what ? { attnWhat: what } : {}),
+  };
 }
 
 /** The list's rows, each running agent with its state for `person`. */
@@ -94,7 +101,7 @@ export function withAgentStates<T extends RowLike>(
   rows: readonly T[],
   person: string,
   d: AgentStateDeps,
-): (T & { attn?: AgentAttn; attnSince?: string })[] {
+): (T & { attn?: AgentAttn; attnSince?: string; attnWhat?: string })[] {
   return rows.map((r) => {
     const s = agentStateOf(r, person, d);
     return s ? { ...r, ...s } : r;

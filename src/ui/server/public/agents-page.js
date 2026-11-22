@@ -138,8 +138,10 @@ import {
   bandsOf,
   chipHtml,
   markHtml,
+  needsWhy,
   railNeeds,
   rowState,
+  sinceShort,
   tagHtml,
 } from "/agent-bands.js";
 import {
@@ -1040,15 +1042,17 @@ function attnDetail(r, attn) {
       ? formatTime(iso, { style: "relative" })
       : "";
   if (r.kind !== "agent") return cwdText(r);
+  // Mock v3: Needs you's and Working's time without "ago" ("3 min").
   if (attn === "needs") {
-    const k = r.waitingWhy ? `ag.whyLong.${r.waitingWhy}` : "";
-    const why = k && t(k) !== k ? t(k) : waitingText(r);
-    return [why, ago(r.attnSince)].filter(Boolean).join(" · ");
+    const w = needsWhy(r);
+    const why = w && !w.startsWith("ag.whyLong.") ? w : waitingText(r);
+    return [why, r.attnSince ? sinceShort(r.attnSince) : ""]
+      .filter(Boolean)
+      .join(" · ");
   }
   if (attn === "done")
     return r.attnSince ? t("ag.meta.finished", { ago: ago(r.attnSince) }) : "";
-  if (attn === "working")
-    return r.attnSince ? t("ag.meta.working", { ago: ago(r.attnSince) }) : "";
+  if (attn === "working") return r.attnSince ? sinceShort(r.attnSince) : "";
   // Idle: seen just now (opened on this page), else its last finish.
   if (r.attn === "done") return t("ag.meta.seen");
   return r.attnSince ? ago(r.attnSince) : cwdText(r);
