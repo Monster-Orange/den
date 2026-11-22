@@ -20,6 +20,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as path from "path";
 import type { Browser } from "playwright";
+import { launchBrowser } from "../helpers/browser.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
@@ -100,11 +101,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

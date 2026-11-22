@@ -1,5 +1,6 @@
 /**
- * Issue 394: POST /api/settings/shell, the rail's save, on a real server.
+ * Issue 394: POST /api/settings/shell, the rail's save, on a real server
+ * (shell-prefs.ts, request-guard.ts).
  * The kit's saveShell sends it with keepalive, then with a beacon if the
  * page hides first; a beacon has no custom header, so no CSRF token.
  *

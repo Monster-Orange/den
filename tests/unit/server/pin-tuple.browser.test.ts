@@ -76,7 +76,7 @@ const WORKSPACES = {
 
 interface Mounted {
   p: Page;
-  /** Every /api/settings save the page sent. */
+  /** Every /api/settings (or /api/settings/shell) save the page sent. */
   saves: { shell: { pins: Pin[] } }[];
   /** What GET /api/scope answers from now on, and the pill repainted. */
   view: (s: string) => Promise<void>;
@@ -109,6 +109,8 @@ async function mount(
         body: fs.readFileSync(path.join(PUBLIC, file[1]), "utf-8"),
       });
     switch (url.pathname) {
+      // Issue 394: the rail saves at /api/settings/shell ({ shell }).
+      case "/api/settings/shell":
       case "/api/settings":
         if (method === "POST") {
           saves.push(JSON.parse(r.request().postData() ?? "null"));

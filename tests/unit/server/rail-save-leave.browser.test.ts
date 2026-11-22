@@ -5,7 +5,7 @@
  * cancel; the next page then applied the server's older copy and the pin
  * came back after a flash. Now shell.js saves with the kit's saveShell
  * (keepalive, then a beacon if the page hides first), at
- * /api/settings/shell. After the next page has settled (the server's copy
+ * /api/settings/shell (shell-prefs.ts). After the next page has settled (the server's copy
  * applied), the pin is still gone, on the page and on the server.
  *
  * In Chromium and WebKit. DEN_PW_WS: Den's own Playwright server instead
@@ -17,6 +17,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser } from "playwright";
+import { launchBrowser } from "../helpers/browser.js";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
@@ -64,11 +65,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -93,11 +90,12 @@ async function setPins(pins: string[]): Promise<void> {
   });
   expect(r.status).toBe(200);
 }
+/** The stored pins' items (issue 402: a pin is { item, project }). */
 async function serverPins(): Promise<string[]> {
   const s = (await (
     await fetch(`http://localhost:${port}/api/settings`)
-  ).json()) as { shell: { pins: string[] } };
-  return s.shell.pins;
+  ).json()) as { shell: { pins: (string | { item: string })[] } };
+  return s.shell.pins.map((p) => (typeof p === "string" ? p : p.item));
 }
 
 describe.each(["chromium", "webkit"])("the rail in %s", (engine) => {
@@ -111,6 +109,11 @@ describe.each(["chromium", "webkit"])("the rail in %s", (engine) => {
     const base = `http://localhost:${port}`;
     await p.goto(`${base}/settings`);
     await p.waitForSelector('#den-rail [data-pin="shop"]');
+    // The race under test is the save against leaving, not against this
+    // page's own first read of the server's copy.
+    await p.waitForSelector("#den-rail[data-prefs-applied]", {
+      state: "attached",
+    });
     const settled = p.waitForResponse(
       (r) =>
         r.request().method() === "GET" &&
