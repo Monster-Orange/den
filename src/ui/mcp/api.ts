@@ -157,6 +157,9 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/approvals": "POST",
   // NT-1 (MCP ask_human): the agent's own waiting mark, nothing more.
   "/api/agents/self/attention": "POST",
+  // Issue 1008 (MCP ask_withdraw): withdraw the agent's own question; the
+  // server refuses another agent's and records it.
+  "/api/notifications/withdraw": "POST",
   // Issue 796 (MCP page_view): a one-time link to a read-only view.
   "/api/agents/self/view": "POST",
   // issue_write: one GitHub issue write in the agent's own project's repos

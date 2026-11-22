@@ -933,6 +933,13 @@
     "set.ui.boxHoldIs": "hold file {path}",
     "set.ui.boxScaleIs": "time ×{n}",
     "set.ui.boxRemove": "Remove",
+    "set.ui.boxWindow": "Window (this machine's time)",
+    "set.ui.boxRecheck": "Recheck after, in seconds",
+    "set.ui.boxOn": "On",
+    "set.ui.boxWindowIs": "{window}, this machine's time",
+    "set.ui.boxIsOff": "turned off",
+    "set.ui.boxTurnOn": "Turn on",
+    "set.ui.boxTurnOff": "Turn off",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -2313,7 +2320,7 @@
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
     "set.server.gate_boxes": "Test boxes",
     "set.server.gate_boxes.d":
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. A box with a window takes runs only within it, in this machine's time. Outside it, or turned off, Den never contacts the box; a run already on it finishes. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     "set.server.gate_box_check": "Test box check waits, in seconds",
     "set.server.gate_box_check.d":
       "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
@@ -3430,6 +3437,12 @@
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.toLead": "{name} asked the lead, {lead}: {text}",
+    "bell.m.settled":
+      "{name} withdrew its question, settled: {reason} ({text})",
+    "bell.m.settledYou":
+      "You withdrew {name}'s question, settled: {reason} ({text})",
+    "bell.m.settledLate":
+      "{name}'s question was settled: {reason}; your answer came after it and was passed on ({text})",
     "bell.m.pick": "{n} projects need your pick",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
@@ -3867,7 +3880,11 @@
     "gate.boxHeld": "{box}: skipped, held ({reason})",
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
     "gate.boxLow": "{box}: skipped, low on memory ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: skipped, its free memory can't be read ({reason})",
     "gate.boxSkip": "can't use {box}: {reason}",
+    "gate.boxOff": "{box}: skipped, turned off",
+    "gate.boxClosed": "{box}: skipped, outside its window (opens {time})",
     "gate.yielded": "Let {to} go ahead",
     "gate.class": "Class: {name}",
     "gate.window": "waits for its {window} window",

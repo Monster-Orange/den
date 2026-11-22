@@ -737,6 +737,9 @@
       "packages/den-ui/src/shell.css",
       "packages/den-ui/inventory/nav-inventory.js",
       "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/scope-retry-1051.browser.test.ts": [
+      "src/ui/server/public/header.js"
     ]
   },
   "subjectless": [],
@@ -1088,6 +1091,7 @@
         "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
+        "tests/unit/server/scope-retry-1051.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
@@ -1660,6 +1664,7 @@
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
+        "tests/unit/server/scope-retry-1051.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
         "tests/unit/server/sec2a-github-steps.browser.test.ts",
@@ -1821,6 +1826,7 @@
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/run-outcome.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
+        "tests/unit/server/scope-retry-1051.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
         "tests/unit/server/sec2a-github-steps.browser.test.ts",
@@ -3252,6 +3258,11 @@
         "src/ui/server/public/header.js"
       ],
       "run": ["tests/unit/server/scope-menus.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/header.js"],
+      "run": ["tests/unit/server/scope-retry-1051.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
