@@ -225,7 +225,7 @@ describe("the per-request rule", () => {
       via: "edge" as const,
       beyond: false,
       forwarded: true,
-      edgeProved: true,
+      edgeLocal: true,
       ownShell: own,
     };
     const acts: [string, string][] = [
@@ -248,15 +248,23 @@ describe("the per-request rule", () => {
       ).toBe("not_operator_install");
     });
 
-    it.each(acts)("%s %s without the edge's proof: refused", (m, p) => {
-      expect(
-        operatorRefusal({ ...edge, method: m, pathname: p, edgeProved: false }),
-      ).toBe("not_loopback");
-      const { edgeProved: _drop, ...noProof } = edge;
-      expect(operatorRefusal({ ...noProof, method: m, pathname: p })).toBe(
-        "not_loopback",
-      );
-    });
+    it.each(acts)(
+      "%s %s unless the edge proved it and attests this machine: refused",
+      (m, p) => {
+        expect(
+          operatorRefusal({
+            ...edge,
+            method: m,
+            pathname: p,
+            edgeLocal: false,
+          }),
+        ).toBe("not_loopback");
+        const { edgeLocal: _drop, ...noProof } = edge;
+        expect(operatorRefusal({ ...noProof, method: m, pathname: p })).toBe(
+          "not_loopback",
+        );
+      },
+    );
 
     it.each(acts)(
       "%s %s from a client beyond this machine: refused",
