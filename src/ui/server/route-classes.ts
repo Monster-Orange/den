@@ -432,6 +432,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/web/fixture-person/setup-secret",
+    "issue 1018: the person's CLI makes the test person from the launcher's one-time setup value, on a test install only",
+  ),
+  M(
+    ["POST"],
     "/api/web/test-person",
     "issue 636: a test bed's CLI starts a --test-person command (the person's token, on a test bed only)",
   ),

@@ -381,6 +381,13 @@ import {
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
 import {
+  FIXTURE_SETUP_SECRET_ENV_KEY,
+  SETUP_SECRET_AUDIT,
+  SetupSecret,
+  setupSecretRefusal,
+  writeFixtureMadeBy,
+} from "../../shared/fixture-setup-secret.js";
+import {
   AGENT_VIEW_LINK_PARAM,
   AGENT_VIEW_LINK_TTL_MS,
   AgentViewCodes,
@@ -1180,6 +1187,7 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readBodyCapped,
   readMethodOnly,
   sendJson,
   sendMethodNotAllowed,
@@ -3339,6 +3347,23 @@ const TEST_INSTALL_LAUNCH_FLAG = (() => {
   return on;
 })();
 
+/**
+ * Issue 1018: the launcher's one-time setup value, read once from the
+ * server's own start environment and taken out of process.env, like the
+ * flag, so nothing this server starts (agents, terminals) inherits it.
+ * That hides it from children only: the process's own start environment
+ * stays readable to the same OS user (`ps eww <pid>`, Linux's
+ * /proc/<pid>/environ), the same limit as every secret this user's
+ * processes hold. Held in memory as a digest; spent values are recorded
+ * in the state folder, so a restart with one doesn't revive it; dropped
+ * at start unless this is a test install then.
+ */
+const FIXTURE_SETUP_SECRET = (() => {
+  const v = readEnv(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY);
+  delete process.env[envName(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY)];
+  return new SetupSecret(v, getStateDir());
+})();
+
 function realOrResolved(p: string): string {
   try {
     return fs.realpathSync(p);
@@ -3414,7 +3439,8 @@ function sealNewTestInstall(): void {
   const secret = webSecret.current();
   if (!secret || !testInstallNow()) return dropPendingRecord(stateDir);
   writeCreationRecord(stateDir, secret);
-  const r = fixtureKeyNow()
+  const had = !!fixtureKeyNow();
+  const r = had
     ? ({ ok: true } as const)
     : setupFixturePerson(stateDir, {
         testInstall: true,
@@ -3422,6 +3448,7 @@ function sealNewTestInstall(): void {
         webSecret: secret,
         configFile: product().configFile,
       });
+  if (r.ok && !had) writeFixtureMadeBy(stateDir, "creation");
   recordAction(
     null,
     {
@@ -3773,6 +3800,7 @@ async function handleFixturePersonRoute(
     configFile: product().configFile,
   });
   if (r.ok && browser) webSessions.markTestOperator(session!.key);
+  if (r.ok) writeFixtureMadeBy(getStateDir(), "settings");
   recordAction(
     auditActorOf(req),
     {
@@ -3786,6 +3814,105 @@ async function handleFixturePersonRoute(
   );
   if (!r.ok)
     return sendJson(res, { ok: false, code: r.code, error: r.error }, 403);
+  return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/**
+ * Issue 1018: `POST /api/web/fixture-person/setup-secret {secret}`: a test
+ * install's CLI (`web fixture-person --from-setup-secret`) makes the
+ * fixture person with the launcher's one-time setup value, no browser
+ * needed. Refused first for an agent (a person grant, as everywhere),
+ * before the value is read; then off a test install; then by the value
+ * itself (none at start, used, wrong), which the first try spends. On a
+ * match, the key is made exactly as Set up test person makes it. No
+ * answer, log line or audit line holds the value.
+ */
+/** Issue 1018: the setup route's body, `{"secret": …}`, at most this. */
+const SETUP_SECRET_BODY_MAX = 4096;
+
+async function handleFixtureSetupSecretRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    res.setHeader("Allow", "POST");
+    return sendJson(res, { ok: false, error: "use POST" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  let presented: unknown = undefined;
+  let tooBig = false;
+  try {
+    const raw = await readBodyCapped(req, SETUP_SECRET_BODY_MAX);
+    tooBig = raw === null;
+    const b = JSON.parse(raw ?? "{}") as { secret?: unknown } | null;
+    presented = b?.secret;
+  } catch {
+    presented = undefined;
+  }
+  const refuse = (code: string, error: string, status = 403) => {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "fixture-person",
+        detail: `${FIXTURE_LABEL} from the setup secret: refused`,
+        outcome: "refused",
+        reason: code,
+      },
+      principalOf(req),
+    );
+    return sendJson(res, { ok: false, code, error }, status);
+  };
+  const person =
+    g.ok &&
+    g.principal?.kind === "person" &&
+    !g.principal.testPerson &&
+    !notAPersonOf(req);
+  // Only from this machine, as the test-person path (issue 636): beyond
+  // it, the value and the person's bearer would cross the network.
+  if (person && g.beyond)
+    return refuse(
+      "not_this_machine",
+      `The ${FIXTURE_LABEL} is made from the setup value only on this computer, from its own command line; never through the edge or the network.`,
+    );
+  if (!person)
+    return refuse(
+      "person_only",
+      `Only the person's own command line makes the ${FIXTURE_LABEL} from the setup value: an agent, a claimed agent or the ${FIXTURE_LABEL} itself can't.`,
+    );
+  if (!testInstallNow())
+    return refuse(
+      "not_test_install",
+      notTestInstallRefusal(product().configFile),
+    );
+  // Before the value: a body over the cap spends nothing.
+  if (tooBig)
+    return refuse(
+      "body_too_big",
+      `The request is over ${SETUP_SECRET_BODY_MAX} bytes; it sends only {"secret": …}. Nothing was spent.`,
+      413,
+    );
+  const t = FIXTURE_SETUP_SECRET.take(presented);
+  presented = undefined;
+  if (!t.ok) return refuse(t.code, setupSecretRefusal(t.code, product().cli));
+  const r = setupFixturePerson(getStateDir(), {
+    testInstall: true,
+    agent: false,
+    webSecret: webSecret.current(),
+    configFile: product().configFile,
+  });
+  if (!r.ok) return refuse(r.code, r.error);
+  writeFixtureMadeBy(getStateDir(), "setup-secret");
+  // Who made it: the person whose bearer sent the value (as Settings'
+  // Set up test person records its presser); the fixture person is what.
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "fixture-person",
+      detail: `${SETUP_SECRET_AUDIT} (${FIXTURE_PRINCIPAL})`,
+    },
+    principalOf(req),
+  );
+  serverLog(`  ${logTimestamp()}  ${SETUP_SECRET_AUDIT}`, "lifecycle");
   return sendJson(res, { ok: true, testInstall: true, ready: true });
 }
 
@@ -5746,6 +5873,9 @@ async function handleRequest(
   // Issue 810: Settings › Access, the test install and its fixture person.
   if (pathname === "/api/web/fixture-person")
     return handleFixturePersonRoute(req, res);
+  // Issue 1018: the same, from the launcher's one-time setup value.
+  if (pathname === "/api/web/fixture-person/setup-secret")
+    return handleFixtureSetupSecretRoute(req, res);
   // Issue 636: a test bed's CLI starts a --test-person command.
   if (pathname === "/api/web/test-person")
     return handleTestPersonRoute(req, res);
@@ -10328,6 +10458,12 @@ try {
   serverLog(
     `  ⚠ the new test install couldn't be set up: ${(e as Error).message}`,
   );
+}
+// Issue 1018: the setup value is kept only on a test install at start.
+try {
+  if (!testInstallNow()) FIXTURE_SETUP_SECRET.drop();
+} catch {
+  FIXTURE_SETUP_SECRET.drop();
 }
 // AG-0.1: the login shell's PATH, once, in the background (at most
 // agents.shell_path_timeout_seconds, 10 s unset: issue 456),
