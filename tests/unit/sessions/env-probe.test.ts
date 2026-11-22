@@ -2,7 +2,7 @@
  * `<cli> doctor --probe` (AG spec §5a-env): a real session host on a temp
  * socket, a PTY stand-in that really runs the probe (pipes, no native
  * module), and PATH shims for each catalog runtime's CLI (claude, codex,
- * gemini, grok) that must never run. The caller's env
+ * gemini, grok, agy) that must never run. The caller's env
  * carries Claude Code's session plumbing and a token; the probe reports
  * key names and flags only.
  */
@@ -48,7 +48,7 @@ async function rig(pty?: PtyLoad): Promise<{ deps: ProbeDeps; ran: string }> {
   fs.mkdirSync(bin);
   const ran = path.join(dir, "claude-ran");
   // Every catalog runtime's CLI, as a shim that must never run.
-  for (const b of ["claude", "codex", "gemini", "grok"])
+  for (const b of ["claude", "codex", "gemini", "grok", "agy"])
     fs.writeFileSync(
       path.join(bin, b),
       `#!/bin/sh\necho "$@" >> "${ran}"\nexit 1\n`,
@@ -103,6 +103,7 @@ describe("doctor --probe", () => {
       "agent (codex)",
       "agent (gemini)",
       "agent (grok)",
+      "agent (antigravity)",
       "agent (generic)",
     ])
       for (const key of [
@@ -128,6 +129,7 @@ describe("doctor --probe", () => {
       "agent (codex)",
       "agent (gemini)",
       "agent (grok)",
+      "agent (antigravity)",
       "agent (generic)",
     ]);
     expect(reached(results)).toEqual([]);

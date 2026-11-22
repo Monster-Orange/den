@@ -327,8 +327,53 @@
       .agr[aria-pressed="true"] {
         background: var(--sunken);
       }
+      /* Issue 168: the agent in front is a shaded row with an outline and
+         bold text, never an orange edge (that would clash with a project
+         colour). */
       .agr[aria-current="true"] {
-        border-left-color: var(--accent);
+        background: var(--sunken);
+        outline: 2px solid var(--text);
+        outline-offset: -2px;
+        font-weight: 600;
+      }
+      .agr[aria-current="true"] .nm {
+        font-weight: 600;
+      }
+      /* Issue 168: an agent inherits its project's colour: an edge on its
+         row and its letter tile. */
+      .agr[data-pc] {
+        border-left: 4px solid var(--pc);
+        padding-left: 10px;
+      }
+      .agtile {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        background: var(--pc, var(--faint));
+        color: var(--bg);
+        font: 600 11px/1 var(--sans);
+        margin-inline-end: 6px;
+        vertical-align: 1px;
+        flex: none;
+      }
+      .agtile::before {
+        content: attr(data-l);
+      }
+      .pane .bar2 .agtile {
+        width: 22px;
+        height: 22px;
+        font-size: 12px;
+        margin: 0;
+      }
+      .agtab[data-pc] {
+        box-shadow: inset 0 3px 0 var(--pc);
+      }
+      /* An edge only: a tinted bar takes its links under 4.5:1. */
+      .pane[data-pc] .bar2 {
+        border-bottom: 3px solid var(--pc);
       }
       .agr .nm {
         font-weight: 500;
@@ -753,19 +798,21 @@
         justify-content: flex-end;
         flex-wrap: wrap;
       }
-      /* 0.4.44: who the keyboard types to, in the project's colour. */
+      /* 0.4.44: who the keyboard types to, in the project's colour (issue
+         168: the project's own; the server agent's, neutral grey). */
       .pane .agto {
         padding: 3px 10px;
         border-top: 1px solid var(--border);
-        /* The theme's accent, turned to the project's hue (wsHue). */
-        border-left: 3px solid var(--accent);
-        border-left-color: oklch(from var(--accent) l c var(--ws-h, 210));
+        border-left: 4px solid var(--pc, var(--faint));
         background: var(--surface);
         color: var(--muted);
         font-size: 12px;
         white-space: nowrap; /* words-ok: a CSS property */
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .pane[data-pc] .agto {
+        background: color-mix(in srgb, var(--pc) 12%, var(--surface));
       }
       .pane .bar2 {
         display: flex;
