@@ -149,6 +149,10 @@ jobs:
       # that passed its gate and never merged stops the release.
       - name: The gated candidates are in this release
         run: sh scripts/release-ancestry.sh "${{ needs.check.outputs.version }}" "$GITHUB_SHA"
+      # The release holds what its newest gated candidate held, apart from the version lines and the changelog:
+      # work that reached main after the candidate was tagged stops the release.
+      - name: The release is the gated candidate
+        run: sh scripts/release-tree.sh "${{ needs.check.outputs.version }}" "$GITHUB_SHA"
       - name: The tag v<version>
         env:
           TAG: v${{ needs.check.outputs.version }}
