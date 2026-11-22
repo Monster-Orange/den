@@ -141,6 +141,14 @@ export type GateSettingsPatch = {
 };
 
 /** Issue 803: the settings that are a line of text, and their checks. */
+/**
+ * Issue 1002: the most of the slot log an ask's measured estimate reads,
+ * from its end (1 MiB, some 5,000 rows), so an ask's cost doesn't grow
+ * with the log. A log under it reads whole, as before.
+ */
+export const MEASURE_TAIL_MAX_BYTES = 1024 * 1024;
+const MEASURE_CHUNK_BYTES = 64 * 1024;
+
 export const GATE_TEXT: Record<
   | "class_order"
   | "class_map"
@@ -422,6 +430,8 @@ export class GateStore {
   private readonly probe: BoxProbe;
   private readonly readLoad: () => number;
   readonly platform: NodeJS.Platform;
+  /** Issue 1002: bytes of the slot log measured() has read (for tests). */
+  logBytesRead = 0;
 
   constructor(o: GateStoreOpts = {}) {
     this.platform = o.platform ?? process.platform;
@@ -866,24 +876,81 @@ export class GateStore {
     who: string;
     actor?: string;
   }): { minutes: number; from: "label" | "actor" } | null {
-    const done = this.events().filter(
-      (r) => r.event === "released" && typeof r.minutes === "number",
-    );
-    const last10 = (rows: GateEventRow[]) =>
-      rows.slice(-10).map((r) => r.minutes!);
-    const label = last10(
-      done.filter((r) => r.kind === o.kind && r.label === o.label),
-    );
+    // Issue 1002: newest first, from the log's tail, until the label has
+    // its 10 (nothing older could change the answer) or the cap is read.
+    const label: number[] = [];
+    const mine: number[] = [];
+    this.tailRows((r) => {
+      if (r.event !== "released" || typeof r.minutes !== "number") return true;
+      if (r.kind !== o.kind) return true;
+      if (r.label === o.label && label.length < 10) label.push(r.minutes);
+      // Its agent's runs from any project, or the same asker in words.
+      if (
+        mine.length < 10 &&
+        (r.who === o.who || (!!o.actor && r.actor === o.actor))
+      )
+        mine.push(r.minutes);
+      return label.length < 10;
+    });
     if (label.length >= 3) return { minutes: median(label), from: "label" };
-    // Its agent's runs from any project, or the same asker in words.
-    const mine = last10(
-      done.filter(
-        (r) =>
-          r.kind === o.kind &&
-          (r.who === o.who || (!!o.actor && r.actor === o.actor)),
-      ),
-    );
     return mine.length ? { minutes: median(mine), from: "actor" } : null;
+  }
+
+  /**
+   * Issue 1002: the slot log's rows, newest first, read back from its end
+   * in chunks, to `visit` until it returns false, the log's start, or
+   * MEASURE_TAIL_MAX_BYTES read. A broken line is skipped.
+   */
+  private tailRows(visit: (r: GateEventRow | GateSettingsRow) => boolean) {
+    let fd: number;
+    try {
+      fd = fs.openSync(this.eventsFile, "r");
+    } catch {
+      return;
+    }
+    try {
+      let pos = fs.fstatSync(fd).size;
+      const floor = Math.max(0, pos - MEASURE_TAIL_MAX_BYTES);
+      // Bytes of a line cut by the chunk before (it continues later on).
+      let rest = Buffer.alloc(0);
+      while (pos > floor) {
+        const n = Math.min(MEASURE_CHUNK_BYTES, pos - floor);
+        pos -= n;
+        const chunk = Buffer.alloc(n);
+        fs.readSync(fd, chunk, 0, n, pos);
+        this.logBytesRead += n;
+        const buf = Buffer.concat([chunk, rest]);
+        // The first line is whole only at the log's start.
+        let end = buf.length;
+        let nl = buf.lastIndexOf(0x0a, end - 1);
+        while (nl >= 0) {
+          const l = buf.subarray(nl + 1, end).toString("utf-8");
+          if (l && !this.visitLine(l, visit)) return;
+          end = nl;
+          nl = end > 0 ? buf.lastIndexOf(0x0a, end - 1) : -1;
+        }
+        rest = buf.subarray(0, end);
+        if (pos === 0 && rest.length) {
+          this.visitLine(rest.toString("utf-8"), visit);
+          return;
+        }
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  private visitLine(
+    l: string,
+    visit: (r: GateEventRow | GateSettingsRow) => boolean,
+  ): boolean {
+    let r: GateEventRow | GateSettingsRow;
+    try {
+      r = JSON.parse(l) as GateEventRow | GateSettingsRow;
+    } catch {
+      return true;
+    }
+    return visit(r);
   }
 
   /**
