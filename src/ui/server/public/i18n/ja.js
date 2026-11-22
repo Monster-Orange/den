@@ -1991,7 +1991,7 @@
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
     "ap.do.agent_signing_key_create": "エージェントの署名鍵を作成 ({path})",
     "ap.det.agent_signing_key_create.make":
-      "{path} にパスフレーズなしの ed25519 SSH 鍵を作成します。Den だけが読めます。",
+      "{path} にパスフレーズなしの ed25519 SSH 鍵を作成します。Den とそのエージェントがこの鍵で署名します。同じログインで動くほかのプログラムからは隠されていません。",
     "ap.det.agent_signing_key_create.set":
       "config/local/user.yml に agents.git.signing_key を設定します。エージェントのコミットと Den の固定バージョンのコミットはこの鍵で署名されます。",
     "ap.det.agent_signing_key_create.github":

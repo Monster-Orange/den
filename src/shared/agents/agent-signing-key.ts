@@ -76,7 +76,7 @@ export function agentSigningKeyOp(d: AgentSigningKeyDeps): {
         params: { path: file },
         ...reviewLines([
           line(
-            "Makes an ed25519 SSH key with no passphrase at {path}, that only Den can read.",
+            "Makes an ed25519 SSH key with no passphrase at {path}. Den and its agents sign with it; it isn't hidden from other programs run under the same login.",
             "ap.det.agent_signing_key_create.make",
             { path: file },
           ),
