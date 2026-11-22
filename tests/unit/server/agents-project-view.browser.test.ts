@@ -338,17 +338,32 @@ describe("#80: scope wins", () => {
     expect(await frontId(p)).toBe(sid.bo);
     expect(param(p, "project")).toBe("south");
     expect(await toLine(p)).toBe("To bo · south");
+    // Issue 983: type only once the reloaded pane's terminal is connected.
+    // Its socket replays bo's "ready" line into the pane when it opens.
+    await p.waitForFunction(
+      (i) =>
+        (
+          document.querySelector(`.pane[data-id="${i}"]`)?.textContent ?? ""
+        ).includes("bo ready"),
+      sid.bo,
+      { timeout: 20_000 },
+    );
     await p.click(".pane:not([hidden]) .term");
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
     await p.keyboard.type("zz-stop-ship");
-    await p.waitForTimeout(500);
-    const got = s!.made.filter((x, i) =>
-      Buffer.concat(x.writes.slice(from[i]))
-        .toString()
-        .includes("zz-stop-ship"),
-    );
-    expect(got).toEqual([ptys.bo]);
+    const reached = () =>
+      s!.made.filter((x, i) =>
+        Buffer.concat(x.writes.slice(from[i]))
+          .toString()
+          .includes("zz-stop-ship"),
+      );
+    // Wait until some PTY has it (a loaded runner is slow), then hold the
+    // stop-ship check as strict as ever: bo's, and no other.
+    for (let t = Date.now(); !reached().length && Date.now() - t < 10_000; )
+      await p.waitForTimeout(100);
+    await p.waitForTimeout(300);
+    expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
 });
