@@ -1704,6 +1704,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
       r.checks.push(hm.check);
       if (hm.problem) r.ok = false;
+      // Issue 583: a far too broad repo root, and why Validate refuses it.
+      const rr = await repoRootRows();
+      r.checks.push(rr.check);
+      if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
       // Issue 625: the test boxes, and why one is skipped.
@@ -1827,6 +1831,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     defaultHostModuleDeps(getStateDir()),
   );
   for (const l of hm.lines) console.log(l);
+  // Issue 583: a far too broad repo root, and why Validate refuses it.
+  const roots = await repoRootRows();
+  for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
@@ -1918,6 +1925,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ownerProblem ||
       pty.problem ||
       hm.problem ||
+      roots.problem ||
       cfg.problem ||
       sign.problem ||
       addr.problem
@@ -1946,6 +1954,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ownerProblem ||
     pty.problem ||
     hm.problem ||
+    roots.problem ||
     cfg.problem ||
     found
     ? 1
@@ -1997,4 +2006,11 @@ async function heldHubLines(): Promise<
     now: Date.now(),
     bellMinutes,
   });
+}
+
+/** Issue 583: doctor's repo roots row, for this install's projects. */
+async function repoRootRows() {
+  const { repoRootLines, defaultRepoRoots } =
+    await import("./doctor-repo-roots.js");
+  return repoRootLines(await defaultRepoRoots(), { stateDir: getStateDir() });
 }
