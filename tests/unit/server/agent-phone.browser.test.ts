@@ -305,6 +305,28 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     await p.context().close();
   }, 90_000);
 
+  it("words typed while a message goes stay, and only they: a second Send never sends the first again", async () => {
+    if (!browsers[engine]) return;
+    const { p, errors } = await phone(engine);
+    await openAgent(p, "scout");
+    // The send takes a moment, as on a phone's network.
+    await p.route("**/say", async (r) => {
+      await new Promise((res) => setTimeout(res, 1500));
+      await r.continue();
+    });
+    const from = pty.scout.writes.length;
+    await box(p, "scout").fill("first");
+    await sendBtn(p, "scout").tap();
+    await box(p, "scout").press("End");
+    await box(p, "scout").pressSequentially(" second");
+    await pane(p, "scout").locator('.agc .agc-msg[data-tone="ok"]').waitFor();
+    expect((await box(p, "scout").inputValue()).trim()).toBe("second");
+    expect(typed("scout", from)).toContain("first");
+    expect(typed("scout", from)).not.toContain("second");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
   it("a draft survives a reload, per agent; sent, a reload brings back nothing", async () => {
     if (!browsers[engine]) return;
     const { p, errors } = await phone(engine);
@@ -519,6 +541,31 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     90_000,
   );
 
+  it("after Back, an agent opened by New agent comes to the front, not behind the list", async () => {
+    if (!browsers[engine]) return;
+    const { p, errors } = await phone(engine);
+    await openAgent(p, "scout");
+    await p.locator(back("scout")).tap();
+    await p.locator(row("scout")).waitFor({ state: "visible" });
+    // The start answers with an agent that is not open yet (planner's).
+    await p.route("**/api/workspaces/*/agents", (r) =>
+      r.request().method() === "POST"
+        ? r.fulfill({
+            status: 201,
+            json: { agent: { sessionId: sid.planner }, warnings: [] },
+          })
+        : r.continue(),
+    );
+    await p.locator("#ag-start").tap();
+    await p.waitForSelector("#ag-dlg[open]");
+    await p.locator("#ag-go").tap();
+    await pane(p, "planner").locator(".agc .agc-in").waitFor();
+    expect(await shown(p, `.pane[data-id="${sid.planner}"]`)).not.toBeNull();
+    expect(await shown(p, "#agl")).toBeNull();
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
   it("above 480px nothing changes: the list and the agent side by side or stacked, no Back", async () => {
     if (!browsers[engine]) return;
     const { p, errors } = await phone(engine, { width: 600, height: 900 });
@@ -688,5 +735,25 @@ describe.each(ENGINES)(
       expect(await f.locator(".agc-in").inputValue()).toBe("");
       await p.context().close();
     }, 120_000);
+  },
+);
+
+describe.each(ENGINES)(
+  "issue 302: a tablet (touch, 1180x820) is not a phone, in %s",
+  (engine) => {
+    it("an agent open keeps the runs dock", async () => {
+      if (!browsers[engine]) return;
+      const { p, errors } = await phone(engine, { width: 1180, height: 820 });
+      await openAgent(p, "scout");
+      const v = await p.evaluate(() => ({
+        phoneAgent: document.body.hasAttribute("data-phone-agent"),
+        dock:
+          getComputedStyle(document.getElementById("den-dock")!).display !==
+          "none",
+      }));
+      expect(v).toEqual({ phoneAgent: false, dock: true });
+      expect(errors).toEqual([]);
+      await p.context().close();
+    }, 90_000);
   },
 );

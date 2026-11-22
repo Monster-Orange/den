@@ -442,6 +442,20 @@ describe.each(ENGINES)(
       await p.waitForSelector("#den-ap-dlg[open]", { timeout: 20_000 });
       try {
         await measureAsk(p);
+        // The keyboard goes through them as they are drawn: Allow, Deny,
+        // Review, Later (the DOM's order, not only CSS's).
+        await p.focus("#den-ap-allow");
+        const order = ["den-ap-allow"];
+        for (let i = 0; i < 3; i++) {
+          await p.keyboard.press("Tab");
+          order.push(await p.evaluate(() => document.activeElement?.id ?? ""));
+        }
+        expect(order).toEqual([
+          "den-ap-allow",
+          "den-ap-deny",
+          "den-ap-review",
+          "den-ap-later",
+        ]);
       } finally {
         // Deny it, so the ask never opens over the next test's page.
         await p.click("#den-ap-deny").catch(() => undefined);

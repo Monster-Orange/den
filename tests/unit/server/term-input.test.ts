@@ -196,12 +196,25 @@ describe("the keys", () => {
 // keys a message can't: Esc, Ctrl-C and the arrows.
 describe("issue 302: the terminal keys a phone sends", () => {
   it("the row's keys, in the mock's order", () => {
-    expect(TERM_KEYS).toEqual(["esc", "ctrlc", "up", "down", "left", "right"]);
+    // Enter and Tab too: a phone's terminal input raises no keyboard and
+    // the message box sends no empty line, so a menu needs them here.
+    expect(TERM_KEYS).toEqual([
+      "esc",
+      "ctrlc",
+      "tab",
+      "enter",
+      "up",
+      "down",
+      "left",
+      "right",
+    ]);
   });
 
   it("each key's bytes, the arrows as the terminal's cursor mode asks", () => {
     expect(termKeySeq("esc")).toBe("\x1b");
     expect(termKeySeq("ctrlc")).toBe("\x03");
+    expect(termKeySeq("tab")).toBe("\t");
+    expect(termKeySeq("enter")).toBe("\r");
     expect(termKeySeq("up")).toBe("\x1b[A");
     expect(termKeySeq("down")).toBe("\x1b[B");
     expect(termKeySeq("right")).toBe("\x1b[C");
@@ -213,7 +226,7 @@ describe("issue 302: the terminal keys a phone sends", () => {
   });
 
   it("an unknown key sends nothing", () => {
-    expect(termKeySeq("tab")).toBe("");
+    expect(termKeySeq("f13")).toBe("");
     expect(termKeySeq("")).toBe("");
   });
 });
