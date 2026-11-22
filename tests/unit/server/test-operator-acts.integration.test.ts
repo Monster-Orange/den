@@ -6,7 +6,8 @@
  * close its own shells (never a person's or an agent's), message an agent
  * and relaunch one, each audited as the test operator. Anything else stays
  * the fixture person's. Invented names only; no code, cookie or secret is
- * printed.
+ * printed. Its subjects: test-operator.ts, request-guard.ts,
+ * agent-routes.ts and agent-ops.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
