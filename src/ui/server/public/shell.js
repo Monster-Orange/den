@@ -1955,6 +1955,18 @@
     "set.agents.hub_link_all": "Unclear matches",
     "set.agents.hub_link_all.d":
       "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
+    "set.agents.hub_delivery_loop": "Hub delivery loop",
+    "set.agents.hub_delivery_loop.d":
+      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    "set.workspace.hub_delivery_loop": "Hub delivery loop: this project",
+    "set.workspace.hub_delivery_loop.d":
+      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+    "set.workspace.hub_delivery_loop.o.install": "As everywhere",
+    "set.workspace.hub_delivery_loop.o.on": "On",
+    "set.workspace.hub_delivery_loop.o.off": "Off",
+    "set.workspace.hub_delivery_loop_extra": "Added to the Hub delivery loop",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
     "ub.intro":
       "Den can't tell which Hub project fits these. Pick one for each, then press Link.",
     "ub.why.repos": "Two Hub projects share its repos",

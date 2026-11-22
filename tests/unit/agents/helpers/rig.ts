@@ -178,6 +178,8 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     workspaceRepos: () => [],
     // Issue 335: never this machine's workspaces.yml.
     workspaceMcpServers: () => undefined,
+    // Issue 158: never this machine's workspaces.yml either.
+    workspaceHubLoop: () => undefined,
     // D52: Den's own address as agents reach it (never this machine's port).
     denBase: () => DEN_BASE,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).

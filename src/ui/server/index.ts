@@ -546,6 +546,7 @@ import {
   readHubConfig,
   type HubConfig,
 } from "../../shared/hub.js";
+import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
@@ -8481,6 +8482,8 @@ async function handleRequest(
   //     206); null or "" clears it (the browser's)
   //   hub_allow_tools: true | false, hub.allow_tools (HUB-1.5: agents use
   //     Hub's tools without asking); null clears it (on)
+  //   hub_delivery_loop: true | false, hub.delivery_loop (issue 158: the
+  //     Hub delivery loop in agents' instructions); null clears it (on)
   //   hub_url: Hub's address, hub.url (#267, Settings › Hub); null or ""
   //     clears it. The page restarts Den after.
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -8544,6 +8547,13 @@ async function handleRequest(
         time_zone: timeZonePref(user.time_zone),
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // Issue 158: the Hub delivery loop in agents' instructions.
+        hub_delivery_loop:
+          (
+            (user as Record<string, unknown>).hub as
+              | { delivery_loop?: unknown }
+              | undefined
+          )?.delivery_loop !== false,
         // Issue 268: the projects that override it (Settings › Agents).
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
@@ -8619,6 +8629,7 @@ async function handleRequest(
           alerts?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
+          hub_delivery_loop?: unknown;
           hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
@@ -8766,6 +8777,15 @@ async function handleRequest(
           const h = patchHubAllowTools(
             user as Record<string, unknown>,
             body.hub_allow_tools,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
+        // Issue 158: hub.delivery_loop, the Hub delivery loop in every
+        // agent's instructions (Settings › Hub); null clears it (on).
+        if (body.hub_delivery_loop !== undefined) {
+          const h = patchHubDeliveryLoop(
+            user as Record<string, unknown>,
+            body.hub_delivery_loop,
           );
           if (!h.ok) return send400(res, h.error);
         }
@@ -8959,6 +8979,12 @@ async function handleRequest(
           // Issue 144: the gate slots, as GET shows them (issue 424).
           gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
+          hub_delivery_loop:
+            (
+              (user as Record<string, unknown>).hub as
+                | { delivery_loop?: unknown }
+                | undefined
+            )?.delivery_loop !== false,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals),
           editor: user.editor ?? null,

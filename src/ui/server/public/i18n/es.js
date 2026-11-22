@@ -1384,6 +1384,19 @@
     "set.agents.hub_link_all": "Coincidencias dudosas",
     "set.agents.hub_link_all.d":
       "Vincular une un proyecto con su proyecto de Hub, para que sus agentes guarden allí documentos, maquetas y comentarios. Den lista aquí un proyecto solo cuando no sabe cuál de Hub corresponde. Elige uno y pulsa Vincular. Hasta entonces, no se guarda nada de ese proyecto.",
+    "set.agents.hub_delivery_loop": "Ciclo de entrega de Hub",
+    "set.agents.hub_delivery_loop.d":
+      "Activado, cada agente que Den inicia en un proyecto conectado a Hub recibe el ciclo de entrega en sus instrucciones: documentos de requisitos en Hub, issues enlazados completos, revisión y comentarios en los hilos de Hub, estado desde git. Desactivado para todos los proyectos de aquí, salvo que un proyecto lo active. Llega a un agente en su próximo inicio.",
+    "set.workspace.hub_delivery_loop": "Ciclo de entrega de Hub: este proyecto",
+    "set.workspace.hub_delivery_loop.d":
+      "Si los agentes de este proyecto reciben el ciclo de entrega de Hub en sus instrucciones, por encima del ajuste de la instalación. Llega a un agente en su próximo inicio.",
+    "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
+    "set.workspace.hub_delivery_loop.o.on": "Activado",
+    "set.workspace.hub_delivery_loop.o.off": "Desactivado",
+    "set.workspace.hub_delivery_loop_extra":
+      "Añadido al ciclo de entrega de Hub",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "El texto propio de este proyecto, añadido tras la copia de Den del ciclo en las instrucciones de sus agentes. La copia de Den no se puede editar. Vacío no añade nada.",
     "ub.intro":
       "Den no sabe qué proyecto de Hub corresponde a estos. Elige uno para cada uno y pulsa Vincular.",
     "ub.why.repos": "Dos proyectos de Hub comparten sus repositorios",
