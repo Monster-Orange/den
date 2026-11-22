@@ -89,8 +89,14 @@ type Win = {
   denShell?: { api: (m: string, u: string, b?: unknown) => Promise<unknown> };
 };
 
-const POP = "dialog.dg-pop";
-const CARD = ".dg-card";
+const POP = "dialog#dg-pop";
+// The one service's card: a group, named, keyed by its service id.
+const CARD = '[role="group"][data-id]';
+// The side panel's Expand (the pop-up's own Dock is inside the dialog).
+const SIDE_POP = "[data-popout]:visible";
+
+/** In the page: the side panel shows (its Expand, outside the dialog). */
+const SIDE_SHOWN_JS = `[...document.querySelectorAll("[data-popout]")].some((b) => !b.closest("dialog") && b.checkVisibility())`;
 
 /** The Graph page, signed in, in `lang`, with a card's details open. */
 async function details(lang = "en"): Promise<Page> {
@@ -115,14 +121,14 @@ async function details(lang = "en"): Promise<Page> {
     lang,
   );
   await p.goto(`${base}/graph?ws=north`);
-  await p.locator(CARD).first().waitFor({ timeout: 30_000 });
-  await p.locator(CARD).first().click();
-  await p.locator(".dg-panel:not([hidden]) [data-popout]").waitFor();
+  await p.locator(CARD).waitFor({ timeout: 30_000 });
+  await p.locator(CARD).click();
+  await p.locator(SIDE_POP).waitFor();
   return p;
 }
 
 async function popOut(p: Page): Promise<void> {
-  await p.locator(".dg-panel:not([hidden]) [data-popout]").click();
+  await p.locator(SIDE_POP).click();
   await p.locator(`${POP}[open]`).waitFor();
 }
 
@@ -131,32 +137,35 @@ describe("issue 837: the graph's popped-out details on the kit's dialog", () => 
     if (!browser) return;
     const p = await details();
     await popOut(p);
-    const got = await p.evaluate((sel) => {
-      const d = document.querySelector(sel) as HTMLDialogElement;
-      const h = document.getElementById(
-        d.getAttribute("aria-labelledby") || "",
-      );
-      return {
-        kit: d.classList.contains("dk-dlg") && d.classList.contains("dk-panel"),
-        modal: d.matches(":modal"),
-        name: h?.textContent ?? "",
-        close: !!d.querySelector('.dk-hd [data-dk="close"], .dk-hd .dk-close'),
-        report: d.querySelectorAll("[data-den-report]").length,
-        tabs: d.querySelectorAll('[role="tab"]').length > 0,
-        layer: !!document.querySelector(".dg-modal-back"),
-        side: !!document.querySelector(".dg-panel:not([hidden]):not(dialog *)"),
-        focusIn: d.contains(document.activeElement),
-      };
-    }, POP);
+    const got = await p.evaluate(
+      ({ sel }) => {
+        const d = document.querySelector(sel) as HTMLDialogElement;
+        const h = document.getElementById(
+          d.getAttribute("aria-labelledby") || "",
+        );
+        return {
+          kit: d.dataset.dkKind === "panel",
+          modal: d.matches(":modal"),
+          modals: document.querySelectorAll(":modal").length,
+          name: h?.textContent ?? "",
+          close: !!d.querySelector('[data-dk="close"]'),
+          report: d.querySelectorAll("[data-den-report]").length,
+          tabs: d.querySelectorAll('[role="tab"]').length > 0,
+          focusIn: d.contains(document.activeElement),
+        };
+      },
+      { sel: POP },
+    );
+    const side = await p.evaluate<boolean>(SIDE_SHOWN_JS);
+    expect(side).toBe(false);
     expect(got).toEqual({
       kit: true,
       modal: true,
+      modals: 1,
       name: expect.stringMatching(/api|kettle/),
       close: true,
       report: 1,
       tabs: true,
-      layer: false,
-      side: false,
       focusIn: true,
     });
     await p.context().close();
@@ -166,9 +175,18 @@ describe("issue 837: the graph's popped-out details on the kit's dialog", () => 
     if (!browser) return;
     const p = await details();
     await popOut(p);
-    const tab = p.locator(`${POP} [role="tab"][aria-selected="false"]`);
-    if (await tab.count()) await tab.first().click();
-    await p.waitForTimeout(200);
+    // Another tab (a repaint): wait for it to be the chosen one.
+    const id = await p.evaluate((sel) => {
+      const t = document.querySelector<HTMLElement>(
+        `${sel} [role="tab"][aria-selected="false"]`,
+      );
+      t?.click();
+      return t?.dataset.tab ?? "";
+    }, POP);
+    if (id)
+      await p
+        .locator(`${POP} [data-tab="${id}"][aria-selected="true"]`)
+        .waitFor();
     expect(await p.locator(`${POP} [data-den-report]`).count()).toBe(1);
     expect(await p.locator(`${POP}[open]`).count()).toBe(1);
     await p.context().close();
@@ -180,10 +198,12 @@ describe("issue 837: the graph's popped-out details on the kit's dialog", () => 
     await popOut(p);
     await p.keyboard.press("Escape");
     await p.locator(`${POP}[open]`).waitFor({ state: "detached" });
-    const after = await p.evaluate(() => ({
-      side: !!document.querySelector(".dg-panel:not([hidden])"),
-      onCard: !!document.activeElement?.closest(".dg-card"),
-    }));
+    const after = {
+      side: await p.evaluate<boolean>(SIDE_SHOWN_JS),
+      onCard: await p.evaluate(
+        () => !!document.activeElement?.closest('[role="group"][data-id]'),
+      ),
+    };
     expect(after).toEqual({ side: false, onCard: true });
     await p.context().close();
   }, 90_000);
@@ -194,7 +214,7 @@ describe("issue 837: the graph's popped-out details on the kit's dialog", () => 
     await popOut(p);
     await p.locator(`${POP} [data-popout]`).click();
     await p.locator(`${POP}[open]`).waitFor({ state: "detached" });
-    await p.locator(".dg-panel:not([hidden]) [data-popout]").waitFor();
+    await p.locator(SIDE_POP).waitFor();
     await p.context().close();
   }, 90_000);
 
@@ -210,8 +230,12 @@ describe("issue 837: the graph's popped-out details on the kit's dialog", () => 
         language: "en",
       }),
     );
-    expect(dock).toBeTruthy();
-    expect(dock).not.toBe("Dock as side panel");
+    // The catalog's own Spanish for the key.
+    const es = fs.readFileSync(
+      path.join(ENGINE, "src/ui/server/public/i18n/es.js"),
+      "utf8",
+    );
+    expect(dock).toBe(/"gr\.dock":\s*"([^"]+)"/.exec(es)?.[1]);
     await p.context().close();
   }, 90_000);
 });

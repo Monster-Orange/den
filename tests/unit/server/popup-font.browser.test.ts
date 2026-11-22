@@ -399,9 +399,11 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       await p.locator(WHATS_NEW).waitFor({ timeout: 20_000 });
       await p.keyboard.press("Escape");
       await p.locator(WHATS_NEW).waitFor({ state: "detached" });
-      await p.locator(".dg-card").first().click({ timeout: 30_000 });
-      await p.locator(".dg-panel:not([hidden]) [data-popout]").click();
-      const pop = "dialog.dg-pop[open]";
+      await p
+        .locator('[role="group"][data-id], [role="group"][data-repo]')
+        .click({ timeout: 30_000 });
+      await p.locator("[data-popout]:visible").click();
+      const pop = "dialog#dg-pop[open]";
       await p.locator(pop).waitFor();
       expect(problems(await fontsOf(p, pop), strict)).toEqual([]);
       await p.keyboard.press("Escape");
