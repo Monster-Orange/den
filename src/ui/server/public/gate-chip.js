@@ -100,6 +100,13 @@ export function startGateChip(o) {
       ? t("gate.class", { name: s.class }) +
         (s.window ? " · " + t("gate.window", { window: s.window }) : "")
       : "";
+    // Issue 1009: a cpu run held by the machine's load.
+    const hold = s.loadHold
+      ? t("gate.loadHold", {
+          load: String(s.loadHold.load),
+          limit: String(s.loadHold.limit),
+        })
+      : "";
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -114,6 +121,20 @@ export function startGateChip(o) {
       (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
       (yld ? '<div class="gate-pri">' + esc(yld) + "</div>" : "") +
       (cls ? '<div class="gate-pri">' + esc(cls) + "</div>" : "") +
+      (hold
+        ? '<div class="gate-pri" data-gate-load-hold>' + esc(hold) + "</div>"
+        : "") +
+      // Issue 999: a padded estimate, and what the queue uses instead.
+      (s.padded && s.expected
+        ? '<div class="gate-pri" data-gate-padded>' +
+          esc(
+            t("gate.padded", {
+              est: s.estimate?.minutes ?? "?",
+              usual: s.expected.minutes,
+            }),
+          ) +
+          "</div>"
+        : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"

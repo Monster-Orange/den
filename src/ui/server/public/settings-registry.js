@@ -3061,6 +3061,30 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
   },
   {
+    // Issue 1009: cpu runs wait at this load under a release browser run.
+    id: "server.gate_cpu_hold_load",
+    category: "server",
+    label:
+      "Machine load that holds unit test runs during a release browser run",
+    description:
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "load",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_hold_load"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuHoldLoad ?? 0,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_hold_load: v } }),
+  },
+  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",
@@ -3086,6 +3110,20 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
     read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
+  },
+  {
+    // Issue 993: a slot past this many times its estimate: the bell.
+    id: "server.gate_overrun_bell",
+    category: "server",
+    label: "Test slot in the bell past this many times its estimate",
+    description:
+      "A test slot held this many times longer than its estimate shows in the bell under Needs you, with End. If an agent holds it, Den tells that agent once to release it. 2: twice its estimate. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
+    keywords: ["gate", "slot", "overrun", "estimate", "bell", "end"],
+    scope: "user",
+    keys: ["gate_slots.overrun_bell_multiple"],
+    control: { type: "number", min: 1, max: 100, step: 0.5 },
+    read: (ctx) => ctx.data.gate_slots?.overrunBellMultiple ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { overrun_bell_multiple: v } }),
   },
   {
     // Issue 621: a CI runner (a job in a VM) holds its slot by lease.

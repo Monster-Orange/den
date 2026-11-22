@@ -227,6 +227,77 @@ function allowRowHtml(w, open) {
   );
 }
 
+/**
+ * Issue 993: the gate slots held past the overrun multiple of their
+ * estimate (`waiting` entries of kind "gate_overrun"), longest first.
+ */
+export function overrunsOf(b) {
+  return (b?.waiting ?? []).filter(
+    (w) => w && w.kind === "gate_overrun" && typeof w.id === "string" && w.id,
+  );
+}
+
+/**
+ * Issue 993: one overrun slot's row: who holds it, what it runs, since
+ * when and its estimate, and End (the person-only end route).
+ */
+function overrunRowHtml(w) {
+  const text = tr("bell.go.row", {
+    who: String(w.who ?? ""),
+    kind: String(w.slot ?? ""),
+    label: String(w.label ?? ""),
+  });
+  const sub =
+    typeof w.since === "string"
+      ? tr("bell.go.sub", {
+          time: formatTime(w.since),
+          est: Number(w.estimateMin) || 0,
+          over: Number(w.overMin) || 0,
+        })
+      : "";
+  return (
+    `<div class="den-bell-row den-bell-allow" data-kind="gate_overrun" data-go-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t">${esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</span>` +
+    `<button type="button" class="den-btn" data-bell="gate-end" data-slot="${esc(w.id)}" data-label="${esc(String(w.label ?? ""))}">${esc(tr("bell.go.end"))}</button>` +
+    `</div>`
+  );
+}
+
+/** Issue 993: the overrun slots' own group, in Needs you. */
+function overrunsHtml(list) {
+  if (!list.length) return "";
+  return (
+    `<section data-scope="gate_overrun"><div class="den-bell-sc"><span>${esc(tr("bell.go.h"))}</span></div>` +
+    list.map(overrunRowHtml).join("") +
+    `</section>`
+  );
+}
+
+/**
+ * Issue 993: End from the bell: the person-only POST /api/gate-slots/end
+ * (it records who; an agent is refused there). A toast says what happened.
+ */
+async function endSlot(el) {
+  const id = el.dataset.slot;
+  if (!id) return;
+  const shell = window.denShell;
+  // BUSY-1: through the working pop-up, as the gate chip's End.
+  const run = (headers) =>
+    shell.api("POST", "/api/gate-slots/end", { id }, { headers });
+  try {
+    const j = shell?.busyAction
+      ? await shell.busyAction("gate-end", run, {
+          button: el,
+          vars: { name: el.dataset.label ?? "" },
+        })
+      : await run({});
+    if (j) shell?.toast?.(tr("bell.go.ended"));
+  } catch (err) {
+    shell?.errorToast?.(err);
+  }
+}
+
 /** Issue 746: the Allow rows' own group, heading Needs you. */
 function allowsHtml(allows, reviews = new Set()) {
   if (!allows.length) return "";
@@ -316,7 +387,13 @@ export function bellPanel(b, ui = {}) {
     ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
       (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
     : "";
-  if (!allows.length && !groups.length && !older.count && !updates.count)
+  if (
+    !allows.length &&
+    !overrunsOf(b).length &&
+    !groups.length &&
+    !older.count &&
+    !updates.count
+  )
     return {
       ...panel,
       items: [],
@@ -335,7 +412,10 @@ export function bellPanel(b, ui = {}) {
   return {
     ...panel,
     sections: {
-      needs: allowsHtml(allows, u.reviews) + groupsHtml(groups, u, true),
+      needs:
+        allowsHtml(allows, u.reviews) +
+        overrunsHtml(overrunsOf(b)) +
+        groupsHtml(groups, u, true),
       earlier:
         updatesHtml +
         (older.count
@@ -484,7 +564,8 @@ export function initBell(doc = document) {
     const b = await load();
     if (!b) return;
     last = b;
-    bell.setCount(b?.unread ?? 0);
+    // Issue 993: an overrun slot counts until it ends (it has no item).
+    bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);
     if (bell.isOpen()) paint();
   };
   pop.addEventListener("click", async (e) => {
@@ -513,6 +594,11 @@ export function initBell(doc = document) {
       return;
     }
     e.preventDefault();
+    if (what === "gate-end") {
+      await endSlot(el);
+      await refresh();
+      return;
+    }
     if (what === "review") {
       // Issue 746: a tap opens the held write's lines; another closes them.
       const id = el.dataset.ap;

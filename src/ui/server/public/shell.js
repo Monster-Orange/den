@@ -2113,9 +2113,17 @@
       "Unit test runs beside a release browser test run",
     "set.server.gate_cpu_beside_release.d":
       "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_cpu_hold_load":
+      "Machine load that holds unit test runs during a release browser run",
+    "set.server.gate_cpu_hold_load.d":
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
+    "set.server.gate_overrun_bell":
+      "Test slot in the bell past this many times its estimate",
+    "set.server.gate_overrun_bell.d":
+      "A test slot held this many times longer than its estimate shows in the bell under Needs you, with End. If an agent holds it, Den tells that agent once to release it. 2: twice its estimate. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
     "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
     "set.server.gate_overrun.d":
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -3304,6 +3312,11 @@
       "A request was lost at a restart: {what}. Nothing ran from it.",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
+    "bell.go.h": "Test slots past their estimate",
+    "bell.go.row": "{who} holds the {kind} test slot: {label}",
+    "bell.go.sub": "Since {time} · estimate {est} min · {over} min over",
+    "bell.go.end": "End",
+    "bell.go.ended": "Ended the test slot. The next in line starts.",
     "bell.ap.h": "Waiting for your Allow",
     "bell.ap.row": "{name} asks: {what}",
     "bell.ap.rowAsk": "Asked: {what}",
@@ -3663,6 +3676,7 @@
     "gate.popH": "Test runs on this machine",
     "gate.holds": "Runs {kind}, until about {at}",
     "gate.waits": "Waits to run {kind}, from about {at}",
+    "gate.padded": "estimate {est} min; this usually takes {usual}",
     "gate.over": "past its estimate",
     "gate.none": "No test runs hold or wait.",
     "gate.end": "End early",
@@ -3687,6 +3701,8 @@
     "gate.yielded": "Let {to} go ahead",
     "gate.class": "Class: {name}",
     "gate.window": "waits for its {window} window",
+    "gate.loadHold":
+      "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

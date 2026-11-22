@@ -226,6 +226,28 @@ export interface StartedServer {
  *
  * `opts.env` gets PORT; `root` defaults to opts.env.DEN_ROOT, then opts.cwd.
  */
+/**
+ * A server's own gate folder. tests/setup.ts gives each Jest worker one
+ * DEN_GATE_DIR; a server that inherits it sees every slot the worker's other
+ * tests left there, and (issue 993) shows one past its estimate as a row in
+ * its bell. So a server whose env still names the worker's folder gets a
+ * fresh empty one, removed when it exits; a folder the test set itself is
+ * kept.
+ */
+export function serverGateEnv(
+  env: NodeJS.ProcessEnv,
+  shared: string | undefined = process.env.DEN_GATE_DIR,
+): { env: NodeJS.ProcessEnv; cleanup: () => void } {
+  const now = env.DEN_GATE_DIR;
+  if (now && shared && path.resolve(now) !== path.resolve(shared))
+    return { env, cleanup: () => {} };
+  const own = fs.mkdtempSync(path.join(os.tmpdir(), "den-srv-gates-"));
+  return {
+    env: { ...env, DEN_GATE_DIR: own },
+    cleanup: () => fs.rmSync(own, { recursive: true, force: true }),
+  };
+}
+
 export async function startDenServer(
   cmd: string,
   args: string[],
@@ -248,11 +270,13 @@ export async function startDenServer(
     let out = "";
     let exited = false;
     let how = "";
+    const gates = serverGateEnv(opts.env ?? process.env);
     const server = spawnServer(cmd, args, {
       stdio: ["ignore", "pipe", "pipe"],
       ...opts,
-      env: { ...(opts.env ?? process.env), PORT: String(port) },
+      env: { ...gates.env, PORT: String(port) },
     });
+    server.once("exit", gates.cleanup);
     server.stdout?.on("data", (d: Buffer) => (out += d.toString()));
     server.stderr?.on("data", (d: Buffer) => (out += d.toString()));
     server.once("exit", (code, signal) => {
