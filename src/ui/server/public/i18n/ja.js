@@ -94,6 +94,95 @@
     "v.old_link": "テストを開く",
     "v.err_load": "検証の結果を読み込めませんでした。",
     "v.retry": "もう一度試す",
+    "v.sch_link": "スケジュール",
+    "v.sch_t": "スケジュール",
+    "v.sch_s":
+      "自動で実行されるチェック。重いものは指定の時間帯に実行されます。",
+    "v.sch_tz":
+      "「いつ」と「時間帯」はこの Den のタイムゾーン ({z}) です。重いチェックは一つずつ実行されます。",
+    "v.sch_when": "いつ",
+    "v.sch_window_h": "時間帯",
+    "v.sch_next_h": "次回",
+    "v.sch_last_h": "前回",
+    "v.sch_hourly": "毎時",
+    "v.sch_daily": "毎日 {t}",
+    "v.sch_weekly": "{d} {t}",
+    "v.sch_d0": "毎週日曜",
+    "v.sch_d1": "毎週月曜",
+    "v.sch_d2": "毎週火曜",
+    "v.sch_d3": "毎週水曜",
+    "v.sch_d4": "毎週木曜",
+    "v.sch_d5": "毎週金曜",
+    "v.sch_d6": "毎週土曜",
+    "v.sch_any": "いつでも",
+    "v.sch_night": "夜間 (22:00〜06:00)",
+    "v.sch_span": "{a}〜{b}",
+    "v.sch_st_allowed": "許可済み",
+    "v.sch_st_free": "許可は不要",
+    "v.sch_st_expiring": "許可の期限が近い",
+    "v.sch_st_paused": "一時停止中",
+    "v.sch_free_code": "コードを読むだけなので、許可は不要です。",
+    "v.sch_free_local": "ローカルで実行するので、許可は不要です。",
+    "v.sch_needs": "実行する前に許可が必要です。",
+    "v.sch_needs_h":
+      "誰かがこのスケジュールを許可するまで、何も実行されません。",
+    "v.sch_lapsed": "{t} の許可は、計画が変わったときに失効しました。",
+    "v.sch_expired": "許可は {t} に期限切れになりました。",
+    "v.sch_allow_until": "{t} まで許可済み。",
+    "v.sch_changed":
+      "計画が変わったため、このスケジュールには新しい許可が必要です。",
+    "v.sch_expiring":
+      "許可は {t} に切れます。切れると、誰かが再び許可するまでこのスケジュールは止まります。",
+    "v.sch_code": "コード",
+    "v.sch_ro": "読み取り専用",
+    "v.sch_ro_h":
+      "本番では読み取り専用です: GET、HEAD、OPTIONS と、リポジトリの write_allow で許可された書き込みだけです。",
+    "v.sch_never": "未実行",
+    "v.sch_ask": "このスケジュールを許可",
+    "v.sch_ask_t": "{e} のスケジュール「{s}」を許可しますか?",
+    "v.sch_ask_h":
+      "一度の許可で、計画が変わるか {t} に期限が切れるまで、この計画のすべての実行に有効です。",
+    "v.sch_does": "各実行の内容",
+    "v.sch_mk_enforced": "Den が保証",
+    "v.sch_mk_declared": "読み取り専用と宣言",
+    "v.sch_mk_code": "コードを読むだけ",
+    "v.sch_touch_writes": "書き込む",
+    "v.sch_touch_reads": "読むだけ",
+    "v.sch_mk_service": "サービスが宣言",
+    "v.sch_decline": "断る",
+    "v.sch_decline_h":
+      "断ると、スケジュールは一時停止のままです。誰かが許可するまで何も実行されません。",
+    "v.sch_run": "今すぐ実行",
+    "v.sch_runs": "実行を見る",
+    "v.sch_ch_h": "変わった点",
+    "v.sch_ch_added": "{m} がスケジュールに加わりました",
+    "v.sch_ch_removed": "{m} がスケジュールから外れました",
+    "v.sch_ch_cmd": "{m}: コマンドが変わりました",
+    "v.sch_ch_writes": "{m} が書き込むようになりました",
+    "v.sch_ch_window": "時間帯が変わりました",
+    "v.sch_ch_cron": "実行時刻が変わりました",
+    "v.sch_missed_h": "一時停止中に見送った実行",
+    "v.sch_sk_allow": "許可が必要",
+    "v.sch_sk_changed": "新しい許可が必要",
+    "v.sch_sk_expired": "許可が期限切れ",
+    "v.sch_sk_window": "先に時間帯が終わった",
+    "v.sch_sk_busy": "別の実行中だった",
+    "v.sch_sk_cmdoff": "ここではコマンドがオフ",
+    "v.sch_sk_unclear": "Den がコマンドをたどれなかった",
+    "v.sch_lim_off":
+      "ここでは共有環境のコマンドは自動で実行されません。オンにするには、Den の verify: ブロックにこれを書きます:",
+    "v.sch_lim_unclear":
+      "Den はこのコマンドをたどれないため、自動では実行できません:",
+    "v.sch_empty":
+      "まだスケジュールはありません。モジュールに {c} を追加すると自動で実行されます。",
+    "v.sch_empty_h":
+      "staging や本番のスケジュールは、一度だけ許可を求めます。コードのみとローカルのスケジュールは許可なしで実行されます。",
+    "v.sch_how":
+      "スケジュールはリポジトリの {b} ブロックの {a} から来ます。追加・変更・削除はリポジトリを変更してください。",
+    "v.sch_started": "開始しました。結果はベルに届きます。",
+    "v.sch_allowed": "許可しました。次の時刻に実行されます。",
+    "v.sch_declined": "断りました。スケジュールは一時停止のままです。",
+    "v.sch_err": "うまくいきませんでした: {e}",
     // Issue 441: an outside runner's gate results on Checks.
     "v.m_ran": "{a}〜{b}に実行。",
     "v.m_runner": "外部ランナーから。",
@@ -609,6 +698,12 @@
     "busy.startF": "{name} を開始できませんでした。",
     "busy.termW": "ターミナルを開いています…",
     "busy.termS": "ターミナルを開きました。",
+    "busy.schAllowW": "スケジュールを許可しています…",
+    "busy.schAllowS": "許可しました。次の時刻に実行されます。",
+    "busy.schAllowF": "スケジュールを許可できませんでした。",
+    "busy.schRunW": "予定のチェックを開始しています…",
+    "busy.schRunS": "開始しました。結果はベルに届きます。",
+    "busy.schRunF": "予定のチェックを開始できませんでした。",
     "busy.termF": "ターミナルを開けませんでした。",
     "busy.sayW": "{name} に送信しています…",
     "busy.sayS": "{name} に送信しました。",
@@ -2026,6 +2121,8 @@
       "{module} はここでは実行できません: 実行先は {envs} だけです。",
     "ap.vr.cant.production":
       "{module} はまだ本番で実行できません: 本番での有効化は今後の Den で入ります。",
+    "ap.vr.cant.production-declared":
+      "{module} は本番の予定実行から外れます: Den はコマンドを読み取り専用に保てないため、本番ではスモークチェックとコードのスキャンだけが実行されます。",
     "ap.vr.cant.adapter-later":
       "{module} はまだ実行できません: そのアダプター({adapter})は今後の Den で入ります。",
     "ap.vr.cant.no-health-url":
@@ -2406,6 +2503,11 @@
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
+    "bell.m.vschedPass": "{env} の予定実行: {n} 件のチェックが通りました。",
+    "bell.m.vschedFail":
+      "{env} の予定実行: {total} 件中 {n} 件のチェックが失敗しました。",
+    "bell.m.vschedExpire":
+      "スケジュール「{name}」の許可はあと {n} 日で切れます。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
     "bell.m.heldLapsed":
       "{name} の依頼は応答がないまま期限切れになりました: {what}。何も実行していません。エージェントにもう一度依頼するよう伝えました。",

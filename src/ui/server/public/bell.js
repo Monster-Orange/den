@@ -150,9 +150,11 @@ function rowHtml(n, fold) {
   const sub = noteSub(n);
   const long = n.msg?.key === "bell.m.asked" && text.length > LONG;
   const sw = switchOf(n.kind);
+  // Issue 214: a failed scheduled run is an alert while it is unread.
+  const alert = !n.read && n.msg?.key === "bell.m.vschedFail";
   return (
-    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
-    `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
+    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}"${alert ? ' role="alert"' : ""}>` +
+    `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" || alert ? "warn" : "ok"}" aria-hidden="true"></span>` +
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
     (link

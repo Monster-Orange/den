@@ -509,6 +509,17 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
   ),
+  R("/api/verify/schedules", "issue 214: Verify's schedules and their Allows"),
+  M(
+    ["POST"],
+    "/api/verify/schedules/allow",
+    "issue 214: a person's standing Allow for a schedule's plan (a signed-in browser only)",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/schedules/run",
+    "issue 214: runs a schedule now, under its own Allow (a signed-in browser only)",
+  ),
   M(["POST"], "/api/local-dev"),
   M(["POST"], "/api/sudo-password", "sets the admin password, for sudo (R8)"),
   M(

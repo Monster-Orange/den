@@ -721,6 +721,22 @@ verify:
     max_bytes: 5000000 # the largest verdict file Den reads
     max_clauses: 5000 # the most clauses in one file
     max_text: 2000 # a clause or note longer than this is cut
+  schedule:
+    allow_expiry: 30d # a schedule's standing Allow lasts this long
+    expiry_warning: 3d # the bell warns this long before it ends
+    shared_commands: false # a command (cmd) runs on its own on staging or production
+```
+
+`environments` can also be a map, when an environment needs its own
+settings. Each key is an environment. `imported: true` marks one whose
+answer comes from an outside runner:
+
+```yaml
+verify:
+  environments:
+    bed: { imported: true }
+    production:
+      write_allow: ["POST /login"] # writes a read-only run may still send
 ```
 
 A bad value is named in the error: the CLI exits 1, and the Checks API
@@ -754,6 +770,55 @@ then needs you, then one row for each check. A row opens its clauses
 (`?why=bed`): the result, the clause, the runner's note and the time.
 Before any import the environment says it hasn't been checked yet, and an
 import where nothing ran is never a pass.
+
+### Schedules: checks that run on their own
+
+A module in a repo's `verify:` block can carry a `schedule:`. Den runs it at
+those times, with no one there:
+
+```yaml
+# .acme.yml of shop
+verify:
+  modules:
+    web/home-speed:
+      kind: performance
+      environments: [staging]
+      schedule:
+        { cron: "0 2 * * *", window: "01:00-05:00", name: Nightly speed }
+```
+
+- `cron` is five fields, in this Den's time zone. `window` is `HH:MM-HH:MM`,
+  `night` (22:00 to 06:00) or `any`. A run that can't start before its
+  window ends is skipped, and the skip is named. `env` picks the
+  environment when the module has more than one.
+- Modules with the same environment, cron, window and name are one
+  schedule. Heavy runs go one at a time. After Den was down, a schedule
+  catches up once, not once for every time it missed.
+- A schedule on `local`, or one whose modules only read the code and run
+  no command, runs without an Allow.
+- On staging and production a scheduled command (`cmd`) runs only when
+  `verify.schedule.shared_commands` is true. It's off by default. Even when
+  it's on, Den runs only a command it can follow: one or more steps joined
+  by `&&`, each a script in the repo (`./scripts/speed.sh --quick`), or an
+  interpreter and a script (`bash scripts/speed.sh`), every file there. A
+  runner such as `make` or `npm`, shell syntax, or a file Den can't find:
+  the schedule can't be allowed, and its row says why.
+- A schedule on staging or production runs only under a standing Allow. A
+  person gives it once, on the Checks page's Schedules screen
+  (`/verify?schedules=1`). It covers every run of that plan. It lapses when
+  the plan changes (a module, its command or the scripts it names, what it
+  writes, its health URLs, the environment's method rule, the times or the
+  window). It ends after `verify.schedule.allow_expiry`. An agent
+  can't give or use one: the routes refuse an agent's token.
+- On production a scheduled run is read-only. It sends only GET, HEAD and
+  OPTIONS, plus the `write_allow` pairs for that environment. Any other
+  request is blocked before it leaves, and the run's record names it.
+  Only built-in smoke and built-in code scans run there: never a command.
+- Each result goes to the bell, a failure as an alert. The bell warns once,
+  `verify.schedule.expiry_warning` before an Allow ends.
+
+Schedules come from the repo. The Schedules screen shows them and allows
+them. To add, change or remove one, change the repo.
 
 ## Placement
 
