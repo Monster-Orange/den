@@ -916,6 +916,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/add-service.js",
         "src/ui/server/public/agents-section.js",
         "src/ui/server/public/graph-model.js",
         "src/ui/server/public/graph.css",
@@ -945,6 +946,7 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
+        "tests/unit/server/add-service-dialog.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
@@ -1119,6 +1121,7 @@
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
+        "tests/unit/server/add-service-dialog.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-view.browser.test.ts",
@@ -1294,6 +1297,7 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
+        "tests/unit/server/add-service-dialog.browser.test.ts",
         "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
@@ -1476,6 +1480,7 @@
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
+        "tests/unit/server/add-service-dialog.browser.test.ts",
         "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
@@ -1624,6 +1629,7 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
+        "tests/unit/server/add-service-dialog.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
         "tests/unit/server/agent-start-ready.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
@@ -1741,6 +1747,7 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
+        "tests/unit/server/add-service-dialog.browser.test.ts",
         "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
@@ -1885,6 +1892,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
+        "tests/unit/server/add-service-dialog.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
         "tests/unit/server/agent-view.browser.test.ts",
         "tests/unit/server/agents-ag14.browser.test.ts",
@@ -2444,6 +2452,11 @@
         "src/ui/server/session-routes.ts"
       ],
       "run": ["tests/unit/server/account-who.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/ui-assets.ts"],
+      "run": ["tests/unit/server/add-service-dialog.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
