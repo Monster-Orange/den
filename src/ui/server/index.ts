@@ -44,6 +44,7 @@ import {
 } from "../../shared/crash-loop.js";
 import {
   PERSON_ONLY_SETTINGS,
+  FIXTURE_PAGE_SETTINGS,
   patchCliRows,
 } from "../../shared/settings-cli-rows.js";
 import {
@@ -295,6 +296,7 @@ import {
   agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
+  fixturePersonOf,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -8527,8 +8529,13 @@ async function handleRequest(
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
         // of them is refused before anything is written.
+        // Issue 402: the fixture person saves its pages' own view prefs
+        // (the rail's pins), as live checks press ☆/★; nothing else here.
+        const fixture = fixturePersonOf(req);
         const personOnly = PERSON_ONLY_SETTINGS.filter(
-          (k) => (body as Record<string, unknown>)[k] !== undefined,
+          (k) =>
+            (body as Record<string, unknown>)[k] !== undefined &&
+            !(fixture && FIXTURE_PAGE_SETTINGS.includes(k)),
         );
         if (personOnly.length && notAPersonOf(req))
           return sendJson(
