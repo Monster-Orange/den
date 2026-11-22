@@ -217,6 +217,34 @@ describe("the per-agent breakdown", () => {
     expect(a.metrics?.subagent_opus_pct).toBe(25);
   });
 
+  it("T-c: reads asks from the main transcripts only, when the source can", async () => {
+    const st = state();
+    writeRecord(st, rec("a", { resumeToken: "c2" }));
+    const asked: string[] = [];
+    const src: UsageSource = {
+      ...fakeSource({
+        "c2.jsonl": stats("c2.jsonl"),
+        "c2/subagents/x.jsonl": stats("c2/subagents/x.jsonl", { subagent: true }),
+      }),
+      asks: async (f) => {
+        asked.push(f);
+        return {
+          asks: [{ at: NOW - DAY, tool: "ask_human", text: "1. Ship it?", problems: [] }],
+          sends: [],
+          received: [],
+        };
+      },
+    };
+    const r = await coachBreakdown([rec("a", { resumeToken: "c2" })], {
+      stateDir: st,
+      now: NOW,
+      days: 7,
+      source: () => src,
+    });
+    expect(asked).toEqual(["c2.jsonl"]);
+    expect(r.agents[0].asks?.metrics).toMatchObject({ asks: 1, ask_r12_pass_pct: 100 });
+  });
+
   it("skips a conversation that ended before the window", async () => {
     const st = state();
     writeRecord(st, rec("a", { resumeToken: "old" }));
