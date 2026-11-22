@@ -30,6 +30,7 @@ import {
   type McpAction,
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
+import { peopleAddress } from "../../shared/agent-links.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
 import { checkIssueWrite } from "../../shared/issue-write.js";
@@ -431,7 +432,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "whoami",
     "Who you are to Den, and your tools",
-    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (your session started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
+    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (you started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. Issue 1016: `webUrl` is this Den's address for people (null when it isn't set), and `links` the full links on it to give your person (`agent`: your page, `project`, `notifications`, `allow`: where they Allow your held writes); `address` says it in one line, or where a person sets it. Give only these links, never a localhost or 127.0.0.1 one. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
     {},
     async (_a, { api, scope }) => {
       const id = scope?.actor.startsWith("agent:")
@@ -569,7 +570,9 @@ const READ_TOOLS: DenTool[] = [
         .number()
         .positive()
         .optional()
-        .describe("How long you expect to hold it (default 10)"),
+        .describe(
+          "How long you expect to hold it. Leave it out: the gate uses the median of this label's last runs (else yours of this kind, else 10).",
+        ),
       label: z
         .string()
         .optional()
@@ -642,8 +645,10 @@ const READ_TOOLS: DenTool[] = [
           who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
           label: (str(a.label) ?? "tests").slice(0, 120),
           pid: process.pid,
-          estimateMin:
-            typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
+          // Issue 999: none given: the gate measures it from the label.
+          ...(typeof a.estimate_minutes === "number"
+            ? { estimateMin: a.estimate_minutes }
+            : {}),
           agent: true,
           ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
           mcp: { install: ctx.install ?? path.resolve(getStateDir()) },
@@ -731,14 +736,24 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_release",
     "Give a gate slot back",
-    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting). Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`.",
+    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting), or (issue 1023) one a `gate run` from your own shell made, as the same agent. Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`. Giving back a `gate run`'s slot does not stop its command.",
     { id: z.string().describe("Your slot's id") },
     async (a, ctx) => {
       const id = str(a.id) ?? "";
-      if (!mySlots.has(id))
+      const store = gatesOf(ctx);
+      const actor = ctx.scope?.actor;
+      // Issue 1023: a slot this agent's own `gate run` made (the CLI marks
+      // it with the agent's DEN_AGENT), never a runner's or an MCP ask
+      // from elsewhere.
+      const fromMyShell = (): boolean => {
+        if (!actor || !/^[a-z0-9-]{1,64}$/.test(id)) return false;
+        const e = store.get(id);
+        return !!e && !e.remote && !e.mcp && e.actor === actor;
+      };
+      if (!mySlots.has(id) && !fromMyShell())
         throw new Refusal("gate_slot_release: that slot isn't yours.");
       mySlots.delete(id);
-      return { released: gatesOf(ctx).release(id) };
+      return { released: store.release(id) };
     },
   ),
   read(
@@ -1937,14 +1952,14 @@ async function askPerson(
     Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
   );
   const note = own.note;
-  let asked: { id?: unknown; ticket?: unknown };
+  let asked: { id?: unknown; ticket?: unknown; allowLink?: unknown };
   try {
     asked = (await ctx.api.get("/api/approvals", {}, "POST", {
       action,
       args: clean,
       ...(typeof note === "string" && note.trim() ? { note: note.trim() } : {}),
       ...(own.ask === true ? { ask: true } : {}),
-    })) as { id?: unknown; ticket?: unknown };
+    })) as { id?: unknown; ticket?: unknown; allowLink?: unknown };
   } catch (e) {
     if (e instanceof DenHttpError && [400, 403, 409, 429].includes(e.status))
       throw new Refusal(`${tool}: ${e.body}`);
@@ -1952,8 +1967,17 @@ async function askPerson(
   }
   const id = String(asked?.id ?? "");
   keepTicket(id, asked?.ticket);
+  // Issue 1016: the full Allow link on Den's address, when the server
+  // gives one (web.url set); never made up here.
+  const allowLink =
+    typeof asked?.allowLink === "string" && peopleAddress(asked.allowLink)
+      ? asked.allowLink
+      : null;
+  const waitingWithLink = allowLink
+    ? (x: string) => `${waiting(x)} The person Allows it at ${allowLink}`
+    : waiting;
   try {
-    return await waitForPerson(tool, id, asked, ctx, waiting);
+    return await waitForPerson(tool, id, asked, ctx, waitingWithLink);
   } catch (e) {
     if (
       lostAfterAsk &&

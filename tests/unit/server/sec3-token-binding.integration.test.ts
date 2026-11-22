@@ -19,6 +19,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { denAuth } from "./helpers/den-auth.js";
+import { readAnswer, writeAnswerJs } from "./helpers/child-answer.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let s: AgentsPageServer;
@@ -53,19 +54,19 @@ function fromChild(): string {
   return r.stdout.trim();
 }
 
-/** A process outside this tree: orphaned, then it calls; its answer in a file. */
+/**
+ * A process outside this tree: orphaned, then it calls; its answer in a
+ * file, read once it is whole (issue 695: the file exists before its
+ * words are written).
+ */
 async function fromOrphan(): Promise<string> {
   const out = path.join(s.tmp, `orphan-${Date.now()}.txt`);
-  const grandchild = `const p0=Number(process.argv[1]);const go=()=>${CALL(s.base, token)}.then(x=>require("fs").writeFileSync(${JSON.stringify(out)},x+" ppid="+process.ppid));const w=()=>process.ppid!==p0?go():setTimeout(w,50);w()`;
+  const write = writeAnswerJs(out, `x+" ppid="+process.ppid`);
+  const grandchild = `const p0=Number(process.argv[1]);const go=()=>${CALL(s.base, token)}.then(x=>{${write}});const w=()=>process.ppid!==p0?go():setTimeout(w,50);w()`;
   const parent = `require("child_process").spawn(process.execPath,["-e",${JSON.stringify(grandchild)},String(process.pid)],{detached:true,stdio:"ignore"}).unref();`;
   const p = spawn(process.execPath, ["-e", parent], { stdio: "ignore" });
   await new Promise((r) => p.on("exit", r));
-  const end = Date.now() + 20_000;
-  while (!fs.existsSync(out)) {
-    if (Date.now() > end) throw new Error("the orphan never answered");
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return fs.readFileSync(out, "utf8");
+  return readAnswer(out, 20_000, "the orphan");
 }
 
 const audit = () =>

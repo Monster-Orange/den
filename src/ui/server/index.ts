@@ -436,6 +436,7 @@ import {
   readWebUrl,
   setWebUrl,
 } from "../../shared/web-url.js";
+import { peopleWebUrl } from "../../shared/agent-links.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
@@ -1235,6 +1236,7 @@ import {
   type HeldActions,
 } from "./approval-routes.js";
 import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
+import { gateOverrunWaiting } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
   handleIssueWriteRoute,
@@ -4082,6 +4084,7 @@ type ApprovalDeps = {
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  webUrl: () => string | null;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -4513,6 +4516,8 @@ function approvalDeps(): ApprovalDeps {
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
     // Issue 142: a held write counts in the bell while it waits.
     changed: syncHeldWrites,
+    // Issue 1016: an agent's held write carries its full Allow link.
+    webUrl: () => peopleWebUrl(),
   };
   return approvals;
 }
@@ -5386,6 +5391,7 @@ async function handleRequest(
       method: req.method ?? "GET",
       pathname,
       forwarded: hasForwardingHeaders(req.headers),
+      edgeLocal: guard.edgeLocal,
     })
   ) {
     markOperatorAct(req, opAct);
@@ -5646,6 +5652,11 @@ async function handleRequest(
       ...notificationDeps(),
       // Issue 746: what waits for the person's Allow leads Needs you.
       held: () => (approvals ? approvals.queue.pending() : []),
+      // Issue 993: a gate slot held past the multiple of its estimate.
+      gateOverruns: () => {
+        const s = gates();
+        return gateOverrunWaiting(s.list(), s.settings(), Date.now());
+      },
     });
     return;
   }
@@ -9482,7 +9493,14 @@ async function handleRequest(
               ),
             );
         }
-        if (gatePatch) gates().writeSettings(gatePatch);
+        // Issue 963: who changed it, in the slot log (named as an ask is).
+        if (gatePatch) {
+          const a = auditActorOf(req);
+          gates().writeSettings(
+            gatePatch,
+            a ? actorLabel(a) : `${product().title} · Settings page · a person`,
+          );
+        }
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
@@ -9970,6 +9988,7 @@ function handleUpgrade(
       method: "GET",
       pathname,
       forwarded: hasForwardingHeaders(req.headers),
+      edgeLocal: guard.edgeLocal,
     })
   ) {
     markOperatorAct(req, "terminal-attach");

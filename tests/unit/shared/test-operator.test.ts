@@ -215,6 +215,107 @@ describe("the per-request rule", () => {
     }
   });
 
+  // Issue 1034: gate 653 proves the terminal path through the edge (0.4.75
+  // broke it). The operator's own shell, through the install's own proved
+  // edge, on an operator install: allowed. Nothing else widens.
+  describe("its own shell through the install's own edge (issue 1034)", () => {
+    const own = (k: string) => k === "s-own";
+    const edge = {
+      ...ok,
+      via: "edge" as const,
+      beyond: false,
+      forwarded: true,
+      edgeLocal: true,
+      ownShell: own,
+    };
+    const acts: [string, string][] = [
+      ["GET", "/api/sessions/s-own/io"],
+      ["POST", "/api/sessions/s-own/close"],
+    ];
+
+    it.each(acts)("%s %s: allowed", (m, p) => {
+      expect(operatorRefusal({ ...edge, method: m, pathname: p })).toBeNull();
+    });
+
+    it.each(acts)("%s %s on a real install: refused", (m, p) => {
+      expect(
+        operatorRefusal({
+          ...edge,
+          method: m,
+          pathname: p,
+          operatorInstall: false,
+        }),
+      ).toBe("not_operator_install");
+    });
+
+    it.each(acts)(
+      "%s %s unless the edge proved it and attests this machine: refused",
+      (m, p) => {
+        expect(
+          operatorRefusal({
+            ...edge,
+            method: m,
+            pathname: p,
+            edgeLocal: false,
+          }),
+        ).toBe("not_loopback");
+        const { edgeLocal: _drop, ...noProof } = edge;
+        expect(operatorRefusal({ ...noProof, method: m, pathname: p })).toBe(
+          "not_loopback",
+        );
+      },
+    );
+
+    it.each(acts)(
+      "%s %s from a client the edge doesn't attest (edgeLocal false, not beyond): refused",
+      (m, p) => {
+        expect(
+          operatorRefusal({
+            ...edge,
+            method: m,
+            pathname: p,
+            beyond: false,
+            edgeLocal: false,
+          }),
+        ).toBe("not_loopback");
+      },
+    );
+
+    it.each(acts)(
+      "%s %s from a client beyond this machine: refused",
+      (m, p) => {
+        expect(
+          operatorRefusal({ ...edge, method: m, pathname: p, beyond: true }),
+        ).toBe("not_loopback");
+      },
+    );
+
+    it.each(acts)("%s %s on a LAN name: refused", (m, p) => {
+      expect(
+        operatorRefusal({ ...edge, method: m, pathname: p, via: "lan" }),
+      ).toBe("not_loopback");
+    });
+
+    it("another terminal (an agent's) through the edge: refused", () => {
+      expect(
+        operatorRefusal({
+          ...edge,
+          method: "GET",
+          pathname: "/api/sessions/agent-a1/io",
+        }),
+      ).toBe("not_own_shell");
+    });
+
+    it.each([
+      ["POST", "/api/workspaces/notes/agents/a1/say"],
+      ["POST", "/api/workspaces/notes/sessions"],
+    ])("%s %s (not attach or close) through the edge: refused", (m, p) => {
+      expect(operatorRefusal({ ...edge, method: m, pathname: p })).toBe(
+        "not_loopback",
+      );
+    });
+  });
+
   it("refused for a route off the list", () => {
     expect(
       operatorRefusal({ ...ok, pathname: "/api/approvals/a1/decide" }),

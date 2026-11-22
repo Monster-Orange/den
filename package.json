@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.84",
+  "version": "0.4.85-dev.3",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -45,7 +45,7 @@
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
     "preflight": "npm run format && npm run lint:fix && npm run typecheck && DEN_TEST_WORKERS=${DEN_TEST_WORKERS:-8} npm run test:unit",
     "prepare": "husky install",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.build.json && node scripts/typecheck-tests.mjs",
     "test": "jest --forceExit",
     "gate:org-names": "node scripts/org-name-gate.mjs",
     "gate:words": "node scripts/words-gate.mjs",

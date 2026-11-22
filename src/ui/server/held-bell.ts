@@ -17,6 +17,7 @@ import type {
   NotificationStore,
 } from "../../shared/notifications.js";
 import type { Approval } from "./approvals.js";
+import { allowPath } from "../../shared/agent-links.js";
 
 /** A held write's bell item: `record:held-<request id>`. */
 export const HELD_SUBJECT_PREFIX = "record:held-";
@@ -33,11 +34,8 @@ export function heldLink(
   agent: string | undefined,
   project: string | undefined,
 ): string {
-  if (!agent) return "/agents";
-  const q = new URLSearchParams();
-  if (project) q.set("project", project);
-  q.set("agent", agent);
-  return `/agents?${q.toString()}`;
+  // Issue 1016: the same page an agent's held write links its person to.
+  return allowPath(agent, project);
 }
 
 const isHeld = (n: Notification) =>
@@ -104,6 +102,10 @@ export interface HeldWaiting {
   agent?: string;
   since: string;
   expiresAt: string;
+  /** Its Allow card's details lines, for the row's Review (as the dialog). */
+  details?: readonly string[];
+  /** One per details line: its message key and words (null: as is). */
+  detailKeys?: Approval["detailKeys"];
 }
 
 /**
@@ -122,6 +124,10 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       ...(a.agent ? { agent: a.agent } : {}),
       since: new Date(a.requestedAt).toISOString(),
       expiresAt: new Date(a.expiresAt).toISOString(),
+      ...(a.details?.length ? { details: a.details } : {}),
+      ...(a.details?.length && a.detailKeys?.length
+        ? { detailKeys: a.detailKeys }
+        : {}),
     }));
 }
 

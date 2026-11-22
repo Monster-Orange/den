@@ -60,8 +60,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots_beside_browser: true,
     // Its follow-up: cpu runs beside a release browser run.
     cpu_slots_beside_release_browser: true,
+    // Issue 1009: cpu runs wait at this load under a release run.
+    cpu_hold_load: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
+    // Issue 993: past this many times its estimate, in the bell.
+    overrun_bell_multiple: true,
     remote_renew_seconds: true,
     remote_lapse_seconds: true,
     remote_max_slots: true,
@@ -86,6 +90,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     class_order: true,
     class_map: true,
     class_windows: true,
+    // Issue 1033: where a browser run with no --box goes, and the
+    // projects and labels kept on this machine.
+    browser_box_default: true,
+    browser_host_only: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -259,11 +267,14 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
+        "gate_slots.browser_box_default",
+        "gate_slots.browser_host_only",
         "gate_slots.browser_requires_container",
         "gate_slots.claim_minutes",
         "gate_slots.class_map",
         "gate_slots.class_order",
         "gate_slots.class_windows",
+        "gate_slots.cpu_hold_load",
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
         "gate_slots.cpu_slots_beside_release_browser",
@@ -271,6 +282,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
+        "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
         "gate_slots.priority_max",

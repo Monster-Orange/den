@@ -4,6 +4,49 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.85] - unreleased
+
+### Added
+
+- Gate: a browser run with no `--box` takes the first free test machine. (issue 1033)
+- Gate: a test box can serve several Playwright versions (`gate box add <name> --pw 1.61=ws://… --pw 1.63=ws://…`, `playwright_endpoints` in settings, or Settings › Test boxes). A run gets the endpoint that serves its own version. (issue 1017)
+- Gate: new setting `cpu_hold_load` (default cores × 4 / 3; 0 turns it off). While the machine is loaded and a release run holds the browser slot, the gate holds new cpu grants. (issue 1009)
+- Gate: the slot log records who changed a gate setting, from the CLI or the Settings page, and the page says when release priority is off. (issue 963)
+- Gate: a live check may declare the release items it proves (`export const items = [715, 991];`), so a tag's bed runs it for those items.
+- Agents: whoami gives Den's address for people (web.url) and full links to the agent, its project, notifications and the Allow page. A held write carries its full Allow link. (issue 1016)
+- Doctor says when a background job holds the terminal host's restart, with the agent and the job's minutes.
+- Release: the release job refuses a release whose files differ from the newest tested `v<version>-dev.N`, apart from the release's own version lines and the changelog (`scripts/release-tree.sh`). The two publish jobs run in the GitHub `release` environment, on main only.
+
+### Changed
+
+- CI: pull requests run on Node 24 only, with test shards split by measured time. (issue 998)
+- Held writes: a finished request (done, denied, expired, withdrawn, lost) reads back as how it ended for a week, after a restart too, instead of 404. Only its id, asker, action, state, times and outcome are kept, with secrets redacted. (issue 1045)
+- Test operator: on an operator install, the test operator may attach and close its own shell through the install's own edge, when the edge's proof holds and the edge says the client is this machine. Every other operator act stays loopback-only. (issue 1034)
+- Top bar: on a tablet the search gives way before the project picker. (issue 981)
+- `service install` accepts `--no-open`, as `web up` does.
+- `up` with nothing to start names the project, not "the active project".
+- Gate: `gate run` passes on SIGINT, SIGTERM and SIGHUP to its command. SIGQUIT keeps its default for now. (issue 1055)
+
+### Fixed
+
+- Bell: a repaint keeps an unchanged row, so a click on Allow lands. (issue 1024)
+- Bell: the Allow row's Review shows the held write's details. (issue 746)
+- Bell: a row that opens on a click shows the pointer cursor.
+- Gate: a stopped run frees its slot. (issue 1023)
+- Gate: a box run's loopback names resolve to one host. (issue 991)
+- Kit: on touch, a menu row's mark stays at the end of its line. (issue 898)
+- The update pill stays readable where the backdrop blur doesn't draw.
+- The handoff check no longer reads ID-shaped parts of file paths as IDs. (issue 1021)
+- Colour checks no longer read an issue number in a comment as a colour.
+- The UI kit is 0.9.3 (nav inventory, shell and update-pill styles).
+
+### Tests
+
+- A local run sees what CI sees. (issues 1036, 1026)
+- Test files are type-checked. (issue 1012)
+- Steadier browser tests: theme isolation leaves out the server's timer writes (issue 748), picker-tablet sets its companies once the page has settled (issue 1044), report-everywhere closes What's new before clicking (issue 986), the crumb menu's ✓ test runs at tablet widths again (issue 981), and the identity, token-binding, project health and graph health tests wait for the whole answer.
+- Live check 601 finds the loopback port from the bed's host address.
+
 ## [0.4.84] - 2026-11-22
 
 This release includes 0.4.83, which was not published.

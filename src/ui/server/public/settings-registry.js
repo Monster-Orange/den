@@ -1637,6 +1637,13 @@ function drawGateBoxes(host, ctx) {
       "text",
       'maxlength="48" placeholder="1.48.0"',
     ) +
+    field(
+      "set-box-pws",
+      "set.ui.boxPws",
+      "Or Playwright by version (1.61=ws://…, 1.63=ws://…)",
+      "text",
+      `maxlength="2048" placeholder="${escHtml(L("set.ui.boxPwsEx", "1.61=ws://box:3931, 1.63=ws://box:3932"))}"`,
+    ) +
     `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
     `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
@@ -1646,6 +1653,19 @@ function drawGateBoxes(host, ctx) {
   const save = host.querySelector("#set-box-save");
   const val = (id) => host.querySelector(id).value.trim();
   const num = (id) => (val(id) === "" ? undefined : Number(val(id)));
+  const pwPairs = (text) => {
+    if (!text) return undefined;
+    const map = {};
+    for (const part of text.split(",")) {
+      const p = part.trim();
+      if (!p) continue;
+      const eq = p.indexOf("=");
+      // A pair without "=" goes to the server as is, which says what is wrong.
+      if (eq < 1) map[p] = "";
+      else map[p.slice(0, eq).trim()] = p.slice(eq + 1).trim();
+    }
+    return map;
+  };
   const warn = (e) => {
     out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
   };
@@ -1682,7 +1702,15 @@ function drawGateBoxes(host, ctx) {
                   }),
                 )}</span>` +
                 `<span class="set-note mono">${escHtml(
-                  [x.ssh, x.playwright].filter(Boolean).join(" · "),
+                  [
+                    x.ssh,
+                    x.playwright,
+                    ...Object.entries(x.playwright_endpoints || {}).map(
+                      ([v, ws]) => `${v}=${ws}`,
+                    ),
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
                 )}</span>` +
                 (x.hold_file
                   ? `<span class="set-note">${escHtml(L("set.ui.boxHoldIs", "hold file {path}", { path: x.hold_file }))}</span>`
@@ -1717,6 +1745,8 @@ function drawGateBoxes(host, ctx) {
       time_scale: num("#set-box-scale"),
       min_free_mem_mb: num("#set-box-mem"),
       playwright_version: val("#set-box-pwv") || undefined,
+      // Issue 1017: "1.61=ws://…, 1.63=ws://…" → version → address.
+      playwright_endpoints: pwPairs(val("#set-box-pws")),
     };
     post("/api/gate-slots/boxes", { box }, save).catch(warn);
   });
@@ -3061,6 +3091,30 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
   },
   {
+    // Issue 1009: cpu runs wait at this load under a release browser run.
+    id: "server.gate_cpu_hold_load",
+    category: "server",
+    label:
+      "Machine load that holds unit test runs during a release browser run",
+    description:
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "load",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_hold_load"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuHoldLoad ?? 0,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_hold_load: v } }),
+  },
+  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",
@@ -3086,6 +3140,20 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
     read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
+  },
+  {
+    // Issue 993: a slot past this many times its estimate: the bell.
+    id: "server.gate_overrun_bell",
+    category: "server",
+    label: "Test slot in the bell past this many times its estimate",
+    description:
+      "A test slot held this many times longer than its estimate shows in the bell under Needs you, with End. If an agent holds it, Den tells that agent once to release it. 2: twice its estimate. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
+    keywords: ["gate", "slot", "overrun", "estimate", "bell", "end"],
+    scope: "user",
+    keys: ["gate_slots.overrun_bell_multiple"],
+    control: { type: "number", min: 1, max: 100, step: 0.5 },
+    read: (ctx) => ctx.data.gate_slots?.overrunBellMultiple ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { overrun_bell_multiple: v } }),
   },
   {
     // Issue 621: a CI runner (a job in a VM) holds its slot by lease.
@@ -3153,7 +3221,22 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.priority_max"],
     control: { type: "number", min: 0, max: 16, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.priorityMax ?? 1,
-    write: (v, ctx) => ctx.post({ gate_slots: { priority_max: v } }),
+    // Issue 963: 0 turns release priority off for the whole machine: it
+    // asks first, saying what it does. Cancelled, nothing changes.
+    write: async (v, ctx) => {
+      if (Number(v) === 0 && (ctx.data.gate_slots?.priorityMax ?? 1) !== 0) {
+        const t = (k, x) => ctx.shell.t(k, x);
+        const { askConfirm } = await import("/dialog-den.js");
+        const ok = await askConfirm({
+          title: t("gate.priorityOffTitle"),
+          message: t("gate.priorityOffAsk"),
+          okLabel: t("gate.priorityOffOk"),
+          danger: true,
+        });
+        if (!ok) return false;
+      }
+      return ctx.post({ gate_slots: { priority_max: v } });
+    },
   },
   {
     id: "server.gate_priority_pass",
@@ -3375,6 +3458,49 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 86400, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.boxRecheckSeconds ?? 30,
     write: (v, ctx) => ctx.post({ gate_slots: { box_recheck_seconds: v } }),
+  },
+  {
+    // Issue 1033: a browser run with no --box takes a test box by default.
+    id: "server.gate_box_default",
+    category: "server",
+    label: "Browser runs go to",
+    description:
+      "Where a browser test run with no --box goes. Here or a test box: the first free browser slot, here or on a test box. A run with no --base-url, or no box for its Playwright version, stays here and says why. Here only: as before; a run goes to a box only with --box. __DEN_CLI__ gate settings --browser-box-default any",
+    keywords: ["gate", "slot", "box", "browser", "default", "any", "local"],
+    scope: "user",
+    keys: ["gate_slots.browser_box_default"],
+    control: {
+      type: "select",
+      options: () => [
+        {
+          value: "any",
+          label: L("set.server.gate_box_default.any", "Here or a test box"),
+        },
+        {
+          value: "local",
+          label: L("set.server.gate_box_default.local", "Here only"),
+        },
+      ],
+    },
+    read: (ctx) => ctx.data.gate_slots?.browserBoxDefault ?? "any",
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { browser_box_default: v || null } }),
+  },
+  {
+    id: "server.gate_host_only",
+    category: "server",
+    label: "Browser runs kept here",
+    description:
+      "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    keywords: ["gate", "slot", "box", "browser", "host", "label", "project"],
+    scope: "user",
+    keys: ["gate_slots.browser_host_only"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.browserHostOnly ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { browser_host_only: String(v ?? "").trim() || null },
+      }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

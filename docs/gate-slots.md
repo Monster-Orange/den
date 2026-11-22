@@ -20,6 +20,16 @@ one holds this machine, cpu runs wait for it. Other browser runs keep
 `cpu_slots_beside_browser`. `gate settings --cpu-slots-beside-release-browser N`
 sets it.
 
+Issue 1009: while the machine's 5-minute load average is at or above
+`cpu_hold_load` and a release-priority browser run holds a browser slot,
+here or on a test box (its app still runs here), cpu asks wait. The default
+is the machine's cores × 4 / 3 (24 on 18 cores); 0 turns it off. Holders
+are never stopped, and a release-priority cpu ask goes through (a release
+run's own next step never waits on it). A plain cpu ask is granted on the next pass once the load
+drops or the release run ends. `gate status` and the Gate panel say why:
+"waiting: load 38 ≥ 24 while a release run holds the browser slot".
+`gate settings --cpu-hold-load N` sets it.
+
 A browser run that waits only because more cpu runs hold the machine than
 may run beside it is never starved: while it waits, no new cpu run starts
 past that number. Once they drop to it, the browser run starts.
@@ -54,6 +64,14 @@ den gate status            # who holds a slot, who waits
 
 `gate status`, the Agents page and `GET /api/gate-slots` show every holder,
 local or remote.
+
+The slot is given back the moment the command ends, however it ends: its
+own exit, or any signal (Ctrl-C, `kill`, a hang-up). A signal sent to
+`gate run` itself (SIGINT, SIGTERM or SIGHUP) is passed to the
+command, and the slot is free once the command ends. An agent can also
+give back a slot its own `gate run` made with the MCP tool
+`gate_slot_release` (its id from `gate status`); giving it back does not
+stop the command. Another agent's slot is refused.
 
 ## A browser run on a Mac uses a container browser
 
@@ -348,6 +366,14 @@ den gate box remove box2
   Den reads the box. Keys only; Den names the key file and never reads it.
 - `--playwright ws://…`: the box's Playwright server. A run that gets the
   box is given it as `DEN_PW_WS`.
+- `--pw <version>=ws://…`, repeated: a box with several Playwright servers,
+  one per version (`--pw 1.61=ws://box1.example:3931 --pw
+1.63=ws://box1.example:3932`). A run gets the one whose version matches
+  its own (`1.61` serves any 1.61.x). Use it instead of `--playwright` and
+  `--playwright-version`. The box's `--slots` count is the box's, whatever
+  version a run takes. In settings.json it is `playwright_endpoints`
+  (version → address); a box set before, with one address, reads and runs
+  as it did.
 - `--slots N`: browser runs the box takes at once (its "one heavy job at a
   time" rule is 1).
 - `--hold-file <path>` (needs ssh; relative to the box user's home): while
@@ -378,23 +404,67 @@ who asked and who allowed. Deny changes nothing.
 
 ### Which runs go to a box
 
-A browser run says where it may go:
+A browser run with no `--box` takes whichever browser slot frees first:
+this machine's, then the first test box with a free slot. It needs
+`--base-url` for that (a box's browser reaches the app by it):
 
 ```sh
-den gate run --kind browser --box any --base-url http://app.localhost:4100 -- npm run test:e2e
-den gate run --kind browser -- npm run test:e2e             # this machine only
+den gate run --kind browser --base-url http://app.localhost:4100 -- npm run test:e2e
+den gate run --kind browser --box local -- npm run test:e2e    # this machine only
+den gate run --kind browser --box box1 --base-url http://app.localhost:4100 -- npm run test:e2e
 ```
 
-`--box any` takes whichever slot frees first: this machine's, then the
-first box with a free slot. A run that needs a local browser leaves `--box`
-out and takes only this machine's slot. The run is told what it got:
-`DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its Playwright server, when
-set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
+`--box local` (or this machine's own name) keeps a run here; `--box <name>`
+sends it to that box; `--box any` is the default spelled out. The run is
+told what it got: `DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its
+Playwright server, when set), `DEN_PW_EXPOSE` (`<loopback>`, beside
+`DEN_PW_WS`: what its client exposes to the box), `DEN_GATE_BOX_SSH` and
+`DEN_GATE_TIME_SCALE`.
+
+A run with no `--box` stays on this machine, and says why in one line
+(`gate: stays on this machine: …`), when:
+
+- its project or label is host-only (`browser_host_only`, below);
+- it brings its own browser: `--browser-endpoint` (an address, or `self`
+  for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
+  `E2E_WEBKIT_WS` in its environment;
+- it has no `--base-url`, or one a box can't use;
+- its Playwright version is unknown (no `--pw-version`, and none installed
+  where it runs): a box's server would refuse it;
+- no box can serve it. By default a run skips a box that declares no
+  Playwright version (`playwright_version` or `--pw`; its server refuses another
+  client version), and a box whose versions don't serve the run's (a
+  box's one `playwright_version` matches by major.minor: 1.61.1 serves a
+  1.61.0 client). It
+  takes a box like that only with `--box <name>`. When some boxes are
+  skipped and others aren't, it says which (`gate: skips …`) and takes
+  only the others.
+
+It never fails for that: it waits for this machine's slot, as before.
+`gate status` shows each held browser slot's machine (`on box box1`, or
+`on this machine` with the reason it stayed), and so do `gate status
+--json` (`machine`, `hostWhy`) and the slot log's `granted` rows.
+
+Two settings (Settings, or `den gate settings`):
+
+- `browser_box_default`: `any` (the default) or `local`. At `local`, a run
+  with no `--box` takes only this machine's slot, as before boxes were the
+  default: `den gate settings --browser-box-default local`.
+- `browser_host_only`: projects and label patterns whose browser runs
+  stay here, comma-separated, as `class_map` names them: a project by
+  name, `label:<pattern>` with `*` for any text. For example layout suites
+  and WebKit on macOS:
+  `den gate settings --browser-host-only "label:layout*, label:*webkit*"`.
+  Empty (the default): none.
 
 A test suite that starts its own server on a free port (Den's own browser
 suites do) names a loopback host (`127.0.0.1`, `localhost` or
 `<name>.localhost`) with `*` for the port. The `*` covers only the ports the
-run opened itself, never 80 or 443:
+run opened itself, never 80 or 443. A box run pins `localhost` and
+`<name>.localhost` to `127.0.0.1`, so the three names are one host: a run
+allowed `127.0.0.1:*` reaches `localhost:<its port>` (where Den's test
+servers listen), and the reverse. `::1` and the rest of `127.0.0.0/8` are
+not the same host:
 
 ```sh
 den gate run --kind browser --box mini --base-url 'http://127.0.0.1:*' -- npx jest tests/unit/server/x.browser.test.ts
@@ -433,9 +503,19 @@ it); with only a Playwright address, a TCP connect.
   another box or waits. An ssh that connects but stalls before its banner
   is killed at that time and counts as unreachable.
 - **Version mismatch**: a box set with `--playwright-version` takes only
-  runs whose Playwright client is that version (`gate run` reads it from
-  the run's `node_modules`, or `--pw-version`). Any other run skips the
-  box, and the queue says "client X ≠ server Y".
+  runs whose Playwright client is that version. Any other run skips the
+  box, and the queue says "client X ≠ server Y". A box set with `--pw`
+  takes a run when one of its versions serves the run's; otherwise the
+  queue says "client X: box serves 1.61, 1.63". `gate run` takes the run's
+  version from `--pw-version`, else from the Playwright installed in its
+  folder's `node_modules` or one above it up to the repo's top folder (a
+  workspace with Playwright at the root), else installed for the nearest
+  `package.json` below its folder that depends on Playwright (a repo with
+  Playwright in `web/`). Only an installed version counts: a range in a
+  `package.json` is never read as one. With no version found, a box with
+  one address takes the run as before (no version check); a box with
+  `--pw` versions refuses it: pass `--pw-version`. `gate status` lists
+  each box's versions.
 
 A box slot is one heavy job at a time unless `--slots` says more.
 
@@ -452,6 +532,18 @@ machine as its loopback, where ports 80 and 443 may be live services. So:
   Playwright setup guards every browser context with Den's
   `shared/gates/pw-guard` module (`guardBrowser`), so only those
   host:ports load, and each blocked request is reported.
+- The box's browser reaches this machine's ports only through a client
+  that connects with `exposeNetwork: "<loopback>"`. The gate hands a box
+  run `DEN_PW_WS` (the box's Playwright server) and `DEN_PW_EXPOSE`
+  (`<loopback>`); on this machine it adds neither. Den's own browser
+  helper reads both. Another product's client either connects with
+  pw-guard's `connectGuarded(chromium, process.env.DEN_PW_WS)`, which
+  reads `DEN_PW_EXPOSE` itself, or passes it:
+  `chromium.connect(process.env.DEN_PW_WS, { exposeNetwork: process.env.DEN_PW_EXPOSE })`.
+  A box run (`DEN_GATE_SLOT_BOX` is a box's name) that connects through
+  pw-guard without it is told once: `box run without exposeNetwork
+<loopback>: pages on this machine will be refused; pass DEN_PW_EXPOSE
+to connect()`.
 - The setup calls `pinLoopbackNames()` too: `localhost` and
   `*.localhost` resolve to 127.0.0.1 in the client, never ::1 (the
   tunnel's forwarders listen on IPv4).
@@ -483,4 +575,3 @@ runs.
 A project's own lock helper can read the same variables: when
 `DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
 held slot and should not lock again.
-

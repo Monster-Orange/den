@@ -667,6 +667,10 @@
     "keep.tokenSave": "Guardar",
     "keep.tokenFailed": "No se guardó: {error}",
     "keep.tokenClear": "Quitar",
+    "gate.priorityOffTitle": "¿Desactivar la prioridad de versión?",
+    "gate.priorityOffAsk":
+      "0 desactiva la prioridad de versión para todos los repositorios de esta máquina. Una ejecución de versión que alguien espera queda entonces detrás de las normales.",
+    "gate.priorityOffOk": "Desactivarla",
     "keep.clearTitle": "¿Quitar el token de inicio de sesión?",
     "keep.clearAsk":
       "Se quita del almacén de secretos. Con «Mantener los agentes al cerrar sesión», los agentes no podrán iniciar sesión hasta que se defina uno nuevo.",
@@ -1070,10 +1074,18 @@
       "Pruebas unitarias junto a una prueba de navegador de versión",
     "set.server.gate_cpu_beside_release.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador con prioridad de versión. 0 (el valor predeterminado): la prueba de versión se ejecuta sola, para que otras no ralenticen sus comprobaciones. Las demás pruebas de navegador usan el ajuste de arriba. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_cpu_hold_load":
+      "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
+    "set.server.gate_cpu_hold_load.d":
+      "Mientras la carga media de 5 minutos de esta máquina sea igual o mayor que este valor, y una prueba de navegador con prioridad de versión tenga un puesto de navegador, las pruebas unitarias esperan. Las que ya corren nunca se detienen. El valor predeterminado es el número de núcleos × 4 / 3. 0 lo apaga. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser":
       "Pruebas de navegador a la vez en esta máquina",
     "set.server.gate_local_browser.d":
       "Cuántas pruebas de navegador pueden ejecutarse a la vez en esta máquina, cada una en su propio contenedor. Una prueba de navegador en una máquina de pruebas no se incluye. 1: una a la vez. __DEN_CLI__ gate settings --local-browser-slots 1",
+    "set.server.gate_overrun_bell":
+      "Turno de prueba en la campana pasadas estas veces su estimación",
+    "set.server.gate_overrun_bell.d":
+      "Un turno de prueba que dura estas veces más que su estimación aparece en la campana, en Te necesitan, con Terminar. Si lo tiene un agente, Den le dice una vez que lo libere. 2: el doble de su estimación. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
@@ -1152,6 +1164,14 @@
       "Una máquina omitida se comprueba de nuevo tras, en segundos",
     "set.server.gate_box_recheck.d":
       "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    "set.server.gate_box_default": "Las pruebas de navegador van a",
+    "set.server.gate_box_default.d":
+      "Adónde va una prueba de navegador sin --box. Aquí o una máquina de pruebas: el primer turno de navegador libre, aquí o en una máquina de pruebas. Una prueba sin --base-url, o sin máquina para su versión de Playwright, se queda aquí y dice por qué. Solo aquí: como antes; una prueba va a una máquina solo con --box. __DEN_CLI__ gate settings --browser-box-default any",
+    "set.server.gate_box_default.any": "Aquí o una máquina de pruebas",
+    "set.server.gate_box_default.local": "Solo aquí",
+    "set.server.gate_host_only": "Pruebas de navegador que se quedan aquí",
+    "set.server.gate_host_only.d":
+      "Separados por comas: <proyecto>, label:<patrón> (* vale por cualquier texto). Estas pruebas de navegador nunca van a una máquina de pruebas, por ejemplo las de diseño o WebKit en macOS. Vacío: ninguna. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1869,6 +1889,7 @@
     "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
     "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",
     "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
+    "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
     "ap.do.host_restart":
@@ -2443,6 +2464,12 @@
       "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
     "bell.m.heldLostAll":
       "Las solicitudes que esperaban tu permiso no se pudieron recuperar tras un reinicio. Se perdieron; los agentes que vuelvan a pedirlo aparecerán aquí.",
+    "bell.go.h": "Turnos de prueba pasados de su estimación",
+    "bell.go.row": "{who} tiene el turno de prueba {kind}: {label}",
+    "bell.go.sub": "Desde {time} · estimación {est} min · {over} min de más",
+    "bell.go.end": "Terminar",
+    "bell.go.ended":
+      "Turno de prueba terminado. Empieza el siguiente en la fila.",
     "bell.ap.h": "Esperan tu permiso",
     "bell.ap.row": "{name} pide: {what}",
     "bell.ap.rowAsk": "Pedido: {what}",
@@ -2808,6 +2835,7 @@
     "gate.popH": "Pruebas en esta máquina",
     "gate.holds": "Ejecuta {kind}, hasta las {at} más o menos",
     "gate.waits": "Espera para ejecutar {kind}, desde las {at} más o menos",
+    "gate.padded": "estimación {est} min; esto suele tardar {usual}",
     "gate.over": "pasada su estimación",
     "gate.none": "Ninguna prueba tiene turno ni espera.",
     "gate.end": "Terminar antes",
@@ -2831,6 +2859,8 @@
     "gate.yielded": "Dejó pasar a {to}",
     "gate.class": "Clase: {name}",
     "gate.window": "espera su horario {window}",
+    "gate.loadHold":
+      "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
@@ -3220,6 +3250,8 @@
     "set.ui.boxSave": "Guardar máquina",
     "set.ui.boxMem": "Memoria libre a mantener (MB)",
     "set.ui.boxPwv": "Versión de Playwright en la máquina",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
+    "set.ui.boxPws": "O Playwright por versión (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone":
       "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
     "set.ui.boxSlotsN": "{n} turnos de navegador",

@@ -33,7 +33,28 @@
     "tests/unit/server/ui-assets.test.ts",
     "tests/unit/server/route-classes.test.ts"
   ],
-  "subjects": {},
+  "subjects": {
+    "tests/unit/server/test-operator-edge.integration.test.ts": [
+      "src/shared/test-operator.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/request-guard.ts"
+    ],
+    "tests/unit/server/picker-tablet.browser.test.ts": [
+      "packages/den-ui/src/shell.css",
+      "packages/den-ui/src/shell-html.js",
+      "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/bell-allow-review.browser.test.ts": [
+      "src/ui/server/held-bell.ts",
+      "src/ui/server/public/bell.js",
+      "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/picker-tablet-981.browser.test.ts": [
+      "packages/den-ui/src/shell.css",
+      "packages/den-ui/inventory/nav-inventory.js",
+      "src/ui/server/public/shell.js"
+    ]
+  },
   "subjectless": [
     "tests/unit/cli/address-455-unchecked.integration.test.ts",
     "tests/unit/cli/dev-metrics-cli-ship.integration.test.ts",
@@ -198,7 +219,6 @@
     "tests/unit/server/terminal-recent.browser.test.ts",
     "tests/unit/server/terminal-reuse.browser.test.ts",
     "tests/unit/server/test-sources-nonblocking.integration.test.ts",
-    "tests/unit/server/theme-switch-isolation.test.ts",
     "tests/unit/server/update-pill.browser.test.ts",
     "tests/unit/server/verify-page.browser.test.ts",
     "tests/unit/server/view-scope.integration.test.ts",
@@ -1518,9 +1538,22 @@
       "why": "tests that run scripts/release-ancestry.sh"
     },
     {
+      "when": ["scripts/release-tree.sh"],
+      "run": ["tests/unit/scripts/release-tree.test.ts"],
+      "why": "tests that run scripts/release-tree.sh"
+    },
+    {
       "when": ["scripts/release-dry-run.mjs"],
-      "run": ["tests/unit/scripts/release-dry-run.test.ts"],
+      "run": [
+        "tests/unit/scripts/release-dry-run.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/release-dry-run.mjs"
+    },
+    {
+      "when": ["scripts/release-tree-check.mjs", "scripts/ci-force-all.mjs"],
+      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "why": "tests that run scripts/release-tree-check.mjs"
     },
     {
       "when": ["scripts/setup-secrets.ts"],

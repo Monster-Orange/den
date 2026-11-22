@@ -47,9 +47,48 @@ describe("issue 991: a loopback host with any port", () => {
       "http://127.0.0.1/",
       "https://127.0.0.1/",
       "ws://127.0.0.1/",
-      "http://localhost:4100/",
       "http://127.0.0.2:4100/",
     ])
       expect([url, allowedUrl(url, allow, own)]).toEqual([url, false]);
+  });
+
+  // Den's own test servers listen on "localhost", and a box run pins
+  // localhost and *.localhost to 127.0.0.1, so the three names are one
+  // host: a run allowed 127.0.0.1:* reaches localhost:<its port>, and the
+  // reverse. The port is still the run's own, and never 80 or 443.
+  it("allowedUrl: 127.0.0.1, localhost and *.localhost are one loopback host", () => {
+    const own = new Set([55734]);
+    for (const [allow, url] of [
+      ["127.0.0.1:*", "http://localhost:55734/agents"],
+      ["127.0.0.1:*", "ws://den.localhost:55734/ws"],
+      ["localhost:*", "http://127.0.0.1:55734/agents"],
+      ["den.localhost:*", "http://localhost:55734/"],
+      ["127.0.0.1:55734", "http://localhost:55734/"],
+      ["localhost:55734", "http://127.0.0.1:55734/"],
+    ])
+      expect([allow, url, allowedUrl(url!, [allow!], own)]).toEqual([
+        allow,
+        url,
+        true,
+      ]);
+    for (const [allow, url] of [
+      // Not the run's own port.
+      ["127.0.0.1:*", "http://localhost:5432/"],
+      ["localhost:55734", "http://127.0.0.1:5433/"],
+      // Never 80 or 443.
+      ["127.0.0.1:*", "http://localhost/"],
+      ["localhost:*", "https://127.0.0.1:443/"],
+      // ::1 and other 127/8 addresses aren't pinned: not the same socket.
+      ["localhost:*", "http://[::1]:55734/"],
+      ["localhost:*", "http://127.0.0.2:55734/"],
+      // Not loopback at all.
+      ["127.0.0.1:*", "http://example.com:55734/"],
+      ["localhost:*", "http://localhost.example.com:55734/"],
+    ])
+      expect([allow, url, allowedUrl(url!, [allow!], own)]).toEqual([
+        allow,
+        url,
+        false,
+      ]);
   });
 });

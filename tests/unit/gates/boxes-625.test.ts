@@ -332,6 +332,8 @@ describe("checkBox", () => {
       DEN_GATE_BOX: "b1",
       DEN_GATE_TIME_SCALE: "2",
       DEN_PW_WS: "ws://b1.test:3000",
+      // Issue 1033: the client exposes this machine's loopback to the box.
+      DEN_PW_EXPOSE: "<loopback>",
       DEN_GATE_BOX_SSH: "ci@b1.test",
     });
   });
