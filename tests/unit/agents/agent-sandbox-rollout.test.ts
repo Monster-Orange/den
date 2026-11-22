@@ -101,6 +101,15 @@ describe("an agent from before the sandbox (issue 936 rollout)", () => {
     expect(record(r).sandbox).toEqual({ applied: true, tool: "test-box" });
   });
 
+  it("one started inside since the update is never from before, with no setting", async () => {
+    const r = await fromBefore();
+    const rec = record(r);
+    rec.sandbox = { applied: true, tool: "test-box" };
+    fs.writeFileSync(recFile(r), JSON.stringify(rec));
+    expect((await resumed(r)).file).toBe("/sbx");
+    expect(record(r).sandbox).toEqual({ applied: true, tool: "test-box" });
+  });
+
   it("a new agent starts inside, with no setting", async () => {
     const r = await fromBefore();
     expect(r.made[0]!.file).toBe("/sbx");
