@@ -110,7 +110,10 @@ describe("agents.env_hold, env_allow and env_guard", () => {
     [{ env_hold: ["*"] }, /not a name pattern/],
     [{ env_hold: ["$(id)"] }, /not a name pattern/],
     [{ env_allow: ["X"] }, /agents\.env_allow: must be a mapping/],
-    [{ env_allow: { planner: "X" } }, /agents\.env_allow\.planner: must be a list/],
+    [
+      { env_allow: { planner: "X" } },
+      /agents\.env_allow\.planner: must be a list/,
+    ],
     [{ env_allow: { planner: ["A B"] } }, /not a variable name/],
     [{ env_guard: "no" }, /agents\.env_guard: true or false/],
   ])("%j is refused, naming the key", (raw, why) => {
@@ -209,7 +212,10 @@ function inShell(
   fs.writeFileSync(path.join(zdot, ".zshenv"), profile);
   const r = spawnSync(
     shell,
-    ["-c", `${shell.endsWith("zsh") ? "" : `${profile}\n`}. ${holdFile}\n${command}`],
+    [
+      "-c",
+      `${shell.endsWith("zsh") ? "" : `${profile}\n`}. ${holdFile}\n${command}`,
+    ],
     {
       encoding: "utf-8",
       env: { PATH: "/usr/bin:/bin", HOME: dir, ZDOTDIR: zdot },
@@ -220,10 +226,7 @@ function inShell(
 
 describe("the shell, after a profile sets the canary again", () => {
   const file = path.join(dir, ENV_HOLD_FILE);
-  fs.writeFileSync(
-    file,
-    envHoldScript(DEFAULT_ENV_HOLD, ["KEEP_TOKEN"]),
-  );
+  fs.writeFileSync(file, envHoldScript(DEFAULT_ENV_HOLD, ["KEEP_TOKEN"]));
   const profile = [
     `export CANARY_TOKEN=${CANARY}`,
     `export my_token=${CANARY}`,

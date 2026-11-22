@@ -64,7 +64,15 @@ const ENV_HINT =
   "answers), or `printenv NAME1 NAME2` for a few.";
 
 /** env's options that take a value as the next word (or `--opt=value`). */
-const ENV_VALUE_OPTS = new Set(["-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-P"]);
+const ENV_VALUE_OPTS = new Set([
+  "-u",
+  "--unset",
+  "-C",
+  "--chdir",
+  "-S",
+  "--split-string",
+  "-P",
+]);
 
 /** Whether `env <args>` runs no command, so prints the environment. */
 function envPrintsAll(args) {
@@ -88,7 +96,8 @@ function envPrintsAll(args) {
 }
 
 /** The words after a command's leading options. */
-const operands = (args) => args.filter((a) => !a.startsWith("-") && !a.startsWith("+"));
+const operands = (args) =>
+  args.filter((a) => !a.startsWith("-") && !a.startsWith("+"));
 
 /** Why this stage prints the whole environment, or null. */
 function dumpsEnv(words) {

@@ -15,12 +15,8 @@ import {
  * those a non-interactive shell has after the person's profile (zsh reads
  * ~/.zshenv for every shell). Names only; nothing is printed.
  */
-export function shellEnvNames(
-  env: NodeJS.ProcessEnv = process.env,
-): string[] {
-  const names = new Set(
-    Object.keys(env).filter((k) => env[k] !== undefined),
-  );
+export function shellEnvNames(env: NodeJS.ProcessEnv = process.env): string[] {
+  const names = new Set(Object.keys(env).filter((k) => env[k] !== undefined));
   const shell = env.SHELL;
   if (shell && shell.startsWith("/")) {
     const r = spawnSync(shell, ["-c", "env"], {

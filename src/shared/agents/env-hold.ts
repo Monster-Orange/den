@@ -65,7 +65,12 @@ export interface EnvHoldSettings {
 
 /** The settings when nothing is configured. */
 export function defaultEnvHold(): EnvHoldSettings {
-  return { hold: [...DEFAULT_ENV_HOLD], holdSet: false, allow: {}, guard: true };
+  return {
+    hold: [...DEFAULT_ENV_HOLD],
+    holdSet: false,
+    allow: {},
+    guard: true,
+  };
 }
 
 /** agents.env_hold, env_allow, env_guard checked; a bad one throws naming it. */
@@ -198,10 +203,9 @@ export function envHoldScript(
     return [...head, "# The list is empty: nothing is held back.", ""].join(
       "\n",
     );
-  const keep = [
-    ...DEN_OWN_ENV,
-    ...allow.filter((n) => NAME_RE.test(n)),
-  ].join("|");
+  const keep = [...DEN_OWN_ENV, ...allow.filter((n) => NAME_RE.test(n))].join(
+    "|",
+  );
   const take = patterns
     .flatMap((p) => [shellGlob(p), `${shellGlob(p)}_[0-9]*`])
     .join("|");

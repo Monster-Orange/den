@@ -14,7 +14,10 @@ import {
   DEFAULT_ENV_HOLD,
   ENV_HOLD_FILE,
 } from "../../../src/shared/agents/env-hold.js";
-import { loadPersonas, type Persona } from "../../../src/shared/agents/personas.js";
+import {
+  loadPersonas,
+  type Persona,
+} from "../../../src/shared/agents/personas.js";
 import {
   getRuntime,
   type LaunchInput,
@@ -51,7 +54,10 @@ function launch(
   const settingsFile = path.join(filesDir, "settings.json");
   const settings = out.files?.[settingsFile]
     ? (JSON.parse(out.files[settingsFile]) as {
-        hooks?: Record<string, { matcher?: string; hooks: { command: string }[] }[]>;
+        hooks?: Record<
+          string,
+          { matcher?: string; hooks: { command: string }[] }[]
+        >;
       })
     : {};
   return {

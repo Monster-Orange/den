@@ -9,10 +9,7 @@
  */
 
 import { checkCoachConfig, type CoachSettings } from "./coach/settings.js";
-import {
-  checkEnvHoldConfig,
-  type EnvHoldSettings,
-} from "./agents/env-hold.js";
+import { checkEnvHoldConfig, type EnvHoldSettings } from "./agents/env-hold.js";
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
