@@ -810,6 +810,11 @@ export function kitT(lang, key, vars) {
 }
 
 /** HTML-escaped text (for attributes and content). */
+/** An id safe in an attribute and a CSS selector: letters, digits, _ and -. */
+export function safeId(v) {
+  return String(v).replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
 export function esc(v) {
   return String(v == null ? "" : v).replace(
     /[&<>"']/g,

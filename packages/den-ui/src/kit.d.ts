@@ -7,6 +7,7 @@ import type {
   configureBusy,
   pending,
   watchForms,
+  holdDots,
 } from "./busy.js";
 import type {
   AccountHydrateOptions,
@@ -182,6 +183,8 @@ export declare const busy: {
   pending: typeof pending;
   /** Issue 699: plain POST forms' submitters show dots. Returns stop(). */
   watchForms: typeof watchForms;
+  /** Issue 698: the dots alone (no pop-up); (button, false) lets go. */
+  holdDots: typeof holdDots;
   configure: typeof configureBusy;
 };
 /** An autosaving editor's save-state line, in the kit's language. */

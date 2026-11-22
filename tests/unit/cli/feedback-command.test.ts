@@ -2,7 +2,7 @@
  * FB (den#81): `<cli> feedback`, Report an issue from a shell. The same
  * routes as the page (/api/report/preview, /api/report/send): the preview
  * is printed, then y/N. Off a terminal it is refused unless --yes; an
- * agent is always refused (agents save drafts through MCP). F4 (no
+ * agent never sends (issue 565: it asks the person instead). F4 (no
  * GitHub), F5 (the same title open), F7 (the hour's limit).
  *
  * A fake web server and a fake terminal: nothing is sent anywhere.
@@ -143,11 +143,11 @@ describe("FB: <cli> feedback", () => {
     expect(h.err()).toMatch(/--title/);
   });
 
-  it("an agent is refused, even with --yes: its reports stay drafts for a person", async () => {
+  it("an agent never sends, even with --yes: it asks the person (issue 565, report-command.test.ts)", async () => {
     const f = fake({ env: { DEN_ACTOR_TOKEN: "x" }, tty: false });
-    expect(await cmdFeedback([...ARGS, "--yes"], f.io)).toBe(1);
-    expect(f.err()).toMatch(/only a person sends a report/);
-    expect(f.calls).toHaveLength(0);
+    await cmdFeedback([...ARGS, "--yes"], f.io);
+    expect(f.sent()).toHaveLength(0);
+    expect(f.calls.some((c) => c.path === "/api/approvals")).toBe(true);
   });
 
   it("--preview prints it and sends nothing", async () => {

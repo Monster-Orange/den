@@ -229,3 +229,23 @@ describe("hydrateSettingField: Save follows the value", () => {
     expect(r.err.hidden).toBe(true);
   });
 });
+
+describe("safeId: one shared helper", () => {
+  it("is the kit's, beside esc; no component keeps its own copy", async () => {
+    const { safeId } = await import("../../../packages/den-ui/src/strings.js");
+    expect(safeId("a b/<c>_d-1")).toBe("a-b--c-_d-1");
+    expect(safeId(5)).toBe("5");
+    const fs = await import("fs");
+    const path = await import("path");
+    const dir = path.join(__dirname, "../../../packages/den-ui/src");
+    const copies = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".js") && f !== "strings.js")
+      .filter((f) =>
+        /\bconst safeId\s*=|function safeId\s*\(/.test(
+          fs.readFileSync(path.join(dir, f), "utf-8"),
+        ),
+      );
+    expect(copies).toEqual([]);
+  });
+});

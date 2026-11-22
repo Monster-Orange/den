@@ -43,13 +43,11 @@
  * Its look is setting-field.css, with button.css.
  */
 import { buttonHtml } from "./button.js";
-import { esc, kitT } from "./strings.js";
+import { esc, kitT, safeId } from "./strings.js";
 
 /** The kit's shared button verbs (strings.js kit.verb.*). */
 export const VERBS = ["save", "cancel", "delete", "close", "tryAgain"];
 
-/** An id made of safe characters: letters, digits, - and _. */
-const safeId = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "-");
 
 /** The host's words: its own text, or a key it added ({ key, vars }). */
 function words(lang, w) {

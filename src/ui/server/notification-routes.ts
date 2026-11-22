@@ -24,6 +24,13 @@
  *   POST /api/alerts/subscribe       S2: {subscription} (a device's
  *                                     PushSubscription.toJSON()).
  *   POST /api/alerts/unsubscribe     S2: {endpoint}.
+ *   GET  /api/alerts/devices         the person's devices that get push:
+ *                                     {devices: [{id, service, device, at}]};
+ *                                     never an endpoint or its keys.
+ *   POST /api/alerts/test            a test alert to each device: the
+ *                                     devices, each with {status, reached,
+ *                                     gone} (gone: dropped).
+ *   POST /api/alerts/forget          {id}: stop push to that device.
  * An agent reads the bell (notifications_list) but changes nothing in it
  * but its own attention.
  */
@@ -42,7 +49,14 @@ import type { Approval } from "./approvals.js";
 import type { Attention, WaitingWhy } from "./attention.js";
 import { heldWaiting } from "./held-bell.js";
 import type { AlertFeed } from "./alert-feed.js";
-import { parseSubscription, type PushSubscriptions } from "./web-push.js";
+import {
+  deviceId,
+  deviceOf,
+  parseSubscription,
+  pushService,
+  type PushSubscription,
+  type PushSubscriptions,
+} from "./web-push.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf } from "./request-guard.js";
 
@@ -57,6 +71,9 @@ export const NOTIFICATION_PATHS = [
   "/api/alerts/push-key",
   "/api/alerts/subscribe",
   "/api/alerts/unsubscribe",
+  "/api/alerts/devices",
+  "/api/alerts/test",
+  "/api/alerts/forget",
 ] as const;
 
 export const isNotificationPath = (p: string) =>
@@ -72,13 +89,26 @@ export interface NotificationRouteDeps {
   /** Issue 172: the alerts an open tab shows (absent: none). */
   alerts?: AlertFeed;
   /** Issue 172 S2: the person's devices, and this install's public key. */
-  push?: { subs: PushSubscriptions; publicKey: () => string };
+  push?: {
+    subs: PushSubscriptions;
+    publicKey: () => string;
+    /** A test alert to every device: each one's push service's answer. */
+    test?: () => Promise<{ endpoint: string; status: number }[]>;
+  };
   /**
    * Issue 746: the held writes waiting on the person (the approval
    * queue's pending()); they lead `waiting`, kind "allow".
    */
   held?: () => readonly Approval[];
 }
+
+/** A device as a page sees it: no endpoint, no keys. */
+const deviceView = (s: PushSubscription) => ({
+  id: deviceId(s.endpoint),
+  service: pushService(s.endpoint),
+  device: s.device ?? "",
+  at: s.at,
+});
 
 async function jsonBody(
   req: http.IncomingMessage,
@@ -262,6 +292,21 @@ export async function handleNotificationRoutes(
     return true;
   }
 
+  if (pathname === "/api/alerts/devices") {
+    if (method !== "GET")
+      return (refuse(res, 405, "method", "GET only."), true);
+    if (agent) {
+      refuse(res, 403, "person_only", "Alerts are the person's.");
+      return true;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    sendJson(res, {
+      ok: true,
+      devices: (deps.push?.subs.list() ?? []).map(deviceView),
+    });
+    return true;
+  }
+
   if (pathname === "/api/notifications") {
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
@@ -316,7 +361,7 @@ export async function handleNotificationRoutes(
       );
       return true;
     }
-    deps.push.subs.add(sub);
+    deps.push.subs.add({ ...sub, device: deviceOf(req.headers["user-agent"]) });
     sendJson(res, { ok: true });
     return true;
   }
@@ -325,6 +370,36 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ok: true,
       removed: !!endpoint && !!deps.push?.subs.remove(endpoint),
+    });
+    return true;
+  }
+  if (pathname === "/api/alerts/test") {
+    const before = deps.push?.subs.list() ?? [];
+    const answers =
+      before.length && deps.push?.test ? await deps.push.test() : [];
+    const status = new Map(answers.map((a) => [a.endpoint, a.status]));
+    sendJson(res, {
+      ok: true,
+      devices: before.map((s) => {
+        const st = status.get(s.endpoint) ?? 0;
+        return {
+          ...deviceView(s),
+          status: st,
+          reached: st >= 200 && st < 300,
+          gone: st === 404 || st === 410,
+        };
+      }),
+    });
+    return true;
+  }
+  if (pathname === "/api/alerts/forget") {
+    const id = str(b.id, 64);
+    const hit = id
+      ? deps.push?.subs.list().find((s) => deviceId(s.endpoint) === id)
+      : undefined;
+    sendJson(res, {
+      ok: true,
+      removed: !!hit && !!deps.push?.subs.remove(hit.endpoint),
     });
     return true;
   }

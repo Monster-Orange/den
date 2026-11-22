@@ -44,6 +44,7 @@
  *   DenUI.busy.run(action, run, opts)   the working pop-up (busy.js)
  *   DenUI.busy.pending(button, run)     a fetch-driven button: dots (issue 699)
  *   DenUI.busy.watchForms()             plain POST forms: dots (issue 699)
+ *   DenUI.busy.holdDots(button, on?)    the dots alone, no pop-up (698)
  *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
  *                               editor's save-state line (savestate.js),
  *                               in the kit's language
@@ -113,7 +114,13 @@ import {
 } from "./whatsnew.js";
 import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
-import { busyAction, configureBusy, pending, watchForms } from "./busy.js";
+import {
+  busyAction,
+  configureBusy,
+  holdDots,
+  pending,
+  watchForms,
+} from "./busy.js";
 import { createSaveState } from "./savestate.js";
 import { mountFilterBar } from "./filter-bar.js";
 import { mountBulkBar } from "./bulk-bar.js";
@@ -218,6 +225,7 @@ export const busy = {
   run: (action, run, opts) => busyAction(action, run, opts),
   pending: (button, run, opts) => pending(button, run, opts),
   watchForms: (root) => watchForms(root),
+  holdDots: (button, on) => holdDots(button, on),
   configure: configureBusy,
 };
 

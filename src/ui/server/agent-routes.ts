@@ -1899,17 +1899,24 @@ async function plainSession(
     const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
     if (b.cwd !== undefined && typeof b.cwd !== "string")
       throw new AgentError("cwd must be a string", { usage: true });
+    // Issue 482: { replaces } (Restart): the exited terminal it replaces.
+    if (b.replaces !== undefined && typeof b.replaces !== "string")
+      throw new AgentError("replaces must be a string", { usage: true });
     const cwd = b.cwd as string | undefined;
+    const replaces = b.replaces as string | undefined;
     // Issue 814: the test operator's terminal (Den's fixed stub, never a
     // shell) opens in the project's folder only, remembered by host id.
-    if (operator && cwd !== undefined)
-      throw new AgentError("the test operator's terminal takes no cwd", {
-        status: 403,
-      });
+    if (operator && (cwd !== undefined || replaces !== undefined))
+      throw new AgentError(
+        "the test operator's terminal takes no cwd or replaces",
+        { status: 403 },
+      );
     const { info } = await startPlainSession(
       d,
       ws,
-      operator ? { operator: true } : cwd ? { cwd } : {},
+      operator
+        ? { operator: true }
+        : { ...(cwd ? { cwd } : {}), ...(replaces ? { replaces } : {}) },
     );
     if (operator) rememberOperatorShell(info.ref.id);
     what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
