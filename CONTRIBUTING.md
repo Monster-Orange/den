@@ -352,20 +352,21 @@ On such an install, bound to loopback only, the fixture session is also
 the **test operator** for a few person-only requests the live checks
 need, each audited as `test:operator`:
 
-| Request                                          | For                              |
-| ------------------------------------------------ | -------------------------------- |
-| `POST /api/workspaces/:ws/sessions` (no `cwd`)   | Terminal starts a shell; the cap |
-| WebSocket `/api/sessions/:id/io`, its own shells | using the shell                  |
-| `POST /api/sessions/:id/close`, its own shells   | closing what a check opened      |
-| `POST /api/workspaces/:ws/agents/:id/say`        | a message to an agent            |
-| `POST /api/workspaces/:ws/agents/:id/relaunch`   | Resume after a relaunch          |
+| Request                                                 | For                                |
+| ------------------------------------------------------- | ---------------------------------- |
+| `POST /api/workspaces/:ws/sessions` (no `cwd`)          | Terminal opens a terminal; the cap |
+| WebSocket `/api/sessions/:id/io`, its own, by host id   | typing into it, taking focus       |
+| `POST /api/sessions/:id/close`, its own                 | closing what a check opened        |
+| `POST /api/workspaces/:ws/agents/:id/say`, project only | a message to an agent              |
+| `POST /api/workspaces/:ws/agents/:id/relaunch`, project | Resume after a relaunch            |
 
-Its shells open in the project's folder, and Den's CLI in them sends no
-person credential and is pinned to this install. A request through the
+Its terminal is never a shell: it is Den's fixed stub, which echoes what
+is typed and does nothing else, in the project's folder. Say and relaunch
+reach project agents only, never the server agent. A request through the
 edge, a LAN name or a proxy is refused. Everything else stays the fixture
-person's: no Allow on a held write, no person-only setting, no Hub, no
-sign-in or device routes, no runtime path. Clauses that need those keep
-skipping as `person` and are covered by CI.
+person's: no shell, no Allow on a held write, no person-only setting, no
+Hub, no sign-in or device routes, no runtime path. Clauses that need
+those keep skipping as `person` and are covered by CI.
 
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with

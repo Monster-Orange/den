@@ -22,6 +22,10 @@ import {
   mintFixtureCode,
   readFixtureKey,
 } from "../../../src/shared/fixture-person.js";
+import {
+  operatorStubArgv,
+  operatorStubEnv,
+} from "../../../src/shared/test-operator.js";
 
 let s: AgentsPageServer;
 let fx: { cookie: string; csrf: string };
@@ -133,15 +137,18 @@ afterAll(async () => {
 });
 
 describe("the test operator's terminal", () => {
-  it("starts a shell in the project's folder, its CLI pinned here and sending no person credential", async () => {
+  it("starts Den's fixed stub in the project's folder, never a shell; nothing from the request", async () => {
     const before = s.made.length;
-    const r = await asOperator("POST", "/api/workspaces/north/sessions");
+    const r = await asOperator("POST", "/api/workspaces/north/sessions", {
+      argv: ["/bin/sh", "-l"],
+      env: { NODE_OPTIONS: "--require /x" },
+    });
     expect(r.status).toBe(200);
     expect(s.made.length).toBe(before + 1);
-    const env = s.made.at(-1)!.opts.env as Record<string, string>;
-    expect(env.DEN_AGENT).toBe("test-operator");
-    expect(env.ACME_HOME).toBe(s.stateDir);
-    expect(env.ACME_ROOT).toBeTruthy();
+    const pty = s.made.at(-1)!;
+    expect([pty.file, ...pty.args]).toEqual(operatorStubArgv());
+    expect(pty.opts.env).toEqual(operatorStubEnv());
+    expect(pty.opts.cwd).toBe(s.wsDir("north"));
     const row = auditRows()
       .reverse()
       .find((e) => e.verb === "test-operator");
@@ -183,6 +190,106 @@ describe("the test operator's terminal", () => {
     );
     expect([c.status, c.json.code]).toEqual([403, "fixture_scope"]);
     expect(pty.signals).toEqual([]);
+  });
+});
+
+describe("a shell's name reused by an agent never lets the operator in", () => {
+  const io = (target: string) =>
+    raw("GET", `/api/sessions/${encodeURIComponent(target)}/io`, {
+      cookie: fx.cookie,
+      origin: s.base,
+      "sec-fetch-site": "same-origin",
+    });
+  const closeIt = (id: string) =>
+    asOperator("POST", `/api/sessions/${encodeURIComponent(id)}/close`);
+
+  it("its own shell: attach by its host id passes; by its name, refused", async () => {
+    const open = await asOperator("POST", "/api/workspaces/north/sessions");
+    const { id, name } = open.json.session as { id: string; name: string };
+    expect((await io(id)).json.code).not.toBe("fixture_scope");
+    const byName = await io(name);
+    expect([byName.status, byName.json.code]).toEqual([403, "fixture_scope"]);
+    const pty = s.made.at(-1)!;
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      if (sig === "SIGHUP") setTimeout(() => pty.exit(129), 10);
+    };
+    await closeIt(id);
+  }, 30_000);
+
+  it("closed, it is forgotten: the same id is refused after", async () => {
+    const open = await asOperator("POST", "/api/workspaces/north/sessions");
+    const { id } = open.json.session as { id: string };
+    const pty = s.made.at(-1)!;
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      if (sig === "SIGHUP") setTimeout(() => pty.exit(129), 10);
+    };
+    expect((await closeIt(id)).status).toBe(200);
+    const again = await io(id);
+    expect([again.status, again.json.code]).toEqual([403, "fixture_scope"]);
+  }, 30_000);
+
+  it("a session an agent record owns is refused, even under an id the operator holds", async () => {
+    const open = await asOperator("POST", "/api/workspaces/north/sessions");
+    const { id, name } = open.json.session as { id: string; name: string };
+    // An agent now owns that very session (its record names it).
+    s.seed({
+      id: "shell",
+      workspace: "north",
+      session: { id, name } as never,
+      sessionName: name,
+    });
+    const r = await io(id);
+    expect(r.status).toBe(403);
+    expect(r.json.code).toBe("agent_session");
+  });
+});
+
+describe("say and relaunch: project agents only, never the server agent", () => {
+  it.each(["say", "relaunch"])(
+    "%s to the server agent: refused",
+    async (verb) => {
+      s.seed({ id: "helper", workspace: "den-server" });
+      const r = await asOperator(
+        "POST",
+        `/api/workspaces/den-server/agents/helper/${verb}`,
+        { text: "hello" },
+      );
+      expect([r.status, r.json.code]).toEqual([403, "fixture_scope"]);
+      expect(
+        auditRows().some(
+          (e) =>
+            e.principal === "test:operator" &&
+            String(e.detail).includes("/den-server/"),
+        ),
+      ).toBe(false);
+    },
+  );
+});
+
+describe("the gate order with the test-person path (issue 636)", () => {
+  it("a fixture session sending the test-person header is refused there, never the operator", async () => {
+    const before = auditRows().filter(
+      (e) => e.principal === "test:operator",
+    ).length;
+    const r = await raw(
+      "POST",
+      "/api/workspaces/north/agents/planner/say",
+      {
+        cookie: fx.cookie,
+        origin: s.base,
+        "x-den-csrf": fx.csrf,
+        "x-den-test-person": "1",
+      },
+      { text: "hello" },
+    );
+    expect([r.status, r.json.code]).toEqual([403, "test_person_refused"]);
+    expect(
+      auditRows().filter((e) => e.principal === "test:operator").length,
+    ).toBe(before);
   });
 });
 

@@ -1880,8 +1880,8 @@ async function plainSession(
     if (b.cwd !== undefined && typeof b.cwd !== "string")
       throw new AgentError("cwd must be a string", { usage: true });
     const cwd = b.cwd as string | undefined;
-    // Issue 814: the test operator's shell opens in the project's folder
-    // only, and Den's CLI in it sends no person credential.
+    // Issue 814: the test operator's terminal (Den's fixed stub, never a
+    // shell) opens in the project's folder only, remembered by host id.
     if (operator && cwd !== undefined)
       throw new AgentError("the test operator's terminal takes no cwd", {
         status: 403,
@@ -1891,7 +1891,7 @@ async function plainSession(
       ws,
       operator ? { operator: true } : cwd ? { cwd } : {},
     );
-    if (operator) rememberOperatorShell(info.ref.id, info.name);
+    if (operator) rememberOperatorShell(info.ref.id);
     what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {

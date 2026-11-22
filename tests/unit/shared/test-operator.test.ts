@@ -13,7 +13,13 @@ import * as os from "os";
 import * as path from "path";
 import {
   OPERATOR_PRINCIPAL,
+  OPERATOR_STUB_SCRIPT,
   claimAtBirth,
+  forgetOperatorShell,
+  isOperatorShell,
+  operatorStubArgv,
+  operatorStubEnv,
+  rememberOperatorShell,
   creationRecordPath,
   hasForwardingHeaders,
   operatorAct,
@@ -24,6 +30,7 @@ import {
 } from "../../../src/shared/test-operator.js";
 import { FIXTURE_PRINCIPAL } from "../../../src/shared/fixture-person.js";
 import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { spawn } from "child_process";
 
 let tmp = "";
 beforeEach(() => {
@@ -270,5 +277,88 @@ describe("claiming a state folder at the first start", () => {
     expect(
       claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
     ).toBe(false);
+  });
+});
+
+describe("the test operator's terminal is a fixed stub, never a shell (the Builder's decision a)", () => {
+  it("runs Den's own node on one fixed script: no shell, nothing from the request", () => {
+    const argv = operatorStubArgv();
+    expect(argv).toEqual([process.execPath, "-e", OPERATOR_STUB_SCRIPT]);
+    expect(argv.join(" ")).not.toMatch(/(^|\/)(ba|z|da|fi)?sh( |$)|-l\b/);
+    // The script can't reach a process, a file or the module loader.
+    expect(OPERATOR_STUB_SCRIPT).not.toMatch(
+      /require|import|child_process|spawn|exec|fs\.|readFile|eval|Function|process\.env|process\.binding|dlopen/,
+    );
+  });
+
+  it("its env is TERM only: no home, root, path, node options or credential", () => {
+    expect(Object.keys(operatorStubEnv())).toEqual(["TERM"]);
+  });
+
+  it("what is typed into it is echoed, never run: no den call, no file read, no process started", async () => {
+    const marker = path.join(tmp, "ran");
+    const secret = path.join(tmp, "web.secret");
+    fs.writeFileSync(secret, "s3cr3t-value\n");
+    const [file, ...args] = operatorStubArgv();
+    const child = spawn(file, args, {
+      cwd: tmp,
+      env: operatorStubEnv(),
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let out = "";
+    child.stdout.on("data", (b: Buffer) => (out += b.toString()));
+    const typed = [
+      "den --test-person approvals approve a1",
+      `touch ${marker}`,
+      `cat ${secret}`,
+      "",
+    ].join("\n");
+    child.stdin.write(typed);
+    await new Promise((r) => setTimeout(r, 400));
+    child.stdin.end();
+    const code = await new Promise<number | null>((r) =>
+      child.on("exit", (c) => r(c)),
+    );
+    expect(code).toBe(0);
+    expect(out).toBe(typed);
+    expect(out).not.toContain("s3cr3t-value");
+    expect(fs.existsSync(marker)).toBe(false);
+  }, 15_000);
+});
+
+describe("the operator's own shells: by host id only, forgotten when closed", () => {
+  it("a name is never remembered, so a reused name is never its own", () => {
+    rememberOperatorShell("host-id-1");
+    expect(isOperatorShell("host-id-1")).toBe(true);
+    expect(isOperatorShell("acme-north:shell")).toBe(false);
+    forgetOperatorShell("host-id-1");
+    expect(isOperatorShell("host-id-1")).toBe(false);
+  });
+});
+
+describe("say and relaunch reach project agents only", () => {
+  const ok = {
+    operatorInstall: true,
+    via: "loopback" as const,
+    beyond: false,
+    forwarded: false,
+  };
+  it.each([
+    ["POST", "/api/workspaces/den-server/agents/helper/say"],
+    ["POST", "/api/workspaces/den-server/agents/helper/relaunch"],
+    ["POST", "/api/workspaces/den%2Dserver/agents/helper/say"],
+  ])("%s %s: the server agent's, refused", (m, p) => {
+    expect(operatorRefusal({ ...ok, method: m, pathname: p })).toBe(
+      "server_agent",
+    );
+  });
+  it("a project agent's: allowed", () => {
+    expect(
+      operatorRefusal({
+        ...ok,
+        method: "POST",
+        pathname: "/api/workspaces/north/agents/planner/say",
+      }),
+    ).toBeNull();
   });
 });

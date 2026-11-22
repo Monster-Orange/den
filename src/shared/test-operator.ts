@@ -29,6 +29,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { isServerScope } from "./agents/server-agent.js";
 
 /** The test operator's principal in the audit trail. */
 export const OPERATOR_PRINCIPAL = "test:operator";
@@ -38,8 +39,6 @@ export const OPERATOR_LABEL = "test operator";
 export const CREATION_RECORD_FILE = "test-install.created";
 /** What the record holds until the server seals it, at its first start. */
 export const CREATION_PENDING = "pending";
-/** The env var an operator's shell gets, so Den's CLI in it sends no person credential. */
-export const OPERATOR_SHELL_ACTOR = "test-operator";
 
 const SEAL_CONTEXT = "den-test-created-v1:";
 const RECORD_RE = /^v1\.(\d{1,15})\.([A-Za-z0-9_-]{43})$/;
@@ -172,13 +171,14 @@ export type OperatorAct =
 /**
  * The person-only requests the test operator may make, and nothing else.
  * Each one: what live checks need it for (issue 814's table).
- *  - terminal-start: Terminal starts a shell; the cap's 429 (448, 503).
- *    No `cwd`; the shell's Den CLI sends no person credential.
+ *  - terminal-start: Terminal opens a test terminal, Den's fixed stub
+ *    (never a shell); the cap's 429 (448, 503). No `cwd`.
  *  - terminal-attach, terminal-close: the operator's own shells only
  *    (448, 653; a check closes what it opened).
- *  - agent-say: a message to an agent, the 409 while it shows a dialog
- *    (629, 659).
- *  - agent-relaunch: Resume after a relaunch that exits early (658).
+ *  - agent-say: a message to a project agent, the 409 while it shows a
+ *    dialog (629, 659). Never the server agent.
+ *  - agent-relaunch: Resume after a relaunch that exits early (658). A
+ *    project agent only.
  */
 const ACTS: readonly [OperatorAct, string, RegExp][] = [
   ["terminal-start", "POST", /^\/api\/workspaces\/[^/]+\/sessions$/],
@@ -214,16 +214,41 @@ export function operatorShellTarget(pathname: string): string | null {
   }
 }
 
-/** Shells the test operator started (ids and names), in this server's memory. */
+/**
+ * The test terminals the test operator started, by their session host id
+ * only (never a name: a name can be reused by an agent), in this server's
+ * memory. Forgotten when closed or found ended.
+ */
 const OWN_SHELLS = new Set<string>();
-export function rememberOperatorShell(...keys: string[]): void {
-  for (const k of keys) if (k) OWN_SHELLS.add(k);
+export function rememberOperatorShell(hostId: string): void {
+  if (hostId) OWN_SHELLS.add(hostId);
 }
-export function isOperatorShell(key: string): boolean {
-  return OWN_SHELLS.has(key);
+export function isOperatorShell(hostId: string): boolean {
+  return OWN_SHELLS.has(hostId);
 }
-export function forgetOperatorShell(...keys: string[]): void {
-  for (const k of keys) OWN_SHELLS.delete(k);
+export function forgetOperatorShell(hostId: string): void {
+  OWN_SHELLS.delete(hostId);
+}
+
+/**
+ * The Builder's decision (a): the test operator's terminal is never a
+ * shell. It runs Den's own node on this fixed script, which echoes what is
+ * typed and does nothing else: it loads no module, reads no file, starts
+ * no process and reads no environment. Live checks need a terminal that
+ * opens, starts and takes focus; this is one.
+ */
+export const OPERATOR_STUB_SCRIPT =
+  'process.stdin.on("data",(b)=>process.stdout.write(b));' +
+  'process.stdin.on("end",()=>process.exit(0));';
+
+/** The test terminal's command: nothing in it comes from a request. */
+export function operatorStubArgv(): string[] {
+  return [process.execPath, "-e", OPERATOR_STUB_SCRIPT];
+}
+
+/** The test terminal's whole env: no home, root, path or credential. */
+export function operatorStubEnv(): Record<string, string> {
+  return { TERM: "xterm-256color" };
 }
 
 export type OperatorRefusal =
@@ -231,7 +256,8 @@ export type OperatorRefusal =
   | "not_operator_install"
   | "not_loopback"
   | "forwarded"
-  | "not_own_shell";
+  | "not_own_shell"
+  | "server_agent";
 
 /**
  * Why a fixture session's request may not be a test operator's act, or
@@ -252,6 +278,18 @@ export function operatorRefusal(o: {
   if (!o.operatorInstall) return "not_operator_install";
   if (o.via !== "loopback" || o.beyond) return "not_loopback";
   if (o.forwarded) return "forwarded";
+  // say and relaunch reach this install's project agents only, never the
+  // server agent (its held writes are not the checks' to drive).
+  if (act === "agent-say" || act === "agent-relaunch") {
+    const ws = /^\/api\/workspaces\/([^/]+)\//.exec(o.pathname)?.[1] ?? "";
+    let name = ws;
+    try {
+      name = decodeURIComponent(ws);
+    } catch {
+      return "server_agent";
+    }
+    if (isServerScope(name)) return "server_agent";
+  }
   if (act === "terminal-attach" || act === "terminal-close") {
     const t = operatorShellTarget(o.pathname);
     if (!t || !(o.ownShell ?? isOperatorShell)(t)) return "not_own_shell";
