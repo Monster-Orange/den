@@ -12,6 +12,8 @@ import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import {
   noteHubMcpCall,
   noteHubMcpInit,
+  noteHubMcpTools,
+  mcpLoadFailures,
   readHubMcpInit,
 } from "../../../src/shared/agents/hub-mcp-connect.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
@@ -265,5 +267,148 @@ describe("0.4.48: hub-mcp.json says how the agent's Hub calls go now", () => {
     // A new connect keeps the last call it had.
     noteHubMcpInit(r.stateDir, "planner", { ok: true });
     expect(readHubMcpInit(r.stateDir, "planner")?.last?.ok).toBe(true);
+  });
+});
+
+describe("issue 749: Hub connected but listing its tools failed", () => {
+  async function listed(answer: (res: http.ServerResponse) => void) {
+    const { r } = await started();
+    const token = actorTokenOf(r.made[0].opts.env) ?? "";
+    const hub = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8");
+        if (/"tools\/list"/.test(body)) return answer(res);
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "mcp-session-id": "s1",
+        });
+        res.end('{"jsonrpc":"2.0","id":1,"result":{}}');
+      });
+    });
+    servers.push(hub);
+    await new Promise<void>((x) => hub.listen(0, "127.0.0.1", x));
+    const mcpUrl = `http://127.0.0.1:${(hub.address() as AddressInfo).port}/mcp`;
+    const lists: unknown[] = [];
+    const den = http.createServer((req, res) => {
+      const t = verifyActorToken(
+        r.stateDir,
+        String(req.headers.authorization ?? "").slice(7),
+      );
+      if (t)
+        setPrincipal(req, {
+          kind: "agent",
+          actor: t.actor,
+          workspace: t.workspace,
+          grants: t.grants,
+          session: t.session,
+        });
+      void handleHubProxy(
+        req,
+        res,
+        new URL(req.url ?? "/", "http://x").pathname,
+        {
+          upstream: async () => ({
+            base: mcpUrl.replace(/\/mcp$/, ""),
+            mcpUrl,
+            headers: {},
+          }),
+          onMcpToolsList: (agentId, o) => lists.push({ agentId, ...o }),
+        },
+      );
+    });
+    servers.push(den);
+    await new Promise<void>((x) => den.listen(0, "127.0.0.1", x));
+    const base = `http://127.0.0.1:${(den.address() as AddressInfo).port}`;
+    const post = (method: string) =>
+      fetch(`${base}/hub/mcp`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "mcp-session-id": "s1",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 2, method }),
+      });
+    return { r, lists, post };
+  }
+
+  it("a 500 for tools/list is noted as failed, with the status", async () => {
+    const { lists, post } = await listed((res) => {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end("{}");
+    });
+    expect((await post("tools/list")).status).toBe(500);
+    expect(lists).toEqual([
+      {
+        agentId: "planner",
+        ok: false,
+        error: "hub (500): Internal Server Error",
+      },
+    ]);
+  });
+
+  it("a 200 whose answer is a JSON-RPC error (as an event stream) is failed too", async () => {
+    const { lists, post } = await listed((res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end(
+        'event: message\ndata: {"jsonrpc":"2.0","id":2,"error":{"code":-32603,"message":"boom"}}\n\n',
+      );
+    });
+    await (await post("tools/list")).text();
+    expect(lists).toEqual([
+      {
+        agentId: "planner",
+        ok: false,
+        error: "hub answered tools/list with an error",
+      },
+    ]);
+  });
+
+  it("a 200 with the tools is ok; other calls in the session aren't a listing", async () => {
+    const { lists, post } = await listed((res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end('{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}');
+    });
+    await (await post("tools/call")).text();
+    await (await post("tools/list")).text();
+    expect(lists).toEqual([{ agentId: "planner", ok: true }]);
+  });
+
+  it("whoami: connected, its connect ok, its listing failed: not loaded, restart, the reason named", async () => {
+    const { r, d } = await started();
+    noteHubMcpInit(r.stateDir, "planner", { ok: true });
+    noteHubMcpTools(r.stateDir, "planner", {
+      ok: false,
+      error: "hub (500): Internal Server Error",
+    });
+    const t = await agentTools(d, "planner", "north");
+    expect(t.hub).toEqual({ connected: true, loaded: false, restart: true });
+    expect(t.note).toContain(
+      "listing Hub's tools failed (hub (500): Internal Server Error)",
+    );
+    expect(mcpLoadFailures(r.stateDir, readRecord(r.stateDir, "planner")!)).toEqual([
+      {
+        server: "hub",
+        error: "listing Hub's tools failed (hub (500): Internal Server Error)",
+        at: expect.any(String),
+      },
+    ]);
+  });
+
+  it("a later listing that worked, or a new connect, clears it", async () => {
+    const { r, d } = await started();
+    noteHubMcpInit(r.stateDir, "planner", { ok: true });
+    noteHubMcpTools(r.stateDir, "planner", { ok: false, error: "x" });
+    noteHubMcpTools(r.stateDir, "planner", { ok: true });
+    expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(true);
+    noteHubMcpTools(r.stateDir, "planner", { ok: false, error: "x" });
+    noteHubMcpInit(r.stateDir, "planner", { ok: true });
+    expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(true);
+    // A listing that worked never hides a connect that failed.
+    noteHubMcpInit(r.stateDir, "planner", { ok: false, error: "hub (502): Bad Gateway" });
+    noteHubMcpTools(r.stateDir, "planner", { ok: true });
+    expect((await agentTools(d, "planner", "north")).hub.loaded).toBe(false);
   });
 });
