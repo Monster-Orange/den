@@ -115,7 +115,7 @@ export function gateBoxTools(k: GateBoxToolKit): DenTool[] {
           .record(z.string(), z.string())
           .optional()
           .describe(
-            'Issue 1017: a Playwright address per version on the box, version → ws:// address, like {"1.61": "ws://box:3931", "1.63": "ws://box:3932"}. A run gets the one for its version. Instead of playwright and playwright_version',
+            'Issue 1017: a Playwright address per version on the box, version → ws:// address, like {"1.61": "ws://box:3931", "1.63": "ws://box:3932"}. A run gets the one for its version. Give this or the one playwright address, not both',
           ),
         min_free_mem_mb: z
           .number()
