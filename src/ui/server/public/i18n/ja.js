@@ -1039,6 +1039,10 @@
     "set.server.gate_local_browser": "このマシンで同時に動かすブラウザーテスト",
     "set.server.gate_local_browser.d":
       "このマシンで同時に動かせるブラウザーテスト実行の数です。それぞれ専用のコンテナーで動きます。テスト用マシンで動くブラウザーテストは数えません。1 では 1 つずつ動きます。__DEN_CLI__ gate settings --local-browser-slots 1",
+    "set.server.gate_overrun_bell":
+      "見込みの何倍を過ぎたらテスト枠をベルに出すか",
+    "set.server.gate_overrun_bell.d":
+      "見込みのこの倍数より長く使われているテスト枠は、ベルの「対応が必要」に「終了」付きで出ます。エージェントが使っている場合は、Den がそのエージェントに一度だけ解放するよう伝えます。2: 見込みの 2 倍。__DEN_CLI__ gate settings --overrun-bell-multiple 2",
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -2378,6 +2382,11 @@
       "依頼が再起動で失われました: {what}。この依頼からは何も実行していません。",
     "bell.m.heldLostAll":
       "あなたの許可を待っていた依頼を再起動後に読み戻せませんでした。失われています。もう一度依頼したエージェントはここに表示されます。",
+    "bell.go.h": "見込みを過ぎたテスト枠",
+    "bell.go.row": "{who} が {kind} のテスト枠を使用中: {label}",
+    "bell.go.sub": "{time} から · 見込み {est} 分 · {over} 分超過",
+    "bell.go.end": "終了",
+    "bell.go.ended": "テスト枠を終了しました。次の順番が始まります。",
     "bell.ap.h": "あなたの許可待ち",
     "bell.ap.row": "{name} の依頼: {what}",
     "bell.ap.rowAsk": "依頼: {what}",

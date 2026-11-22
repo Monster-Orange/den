@@ -3088,6 +3088,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
   },
   {
+    // Issue 993: a slot past this many times its estimate: the bell.
+    id: "server.gate_overrun_bell",
+    category: "server",
+    label: "Test slot in the bell past this many times its estimate",
+    description:
+      "A test slot held this many times longer than its estimate shows in the bell under Needs you, with End. If an agent holds it, Den tells that agent once to release it. 2: twice its estimate. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
+    keywords: ["gate", "slot", "overrun", "estimate", "bell", "end"],
+    scope: "user",
+    keys: ["gate_slots.overrun_bell_multiple"],
+    control: { type: "number", min: 1, max: 100, step: 0.5 },
+    read: (ctx) => ctx.data.gate_slots?.overrunBellMultiple ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { overrun_bell_multiple: v } }),
+  },
+  {
     // Issue 621: a CI runner (a job in a VM) holds its slot by lease.
     id: "server.gate_remote_renew",
     category: "server",

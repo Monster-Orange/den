@@ -62,6 +62,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots_beside_release_browser: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
+    // Issue 993: past this many times its estimate, in the bell.
+    overrun_bell_multiple: true,
     remote_renew_seconds: true,
     remote_lapse_seconds: true,
     remote_max_slots: true,
@@ -271,6 +273,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
+        "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
         "gate_slots.priority_max",

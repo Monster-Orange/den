@@ -17,6 +17,7 @@
 import type { NotificationStore } from "../../shared/notifications.js";
 import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
 import type { GateStore, GateEventRow } from "../../shared/gates/store.js";
+import { gateOverrunWaiting } from "./gate-overrun-bell.js";
 
 export interface GateNoticeDeps {
   store: () => GateStore;
@@ -28,6 +29,8 @@ export interface GateNoticeDeps {
   relay: (dv: Delivery) => Promise<boolean>;
   bell: (n: Parameters<NotificationStore["add"]>[0]) => void;
   log?: (line: string) => void;
+  /** The clock (tests); default Date.now. */
+  now?: () => number;
 }
 
 /** How often the server looks, ms. */
@@ -42,6 +45,8 @@ export class GateNotices {
   private from = 0;
   /** Lines the relay wasn't ready for: tried again next tick. */
   private pending: Delivery[] = [];
+  /** Issue 993: overrun slots whose agent was told (once per slot). */
+  private toldOverrun = new Set<string>();
 
   constructor(private readonly d: GateNoticeDeps) {}
 
@@ -79,6 +84,7 @@ export class GateNotices {
           }),
         );
     }
+    out.push(...this.overrunLines(store));
     for (const dv of out) {
       let held = false;
       try {
@@ -88,6 +94,40 @@ export class GateNotices {
       }
       if (!held) this.pending.push(dv);
     }
+  }
+
+  /**
+   * Issue 993: an agent's slot held past the multiple of its estimate: one
+   * line at its prompt, once per slot. A slot asked over MCP is told only
+   * by the install that asked; a gate run's by the install the agent is in.
+   */
+  private overrunLines(store: GateStore): Delivery[] {
+    // The store's own clock unless told (its tests set it).
+    const now = this.d.now ? this.d.now() : store.clock();
+    const entries = store.list();
+    const live = new Set(entries.map((e) => e.id));
+    for (const id of this.toldOverrun)
+      if (!live.has(id)) this.toldOverrun.delete(id);
+    const out: Delivery[] = [];
+    for (const w of gateOverrunWaiting(entries, store.settings(), now)) {
+      if (!w.agent || this.toldOverrun.has(w.id)) continue;
+      const e = entries.find((x) => x.id === w.id);
+      if (e?.mcp && e.mcp.install !== this.d.install) continue;
+      const project = this.d.projectOf(w.agent);
+      if (!project) continue;
+      this.toldOverrun.add(w.id);
+      out.push(
+        embedDelivery({
+          id: `gate-overrun-${w.id}`,
+          agent: w.agent,
+          project,
+          origin: "Den gate slots",
+          text: `Den: your ${w.slot} gate slot ${w.id} ("${w.label}") is ${mins(w.overMin)} past its ${mins(w.estimateMin)} estimate. Release it with gate_slot_release, or let its command finish.`,
+          at: now,
+        }),
+      );
+    }
+    return out;
   }
 
   private textOf(store: GateStore, r: GateEventRow): string | null {
