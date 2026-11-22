@@ -63,6 +63,22 @@ function scopeLabel(scope, name) {
   return scope;
 }
 
+/**
+ * Issue 168: a project's group heading carries its colour, a dot beside its
+ * name (the shell knows the colours: denShell.projectColour); "" for the
+ * server, Hub and anything else.
+ */
+function scopeDot(scope) {
+  if (!scope.startsWith("workspace/")) return "";
+  const pc =
+    typeof window !== "undefined"
+      ? window.denShell?.projectColour?.(scope.slice("workspace/".length))
+      : null;
+  return pc
+    ? `<i class="den-pc" data-pc="${esc(pc)}" aria-hidden="true"></i>`
+    : "";
+}
+
 /** The name Hub gave a group's project, from any of its items. */
 const groupName = (g) =>
   g.subjects
@@ -242,7 +258,7 @@ function groupsHtml(groups, ui, needs = false) {
   return groups
     .map(
       (g) =>
-        `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
+        `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
         (!needs && g.subjects.some((s) => s.items.some((n) => !n.read))
           ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}">${esc(tr("bell.read"))}</button>`
           : "") +
@@ -546,6 +562,10 @@ export function initBell(doc = document) {
       attributes: true,
       attributeFilter: ["data-den-tz"],
     });
+  // Issue 168: a project's colour changed: the open panel's headings.
+  window.addEventListener("den:project-colours-shown", () => {
+    if (bell.isOpen()) paint();
+  });
   void refresh();
   const timer = setInterval(() => {
     if (doc.visibilityState !== "hidden") void refresh();

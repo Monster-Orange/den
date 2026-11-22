@@ -6187,6 +6187,10 @@ async function handleRequest(
   if (pathname === "/workspace-picker.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
   }
+  // Issue 168: the project colour picker the scope menu opens.
+  if (pathname === "/project-colour-picker.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "project-colour-picker.js"));
+  }
 
   // Issue 644: the kit's site files at the root (/favicon.ico,
   // /favicon.svg, /apple-touch-icon.png, the icons, /site.webmanifest).
