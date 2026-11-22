@@ -214,6 +214,7 @@ import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
 import { cmdTheme } from "./theme-command.js";
+import { cmdLayout } from "./layout-command.js";
 import { cmdPlugin } from "./plugin-command.js";
 import {
   cmdOrg,
@@ -636,6 +637,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "verify",
   "service",
   "theme",
+  "layout",
   "plugin",
   "repo",
   "onboard",
@@ -1190,6 +1192,10 @@ class DenCLI {
 
         case "theme":
           process.exitCode = await cmdTheme(args.slice(1));
+          break;
+
+        case "layout":
+          process.exitCode = cmdLayout(args.slice(1));
           break;
 
         case "plugin":
@@ -5480,6 +5486,7 @@ class DenCLI {
     );
     console.log(
       "  theme add <repo>@<ref> Install a web UI theme (list, validate, remove)",
+      "  layout restore [<id>] Put the rail layout back from a snapshot (layout snapshots lists them)",
     );
     console.log(
       "  plugin list          Local and added plugins, checked (validate, add, update, remove)",

@@ -1420,6 +1420,8 @@ import {
 import { product } from "../../shared/product.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
+import { snapshotLayout } from "../../shared/layout-snapshots.js";
+import { installExitFlush, onShutdownFlush } from "../../shared/state-flush.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -9378,6 +9380,13 @@ async function handleRequest(
           delete user.shell;
           writeFixturePins(getStateDir(), [], []);
         } else if (shellBody !== undefined) {
+          // Issue 786: the layout this save replaces, kept (at most every
+          // 15 minutes) so a broken one can be put back.
+          try {
+            snapshotLayout(getStateDir(), user.shell);
+          } catch {
+            /* a snapshot that can't be taken never stops a save */
+          }
           // Issue 402: old id-only pins (stored, or posted by an older
           // page) migrate on the way through.
           const projectsOf = pinProjects();
@@ -11306,7 +11315,8 @@ async function handleShutdown(signal: string): Promise<void> {
   }
 
   // Lost output (SIGPIPE): nobody can answer a prompt.
-  const isTTY = process.stdin.isTTY && signal !== "SIGPIPE";
+  const isTTY =
+    process.stdin.isTTY && signal !== "SIGPIPE" && signal !== "SIGHUP";
 
   if (!isTTY) {
     // Non-interactive shutdown usually means `den web` is being restarted.
@@ -11363,7 +11373,10 @@ function shutdownOn(signal: string): void {
  */
 function beginShutdown(signal: string): void {
   requestShutdown(signal, shutdownOn, {
-    interactive: Boolean(process.stdin.isTTY) && signal !== "SIGPIPE",
+    interactive:
+      Boolean(process.stdin.isTTY) &&
+      signal !== "SIGPIPE" &&
+      signal !== "SIGHUP",
   });
 }
 
@@ -11374,6 +11387,19 @@ process.on("SIGINT", () => {
 
 process.on("SIGTERM", () => {
   beginShutdown("SIGTERM");
+});
+
+// Issue 786: a closed terminal (or a logout that ends it) sends SIGHUP,
+// whose default ends the process with no exit handlers: shut down instead.
+process.on("SIGHUP", () => {
+  beginShutdown("SIGHUP");
+});
+
+// Issue 786: save on shutdown. Every exit path (a signal's included) runs
+// the pending saves first; the layout gets its snapshot here.
+installExitFlush();
+onShutdownFlush("layout-snapshot", () => {
+  snapshotLayout(getStateDir(), readUserConfig().shell);
 });
 
 /**
