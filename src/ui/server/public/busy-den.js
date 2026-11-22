@@ -251,6 +251,16 @@ export const DEN_ACTIONS = {
       failure: "busy.signOutF",
     },
   },
+  // Issue 310 (the mock's B4): the toast names the device signed out.
+  "sign-out-device": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.signOutW",
+      success: "busy.signOutDeviceS",
+      failure: "busy.signOutF",
+    },
+  },
   "unlink-owner": {
     who: "__DEN_TITLE__",
     autoClose: true,

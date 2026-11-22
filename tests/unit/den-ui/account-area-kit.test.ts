@@ -36,6 +36,7 @@ import {
   accountAreaHtml,
   accountAreaSections,
   accountSectionOf,
+  signOutAllBody,
   type AccountHow,
 } from "../../../packages/den-ui/src/account-area.js";
 
@@ -406,5 +407,42 @@ describe("issue 310: words, escaping, CSP and the look", () => {
     expect(dlg).toMatch(/top:\s*50%/);
     expect(dlg).toMatch(/transform:\s*translateY\(-50%\)/);
     expect(dlg).not.toMatch(/(^|\s)inset:\s*0/);
+  });
+});
+
+describe("issue 310 review: the mock's words and frame", () => {
+  it("the GitHub line, the can't-list help and the switch chips, word for word", () => {
+    expect(en["kit.aa.githubLinked"]).toBe(
+      "{login} · linked {date}. Den keeps its id, never a token.",
+    );
+    expect(en["kit.aa.cantListHelp"]).toBe(
+      "Den can’t reach its sign-in records right now.",
+    );
+    expect([en["kit.aa.on"], en["kit.aa.off"]]).toEqual(["on", "off"]);
+  });
+
+  it("Sign out everywhere names personal access tokens only when the product passes them", () => {
+    expect(signOutAllBody(FULL, "en")).toContain(
+      "turns off your personal access tokens",
+    );
+    const none = {
+      ...FULL,
+      access: { github: FULL.access.github, pair: true },
+    };
+    expect(signOutAllBody(none, "en")).toBe(
+      "This signs you out on every device and browser, this one included. You will need to sign in again on each device.",
+    );
+    expect(signOutAllBody(none, "es")).not.toBe(signOutAllBody(FULL, "es"));
+    expect(signOutAllBody(none, "ja")).not.toBe(signOutAllBody(FULL, "ja"));
+  });
+
+  it("account-area.css: the pane's padding is the drawn frame's, 20 24 24 32", () => {
+    const css = fs.readFileSync(path.join(SRC, "account-area.css"), "utf8");
+    const pane = /\.den-aa-panes\s*\{([^}]*)\}/.exec(css)![1]!;
+    expect(pane).toMatch(
+      /padding:\s*20px var\(--space-5\) var\(--space-5\) var\(--space-6\)/,
+    );
+    // The comment names both scales: the source's space-5 and the kit's.
+    expect(css).toContain("the kit's --space-5 is 24 px");
   });
 });

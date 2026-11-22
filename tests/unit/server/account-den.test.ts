@@ -19,6 +19,7 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import { denAccountData } from "../../../src/ui/server/public/account-den.js";
+import { placeOf } from "../../../src/ui/server/public/device-words.js";
 import {
   accountAreaHtml,
   type AccountAreaData,
@@ -81,7 +82,7 @@ describe("issue 310: denAccountData", () => {
           id: "a1b2c3",
           name: "Safari on macOS",
           current: true,
-          where: "192.168.1.20",
+          where: "Local network",
           lastSeen: "2026-11-19T18:00:00.000Z",
         },
         {
@@ -169,6 +170,50 @@ describe("issue 310: denAccountData", () => {
     expect(html).toContain("This device");
     expect(html).toContain('data-aa-act="sign-out-device" data-aa-id="d4e5f6"');
     expect(html).toContain('data-aa-act="unlink"');
+  });
+});
+
+describe("issue 310 review: a device's place, never its address", () => {
+  it("placeOf: this computer, the local network, or nothing", () => {
+    expect(placeOf("127.0.0.1")).toBe("This computer");
+    expect(placeOf("::1")).toBe("This computer");
+    expect(placeOf("::ffff:127.0.0.1")).toBe("This computer");
+    for (const a of [
+      "192.168.1.20",
+      "10.0.0.7",
+      "172.20.1.1",
+      "100.101.102.103",
+      "169.254.1.1",
+      "fd12:3456::1",
+      "fe80::1",
+      "::ffff:10.1.2.3",
+    ])
+      expect(placeOf(a)).toBe("Local network");
+    for (const a of [
+      "203.0.113.9",
+      "172.32.0.1",
+      "8.8.8.8",
+      "2001:db8::1",
+      "",
+      undefined,
+    ])
+      expect(placeOf(a)).toBe("");
+  });
+
+  it("the Devices pane shows the place; the address never reaches the page", () => {
+    const d = denAccountData({
+      identity: { kind: "github", via: "github", login: "sam" },
+      owner: OWNER,
+      sessions: [SESSIONS[0], { ...SESSIONS[1], client: "203.0.113.9" }],
+    });
+    expect(d.devices.list!.map((x: { where: string }) => x.where)).toEqual([
+      "Local network",
+      "",
+    ]);
+    const html = accountAreaHtml({ ...d, lang: "en" } as AccountAreaData);
+    expect(html).toContain("Local network");
+    expect(html).not.toContain("192.168.1.20");
+    expect(html).not.toContain("203.0.113.9");
   });
 });
 

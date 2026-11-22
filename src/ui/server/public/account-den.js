@@ -22,7 +22,7 @@
  *   openAccount({ section?, opener? }) → Promise<{ dialog, area, close }>
  */
 import { accountSectionOf, openAccountArea } from "/kit/account-area.js";
-import { deviceWords } from "./device-words.js";
+import { deviceWords, placeOf } from "./device-words.js";
 
 const sh = () => (typeof window !== "undefined" ? window.denShell : null);
 const t = (key, en) => {
@@ -104,7 +104,8 @@ export function denAccountData({
           id: s.id,
           name: deviceWords(s.name),
           current: !!s.current,
-          where: s.client || "",
+          // Issue 310: the place, never the address (a person's IP).
+          where: placeOf(s.client),
           lastSeen: s.lastSeenAt,
         })),
         pair: access.pair,
@@ -173,11 +174,11 @@ export async function openAccount({ section, opener } = {}) {
   const [data] = await Promise.all([load(), linkCss("account-area.css")]);
   // Every write goes through the working pop-up (busy-den.js names it); it
   // resolves undefined when the write didn't happen.
-  const write = (name, url, body, button) =>
+  const write = (name, url, body, button, vars) =>
     sh().busyAction(
       name,
       (headers) => sh().api("POST", url, body, { headers }),
-      { button },
+      { button, ...(vars ? { vars } : {}) },
     );
   const done = (then) => (r) => (r === undefined ? undefined : then(r));
   const reload = done(() => location.reload());
@@ -208,10 +209,11 @@ export async function openAccount({ section, opener } = {}) {
             reload,
           );
         case "sign-out-device": {
-          const me = latest.devices.list?.find((d) => d.id === id)?.current;
-          return write("sign-out", "/api/web/logout", { id }, button).then(
-            done(() => (me ? location.reload() : refresh())),
-          );
+          const dev = latest.devices.list?.find((d) => d.id === id);
+          const me = dev?.current;
+          return write("sign-out-device", "/api/web/logout", { id }, button, {
+            device: dev?.name || "",
+          }).then(done(() => (me ? location.reload() : refresh())));
         }
         case "unlink":
           return write(

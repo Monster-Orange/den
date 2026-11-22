@@ -3,8 +3,10 @@
    Hub" v2): min(960px, 100vw - space-8) by min(88vh, 760px); a 240 px rail
    on the sunken surface beside the pane; under 768 px the rail becomes a
    strip (search and a select) over the pane, every control 44 px. The source's
-   space-N is 4N px: space-8 is the kit's --space-6 (32 px), space-5 is
-   20 px. Tokens only; linked, never injected (style-src 'self'). */
+   space-N is 4N px (its space-5 is 20 px; the kit's --space-5 is 24 px,
+   --space-6 32 px). The pane's padding is the drawn frame's, 20 24 24 32
+   (the mock's value table says space-5 space-6 space-8: the frame wins,
+   as the approved picture). Tokens only; linked, never injected (style-src 'self'). */
 .den-aa-dlg {
   font-family: var(--sans);
   /* Placed as base.css places every modal (top 50%, moved up by half its
@@ -51,7 +53,10 @@
   white-space: nowrap;
   margin: 0;
 }
+/* The mock's desktop frames (A1–A4) have no ✕: Escape and the backdrop
+   close it there. Only the phone's top bar shows one. */
 .den-aa-x {
+  display: none;
   border: 0;
   background: none;
   color: var(--muted);
@@ -159,7 +164,7 @@
 .den-aa-panes {
   overflow-y: auto;
   min-width: 0;
-  padding: 20px var(--space-5) var(--space-6);
+  padding: 20px var(--space-5) var(--space-5) var(--space-6);
 }
 .den-aa-found:empty {
   display: none;
@@ -356,6 +361,7 @@
     font: 600 var(--fs-l) var(--sans);
   }
   .den-aa-x {
+    display: inline-block;
     min-width: var(--tap);
     min-height: var(--tap);
   }

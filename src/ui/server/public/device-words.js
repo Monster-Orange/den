@@ -29,3 +29,38 @@ export function deviceWords(name, tr = L) {
     });
   return s;
 }
+
+/**
+ * Issue 310: where a device signed in from, as a place, never its address
+ * (the approved mock shows "Local network"): this computer (loopback), the
+ * local network (private, link-local, a VPN's 100.64/10, IPv6 ULA and
+ * link-local), else nothing. An address on screen is a person's IP.
+ */
+export function placeOf(client, tr = L) {
+  let a = String(client ?? "")
+    .trim()
+    .toLowerCase();
+  if (!a) return "";
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a);
+  if (mapped) a = mapped[1];
+  const here = () => tr("acct.thisComputer", "This computer");
+  const lan = () => tr("acct.localNetwork", "Local network");
+  if (a === "::1" || a === "localhost") return here();
+  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(a);
+  if (v4) {
+    const [x, y] = [Number(v4[1]), Number(v4[2])];
+    if (x === 127) return here();
+    if (
+      x === 10 ||
+      (x === 172 && y >= 16 && y <= 31) ||
+      (x === 192 && y === 168) ||
+      (x === 169 && y === 254) ||
+      (x === 100 && y >= 64 && y <= 127)
+    )
+      return lan();
+    return "";
+  }
+  if (/^f[cd][0-9a-f]{2}:/.test(a) || /^fe[89ab][0-9a-f]:/.test(a))
+    return lan();
+  return "";
+}

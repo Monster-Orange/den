@@ -125,6 +125,42 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     await p.context().close();
   });
 
+  it("signing out another device: its row goes, and the toast names it (mock B4)", async () => {
+    if (!browsers[e] || !s) return;
+    const other = await open(e);
+    await other.goto(`${s.base}/logs`);
+    const p = await open(e);
+    await p.goto(`${s.base}/logs?account=devices`);
+    await area(p).waitFor({ timeout: 20_000 });
+    const row = p
+      .locator('.den-aa-pane[data-aa-pane="devices"] .den-aa-item')
+      .filter({ hasNotText: "This device" })
+      .first();
+    const name = (await row.locator("b").first().textContent())!.trim();
+    const before = await p
+      .locator(
+        '.den-aa-pane[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
+      )
+      .count();
+    await row.locator('[data-aa-act="sign-out-device"]').click();
+    const toast = p.locator(".den-toast");
+    await toast.waitFor({ timeout: 10_000 });
+    expect((await toast.textContent())?.trim()).toBe(`Signed out ${name}.`);
+    await p.waitForFunction(
+      (n) =>
+        document.querySelectorAll(
+          '.den-aa-pane[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
+        ).length === n,
+      before - 1,
+    );
+    // No address on screen: the place, or nothing.
+    const text = await area(p).textContent();
+    expect(text).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/);
+    expect(text).not.toMatch(/::1\b/);
+    await other.context().close();
+    await p.context().close();
+  });
+
   it("Settings › Access starts with Your account →, which opens it", async () => {
     if (!browsers[e] || !s) return;
     const p = await open(e);

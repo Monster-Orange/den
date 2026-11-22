@@ -128,6 +128,8 @@ export declare function accountSectionOf(
 /** The whole area as markup. Pure. */
 export declare function accountAreaHtml(data?: AccountAreaData): string;
 /** The area in el, wired. */
+/** Sign out everywhere's question: tokens named only when passed. */
+export declare function signOutAllBody(data: unknown, lang?: string): string;
 export declare function mountAccountArea(
   el: HTMLElement,
   opts?: AccountAreaOptions,

@@ -2507,6 +2507,9 @@
     "ident.toast": "This device is signed in to {name} on {host}",
     // The install owner's role, beside their GitHub identity (the account entry's data).
     "acct.roleOwner": "Owner",
+    "acct.thisComputer": "This computer",
+    "acct.localNetwork": "Local network",
+    "busy.signOutDeviceS": "Signed out {device}.",
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
     "set.embed.app_keys": "App keys",

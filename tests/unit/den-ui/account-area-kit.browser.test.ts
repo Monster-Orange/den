@@ -164,7 +164,8 @@ describe("issue 310: the Account area in a browser", () => {
     expect(await shown(p)).toEqual(["access"]);
     expect(new URL(p.url()).searchParams.get("account")).toBe("access");
     expect(new URL(p.url()).searchParams.get("x")).toBe("1");
-    await p.click(".den-aa-x");
+    // A desktop has no ✕ (the mock's A1–A4): Escape closes it.
+    await p.locator(".den-aa-dlg").press("Escape");
     await p.waitForFunction(() => !document.querySelector("dialog.den-aa-dlg"));
     expect(new URL(p.url()).searchParams.get("account")).toBeNull();
     expect(new URL(p.url()).searchParams.get("x")).toBe("1");
@@ -284,6 +285,15 @@ describe("issue 310: the Account area in a browser", () => {
     expect(box!.height).toBeLessThanOrEqual(760);
     const rail = await p.locator(".den-aa-rail").boundingBox();
     expect(Math.round(rail!.width)).toBe(240);
+    await done(p);
+  }, 60_000);
+
+  it("1280: no ✕ on a desktop (the mock's A1–A4 have none); Escape still closes", async () => {
+    if (skip()) return;
+    const p = await open({ width: 1280 });
+    expect(await p.isVisible(".den-aa-x")).toBe(false);
+    await p.keyboard.press("Escape");
+    await p.waitForFunction(() => !document.querySelector("dialog.den-aa-dlg"));
     await done(p);
   }, 60_000);
 

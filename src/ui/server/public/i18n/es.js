@@ -1621,6 +1621,9 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "acct.thisComputer": "Este ordenador",
+    "acct.localNetwork": "Red local",
+    "busy.signOutDeviceS": "Desconectado: {device}.",
     "set.access.approveNeedsBrowser":
       "Para aprobar un dispositivo hace falta un navegador con la sesión iniciada. Vuelve a iniciar sesión en esta página y apruébalo.",
     "set.access.approveNotAgent":

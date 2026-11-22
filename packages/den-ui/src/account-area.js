@@ -423,6 +423,20 @@ export function accountAreaHtml(d = {}) {
 const FLASH_MS = 1200;
 
 /** The area in `el`, wired (see the top of this file). */
+/**
+ * What Sign out everywhere asks: it names personal access tokens only when
+ * the product passes them (access.tokens), so a product without them never
+ * says it turns them off.
+ */
+export function signOutAllBody(data, lang = "en") {
+  return kitT(
+    lang,
+    Array.isArray(data?.access?.tokens)
+      ? "kit.aa.allBody"
+      : "kit.aa.allBodyNoTokens",
+  );
+}
+
 export function mountAccountArea(el, opts = {}) {
   let data = opts;
   const lang = () =>
@@ -508,7 +522,7 @@ export function mountAccountArea(el, opts = {}) {
     if (name === "sign-out-all") {
       const ok = await askConfirm({
         title: kitT(lang(), "kit.aa.allQ"),
-        message: kitT(lang(), "kit.aa.allBody"),
+        message: signOutAllBody(data, lang()),
         okLabel: kitT(lang(), "kit.aa.signOutAll"),
         danger: true,
         opener: b,

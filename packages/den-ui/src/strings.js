@@ -284,9 +284,11 @@ export const en = {
   "kit.aa.allQ": "Sign out everywhere?",
   "kit.aa.allBody":
     "This signs you out on every device and browser, this one included, and turns off your personal access tokens. You will need to sign in again on each device.",
+  "kit.aa.allBodyNoTokens":
+    "This signs you out on every device and browser, this one included. You will need to sign in again on each device.",
   "kit.aa.github": "GitHub",
   "kit.aa.githubLinked":
-    "{login} · linked {date}. Only its id is kept, never a token.",
+    "{login} · linked {date}. Den keeps its id, never a token.",
   "kit.aa.githubNone": "Not linked",
   "kit.aa.unlink": "Unlink",
   "kit.aa.unlinkQ": "Unlink GitHub?",
@@ -308,15 +310,15 @@ export const en = {
   "kit.aa.noOthersHelp":
     "When you sign in on another browser or phone, it appears here.",
   "kit.aa.cantList": "Can’t list your devices",
-  "kit.aa.cantListHelp": "The sign-in records can’t be read right now.",
+  "kit.aa.cantListHelp": "Den can’t reach its sign-in records right now.",
   "kit.aa.retry": "Try again",
   "kit.aa.waiting": "Waiting to be approved",
   "kit.aa.code": "Code {code}",
   "kit.aa.codeHelp":
     "A computer’s sign-in page is showing this code. It lasts {n} minutes.",
   "kit.aa.approve": "Approve",
-  "kit.aa.on": "On",
-  "kit.aa.off": "Off",
+  "kit.aa.on": "on",
+  "kit.aa.off": "off",
 };
 
 export const es = {
@@ -589,9 +591,11 @@ export const es = {
   "kit.aa.allQ": "¿Cerrar sesión en todas partes?",
   "kit.aa.allBody":
     "Cierra tu sesión en todos los dispositivos y navegadores, también en este, y desactiva tus tokens de acceso personal. Tendrás que volver a iniciar sesión en cada dispositivo.",
+  "kit.aa.allBodyNoTokens":
+    "Cierra tu sesión en todos los dispositivos y navegadores, también en este. Tendrás que volver a iniciar sesión en cada dispositivo.",
   "kit.aa.github": "GitHub",
   "kit.aa.githubLinked":
-    "{login} · vinculado el {date}. Solo se guarda su id, nunca un token.",
+    "{login} · vinculado el {date}. Den guarda su id, nunca un token.",
   "kit.aa.githubNone": "Sin vincular",
   "kit.aa.unlink": "Desvincular",
   "kit.aa.unlinkQ": "¿Desvincular GitHub?",
@@ -614,15 +618,15 @@ export const es = {
     "Cuando inicies sesión en otro navegador o teléfono, aparecerá aquí.",
   "kit.aa.cantList": "No se pueden mostrar tus dispositivos",
   "kit.aa.cantListHelp":
-    "Ahora mismo no se pueden leer los registros de inicio de sesión.",
+    "Den no puede leer sus registros de inicio de sesión ahora mismo.",
   "kit.aa.retry": "Reintentar",
   "kit.aa.waiting": "Esperando aprobación",
   "kit.aa.code": "Código {code}",
   "kit.aa.codeHelp":
     "La página de inicio de sesión de un equipo muestra este código. Dura {n} minutos.",
   "kit.aa.approve": "Aprobar",
-  "kit.aa.on": "Sí",
-  "kit.aa.off": "No",
+  "kit.aa.on": "sí",
+  "kit.aa.off": "no",
 };
 
 export const ja = {
@@ -895,9 +899,11 @@ export const ja = {
   "kit.aa.allQ": "すべてのデバイスでサインアウトしますか？",
   "kit.aa.allBody":
     "このデバイスを含むすべてのデバイスとブラウザーでサインアウトし、個人用アクセストークンを無効にします。各デバイスでもう一度サインインする必要があります。",
+  "kit.aa.allBodyNoTokens":
+    "このデバイスを含むすべてのデバイスとブラウザーでサインアウトします。各デバイスでもう一度サインインする必要があります。",
   "kit.aa.github": "GitHub",
   "kit.aa.githubLinked":
-    "{login} · {date} に連携。保存するのは ID だけで、トークンは保存しません。",
+    "{login} · {date} に連携。Den が保存するのは ID だけで、トークンは保存しません。",
   "kit.aa.githubNone": "未連携",
   "kit.aa.unlink": "連携を解除",
   "kit.aa.unlinkQ": "GitHub の連携を解除しますか？",
@@ -919,7 +925,7 @@ export const ja = {
   "kit.aa.noOthersHelp":
     "別のブラウザーや電話でサインインすると、ここに表示されます。",
   "kit.aa.cantList": "デバイスを一覧にできません",
-  "kit.aa.cantListHelp": "サインインの記録をいま読み取れません。",
+  "kit.aa.cantListHelp": "Den はいまサインインの記録を読み取れません。",
   "kit.aa.retry": "もう一度試す",
   "kit.aa.waiting": "承認待ち",
   "kit.aa.code": "コード {code}",

@@ -1576,6 +1576,9 @@
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
+    "acct.thisComputer": "このコンピューター",
+    "acct.localNetwork": "ローカルネットワーク",
+    "busy.signOutDeviceS": "{device} をサインアウトしました。",
     "set.access.approveNeedsBrowser":
       "デバイスの承認には、サインイン済みのブラウザーが必要です。このページで改めてサインインしてから承認してください。",
     "set.access.approveNotAgent":
