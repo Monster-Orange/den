@@ -33,11 +33,10 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
-import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
 import {
   connectHost,
   type HostClient,
@@ -187,17 +186,13 @@ async function phone(
   await p.route("**/api/notifications/read", (r) =>
     r.fulfill({ json: { ok: true } }),
   );
-  if (opts.claim) {
-    await p.goto(
-      claimLink(s!.base, mintClaimCode(readWebSecret(s!.stateDir)!)),
-    );
+  // Issue 819: an approved browser, landing on `url` with its approval
+  // key (the held-write ask's Allow needs it).
+  await signInPage(p, s!.stateDir, s!.base, url);
+  if (opts.claim)
     await p.waitForFunction(
       () => localStorage.getItem("den.approveKey")?.length === 43,
     );
-    await p.goto(`${s!.base}${url}`);
-  } else {
-    await p.goto(signInUrl(s!.stateDir, s!.base, url));
-  }
   await p.waitForFunction(() => "denShell" in window);
   return p;
 }
