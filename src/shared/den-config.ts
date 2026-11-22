@@ -647,6 +647,8 @@ export interface UserConfig {
      */
     issue_writes?: unknown;
     issue_writes_per_hour?: unknown;
+    /** Issue 1127: how old a repo's visibility may be for the words check. */
+    issue_writes_visibility_minutes?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -1890,6 +1892,7 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  "issue_writes_visibility_minutes",
 ];
 
 /**

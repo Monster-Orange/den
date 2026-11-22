@@ -4472,6 +4472,29 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agent_issue_writes?.per_hour ?? 60,
     write: (v, ctx) => ctx.post({ agent_issue_writes: { per_hour: v } }),
   },
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  {
+    id: "agents.issue_writes_visibility_minutes",
+    category: "agents",
+    label: "Recheck a repo's visibility after",
+    description:
+      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    keywords: [
+      "issue",
+      "github",
+      "visibility",
+      "public",
+      "names",
+      "words",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.visibility_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.agent_issue_writes?.visibility_minutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ agent_issue_writes: { visibility_minutes: v } }),
+  },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the

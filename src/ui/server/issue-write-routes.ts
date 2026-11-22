@@ -24,6 +24,12 @@ import {
   type IssueWriteLimit,
   type IssueWriteSettings,
 } from "../../shared/issue-write.js";
+import {
+  filedTextHits,
+  filedTextRefusal,
+  needsFiledCheck,
+  type FiledText,
+} from "../../shared/filed-text-check.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf } from "./request-guard.js";
@@ -58,6 +64,16 @@ export interface IssueWriteDeps {
   ) => Promise<{ code: number; stdout: string; stderr: string }>;
   /** This install's label (the footer's). */
   installLabel: () => string;
+  /**
+   * Issue 1127: the listed names (shared/org-names.js orgPatterns; none:
+   * nothing refused) and a repo's visibility no older than `maxAgeMs`
+   * (null: not known, so checked).
+   */
+  namePatterns: () => RegExp[];
+  visibility: (
+    repo: string,
+    maxAgeMs: number,
+  ) => Promise<"public" | "private" | "internal" | null>;
   audit: (e: IssueWriteAudit) => void;
 }
 
@@ -149,6 +165,35 @@ export async function runIssueWrite(
       `${role ? `role ${role}` : "a persona with no role"} doesn't write issues here (agents.issue_writes: ${settings.roles.join(", ") || "none"}). A person changes that in Settings › Agents.`,
       issueNo,
     );
+
+  // Issue 1127: the text a create or comment files, checked for listed
+  // names before it is sent (and before it counts against the limit).
+  const texts: FiledText[] =
+    op.action === "create"
+      ? [
+          { field: "title", text: op.title },
+          { field: "body", text: op.body },
+        ]
+      : op.action === "comment"
+        ? [{ field: "comment", text: op.body }]
+        : [];
+  if (texts.length) {
+    let patterns: RegExp[];
+    try {
+      patterns = d.namePatterns();
+    } catch (e) {
+      // A list file named but missing: fail closed.
+      return refuse(500, "bad_config", (e as Error).message, issueNo);
+    }
+    if (patterns.length) {
+      const vis = await d.visibility(op.repo, settings.visibilityMinutes * 60_000);
+      if (needsFiledCheck(vis)) {
+        const hits = filedTextHits(texts, patterns, op.repo);
+        if (hits.length)
+          return refuse(400, "issue_write_words", filedTextRefusal(hits), issueNo);
+      }
+    }
+  }
 
   const took = d.limit.take(settings.perHour);
   if (!took.ok) {

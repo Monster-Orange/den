@@ -32,9 +32,11 @@
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
- *   agent_issue_writes: { roles?: [role, …] | null, per_hour? }
- *                                     user.yml agents.issue_writes and
- *                                     agents.issue_writes_per_hour (issue_write)
+ *   agent_issue_writes: { roles?: [role, …] | null, per_hour?,
+ *     visibility_minutes? }           user.yml agents.issue_writes,
+ *                                     agents.issue_writes_per_hour and
+ *                                     agents.issue_writes_visibility_minutes
+ *                                     (issue_write; issue 1127)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
@@ -84,7 +86,10 @@ import {
   sessionsValueError,
 } from "./den-config.js";
 import { HEALTH_POLL } from "./health-poll.js";
-import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
+import {
+  ISSUE_WRITES_PER_HOUR,
+  ISSUE_WRITES_VISIBILITY_MINUTES,
+} from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
@@ -353,6 +358,13 @@ const AGENT_ISSUE_WRITES: Record<string, Limit> = {
     key: "issue_writes_per_hour",
     min: ISSUE_WRITES_PER_HOUR.min,
     max: ISSUE_WRITES_PER_HOUR.max,
+    int: true,
+  },
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  visibility_minutes: {
+    key: "issue_writes_visibility_minutes",
+    min: ISSUE_WRITES_VISIBILITY_MINUTES.min,
+    max: ISSUE_WRITES_VISIBILITY_MINUTES.max,
     int: true,
   },
 };
@@ -664,7 +676,8 @@ export function patchCliRows(
     if (!isObj(iw))
       return {
         ok: false,
-        error: "agent_issue_writes is an object: roles, per_hour",
+        error:
+          "agent_issue_writes is an object: roles, per_hour, visibility_minutes",
       };
     const { roles, ...rest } = iw;
     if (

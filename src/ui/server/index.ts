@@ -529,7 +529,11 @@ import {
   type ReportRouteDeps,
 } from "./report-routes.js";
 import { reportHeld } from "./report-held.js";
-import { publicRepoVisibility } from "./report-visibility.js";
+import {
+  publicRepoVisibility,
+  repoVisibilities,
+} from "./report-visibility.js";
+import { orgPatterns } from "../../shared/org-names.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -2375,6 +2379,21 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     limit: issueWriteLimit,
     gh: runGh,
     installLabel: () => defaultInstallLabel(),
+    // Issue 1127: the listed names, and the repo's visibility through the
+    // cache Report uses (feedback.visibility_timeout_seconds and
+    // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
+    namePatterns: () => orgPatterns(),
+    visibility: async (repo, maxAgeMs) => {
+      const fb = reportRouteDeps().settings();
+      const vis = await repoVisibilities(getStateDir(), [repo], {
+        gh: (a) => runGh(a),
+        anon: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+        ttlMs: maxAgeMs,
+        timeoutMs: fb.visibilityTimeoutSeconds * 1000,
+        retryMs: fb.visibilityRetrySeconds * 1000,
+      });
+      return vis[repo] ?? null;
+    },
     audit: (e) => {
       try {
         recordAction(
@@ -5489,7 +5508,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     agent_issue_writes: (() => {
       try {
         const c = issueWriteSettings(() => user, readDenConfig);
-        return { roles: c.roles, per_hour: c.perHour };
+        return {
+          roles: c.roles,
+          per_hour: c.perHour,
+          visibility_minutes: c.visibilityMinutes,
+        };
       } catch {
         return null;
       }
