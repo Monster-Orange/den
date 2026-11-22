@@ -2049,7 +2049,7 @@
     "ap.do.agent_signing_key_create":
       "Crear la clave de firma de los agentes ({path})",
     "ap.det.agent_signing_key_create.make":
-      "Crea una clave SSH ed25519 sin frase de contraseña en {path}. Den y sus agentes firman con ella; no está oculta a otros programas que se ejecutan con la misma sesión.",
+      "Crea una clave SSH ed25519 sin frase de contraseña en {path}. Den y sus agentes firman con ella; no está oculta a otros programas que se ejecutan con el mismo login.",
     "ap.det.agent_signing_key_create.set":
       "Pone agents.git.signing_key en config/local/user.yml: los commits de los agentes y los de la versión fijada de Den se firman con ella.",
     "ap.det.agent_signing_key_create.github":
