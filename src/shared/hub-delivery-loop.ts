@@ -27,6 +27,7 @@ import {
   heldIdsIn,
   isApproval,
   isOwner,
+  mayBeApproval,
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
@@ -39,6 +40,9 @@ import {
   type DeliveryTrouble,
   type SeenDeliveries,
 } from "./hub-delivery.js";
+
+/** P0-D2: the most early approvals kept while Den learns its person. */
+const EARLY_MAX = 500;
 
 export type AgentState = "missing" | "stopped" | "busy" | "idle";
 
@@ -301,6 +305,7 @@ export class DeliveryLoop {
 
   /** P0-D2: deliveries taken before Den knew its person, to check then. */
   private approvalLater: Delivery[] = [];
+  private earlyDropSaid = false;
   /** Ids Hub answered 410 for (sent again, or withdrawn): never acked again. */
   private readonly superseded = new Set<string>();
   /** Issue 701: the reason each held delivery was last acked `queued` with. */
@@ -707,7 +712,14 @@ export class DeliveryLoop {
   private checkApproval(dv: Delivery): void {
     const o = this.d.owner();
     if (!o) {
-      if (this.approvalLater.length < 500) this.approvalLater.push(dv);
+      if (!mayBeApproval(dv)) return;
+      if (this.approvalLater.length < EARLY_MAX) this.approvalLater.push(dv);
+      else if (!this.earlyDropSaid) {
+        this.earlyDropSaid = true;
+        this.d.log?.(
+          `hub delivery: early approval ${dv.id} dropped: ${EARLY_MAX} already wait for Den to learn its person`,
+        );
+      }
       return;
     }
     if (!isApproval(dv, o)) return;
@@ -716,6 +728,15 @@ export class DeliveryLoop {
     } catch {
       /* the bell's trouble never stops a delivery */
     }
+  }
+
+  /**
+   * P0-D2: Den's person may have changed (a new connection): approvals
+   * kept for the old one are forgotten.
+   */
+  ownerReset(): void {
+    this.approvalLater = [];
+    this.earlyDropSaid = false;
   }
 
   async pump(): Promise<void> {

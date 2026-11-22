@@ -46,6 +46,7 @@ const raw = (id: string, o: Record<string, unknown> = {}) => ({
 function setup(known = true) {
   const approved: Delivery[] = [];
   const who = { known, asked: 0 };
+  const logs: string[] = [];
   const hub: DeliveryHub = {
     stream: () => {
       throw Object.assign(new Error("no stream"), { kind: "refused" });
@@ -66,8 +67,9 @@ function setup(known = true) {
     owner: () => (who.known ? { ownerId: "u_me", company: "Acme" } : null),
     seen: new SeenDeliveries(path.join(dir, "seen.json")),
     approved: (d: Delivery) => approved.push(d),
+    log: (l: string) => logs.push(l),
   } as ConstructorParameters<typeof DeliveryLoop>[0]);
-  return { loop, approved, who };
+  return { loop, approved, who, logs };
 }
 
 describe("P0-D2: approvals reach Den on arrival", () => {
@@ -119,5 +121,22 @@ describe("P0-D2: approvals reach Den on arrival", () => {
     await loop.pump();
     await loop.pump();
     expect(approved.map((d) => d.id)).toEqual(["a3"]);
+  });
+
+  it("keeps early only what could be an approval, says when its cap drops one, and forgets them when the person resets", async () => {
+    const { loop, approved, who, logs } = setup(false);
+    await loop.take(raw("e1", { kind: "approve" }));
+    await loop.take(raw("e2", { body: "nice work" }));
+    loop.ownerReset();
+    await loop.take(raw("e3", { kind: "approve" }));
+    who.known = true;
+    await loop.pump();
+    expect(approved.map((d) => d.id)).toEqual(["e3"]);
+    const many = setup(false);
+    for (let i = 0; i < 501; i++)
+      await many.loop.take(raw(`m${i}`, { kind: "approve" }));
+    expect(
+      many.logs.filter((l) => /early approval.*dropped/.test(l)),
+    ).toHaveLength(1);
   });
 });

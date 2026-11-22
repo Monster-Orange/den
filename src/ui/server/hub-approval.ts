@@ -7,6 +7,7 @@
 import {
   approvalKeys,
   approvalNoticeText,
+  approvalVersion,
   LOCAL_PREFIX,
   type Delivery,
   type DeliveryOwner,
@@ -17,6 +18,7 @@ export interface SettleDeps {
     agent: string,
     workspace: string,
     keys: string[],
+    version?: number,
   ) => { agent: string; key: string }[];
   /** An audit line per question cleared: who, which delivery, which key. */
   log: (line: string) => void;
@@ -33,7 +35,12 @@ export async function settleApproval(
   const ws = d.workspaceOf(dv.agent);
   const o = d.owner();
   if (!ws || !o) return;
-  for (const c of d.approvedAbout(dv.agent, ws, approvalKeys(dv))) {
+  for (const c of d.approvedAbout(
+    dv.agent,
+    ws,
+    approvalKeys(dv),
+    approvalVersion(dv),
+  )) {
     const other = c.agent !== dv.agent;
     d.log(
       `hub approval: cleared ${c.agent}'s question (delivery ${dv.id}, kind ${dv.kind ?? "comment"}, names ${c.key})${other ? "; told it" : ""}`,
