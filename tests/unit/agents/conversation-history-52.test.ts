@@ -256,10 +256,34 @@ describe("writeRecord keeps the list beside the record", () => {
     expect(ids(st)).toEqual([["new1", "start"]]);
   });
 
+  it("an entry whose id isn't a conversation id (a path) is dropped; the rest stay", () => {
+    const st = state();
+    writeRecord(st, rec({ resumeToken: "c1" }));
+    fs.writeFileSync(
+      conversationsFile(st, "builder"),
+      JSON.stringify([
+        { id: "../../etc/passwd", from: T0, why: "start" },
+        { id: "c0", from: T0, to: T1, why: "start" },
+        { id: "a/b", from: T1, why: "fresh" },
+        { id: "", from: T1, why: "fresh" },
+        { id: "c1", from: T1, why: "nope" },
+        { id: "c1", from: T1, why: "fresh" },
+      ]),
+    );
+    expect(ids(st)).toEqual([
+      ["c0", "start"],
+      ["c1", "fresh"],
+    ]);
+  });
+
+  it("a conversation id that isn't one is never recorded", () => {
+    expect(step(null, null, rec({ resumeToken: "../x" }), T0)).toEqual([]);
+  });
+
   it("a list file that isn't one is ignored, and the record backfills", () => {
     const st = state();
     writeRecord(st, rec({ resumeToken: "c1" }));
-    fs.writeFileSync(conversationsFile(st, "builder"), '[{"id": 5}]');
+    fs.writeFileSync(conversationsFile(st, "builder"), '{"id": 5}');
     expect(ids(st)).toEqual([["c1", "start"]]);
   });
 });

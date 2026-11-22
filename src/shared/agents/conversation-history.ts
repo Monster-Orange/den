@@ -6,7 +6,11 @@
  * The list lives beside the record, in the agent's own files
  * (`agent-files/<id>/conversations.json`, records.ts), never in the record:
  * records are read on hot paths (the rail, the bell, delivery ticks), and
- * the list only grows. Only the Coach reads it.
+ * the list only grows. Only the Coach reads it. The folder is the agent's
+ * own (it writes its handoff there), so the file is agent-writable:
+ * readers treat it as a hint, never proof, and parseConversations keeps
+ * only entries whose id has the runtime's conversation-id shape
+ * (CONVERSATION_ID_RE), never a path.
  *
  * An entry is appended whenever the record's conversation id
  * (resumeToken) changes, by writeRecord, so no start path can miss it:
@@ -35,6 +39,12 @@ export interface ConversationEntry {
   /** Rebuilt from an older record: `from` and `to` are approximate. */
   backfilled?: true;
 }
+
+/**
+ * A runtime's conversation id: the same rule as the usage reader's and
+ * den-claude's (usage/sources.ts, agents/den-claude.ts). Never a path.
+ */
+export const CONVERSATION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 const WHYS: readonly ConversationWhy[] = [
   "start",
@@ -96,7 +106,8 @@ export function nextConversations(
 ): ConversationEntry[] | null {
   const base = !prev ? [] : (stored ?? backfillConversations(prev));
   const list = base.map((c) => ({ ...c }));
-  const id = next.resumeToken;
+  const token = next.resumeToken;
+  const id = token && CONVERSATION_ID_RE.test(token) ? token : undefined;
   if (!id || list.at(-1)?.id === id) return stored && prev ? null : list;
   const last = list.at(-1);
   if (last && !last.to) last.to = now;
@@ -113,19 +124,23 @@ export function nextConversations(
   return list;
 }
 
-/** A stored list as read back, or null when it isn't one. */
+/**
+ * A stored list as read back: its well-formed entries only (an id that
+ * isn't a conversation id, a bad time or reason, is dropped), or null when
+ * it isn't a list at all.
+ */
 export function parseConversations(v: unknown): ConversationEntry[] | null {
   if (!Array.isArray(v)) return null;
-  const ok = v.every(
-    (c) =>
-      c &&
+  return v.filter(
+    (c): c is ConversationEntry =>
+      !!c &&
       typeof c === "object" &&
       typeof c.id === "string" &&
+      CONVERSATION_ID_RE.test(c.id) &&
       typeof c.from === "string" &&
       (c.to === undefined || typeof c.to === "string") &&
       WHYS.includes(c.why),
   );
-  return ok ? (v as ConversationEntry[]) : null;
 }
 
 /** Every conversation id in `list`, oldest first, each once. */
