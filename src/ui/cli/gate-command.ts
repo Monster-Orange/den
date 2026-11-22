@@ -238,7 +238,6 @@ export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
   "SIGINT",
   "SIGTERM",
   "SIGHUP",
-  "SIGQUIT",
 ];
 
 const realExec = (
