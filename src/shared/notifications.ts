@@ -23,7 +23,9 @@ export type NotificationKind =
   | "answer"
   | "mention"
   | "decision"
-  | "service";
+  | "service"
+  // Issue 581: Hub's "<someone> shared <a doc> with you".
+  | "shared";
 
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "waiting",
@@ -32,6 +34,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "mention",
   "decision",
   "service",
+  "shared",
 ];
 
 export interface Notification {
@@ -103,10 +106,68 @@ export interface HubNote {
   readBy: string[];
   /** Its project's name (Hub, when it sends one). */
   scopeName?: string;
+  /** Issue 581: Den's own words for it (a shared item: Hub sends no text). */
+  msg?: NoteMsg;
+}
+
+/** Issue 581: a field of a shared item's data, cut and plain. */
+const field = (v: unknown, max: number): string =>
+  typeof v === "string"
+    ? v
+        .slice(0, max)
+        // Control characters out (terminal escapes included). Intentional.
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : "";
+
+/**
+ * Issue 581: a "shared" item's bounded data, worded by Den in the page's
+ * language; null when its slug or its sharer is missing.
+ */
+function sharedWords(
+  data: unknown,
+): { msg: NoteMsg; text: string; slug: string } | null {
+  const d = (data && typeof data === "object" ? data : {}) as Record<
+    string,
+    Record<string, unknown> | undefined
+  >;
+  const slug = field(d.artifact?.slug, 128);
+  const actor = field(d.actor?.login, 64);
+  if (!slug || !actor) return null;
+  const title = field(d.artifact?.title, 200) || slug;
+  const note = field((d as Record<string, unknown>).note, 1000);
+  const agent = d.actor?.kind === "agent";
+  const key = `bell.m.shared${agent ? "Agent" : ""}${note ? "Note" : ""}`;
+  const said = `${agent ? "The agent " : ""}${actor} shared ${title} with you`;
+  return {
+    msg: { key, vars: { actor, title, ...(note ? { note } : {}) } },
+    text: note ? `${said}: ${note}` : said,
+    slug,
+  };
+}
+
+/** Issue 581: a link only when https on the connected Hub's origin. */
+function onHub(link: string, hub: string | undefined): string | undefined {
+  let origin = "";
+  try {
+    origin = hub ? new URL(hub).origin : "";
+  } catch {
+    origin = "";
+  }
+  if (!/^https:\/\//.test(origin)) return undefined;
+  try {
+    const u = new URL(link);
+    if (u.protocol === "https:" && u.origin === origin) return link;
+  } catch {
+    /* not a URL: Hub's home */
+  }
+  return `${origin}/`;
 }
 
 /** Hub's item, or null when it isn't one Den can show. */
-export function parseHubNote(v: unknown): HubNote | null {
+export function parseHubNote(v: unknown, hubUrl?: string): HubNote | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
   const str = (x: unknown, max: number) =>
@@ -115,10 +176,33 @@ export function parseHubNote(v: unknown): HubNote | null {
   const kind = r.kind as NotificationKind;
   const subject = str(r.subject, 200);
   if (!id || !NOTIFICATION_KINDS.includes(kind)) return null;
-  if (!/^(thread|record|agent):/.test(subject)) return null;
   const at = str(r.at, 64);
   if (!at || Number.isNaN(Date.parse(at))) return null;
   const link = str(r.link, 2048);
+  if (kind === "shared") {
+    const w = sharedWords(r.data);
+    if (!w) return null;
+    const home = onHub(link, hubUrl);
+    return {
+      id,
+      kind,
+      subject: /^(thread|record):/.test(subject)
+        ? subject
+        : `record:artifact/${w.slug}`,
+      scope: str(r.scope, 128).replace(/[^\w.:/-]/g, ""),
+      ...(str(r.scopeName, 120).trim()
+        ? { scopeName: plain(str(r.scopeName, 120)) }
+        : {}),
+      text: w.text,
+      msg: w.msg,
+      ...(home ? { link: home } : {}),
+      at: new Date(at).toISOString(),
+      readBy: Array.isArray(r.readBy)
+        ? r.readBy.filter((x): x is string => typeof x === "string")
+        : [],
+    };
+  }
+  if (!/^(thread|record|agent):/.test(subject)) return null;
   return {
     id,
     kind,
@@ -323,6 +407,7 @@ export class NotificationStore {
           scope,
           ...(n.scopeName ? { scopeName: n.scopeName } : {}),
           text: plain(n.text),
+          ...(n.msg ? { msg: cleanMsg(n.msg) } : {}),
           ...(n.link ? { link: n.link } : {}),
           at: n.at,
           read: hubRead,
@@ -343,6 +428,9 @@ export class NotificationStore {
       ) {
         x.text = text;
         x.at = n.at;
+        const msg = cleanMsg(n.msg);
+        if (msg) x.msg = msg;
+        else delete x.msg;
         if (n.link) x.link = n.link;
         else delete x.link;
         // Hub filed it under its own project (Hub before that: the team's).
@@ -605,7 +693,7 @@ export class AskLimit {
 /**
  * Bell v6 (0.4.45): the seven switches a person turns kinds on and off
  * with. Each notification kind belongs to one; pr and shared have none
- * producing yet (their switches are ready).
+ * producing yet (its switch is ready); shared comes from Hub (issue 581).
  */
 export const BELL_SWITCHES = [
   "waiting",
@@ -632,6 +720,8 @@ export function switchOf(kind: NotificationKind): BellSwitch {
       return "pick";
     case "service":
       return "release";
+    case "shared":
+      return "shared";
   }
 }
 

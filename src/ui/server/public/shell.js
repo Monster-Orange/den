@@ -3523,6 +3523,11 @@
     "bell.m.vschedExpire.one":
       'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.shared": "{actor} shared {title} with you",
+    "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
+    "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
+    "bell.m.sharedAgentNote":
+      "The agent {actor} shared {title} with you: {note}",
     "bell.m.heldLapsed":
       "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
     "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
