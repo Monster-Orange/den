@@ -26,7 +26,9 @@ type Kind =
   | "unfixed"
   | "held-for-allow"
   | "fixture-say"
-  | "unmarked-say";
+  | "unmarked-say"
+  | "marked-say"
+  | "unread-say";
 
 function runGate(
   kind: Kind,
@@ -66,6 +68,8 @@ function runGate(
     // it for their Allow. The check only reads it.
     let selfUpdate = kind === "held-for-allow" ? "ask" : "auto";
     let settingsPosts = 0;
+    // "unread-say": the say stub's record reads once (its workspace), then not.
+    let sayReads = 0;
     let restartAt = null, upAt = null, held = false, told = false, auditAt = null;
     const audit = [];
     const WAIT = 10_000;
@@ -152,7 +156,7 @@ function runGate(
       stubLog() { return []; },
       cli() { return { code: 0, out: "", err: "" }; },
       readBed(rel) {
-        if (rel === "state:agents/gate-629-say.json") return JSON.stringify({ workspace: "gate-ws", runtime: "den-claude" });
+        if (rel === "state:agents/gate-629-say.json") return kind === "unread-say" && sayReads++ > 0 ? null : JSON.stringify({ workspace: "gate-ws", runtime: "den-claude", ...(kind === "marked-say" ? { testBed: true } : {}) });
         if (rel === "state:agents/server.json") return JSON.stringify({ workspace: "den-server", runtime: "den-claude" });
         if (rel === "state:audit.jsonl") return audit.join("\\n");
         return null;
@@ -169,7 +173,7 @@ function runGate(
       async fetch(p, init) {
         if (p === "/api/settings") { await ctx.api(p, init); return { status: 200, body: "{}" }; }
         if (/\\/agents\\/gate-629-say\\/say$/.test(p)) {
-          if (kind === "unmarked-say")
+          if (kind === "unmarked-say" || kind === "marked-say" || kind === "unread-say")
             return { status: 403, body: JSON.stringify({ ok: false, error: "only a person can send an agent a message" }) };
           if (kind === "fixture-say")
             return { status: 403, body: JSON.stringify({ ok: false, code: "fixture_scope", error: "The fixture person can only use the pages and the few writes live checks need: not this." }) };
@@ -259,7 +263,24 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(row(r, 3)?.detail).toMatch(
       /only a person can send an agent a message/,
     );
-    expect(row(r, 3)?.detail).toMatch(/marked testBed false/);
+    expect(row(r, 3)?.detail).toMatch(/has no testBed mark/);
+  });
+
+  it("the test operator's say refused for a stub Den marked testBed: clause 4 FAILs, naming the refusal", () => {
+    const r = runGate("marked-say");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 3)?.ok).toBe(false);
+    expect(row(r, 3)?.skip).toBeUndefined();
+    expect(row(r, 3)?.detail).toMatch(
+      /marked testBed: 403 \(no code\): only a person can send an agent a message/,
+    );
+  });
+
+  it("a plain 403 when the stub's record can't be read: not run, and the detail says the mark is unknown", () => {
+    const r = runGate("unread-say");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 3)).toMatchObject({ ok: null, skip: "needs-fixture-say" });
+    expect(row(r, 3)?.detail).toMatch(/testBed mark is unknown/);
   });
 
   it("the page's say refused to the fixture person: clause 4 is not run, never a FAIL", () => {

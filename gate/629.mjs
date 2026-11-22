@@ -19,9 +19,12 @@
 // showing the dialog answers 409 dialog_open and types nothing. The page's
 // say is refused to the fixture person (issue 810, 403 fixture_scope), and
 // the test operator's say reaches only an agent Den marked testBed when it
-// started it on the test-person path (issues 943, 956; a plain 403). Any
-// 403: the say never reached the dialog, so the clause is not run (skip
-// needs-fixture-say, with the code and the stub's mark), never a FAIL.
+// started it on the test-person path (issues 943, 956; a plain 403).
+//   403 fixture_scope                not run: the operator path is off here
+//   plain 403, stub not marked       not run: not started with --test-person
+//   plain 403, mark unreadable       not run, and the detail says so
+//   plain 403, stub marked testBed   FAIL: issue 956 or the mark is broken
+// (skip needs-fixture-say for each not run; the detail names the code.)
 //
 // Clauses 2 (a Hub comment) and 3 (the tools note): the bed has no Hub and
 // can't change a tool list, so both skip. With a Hub, clause 2's stub
@@ -261,7 +264,9 @@ async function sayRefused(ctx, s) {
   r.typed = await typedOf(b, since);
   const audit = ctx.readBed("state:audit.jsonl") ?? "";
   r.auditSent = audit.includes(`send ${SAY} a message`);
-  r.testBed = recordOf(ctx, SAY)?.testBed === true;
+  // The stub's mark: true, false, or null when its record can't be read.
+  const rec2 = recordOf(ctx, SAY);
+  r.testBed = rec2 ? rec2.testBed === true : null;
   return r;
 }
 
@@ -445,20 +450,26 @@ export function expect(r) {
       detail:
         "the bed can't change an agent's tool list, so no tools note is sent",
     },
-    y.status === 403
+    y.status === 403 && y.code !== "fixture_scope" && y.testBed === true
       ? {
           clause: clauses[3],
-          ok: null,
-          skip: "needs-fixture-say",
-          detail: `the say never reached the dialog: 403 ${y.code ?? "(no code)"}: ${y.error}; ${SAY} marked testBed ${y.testBed === true} (issues 810, 943, 956); nothing was typed: ${JSON.stringify(y.typed)}`,
+          ok: false,
+          detail: `the test operator's say was refused for ${SAY}, which Den marked testBed: 403 ${y.code ?? "(no code)"}: ${y.error} (issue 956 or the mark is broken); nothing was typed: ${JSON.stringify(y.typed)}`,
         }
-      : y.running === true && y.noDialog
+      : y.status === 403
         ? {
             clause: clauses[3],
             ok: null,
-            skip: "needs-dialog",
-            detail: `${SAY}: ${NO_DIALOG}; no message sent`,
+            skip: "needs-fixture-say",
+            detail: `the say never reached the dialog: 403 ${y.code ?? "(no code)"}: ${y.error}; ${y.code === "fixture_scope" ? "the operator path is off on this bed (issue 814)" : y.testBed === false ? `${SAY} has no testBed mark: not started with --test-person (issues 943, 956)` : `${SAY}'s record couldn't be read, so its testBed mark is unknown`}; nothing was typed: ${JSON.stringify(y.typed)}`,
           }
-        : { clause: clauses[3], ok: c4, detail: d4 },
+        : y.running === true && y.noDialog
+          ? {
+              clause: clauses[3],
+              ok: null,
+              skip: "needs-dialog",
+              detail: `${SAY}: ${NO_DIALOG}; no message sent`,
+            }
+          : { clause: clauses[3], ok: c4, detail: d4 },
   ];
 }
