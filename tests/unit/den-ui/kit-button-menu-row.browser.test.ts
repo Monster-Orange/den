@@ -53,10 +53,16 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-/** Den's own button rules, as its frame script drew them before the kit had a general button. */
+/**
+ * Den's own button rules, as its frame script drew them before the kit had
+ * a general button, with issue 673's: the second product's shipped button
+ * (its words and icon in a row, 6px apart; its danger).
+ */
 const DEN_RULES = `
 .den-btn { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button);
-  padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); }
+  padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text);
+  text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.den-btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
 .den-btn:hover { border-color: var(--border-strong); }
 .den-btn.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
 .den-btn.sm { padding: 2px 9px; font-size: 12.5px; }
@@ -70,6 +76,7 @@ const BUTTONS = `<style>#btns > * { margin: 24px; }</style><div id="btns">
 <button type="button" class="den-btn sm" id="b-sm">Small</button>
 <button type="button" class="den-btn sm primary" id="b-smp">Small primary</button>
 <button type="button" class="den-btn" id="b-dis" disabled>Disabled</button>
+<button type="button" class="den-btn danger" id="b-dan">Danger</button>
 <a class="den-btn" id="b-link" href="#x">Link</a>
 <a class="den-btn sm" id="b-linksm" href="#x">Small link</a>
 </div>`;
@@ -308,7 +315,8 @@ describe("the general button (button.css)", () => {
       const kit = await open({ look: "kit", mode });
       const want = await styles(den, ".den-btn");
       const have = await styles(kit, ".den-btn");
-      expect(want.length).toBe(7);
+      // Issue 673: danger is the eighth.
+      expect(want.length).toBe(8);
       expect(have).toEqual(want);
       // Hover, too.
       for (const p of [den, kit]) await p.hover("#b-sec");

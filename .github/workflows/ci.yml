@@ -538,6 +538,9 @@ jobs:
       - run: npm run typecheck
       - run: node scripts/words-gate.mjs
       - run: npm run lint
+      # Issue 786: every state file is written whole (atomic-write); a
+      # plain writeFileSync passes only with an allow-list entry and reason.
+      - run: node scripts/state-writes-gate.mjs
       - run: npm run -s gate:den-ui
       - name: Org-name gate
         env:

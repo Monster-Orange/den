@@ -281,8 +281,7 @@
       }
       .addr-opt,
       .addr-chip,
-      .addr-copy,
-      .addr-card .btn {
+      .addr-copy {
         min-height: 44px;
         padding: 0 16px;
         border: 1px solid var(--border-strong);
@@ -292,16 +291,15 @@
         font: 500 14px var(--sans);
         cursor: pointer;
       }
+      /* The card's buttons are the kit's (issue 673), at the mock's 44px. */
+      .addr-card .den-btn {
+        min-height: 44px;
+        padding: 0 16px;
+      }
       .addr-opt[aria-pressed="true"],
       .addr-chip[aria-pressed="true"] {
         border-color: var(--accent);
         box-shadow: inset 0 0 0 1px var(--accent);
-        font-weight: 600;
-      }
-      .addr-card .btn.primary {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: var(--on-accent);
         font-weight: 600;
       }
       .addr-snip {

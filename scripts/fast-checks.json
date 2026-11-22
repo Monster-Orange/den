@@ -3,6 +3,10 @@
   "commands": [
     { "name": "words gate", "run": ["node", "scripts/words-gate.mjs"] },
     {
+      "name": "state writes (atomic-write)",
+      "run": ["node", "scripts/state-writes-gate.mjs"]
+    },
+    {
       "name": "kit copies (den-ui parity)",
       "run": [
         "node",

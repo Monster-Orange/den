@@ -23,6 +23,7 @@ import * as os from "os";
 import * as path from "path";
 import * as dns from "dns";
 import { spawn } from "child_process";
+import { testResolveLookup } from "../test-resolve.js";
 import {
   HEALTH_CHECK_TIMEOUT_MS,
   HOSTED_HEALTH_CHECK_TIMEOUT_MS,
@@ -188,6 +189,9 @@ function resolveHostViaCares(hostname: string): Promise<string | null> {
 
 /** `localhost` and `*.localhost` are this machine (RFC 6761); else c-ares. */
 async function resolveName(host: string): Promise<string | null> {
+  // Issue 1073: a test install's own name map, when it holds the name.
+  const mapped = testResolveLookup(host);
+  if (mapped) return mapped;
   if (host === "localhost" || host.endsWith(".localhost")) return "127.0.0.1";
   return _resolveHost(host);
 }
