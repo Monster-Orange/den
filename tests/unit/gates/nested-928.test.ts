@@ -129,6 +129,42 @@ describe("issue 928: a nested run never outlives its slot", () => {
   });
 });
 
+describe("issue 928: a nested command that ignores TERM", () => {
+  it("gets KILL at the next look", async () => {
+    const s = store();
+    const outer = held(s, "browser");
+    let end: (c: number) => void = () => {};
+    const killed: string[] = [];
+    const beats: (() => void)[] = [];
+    const { d } = deps(s, {
+      env: { DEN_GATE_SLOT: outer.id },
+      descends: () => true,
+      exec: () => ({
+        pid: 7003,
+        kill: (sig) => {
+          killed.push(sig);
+          if (sig === "SIGKILL") end(137);
+        },
+        done: new Promise<number>((r) => (end = r)),
+      }),
+      every: (_ms, fn) => {
+        beats.push(fn);
+        return () => {
+          beats.length = 0;
+        };
+      },
+    });
+    const ran = cmdGate(["run", "--kind", "browser", "--", "npx", "x"], d);
+    await Promise.resolve();
+    s.release(outer.id);
+    beats.forEach((b) => b());
+    expect(killed).toEqual(["SIGTERM"]);
+    beats.forEach((b) => b());
+    expect(killed).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(await ran).toBe(137);
+  });
+});
+
 describe("issue 928: a nested run of the held kind", () => {
   it("runs inside the held slot at once: one entry, no wait", async () => {
     const s = store();

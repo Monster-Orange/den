@@ -419,9 +419,16 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     const off = d.onSignal((sig) => child.kill(sig));
     // Never past its slot: when the outer run gives it back (it ended),
     // this command stops too, so two runs never share a slot unheld.
+    // A command that ignores TERM gets KILL at the next look.
     let gone = false;
+    let ended = false;
+    void child.done.then(() => (ended = true));
     const look = d.every(NESTED_LOOK_MS, () => {
-      if (gone || d.store.get(inside.id)?.grantedAt) return;
+      if (gone) {
+        if (!ended) child.kill("SIGKILL");
+        return;
+      }
+      if (d.store.get(inside.id)?.grantedAt) return;
       gone = true;
       d.err(
         `gate: ${inside.id}'s run ended and gave its slot back; stopping ${label}`,
