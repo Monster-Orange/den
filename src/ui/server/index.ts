@@ -11,6 +11,7 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   COACH_ROUTES,
   handleCoachRoute,
@@ -27,7 +28,6 @@ import {
   COACH_DEFAULTS,
   type CoachSettings,
 } from "../../shared/coach/settings.js";
-import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
