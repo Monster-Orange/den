@@ -13,6 +13,9 @@
  *   - a colour chosen in one tab repaints another tab's top bar chip and
  *     agents at once, with no reload.
  *
+ * Subjects: shell-prefs.ts (the saved colours) and theme-runtime.ts (the
+ * colour tokens), with public/project-colour-picker.js.
+ *
  * The demo distribution (acme; north, south) with a scripted PTY
  * (helpers/agents-page-server.ts). Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.

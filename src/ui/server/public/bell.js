@@ -75,7 +75,7 @@ function scopeDot(scope) {
       ? window.denShell?.projectColour?.(scope.slice("workspace/".length))
       : null;
   return pc
-    ? `<span class="den-pc" data-pc="${esc(pc)}" aria-hidden="true"></span>`
+    ? `<i class="den-pc" data-pc="${esc(pc)}" aria-hidden="true"></i>`
     : "";
 }
 

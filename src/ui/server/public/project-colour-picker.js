@@ -120,9 +120,12 @@ export async function pickProjectColour({ slug, name, data, opener }) {
       ?.value ?? chosen;
   if (picked === chosen) return false;
   try {
-    const r = await sh.api("POST", "/api/settings", {
-      shell: { projectColours: { [slug]: picked || null } },
-    });
+    // BUSY-1: the working pop-up stays up until the server answers.
+    const body = { shell: { projectColours: { [slug]: picked || null } } };
+    const run = (headers) => sh.api("POST", "/api/settings", body, { headers });
+    const r = sh.busyAction
+      ? await sh.busyAction("project-colour", run, { button: opener })
+      : await run({});
     if (r && r.ok === false) throw new Error(r.error || "refused");
   } catch (e) {
     sh?.toast?.(t("pc.failed", { err: e?.message || String(e) }));

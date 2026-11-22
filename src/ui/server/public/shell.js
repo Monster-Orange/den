@@ -9384,9 +9384,7 @@
     // none orange or red, each 3:1 against the page in both modes, for
     // edges, dots and tiles only: text is never coloured by project. An
     // element names its project's colour with data-pc; --pc is the colour.
-    ":root { --pc-blue: hsl(212 70% 42%); --pc-teal: hsl(176 60% 30%); --pc-green: hsl(135 50% 30%); --pc-purple: hsl(272 50% 48%); --pc-pink: hsl(330 60% 44%); --pc-gold: hsl(44 80% 36%); --pc-brown: hsl(25 40% 34%); --pc-slate: hsl(215 14% 40%); }",
-    ':root[data-mode="dark"] { --pc-blue: hsl(212 80% 66%); --pc-teal: hsl(176 55% 55%); --pc-green: hsl(135 45% 58%); --pc-purple: hsl(272 70% 76%); --pc-pink: hsl(330 70% 70%); --pc-gold: hsl(44 85% 60%); --pc-brown: hsl(25 45% 62%); --pc-slate: hsl(215 18% 68%); }',
-    "@media (prefers-color-scheme: dark) { :root:not([data-mode]) { --pc-blue: hsl(212 80% 66%); --pc-teal: hsl(176 55% 55%); --pc-green: hsl(135 45% 58%); --pc-purple: hsl(272 70% 76%); --pc-pink: hsl(330 70% 70%); --pc-gold: hsl(44 85% 60%); --pc-brown: hsl(25 45% 62%); --pc-slate: hsl(215 18% 68%); } }",
+    // The colours themselves are theme tokens (--pc-<name>, /theme.css).
     '[data-pc="blue"] { --pc: var(--pc-blue); }',
     '[data-pc="teal"] { --pc: var(--pc-teal); }',
     '[data-pc="green"] { --pc: var(--pc-green); }',
