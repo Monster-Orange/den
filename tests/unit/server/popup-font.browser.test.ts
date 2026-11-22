@@ -384,7 +384,7 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       await p.locator(WHATS_NEW).waitFor({ timeout: 20_000 });
       await p.keyboard.press("Escape");
       await p.locator(WHATS_NEW).waitFor({ state: "detached" });
-      await p.locator(".add-svc-open-btn").first().click();
+      await p.locator("[data-add-svc]").click();
       const pop = "dialog#add-svc-dlg[open]";
       await p.locator(pop).waitFor();
       expect(problems(await fontsOf(p, pop), strict)).toEqual([]);

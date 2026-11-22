@@ -113,7 +113,7 @@ function renderLocal() {
     return (
       `<button type="button" class="${cls}" data-as-local="${esc(r.relPath)}"` +
       ` aria-pressed="${st.selLocal?.relPath === r.relPath}"${isAdded ? " disabled" : ""}>` +
-      `<span class="add-svc-row-info"><span class="add-svc-name">${esc(r.name + (r.currentBranch ? " @ " + r.currentBranch : ""))}</span>` +
+      `<span class="add-svc-row-info"><span class="add-svc-name" data-as-name>${esc(r.name + (r.currentBranch ? " @ " + r.currentBranch : ""))}</span>` +
       `<span class="add-svc-row-path">${esc(r.relPath)}</span></span>` +
       (ws ? `<span class="add-svc-ws-badge">${esc(ws)}</span>` : "") +
       (isAdded ? pill("added", t("addSvc.added")) : "") +
@@ -176,7 +176,7 @@ function renderGh() {
     return (
       `<button type="button" class="add-svc-row selectable${sel ? " selected" : ""}${added.has(r.name) ? " already" : ""}"` +
       ` data-as-gh="${esc(r.name)}" aria-pressed="${sel}">` +
-      `<span class="add-svc-name">${esc(r.name)}</span>` +
+      `<span class="add-svc-name" data-as-name>${esc(r.name)}</span>` +
       (r.hasDen
         ? `<span class="add-svc-pill supported" translate="no">✓ __DEN_CLI__</span>`
         : pill("no-manifest", t("addSvc.noManifest"))) +
