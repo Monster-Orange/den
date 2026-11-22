@@ -53,13 +53,21 @@ export function orgPatterns(env = process.env) {
 /**
  * Issue 1127: `text` with each match of a listed pattern replaced by
  * "<listed>": for text Den adds itself (a report's page and version
- * sections), so what Den writes never holds a listed name.
+ * sections), so what Den writes never holds a listed name. A line the
+ * wider match still catches (a name written "Acme Widgets" or
+ * "acme-widgets" for a listed "acmewidgets") is masked whole: that text
+ * isn't checked, so it must hold no form of a listed name.
  */
 export function orgMask(text, patterns) {
-  let out = String(text ?? "");
-  for (const p of patterns)
-    out = out.replace(new RegExp(p.source, "gi"), "<listed>");
-  return out;
+  return String(text ?? "")
+    .split("\n")
+    .map((line) => {
+      let out = line;
+      for (const p of patterns)
+        out = out.replace(new RegExp(p.source, "gi"), "<listed>");
+      return orgHitsWide(out, patterns).length ? "<listed>" : out;
+    })
+    .join("\n");
 }
 
 /**

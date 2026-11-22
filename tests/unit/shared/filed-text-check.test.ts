@@ -136,4 +136,14 @@ describe("issue 1127: a bad line in the list never shows its text", () => {
     ).toBe("page /projects/<listed>/agents and <listed>.lan");
     expect(shared.orgMask("clean text", patterns)).toBe("clean text");
   });
+
+  it("orgMask leaves no spaced or hyphenated form of a listed name (the wider match)", () => {
+    const out = shared.orgMask(
+      "version 9.9.9\npage http://acme-widgets.lan:7777/agents\nAcme Widgets HQ",
+      patterns,
+    );
+    expect(out.split("\n")[0]).toBe("version 9.9.9");
+    expect(shared.orgHitsWide(out, patterns)).toEqual([]);
+    expect(out.toLowerCase()).not.toMatch(/acme|widgets/);
+  });
 });
