@@ -157,7 +157,7 @@ const esc = (u: string) => u.replace(/[?]/g, "\\?");
  * each one that isn't the pointer.
  */
 async function notPointer(p: Page): Promise<string[]> {
-  return p.$$eval("#den-bell-pop .den-bell-row", (rows) => {
+  return p.$$eval("#den-bell-pop [data-id][data-kind]", (rows) => {
     const out: string[] = [];
     let n = 0;
     for (const r of rows) {
@@ -165,7 +165,7 @@ async function notPointer(p: Page): Promise<string[]> {
       n++;
       const parts: [string, Element | null][] = [
         ["row", r],
-        ["dot", r.querySelector(".den-dot")],
+        ["dot", r.querySelector("[aria-hidden]")],
         ["text", r.querySelector('a[data-bell="open"]')],
         ["time", r.querySelector("time")],
       ];
@@ -229,9 +229,7 @@ describe.each([1280, 390])(
       const p = await open(width);
       await openBell(p);
       await p.locator('#den-bell-pop [data-bell="updates"]').click();
-      await p
-        .locator('#den-bell-pop .den-bell-row[data-kind="service"]')
-        .waitFor();
+      await p.locator('#den-bell-pop [data-kind="service"]').waitFor();
       expect(await notPointer(p)).toEqual([]);
       await p.context().close();
     }, 90_000);
