@@ -59,9 +59,9 @@ describe("issue 843: the fast static checks", () => {
       "tests/unit/den-ui/tokens.test.ts",
     ])
       expect(list.jest).toContain(f);
-    expect(list.commands.map((c) => c.run[1])).toContain(
-      "scripts/words-gate.mjs",
-    );
+    const scripts = list.commands.map((c) => c.run[1]);
+    expect(scripts).toContain("scripts/words-gate.mjs");
+    expect(scripts).toContain("packages/den-ui/bin/den-ui-parity.mjs");
   });
 
   it("ci.yml: a `fast` job runs the list, on a GitHub-hosted runner, with a short limit", () => {
@@ -100,6 +100,27 @@ describe("issue 843: the fast static checks", () => {
       if (!/!cancelled\(\)|always\(\)/.test(job.if ?? "")) continue;
       expect(`${name}: ${job.if}`).toContain("needs.fast.result == 'success'");
     }
+  });
+
+  it("ci.yml: a job that waits for `fast` never runs fast's commands again", () => {
+    // A check runs once per tree: the jobs after `fast` keep their other
+    // gates (typecheck, lint, org names) and leave the listed ones to it.
+    const scripts = list.commands.map((c) => c.run[1]);
+    for (const [name, job] of Object.entries(ci.jobs)) {
+      if (!needs(job).includes("fast")) continue;
+      const text = (job.steps ?? []).map((s) => s.run ?? "").join("\n");
+      for (const script of scripts)
+        expect([name, script, text.includes(script)]).toEqual([
+          name,
+          script,
+          false,
+        ]);
+      expect([name, text.includes("gate:den-ui")]).toEqual([name, false]);
+    }
+  });
+
+  it("ci.yml: on push and dispatch the per-Node checks wait for `fast` too", () => {
+    expect(needs(ci.jobs.checks)).toContain("fast");
   });
 
   it(".husky/pre-push runs the same list, with DEN_PREPUSH_FAST=0 to skip it", () => {
