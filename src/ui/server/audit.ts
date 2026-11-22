@@ -19,6 +19,7 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
+import { auditVia } from "../../shared/test-person.js";
 
 export { actorFromHeaders } from "../../shared/agent-actor.js";
 
@@ -33,6 +34,12 @@ export interface AuditEntry {
    * sets; absent for a call without one.
    */
   principal?: string;
+  /**
+   * Issue 636: "test-person" for a row made by a request that came by a
+   * test bed's test-person path (the CLI acting as the person; the guard
+   * lets the path in only there). Absent otherwise.
+   */
+  via?: "test-person";
   /**
    * SEC-1c: what the caller's x-den-actor headers claimed, when no actor
    * token proved it (unverified is then set). A label, never the actor.
@@ -171,10 +178,12 @@ export function recordAction(
 ): AuditEntry {
   const claim = actor?.unverified ? actor : null;
   const verified = actor && !actor.unverified ? actor : null;
+  const via = auditVia();
   const entry: AuditEntry = {
     ts: new Date().toISOString(),
     actor: verified ? "agent" : "user",
     ...(principal ? { principal } : {}),
+    ...(via ? { via } : {}),
     ...(claim
       ? {
           claimed: {
@@ -221,7 +230,8 @@ export function recordAction(
       : action.detail;
   sink?.(
     `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}` +
-      (principal && !verified ? ` · as ${principal}` : ""),
+      (principal && !verified ? ` · as ${principal}` : "") +
+      (via ? " · by the test-person path" : ""),
     actor,
   );
   return entry;

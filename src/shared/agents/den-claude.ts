@@ -691,7 +691,10 @@ function common(input: LaunchInput): {
         input.agentId,
         input.workspace.name,
         input.mcp.name,
-      ) + (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : ""),
+      ) +
+        (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : "") +
+        // Issue 158: the Hub delivery loop, after the Hub line.
+        (input.mcp.hub?.loop ? `\n\n${input.mcp.hub.loop}` : ""),
     ],
     files: {
       [file]: mcpConfigJson(input.mcp),

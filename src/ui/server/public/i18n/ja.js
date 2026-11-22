@@ -94,6 +94,52 @@
     "v.old_link": "テストを開く",
     "v.err_load": "検証の結果を読み込めませんでした。",
     "v.retry": "もう一度試す",
+    // Issue 441: an outside runner's gate results on Checks.
+    "v.m_ran": "{a}〜{b}に実行。",
+    "v.m_runner": "外部ランナーから。",
+    "v.i_nothing":
+      "{t} は {e} で実行されましたが、項目は一つも実行されませんでした。合格ではありません。",
+    "v.i_fail": "{e} の {t} は失敗: {a}、{b}、{c}。",
+    "v.i_pass": "{e} の {t} は合格: {a}、{b}、{c}。",
+    "v.i_np": "{n} 項目が合格",
+    "v.i_nm": "{n} 項目は人の操作が必要",
+    "v.i_nf": "{n} 項目が失敗",
+    "v.i_from": "インポートした結果です。",
+    "v.i_cfg": "インポートした結果は無効です: {e}",
+    "v.i_b_failed": "失敗",
+    "v.i_b_passed": "合格",
+    "v.i_nchecks": "チェック {n} 件",
+    "v.i_nclauses": "項目 {n} 件",
+    "v.i_sizes": "{a}、{b}。",
+    "v.n_passed": "合格",
+    "v.n_failed": "失敗",
+    "v.n_needs": "あなたの番",
+    "v.n_cantrun": "実行できず",
+    "v.i_failed_h": "失敗 ({n})",
+    "v.i_cantrun_h": "実行できず ({n})",
+    "v.i_needs_h": "あなたの番 ({n})",
+    "v.i_needs_p":
+      "チェックは人の判断を代わりに行いません。これらは {e} であなたが試してください。",
+    "v.i_issue": "issue {n}",
+    "v.i_checks_h": "このタグのチェック",
+    "v.i_chk": "{n} 項目中 {p} 項目が合格",
+    "v.i_chk_needs": "、{n} 項目があなたの番",
+    "v.i_on": "({t})",
+    "v.i_allran": "ここの項目はすべて合格しました。",
+    "v.c_passed": "合格",
+    "v.c_failed": "失敗",
+    "v.c_error": "エラー",
+    "v.c_needs": "あなたの番",
+    "v.c_cantrun": "実行できず",
+    "v.ct_result": "結果",
+    "v.ct_clause": "項目",
+    "v.ct_note": "メモ",
+    "v.ct_time": "時間",
+    "v.t_ms": "{n} ms",
+    "v.t_s": "{n} 秒",
+    "v.who_runner": "外部ランナー",
+    "v.actor_runner": "外部ランナー",
+    "v.fd_imported": "{e} の {t} の結果を送りました。",
     "n.environments": "環境",
     "n.releases": "リリース",
     "n.edge": "エッジ",
@@ -951,6 +997,19 @@
     "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
     "set.server.owner_name_timeout.d":
       "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.github_watch_interval": "GitHub の監視: 最初の間隔 (秒)",
+    "set.server.github_watch_interval.d":
+      "__DEN_TITLE__ のひとつの GitHub 監視が、エージェントの監視するプルリクエストと実行 (MCP github_watch) を確認する間隔です。変化がない間は倍になり、変化があると最初に戻ります。__DEN_CLI__ config github.watch_interval_seconds=60",
+    "set.server.github_watch_max_interval": "GitHub の監視: 最長の間隔 (秒)",
+    "set.server.github_watch_max_interval.d":
+      "変化がない間、GitHub の監視が確認と確認の間に待つ最長の時間です。__DEN_CLI__ config github.watch_max_interval_seconds=300",
+    "set.server.github_api_budget_floor":
+      "GitHub の監視: 残しておく API 呼び出し数",
+    "set.server.github_api_budget_floor.d":
+      "この 1 時間に残る GitHub API の呼び出しがこの数を下回ると、GitHub の監視は GitHub のリセットまで何も問い合わせず、新しい監視を断り、リセットの時刻を伝えます。__DEN_CLI__ config github.api_budget_floor=500",
+    "set.server.github_watches_max": "GitHub の監視: 同時に監視する数",
+    "set.server.github_watches_max.d":
+      "ここにいるすべてのエージェントを合わせて、GitHub の監視が同時に監視するプルリクエストと実行の数です。それを超える分は理由を添えて断ります。__DEN_CLI__ config github.watches_max=50",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
@@ -959,7 +1018,17 @@
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
-      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
+      "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。単体テストとブラウザーテストは別々の列で待ちます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_cpu_beside": "ブラウザーテストと並んで動かす単体テスト",
+    "set.server.gate_cpu_beside.d":
+      "ブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。同時に動かす単体テストの数を超えることはありません。0 ではブラウザーテストは単独で動きます。テスト用マシンで動くブラウザーテストは数えません。__DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_cpu_beside_release":
+      "リリース用ブラウザーテストと並んで動かす単体テスト",
+    "set.server.gate_cpu_beside_release.d":
+      "リリース優先のブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。0 (既定) ではリリース用の実行は単独で動き、ほかの実行がそのチェックを遅くしません。ほかのブラウザーテストは上の設定に従います。__DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_local_browser": "このマシンで同時に動かすブラウザーテスト",
+    "set.server.gate_local_browser.d":
+      "このマシンで同時に動かせるブラウザーテスト実行の数です。それぞれ専用のコンテナーで動きます。テスト用マシンで動くブラウザーテストは数えません。1 では 1 つずつ動きます。__DEN_CLI__ gate settings --local-browser-slots 1",
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -980,9 +1049,10 @@
       "種類ごとに同時に順番を飛ばせるリリース実行",
     "set.server.gate_priority_max.d":
       "人が待っていて、リリース優先の印が付いたリリース実行は、同じ種類の待機中の実行より先に進みます。実行中のものを止めることはありません。2 つ目は 1 つ目の後ろで待ちます。0 でオフになります。__DEN_CLI__ gate settings --priority-max 1",
-    "set.server.gate_priority_pass": "この時間待った実行は追い越されない（分）",
+    "set.server.gate_priority_pass":
+      "この時間待った印付きのリリース実行は追い越されない（分）",
     "set.server.gate_priority_pass.d":
-      "優先されたリリース実行は他の待機中の実行より先に進みますが、この時間待っている実行は追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+      "優先されたリリース実行は、同じ種類の他のすべての待機中の実行より先に進みます。リリース優先の印が付いた実行どうしでは、この時間待っているものは追い越しません。0 では他の印付きの実行を追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     "set.server.gate_priority_agents":
       "エージェントもリリースの優先を依頼できる",
     "set.server.gate_priority_agents.d":
@@ -1141,6 +1211,13 @@
     "set.agents.approvals_critical": "重要な書き込み",
     "set.agents.approvals_critical.d":
       "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "set.agents.issue_writes": "GitHub の issue を書けるロール",
+    "set.agents.issue_writes.d":
+      "自分のプロジェクトの GitHub リポジトリで、issue の作成、コメント、ラベル付け、マイルストーン設定をすぐに行えるエージェントのロールです。すべて記録されます。カンマ区切り、空欄はなし。未設定: planner、orchestrator、lead、sde、builder、reviewer、install（__DEN_TITLE__ 自身のエージェント）。__DEN_CLI__ config agents.issue_writes=[planner,sde]",
+    "set.agents.issue_writes_per_hour":
+      "1 時間あたりの GitHub issue の書き込み数",
+    "set.agents.issue_writes_per_hour.d":
+      "すべてのエージェントを合わせて 1 時間に行える issue の書き込み数です。超えると、エージェントに待ち時間が伝えられます。__DEN_CLI__ config agents.issue_writes_per_hour=60",
     "ap.do.agent_import":
       "会話 {session} をプロジェクト「{project}」の {persona} エージェントとして取り込む",
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
@@ -1264,6 +1341,19 @@
     "set.agents.hub_link_all": "判断できない候補",
     "set.agents.hub_link_all.d":
       "リンクすると、プロジェクトが Hub プロジェクトとつながり、エージェントがそこにドキュメント、モック、コメントを保存します。どの Hub プロジェクトが合うか Den が判断できないときだけ、ここに表示されます。1つ選んで「リンク」を押してください。それまで、そのプロジェクトの分は何も保存されません。",
+    "set.agents.hub_delivery_loop": "Hub のデリバリーループ",
+    "set.agents.hub_delivery_loop.d":
+      "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
+    "set.workspace.hub_delivery_loop":
+      "Hub のデリバリーループ: このプロジェクト",
+    "set.workspace.hub_delivery_loop.d":
+      "このプロジェクトのエージェントの指示に Hub のデリバリーループを入れるかどうか。インストール全体の設定より優先されます。エージェントの次の起動から反映されます。",
+    "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
+    "set.workspace.hub_delivery_loop.o.on": "オン",
+    "set.workspace.hub_delivery_loop.o.off": "オフ",
+    "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
     "ub.intro":
       "どの Hub プロジェクトが合うか、Den には判断できません。それぞれ1つ選んで「リンク」を押してください。",
     "ub.why.repos": "2つの Hub プロジェクトが同じリポジトリを持っています",
@@ -1987,6 +2077,7 @@
     "n.terminalTip": "このプロジェクトのフォルダーでシェルを Den 内に開く",
     "ag.term.started": "{w} でターミナルを開きました",
     "ag.term.failed": "Den はターミナルを開けませんでした: {e}",
+    "ag.start.lastLines": "停止する前に表示した内容:",
     "ag.term.ptyFailed":
       "Den はターミナルを開けませんでした: このマシンが PTY を割り当てませんでした ({e})。不要なターミナルを閉じるか、doctor を実行してください。",
     "ag.term.noWs": "有効なプロジェクトがありません。先に有効にしてください。",
@@ -2049,6 +2140,8 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
+    "bell.m.unaskedExit":
+      "{name} は Den が求めていないのに終了しました (終了コード {code}): {why}",
     "bell.m.trust": "{name}: 待機中: このフォルダを信頼しますか?",
     "bell.m.trustDeclined":
       "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
@@ -2094,6 +2187,8 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
     "bell.m.updatedSecurity":
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.toolsNoteHeld":
+      "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ が戻りました。{agent} への連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.restartedWhileWorking":

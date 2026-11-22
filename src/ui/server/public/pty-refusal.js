@@ -14,6 +14,19 @@ export function terminalFailText(err, t) {
   });
 }
 
+/**
+ * Issue 89: the lines an agent printed before it exited at once (the
+ * server's answer's `tail`, redacted there), or [] for any other failure.
+ */
+export function startFailTail(err) {
+  const d = err?.data ?? err?.body ?? null;
+  if ((err?.code ?? d?.code) !== "exited_at_once") return [];
+  const tail = d?.tail;
+  return Array.isArray(tail)
+    ? tail.filter((l) => typeof l === "string").slice(-20)
+    : [];
+}
+
 /** The start dialog's error line for failure `err`. */
 export function startFailText(err, t) {
   const e = err?.message || String(err);

@@ -531,7 +531,8 @@ describe("the panel", () => {
     const [tab] = await Promise.all([
       p.context().waitForEvent("page"),
       p.click('.den-rail [data-pin="notes"]', {
-        modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
+        // The browser's own OS picks it (a remote browser runs on another).
+        modifiers: ["ControlOrMeta"],
       }),
     ]);
     await tab.waitForURL(/\/services/);
