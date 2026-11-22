@@ -710,6 +710,26 @@ export function hubDeliveryLines(
   };
 }
 
+/**
+ * The shared GitHub watcher's row (MCP github_watch): GitHub calls left,
+ * the reset, the active watches and the interval, from the server's
+ * github/watch-status.json. Warns while paused (never a failure: agents
+ * still run). None before the server wrote it.
+ */
+async function githubWatchRow(): Promise<{
+  lines: string[];
+  check?: OnboardCheck;
+}> {
+  const { githubWatchLine, readWatchStatus } =
+    await import("../../shared/github-watch/status-line.js");
+  const l = githubWatchLine(readWatchStatus(getStateDir()));
+  if (!l) return { lines: [] };
+  return {
+    lines: [`  github watch  ${l.ok ? "✓" : "⚠"}  ${l.text}`],
+    check: { id: "github:watch", status: l.ok ? "ok" : "warn", detail: l.text },
+  };
+}
+
 /** Issue 702: the row for this install (hub.delivery_alert_minutes). */
 async function hubDeliveryDoctor(): Promise<
   ReturnType<typeof hubDeliveryLines>
@@ -1689,6 +1709,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       // Issue 625: the test boxes, and why one is skipped.
       const bx = await gateBoxRows();
       if (bx.lines.length) r.checks.push(bx.check);
+      // The shared GitHub watcher: calls left, reset, watches, interval.
+      const gw = await githubWatchRow();
+      if (gw.check) r.checks.push(gw.check);
     }
     {
       const { hubStatus } = await import("../../shared/hub.js");
@@ -1808,6 +1831,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of (await heldHubLines()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
+  // The shared GitHub watcher: calls left, reset, watches, interval.
+  for (const l of (await githubWatchRow()).lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");

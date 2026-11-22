@@ -123,6 +123,9 @@ const LISTING: Record<string, Entry> = {
   "notifications list": R,
   "notifications read": page("bell.js", "/api/notifications"),
 
+  // The shared GitHub watcher's line: doctor shows it too (a read).
+  "github status": R,
+
   "hub link": page("settings-registry.js", "/hub-project"),
   // den#49: an agent's commands, with its own Den token; a person uses Hub.
   "hub put": script("an agent publishes an artifact's files to Hub"),
@@ -222,6 +225,7 @@ const DISPATCH: Record<string, { file: string; not?: string[] }> = {
   stack: { file: "stack-command.ts" },
   sessions: { file: "sessions-command.ts" },
   notifications: { file: "notifications-command.ts" },
+  github: { file: "github-command.ts" },
   hub: { file: "hub-command.ts" },
   theme: { file: "theme-command.ts" },
   plugin: { file: "plugin-command.ts" },

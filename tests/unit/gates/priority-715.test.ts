@@ -113,17 +113,18 @@ describe("the queue rules (issue 715)", () => {
     expect(ids(queueOrder(q, GATE_DEFAULTS, at(4)))).toEqual(["c", "p", "a"]);
   });
 
-  it("never passes a run that has waited past the pass limit", () => {
+  // Issue 751: a plain waiter is passed however long it has waited; the
+  // pass limit applies only between marked runs (cpu-backfill-751.test.ts).
+  it("passes a plain run however long it has waited (issue 751)", () => {
     const q = [
       entry("h", "browser", 0, { granted: 0 }),
       entry("old", "browser", 0),
       entry("a", "browser", 50),
       entry("p", "browser", 61, { reason: "r" }),
     ];
-    // At 61 min, "old" has waited past 60: p goes behind it, ahead of a.
     expect(ids(queueOrder(q, GATE_DEFAULTS, at(61)))).toEqual([
-      "old",
       "p",
+      "old",
       "a",
     ]);
     expect(
@@ -139,7 +140,7 @@ describe("the queue rules (issue 715)", () => {
 
   it("the cap is a setting (default 1; 0 turns priority off)", () => {
     expect(GATE_DEFAULTS.priorityMax).toBe(1);
-    expect(GATE_DEFAULTS.priorityPassLimitMinutes).toBe(60);
+    expect(GATE_DEFAULTS.priorityPassLimitMinutes).toBe(0);
     expect(GATE_DEFAULTS.priorityAgents).toBe(true);
     const q = [
       entry("h", "browser", 0, { granted: 0 }),

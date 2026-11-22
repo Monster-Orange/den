@@ -1,8 +1,42 @@
 # Gate slots
 
 One machine runs heavy test runs for many repos and installs, so they take
-turns. A browser suite holds the machine alone. Unit suites share it, 2 at a
-time by default. First come, first served. A run is never stopped by another.
+turns. Unit suites (`cpu`) share it, 2 at a time by default (`cpu_slots`).
+Browser and cpu runs wait in separate lines, first come, first served within
+each: a cpu run never waits behind a browser run, and a browser run never
+waits behind a cpu run. A run is never stopped by another.
+
+## cpu runs beside a browser run
+
+Up to `cpu_slots_beside_browser` cpu runs (default 2, never more than
+`cpu_slots`) may run on this machine while a browser run does. At 0, a
+browser run runs alone, as before. A browser run on a test box (below) does
+not hold this machine, so it doesn't count.
+
+A browser run that waits only because more cpu runs hold the machine than
+may run beside it is never starved: while it waits, no new cpu run starts
+past that number. Once they drop to it, the browser run starts.
+
+```sh
+den gate settings --cpu-slots-beside-browser 0   # a browser run runs alone
+```
+
+## More than one browser run on this machine
+
+`local_browser_slots` (default 1) is how many browser runs may hold this
+machine at once, counted the way a test box's slots are. Each browser run
+here is in its own container, so a person may set it higher. A browser run
+on a test box doesn't use one. The cpu runs beside them stay at
+`cpu_slots_beside_browser` in all, however many browser runs hold. With
+more than one, `gate status` guesses a browser waiter's start from the slot
+that frees first.
+
+```sh
+den gate settings --local-browser-slots 2
+```
+
+`gate status`, `gate_slot_status` and the runner route's `place` give a
+waiting run's place in its own kind's line (1 is next).
 
 On the machine itself, wrap the run:
 
@@ -80,11 +114,14 @@ Use it only for a release run that the person marked, or that is for an
 issue the person reported. It goes to the front of its kind's waiting runs.
 
 - It never stops a run that holds a slot. It waits for that run to end.
+- It goes ahead of every plain waiting run of its kind, however long that
+  run has waited.
 - One such run per kind has priority at a time (`priority_max`, default 1).
   A second waits behind the first, then takes priority once the first
   starts.
-- It never passes a run that has waited `priority_pass_limit_minutes`
-  (default 60).
+- Between marked runs only: it never passes another marked run that has
+  waited `priority_pass_limit_minutes`. The default, 0, means it never
+  passes another marked run.
 - `priority_agents` (default 1) lets agents ask for it. At 0, only a person
   may. The MCP tool `gate_slot_request` takes `priority: "release"` and a
   `reason` too.
@@ -158,10 +195,14 @@ den gate settings --class-order "release, lane, other" \
 
 ## The order, all together
 
+0. Browser and cpu runs wait in separate lines; this order applies within
+   each. Up to `cpu_slots_beside_browser` cpu runs run beside a browser run
+   on this machine.
 1. A run that holds a slot is never taken back.
 2. A release-priority run (a person's, an agent's or a CI runner's) goes
-   first in its kind, past any class, but never past a run waiting longer
-   than `priority_pass_limit_minutes`.
+   first in its kind, past any class and any plain run, but never past
+   another marked run waiting longer than `priority_pass_limit_minutes`
+   (at 0, never past one).
 3. Then classes, highest first.
 4. Then yields: a run let ahead goes just ahead of the run that let it,
    never past a run that outranks it by 2 or 3.
