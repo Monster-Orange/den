@@ -143,6 +143,9 @@ body.den-has-shell > #den-content {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  /* Issue 1080: its width is its column's, so the crumbs can ask how much
+     room they have (the @container rule after the crumbs). */
+  container: den-left / inline-size;
 }
 /* The crumbs give way first: they shrink before the brand does. */
 .den-brand {
@@ -841,6 +844,23 @@ body.den-has-shell .den-upd {
   font-size: 13px;
   min-width: 0;
 }
+/* Issue 1080: a crumb before the last is never narrower than what it
+   draws at its least: its padding and border (8px and 1px a side), the
+   6px gap after its label, and its value's least width (4ch; a menu
+   crumb's 5ch and its ▾). Past that it clips, so the separator after it
+   never lands on its value. */
+.den-scope .den-ib:not(.den-last) {
+  min-width: calc(24px + 4ch);
+  overflow: hidden;
+}
+.den-scope .den-scope-btn:not(.den-last) {
+  min-width: calc(24px + 5ch + 0.28em);
+}
+/* The optional crumb may give way to nothing (clipped, never over the
+   next one); on a narrow left part it goes (below). */
+.den-scope .den-opt:not(.den-last) {
+  min-width: 0;
+}
 /* The last crumb's least width is its whole self: it never gives way. */
 .den-scope .den-ib.den-last {
   min-width: auto;
@@ -896,6 +916,16 @@ body.den-has-shell .den-upd {
 }
 .den-scope .den-ib[aria-expanded="true"] {
   background: var(--sunken);
+}
+/* Issue 1080: when the left part is too narrow for every crumb (the
+   brand already given way), the optional crumb and its separator go
+   before anything runs under the search. */
+@container den-left (max-width: 300px) {
+  .den-scope .den-opt,
+  .den-scope .den-opt + .den-sep,
+  .den-scope .den-opt + .den-scope-menu + .den-sep {
+    display: none;
+  }
 }
 /* A long value ends in an ellipsis; the whole value is in the menu. An
    env's name is short: never capped. */

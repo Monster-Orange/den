@@ -121,7 +121,12 @@ if (!q.has("bare")) {
       ...(q.has("filter") ? { filter: Number(q.get("filter")) } : {}),
       ...(q.has("nofilter") ? { filter: false } : {}) },
   ];
-  if (!q.has("noenv")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
+  // ?narrow (issue 1080): an optional label crumb, then the last, a menu.
+  if (q.has("narrow"))
+    crumbs.splice(0, crumbs.length,
+      { key: "org", label: "Company", value: "Fixture company name", optional: true },
+      { key: "ws", label: "Project", value: "All projects", menu: projects });
+  if (!q.has("noenv") && !q.has("narrow")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
   model.slots = {
     start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml(),
     bell: DenUI.bellButtonHtml({ count: Number(q.get("count") ?? 2) }),
@@ -909,6 +914,66 @@ for (const engine of ["chromium", "webkit"]) {
       expect(new Set(r.map((x) => x[3])).size).toBe(1);
       await p.context().close();
     });
+
+    // Issue 1080: on a narrow bar no crumb draws over the next, and the
+    // last never runs under the search. Each shown part's span is its box
+    // joined with its shown descendants' boxes, each clipped by an
+    // ancestor (up to the part) whose overflow-x isn't visible.
+    it.each([960, 1100])(
+      "issue 1080 at %ipx: the crumbs never draw over each other or under the search",
+      async (width) => {
+        const b = browsers[engine];
+        if (!b) return;
+        const p = await open(b, "?narrow", width);
+        const spans = await p.evaluate(() => {
+          const shown = (el: Element) => {
+            const r = el.getBoundingClientRect();
+            return (
+              r.width > 0 &&
+              r.height > 0 &&
+              getComputedStyle(el).visibility !== "hidden"
+            );
+          };
+          const span = (part: Element) => {
+            let l = Infinity;
+            let r = -Infinity;
+            for (const el of [part, ...part.querySelectorAll("*")]) {
+              if (!shown(el)) continue;
+              let { left, right } = el.getBoundingClientRect();
+              for (
+                let a = el.parentElement;
+                a && part.contains(a) && a !== part.parentElement;
+                a = a.parentElement
+              ) {
+                if (getComputedStyle(a).overflowX === "visible") continue;
+                const c = a.getBoundingClientRect();
+                left = Math.max(left, c.left);
+                right = Math.min(right, c.right);
+              }
+              if (right <= left) continue;
+              l = Math.min(l, left);
+              r = Math.max(r, right);
+            }
+            return [l, r];
+          };
+          const scope = document.querySelector(".den-top .den-scope")!;
+          const parts = [...scope.children].filter(shown);
+          parts.push(document.querySelector(".den-top .den-search")!);
+          return parts.map((el) => [
+            el.id || el.className,
+            ...span(el).map((x) => Math.round(x * 10) / 10),
+          ]);
+        });
+        expect(spans.length).toBeGreaterThan(2);
+        for (let i = 0; i + 1 < spans.length; i++) {
+          const [a, , aRight] = spans[i] as [string, number, number];
+          const [bName, bLeft] = spans[i + 1] as [string, number, number];
+          // Each part ends at or before the next one starts.
+          expect([a, bName, aRight <= bLeft + 0.5]).toEqual([a, bName, true]);
+        }
+        await p.context().close();
+      },
+    );
 
     it("one key cap: Report's ⌘⇧F and search's ⌘K are the same .den-kbd cap", async () => {
       const b = browsers[engine];
