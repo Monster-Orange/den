@@ -5574,7 +5574,7 @@ export function projectColourHtml(data, slug, t) {
     ? t(`pc.${c}`)
     : t("pc.autoIs", { colour: t(`pc.${c}`) });
   return (
-    `<span class="pcp-now" data-pc="${escR(c)}"><span class="den-pc" aria-hidden="true"></span><span data-pc-said>${escR(said)}</span></span> ` +
+    `<span class="pcp-now" data-pc-now data-pc="${escR(c)}"><span class="den-pc" aria-hidden="true"></span><span data-pc-said>${escR(said)}</span></span> ` +
     `<button type="button" class="den-btn sm" data-pc-change>${escR(t("pc.change"))}</button>`
   );
 }

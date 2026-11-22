@@ -53,12 +53,10 @@ beforeAll(async () => {
   }
   s = await startAgentsPageServer();
   host = await connectHost(sessionPaths(s.stateDir).socket);
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
   for (const [id, persona, ws] of AGENTS) {
     const info = await host.start({
       name: `acme-${ws}:${id}`,
@@ -112,7 +110,7 @@ const agentsUrl = () =>
 
 async function agentsPage(width?: number): Promise<Page> {
   const p = await open(agentsUrl(), { width });
-  await p.waitForSelector("#agl:not([aria-busy]) .agr[data-pc]", {
+  await p.waitForSelector("#agl:not([aria-busy]) button[data-id][data-pc]", {
     timeout: 20_000,
   });
   return p;
@@ -186,7 +184,7 @@ describe("project colours (issue 168)", () => {
       expect(await computed(p, front, "border-left-color")).toBe(want);
     }
     await p.reload();
-    await p.waitForSelector("#agl:not([aria-busy]) .agr[data-pc]");
+    await p.waitForSelector("#agl:not([aria-busy]) button[data-id][data-pc]");
     expect(await colours(p)).toEqual(first);
     await p.context().close();
   }, 60_000);
@@ -194,10 +192,12 @@ describe("project colours (issue 168)", () => {
   it("the top bar's chip carries the project in view's colour", async () => {
     if (skip()) return;
     const p = await open("/agents?ws=north");
-    await p.waitForSelector("#ws-pill .den-pc[data-pc]", { timeout: 20_000 });
-    const chip = await p.getAttribute("#ws-pill .den-pc", "data-pc");
-    await p.waitForSelector("#agl:not([aria-busy]) .agr[data-pc]");
-    expect(chip).toBe(await p.getAttribute("#agl .wsg[data-ws]", "data-pc"));
+    await p.waitForSelector("#ws-pill [data-pc]", { timeout: 20_000 });
+    const chip = await p.getAttribute("#ws-pill [data-pc]", "data-pc");
+    await p.waitForSelector("#agl:not([aria-busy]) button[data-id][data-pc]");
+    expect(chip).toBe(
+      await p.getAttribute("#agl [data-ws][data-pc]", "data-pc"),
+    );
     await p.context().close();
   }, 60_000);
 
@@ -228,7 +228,7 @@ describe("project colours (issue 168)", () => {
       await p.waitForFunction(
         (c) =>
           document
-            .querySelector('#ws-list .ws-item[data-name="north"]')
+            .querySelector('#ws-list [data-name="north"]')
             ?.getAttribute("data-pc") === c,
         pick,
       );
@@ -238,8 +238,8 @@ describe("project colours (issue 168)", () => {
       expect((await colours(a)).north.row).toBe(pick);
       await a.context().close();
       const set = await open("/settings?project=north#workspace", { width });
-      await set.waitForSelector(".pcp-now[data-pc]", { timeout: 20_000 });
-      expect(await set.getAttribute(".pcp-now", "data-pc")).toBe(pick);
+      await set.waitForSelector("[data-pc-now][data-pc]", { timeout: 20_000 });
+      expect(await set.getAttribute("[data-pc-now]", "data-pc")).toBe(pick);
       await set.context().close();
     }, 90_000);
 
