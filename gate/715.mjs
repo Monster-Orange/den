@@ -14,6 +14,8 @@ import * as os from "os";
 import * as path from "path";
 
 export const issue = 715;
+// It is also 991's live check: a box run goes through the gate's queue (Den 0.4.84).
+export const items = [715, 991];
 export const clauses = [
   "a release run marked with priority goes to the front of its kind's queue, never ahead of a holder",
   "a second marked run waits behind the first",
