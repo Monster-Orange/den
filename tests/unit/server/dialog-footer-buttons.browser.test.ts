@@ -102,13 +102,18 @@ type Btn = {
   kbd: { fontSize: string; family: string } | null;
 };
 
-/** Every shown button in the footer of the pop-up `sel`. */
+/**
+ * Every shown button in the footer of the pop-up `sel`: the Report
+ * button's row (Report is first in every kit dialog's footer).
+ */
 function footerOf(p: Page, sel: string): Promise<Btn[]> {
   return p.evaluate((sel) => {
     const d = document.querySelector(sel);
-    const foot = d ? [...d.querySelectorAll(".dk-ft")].pop() : null;
+    const rb = d ? [...d.querySelectorAll("[data-den-report]")].pop() : null;
+    const foot = rb?.parentElement;
     if (!foot) return [];
-    return [...foot.querySelectorAll("button, a")]
+    return [...foot.children]
+      .filter((b) => /^(BUTTON|A)$/.test(b.tagName))
       .filter((b) => b.getClientRects().length > 0)
       .map((b) => {
         const cs = getComputedStyle(b);
