@@ -27,6 +27,13 @@ import {
 import type { VerifyModule } from "./config.js";
 import type { VerifyPlan } from "./plan.js";
 import { writeRunRecord, type ModuleRecord, type RunActor } from "./records.js";
+import {
+  readSarifFindings,
+  scanVerdict,
+  type Finding,
+  type SeverityCounts,
+} from "./history.js";
+import { SEVERITIES, stricter, type Severity } from "./settings.js";
 
 export type ModuleState = ResultState;
 export type Verdict = "passed" | "failed" | "nothing ran";
@@ -50,6 +57,10 @@ export interface ModuleRun {
   exitCode?: number | null;
   /** The first failure, in one line. */
   message?: string;
+  /** Issue 212: each attempt's state, when it ran more than once. */
+  attempts?: ModuleState[];
+  /** Issue 212: a scan's findings (its SARIF), and the threshold it met. */
+  findings?: { counts: SeverityCounts; failOn: Severity; list: Finding[] };
   ms: number;
 }
 
@@ -86,6 +97,10 @@ export interface RunDeps {
   now?: () => Date;
   /** Issue 209: who started the run and who allowed it, for its record. */
   by?: { startedBy?: RunActor; allowedBy?: RunActor };
+  /** Issue 212: `verify.run.retries` (0): a failed module runs again. */
+  retries?: number;
+  /** Issue 212: `verify.security.fail_on` (high): a scan's threshold. */
+  failOn?: Severity;
 }
 
 /** The verdict of a set of module states (VERIFY-SPEC section 5). */
@@ -216,24 +231,14 @@ export async function runPlan(
         runId,
         m.id.replace(/[^A-Za-z0-9._-]+/g, "_"),
       );
-      try {
-        fs.mkdirSync(resultsDir, { recursive: true });
-        const x = await d.runCmd(m, { env: plan.env, runId, resultsDir });
-        const last = x.lines?.filter((l) => l.trim()).at(-1);
-        if (x.lines?.length) tails.set(m.id, x.lines.slice(-KEEP_LINES));
-        r =
-          x.exitCode === 0
-            ? { state: "passed", exitCode: 0 }
-            : x.exitCode === null
-              ? { state: "error", exitCode: null, message: last ?? "stopped" }
-              : {
-                  state: "failed",
-                  exitCode: x.exitCode,
-                  ...(last ? { message: last } : {}),
-                };
-      } catch (e) {
-        r = { state: "error", message: (e as Error).message };
+      const tries = 1 + Math.max(0, d.retries ?? 0);
+      const attempts: ModuleState[] = [];
+      for (;;) {
+        r = await runOnce(m, plan.env, runId, resultsDir, d, tails);
+        attempts.push(r.state);
+        if (r.state === "passed" || attempts.length >= tries) break;
       }
+      if (attempts.length > 1) r = { ...r, attempts };
     }
     if (r.state !== "passed") {
       badLayers.add(m.layer);
@@ -281,6 +286,63 @@ export async function runPlan(
 
 /** The last lines a command's output keeps for its result. */
 const KEEP_LINES = 20;
+
+type Outcome = Omit<
+  ModuleRun,
+  "id" | "name" | "repo" | "layer" | "kind" | "mark" | "ms"
+>;
+
+/**
+ * One attempt of a command module. A scan (kind security) that wrote
+ * SARIF to DEN_RESULTS_DIR is decided by its findings against the
+ * threshold (the org's, or the module's stricter one), not its exit code;
+ * one that wrote none, or any other module, by its exit code.
+ */
+async function runOnce(
+  m: VerifyModule,
+  env: string,
+  runId: string,
+  resultsDir: string,
+  d: RunDeps,
+  tails: Map<string, string[]>,
+): Promise<Outcome> {
+  try {
+    fs.rmSync(resultsDir, { recursive: true, force: true });
+    fs.mkdirSync(resultsDir, { recursive: true });
+    const x = await d.runCmd(m, { env, runId, resultsDir });
+    const last = x.lines?.filter((l) => l.trim()).at(-1);
+    if (x.lines?.length) tails.set(m.id, x.lines.slice(-KEEP_LINES));
+    if (x.exitCode === null)
+      return { state: "error", exitCode: null, message: last ?? "stopped" };
+    const scan = m.kind === "security" ? readSarifFindings(resultsDir) : null;
+    if (scan) {
+      const failOn = stricter(d.failOn ?? "high", m.failOn);
+      const v = scanVerdict(scan.counts, failOn);
+      const first = scan.findings.find(
+        (f) => SEVERITIES.indexOf(f.severity) <= SEVERITIES.indexOf(failOn),
+      );
+      return {
+        state: v.state,
+        exitCode: x.exitCode,
+        findings: { counts: scan.counts, failOn, list: scan.findings },
+        ...(v.state === "failed" && first
+          ? {
+              message: `${v.atOrAbove} at or above ${failOn}, first ${first.rule} (${first.severity})`,
+            }
+          : {}),
+      };
+    }
+    return x.exitCode === 0
+      ? { state: "passed", exitCode: 0 }
+      : {
+          state: "failed",
+          exitCode: x.exitCode,
+          ...(last ? { message: last } : {}),
+        };
+  } catch (e) {
+    return { state: "error", message: (e as Error).message };
+  }
+}
 
 /** Runs a `cmd` module's command in its repo (DEN_* in its environment). */
 export function spawnCmd(

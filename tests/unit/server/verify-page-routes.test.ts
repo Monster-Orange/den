@@ -167,3 +167,131 @@ describe("issue 209: the Verify page's routes", () => {
     });
   });
 });
+
+describe("issue 212: a module's history and a scan's findings", () => {
+  const sdeps: VerifyServerDeps = {
+    ...vdeps,
+    repos: () => [
+      {
+        repo: "shop",
+        repoPath: "/repos/shop",
+        manifest: {
+          name: "shop",
+          verify: {
+            modules: {
+              "api/orders": { kind: "integration", cmd: "make contract" },
+              "code/deps": { kind: "security", cmd: "make scan" },
+            },
+          },
+        },
+      },
+    ],
+    settings: () => ({
+      retries: 1,
+      failOn: "high",
+      flakyWindow: 10,
+      flakyMinRetries: 2,
+      historyLimit: 30,
+    }),
+  };
+
+  async function serveWith<T>(fn: (base: string) => Promise<T>): Promise<T> {
+    const server = http.createServer((req, res) => {
+      const p = new URL(req.url ?? "/", "http://x").pathname;
+      void handleVerifyRoutes(req, res, p, () => sdeps).then((done) => {
+        if (!done) {
+          res.writeHead(404);
+          res.end();
+        }
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      return await fn(
+        `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      );
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  }
+
+  it("history: retried passes (verify.run.retries from settings) show the flaky mark", async () => {
+    for (let i = 0; i < 2; i++) {
+      let n = 0;
+      await runVerify(
+        { ...sdeps, runCmd: async () => ({ exitCode: ++n === 1 ? 1 : 0 }) },
+        {
+          project: "south",
+          env: "local",
+          scope: "all",
+          modules: ["api/orders"],
+        },
+      );
+    }
+    await serveWith(async (base) => {
+      const r = await fetch(
+        `${base}/api/verify/modules/${encodeURIComponent("api/orders")}/history?project=south&env=local`,
+      );
+      expect(r.status).toBe(200);
+      const h = (await r.json()) as {
+        runs: { attempts?: string[] }[];
+        flaky: { flaky: boolean; retried: number };
+      };
+      expect(h.runs).toHaveLength(2);
+      expect(h.runs[0].attempts).toEqual(["failed", "passed"]);
+      expect(h.flaky).toMatchObject({ flaky: true, retried: 2 });
+      expect(
+        (
+          await fetch(
+            `${base}/api/verify/modules/x/history?project=south&limit=0`,
+          )
+        ).status,
+      ).toBe(400);
+    });
+  });
+
+  it("findings: by severity, with the threshold; 404 for a module that wrote none", async () => {
+    const r = (await runVerify(
+      {
+        ...sdeps,
+        runCmd: async (_m, ctx) => {
+          fs.writeFileSync(
+            path.join(ctx.resultsDir, "scan.sarif"),
+            JSON.stringify({
+              runs: [
+                {
+                  results: [
+                    { ruleId: "R-1", level: "warning", message: { text: "m" } },
+                  ],
+                },
+              ],
+            }),
+          );
+          return { exitCode: 1 };
+        },
+      },
+      { project: "south", env: "local", scope: "all" },
+    )) as { runId: string };
+    await serveWith(async (base) => {
+      const res = await fetch(
+        `${base}/api/verify/runs/${r.runId}/modules/${encodeURIComponent("code/deps")}/findings?project=south`,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        ok: true,
+        module: "code/deps",
+        state: "passed",
+        failOn: "high",
+        counts: { critical: 0, high: 0, medium: 1, low: 0 },
+        findings: [{ rule: "R-1", severity: "medium" }],
+      });
+      expect(
+        (
+          await fetch(
+            `${base}/api/verify/runs/${r.runId}/modules/${encodeURIComponent("api/orders")}/findings?project=south`,
+          )
+        ).status,
+      ).toBe(404);
+    });
+  });
+});

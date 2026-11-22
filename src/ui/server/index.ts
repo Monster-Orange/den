@@ -1260,6 +1260,7 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import { readVerifySettings } from "../../shared/verify/settings.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -4330,6 +4331,7 @@ function verifyDeps(): VerifyServerDeps {
     focusedProject: () => getFocusedWorkspaceName(),
     repos: (p) => listReposWithManifests(p),
     environments: () => orgEnvironments(),
+    settings: () => readVerifySettings(readDenConfig().verify),
   };
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */

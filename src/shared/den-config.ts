@@ -285,6 +285,11 @@ export interface DenConfig {
    */
   sessions?: SessionsConfig;
   /**
+   * Issue 212: Verify's org settings (retries, a scan's threshold, the
+   * flaky mark, history). See shared/verify/settings.ts readVerifySettings.
+   */
+  verify?: unknown;
+  /**
    * The web UI: `port` (read by edge/config.ts readWebPort) and `service`,
    * the launchd service `<cli> service` installs. See readWebServiceConfig.
    */
@@ -1179,6 +1184,7 @@ export function readDenConfig(): DenConfig {
       server_agent: parsed?.server_agent,
       agents: parsed?.agents,
       sessions: parsed?.sessions,
+      verify: parsed?.verify,
       web: parsed?.web,
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
