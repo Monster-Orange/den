@@ -192,6 +192,8 @@ describe("the settings inventory (R21)", () => {
         "graph.workspaces",
         // HUB-1.5: Hub's tools without asking.
         "hub_allow_tools",
+        // Issue 158: the Hub delivery loop in agents' instructions.
+        "hub_delivery_loop",
         "hub_url",
         // The UI's language (R19, 0.3.0-dev.39).
         "language",

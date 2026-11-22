@@ -3433,6 +3433,55 @@ export const DEN_SETTINGS = [
   },
 
   {
+    // Issue 158: the Hub delivery loop for this project, over the install.
+    id: "workspace.hub_delivery_loop",
+    category: "workspace",
+    label: "Hub delivery loop: this project",
+    description:
+      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+    keywords: [
+      "hub",
+      "delivery",
+      "loop",
+      "instructions",
+      "project",
+      "override",
+    ],
+    scope: "workspace",
+    control: seg([
+      { value: "install", label: "As everywhere" },
+      { value: "on", label: "On" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) =>
+      ctx.wsSettings?.hub_delivery_loop === true
+        ? "on"
+        : ctx.wsSettings?.hub_delivery_loop === false
+          ? "off"
+          : "install",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop: v === "on" ? true : v === "off" ? false : null,
+      }),
+  },
+  {
+    // Issue 158: the project's own text after Den's copy of the loop.
+    id: "workspace.hub_delivery_loop_extra",
+    category: "workspace",
+    label: "Added to the Hub delivery loop",
+    description:
+      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
+    keywords: ["hub", "delivery", "loop", "add", "project", "instructions"],
+    scope: "workspace",
+    control: { type: "text" },
+    read: (ctx) => ctx.wsSettings?.hub_delivery_loop_extra ?? "",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop_extra: String(v ?? "").trim() || null,
+      }),
+  },
+
+  {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
     // Issue 268: named as the override of the Den-wide default.
@@ -3888,6 +3937,22 @@ export const DEN_SETTINGS = [
     keys: ["hub_allow_tools", "hub_url"],
     read: () => null,
     write: (v, ctx) => ctx.post({ hub_allow_tools: v }),
+  },
+
+  {
+    // Issue 158: the Hub delivery loop, built into every Den.
+    id: "agents.hub_delivery_loop",
+    category: "hub",
+    label: "Hub delivery loop",
+    description:
+      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    keywords: ["hub", "delivery", "loop", "instructions", "agents", "review"],
+    scope: "user",
+    keys: ["hub_delivery_loop"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.hub_delivery_loop !== false,
+    write: (v, ctx) =>
+      ctx.post({ hub_delivery_loop: v === true ? null : false }),
   },
 
   {

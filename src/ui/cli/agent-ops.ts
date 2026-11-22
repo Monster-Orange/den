@@ -137,8 +137,10 @@ import {
   setWorkspaceAgentPermission,
   workspacePermissionKey,
   workspaceMcpServersRaw,
+  workspaceEntryRaw,
   setWorkspaceMcpServers,
 } from "../../shared/environment-manager/workspaces.js";
+import { hubLoopPrompt, projectHubLoop } from "../../shared/hub-loop.js";
 import { namedSecretRef } from "../../shared/secrets/index.js";
 import {
   checkProjectMcpServer,
@@ -425,6 +427,8 @@ export interface AgentsDeps extends SessionsDeps {
     mcpUrl?: string;
     /** D41: hub.inbox_on_stop (default nudge). */
     inboxOnStop?: "nudge" | "off";
+    /** Issue 158: hub.delivery_loop (default on). */
+    deliveryLoop?: boolean;
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
@@ -454,6 +458,12 @@ export interface AgentsDeps extends SessionsDeps {
    * workspaces.yml's; undefined: unset). Checked where it is used.
    */
   workspaceMcpServers?: (ws: string) => unknown;
+  /**
+   * Issue 158: project `ws`'s workspaces.yml entry, for its Hub delivery
+   * loop setting (hub_delivery_loop, hub_delivery_loop_extra); undefined
+   * when it has none.
+   */
+  workspaceHubLoop?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
@@ -497,8 +507,10 @@ export interface AgentsResolved extends Resolved {
     allowTools?: boolean;
     mcpUrl?: string;
     inboxOnStop?: "nudge" | "off";
+    deliveryLoop?: boolean;
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  workspaceHubLoop: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
   secretRefSet: (name: string) => boolean;
@@ -655,13 +667,24 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
  */
 export async function agentHub(
   d: AgentsResolved,
+  ws?: string,
 ): Promise<AgentMcp["hub"] | undefined> {
   const h = await d.hub().catch(() => null);
   if (!h) return undefined;
   const proxy = denHubProxy(d);
+  // Issue 158: the Hub delivery loop, on unless the project or the
+  // install turned it off.
+  let project = projectHubLoop(undefined);
+  try {
+    if (ws) project = projectHubLoop(d.workspaceHubLoop(ws));
+  } catch {
+    /* unreadable: as the install */
+  }
+  const loop = hubLoopPrompt(h.deliveryLoop !== false, project);
   return {
     name: HUB_SERVER,
     url: `${proxy}/mcp`,
+    ...(loop ? { loop } : {}),
     allowTools: h.allowTools !== false,
     // D41: the Stop hook's inbox check, through Den's proxy too.
     ...(h.inboxOnStop !== "off" ? { inboxBase: proxy } : {}),
@@ -826,6 +849,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    workspaceHubLoop: d.workspaceHubLoop ?? workspaceEntryRaw,
     workspaceMcpServers:
       d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
     saveWorkspaceMcpServers:
@@ -944,6 +968,7 @@ async function defaultHub(): Promise<{
   allowTools: boolean;
   mcpUrl: string;
   inboxOnStop: "nudge" | "off";
+  deliveryLoop: boolean;
 } | null> {
   const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
   let cfg;
@@ -961,6 +986,7 @@ async function defaultHub(): Promise<{
         allowTools: cfg.allowTools,
         mcpUrl: cfg.mcpUrl,
         inboxOnStop: cfg.inboxOnStop,
+        deliveryLoop: cfg.deliveryLoop,
       }
     : null;
 }
@@ -3759,7 +3785,7 @@ export async function startAgent(
       },
     );
     // HUB-1.5: Den Hub's MCP server, when hub.url is set.
-    const hub = await agentHub(d);
+    const hub = await agentHub(d, ws);
     const input = {
       ...base,
       ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
@@ -6011,7 +6037,7 @@ export async function resumeAgent(
       // Resume in the cwd the agent had, wherever the workspace points now.
       // D24 (and D25: a rename since) the name peers see it by.
       const peerName = peerSessionName(d.cli, rec.workspace, rec);
-      const hub = await agentHub(d);
+      const hub = await agentHub(d, rec.workspace);
       const at = {
         ...input,
         ...(hub ? { mcp: { ...input.mcp, hub } } : {}),

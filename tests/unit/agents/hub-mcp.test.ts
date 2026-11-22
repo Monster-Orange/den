@@ -14,6 +14,7 @@ import type { AddressInfo } from "net";
 import * as path from "path";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import { HUB_PROMPT_LINE, HUB_SERVER } from "../../../src/shared/hub.js";
+import { HUB_DELIVERY_LOOP } from "../../../src/shared/hub-loop.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { hubLines } from "../../../src/ui/cli/doctor-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
@@ -211,6 +212,68 @@ describe("hub.inbox_on_stop (D41)", () => {
       await agents(r, "start", "-w", "north", "--persona", "planner"),
     ).toBe(0);
     expect(stop(r)).not.toContain("--hub-inbox");
+  });
+});
+
+describe("issue 158: the Hub delivery loop in every agent's instructions", () => {
+  async function start(
+    install: boolean | undefined,
+    project: unknown,
+  ): Promise<string> {
+    const r = await rig({
+      hub: async () => ({
+        url: "https://hub.example.test",
+        token: TOKEN,
+        ...(install === undefined ? {} : { deliveryLoop: install }),
+      }),
+      workspaceHubLoop: (ws) => (ws === "north" ? project : undefined),
+    });
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    return r.made[0].args.join(" ");
+  }
+
+  it("on by default: a new agent in a Hub-connected project has the loop, after the Hub line", async () => {
+    const args = await start(undefined, undefined);
+    expect(args).toContain(HUB_DELIVERY_LOOP);
+    expect(args.indexOf(HUB_DELIVERY_LOOP)).toBeGreaterThan(
+      args.indexOf(HUB_PROMPT_LINE),
+    );
+  });
+
+  it("off for the install: no loop; a project turned on has it again", async () => {
+    expect(await start(false, undefined)).not.toContain(HUB_DELIVERY_LOOP);
+    expect(await start(false, { hub_delivery_loop: true })).toContain(
+      HUB_DELIVERY_LOOP,
+    );
+  });
+
+  it("off for one project: no loop there, the Hub line stays", async () => {
+    const args = await start(true, { hub_delivery_loop: false });
+    expect(args).not.toContain(HUB_DELIVERY_LOOP);
+    expect(args).toContain(HUB_PROMPT_LINE);
+  });
+
+  it("a project adds to Den's copy, never edits it", async () => {
+    const args = await start(undefined, {
+      hub_delivery_loop_extra: "File designs under the Design area.",
+    });
+    expect(args).toContain(HUB_DELIVERY_LOOP);
+    expect(args).toContain("File designs under the Design area.");
+    expect(args.indexOf("File designs")).toBeGreaterThan(
+      args.indexOf(HUB_DELIVERY_LOOP),
+    );
+  });
+
+  it("without Hub: no loop", async () => {
+    const r = await rig({
+      workspaceHubLoop: () => ({ hub_delivery_loop: true }),
+    });
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(r.made[0].args.join(" ")).not.toContain(HUB_DELIVERY_LOOP);
   });
 });
 

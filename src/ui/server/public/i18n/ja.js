@@ -1264,6 +1264,19 @@
     "set.agents.hub_link_all": "判断できない候補",
     "set.agents.hub_link_all.d":
       "リンクすると、プロジェクトが Hub プロジェクトとつながり、エージェントがそこにドキュメント、モック、コメントを保存します。どの Hub プロジェクトが合うか Den が判断できないときだけ、ここに表示されます。1つ選んで「リンク」を押してください。それまで、そのプロジェクトの分は何も保存されません。",
+    "set.agents.hub_delivery_loop": "Hub のデリバリーループ",
+    "set.agents.hub_delivery_loop.d":
+      "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
+    "set.workspace.hub_delivery_loop":
+      "Hub のデリバリーループ: このプロジェクト",
+    "set.workspace.hub_delivery_loop.d":
+      "このプロジェクトのエージェントの指示に Hub のデリバリーループを入れるかどうか。インストール全体の設定より優先されます。エージェントの次の起動から反映されます。",
+    "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
+    "set.workspace.hub_delivery_loop.o.on": "オン",
+    "set.workspace.hub_delivery_loop.o.off": "オフ",
+    "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
     "ub.intro":
       "どの Hub プロジェクトが合うか、Den には判断できません。それぞれ1つ選んで「リンク」を押してください。",
     "ub.why.repos": "2つの Hub プロジェクトが同じリポジトリを持っています",
