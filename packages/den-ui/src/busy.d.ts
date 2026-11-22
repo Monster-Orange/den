@@ -114,5 +114,13 @@ export declare function pending<T = unknown>(
  * shows dots until the next page. Returns stop().
  */
 export declare function watchForms(root?: Document | HTMLElement): () => void;
+/**
+ * Issue 698: the dots alone, with no pop-up, for a wait that says its own
+ * words. holdDots(button, false) gives the label back.
+ */
+export declare function holdDots(
+  button: HTMLElement | null | undefined,
+  on?: boolean,
+): void;
 /** Issue 699: each data-instant in the markup with no reason. */
 export declare function instantProblems(html: string): string[];
