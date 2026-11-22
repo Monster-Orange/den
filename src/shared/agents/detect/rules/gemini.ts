@@ -5,8 +5,10 @@
  *
  * Copyright 2026 the herdr authors. Licensed under the Apache License,
  * Version 2.0; see THIRD_PARTY_NOTICES at the repository root.
- * Modified by Den: the TOML is rewritten as a TypeScript module. The rules
- * themselves are unchanged.
+ * Modified by Den: the TOML is rewritten as a TypeScript module, and Den
+ * adds one rule, den_prompt_box_idle (herdr has no idle rule for Gemini:
+ * its idle is the engine's no-match fallback, which Den reads as unknown).
+ * herdr's own rules are unchanged.
  *
  * herdr-origin: src/detect/manifests/gemini.toml
  */
@@ -63,6 +65,16 @@ export const GEMINI_RULES: RuleSet = {
       region: "whole_recent",
       visible_working: true,
       contains: ["esc to cancel"],
+    },
+    // Added by Den: the input box is up and nothing runs. Below herdr's
+    // working (100) and blocked (300) rules, so either wins over it.
+    {
+      id: "den_prompt_box_idle",
+      state: "idle",
+      priority: 50,
+      region: "whole_recent",
+      contains: ["Type your message"],
+      not: [{ contains: ["esc to cancel"] }],
     },
   ],
 };

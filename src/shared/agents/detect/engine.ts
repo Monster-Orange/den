@@ -8,9 +8,10 @@
  * Copyright 2026 the herdr authors. Licensed under the Apache License,
  * Version 2.0; see THIRD_PARTY_NOTICES at the repository root.
  * Modified by Den: rewritten in TypeScript; regexes are translated from
- * Rust's to JavaScript's (toRegExp); a screen no rule matches says so
- * (`fallback`), so Den's callers keep the bell and output-stopped signals
- * there.
+ * Rust's to JavaScript's (toRegExp); a screen no rule matches is unknown
+ * (`fallback`), not idle, so Den's callers keep the bell and
+ * output-stopped signals there; detect() reads a bounded tail of the
+ * screen (DETECT_LIMITS).
  *
  * herdr-origin: src/detect/manifest.rs
  *
@@ -67,12 +68,46 @@ export interface Detection {
   state: ScreenState;
   /** The rule that decided it; null when none matched. */
   rule: string | null;
-  /** No rule matched: idle by herdr's default; Den keeps today's signals. */
+  /** No rule matched: unknown; Den keeps today's signals. */
   fallback: boolean;
   /** A matched skip_state_update rule: leave the agent's state as it is. */
   skip: boolean;
   /** The screen shows a dialog that needs the person. */
   visibleBlocker: boolean;
+}
+
+/**
+ * How much of a screen detect() reads: its last rows, and at most this
+ * many KB of them. herdr reads one viewport (24 rows by default); some
+ * rules scan their region more than once, so an unbounded screen would
+ * cost time growing with its square, on the event loop. The bounds are
+ * Settings once the bell reads screens (issue 770, slice 2): these are
+ * their defaults and ranges.
+ */
+export const DETECT_LIMITS = {
+  maxRows: { default: 200, min: 24, max: 2000 },
+  maxKb: { default: 64, min: 4, max: 1024 },
+} as const;
+
+export interface DetectLimits {
+  maxRows?: number;
+  maxKb?: number;
+}
+
+/** The screen's last rows within the bounds (a cut row starts the text). */
+export function boundScreen(screen: Screen, limits: DetectLimits = {}): Screen {
+  const rows = limits.maxRows ?? DETECT_LIMITS.maxRows.default;
+  const chars = (limits.maxKb ?? DETECT_LIMITS.maxKb.default) * 1024;
+  let text = screen.text;
+  if (text.length > chars) {
+    text = text.slice(text.length - chars);
+    const nl = text.indexOf("\n");
+    text = nl >= 0 ? text.slice(nl + 1) : "";
+  }
+  let at = text.length - (text.endsWith("\n") ? 1 : 0);
+  for (let n = 0; n < rows && at > 0; n++) at = text.lastIndexOf("\n", at - 1);
+  if (at > 0) text = text.slice(at + 1);
+  return text === screen.text ? screen : { ...screen, text };
 }
 
 /** The engine version this port carries (herdr's MANIFEST_ENGINE_VERSION). */
@@ -251,6 +286,7 @@ export function toRegExp(pattern: string): RegExp {
     else if (n === "z") out += "(?![\\s\\S])";
     else if (n === "x" && src[i + 2] === "{") {
       const close = src.indexOf("}", i + 3);
+      if (close < 0) throw new SyntaxError(`${pattern}: \\x{ has no closing }`);
       out += `\\u{${src.slice(i + 3, close)}}`;
       i = close;
       continue;
@@ -281,15 +317,21 @@ function matches(g: Gate, text: string): boolean {
 }
 
 /** A rule set's state for a screen. */
-export function detect(set: RuleSet, screen: Screen): Detection {
+export function detect(
+  set: RuleSet,
+  whole: Screen,
+  limits: DetectLimits = {},
+): Detection {
+  const screen = boundScreen(whole, limits);
   let best: Rule | undefined;
   for (const r of set.rules) {
     if (best && (best.priority ?? 0) >= (r.priority ?? 0)) continue;
     if (matches(r, region(screen, r.region))) best = r;
   }
+  // No rule: unknown (herdr says idle here; Den keeps today's signals).
   if (!best)
     return {
-      state: "idle",
+      state: "unknown",
       rule: null,
       fallback: true,
       skip: false,

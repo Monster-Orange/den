@@ -3,7 +3,13 @@
  * reading combines with hook status. The rules are files in ./rules,
  * vendored per release: nothing here reads the network.
  */
-import { detect, type Detection, type RuleSet, type Screen } from "./engine.js";
+import {
+  detect,
+  type DetectLimits,
+  type Detection,
+  type RuleSet,
+  type Screen,
+} from "./engine.js";
 import { CLAUDE_RULES } from "./rules/claude.js";
 import { CODEX_RULES } from "./rules/codex.js";
 import { GEMINI_RULES } from "./rules/gemini.js";
@@ -15,6 +21,9 @@ export {
   ruleSetProblems,
   toRegExp,
   ENGINE_VERSION,
+  DETECT_LIMITS,
+  boundScreen,
+  type DetectLimits,
   type Detection,
   type Rule,
   type RuleSet,
@@ -58,7 +67,8 @@ export function agentStatus(
 export function detectScreen(
   name: string | undefined,
   screen: Screen,
+  limits?: DetectLimits,
 ): Detection | undefined {
   const set = ruleSet(name);
-  return set ? detect(set, screen) : undefined;
+  return set ? detect(set, screen, limits) : undefined;
 }

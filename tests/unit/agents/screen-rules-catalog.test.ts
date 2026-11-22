@@ -102,6 +102,11 @@ describe("clause 9: herdr's Apache-2.0 attribution", () => {
     expect(n).toContain("herdr");
     expect(n).toContain("Apache License");
     expect(n).toContain("https://github.com/herdrdev/herdr");
+    // The license's whole text, not a link to it.
+    expect(n).toContain(
+      "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
+    );
+    expect(n).toContain("END OF TERMS AND CONDITIONS");
     for (const [f, origin] of herdrFiles()) {
       expect([f, n.includes(f)]).toEqual([f, true]);
       expect([origin, n.includes(origin)]).toEqual([origin, true]);

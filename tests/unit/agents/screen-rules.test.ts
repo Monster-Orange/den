@@ -17,10 +17,12 @@ import * as path from "path";
 import {
   RULE_SETS,
   agentStatus,
+  DETECT_LIMITS,
   detect,
   detectScreen,
   region,
   ruleSetProblems,
+  toRegExp,
   type Detection,
   type RuleSet,
   type Screen,
@@ -119,7 +121,9 @@ describe("clauses 1-3: each runtime's fixtures are Working, Blocked and Idle", (
     "%s",
     (_name, f) => {
       const d = detectScreen(f.runtime, f.screen)!;
-      expect([d.state, d.skip]).toEqual([f.expect, false]);
+      // A rule decides it: never the no-match fallback.
+      expect([d.state, d.skip, d.fallback]).toEqual([f.expect, false, false]);
+      expect(agentStatus(undefined, d)).toBe(f.expect);
     },
   );
 
@@ -264,7 +268,7 @@ describe("clause 5: skip_state_update", () => {
 describe("clause 6: no match keeps today's behaviour; nothing working is Blocked", () => {
   it("a screen no rule matches is a fallback: the caller keeps the bell and output stopped", () => {
     const d = detect(RULE_SETS.gemini, scr("just some output\n"));
-    expect([d.rule, d.fallback]).toEqual([null, true]);
+    expect([d.state, d.rule, d.fallback]).toEqual(["unknown", null, true]);
     expect(agentStatus(undefined, d)).toBeUndefined();
   });
 
@@ -311,5 +315,31 @@ describe("clause 8: rules come from the vendored files, never the network", () =
     } finally {
       for (const s of spies) s.mockRestore();
     }
+  });
+});
+
+describe("bounded work: big screens and bad patterns", () => {
+  it("reads at most the last rows and KB it is given, so a huge screen stays fast", () => {
+    const huge = scr(
+      Array.from({ length: 20_000 }, (_, i) => `line ${i} (${i}s)`).join("\n") +
+        "\n› Ask Codex to do anything\n",
+    );
+    const t0 = Date.now();
+    for (const rs of Object.values(RULE_SETS)) detect(rs, huge);
+    expect(Date.now() - t0).toBeLessThan(1000);
+    // What a rule sees is the tail only.
+    const r = set([{ id: "first", state: "idle", contains: ["line 0 "] }]);
+    expect(detect(r, huge).rule).toBeNull();
+    expect(detect(r, huge, { maxRows: 30_000, maxKb: 4096 }).rule).toBe(
+      "first",
+    );
+    expect(DETECT_LIMITS.maxRows.default).toBeGreaterThanOrEqual(24);
+  });
+
+  it("a \\x{ with no closing brace is an error, never a hang", () => {
+    expect(() => toRegExp("a\\x{2800")).toThrow(/x\{/);
+    expect(
+      ruleSetProblems(set([{ id: "b", state: "idle", regex: ["\\x{12"] }]))[0],
+    ).toMatch(/b\.regex/);
   });
 });
