@@ -408,12 +408,14 @@ describe.each(ENGINES)("issue 209: the Verify page in %s", (engine) => {
       overview: WITH_BED,
     });
     try {
-      const say = await p.textContent('[data-env="bed"] .vf-say');
-      expect(say).toBe("v1.2.3-dev.5 failed on bed: 1 clause failed.");
-      expect(await p.textContent('[data-env="bed"] .vf-meta')).toContain(
-        "From an outside runner.",
+      // The tag, bold in the answer; the words are the catalog's (unit tests).
+      expect(await p.textContent('[data-env="bed"] [data-part="say"] b')).toBe(
+        "v1.2.3-dev.5",
       );
-      await p.click('[data-env="bed"] a.vf-row[href$="#gate-406"]');
+      expect(
+        await p.getAttribute('[data-env="bed"] [data-badge]', "data-badge"),
+      ).toBe("failed");
+      await p.click('[data-env="bed"] a[data-check="gate/406"]');
       await p.waitForSelector("#gate-406");
       const u = new URL(p.url());
       expect([u.searchParams.get("why"), u.hash]).toEqual(["bed", "#gate-406"]);
@@ -432,7 +434,7 @@ describe.each(ENGINES)("issue 209: the Verify page in %s", (engine) => {
       );
       expect(rows).toEqual(["failed", "passed", "needs-person"]);
       await p.goBack();
-      await p.waitForSelector('[data-env="bed"] a.vf-row');
+      await p.waitForSelector('[data-env="bed"] a[data-check]');
       // A runner's markup is text: no image, nothing ran.
       expect(
         await p.evaluate(() => ({
@@ -467,7 +469,7 @@ describe.each(ENGINES)("issue 209: the Verify page in %s", (engine) => {
                 ) as HTMLElement;
                 const small = Array.from(
                   document.querySelectorAll(
-                    "#verify-body a.vf-row, #verify-body .vf-back a, #verify-body a.den-btn",
+                    '#verify-body a[data-check], #verify-body [data-part="back"] a, #verify-body a[href][role="button"]',
                   ),
                 )
                   .map((el) => ({ el, r: el.getBoundingClientRect() }))
@@ -481,7 +483,7 @@ describe.each(ENGINES)("issue 209: the Verify page in %s", (engine) => {
                   over: main.scrollWidth - main.clientWidth,
                   small,
                   badge:
-                    document.querySelector("#verify-body .vf-badge")
+                    document.querySelector("#verify-body [data-badge]")
                       ?.textContent ?? "",
                   imgs: document.querySelectorAll("#verify-body img").length,
                 };
