@@ -5,7 +5,9 @@
  *     optional readable name, `persona_version` in its front matter;
  *   - the model's version key is `model_version`; the old `version` is
  *     still read, and `agents doctor` notes each persona that uses it;
- *     New persona and Edit write `model_version`;
+ *     New persona and Edit write `model_version` and, while older Dens in a
+ *     team still read `version`, `version` too, with the same value (a
+ *     file with both, the same, is not noted; both, different, is);
  *   - an agent whose persona changed since it started says so in its row
  *     (`personaNewer`: the new version's name, else its short hash).
  */
@@ -67,18 +69,34 @@ describe("PSN-2: a persona's version", () => {
       "claude-opus-5-5",
       true,
     ]);
-    // Both: model_version wins, and the old key is still noted.
+    // Both, the same (what New persona and Edit write, so older Dens in a
+    // team read the same pin): fine, not noted.
+    const same = parsePersona(
+      md("name: r\nmodel: opus\nmodel_version: a1\nversion: a1"),
+      "/p/r.md",
+    )!;
+    expect([
+      same.version,
+      same.legacyVersionKey,
+      same.versionKeysDiffer,
+    ]).toEqual(["a1", undefined, undefined]);
+    // Both, different: model_version wins here, but an older Den reads
+    // version, so it's noted.
     const both = parsePersona(
       md("name: r\nmodel: opus\nmodel_version: a1\nversion: b2"),
       "/p/r.md",
     )!;
-    expect([both.version, both.legacyVersionKey]).toEqual(["a1", true]);
+    expect([
+      both.version,
+      both.legacyVersionKey,
+      both.versionKeysDiffer,
+    ]).toEqual(["a1", undefined, true]);
     expect(() =>
       parsePersona(md('name: r\nmodel_version: "no spaces"'), "/p/r.md"),
     ).toThrow(/model_version must be "latest" or a version id/);
   });
 
-  it("New persona and Edit write model_version, never version", () => {
+  it("New persona and Edit write model_version and, for older Dens, version: the same value", () => {
     const text = personaMarkdown("r", {
       role: "reviewer",
       category: "engineering",
@@ -91,10 +109,36 @@ describe("PSN-2: a persona's version", () => {
       instructions: "Review.",
     } as never);
     expect(text).toMatch(/^model_version: latest$/m);
-    expect(text).not.toMatch(/^version:/m);
+    expect(text).toMatch(/^version: latest$/m);
+    // Read back: "latest" (no pin), and nothing for doctor to note.
+    const back = parsePersona(text, "/p/r.md")!;
+    expect([
+      back.version,
+      back.legacyVersionKey,
+      back.versionKeysDiffer,
+    ]).toEqual([undefined, undefined, undefined]);
+    const pinned = personaMarkdown("r", {
+      role: "reviewer",
+      category: "engineering",
+      description: "Reviews",
+      runtime: "den-claude",
+      model: "opus",
+      version: "claude-opus-5-5",
+      permission: "default",
+      allowedCommands: [],
+      instructions: "Review.",
+    } as never);
+    expect(pinned).toMatch(/^model_version: claude-opus-5-5$/m);
+    expect(pinned).toMatch(/^version: claude-opus-5-5$/m);
+    const pin = parsePersona(pinned, "/p/r.md")!;
+    expect([pin.version, pin.legacyVersionKey, pin.versionKeysDiffer]).toEqual([
+      "claude-opus-5-5",
+      undefined,
+      undefined,
+    ]);
   });
 
-  it("agents doctor notes each persona still on the old key", () => {
+  it("agents doctor notes each persona still on the old key, or whose two keys differ", () => {
     expect(personaVersionLines([])).toEqual([
       "Persona keys      every persona names its model's version model_version",
     ]);
@@ -107,6 +151,12 @@ describe("PSN-2: a persona's version", () => {
       "Persona keys      2 personas name their model's version `version:`, still read; `model_version:` is its name now:",
       "  reviewer (/packs/reviewer.md)",
       "  planner (/packs/planner.md)",
+    ]);
+    expect(
+      personaVersionLines([], [{ id: "scribe", source: "/packs/scribe.md" }]),
+    ).toEqual([
+      "Persona keys      1 persona gives model_version and version different values; older Dens read `version:`, so they run another model version:",
+      "  scribe (/packs/scribe.md)",
     ]);
   });
 });

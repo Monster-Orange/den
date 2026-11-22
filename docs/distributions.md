@@ -4932,7 +4932,7 @@ role: planner # a role (see Roles); a sentence here is the description
 category: engineering # see Categories; default: the role's
 description: Writes stories and their acceptance criteria. # one line
 model: some-model # optional; `inherit` means none
-model_version: latest # or a pinned version of the model (`version:` is still read; doctor notes it)
+model_version: latest # or a pinned version of the model (`version:` is still read; New persona and Edit write both, the same, for older Dens; doctor notes `version:` alone, or the two differing)
 persona_version: v3 # optional: a readable name for this version of the persona
 subagent_model: haiku # its subagents' model, over agents.subagents.model; `inherit`: the runtime decides
 allowed_commands: [npm test] # extra plain prefixes allowed without asking

@@ -236,8 +236,12 @@ export function personaMarkdown(id: string, input: PersonaInput): string {
     description: input.description,
     runtime: input.runtime,
     ...(input.model ? { model: input.model } : {}),
-    // PSN-2: the model's version key (the old `version` is still read).
+    // PSN-2: the model's version key, and (while older Dens in a team
+    // still read only it) the old `version`, with the same value: a
+    // follower on an older Den would otherwise run a pinned persona on
+    // "latest". Drop `version` from writes once no supported Den needs it.
     model_version: input.version,
+    version: input.version,
     permission_mode: input.permission,
     ...(input.allowedCommands.length
       ? { allowed_commands: input.allowedCommands }

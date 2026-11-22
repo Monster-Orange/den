@@ -88,8 +88,13 @@ export interface Persona {
    * `model_version` (PSN-2), or the old `version`, still read.
    */
   version?: string;
-  /** PSN-2: the model's version came from the old `version` key. */
+  /** PSN-2: the model's version came from the old `version` key alone. */
   legacyVersionKey?: true;
+  /**
+   * PSN-2: `model_version` and the old `version` give different values:
+   * this Den reads model_version, an older one version.
+   */
+  versionKeysDiffer?: true;
   /** PSN-2: its version, the sha256 of its file's text. */
   hash?: string;
   /** PSN-2: the version's readable name, front matter `persona_version`. */
@@ -264,7 +269,12 @@ export function parsePersona(
         `${file}: ${key} must be "latest" or a version id (letters, digits, . _ @ : -)`,
       );
   const version = modelVersion ?? oldVersion;
-  const legacyVersionKey = f.version !== undefined && f.version !== null;
+  // Both keys with one value is what New persona and Edit write (older
+  // Dens in a team still read `version`): fine. The old key alone, or the
+  // two disagreeing, is noted.
+  const legacyVersionKey = !modelVersion && !!oldVersion;
+  const versionKeysDiffer =
+    !!modelVersion && !!oldVersion && modelVersion !== oldVersion;
   const pv = f.persona_version;
   const personaVersion =
     pv === undefined || pv === null
@@ -309,6 +319,7 @@ export function parsePersona(
       "engineering",
     ...(version && version !== "latest" ? { version } : {}),
     ...(legacyVersionKey ? { legacyVersionKey: true as const } : {}),
+    ...(versionKeysDiffer ? { versionKeysDiffer: true as const } : {}),
     hash: createHash("sha256").update(text).digest("hex"),
     ...(personaVersion ? { personaVersion } : {}),
     allowedCommands,
