@@ -178,7 +178,8 @@
   min-height: var(--tap-min);
   padding: 0 var(--space-3);
 }
-.den-btn.dk-danger {
+.den-btn.dk-danger,
+.den-btn.dk-danger:not([aria-busy="true"]):hover {
   background: var(--bad);
   border-color: var(--bad);
   color: var(--on-accent);

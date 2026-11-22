@@ -104,7 +104,10 @@ describe("button.css", () => {
     // A row of its own must not undo [hidden].
     expect(rule(".den-btn[hidden]")).toBe("display: none;");
     // Issue 673: danger, the second product's shipped values.
-    expect(rule(".den-btn.danger")).toBe(
+    // Kept on hover: the second product's danger comes after its hover.
+    expect(
+      rule('.den-btn.danger, .den-btn.danger:not([aria-busy="true"]):hover'),
+    ).toBe(
       "color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border));",
     );
     // Issue 699: a held button (aria-busy) has no hover change.

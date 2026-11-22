@@ -33,8 +33,10 @@
   border-color: var(--accent-fill);
   color: var(--on-accent);
 }
-/* A step that takes something away: red words, a red-tinted border. */
-.den-btn.danger {
+/* A step that takes something away: red words, a red-tinted border, kept
+   on hover (as the second product's, where danger comes after hover). */
+.den-btn.danger,
+.den-btn.danger:not([aria-busy="true"]):hover {
   color: var(--bad);
   border-color: color-mix(in srgb, var(--bad) 45%, var(--border));
 }
