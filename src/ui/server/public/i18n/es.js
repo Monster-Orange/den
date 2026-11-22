@@ -2164,6 +2164,16 @@
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
     "bell.m.gateLapsed":
       'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
+    "bell.m.vschedPass": "Corrida programada en {env}: pasaron {n} pruebas.",
+    "bell.m.vschedPass.one": "Corrida programada en {env}: pasó {n} prueba.",
+    "bell.m.vschedFail":
+      "Corrida programada en {env}: fallaron {n} de {total} pruebas.",
+    "bell.m.vschedFail.one":
+      "Corrida programada en {env}: falló {n} de {total} pruebas.",
+    "bell.m.vschedExpire":
+      'El permiso de la programación "{name}" vence en {n} días.',
+    "bell.m.vschedExpire.one":
+      'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",

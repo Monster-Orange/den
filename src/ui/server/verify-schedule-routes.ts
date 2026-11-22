@@ -226,16 +226,18 @@ function bellExpiry(
   d: ScheduleServerDeps,
   s: Schedule,
   a: ScheduleAllow,
+  now: Date,
 ): void {
+  const n = Math.max(
+    1,
+    Math.ceil((Date.parse(a.expiresAt) - now.getTime()) / 86_400_000),
+  );
   d.bell?.({
     kind: "decision",
     subject: `record:vsched-expire-${s.project}-${s.id}`,
     scope: `workspace/${s.project}`,
-    text: `The Allow for the schedule "${label(s)}" expires ${a.expiresAt.slice(0, 10)}.`,
-    msg: {
-      key: "bell.m.vschedExpire",
-      vars: { name: label(s), at: a.expiresAt },
-    },
+    text: `The Allow for the schedule "${label(s)}" expires in ${n} day${n === 1 ? "" : "s"}.`,
+    msg: { key: "bell.m.vschedExpire", vars: { name: label(s), n } },
     link: `/verify?schedules=1#sch-${s.id}`,
   });
 }
@@ -322,7 +324,7 @@ export async function tickSchedules(
           scheduleState(s, a, now, set) === "expiring" &&
           r.warned !== a.expiresAt
         ) {
-          bellExpiry(d, s, a);
+          bellExpiry(d, s, a, now);
           noteScheduleRun(d.stateDir(), project, s.id, { warned: a.expiresAt });
           out.push({ project, schedule: s.id, action: "warned" });
         }

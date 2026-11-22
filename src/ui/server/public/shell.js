@@ -3011,6 +3011,16 @@
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
+    "bell.m.vschedPass": "Scheduled run on {env}: {n} checks passed.",
+    "bell.m.vschedPass.one": "Scheduled run on {env}: {n} check passed.",
+    "bell.m.vschedFail":
+      "Scheduled run on {env}: {n} of {total} checks failed.",
+    "bell.m.vschedFail.one":
+      "Scheduled run on {env}: {n} of {total} checks failed.",
+    "bell.m.vschedExpire":
+      'The Allow for the schedule "{name}" expires in {n} days.',
+    "bell.m.vschedExpire.one":
+      'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",

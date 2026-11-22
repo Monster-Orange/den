@@ -323,7 +323,7 @@ describe("T20: the bell", () => {
     expect(warned).toHaveLength(1);
     expect(warned[0]).toMatchObject({
       kind: "decision",
-      msg: { vars: { name: "Nightly speed" } },
+      msg: { vars: { name: "Nightly speed", n: 4 } },
     });
     expect(warned[0].link).toMatch(/^\/verify\?schedules=1#sch-nightly-speed-/);
   });

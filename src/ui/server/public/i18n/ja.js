@@ -2099,6 +2099,11 @@
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
+    "bell.m.vschedPass": "{env} の予定実行: {n} 件のチェックが通りました。",
+    "bell.m.vschedFail":
+      "{env} の予定実行: {total} 件中 {n} 件のチェックが失敗しました。",
+    "bell.m.vschedExpire":
+      "スケジュール「{name}」の許可はあと {n} 日で切れます。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
