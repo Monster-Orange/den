@@ -10,6 +10,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   recentRuns,
+  removeRunRecord,
   writeRunRecord,
   type RunRecord,
 } from "../../../src/shared/verify/records.js";
@@ -76,5 +77,29 @@ describe("recentRuns", () => {
 
   it("with no imported environment, reads only the limit", () => {
     expect(recentRuns(stateDir, "north", 5, []).read).toBe(5);
+  });
+
+  it("an imported environment with no import yet reads only the limit", () => {
+    const r = recentRuns(stateDir, "north", 10, ["bed", "never"]);
+    expect(r.read).toBe(10);
+  });
+
+  it("an old import behind many runs is read through its pointer, not a scan", () => {
+    removeRunRecord(stateDir, "north", "bed-new");
+    const r = recentRuns(stateDir, "north", 10, ["bed"]);
+    expect(r.runs.at(-1)?.runId).toBe("bed-old");
+    expect(r.read).toBe(11);
+  });
+
+  it("removing the pointed-at import points at the next newest, or at none", () => {
+    put("bed-mid", "bed", 30, true);
+    removeRunRecord(stateDir, "north", "bed-mid");
+    expect(recentRuns(stateDir, "north", 5, ["bed"]).runs.at(-1)?.runId).toBe(
+      "bed-old",
+    );
+    removeRunRecord(stateDir, "north", "bed-old");
+    const r = recentRuns(stateDir, "north", 5, ["bed"]);
+    expect(r.runs.some((x) => x.env === "bed")).toBe(false);
+    expect(r.read).toBe(5);
   });
 });
