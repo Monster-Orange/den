@@ -3957,6 +3957,8 @@ async function removeAllStopped(button) {
   const n = rows.length;
   if (!n) return;
   const workspaces = [...new Set(rows.map((r) => r.workspace))];
+  // Exactly the agents the confirm names: one that stops meanwhile stays.
+  const agents = rows.map((r) => r.agent);
   let out = null;
   const yes = await askConfirm({
     title: t(n === 1 ? "ag.rmAll.t.one" : "ag.rmAll.t", { n }),
@@ -3967,7 +3969,7 @@ async function removeAllStopped(button) {
     onAnswer: (ok) =>
       ok
         ? // busy-ok: sent from the confirm's own Remove, which the kit dialog holds
-          api("POST", "/api/agents/clear-stopped", { workspaces }).then(
+          api("POST", "/api/agents/clear-stopped", { workspaces, agents }).then(
             (o) => (out = o),
           )
         : undefined,

@@ -7993,16 +7993,20 @@ export async function removeAgent(
 
 /**
  * Remove every stopped, interrupted or exited agent of `workspaces`
- * (AG-14.1b Clear stopped); running ones stay.
+ * (AG-14.1b Clear stopped); running ones stay. Issue 1086: `only`, the
+ * agents a person's confirm named, limits it to those (each still checked
+ * as stopped), so one that stopped since the page looked is not removed.
  */
 export async function removeStopped(
   d: AgentsResolved,
   workspaces: readonly string[],
+  only?: readonly string[],
 ): Promise<Removed[]> {
   const sessions = await hostSessions(d);
   const recs = listRecords(d.stateDir()).filter(
     (r) =>
       workspaces.includes(r.workspace) &&
+      (!only || only.includes(r.id)) &&
       isStoppedState(rowState(r, sessionOf(sessions, r))),
   );
   return removeRecords(d, recs);

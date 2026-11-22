@@ -176,6 +176,35 @@ describe("Remove and Undo", () => {
     });
     expect(bad.status).toBe(404);
   });
+
+  // Issue 1086: the page sends the agents its confirm named, so one that
+  // stopped since it last looked is not removed with them; each is still
+  // checked as stopped, so a running one named stays.
+  it("Remove all stopped with `agents`: only those named, and only if stopped", async () => {
+    const a = await api();
+    await started(a, "planner");
+    await started(a, "reviewer");
+    await started(a, "orchestrator");
+    await stopped(a, "planner", 0);
+    a.r.made[1].exit(1);
+    await settle();
+    const { json } = await a.call("POST", "/api/agents/clear-stopped", {
+      workspaces: ["north"],
+      agents: ["planner", "orchestrator"],
+    });
+    expect((json.removed as { agent: string }[]).map((x) => x.agent)).toEqual([
+      "planner",
+    ]);
+    expect((await rows(a)).map((x) => x.agent).sort()).toEqual([
+      "orchestrator",
+      "reviewer",
+    ]);
+    const bad = await a.call("POST", "/api/agents/clear-stopped", {
+      workspaces: ["north"],
+      agents: "planner",
+    });
+    expect(bad.status).toBe(400);
+  });
 });
 
 describe("Start fresh and Resume all", () => {

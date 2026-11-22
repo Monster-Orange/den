@@ -66,8 +66,9 @@
  *                                                 only; agent-paths.ts)
  *   POST /api/workspaces/<ws>/agents/<id>/remove  forget a stopped one (Undo:
  *                                                 /api/agents/restore)
- *   POST /api/agents/clear-stopped                { workspaces: [...] }: forget
- *                                                 every stopped one there
+ *   POST /api/agents/clear-stopped                { workspaces: [...], agents?: [ids] }:
+ *                                                 forget every stopped one there
+ *                                                 (only those named, if agents)
  *   POST /api/agents/restore                      { agents: [ids] }: Undo
  *   POST /api/agents/resume-interrupted           { workspaces: [...] }: Resume
  *                                                 all after a restart (AG-14.3)
@@ -1750,7 +1751,10 @@ async function manyAgents(
           status: 404,
         });
     if (verb === "clear-stopped") {
-      const removed = await removeStopped(d, wss);
+      // Issue 1086: `agents`, when sent, is exactly what the confirm named.
+      const only =
+        body.agents === undefined ? undefined : names(body.agents, "agents");
+      const removed = await removeStopped(d, wss, only);
       what = `clear stopped in ${wss.join(", ")}: ${removed.map((r) => r.agent).join(", ") || "none"}`;
       audit();
       sendJson(res, { ok: true, removed });

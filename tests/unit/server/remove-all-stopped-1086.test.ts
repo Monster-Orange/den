@@ -59,6 +59,9 @@ describe("issue 1086: Remove all stopped (N), on the stopped list's own header",
     expect(f).toMatch(/danger:\s*true/);
     expect(f).toMatch(/onAnswer:/);
     expect(f).toMatch(/"\/api\/agents\/clear-stopped"/);
+    // Exactly the agents the confirm named (Reviewer: one that stopped
+    // since the page looked is not removed with them).
+    expect(f).toMatch(/\{\s*workspaces,\s*agents\s*\}/);
     expect(f).toMatch(/\.filter\(isStopped\)/);
     // Never a shell, never the pop-up.
     expect(f).not.toMatch(/\/api\/sessions\//);

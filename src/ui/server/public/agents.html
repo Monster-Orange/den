@@ -574,11 +574,19 @@
          header, in the kit's button text (not the header's mono caps). */
       .agl .agstg > summary {
         align-items: center;
+        /* A long count (or es) on a phone wraps the button to its own
+           line, never pushing the group's name off. */
+        flex-wrap: wrap;
+        row-gap: 4px;
+      }
+      .agl .agstg > summary > span {
+        flex: 0 0 auto;
       }
       .agl .agstg > summary .den-btn {
         margin-inline-start: auto;
         text-transform: none;
         letter-spacing: normal;
+        white-space: nowrap;
       }
       .agstg > summary:focus-visible {
         outline: 2px solid var(--accent);
