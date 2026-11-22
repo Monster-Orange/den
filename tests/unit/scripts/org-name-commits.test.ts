@@ -159,6 +159,8 @@ describe("pre-push hook", () => {
         PATH: process.env.PATH ?? "",
         DEN_ROOT: ROOT,
         DEN_PREPUSH_FILES: "0",
+        // Issue 185's checks have their own test (pre-push-checks.test.ts).
+        DEN_PREPUSH_CHECKS: "0",
         ...env,
       },
     });

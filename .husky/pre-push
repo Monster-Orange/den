@@ -1,11 +1,20 @@
 #!/usr/bin/env sh
-# No org's names leave this machine (this repo is public, and a pushed commit
-# stays reachable by its id even after a rewrite). For every ref pushed, the
-# new commits' messages and the pushed commit's files go through the same
-# gates CI runs. Names come from DEN_ORG_NAMES, DEN_ORG_NAMES_FILE or the
-# per-user file ~/.config/den-dev/org-names.txt; with none the hook passes
-# quietly, so a machine without the list can still push. Git worktrees share
-# this hook. DEN_PREPUSH_FILES=0 skips the file check (messages only).
+# Two kinds of checks, for every ref pushed, before anything leaves the
+# machine:
+#
+# 1. No org's names (this repo is public, and a pushed commit stays
+#    reachable by its id even after a rewrite): the new commits' messages
+#    and the pushed commit's files go through the same gates CI runs. Names
+#    come from DEN_ORG_NAMES, DEN_ORG_NAMES_FILE or the per-user file
+#    ~/.config/den-dev/org-names.txt; with none this part passes quietly, so
+#    a machine without the list can still push. DEN_PREPUSH_FILES=0 skips
+#    the file check (messages only).
+# 2. Issue 185, scripts/pre-push-checks.mjs: version-sync, the CLI's
+#    no-localhost lint and the words gate on the pushed commit, and no new
+#    commit closing a still-open issue by keyword (commits say Refs #N).
+#    DEN_PREPUSH_CHECKS=0 skips this part.
+#
+# Each failing check is named. Git worktrees share this hook.
 root="${DEN_ROOT:-$(git rev-parse --show-toplevel)}"
 zero=0000000000000000000000000000000000000000
 
@@ -13,16 +22,24 @@ node --input-type=module -e "
   const { orgPatterns } = await import('$root/scripts/org-names.js');
   process.exit(orgPatterns().length ? 0 : 3);
 " 2>/dev/null
-case $? in
+rc=$?
+names=1
+case $rc in
   0) ;;
-  3) exit 0 ;; # no names configured
+  3) names=0 ;; # no names configured
   *)
     echo "pre-push: the org-name list is set but can't be read; not pushing." >&2
     exit 1
     ;;
 esac
 
+# The checks script: this repo's, else the pushing checkout's (DEN_ROOT
+# may name another checkout, from before the script).
+checks="$root/scripts/pre-push-checks.mjs"
+[ -f "$checks" ] || checks="$(git rev-parse --show-toplevel)/scripts/pre-push-checks.mjs"
+
 status=0
+found=0
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$local_sha" = "$zero" ] && continue # a delete
   if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
@@ -33,18 +50,31 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   else
     base=$remote_sha
   fi
-  if [ -n "$base" ]; then
-    node "$root/scripts/org-name-commits.mjs" "$base..$local_sha" >&2 || status=1
-  else
-    echo "pre-push: no main to measure $local_ref from; fetch origin/main first." >&2
-    status=1
+  if [ $names -eq 1 ]; then
+    if [ -n "$base" ]; then
+      node "$root/scripts/org-name-commits.mjs" "$base..$local_sha" >&2 || found=1
+    else
+      echo "pre-push: no main to measure $local_ref from; fetch origin/main first." >&2
+      found=1
+    fi
+    if [ "${DEN_PREPUSH_FILES:-1}" != "0" ]; then
+      node "$root/scripts/org-name-gate.mjs" --tree "$local_sha" >&2 || found=1
+    fi
   fi
-  if [ "${DEN_PREPUSH_FILES:-1}" != "0" ]; then
-    node "$root/scripts/org-name-gate.mjs" --tree "$local_sha" >&2 || status=1
+  if [ "${DEN_PREPUSH_CHECKS:-1}" != "0" ] && [ -f "$checks" ]; then
+    if [ -n "$base" ]; then
+      node "$checks" "$base" "$local_sha" >&2 || status=1
+    else
+      echo "pre-push: no main to measure $local_ref from; fetch origin/main first." >&2
+      status=1
+    fi
   fi
 done
 
-if [ $status -ne 0 ]; then
+if [ $found -ne 0 ]; then
   echo "pre-push: an org's name is in what you're pushing (see above). Reword or remove it, then push again." >&2
+  status=1
+elif [ $status -ne 0 ]; then
+  echo "pre-push: a check failed on what you're pushing (see above). Fix it, then push again." >&2
 fi
 exit $status
