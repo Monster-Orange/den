@@ -5617,6 +5617,8 @@ const agd = {
   release: null,
 };
 
+// Issue 1085: its actions are the kit's small row-action size (den-btn sm),
+// as the stopped rows' own: Remove is never the one large button.
 function detailsHtml(r, det) {
   const name = displayName(r);
   const rot = rotationOf(r);
@@ -5640,9 +5642,9 @@ function detailsHtml(r, det) {
     ? `<div class="den-svp-line"><span class="tagx warn">${esc(t("ag.det.handoffDue", { why: rotationWhy(r.rotation) }))}</span></div>`
     : "";
   const first = r.resumable
-    ? `<button type="button" class="den-btn primary" data-agd="resume">${esc(t("ag.resume"))}</button>` +
-      `<button type="button" class="den-btn" data-agd="fresh">${esc(t("ag.fresh"))}</button>`
-    : `<button type="button" class="den-btn primary" data-agd="fresh">${esc(t("ag.fresh"))}</button>`;
+    ? `<button type="button" class="den-btn sm primary" data-agd="resume">${esc(t("ag.resume"))}</button>` +
+      `<button type="button" class="den-btn sm" data-agd="fresh">${esc(t("ag.fresh"))}</button>`
+    : `<button type="button" class="den-btn sm primary" data-agd="fresh">${esc(t("ag.fresh"))}</button>`;
   return (
     `<div class="den-svp-h"><div class="den-svp-t"><span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
     `<b title="${esc(name)}">${esc(name)}</b>` +
@@ -5650,10 +5652,10 @@ function detailsHtml(r, det) {
     `<div class="den-svp-meta">${r.persona ? `<span>${esc(r.persona)}</span>` : ""}` +
     (runtime ? `<span class="den-svp-ms">${esc(runtime)}</span>` : "") +
     `</div></div>` +
-    `<div class="den-svp-acts">${first}<button type="button" class="den-btn" data-agd="remove">${esc(t("ag.remove"))}</button>` +
+    `<div class="den-svp-acts">${first}<button type="button" class="den-btn sm" data-agd="remove">${esc(t("ag.remove"))}</button>` +
     // Its session ended but is still there: its output, in its pane.
     (r.attachable
-      ? `<button type="button" class="den-btn" data-agd="open">${esc(t("ag.det.output"))}</button>`
+      ? `<button type="button" class="den-btn sm" data-agd="open">${esc(t("ag.det.output"))}</button>`
       : "") +
     `</div>` +
     sec(

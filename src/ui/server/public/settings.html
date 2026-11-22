@@ -891,32 +891,7 @@
         color: var(--muted);
         font-size: 13px;
       }
-      /* .btn */
-      .btn {
-        border: 1px solid var(--border);
-        background: var(--surface);
-        border-radius: var(--radius-button);
-        padding: 6px 12px;
-        cursor: pointer;
-        font-weight: 500;
-        white-space: nowrap;
-      }
-      .btn:hover {
-        border-color: var(--border-strong);
-      }
-      .btn:disabled {
-        opacity: 0.45;
-        cursor: default;
-      }
-      .btn.primary {
-        background: var(--accent-fill);
-        border-color: var(--accent-fill);
-        color: var(--on-accent);
-      }
-      .btn.sm {
-        padding: 2px 9px;
-        font-size: 12.5px;
-      }
+      /* Buttons are the kit's .den-btn (issue 673). */
       /* Issue 302: on a touch screen or a phone, every category, button,
          field and choice here is a 44px target each way; a switch's tap
          is its row's label (label for=), 44px tall. */
@@ -924,7 +899,7 @@
         .set-ni,
         #den-content button,
         #den-content select,
-        #den-content a.btn,
+        #den-content a.den-btn,
         #den-content
           input:not([type="checkbox"]):not([type="radio"]):not(
             [type="hidden"]
@@ -932,7 +907,7 @@
           min-height: 44px;
           min-width: 44px;
         }
-        #den-content a.btn:not([hidden]),
+        #den-content a.den-btn:not([hidden]),
         #den-content label.l:not([hidden]) {
           display: inline-flex;
           align-items: center;
