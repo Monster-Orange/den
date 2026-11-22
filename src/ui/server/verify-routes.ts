@@ -50,7 +50,7 @@ import {
 import { verifyOverview } from "../../shared/verify/overview.js";
 import { readImportSettings } from "../../shared/verify/imports.js";
 import {
-  listRunRecords,
+  recentRuns,
   readRunRecord,
   type RunActor,
 } from "../../shared/verify/records.js";
@@ -402,13 +402,8 @@ function handleVerifyReads(
     // Issue 441: the imported environments after the org's own.
     const envs = [...org, ...imported];
     // The newest 50 runs, and each imported environment's newest import
-    // however old (many local runs must not hide it).
-    const all = listRunRecords(stateDir, p.project, Number.MAX_SAFE_INTEGER);
-    const runs = all.slice(0, RECENT_RUNS);
-    for (const e of imported) {
-      const last = all.find((r) => r.env === e && r.source === "import");
-      if (last && !runs.includes(last)) runs.push(last);
-    }
+    // however old (many local runs must not hide it), read newest first.
+    const { runs } = recentRuns(stateDir, p.project, RECENT_RUNS, imported);
     sendJson(res, {
       ok: true,
       ...(importError ? { importError } : {}),

@@ -106,6 +106,55 @@ export function removeRunRecord(
 }
 
 /** The project's runs, newest first (at most `limit`). */
+/**
+ * Issue 441: the overview's runs without parsing every record. Run files
+ * are ordered by when they were written (a stat, not a parse) and read
+ * newest first, until there are `limit` runs and each of `imported`'s
+ * newest import (an import can be megabytes). The runs come back newest
+ * first by endedAt, then any import the limit would have hidden; `read`
+ * counts the records parsed.
+ */
+export function recentRuns(
+  stateDir: string,
+  project: string,
+  limit: number,
+  imported: readonly string[],
+): { runs: RunRecord[]; read: number } {
+  const dir = runsDir(stateDir, project);
+  let ids: string[];
+  try {
+    ids = fs.readdirSync(dir);
+  } catch {
+    return { runs: [], read: 0 };
+  }
+  const byTime = ids
+    .map((id) => {
+      try {
+        return { id, at: fs.statSync(path.join(dir, id, "run.json")).mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is { id: string; at: number } => x !== null)
+    .sort((a, b) => b.at - a.at);
+  const want = new Set(imported);
+  const top: RunRecord[] = [];
+  const found = new Map<string, RunRecord>();
+  let read = 0;
+  for (const { id } of byTime) {
+    if (top.length >= limit && found.size >= want.size) break;
+    const rec = readRunRecord(stateDir, project, id);
+    if (!rec) continue;
+    read++;
+    if (top.length < limit) top.push(rec);
+    if (rec.source === "import" && want.has(rec.env) && !found.has(rec.env))
+      found.set(rec.env, rec);
+  }
+  top.sort((a, b) => b.endedAt.localeCompare(a.endedAt));
+  for (const r of found.values()) if (!top.includes(r)) top.push(r);
+  return { runs: top, read };
+}
+
 export function listRunRecords(
   stateDir: string,
   project: string,
