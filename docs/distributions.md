@@ -4922,6 +4922,24 @@ gh ssh-key add ~/.ssh/den_agents.pub --type signing --title "Den agents"
 (`gh auth refresh -s admin:ssh_signing_key`). An agent called `git` (an
 `agents.git` block with only `grants`) is still an agent.
 
+With no key set, agents' commits and Den's own pin commits are unsigned,
+and `<cli> doctor` says so: "not signed: no agents.git.signing_key", with
+the fix (issue 730). The fix can be Den's own: ask its agent for
+`agent_signing_key_create`. It is a held write only your own Allow runs.
+Den makes an ed25519 key with no passphrase at
+`<state>/agent-signing/id_ed25519` (folder 0700, key 0600), sets
+`agents.git.signing_key` in `config/local/user.yml`, and returns the
+public key with the `gh ssh-key add` line above. The private key is never
+shown.
+
+After a self-update, Den commits the new pin itself. With no key set, it
+first reads the branch's rules on GitHub through `gh` (a ruleset's
+`required_signatures` rule, or classic branch protection where `gh` can
+read it). When the branch requires signed commits, Den doesn't push to it:
+it opens a pull request for the pin instead, since GitHub signs its own
+merge, and the bell says why. When `gh` can't read the rules, Den pushes as
+before.
+
 ### An agent's token
 
 `agents start` (the CLI or the Projects page) mints a random `den_at_…`

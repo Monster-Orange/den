@@ -2956,6 +2956,13 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.agent_signing_key_create": "Make the agents' signing key ({path})",
+    "ap.det.agent_signing_key_create.make":
+      "Makes an ed25519 SSH key with no passphrase at {path}, that only Den can read.",
+    "ap.det.agent_signing_key_create.set":
+      "Sets agents.git.signing_key in config/local/user.yml: agents' commits and Den's pin commits are signed with it.",
+    "ap.det.agent_signing_key_create.github":
+      "Then add its public key on GitHub as a signing key, so GitHub shows those commits as Verified.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -3623,6 +3630,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch}), not pushed: the branch requires signed commits and no agents' signing key is set (doctor says how)",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: the pin branch {branch} is pushed; open a pull request for it ({why})",
     "bell.m.pinHeld":

@@ -86,6 +86,9 @@
  *   gate_box_remove   gateBoxOps), checked with checkBox at the ask; the
  *                     card shows every field. Always the person's own
  *                     Allow; it runs as the person's own boxes route does
+ *   agent_signing_key_create  issue 730: the agents' own signing key
+ *                     (agents/agent-signing-key.ts); critical, the person's
+ *                     own Allow; the result shows the public key only
  *   host_restart
  *                     issue 731: restart the terminal host when agents are
  *                     idle (host-restart-held.ts): the web start's refresh,
@@ -204,6 +207,8 @@ export interface HeldActionDeps {
   gateBoxRemove?: HeldOp;
   /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
   terminalHostRestart?: HeldOp;
+  /** Issue 730: agent_signing_key_create (agents/agent-signing-key.ts). */
+  agentSigningKey?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -270,6 +275,8 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  // Issue 730: the key agents' commits are signed with.
+  "agent_signing_key_create",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -666,6 +673,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.terminalHostRestart,
     "this Den can't restart its terminal host here",
   );
+  const agentSigningKey = op(
+    d.agentSigningKey,
+    "this Den can't make the agents' signing key here",
+  );
 
   const repoClone: HeldAction = {
     check(a, who): HeldCheck {
@@ -1020,5 +1031,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     gate_box_set: gateBoxSet,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    agent_signing_key_create: agentSigningKey,
   };
 }

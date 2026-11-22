@@ -166,6 +166,10 @@ export const HELD_WRITE_RISK: Readonly<
     why: "gives the project's agents a repo they couldn't reach: wider access",
   },
   repo_clone: { risk: "routine", why: "clones a repo into a new folder" },
+  agent_signing_key_create: {
+    risk: "critical",
+    why: "makes the key agents' commits and Den's pin commits are signed with: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+  },
   den_pin_commit: {
     risk: "routine",
     why: "commits and pushes the distribution's new Den pin (package.json, package-lock.json), nothing else",

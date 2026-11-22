@@ -218,6 +218,10 @@ Held (each waits for the person's Allow):
   waits for the person's Allow, then for no agent mid-turn, restarts the
   host and resumes the agents. Never stop the terminal host another way:
   that stops every agent. While doctor says Den is waiting, do nothing.
+- `agent_signing_key_create`: when doctor's signing row says agents'
+  commits are not signed. It waits for the person's Allow, makes the
+  agents' own key and sets agents.git.signing_key. Give the person the
+  public key's GitHub line from the result; never print the private key.
 
 Only when Den's config turns them on (`mcp.actions`):
 

@@ -225,6 +225,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserAgentSigningKey,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
   isProductionEnv,
@@ -1368,6 +1369,7 @@ import {
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
 import { hostRestartOp } from "./host-restart-held.js";
+import { agentSigningKeyOp } from "../../shared/agents/agent-signing-key.js";
 import {
   agentInputState,
   checkAgentCreate,
@@ -4653,6 +4655,19 @@ function approvalDeps(): ApprovalDeps {
       const box = gateBoxOps({ store: () => gates() });
       return { gateBoxSet: box.set, gateBoxRemove: box.remove };
     })(),
+    // Issue 730: the agents' own signing key, on the person's Allow.
+    agentSigningKey: agentSigningKeyOp({
+      stateDir: getStateDir(),
+      current: () => {
+        try {
+          return readAgentsConfig().git?.signingKey;
+        } catch {
+          return undefined;
+        }
+      },
+      setKey: (p) => setUserAgentSigningKey(p),
+      title: `${readBrand().name} agents`,
+    }),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
@@ -4947,6 +4962,29 @@ async function runPinCommit(
     stateDir: getStateDir(),
     git: pc.pinGit(getDistRoot(), { signingKey }),
     mode,
+    // Issue 730: unsigned onto a branch that requires signatures: a PR.
+    signed: !!signingKey,
+    signaturesRequired: pc.ghSignaturesRequired(
+      (argv, cwd) =>
+        new Promise((resolve) =>
+          execFile(
+            argv[0],
+            argv.slice(1),
+            { cwd, timeout: 30_000, maxBuffer: 1024 * 1024 },
+            (err, out, errOut) =>
+              resolve({
+                code: err
+                  ? typeof (err as { code?: unknown }).code === "number"
+                    ? (err as { code: number }).code
+                    : null
+                  : 0,
+                out: `${out ?? ""}${errOut ?? ""}`,
+              }),
+          ),
+        ),
+      ["gh"],
+      getDistRoot(),
+    ),
     ...(policy
       ? {
           allow: () => {
@@ -5098,12 +5136,20 @@ function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
         );
         return;
       case "pr":
-        add(
-          `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
-          "bell.m.pinPrOpened",
-          { branch: step.branch },
-          step.url,
-        );
+        if (step.unsignedRequired)
+          add(
+            `${t} updated to ${v}: its pin is in a pull request (${step.branch}), not pushed: the branch requires signed commits and no agents' signing key is set (doctor says how)`,
+            "bell.m.pinPrUnsigned",
+            { branch: step.branch },
+            step.url,
+          );
+        else
+          add(
+            `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
+            "bell.m.pinPrOpened",
+            { branch: step.branch },
+            step.url,
+          );
         return;
       case "branch_pushed":
         add(

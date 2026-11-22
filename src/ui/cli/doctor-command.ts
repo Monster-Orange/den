@@ -1608,7 +1608,8 @@ export function instructionSizeLines(
 /**
  * agents.git.signing_key: whether agents' commits sign and verify with the
  * key (a commit in a temp repo, checkAgentSigning), and the line that adds
- * its .pub to GitHub as a signing key. Nothing when unset.
+ * its .pub to GitHub as a signing key. Unset (issue 730): "not signed",
+ * with the fix.
  */
 export function signingLines(
   title: string,
@@ -1623,7 +1624,29 @@ export function signingLines(
   check: (g: AgentGitSettings) => SigningCheck = (g) => checkAgentSigning(g),
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const git = readGit();
-  if (!git) return { lines: [], problem: false, checks: [] };
+  // Issue 730: no key set: commits are unsigned, said plainly, with the fix.
+  if (!git?.signingKey) {
+    const fix =
+      "ask Den's own agent for agent_signing_key_create (a held write you Allow), or set agents.git.signing_key in config/local/user.yml to an SSH key with no passphrase";
+    return {
+      lines: [
+        "",
+        `${title} doctor: agents' commit signing`,
+        "",
+        "  signing  ⚠  not signed: no agents.git.signing_key (agents' commits and Den's pin commits are unsigned)",
+        `           fix: ${fix}`,
+      ],
+      problem: false,
+      checks: [
+        {
+          id: "agents:signing",
+          status: "warn",
+          detail: "not signed: no agents.git.signing_key",
+          fix,
+        },
+      ],
+    };
+  }
   const r = check(git);
   const add = signingKeyAddLine(git);
   const lines = [

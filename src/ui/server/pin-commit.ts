@@ -25,6 +25,10 @@
  *      branch and index don't move, and gh opens the pull request. If gh
  *      can't, the branch is pushed and the bell links where to open one;
  *      the next check tries gh again.
+ *   7. Issue 730: with no agents' key the commit is unsigned. When the
+ *      branch's GitHub rules require signed commits (signaturesRequired),
+ *      Den doesn't push to it: it opens the pull request instead (GitHub
+ *      signs its own merge) and the step says why, before any push.
  *   6. Issue 160: the approval policy decides (held write den_pin_commit,
  *      routine). When it says ask, Den holds the commit for the person's
  *      Allow, once per version, and commits nothing until then.
@@ -81,7 +85,15 @@ export type PinStep =
   /** The pin files had nothing to commit (someone committed them). */
   | { did: "clean"; version: string }
   /** pr: the branch is pushed and its pull request open. */
-  | { did: "pr"; version: string; sha: string; branch: string; url: string }
+  | {
+      did: "pr";
+      version: string;
+      sha: string;
+      branch: string;
+      url: string;
+      /** Issue 730: the branch requires signed commits and no key is set. */
+      unsignedRequired?: true;
+    }
   /** pr: the branch is pushed, but gh couldn't open the pull request. */
   | {
       did: "branch_pushed";
@@ -92,6 +104,8 @@ export type PinStep =
       /** Where to open it by hand (a GitHub remote), or null. */
       link: string | null;
       first: boolean;
+      /** Issue 730: the branch requires signed commits and no key is set. */
+      unsignedRequired?: true;
     }
   /** Issue 160: held for the person's Allow (the approval policy). */
   | { did: "held"; version: string; first: boolean }
@@ -143,6 +157,16 @@ export interface PinCommitDeps {
   allow?: () => "run" | "ask";
   /** Issue 160: hold den_pin_commit of `version` for the person. */
   ask?: (version: string) => Promise<boolean> | boolean;
+  /** Issue 730: the commit is signed (agents.git.signing_key is set). */
+  signed?: boolean;
+  /**
+   * Issue 730: whether the remote's `branch` requires signed commits
+   * (ghSignaturesRequired); null when it can't tell.
+   */
+  signaturesRequired?: (
+    remoteUrl: string,
+    branch: string,
+  ) => Promise<boolean | null>;
 }
 
 /** The pull request's branch for `version`. */
@@ -218,7 +242,8 @@ export async function commitPin(
   if (same && (same.state === "pushed" || same.state === "clean"))
     return { did: "done", version };
   if (same?.state === "pr_opened") return { did: "done", version, how: "pr" };
-  const mode: PinMode = d.mode ?? "push";
+  let mode: PinMode = d.mode ?? "push";
+  let unsignedRequired = false;
   try {
     const top = await d.git(["rev-parse", "--show-toplevel"]);
     if (top.code !== 0)
@@ -234,6 +259,22 @@ export async function commitPin(
         version,
         why: "the distribution's checkout is on no branch (detached HEAD)",
       };
+
+    // Issue 730: unsigned onto a branch that requires signatures: a pull
+    // request instead, said before anything is pushed.
+    if (mode === "push" && d.signed === false && d.signaturesRequired) {
+      const u = await d.git(["remote", "get-url", up.remote]);
+      const req =
+        u.code === 0
+          ? await d
+              .signaturesRequired(u.out.trim(), up.branch)
+              .catch(() => null)
+          : null;
+      if (req === true) {
+        mode = "pr";
+        unsignedRequired = true;
+      }
+    }
 
     // A commit an earlier pass made (its push or its pull request failed).
     let sha =
@@ -332,8 +373,13 @@ export async function commitPin(
       }
     }
 
-    if (mode === "pr")
-      return await openPr(version, sha, branch, up, same, d, at);
+    if (mode === "pr") {
+      const step = await openPr(version, sha, branch, up, same, d, at);
+      return unsignedRequired &&
+        (step.did === "pr" || step.did === "branch_pushed")
+        ? { ...step, unsignedRequired: true }
+        : step;
+    }
 
     const p = await d.git([
       "push",
@@ -537,5 +583,64 @@ export function pinGit(
       ],
       extra,
     );
+  };
+}
+
+/** owner/repo of a GitHub remote's address, or null. */
+export function ghRepoOf(remoteUrl: string): string | null {
+  const m = remoteUrl
+    .trim()
+    .match(
+      /github\.com[:/]([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/,
+    );
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
+/**
+ * Issue 730: whether a GitHub branch requires signed commits, through gh:
+ * a ruleset's required_signatures rule (readable with read access), else
+ * classic branch protection's required signatures. null when the remote
+ * isn't GitHub or the rules can't be read.
+ */
+export function ghSignaturesRequired(
+  run: (argv: string[], cwd: string) => Promise<Ran>,
+  gh: string[] = ["gh"],
+  cwd: string = process.cwd(),
+): (remoteUrl: string, branch: string) => Promise<boolean | null> {
+  return async (remoteUrl, branch) => {
+    const repo = ghRepoOf(remoteUrl);
+    if (!repo || !/^[A-Za-z0-9._/-]+$/.test(branch)) return null;
+    const b = encodeURIComponent(branch);
+    const rules = await run(
+      [...gh, "api", `repos/${repo}/rules/branches/${b}`],
+      cwd,
+    ).catch(() => ({ code: null, out: "" }) as Ran);
+    if (rules.code !== 0) return null;
+    try {
+      const list = JSON.parse(rules.out) as { type?: unknown }[];
+      if (
+        Array.isArray(list) &&
+        list.some((r) => r?.type === "required_signatures")
+      )
+        return true;
+    } catch {
+      return null;
+    }
+    const classic = await run(
+      [
+        ...gh,
+        "api",
+        `repos/${repo}/branches/${b}/protection/required_signatures`,
+      ],
+      cwd,
+    ).catch(() => ({ code: null, out: "" }) as Ran);
+    if (classic.code !== 0) return false;
+    try {
+      return (
+        (JSON.parse(classic.out) as { enabled?: unknown }).enabled === true
+      );
+    } catch {
+      return false;
+    }
   };
 }

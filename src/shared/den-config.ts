@@ -1028,6 +1028,21 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   writeUserConfig(next);
 }
 
+/**
+ * Issue 730: agents.git.signing_key in user.yml (the held write
+ * agent_signing_key_create), keeping the rest of agents.git and user.yml.
+ */
+export function setUserAgentSigningKey(p: string): void {
+  const cfg = readUserConfig();
+  const agents = { ...(cfg.agents ?? {}) };
+  const was =
+    agents.git && typeof agents.git === "object" && !Array.isArray(agents.git)
+      ? (agents.git as Record<string, unknown>)
+      : {};
+  agents.git = { ...was, signing_key: p };
+  writeUserConfig({ ...cfg, agents });
+}
+
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {
   try {

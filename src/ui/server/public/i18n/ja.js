@@ -1989,6 +1989,13 @@
       "バージョン別の Playwright: {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.agent_signing_key_create": "エージェントの署名鍵を作成 ({path})",
+    "ap.det.agent_signing_key_create.make":
+      "{path} にパスフレーズなしの ed25519 SSH 鍵を作成します。Den だけが読めます。",
+    "ap.det.agent_signing_key_create.set":
+      "config/local/user.yml に agents.git.signing_key を設定します。エージェントのコミットと Den の固定バージョンのコミットはこの鍵で署名されます。",
+    "ap.det.agent_signing_key_create.github":
+      "その後、公開鍵を GitHub に署名鍵として追加すると、それらのコミットが Verified と表示されます。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
@@ -2637,6 +2644,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})。ブランチは署名付きコミットを必須としていて、エージェントの署名鍵が未設定のためプッシュしていません (doctor に手順があります)",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: 固定バージョンのブランチ {branch} はプッシュされました。プルリクエストを作成してください ({why})",
     "bell.m.pinHeld":

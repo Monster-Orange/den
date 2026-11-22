@@ -836,7 +836,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, agent_signing_key_create, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2888,6 +2888,28 @@ const APPROVAL_TOOLS: DenTool[] = [
     async run(a, ctx) {
       refuseScoped("host_restart", ctx.scope);
       return askPerson("host_restart", "host_restart", {}, a, ctx);
+    },
+  },
+  {
+    name: "agent_signing_key_create",
+    title: "Make the agents' signing key",
+    description:
+      "Issue 730: doctor's fix when its signing row says agents' commits are not signed (no agents.git.signing_key). On the person's Allow, Den makes an ed25519 SSH key with no passphrase under its state folder, sets agents.git.signing_key in config/local/user.yml, and returns the public key with the line that adds it on GitHub as a signing key (give the person that line; never the private key, which is never returned). Refused when a key is already set. Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("agent_signing_key_create", ctx.scope);
+      return askPerson(
+        "agent_signing_key_create",
+        "agent_signing_key_create",
+        {},
+        a,
+        ctx,
+      );
     },
   },
   {

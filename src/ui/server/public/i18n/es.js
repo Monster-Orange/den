@@ -2046,6 +2046,14 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.agent_signing_key_create":
+      "Crear la clave de firma de los agentes ({path})",
+    "ap.det.agent_signing_key_create.make":
+      "Crea una clave SSH ed25519 sin frase de contraseña en {path}, que solo Den puede leer.",
+    "ap.det.agent_signing_key_create.set":
+      "Pone agents.git.signing_key en config/local/user.yml: los commits de los agentes y los de la versión fijada de Den se firman con ella.",
+    "ap.det.agent_signing_key_create.github":
+      "Después añade su clave pública en GitHub como clave de firma, para que GitHub muestre esos commits como verificados.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":
@@ -2727,6 +2735,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch}), sin enviar a la rama: la rama exige commits firmados y no hay clave de firma de los agentes (doctor dice cómo)",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: la rama {branch} con la versión fijada está enviada; abre una solicitud de cambios para ella ({why})",
     "bell.m.pinHeld":
