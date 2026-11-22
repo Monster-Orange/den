@@ -152,6 +152,9 @@
     "v.sch_decline": "断る",
     "v.sch_decline_h":
       "断ると、スケジュールは一時停止のままです。誰かが許可するまで何も実行されません。",
+    "v.sch_revoke": "許可を取り消す",
+    "v.sch_revoked":
+      "許可を取り消しました。スケジュールは新しい許可を待ちます。",
     "v.sch_run": "今すぐ実行",
     "v.sch_runs": "実行を見る",
     "v.sch_ch_h": "変わった点",
@@ -168,6 +171,15 @@
     "v.sch_sk_window": "先に時間帯が終わった",
     "v.sch_sk_busy": "別の実行中だった",
     "v.sch_sk_cmdoff": "ここではコマンドがオフ",
+    "v.sch_sk_prodoff": "ここでは本番のスケジュールはオフ",
+    "v.sch_sk_often": "本番には実行間隔が短すぎる",
+    "v.sch_sk_host": "本番で許可されていないホストに接続する",
+    "v.sch_lim_prod_off":
+      "ここでは本番でスケジュールは実行されません。オンにするには、Den の verify: ブロックにこれを書きます:",
+    "v.sch_lim_often":
+      "本番での実行間隔が Den の許可より短いです。間隔を広げるか、Den の verify: ブロックで最短間隔を設定します:",
+    "v.sch_lim_host":
+      "本番の実行はこれらのホストに接続できません。verify.schedule.production.hosts に追加するか、チェック先を変えます:",
     "v.sch_sk_unclear": "Den がコマンドをたどれなかった",
     "v.sch_lim_off":
       "ここでは共有環境のコマンドは自動で実行されません。オンにするには、Den の verify: ブロックにこれを書きます:",

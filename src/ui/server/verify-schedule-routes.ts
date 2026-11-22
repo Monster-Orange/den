@@ -20,12 +20,16 @@ import { methodRules } from "../../shared/verify/guard.js";
 import { runPlan } from "../../shared/verify/run.js";
 import { httpProbe, spawnCmd } from "../../shared/verify/run.js";
 import { realGit } from "../../shared/verify/changes.js";
+import { realPin, type PinProbe } from "../../shared/verify/pin.js";
 import {
   cmdFiles,
-  commandLimit,
+  limitMessage,
+  pinnedModules,
+  scheduleLimit,
   listSchedules,
   mayRun,
   readAllows,
+  removeAllow,
   readScheduleSettings,
   scheduleState,
   writeAllow,
@@ -38,6 +42,7 @@ import {
 import {
   decide,
   noteScheduleRun,
+  takeScheduleLock,
   readScheduleRuns,
   type ScheduleRunState,
 } from "../../shared/verify/schedule-tick.js";
@@ -65,6 +70,8 @@ export interface BellNote {
 }
 
 export interface ScheduleServerDeps extends VerifyServerDeps {
+  /** Issue 964: the commit pin (git status and git archive by default). */
+  pin?: PinProbe;
   /** Every project with a schedule to look at. */
   projects: () => string[];
   bell?: (n: BellNote) => void;
@@ -136,6 +143,9 @@ function changeOf(s: Schedule, a: ScheduleAllow): PlanChange {
 
 export interface ScheduleRow {
   id: string;
+  /** Issue 964: the plan's fingerprint and commits as shown; an Allow sends them back. */
+  hash: string;
+  commits?: Record<string, string | null>;
   name?: string;
   env: string;
   cron: string;
@@ -164,16 +174,30 @@ export interface ScheduleRow {
   change?: PlanChange;
 }
 
+/** Issue 964: the commit each pinned command's repo is at now. */
+function commitsOf(
+  d: VerifyServerDeps,
+  s: Schedule,
+): Record<string, string | null> {
+  const git = d.git ?? realGit;
+  return Object.fromEntries(
+    pinnedModules(s).map((m) => [m.repo, git.head(m.repoPath)]),
+  );
+}
+
 function rowOf(
   s: Schedule,
   a: ScheduleAllow | undefined,
   r: ScheduleRunState,
   now: Date,
   set: ScheduleSettings,
+  commits: Record<string, string | null> = {},
 ): ScheduleRow {
   const state = scheduleState(s, a, now, set);
   return {
     id: s.id,
+    hash: s.hash,
+    ...(Object.keys(commits).length ? { commits } : {}),
     ...(s.name ? { name: s.name } : {}),
     env: s.env,
     cron: s.cron,
@@ -193,7 +217,7 @@ function rowOf(
     state,
     runs: mayRun(s, a, now, set),
     ...(() => {
-      const l = commandLimit(s, set);
+      const l = scheduleLimit(s, set);
       return l ? { limit: l } : {};
     })(),
     allow: a ? { by: a.by, at: a.at, expiresAt: a.expiresAt } : null,
@@ -218,7 +242,7 @@ export function scheduleRows(
   return {
     ok: true,
     schedules: got.schedules.map((s) =>
-      rowOf(s, allows[s.id], runs[s.id] ?? {}, now, set),
+      rowOf(s, allows[s.id], runs[s.id] ?? {}, now, set, commitsOf(d, s)),
     ),
   };
 }
@@ -273,14 +297,13 @@ function bellExpiry(
   });
 }
 
-let busy = false;
-
 /** Runs one schedule now (the loop's due run, or a person's Run now). */
 async function runSchedule(
   d: ScheduleServerDeps,
   s: Schedule,
   a: ScheduleAllow | undefined,
-  due: string,
+  /** The due time this run handles; null for Run now (issue 964: it leaves the next due run alone). */
+  due: string | null,
   runId?: string,
 ): Promise<
   { ok: true; runId: string; verdict: string } | { ok: false; error: string }
@@ -323,7 +346,7 @@ async function runSchedule(
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
-    const lim = commandLimit(fresh, set);
+    const lim = scheduleLimit(fresh, set);
     if (lim)
       return {
         ok: false,
@@ -332,10 +355,45 @@ async function runSchedule(
   }
   const git = d.git ?? realGit;
   const now = d.now ?? (() => new Date());
+  // Issue 964: a shared schedule's commands run from the allowed commit.
+  const pinned = new Map<string, { dir: string; commit: string }>();
+  for (const m of pinnedModules(s)) {
+    const commit = a?.commits?.[m.repo];
+    if (!commit)
+      return {
+        ok: false,
+        error: "its Allow names no commit to run from, so it did not run",
+      };
+    try {
+      pinned.set(m.id, {
+        dir: (d.pin ?? realPin).tree(
+          d.stateDir(),
+          s.project,
+          m.repoPath,
+          commit,
+        ),
+        commit,
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        error: `Den couldn't check out the allowed commit, so it did not run (${(e as Error).message})`,
+      };
+    }
+  }
+  const baseCmd = d.runCmd ?? spawnCmd;
+  const byPath = new Map(
+    plan.modules
+      .filter((m) => pinned.has(m.id))
+      .map((m) => [m.repoPath, pinned.get(m.id)!.commit]),
+  );
   const r = await runPlan(plan.plan, {
     stateDir: d.stateDir(),
-    head: (p) => git.head(p),
-    runCmd: d.runCmd ?? spawnCmd,
+    head: (p) => byPath.get(p) ?? git.head(p),
+    runCmd: (m, ctx) => {
+      const pin = pinned.get(m.id);
+      return baseCmd(pin ? { ...m, repoPath: pin.dir } : m, ctx);
+    },
     probe: d.probe ?? httpProbe,
     now,
     ...(runId ? { runId: () => runId } : {}),
@@ -349,7 +407,7 @@ async function runSchedule(
     schedule: s.id,
   });
   noteScheduleRun(d.stateDir(), s.project, s.id, {
-    lastDue: due,
+    ...(due ? { lastDue: due } : {}),
     last: { runId: r.runId, verdict: r.verdict, at: now().toISOString() },
   });
   const passed = r.modules.filter((m) => m.state === "passed").length;
@@ -369,8 +427,8 @@ export async function tickSchedules(
   d: ScheduleServerDeps,
 ): Promise<TickNote[]> {
   const out: TickNote[] = [];
-  if (busy) return out;
-  busy = true;
+  const release = takeScheduleLock(d.stateDir());
+  if (!release) return out;
   try {
     const now = (d.now ?? (() => new Date()))();
     let set: ScheduleSettings;
@@ -431,7 +489,7 @@ export async function tickSchedules(
     }
     return out;
   } finally {
-    busy = false;
+    release();
   }
 }
 
@@ -462,7 +520,8 @@ export function isSchedulePath(pathname: string): boolean {
   return (
     pathname === "/api/verify/schedules" ||
     pathname === "/api/verify/schedules/allow" ||
-    pathname === "/api/verify/schedules/run"
+    pathname === "/api/verify/schedules/run" ||
+    pathname === "/api/verify/schedules/revoke"
   );
 }
 
@@ -563,19 +622,41 @@ export async function handleScheduleRoutes(
     return true;
   }
   const allows = readAllows(d.stateDir(), p.project);
-  if (pathname === "/api/verify/schedules/allow") {
-    const lim = commandLimit(s, set);
-    if (lim) {
+  if (pathname === "/api/verify/schedules/revoke") {
+    // Issue 964: the person takes the Allow back; the schedule waits for a new one.
+    if (!allows[s.id]) {
       sendJson(
         res,
         {
           ok: false,
-          code: lim.reason,
-          error:
-            lim.reason === "commands-off"
-              ? "Commands don't run on their own on a shared environment here (verify.schedule.shared_commands is off)."
-              : `Den can't follow this schedule's command, so it can't be allowed: ${lim.why}.`,
+          code: "no_allow",
+          error: "This schedule has no Allow to take back.",
         },
+        409,
+      );
+      return true;
+    }
+    removeAllow(d.stateDir(), p.project, s.id);
+    const runs = readScheduleRuns(d.stateDir(), p.project);
+    sendJson(res, {
+      ok: true,
+      schedule: rowOf(
+        s,
+        undefined,
+        runs[s.id] ?? {},
+        now,
+        set,
+        commitsOf(d, s),
+      ),
+    });
+    return true;
+  }
+  if (pathname === "/api/verify/schedules/allow") {
+    const lim = scheduleLimit(s, set);
+    if (lim) {
+      sendJson(
+        res,
+        { ok: false, code: lim.reason, error: limitMessage(lim) },
         409,
       );
       return true;
@@ -584,6 +665,89 @@ export async function handleScheduleRoutes(
       sendJson(res, { ok: false, error: "This schedule needs no Allow." }, 409);
       return true;
     }
+    // Issue 964: a command on a shared environment runs from the commit
+    // allowed now. Its files must be committed, so what was allowed is
+    // what runs.
+    const commits: Record<string, string> = {};
+    const pin = d.pin ?? realPin;
+    const git = d.git ?? realGit;
+    // Issue 964: the person allows what the page showed them. A plan or a
+    // commit that changed since: refused, and the row shows again.
+    const shown = (body.commits ?? {}) as Record<string, unknown>;
+    const stale = () => {
+      const runs = readScheduleRuns(d.stateDir(), p.project);
+      sendJson(
+        res,
+        {
+          ok: false,
+          code: "stale",
+          error:
+            "This schedule changed since the page showed it. Look at it again, then allow it.",
+          schedule: rowOf(
+            s,
+            allows[s.id],
+            runs[s.id] ?? {},
+            now,
+            set,
+            commitsOf(d, s),
+          ),
+        },
+        409,
+      );
+      return true;
+    };
+    if (body.hash !== s.hash) return stale();
+    for (const m of pinnedModules(s)) {
+      const head = git.head(m.repoPath);
+      if (head && shown[m.repo] !== head) return stale();
+      if (!head) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            code: "no-commit",
+            error: `${m.name}: its repo isn't a git checkout, so Den can't pin the command to a commit.`,
+          },
+          409,
+        );
+        return true;
+      }
+      const files = Object.keys(cmdFiles(m.repoPath, m.cmd!)).filter(
+        (f) => !f.startsWith("/"),
+      );
+      const dirty = pin.dirty(m.repoPath, files);
+      if (dirty.length) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            code: "uncommitted",
+            error: `${m.name}: commit these first, so the run uses what you allow: ${dirty.join(", ")}.`,
+          },
+          409,
+        );
+        return true;
+      }
+      let links: string[];
+      try {
+        links = pin.symlinks(m.repoPath, head);
+      } catch (e) {
+        links = [(e as Error).message];
+      }
+      if (links.length) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            code: "symlink",
+            error: `${m.name}: the commit holds symlinks, which could run something other than what you allow: ${links.join(", ")}.`,
+          },
+          409,
+        );
+        return true;
+      }
+      commits[m.repo] = head;
+    }
     const a = writeAllow(
       d.stateDir(),
       p.project,
@@ -591,11 +755,12 @@ export async function handleScheduleRoutes(
       { kind: "person" },
       now,
       set,
+      commits,
     );
     const runs = readScheduleRuns(d.stateDir(), p.project);
     sendJson(res, {
       ok: true,
-      schedule: rowOf(s, a, runs[s.id] ?? {}, now, set),
+      schedule: rowOf(s, a, runs[s.id] ?? {}, now, set, commitsOf(d, s)),
     });
     return true;
   }
@@ -613,7 +778,8 @@ export async function handleScheduleRoutes(
     );
     return true;
   }
-  if (busy) {
+  const release = takeScheduleLock(d.stateDir());
+  if (!release) {
     sendJson(
       res,
       {
@@ -629,12 +795,9 @@ export async function handleScheduleRoutes(
     .toISOString()
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14)}-${Math.random().toString(36).slice(2, 8)}`;
-  busy = true;
-  runSchedule(d, s, a, now.toISOString(), runId)
+  runSchedule(d, s, a, null, runId)
     .catch((e) => d.log?.(`verify schedules: run now: ${(e as Error).message}`))
-    .finally(() => {
-      busy = false;
-    });
+    .finally(release);
   sendJson(res, { ok: true, runId }, 202);
   return true;
 }

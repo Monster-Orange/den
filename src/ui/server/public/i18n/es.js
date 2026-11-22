@@ -156,6 +156,8 @@
     "v.sch_decline": "Rechazar",
     "v.sch_decline_h":
       "Rechazar deja la programación en pausa. Nada corre hasta que alguien la permita.",
+    "v.sch_revoke": "Retirar permiso",
+    "v.sch_revoked": "Permiso retirado. La programación espera uno nuevo.",
     "v.sch_run": "Correr ahora",
     "v.sch_runs": "Ver corridas",
     "v.sch_ch_h": "Qué cambió",
@@ -172,6 +174,15 @@
     "v.sch_sk_window": "su ventana cerró antes",
     "v.sch_sk_busy": "había otra corrida en curso",
     "v.sch_sk_cmdoff": "los comandos están apagados aquí",
+    "v.sch_sk_prodoff": "las programaciones en producción están apagadas aquí",
+    "v.sch_sk_often": "corre demasiado seguido para producción",
+    "v.sch_sk_host": "llega a un host que producción no permite",
+    "v.sch_lim_prod_off":
+      "Aquí las programaciones no corren en producción. Para activarlas, pon esto en el bloque verify: de Den:",
+    "v.sch_lim_often":
+      "Esto corre en producción más seguido de lo que Den permite. Córrelo menos seguido, o fija el intervalo mínimo en el bloque verify: de Den:",
+    "v.sch_lim_host":
+      "Una corrida en producción no puede llegar a estos hosts. Agrégalos a verify.schedule.production.hosts, o apunta la prueba a otro lugar:",
     "v.sch_sk_unclear": "Den no pudo seguir su comando",
     "v.sch_lim_off":
       "Aquí los comandos no corren solos en un entorno compartido. Para activarlos, pon esto en el bloque verify: de Den:",

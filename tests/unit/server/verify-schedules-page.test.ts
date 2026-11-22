@@ -14,6 +14,7 @@ import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  allowBody,
   answerView,
   schedulesView,
 } from "../../../src/ui/server/public/verify-page.js";
@@ -298,6 +299,55 @@ describe("issue 214: Schedules (S11)", () => {
       "<code>web/speed: make isn&#39;t a script in the repo</code>",
     );
     expect(speed).not.toMatch(/data-sch-run=/);
+  });
+
+  it("issue 964: a production limit says why and names the setting or the hosts", () => {
+    const lim = (id: string, limit: object) => ({
+      ...SV,
+      schedules: SV.schedules.map((r: any) =>
+        r.id === id ? { ...r, runs: false, limit } : r,
+      ),
+    });
+    const id = "devices-9c0d1e2f";
+    const off = rowOf(schedulesView(lim(id, { reason: "production-off" })), id);
+    expect(off).toContain("Schedules don&#39;t run on production here.");
+    expect(off).toContain(
+      "<code>schedule: { production: { enabled: true } }</code>",
+    );
+    expect(off).not.toMatch(/data-sch-ask=/);
+    const host = rowOf(
+      schedulesView(lim(id, { reason: "host", hosts: ["169.254.169.254"] })),
+      id,
+    );
+    expect(host).toContain("A production run may not reach these hosts.");
+    expect(host).toContain("<code>169.254.169.254</code>");
+  });
+
+  it("issue 964: a row with an Allow offers to take it back", () => {
+    const html = schedulesView(SV);
+    for (const r of SV.schedules as any[]) {
+      const row = rowOf(html, r.id);
+      if (r.allow)
+        expect(row).toContain(
+          `data-sch-revoke="${r.id}">Take back Allow</button>`,
+        );
+      else expect(row).not.toMatch(/data-sch-revoke=/);
+    }
+    expect((SV.schedules as any[]).some((r) => r.allow)).toBe(true);
+  });
+
+  it("issue 964: an Allow sends back the hash and commits the row showed", () => {
+    const sv = {
+      project: "north",
+      schedules: [{ id: "a1", hash: "h1", commits: { shop: "c1" } }],
+    };
+    expect(allowBody(sv, "allow", "a1")).toEqual({
+      project: "north",
+      id: "a1",
+      hash: "h1",
+      commits: { shop: "c1" },
+    });
+    expect(allowBody(sv, "run", "a1")).toEqual({ project: "north", id: "a1" });
   });
 
   it("a name or a module from the repo stays plain text", () => {

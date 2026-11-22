@@ -26,6 +26,8 @@ import {
   type ScheduleServerDeps,
 } from "../../../src/ui/server/verify-schedule-routes.js";
 import { readRunRecord } from "../../../src/shared/verify/records.js";
+import { readAllows } from "../../../src/shared/verify/schedules.js";
+import { readLatest } from "../../../src/shared/verify/changes.js";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -42,6 +44,12 @@ fs.writeFileSync(path.join(REPO, "scripts/speed.sh"), "echo ok\n");
 const ON = { shared_commands: true };
 let speedCmd = "./scripts/speed.sh";
 let cmds: string[] = [];
+// Issue 964: where each command ran, and the fake commit pin.
+let cmdDirs: string[] = [];
+let head: string | null = "c0ffee1";
+let dirty: string[] = [];
+let links: string[] = [];
+const PIN = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-pin-"));
 let probes: string[] = [];
 let bell: BellNote[] = [];
 let stateDir = "";
@@ -97,9 +105,15 @@ function deps(): ScheduleServerDeps {
         },
       ];
     },
-    git: { head: () => "c0ffee1", changedSince: () => [] },
+    git: { head: () => head, changedSince: () => [] },
+    pin: {
+      dirty: () => dirty,
+      symlinks: () => links,
+      tree: (_sd, _p, _rp, commit) => path.join(PIN, commit),
+    },
     runCmd: async (m) => {
       cmds.push(m.name);
+      cmdDirs.push(m.repoPath);
       return {
         exitCode: m.name === "web/speed" && speedCmd.includes("fail") ? 1 : 0,
       };
@@ -120,6 +134,10 @@ beforeEach(() => {
   verifyBlock = { schedule: ON };
   speedCmd = "./scripts/speed.sh";
   cmds = [];
+  cmdDirs = [];
+  head = "c0ffee1";
+  dirty = [];
+  links = [];
   probes = [];
   bell = [];
   onRepos = null;
@@ -162,7 +180,22 @@ const get = async () =>
   (
     await fetch(`${base}/api/verify/schedules?project=north`)
   ).json() as Promise<any>;
-const post = async (p: string, body: object) => {
+// An Allow sends what the page showed (its hash and commits), as the page
+// does; `raw` sends the body as given.
+const post = async (p: string, body0: Record<string, unknown>) => {
+  let body: Record<string, unknown> = { ...body0 };
+  if (body.raw) delete body.raw;
+  else if (p.endsWith("/allow") && !("hash" in body)) {
+    const row = ((await get()).schedules as any[]).find(
+      (x) => x.id === body.id,
+    );
+    if (row)
+      body = {
+        ...body,
+        hash: row.hash,
+        ...(row.commits ? { commits: row.commits } : {}),
+      };
+  }
   const r = await fetch(`${base}${p}`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-den-approve-key": AK },
@@ -329,8 +362,227 @@ describe("T18: the standing Allow", () => {
   });
 });
 
+describe("issue 964: a scheduled command runs from the allowed commit", () => {
+  it("the Allow records the commit; the run uses that commit's files, not the working tree", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    expect(
+      (await post("/api/verify/schedules/allow", { project: "north", id }))
+        .status,
+    ).toBe(200);
+    expect(readAllows(stateDir, "north")[id].commits).toEqual({
+      shop: "c0ffee1",
+    });
+    // A newer commit lands after the Allow: the run still uses the allowed one.
+    head = "beef002";
+    await tick(at(22, 2, 1));
+    expect(cmds).toEqual(["web/speed"]);
+    expect(cmdDirs).toEqual([path.join(PIN, "c0ffee1")]);
+    const row = ((await get()).schedules as any[]).find((s) => s.id === id);
+    expect(row.last).toMatchObject({ verdict: "passed" });
+    expect(
+      readLatest(stateDir, "north").staging["shop:web/speed"],
+    ).toMatchObject({ commit: "c0ffee1" });
+  });
+
+  it("files the command names must be committed before it can be allowed", async () => {
+    await tick(at(21, 12));
+    dirty = ["scripts/speed.sh"];
+    const id = await idOf("Nightly speed");
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("uncommitted");
+    expect(r.body.error).toMatch(/scripts\/speed\.sh/);
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+  });
+
+  it("the person allows what the page showed: a commit or plan that changed since is refused", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    const row = ((await get()).schedules as any[]).find((x) => x.id === id);
+    expect(row.commits).toEqual({ shop: "c0ffee1" });
+    expect(typeof row.hash).toBe("string");
+    // An agent commits between the page load and the click.
+    head = "beef002";
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+      hash: row.hash,
+      commits: row.commits,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("stale");
+    expect(r.body.schedule.commits).toEqual({ shop: "beef002" });
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+    // The plan changed since the page showed it.
+    const r2 = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+      hash: "0000000000000000",
+      commits: { shop: "beef002" },
+    });
+    expect(r2.body.code).toBe("stale");
+    // No hash at all: refused too.
+    const r3 = await post("/api/verify/schedules/allow", {
+      raw: true,
+      project: "north",
+      id,
+    });
+    expect(r3.body.code).toBe("stale");
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+  });
+
+  it("a commit holding a symlink can't be allowed", async () => {
+    await tick(at(21, 12));
+    links = ["scripts/helper.sh"];
+    const id = await idOf("Nightly speed");
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("symlink");
+    expect(r.body.error).toMatch(/scripts\/helper\.sh/);
+  });
+
+  it("not a git checkout: can't be allowed", async () => {
+    await tick(at(21, 12));
+    head = null;
+    const id = await idOf("Nightly speed");
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("no-commit");
+  });
+
+  it("an Allow that names no commit (made before the pin): not run", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    const all = readAllows(stateDir, "north");
+    delete all[id].commits;
+    fs.writeFileSync(
+      path.join(stateDir, "verify", "north", "schedule-allows.json"),
+      JSON.stringify(all),
+    );
+    await tick(at(22, 2, 1));
+    expect(cmds).not.toContain("web/speed");
+  });
+});
+
+describe("issue 964: another server on the same state folder", () => {
+  it("while it holds the run lock, the tick runs nothing and Run now is busy", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    // Another live process holds the lock (this test's own pid stands in for it).
+    const lock = path.join(stateDir, "verify", "schedules.lock");
+    fs.writeFileSync(lock, `${process.pid} ${Date.now()} other\n`);
+    expect(await tick(at(22, 2, 1))).toEqual([]);
+    expect(cmds).toEqual([]);
+    const r = await post("/api/verify/schedules/run", { project: "north", id });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("busy");
+    fs.unlinkSync(lock);
+    await tick(at(22, 2, 2));
+    expect(cmds).toEqual(["web/speed"]);
+  });
+});
+
+describe("issue 964: taking an Allow back", () => {
+  it("a person takes it back: no runs until a new Allow; an agent can't", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    asAgent = true;
+    expect(
+      (await post("/api/verify/schedules/revoke", { project: "north", id }))
+        .status,
+    ).toBe(403);
+    asAgent = false;
+    const r = await post("/api/verify/schedules/revoke", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.schedule).toMatchObject({
+      state: "needs-allow",
+      allow: null,
+    });
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+    const notes = await tick(at(22, 2, 1));
+    expect(notes.find((n) => n.schedule === id)).toMatchObject({
+      action: "skip",
+      reason: "needs-allow",
+    });
+    expect(cmds).not.toContain("web/speed");
+    const again = await post("/api/verify/schedules/revoke", {
+      project: "north",
+      id,
+    });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("no_allow");
+  });
+});
+
+describe("issue 964: Run now", () => {
+  it("leaves the schedule's next due run alone", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    // Run now at 02:00:30: tonight's 02:00 run is due, and the tick
+    // hasn't handled it yet. The scheduled run still goes.
+    clock = new Date(2026, 10, 22, 2, 0, 30);
+    expect(
+      (await post("/api/verify/schedules/run", { project: "north", id }))
+        .status,
+    ).toBe(202);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(cmds).toEqual(["web/speed"]);
+    cmds = [];
+    const notes = await tick(at(22, 2, 1));
+    expect(notes.find((n) => n.schedule === id)).toMatchObject({
+      action: "run",
+    });
+    expect(cmds).toEqual(["web/speed"]);
+  });
+});
+
 describe("T19: a scheduled production run is read-only", () => {
+  it("issue 964: off until the org opts in; the Allow is refused and the row says why", async () => {
+    await tick(at(21, 12));
+    const id = await idOf("Production smoke");
+    const row = ((await get()).schedules as any[]).find((s) => s.id === id);
+    expect(row).toMatchObject({
+      runs: false,
+      limit: { reason: "production-off" },
+    });
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("production-off");
+    const notes = await tick(at(21, 13, 0));
+    expect(
+      notes.find((n) => n.schedule.startsWith("production-smoke")),
+    ).toMatchObject({ action: "skip", reason: "production-off" });
+    expect(probes).toEqual([]);
+  });
+
   it("only GET goes out, through the guard, and the run's log keeps it", async () => {
+    verifyBlock = { schedule: { ...ON, production: { enabled: true } } };
     await tick(at(21, 12));
     // Production is shared: it runs under its Allow too.
     await post("/api/verify/schedules/allow", {

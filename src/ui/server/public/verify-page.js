@@ -662,7 +662,38 @@ function allowLine(row) {
   return esc(t("v.sch_allow_until", { t: day(row.allow.expiresAt) }));
 }
 
+/**
+ * The body of a schedule POST. An Allow carries the plan's fingerprint and
+ * commits the page showed (issue 964), so the person allows what they saw.
+ */
+export function allowBody(sv, path, id) {
+  const row = (sv?.schedules ?? []).find((r) => r.id === id);
+  return path === "allow" && row
+    ? {
+        project: sv?.project,
+        id,
+        hash: row.hash,
+        ...(row.commits ? { commits: row.commits } : {}),
+      }
+    : { project: sv?.project, id };
+}
+
+/** Issue 964: production limits, the page's words and the line to show. */
+const LIMIT_KEYS = {
+  "production-off": [
+    "v.sch_lim_prod_off",
+    "schedule: { production: { enabled: true } }",
+  ],
+  "too-often": [
+    "v.sch_lim_often",
+    "schedule: { production: { min_interval: 15m } }",
+  ],
+  host: ["v.sch_lim_host", ""],
+};
+
 function flagOf(row) {
+  if (row.limit && LIMIT_KEYS[row.limit.reason])
+    return `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t(LIMIT_KEYS[row.limit.reason][0]))} <code>${esc(row.limit.reason === "host" ? (row.limit.hosts ?? []).join(", ") : LIMIT_KEYS[row.limit.reason][1])}</code></div>`;
   if (row.limit)
     return row.limit.reason === "commands-off"
       ? `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t("v.sch_lim_off"))} <code>schedule: { shared_commands: true }</code></div>`
@@ -691,6 +722,9 @@ const SKIP_WORD = {
   busy: "v.sch_sk_busy",
   "commands-off": "v.sch_sk_cmdoff",
   "command-unclear": "v.sch_sk_unclear",
+  "production-off": "v.sch_sk_prodoff",
+  "too-often": "v.sch_sk_often",
+  host: "v.sch_sk_host",
 };
 
 const modName = (row, id) =>
@@ -792,6 +826,9 @@ function scheduleRow(row, sv, open) {
     `<div class="vf-btns">` +
     (row.needsAllow && !row.limit && ASKS.has(row.state)
       ? `<button type="button" class="den-btn${row.runs ? "" : " primary"}" data-sch-ask="${esc(row.id)}" aria-expanded="${open === row.id}">${esc(t("v.sch_ask"))}</button>`
+      : "") +
+    (row.allow
+      ? `<button type="button" class="den-btn" data-sch-revoke="${esc(row.id)}">${esc(t("v.sch_revoke"))}</button>`
       : "") +
     (row.runs
       ? `<button type="button" class="den-btn" data-sch-run="${esc(row.id)}">${esc(t("v.sch_run"))}</button>`
@@ -922,7 +959,10 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
     const run = async (headers) =>
       getJson(
         `/api/verify/schedules/${path}`,
-        { method: "POST", body: JSON.stringify({ project: sv?.project, id }) },
+        {
+          method: "POST",
+          body: JSON.stringify(allowBody(sv, path, id)),
+        },
         { headers },
       );
     const busy = globalThis.window?.denShell?.busyAction;
@@ -935,7 +975,13 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
       note = t("v.sch_err", { e: e.message });
     }
     if (done) {
-      note = t(path === "allow" ? "v.sch_allowed" : "v.sch_started");
+      note = t(
+        path === "allow"
+          ? "v.sch_allowed"
+          : path === "revoke"
+            ? "v.sch_revoked"
+            : "v.sch_started",
+      );
       if (path === "allow") open = null;
     }
     try {
@@ -953,7 +999,7 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
       return;
     }
     const b = el?.closest(
-      "button[data-sch-ask], button[data-sch-allow], button[data-sch-decline], button[data-sch-run]",
+      "button[data-sch-ask], button[data-sch-allow], button[data-sch-decline], button[data-sch-run], button[data-sch-revoke]",
     );
     if (b) {
       const ask = b.getAttribute("data-sch-ask");
@@ -975,7 +1021,9 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
         return;
       }
       const allow = b.getAttribute("data-sch-allow");
+      const revoke = b.getAttribute("data-sch-revoke");
       if (allow !== null) void act("allow", allow, b);
+      else if (revoke !== null) void act("revoke", revoke, b);
       else void act("run", b.getAttribute("data-sch-run"), b);
       return;
     }
