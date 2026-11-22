@@ -9,7 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -63,7 +63,8 @@ async function page(url: string): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
-  await p.goto(url);
+  // Issue 819: an approved browser, landing on `url`.
+  await signInPage(p, s!.stateDir, s!.base, url);
   return p;
 }
 
@@ -81,7 +82,7 @@ describe("Settings: the pressed button follows the save (0.4.13)", () => {
     async (row, key, before, after) => {
       if (skip()) return;
       await s!.settings({ [key]: null });
-      const p = await page(signInUrl(s!.stateDir, s!.base, "/settings"));
+      const p = await page("/settings");
       await p.waitForSelector(`[data-setting="${row}"] .seg button`);
       expect(await pressed(p, row)).toEqual([before]);
       let navigated = false;

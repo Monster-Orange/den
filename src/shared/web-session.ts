@@ -227,6 +227,20 @@ export interface WebAuthConfig {
    */
   startWaitSeconds: number;
   /**
+   * Issue 819: `web.pair_requests_per_minute` (user.yml over the
+   * distribution's): how many new-device requests one client address may
+   * make a minute. Default 30.
+   */
+  pairRequestsPerMinute: number;
+  /**
+   * Issue 819: `web.approve_attempts` and `web.approve_window_seconds`: how
+   * many wrong codes a signed-in browser may type within the window before
+   * approving waits for it to pass. Defaults 10 and 30 s: short, so a
+   * person mistyping is never held up for long.
+   */
+  approveAttempts: number;
+  approveWindowSeconds: number;
+  /**
    * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
    */
@@ -456,6 +470,23 @@ export function readWebAuthConfig(
     );
   const readyProbe = waitSeconds(user, team, "ready_probe_seconds");
   const startWait = waitSeconds(user, team, "start_wait_seconds");
+  const pairLimits = Object.fromEntries(
+    Object.entries(PAIR_LIMITS).map(([k, l]) => {
+      const v = user[k] ?? team[k];
+      if (v === undefined || v === null) return [k, l.dflt];
+      if (
+        typeof v !== "number" ||
+        !Number.isFinite(v) ||
+        (l.int && !Number.isInteger(v)) ||
+        v < l.min ||
+        v > l.max
+      )
+        throw new Error(
+          `web.${k} must be a ${l.int ? "whole number" : "number"} from ${l.min} to ${l.max}, got ${JSON.stringify(v)}`,
+        );
+      return [k, v];
+    }),
+  ) as Record<keyof typeof PAIR_LIMITS, number>;
   const clientId =
     clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
   const machineName = parseMachineName(user.machine_name);
@@ -530,6 +561,9 @@ export function readWebAuthConfig(
     ownerNameTimeoutSeconds: nameWait ?? 10,
     readyProbeSeconds: readyProbe ?? WEB_READY_PROBE_SECONDS,
     startWaitSeconds: startWait ?? WEB_START_WAIT_SECONDS,
+    pairRequestsPerMinute: pairLimits.pair_requests_per_minute,
+    approveAttempts: pairLimits.approve_attempts,
+    approveWindowSeconds: pairLimits.approve_window_seconds,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
     ...(team.allow_plain_http_remote !== undefined
       ? { plainHttpInDistribution: configFile }
@@ -539,6 +573,16 @@ export function readWebAuthConfig(
       : {}),
   };
 }
+
+/**
+ * Issue 819: the new-device limits (user.yml web.*, over the
+ * distribution's): their ranges and permissive defaults.
+ */
+export const PAIR_LIMITS = {
+  pair_requests_per_minute: { min: 1, max: 10_000, int: true, dflt: 30 },
+  approve_attempts: { min: 1, max: 1000, int: true, dflt: 10 },
+  approve_window_seconds: { min: 1, max: 3600, int: false, dflt: 30 },
+} as const;
 
 /** den#143: `web.ready_probe_seconds`'s default. */
 export const WEB_READY_PROBE_SECONDS = 10;

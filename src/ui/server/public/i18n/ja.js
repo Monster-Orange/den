@@ -801,6 +801,14 @@
     "err.signin.youreIn": "サインインしました。",
     "err.signin.expiredLead":
       "このサインインリンクは期限切れか、使用済みです。下から改めてサインインしてください。",
+    "err.signin.pairLinkLead":
+      "このブラウザーを入れるには、すでにサインインしているブラウザーで承認してください。そちらで 設定 › アクセス を開き、下のコードを承認します。",
+    "err.signin.pairLinkWaiting":
+      "サインイン済みのブラウザーでの承認を待っています…",
+    "err.signin.pairLinkDenied":
+      "このブラウザーは拒否されました。サインインするには、新しいコードを取得し、サインイン済みのブラウザーで承認してください。",
+    "err.signin.pairLinkEnded":
+      "このリクエストは終了しました。新しいコードを取得して、もう一度承認してください。",
     "err.signin.confirmLead":
       "{host} で web login が表示したコードを入力してください:",
     "err.signin.confirmGo": "サインイン",
@@ -812,6 +820,43 @@
       "このリンクはもう使えません。{host} で web login をもう一度実行して新しいリンクを取得してください。",
     "err.signin.confirmWhy":
       "リンクだけでは足りません。{host} に表示されたコードも必要なので、他の人がリンクを見てもサインインできません。",
+    // Issue 868: the ways in this install has, on the signed-out page.
+    "err.signin.methods.title": "{name} にサインインする方法",
+    "err.signin.methods.ready": "ここで設定済み",
+    "err.signin.methods.notReady": "ここでは未設定",
+    "err.signin.methods.hostOnly": "{host} でのみ",
+    "err.signin.methods.github": "GitHub でサインイン",
+    "err.signin.methods.githubReady":
+      "下の「GitHub でサインイン」を使ってください。どのコンピューターからでも使えます。",
+    "err.signin.methods.githubNoClient":
+      "GitHub App のクライアント ID（{setting}）が設定されていません。{host} で人が {file} に設定し、そこで {restart} を実行します。",
+    "err.signin.methods.githubNoOwner":
+      "所有者がまだ GitHub でリンクされていないため、他のコンピューターからは誰も使えません。",
+    "err.signin.methods.pair": "このデバイスからサインインを依頼",
+    "err.signin.methods.pairReady":
+      "{name} にサインイン済みのブラウザーで、このページに表示されたコードを入力すると承認されます。",
+    "err.signin.methods.pairNone":
+      "{name} にサインインしているブラウザーがまだないため、誰もこのデバイスを承認できません。",
+    "err.signin.methods.ask": "サインインを依頼",
+    "err.signin.methods.terminal": "{host} のターミナルからのリンク",
+    "err.signin.methods.terminalHow":
+      "{host} のターミナルで {cmd} を実行し、表示されたリンクを開きます。",
+    "err.signin.methods.stuck":
+      "{name} にはまだ他のコンピューターからサインインできません。GitHub でのサインインが設定されておらず、このデバイスを承認できる、{name} にサインイン済みのブラウザーもありません。",
+    "err.signin.methods.fixClient":
+      "解決するには、{host} で {file} の {setting} に GitHub App のクライアント ID を設定し、{restart} を実行します。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
+    "err.signin.methods.fixOwner":
+      "解決するには、所有者を GitHub でリンクします。{host} で {cmd} を実行してください。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
+    "err.signin.methods.fixFirst":
+      "または、{host} 本体で最初のサインインを済ませてください。そのブラウザーからこのデバイスを承認できます。",
+    "err.signin.firstRunHere":
+      "{name} はまだセットアップされていません。最初のサインインは {host} 本体で行ってください。そこでセットアップリンクを開くか、自分のターミナルで web login を実行します。",
+    "err.signin.tooManyRequests":
+      "このアドレスからのサインイン要求が多すぎます。1 分待ってから、もう一度リンクを開いてください。",
+    "err.signin.tooManyWaiting":
+      "{name} で承認待ちのデバイスが多すぎます。数分待ってから、もう一度リンクを開いてください。",
+    "err.signin.claimSetUp":
+      "{name} はすでにセットアップ済みのため、セットアップリンクだけではサインインしません。サインイン済みのブラウザーで 設定 › アクセス を開き、下のコードを承認してください。",
     "err.signin.github": "GitHub でサインイン",
     "err.signin.githubEnter": "{url} でこのコードを入力してください:",
     "err.signin.githubOpen": "GitHub を開く",
@@ -1282,7 +1327,27 @@
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
+    "set.access.approveNeedsBrowser":
+      "デバイスの承認には、サインイン済みのブラウザーが必要です。このページで改めてサインインしてから承認してください。",
+    "set.access.approveNotAgent":
+      "デバイスを承認できるのは人だけで、その人自身のサインイン済みブラウザーから行います。",
+    "set.access.wrongCode":
+      "そのコードは、そのコンピューターの画面のコードと一致しません。確認して、もう一度入力してください。",
+    "set.access.tooManyTries":
+      "試行回数が多すぎます。1 分待ってから、もう一度お試しください。",
+    "set.access.ended":
+      "そのリクエストは終了したか、期限切れです。何も許可していません。",
     "set.access.pair": "デバイスをペアリング",
+    "set.access.pair_requests":
+      "アドレスごとの新しいサインイン要求 (1 分あたり)",
+    "set.access.pair_requests.d":
+      "1 つのアドレスが 1 分間にサインインを要求できる新しいデバイスの数です。超えた分は 1 分たつまで受け付けません。__DEN_CLI__ config web.pair_requests_per_minute=30",
+    "set.access.approve_attempts": "承認時に許される誤ったコードの数",
+    "set.access.approve_attempts.d":
+      "下の時間内にデバイスの承認で受け付ける誤ったコードの数です。超えると待ちになります。__DEN_CLI__ config web.approve_attempts=10",
+    "set.access.approve_window": "誤ったコードを数える時間 (秒)",
+    "set.access.approve_window.d":
+      "誤ったコードを数える時間です。過ぎると、もう一度承認を試せます。__DEN_CLI__ config web.approve_window_seconds=30",
     "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
@@ -1594,13 +1659,21 @@
     "pair.aDevice": "ブラウザー",
     "pair.local": "このコンピューター(localhost 経由)",
     "pair.help":
-      "このコードがそのコンピューターの画面に表示されている場合のみ許可してください。",
+      "そのコンピューターの画面に表示されているコードを入力してください。自分でサインインしているコンピューターだけを許可してください。",
     "pair.allow": "許可",
     "pair.allowed": "そのコンピューターはサインインしました。",
     "pair.ended":
       "そのリクエストは終了しました。そのコンピューターはページを閉じたか、すでにサインインしています。何も許可していません。",
     "pair.expired": "そのコードは期限切れです。何も許可していません。",
     "pair.close": "閉じる",
+    "pair.codeLabel": "そのコンピューターの画面のコード",
+    "pair.age": "{n} 分前に要求。",
+    "pair.ageNow": "たった今要求。",
+    "pair.fromLogin": "{time} に実行した web login から。",
+    "pair.wrong":
+      "そのコードは、そのコンピューターの画面のコードと一致しません。確認して、もう一度入力してください。",
+    "pair.busy":
+      "試行回数が多すぎます。1 分待ってから、もう一度お試しください。",
     "ap.do.workspace_create": "プロジェクト「{name}」を作成",
     "ap.do.repo_add": "{path} のリポジトリをプロジェクト「{workspace}」に追加",
     "ap.do.repo_add.new":
@@ -2748,6 +2821,8 @@
     "set.ui.saveOrigins": "リストを保存",
     "set.ui.approve": "承認",
     "set.ui.deny": "拒否",
+    "set.ui.codeLabel": "画面のコード",
+    "set.ui.fromLogin": "{time} に実行した web login から",
     "set.ui.noWaiting":
       "承認待ちのコンピューターはありません。別のコンピューターのサインアウト中のページにはコードが表示され、承認できるようここに表示されます。",
     "set.ui.waitingSignedIn":
@@ -3127,7 +3202,7 @@
     "set.access.devices.d":
       "この Den にサインインしているブラウザです。「取り消す」ですぐにサインアウトさせます。__DEN_CLI__ web logout --all ですべてサインアウトさせます。",
     "set.access.waiting.d":
-      "サインアウト中のページにコードが表示されているコンピューターです。承認すると、そのページは自動でサインインします。コードの有効期限は 10 分です。__DEN_CLI__ web approve <code> でもコマンドラインから同じことができます。",
+      "サインアウト中のページにコードが表示されているコンピューターです。そのコンピューターの画面のコードを入力して承認すると、そのページは自動でサインインします。リクエストの有効期限は 10 分です。__DEN_CLI__ web approve --list で一覧できます。",
     "set.embed.url_max.d":
       "エージェントへのリンクがメッセージ欄に渡せるウェブアドレスの最大長です。これより長いと、その旨を示すページが開きます。",
     "set.embed.app_keys.d":

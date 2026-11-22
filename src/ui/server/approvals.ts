@@ -127,15 +127,16 @@ function same(a: string, b: string): boolean {
 }
 
 /**
- * Routes that let another browser in (pair a device, a sign-in link for
- * an edge hostname, link or unlink the GitHub owner). These need more
+ * Routes that let another browser in (a sign-in link for an edge
+ * hostname, link or unlink the GitHub owner). Approving a waiting device
+ * (/api/web/approve) is stricter: a signed-in browser only (issue 819,
+ * pair-routes.ts). These need more
  * than a sign-in: the person's bearer (the CLI, which
  * refuses inside an agent's session), or what may approve (a signed-in
  * browser holding its approval key).
  */
 export const PERSON_GRANT_ROUTES: readonly string[] = [
   "/api/web/pair",
-  "/api/web/approve",
   "/api/web/owner/link",
   "/api/web/owner/unlink",
 ];

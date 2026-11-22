@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { reportAtOnce, reportMisses, reportSeen } from "./report-at-once.js";
 import {
   startAgentsPageServer,
@@ -141,7 +141,7 @@ async function open(route: string, width = 1440): Promise<Page> {
     reducedMotion: "reduce",
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, route));
+  await signInPage(p, s!.stateDir, s!.base, route);
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   return p;
 }
@@ -358,7 +358,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     });
     await reportAtOnce(ctx);
     const p = await ctx.newPage();
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/graph?ws=north"));
+    await signInPage(p, s!.stateDir, s!.base, "/graph?ws=north");
     await p.waitForFunction(
       () => !!(window as { denShell?: unknown }).denShell,
     );

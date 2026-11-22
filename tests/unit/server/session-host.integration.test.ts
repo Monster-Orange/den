@@ -36,7 +36,7 @@ import {
 } from "../../../src/shared/web-session.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
-import { signedIn } from "./helpers/signed-in.js";
+import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -115,6 +115,50 @@ const codeOf = (r: Reply) => {
     return null;
   }
 };
+/**
+ * Issue 819: once a person has signed in, a link opens the pairing screen
+ * on the address. `q` opened there, approved from a person's browser on
+ * the address, and claimed by its page's poll: that reply (its
+ * Set-Cookie). The link's own reply when it showed no pairing screen.
+ */
+const people = new Map<string, SignedIn>();
+async function signInThere(q: string): Promise<Reply> {
+  // Issue 819: a person signed in first (first run over), so the link
+  // opens the pairing screen for that person's browser to approve.
+  let person = people.get(stateDir);
+  if (!person) {
+    person = await signedIn(stateDir, `http://localhost:${port}`, {
+      host: NAMED,
+      edge: EDGE,
+    });
+    people.set(stateDir, person);
+  }
+  const opened = await call("GET", q, { ...named(), ...nav });
+  const m =
+    /<script type="application\/json" id="den-error">\s*([\s\S]*?)\s*<\/script>/.exec(
+      opened.body,
+    );
+  const pair = m
+    ? (JSON.parse(m[1]) as { signin?: { pair?: { id: string; code: string } } })
+        .signin?.pair
+    : undefined;
+  if (!pair) return opened;
+  const ok = await call(
+    "POST",
+    "/api/web/approve",
+    {
+      ...person.headers,
+      "sec-fetch-site": "same-origin",
+      "x-den-approve-key": person.approveKey,
+    },
+    JSON.stringify({ code: pair.code }),
+  );
+  expect(ok.status).toBe(200);
+  return call("GET", `/api/signin/code/${pair.id}`, {
+    ...named(),
+    "sec-fetch-site": "same-origin",
+  });
+}
 const flags = (line: string) =>
   line
     .split(";")
@@ -240,11 +284,9 @@ describe("before the named address is known to work (no lockout)", () => {
 
 describe("on the named https address", () => {
   it("the sign-in sets a __Host- cookie: host-only, Secure, Path=/", async () => {
-    const r = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
-      ...named(),
-      ...nav,
-    });
-    expect(r.status).toBe(303);
+    // Issue 819: the link's device, approved, then its page's poll.
+    const r = await signInThere(`/auth?c=${encodeURIComponent(code())}`);
+    expect(r.status).toBe(200);
     const line = sessionLine(r);
     expect(line.startsWith(`__Host-den_session_${port}=`)).toBe(true);
     expect(flags(line)).toEqual([
@@ -286,9 +328,10 @@ describe("once it works: no session on a loopback name", () => {
       String(r.headers.location) === `https://${NAMED}${q}`,
       sessionLine(r),
     ]).toEqual([303, true, ""]);
-    // The same link, on the named address: it signs in there.
-    const there = await call("GET", q, { ...named(), ...nav });
-    expect(there.status).toBe(303);
+    // The same link, on the named address: it signs in there (issue 819:
+    // its device approved).
+    const there = await signInThere(q);
+    expect(there.status).toBe(200);
     expect(sessionLine(there).startsWith("__Host-")).toBe(true);
   });
 
@@ -605,11 +648,9 @@ describe("once it works: sign-in on every other name goes to the address", () =>
           sessionLine(r) === "",
         ]).toEqual([303, true, true]);
       }
-      // The code still works on the address: nothing was spent.
-      const there = await call("GET", `/auth?c=${encodeURIComponent(c)}`, {
-        ...named(),
-        ...nav,
-      });
+      // The code still works on the address: nothing was spent (issue
+      // 819: its device approved there).
+      const there = await signInThere(`/auth?c=${encodeURIComponent(c)}`);
       expect(sessionLine(there).startsWith("__Host-")).toBe(true);
     });
     it(`${what}: the sign-in APIs answer signin_elsewhere`, async () => {

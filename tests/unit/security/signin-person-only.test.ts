@@ -194,9 +194,13 @@ describe("the CLI inside a running session's tree", () => {
     const { o, io: i } = io(inside);
     refused(cmdWebClaimLink([], i), o);
   });
+  // Issue 819: only a signed-in browser approves a code; the CLI never.
   it("web approve refuses", async () => {
     const { o, io: i } = io(inside);
-    refused(await cmdWebApprove(["K7Q-42M"], i), o);
+    const code = await cmdWebApprove(["K7Q-42M"], i);
+    expect([code, o.out]).toEqual([1, ""]);
+    expect(o.err).toMatch(/approved only from a browser that is signed in/);
+    expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   });
   it("freshLoginLink throws", () => {
     expect(() =>

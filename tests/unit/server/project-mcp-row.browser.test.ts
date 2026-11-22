@@ -11,7 +11,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -96,7 +96,7 @@ async function page(): Promise<{ p: Page; sent: Sent[] }> {
       body: JSON.stringify(view()),
     });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings?ws=north#workspace"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings?ws=north#workspace");
   await p.waitForSelector(
     '[data-setting="workspace.mcp_servers"] [data-pmcp-list]',
   );

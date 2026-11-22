@@ -90,6 +90,19 @@ describe("MODE-5: web url <address> checks before it saves", () => {
     expect(x.r.set).toEqual([]);
   });
 
+  it("once saved, it's in use: no restart to type (checked or --no-check)", async () => {
+    // Every server reader of web.url reads it per call (the server's own
+    // save clears its short cache), so nothing waits for a restart.
+    for (const args of [
+      ["https://acme.local.example.com"],
+      ["https://acme.local.example.com", "--no-check"],
+    ]) {
+      const x = io(OK);
+      expect(await cmdWebUrl(args, x.io)).toBe(0);
+      expect(x.r.out).not.toMatch(/restart/i);
+      expect(x.r.out).toMatch(/in use now/);
+    }
+  });
   it("--no-check saves it unchecked", async () => {
     const x = io(OK);
     expect(

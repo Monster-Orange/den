@@ -21,7 +21,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { shortDots } from "./helpers/short-dots.js";
 import {
   startAgentsPageServer,
@@ -106,7 +106,7 @@ async function page(
         body: JSON.stringify(answer(r.request().method(), body)),
       });
     });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings?ws=north#workspace"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings?ws=north#workspace");
   if (language) {
     await setLanguage(p, language);
     await p.reload();
@@ -585,7 +585,7 @@ describe("Settings › Project setup › Hub project (H5)", () => {
       if (b.workspaces?.north) b.workspaces.north.hub_project = BACK;
       return r.fulfill({ response: res, body: JSON.stringify(b) });
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=north"));
+    await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
     await p.waitForSelector(".content-header #ws-hub-project");
     expect(await p.textContent("#ws-hub-project")).toBe("Hub: Back office");
     expect(await p.getAttribute("#ws-hub-project", "href")).toBe(

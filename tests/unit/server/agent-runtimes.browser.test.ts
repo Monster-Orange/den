@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -61,7 +61,12 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-async function page(url: string, width = 1440, height = 900): Promise<Page> {
+async function page(
+  url: string,
+  width = 1440,
+  height = 900,
+  signedIn = false,
+): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width, height },
     reducedMotion: "reduce",
@@ -76,7 +81,9 @@ async function page(url: string, width = 1440, height = 900): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
-  await p.goto(url.startsWith("http") ? url : `${s!.base}${url}`);
+  // Issue 819: an approved browser, landing on `url`.
+  if (signedIn) await signInPage(p, s!.stateDir, s!.base, url);
+  else await p.goto(url.startsWith("http") ? url : `${s!.base}${url}`);
   return p;
 }
 
@@ -98,7 +105,7 @@ function fake(dir: string, name: string, version: string): string {
 describe("Settings › Agents › Runtimes (AG-0.5)", () => {
   it("lists each runtime, installed first, with its version, path and source; Set path refuses what isn't it; a workspace's own path is set and cleared", async () => {
     if (skip()) return;
-    const p = await page(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+    const p = await page("/settings#agents", 1440, 900, true);
     await p.waitForSelector('.rt[data-runtime="codex"]');
     expect(
       await p.$$eval(".rt", (els) =>
@@ -201,10 +208,7 @@ describe("Settings › Agents › Runtimes: no collisions in any language", () =
         expect(await s!.settings({ language: lang })).toBe(200);
       try {
         for (const width of [1280, 390]) {
-          const p = await page(
-            signInUrl(s!.stateDir, s!.base, "/settings#agents"),
-            width,
-          );
+          const p = await page("/settings#agents", width, 900, true);
           await p.waitForSelector('.rt[data-runtime="grok"]');
           const hits = await p.$$eval(".rt", (rows) => {
             const out: string[] = [];

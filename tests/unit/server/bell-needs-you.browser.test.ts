@@ -9,7 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
   startAgentsPageServer,
@@ -77,7 +77,7 @@ async function open(path: string): Promise<Page> {
     }
   }, latest);
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
+  await signInPage(p, s!.stateDir, s!.base, path);
   await p.waitForSelector("#den-bell");
   await p.waitForFunction(
     () => document.querySelector(".den-bell-n")?.textContent === "1",

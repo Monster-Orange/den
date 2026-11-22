@@ -340,9 +340,9 @@ import {
 import {
   checkLoginCode,
   deviceName,
-  loginCodeNonce,
   ignoredConfigWarning,
   localhostOrigin,
+  loginCodeNonce,
   loginLink,
   LOGIN_CODE_MAX_TTL_MS,
   mintLoginCode,
@@ -387,7 +387,11 @@ import {
   serveUiAsset,
   sitePage,
 } from "./ui-assets.js";
-import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
+import {
+  PERSON_GRANT_ROUTES,
+  approverAllowed,
+  personGrantAllowed,
+} from "./approvals.js";
 import {
   migrateWebUrl,
   notSetLine,
@@ -476,6 +480,8 @@ import {
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
+import { FirstRun } from "./first-run.js";
+import { signinMethods } from "./signin-methods.js";
 import { ownerNameFromGithub } from "../../shared/owner-github.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
 import { DeviceFlows, type Decide } from "./device-flows.js";
@@ -486,7 +492,11 @@ import {
 } from "./github-routes.js";
 import { PairRequests, pairUnseenMs } from "./pair-requests.js";
 import { LoginWaits } from "./login-waits.js";
-import { handlePairRoutes, isPairRoute } from "./pair-routes.js";
+import {
+  CREATE_REFUSED,
+  handlePairRoutes,
+  isPairRoute,
+} from "./pair-routes.js";
 import {
   cliCommand,
   cliPrefix,
@@ -1386,6 +1396,7 @@ import {
   edgeDomains,
   edgeHttps,
   edgeNames,
+  webRouteFindings,
   webRouteHosts,
 } from "../../shared/edge/render.js";
 import {
@@ -1839,6 +1850,12 @@ const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
 });
+/** Issue 819: whether a person has ever signed in here (first-run.ts). */
+const FIRST_RUN = new FirstRun({
+  stateDir: getStateDir,
+  sessionVias: () => webSessions.list().map((s) => s.via ?? "link"),
+  ownerLinked: () => readWebOwner(getStateDir()) !== null,
+});
 /**
  * The request's session cookie value, if any: over https the
  * `__Host-den_session_<port>` one (or the plain one a browser signed in
@@ -2232,7 +2249,13 @@ function noteExpiringToken(): void {
 }
 
 // ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
-const PAIRS = new PairRequests({ unseenMs: pairUnseenMs() });
+/** Issue 819: the new-device limits are Settings, read when used. */
+const PAIRS = new PairRequests({
+  unseenMs: pairUnseenMs(),
+  perClient: () => webAuthNow().pairRequestsPerMinute,
+  maxAttempts: () => webAuthNow().approveAttempts,
+  windowMs: () => webAuthNow().approveWindowSeconds * 1000,
+});
 
 /**
  * What every printed command starts with (cli-command.ts): `<cli>` when the
@@ -2418,6 +2441,8 @@ function startSession(
   // Minted over the edge's proven https: the only kind that counts once
   // the address is proven.
   const secure = httpsOf(req, named);
+  // Issue 819: a person's sign-in ends first run, for good.
+  if (via !== "fixture") FIRST_RUN.mark();
   const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
@@ -2663,8 +2688,23 @@ function sendSignedOut(
     search: string;
     scope: "terminal" | "agents" | "den";
     expired?: boolean;
-    /** SEC-2a: a waited-on link: ask for the code `web login` printed. */
+    /**
+     * Issue 819: the pairing screen a sign-in link opened: its request's
+     * poll id, code and expiry, for this page only.
+     */
+    pair?: { id: string; code: string; expiresAt: string; expiresIn: number };
+    /** Issue 819: the pairing screen's lead line, as a message key. */
+    pairLead?: string;
+    /**
+     * SEC-2a; issue 819: first run, a link `web login` printed opened away
+     * from the Den computer: its page asks for the code that terminal shows.
+     */
     confirm?: boolean;
+    /**
+     * Issue 819: nothing to sign in or approve here; this message key says
+     * what to do next (first run, away from the Den computer).
+     */
+    lead?: string;
     requestId: string;
     message: string;
   },
@@ -2691,6 +2731,18 @@ function sendSignedOut(
   const ssh = sshTargetOf(req);
   const user = sshUserNow();
   const gh = githubSignin();
+  // Issue 868: from another computer? The request checks' own answer
+  // (the edge's attested client), else the peer.
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const remote = g.beyond ?? !isLoopbackAddress(req.socket?.remoteAddress);
+  const methods = signinMethods({
+    github: gh,
+    signedInBrowser: personBrowserSignedIn(),
+    remote,
+    firstRun: !FIRST_RUN.done(),
+    terminal: cmd,
+    restart: cliCommand(bin, "web", "restart"),
+  });
   res.setHeader("Cache-Control", "no-store");
   sendErrorPage(req, res, {
     status: 401,
@@ -2738,9 +2790,15 @@ function sendSignedOut(
               : {}
           : { message: noClientIdMessage(product().cli) }),
       },
+      methods,
       ...(opts.expired ? { expired: true } : {}),
+      ...(opts.pair ? { pair: opts.pair } : {}),
+      ...(opts.pairLead ? { pairLead: opts.pairLead } : {}),
       ...(opts.confirm ? { confirm: true } : {}),
-      ...(toLocal && !opts.expired && !there
+      ...(opts.lead ? { lead: opts.lead } : {}),
+      // Issue 819: the pairing screen's lead in English (the page words it).
+      ...(opts.pair ? { message: opts.message } : {}),
+      ...(toLocal && !opts.expired && !there && !opts.pair
         ? {
             localhost: `${localhostOrigin(PORT)}${opts.pathname}${opts.search}`,
           }
@@ -2845,12 +2903,6 @@ function sendGuardRefusal(
 }
 
 /**
- * `GET /auth?c=<code>&next=<path>` (§2): a valid, unused login code (60 s,
- * constant-time mac, single use) becomes a session and its cookie, then a
- * 303 to `next` when it is a same-origin path, else `/`. Anything else gets
- * the signed-out page, which never echoes the code.
- */
-/**
  * Sign-in: a call that registers a sign-in link or lets a browser in, from
  * anything but a signed-in browser (the CLI's bearer), is answered only
  * for a caller on this machine outside every running session's process
@@ -2863,14 +2915,7 @@ async function personCallerRefused(
   pathname: string,
 ): Promise<boolean> {
   if (guard.ok && guard.principal?.kind === "person-browser") return false;
-  await peerSettled(req, readBinding().waitMs);
-  const why = personCallerRefusal({
-    loopback: isLoopbackAddress(req.socket?.remoteAddress),
-    forwarded: forwardedRequest(req, GUARD),
-    line: callerLine(req),
-    roots: sessionRootPids(getStateDir()),
-    den: denPidsNow(),
-  });
+  const why = await personCallerWhy(req);
   if (!why) return false;
   recordAction(
     auditActorOf(req),
@@ -2886,6 +2931,147 @@ async function personCallerRefused(
   return true;
 }
 
+/**
+ * Why this caller isn't the person at this machine (personCallerRefusal:
+ * on loopback, not forwarded, outside every running session's process
+ * tree), or null when it is.
+ */
+async function personCallerWhy(
+  req: http.IncomingMessage,
+): Promise<string | null> {
+  await peerSettled(req, readBinding().waitMs);
+  return personCallerRefusal({
+    loopback: isLoopbackAddress(req.socket?.remoteAddress),
+    forwarded: forwardedRequest(req, GUARD),
+    line: callerLine(req),
+    roots: sessionRootPids(getStateDir()),
+    den: denPidsNow(),
+  });
+}
+
+/**
+ * Issue 819: whether this browser is the person at the Den computer
+ * itself: on loopback, not forwarded, outside every agent's session
+ * (personCallerWhy). First run signs such a browser in with a link or the
+ * setup link at once.
+ */
+async function personHere(req: http.IncomingMessage): Promise<boolean> {
+  return (await personCallerWhy(req)) === null;
+}
+
+/**
+ * Issue 819: the pairing screen a sign-in link lands on: a new request
+ * (pair-requests.ts), shown with its code on the signed-out page, which
+ * polls it by its id until a signed-in browser approves or denies it.
+ * `lead`: why it is here, as a message key and its English. The code and
+ * the id go to this page only; neither is logged.
+ */
+function sendPairing(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  requestId: string,
+  lead: { key: string; message: string },
+  link?: { nonce: string; startedAt?: number },
+  spend?: { spend: () => boolean; gone: () => void },
+): void {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const client = g.ok ? g.client : undefined;
+  const r = PAIRS.tryCreate({
+    userAgent: req.headers["user-agent"],
+    client,
+    ...(link ? { link: link.nonce, linkAt: link.startedAt } : {}),
+  });
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  if (!r.ok)
+    return sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      requestId,
+      lead:
+        r.error === "rate_limited"
+          ? "err.signin.tooManyRequests"
+          : "err.signin.tooManyWaiting",
+      message: CREATE_REFUSED[r.error].error,
+    });
+  // The link is spent only once its request is made: a refusal above
+  // leaves it usable. A link spent meanwhile ends that request.
+  if (spend && !spend.spend()) {
+    PAIRS.withdraw(r.id);
+    return spend.gone();
+  }
+  // Issue 819: the wait never carries the pairing code (it stays on the
+  // new device's screen).
+  if (link)
+    LOGIN_WAITS.pairing(link.nonce, r.expiresAt, {
+      device: deviceName(req.headers["user-agent"]),
+      ...(client ? { client } : {}),
+    });
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  return sendSignedOut(req, res, {
+    pathname: "/auth",
+    search: "",
+    scope: "den",
+    requestId,
+    message: lead.message,
+    pair: {
+      id: r.id,
+      code: r.code,
+      expiresAt: new Date(r.expiresAt).toISOString(),
+      expiresIn: Math.max(0, r.expiresAt - Date.now()),
+    },
+    pairLead: lead.key,
+  });
+}
+
+/** Issue 819: the pairing screen's lead once this install is set up. */
+function pairLinkLead(): { key: string; message: string } {
+  return {
+    key: "err.signin.pairLinkLead",
+    message:
+      "To let this browser in, approve it from a browser that is already signed in: open Settings › Access there and approve the code below.",
+  };
+}
+
+/**
+ * Issue 819: first run, a link nothing here can finish (opened away from
+ * the Den computer, or by an agent's process there): what to do next. The
+ * link is not spent and no request is made.
+ */
+function sendFirstRunHere(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  requestId: string,
+): void {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  return sendSignedOut(req, res, {
+    pathname: "/auth",
+    search: "",
+    scope: "den",
+    requestId,
+    lead: "err.signin.firstRunHere",
+    message: `${product().title} isn't set up yet: finish its first sign-in on ${machineName()} itself, with the setup link or \`${product().cli} web login\` run in your own terminal there.`,
+  });
+}
+
+/**
+ * `GET /auth?c=<code>&next=<path>` (§2; issue 819): a valid, unused login
+ * code (constant-time mac, single use). A browser already signed in keeps
+ * its session (the code is spent). Otherwise:
+ *
+ *  - first run (first-run.ts), the person at the Den computer
+ *    (personHere) is signed in at once. A link `web login` registered,
+ *    opened anywhere else, asks for the code that terminal printed (POST
+ *    with it signs in). Any other link shows what to do next, unspent;
+ *  - from then on the link is spent as it opens the pairing screen, and a
+ *    signed-in browser approves that device.
+ *
+ * Anything else gets the signed-out page, which never echoes the code. A
+ * HEAD (a link preview) spends nothing.
+ */
 async function handleAuth(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -2896,29 +3082,26 @@ async function handleAuth(
     return handleClaim(req, res, url, requestId);
   if (url.searchParams.has(FIXTURE_LINK_PARAM))
     return handleFixtureAuth(req, res, url, requestId);
+  const method = (req.method ?? "GET").toUpperCase();
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  if (method === "HEAD") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end();
+    return;
+  }
   const secret = webSecret.current();
   const c = url.searchParams.get("c") ?? "";
   const nonce = loginCodeNonce(c);
-  // SEC-2a: a link `web login` waits on asks for its code first. Opened,
-  // its code is checked as of the moment it was opened (then 5 minutes).
-  const wait = nonce ? LOGIN_WAITS.forNonce(nonce) : null;
+  const pending = nonce ? LOGIN_WAITS.forNonce(nonce) : null;
+  // A link whose page asks for its code is checked as of when it opened.
   const check = secret
-    ? checkLoginCode(c, secret, wait?.openedAt ?? Date.now())
+    ? checkLoginCode(c, secret, pending?.openedAt ?? Date.now())
     : null;
-  const post = req.method === "POST";
-  const gone = () => {
-    res.setHeader("Referrer-Policy", "no-referrer");
-    if (post)
-      return sendJson(
-        res,
-        {
-          ok: false,
-          code: "expired",
-          error: `This link no longer works. On ${machineName()}, run web login again for a new one.`,
-        },
-        410,
-      );
-    return sendSignedOut(req, res, {
+  if (method === "POST")
+    return confirmFirstRunLink(req, res, url, check, requestId);
+  const gone = () =>
+    sendSignedOut(req, res, {
       pathname: "/auth",
       search: "",
       scope: "den",
@@ -2926,107 +3109,63 @@ async function handleAuth(
       requestId,
       message: `That sign-in link expired or was used. Run \`${product().cli} web login\` for a new one.`,
     });
-  };
   if (!check?.ok) return gone();
-  if (wait && nonce) {
-    if (!post) {
-      if (wait.state !== "waiting" && wait.state !== "opened") return gone();
-      LOGIN_WAITS.open(nonce);
-      res.setHeader("Referrer-Policy", "no-referrer");
-      return sendSignedOut(req, res, {
-        pathname: "/auth",
-        search: "",
-        scope: "den",
-        confirm: true,
-        requestId,
-        message: "Enter the code `web login` printed.",
-      });
-    }
-    let body: { code?: unknown } = {};
-    try {
-      body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
-    } catch {
-      return sendJson(
-        res,
-        { ok: false, error: "the body must be JSON: { code }" },
-        400,
-      );
-    }
-    const r = LOGIN_WAITS.confirm(nonce, String(body.code ?? ""));
-    res.setHeader("Referrer-Policy", "no-referrer");
-    res.setHeader("Cache-Control", "no-store");
-    if (!r.ok) {
-      if (r.error === "expired") return gone();
-      return sendJson(
-        res,
-        r.error === "wrong"
-          ? {
-              ok: false,
-              code: "wrong_code",
-              left: r.left,
-              error:
-                "That code isn't right. Check what web login printed and try again.",
-            }
-          : r.error === "rate_limited"
-            ? {
-                ok: false,
-                code: "rate_limited",
-                error: "Too many wrong codes. Wait a minute and try again.",
-              }
-            : {
-                ok: false,
-                code: "refused",
-                error: `Too many wrong codes: this link no longer works. On ${machineName()}, run web login again.`,
-              },
-        r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
-      );
-    }
-    // The address may have been proven while the body was read: sign-in on
-    // a loopback name then goes there, and nothing is minted here.
-    const there = NAMED.address();
-    if (there && !onTheAddress(req, there))
-      return sendJson(
-        res,
-        {
-          ok: false,
-          code: "signin_elsewhere",
-          error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
-          address: there,
-        },
-        403,
-      );
-    if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
-    const g = checkRequest(req, GUARD, product().cli, product().title);
-    LOGIN_WAITS.used(nonce, {
-      device: deviceName(req.headers["user-agent"]),
-      ...(g.ok && g.client ? { client: g.client } : {}),
-    });
-    const s = startSession(req, "link");
-    res.setHeader("Set-Cookie", s.cookie);
-    res.setHeader("Cache-Control", "no-store");
-    return sendJson(res, {
-      ok: true,
-      next: safeNext(url.searchParams.get("next")),
-      approveKey: s.approveKey,
-    });
-  }
-  // A link nobody waits on (`web login --no-wait`, or minted with no
-  // server running): it signs in when opened, once, as before.
-  if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
+  const wait = LOGIN_WAITS.forNonce(check.nonce);
+  // A wait that ended (used, denied, refused, expired) spends its link.
+  if (wait && wait.state !== "waiting" && wait.state !== "opened")
     return gone();
+  const meta = (g: GuardResult) => ({
+    device: deviceName(req.headers["user-agent"]),
+    ...(g.ok && g.client ? { client: g.client } : {}),
+  });
   // 0.4.71: `web up` sends an open tab here each time; a browser already
   // signed in keeps its session (the code is spent), so Linked devices
-  // doesn't fill with one per run.
+  // doesn't fill with one per run. `web login` is told it was used.
   const already = checkRequest(req, GUARD, product().cli, product().title);
   if (already.ok && already.session) {
-    res.writeHead(303, {
-      Location: safeNext(url.searchParams.get("next")),
-      "Cache-Control": "no-store",
-      "Referrer-Policy": "no-referrer",
-    });
+    if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+    if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
+    res.writeHead(303, { Location: safeNext(url.searchParams.get("next")) });
     res.end();
     return;
   }
+  if (!FIRST_RUN.done()) {
+    const here = await personHere(req);
+    // The address may have been proven meanwhile: sign-in then goes there.
+    if (sendToNamedAddress(req, res, url, already)) return;
+    if (!here) {
+      // A link `web login` printed (with its code): its page asks for
+      // that code. Anything else: finish on the Den computer, unspent.
+      if (wait?.confirmable) {
+        LOGIN_WAITS.open(check.nonce);
+        return sendSignedOut(req, res, {
+          pathname: "/auth",
+          search: "",
+          scope: "den",
+          confirm: true,
+          requestId,
+          message: "Enter the code `web login` printed.",
+        });
+      }
+      return sendFirstRunHere(req, res, requestId);
+    }
+  } else if (sendToNamedAddress(req, res, url, already)) return;
+  const spendLink = () => webSessions.consumeCode(check.nonce, check.expiresAt);
+  // Checked again right before the session: another first-run sign-in
+  // may have finished while this one waited. Nothing awaits between here
+  // and startSession. Once set up, the link is spent only when its
+  // request is made.
+  if (FIRST_RUN.done())
+    return sendPairing(
+      req,
+      res,
+      requestId,
+      pairLinkLead(),
+      wait ? { nonce: check.nonce, startedAt: wait.startedAt } : undefined,
+      { spend: spendLink, gone },
+    );
+  if (!spendLink()) return gone();
+  if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
   const s = startSession(req, "link");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -3035,18 +3174,128 @@ async function handleAuth(
       s.approveKey,
     ),
     "Set-Cookie": s.cookie,
-    "Cache-Control": "no-store",
-    "Referrer-Policy": "no-referrer",
   });
   res.end();
 }
 
 /**
+ * SEC-2a; issue 819: `POST /auth?c=…` with `{ code }`: first run, the
+ * code `web login` printed for a link opened away from the Den computer.
+ * The right code signs this browser in (the link is spent); five wrong
+ * ones end the link. Once a person has signed in here, it signs nothing
+ * in: the link opened again shows the pairing screen.
+ */
+async function confirmFirstRunLink(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  check: ReturnType<typeof checkLoginCode> | null,
+  requestId: string,
+): Promise<void> {
+  void requestId;
+  const gone = (error?: string) =>
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "expired",
+        error:
+          error ??
+          `This link no longer works. On ${machineName()}, run web login again for a new one.`,
+      },
+      410,
+    );
+  let body: { code?: unknown } = {};
+  try {
+    body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
+    if (typeof body !== "object" || Array.isArray(body)) throw new Error();
+  } catch {
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "bad_request",
+        error: "the body must be JSON: { code }",
+      },
+      400,
+    );
+  }
+  if (!check?.ok) return gone();
+  if (FIRST_RUN.done())
+    return gone(
+      `${product().title} is already set up: open the link again, and a browser that is signed in approves this one.`,
+    );
+  const r = LOGIN_WAITS.confirm(check.nonce, String(body.code ?? ""));
+  if (!r.ok) {
+    if (r.error === "expired") return gone();
+    return sendJson(
+      res,
+      r.error === "wrong"
+        ? {
+            ok: false,
+            code: "wrong_code",
+            left: r.left,
+            error:
+              "That code isn't right. Check what web login printed and try again.",
+          }
+        : r.error === "rate_limited"
+          ? {
+              ok: false,
+              code: "rate_limited",
+              error: "Too many wrong codes. Wait a minute and try again.",
+            }
+          : {
+              ok: false,
+              code: "refused",
+              error: `Too many wrong codes: this link no longer works. On ${machineName()}, run web login again.`,
+            },
+      r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
+    );
+  }
+  // The address may have been proven while the body was read: sign-in on
+  // a loopback name then goes there, and nothing is minted here.
+  const there = NAMED.address();
+  if (there && !onTheAddress(req, there))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_elsewhere",
+        error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
+        address: there,
+      },
+      403,
+    );
+  if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+  // Checked again right before the session (another sign-in may have
+  // finished first run meanwhile).
+  if (FIRST_RUN.done())
+    return gone(
+      `${product().title} is already set up: run web login again, and a browser that is signed in approves this one.`,
+    );
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  LOGIN_WAITS.used(check.nonce, {
+    device: deviceName(req.headers["user-agent"]),
+    ...(g.ok && g.client ? { client: g.client } : {}),
+  });
+  const s = startSession(req, "link");
+  res.setHeader("Set-Cookie", s.cookie);
+  res.setHeader("Cache-Control", "no-store");
+  return sendJson(res, {
+    ok: true,
+    next: safeNext(url.searchParams.get("next")),
+    approveKey: s.approveKey,
+  });
+}
+
+/**
  * `GET /auth?claim=<code>` (0.4.15): the setup link `<cli> web claim-link`
  * prints at the end of an install. A valid, unused claim code (30 min,
- * single use across restarts) becomes a session ("claimed with a setup
- * link" in Linked devices), then a 303 to `/` with the session's approval
- * key in the fragment and no claim in the address, no referrer. Anything
+ * single use across restarts), on first run and on this computer (issue
+ * 819), becomes a session ("claimed with a setup link" in Linked devices),
+ * then a 303 to `/` with the session's approval key in the fragment and no
+ * claim in the address, no referrer. Once the install is set up (or away
+ * from this computer) it is spent as it opens the pairing screen. Anything
  * else: the signed-out page, which says the link was used and never
  * echoes the code. An agent's token never gets here (AGENT_FORBIDDEN).
  */
@@ -3073,9 +3322,9 @@ function realOrResolved(p: string): string {
  * Issue 810: whether this install is a test install right now: the mark,
  * the launch flag, its own state dir (not the product's default), and no
  * owner or signed-in person (a GitHub sign-in, the setup link, a pairing
- * code, or a `web login` link). The one link session that pressed Set up
- * test person doesn't count, nor `except` (the caller's own, while it
- * presses it). Checked at every fixture path and on every fixture request.
+ * code, or a `web login` link). The one link or approved session that
+ * pressed Set up test person doesn't count, nor `except` (the caller's
+ * own, while it presses it). Checked at every fixture path and on every fixture request.
  */
 function testInstallNow(except?: string): boolean {
   let mark = false;
@@ -3096,9 +3345,9 @@ function testInstallNow(except?: string): boolean {
         (s) =>
           s.via === "github" ||
           s.via === "claim" ||
-          s.via === "code" ||
-          // A link (unset: a link from before 0.4.5).
-          ((s.via === "link" || s.via === undefined) &&
+          // A link (unset: a link from before 0.4.5), or (issue 819) a
+          // device a signed-in browser approved: the person's own browsers.
+          ((s.via === "link" || s.via === "code" || s.via === undefined) &&
             !s.testOperator &&
             s.key !== except),
       ),
@@ -3292,21 +3541,78 @@ const PERSON_VIAS: ReadonlySet<string> = new Set([
   "link",
 ]);
 
+/**
+ * Issue 868: whether a person's browser is signed in here and could
+ * approve a new device (it holds an approval key; never the fixture
+ * person). Once Den's own address works, only a session made there counts.
+ */
+function personBrowserSignedIn(): boolean {
+  const named = NAMED.works();
+  return webSessions
+    .list()
+    .some(
+      (s) =>
+        (s.via === undefined || PERSON_VIAS.has(s.via)) &&
+        !!s.approveKeyHash &&
+        (!named || s.secure === true),
+    );
+}
+
+/**
+ * Issue 819: why this request may not approve or deny a waiting device, or
+ * null when it may: a person's signed-in browser, its session's CSRF token
+ * and approval key (approverAllowed), never the fixture person. The CLI's
+ * bearer, an agent's token and a signed-out page are each told what to do.
+ */
+function deviceApproverRefusal(
+  req: http.IncomingMessage,
+): { status: number; code: string; error: string } | null {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const inBrowser =
+    "Approving a device needs a person's signed-in browser: open Settings › Access in a browser where you're signed in, and approve it there.";
+  if (!g.ok)
+    return {
+      status: g.status,
+      code: "approve_needs_browser",
+      error: inBrowser,
+    };
+  const p = g.principal;
+  if (p?.kind === "agent")
+    return {
+      status: 403,
+      code: "approve_not_agent",
+      error:
+        "Only a person approves a device, from a signed-in browser (Settings › Access). An agent can't.",
+    };
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      status: 403,
+      code: "fixture_cannot_approve",
+      error:
+        "The fixture person can't approve a device: a person approves it from a signed-in browser (Settings › Access).",
+    };
+  if (!p || p.kind !== "person-browser" || !g.session)
+    return { status: 403, code: "approve_needs_browser", error: inBrowser };
+  const ok = approverAllowed(req, g);
+  if (ok.ok) return null;
+  return { status: 403, code: ok.code, error: ok.error };
+}
+
 const CLAIM_NONCES = new ClaimNonces(getStateDir());
-function handleClaim(
+async function handleClaim(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   url: URL,
   requestId: string,
-): void {
+): Promise<void> {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
   const secret = webSecret.current();
   const check =
-    req.method !== "POST" && secret
+    req.method === "GET" && secret
       ? checkClaimCode(url.searchParams.get("claim") ?? "", secret)
       : null;
-  if (!check?.ok || !CLAIM_NONCES.consume(check.nonce, check.expiresAt))
+  if (!check?.ok)
     return sendSignedOut(req, res, {
       pathname: "/auth",
       search: "",
@@ -3315,6 +3621,39 @@ function handleClaim(
       requestId,
       message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
     });
+  // Issue 819: first run only, and only by the person at this computer;
+  // anywhere else on first run, it says so and stays unspent.
+  const first = !FIRST_RUN.done() && (await personHere(req));
+  if (!first && !FIRST_RUN.done()) return sendFirstRunHere(req, res, requestId);
+  // Checked again after the wait above, right before the session (another
+  // first-run sign-in may have finished meanwhile). Nothing awaits between
+  // here and startSession, and spending the setup link below leaves a
+  // trace first-run.ts reads as set up, so it is checked first.
+  const firstNow = first && !FIRST_RUN.done();
+  const claimGone = () =>
+    sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      expired: true,
+      requestId,
+      message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
+    });
+  const spendClaim = () => CLAIM_NONCES.consume(check.nonce, check.expiresAt);
+  // Once set up, the setup link is spent only when its request is made.
+  if (!firstNow)
+    return sendPairing(
+      req,
+      res,
+      requestId,
+      {
+        key: "err.signin.claimSetUp",
+        message: `${product().title} is already set up, so the setup link doesn't sign in by itself any more. Approve this browser from one that is signed in: Settings › Access, then the code below.`,
+      },
+      undefined,
+      { spend: spendClaim, gone: claimGone },
+    );
+  if (!spendClaim()) return claimGone();
   const s = startSession(req, "claim");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -4312,6 +4651,15 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
             : 10,
       };
     })(),
+    // Issue 819: new-device requests and wrong codes.
+    web_pairing: (() => {
+      const c = webAuthNow();
+      return {
+        requestsPerMinute: c.pairRequestsPerMinute,
+        approveAttempts: c.approveAttempts,
+        approveWindowSeconds: c.approveWindowSeconds,
+      };
+    })(),
     // den#143: how long `web up` waits for the server.
     web_ready: (() => {
       try {
@@ -4595,7 +4943,7 @@ async function handleRequest(
     try {
       body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
     } catch {
-      return send400(res, "the body must be JSON: { nonce, code, expiresAt }");
+      return send400(res, "the body must be JSON: { nonce, expiresAt }");
     }
     const exp = Number(body.expiresAt);
     const id =
@@ -4604,13 +4952,15 @@ async function handleRequest(
       exp - Date.now() <= LOGIN_CODE_MAX_TTL_MS + 5_000
         ? LOGIN_WAITS.register(
             String(body.nonce ?? ""),
-            String(body.code ?? ""),
+            body.code === undefined ? undefined : String(body.code),
             exp,
           )
         : null;
-    if (!id) return send400(res, "not a login link's nonce, code and expiry");
+    if (!id) return send400(res, "not a login link's nonce and expiry");
     res.setHeader("Cache-Control", "no-store");
-    return sendJson(res, { ok: true, id });
+    // Issue 819: on first run, `web login` prints its code for a browser
+    // on another computer to type.
+    return sendJson(res, { ok: true, id, firstRun: !FIRST_RUN.done() });
   }
   {
     const w = LOGIN_WAIT_PATH.exec(pathname);
@@ -4792,12 +5142,14 @@ async function handleRequest(
         const g = checkRequest(r, GUARD, product().cli, product().title);
         return g.ok ? g.client : undefined;
       },
-      commands: (r, code) => {
-        const approve = cliCommand(printedCli(), "web", "approve", code);
-        return {
-          approve,
-          ssh: sshCommand(sshLogin(sshTargetOf(r), sshUserNow()), approve),
-        };
+      approver: deviceApproverRefusal,
+      linkEnded: (link, how, r) => {
+        if (how === "denied") return LOGIN_WAITS.denied(link);
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        LOGIN_WAITS.used(link, {
+          device: deviceName(r.headers["user-agent"]),
+          ...(g.ok && g.client ? { client: g.client } : {}),
+        });
       },
       audit: (r, verb, detail, refused) =>
         recordAction(
@@ -8198,6 +8550,7 @@ async function handleRequest(
           web_bridge?: unknown;
           web_github?: unknown;
           web_ready?: unknown;
+          web_pairing?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
@@ -8255,6 +8608,7 @@ async function handleRequest(
             web_bridge: body.web_bridge,
             web_github: body.web_github,
             web_ready: body.web_ready,
+            web_pairing: body.web_pairing,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
             agent_issue_writes: body.agent_issue_writes,
@@ -9298,13 +9652,16 @@ void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
 // localhost (issue 666: migrateWebUrl takes the first alias that isn't,
-// and puts it in place of a loopback one).
+// and puts it in place of a loopback one). A route edge.routes names is
+// taken over the one made from the brand, and corrects an unconfirmed
+// brand-route address once: only the named one may reach other machines.
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
-    return webRouteHosts(readEdgeConfig(), ports).map((r) => ({
+    return webRouteFindings(readEdgeConfig(), ports).map((r) => ({
       url: r.url,
       from: "the edge route to this install",
+      named: r.named,
     }));
   } catch {
     return undefined; // no edge config: nothing to take

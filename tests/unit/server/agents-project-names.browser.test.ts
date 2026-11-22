@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -91,9 +91,7 @@ describe("the Agents page names a project as Hub does", () => {
       await new Promise((r) => setTimeout(r, 1500));
       await route.continue();
     });
-    await p.goto(
-      signInUrl(s.stateDir, s.base, `/agents?open=${sid}&layout=tabs`),
-    );
+    await signInPage(p, s.stateDir, s.base, `/agents?open=${sid}&layout=tabs`);
     const pane = `.pane[data-id="${sid}"]`;
     await p
       .locator(`.agtab[data-id="${sid}"] .tm`)
@@ -119,8 +117,11 @@ describe("the Agents page names a project as Hub does", () => {
       "To scout · North Star",
     );
     // The page's line: "1 agent · 0 waiting · North Star" in a project.
-    await p.goto(
-      signInUrl(s.stateDir, s.base, `/agents?project=north&open=${sid}`),
+    await signInPage(
+      p,
+      s.stateDir,
+      s.base,
+      `/agents?project=north&open=${sid}`,
     );
     await p.locator("#ag-count").waitFor();
     await p.waitForFunction(

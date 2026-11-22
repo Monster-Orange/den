@@ -24,7 +24,7 @@ import type { Browser, Page } from "playwright";
 import { writeRotation } from "../../../src/shared/agents/rotation.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
 import { GOOD_HANDOFF } from "../agents/helpers/handoff.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -120,7 +120,7 @@ async function open(ws: string): Promise<Page> {
   p.on("console", (m) => {
     if (m.type() === "error") errors.push(`console: ${m.text()}`);
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agst", { timeout: 20_000 });
   return p;
 }

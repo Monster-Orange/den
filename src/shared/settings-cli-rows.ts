@@ -20,6 +20,10 @@
  *   web_ready: { probe_seconds?, start_seconds? }
  *                                     user.yml web.ready_probe_seconds,
  *                                     web.start_wait_seconds (den#143)
+ *   web_pairing: { requests_per_minute?, approve_attempts?,
+ *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
+ *                                     web.approve_attempts,
+ *                                     web.approve_window_seconds (issue 819)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agents_shell: { path_timeout_seconds? }
@@ -58,7 +62,7 @@ import {
   SHOT_KEEP_DAYS_MIN,
   SHOT_LIMITS,
 } from "./report-shots.js";
-import { WEB_WAIT_RANGE } from "./web-session.js";
+import { PAIR_LIMITS, WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import { SHELL_PATH_TIMEOUT } from "./den-config.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
@@ -81,6 +85,8 @@ export const PERSON_ONLY_SETTINGS = [
   "web_github",
   // den#143: how long `web up` waits for the server, on a busy machine too.
   "web_ready",
+  // Issue 819: how many new-device requests and wrong codes are allowed.
+  "web_pairing",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -250,6 +256,22 @@ const WEB_READY: Record<string, Limit> = {
     key: "start_wait_seconds",
     ...WEB_WAIT_RANGE,
     int: false,
+  },
+};
+
+/** Issue 819: the new-device limits (web-session.ts PAIR_LIMITS). */
+const WEB_PAIRING: Record<string, Limit> = {
+  requests_per_minute: {
+    key: "pair_requests_per_minute",
+    ...PAIR_LIMITS.pair_requests_per_minute,
+  },
+  approve_attempts: {
+    key: "approve_attempts",
+    ...PAIR_LIMITS.approve_attempts,
+  },
+  approve_window_seconds: {
+    key: "approve_window_seconds",
+    ...PAIR_LIMITS.approve_window_seconds,
   },
 };
 
@@ -573,6 +595,14 @@ export function patchCliRows(
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
     patchBlock(user, "web_github", "web", WEB_GITHUB, body.web_github, apply) ??
     patchBlock(user, "web_ready", "web", WEB_READY, body.web_ready, apply) ??
+    patchBlock(
+      user,
+      "web_pairing",
+      "web",
+      WEB_PAIRING,
+      body.web_pairing,
+      apply,
+    ) ??
     patchBlock(
       user,
       "panes_reconnect",

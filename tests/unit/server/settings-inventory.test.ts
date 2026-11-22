@@ -45,6 +45,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   web_github: { owner_name_timeout_seconds: true },
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
+  // Issue 819: the new-device limits.
+  web_pairing: {
+    requests_per_minute: true,
+    approve_attempts: true,
+    approve_window_seconds: true,
+  },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
@@ -234,6 +240,9 @@ describe("the settings inventory (R21)", () => {
         "github.watch_max_interval_seconds",
         "github.api_budget_floor",
         "github.watches_max",
+        "web_pairing.approve_attempts",
+        "web_pairing.approve_window_seconds",
+        "web_pairing.requests_per_minute",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
