@@ -795,6 +795,7 @@
     "pj.delete": "Delete",
     "pj.activeTag": "(active)",
     "pj.openTerm": "Open in terminal",
+    "pj.openTermIn": "Open in {app}",
     "pj.openEditor": "Open in editor",
     "pj.moreActions": "More actions",
     "pj.moreFor": "More for {ws}",

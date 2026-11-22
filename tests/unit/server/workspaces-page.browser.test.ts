@@ -1113,3 +1113,95 @@ describe("0.4.17: the Tests module picker", () => {
     await ctx.close();
   }, 30_000);
 });
+
+describe("issue 169: >_ names the person's terminal app", () => {
+  /** /api/settings as the server says it, with Ghostty the default terminal. */
+  const ghostty = (ctx: BrowserContext) =>
+    ctx.route(/\/api\/settings$/, async (r) => {
+      if (r.request().method() !== "GET") return r.continue();
+      const res = await r.fetch();
+      const d = (await res.json()) as Record<string, unknown>;
+      await r.fulfill({
+        response: res,
+        json: {
+          ...d,
+          terminal: "ghostty",
+          terminals: [
+            { key: "terminal", name: "Terminal", available: true },
+            { key: "ghostty", name: "Ghostty", available: true },
+          ],
+        },
+      });
+    });
+  /** The person's language, set as the page's own Settings sets it. */
+  const setLang = async (p: Page, language: string) =>
+    expect(
+      await p.evaluate(
+        async (l) =>
+          (
+            await fetch("/api/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ language: l }),
+            })
+          ).status,
+        language,
+      ),
+    ).toBe(200);
+  const btn = ".ws-item .ws-term-btn";
+
+  it.each([
+    ["en", "Open in Ghostty"],
+    ["es", "Abrir en Ghostty"],
+    ["ja", "Ghosttyで開く"],
+  ])(
+    "%s: the project's >_ and a repo's ⋯ item say %s",
+    async (lang, said) => {
+      if (!browser) return;
+      const p = await open("main", "/", undefined, ghostty);
+      try {
+        await setLang(p, lang);
+        await p.reload();
+        await p.waitForSelector("#repo-table tbody tr.repo", {
+          timeout: 15_000,
+        });
+        await p.waitForFunction(
+          ([sel, want]) =>
+            document.querySelector(sel as string)?.getAttribute("title") ===
+            want,
+          [btn, said],
+          { timeout: 10_000 },
+        );
+        expect(await p.$eval(btn, (b) => b.getAttribute("aria-label"))).toBe(
+          said,
+        );
+        const more =
+          '#repo-table tr.repo[data-repo="queue"] [data-action="toggle-svc-menu"]';
+        await p.click(more, { timeout: 8_000 });
+        const item = "#svc-menu-queue [role=menuitem][data-open-term]";
+        await p.waitForSelector(item, { timeout: 8_000 });
+        expect((await p.textContent(item))?.trim()).toBe(`>_ ${said}`);
+      } finally {
+        await setLang(p, "en");
+        await p.context().close();
+      }
+    },
+    40_000,
+  );
+
+  it("no terminal set: the plain words", async () => {
+    if (!browser) return;
+    const p = await open();
+    await p.waitForSelector(btn);
+    expect(await p.$eval(btn, (b) => b.getAttribute("title"))).toBe(
+      "Open in terminal",
+    );
+    const more =
+      '#repo-table tr.repo[data-repo="queue"] [data-action="toggle-svc-menu"]';
+    await p.click(more, { timeout: 8_000 });
+    const item = "#svc-menu-queue [role=menuitem][data-open-term]";
+    await p.waitForSelector(item, { timeout: 8_000 });
+    expect((await p.textContent(item))?.trim()).toBe(">_ Open in terminal");
+    await p.context().close();
+  }, 30_000);
+});
