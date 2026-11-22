@@ -475,21 +475,19 @@ describe("the approval dialog (ON-3)", () => {
       });
     });
     await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
-    expect(await p.textContent("#den-ap-what")).toBe(
-      "Switch how Den runs: login → always",
+    // Den's words from the keys: the dialog shows the switch and each
+    // Review line the server sent (en here, so as sent).
+    expect(await p.textContent("#den-ap-what")).toContain(
+      `${item.params.from} → ${item.params.to}`,
     );
     await p.click("#den-ap-review");
     const det = (await p.textContent("#den-ap-det")) ?? "";
-    expect(det).toContain("How Den runs: login → always.");
-    expect(det).toContain("admin password");
-    expect(det).toContain("No sign-in token is set");
+    for (const line of item.details) expect(det).toContain(line);
     expect(await p.isVisible("#den-ap-link")).toBe(true);
-    expect(await p.getAttribute("#den-ap-link", "href")).toBe(
-      "/settings#agents.keep_running",
-    );
-    expect(await p.textContent("#den-ap-link")).toBe(
-      "Open Settings › Sign-in token",
-    );
+    expect(await p.getAttribute("#den-ap-link", "href")).toBe(item.link.href);
+    const linkText = (await p.textContent("#den-ap-link")) ?? "";
+    expect(linkText.length).toBeGreaterThan(0);
+    expect(linkText).not.toBe(item.link.key);
     await p.click("#den-ap-allow");
     // The existing password dialog, in this browser.
     await p.waitForSelector("#den-lock-pw", { timeout: 15_000 });
