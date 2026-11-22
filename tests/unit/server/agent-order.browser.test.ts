@@ -368,7 +368,15 @@ describe.each(ENGINES)(
       try {
         await p.locator(`${row(sid.cy)}[aria-busy="true"]`).waitFor();
         // The kit's dots at the row's end: three dots, hidden from a
-        // screen reader (aria-busy says it).
+        // screen reader (aria-busy says it). aria-busy is set at once; the
+        // dots come when the kit's module has loaded.
+        await p.waitForFunction(
+          (sel) =>
+            document
+              .querySelector(sel)
+              ?.lastElementChild?.getAttribute("aria-hidden") === "true",
+          row(sid.cy),
+        );
         expect(
           await p.locator(row(sid.cy)).evaluate((el) => {
             const d = el.lastElementChild;
