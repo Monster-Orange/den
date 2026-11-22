@@ -531,6 +531,7 @@ export class Attention {
     agent: string,
     workspace: string,
     keys: string[],
+    version?: number,
   ): { agent: string; key: string }[] {
     const out: { agent: string; key: string }[] = [];
     for (const [a, w] of [...this.waiting]) {
@@ -538,6 +539,10 @@ export class Attention {
       if (a !== agent && w.workspace !== workspace) continue;
       const key = keys.find((k) => namesKey(w.text, k));
       if (!key) continue;
+      // A question about another version of the doc isn't answered.
+      const asked = askedVersion(w.text);
+      if (version !== undefined && asked !== undefined && asked !== version)
+        continue;
       this.clear(a);
       out.push({ agent: a, key });
     }
@@ -772,4 +777,10 @@ function namesKey(text: string, key: string): boolean {
   return new RegExp(`(^|[^A-Za-z0-9_-])${esc}($|[^A-Za-z0-9_-])`, "i").test(
     text,
   );
+}
+
+/** P0-D2: the version a question names ("v3", "version 3"), if one. */
+function askedVersion(text: string): number | undefined {
+  const m = /\b(?:v|version\s+)(\d+)\b/i.exec(text);
+  return m ? Number(m[1]) : undefined;
 }

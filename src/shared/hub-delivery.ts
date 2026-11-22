@@ -266,8 +266,14 @@ export function stripLookalikes(body: string): string {
 
 /** Hub's info note on an approval, until it sends kinds (P0-D2). */
 const APPROVED_COMMENT = /\bapproved v(\d+) of\b/i;
-/** A held decision that said no. */
-const HELD_NO = /\b(denied|deny|rejected|declined|refused)\b/i;
+/**
+ * A held decision says yes only in these words, until Hub sends a decision
+ * field: anything else (a deny, "not allowed", a plain "No") is no
+ * approval.
+ */
+const HELD_YES = /\b(allowed|approved|applied)\b/i;
+const HELD_NOT =
+  /\b(not|no|never|denied|deny|rejected|declined|refused|disallowed)\b/i;
 /** A held write's id, as Hub names it. */
 const HELD_ID =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
@@ -282,12 +288,36 @@ const HELD_ID =
 export function isApproval(d: Delivery, o: DeliveryOwner | null): boolean {
   if (!o || !isOwner(d.author, o)) return false;
   if (d.kind === "approve") return true;
-  if (d.kind === "held") return !HELD_NO.test(d.body);
+  if (d.kind === "held") return HELD_YES.test(d.body) && !HELD_NOT.test(d.body);
   if (d.kind && d.kind !== "comment") return false;
   if (d.intent !== "info") return false;
   const m = APPROVED_COMMENT.exec(d.body);
   if (!m) return false;
   return d.version === undefined || Number(m[1]) === d.version;
+}
+
+/**
+ * P0-D2: the version an approval is of: Hub's field, or its info note's
+ * vN; undefined when it names none.
+ */
+export function approvalVersion(d: Delivery): number | undefined {
+  if (d.version !== undefined) return d.version;
+  const m = d.intent === "info" ? APPROVED_COMMENT.exec(d.body) : null;
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * Whether `d` could be an approval once Den knows its person: what the
+ * early list keeps (P0-D2).
+ */
+export function mayBeApproval(d: Delivery): boolean {
+  if (d.author.kind !== "person") return false;
+  if (d.kind === "approve" || d.kind === "held") return true;
+  return (
+    (!d.kind || d.kind === "comment") &&
+    d.intent === "info" &&
+    APPROVED_COMMENT.test(d.body)
+  );
 }
 
 /**

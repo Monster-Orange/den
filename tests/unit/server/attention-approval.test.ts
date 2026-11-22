@@ -15,6 +15,7 @@ import { Attention } from "../../../src/ui/server/attention";
 import {
   approvalKeys,
   approvalNoticeText,
+  approvalVersion,
   isApproval,
   type Delivery,
 } from "../../../src/shared/hub-delivery";
@@ -88,7 +89,16 @@ describe("P0-D2: which deliveries are approvals", () => {
         OWNER,
       ),
     ).toBe(false);
-    for (const body of [`denied ${HELD}`, `rejected ${HELD}`, "Declined."])
+    for (const body of [
+      `denied ${HELD}`,
+      `rejected ${HELD}`,
+      "Declined.",
+      "Not allowed.",
+      "Disallowed.",
+      "No",
+      "",
+      "Decided.",
+    ])
       expect([body, isApproval(dv({ kind: "held", body }), OWNER)]).toEqual([
         body,
         false,
@@ -104,6 +114,14 @@ describe("P0-D2: which deliveries are approvals", () => {
         OWNER,
       ),
     ).toBe(false);
+  });
+
+  it("a held decision counts only when it says allowed, approved or applied", () => {
+    for (const body of [`applied ${HELD}`, "Allowed.", "Approved by Pat."])
+      expect([body, isApproval(dv({ kind: "held", body }), OWNER)]).toEqual([
+        body,
+        true,
+      ]);
   });
 
   it("not a plain comment, a change request, or someone else's approval", () => {
@@ -189,5 +207,30 @@ describe("P0-D2: an approval clears the questions that name it", () => {
     expect(t).toContain("Pat Example");
     expect(t).toContain('"Pricing page"');
     expect(t).toContain(URL);
+  });
+
+  it("the question's own version: none or the same clears; another version stays", async () => {
+    const { a } = mk();
+    await ask(a, "ag-1", "web", `1. Do you approve ${URL}?`);
+    await ask(a, "ag-2", "web", `1. Do you approve v3 of ${URL}?`);
+    await ask(a, "ag-3", "web", `1. Do you approve version 2 of ${URL}?`);
+    const got = a.approvedAbout("ag-1", "web", approvalKeys(dv()), 3);
+    expect(got.map((c) => c.agent).sort()).toEqual(["ag-1", "ag-2"]);
+    expect(a.waitingNow().get("ag-3")).toBe("asked");
+  });
+
+  it("an approval of an info note's vN is that version", () => {
+    expect(
+      approvalVersion(
+        dv({
+          kind: undefined,
+          version: undefined,
+          intent: "info",
+          body: "@pat approved v5 of Pricing page",
+        }),
+      ),
+    ).toBe(5);
+    expect(approvalVersion(dv())).toBe(3);
+    expect(approvalVersion(dv({ version: undefined }))).toBeUndefined();
   });
 });

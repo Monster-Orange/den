@@ -412,8 +412,8 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       ])
         .then(([{ notificationDeps }, { settleApproval }]) =>
           settleApproval(dv, {
-            approvedAbout: (a, ws, keys) =>
-              notificationDeps().attention.approvedAbout(a, ws, keys),
+            approvedAbout: (a, ws, keys, version) =>
+              notificationDeps().attention.approvedAbout(a, ws, keys, version),
             log: (l) => o.log(l),
             workspaceOf: (a) => readRecord(getStateDir(), a)?.workspace ?? null,
             owner: () => owner,
@@ -530,6 +530,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
   };
   // A new connection may be a different person: never keep the old one.
   owner = null;
+  loop?.ownerReset();
   ownerAskedAt = 0;
   await askOwner();
   startHubNotes(o.log);
