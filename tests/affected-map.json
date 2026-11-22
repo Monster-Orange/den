@@ -271,12 +271,14 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -302,6 +304,7 @@
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
@@ -322,7 +325,8 @@
       ],
       "run": [
         "tests/unit/server/embed-frame.browser.test.ts",
-        "tests/unit/server/one-url-per-module.browser.test.ts"
+        "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts"
       ],
       "why": "embed.html"
     },
@@ -337,6 +341,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
@@ -431,6 +436,7 @@
         "tests/unit/server/no-services-repo-projects.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
@@ -466,6 +472,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
@@ -485,6 +492,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
@@ -506,6 +514,7 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -539,6 +548,7 @@
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
@@ -593,6 +603,7 @@
         "tests/unit/server/my-reports.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pair-unseen.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/report-dialog.browser.test.ts",
@@ -618,6 +629,7 @@
         "tests/unit/server/settings-signin.browser.test.ts",
         "tests/unit/server/settings-token-go.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-this-machine.browser.test.ts",
@@ -640,8 +652,10 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
-        "tests/unit/server/verify-page.browser.test.ts"
+        "tests/unit/server/verify-page.browser.test.ts",
+        "tests/unit/server/verify-schedules.browser.test.ts"
       ],
       "why": "verify.html"
     },
@@ -694,12 +708,14 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -790,6 +806,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
@@ -805,6 +822,7 @@
         "tests/unit/server/settings-hub-project.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
@@ -876,6 +894,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
@@ -885,6 +904,7 @@
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -962,6 +982,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
@@ -991,6 +1012,7 @@
         "tests/unit/server/settings-token-go.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-this-machine.browser.test.ts",
@@ -1020,6 +1042,7 @@
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
@@ -1080,6 +1103,7 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
@@ -1223,6 +1247,7 @@
         "tests/unit/server/pane-ime.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/pin-tuple.browser.test.ts",
+        "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/project-mcp-row.browser.test.ts",
         "tests/unit/server/project-mode.browser.test.ts",
         "tests/unit/server/rail-lit.browser.test.ts",
@@ -1257,6 +1282,7 @@
         "tests/unit/server/settings-token-go.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-hub-rail.browser.test.ts",
+        "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/signin-accounts.browser.test.ts",
         "tests/unit/server/signin-this-machine.browser.test.ts",
@@ -1271,6 +1297,7 @@
         "tests/unit/server/untrusted-reports.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/verify-page.browser.test.ts",
+        "tests/unit/server/verify-schedules.browser.test.ts",
         "tests/unit/server/whats-new-dialog.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
@@ -1313,6 +1340,7 @@
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/verify-page.browser.test.ts",
+        "tests/unit/server/verify-schedules.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts"
       ],
       "why": "the es and ja catalogs: the specs that switch language"
@@ -1335,6 +1363,7 @@
       "run": [
         "tests/unit/agents/quarantined-launch.test.ts",
         "tests/unit/agents/uploads.test.ts",
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/button-kit.test.ts",
         "tests/unit/den-ui/dialog-frame-guard.test.ts",
         "tests/unit/den-ui/kit-route.test.ts",
@@ -1396,11 +1425,14 @@
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
+        "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
+        "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -1432,6 +1464,14 @@
       "why": "tests that read examples/"
     },
     {
+      "when": ["scripts/brittle-ratchet.mjs"],
+      "run": [
+        "tests/unit/scripts/kit-version.test.ts",
+        "tests/unit/test-infra/brittle-ratchet.test.ts"
+      ],
+      "why": "tests that run scripts/brittle-ratchet.mjs"
+    },
+    {
       "when": ["scripts/ci-pw-install.sh"],
       "run": ["tests/unit/test-infra/pw-install.test.ts"],
       "why": "tests that run scripts/ci-pw-install.sh"
@@ -1455,6 +1495,11 @@
       "when": ["scripts/gate-shape.mjs"],
       "run": ["tests/unit/test-infra/gate-checks.test.ts"],
       "why": "tests that run scripts/gate-shape.mjs"
+    },
+    {
+      "when": ["scripts/kit-version.mjs"],
+      "run": ["tests/unit/scripts/kit-version.test.ts"],
+      "why": "tests that run scripts/kit-version.mjs"
     },
     {
       "when": ["scripts/org-name-commits.mjs"],
@@ -1490,6 +1535,7 @@
     {
       "when": ["scripts/words.js"],
       "run": [
+        "tests/unit/den-ui/busy-dots.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
@@ -1498,6 +1544,11 @@
         "tests/unit/server/i18n-pages.browser.test.ts"
       ],
       "why": "tests that run scripts/words.js"
+    },
+    {
+      "when": ["src/shared/agents/runtimes.ts"],
+      "run": ["tests/unit/agents/agent-shell-install-home.test.ts"],
+      "why": "starts Den as a process: its subject"
     },
     {
       "when": ["src/pillars/browser/setup.ts", "src/pillars/smoke/setup.ts"],
@@ -1593,6 +1644,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/shared/fixture-person.ts"],
+      "run": ["tests/unit/server/fixture-person.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": [
         "src/shared/hub-delivery-loop.ts",
         "src/shared/hub-delivery.ts",
@@ -1617,6 +1673,28 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/ui/server/index.ts", "src/ui/server/named-address.ts"],
+      "run": [
+        "tests/unit/server/issue-601-loopback-address.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/pair-requests.ts",
+        "src/ui/server/pair-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/issue-819-device-approval.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/signin-methods.ts"],
+      "run": ["tests/unit/server/issue-868-signin-methods.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/mcp/server.ts"],
       "run": ["tests/unit/server/mode-layers.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -1632,6 +1710,11 @@
     {
       "when": ["src/shared/org-sources.ts"],
       "run": ["tests/unit/server/org-sources.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/theme-runtime.ts", "src/ui/server/ui-assets.ts"],
+      "run": ["tests/unit/server/popup-font.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -1679,8 +1762,21 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/shared/fixture-person.ts"],
+      "run": ["tests/unit/server/shell-poll-in-flight.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/server/shutdown-guard.ts"],
       "run": ["tests/unit/server/shutdown-bounded.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/pair-requests.ts",
+        "src/ui/server/pair-routes.ts"
+      ],
+      "run": ["tests/unit/server/signed-in-request-limit.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -1696,6 +1792,11 @@
     {
       "when": ["src/ui/server/time-zone-pref.ts"],
       "run": ["tests/unit/server/time-zone.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/verify-schedule-routes.ts"],
+      "run": ["tests/unit/server/verify-schedules.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

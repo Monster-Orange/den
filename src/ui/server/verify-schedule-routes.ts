@@ -434,10 +434,20 @@ export async function handleScheduleRoutes(
       sendJson(res, { ok: false, error: rows.error }, 422);
       return true;
     }
+    let settings: ScheduleSettings;
+    try {
+      settings = settingsOf(d);
+    } catch (e) {
+      sendJson(res, { ok: false, error: (e as Error).message }, 422);
+      return true;
+    }
     sendJson(res, {
       ok: true,
       project: p.project,
       now: now.toISOString(),
+      // Cron times are this Den's local times.
+      zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      settings,
       schedules: rows.schedules,
     });
     return true;
