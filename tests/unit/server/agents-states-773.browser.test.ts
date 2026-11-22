@@ -246,6 +246,9 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     expect(sub).toMatch(/\b1 done\b/);
     expect(sub).toContain("1 working");
     expect(sub).toMatch(/\d+ idle/);
+    // The rail's Agents count: Needs you, an amber (warn) pill.
+    const pill = p.locator('.den-rail [data-nav="agents"] .den-bdg');
+    expect(await pill.getAttribute("class")).toBe("den-bdg warn");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);

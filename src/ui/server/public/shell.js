@@ -5738,7 +5738,9 @@
       // Issue 773: the agents that need you (not Done); else (D32) the
       // helpers the agents started that run now.
       badge: function (s) {
-        if (s.agentsNeedYou > 0) return { n: s.agentsNeedYou, what: "waiting" };
+        // Mock v3: an amber pill.
+        if (s.agentsNeedYou > 0)
+          return { n: s.agentsNeedYou, what: "waiting", warn: true };
         return s.helpersRunning > 0
           ? { n: s.helpersRunning, what: "running" }
           : null;

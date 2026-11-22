@@ -54,7 +54,13 @@ export interface NavItem {
    * A count. `what` (0.7.3): what it counts; the kit words it with the
    * name ("North · Den, 3 waiting"). Hosts pass data, never the words.
    */
-  badge?: { n: number | string; bad?: boolean; what?: BadgeWhat } | null;
+  /** warn (issue 773): the amber pill, e.g. the agents that need you. */
+  badge?: {
+    n: number | string;
+    bad?: boolean;
+    warn?: boolean;
+    what?: BadgeWhat;
+  } | null;
   /** HTML in place of the icon (a status dot). */
   lead?: string;
   mono?: boolean;
