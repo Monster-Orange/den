@@ -1642,7 +1642,7 @@ function drawGateBoxes(host, ctx) {
       "set.ui.boxPws",
       "Or Playwright by version (1.61=ws://…, 1.63=ws://…)",
       "text",
-      'maxlength="2048" placeholder="1.61=ws://box:3931, 1.63=ws://box:3932"',
+      `maxlength="2048" placeholder="${escHtml(L("set.ui.boxPwsEx", "1.61=ws://box:3931, 1.63=ws://box:3932"))}"`,
     ) +
     `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +

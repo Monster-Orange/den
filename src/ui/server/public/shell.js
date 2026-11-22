@@ -809,6 +809,7 @@
     "set.ui.boxSave": "Save box",
     "set.ui.boxMem": "Keep free memory (MB)",
     "set.ui.boxPwv": "Playwright version on the box",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
     "set.ui.boxPws": "Or Playwright by version (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone": "No test boxes. Browser runs use this machine only.",
     "set.ui.boxSlotsN": "{n} browser slots",

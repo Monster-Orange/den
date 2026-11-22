@@ -3148,6 +3148,7 @@
     "set.ui.boxSave": "マシンを保存",
     "set.ui.boxMem": "残しておく空きメモリ (MB)",
     "set.ui.boxPwv": "マシン上の Playwright のバージョン",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
     "set.ui.boxPws":
       "または バージョン別の Playwright (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone":
