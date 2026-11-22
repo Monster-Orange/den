@@ -76,18 +76,28 @@ body.den-has-shell > #den-content {
      inside its column (the host's chips, then the version's text),
      never Report, the bell or ◐. searchSlot() in the inventory is the
      same sum. */
+  /* Issue 981: on a short bar the search gives way before the left part:
+     the left part keeps --den-top-left-min (220px, the project picker in
+     it) while the search narrows, down to its icon (--den-top-search-min,
+     56px). At 944px and wider nothing changes. */
+  --den-top-search-w: clamp(
+    var(--den-top-search-min, 56px),
+    calc(
+      100% - var(--den-top-left-min, 220px) - var(--den-top-right, 380px) - 16px
+    ),
+    var(--den-top-search, 304px)
+  );
   grid-template-columns:
     minmax(
       0,
       min(
         var(--den-top-left, 444px),
         calc(
-          100% - var(--den-top-search, 304px) - var(--den-top-right, 380px) -
-            16px
+          100% - var(--den-top-search-w) - var(--den-top-right, 380px) - 16px
         )
       )
     )
-    var(--den-top-search, 304px)
+    var(--den-top-search-w)
     minmax(0, 1fr);
   align-items: center;
   column-gap: 8px;
@@ -924,6 +934,12 @@ body.den-has-shell .den-upd {
 }
 .den-search-ic {
   flex: none;
+}
+/* A narrowed search (issue 981): its words and ⌘K give way, its ⌕ stays. */
+.den-search > kbd {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 /* A key cap: the search's ⌘K, the top bar's Report ⌘⇧F, and any .den-kbd
    a host draws. One rule, so they never drift apart. */
