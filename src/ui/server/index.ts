@@ -1404,7 +1404,7 @@ import {
   handleSessionList,
   handleSessionUpgrade,
   isSessionIoPath,
-  needsYouNow,
+  needsYouShared,
   sendSessionHttp,
   SESSION_HELPERS_PATH,
   type SessionRouteDeps,
@@ -5139,7 +5139,7 @@ function waitingAgentIds(): Set<string> {
  * isNeedsYouRow), so the tab, the rail and the Agents page agree.
  */
 function needsYouCount(): Promise<number> {
-  return needsYouNow(sessionListDeps());
+  return needsYouShared(sessionListDeps());
 }
 
 /** The Agents list's deps (session-routes.ts), shared with the tab count. */

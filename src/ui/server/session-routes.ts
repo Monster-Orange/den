@@ -1708,3 +1708,21 @@ export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
   for (const r of listedSessions(sessions, d)) if (isNeedsYouRow(r)) n += 1;
   return n;
 }
+
+/** How long open tabs share one needs-you count (each polls every 5 s). */
+const NEEDS_SHARED_MS = 2000;
+let needsShared: { at: number; n: Promise<number> } | null = null;
+
+/**
+ * needsYouNow, shared for NEEDS_SHARED_MS: several open tabs polling
+ * GET /api/alerts list the host's sessions once between them.
+ */
+export function needsYouShared(
+  deps: SessionRouteDeps,
+  now: () => number = Date.now,
+): Promise<number> {
+  const t = now();
+  if (needsShared && t - needsShared.at < NEEDS_SHARED_MS) return needsShared.n;
+  needsShared = { at: t, n: needsYouNow(deps) };
+  return needsShared.n;
+}

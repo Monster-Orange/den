@@ -55,7 +55,7 @@ describe("one rule for needs you (the page, the rail, the tab)", () => {
     const fn = /function needsYouCount\(\)[^{]*\{([\s\S]*?)\n\}/.exec(
       src("index.ts"),
     );
-    expect(fn?.[1]).toContain("needsYouNow(");
+    expect(fn?.[1]).toContain("needsYouShared(");
     expect(fn?.[1]).not.toContain("needsYouAgents(");
   });
 });
@@ -84,5 +84,31 @@ describe("GET /api/alerts: the count may come from an async source", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the tab count shares one list for a moment (every tab polls every 5 s)", () => {
+  it("calls within 2 s share one host list; a later call lists again", async () => {
+    const { needsYouShared } =
+      await import("../../../src/ui/server/session-routes.js");
+    let lists = 0;
+    const deps = {
+      connectExisting: async () => ({
+        list: async () => {
+          lists += 1;
+          return [];
+        },
+        close: () => undefined,
+      }),
+    } as never;
+    let t = 1_000_000;
+    const now = () => t;
+    expect(await needsYouShared(deps, now)).toBe(0);
+    t += 1500;
+    await Promise.all([needsYouShared(deps, now), needsYouShared(deps, now)]);
+    expect(lists).toBe(1);
+    t += 600; // 2.1 s after the first list
+    await needsYouShared(deps, now);
+    expect(lists).toBe(2);
   });
 });
