@@ -111,6 +111,11 @@ export interface AgentRecord {
    */
   restartFailed?: { at: string; why: string };
   /**
+   * Issue 926: its last session that ended without Den asking: when, which
+   * session, its exit code, and whether Den brought it back.
+   */
+  unaskedExit?: { at: string; session: string; code: number; back?: boolean };
+  /**
    * Issue 659: when Den saw its runtime ask whether to trust its folder
    * (the question on its screen, waiting for its person); cleared once
    * answered, or by its next start.
