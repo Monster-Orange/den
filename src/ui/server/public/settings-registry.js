@@ -597,6 +597,73 @@ async function thisDeviceId() {
 }
 
 /**
+ * Issue 786: Settings › Navigation › Layout snapshots. Each snapshot (GET
+ * /api/layout/snapshots, newest first) in local time with what it holds,
+ * and Restore (POST /api/layout/restore), busy in its button. A restore
+ * reloads the page so the rail shows it; other open pages are told at
+ * their next layout change (shell.js, layout_changed).
+ */
+export function drawLayoutSnapshots(host, ctx) {
+  const shell = ctx.shell;
+  const when = (iso) => formatTime(iso) || iso;
+  const draw = (list) => {
+    if (!list.length) {
+      host.innerHTML = `<p class="set-desc">${escHtml(L("set.layout.none", "No snapshots yet: one is kept when your layout changes."))}</p>`;
+      return;
+    }
+    host.innerHTML =
+      `<ul class="set-list" data-layout-snapshots>` +
+      list
+        .map(
+          (s) =>
+            `<li data-id="${escHtml(s.id)}"><span>${escHtml(
+              L("set.layout.row", "{when}: {pins} pinned, {hidden} hidden", {
+                when: when(s.at),
+                pins: s.pins,
+                hidden: s.hidden,
+              }) +
+                (s.collapsed
+                  ? `, ${L("set.layout.collapsed", "rail collapsed")}`
+                  : ""),
+            )}</span> ` +
+            (s.current
+              ? `<span class="pill">${escHtml(L("set.layout.current", "Now"))}</span>`
+              : `<button type="button" class="btn sm" data-restore="${escHtml(s.id)}">${escHtml(L("set.layout.restore", "Restore"))}</button>`) +
+            `</li>`,
+        )
+        .join("") +
+      `</ul>`;
+    host.querySelectorAll("[data-restore]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const id = button.getAttribute("data-restore");
+        const s = list.find((x) => x.id === id);
+        const run = (headers) =>
+          shell.api("POST", "/api/layout/restore", { id }, { headers });
+        const p = shell.busyAction
+          ? shell.busyAction("restore-layout", run, {
+              button,
+              toastFast: false,
+            })
+          : run({}).catch(() => null);
+        return Promise.resolve(p).then((r) => {
+          if (!r || r.ok === false) return;
+          shell.toast?.(
+            L("set.layout.restored", "Layout put back from {when}", {
+              when: s ? when(s.at) : id,
+            }),
+          );
+          if (typeof location !== "undefined" && location.reload)
+            location.reload();
+        });
+      }),
+    );
+  };
+  return Promise.resolve(shell.api("GET", "/api/layout/snapshots"))
+    .then((r) => draw(Array.isArray(r?.snapshots) ? r.snapshots : []))
+    .catch(() => draw([]));
+}
+
+/**
  * Issue 172: the person's devices that get push. Each one: what it is,
  * its push service, when it was added (local time), "this device", and
  * Forget. Send a test alert pushes to each and says, per device, whether
@@ -4004,6 +4071,18 @@ export const DEN_SETTINGS = [
     keys: ["shell.dock", "shell.dockHeight"],
     read: (ctx) => ctx.shell.getState().dock === true,
     write: (v, ctx) => ctx.shell.setDock(v),
+  },
+  {
+    // Issue 786: put a broken layout back with a click.
+    id: "shell.layoutSnapshots",
+    category: "navigation",
+    label: "Layout snapshots",
+    description:
+      "Den keeps your layout (pins, hidden pages, their order, the dock) as it changes: at most one every 15 minutes, the last 48. Restore puts one back, and keeps the layout it replaces too.",
+    keywords: ["layout", "snapshot", "restore", "undo", "rail", "pins", "back"],
+    scope: "user",
+    control: { type: "custom", render: drawLayoutSnapshots },
+    read: () => null,
   },
 
   // ── Graph ──────────────────────────────────────────────────────────────

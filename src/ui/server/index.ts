@@ -1452,6 +1452,12 @@ import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { snapshotLayout } from "../../shared/layout-snapshots.js";
 import { installExitFlush, onShutdownFlush } from "../../shared/state-flush.js";
+import {
+  layoutRev,
+  layoutSnapshotsAnswer,
+  restoreLayout,
+  staleLayoutSave,
+} from "./layout-routes.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -9246,6 +9252,44 @@ async function handleRequest(
     }
   }
 
+  // ── API: layout snapshots (issue 786) ───────────────────────────────────
+  // GET  /api/layout/snapshots → the snapshots, newest first, and shell_rev
+  // POST /api/layout/restore  body: { id } → puts that layout back
+  if (pathname === "/api/layout/snapshots" && req.method === "GET") {
+    if (notAPersonOf(req))
+      return sendJson(res, { ok: false, error: "only a person" }, 403);
+    return sendJson(
+      res,
+      layoutSnapshotsAnswer(getStateDir(), readUserConfig().shell),
+    );
+  }
+  if (pathname === "/api/layout/restore" && req.method === "POST") {
+    if (notAPersonOf(req))
+      return sendJson(
+        res,
+        { ok: false, error: "only a person can put a layout back" },
+        403,
+      );
+    let id: unknown;
+    try {
+      id = (JSON.parse(await readBody(req)) as { id?: unknown }).id;
+    } catch {
+      return send400(res, "body must be JSON: { id }");
+    }
+    const r = restoreLayout(
+      getStateDir(),
+      id,
+      () => readUserConfig().shell,
+      (shell) => {
+        const u = readUserConfig();
+        if (shell === undefined || shell === null) delete u.shell;
+        else u.shell = shell as UserConfig["shell"];
+        writeUserConfig(u);
+      },
+    );
+    return sendJson(res, r.body, r.status);
+  }
+
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
@@ -9268,6 +9312,8 @@ async function handleRequest(
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell, pinProjects()),
+        // Issue 786: the stored layout's revision; a layout save sends it.
+        shell_rev: layoutRev(user.shell),
         agents_layout: agentsLayout(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
@@ -9615,6 +9661,20 @@ async function handleRequest(
           delete user.shell;
           writeFixturePins(getStateDir(), [], []);
         } else if (shellBody !== undefined) {
+          // Issue 786: a page whose copy is older than the stored layout
+          // (another window put one back) is told the layout now, and
+          // never writes its old copy over it.
+          if (staleLayoutSave(req.headers["x-den-layout-rev"], user.shell))
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error: "layout_changed",
+                shell: shellPrefs(user.shell, pinProjects()),
+                shell_rev: layoutRev(user.shell),
+              },
+              409,
+            );
           // Issue 786: the layout this save replaces, kept (at most every
           // 15 minutes) so a broken one can be put back.
           try {
@@ -9767,6 +9827,7 @@ async function handleRequest(
           graph: graphPrefs(user.graph),
           appearance: appearancePrefs(user.appearance),
           shell: shellPrefs(user.shell, pinProjects()),
+          shell_rev: layoutRev(user.shell),
           language: uiLanguage(user.language),
           time_zone: timeZonePref(user.time_zone),
           machine_name: machineNameSetting(user),

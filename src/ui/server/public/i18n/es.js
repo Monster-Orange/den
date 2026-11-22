@@ -839,6 +839,9 @@
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
+    "busy.restoreLayoutW": "Restaurando el diseño…",
+    "busy.restoreLayoutS": "Diseño restaurado.",
+    "busy.restoreLayoutF": "No se pudo restaurar el diseño.",
     "rd.reconnects": "Esta página se reconecta sola cuando Den vuelva.",
     "rd.version": "Versión {v}.",
     "rd.notBack": "Den no volvió.",
@@ -1459,6 +1462,7 @@
     "set.shell.pins": "Fijados",
     "set.shell.collapsed": "Contraer la barra lateral",
     "set.shell.dock": "Abrir el panel de ejecuciones",
+    "set.shell.layoutSnapshots": "Copias del diseño",
     "set.graph.workspaces": "Lista de proyectos",
     "set.graph.groupBy": "Agrupar repositorios por",
     "set.graph.direction": "Dirección",
@@ -3434,6 +3438,15 @@
     "set.ui.appKeyNew": "Nueva clave de aplicación",
     "set.ui.copy": "Copiar",
     "set.ui.saveOrigins": "Guardar lista",
+    "toast.layoutChanged":
+      "Tu diseño se restauró desde una copia, así que ahora se ve esa. Vuelve a hacer tu cambio.",
+    "set.layout.none":
+      "Aún no hay copias: se guarda una cuando cambia tu diseño.",
+    "set.layout.row": "{when}: {pins} fijados, {hidden} ocultos",
+    "set.layout.collapsed": "barra lateral contraída",
+    "set.layout.current": "Actual",
+    "set.layout.restore": "Restaurar",
+    "set.layout.restored": "Diseño restaurado desde {when}",
     "set.ui.approve": "Aprobar",
     "set.ui.deny": "Denegar",
     "set.ui.codeLabel": "Código en su pantalla",
@@ -3690,6 +3703,8 @@
       "Solo iconos. El botón propio de la barra lateral, abajo, hace lo mismo.",
     "set.shell.dock.d":
       "La salida de las ejecuciones, al pie de cada página. Desactivado, queda solo su barra: aparece la pestaña de una ejecución, el chip Ejecuciones parpadea y tú lo abres. Arrastra su borde superior para cambiar su tamaño, hasta la mitad de la ventana.",
+    "set.shell.layoutSnapshots.d":
+      "Den guarda tu diseño (fijados, páginas ocultas, su orden, el panel) cuando cambia: como mucho una copia cada 15 minutos, las últimas 48. Restaurar vuelve a poner una y también guarda el diseño que reemplaza.",
     "set.graph.workspaces.d":
       "La lista de proyectos de la página Proyectos, abierta o contraída en una franja para que la tabla tenga todo el ancho.",
     "set.graph.workspaces.o.open": "Abierta",

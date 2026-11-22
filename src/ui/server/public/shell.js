@@ -945,6 +945,15 @@
     "set.ui.appKeyNew": "New app key",
     "set.ui.copy": "Copy",
     "set.ui.saveOrigins": "Save list",
+    "toast.layoutChanged":
+      "Your layout was put back from a snapshot, so it shows that one now. Make your change again.",
+    "set.layout.none":
+      "No snapshots yet: one is kept when your layout changes.",
+    "set.layout.row": "{when}: {pins} pinned, {hidden} hidden",
+    "set.layout.collapsed": "rail collapsed",
+    "set.layout.current": "Now",
+    "set.layout.restore": "Restore",
+    "set.layout.restored": "Layout put back from {when}",
     "set.ui.approve": "Approve",
     "set.ui.deny": "Deny",
     "set.ui.codeLabel": "Code on its screen",
@@ -1194,6 +1203,8 @@
       "Icons only. The rail's own button at the bottom does the same.",
     "set.shell.dock.d":
       "The output of runs, at the foot of every page. Off, it is just its bar: a run's tab appears and the Runs chip pulses, and you open it. Drag its top edge to resize it, up to half the window.",
+    "set.shell.layoutSnapshots.d":
+      "Den keeps your layout (pins, hidden pages, their order, the dock) as it changes: at most one every 15 minutes, the last 48. Restore puts one back, and keeps the layout it replaces too.",
     "set.graph.workspaces.d":
       "The Projects page's project list, open or collapsed to a strip so the table gets the width.",
     "set.graph.workspaces.o.open": "Open",
@@ -1766,6 +1777,9 @@
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
+    "busy.restoreLayoutW": "Putting the layout back…",
+    "busy.restoreLayoutS": "Layout put back.",
+    "busy.restoreLayoutF": "Couldn't put the layout back.",
     // The user menu (R10) and its palette commands (R17).
     "um.label": "Appearance",
     "um.title": "Appearance and theme",
@@ -2025,6 +2039,7 @@
     "set.shell.pins": "Pinned",
     "set.shell.collapsed": "Collapse the rail",
     "set.shell.dock": "Open the runs dock",
+    "set.shell.layoutSnapshots": "Layout snapshots",
     "set.graph.workspaces": "Project list",
     "set.graph.groupBy": "Group repos by",
     "set.graph.direction": "Direction",
@@ -4998,16 +5013,54 @@
   function pinToggles(root) {
     DUI.syncPinToggles(root, isPinned, lang);
   }
+  /**
+   * Issue 786: the stored layout's revision this page has (GET
+   * /api/settings shell_rev). A save sends it (X-Den-Layout-Rev); one refused because the
+   * layout was put back meanwhile (409 layout_changed) shows the stored
+   * layout instead of writing this page's older copy over it.
+   */
+  var shellRev = null;
+  function adoptServerShell(sh) {
+    setState({
+      pinList: pinTuples(sh.pins),
+      pinsLoaded: true,
+      collapsed: sh.collapsed === true,
+      hidden: Array.isArray(sh.hidden) ? sh.hidden : [],
+      order: Array.isArray(sh.order) ? sh.order : [],
+      dock: sh.dock === true,
+      dockHeight: typeof sh.dockHeight === "number" ? sh.dockHeight : 0,
+    });
+    remember();
+    dockFromPrefs();
+  }
   function saveShell(patch) {
     remember();
     if (typeof fetch !== "function") return Promise.resolve();
+    var headers = { "Content-Type": "application/json" };
+    if (shellRev) headers["X-Den-Layout-Rev"] = shellRev;
     return fetch("/api/settings", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify({ shell: patch }),
     })
       .then(function (r) {
-        return r && r.ok !== false;
+        if (!r) return false;
+        var ok = r.ok !== false;
+        if (typeof r.json !== "function") return ok;
+        return r
+          .json()
+          .catch(function () {
+            return null;
+          })
+          .then(function (j) {
+            if (j && typeof j.shell_rev === "string") shellRev = j.shell_rev;
+            if (r.status === 409 && j && j.error === "layout_changed") {
+              if (j.shell) adoptServerShell(j.shell);
+              toast(t("toast.layoutChanged"));
+              return false;
+            }
+            return ok;
+          });
       })
       .catch(function () {
         return false;
@@ -9665,19 +9718,9 @@
       })
       .then(function (s) {
         if (s && s.feedback_enabled === false) setState({ reportOff: true });
+        if (s && typeof s.shell_rev === "string") shellRev = s.shell_rev;
         if (!s || !s.shell) return;
-        setState({
-          pinList: pinTuples(s.shell.pins),
-          pinsLoaded: true,
-          collapsed: s.shell.collapsed === true,
-          hidden: Array.isArray(s.shell.hidden) ? s.shell.hidden : [],
-          order: Array.isArray(s.shell.order) ? s.shell.order : [],
-          dock: s.shell.dock === true,
-          dockHeight:
-            typeof s.shell.dockHeight === "number" ? s.shell.dockHeight : 0,
-        });
-        remember();
-        dockFromPrefs();
+        adoptServerShell(s.shell);
       })
       .catch(function () {});
 

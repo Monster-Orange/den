@@ -29,6 +29,16 @@ const t = (key, vars) => sh()?.t?.(key, vars) ?? key;
 
 /** name → { who, autoClose?, mode?, keys: { working, success, failure, … } } */
 export const DEN_ACTIONS = {
+  // Issue 786: Settings › Navigation › Layout snapshots › Restore.
+  "restore-layout": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.restoreLayoutW",
+      success: "busy.restoreLayoutS",
+      failure: "busy.restoreLayoutF",
+    },
+  },
   save: {
     who: "Den",
     autoClose: true,

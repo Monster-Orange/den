@@ -815,6 +815,9 @@
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
+    "busy.restoreLayoutW": "レイアウトを戻しています…",
+    "busy.restoreLayoutS": "レイアウトを戻しました。",
+    "busy.restoreLayoutF": "レイアウトを戻せませんでした。",
     "rd.reconnects": "Den が戻ると、このページは自動で再接続します。",
     "rd.version": "バージョン {v}。",
     "rd.notBack": "Den が戻りませんでした。",
@@ -1413,6 +1416,7 @@
     "set.shell.pins": "ピン留め",
     "set.shell.collapsed": "レールを折りたたむ",
     "set.shell.dock": "実行ドックを開く",
+    "set.shell.layoutSnapshots": "レイアウトのスナップショット",
     "set.graph.workspaces": "プロジェクト一覧",
     "set.graph.groupBy": "リポジトリのグループ分け",
     "set.graph.direction": "方向",
@@ -3331,6 +3335,15 @@
     "set.ui.appKeyNew": "新しいアプリキー",
     "set.ui.copy": "コピー",
     "set.ui.saveOrigins": "リストを保存",
+    "toast.layoutChanged":
+      "レイアウトがスナップショットから戻されたため、そちらを表示しています。変更をもう一度行ってください。",
+    "set.layout.none":
+      "スナップショットはまだありません。レイアウトが変わると保存されます。",
+    "set.layout.row": "{when}: ピン留め {pins} 件、非表示 {hidden} 件",
+    "set.layout.collapsed": "レールを折りたたみ",
+    "set.layout.current": "現在",
+    "set.layout.restore": "復元",
+    "set.layout.restored": "{when} のレイアウトに戻しました",
     "set.ui.approve": "承認",
     "set.ui.deny": "拒否",
     "set.ui.codeLabel": "画面のコード",
@@ -3585,6 +3598,8 @@
       "アイコンのみ表示します。レールの下部にあるボタンでも同じことができます。",
     "set.shell.dock.d":
       "実行の出力を、すべてのページの下部に表示します。オフにするとバーだけになり、実行のタブが現れて「実行」チップが点滅するので、自分で開きます。上端をドラッグすると、ウィンドウの半分までサイズを変えられます。",
+    "set.shell.layoutSnapshots.d":
+      "レイアウト(ピン留め、非表示のページ、その順序、ドック)が変わると保存します。15 分ごとに最大 1 つ、最新 48 件まで。復元すると 1 つを戻し、置き換えるレイアウトも保存します。",
     "set.graph.workspaces.d":
       "プロジェクトページのプロジェクト一覧を開いておくか、帯状に折りたたんで表を広く使うかを選びます。",
     "set.graph.workspaces.o.open": "開く",
