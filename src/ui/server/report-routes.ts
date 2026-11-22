@@ -124,6 +124,11 @@ export interface ReportRouteDeps {
    */
   shotReader?: (req: http.IncomingMessage) => ShotReader;
   /**
+   * Issue 946: whether this filing comes from the fixture person's session
+   * (its kept screenshot is marked so). Absent: never.
+   */
+  filedByFixture?: (req: http.IncomingMessage) => boolean;
+  /**
    * Issue 415: GitHub's tokenless answer for a repo's visibility, the
    * fallback when the person's `gh` can't say ("public" or null). None:
    * not asked.
@@ -138,8 +143,8 @@ export interface ReportRouteDeps {
 
 /** Who may read a kept screenshot (issue 403), or why not. */
 export type ShotReader =
-  | { ok: true }
-  | { ok: false; status: 401 | 403; who?: string };
+  /** fixture: the fixture person, who reads only what a fixture session filed (issue 946). */
+  { ok: true; fixture?: true } | { ok: false; status: 401 | 403; who?: string };
 
 /**
  * Issue 403: whether this request may read a kept screenshot. The route is
@@ -168,7 +173,8 @@ export function shotReaderOf(
   // The fixture person (a test install's live checks, issue 810) never
   // decides what waits for a person, but a read decides nothing: once its
   // session and CSRF token are proven, it is the person who runs the install.
-  if (browser.code === "fixture_cannot_approve") return { ok: true };
+  if (browser.code === "fixture_cannot_approve")
+    return { ok: true, fixture: true };
   return { ok: false, status: 401 };
 }
 
@@ -306,6 +312,8 @@ interface PendingShot {
   id: string;
   png: Buffer;
   share: boolean;
+  /** Issue 946: filed by the fixture person's session. */
+  byFixture: boolean;
 }
 
 /** The page's view of it: Hub's recipient, or why it stayed here. */
@@ -338,6 +346,7 @@ const HUB_ID = /^[A-Za-z0-9_-]{1,64}$/;
 function pendingShot(
   b: Record<string, unknown>,
   maxBytes: number,
+  byFixture = false,
 ): PendingShot | null | string {
   if (b.shot === undefined || b.shot === null) return null;
   const png = pngOfDataUrl(b.shot, maxBytes);
@@ -347,7 +356,7 @@ function pendingShot(
     typeof b.draftId === "string" && REPORT_ID.test(b.draftId)
       ? b.draftId
       : newReportId();
-  return { id, png, share: b.shareShot === true };
+  return { id, png, share: b.shareShot === true, byFixture };
 }
 
 /** The line a body is filed with: kept here (true once it is filed). */
@@ -370,7 +379,7 @@ async function afterFiling(
   update: (line: string) => Promise<void>,
 ): Promise<ShotOutcome> {
   const store = shotStore(stateDir);
-  store.save(p.id, p.png, repo, now);
+  store.save(p.id, p.png, repo, now, { byFixture: p.byFixture });
   const local = (why?: UploadWhy): ShotOutcome => ({
     where: "local",
     id: p.id,
@@ -727,7 +736,11 @@ export function handleReportRoutes(
         const dup = await sameTitle(d, c.repo, c.title);
         if (dup) return d.sendJson(res, { ok: false, duplicate: dup }, 409);
       }
-      const pending = pendingShot(b, d.shotMaxBytes?.() ?? MAX_KEPT_BYTES);
+      const pending = pendingShot(
+        b,
+        d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
+        d.filedByFixture?.(req) === true,
+      );
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
       const body = c.body + filedLine(pending);
@@ -832,7 +845,11 @@ export function handleReportRoutes(
       const link = newIssueUrl(c.repo, c.title, c.body);
       // Issue 403: held with the report; nothing kept or sent before the
       // person approves and GitHub files it (decideReport).
-      const pending = pendingShot(b, d.shotMaxBytes?.() ?? MAX_KEPT_BYTES);
+      const pending = pendingShot(
+        b,
+        d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
+        d.filedByFixture?.(req) === true,
+      );
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
       const s = d.settings();
@@ -936,7 +953,10 @@ export function handleReportRoutes(
           },
           who.status,
         );
-      const got = shotStore(d.stateDir()).get(sm[1]!);
+      const kept = shotStore(d.stateDir()).get(sm[1]!);
+      // Issue 946: the fixture person sees only what a fixture session
+      // filed; anything else answers as if none were kept.
+      const got = kept && (!who.fixture || kept.record.byFixture) ? kept : null;
       if (!got)
         return d.sendJson(
           res,
