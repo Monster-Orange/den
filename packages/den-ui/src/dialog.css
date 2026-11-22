@@ -200,7 +200,9 @@
   line-height: 1;
 }
 @media (max-width: 480px) {
+  /* As specific as the footer rule above, so the tap height wins there. */
   .dk-btn,
+  .dk-ft > .dk-btn,
   .dk-ft > .den-rb {
     min-height: var(--tap);
   }
