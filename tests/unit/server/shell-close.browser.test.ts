@@ -116,7 +116,7 @@ describe("Close shell", () => {
     const pane = p.locator(`.pane[data-id="${shell.id}"]`);
     const btn = pane.locator('[data-act="close-shell"]');
     await btn.waitFor({ timeout: 15_000 });
-    expect(await btn.textContent()).toBe("Close shell");
+    expect(await btn.textContent()).toBe("Close terminal");
     await btn.click();
     await pane.waitFor({ state: "detached", timeout: 15_000 });
     expect(pty.signals).toEqual(["SIGHUP"]);

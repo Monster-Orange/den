@@ -1625,10 +1625,11 @@
     "ag.state.exited": "終了済み",
     "ag.state.exitedCode": "終了済み ({code})",
     "ag.stop": "停止",
-    "ag.closeShell": "シェルを閉じる",
-    "ag.closeShellTip": "このシェルと、その中で動いているものを終了します",
+    "ag.closeShell": "ターミナルを閉じる",
+    "ag.closeShellTip": "このターミナルと、その中で動いているものを終了します",
     "ag.newShell": "新しいターミナル",
-    "ag.newShellTip": "このプロジェクトのフォルダーで別のシェルを開始します",
+    "ag.newShellTip":
+      "このプロジェクトのフォルダーで別のターミナルを開始します",
     "ag.shellClosed": "{id} を閉じました",
     "ag.resume": "再開",
     "ag.stopName": "{id} を停止",
@@ -1745,7 +1746,7 @@
     "ag.new.details": "詳細: {n}",
     "ag.new.hide": "詳細を隠す",
     "ag.new.newP": "+ 新しいペルソナ",
-    "ag.new.plain": "通常のシェル",
+    "ag.new.plain": "通常のターミナル",
     "ag.new.plainP":
       "プロジェクトのフォルダーで開くターミナル。エージェントなし。",
     "ag.new.task": "最初の指示（任意）",
@@ -2472,8 +2473,8 @@
     "kind.terminal": "ターミナル",
     "ag.sub.agents": "エージェント {n}",
     "ag.sub.agent": "エージェント {n}",
-    "ag.sub.shells": "シェル {n}",
-    "ag.sub.shell": "シェル {n}",
+    "ag.sub.shells": "ターミナル {n}",
+    "ag.sub.shell": "ターミナル {n}",
     "ag.sub.waiting": "対応待ち {w}",
     "ag.all": "すべてのプロジェクト",
     "ag.waiting": "対応待ち",
@@ -2721,7 +2722,7 @@
       "Den の Hub 設定に問題があります。設定 › Hub を確認してください。",
     "hub.railBadUrl":
       "Hub のアドレスが https ではないため、Den は開きません。設定 › Hub を確認してください。",
-    "ag.session": "シェル",
+    "ag.session": "ターミナル",
     "ag.empty":
       "左のエージェントを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
     "ag.none.scope": "{scope} にはまだエージェントはありません",
