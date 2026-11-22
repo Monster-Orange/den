@@ -52,6 +52,13 @@
  */
 import { auditVia } from "../../shared/test-person.js";
 import {
+  addressBriefLine,
+  addressNotSetNote,
+  agentLinks,
+  type AgentLinks,
+} from "../../shared/agent-links.js";
+import { readWebUrl } from "../../shared/web-url.js";
+import {
   line as rl,
   reviewLines as review,
   type DetailKey,
@@ -430,6 +437,11 @@ export interface AgentsDeps extends SessionsDeps {
   ) => void;
   /** The user.yml a person edits to set it (default: config/local/user.yml). */
   userConfigFile?: () => string;
+  /**
+   * Issue 1016: the install's address for people (web.url, D80), or null
+   * when it isn't set (default: user.yml's). Never a loopback address.
+   */
+  webUrl?: () => string | null;
   /** D28: workspace `ws`'s services and their folders (the service scope). */
   workspaceServices?: (ws: string) => { address: string; path: string }[];
   /**
@@ -518,6 +530,7 @@ export interface AgentsResolved extends Resolved {
   userCatalog: (taken: readonly string[]) => CatalogEntry[];
   saveRuntimeBin: NonNullable<AgentsDeps["saveRuntimeBin"]>;
   userConfigFile: () => string;
+  webUrl: () => string | null;
   workspaceServices: (ws: string) => { address: string; path: string }[];
   hub: () => Promise<{
     url: string;
@@ -864,6 +877,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
           ? setWorkspaceRuntimeBin(ws, id, bin)
           : setUserRuntimeBin(id, bin)),
     userConfigFile: d.userConfigFile ?? userConfigPath,
+    webUrl: d.webUrl ?? (() => readWebUrl()?.url ?? null),
     workspaceServices:
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
@@ -1701,6 +1715,15 @@ export interface AgentTools {
   };
   /** One plain line saying so, for the agent to tell the person. */
   note: string;
+  /**
+   * Issue 1016: the install's address for people (web.url), or null when
+   * it isn't set. Never a loopback address.
+   */
+  webUrl: string | null;
+  /** Issue 1016: full links on webUrl; absent when it isn't set. */
+  links?: AgentLinks;
+  /** Issue 1016: one line on the address: set, or where a person sets it. */
+  address: string;
 }
 
 export async function agentTools(
@@ -1744,12 +1767,27 @@ export async function agentTools(
         : restart
           ? "Hub is connected, but you started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
           : "Hub is connected and its tools (hub_*) are yours.";
+  // Issue 1016: the address people open, and full links on it; never
+  // guessed when it isn't set.
+  const webUrl = safeWebUrl(d);
   return {
     agent: rec.id,
     workspace: rec.workspace,
     hub: { connected, loaded, restart },
     note,
+    webUrl,
+    ...(webUrl ? { links: agentLinks(webUrl, rec.workspace, rec.id) } : {}),
+    address: webUrl ? addressBriefLine(webUrl) : addressNotSetNote(),
   };
+}
+
+/** Issue 1016: web.url, or null when it isn't set or can't be read. */
+function safeWebUrl(d: AgentsResolved): string | null {
+  try {
+    return d.webUrl() || null;
+  } catch {
+    return null;
+  }
 }
 
 /** D32: agents.helpers, or its defaults when the config can't be read. */
@@ -3403,6 +3441,8 @@ function launchInput(
     // ON-6: the server agent runs Den's own tools without the runtime's
     // prompt; its writes wait for the person's Allow in the browser.
     ...(isServerScope(ws) ? { denToolsAllowed: true } : {}),
+    // Issue 1016: the address line of its start brief.
+    webUrl: safeWebUrl(d),
     // NT-1: it tells Den when it waits for its person (the bell).
     // Issue 609: its hooks' wait and retries (user.yml agent_hooks.*).
     attention: {
