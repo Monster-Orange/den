@@ -158,12 +158,12 @@ async function open(lang = "en"): Promise<{
     lang,
   );
   await p.goto(`${base}/local-dev?ws=north`);
-  await p.locator(".add-svc-open-btn").first().waitFor({ timeout: 20_000 });
+  await p.locator("[data-add-svc]").waitFor({ timeout: 20_000 });
   return { p, adds };
 }
 
 async function openDialog(p: Page): Promise<void> {
-  await p.locator(".add-svc-open-btn").first().click();
+  await p.locator("[data-add-svc]").click();
   await p.locator(`${DLG}[open]`).waitFor();
 }
 
@@ -182,8 +182,8 @@ describe("issue 806: Add Service on the kit's dialog", () => {
         modal: d.matches(":modal"),
         role: d.getAttribute("role"),
         name: h?.textContent ?? "",
-        report: !!d.querySelector(".dk-ft [data-den-report]"),
-        layer: !!document.querySelector(".add-svc-backdrop"),
+        report: !!d.querySelector("[data-den-report]"),
+        layer: !!document.getElementById("add-svc-backdrop"),
         focusIn: d.contains(document.activeElement),
       };
     }, DLG);
@@ -202,7 +202,7 @@ describe("issue 806: Add Service on the kit's dialog", () => {
   it("Esc closes it, and focus goes back to the button that opened it", async () => {
     if (!browser) return;
     const { p } = await open();
-    const btn = p.locator(".add-svc-open-btn").first();
+    const btn = p.locator("[data-add-svc]");
     await btn.focus();
     await p.keyboard.press("Enter");
     await p.locator(`${DLG}[open]`).waitFor();
@@ -311,7 +311,7 @@ async function expectRows(p: Page, names: string[]): Promise<void> {
   const got = await p.$$eval(`${DLG} [data-as-local]`, (els) =>
     els
       .filter((e) => (e as HTMLElement).offsetParent !== null)
-      .map((e) => e.querySelector(".add-svc-name")?.textContent ?? ""),
+      .map((e) => e.querySelector("[data-as-name]")?.textContent ?? ""),
   );
   expect(got.map((s) => s.replace(/ @ .*$/, ""))).toEqual(names);
 }

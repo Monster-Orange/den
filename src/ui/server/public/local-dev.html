@@ -2247,7 +2247,7 @@
             ? `
         <div class="ws-empty-state">
           <div class="ws-empty-msg">${escHtml(wsT("ws.noServices", "No services in this project yet"))}</div>
-          <button class="add-svc-open-btn ws-empty-add-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ ${escHtml(pT("pj.addService", "Add Service"))}</button>
+          <button data-add-svc class="add-svc-open-btn ws-empty-add-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ ${escHtml(pT("pj.addService", "Add Service"))}</button>
           <span class="form-msg" id="add-msg"></span>
         </div>
         <div class="content-body ws-agents-only">
@@ -2286,7 +2286,7 @@
             </table>
           </div>
           <div class="tbl-foot">
-            <button class="add-svc-open-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ ${escHtml(pT("pj.addRepo", "Add repo"))}</button>
+            <button data-add-svc class="add-svc-open-btn" onclick="openAddSvcModal('${escHtml(wsName)}')">+ ${escHtml(pT("pj.addRepo", "Add repo"))}</button>
             <span class="form-msg" id="add-msg"></span>
           </div>
 
