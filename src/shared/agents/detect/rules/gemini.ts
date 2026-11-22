@@ -11,6 +11,8 @@
  * herdr's own rules are unchanged.
  *
  * herdr-origin: src/detect/manifests/gemini.toml
+ * vendored-screen-text: herdr src/detect/manifests/gemini.toml (the screen
+ * text of another product, matched exactly; the words gate leaves it out)
  */
 import type { RuleSet } from "../engine.js";
 

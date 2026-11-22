@@ -9,6 +9,8 @@
  * themselves are unchanged.
  *
  * herdr-origin: src/detect/manifests/codex.toml
+ * vendored-screen-text: herdr src/detect/manifests/codex.toml (the screen
+ * text of another product, matched exactly; the words gate leaves it out)
  */
 import type { RuleSet } from "../engine.js";
 
