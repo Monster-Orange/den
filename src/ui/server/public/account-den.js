@@ -43,6 +43,11 @@ const esc = (v) =>
         c
       ],
   );
+/** A link Den draws: only http(s), so a bad value never becomes javascript:. */
+export const safeHref = (u) => {
+  const s = String(u ?? "").trim();
+  return /^https?:\/\/[^\s]/i.test(s) ? s : "";
+};
 const note = (text, bad) =>
   `<p class="den-aa-note${bad ? " bad" : ""}"${bad ? ' role="alert"' : ""}>${esc(text)}</p>`;
 const same = (a, b) =>
@@ -276,7 +281,8 @@ export async function openAccount({ section, opener } = {}) {
       flow("github", note(e.message, true));
       return;
     }
-    const url = f.verificationUri || "https://github.com/login/device";
+    const url =
+      safeHref(f.verificationUri) || "https://github.com/login/device";
     flow(
       "github",
       `<p class="den-aa-note">${esc(t("acct.linkEnter", "Enter this code on GitHub and approve the app. It asks for no permissions."))}</p>` +
@@ -312,14 +318,22 @@ export async function openAccount({ section, opener } = {}) {
       flow("pair", note(e.message, true));
       return;
     }
+    const href = safeHref(p.url);
+    if (!href) {
+      flow(
+        "pair",
+        note(t("set.ui.linkFailed", "Linking failed. Try again."), true),
+      );
+      return;
+    }
     const until = Date.parse(p.expiresAt);
     const draw = () => {
       const s = Math.max(0, Math.round((until - Date.now()) / 1000));
       flow(
         "pair",
-        `<div class="den-aa-pair"><div class="den-aa-qr">${qrSvg(p.url, { scale: 4, margin: 4 })}</div>` +
+        `<div class="den-aa-pair"><div class="den-aa-qr">${qrSvg(href, { scale: 4, margin: 4 })}</div>` +
           `<div>${note(t("set.ui.pairScan", "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good."))}` +
-          `<a class="den-aa-plink" href="${esc(p.url)}">${esc(p.url)}</a>` +
+          `<a class="den-aa-plink" href="${esc(href)}">${esc(href)}</a>` +
           `<p class="den-aa-note den-aa-left">${esc(
             s
               ? t("set.ui.expiresIn", "Expires in {s} s.").replace(

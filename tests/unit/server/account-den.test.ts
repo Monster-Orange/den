@@ -18,7 +18,10 @@
  *     first row links to the Account area
  */
 import { describe, expect, it } from "@jest/globals";
-import { denAccountData } from "../../../src/ui/server/public/account-den.js";
+import {
+  denAccountData,
+  safeHref,
+} from "../../../src/ui/server/public/account-den.js";
 import { placeOf } from "../../../src/ui/server/public/device-words.js";
 import {
   accountAreaHtml,
@@ -319,5 +322,25 @@ describe("issue 310 review: what moved out of Settings, into the area", () => {
     const html = accountAreaHtml({ ...d, lang: "en" } as AccountAreaData);
     expect(html).toContain('data-aa-code-for="w1"');
     expect(html).not.toContain("192.168.1.30");
+  });
+});
+
+describe("issue 310 review: a link Den draws is only ever http(s)", () => {
+  it("safeHref keeps http and https; anything else becomes nothing", () => {
+    expect(safeHref("https://github.com/login/device")).toBe(
+      "https://github.com/login/device",
+    );
+    expect(safeHref("http://den.example.test/auth?c=abc")).toBe(
+      "http://den.example.test/auth?c=abc",
+    );
+    for (const bad of [
+      "javascript:alert(1)",
+      " JavaScript:alert(1)",
+      "data:text/html,x",
+      "//evil.example",
+      "",
+      undefined,
+    ])
+      expect(safeHref(bad)).toBe("");
   });
 });

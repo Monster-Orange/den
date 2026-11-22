@@ -500,4 +500,19 @@ describe("issue 310 review: Link, Pair and Waiting inside the area", () => {
     // The code is never in the page: the person types it.
     expect(d).not.toMatch(/K7QX-92MD/);
   });
+
+  it("a row with a ref never draws a code, even when one is passed", () => {
+    const d = pane(
+      accountAreaHtml({
+        ...FULL,
+        devices: {
+          ...FULL.devices,
+          waiting: [{ ref: "r9", code: "ZZ9-QQ8", title: "Safari on iPhone" }],
+        },
+      } as unknown as Parameters<typeof accountAreaHtml>[0]),
+      "devices",
+    );
+    expect(d).toContain('data-aa-code-for="r9"');
+    expect(d).not.toContain("ZZ9-QQ8");
+  });
 });
