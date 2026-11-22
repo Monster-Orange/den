@@ -338,17 +338,36 @@ describe("#80: scope wins", () => {
     expect(await frontId(p)).toBe(sid.bo);
     expect(param(p, "project")).toBe("south");
     expect(await toLine(p)).toBe("To bo · south");
+    // Issue 983: the reloaded pane draws before its terminal's live
+    // connection opens, and a key typed before then is dropped. bo's prompt
+    // ("$", from its scrollback) only reaches the pane over that connection,
+    // so once it shows, typing goes through (as in terminal-recent's
+    // `connected`).
+    await p.waitForFunction(
+      (i) =>
+        [...document.querySelectorAll(`[data-id="${i}"]`)].some((el) =>
+          (el.textContent ?? "").includes("$"),
+        ),
+      sid.bo,
+      { timeout: 20_000 },
+    );
     await p.click(".pane:not([hidden]) .term");
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
+    const reached = () =>
+      s!.made.filter((x, i) =>
+        Buffer.concat(x.writes.slice(from[i]))
+          .toString()
+          .includes("zz-stop-ship"),
+      );
     await p.keyboard.type("zz-stop-ship");
-    await p.waitForTimeout(500);
-    const got = s!.made.filter((x, i) =>
-      Buffer.concat(x.writes.slice(from[i]))
-        .toString()
-        .includes("zz-stop-ship"),
-    );
-    expect(got).toEqual([ptys.bo]);
+    // Wait until the typing has reached some PTY (a loaded runner can take
+    // longer than a fixed pause), then hold it to exactly bo's.
+    for (let t = Date.now(); !reached().length && Date.now() - t < 10_000; )
+      await p.waitForTimeout(100);
+    // A moment more, so a second PTY wrongly reached would show too.
+    await p.waitForTimeout(300);
+    expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
 });
