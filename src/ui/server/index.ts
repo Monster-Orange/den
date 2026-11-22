@@ -10,6 +10,8 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
+// Issue 814: first, before anything writes to the state folder.
+import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
   handleNotificationRoutes,
@@ -172,7 +174,7 @@ import {
 } from "../../shared/environment-manager/service-runner.js";
 import { reapDeadDaemons } from "./daemon-reaper.js";
 import {
-  loadManifest,
+  heldManifestsDir,
   readManifest,
 } from "../../shared/manifest/read-manifest.js";
 import {
@@ -243,10 +245,8 @@ import {
   webServerEnv,
 } from "../cli/web-command.js";
 import { recordInvocation } from "../../shared/dev-metrics/emit.js";
-import {
-  validateManifest,
-  validateManifestLayers,
-} from "../../shared/manifest/validate-manifest.js";
+import { validateManifest } from "../../shared/manifest/validate-manifest.js";
+import { validateAtPath } from "./manifest-validate-path.js";
 import { depService } from "../../shared/manifest/deps.js";
 import {
   placementRefusal,
@@ -303,6 +303,7 @@ import {
   agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
+  markOperatorAct,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -368,6 +369,16 @@ import {
   testInstallByHandRefusal,
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
+import {
+  dropPendingRecord,
+  hasForwardingHeaders,
+  OPERATOR_LABEL,
+  OPERATOR_PRINCIPAL,
+  operatorAct,
+  operatorRefusal,
+  verifiedCreationRecord,
+  writeCreationRecord,
+} from "../../shared/test-operator.js";
 import {
   inTestPersonScope,
   notTestBedRefusal,
@@ -537,6 +548,7 @@ import {
   readHubConfig,
   type HubConfig,
 } from "../../shared/hub.js";
+import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
@@ -1056,52 +1068,6 @@ function pinProjects(): PinProjects {
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
-/** A message's first line: a parser's code frame quotes the file. */
-function firstLine(m: string): string {
-  return String(m).split("\n")[0].replace(/:\s*$/, "");
-}
-
-/**
- * Where `p` really is, when it is a project repo's checkout or inside one,
- * both as written and after resolving every symlink; else null.
- */
-function manifestPathInRepo(p: string): string | null {
-  if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
-  let roots: string[];
-  try {
-    roots = allWorkspaceCheckouts()
-      .map((c) => c.repoPath)
-      .filter((r): r is string => !!r && path.isAbsolute(r));
-  } catch {
-    return null;
-  }
-  const within = (x: string, rs: string[]) =>
-    rs.some(
-      (r) => x === r || x.startsWith(r.endsWith(path.sep) ? r : r + path.sep),
-    );
-  if (
-    !within(
-      path.resolve(p),
-      roots.map((r) => path.resolve(r)),
-    )
-  )
-    return null;
-  let real: string;
-  try {
-    real = fs.realpathSync(p);
-  } catch {
-    return null;
-  }
-  const realRoots = roots.flatMap((r) => {
-    try {
-      return [fs.realpathSync(r)];
-    } catch {
-      return [];
-    }
-  });
-  return within(real, realRoots) ? real : null;
-}
-
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
   return Object.entries(readWorkspacesFile().workspaces).flatMap(
@@ -3379,6 +3345,56 @@ function fixtureKeyNow(): Buffer | null {
 }
 
 /**
+ * Issue 814: whether this is an operator install right now: a test
+ * install (testInstallNow), created as one (its sealed creation record),
+ * bound to loopback only. Checked on every test operator request.
+ */
+function operatorInstallNow(): boolean {
+  return (
+    isLoopbackBind(BIND_HOST) &&
+    testInstallNow() &&
+    verifiedCreationRecord(getStateDir(), webSecret.current())
+  );
+}
+
+/**
+ * Issue 814: at a new test install's first start (test-install-birth.ts
+ * claimed its empty state folder), once its secret exists: seal the
+ * creation record and give it its fixture person, so no one has to press
+ * Set up test person. When the claim wasn't a test install after all (no
+ * mark, an owner), the claim is dropped.
+ */
+function sealNewTestInstall(): void {
+  if (!BORN_AS_TEST_INSTALL) return;
+  const stateDir = getStateDir();
+  const secret = webSecret.current();
+  if (!secret || !testInstallNow()) return dropPendingRecord(stateDir);
+  writeCreationRecord(stateDir, secret);
+  const r = fixtureKeyNow()
+    ? ({ ok: true } as const)
+    : setupFixturePerson(stateDir, {
+        testInstall: true,
+        agent: false,
+        webSecret: secret,
+        configFile: product().configFile,
+      });
+  recordAction(
+    null,
+    {
+      verb: "test-install",
+      detail: r.ok
+        ? `a new test install: its ${FIXTURE_LABEL} given at creation, and the ${OPERATOR_LABEL}'s acts on loopback`
+        : `a new test install: its ${FIXTURE_LABEL} couldn't be made (${r.code})`,
+    },
+    OPERATOR_PRINCIPAL,
+  );
+  serverLog(
+    `  ${logTimestamp()}  a new test install: ${FIXTURE_LABEL} and ${OPERATOR_LABEL} ready`,
+    "lifecycle",
+  );
+}
+
+/**
  * Issue 810: whether a fixture session still stands: a test install, the
  * sealed key it signed in with still the current one, and within its
  * lifetime.
@@ -4566,6 +4582,8 @@ function verifyDeps(): VerifyServerDeps {
     focusedProject: () => getFocusedWorkspaceName(),
     repos: (p) => listReposWithManifests(p),
     environments: () => orgEnvironments(),
+    // Issue 441: verify.environments and verify.import, read per request.
+    verifyConfig: () => readDenConfig().verify,
   };
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */
@@ -5002,7 +5020,35 @@ async function handleRequest(
   if (guard.ok) setPrincipal(req, guard.principal);
   // Issue 810: the fixture person stays on this install and never acts
   // as the person (approve, let a browser in, Hub).
+  // Issue 814: one of the test operator's acts, on an operator install,
+  // on loopback, not through a proxy: let through as that act only, and
+  // audited as the test operator. Anything else falls to the fixture
+  // person's allow-list below.
+  const opAct =
+    guard.ok &&
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+      ? operatorAct(req.method ?? "GET", pathname)
+      : null;
   if (
+    guard.ok &&
+    opAct &&
+    !operatorRefusal({
+      operatorInstall: operatorInstallNow(),
+      via: guard.via,
+      beyond: guard.beyond,
+      method: req.method ?? "GET",
+      pathname,
+      forwarded: hasForwardingHeaders(req.headers),
+    })
+  ) {
+    markOperatorAct(req, opAct);
+    recordAction(
+      auditActorOf(req),
+      { verb: "test-operator", detail: `${opAct} ${pathname.slice(0, 200)}` },
+      OPERATOR_PRINCIPAL,
+    );
+  } else if (
     guard.ok &&
     guard.principal?.kind === "person-browser" &&
     guard.principal.fixture
@@ -8246,70 +8292,20 @@ async function handleRequest(
     if (req.method === "GET" || req.method === "HEAD") {
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
-      // Only inside a project's repo: the path as written and, after every
-      // symlink, where it really is. Any other path is refused the same way,
-      // there or not.
-      const real = manifestPathInRepo(filePath);
-      if (!real)
-        return sendJson(
-          res,
-          {
-            ok: false,
-            code: "outside_repos",
-            error:
-              "Validate reads only a repo folder (or a file in one) of a project here.",
-          },
-          403,
-        );
-      // Errors name the file's line and column, never its text.
-      const plain = (r: ReturnType<typeof validateManifest>) => ({
-        ...r,
-        errors: r.errors.map((e) => ({ ...e, message: firstLine(e.message) })),
-        warnings: r.warnings.map((w) => ({
-          ...w,
-          message: firstLine(w.message),
-        })),
-      });
+      // Issue 583: every file it opens is checked where it really is, and
+      // read at that same path; a far too broad repo root is no root.
+      let repoRoots: string[] = [];
       try {
-        const isDir = fs.statSync(real).isDirectory();
-        // A repo folder: every layer that applies (repo or held, override,
-        // merged), flattened into the usual shape; each error names its file.
-        if (isDir) {
-          const layered = validateManifestLayers(real);
-          if (layered.layers.length > 0)
-            return sendJson(res, {
-              valid: layered.valid,
-              version: layered.layers[0].result.version,
-              errors: layered.layers.flatMap((l) => plain(l.result).errors),
-              warnings: layered.layers.flatMap((l) => plain(l.result).warnings),
-              manifestLayers: loadManifest(real).layers,
-              layers: layered.layers.map((l) => ({
-                ...l,
-                result: plain(l.result),
-              })),
-            });
-        }
-        const denYml = isDir
-          ? path.join(real, `${product().manifestYml}`)
-          : real;
-        const content = fs.readFileSync(denYml, "utf-8");
-        return sendJson(res, plain(validateManifest(content)));
-      } catch (e) {
-        return sendJson(res, {
-          valid: false,
-          version: 1,
-          errors: [
-            {
-              path: "",
-              message:
-                (e as NodeJS.ErrnoException).code === "ENOENT"
-                  ? "No manifest there."
-                  : "The manifest couldn't be read.",
-            },
-          ],
-          warnings: [],
-        });
+        repoRoots = allWorkspaceCheckouts().map((c) => c.repoPath);
+      } catch {
+        repoRoots = [];
       }
+      const r = validateAtPath(filePath, {
+        repoRoots,
+        heldDir: heldManifestsDir(),
+        stateDir: getStateDir(),
+      });
+      return sendJson(res, r.body, r.status);
     }
   }
 
@@ -8532,6 +8528,8 @@ async function handleRequest(
   //     206); null or "" clears it (the browser's)
   //   hub_allow_tools: true | false, hub.allow_tools (HUB-1.5: agents use
   //     Hub's tools without asking); null clears it (on)
+  //   hub_delivery_loop: true | false, hub.delivery_loop (issue 158: the
+  //     Hub delivery loop in agents' instructions); null clears it (on)
   //   hub_url: Hub's address, hub.url (#267, Settings › Hub); null or ""
   //     clears it. The page restarts Den after.
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -8595,6 +8593,13 @@ async function handleRequest(
         time_zone: timeZonePref(user.time_zone),
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // Issue 158: the Hub delivery loop in agents' instructions.
+        hub_delivery_loop:
+          (
+            (user as Record<string, unknown>).hub as
+              | { delivery_loop?: unknown }
+              | undefined
+          )?.delivery_loop !== false,
         // Issue 268: the projects that override it (Settings › Agents).
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
@@ -8670,6 +8675,7 @@ async function handleRequest(
           alerts?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
+          hub_delivery_loop?: unknown;
           hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
@@ -8817,6 +8823,15 @@ async function handleRequest(
           const h = patchHubAllowTools(
             user as Record<string, unknown>,
             body.hub_allow_tools,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
+        // Issue 158: hub.delivery_loop, the Hub delivery loop in every
+        // agent's instructions (Settings › Hub); null clears it (on).
+        if (body.hub_delivery_loop !== undefined) {
+          const h = patchHubDeliveryLoop(
+            user as Record<string, unknown>,
+            body.hub_delivery_loop,
           );
           if (!h.ok) return send400(res, h.error);
         }
@@ -9010,6 +9025,12 @@ async function handleRequest(
           // Issue 144: the gate slots, as GET shows them (issue 424).
           gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
+          hub_delivery_loop:
+            (
+              (user as Record<string, unknown>).hub as
+                | { delivery_loop?: unknown }
+                | undefined
+            )?.delivery_loop !== false,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals),
           editor: user.editor ?? null,
@@ -9460,8 +9481,33 @@ function handleUpgrade(
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
-  // Issue 810: the fixture person never opens a terminal (or any socket).
-  if (guard.principal?.kind === "person-browser" && guard.principal.fixture) {
+  // Issue 810: the fixture person never opens a terminal (or any socket);
+  // issue 814: except the test operator, its own shells only.
+  if (
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture &&
+    !operatorRefusal({
+      operatorInstall: operatorInstallNow(),
+      via: guard.via,
+      beyond: guard.beyond,
+      method: "GET",
+      pathname,
+      forwarded: hasForwardingHeaders(req.headers),
+    })
+  ) {
+    markOperatorAct(req, "terminal-attach");
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "test-operator",
+        detail: `terminal-attach ${pathname.slice(0, 200)}`,
+      },
+      OPERATOR_PRINCIPAL,
+    );
+  } else if (
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+  ) {
     recordAction(
       null,
       {
@@ -9779,6 +9825,13 @@ try {
   webSecret.ensure();
 } catch (e) {
   serverLog(`  ⚠ web.secret could not be created: ${(e as Error).message}`);
+}
+try {
+  sealNewTestInstall();
+} catch (e) {
+  serverLog(
+    `  ⚠ the new test install couldn't be set up: ${(e as Error).message}`,
+  );
 }
 // AG-0.1: the login shell's PATH, once, in the background (at most
 // agents.shell_path_timeout_seconds, 10 s unset: issue 456),

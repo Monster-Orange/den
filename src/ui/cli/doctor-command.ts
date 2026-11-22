@@ -663,6 +663,10 @@ export function hubLines(
       `${title} doctor: Hub`,
       "",
       `  hub  ${good ? "✓" : "⚠"}  ${detail}`,
+      // Issue 158: a bad hub.delivery_loop is ignored, and said here.
+      ...("deliveryLoopIgnored" in st && st.deliveryLoopIgnored
+        ? [`  hub loop  ⚠  ${st.deliveryLoopIgnored}`]
+        : []),
     ],
     problem: false, // a Hub that is down never fails doctor: agents still run
     check: { id: "hub", status: good ? "ok" : "warn", detail },
@@ -688,6 +692,10 @@ export function hubDeliveryLines(
   h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
   now: number,
   minutes: number,
+  /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
+  journal:
+    | import("../../shared/hub-delivery-journal.js").JournalSummary
+    | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
   const alert = deliveryAlert(h, now, minutes);
@@ -700,6 +708,27 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
+  if (journal) {
+    const words: [keyof typeof journal.counts, string][] = [
+      ["typed", "typed"],
+      ["done", "done"],
+      ["held", "held"],
+      ["passed", "passed over"],
+      ["refused", "refused"],
+      ["failed", "failed"],
+      ["no-answer", "no answer"],
+    ];
+    const said = words
+      .filter(([k]) => journal.counts[k])
+      .map(([k, w]) => `${journal.counts[k]} ${w}`);
+    parts.push(
+      `last 24 h: ${said.length ? said.join(", ") : "none"}` +
+        (journal.lastTypedAt !== null
+          ? `, last typed ${agoText(now - journal.lastTypedAt)}`
+          : "") +
+        ` (log: ${journal.file})`,
+    );
+  }
   const detail = alert
     ? `Hub comments aren't arriving: ${TROUBLE_TEXT[alert]} (${parts.join("; ")})`
     : parts.join("; ");
@@ -741,12 +770,18 @@ async function hubDeliveryDoctor(): Promise<
   } catch {
     /* the Hub row says what's wrong with the hub block */
   }
+  const { journalSummary } =
+    await import("../../shared/hub-delivery-journal.js");
   return hubDeliveryLines(
     readDeliveryHealth(
       path.join(getStateDir(), "hub", "deliveries-health.json"),
     ),
     Date.now(),
     minutes,
+    journalSummary(
+      path.join(getStateDir(), "hub", "deliveries.jsonl"),
+      Date.now(),
+    ),
   );
 }
 
@@ -1704,6 +1739,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
       r.checks.push(hm.check);
       if (hm.problem) r.ok = false;
+      // Issue 583: a far too broad repo root, and why Validate refuses it.
+      const rr = await repoRootRows();
+      r.checks.push(rr.check);
+      if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
       // Issue 625: the test boxes, and why one is skipped.
@@ -1827,6 +1866,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     defaultHostModuleDeps(getStateDir()),
   );
   for (const l of hm.lines) console.log(l);
+  // Issue 583: a far too broad repo root, and why Validate refuses it.
+  const roots = await repoRootRows();
+  for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
@@ -1918,6 +1960,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ownerProblem ||
       pty.problem ||
       hm.problem ||
+      roots.problem ||
       cfg.problem ||
       sign.problem ||
       addr.problem
@@ -1946,6 +1989,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ownerProblem ||
     pty.problem ||
     hm.problem ||
+    roots.problem ||
     cfg.problem ||
     found
     ? 1
@@ -1997,4 +2041,11 @@ async function heldHubLines(): Promise<
     now: Date.now(),
     bellMinutes,
   });
+}
+
+/** Issue 583: doctor's repo roots row, for this install's projects. */
+async function repoRootRows() {
+  const { repoRootLines, defaultRepoRoots } =
+    await import("./doctor-repo-roots.js");
+  return repoRootLines(await defaultRepoRoots(), { stateDir: getStateDir() });
 }

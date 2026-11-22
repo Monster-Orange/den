@@ -165,6 +165,45 @@ describe("create --yes --json", () => {
     expect(bad.ok).toBe(false);
   });
 
+  it("issue 727: --hub <url> writes hub.url in the org config, read back as Den reads it", async () => {
+    const a = path.join(tmp, "hub-flag");
+    const r = await createResult(
+      parseCreateArgs(["acme", a, "--hub", "https://hub.example.test/"], tmp),
+      tmp,
+      "0.0.0",
+      FREE,
+    );
+    expect(r).toMatchObject({ ok: true, hub: "https://hub.example.test" });
+    const cfg = parseYaml(
+      fs.readFileSync(path.join(a, "config", "acme.yml"), "utf-8"),
+    ) as { hub?: { url?: string } };
+    expect(cfg.hub?.url).toBe("https://hub.example.test");
+    // Without it: no hub block, and no hub in the answer.
+    const b = path.join(tmp, "hub-none");
+    const r2 = await createResult(
+      parseCreateArgs(["acme", b], tmp),
+      tmp,
+      "0.0.0",
+      FREE,
+    );
+    expect(r2.ok).toBe(true);
+    expect(r2.hub).toBeUndefined();
+    expect(
+      (
+        parseYaml(
+          fs.readFileSync(path.join(b, "config", "acme.yml"), "utf-8"),
+        ) as { hub?: unknown }
+      ).hub,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ["http://hub.example.test", /https/],
+    ["not a url", /not a URL/],
+  ])("issue 727: --hub %s is refused before anything is written", (url, re) => {
+    expect(() => parseCreateArgs(["acme", "x", "--hub", url], tmp)).toThrow(re);
+  });
+
   it.each([
     ["git@github.com:acme/acme-den.git", "acme"],
     ["https://github.com/Acme-Co/acme-den", "Acme-Co"],

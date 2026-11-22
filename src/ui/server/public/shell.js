@@ -213,6 +213,59 @@
     "v.old_link": "Open Tests",
     "v.err_load": "Verify couldn't load results.",
     "v.retry": "Try again",
+    // Issue 441: an outside runner's gate results on Checks.
+    "v.m_ran": "Ran {a} to {b}.",
+    "v.m_runner": "From an outside runner.",
+    "v.i_nothing":
+      "{t} ran on {e}, but no clause ran there. This is not a pass.",
+    "v.i_fail": "{t} on {e} failed: {a}, {b}, {c}.",
+    "v.i_pass": "{t} on {e} passed: {a}, {b}, {c}.",
+    "v.i_np": "{n} clauses passed",
+    "v.i_np.one": "{n} clause passed",
+    "v.i_nm": "{n} need a person",
+    "v.i_nm.one": "{n} needs a person",
+    "v.i_nf": "{n} failed",
+    "v.i_nf.one": "{n} failed",
+    "v.i_from": "From imported results.",
+    "v.i_cfg": "Imported results are off: {e}",
+    "v.i_b_failed": "Failed",
+    "v.i_b_passed": "Passed",
+    "v.i_nchecks": "{n} checks",
+    "v.i_nchecks.one": "{n} check",
+    "v.i_nclauses": "{n} clauses",
+    "v.i_nclauses.one": "{n} clause",
+    "v.i_sizes": "{a}, {b}.",
+    "v.n_passed": "passed",
+    "v.n_failed": "failed",
+    "v.n_needs": "needs you",
+    "v.n_cantrun": "couldn't run",
+    "v.i_failed_h": "Failed ({n})",
+    "v.i_cantrun_h": "Couldn't run ({n})",
+    "v.i_needs_h": "Needs you ({n})",
+    "v.i_needs_p":
+      "A check never makes a person's decision. These are yours to try on {e}.",
+    "v.i_issue": "issue {n}",
+    "v.i_checks_h": "Checks on this tag",
+    "v.i_chk": "{p} of {n} clauses passed",
+    "v.i_chk.one": "{p} of {n} clause passed",
+    "v.i_chk_needs": ", {n} need you",
+    "v.i_chk_needs.one": ", {n} needs you",
+    "v.i_on": "on {t}",
+    "v.i_allran": "Every clause here passed.",
+    "v.c_passed": "passed",
+    "v.c_failed": "failed",
+    "v.c_error": "error",
+    "v.c_needs": "Needs you",
+    "v.c_cantrun": "couldn't run",
+    "v.ct_result": "Result",
+    "v.ct_clause": "Clause",
+    "v.ct_note": "Note",
+    "v.ct_time": "Time",
+    "v.t_ms": "{n} ms",
+    "v.t_s": "{n} s",
+    "v.who_runner": "An outside runner",
+    "v.actor_runner": "outside runner",
+    "v.fd_imported": "sent its results for {t} on {e}.",
     "n.environments": "Environments",
     "n.releases": "Releases",
     "n.edge": "Edge",
@@ -1928,6 +1981,18 @@
     "set.agents.hub_link_all": "Unclear matches",
     "set.agents.hub_link_all.d":
       "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
+    "set.agents.hub_delivery_loop": "Hub delivery loop",
+    "set.agents.hub_delivery_loop.d":
+      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    "set.workspace.hub_delivery_loop": "Hub delivery loop: this project",
+    "set.workspace.hub_delivery_loop.d":
+      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+    "set.workspace.hub_delivery_loop.o.install": "As everywhere",
+    "set.workspace.hub_delivery_loop.o.on": "On",
+    "set.workspace.hub_delivery_loop.o.off": "Off",
+    "set.workspace.hub_delivery_loop_extra": "Added to the Hub delivery loop",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
     "ub.intro":
       "Den can't tell which Hub project fits these. Pick one for each, then press Link.",
     "ub.why.repos": "Two Hub projects share its repos",
@@ -2035,6 +2100,10 @@
     "set.server.gate_cpu_beside": "Unit test runs beside a browser test run",
     "set.server.gate_cpu_beside.d":
       "How many unit-test runs may run on this machine while a browser test run does, never more than the unit test runs at once. 0: a browser test run runs alone. A browser run on a test box doesn't count. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_cpu_beside_release":
+      "Unit test runs beside a release browser test run",
+    "set.server.gate_cpu_beside_release.d":
+      "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
@@ -3038,6 +3107,8 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
+    "bell.m.unaskedExit":
+      "{name} ended without Den asking (exit {code}): {why}",
     "bell.m.trust": "{name}: Waiting: trust this folder?",
     "bell.m.trustDeclined":
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
@@ -3105,6 +3176,8 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.toolsNoteHeld":
+      "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":

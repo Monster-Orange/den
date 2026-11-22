@@ -691,6 +691,56 @@ starts and one when it ends. Past 2000 lines it keeps the newest 1000.
 env, repos, startedAt, endedAt, exitCode, running } } }`. A run a restart
 cut off has no end and is not shown.
 
+### Verify settings
+
+The org config's `verify:` block holds Verify's settings. Every one is
+optional, and the defaults are permissive.
+
+```yaml
+# config/acme.yml
+verify:
+  # Environments whose answer on the Checks page comes from an outside
+  # runner's results, not from runs Den starts. Den never plans a run on
+  # one.
+  environments: [bed]
+  import:
+    max_bytes: 5000000 # the largest verdict file Den reads
+    max_clauses: 5000 # the most clauses in one file
+    max_text: 2000 # a clause or note longer than this is cut
+```
+
+A bad value is named in the error: the CLI exits 1, and the Checks API
+answers 422.
+
+### Gate results from an outside runner
+
+An outside runner (a test bed that runs each build's live checks,
+`gate/<issue>.mjs`) writes one verdict file per build tag. Den keeps that
+file as one Verify run on an imported environment:
+
+```sh
+acme verify import verdict.json --env bed --project shop
+acme verify remove v1.2.3-dev.4 --project shop
+```
+
+- The run's id is the tag. Each gate file becomes one check,
+  `gate/<issue>`, holding its clauses in the runner's order. Importing the
+  same tag again replaces it.
+- A clause is passed, failed, error, "needs you" (not run, because it is a
+  person's act: its note ends `skip: person`) or "couldn't run" (not run,
+  because the bed lacks something: any other skip).
+- The file is untrusted input. Den checks its shape and the limits above,
+  drops evidence paths, and shows every text as plain text.
+- An agent can't import or remove: the CLI refuses it.
+
+The Checks page (`/verify`) shows the environment's newest import: the tag,
+its commit, when it ran, and how many clauses passed, failed, need you or
+couldn't run. Under that are the failed clauses first, then couldn't run,
+then needs you, then one row for each check. A row opens its clauses
+(`?why=bed`): the result, the clause, the runner's note and the time.
+Before any import the environment says it hasn't been checked yet, and an
+import where nothing ran is never a pass.
+
 ## Placement
 
 Each service says where it runs, per environment: `local` (on this machine,
@@ -3922,6 +3972,20 @@ as…" line as Bring in.
     restart_wait_minutes: 120 # minutes, above 0
   ```
 
+  A session that ends without Den asking (issue 926): no stop, restart
+  or relaunch from Den or a person, such as a signal from outside Den or
+  a crash. Den's sweep writes one audit row with the exit code. Exit 0
+  (the agent or person quit it) is left down. Otherwise the bell says so
+  and Den brings the agent back, at most once per window: it resumes it, or relaunches it
+  from its handoff when its rotation is ready and on_due is auto. A
+  second such exit within `agents.unasked_exit_window_minutes` (default
+  10) is told in the bell and left down; 0 never brings one back.
+
+  ```yaml
+  agents:
+    unasked_exit_window_minutes: 10 # minutes; 0: record and tell only
+  ```
+
   One change to an agent at a time, across processes too (issue 218): a
   stop, resume or restart from the CLI waits while the web server
   changes the same agent, and the other way round. Each change holds a
@@ -5667,7 +5731,9 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - `cpu` runs share the machine, up to `cpu_slots` (default 2). Browser and
   cpu runs wait in separate lines, first come within each. Up to
   `cpu_slots_beside_browser` (default 2) cpu runs run beside the
-  `browser` runs here; at 0 a browser run holds the machine alone.
+  `browser` runs here; at 0 a browser run holds the machine alone. A
+  release-priority browser run allows `cpu_slots_beside_release_browser`
+  (default 0) beside it instead.
   `local_browser_slots` (default 1) browser runs may hold the machine at
   once, each in its own container. A browser run waiting
   for cpu runs to drop to that number stops new cpu grants past it, so it

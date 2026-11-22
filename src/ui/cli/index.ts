@@ -209,6 +209,7 @@ import {
 } from "./notifications-command.js";
 import { GITHUB_HELP, cmdGithub } from "./github-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
+import { cmdVerify, VERIFY_HELP } from "./verify-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
@@ -572,6 +573,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   },
   // Issue 565: Report from a shell, for the person and for agents.
   report: FEEDBACK_HELP,
+  verify: VERIFY_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -631,6 +633,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "github",
   "feedback",
   "report",
+  "verify",
   "service",
   "theme",
   "plugin",
@@ -1230,6 +1233,11 @@ class DenCLI {
         case "feedback":
         case "report":
           process.exitCode = await cmdFeedback(args.slice(1));
+          break;
+
+        // Issue 441: an outside runner's gate results, imported.
+        case "verify":
+          process.exitCode = await cmdVerify(args.slice(1));
           break;
 
         case "mcp": {
