@@ -1139,6 +1139,24 @@
         border-radius: var(--radius-button);
         padding: 6px 8px;
       }
+      /* Issue 89: what a failed start printed, line by line. */
+      #ag-err .ag-tail-h,
+      #ag-err .ag-tail {
+        display: block;
+        margin-top: 6px;
+      }
+      #ag-err .ag-tail {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 12em;
+        overflow: auto;
+        font: 12px/1.4 var(--mono);
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 6px 8px;
+      }
       .ag-dlg .btns {
         display: flex;
         gap: 8px;

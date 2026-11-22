@@ -428,6 +428,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),
+  M(
+    ["POST"],
+    "/api/web/test-person",
+    "issue 636: a test bed's CLI starts a --test-person command (the person's token, on a test bed only)",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",

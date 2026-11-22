@@ -2053,6 +2053,7 @@
       "Abrir una terminal en la carpeta de este proyecto, en Den",
     "ag.term.started": "Terminal abierta en {w}",
     "ag.term.failed": "Den no pudo abrir una terminal: {e}",
+    "ag.start.lastLines": "Lo que mostró antes de detenerse:",
     "ag.term.ptyFailed":
       "Den no pudo abrir una terminal: esta máquina no le dio un PTY ({e}). Cierra las terminales que ya no uses o ejecuta doctor.",
     "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
