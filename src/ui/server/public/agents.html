@@ -676,7 +676,7 @@
       }
       /* Issue 773, mock v3: the Agents list is 380 px wide (Terminals
          keeps 300), and each band's row has a hairline on top. */
-      body:has(#den-shell[data-page="agents"]) .agx {
+      body:has(#den-shell:not([data-page="terminal"])) .agx {
         grid-template-columns: 380px minmax(0, 1fr);
       }
       .agband .cp .cpn,
@@ -1382,7 +1382,7 @@
            there is room; the panes take the rest, never less than their
            own minimum; past that the page scrolls. */
         .agx,
-        body:has(#den-shell[data-page="agents"]) .agx {
+        body:has(#den-shell:not([data-page="terminal"])) .agx {
           grid-template-columns: minmax(0, 1fr);
           grid-template-rows: minmax(6rem, max-content) minmax(min-content, 1fr);
         }
