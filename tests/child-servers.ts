@@ -17,6 +17,7 @@ import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import { isTmpDir, resolveOn, sentinelDir, withSentinel } from "./sentinel.js";
+import { boxOwnPort } from "./unit/helpers/own-ports.js";
 
 const REGISTRY_DIR = path.join(os.tmpdir(), "den-test-children");
 const recordOf = (pgid: number): string =>
@@ -266,8 +267,12 @@ export async function startDenServer(
       const info = await serverInfo(port);
       if (info?.code === 200) {
         const r = info.body?.root;
-        if (typeof r === "string" && real(r) === want)
+        if (typeof r === "string" && real(r) === want) {
+          // Issue 991: this run's own Den answers here, so a box run's
+          // "host:*" may reach it.
+          boxOwnPort(port);
           return { server, port, out: () => out };
+        }
         foreign = true;
         break;
       }

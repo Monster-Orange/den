@@ -18,8 +18,10 @@
  * - The gate gave the run a test box (DEN_GATE_BOX, issue 991): every
  *   context is held to the run's base URLs (DEN_GATE_ALLOW, Den's
  *   shared/gates/pw-guard), localhost names are pinned to 127.0.0.1, and
- *   each refused request is recorded (`boxGuardBlocks`) and printed. A box
- *   run with no base URLs opens no browser.
+ *   each refused request is recorded (`boxGuardBlocks`) and printed. A
+ *   "host:*" base URL covers only the ports this run serves (./own-ports:
+ *   its servers while they listen, and child servers a helper saw answer).
+ *   A box run with no base URLs opens no browser.
  *
  * The check (tests/unit/pw-launch-check.test.ts): no file under tests/ but
  * this one launches or connects a browser itself.
@@ -30,6 +32,9 @@ import {
   guardBrowser,
   pinLoopbackNames,
 } from "../../../src/shared/gates/pw-guard.js";
+import { ownPorts } from "./own-ports.js";
+
+export { boxOwnPort } from "./own-ports.js";
 
 export type BrowserEngine = "chromium" | "firefox" | "webkit";
 
@@ -61,11 +66,6 @@ export function hostWebkitRefusal(
 const blocks: string[] = [];
 let pinned = false;
 
-/** Requests the box guard refused in this process (issue 991). */
-export function boxGuardBlocks(): string[] {
-  return [...blocks];
-}
-
 /** On a box run, holds `browser` to the run's base URLs. */
 function boxGuarded(browser: Browser, env: NodeJS.ProcessEnv): Browser {
   if (!env.DEN_GATE_BOX) return browser;
@@ -74,10 +74,18 @@ function boxGuarded(browser: Browser, env: NodeJS.ProcessEnv): Browser {
     pinLoopbackNames();
     pinned = true;
   }
-  guardBrowser(browser, allow, (url) => {
-    blocks.push(url);
-    console.error(`box guard: refused ${url} (allowed: ${allow.join(", ")})`);
-  });
+  guardBrowser(
+    browser,
+    allow,
+    (url) => {
+      blocks.push(url);
+      console.error(
+        `box guard: refused ${url} (allowed: ${allow.join(", ")}; a "host:*" ` +
+          "entry covers only the ports this test process opened)",
+      );
+    },
+    ownPorts(),
+  );
   // browser.newPage() makes its own context, not through newContext: give
   // it a guarded one, closed with the page as Playwright's would be.
   browser.newPage = async (o?: Parameters<Browser["newPage"]>[0]) => {

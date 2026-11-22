@@ -78,8 +78,17 @@ export function allowFromEnv(env: NodeJS.ProcessEnv): string[] {
 
 const HARMLESS = new Set(["about:", "data:"]);
 
-/** Whether a page may load `raw`: only a declared host:port (or host:*), never 80/443. */
-export function allowedUrl(raw: string, allow: string[]): boolean {
+/**
+ * Whether a page may load `raw`: only a declared host:port, never 80/443.
+ * A "host:*" entry (issue 991) covers only `ownPorts`, the ports the run
+ * opened itself; with none given it covers nothing, so a box's browser
+ * never reaches another service on this machine's loopback.
+ */
+export function allowedUrl(
+  raw: string,
+  allow: string[],
+  ownPorts?: { has(port: number): boolean },
+): boolean {
   let u: URL;
   try {
     u = new URL(raw);
@@ -87,7 +96,7 @@ export function allowedUrl(raw: string, allow: string[]): boolean {
     return false;
   }
   if (HARMLESS.has(u.protocol)) return true;
-  if (u.protocol === "blob:") return allowedUrl(u.pathname, allow);
+  if (u.protocol === "blob:") return allowedUrl(u.pathname, allow, ownPorts);
   if (!["http:", "https:", "ws:", "wss:"].includes(u.protocol)) return false;
   if (u.username || u.password) return false;
   // 80 and 443 (written out, or the scheme's own) are never allowed, not
@@ -95,9 +104,10 @@ export function allowedUrl(raw: string, allow: string[]): boolean {
   if (!u.port || u.port === "80" || u.port === "443") return false;
   const host = u.hostname.toLowerCase();
   const want = `${host}:${u.port}`;
+  const own = ownPorts?.has(Number(u.port)) ?? false;
   return allow
     .map((a) => a.toLowerCase())
-    .some((a) => a === want || a === `${host}:*`);
+    .some((a) => a === want || (own && a === `${host}:*`));
 }
 
 /** The few Playwright shapes the guard uses (no Playwright import). */
@@ -124,10 +134,11 @@ export async function guardContext<C extends ContextLike>(
   ctx: C,
   allow: string[],
   onBlock: (url: string) => void = () => {},
+  ownPorts?: { has(port: number): boolean },
 ): Promise<C> {
   await ctx.route("**/*", async (route) => {
     const url = route.request().url();
-    if (allowedUrl(url, allow)) {
+    if (allowedUrl(url, allow, ownPorts)) {
       await route.continue();
       return;
     }
@@ -137,7 +148,7 @@ export async function guardContext<C extends ContextLike>(
   if (typeof ctx.routeWebSocket === "function")
     await ctx.routeWebSocket(/.*/, (ws) => {
       const url = ws.url();
-      if (allowedUrl(url, allow)) {
+      if (allowedUrl(url, allow, ownPorts)) {
         ws.connectToServer();
         return;
       }
@@ -150,10 +161,20 @@ export async function guardContext<C extends ContextLike>(
 /** Every context the browser makes is guarded (service workers off). */
 export function guardBrowser<
   B extends { newContext(o?: Record<string, unknown>): Promise<ContextLike> },
->(browser: B, allow: string[], onBlock: (url: string) => void = () => {}): B {
+>(
+  browser: B,
+  allow: string[],
+  onBlock: (url: string) => void = () => {},
+  ownPorts?: { has(port: number): boolean },
+): B {
   const make = browser.newContext.bind(browser);
   browser.newContext = async (o: Record<string, unknown> = {}) =>
-    guardContext(await make({ ...o, serviceWorkers: "block" }), allow, onBlock);
+    guardContext(
+      await make({ ...o, serviceWorkers: "block" }),
+      allow,
+      onBlock,
+      ownPorts,
+    );
   return browser;
 }
 
