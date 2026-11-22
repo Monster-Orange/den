@@ -2,16 +2,25 @@
 # packaged-install smoke (dist-smoke), and the org-name gate (no org's names, hosts or accounts in this public repo; the
 # patterns live in the DEN_ORG_NAMES secret, never in the repo).
 #
-# Issue 398: a push to main runs everything on both Nodes (checks, tests,
-# den-ui-nav, dist-smoke). A pull request runs on both Nodes too: the pr
-# job (the same checks and dist-smoke, then the tests the change affects:
-# scripts/affected-tests.mjs), and pr-shards when that subset is large.
+# Issue 996: the tests run once, on the pull request. A pull request runs
+# on both Nodes: the pr job (the checks and dist-smoke, then the tests the
+# change affects: scripts/affected-tests.mjs), and pr-shards when that
+# subset is large. A push to main runs the fast checks only (lint, types,
+# the org-name gates), as a tripwire: main's tree is a pull request's tested
+# tree, and release.yml publishes only a tree that was tested
+# (scripts/release-tree-check.mjs). The whole suite on both Nodes (tests,
+# den-ui-nav, dist-smoke) still runs when started by hand
+# (workflow_dispatch).
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  # A merge queue's run tests the base and the pull request together: the
+  # tree that lands. pr and pr-shards run on it as on a pull request.
+  merge_group:
+  workflow_dispatch:
   # Issue 998: pull requests run on Node 24 only; Node 22 runs here, nightly,
   # on main (nightly-node22), and a red night opens or updates one issue.
   schedule:
@@ -23,7 +32,7 @@ permissions:
 # A newer push to the same pull request cancels the older run: only the
 # newest commit's result counts, and the old run held runner slots other
 # PRs were queued for. Pushes to main are never cancelled (each main
-# commit gets its full run).
+# commit gets its checks).
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -48,7 +57,7 @@ jobs:
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
@@ -91,6 +100,8 @@ jobs:
       # a PR's base..head, a push's before..after. Needs the full history
       # (fetch-depth above). Messages already on main are not rewritten.
       - name: Org-name gate, commit messages
+        # a run by hand has no range of new commits
+        if: github.event_name != 'workflow_dispatch'
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
           RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -102,7 +113,7 @@ jobs:
   # took 17–20 min against a 20-min limit and was cut off; six parts and a
   # 30-min limit leave room.
   tests:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
@@ -164,7 +175,7 @@ jobs:
   # the subset when den-ui or the shell changed: the pr job's "nav" output).
   den-ui-nav:
     needs: [pr]
-    if: ${{ !cancelled() && (github.event_name == 'push' || needs.pr.outputs.nav == 'true') }}
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.pr.outputs.nav == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -198,7 +209,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
@@ -226,7 +237,7 @@ jobs:
   # tests are left out of the blocking steps and run in a last step that
   # can't block.
   pr:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -261,7 +272,7 @@ jobs:
       # gains a fixed sleep, a positional pick, a class selector or an
       # English-text assert, counted at the merge base and at HEAD (needs
       # the fetch-depth: 0 above). Untouched files are never judged.
-      - run: node scripts/brittle-ratchet.mjs --base "${{ github.event.pull_request.base.sha }}"
+      - run: node scripts/brittle-ratchet.mjs --base "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
       # A change to the UI kit (packages/den-ui) bumps its version: with the
       # version already on npm, the release would skip publishing it
       # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
@@ -273,16 +284,23 @@ jobs:
       - name: Org-name gate, commit messages
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
-          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
-          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
       - run: bash scripts/dist-smoke.sh
       - name: Pick the tests this change affects
         id: select
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
+          # Issue 996: the merge queue, and a change to package.json's version
+          # (a dev-tag or release commit), run the whole suite: a release may
+          # be cut from what they tested.
+          if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then
+            echo ALL > affected.txt
+            echo "The whole suite: a merge-queue run, or a change to package.json's version (issue 996)." >> "$GITHUB_STEP_SUMMARY"
+          fi
           # Large: everything, more than 150 files, or more than 30 browser
           # specs (they take most of the time: ~30 s each against ~2 s).
           n=$(grep -c . affected.txt)
@@ -305,6 +323,30 @@ jobs:
           if grep -qxE 'ALL|tests/unit/den-ui/nav-inventory\.browser\.test\.ts' affected.txt; then
             echo 'nav=true' >> "$GITHUB_OUTPUT"
           fi
+      # Issue 996: what this run tests, for the release (scripts/release-tree-check.mjs):
+      # the tree checked out here (a pull request's merge with its base, or
+      # the merge queue's commit), whether it is the whole suite, the attempt
+      # and the event. It counts only when the whole run is green.
+      # Issue 998: on the Node the pr matrix runs (Node 24 only).
+      - name: What this run tests
+        if: matrix.node == '24.13.0'
+        run: |
+          # "all" whenever the run tests the whole suite: the selection was ALL
+          # (a shared file, the merge queue, a version change). A large subset
+          # over the pr job's limits runs only its own files, in shards: still
+          # "affected".
+          sel=affected
+          if [ "$(head -1 affected.txt)" = ALL ]; then sel=all; fi
+          printf '{"tree":"%s","selection":"%s","attempt":%s,"event":"%s"}\n' \
+            "$(git rev-parse 'HEAD^{tree}')" "$sel" "${{ github.run_attempt }}" "$GITHUB_EVENT_NAME" > tested.json
+          cat tested.json
+      - if: matrix.node == '24.13.0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested
+          path: tested.json
+          if-no-files-found: error
+          retention-days: 90
       - if: steps.select.outputs.shards == '[]'
         id: pw
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
@@ -376,9 +418,11 @@ jobs:
       - run: npm ci
       - name: Pick the tests this change affects
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
+          # Issue 996: as the pr job picks (the merge queue, a version change).
+          if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then echo ALL > affected.txt; fi
           # ALL: every test file, listed, so the plan can split them.
           if [ "$(head -1 affected.txt)" = ALL ]; then
             npx jest --listTests | sed "s#^$PWD/##" | sort > affected.txt
