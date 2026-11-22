@@ -4964,7 +4964,8 @@ You are the planner. …
 `persona_update`) rewrites only the fields the form has: name, role,
 category, description, runtime, model and its version, mode, allowed
 commands and the instructions. Every other key in the file (`subagent_model`,
-`persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was.
+`persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was
+(issue 978).
 `persona_update` also takes `subagentModel`, written as `subagent_model`
 (issue 110: the Coach's Apply proposes it).
 

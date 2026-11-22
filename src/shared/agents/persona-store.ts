@@ -267,16 +267,17 @@ export function personaMarkdown(
       : {}),
     ...(input.subagentModel ? { subagent_model: input.subagentModel } : {}),
   };
-  // Issue 110: the keys this doesn't manage, as the file had them.
+  // Issue 978: the keys the form doesn't manage, as the file had them.
   for (const [k, v] of Object.entries(kept))
     if (!(k in fm) && !MANAGED_KEYS.has(k)) fm[k] = v;
   return `---\n${yaml.stringify(fm).trimEnd()}\n---\n\n${input.instructions}\n`;
 }
 
 /**
- * Front-matter keys the form writes (and their other spellings the reader
- * takes). subagent_model is written only when given, so a file's own is
- * kept otherwise.
+ * Issue 978: the front-matter keys the form writes, and the other
+ * spellings the reader takes for them. Every other key is the file's own.
+ * Issue 110: subagent_model is written only when given, so a file's
+ * own is kept otherwise.
  */
 const MANAGED_KEYS: ReadonlySet<string> = new Set([
   "name",
@@ -294,7 +295,7 @@ const MANAGED_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Issue 110: the front matter of the persona file at `file` (none, or
+ * Issue 978: the front matter of the persona file at `file` (none, or
  * unreadable: {}), so a rewrite keeps the keys the form doesn't manage.
  */
 function keptFrontMatter(file: string): Record<string, unknown> {

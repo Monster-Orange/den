@@ -1,11 +1,8 @@
 /**
- * Issue 110 (Coach Apply), slice 1: what Apply's persona_update needs.
- *
- *   - An edit rewrites only the fields the Personas page and persona_update
- *     manage. Every other front-matter key (subagent_model, persona_version,
- *     tools, context, den_hooks …) is kept: before, any edit dropped them.
- *   - persona_update takes subagentModel (the persona's subagent_model),
- *     checked as the persona file's own key is.
+ * Issue 978: an edit (the Personas page's Edit, or a held persona_update)
+ * rewrites only the fields the form has. Every other front-matter key
+ * (subagent_model, persona_version, tools, context, den_hooks …) is kept:
+ * before, any edit dropped them. Local and project personas alike.
  *
  * Invented names only.
  */
@@ -22,10 +19,7 @@ import {
   updatePersona,
 } from "../../../src/ui/cli/agent-ops.js";
 import { parsePersona } from "../../../src/shared/agents/personas.js";
-import {
-  PERSONA_KEYS,
-  writeProjectPersona,
-} from "../../../src/shared/agents/persona-store.js";
+import { writeProjectPersona } from "../../../src/shared/agents/persona-store.js";
 import { cleanupRigs, rig } from "./helpers/rig.js";
 
 afterEach(cleanupRigs);
@@ -114,40 +108,5 @@ describe("an edit keeps the keys it doesn't manage", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  });
-});
-
-describe("persona_update takes subagentModel", () => {
-  it("is one of the fields; the Allow names it; on Allow the file says it", async () => {
-    expect(PERSONA_KEYS).toContain("subagentModel");
-    const r = await rig();
-    const d = resolveAgentsDeps(r.deps);
-    createPersona(d, mine);
-    const file = path.join(r.stateDir, "personas", "copy-checker.md");
-    handEdit(file);
-    const c = checkPersonaUpdate(d, {
-      id: "copy-checker",
-      subagentModel: "sonnet",
-    });
-    if (!c.ok) throw new Error(c.error);
-    expect(c.summary).toBe("change persona copy-checker: subagentModel");
-    expect(c.details.join("\n")).toMatch(/subagentModel: sonnet/);
-    // Nothing is written until the Allow runs it.
-    expect(kept(file).subagentModel).toBe("haiku");
-    await runPersonaUpdate(d, c.args);
-    expect(kept(file)).toEqual({ ...ALL_KEPT, subagentModel: "sonnet" });
-  });
-
-  it("a bad value is refused before anything waits", async () => {
-    const r = await rig();
-    const d = resolveAgentsDeps(r.deps);
-    createPersona(d, mine);
-    const c = checkPersonaUpdate(d, {
-      id: "copy-checker",
-      subagentModel: "no spaces",
-    });
-    const why = c.ok ? "" : c.error;
-    expect(why).toMatch(/subagent_?[mM]odel/);
-    expect(why).not.toMatch(/unknown field/);
   });
 });
