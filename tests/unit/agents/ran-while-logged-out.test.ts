@@ -24,7 +24,9 @@ import {
 import { uiConsoleCheckSeconds } from "../../../src/shared/den-config.js";
 import {
   consoleTick,
+  logoutWatchTick,
   noteRanWhileLoggedOut,
+  startLogoutWatch,
 } from "../../../src/ui/server/agent-routes.js";
 
 const tmps: string[] = [];
@@ -163,15 +165,44 @@ describe("the bell note on return", () => {
         },
         link: "/agents",
       }),
+      expect.objectContaining({
+        subject: "record:agents-stopped-while-logged-out",
+        text: "While you were logged out (12 min), these agents stopped: helper",
+        msg: {
+          key: "bell.m.stoppedLoggedOut",
+          vars: { min: 12, names: "helper" },
+        },
+        link: "/agents",
+      }),
     ]);
-    // Nothing ran: no note.
+    added.splice(0);
+    // Nothing ran or stopped: no note.
     noteRanWhileLoggedOut(store as never, {
       awayMs: 60 * 60_000,
       kept: [],
       started: [],
-      ended: ["helper"],
+      ended: [],
     });
-    expect(added).toHaveLength(1);
+    expect(added).toHaveLength(0);
+  });
+
+  it("agents that only stopped while away are named too: one note, no ran note", () => {
+    const { added, store } = storeOf();
+    noteRanWhileLoggedOut(store as never, {
+      awayMs: 30 * 60_000,
+      kept: [],
+      started: [],
+      ended: ["helper", "writer"],
+    });
+    expect(added).toEqual([
+      expect.objectContaining({
+        subject: "record:agents-stopped-while-logged-out",
+        msg: {
+          key: "bell.m.stoppedLoggedOut",
+          vars: { min: 30, names: "helper, writer" },
+        },
+      }),
+    ]);
   });
 
   it("each tick: a note only on return, and only after longer than ui.restart_wait_seconds", () => {
@@ -216,14 +247,192 @@ describe("the bell note on return", () => {
     );
   });
 
-  it("bell.m.ranLoggedOut is in en, es and ja with {min} and {names}", () => {
-    const pub = path.resolve(__dirname, "../../../src/ui/server/public");
-    for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
-      const src = fs.readFileSync(path.join(pub, f), "utf-8");
-      const m = /"bell\.m\.ranLoggedOut":\s*"([^"]+)"/.exec(src);
-      expect(m && f).toBe(f);
-      expect(m![1]).toContain("{min}");
-      expect(m![1]).toContain("{names}");
-    }
+  it.each(["bell.m.ranLoggedOut", "bell.m.stoppedLoggedOut"])(
+    "%s is in en, es and ja with {min} and {names}",
+    (key) => {
+      const pub = path.resolve(__dirname, "../../../src/ui/server/public");
+      const re = new RegExp(`"${key.replace(/\./g, "\\.")}":\\s*"([^"]+)"`);
+      for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
+        const src = fs.readFileSync(path.join(pub, f), "utf-8");
+        const m = re.exec(src);
+        expect(m && f).toBe(f);
+        expect(m![1]).toContain("{min}");
+        expect(m![1]).toContain("{names}");
+      }
+    },
+  );
+
+  it("es says it the way Spanish does", () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../../../src/ui/server/public/i18n/es.js"),
+      "utf-8",
+    );
+    expect(src).toContain(
+      '"Mientras tenías la sesión cerrada ({min} min), estos agentes trabajaron: {names}"',
+    );
+  });
+});
+
+describe("one tick of the watch, its parts passed in", () => {
+  const storeOf = () => {
+    const added: unknown[] = [];
+    return { added, store: { add: (n: unknown) => void added.push(n) } };
+  };
+  const make = (dir: string, over: { me?: number } = {}) => {
+    const { added, store } = storeOf();
+    const s = {
+      owner: ME as number | null,
+      now: T0,
+      runningAsked: 0,
+      storeOpened: 0,
+      running: ["planner"],
+    };
+    const tick = () =>
+      logoutWatchTick({
+        me: over.me ?? ME,
+        owner: () => s.owner,
+        stateDir: dir,
+        running: async () => {
+          s.runningAsked++;
+          return s.running;
+        },
+        store: () => {
+          s.storeOpened++;
+          return store as never;
+        },
+        now: () => s.now,
+        waitMs: 90_000,
+      });
+    return { s, tick, added };
+  };
+  const awayFile = (dir: string) => path.join(dir, CONSOLE_AWAY_FILE);
+
+  it("the console can't be read: nothing happens, logged in or away", async () => {
+    const dir = tmp();
+    const { s, tick, added } = make(dir);
+    s.owner = null;
+    expect(await tick()).toBeNull();
+    expect(s.runningAsked).toBe(0);
+    expect(fs.existsSync(awayFile(dir))).toBe(false);
+    // Away, then the console can't be read: still nothing.
+    s.owner = ROOT;
+    await tick();
+    const asked = s.runningAsked;
+    s.owner = null;
+    s.now += 60 * 60_000;
+    expect(await tick()).toBeNull();
+    expect(s.runningAsked).toBe(asked);
+    expect(s.storeOpened).toBe(1);
+    expect(fs.existsSync(awayFile(dir))).toBe(true);
+    expect(added).toHaveLength(0);
+  });
+
+  it("logged in and not away: the running agents are never asked for", async () => {
+    const dir = tmp();
+    const { s, tick, added } = make(dir);
+    expect(await tick()).toBeNull();
+    expect(await tick()).toBeNull();
+    expect(s.runningAsked).toBe(0);
+    expect(s.storeOpened).toBe(0);
+    expect(added).toHaveLength(0);
+  });
+
+  it("leaving: the away file is recorded with who was running; still away asks nothing more", async () => {
+    const dir = tmp();
+    const { s, tick } = make(dir);
+    s.owner = ROOT;
+    s.running = ["planner", "helper"];
+    expect(await tick()).toBeNull();
+    expect(JSON.parse(fs.readFileSync(awayFile(dir), "utf-8"))).toEqual({
+      awayAt: T0,
+      running: ["planner", "helper"],
+    });
+    expect(s.runningAsked).toBe(1);
+    s.now += 60_000;
+    await tick();
+    expect(s.runningAsked).toBe(1);
+  });
+
+  it("back after longer than restart_wait: one note, and the away file is gone", async () => {
+    const dir = tmp();
+    const { s, tick, added } = make(dir);
+    s.owner = ROOT;
+    await tick();
+    s.owner = ME;
+    s.now += 15 * 60_000;
+    const back = await tick();
+    expect(back).toMatchObject({ awayMs: 15 * 60_000, kept: ["planner"] });
+    expect(added).toEqual([
+      expect.objectContaining({
+        msg: {
+          key: "bell.m.ranLoggedOut",
+          vars: { min: 15, names: "planner" },
+        },
+      }),
+    ]);
+    expect(fs.existsSync(awayFile(dir))).toBe(false);
+  });
+
+  it("back within restart_wait (a quick user switch): no note", async () => {
+    const dir = tmp();
+    const { s, tick, added } = make(dir);
+    s.owner = ROOT;
+    await tick();
+    s.owner = ME;
+    s.now += 30_000;
+    expect(await tick()).toBeNull();
+    expect(added).toHaveLength(0);
+    expect(fs.existsSync(awayFile(dir))).toBe(false);
+  });
+
+  it("a web server running as root never watches: at the login window root owns the console", async () => {
+    const dir = tmp();
+    // As if a record were left from before: root at the login window must
+    // not read as "back".
+    fs.writeFileSync(
+      awayFile(dir),
+      JSON.stringify({ awayAt: T0, running: ["planner"] }),
+    );
+    const { s, tick, added } = make(dir, { me: ROOT });
+    s.owner = ROOT;
+    s.now += 60 * 60_000;
+    expect(await tick()).toBeNull();
+    expect(s.runningAsked).toBe(0);
+    expect(added).toHaveLength(0);
+    expect(fs.existsSync(awayFile(dir))).toBe(true);
+  });
+});
+
+describe("starting the watch", () => {
+  it("off macOS the watch never starts", () => {
+    const every: number[] = [];
+    expect(
+      startLogoutWatch(
+        () => {},
+        {},
+        {
+          platform: "linux",
+          uid: ME,
+          every: (_fn, ms) => void every.push(ms),
+        },
+      ),
+    ).toBe(false);
+    expect(every).toEqual([]);
+  });
+
+  it("as root (uid 0) the watch never starts", () => {
+    const every: number[] = [];
+    expect(
+      startLogoutWatch(
+        () => {},
+        {},
+        {
+          platform: "darwin",
+          uid: 0,
+          every: (_fn, ms) => void every.push(ms),
+        },
+      ),
+    ).toBe(false);
+    expect(every).toEqual([]);
   });
 });

@@ -3333,6 +3333,8 @@
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.ranLoggedOut":
       "While you were logged out ({min} min), these agents ran: {names}",
+    "bell.m.stoppedLoggedOut":
+      "While you were logged out ({min} min), these agents stopped: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":

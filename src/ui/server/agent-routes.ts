@@ -2363,24 +2363,37 @@ export function noteRanWhileAway(
 /**
  * Issue 163: back from a logout (the web server ran on, under Keep agents
  * running after logout): one bell note naming the agents that ran while
- * the person was logged out. None when nothing ran.
+ * the person was logged out, and one naming those that stopped meanwhile.
+ * Neither when nothing ran or stopped.
  */
 export function noteRanWhileLoggedOut(
   store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
   back: ConsoleBack,
 ): void {
-  const ran = [...back.kept, ...back.started];
-  if (!ran.length) return;
   const min = Math.max(1, Math.round(back.awayMs / 60_000));
-  const names = ran.join(", ");
-  store.add({
-    kind: "service",
-    subject: "record:agents-ran-while-logged-out",
-    scope: "workspace/den-server",
-    text: `While you were logged out (${min} min), these agents ran: ${names}`,
-    msg: { key: "bell.m.ranLoggedOut", vars: { min, names } },
-    link: "/agents",
-  });
+  const ran = [...back.kept, ...back.started];
+  if (ran.length) {
+    const names = ran.join(", ");
+    store.add({
+      kind: "service",
+      subject: "record:agents-ran-while-logged-out",
+      scope: "workspace/den-server",
+      text: `While you were logged out (${min} min), these agents ran: ${names}`,
+      msg: { key: "bell.m.ranLoggedOut", vars: { min, names } },
+      link: "/agents",
+    });
+  }
+  if (back.ended.length) {
+    const names = back.ended.join(", ");
+    store.add({
+      kind: "service",
+      subject: "record:agents-stopped-while-logged-out",
+      scope: "workspace/den-server",
+      text: `While you were logged out (${min} min), these agents stopped: ${names}`,
+      msg: { key: "bell.m.stoppedLoggedOut", vars: { min, names } },
+      link: "/agents",
+    });
+  }
 }
 
 /**
@@ -2410,41 +2423,88 @@ export function consoleTick(d: {
   return null;
 }
 
+type NoteStore = Pick<
+  import("../../shared/notifications.js").NotificationStore,
+  "add"
+>;
+
+/**
+ * Issue 163: one tick of the logout watch, its parts passed in. Nothing
+ * happens when the console can't be read, or when nothing changed (logged
+ * in and not away, or still away): the running agents are asked, and the
+ * store opened, only when the person has just left or just come back.
+ * A web server running as root (me 0) never watches: at the login window
+ * root owns the console, which would read as "logged in".
+ */
+export async function logoutWatchTick(d: {
+  me: number;
+  owner: () => number | null;
+  stateDir: string;
+  running: () => Promise<string[]>;
+  store: () => NoteStore | Promise<NoteStore>;
+  now: () => number;
+  waitMs: number;
+}): Promise<ConsoleBack | null> {
+  if (d.me === 0) return null;
+  const owner = d.owner();
+  if (owner === null) return null;
+  const away = fs.existsSync(path.join(d.stateDir, CONSOLE_AWAY_FILE));
+  // Nothing changed: logged in and not away, or still away.
+  if ((owner === d.me) !== away) return null;
+  const running = await d.running().catch(() => [] as string[]);
+  const store = await d.store();
+  return consoleTick({
+    stateDir: d.stateDir,
+    me: d.me,
+    owner: () => owner,
+    running: () => running,
+    now: d.now,
+    waitMs: d.waitMs,
+    store,
+  });
+}
+
 /**
  * Issue 163: on macOS, look at the console every ui.console_check_seconds
- * (30). The running agents are asked only when the person has just left
- * or just come back, never on a plain tick.
+ * (30). Never off macOS, and never as root (see logoutWatchTick). Returns
+ * whether the watch started.
  */
 export function startLogoutWatch(
   log: (line: string) => void,
   deps: AgentRouteDeps = {},
-): void {
-  if (process.platform !== "darwin" || typeof process.getuid !== "function")
-    return;
-  const me = process.getuid();
+  env: {
+    platform?: NodeJS.Platform;
+    uid?: number | null;
+    every?: (fn: () => void, ms: number) => void;
+  } = {},
+): boolean {
+  const platform = env.platform ?? process.platform;
+  const me =
+    env.uid !== undefined
+      ? env.uid
+      : typeof process.getuid === "function"
+        ? process.getuid()
+        : null;
+  if (platform !== "darwin" || me === null || me === 0) return false;
+  const every =
+    env.every ??
+    ((fn: () => void, ms: number) => {
+      setInterval(fn, ms).unref();
+    });
   let busy = false;
   const tick = async () => {
     if (busy) return;
     busy = true;
     try {
-      const stateDir = getStateDir();
-      const owner = consoleOwnerUid();
-      if (owner === null) return;
-      const away = fs.existsSync(path.join(stateDir, CONSOLE_AWAY_FILE));
-      // Nothing changed: logged in and not away, or still away.
-      if ((owner === me) !== away) return;
-      const running = await runningAgentIds(webDeps(deps.agents)).catch(
-        () => [] as string[],
-      );
-      const { notificationDeps } = await import("./notification-service.js");
-      const back = consoleTick({
-        stateDir,
+      const back = await logoutWatchTick({
         me,
-        owner: () => owner,
-        running: () => running,
+        owner: () => consoleOwnerUid(),
+        stateDir: getStateDir(),
+        running: () => runningAgentIds(webDeps(deps.agents)),
+        store: async () =>
+          (await import("./notification-service.js")).notificationDeps().store,
         now: () => Date.now(),
         waitMs: uiRestartWaitSeconds() * 1000,
-        store: notificationDeps().store,
       });
       if (back)
         log(
@@ -2457,7 +2517,8 @@ export function startLogoutWatch(
     }
   };
   void tick();
-  setInterval(() => void tick(), uiConsoleCheckSeconds() * 1000).unref();
+  every(() => void tick(), uiConsoleCheckSeconds() * 1000);
+  return true;
 }
 
 /** How often stopped agents are checked against remove_stopped_after. */
