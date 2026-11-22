@@ -1236,7 +1236,7 @@
       "カンマ区切りで、たとえば release, lane, other。高いクラスの待機中の実行が先に始まり、同じクラスの中では先着順です。順番を持っている実行は止まりません。空なら全員が先着順です。__DEN_CLI__ gate settings --class-order release,lane,other",
     "set.server.gate_class_map": "プロジェクトごとの順番のクラス",
     "set.server.gate_class_map.d":
-      "カンマ区切りで <プロジェクト>=<クラス>、label:<パターン>=<クラス>(* は任意の文字列)、その他のプロジェクトには *=<クラス>。* がなければ最後のクラスです。__DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+      "カンマ区切りで <プロジェクト>=<クラス>、label:<パターン>=<クラス>(* は任意の文字列)、そのプロジェクトだけの <プロジェクト> label:<パターン>=<クラス>、その他のプロジェクトには *=<クラス>。* がなければ最後のクラスです。__DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
     "set.server.gate_class_windows": "順番のクラスの時間帯",
     "set.server.gate_class_windows.d":
       "カンマ区切りで <クラス>=HH:MM-HH:MM/<分>、このマシンの時刻です。時間帯の外では、そのクラスで見込みがその分数以上の実行は、より高いクラスの実行が順番を持つか待つ間は待ちます。それがなければすぐに始まります。__DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",

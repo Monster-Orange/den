@@ -151,6 +151,44 @@ describe("clause 1: a higher class goes first", () => {
   });
 });
 
+describe("the default example (11-20): within P0, release before lane", () => {
+  // P0 for the platform's own project, P1 for the product, P2 the rest;
+  // within P0, release checks go before lane tests. The sub-order is a
+  // label rule scoped to one project: "<project> label:<pattern>=<class>".
+  const P = {
+    cpu_slots: 1,
+    class_order: "p0-release, p0, p1, p2",
+    class_map:
+      "platform label:release*=p0-release, platform=p0, product=p1, *=p2",
+  };
+
+  it("a P0 release starts before an earlier P0 lane entry, and both before any P1", () => {
+    const b = bed(P);
+    const h = b.ask("holder", { project: "other" });
+    b.ask("p1 lane", { project: "product" });
+    b.ask("release p1", { project: "product" }); // a P1 release stays P1
+    b.ask("p0 lane", { project: "platform" });
+    b.ask("release check", { project: "platform" });
+    expect(b.waiting()).toEqual([
+      "release check",
+      "p0 lane",
+      "p1 lane",
+      "release p1",
+    ]);
+    b.store.release(h.id);
+    expect(b.granted("release check")).toBe(true);
+    b.store.release(b.store.list().find((e) => e.grantedAt)!.id);
+    expect(b.granted("p0 lane")).toBe(true);
+    expect(b.granted("p1 lane")).toBe(false);
+  });
+
+  it("the scoped rule parses, and a bad one says what is wrong", () => {
+    expect(checkGatePatch({ class_map: P.class_map }).ok).toBe(true);
+    const bad = checkGatePatch({ class_map: "platform label:=p0" });
+    expect(bad.ok).toBe(false);
+  });
+});
+
 describe("clause 2: within a class, first-come", () => {
   it("two entries of the same class keep their order", () => {
     const b = bed(CLASSES);
