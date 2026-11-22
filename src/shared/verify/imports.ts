@@ -267,26 +267,29 @@ export function importRecord(
     const failed = first("failed");
     const error = first("error");
     const ran = clauses.some((c) => c.result === "passed");
-    const state: ModuleRun["state"] = error
-      ? "error"
-      : failed
-        ? "failed"
+    // Issue 441, clause 3: any FAIL means failed, then an ERROR means error.
+    const state: ModuleRun["state"] = failed
+      ? "failed"
+      : error
+        ? "error"
         : ran
           ? "passed"
-          : "blocked";
+          : "notrun";
     const message =
       state === "error"
         ? line(error!)
         : state === "failed"
           ? line(failed!)
-          : state === "blocked"
+          : state === "notrun"
             ? `nothing ran here: ${clauses[0]?.clause ?? ""}`
             : undefined;
     const ms = Math.max(0, ...clauses.map((c) => c.ms ?? 0));
     return {
-      id: `gate/${issue}`,
+      // `<repo>:gate/<issue>`, as a declared module's id; the project
+      // stands for the repo the runner checked.
+      id: `${project}:gate/${issue}`,
       name: `gate/${issue}`,
-      repo: "",
+      repo: project,
       layer: "gate",
       kind: "synthetic",
       mark: "imported",
@@ -307,8 +310,9 @@ export function importRecord(
     source: "import",
     verdict,
     exitCode: VERDICT_EXIT[verdict],
-    startedAt: v.startedAt,
-    endedAt: v.endedAt,
+    // ISO always: records sort by these as text.
+    startedAt: new Date(v.startedAt).toISOString(),
+    endedAt: new Date(v.endedAt).toISOString(),
     startedBy: RUNNER,
     commit: v.sha,
     modules,

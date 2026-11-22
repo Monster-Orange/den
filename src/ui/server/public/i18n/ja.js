@@ -178,10 +178,15 @@
     // Issue 441: an outside runner's gate results on Checks.
     "v.m_ran": "{a}〜{b}に実行。",
     "v.m_runner": "外部ランナーから。",
-    "v.i_fail": "{t} は {e} で失敗しました: {n} 件の項目が失敗。",
-    "v.i_pass": "{t} は {e} で合格しました: 実行した項目はすべて合格。",
     "v.i_nothing":
       "{t} は {e} で実行されましたが、項目は一つも実行されませんでした。合格ではありません。",
+    "v.i_fail": "{e} の {t} は失敗: {a}、{b}、{c}。",
+    "v.i_pass": "{e} の {t} は合格: {a}、{b}、{c}。",
+    "v.i_np": "{n} 項目が合格",
+    "v.i_nm": "{n} 項目は人の操作が必要",
+    "v.i_nf": "{n} 項目が失敗",
+    "v.i_from": "インポートした結果です。",
+    "v.i_cfg": "インポートした結果は無効です: {e}",
     "v.i_b_failed": "失敗",
     "v.i_b_passed": "合格",
     "v.i_nchecks": "チェック {n} 件",

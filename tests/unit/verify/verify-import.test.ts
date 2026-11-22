@@ -203,15 +203,15 @@ describe("the run it makes", () => {
       verdict: "passed",
       exitCode: 0,
       commit: "0ccbe0c291c6117c67fbc9a20f9f068500aa374a",
-      startedAt: "2026-11-17T21:36:24Z",
-      endedAt: "2026-11-17T21:39:56Z",
+      startedAt: "2026-11-17T21:36:24.000Z",
+      endedAt: "2026-11-17T21:39:56.000Z",
       startedBy: { kind: "runner" },
     });
     expect(
       rec.modules.map((m) => [m.id, m.name, m.layer, m.kind, m.state]),
     ).toEqual([
-      ["gate/327", "gate/327", "gate", "synthetic", "passed"],
-      ["gate/330", "gate/330", "gate", "synthetic", "passed"],
+      ["north:gate/327", "gate/327", "gate", "synthetic", "passed"],
+      ["north:gate/330", "gate/330", "gate", "synthetic", "passed"],
     ]);
     expect(rec.modules[0].clauses).toEqual([
       {
@@ -232,6 +232,22 @@ describe("the run it makes", () => {
         ms: 94333,
       },
     ]);
+  });
+
+  it("clause 3: a FAIL wins over an ERROR in the same check", () => {
+    const v = parseGateVerdict(
+      text({
+        ...VERDICT,
+        clauses: [
+          { issue: 1, clause: "a", verdict: "ERROR", ms: 1, note: "x" },
+          { issue: 1, clause: "b", verdict: "FAIL", ms: 1, note: "y" },
+        ],
+      }),
+      IMPORT_DEFAULTS,
+    );
+    if (!v.ok) throw new Error(v.error);
+    const m = importRecord("north", "bed", v.verdict).modules[0];
+    expect([m.state, m.message]).toEqual(["failed", "b: y"]);
   });
 
   it("a FAIL fails its check and the run; an ERROR is an error; a check where nothing ran isn't a pass", () => {
@@ -268,9 +284,9 @@ describe("the run it makes", () => {
     const rec = importRecord("north", "bed", v.verdict);
     expect([rec.verdict, rec.exitCode]).toEqual(["failed", 1]);
     expect(rec.modules.map((m) => [m.id, m.state, m.message])).toEqual([
-      ["gate/1", "failed", "a: page row not found"],
-      ["gate/2", "error", "c: shape: no expect"],
-      ["gate/3", "blocked", "nothing ran here: d"],
+      ["north:gate/1", "failed", "a: page row not found"],
+      ["north:gate/2", "error", "c: shape: no expect"],
+      ["north:gate/3", "notrun", "nothing ran here: d"],
     ]);
     expect(rec.modules[2].clauses?.[0]).toMatchObject({
       result: "cant-run",
@@ -369,7 +385,7 @@ describe("the answer on an imported environment", () => {
     ]);
     // Each check on the tag with its clauses, for the why view's tables,
     // and when the run started (the meta line's time range).
-    expect(bed.run?.startedAt).toBe(VERDICT.startedAt);
+    expect(bed.run?.startedAt).toBe("2026-11-17T21:36:24.000Z");
     expect(
       bed.gateChecks?.map((c) => [
         c.module,
@@ -379,13 +395,13 @@ describe("the answer on an imported environment", () => {
     ).toEqual([
       ["gate/327", "failed", ["failed", "passed", "needs-person"]],
       ["gate/330", "passed", ["passed"]],
-      ["gate/406", "blocked", ["cant-run"]],
+      ["gate/406", "notrun", ["cant-run"]],
     ]);
     // The checks table gets a row per imported check, off elsewhere.
     expect(ov.checks.map((c) => [c.module, c.states])).toEqual([
       ["gate/327", { local: "off", bed: "failed" }],
       ["gate/330", { local: "off", bed: "passed" }],
-      ["gate/406", { local: "off", bed: "blocked" }],
+      ["gate/406", { local: "off", bed: "notrun" }],
     ]);
     // An environment with nothing imported yet has no answer but "not run".
     const none = verifyOverview({

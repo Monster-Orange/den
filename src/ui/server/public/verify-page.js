@@ -71,6 +71,7 @@ const STATE = {
   error: { word: "v.s_error", tone: "bad", mark: "!" },
   blocked: { word: "v.s_blocked", tone: "warn", mark: "‖" },
   none: { word: "v.s_none", tone: "neutral", mark: "–" },
+  notrun: { word: "v.s_none", tone: "neutral", mark: "–" },
   off: { word: "v.s_off", tone: "neutral", mark: "·" },
 };
 
@@ -156,11 +157,14 @@ function runnerMeta(run) {
   return parts.join(" ");
 }
 
-/** An imported environment's answer: the tag, bold; the rest plain text. */
+/**
+ * An imported environment's answer (issue 441, clause 6): "<tag> on <env>
+ * passed: N clauses passed, M need a person, 0 failed". The tag is bold;
+ * the rest plain text.
+ */
 function importedSentence(e) {
   const env = envName(e.env);
   const c = e.clauses ?? {};
-  const bad = (c.failed ?? 0) + (c.error ?? 0);
   const key =
     e.answer === "failed"
       ? "v.i_fail"
@@ -171,10 +175,17 @@ function importedSentence(e) {
           : null;
   if (!key || !e.run) return esc(t("v.a_notrun", { e: env }));
   const MARK = "\u0000";
-  return esc(t(key, { t: MARK, e: env, n: bad })).replace(
-    MARK,
-    `<b>${esc(e.run.tag ?? e.run.runId)}</b>`,
-  );
+  return esc(
+    t(key, {
+      t: MARK,
+      e: env,
+      a: t("v.i_np", { n: c.passed ?? 0 }),
+      b: t("v.i_nm", { n: c.needsPerson ?? 0 }),
+      c: t("v.i_nf", { n: (c.failed ?? 0) + (c.error ?? 0) }),
+    }),
+  )
+    .split(MARK)
+    .join(`<b>${esc(e.run.tag ?? e.run.runId)}</b>`);
 }
 
 const CLAUSE = {
@@ -192,7 +203,7 @@ function issueOf(check) {
 }
 
 /** Failed, couldn't run or needs you: each clause with its note. */
-function clauseList(title, items, lede) {
+function clauseList(kind, title, items, lede) {
   if (!items?.length) return "";
   const rows = items
     .map((x) => {
@@ -206,7 +217,7 @@ function clauseList(title, items, lede) {
     })
     .join("");
   return (
-    `<div class="vf-clist" data-part="list"><h3>${esc(t(title, { n: items.length }))}</h3>` +
+    `<div class="vf-clist" data-part="list" data-list="${kind}"><h3>${esc(t(title, { n: items.length }))}</h3>` +
     (lede ? `<p class="vf-meta" data-part="meta">${esc(lede)}</p>` : "") +
     `<ul class="vf-rows">${rows}</ul></div>`
   );
@@ -226,16 +237,17 @@ function clauseCounts(c) {
   );
 }
 
-/** The three lists, failed first. */
+/** The three lists: failures, then needs you (clause 6), then couldn't run. */
 function clauseLists(e) {
   return (
-    clauseList("v.i_failed_h", e.clauseFailures) +
-    clauseList("v.i_cantrun_h", e.cantRun) +
+    clauseList("failed", "v.i_failed_h", e.clauseFailures) +
     clauseList(
+      "needs-person",
       "v.i_needs_h",
       e.needsPerson,
       t("v.i_needs_p", { e: envName(e.env) }),
-    )
+    ) +
+    clauseList("cant-run", "v.i_cantrun_h", e.cantRun)
   );
 }
 
@@ -262,7 +274,7 @@ function checkRows(e) {
       );
     })
     .join("");
-  return `<div class="vf-clist"><h3>${esc(t("v.i_checks_h"))}</h3><ul class="vf-rows">${rows}</ul></div>`;
+  return `<div class="vf-clist"><h3>${esc(t("v.i_checks_h"))}</h3><p class="vf-meta" data-part="from">${esc(t("v.i_from"))}</p><ul class="vf-rows">${rows}</ul></div>`;
 }
 
 /** The badge on an imported environment: what the tag did. */
@@ -334,6 +346,7 @@ function clauseTable(e, g) {
   return (
     `<section class="vf-card vf-gate" id="${esc(checkId(g.module))}" tabindex="-1">` +
     `<div class="vf-head"><h3><code>${esc(g.module)}</code> ${esc(t("v.i_on", { t: e.run?.tag ?? e.run?.runId ?? "" }))}</h3>${stateTag(g.state)}</div>` +
+    `<p class="vf-meta" data-part="from">${esc(t("v.i_from"))}</p>` +
     `<div class="vf-tablewrap"><table class="vf-checks vf-clauses"><thead><tr><th scope="col">${esc(t("v.ct_result"))}</th><th scope="col">${esc(t("v.ct_clause"))}</th><th scope="col">${esc(t("v.ct_note"))}</th><th scope="col">${esc(t("v.ct_time"))}</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div></section>`
   );
@@ -509,7 +522,10 @@ export function answerView(ov, { wide = true } = {}) {
     `<a class="den-btn" href="?schedules=1" data-sched-open>${esc(t("v.sch_link"))}</a></div>`;
   if (!ov.modules && !(ov.envs ?? []).some((e) => e.imported))
     return `${head}<div class="vf-cols"><div class="vf-main">${emptyView()}${oldKinds()}</div>${feedView(ov.activity)}</div>`;
-  const cards = worstFirst(ov.envs).map(card).join("");
+  const cards =
+    (ov.importError
+      ? `<p class="vf-meta" role="status" data-part="import-error">${esc(t("v.i_cfg", { e: ov.importError }))}</p>`
+      : "") + worstFirst(ov.envs).map(card).join("");
   return (
     `${head}<div class="vf-cols"><div class="vf-main">${cards}${allChecks(ov, wide)}${oldKinds()}</div>` +
     `${feedView(ov.activity)}</div>`

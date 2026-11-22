@@ -84,9 +84,36 @@ export interface VerifyServerDeps {
   verifyConfig?: () => unknown;
 }
 
-/** Issue 441: the environments whose results are imported; a bad block throws. */
-const importedEnvs = (d: VerifyServerDeps): string[] =>
-  readImportSettings(d.verifyConfig?.()).environments;
+/**
+ * Issue 441: the environments whose results are imported. A bad block, or a
+ * name the org already uses, touches only them: the error is returned, never
+ * thrown, so the org's own environments still answer and plan.
+ */
+function importedEnvs(d: VerifyServerDeps): { envs: string[]; error?: string } {
+  let listed: string[];
+  try {
+    listed = readImportSettings(d.verifyConfig?.()).environments;
+  } catch (e) {
+    return { envs: [], error: (e as Error).message };
+  }
+  const org = d.environments?.() ?? ["local"];
+  const taken = listed.filter((e) => org.includes(e));
+  const envs = listed.filter((e) => !org.includes(e));
+  return taken.length
+    ? {
+        envs,
+        error: taken
+          .map(
+            (e) =>
+              `"${e}" is one of Den's own environments: verify.environments can't name it`,
+          )
+          .join("; "),
+      }
+    : { envs };
+}
+
+/** The runs the overview reads (its activity and answers). */
+const RECENT_RUNS = 50;
 
 export interface VerifyRunArgs {
   project: string;
@@ -168,12 +195,7 @@ export function verifyPlanOf(
   if (typeof env !== "string" || !NAME_RE.test(env))
     return no("env is an environment's name, like local or staging");
   // Issue 441: Den runs nothing on an imported environment.
-  let imported: string[] = [];
-  try {
-    imported = importedEnvs(d);
-  } catch (e) {
-    return no((e as Error).message);
-  }
+  const imported = importedEnvs(d).envs;
   if (imported.includes(env))
     return no(
       `"${env}" is an imported environment: Den runs nothing there; its results come from \`verify import\``,
@@ -387,22 +409,21 @@ function handleVerifyReads(
       sendJson(res, { ok: false, error: mods.error }, 400);
       return true;
     }
-    let imported: string[];
-    try {
-      imported = importedEnvs(deps);
-    } catch (e) {
-      sendJson(
-        res,
-        { ok: false, code: "config_invalid", error: (e as Error).message },
-        422,
-      );
-      return true;
-    }
+    const { envs: imported, error: importError } = importedEnvs(deps);
     const org = deps.environments?.() ?? ["local"];
     // Issue 441: the imported environments after the org's own.
-    const envs = [...org, ...imported.filter((e) => !org.includes(e))];
+    const envs = [...org, ...imported];
+    // The newest 50 runs, and each imported environment's newest import
+    // however old (many local runs must not hide it).
+    const all = listRunRecords(stateDir, p.project, Number.MAX_SAFE_INTEGER);
+    const runs = all.slice(0, RECENT_RUNS);
+    for (const e of imported) {
+      const last = all.find((r) => r.env === e && r.source === "import");
+      if (last && !runs.includes(last)) runs.push(last);
+    }
     sendJson(res, {
       ok: true,
+      ...(importError ? { importError } : {}),
       ...verifyOverview({
         project: p.project,
         envs,
@@ -410,7 +431,7 @@ function handleVerifyReads(
         modules: mods.modules,
         layers: mods.layers,
         latest: readLatest(stateDir, p.project),
-        runs: listRunRecords(stateDir, p.project),
+        runs,
       }),
     });
     return true;
