@@ -244,7 +244,8 @@ describe("translated pages fit", () => {
     });
     const { session } = (await r.json()) as { session: { id: string } };
     const pty = s!.made.at(-1)!;
-    const p = await open("ja", 1280, "/agents?ws=north");
+    // Issue 482: a shell's row is on the Terminals page.
+    const p = await open("ja", 1280, "/terminals?ws=north");
     const row = p.locator(`#agl .agr[data-id="${session.id}"]`);
     await row.waitFor();
     // A toast that stays up (an Undo's, 10 s), shown before the pane.
