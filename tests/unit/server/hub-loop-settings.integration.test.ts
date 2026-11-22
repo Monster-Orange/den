@@ -2,7 +2,8 @@
  * Issue 158: the Hub delivery loop's Settings rows reach the config: the
  * install's (Settings › Hub: user.yml hub.delivery_loop) and a project's
  * (Project setup: workspaces.yml <project>.hub_delivery_loop and its
- * addition). A person's only: an agent's claim is refused.
+ * addition; both read by hub-loop.ts). A person's only: an agent's claim
+ * is refused.
  *
  * The demo distribution in a temp folder. Invented names only.
  */
