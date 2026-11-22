@@ -120,10 +120,9 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
   async function connected(p: Page, id: string) {
     await p.waitForFunction(
       (i) =>
-        (
-          document.querySelector(`.pane[data-id="${i}"] .xterm-rows`)
-            ?.textContent ?? ""
-        ).includes("$"),
+        [...document.querySelectorAll(`[data-id="${i}"]`)].some((el) =>
+          (el.textContent ?? "").includes("$"),
+        ),
       id,
       { timeout: 20_000 },
     );
