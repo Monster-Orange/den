@@ -69,6 +69,7 @@ import {
   personLanguage,
   type UiLanguage,
 } from "../../shared/gates/browser-container.js";
+import { descendsFrom } from "../../shared/peer-process.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
@@ -143,6 +144,35 @@ export interface GateDeps {
   cwd: string;
   /** The language refusals are in (default: the person's, from user.yml). */
   lang?: UiLanguage;
+  /** Issue 928: whether process `pid` runs under `root` (default: ps). */
+  descends?: (pid: number, root: number) => boolean;
+}
+
+/** Issue 928: what `gate run` tells its command about the slot it holds. */
+export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
+export const GATE_SLOT_KIND_ENV = "DEN_GATE_SLOT_KIND";
+export const GATE_SLOT_BOX_ENV = "DEN_GATE_SLOT_BOX";
+
+/**
+ * Issue 928: the slot this run is nested in, when it may run inside it:
+ * DEN_GATE_SLOT names a slot that holds, of this kind and place, and this
+ * process runs under that slot's run (naming the id alone is not enough).
+ */
+function heldSlotFor(
+  d: GateDeps,
+  kind: GateKind,
+  where: string | undefined,
+): GateEntry | undefined {
+  const id = d.env[GATE_SLOT_ENV]?.trim();
+  if (!id) return undefined;
+  const e = d.store.get(id);
+  if (!e?.grantedAt || e.kind !== kind) return undefined;
+  const place = e.box ?? "local";
+  const want = where ?? "local";
+  if (want !== "any" && want !== place) return undefined;
+  const under = d.descends ?? ((p, r) => descendsFrom(p, r));
+  const roots = [e.runPid, e.pid].filter((p): p is number => !!p && p > 0);
+  return roots.some((r) => under(d.pid, r)) ? e : undefined;
 }
 
 const signalCode = (s: NodeJS.Signals | null) =>
@@ -369,6 +399,23 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         })`,
       );
   }
+  // Issue 928: inside a held slot of this kind and place: run in it, at
+  // once. The outer run checked the browser and keeps the slot.
+  const inside = heldSlotFor(d, kind as GateKind, where);
+  if (inside) {
+    const label =
+      typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
+    d.err(
+      `gate: inside ${inside.id} (holds ${kind}${inside.box ? ` on box ${inside.box}` : ""}); running ${label} in it`,
+    );
+    const child = d.exec(pos[0]!, pos.slice(1));
+    const off = d.onSignal((sig) => child.kill(sig));
+    try {
+      return await child.done;
+    } finally {
+      off();
+    }
+  }
   // On macOS a browser run declares a container browser (a Setting):
   // --browser-endpoint, else the run's environment. Checked before it asks.
   const flagEndpoint =
@@ -501,15 +548,25 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     d.err(
       `gate: ${id} holds ${kind}${e.box ? ` on box ${e.box}` : ""}; running ${label}`,
     );
+    // Issue 928: the command knows the slot it runs in.
+    const slotEnv = {
+      [GATE_SLOT_ENV]: id,
+      [GATE_SLOT_KIND_ENV]: kind,
+      [GATE_SLOT_BOX_ENV]: e.box ?? "local",
+    };
     child = box
       ? d.exec(pos[0]!, pos.slice(1), {
           ...boxEnv(box),
           DEN_GATE_ALLOW: allow.join(","),
+          ...slotEnv,
         })
       : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
         ? // The address given on the command line reaches the run.
-          d.exec(pos[0]!, pos.slice(1), { DEN_PW_WS: flagEndpoint })
-        : d.exec(pos[0]!, pos.slice(1));
+          d.exec(pos[0]!, pos.slice(1), {
+            DEN_PW_WS: flagEndpoint,
+            ...slotEnv,
+          })
+        : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
     // Past its estimate plus the margin, it says so once; never stopped.
     let flagged = false;
