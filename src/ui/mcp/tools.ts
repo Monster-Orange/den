@@ -474,11 +474,53 @@ const READ_TOOLS: DenTool[] = [
         event: "waiting",
         why: "asked",
         text: question,
-      })) as { lead?: unknown } | null;
+      })) as { lead?: unknown; askId?: unknown } | null;
       // Issue 101: a project with a lead: the question went to it.
       if (typeof r?.lead === "string" && r.lead)
         return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.`;
-      return "Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.";
+      // Issue 1008: its id, to withdraw it if it is settled elsewhere.
+      const id =
+        typeof r?.askId === "string" && r.askId
+          ? ` Its id is ${r.askId}: if it is settled another way, withdraw it with ask_withdraw.`
+          : "";
+      return `Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.${id}`;
+    },
+  ),
+  read(
+    "ask_withdraw",
+    "Withdraw your question",
+    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
+    {
+      id: z.string().describe("The question's id, from ask_human"),
+      reason: z
+        .string()
+        .describe("How it was settled, one line, at most 200 characters"),
+    },
+    async (a, { api }) => {
+      const id = (str(a.id) ?? "").trim();
+      const reason = (str(a.reason) ?? "").replace(/\s+/g, " ").trim();
+      if (!id || !reason)
+        throw new Refusal(
+          "ask_withdraw: give the question's id and a one-line reason.",
+        );
+      if (reason.length > 200)
+        throw new Refusal(
+          "ask_withdraw: a reason is one line, at most 200 characters.",
+        );
+      try {
+        await api.get("/api/notifications/withdraw", {}, "POST", {
+          id,
+          reason,
+        });
+      } catch (e) {
+        if (
+          e instanceof DenHttpError &&
+          [400, 403, 404, 409].includes(e.status)
+        )
+          throw new Refusal(`ask_withdraw: ${e.body}`);
+        throw e;
+      }
+      return `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
     },
   ),
   read(

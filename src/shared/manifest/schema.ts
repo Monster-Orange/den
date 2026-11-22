@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { journeysAppSchema } from "../../pillars/journeys/app-config.js";
 import { SECRET_ENV_KEY_RE, secretEnvRefError } from "../secrets/secret-env.js";
+import { reviewSchema } from "../review/rules.js";
 import { verifySchema } from "../verify/config.js";
 
 export const CURRENT_SCHEMA_VERSION = 1;
@@ -382,6 +383,8 @@ export const v1ManifestSchema = z.object({
   tests: z.record(z.string(), testSuite).optional(),
   // Issue 208: Verify's modules (verify/config.ts; VERIFY-SPEC section 3).
   verify: verifySchema.optional(),
+  // Issue 798 (REVIEW-MESH-SPEC RV-1): which PRs get an adversarial review.
+  review: reviewSchema.optional(),
   // D47: agents reach this service only through its API: never its
   // containers, volumes, data paths or machine. A guardrail, not a boundary.
   agents: z.enum(["api_only"]).optional(),

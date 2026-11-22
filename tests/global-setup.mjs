@@ -24,7 +24,15 @@ import { alive, reap } from "./child-reaper.mjs";
 import { checkDeps } from "./deps-check.js";
 import { stripInstallEnv } from "./install-env.js";
 
-const STUB_BINS = ["claude", "codex", "gemini", "grok", "gh", "launchctl"];
+const STUB_BINS = [
+  "claude",
+  "codex",
+  "gemini",
+  "grok",
+  "agy",
+  "gh",
+  "launchctl",
+];
 /**
  * Programs a test never runs: the openers, and op (1Password's CLI). A
  * test that needs one puts its own stub first on PATH.

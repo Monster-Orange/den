@@ -207,3 +207,88 @@ describe("readVerifyModules", () => {
     expect(r.layers).toEqual({ web: ["api"], api: [], code: [] });
   });
 });
+
+describe("issue 214: schedule", () => {
+  const withSchedule = (schedule: unknown, extra: object = {}) => ({
+    modules: {
+      "web/speed": {
+        kind: "performance",
+        cmd: "make speed",
+        environments: ["staging"],
+        ...extra,
+        schedule,
+      },
+    },
+  });
+
+  it("cron, window, name and env are checked, each named", () => {
+    expect(
+      errors(withSchedule({ cron: "0 2 * * *", window: "01:00-05:00" })),
+    ).toEqual([]);
+    expect(errors(withSchedule({ cron: "0 2 * *" }))).toEqual([
+      expect.stringMatching(
+        /^verify\.modules\.web\/speed\.schedule\.cron: cron: five fields/,
+      ),
+    ]);
+    expect(
+      errors(withSchedule({ cron: "0 2 * * *", window: "evening" })),
+    ).toEqual([
+      expect.stringMatching(/^verify\.modules\.web\/speed\.schedule\.window: /),
+    ]);
+    expect(
+      errors(withSchedule({ cron: "0 2 * * *", env: "production" })),
+    ).toEqual([
+      'verify.modules.web/speed.schedule.env: the module runs on staging, not "production"',
+    ]);
+    expect(
+      errors(
+        withSchedule(
+          { cron: "0 2 * * *" },
+          { environments: ["local", "staging"] },
+        ),
+      ),
+    ).toEqual([
+      "verify.modules.web/speed.schedule.env: the module runs on local, staging: say which one the schedule uses",
+    ]);
+  });
+
+  it("reaches the module, with its environment", () => {
+    const r = readVerifyModules({
+      repo: "shop",
+      repoPath: "/tmp/shop",
+      manifest: {
+        verify: {
+          modules: {
+            "web/speed": {
+              kind: "performance",
+              cmd: "make speed",
+              environments: ["staging"],
+              schedule: {
+                cron: "0 2 * * *",
+                window: "night",
+                name: "Nightly speed",
+              },
+            },
+            "code/deps": {
+              kind: "security",
+              trivy: { scan: "fs" },
+              schedule: { cron: "0 3 * * 1" },
+            },
+          },
+        },
+      },
+    });
+    const by = Object.fromEntries(r.modules.map((m) => [m.name, m]));
+    expect(by["web/speed"].schedule).toEqual({
+      cron: "0 2 * * *",
+      window: "night",
+      name: "Nightly speed",
+      env: "staging",
+    });
+    // A scan of the code runs on local: no Allow.
+    expect(by["code/deps"].schedule).toEqual({
+      cron: "0 3 * * 1",
+      env: "local",
+    });
+  });
+});

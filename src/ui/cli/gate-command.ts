@@ -22,7 +22,7 @@
  *       E2E_WEBKIT_WS. On macOS a browser run without one is refused
  *       (gates/browser-container.ts; a Setting)
  *   status [--json]          who holds, who waits, overruns, test boxes
- *   box <list|add|remove>    the test boxes (a person changes them)
+ *   box <list|add|remove|enable|disable>  the test boxes (a person's)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
@@ -92,7 +92,11 @@ import {
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
-import { gateBoxesView, gateView } from "../../shared/gates/view.js";
+import {
+  boxOffWords,
+  gateBoxesView,
+  gateView,
+} from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
@@ -116,13 +120,16 @@ export const GATE_HELP = {
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
     "{cli} gate status [--json]      who holds a slot, who waits",
-    "{cli} gate box <list|add|remove> <name> [--ssh login@host] [--ssh-port N]",
+    "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
     "    [--hold-file <path>] [--time-scale X] [--min-free-mem-mb N]",
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
     "    [--pw <version>=ws://…] (repeat it): a box with a Playwright address",
     "    per version; a run gets the one for its version (--pw-version, else",
     "    the installed Playwright, looking up to the repo's top folder)",
+    "    [--window HH:MM-HH:MM] when it may be used, this machine's time",
+    "    [--off] added turned off; [--recheck-seconds N] least time between",
+    "    checks of a box that says no. Off or outside its window: no slot, no contact",
     "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443);",
     "    127.0.0.1, localhost and <name>.localhost are one host there",
     "{cli} gate end <id>             end a slot early (a person's only)",
@@ -152,6 +159,13 @@ export interface GateRun {
   kill: (s: NodeJS.Signals) => void;
   /** Resolves with its exit code when it ends. */
   done: Promise<number>;
+  /**
+   * Issue 1023: true once the command can run no more, though it has not
+   * ended: it is writing a core dump (SIGQUIT, on Linux). Its threads are
+   * stopped for good, and the dump can take seconds (a crash handler reads
+   * all of it), so its slot is given back then, not at its exit.
+   */
+  dumping?: () => boolean;
 }
 
 export interface GateDeps {
@@ -181,6 +195,23 @@ export interface GateDeps {
 
 /** Issue 928: how often a nested run checks its slot still holds. */
 const NESTED_LOOK_MS = 5_000;
+
+/** Issue 1023: how often a run looks whether its command is dumping core. */
+const DUMP_LOOK_MS = 100;
+
+/**
+ * Issue 1023: whether a process is writing a core dump, from Linux's
+ * /proc/<pid>/status ("CoreDumping: 1"). False where there is no /proc.
+ */
+export function coreDumping(pid: number, read = fs.readFileSync): boolean {
+  try {
+    return /^CoreDumping:\s*1\s*$/m.test(
+      String(read(`/proc/${pid}/status`, "utf8")),
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 928: what `gate run` tells its command about the slot it holds. */
 export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
@@ -243,6 +274,7 @@ export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
   "SIGINT",
   "SIGTERM",
   "SIGHUP",
+  "SIGQUIT",
 ];
 
 const realExec = (
@@ -254,11 +286,17 @@ const realExec = (
     stdio: "inherit",
     ...(env ? { env: { ...process.env, ...env } } : {}),
   });
+  const running = () => k.exitCode === null && k.signalCode === null;
   return {
     pid: k.pid,
     kill: (s) => {
-      if (k.exitCode === null && k.signalCode === null) k.kill(s);
+      if (running()) k.kill(s);
     },
+    ...(process.platform === "linux"
+      ? {
+          dumping: () => running() && k.pid !== undefined && coreDumping(k.pid),
+        }
+      : {}),
     done: new Promise<number>((resolve) => {
       k.on("error", () => resolve(127));
       k.on("exit", (code, signal) => resolve(code ?? signalCode(signal)));
@@ -513,7 +551,16 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
     const pw = b.playwrightVersions?.length
       ? `, playwright ${b.playwrightVersions.join(", ")}`
       : "";
-    if (b.state === "held" || b.state === "unreachable" || b.state === "low")
+    // A run already on it finishes; it shows beside why the box is skipped.
+    const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
+    const off = boxOffWords(b);
+    if (off) return `box ${b.name}: skipped, ${off}${still}${pw}`;
+    if (
+      b.state === "held" ||
+      b.state === "unreachable" ||
+      b.state === "low" ||
+      b.state === "unknown"
+    )
       return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}${pw}`;
     return (b.state === "unchecked" ? `${base}, not checked yet` : base) + pw;
   });
@@ -880,6 +927,15 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           })
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
+    // Issue 1023: a command that took SIGQUIT (from gate run or anyone)
+    // and is dumping core can run no more: its slot is given back then,
+    // not after the dump, which a crash handler may take seconds to read.
+    const dumping = child.dumping;
+    const noDump = dumping
+      ? d.every(DUMP_LOOK_MS, () => {
+          if (!released && dumping()) release();
+        })
+      : () => {};
     // Past its estimate plus the margin, it says so once; never stopped.
     let flagged = false;
     const stop = d.every(60_000, () => {
@@ -893,6 +949,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     try {
       return await child.done;
     } finally {
+      noDump();
       stop();
     }
   } finally {
@@ -925,8 +982,9 @@ function status(args: string[], d: GateDeps): number {
 /**
  * Issue 625: the test boxes. `box list`; `box add <name> --ssh <dest>
  * [--ssh-port N] [--ssh-identity <key file>] [--playwright ws://…]
- * [--slots N] [--hold-file <path>] [--time-scale X]` (adds or replaces);
- * `box remove <name>`. Adding and removing are a person's.
+ * [--slots N] [--hold-file <path>] [--time-scale X] [--window HH:MM-HH:MM]
+ * [--off] [--recheck-seconds N]` (adds or replaces); `box remove <name>`;
+ * `box enable|disable <name>`. Changing them is a person's.
  */
 function boxCmd(args: string[], d: GateDeps): number {
   const [verb, ...rest] = args;
@@ -946,12 +1004,22 @@ function boxCmd(args: string[], d: GateDeps): number {
           (b.hold_file ? `  hold file ${b.hold_file}` : "") +
           (b.time_scale && b.time_scale !== 1
             ? `  time scale ${b.time_scale}`
-            : ""),
+            : "") +
+          (b.window ? `  window ${b.window} (this machine's time)` : "") +
+          (b.recheck_seconds
+            ? `  rechecked after ${b.recheck_seconds} s`
+            : "") +
+          (b.enabled === false ? "  turned off" : ""),
       );
     return 0;
   }
-  if (verb !== "add" && verb !== "remove")
-    throw new GateUsage("gate box <list|add|remove> ...");
+  if (
+    verb !== "add" &&
+    verb !== "remove" &&
+    verb !== "enable" &&
+    verb !== "disable"
+  )
+    throw new GateUsage("gate box <list|add|remove|enable|disable> ...");
   if (isAgentEnv(d.env))
     throw new GateUsage(
       `gate box ${verb}: only a person can change the test boxes (this is an agent)`,
@@ -967,9 +1035,25 @@ function boxCmd(args: string[], d: GateDeps): number {
     "--min-free-mem-mb": true,
     "--playwright-version": true,
     "--pw": "many",
+    "--window": true,
+    "--recheck-seconds": true,
+    "--off": false,
   });
   const [name, extra] = pos;
   if (!name || extra) throw new GateUsage(`gate box ${verb} needs one <name>`);
+  if (verb === "enable" || verb === "disable") {
+    const b = d.store.setBoxEnabled(name, verb === "enable");
+    if (!b) {
+      d.err(`gate box ${verb}: no box ${name}`);
+      return 1;
+    }
+    d.out(
+      verb === "enable"
+        ? `Box ${name} turned on${b.window ? `: slots within ${b.window}, this machine's time` : ""}.`
+        : `Box ${name} turned off: no new slots and no contact. Its running slots finish.`,
+    );
+    return 0;
+  }
   if (verb === "remove") {
     if (!d.store.removeBox(name)) {
       d.err(`gate box remove: no box ${name}`);
@@ -992,6 +1076,9 @@ function boxCmd(args: string[], d: GateDeps): number {
     min_free_mem_mb: num("--min-free-mem-mb"),
     playwright_version: f["--playwright-version"],
     ...(f["--pw"] ? { playwright_endpoints: pwPairs(f["--pw"]) } : {}),
+    window: f["--window"],
+    recheck_seconds: num("--recheck-seconds"),
+    ...(f["--off"] ? { enabled: false } : {}),
   });
   if (!c.ok) throw new GateUsage(c.error);
   d.store.setBox(c.box);

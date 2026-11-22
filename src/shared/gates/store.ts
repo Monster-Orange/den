@@ -36,6 +36,8 @@ import {
   BOX_NAME_RE,
   assign,
   boxCapOf,
+  boxOff,
+  boxRecheckSeconds,
   boxesOf,
   boxesWanted,
   checkBox,
@@ -48,6 +50,7 @@ import {
   realBoxProbe,
   writeBoxStates,
   type BoxCap,
+  type BoxOff,
   type BoxProbe,
   type BoxSettings,
   type BoxState,
@@ -1406,6 +1409,33 @@ export class GateStore {
     });
   }
 
+  /**
+   * Turns a test box on or off (a person's). Off: no new slot and no
+   * contact; its running slots finish. The box, or null when none is set.
+   */
+  setBoxEnabled(name: string, on: boolean): GateBox | null {
+    return this.locked(() => {
+      const list = this.boxes();
+      const b = list.find((x) => x.name === name);
+      if (!b) return null;
+      if (on) delete b.enabled;
+      else b.enabled = false;
+      this.writeBoxes(list, name);
+      return b;
+    });
+  }
+
+  /** The boxes skipped now (turned off, or outside their window), and why. */
+  boxesOff(): Record<string, BoxOff> {
+    const now = this.now();
+    const out: Record<string, BoxOff> = {};
+    for (const b of this.boxes()) {
+      const off = boxOff(b, now);
+      if (off) out[b.name] = off;
+    }
+    return out;
+  }
+
   /** What the last check of each box found. */
   boxStates(): Record<string, BoxState> {
     return readBoxStates(this.dir);
@@ -1416,9 +1446,12 @@ export class GateStore {
     const boxes = this.boxes();
     const states = boxes.length ? readBoxStates(this.dir) : {};
     const s = this.settings();
-    const caps: BoxCap[] = boxes.map((b) =>
-      boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
-    );
+    // Turned off, or outside its window: no new slot (running ones finish).
+    const caps: BoxCap[] = boxes
+      .filter((b) => !boxOff(b, now))
+      .map((b) =>
+        boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
+      );
     return { boxes, states, caps, used: false };
   }
 
@@ -1440,9 +1473,10 @@ export class GateStore {
    * gives the slots. Called by whoever waits (gate run, a runner's ask),
    * never on a timer. A box is checked only when a slot on it is about to
    * be given; a held or unreachable box is not checked again for
-   * box_recheck_seconds. The checks run outside the lock. A held or
-   * unreachable box is passed over in the same call: the run goes to the
-   * next box, or waits.
+   * its recheck_seconds (else box_recheck_seconds). A box turned off, or
+   * outside its window, is never contacted. The checks run outside the
+   * lock. A held or unreachable box is passed over in the same call: the
+   * run goes to the next box, or waits.
    */
   async checkBoxes(): Promise<void> {
     const boxes = this.boxes();
@@ -1452,7 +1486,11 @@ export class GateStore {
       const now = this.now();
       const states = readBoxStates(this.dir);
       const caps = boxes
-        .filter((b) => !freshNo(states[b.name], now, s.boxRecheckSeconds))
+        .filter(
+          (b) =>
+            !boxOff(b, now) &&
+            !freshNo(states[b.name], now, boxRecheckSeconds(b, s)),
+        )
         .map((b) => boxCapOf(b, true));
       const want = boxesWanted(this.readAll(), s, now, caps).filter(
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),

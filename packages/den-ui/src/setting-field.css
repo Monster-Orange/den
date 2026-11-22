@@ -1,0 +1,65 @@
+/* den-ui: the text-field settings row (setting-field.js, issue 584).
+   Tokens only. Save is the kit's button (button.css). Linked, never
+   injected. */
+.den-setfield {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  max-width: 32rem;
+  margin: 0;
+}
+.den-setfield-l {
+  font-weight: 600;
+  color: var(--text);
+}
+.den-setfield input,
+.den-setfield textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.den-setfield textarea {
+  resize: vertical;
+  font-family: var(--mono);
+}
+.den-setfield input:focus-visible,
+.den-setfield textarea:focus-visible {
+  outline: 2px solid var(--accent-fill);
+  outline-offset: 1px;
+}
+.den-setfield [readonly] {
+  color: var(--muted);
+}
+.den-setfield [aria-invalid="true"] {
+  border-color: var(--bad);
+}
+.den-setfield-help {
+  margin: 0;
+  color: var(--muted);
+}
+.den-setfield-err {
+  margin: 0;
+  color: var(--bad);
+}
+.den-setfield-err[hidden] {
+  display: none;
+}
+.den-setfield-do {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+/* A phone: the box and Save are 44px targets. */
+@media (max-width: 720px), (pointer: coarse) {
+  .den-setfield input,
+  .den-setfield-do .den-btn {
+    min-height: var(--tap);
+  }
+}
