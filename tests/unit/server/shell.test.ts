@@ -329,3 +329,17 @@ describe("the old settings entry points go to the Settings page (R21)", () => {
         expect([f, /registerSetting\(/.test(read(f))]).toEqual([f, false]);
   });
 });
+
+describe("issue 394: the rail says when the server's prefs are applied", () => {
+  it("on every path: read and applied, none, a failure, and no fetch at all (apiOff)", () => {
+    const block = SHELL.slice(
+      SHELL.indexOf("// The server's prefs win over the local copy."),
+    );
+    expect(block).toMatch(
+      /^[\s\S]*?if \(typeof fetch === "function" && !apiOff\(\)\)\s*fetch\("\/api\/settings"\)[\s\S]*?return markPrefsApplied\(\);[\s\S]*?markPrefsApplied\(\);\s*\}\)\s*\.catch\(markPrefsApplied\);\s*else markPrefsApplied\(\);/,
+    );
+    expect(SHELL).toMatch(
+      /function markPrefsApplied\(\) \{[\s\S]*?getElementById\("den-rail"\)[\s\S]*?setAttribute\("data-prefs-applied", ""\)/,
+    );
+  });
+});

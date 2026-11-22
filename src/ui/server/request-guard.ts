@@ -829,9 +829,13 @@ export function checkRequest(
   )
     return ok(null);
   // Issue 394: the rail's save, as the page's beacon (no header rides it).
-  // The allowed Origin above is the check; sign-in was checked at §4.
+  // The allowed Origin above is the check; sign-in was checked at §4. The
+  // keepalive fetch sends the CSRF token: when one rides it, it is checked
+  // below like any other request's, so only a header-less beacon rests on
+  // the Origin.
   if (
     method === "POST" &&
+    header(req, CSRF_HEADER) === undefined &&
     SHELL_SAVE_BEACONS.some((r) => pathMatches(r, pathname))
   )
     return ok(browser ?? { kind: "person-browser" });

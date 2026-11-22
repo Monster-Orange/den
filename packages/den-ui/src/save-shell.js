@@ -16,9 +16,21 @@
  *   (headers are for the fetch only), so the host's server accepts the
  *   beacon form for its shell save on the request's Origin. The same
  *   changedAt rides both, so a save that arrives twice is stored once.
+ * - A body over KEEPALIVE_MAX_BYTES (64 KB: browsers refuse a bigger
+ *   keepalive fetch or beacon) goes as a plain fetch instead, as a save
+ *   did before: it can still be lost as the page goes, but never refused.
  * - Answers true when the server said ok, else false (never throws). A
  *   save handed to a beacon answers whether the browser queued it.
  */
+export const KEEPALIVE_MAX_BYTES = 64 * 1024;
+
+/** A string's size in UTF-8 bytes (an upper bound without TextEncoder). */
+function byteSize(s) {
+  if (typeof TextEncoder === "function")
+    return new TextEncoder().encode(s).length;
+  return s.length * 3;
+}
+
 export function saveShell(url, patch, opts = {}) {
   const changedAt =
     typeof opts.changedAt === "number" && Number.isFinite(opts.changedAt)
@@ -61,6 +73,26 @@ export function saveShell(url, patch, opts = {}) {
     return ok;
   };
 
+  if (byteSize(body) > KEEPALIVE_MAX_BYTES) {
+    if (typeof fetch !== "function") return Promise.resolve(false);
+    let plain;
+    try {
+      plain = fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(opts.headers || {}),
+        },
+        body,
+      });
+    } catch (e) {
+      plain = Promise.reject(e);
+    }
+    return Promise.resolve(plain).then(
+      (r) => !!r && r.ok !== false,
+      () => false,
+    );
+  }
   if (typeof fetch !== "function") {
     beacon();
     return Promise.resolve(done(beaconQueued));

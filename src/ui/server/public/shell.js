@@ -8973,6 +8973,7 @@
         markPrefsApplied();
       })
       .catch(markPrefsApplied);
+  else markPrefsApplied();
   // The rail says when the server's prefs have been read and applied
   // (data-prefs-applied), so a check can wait on it instead of a timer.
   function markPrefsApplied() {

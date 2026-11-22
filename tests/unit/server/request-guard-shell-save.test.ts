@@ -173,4 +173,22 @@ describe("issue 394: the shell save's beacon form", () => {
       });
     }
   });
+  it("a CSRF header, when one rides it (the keepalive fetch), is checked: a wrong one is refused", () => {
+    for (const where of ["edge", "loopback"] as const) {
+      const origin =
+        where === "edge" ? `https://${EDGE}` : `http://localhost:${PORT}`;
+      expect(
+        checkRequest(
+          beacon(where, { origin, "x-den-csrf": "not-the-token" }),
+          ctx(true),
+        ),
+      ).toMatchObject({ ok: false, status: 403, code: "csrf" });
+      expect(
+        checkRequest(
+          beacon(where, { origin, "x-den-csrf": "session-csrf" }),
+          ctx(true),
+        ),
+      ).toMatchObject({ ok: true });
+    }
+  });
 });
