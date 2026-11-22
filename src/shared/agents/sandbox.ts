@@ -381,6 +381,13 @@ export const CONTAINER_SOCKETS: readonly string[] = [
 export function bwrapArgs(
   p: SandboxPolicy,
   exists: (f: string) => boolean = fs.existsSync,
+  real: (f: string) => string = (f) => {
+    try {
+      return fs.realpathSync(f);
+    } catch {
+      return f;
+    }
+  },
 ): string[] {
   // Its own pid namespace and /proc: no other process's env or files;
   // and it ends with the session.
@@ -393,6 +400,19 @@ export function bwrapArgs(
     "/proc",
     "--die-with-parent",
   ];
+  // The folders above the protected ones, each bound onto itself first: a
+  // mount point can't be renamed, so none of them can be moved aside and
+  // a forged copy put in its place. Outer ones first, so a pin never
+  // covers what is bound inside it.
+  const pins = [
+    ...new Set(
+      [...p.readOnly, ...p.writable].flatMap((x) => ancestors(x, p.home)),
+    ),
+  ]
+    .filter((d) => !p.readOnly.some((r) => d.startsWith(r + path.sep)))
+    .filter((d) => exists(d))
+    .sort((x, y) => x.split(path.sep).length - y.split(path.sep).length);
+  for (const d of pins) a.push("--bind", d, d);
   for (const r of p.readOnly) if (exists(r)) a.push("--ro-bind", r, r);
   // An unreadable folder: an empty tmpfs over it, what it may read bound
   // back (read-only), then the writable folders inside it.
@@ -416,8 +436,10 @@ export function bwrapArgs(
   for (const h of [...p.hidden, ...p.sockets])
     if (exists(h) && !inside(h)) a.push("--ro-bind", "/dev/null", h);
   // A container engine's socket runs anything as root on this machine.
-  for (const c of CONTAINER_SOCKETS)
-    if (exists(c)) a.push("--ro-bind", "/dev/null", c);
+  // Once each, at its real path: bwrap can't bind at a path through a
+  // link (/var/run is a link to /run on most Linux systems).
+  const engines = new Set(CONTAINER_SOCKETS.filter(exists).map(real));
+  for (const c of engines) a.push("--ro-bind", "/dev/null", c);
   for (const u of p.unreadable) if (exists(u)) a.push("--remount-ro", u);
   a.push("--");
   return a;

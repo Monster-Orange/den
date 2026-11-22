@@ -640,8 +640,11 @@ function common(input: LaunchInput): {
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
   const hooks = mergeHooks(
-    // Issue 936: a refused write in the sandbox says why, for every agent.
-    mergeHooks(baseHooks, sandboxRefusalHooks()),
+    // Issue 936: a refused write in the sandbox says why, with Den's hooks
+    // (a persona with den_hooks: false gets none of them).
+    input.persona.guardrails?.hooks
+      ? mergeHooks(baseHooks, sandboxRefusalHooks())
+      : baseHooks,
     input.attention
       ? attentionHooks(
           input.attention.base,

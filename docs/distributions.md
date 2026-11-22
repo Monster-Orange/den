@@ -4935,9 +4935,12 @@ runs as you, so each agent's session starts inside the OS sandbox:
   tools work as before.
 - The agent's own token can be read. Den's other files are read only
   where the agent's tools need them.
-- Unix sockets can't be reached, except the system's own and the agents'
-  message sockets (and the SSH agent's, when the session has one). The
-  terminal host's socket can't be reached. A session started there
+- On macOS, unix sockets can't be reached, except the system's own and
+  the agents' message sockets (and the SSH agent's, when the session has
+  one). On Linux, the sockets in your tmux and runtime folders
+  (`XDG_RUNTIME_DIR`) and the container engines' sockets are hidden;
+  sockets elsewhere can still be reached. On both, the terminal host's
+  socket can't be reached. A session started there
   would run outside the sandbox. So `<cli> agents list`, `start` and
   `stop` don't work from an agent's shell. An agent starts another with
   the `agent_create` tool.
@@ -4949,7 +4952,8 @@ The start line and `<cli> agents doctor` name every agent that runs
 outside the sandbox, and why: no `bwrap` on this Linux machine, an agent
 from before the sandbox, or the setting below. A write the sandbox
 refuses shows the agent a plain reason and what to use instead (a Den
-hook after each tool), never only a permission error.
+hook after each tool, for personas with Den's hooks on), never only a
+permission error.
 
 The sandbox is on for every agent started new. An agent that existed
 before your Den had the sandbox keeps starting as before until you turn

@@ -182,10 +182,11 @@ describe("agentSandboxPolicy (issue 936)", () => {
     const a = bwrapArgs(
       agentSandboxPolicy(l),
       (f) => socks.includes(f) || fs.existsSync(f),
+      (f) => f,
     ).join(" ");
     for (const s of socks) expect(a).toContain(`--ro-bind /dev/null ${s}`);
     expect(
-      bwrapArgs(agentSandboxPolicy(l), fs.existsSync).join(" "),
+      bwrapArgs(agentSandboxPolicy(l), fs.existsSync, (f) => f).join(" "),
     ).not.toContain("/run/podman/podman.sock");
   });
 
@@ -311,6 +312,39 @@ describe("macProfile and bwrapArgs (issue 936)", () => {
     expect(a.indexOf(l.own)).toBeGreaterThan(a.indexOf(l.stateDir));
     expect(a.lastIndexOf("--remount-ro")).toBeGreaterThan(a.indexOf(l.own));
     expect(a[a.length - 1]).toBe("--");
+  });
+
+  it("pins the folders above the protected ones in place, first, so none can be moved", () => {
+    const l = layout("bwrap-pin");
+    const a = bwrapArgs(agentSandboxPolicy(l));
+    const config = path.join(l.distRoot, "config");
+    const parent = path.dirname(l.gateDir);
+    const proofParent = path.dirname(l.proof);
+    for (const d of [config, l.distRoot, parent, proofParent]) {
+      const at = a.findIndex((x, i) => x === "--bind" && a[i + 1] === d);
+      expect(at).toBeGreaterThan(0);
+      expect(a[at + 2]).toBe(d);
+      // Before what they hold is bound, so a pin never covers it.
+      expect(at).toBeLessThan(a.indexOf("--ro-bind"));
+    }
+    // Outer ones first.
+    const pos = (d: string) =>
+      a.findIndex((x, i) => x === "--bind" && a[i + 1] === d);
+    expect(pos(l.distRoot)).toBeLessThan(pos(config));
+  });
+
+  it("masks a container socket once, at its real path (/var/run is a link to /run)", () => {
+    const p = agentSandboxPolicy(layout("bwrap-link"));
+    const socks = new Set(["/run/docker.sock"]);
+    const real = (f: string) => f.replace(/^\/var\/run\//, "/run/");
+    const a = bwrapArgs(
+      p,
+      (f) => fs.existsSync(f) || socks.has(real(f)),
+      (f) => (socks.has(real(f)) ? real(f) : f),
+    );
+    const masked = a.filter((_, i) => a[i - 1] === "/dev/null");
+    expect(masked).toEqual(["/run/docker.sock"]);
+    expect(a).not.toContain("/var/run/docker.sock");
   });
 });
 
@@ -552,7 +586,10 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
     "connects to no unix socket of the person's, only the allowed ones",
     async () => {
       const l = layout("real-socks");
-      const other = path.join(l.base, "o.sock");
+      // The person's socket, in its runtime folder (XDG_RUNTIME_DIR).
+      const run0 = path.join(l.base, "run");
+      fs.mkdirSync(run0);
+      const other = path.join(run0, "o.sock");
       const okDir = path.join(l.base, "ok");
       fs.mkdirSync(okDir);
       const ok = path.join(okDir, "k.sock");
@@ -570,6 +607,7 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
             {
               ...l,
               socketsAllowed: [okDir],
+              env: { ...process.env, XDG_RUNTIME_DIR: run0 },
             },
             { platform: process.platform, on: true },
           );
@@ -597,7 +635,7 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
         [
           step("write", `echo x > ${l.proof}/k`),
           step("new", `echo x > ${l.proof}/planted`),
-          step("rm", `rm -f ${l.proof}/k`),
+          step("rm", `rm ${l.proof}/k`),
           step("mv", `mv ${l.proof} ${l.proof}.old`),
           step("mvparent", `mv ${parent} ${parent}.old`),
         ].join("; "),
@@ -628,6 +666,7 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
         step("web", `grep -q port ${l.stateDir}/web.json`),
         step("proof", `cat ${l.proof}/k`),
         step("list", `ls ${l.stateDir}`),
+        `echo "names=$(ls -A ${l.stateDir} 2>/dev/null | tr '\\n' ' ')"`,
         ...KNOWN_PRIVATE.map((f, i) =>
           step(`private${i}`, `grep -q private ${l.stateDir}/${f}`),
         ),
@@ -639,10 +678,20 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
       "hub",
       "other",
       "proof",
-      "list",
       ...KNOWN_PRIVATE.map((_, i) => `private${i}`),
     ])
       expect(out).toMatch(new RegExp(`^${s}=[1-9]`, "m"));
+    // macOS refuses the listing; on Linux it lists only what is bound
+    // back (the tmpfs hides the rest): no private file is named either way.
+    if (real === "darwin") expect(out).toMatch(/^list=[1-9]/m);
+    const names = /^names=(.*)$/m.exec(out)?.[1] ?? "";
+    // The private files at its top level (folders it reads into, like
+    // hub/, show; their private files don't).
+    for (const f of [
+      "web.secret",
+      ...KNOWN_PRIVATE.filter((x) => !x.includes(path.sep)),
+    ])
+      expect(names.split(" ")).not.toContain(f);
     expect(out).toMatch(/^web=0$/m);
     expect(out).toMatch(/^own=0$/m);
     expect(out).toMatch(/^record=0$/m);

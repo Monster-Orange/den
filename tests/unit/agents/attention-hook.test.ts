@@ -170,8 +170,6 @@ describe("at launch", () => {
       "Notification",
       "PermissionRequest",
       "PostToolUse",
-      // Issue 936: a write the sandbox refused says why.
-      "PostToolUseFailure",
       // Issue 327: a new session clears a dialog from before it.
       "SessionStart",
       "Stop",
@@ -179,7 +177,7 @@ describe("at launch", () => {
     ]);
   });
 
-  it("every agent gets the sandbox's refusal note, after a tool and after a failed one (issue 936)", () => {
+  it("an agent with Den's hooks gets the sandbox's refusal note, after a tool and after a failed one (issue 936)", () => {
     const { hooks } = launch();
     for (const ev of ["PostToolUse", "PostToolUseFailure"]) {
       const cmds = hooks![ev]!.map((e) => e.hooks[0].command);
