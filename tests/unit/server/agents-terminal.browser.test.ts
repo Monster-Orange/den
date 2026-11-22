@@ -1027,9 +1027,12 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.waitForSelector(`${bar} [data-mcp-failed="hub"]`, {
       timeout: 15_000,
     });
-    expect(await p.textContent(`${bar} [data-mcp-failed]`)).toBe(
-      "Hub's tools didn't load",
+    const words = await p.evaluate(() =>
+      (
+        window as unknown as { denShell: { t: (k: string) => string } }
+      ).denShell.t("ag.mcp.failed"),
     );
+    expect(await p.textContent(`${bar} [data-mcp-failed]`)).toBe(words);
     expect(
       await p.getAttribute(`${row("planner")} [data-mcp-failed]`, "title"),
     ).toContain(error);
