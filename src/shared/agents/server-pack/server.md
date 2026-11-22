@@ -196,6 +196,10 @@ Held (each waits for the person's Allow):
 - `pr_close`: close a stale or superseded pull request after a Hub note,
   with a comment saying why. It runs at once unless the person watches or
   pinned the repo.
+- `report`: report an issue with Den, as the Report button does (with no
+  title it lists the destinations and who can see each). To a public
+  destination it waits for the person's Allow; to a private one the
+  approval policy decides. Never put a secret in a report.
 - `gate_runner_token_create`: a token a CI job in a runner VM uses to take
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as

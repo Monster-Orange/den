@@ -389,6 +389,17 @@ service:api/web"`).
   watched by either name, `repo:<owner/name>` or the repo's own name
   (`repo:api`), and a repo pinned to the rail counts too.
 
+- **Agents report issues (issue 565).** The held write `report` (the MCP
+  tool `report`, and `<cli> report` run by an agent) files a report the
+  way the Report button does: the same destinations (Den's own repo and
+  the distribution's `feedback.repo`), each with the same visibility
+  label, the same scrub, the Den version, the page and an optional PNG
+  screenshot. To a public destination, or one whose visibility is not
+  known, it widens what an agent may do: always the person's own Allow,
+  after they read what will be posted. To a private one it follows the
+  policy like any routine write. The activity trail says who filed it
+  and where it went (`report-file`).
+
 - **An agent may still ask.** `ask: true` on any held write (with a
   `note` saying why) waits for the Allow whatever the policy says.
   `POST /api/approvals` takes `{ action, args, note?, ask? }`; `ask`
