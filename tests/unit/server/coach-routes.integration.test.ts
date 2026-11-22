@@ -34,7 +34,9 @@ function call(
   method: string,
   p: string,
   headers: Record<string, string> = {},
+  body: unknown = {},
 ): Promise<{ status: number; json: Record<string, unknown> }> {
+  const payload = JSON.stringify(body);
   return new Promise((resolve, reject) => {
     const req = http.request(
       `${base}${p}`,
@@ -45,7 +47,10 @@ function call(
         headers: {
           connection: "close",
           ...(method === "POST"
-            ? { "content-type": "application/json", "content-length": "2" }
+            ? {
+                "content-type": "application/json",
+                "content-length": String(Buffer.byteLength(payload)),
+              }
             : {}),
           ...headers,
         },
@@ -66,7 +71,7 @@ function call(
     );
     req.on("error", reject);
     req.on("timeout", () => req.destroy(new Error(`timeout: ${p}`)));
-    req.end(method === "POST" ? "{}" : undefined);
+    req.end(method === "POST" ? payload : undefined);
   });
 }
 
@@ -159,5 +164,34 @@ describe("the Coach's routes on a real server", () => {
     expect(fs.existsSync(path.join(stateDir, "coach", "latest.json"))).toBe(
       true,
     );
+  });
+
+  it("a person's Dismiss keeps the reason; GET lists it as dismissed", async () => {
+    const r = await call("POST", "/api/coach/dismiss", person.headers, {
+      id: "polling:builder",
+      reason: "It waits on CI by design.",
+    });
+    expect(r.status).toBe(200);
+    const g = await call("GET", "/api/coach");
+    expect(g.json.dismissed).toEqual([
+      expect.objectContaining({
+        id: "polling:builder",
+        reason: "It waits on CI by design.",
+        by: "person",
+      }),
+    ]);
+  });
+
+  it("Dismiss without a sign-in is refused by the guard", async () => {
+    const r = await call(
+      "POST",
+      "/api/coach/dismiss",
+      { origin: base },
+      {
+        id: "denials:builder",
+        reason: "x",
+      },
+    );
+    expect([401, 403]).toContain(r.status);
   });
 });

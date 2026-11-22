@@ -17,6 +17,10 @@ import {
   COACH_DEFAULTS,
   type CoachSettings,
 } from "../../shared/coach/settings.js";
+import {
+  openFindings,
+  type CoachFinding,
+} from "../../shared/coach/findings.js";
 import { runCoach } from "../../shared/coach/run.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
@@ -58,7 +62,10 @@ const DAY_FMT = new Intl.DateTimeFormat("en-US", {
 });
 
 /** The report in short lines, for a person. */
-export function renderCoachReport(r: CoachReport): string[] {
+export function renderCoachReport(
+  r: CoachReport,
+  open: readonly CoachFinding[] = r.findings ?? [],
+): string[] {
   const from = DAY_FMT.format(new Date(r.window.from));
   const to = DAY_FMT.format(new Date(r.window.to));
   const days = `${r.window.days} day${r.window.days === 1 ? "" : "s"}`;
@@ -86,6 +93,14 @@ export function renderCoachReport(r: CoachReport): string[] {
         `${m.subagent_opus_pct}% of subagent calls on Opus.`,
     );
   }
+  lines.push("");
+  if (!open.length) lines.push("No open findings.");
+  else {
+    lines.push(
+      `${open.length} open finding${open.length === 1 ? "" : "s"} (nothing is changed; each is for a person to act on):`,
+    );
+    for (const f of open) lines.push(`- ${f.title} ${f.proposal} (${f.id})`);
+  }
   return lines;
 }
 
@@ -108,7 +123,12 @@ export async function cmdCoach(
         return 1;
       }
       if (json) out(JSON.stringify(r, null, 2));
-      else for (const l of renderCoachReport(r)) out(l);
+      else
+        for (const l of renderCoachReport(
+          r,
+          openFindings(stateDir, r.findings ?? []),
+        ))
+          out(l);
       return 0;
     }
     if (sub === "run") {
@@ -131,7 +151,12 @@ export async function cmdCoach(
         ...(deps.rotateAfter ? { rotateAfter: deps.rotateAfter } : {}),
       });
       if (json) out(JSON.stringify(r, null, 2));
-      else for (const l of renderCoachReport(r)) out(l);
+      else
+        for (const l of renderCoachReport(
+          r,
+          openFindings(stateDir, r.findings ?? []),
+        ))
+          out(l);
       return 0;
     }
     throw new CoachUsageError(`unknown coach command "${sub}"`);

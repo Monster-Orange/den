@@ -13,11 +13,14 @@
  * command. It reads files on this machine and sends nothing anywhere. A
  * counted run calls no model, and its cost says so.
  */
+import * as fs from "fs";
 import type { AgentRecord } from "../agents/records.js";
-import { readConversations } from "../agents/records.js";
+import { agentFilesDir, readConversations } from "../agents/records.js";
+import { readRotation } from "../agents/rotation.js";
 import { weeklyMetrics, type UsageMetrics } from "../usage/report.js";
 import { sourceFor, type UsageSource } from "../usage/sources.js";
 import type { TranscriptStats } from "../usage/transcript.js";
+import type { CoachFinding } from "./findings.js";
 import type { ConversationWhy } from "../agents/conversation-history.js";
 
 const DAY_MS = 86_400_000;
@@ -75,6 +78,14 @@ export interface CoachAgentRow {
   perDay?: PerDay;
   /** Model calls by model, for main and subagent calls. */
   models?: { main: Record<string, number>; subagent: Record<string, number> };
+  /**
+   * Its current conversation's compactions and its rotation limit (0:
+   * never rotates), from Den's own rotation count; unset when Den has no
+   * count for that conversation.
+   */
+  current?: { compactions: number; after: number };
+  /** The size on disk of the window's transcripts, in bytes. */
+  transcriptBytes?: number;
 }
 
 export interface CoachReport {
@@ -86,6 +97,17 @@ export interface CoachReport {
   totalsPerDay: PerDay;
   /** What the run itself cost: a counted run calls no model. */
   cost: { model: string | null; tokens: number };
+  /** Slice T-b: the counted findings, all of them (findings.ts). */
+  findings?: CoachFinding[];
+}
+
+/** A file's size, or 0 when it can't be read. */
+function sizeOf(file: string): number {
+  try {
+    return fs.statSync(file).size;
+  } catch {
+    return 0;
+  }
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -181,6 +203,10 @@ export async function coachBreakdown(
       rotations: agentRotations,
     };
     row.transcripts = stats.length;
+    row.transcriptBytes = files.reduce((n, f) => n + sizeOf(f), 0);
+    const rot = readRotation(agentFilesDir(o.stateDir, rec.id));
+    if (rot && rot.conversation && rot.conversation === rec.resumeToken)
+      row.current = { compactions: rot.compactions, after: rot.after };
     row.metrics = metrics;
     row.perDay = perDayOf(metrics, o.days);
     row.models = modelsOf(stats);

@@ -19,6 +19,11 @@ import {
 import { runCoach } from "../../shared/coach/run.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
+  dismissFinding,
+  openFindings,
+  readDismissals,
+} from "../../shared/coach/findings.js";
+import {
   COACH_DEFAULTS,
   type CoachSettings,
 } from "../../shared/coach/settings.js";
@@ -3751,6 +3756,13 @@ function coachRouteDeps(): CoachRouteDeps {
       runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
     audit: (req, e) =>
       void recordAction(auditActorOf(req), e, principalOf(req)),
+    findings: (report) => ({
+      open: openFindings(getStateDir(), report?.findings ?? []),
+      dismissed: readDismissals(getStateDir()),
+    }),
+    dismiss: (id, reason) =>
+      dismissFinding(getStateDir(), id, reason, "person"),
+    readBody,
   };
 }
 

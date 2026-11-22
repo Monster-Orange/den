@@ -16,6 +16,7 @@ import {
 } from "../../../src/shared/agents/records.js";
 import {
   COACH_DEFAULTS,
+  FINDING_DEFAULTS,
   checkCoachConfig,
 } from "../../../src/shared/coach/settings.js";
 import {
@@ -128,12 +129,14 @@ describe("agents.coach settings", () => {
       enabled: false,
       window_days: 7,
       keep_runs: 100,
+      findings: FINDING_DEFAULTS,
     });
     expect(checkCoachConfig(undefined)).toEqual(COACH_DEFAULTS);
     expect(checkCoachConfig({ enabled: true, window_days: 14 })).toEqual({
       enabled: true,
       window_days: 14,
       keep_runs: 100,
+      findings: FINDING_DEFAULTS,
     });
   });
 

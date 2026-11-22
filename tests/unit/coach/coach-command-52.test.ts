@@ -16,6 +16,7 @@ import {
   coachRunsDir,
   readCoachReport,
 } from "../../../src/shared/coach/store.js";
+import { dismissFinding } from "../../../src/shared/coach/findings.js";
 import { cmdCoach } from "../../../src/ui/cli/coach-command.js";
 import type { UsageSource } from "../../../src/shared/usage/sources.js";
 import type { TranscriptStats } from "../../../src/shared/usage/transcript.js";
@@ -147,5 +148,43 @@ describe("coach show", () => {
     const r = await run(["apply"], state(), true);
     expect(r.code).toBe(2);
     expect(r.err[0]).toBe('✗ unknown coach command "apply"');
+  });
+});
+
+describe("findings in the printed report", () => {
+  it("none: says so", async () => {
+    const st = state();
+    writeRecord(st, rec("builder", "c1"));
+    const r = await run(["run"], st, true);
+    expect(r.out).toContain("No open findings.");
+  });
+
+  it("one: printed with its proposal and id; once dismissed, it stays out", async () => {
+    const st = state();
+    writeRecord(st, rec("builder", "c1"));
+    const polling: UsageSource = {
+      ...source,
+      mine: async (f) => ({ ...stats(f), polls: 210 }),
+    };
+    const go = async (sub: string) => {
+      const out: string[] = [];
+      await cmdCoach([sub], {
+        stateDir: () => st,
+        now: () => NOW,
+        out: (l) => out.push(l),
+        err: () => {},
+        settings: () => ({ ...COACH_DEFAULTS, enabled: true }),
+        source: () => polling,
+        rotateAfter: () => 3,
+      });
+      return out.join("\n");
+    };
+    const first = await go("run");
+    expect(first).toContain("1 open finding");
+    expect(first).toContain("- builder (shop) polls 30 times a day.");
+    expect(first).toContain("(polling:builder)");
+    dismissFinding(st, "polling:builder", "It waits on CI.", "person");
+    expect(await go("show")).toContain("No open findings.");
+    expect(await go("run")).toContain("No open findings.");
   });
 });

@@ -7,6 +7,7 @@ import { listRecords, type AgentRecord } from "../agents/records.js";
 import { readAgentsConfig } from "../den-config.js";
 import type { UsageSource } from "../usage/sources.js";
 import { coachBreakdown, type CoachReport } from "./breakdown.js";
+import { coachFindings } from "./findings.js";
 import type { CoachSettings } from "./settings.js";
 import { writeCoachReport } from "./store.js";
 
@@ -39,6 +40,7 @@ export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
     ...(o.source ? { source: o.source } : {}),
     after: (o.rotateAfter ?? rotateLimit)(),
   });
+  report.findings = coachFindings(report, o.settings.findings);
   writeCoachReport(o.stateDir, report, o.settings.keep_runs);
   return report;
 }
