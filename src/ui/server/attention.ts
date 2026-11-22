@@ -137,6 +137,11 @@ export interface AttentionDeps {
   /** Issue 101: type `text` to agent `lead`; false when Den couldn't. */
   tellLead?: (lead: string, text: string) => Promise<boolean>;
   /**
+   * Issue 1008: type `text` to `agent` (an answer came after it withdrew
+   * its question); false when Den couldn't.
+   */
+  tell?: (agent: string, text: string) => Promise<boolean>;
+  /**
    * Issue 172: an agent began to need its person (a permission prompt or
    * a question), and its person isn't looking at it: alert them outside
    * the bell (alert-feed.ts). Once per wait, never for a repeat.
@@ -180,6 +185,40 @@ export interface WaitingDetail {
   since: string;
 }
 
+/**
+ * Issue 1008: an agent's withdrawn question, until its next question or
+ * an answer that came late. `typed`: its person typed into it since.
+ */
+interface SettledAsk {
+  id: string;
+  reason: string;
+  name: string;
+  question: string;
+  typed: boolean;
+}
+
+/** Issue 1008: the bell's words for a settled question. */
+function settledSay(
+  how: "agent" | "person" | "late",
+  v: { name: string; question: string; reason: string },
+): { text: string; msg: NoteMsg } {
+  const vars = { name: v.name, text: v.question, reason: v.reason };
+  if (how === "late")
+    return {
+      text: `${v.name}'s question was settled: ${v.reason}; your answer came after it and was passed on (${v.question})`,
+      msg: { key: "bell.m.settledLate", vars },
+    };
+  if (how === "person")
+    return {
+      text: `You withdrew ${v.name}'s question, settled: ${v.reason} (${v.question})`,
+      msg: { key: "bell.m.settledYou", vars },
+    };
+  return {
+    text: `${v.name} withdrew its question, settled: ${v.reason} (${v.question})`,
+    msg: { key: "bell.m.settled", vars },
+  };
+}
+
 interface Waiting {
   why: WaitingWhy;
   text: string;
@@ -203,6 +242,8 @@ interface Waiting {
 
 export class Attention {
   private readonly waiting = new Map<string, Waiting>();
+  /** Issue 1008: each agent's last withdrawn question. */
+  private readonly settledAsks = new Map<string, SettledAsk>();
   /** NT-2: agent → until when a page shows it, visible and focused. */
   private readonly looking = new Map<string, number>();
   /** Issue 773: agent → since when it is in a turn (Working). */
@@ -316,6 +357,8 @@ export class Attention {
       // session is no turn.
       if (ev.from !== "session" && !this.working.has(agent))
         this.working.set(agent, arrived);
+      // Issue 1008: the person's prompt after a withdraw: a late answer.
+      if (ev.from === "prompt") await this.lateAnswer(agent);
       const w = this.waiting.get(agent);
       if (!w) return;
       // Issue 609: the asked tool ran (it was allowed): its dialog is
@@ -471,6 +514,8 @@ export class Attention {
       return;
     }
     const cur = this.waiting.get(agent);
+    // Issue 1008: a new question; the withdrawn one is behind it.
+    if (ev.why === "asked") this.settledAsks.delete(agent);
     this.waiting.set(agent, {
       why: ev.why,
       text,
@@ -548,7 +593,78 @@ export class Attention {
 
   /** Its person typed into its terminal: answered, whatever it waited on. */
   typed(agent: string): void {
+    const s = this.settledAsks.get(agent);
+    if (s) s.typed = true;
     if (this.waiting.has(agent)) this.clear(agent);
+  }
+
+  /** Issue 1008: whether any agent has a withdrawn question kept. */
+  hasSettled(): boolean {
+    return this.settledAsks.size > 0;
+  }
+
+  /**
+   * Issue 1008: the question in bell row `id` (agent `agent`'s) was
+   * settled elsewhere: `by` is `agent:<id>` (the agent that asked) or
+   * `person`. Its wait goes; the row stays, read, saying why, who and
+   * when. Null when the row isn't there or was settled already.
+   */
+  settle(
+    agent: string,
+    id: string,
+    s: { reason: string; by: string },
+  ): Notification | null {
+    const row = this.d.store.list().find((n) => n.id === id);
+    if (!row || row.settled) return null;
+    const name = this.d.nameOf(agent);
+    const v = row.msg?.vars.text;
+    const question =
+      typeof v === "string" ? v : row.text.replace(/^.*? asked: /, "");
+    const out = this.d.store.settle(
+      id,
+      s,
+      settledSay(s.by === "person" ? "person" : "agent", {
+        name,
+        question,
+        reason: s.reason,
+      }),
+    );
+    if (!out) return null;
+    if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
+    this.settledAsks.set(agent, {
+      id,
+      reason: out.settled?.reason ?? s.reason,
+      name,
+      question,
+      typed: false,
+    });
+    return out;
+  }
+
+  /**
+   * Issue 1008: a prompt went in after the agent withdrew its question,
+   * and its person had typed into it (a prompt Den types is no answer):
+   * the answer came late. Kept (it went in) and the row says so; the
+   * agent is told, once.
+   */
+  private async lateAnswer(agent: string): Promise<void> {
+    const s = this.settledAsks.get(agent);
+    if (!s?.typed) return;
+    this.settledAsks.delete(agent);
+    this.d.store.settledLate(
+      s.id,
+      settledSay("late", {
+        name: s.name,
+        question: s.question,
+        reason: s.reason,
+      }),
+    );
+    await this.d
+      .tell?.(
+        agent,
+        `Den: your person answered after you withdrew your question (settled: ${s.reason}). Their answer is the input you just got; it is kept. Check whether it changes anything.`,
+      )
+      .catch(() => false);
   }
 
   /**
@@ -557,6 +673,9 @@ export class Attention {
    * screen ends that.
    */
   answered(agent: string): void {
+    // Issue 1008: a comment typed in after a withdraw is a late answer.
+    const s = this.settledAsks.get(agent);
+    if (s) s.typed = true;
     if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
   }
 
@@ -601,7 +720,10 @@ export class Attention {
     // The wait's row goes with it, read or not: "Needs you" lists read
     // rows too, so a row the person had opened stayed after its answer.
     const subject = `agent:${agent}`;
-    this.d.store.remove((n) => n.subject === subject && n.kind === "waiting");
+    // Issue 1008: a settled question's row is history: it stays.
+    this.d.store.remove(
+      (n) => n.subject === subject && n.kind === "waiting" && !n.settled,
+    );
     // #142: a hookless bell's update ("is waiting for you") goes with it.
     if (w?.why === "input") this.d.store.withdraw(`agent:${agent}`, "finished");
   }

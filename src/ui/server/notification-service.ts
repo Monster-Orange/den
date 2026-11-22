@@ -325,6 +325,8 @@ export function notificationDeps(): {
         String(at),
         new Date(at).toISOString(),
       ),
+    // Issue 1008: an answer after a withdraw; the agent is told.
+    tell: tellLead,
   });
   if (!timer) {
     let busy = false;
@@ -392,7 +394,8 @@ export function agentStateDeps(): AgentStateDeps {
  * is answered. Never throws.
  */
 export function personTyped(sessionId: string): void {
-  if (!attention?.waitingNow().size) return;
+  // Issue 1008: a withdrawn question counts too (a late answer).
+  if (!attention?.waitingNow().size && !attention?.hasSettled()) return;
   try {
     const rec = listRecords(getStateDir()).find(
       (r) => r.session.id === sessionId,

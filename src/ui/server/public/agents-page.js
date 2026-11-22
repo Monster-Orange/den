@@ -103,7 +103,11 @@ import {
   runtimeOptions,
   wireQuarantine,
 } from "/agent-start.js";
-import { projectLabel } from "/workspace-picker.js";
+import {
+  PROJECT_COLOURS_KEY,
+  projectColour,
+  projectLabel,
+} from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
@@ -592,13 +596,36 @@ function projName(ws) {
   return projectLabel(st.projects, ws);
 }
 
+/**
+ * Issue 168: ` data-pc="<colour>"` for what belongs to project `ws` (its
+ * agents' rows, tabs and pane inherit its colour), or "" for none (the
+ * server agent: neutral grey). The colour is in CSS (shell.js, --pc).
+ */
+function pcAttr(ws) {
+  const c = projectColour(st.projects, ws);
+  return c ? ` data-pc="${esc(c)}"` : "";
+}
+
+/**
+ * Issue 168: an agent's letter tile, in its project's colour. The letter
+ * is drawn by CSS (data-l), so the row's and the bar's text stay the
+ * agent's name alone, as screen readers and copies read it.
+ */
+function tileHtml(name) {
+  const ch = [...String(name ?? "").trim()][0] ?? "";
+  return ch
+    ? `<span class="agtile" data-l="${esc(ch.toLocaleUpperCase())}" aria-hidden="true"></span>`
+    : "";
+}
+
 /** Workspace `ws` as a link to it on Workspaces. */
 function wsLinkHtml(ws) {
   // ON-6: the server agent belongs to no workspace: its group is "Server".
   if (ws === SERVER_WS)
     return `<span class="wslink" data-server>${esc(t("ag.server"))}</span>`;
   const name = projName(ws);
-  return `<a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws: name }))}">${esc(name)}</a>`;
+  // Issue 168: its colour beside its name, never colour alone.
+  return `<span class="den-pc"${pcAttr(ws)} aria-hidden="true"></span><a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws: name }))}">${esc(name)}</a>`;
 }
 
 /**
@@ -817,13 +844,13 @@ function stoppedHtml(r, wsTag = false) {
   return (
     `<div class="agst agst1" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
     // D45: a click (or Enter) opens its details, with Resume in them.
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}" data-details=""` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"${pcAttr(r.workspace)} data-details=""` +
     ` aria-haspopup="dialog" aria-expanded="${agd.r?.id === r.id}"` +
     ` title="${esc(stoppedTip(r))}"` +
     ` aria-label="${esc(t("ag.det.label", { id: `${r.workspace} / ${name}` }))}">` +
     gripHtml(r) +
     `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
+    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
     `<span class="stchip" title="${esc(chip)}">${esc(chip)}</span>` +
     (at ? `<span class="when">${at}</span>` : "") +
     `</button>` +
@@ -846,10 +873,10 @@ function exitedShellHtml(r, wsTag = false) {
   const label = r.label || r.name;
   return (
     `<div class="agst agst1" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"${pcAttr(r.workspace)}` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${label}` }))}">` +
     `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
+    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
     `<span class="stchip">${esc(stoppedChip(r))}</span>` +
     `</button>` +
     `<span class="agacts"><button type="button" class="den-btn sm" data-act="remove-shell" aria-label="${esc(t("ag.removeShell", { id: label }))}">${esc(t("ag.remove"))}</button></span>` +
@@ -1083,13 +1110,13 @@ function rowHtml(r) {
       ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${pcAttr(r.workspace)}` +
     ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
     ` data-attn="${attn}"` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + ` · ${t(`ag.chip.${attn}`)}` + (said ? ` · ${said}` : ""))}">` +
     gripHtml(r) +
     markHtml(attn) +
-    `<span class="nm">${nm}</span>${right}` +
+    `<span class="nm">${tileHtml(r.kind === "agent" ? displayName(r) : r.label)}${nm}</span>${right}` +
     (chip
       ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta">${ptag}${esc(meta)}</span>` : ""}</span>`
       : meta || ptag
@@ -1690,9 +1717,12 @@ async function refreshOnce() {
         .then((x) => (x.ok ? x.json() : null))
         .then((d) => {
           if (!d) return false;
-          const was = JSON.stringify(st.projects?.workspaces ?? null);
+          // Issue 168: a colour change repaints too, not only a name.
+          const key = (x) =>
+            JSON.stringify([x?.workspaces ?? null, x?.projectColours ?? null]);
+          const was = key(st.projects);
           st.projects = d;
-          return JSON.stringify(d.workspaces ?? null) !== was;
+          return key(d) !== was;
         })
         .catch(() => false);
       // At most 3 s: a slow answer paints the slugs, then the names.
@@ -1986,7 +2016,7 @@ function paintTabs(strip) {
         r?.kind === "agent" ? ` title="${esc(t("ag.renameTip"))}"` : "";
       return (
         `<span class="agtab-w" data-id="${esc(id)}">` +
-        `<button type="button" role="tab" class="agtab" data-id="${esc(id)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-keyshortcuts="Delete"${rename}>` +
+        `<button type="button" role="tab" class="agtab" data-id="${esc(id)}"${r ? pcAttr(r.workspace) : ""} aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-keyshortcuts="Delete"${rename}>` +
         `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
         `<span class="den-sr"${r?.waiting ? "" : " hidden"}>${esc(r?.waiting ? waitingText(r) : t("ag.waiting"))}: </span>` +
         `<span class="tn">${esc(w.name)}</span><span class="tm mono">${esc(w.meta)}</span></button>` +
@@ -2503,6 +2533,8 @@ function paintBar(p) {
     signInTag(r);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
+    // Issue 168: the agent's letter tile, in its project's colour.
+    (r?.kind === "agent" ? tileHtml(name) : "") +
     `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
     (r && isStopped(r)
       ? `<span class="why" data-why title="${esc(stoppedTip(r))}">${esc(stopReason(r))}</span>`
@@ -2542,18 +2574,16 @@ function paintBar(p) {
         })
       : t("ag.toName", { name });
     if (to.textContent !== said) to.textContent = said;
-    to.style.setProperty("--ws-h", String(wsHue(ws)));
   }
+  // Issue 168: the pane's band and To line in its project's colour (the
+  // server agent's: none, neutral grey).
+  const pc = projectColour(st.projects, ws);
+  if (pc) {
+    if (p.el.dataset.pc !== pc) p.el.dataset.pc = pc;
+  } else if (p.el.dataset.pc) delete p.el.dataset.pc;
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
   if (x) x.hidden = shownLayout() === "tabs";
-}
-
-/** A project's colour (0.4.44): a hue from its name, the same everywhere. */
-export function wsHue(ws) {
-  let h = 0;
-  for (const c of String(ws ?? "")) h = (h * 31 + c.codePointAt(0)) % 360;
-  return h;
 }
 
 function send(p, obj) {
@@ -5401,6 +5431,21 @@ function wireDocument() {
     for (const p of st.panes.values())
       if (p.lost && p.conn) p.conn.retry();
       else if (!p.sock) p.conn ? p.conn.nudge() : void connect(p);
+    void refresh();
+  });
+  // Issue 168: a colour chosen here, or in another tab, repaints at once.
+  window.addEventListener("den:project-colours", (e) => {
+    const d = e.detail;
+    if (!st.projects || !d?.slug) return;
+    const next = { ...(st.projects.projectColours ?? {}) };
+    if (d.picked) next[d.slug] = d.picked;
+    else delete next[d.slug];
+    st.projects = { ...st.projects, projectColours: next };
+    repaintNames();
+  });
+  window.addEventListener("storage", (e) => {
+    if (e.key !== PROJECT_COLOURS_KEY) return;
+    st.projectsAt = 0;
     void refresh();
   });
   window.addEventListener("den:appearance", () => {

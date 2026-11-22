@@ -180,6 +180,8 @@ export const KIT_FILES: readonly string[] = [
   "button.css",
   "setting-row.js",
   "setting-row.css",
+  "setting-field.js",
+  "setting-field.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // Issue 773: who needs the person, one sort rule for Den and Hub.

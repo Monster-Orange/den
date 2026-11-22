@@ -463,6 +463,9 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       // Navigation (R21): hide a page, reorder pages.
       { hidden: ["tests", "release"] },
       { order: ["logs", "services", "local-dev"] },
+      // Issue 168: a project's colour, the person's own.
+      { projectColours: { shop: "teal", ledger: "gold" } },
+      { projectColours: { ledger: null } },
       { hidden: ["tests"] },
     ]) {
       const r = await request("POST", "/api/settings", { shell });
@@ -481,12 +484,20 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       dockHeight: 0,
       // Manage projects' order (0.4.45): none set, unwritten.
       projectOrder: [],
+      // Project colours (issue 168): the one chosen; null is Automatic.
+      projectColours: { shop: "teal" },
     });
+    // The picker and every page read them with the projects.
+    const ws = JSON.parse((await request("GET", "/api/workspaces")).body) as {
+      projectColours?: unknown;
+    };
+    expect(ws.projectColours).toEqual({ shop: "teal" });
     // A bad pin or page id is refused and writes nothing.
     for (const shell of [
       { pins: ["../etc"] },
       { hidden: ["../etc"] },
       { order: "logs" },
+      { projectColours: { shop: "red" } },
     ]) {
       const bad = await request("POST", "/api/settings", { shell });
       expect([shell, bad.status]).toEqual([shell, 400]);
@@ -505,6 +516,7 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       pins: [{ item: "billing/api" }],
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
+      projectColours: { shop: "teal" },
     });
     expect(rest).toEqual(userBefore);
 

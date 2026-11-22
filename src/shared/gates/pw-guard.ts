@@ -15,11 +15,16 @@
  *
  * The run's own Playwright setup calls these, with what Den handed it:
  *
- *   import { allowFromEnv, guardBrowser, pinLoopbackNames }
+ *   import { allowFromEnv, connectGuarded, guardBrowser, pinLoopbackNames }
  *   pinLoopbackNames();
  *   const allow = allowFromEnv(process.env);   // DEN_GATE_ALLOW
- *   guardBrowser(await chromium.connect(ws, { exposeNetwork: "<loopback>" }),
+ *   guardBrowser(await connectGuarded(chromium, process.env.DEN_PW_WS),
  *     allow, (url) => console.error(`blocked: ${url}`));
+ *
+ * Issue 1033: connectGuarded connects with exposeNetwork from
+ * DEN_PW_EXPOSE (the gate hands a box run "<loopback>"), so the box's
+ * browser reaches this machine's ports. A box run that connects without
+ * it is told once (warnBoxExpose).
  */
 import dns from "dns";
 
@@ -102,12 +107,27 @@ export function allowedUrl(
   // 80 and 443 (written out, or the scheme's own) are never allowed, not
   // even by a "host:*" entry.
   if (!u.port || u.port === "80" || u.port === "443") return false;
-  const host = u.hostname.toLowerCase();
-  const want = `${host}:${u.port}`;
+  const host = sameHost(u.hostname);
   const own = ownPorts?.has(Number(u.port)) ?? false;
-  return allow
-    .map((a) => a.toLowerCase())
-    .some((a) => a === want || (own && a === `${host}:*`));
+  return allow.some((a) => {
+    const at = a.lastIndexOf(":");
+    if (at < 0) return false;
+    if (sameHost(a.slice(0, at)) !== host) return false;
+    const port = a.slice(at + 1);
+    return port === u.port || (own && port === "*");
+  });
+}
+
+/**
+ * The host an allow entry is matched by. A box run pins localhost and
+ * *.localhost to 127.0.0.1 (`pinLoopbackNames`), and Den's own test
+ * servers listen on "localhost", so the three are one host: a run allowed
+ * 127.0.0.1:* reaches localhost:<its port>, and the reverse. ::1 and the
+ * rest of 127/8 aren't pinned, so they stay names of their own.
+ */
+function sameHost(host: string): string {
+  const h = host.toLowerCase();
+  return h === "127.0.0.1" || isLocalName(h) ? "127.0.0.1" : h;
 }
 
 /** The few Playwright shapes the guard uses (no Playwright import). */
@@ -235,4 +255,61 @@ export function pinLoopbackNames(): () => void {
     (dns as { lookup: unknown }).lookup = orig;
     (dns.promises as { lookup: unknown }).lookup = origP;
   };
+}
+
+/** Issue 1033: where the gate says what a box run's client exposes. */
+export const PW_EXPOSE_ENV = "DEN_PW_EXPOSE";
+
+/**
+ * Issue 1033: connect() options with exposeNetwork from DEN_PW_EXPOSE,
+ * unless the caller gave its own. Nothing set: the options as given.
+ */
+export function connectOptions<O extends { exposeNetwork?: string }>(
+  env: NodeJS.ProcessEnv,
+  o?: O,
+): O & { exposeNetwork?: string } {
+  const out = { ...(o ?? {}) } as O & { exposeNetwork?: string };
+  const want = env[PW_EXPOSE_ENV]?.trim();
+  if (out.exposeNetwork === undefined && want) out.exposeNetwork = want;
+  return out;
+}
+
+let warnedExpose = false;
+
+/**
+ * Issue 1033: a box run (DEN_GATE_SLOT_BOX set, not "local") connecting
+ * without exposeNetwork <loopback> (or *): its pages on this machine are
+ * refused. Said once per process; true when it was said now.
+ */
+export function warnBoxExpose(
+  env: NodeJS.ProcessEnv,
+  o: { exposeNetwork?: string } | undefined,
+  say: (line: string) => void = (l) => console.error(l),
+): boolean {
+  const box = env.DEN_GATE_SLOT_BOX?.trim();
+  if (!box || box === "local" || warnedExpose) return false;
+  const exposed = (o?.exposeNetwork ?? "").split(",").map((x) => x.trim());
+  if (exposed.includes("<loopback>") || exposed.includes("*")) return false;
+  warnedExpose = true;
+  say(
+    "box run without exposeNetwork <loopback>: pages on this machine will be refused; pass DEN_PW_EXPOSE to connect()",
+  );
+  return true;
+}
+
+/**
+ * Issue 1033: connects to the run's Playwright server with exposeNetwork
+ * from DEN_PW_EXPOSE (connectOptions), saying once if a box run still
+ * goes without it.
+ */
+export async function connectGuarded<O extends { exposeNetwork?: string }, B>(
+  type: { connect(ws: string, o: O): Promise<B> },
+  ws: string,
+  o?: O,
+  env: NodeJS.ProcessEnv = process.env,
+  say?: (line: string) => void,
+): Promise<B> {
+  const opts = connectOptions(env, o);
+  warnBoxExpose(env, opts, say);
+  return type.connect(ws, opts);
 }
