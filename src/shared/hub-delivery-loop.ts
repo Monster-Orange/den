@@ -18,13 +18,17 @@
  * Hub and the agents are injected (tests use fakes); no timers of its own
  * but the ones `deps` gives.
  */
+import type { JournalEntry } from "./hub-delivery-journal.js";
 import {
   ackBody,
   deliveryRaw,
   deliveryText,
   EMBED_PREFIX,
   FEED_PREFIX,
+  heldIdsIn,
+  isApproval,
   isOwner,
+  mayBeApproval,
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
@@ -37,6 +41,9 @@ import {
   type DeliveryTrouble,
   type SeenDeliveries,
 } from "./hub-delivery.js";
+
+/** P0-D2: the most early approvals kept while Den learns its person. */
+const EARLY_MAX = 500;
 
 export type AgentState = "missing" | "stopped" | "busy" | "idle";
 
@@ -181,6 +188,16 @@ export interface DeliveryLoopDeps {
    * a question it asked that person is answered.
    */
   answered?: (agent: string) => void;
+  /**
+   * P0-D2: the owner's approval (isApproval) arrived, once per delivery,
+   * typed or not yet: Den clears the questions that name it.
+   */
+  approved?: (dv: Delivery) => void;
+  /**
+   * P0-D4: what happened to each delivery (ids, kind, link, outcome; never
+   * a body or a name), for the file doctor reads.
+   */
+  journal?: (e: JournalEntry) => void;
   /** NT: the agent finished its Hub comments (done, not failed). */
   finished?: (
     agent: string,
@@ -249,6 +266,58 @@ export class DeliveryLoop {
   private readonly active = new Map<string, Active>();
   /** The last state each delivery was acked with (a repeat is re-acked). */
   private readonly states = new Map<string, AckState>();
+  /** P0-D4: each delivery's journal fields, until it is done with. */
+  private readonly jmeta = new Map<
+    string,
+    Omit<JournalEntry, "at" | "id" | "outcome">
+  >();
+  /** P0-D4: the held reason last logged for each delivery. */
+  private readonly heldLogged = new Map<string, string>();
+
+  /** P0-D4: one journal line; the hook's trouble never stops a delivery. */
+  private note(
+    id: string,
+    outcome: JournalEntry["outcome"],
+    dv?: Delivery,
+    why?: string,
+  ): void {
+    if (!this.d.journal) return;
+    if (dv && !this.jmeta.has(id))
+      this.jmeta.set(id, {
+        agent: dv.agent,
+        ...(dv.kind ? { kind: dv.kind } : {}),
+        ...(dv.version !== undefined ? { version: dv.version } : {}),
+        ...(dv.thread.id ? { thread: dv.thread.id } : {}),
+        ...(dv.thread.url ? { url: dv.thread.url } : {}),
+        ...(heldIdsIn(dv.body).length ? { held: heldIdsIn(dv.body) } : {}),
+      });
+    const m = this.jmeta.get(id) ?? { agent: dv?.agent ?? "" };
+    try {
+      this.d.journal({
+        at: new Date(this.now()).toISOString(),
+        id,
+        outcome,
+        ...m,
+        ...(why ? { why } : {}),
+      });
+    } catch {
+      /* never stops a delivery */
+    }
+    if (
+      outcome === "done" ||
+      outcome === "failed" ||
+      outcome === "no-answer" ||
+      outcome === "refused" ||
+      outcome === "passed"
+    ) {
+      this.jmeta.delete(id);
+      this.heldLogged.delete(id);
+    }
+  }
+
+  /** P0-D2: deliveries taken before Den knew its person, to check then. */
+  private approvalLater: Delivery[] = [];
+  private earlyDropSaid = false;
   /** Ids Hub answered 410 for (sent again, or withdrawn): never acked again. */
   private readonly superseded = new Set<string>();
   /** Issue 701: the reason each held delivery was last acked `queued` with. */
@@ -543,6 +612,7 @@ export class DeliveryLoop {
     const dv = parseDelivery(raw);
     if (!dv) return;
     if (this.d.seen.has(dv.id) || this.states.has(dv.id)) {
+      this.note(dv.id, "repeat", dv);
       const st = this.states.get(dv.id);
       // A repeat: Hub didn't get the ack; say it again (never twice to the agent).
       const why = this.heldReason.get(dv.id);
@@ -556,6 +626,7 @@ export class DeliveryLoop {
     }
     this.h.lastDeliveryAt = this.now();
     this.healthChanged();
+    this.note(dv.id, "received", dv);
     if (dv.kind === "held") {
       try {
         this.d.held?.(dv);
@@ -563,6 +634,7 @@ export class DeliveryLoop {
         /* the hook's own trouble never stops a delivery */
       }
     }
+    this.checkApproval(dv);
     const at = Date.parse(dv.createdAt);
     if (dv.thread.id && Number.isFinite(at))
       this.threadsAt.set(
@@ -580,6 +652,7 @@ export class DeliveryLoop {
   async takeLocal(dv: Delivery): Promise<boolean> {
     if (!dv.id.startsWith(LOCAL_PREFIX)) return false;
     if (this.seenOf(dv.id).has(dv.id) || this.states.has(dv.id)) return false;
+    this.note(dv.id, "received", dv);
     await this.hold(dv);
     return true;
   }
@@ -591,7 +664,9 @@ export class DeliveryLoop {
 
   /** Mark an inbox item seen without typing it (older, or a delivery had it). */
   passLocal(id: string): void {
-    if (id.startsWith(LOCAL_PREFIX)) this.seenOf(id).add(id);
+    if (!id.startsWith(LOCAL_PREFIX)) return;
+    this.seenOf(id).add(id);
+    this.note(id, "passed");
   }
 
   /**
@@ -622,6 +697,7 @@ export class DeliveryLoop {
     this.seenOf(dv.id).add(dv.id);
     const s = await this.stateOf(dv.agent);
     if (s === "missing") {
+      this.note(dv.id, "refused", dv);
       await this.ack(dv.id, "refused", {
         reason: ACK_WORDS.missing,
       });
@@ -641,6 +717,7 @@ export class DeliveryLoop {
     const q = (this.queue.get(dv.agent) ?? []).filter((a) => {
       if (!same(a)) return true;
       this.replaced.set(dv.id, [...(this.replaced.get(dv.id) ?? []), a.id]);
+      this.note(a.id, "replaced", a);
       this.d.log?.(
         `hub delivery ${dv.id}: repeats held ${a.id} for ${dv.agent} (Hub's Try again): typed once`,
       );
@@ -654,7 +731,49 @@ export class DeliveryLoop {
   }
 
   /** Every agent with work: hand over, beat, finish. Run on a tick. */
+  /**
+   * P0-D2: tell Den of an owner's approval. Before Den knows its person
+   * (Hub's whoami), a delivery is kept and checked at the next pump that
+   * does, so an approval that came early still counts, once.
+   */
+  private checkApproval(dv: Delivery): void {
+    const o = this.d.owner();
+    if (!o) {
+      if (!mayBeApproval(dv)) return;
+      if (this.approvalLater.length < EARLY_MAX) this.approvalLater.push(dv);
+      else if (!this.earlyDropSaid) {
+        this.earlyDropSaid = true;
+        this.d.log?.(
+          `hub delivery: early approval ${dv.id} dropped: ${EARLY_MAX} already wait for Den to learn its person`,
+        );
+      }
+      return;
+    }
+    if (!isApproval(dv, o)) return;
+    try {
+      this.d.approved?.(dv);
+    } catch {
+      /* the bell's trouble never stops a delivery */
+    }
+  }
+
+  /**
+   * P0-D2: Den's person may have changed (a new connection): approvals
+   * kept for the old one are forgotten.
+   */
+  ownerReset(): void {
+    this.approvalLater = [];
+    this.earlyDropSaid = false;
+  }
+
   async pump(): Promise<void> {
+    if (this.approvalLater.length) {
+      if (this.d.owner()) {
+        const later = this.approvalLater;
+        this.approvalLater = [];
+        for (const dv of later) this.checkApproval(dv);
+      } else this.d.ownerWanted?.(); // the agent may be busy for hours
+    }
     const agents = new Set([...this.queue.keys(), ...this.active.keys()]);
     // Issue 701: each on its own; one that hangs never holds the others.
     await Promise.all([...agents].map((a) => this.pumpAgent(a)));
@@ -765,6 +884,7 @@ export class DeliveryLoop {
       // Issue 701: a turn that never shows as ended stops holding the
       // agent's next comments: Hub and the bell hear "no answer yet".
       this.active.delete(agent);
+      for (const id of act.ids) this.note(id, "no-answer");
       const minutes = Math.round((now - act.typedAt) / 60_000);
       for (const id of act.ids)
         await this.ack(id, "delivered", {
@@ -796,6 +916,7 @@ export class DeliveryLoop {
       }
       if (s === "idle" && (act.sawBusy || now - act.typedAt >= NO_START_MS)) {
         this.active.delete(agent);
+        for (const id of act.ids) this.note(id, "done");
         for (const id of act.ids) await this.ack(id, "done");
         // Issue 334: a relayed message is no Hub comment for the bell.
         const hubIds = act.ids.filter((id) => !id.startsWith(EMBED_PREFIX));
@@ -811,6 +932,7 @@ export class DeliveryLoop {
         }
       } else if (s === "stopped" || s === "missing") {
         this.active.delete(agent);
+        for (const id of act.ids) this.note(id, "failed");
         for (const id of act.ids)
           await this.ack(id, "failed", {
             reason: ACK_WORDS.stopped,
@@ -922,6 +1044,8 @@ export class DeliveryLoop {
     });
     for (const dv of batch) {
       this.heldReason.delete(dv.id);
+      this.heldLogged.delete(dv.id);
+      this.note(dv.id, "typed", dv);
       await this.ack(dv.id, "delivered");
       await this.ack(dv.id, "working");
     }
@@ -948,6 +1072,11 @@ export class DeliveryLoop {
   private async ackHeld(q: Delivery[], code: HeldCode): Promise<void> {
     if (q[0]) this.heldCode.set(q[0].agent, code);
     const reason = HELD_WORDS[code];
+    for (const dv of q)
+      if (this.heldLogged.get(dv.id) !== code) {
+        this.heldLogged.set(dv.id, code);
+        this.note(dv.id, "held", dv, code);
+      }
     for (const dv of [...q]) {
       if (dv.id.startsWith(LOCAL_PREFIX)) continue;
       if (this.heldReason.get(dv.id) === reason) continue;

@@ -29,6 +29,8 @@ import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
+/** Loopback by its name alone, and never one of Den's own names. */
+const REBOUND = "evil.localhost";
 /** The edge's X-Forwarded-For for a client on another machine (0.4.3). */
 const AWAY = { "x-forwarded-for": "203.0.113.7" };
 let browser: Browser | null = null;
@@ -40,10 +42,12 @@ let server: ChildProcess;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
+    // Issue 191: no host mapped through a launch argument, which a remote
+    // browser (DEN_PW_WS) doesn't take: the names here are *.localhost
+    // (loopback in Chromium, and shared with a remote one), or served by a
+    // route.
     browser = await launchBrowser(chromium, {
-      args: [
-        `--host-resolver-rules=MAP evil.test 127.0.0.1, MAP ${EDGE} 127.0.0.1`,
-      ],
+      args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
     });
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
@@ -172,7 +176,8 @@ async function quiet(
 describe("refusal pages start no polls (no /api answers 421 or 401 after load)", () => {
   it("the 421 Wrong address page", async () => {
     if (skip()) return;
-    const r = await quiet(`http://evil.test:${port}/`, 421);
+    // A name that reaches this server but isn't Den's (a rebinding site).
+    const r = await quiet(`http://${REBOUND}:${port}/`, 421);
     expect(r.refused).toEqual([]);
     expect(r.chip).toBe("Status unknown");
   }, 60_000);

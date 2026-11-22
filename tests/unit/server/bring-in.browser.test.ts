@@ -40,7 +40,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
-import { launchBrowser } from "../helpers/browser.js";
+import { browserWaitMs, launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -427,7 +427,7 @@ describe("Bring in (AG-17.1)", () => {
         );
       },
       agent.sessionId,
-      { timeout: 5_000 },
+      { timeout: browserWaitMs() },
     );
     const now = await p.getAttribute(".pane", "data-id");
     expect(new URL(p.url()).searchParams.get("open")).toBe(now);
@@ -493,7 +493,7 @@ describe("Bring in (AG-17.1)", () => {
         );
       },
       sid,
-      { timeout: 8_000 },
+      { timeout: browserWaitMs() },
     );
     await p.context().close();
     expect(errors).toEqual([]);

@@ -1,0 +1,8 @@
+ You: run the tests
+
+ Grok wants to run: npm test
+
+ ┃ 1 (●) Yes, proceed
+ ┃ 2 (○) No, reject
+
+ ↑↓:select  ctrl+o:yolo  ctrl+c:cancel

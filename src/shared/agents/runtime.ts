@@ -84,6 +84,11 @@ export interface AgentMcp {
     /** hub.allow_tools: its tools run without asking (default on). */
     allowTools?: boolean;
     /**
+     * Issue 158: the Hub delivery loop's text for its instructions (Den's
+     * copy, then the project's addition); absent when it is off.
+     */
+    loop?: string;
+    /**
      * D41: Den's proxy to Hub (<den>/hub) for the Stop hook's inbox check;
      * absent when hub.inbox_on_stop is off. No token: the hook sends the
      * agent's own Den token, from its env.
