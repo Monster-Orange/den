@@ -680,6 +680,56 @@ starts and one when it ends. Past 2000 lines it keeps the newest 1000.
 env, repos, startedAt, endedAt, exitCode, running } } }`. A run a restart
 cut off has no end and is not shown.
 
+### Verify settings
+
+The org config's `verify:` block holds Verify's settings. Every one is
+optional, and the defaults are permissive.
+
+```yaml
+# config/acme.yml
+verify:
+  # Environments whose answer on the Checks page comes from an outside
+  # runner's results, not from runs Den starts. Den never plans a run on
+  # one.
+  environments: [bed]
+  import:
+    max_bytes: 5000000 # the largest verdict file Den reads
+    max_clauses: 5000 # the most clauses in one file
+    max_text: 2000 # a clause or note longer than this is cut
+```
+
+A bad value is named in the error: the CLI exits 1, and the Checks API
+answers 422.
+
+### Gate results from an outside runner
+
+An outside runner (a test bed that runs each build's live checks,
+`gate/<issue>.mjs`) writes one verdict file per build tag. Den keeps that
+file as one Verify run on an imported environment:
+
+```sh
+acme verify import verdict.json --env bed --project shop
+acme verify remove v1.2.3-dev.4 --project shop
+```
+
+- The run's id is the tag. Each gate file becomes one check,
+  `gate/<issue>`, holding its clauses in the runner's order. Importing the
+  same tag again replaces it.
+- A clause is passed, failed, error, "needs you" (not run, because it is a
+  person's act: its note ends `skip: person`) or "couldn't run" (not run,
+  because the bed lacks something: any other skip).
+- The file is untrusted input. Den checks its shape and the limits above,
+  drops evidence paths, and shows every text as plain text.
+- An agent can't import or remove: the CLI refuses it.
+
+The Checks page (`/verify`) shows the environment's newest import: the tag,
+its commit, when it ran, and how many clauses passed, failed, need you or
+couldn't run. Under that are the failed clauses first, then couldn't run,
+then needs you, then one row for each check. A row opens its clauses
+(`?why=bed`): the result, the clause, the runner's note and the time.
+Before any import the environment says it hasn't been checked yet, and an
+import where nothing ran is never a pass.
+
 ## Placement
 
 Each service says where it runs, per environment: `local` (on this machine,
@@ -3000,32 +3050,35 @@ guard off; so is an `approvals` that isn't `true` or `false`. See
 
 Read tools (always registered):
 
-| Tool                 | Web API                                    | What                                                                                                                                                                                                                                                                           |
-| -------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `status`             | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known |
-| `services`           | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                     |
-| `applications`       | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                            |
-| `graph`              | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active project's; with `workspace`, that one's and its startup order; scoped, the project's own)                                                                                                                        |
-| `workspaces`         | `/api/workspaces`                          | Projects, active and focused                                                                                                                                                                                                                                                   |
-| `environments`       | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                             |
-| `logs_search`        | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                              |
-| `logs_tail`          | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                                                                                                                         |
-| `tests_available`    | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                                                                                                                                                |
-| `security_latest`    | `/api/security/latest`                     | The newest security scan per mode                                                                                                                                                                                                                                              |
-| `release_status`     | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                                                                                                                                                            |
-| `manifest_validate`  | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                                                                                                                                                         |
-| `stacks`             | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                              |
-| `ask_human`          | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                      |
-| `notifications_list` | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                              |
-| `gate_slot_status`   | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                |
-| `gate_slot_request`  | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                       |
-| `gate_slot_release`  | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                    |
-| `gate_slot_yield`    | the machine's slot store                   | Your waiting slot (`id`) lets another waiting slot (`to`) go just ahead of it, and keeps its place otherwise (issue 795); your own only, never a holder                                                                                                                        |
-| `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
-| `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
-| `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
-| `repos_detect`       | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                     |
-| `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when Den can't tell how it starts (call again with `run`, or `no_run: true` for "it runs nothing")                                                     |
+| Tool                  | Web API                                    | What                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`              | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known                                                                                                                                |
+| `services`            | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                                                                                                                                                    |
+| `applications`        | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                                                                                                                                                           |
+| `graph`               | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active project's; with `workspace`, that one's and its startup order; scoped, the project's own)                                                                                                                                                                                                                                                       |
+| `workspaces`          | `/api/workspaces`                          | Projects, active and focused                                                                                                                                                                                                                                                                                                                                                                                  |
+| `environments`        | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                                                                                                                                                            |
+| `logs_search`         | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                                                                                                                                                             |
+| `logs_tail`           | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                                                                                                                                                                                                                                                        |
+| `tests_available`     | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                                                                                                                                                                                                                                                                               |
+| `security_latest`     | `/api/security/latest`                     | The newest security scan per mode                                                                                                                                                                                                                                                                                                                                                                             |
+| `release_status`      | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                                                                                                                                                                                                                                                                                           |
+| `manifest_validate`   | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                                                                                                                                                                                                                                                                                        |
+| `stacks`              | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                                                                                                                                                             |
+| `ask_human`           | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                                                                                                                                                     |
+| `notifications_list`  | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                                                                                                                                                             |
+| `gate_slot_status`    | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                                                                                                                                               |
+| `gate_slot_request`   | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                                                                                                                                                      |
+| `gate_slot_release`   | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                                                                                                                                                   |
+| `gate_slot_yield`     | the machine's slot store                   | Your waiting slot (`id`) lets another waiting slot (`to`) go just ahead of it, and keeps its place otherwise (issue 795); your own only, never a holder                                                                                                                                                                                                                                                       |
+| `github_watch`        | `/api/agents/self/github-watches`          | Watch a pull request's checks (`repo`, `pr`) or a workflow run (`repo`, `run`) in your project's repo, instead of `gh pr checks --watch` or `gh run watch`. Answers at once with a watch `id` and its state; Den tells you once, in your session, when they finish: counts passed, failed and skipped, and each failure's name and URL. One shared watcher for the install: see [GitHub watch](#github-watch) |
+| `github_watch_list`   | `/api/agents/self/github-watches`          | Your watches (state, note, counts, failures) and the watcher's `status`: GitHub calls left, the reset, the interval                                                                                                                                                                                                                                                                                           |
+| `github_watch_cancel` | `/api/agents/self/github-watches/cancel`   | Stop one of your own watches (`id`)                                                                                                                                                                                                                                                                                                                                                                           |
+| `edge_status`         | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                                                                                                                                                      |
+| `org_summary`         | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                                                                                                                                                             |
+| `onboard_status`      | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                                                                                                                                                |
+| `repos_detect`        | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                                                                                                                                                    |
+| `manifest_draft`      | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when Den can't tell how it starts (call again with `run`, or `no_run: true` for "it runs nothing")                                                                                                                                                                                    |
 
 **Health states.** A service with no verdict says why in `why`: no health
 check in the manifest for the env, remote with no check or `target.url`
@@ -3923,6 +3976,19 @@ as…" line as Bring in.
   ```yaml
   agents:
     rotation_wait_minutes: 240 # minutes, above 0
+  ```
+
+  A session that ends without Den asking (issue 926): no stop, restart
+  or relaunch from Den or a person, such as a signal from outside Den or
+  a crash. Den's sweep writes one audit row with the exit code. Exit 0
+  (the agent or person quit it) is left down. Otherwise the bell says so
+  and Den brings the agent back, at most once per window: it resumes it, or relaunches it
+  from its handoff when its rotation is ready and on_due is auto. A
+  second such exit within `agents.unasked_exit_window_minutes` (default 10) is told in the bell and left down; 0 never brings one back.
+
+  ```yaml
+  agents:
+    unasked_exit_window_minutes: 10 # minutes; 0: record and tell only
   ```
 
   One change to an agent at a time, across processes too (issue 218): a
@@ -4933,6 +4999,9 @@ prompt gets them). They say:
 - ask each decision as a numbered yes/no question;
 - no caveat sections, and nothing the person doesn't need in order to act;
 - read a slice of a log, or hand it to a subagent; don't poll with `sleep`;
+- don't watch GitHub with `gh pr checks --watch` or `gh run watch`: call
+  Den's `github_watch` tool, and Den tells the agent once when the checks
+  finish (one shared watcher for the install, under one API budget);
 - end a hand-back with the template below.
 
 **Hooks** (`hooks.json`, a Claude Code settings fragment) go in the agent's
@@ -5610,6 +5679,46 @@ Den reads Claude Code's transcripts (`$CLAUDE_CONFIG_DIR/projects`, else
 the `usage` kind (server tier). A runtime with no reader shows "no usage
 source reads <runtime>".
 
+## GitHub watch
+
+Agents on one machine usually share one GitHub account, and its API limit
+(5000 calls an hour). When each agent runs `gh pr checks --watch` or
+`gh run watch`, they spend it together, and every project waits for the
+reset. Den runs one GitHub watcher for the install instead, in its web
+server.
+
+An agent calls `github_watch` with `repo` (one of its project's repos) and
+`pr` or `run`. Den answers at once with a watch id and where it stands. When
+the checks or the run finish, Den types one message into the agent's
+session, at its prompt (the same path as relayed messages and gate-slot
+notices): how many checks passed, failed and skipped, and each failure's
+name and URL. `github_watch_list` and `github_watch_cancel` show and stop
+the agent's own watches. A pull request is watched at the head it has when
+asked: after a new push, the agent watches again.
+
+How the watcher paces itself:
+
+- One loop for the install. Each round, it asks GitHub at most once per
+  repo, however many watches the repo has: one head watched, that head's
+  check runs; several, the repo's recent workflow runs in one list, then the
+  check runs of a head whose runs finished.
+- The interval starts at `github.watch_interval_seconds` (60) and doubles
+  while nothing changes, up to `github.watch_max_interval_seconds` (300). A
+  change, or a new watch, starts it again.
+- Every answer's `X-RateLimit-Remaining` and `X-RateLimit-Reset` are read
+  (`gh api -i`, as the person running Den). Under
+  `github.api_budget_floor` (500) calls left, Den asks GitHub nothing until
+  the reset, says so in each watch's note, and refuses new watches with the
+  reset time.
+- `Retry-After` is honoured, and a 403 or 429 secondary limit waits a minute
+  at least.
+- `github.watches_max` (50) watches at once, for every agent together.
+
+These four are Settings › Server rows, a person's only
+(`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
+`<cli> github status` show one line: the calls left, the reset time, the
+active watches and the current interval.
+
 ## Gate slots: heavy test runs taken in turn
 
 One machine often runs gates for several repos and installs at once: a
@@ -5624,9 +5733,16 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 <cli> gate settings --cpu-slots 3
 ```
 
-- A `browser` run holds the machine alone. `cpu` runs share it, up to
-  `cpu_slots` (default 2), never beside a browser run. First come, first
-  served: a waiting browser run stops new cpu grants, so it can't starve.
+- `cpu` runs share the machine, up to `cpu_slots` (default 2). Browser and
+  cpu runs wait in separate lines, first come within each. Up to
+  `cpu_slots_beside_browser` (default 2) cpu runs run beside the
+  `browser` runs here; at 0 a browser run holds the machine alone. A
+  release-priority browser run allows `cpu_slots_beside_release_browser`
+  (default 0) beside it instead.
+  `local_browser_slots` (default 1) browser runs may hold the machine at
+  once, each in its own container. A browser run waiting
+  for cpu runs to drop to that number stops new cpu grants past it, so it
+  can't starve.
 - Nothing is pre-empted. A later run only waits, and says each minute who
   holds the slot and when it should end. A live holder keeps its slot
   however long it runs.

@@ -749,9 +749,11 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
       const code = report(
         d,
         s,
-        s.fresh
-          ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
-          : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+        s.relaunched
+          ? `restarted agent ${s.rec.id}; it had rotated (${s.relaunched.why}), so it relaunched from its handoff in a new conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`
+          : s.fresh
+            ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
+            : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
       );
       return {
         code,

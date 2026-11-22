@@ -1168,6 +1168,18 @@ export function workspaceMcpServersRaw(
   }
 }
 
+/** Issue 158: project `ws`'s entry as written, or undefined (none, or unreadable). */
+export function workspaceEntryRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws] ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Issue 335: set workspace `ws`'s `agents.mcp_servers` (the caller checks
  * each one); an empty list clears it.
