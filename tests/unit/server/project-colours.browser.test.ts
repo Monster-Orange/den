@@ -9,7 +9,9 @@
  *   - the agent in front is outlined and bold, never an orange edge;
  *   - a person chooses a colour from the project's dot in Manage projects
  *     (the eight and Automatic): it survives a reload, in en, es and ja,
- *     at 1440 and 390; Settings › Project setup says it by name.
+ *     at 1440 and 390; Settings › Project setup says it by name;
+ *   - a colour chosen in one tab repaints another tab's top bar chip and
+ *     agents at once, with no reload.
  *
  * The demo distribution (acme; north, south) with a scripted PTY
  * (helpers/agents-page-server.ts). Needs Playwright's chromium;
@@ -142,7 +144,7 @@ const computed = (p: Page, sel: string, prop: string) =>
   );
 
 describe("project colours (issue 168)", () => {
-  it("two projects differ by default; every part of an agent wears its project's colour, the same after a reload", async () => {
+  it("two projects differ (Automatic); every part of an agent wears its project's colour, the same after a reload", async () => {
     if (skip()) return;
     expect(await s!.settings({ shell: { projectColours: null } })).toBe(200);
     const p = await agentsPage();
@@ -254,6 +256,51 @@ describe("project colours (issue 168)", () => {
     };
     expect(got.shell?.projectColours).toEqual({});
   });
+
+  it("a colour chosen in one tab repaints another's chip and agents, no reload", async () => {
+    if (skip()) return;
+    expect(await s!.settings({ language: null })).toBe(200);
+    expect(
+      await s!.settings({ shell: { projectColours: { north: null } } }),
+    ).toBe(200);
+    const a = await open("/agents?ws=north");
+    await a.waitForSelector("#ws-pill [data-pc]", { timeout: 20_000 });
+    await a.waitForSelector("#agl:not([aria-busy]) button[data-id][data-pc]");
+    const was = await a.getAttribute("#ws-pill [data-pc]", "data-pc");
+    const pick = was === "blue" ? "teal" : "blue";
+    // The second tab shares the first one's browser (its storage).
+    const b = await a.context().newPage();
+    b.on("pageerror", (e) => errors.push(`/local-dev: ${e.message}`));
+    await b.goto(`${s!.base}/local-dev`);
+    const dot = `#ws-list [data-pc-pick="north"]`;
+    await b.waitForSelector(dot, { state: "attached", timeout: 20_000 });
+    await b.$eval(dot, (e) => (e as HTMLElement).click());
+    await b.waitForSelector("#pcp-dlg[open]");
+    await b.click(`#pcp-dlg input[value="${pick}"]`, { force: true });
+    await b.click('#pcp-dlg [data-dk="save"]');
+    await b.waitForSelector("#pcp-dlg", { state: "detached" });
+    // The first tab, never reloaded: its chip, and its north agent's row.
+    await a.waitForFunction(
+      (c) =>
+        document
+          .querySelector("#ws-pill [data-pc]")
+          ?.getAttribute("data-pc") === c,
+      pick,
+      { timeout: 10_000 },
+    );
+    await a.waitForFunction(
+      ([id, c]) =>
+        document
+          .querySelector(`#agl button[data-id="${id}"]`)
+          ?.getAttribute("data-pc") === c,
+      [sid.planner, pick] as const,
+      { timeout: 10_000 },
+    );
+    await a.context().close();
+    expect(
+      await s!.settings({ shell: { projectColours: { north: null } } }),
+    ).toBe(200);
+  }, 90_000);
 
   it("no page errors", () => {
     expect(errors).toEqual([]);
