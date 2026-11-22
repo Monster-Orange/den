@@ -674,8 +674,11 @@ Three pieces, data in, the kit's words out (en, es, ja).
   in a row, 6px apart. A visible focus ring, and a 44px tap on a touch
   screen (its box unchanged). These are the values Den's frame drew and
   the second product's shipped button (issue 673). It is the one button:
-  the kit's dialogs draw `.den-btn` too (dialog.css imports button.css),
-  and `den-ui-parity` counts a product's own `.btn` as a copy.
+  the kit's dialogs and the working pop-up draw `.den-btn` too, and
+  `den-ui-parity` counts a product's own `.btn` as a copy. A page that
+  links `dialog.css` (or `busy.css`) must link `button.css` beside it:
+  `.dk-btn` sets only the size, so without it the dialog's buttons have
+  no look. Neither imports it, so it is asked for by one URL (issue 231).
 
       buttonHtml({ label, variant: "primary", size: "sm", href?, type?,
                    disabled?, id?, attrs: { "data-…": …, "aria-…": … } })
