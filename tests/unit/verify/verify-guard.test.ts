@@ -17,7 +17,10 @@ describe("methodRules", () => {
       methods: ["GET", "HEAD", "OPTIONS"],
       writeAllow: [],
     });
-    expect(methodRules(undefined, "staging")).toEqual({ methods: "all", writeAllow: [] });
+    expect(methodRules(undefined, "staging")).toEqual({
+      methods: "all",
+      writeAllow: [],
+    });
   });
 
   it("reads verify.environments.<env>.write_allow and methods", () => {
@@ -35,18 +38,22 @@ describe("methodRules", () => {
   });
 
   it("a list of imported environments (issue 441) is not a map: defaults", () => {
-    expect(methodRules({ environments: ["bed"] }, "production").methods).toEqual([
-      "GET",
-      "HEAD",
-      "OPTIONS",
-    ]);
+    expect(
+      methodRules({ environments: ["bed"] }, "production").methods,
+    ).toEqual(["GET", "HEAD", "OPTIONS"]);
   });
 
-  it.each([["POST"], ["POST login"], ["FETCH /x"]])("refuses the pair %j", (p) => {
-    expect(() =>
-      methodRules({ environments: { production: { write_allow: [p] } } }, "production"),
-    ).toThrow(/write_allow/);
-  });
+  it.each([["POST"], ["POST login"], ["FETCH /x"]])(
+    "refuses the pair %j",
+    (p) => {
+      expect(() =>
+        methodRules(
+          { environments: { production: { write_allow: [p] } } },
+          "production",
+        ),
+      ).toThrow(/write_allow/);
+    },
+  );
 });
 
 describe("allowedRequest", () => {

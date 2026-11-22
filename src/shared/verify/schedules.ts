@@ -80,7 +80,11 @@ function span(v: unknown, name: string, fallback: number): number {
 export function readScheduleSettings(raw: unknown): ScheduleSettings {
   const s = obj(obj(raw).schedule);
   return {
-    allowExpiryMs: span(s.allow_expiry, "allow_expiry", SCHEDULE_DEFAULTS.allowExpiryMs),
+    allowExpiryMs: span(
+      s.allow_expiry,
+      "allow_expiry",
+      SCHEDULE_DEFAULTS.allowExpiryMs,
+    ),
     expiryWarningMs: span(
       s.expiry_warning,
       "expiry_warning",
@@ -109,7 +113,12 @@ export function planHash(p: {
       environments: m.environments,
     }));
   return sha(
-    JSON.stringify({ env: p.env, cron: p.cron, window: p.window ?? null, mods }),
+    JSON.stringify({
+      env: p.env,
+      cron: p.cron,
+      window: p.window ?? null,
+      mods,
+    }),
   ).slice(0, 16);
 }
 
@@ -121,19 +130,32 @@ function slug(s: string): string {
     .slice(0, 28);
 }
 
-function idOf(project: string, k: { env: string; cron: string; window?: string; name?: string }) {
-  const h = sha(JSON.stringify([project, k.env, k.cron, k.window ?? null, k.name ?? null])).slice(0, 8);
+function idOf(
+  project: string,
+  k: { env: string; cron: string; window?: string; name?: string },
+) {
+  const h = sha(
+    JSON.stringify([project, k.env, k.cron, k.window ?? null, k.name ?? null]),
+  ).slice(0, 8);
   const lead = slug(k.name ?? k.env);
   return lead ? `${lead}-${h}` : h;
 }
 
 /** Every schedule in a project's modules, sorted by environment then name. */
-export function listSchedules(project: string, modules: VerifyModule[]): Schedule[] {
+export function listSchedules(
+  project: string,
+  modules: VerifyModule[],
+): Schedule[] {
   const groups = new Map<string, VerifyModule[]>();
   for (const m of modules) {
     if (!m.schedule) continue;
     const s = m.schedule;
-    const key = JSON.stringify([s.env, s.cron, s.window ?? null, s.name ?? null]);
+    const key = JSON.stringify([
+      s.env,
+      s.cron,
+      s.window ?? null,
+      s.name ?? null,
+    ]);
     groups.set(key, [...(groups.get(key) ?? []), m]);
   }
   const out: Schedule[] = [];
@@ -153,7 +175,12 @@ export function listSchedules(project: string, modules: VerifyModule[]): Schedul
       shared,
       codeOnly,
       needsAllow: shared && !codeOnly,
-      hash: planHash({ env: s.env, cron: s.cron, window: s.window, modules: sorted }),
+      hash: planHash({
+        env: s.env,
+        cron: s.cron,
+        window: s.window,
+        modules: sorted,
+      }),
     });
   }
   return out.sort(
@@ -179,7 +206,11 @@ export function readAllows(
   }
 }
 
-function save(stateDir: string, project: string, all: Record<string, ScheduleAllow>) {
+function save(
+  stateDir: string,
+  project: string,
+  all: Record<string, ScheduleAllow>,
+) {
   const file = fileOf(stateDir, project);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
@@ -215,7 +246,11 @@ export function writeAllow(
   return a;
 }
 
-export function removeAllow(stateDir: string, project: string, id: string): void {
+export function removeAllow(
+  stateDir: string,
+  project: string,
+  id: string,
+): void {
   const all = readAllows(stateDir, project);
   if (!(id in all)) return;
   delete all[id];

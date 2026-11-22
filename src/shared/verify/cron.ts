@@ -48,7 +48,9 @@ function field(text: string, [name, lo, hi]: [string, number, number]) {
 export function parseCron(text: string): Cron {
   const parts = String(text).trim().split(/\s+/);
   if (parts.length !== 5)
-    throw new Error(`cron: five fields (minute hour day month weekday), got "${text}"`);
+    throw new Error(
+      `cron: five fields (minute hour day month weekday), got "${text}"`,
+    );
   const f = parts.map((p, i) => field(p, FIELDS[i]));
   const dow = [...new Set(f[4].map((d) => d % 7))].sort((a, b) => a - b);
   const domAny = parts[2] === "*";
@@ -84,7 +86,13 @@ export function nextRun(cron: string | Cron, after: Date): Date | null {
     if (dayMatches(c, day)) {
       for (const h of c.hour)
         for (const m of c.minute) {
-          const t = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+          const t = new Date(
+            day.getFullYear(),
+            day.getMonth(),
+            day.getDate(),
+            h,
+            m,
+          );
           // A local time skipped by a clock change lands on another hour: skip it.
           if (t.getHours() !== h) continue;
           if (t >= start) return t;

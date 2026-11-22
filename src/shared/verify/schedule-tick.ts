@@ -17,7 +17,12 @@ import {
   type ScheduleSettings,
 } from "./schedules.js";
 
-export type SkipReason = "needs-allow" | "plan-changed" | "expired" | "window" | "busy";
+export type SkipReason =
+  | "needs-allow"
+  | "plan-changed"
+  | "expired"
+  | "window"
+  | "busy";
 
 export interface ScheduleRunState {
   /** The last due time Den handled (or first saw the schedule at). */
@@ -91,7 +96,8 @@ export function noteScheduleRun(
     ...(change.last ? { last: change.last } : {}),
     ...(change.warned ? { warned: change.warned } : {}),
   };
-  if (change.skip) next.skipped = [...(cur.skipped ?? []), change.skip].slice(-10);
+  if (change.skip)
+    next.skipped = [...(cur.skipped ?? []), change.skip].slice(-10);
   all[id] = next;
   const file = fileOf(stateDir, project);
   fs.mkdirSync(path.dirname(file), { recursive: true });

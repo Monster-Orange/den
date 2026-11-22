@@ -30,7 +30,9 @@ const obj = (v: unknown): Record<string, unknown> =>
 function pairs(v: unknown, env: string): MethodRules["writeAllow"] {
   if (v === undefined || v === null) return [];
   if (!Array.isArray(v))
-    throw new Error(`verify.environments.${env}.write_allow: a list like ["POST /login"]`);
+    throw new Error(
+      `verify.environments.${env}.write_allow: a list like ["POST /login"]`,
+    );
   return v.map((p) => {
     const m = /^\s*([A-Za-z]+)\s+(\/\S*)\s*$/.exec(String(p));
     const method = m?.[1].toUpperCase() ?? "";
@@ -50,7 +52,9 @@ export function methodRules(raw: unknown, env: string): MethodRules {
   if (Array.isArray(e.methods)) {
     const list = e.methods.map((m) => String(m).toUpperCase());
     if (!list.every((m) => METHOD_RE.test(m)))
-      throw new Error(`verify.environments.${env}.methods: HTTP methods, got ${JSON.stringify(e.methods)}`);
+      throw new Error(
+        `verify.environments.${env}.methods: HTTP methods, got ${JSON.stringify(e.methods)}`,
+      );
     methods = list;
   }
   return { methods, writeAllow: pairs(e.write_allow, env) };
@@ -64,7 +68,11 @@ function pathOf(url: string): string {
   }
 }
 
-export function allowedRequest(r: MethodRules, method: string, url: string): boolean {
+export function allowedRequest(
+  r: MethodRules,
+  method: string,
+  url: string,
+): boolean {
   const m = method.toUpperCase();
   if (r.methods === "all" || r.methods.includes(m)) return true;
   const p = pathOf(url);
@@ -74,7 +82,11 @@ export function allowedRequest(r: MethodRules, method: string, url: string): boo
 export type Probe = (url: string, method?: string) => Promise<number>;
 
 /** `probe`, under the rule: a blocked request throws and never reaches `probe`. */
-export function guardProbe(probe: Probe, r: MethodRules, log: RequestLog[]): Probe {
+export function guardProbe(
+  probe: Probe,
+  r: MethodRules,
+  log: RequestLog[],
+): Probe {
   return async (url, method = "GET") => {
     const m = method.toUpperCase();
     if (!allowedRequest(r, m, url)) {

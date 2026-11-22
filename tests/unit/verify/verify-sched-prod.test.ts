@@ -28,7 +28,11 @@ const shop = readVerifyModules(
       verify: {
         modules: {
           "web/smoke": { kind: "smoke", environments: ["production"] },
-          "web/checkout": { kind: "synthetic", cmd: "make uat", environments: ["production"] },
+          "web/checkout": {
+            kind: "synthetic",
+            cmd: "make uat",
+            environments: ["production"],
+          },
           "code/lint": { kind: "security", cmd: "make audit" },
         },
       },
@@ -62,7 +66,10 @@ describe("the plan", () => {
     const p = planOf("schedule");
     expect(p.readOnly).toBe(true);
     expect(p.trigger).toBe("schedule");
-    expect(p.modules.map((m) => m.name).sort()).toEqual(["code/lint", "web/smoke"]);
+    expect(p.modules.map((m) => m.name).sort()).toEqual([
+      "code/lint",
+      "web/smoke",
+    ]);
     expect(p.cantRun.map((m) => [m.name, m.reason])).toEqual([
       ["web/checkout", "production-declared"],
     ]);
@@ -112,7 +119,9 @@ describe("the run", () => {
     expect(sent).toEqual([]);
     const smoke = r.modules.find((m) => m.name === "web/smoke")!;
     expect(smoke.state).toBe("failed");
-    expect(smoke.message).toMatch(/blocked: POST is not allowed on a read-only run/);
+    expect(smoke.message).toMatch(
+      /blocked: POST is not allowed on a read-only run/,
+    );
     expect(smoke.requests).toEqual([
       { method: "POST", url: "https://shop.example/health", blocked: true },
     ]);

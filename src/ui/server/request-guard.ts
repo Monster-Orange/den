@@ -897,6 +897,9 @@ export const AGENT_READ_ONLY: readonly string[] = [
 export const AGENT_PERSON_WRITES: readonly string[] = [
   // Allow and Deny on a held write: never the asking agent's.
   "/api/approvals/:id/decide",
+  // Issue 214: a schedule's standing Allow, and running it now: a person's.
+  "/api/verify/schedules/allow",
+  "/api/verify/schedules/run",
   "/api/settings",
   "/api/scope",
   "/api/web-url",

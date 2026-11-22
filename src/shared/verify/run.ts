@@ -98,6 +98,8 @@ export interface RunDeps {
   now?: () => Date;
   /** Issue 209: who started the run and who allowed it, for its record. */
   by?: { startedBy?: RunActor; allowedBy?: RunActor };
+  /** Issue 214: the schedule this run is for. */
+  schedule?: string;
 }
 
 /** The verdict of a set of module states (VERIFY-SPEC section 5). */
@@ -175,6 +177,8 @@ export async function runPlan(
       endedAt: now().toISOString(),
       ...(d.by?.startedBy ? { startedBy: d.by.startedBy } : {}),
       ...(d.by?.allowedBy ? { allowedBy: d.by.allowedBy } : {}),
+      ...(plan.trigger ? { trigger: plan.trigger } : {}),
+      ...(d.schedule ? { schedule: d.schedule } : {}),
       ...(commit !== undefined ? { commit } : {}),
       modules: r.modules.map((m): ModuleRecord => {
         const tail = tails.get(m.id);
@@ -346,8 +350,8 @@ export function spawnCmd(
 }
 
 /** GET a health URL: its status (redirects are answers, not followed). */
-export async function httpProbe(url: string): Promise<number> {
-  const res = await fetch(url, { method: "GET", redirect: "manual" });
+export async function httpProbe(url: string, method = "GET"): Promise<number> {
+  const res = await fetch(url, { method, redirect: "manual" });
   await res.body?.cancel();
   return res.status;
 }

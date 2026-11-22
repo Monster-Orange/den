@@ -85,6 +85,7 @@ import { planSuites } from "../../pillars/suites/run.js";
 import {
   listReposWithManifests,
   listServicesWithManifests,
+  workspaceNames,
 } from "../../shared/manifest/workspace-manifests.js";
 import {
   awsProfileEnv,
@@ -1260,6 +1261,11 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import {
+  handleScheduleRoutes,
+  isSchedulePath,
+  type ScheduleServerDeps,
+} from "./verify-schedule-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -4334,6 +4340,17 @@ function verifyDeps(): VerifyServerDeps {
     verifyConfig: () => readDenConfig().verify,
   };
 }
+/** Issue 214: Verify's schedules, on top of the verify deps. */
+function scheduleDeps(): ScheduleServerDeps {
+  return {
+    ...verifyDeps(),
+    projects: () => workspaceNames(),
+    bell: (n) => {
+      notificationDeps().store.add(n);
+    },
+    log: (l) => serverLog(`  ${l}`, "warn"),
+  };
+}
 /** The agent ids with a held write waiting (their rows say "waiting"). */
 function waitingAgentIds(): Set<string> {
   // NT-3b: one "needs you" state: a held Allow, or the attention hooks.
@@ -4935,6 +4952,13 @@ async function handleRequest(
     guard.ok &&
     isApprovalPath(pathname) &&
     (await handleApprovalRoutes(req, res, pathname, guard, approvalDeps()))
+  )
+    return;
+  // Issue 214: Verify's schedules; allowing one or running it now is a person's.
+  if (
+    guard.ok &&
+    isSchedulePath(pathname) &&
+    (await handleScheduleRoutes(req, res, pathname, guard, scheduleDeps))
   )
     return;
   // 0.4.15: what lets another browser in needs the person, not just
@@ -9745,6 +9769,10 @@ void CRASH_GATE.then(() =>
     // Issue 714: an agent's gate slot held over MCP. Granted while it
     // waited: it is told (typed at its prompt) and claims it; passed on
     // unclaimed: told it is back in line; its lease lapsed: the bell.
+    // Issue 214: Verify's schedules run on their own, once a minute.
+    void import("./verify-schedule-routes.js").then((m) =>
+      m.startVerifySchedules(scheduleDeps()),
+    );
     void hubChecked
       .then(() => import("./gate-notices.js"))
       .then((m) =>

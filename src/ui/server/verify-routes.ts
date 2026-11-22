@@ -98,7 +98,7 @@ export interface VerifyRunArgs {
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-type Who = { agent?: string; project?: string };
+export type Who = { agent?: string; project?: string };
 type PlanOf =
   | { ok: true; plan: VerifyPlan; modules: VerifyModule[] }
   | { ok: false; error: string };
@@ -106,7 +106,11 @@ type PlanOf =
 type ProjectOf = { ok: true; project: string } | { ok: false; error: string };
 
 /** The project an ask is about: the agent's own, the one named, or the focused one. */
-function projectOf(d: VerifyServerDeps, raw: unknown, who: Who): ProjectOf {
+export function projectOf(
+  d: VerifyServerDeps,
+  raw: unknown,
+  who: Who,
+): ProjectOf {
   const no = (error: string): ProjectOf => ({ ok: false, error });
   if (raw !== undefined && typeof raw !== "string")
     return no("project must be text");
@@ -127,7 +131,7 @@ type ModulesOf =
   | { ok: false; error: string };
 
 /** Every module the project's repos declare, and their layers. */
-function modulesOf(d: VerifyServerDeps, project: string): ModulesOf {
+export function modulesOf(d: VerifyServerDeps, project: string): ModulesOf {
   const envs = d.environments?.();
   const modules: VerifyModule[] = [];
   const layers: Record<string, string[]> = {};
@@ -153,6 +157,8 @@ export function verifyPlanOf(
   d: VerifyServerDeps,
   raw: Record<string, unknown>,
   who: Who = {},
+  /** Issue 214: Den's own schedule loop; never from a request's body. */
+  opts: { trigger?: "schedule" } = {},
 ): PlanOf {
   const no = (error: string): PlanOf => ({ ok: false, error });
   const p = projectOf(d, raw.project, who);
@@ -203,6 +209,7 @@ export function verifyPlanOf(
       modules,
       layers,
       changes: moduleChanges(modules, latest, d.git ?? realGit),
+      ...(opts.trigger ? { trigger: opts.trigger } : {}),
     });
     return { ok: true, plan, modules };
   } catch (e) {
@@ -436,7 +443,7 @@ function handleVerifyReads(
   return true;
 }
 
-async function bodyOf(
+export async function bodyOf(
   req: http.IncomingMessage,
 ): Promise<Record<string, unknown> | null> {
   try {

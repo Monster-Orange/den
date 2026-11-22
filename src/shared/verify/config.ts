@@ -276,10 +276,7 @@ function scheduleErrors(
   }
   const envs = m.environments;
   if (s.env !== undefined && envs && !envs.includes(s.env))
-    at(
-      `${p}.env`,
-      `the module runs on ${envs.join(", ")}, not "${s.env}"`,
-    );
+    at(`${p}.env`, `the module runs on ${envs.join(", ")}, not "${s.env}"`);
   if (s.env === undefined && envs && envs.length > 1)
     at(
       `${p}.env`,

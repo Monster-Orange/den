@@ -226,12 +226,18 @@ describe("issue 214: schedule", () => {
       errors(withSchedule({ cron: "0 2 * * *", window: "01:00-05:00" })),
     ).toEqual([]);
     expect(errors(withSchedule({ cron: "0 2 * *" }))).toEqual([
-      expect.stringMatching(/^verify\.modules\.web\/speed\.schedule\.cron: cron: five fields/),
+      expect.stringMatching(
+        /^verify\.modules\.web\/speed\.schedule\.cron: cron: five fields/,
+      ),
     ]);
-    expect(errors(withSchedule({ cron: "0 2 * * *", window: "evening" }))).toEqual([
+    expect(
+      errors(withSchedule({ cron: "0 2 * * *", window: "evening" })),
+    ).toEqual([
       expect.stringMatching(/^verify\.modules\.web\/speed\.schedule\.window: /),
     ]);
-    expect(errors(withSchedule({ cron: "0 2 * * *", env: "production" }))).toEqual([
+    expect(
+      errors(withSchedule({ cron: "0 2 * * *", env: "production" })),
+    ).toEqual([
       'verify.modules.web/speed.schedule.env: the module runs on staging, not "production"',
     ]);
     expect(
@@ -257,7 +263,11 @@ describe("issue 214: schedule", () => {
               kind: "performance",
               cmd: "make speed",
               environments: ["staging"],
-              schedule: { cron: "0 2 * * *", window: "night", name: "Nightly speed" },
+              schedule: {
+                cron: "0 2 * * *",
+                window: "night",
+                name: "Nightly speed",
+              },
             },
             "code/deps": {
               kind: "security",
@@ -276,6 +286,9 @@ describe("issue 214: schedule", () => {
       env: "staging",
     });
     // A scan of the code runs on local: no Allow.
-    expect(by["code/deps"].schedule).toEqual({ cron: "0 3 * * 1", env: "local" });
+    expect(by["code/deps"].schedule).toEqual({
+      cron: "0 3 * * 1",
+      env: "local",
+    });
   });
 });

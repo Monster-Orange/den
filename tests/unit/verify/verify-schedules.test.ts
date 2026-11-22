@@ -45,13 +45,28 @@ function mod(name: string, over: Partial<VerifyModule> = {}): VerifyModule {
 }
 
 const speed = mod("web/speed", {
-  schedule: { cron: "0 2 * * *", window: "01:00-05:00", name: "Nightly speed", env: "staging" },
+  schedule: {
+    cron: "0 2 * * *",
+    window: "01:00-05:00",
+    name: "Nightly speed",
+    env: "staging",
+  },
 });
 const devices = mod("web/devices", {
-  schedule: { cron: "0 22 * * 2,5", window: "20:00-06:00", name: "Devices", env: "staging" },
+  schedule: {
+    cron: "0 22 * * 2,5",
+    window: "20:00-06:00",
+    name: "Devices",
+    env: "staging",
+  },
 });
 const checkout = mod("web/checkout", {
-  schedule: { cron: "0 22 * * 2,5", window: "20:00-06:00", name: "Devices", env: "staging" },
+  schedule: {
+    cron: "0 22 * * 2,5",
+    window: "20:00-06:00",
+    name: "Devices",
+    env: "staging",
+  },
 });
 const deps = mod("code/deps", {
   kind: "security",
@@ -64,8 +79,16 @@ const deps = mod("code/deps", {
 
 describe("listSchedules", () => {
   it("one schedule per environment, cron, window and name, with its modules", () => {
-    const s = listSchedules("shop", [speed, devices, checkout, deps, mod("web/smoke")]);
-    expect(s.map((x) => [x.name ?? null, x.env, x.modules.map((m) => m.name)])).toEqual([
+    const s = listSchedules("shop", [
+      speed,
+      devices,
+      checkout,
+      deps,
+      mod("web/smoke"),
+    ]);
+    expect(
+      s.map((x) => [x.name ?? null, x.env, x.modules.map((m) => m.name)]),
+    ).toEqual([
       [null, "local", ["code/deps"]],
       ["Devices", "staging", ["web/checkout", "web/devices"]],
       ["Nightly speed", "staging", ["web/speed"]],
@@ -90,31 +113,57 @@ describe("listSchedules", () => {
 describe("planHash", () => {
   it("changes with a module, its command, its writes or the window", () => {
     const base = listSchedules("shop", [devices])[0].hash;
-    expect(planHash({ env: "staging", cron: "0 22 * * 2,5", window: "20:00-06:00", modules: [devices] })).toBe(base);
+    expect(
+      planHash({
+        env: "staging",
+        cron: "0 22 * * 2,5",
+        window: "20:00-06:00",
+        modules: [devices],
+      }),
+    ).toBe(base);
     const changed = [
       [mod("web/devices", { ...devices, cmd: "make devices --all" })],
       [mod("web/devices", { ...devices, writes: true })],
       [devices, checkout],
     ];
     for (const modules of changed)
-      expect(planHash({ env: "staging", cron: "0 22 * * 2,5", window: "20:00-06:00", modules })).not.toBe(base);
-    expect(planHash({ env: "staging", cron: "0 22 * * 2,5", window: "21:00-06:00", modules: [devices] })).not.toBe(base);
+      expect(
+        planHash({
+          env: "staging",
+          cron: "0 22 * * 2,5",
+          window: "20:00-06:00",
+          modules,
+        }),
+      ).not.toBe(base);
+    expect(
+      planHash({
+        env: "staging",
+        cron: "0 22 * * 2,5",
+        window: "21:00-06:00",
+        modules: [devices],
+      }),
+    ).not.toBe(base);
   });
 });
 
 describe("settings", () => {
   it("30 and 3 days by default; days as a number or with d or h", () => {
     expect(readScheduleSettings(undefined)).toEqual(SCHEDULE_DEFAULTS);
-    expect(SCHEDULE_DEFAULTS).toEqual({ allowExpiryMs: 30 * DAY, expiryWarningMs: 3 * DAY });
+    expect(SCHEDULE_DEFAULTS).toEqual({
+      allowExpiryMs: 30 * DAY,
+      expiryWarningMs: 3 * DAY,
+    });
     expect(
-      readScheduleSettings({ schedule: { allow_expiry: 7, expiry_warning: "12h" } }),
+      readScheduleSettings({
+        schedule: { allow_expiry: 7, expiry_warning: "12h" },
+      }),
     ).toEqual({ allowExpiryMs: 7 * DAY, expiryWarningMs: 12 * 3_600_000 });
-    expect(() => readScheduleSettings({ schedule: { allow_expiry: "soon" } })).toThrow(
-      /verify\.schedule\.allow_expiry/,
-    );
-    expect(() => readScheduleSettings({ schedule: { allow_expiry: 0 } })).toThrow(
-      /verify\.schedule\.allow_expiry/,
-    );
+    expect(() =>
+      readScheduleSettings({ schedule: { allow_expiry: "soon" } }),
+    ).toThrow(/verify\.schedule\.allow_expiry/);
+    expect(() =>
+      readScheduleSettings({ schedule: { allow_expiry: 0 } }),
+    ).toThrow(/verify\.schedule\.allow_expiry/);
   });
 });
 
@@ -125,7 +174,14 @@ describe("the standing Allow (T18)", () => {
   it("is stored per project, survives a read, and can be removed", () => {
     const dir = tmp();
     const s = listSchedules("shop", [devices])[0];
-    const a = writeAllow(dir, "shop", s, { kind: "person", name: "ward" }, now, SCHEDULE_DEFAULTS);
+    const a = writeAllow(
+      dir,
+      "shop",
+      s,
+      { kind: "person", name: "ward" },
+      now,
+      SCHEDULE_DEFAULTS,
+    );
     expect(a).toMatchObject({
       schedule: s.id,
       hash: s.hash,
@@ -135,7 +191,10 @@ describe("the standing Allow (T18)", () => {
       modules: [{ id: "shop:web/devices", writes: false, cmd: "make speed" }],
     });
     expect(readAllows(dir, "shop")[s.id]).toEqual(a);
-    expect(fs.statSync(path.join(dir, "verify", "shop", "schedule-allows.json")).mode & 0o077).toBe(0);
+    expect(
+      fs.statSync(path.join(dir, "verify", "shop", "schedule-allows.json"))
+        .mode & 0o077,
+    ).toBe(0);
     removeAllow(dir, "shop", s.id);
     expect(readAllows(dir, "shop")[s.id]).toBeUndefined();
   });
@@ -143,10 +202,19 @@ describe("the standing Allow (T18)", () => {
   it("a shared schedule runs only with an Allow; a plan change lapses it; it expires", () => {
     const dir = tmp();
     const s = listSchedules("shop", [devices])[0];
-    expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe("needs-allow");
+    expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(
+      "needs-allow",
+    );
     expect(mayRun(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(false);
 
-    const a = writeAllow(dir, "shop", s, { kind: "person", name: "ward" }, now, SCHEDULE_DEFAULTS);
+    const a = writeAllow(
+      dir,
+      "shop",
+      s,
+      { kind: "person", name: "ward" },
+      now,
+      SCHEDULE_DEFAULTS,
+    );
     expect(scheduleState(s, a, now, SCHEDULE_DEFAULTS)).toBe("allowed");
     expect(mayRun(s, a, now, SCHEDULE_DEFAULTS)).toBe(true);
 
@@ -167,12 +235,17 @@ describe("the standing Allow (T18)", () => {
 
   it("a local or code-only schedule runs without one", () => {
     const local = listSchedules("shop", [
-      mod("web/speed", { environments: ["local"], schedule: { cron: "0 2 * * *", env: "local" } }),
+      mod("web/speed", {
+        environments: ["local"],
+        schedule: { cron: "0 2 * * *", env: "local" },
+      }),
     ])[0];
     const code = listSchedules("shop", [deps])[0];
     for (const s of [local, code]) {
       expect(s.needsAllow).toBe(false);
-      expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe("no-allow-needed");
+      expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(
+        "no-allow-needed",
+      );
       expect(mayRun(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(true);
     }
   });
@@ -180,7 +253,10 @@ describe("the standing Allow (T18)", () => {
   it("an unreadable file means no Allows, never a crash", () => {
     const dir = tmp();
     fs.mkdirSync(path.join(dir, "verify", "shop"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "verify", "shop", "schedule-allows.json"), "{not json");
+    fs.writeFileSync(
+      path.join(dir, "verify", "shop", "schedule-allows.json"),
+      "{not json",
+    );
     expect(readAllows(dir, "shop")).toEqual({});
   });
 });
