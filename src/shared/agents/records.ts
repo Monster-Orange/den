@@ -21,6 +21,10 @@ import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import type { SessionRef } from "../sessions/types.js";
 import type { RotationEntry } from "./rotation.js";
+import {
+  withConversations,
+  type ConversationEntry,
+} from "./conversation-history.js";
 import type { PermissionIntent } from "./permissions.js";
 
 export interface AgentRecord {
@@ -142,6 +146,12 @@ export interface AgentRecord {
    * rotation), oldest first.
    */
   rotations?: RotationEntry[];
+  /**
+   * Issue 52 (TUNE-1): every conversation it has had, oldest first,
+   * appended by writeRecord whenever resumeToken changes (see
+   * conversation-history.ts).
+   */
+  conversations?: ConversationEntry[];
   /**
    * The name a person gave it (AG-4b: double-click its tab), shown in the
    * Agents tab, its tabs, ⌘K and the agent lists; the id never changes.
@@ -313,9 +323,16 @@ function recordFile(stateDir: string, id: string): string {
 }
 
 export function writeRecord(stateDir: string, rec: AgentRecord): void {
+  let prev: AgentRecord | null = null;
+  try {
+    prev = readRecord(stateDir, rec.id);
+  } catch {
+    prev = null; // unreadable: the list starts again from this record
+  }
+  const kept = withConversations(prev, rec, new Date().toISOString());
   writePrivate(
     recordFile(stateDir, rec.id),
-    JSON.stringify(rec, null, 2) + "\n",
+    JSON.stringify(kept, null, 2) + "\n",
   );
 }
 
