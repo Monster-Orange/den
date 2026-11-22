@@ -164,7 +164,7 @@ describe("Connect your GitHub account, from another machine (D29)", () => {
     });
     await p.goto(`http://${EDGE}:${port}/settings`);
     await p.waitForSelector("#den-claim-title");
-    const buttons = await p.$$eval("#den-gh .acts .btn", (bs) =>
+    const buttons = await p.$$eval("#den-gh .acts .den-btn", (bs) =>
       bs.map((b) => ({
         id: b.id,
         text: (b.textContent ?? "").trim(),
