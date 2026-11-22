@@ -36,6 +36,7 @@ import {
   accountAreaHtml,
   accountAreaSections,
   accountSectionOf,
+  type AccountHow,
 } from "../../../packages/den-ui/src/account-area.js";
 
 type Table = Record<string, string>;
@@ -50,7 +51,7 @@ const FULL = {
     name: "Ada Example",
     login: "ada",
     role: "Owner",
-    how: "github",
+    how: "github" as const,
     since: "2026-11-18T09:00:00Z",
     editHref: "https://github.com/settings/profile",
     signOut: { url: "/auth/logout", csrf: "c5rf" },
@@ -234,7 +235,7 @@ describe("issue 310: Profile", () => {
     }
   });
   it("local and paired say so in the kit's words", () => {
-    const of = (how: string) =>
+    const of = (how: AccountHow) =>
       textOf(
         pane(
           accountAreaHtml({ ...FULL, profile: { ...FULL.profile, how } }),

@@ -19,7 +19,10 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import { denAccountData } from "../../../src/ui/server/public/account-den.js";
-import { accountAreaHtml } from "../../../packages/den-ui/src/account-area.js";
+import {
+  accountAreaHtml,
+  type AccountAreaData,
+} from "../../../packages/den-ui/src/account-area.js";
 import { DEN_SETTINGS as SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
 
 const SESSIONS = [
@@ -140,7 +143,7 @@ describe("issue 310: denAccountData", () => {
     });
     // No person: the kit's profile needs a login, so the heading is the
     // kit's how line alone (no @undefined).
-    const html = accountAreaHtml({ ...d, lang: "en" });
+    const html = accountAreaHtml({ ...d, lang: "en" } as AccountAreaData);
     expect(html).not.toContain("undefined");
   });
 
@@ -160,7 +163,7 @@ describe("issue 310: denAccountData", () => {
       sessions: SESSIONS,
       pairHosts: ["den.example.test"],
     });
-    const html = accountAreaHtml({ ...d, lang: "en" });
+    const html = accountAreaHtml({ ...d, lang: "en" } as AccountAreaData);
     expect(html).toContain('data-aa-act="sign-out"');
     expect(html).not.toContain("<form");
     expect(html).toContain("This device");
