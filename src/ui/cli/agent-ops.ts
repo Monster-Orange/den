@@ -3718,6 +3718,12 @@ export async function startAgent(
     (given ? await namedId(d, given, ws) : null) ??
     defaultId(d.stateDir(), persona.id, ws);
   checkId(where, id);
+  // Den's own agent's id is never a project's agent's: what trusts it
+  // (server_agent.self_update: auto) also checks the scope.
+  if (id === SERVER_AGENT_ID && !isServerScope(ws))
+    throw refused(
+      `${where}: "${SERVER_AGENT_ID}" is Den's own agent's id; give this one another --id`,
+    );
   // Review M1: the rest under this agent's lock (agent-lock.ts).
   return lockAgent(d, id, async () => {
     syncCatalog(d);

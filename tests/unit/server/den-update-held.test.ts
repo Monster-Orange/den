@@ -27,6 +27,7 @@ import {
   type Principal,
 } from "../../../src/ui/server/request-guard.js";
 import { selfUpdateAutoAllow } from "../../../src/ui/server/server-restart.js";
+import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-upd-held-"));
 const updates: unknown[] = [];
@@ -69,9 +70,9 @@ beforeAll(async () => {
       {
         queue,
         actions,
-        autoAllow: (action, agent) =>
+        autoAllow: (action, agent, workspace) =>
           // server_agent.self_update: auto, the loosest it gets.
-          selfUpdateAutoAllow(action, agent, () => true),
+          selfUpdateAutoAllow(action, agent, workspace, () => true),
         // The loosest policy there is: it must never reach a critical write.
         policy: () => ({ kind: "auto", from: "a policy that runs all" }),
       },
@@ -127,17 +128,25 @@ describe("den_update from a project's agent", () => {
   });
 
   it("self_update: auto runs Den's own agent's update only, never a project agent's", () => {
-    expect(selfUpdateAutoAllow("den_update", "server", () => true)).toBe(
-      "server_agent.self_update: auto",
-    );
-    expect(selfUpdateAutoAllow("den_restart", "server", () => true)).toBe(
-      "server_agent.self_update: auto",
-    );
-    expect(selfUpdateAutoAllow("den_update", "server", () => false)).toBe(null);
-    expect(selfUpdateAutoAllow("den_update", "planner", () => true)).toBe(null);
-    expect(selfUpdateAutoAllow("agent_create", "server", () => true)).toBe(
-      null,
-    );
+    const own = (action: string, auto = true) =>
+      selfUpdateAutoAllow(action, "server", SERVER_SCOPE, () => auto);
+    expect(own("den_update")).toBe("server_agent.self_update: auto");
+    expect(own("den_restart")).toBe("server_agent.self_update: auto");
+    expect(own("den_update", false)).toBe(null);
+    expect(own("agent_create")).toBe(null);
+    expect(
+      selfUpdateAutoAllow("den_update", "planner", SERVER_SCOPE, () => true),
+    ).toBe(null);
+  });
+
+  it('a project\'s agent whose id is "server" is still held: the scope decides, not the name', () => {
+    for (const ws of ["north", "", undefined])
+      expect(selfUpdateAutoAllow("den_update", "server", ws, () => true)).toBe(
+        null,
+      );
+    expect(
+      selfUpdateAutoAllow("den_restart", "server", "north", () => true),
+    ).toBe(null);
   });
 
   it("no agent can Allow it: not the one that asked, not another", async () => {

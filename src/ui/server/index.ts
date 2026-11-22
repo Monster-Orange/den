@@ -3600,7 +3600,11 @@ type ApprovalDeps = {
   queue: ApprovalQueue;
   actions: HeldActions;
   enabled: () => boolean;
-  autoAllow: (action: string, agent: string) => string | null;
+  autoAllow: (
+    action: string,
+    agent: string,
+    workspace: string | undefined,
+  ) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
@@ -4002,8 +4006,8 @@ function approvalDeps(): ApprovalDeps {
     enabled: () => readMcpConfig().approvals,
     // SRV-1a: the server agent's own restart, per server_agent.self_update.
     // A project's agent's den_update always waits for a person.
-    autoAllow: (action, agent) =>
-      selfUpdateAutoAllow(action, agent, selfUpdateAuto),
+    autoAllow: (action, agent, workspace) =>
+      selfUpdateAutoAllow(action, agent, workspace, selfUpdateAuto),
     // Issue 160: the approval policy, the person's (user.yml) and each
     // project's (workspaces.yml), read per ask. A bad value throws: held.
     // Issue 160: what the write is on, against what the person watches
