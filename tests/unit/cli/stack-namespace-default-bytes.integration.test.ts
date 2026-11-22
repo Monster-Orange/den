@@ -37,11 +37,15 @@ function write(file: string, content: string, mode?: number): void {
   fs.writeFileSync(file, content, mode ? { mode } : undefined);
 }
 
-/** `<TMP>` for the throwaway paths; no colour codes. */
+/**
+ * `<TMP>` for the throwaway paths, `<OWNER>` for D53's owner mark (a hash
+ * of the throwaway state folder among others); no colour codes.
+ */
 const norm = (s: string): string =>
   s
     .split(tmp)
     .join("<TMP>")
+    .replace(/("den\.stack\.owner\\?": \\?")[0-9a-f]{16}/g, "$1<OWNER>")
     // eslint-disable-next-line no-control-regex
     .replace(/\x1b\[[0-9;]*m/g, "");
 

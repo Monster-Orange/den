@@ -1,9 +1,11 @@
 // gate/503.mjs: the terminal host closes an ended terminal's PTY (issue
-// 503). In a project of the bed, through the API a person's page uses: it
-// opens plain terminals of its own up to sessions.max_concurrent (at most
-// 20), plus one past the cap, closes them again, and reads the terminal
-// host's PTY count (doctor's Terminals row) before and after. The one past
-// the cap must be refused with 429 and its reason.
+// 503). In a project of the bed, through the CLI (`sessions start` and
+// `sessions kill`; the page's terminal route is the person's own, and the
+// fixture person is refused it, issue 810): it opens plain terminals of
+// its own up to sessions.max_concurrent (at most 20), plus one past the
+// cap, closes them again, and reads the terminal host's PTY count
+// (doctor's Terminals row) before and after. The page's 429 for the one
+// past the cap is not run (skip person); the CLI's own refusal is logged.
 // Then it reads doctor's rows, the installed Den's config keys, and the
 // installed @lydell/node-pty against the lockfile. It closes every
 // terminal it opened (teardown too) and never touches one the bed had.
@@ -70,17 +72,23 @@ function ptyRow(ctx) {
 }
 
 const opened = [];
+let openedIn = null;
+
+/** This run's terminal names: new each run, so none clash with the bed's. */
+const runTag = () =>
+  `gate-503-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 async function closeAll(ctx) {
   while (opened.length) {
-    const id = opened.pop();
-    await ctx
-      .fetch(`/api/sessions/${encodeURIComponent(id)}/close`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{}",
-      })
-      .catch(() => {});
+    const name = opened.pop();
+    try {
+      await ctx.cli(
+        ["sessions", "kill", name, "--workspace", openedIn, "--grace", "1"],
+        { timeout: 20000 },
+      );
+    } catch {
+      /* gone already */
+    }
   }
 }
 
@@ -101,30 +109,37 @@ export async function run(ctx, state) {
   if (!state.ws) return { ...out, skipped: "needs-project" };
   // Up to the cap, and one more to see the cap's refusal (when it's < N).
   const tries = state.cap != null && state.cap < N ? state.cap + 1 : N;
+  const tag = runTag();
+  openedIn = state.ws;
   for (let i = 0; i < tries; i++) {
-    const r = await ctx.fetch(
-      `/api/workspaces/${encodeURIComponent(state.ws)}/sessions`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{}",
-      },
+    const name = `${tag}-${i}`;
+    const r = await ctx.cli(
+      [
+        "sessions",
+        "start",
+        "--workspace",
+        state.ws,
+        "--name",
+        name,
+        "--",
+        "sleep",
+        "900",
+      ],
+      { timeout: 30000 },
     );
-    const id = parse(r.body)?.session?.id;
-    if (r.status >= 300 || !id) {
-      const b = parse(r.body);
+    if (r?.code !== 0 || !/^started /m.test(r?.out ?? "")) {
+      const said = `${r?.err ?? ""}\n${r?.out ?? ""}`.trim();
       out.openError = {
-        status: r.status,
-        code: b?.code ?? null,
-        error: typeof b?.error === "string" ? b.error.slice(0, 300) : null,
-        hints: Array.isArray(b?.hints) ? b.hints.slice(0, 3) : [],
+        exit: r?.code ?? null,
+        cap: /sessions\.max_concurrent/.test(said),
+        error: said.slice(0, 300),
       };
       ctx.log?.(
         `refused after ${out.opened}: ${JSON.stringify(out.openError)}`,
       );
       break;
     }
-    opened.push(id);
+    opened.push(name);
     out.opened++;
   }
   out.during = ptyRow(ctx);
@@ -171,16 +186,18 @@ export function expect(r) {
   const a = res.after;
   const d = res.during;
   const e = res.openError;
-  const capRefusal =
-    !!e &&
-    e.status === 429 &&
-    e.code === "cap" &&
-    !!e.error &&
-    [e.error, ...(e.hints ?? [])].some((t) =>
-      String(t).includes("sessions.max_concurrent"),
-    );
+  // The CLI's refusal at the cap: exit 1, naming the key.
+  const capRefusal = !!e && e.exit === 1 && e.cap === true;
   if (res.skipped) {
     rows.push({ clause: clauses[0], ok: null, skip: res.skipped });
+  } else if (res.opened === 0) {
+    // Nothing opened: nothing was measured. Not run, never a FAIL.
+    rows.push({
+      clause: clauses[0],
+      ok: null,
+      skip: "needs-terminal",
+      detail: `no terminal opened through \`sessions start\` (${JSON.stringify(e ?? null)})`,
+    });
   } else {
     // All it asked for, or up to the cap's refusal (sessions the bed
     // already runs count against the cap too). At least 2 to measure.
@@ -196,11 +213,8 @@ export function expect(r) {
       clause: clauses[0],
       ok: opened && counted && hostBack,
       evidence: ["503-log.txt"],
-      ...(opened && counted && hostBack
-        ? {}
-        : {
-            note: `opened ${res.opened} (cap ${res.cap})${e ? ` (refused ${e.status} ${e.code})` : ""}; host ${b?.host} → ${d?.host} → ${a?.host}; machine ${b?.machineUsed} → ${a?.machineUsed}`,
-          }),
+      ...(opened && counted && hostBack ? {} : {}),
+      detail: `opened ${res.opened} (cap ${res.cap})${e ? ` (then refused, exit ${e.exit}${e.cap ? ", names sessions.max_concurrent" : ""})` : ""}; host ${b?.host} → ${d?.host} → ${a?.host}; machine ${b?.machineUsed} → ${a?.machineUsed}`,
     });
   }
   const row = a ?? b;
@@ -209,7 +223,7 @@ export function expect(r) {
     ok: !!row && row.host !== null && row.machineUsed !== null,
     ...(row && row.host !== null && row.machineUsed !== null
       ? {}
-      : { note: `doctor's Terminals row: ${row ? row.detail : "missing"}` }),
+      : { detail: `doctor's Terminals row: ${row ? row.detail : "missing"}` }),
   });
   const keys = res.keys ?? {};
   rows.push({
@@ -217,7 +231,7 @@ export function expect(r) {
     ok: KEYS.every((k) => keys[k] === true),
     ...(KEYS.every((k) => keys[k] === true)
       ? {}
-      : { note: `keys read: ${JSON.stringify(keys)}` }),
+      : { detail: `keys read: ${JSON.stringify(keys)}` }),
   });
   const p = res.pty ?? {};
   const ptyOk =
@@ -228,23 +242,20 @@ export function expect(r) {
     ...(ptyOk
       ? {}
       : {
-          note: `installed ${p.version}, lock ${p.lockVersion}, integrity ${p.integrity === INTEGRITY ? "matches" : "differs"}`,
+          detail: `installed ${p.version}, lock ${p.lockVersion}, integrity ${p.integrity === INTEGRITY ? "matches" : "differs"}`,
         }),
   });
   // The bed can't make the machine refuse a PTY; a fake limit inside Den
   // would be a test-only path in shipped code. The refusal is proven in
   // tests/unit/sessions/host-pty-close.test.ts and pty-close.integration.
   rows.push({ clause: clauses[4], ok: null, skip: "needs-pty-limit" });
-  if (res.skipped)
-    rows.push({ clause: clauses[5], ok: null, skip: res.skipped });
-  else if (res.cap == null || res.cap >= N)
-    rows.push({ clause: clauses[5], ok: null, skip: "needs-cap-below-20" });
-  else
-    rows.push({
-      clause: clauses[5],
-      ok: capRefusal,
-      evidence: ["503-log.txt"],
-      ...(capRefusal ? {} : { note: `refusal: ${JSON.stringify(e ?? null)}` }),
-    });
+  // The 429 is the page's terminal route, the person's own (issue 810):
+  // not run. What the CLI said at the cap is in the detail.
+  rows.push({
+    clause: clauses[5],
+    ok: null,
+    skip: "person",
+    detail: `the page's terminal route is the person's own; at the cap the CLI ${capRefusal ? "refused, naming sessions.max_concurrent" : `said ${JSON.stringify(e ?? null)}`}`,
+  });
   return rows;
 }

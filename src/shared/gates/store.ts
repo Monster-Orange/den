@@ -235,6 +235,30 @@ export type GateEvent =
   | "passed-unclaimed"
   | "yielded";
 
+/** Issue 963: one key's change: the value in effect before and after. */
+export interface GateSettingChange {
+  from: number | string | null;
+  to: number | string | null;
+}
+
+/** Issue 963: a settings change, in the slot log. */
+export interface GateSettingsRow {
+  at: string;
+  event: "settings";
+  /** Who changed it, named as an ask is (gate run's who). */
+  by: string;
+  changes: Record<string, GateSettingChange>;
+}
+
+/** A settings key's value in effect, as stored (true/false as 1/0). */
+function settingValue(s: GateSettings, key: string): number | string | null {
+  const camel = key.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+  const v = (s as unknown as Record<string, unknown>)[camel];
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (typeof v === "number" || typeof v === "string") return v;
+  return null;
+}
+
 export interface GateEventRow {
   at: string;
   event: GateEvent;
@@ -458,8 +482,41 @@ export class GateStore {
     }
   }
 
-  /** Writes the machine's settings; null clears a key (default again). */
-  writeSettings(patch: GateSettingsPatch): void {
+  /**
+   * Writes the machine's settings; null clears a key (default again).
+   * Issue 963: each change is in the slot log, with `by` (who changed it,
+   * named as an ask is), when, and each key's value before and after (the
+   * value in effect: a cleared key's is its default). No change, no row.
+   */
+  writeSettings(patch: GateSettingsPatch, by = "unknown"): void {
+    const before = this.settings();
+    this.writeSettingsFile(patch);
+    const after = this.settings();
+    const changes: Record<string, GateSettingChange> = {};
+    for (const k of Object.keys(patch)) {
+      const from = settingValue(before, k);
+      const to = settingValue(after, k);
+      if (from !== to) changes[k] = { from, to };
+    }
+    if (!Object.keys(changes).length) return;
+    fs.mkdirSync(this.dir, { recursive: true });
+    const row: GateSettingsRow = {
+      at: new Date(this.now()).toISOString(),
+      event: "settings",
+      by,
+      changes,
+    };
+    fs.appendFileSync(this.eventsFile, JSON.stringify(row) + "\n");
+  }
+
+  /** Issue 963: the slot log's settings changes, oldest first. */
+  settingsChanges(): GateSettingsRow[] {
+    return this.logRows().filter(
+      (r): r is GateSettingsRow => r.event === "settings",
+    );
+  }
+
+  private writeSettingsFile(patch: GateSettingsPatch): void {
     const file = path.join(this.dir, "settings.json");
     let cur: Record<string, unknown> = {};
     try {
@@ -503,13 +560,20 @@ export class GateStore {
     return at;
   }
 
+  /** The runs' rows (issue 963: never a settings change). */
   events(): GateEventRow[] {
+    return this.logRows().filter(
+      (r): r is GateEventRow => r.event !== "settings",
+    );
+  }
+
+  private logRows(): (GateEventRow | GateSettingsRow)[] {
     try {
       return fs
         .readFileSync(this.eventsFile, "utf-8")
         .split("\n")
         .filter(Boolean)
-        .map((l) => JSON.parse(l) as GateEventRow);
+        .map((l) => JSON.parse(l) as GateEventRow | GateSettingsRow);
     } catch {
       return [];
     }

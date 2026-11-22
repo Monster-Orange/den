@@ -126,7 +126,11 @@ Reads (they change nothing):
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
+- `page_view`: a one-time link to open this Den's own pages read-only, as
+  you, to look, take a screenshot or check a fix. It changes nothing, and
+  ends in a few minutes.
 - `notifications_list`: your person's bell.
+- `app_feed_read`: the events an app's feed sent you, when Den types you that some are unread (only your own project's feeds that name you).
 - `approval_check`: where one of your held asks stands.
 - `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
@@ -196,6 +200,10 @@ Held (each waits for the person's Allow):
 - `pr_close`: close a stale or superseded pull request after a Hub note,
   with a comment saying why. It runs at once unless the person watches or
   pinned the repo.
+- `report`: report an issue with Den, as the Report button does (with no
+  title it lists the destinations and who can see each). To a public
+  destination it waits for the person's Allow; to a private one the
+  approval policy decides. Never put a secret in a report.
 - `gate_runner_token_create`: a token a CI job in a runner VM uses to take
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as
