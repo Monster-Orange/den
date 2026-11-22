@@ -198,6 +198,52 @@ describe("issue 1131: two processes on the agent's connection", () => {
   });
 });
 
+describe("issue 1131: an agent root of init (1) places nothing", () => {
+  /** A server judging every caller against root `r`, with no descends fake. */
+  async function judgeRoot(
+    d: tb.BindingDeps,
+    r: number,
+  ): Promise<tb.TokenCaller> {
+    let done!: (v: tb.TokenCaller) => void;
+    const judged = new Promise<tb.TokenCaller>((x) => (done = x));
+    server = http.createServer((req, res) => {
+      void (async () => {
+        await tb.peerSettled(req, 1_000, d);
+        const from = tb.tokenCaller(req, r, d);
+        done(from);
+        res.end(from);
+      })();
+    });
+    server.on("connection", (s) => tb.watchPeer(s, d));
+    await new Promise<void>((x) => server!.listen(0, "127.0.0.1", x));
+    const c = agentCall((server.address() as AddressInfo).port);
+    const from = await judged;
+    c.destroy();
+    return from;
+  }
+
+  it("a single outside caller, with a recorded root of 1: unknown, not ok", async () => {
+    const d: tb.BindingDeps = {
+      peer: async () => 900,
+      descends: (pid, root) => root === 1 && pid > 1,
+    };
+    expect(await judgeRoot(d, 1)).toBe("unknown");
+  });
+
+  it("several outside processes, with a recorded root of 1: unknown, not ok", async () => {
+    const d: tb.BindingDeps = {
+      peer: async () => ({
+        miss: "several",
+        lines: [
+          [900, 1],
+          [901, 1],
+        ],
+      }),
+    };
+    expect(await judgeRoot(d, 1)).toBe("unknown");
+  });
+});
+
 describe("issue 1131: never wider than before", () => {
   it("a single caller outside the agent's processes is still refused", async () => {
     const a = answers(900);
