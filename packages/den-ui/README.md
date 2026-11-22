@@ -668,11 +668,14 @@ Three pieces, data in, the kit's words out (en, es, ja).
 
 - **The general button** (issue 556): `src/button.css` and `src/button.js`
   (exports `./button.css`, `./button`). `.den-btn` for any page, inside the
-  frame or not: secondary is the base, `.primary` the accent fill, `.sm`
-  the small size; a link drawn as a button is `a.den-btn`. A visible focus
-  ring, and a 44px tap on a touch screen (its box unchanged). These are
-  the values Den's frame drew; Den now links `button.css` and keeps no
-  copy.
+  frame or not: secondary is the base, `.primary` the accent fill,
+  `.danger` a step that takes something away (red words), `.sm` the small
+  size; a link drawn as a button is `a.den-btn`. Its words and an icon sit
+  in a row, 6px apart. A visible focus ring, and a 44px tap on a touch
+  screen (its box unchanged). These are the values Den's frame drew and
+  the second product's shipped button (issue 673). It is the one button:
+  the kit's dialogs draw `.den-btn` too (dialog.css imports button.css),
+  and `den-ui-parity` counts a product's own `.btn` as a copy.
 
       buttonHtml({ label, variant: "primary", size: "sm", href?, type?,
                    disabled?, id?, attrs: { "data-…": …, "aria-…": … } })

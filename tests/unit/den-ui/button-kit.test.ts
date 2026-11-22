@@ -40,6 +40,10 @@ describe("buttonHtml (button.js)", () => {
     ).toBe(
       '<button type="button" class="den-btn primary sm" id="go">Go</button>',
     );
+    // Issue 673: danger, a step that takes something away.
+    expect(buttonHtml({ label: "Remove", variant: "danger" })).toBe(
+      '<button type="button" class="den-btn danger">Remove</button>',
+    );
     // Any other variant or size is dropped, never passed through.
     expect(
       buttonHtml({
@@ -91,9 +95,17 @@ describe("button.css", () => {
       const body = c.slice(c.indexOf("{", from) + 1, c.indexOf("}", from));
       return body.trim();
     };
-    // Den's values, value for value (they were in Den's frame script).
+    // Den's values, value for value (they were in Den's frame script),
+    // and issue 673: the second product's shipped button lays its words
+    // and icon out in a row, 6px apart, as Den's error page did.
     expect(rule(".den-btn")).toBe(
-      "border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text);",
+      "border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;",
+    );
+    // A row of its own must not undo [hidden].
+    expect(rule(".den-btn[hidden]")).toBe("display: none;");
+    // Issue 673: danger, the second product's shipped values.
+    expect(rule(".den-btn.danger")).toBe(
+      "color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border));",
     );
     // Issue 699: a held button (aria-busy) has no hover change.
     expect(rule('.den-btn:not([aria-busy="true"]):hover')).toBe(
@@ -106,9 +118,8 @@ describe("button.css", () => {
     expect(rule('.den-btn:disabled, a.den-btn[aria-disabled="true"]')).toBe(
       "opacity: 0.6; cursor: default;",
     );
-    expect(rule("a.den-btn")).toBe(
-      "text-decoration: none; display: inline-flex; align-items: center; justify-content: center;",
-    );
+    // The link drawn as a button: the base already lays it out (673).
+    expect(rule("a.den-btn")).toBeNull();
     expect(rule(".den-btn:focus-visible")).toBe(
       "outline: 2px solid var(--accent); outline-offset: 2px;",
     );
@@ -147,6 +158,37 @@ describe("Den keeps no copy of the button", () => {
       )
       .filter(([, , l]) => /^\s*(a)?\.den-btn[.:[\s,{]/.test(l))
       .map(([f, n, l]) => `${f}:${n}: ${l.trim()}`);
+    expect(own).toEqual([]);
+  });
+
+  // Issue 673: Den's own .btn is gone; every button is the kit's.
+  it("no source of Den's draws or styles its own .btn", () => {
+    const SRC_DIR = path.join(process.cwd(), "src");
+    const files: string[] = [];
+    const walk = (d: string) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(m?[jt]s|html|css)$/.test(e.name)) files.push(p);
+      }
+    };
+    walk(SRC_DIR);
+    const draws =
+      /(class(Name)?\s*[=:]\s*\\?["'`]|classList\.add\(\s*["'])([^"'`]*\s)?btn(?![\w-])/;
+    const styles = /(^|[}\s,;>+~])([a-z]+)?\.btn(?![\w-])[^{}\n]*[,{]/;
+    const own = files.flatMap((f) =>
+      fs
+        .readFileSync(f, "utf-8")
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ""))
+        .split("\n")
+        .flatMap((l, i) =>
+          draws.test(l) || styles.test(l)
+            ? [
+                `${path.relative(SRC_DIR, f)}:${i + 1}: ${l.trim().slice(0, 80)}`,
+              ]
+            : [],
+        ),
+    );
     expect(own).toEqual([]);
   });
 

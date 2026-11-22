@@ -3,6 +3,9 @@
    product's Yes/No questions and large dialogs. Tokens only (UK-1): the
    theme's radius, backdrop and font, no number of its own for them.
    Linked, never injected: clean under style-src 'self'. */
+/* Issue 673: the actions are the kit's one button; its look comes with
+   the dialog's, so a page that links only dialog.css still has it. */
+@import url("button.css");
 /* Issue 793: its own font, so it never takes the page's (or the
    browser's serif); the kit's stack when a theme has no --sans. */
 .dk-dlg {
@@ -167,32 +170,15 @@
 .dk-ft > :first-child:not(.dk-btn) {
   margin-right: auto;
 }
+/* Issue 673: each action is the kit's one button (.den-btn, button.css,
+   imported above); the footer sets only its size here. A dialog's
+   danger is filled: the one step it asks about takes something away. */
 .dk-btn {
   font-size: var(--fs-s);
   min-height: var(--tap-min);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-button);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
 }
-.dk-btn[hidden] {
-  display: none;
-}
-.dk-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.dk-btn.dk-primary {
-  background: var(--accent-fill);
-  border-color: var(--accent-fill);
-  color: var(--on-accent);
-}
-.dk-btn.dk-danger {
+.den-btn.dk-danger {
   background: var(--bad);
   border-color: var(--bad);
   color: var(--on-accent);
