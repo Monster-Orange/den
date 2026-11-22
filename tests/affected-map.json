@@ -2118,6 +2118,11 @@
       "why": "tests that run scripts/kit-version.mjs"
     },
     {
+      "when": ["scripts/no-close-keywords.mjs"],
+      "run": ["tests/unit/scripts/no-close-keywords.test.ts"],
+      "why": "tests that run scripts/no-close-keywords.mjs"
+    },
+    {
       "when": ["scripts/org-name-commits.mjs"],
       "run": ["tests/unit/scripts/org-name-commits.test.ts"],
       "why": "tests that run scripts/org-name-commits.mjs"

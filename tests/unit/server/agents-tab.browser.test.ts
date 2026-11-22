@@ -187,7 +187,7 @@ const openIds = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
 describe("the Agents tab", () => {
-  it("matches the prototype's layout at 1440x900: a 300px list, 14px gap, the row down to 14px above the runs dock", async () => {
+  it("matches the prototype's layout at 1440x900: a 380px list (issue 773, mock v3), 14px gap, the row down to 14px above the runs dock", async () => {
     if (skip()) return;
     const p = await page("/agents");
     const [agx, agl, agr, dock] = await Promise.all([
@@ -196,7 +196,7 @@ describe("the Agents tab", () => {
       box(p, "#agr"),
       box(p, "#den-dock"),
     ]);
-    expect(Math.abs(agl.width - 300)).toBeLessThanOrEqual(1);
+    expect(Math.abs(agl.width - 380)).toBeLessThanOrEqual(1);
     expect(Math.abs(agx.y + agx.height - (dock.y - 14))).toBeLessThanOrEqual(
       0.5,
     );

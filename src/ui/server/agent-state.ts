@@ -12,8 +12,9 @@
  * Terminals keep them. `attnSince`: since when it waits (needs), when it
  * finished (done), since when it works, or its last finish (idle).
  */
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import type * as http from "http";
-import type { SeenMarks } from "../../shared/seen-mark.js";
+import { agentSeenSubject, type SeenMarks } from "../../shared/seen-mark.js";
 import { principalOf } from "./request-guard.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import { osUser } from "../../shared/web-secret.js";
@@ -26,10 +27,12 @@ export interface AgentStateDeps {
   working: () => ReadonlyMap<string, number>;
   /** Since when `agent` waits (an ISO time), when known. */
   waitingSince?: (agent: string) => string | undefined;
+  /** What `agent` waits to do (a permission's tool, e.g. "Bash"), when known. */
+  waitingWhat?: (agent: string) => string | undefined;
 }
 
 /** The seen mark's subject for agent `id`. */
-export const agentSubject = (id: string): string => `agent:${id}`;
+export const agentSubject = agentSeenSubject;
 
 /**
  * Whose seen marks a request reads and writes: the person it proved
@@ -60,7 +63,7 @@ export function agentStateOf(
   row: RowLike,
   person: string,
   d: AgentStateDeps,
-): { attn: AgentAttn; attnSince?: string } | null {
+): { attn: AgentAttn; attnSince?: string; attnWhat?: string } | null {
   if (row.kind !== "agent" || !row.agent || row.state !== "running")
     return null;
   const id = row.agent;
@@ -86,7 +89,12 @@ export function agentStateOf(
         : attn === "working" && workingAt !== undefined
           ? new Date(workingAt).toISOString()
           : latest?.at;
-  return { attn, ...(since ? { attnSince: since } : {}) };
+  const what = attn === "needs" ? d.waitingWhat?.(id) : undefined;
+  return {
+    attn,
+    ...(since ? { attnSince: since } : {}),
+    ...(what ? { attnWhat: what } : {}),
+  };
 }
 
 /** The list's rows, each running agent with its state for `person`. */
@@ -94,7 +102,7 @@ export function withAgentStates<T extends RowLike>(
   rows: readonly T[],
   person: string,
   d: AgentStateDeps,
-): (T & { attn?: AgentAttn; attnSince?: string })[] {
+): (T & { attn?: AgentAttn; attnSince?: string; attnWhat?: string })[] {
   return rows.map((r) => {
     const s = agentStateOf(r, person, d);
     return s ? { ...r, ...s } : r;
@@ -105,9 +113,52 @@ export interface DoneAgent {
   agent: string;
   name: string;
   workspace: string;
+  /** Its project's name as the person sees it (Hub's, its own, the slug). */
+  project: string;
+  /** The server agent (its tag is "Server"). */
+  server?: true;
   /** When its turn ended (ISO). */
   at: string;
   link: string;
+}
+
+type AgentRecordLike = {
+  id: string;
+  workspace: string;
+  displayName?: string;
+  stoppedAt?: string;
+};
+
+/** Each agent's finished work and whether `person` has seen it. */
+function finished(
+  records: readonly AgentRecordLike[],
+  person: string,
+  d: AgentStateDeps,
+  busy: ReadonlySet<string>,
+  projectName: (ws: string) => string,
+): { row: DoneAgent; seen: boolean }[] {
+  const working = d.working();
+  const out: { row: DoneAgent; seen: boolean }[] = [];
+  for (const r of records) {
+    if (working.has(r.id) || busy.has(r.id)) continue;
+    const subject = agentSubject(r.id);
+    const latest = d.seen.latest(subject);
+    if (!latest) continue;
+    if (r.stoppedAt && r.stoppedAt >= latest.at) continue;
+    out.push({
+      seen: d.seen.isSeen({ subject, person }),
+      row: {
+        agent: r.id,
+        name: r.displayName || r.id,
+        workspace: r.workspace,
+        project: projectName(r.workspace),
+        ...(isServerScope(r.workspace) ? { server: true as const } : {}),
+        at: latest.at,
+        link: `/agents?project=${encodeURIComponent(r.workspace)}&agent=${encodeURIComponent(r.id)}`,
+      },
+    });
+  }
+  return out;
 }
 
 /**
@@ -117,33 +168,36 @@ export interface DoneAgent {
  * waiting again (Working, Needs you).
  */
 export function doneAgents(
-  records: readonly {
-    id: string;
-    workspace: string;
-    displayName?: string;
-    stoppedAt?: string;
-  }[],
+  records: readonly AgentRecordLike[],
   person: string,
   d: AgentStateDeps,
   busy: ReadonlySet<string> = new Set(),
+  projectName: (ws: string) => string = (ws) => ws,
 ): DoneAgent[] {
-  const working = d.working();
-  const out: DoneAgent[] = [];
-  for (const r of records) {
-    if (working.has(r.id) || busy.has(r.id)) continue;
-    const subject = agentSubject(r.id);
-    const latest = d.seen.latest(subject);
-    if (!latest || d.seen.isSeen({ subject, person })) continue;
-    if (r.stoppedAt && r.stoppedAt >= latest.at) continue;
-    out.push({
-      agent: r.id,
-      name: r.displayName || r.id,
-      workspace: r.workspace,
-      at: latest.at,
-      link: `/agents?project=${encodeURIComponent(r.workspace)}&agent=${encodeURIComponent(r.id)}`,
-    });
-  }
-  return out.sort(
-    (a, b) => a.at.localeCompare(b.at) || a.agent.localeCompare(b.agent),
-  );
+  return finished(records, person, d, busy, projectName)
+    .filter((f) => !f.seen)
+    .map((f) => f.row)
+    .sort((a, b) => a.at.localeCompare(b.at) || a.agent.localeCompare(b.agent));
+}
+
+/** How many seen Done rows the bell's Earlier shows. */
+export const SEEN_DONE_MAX = 5;
+
+/**
+ * Mock v3's Earlier: the agents whose last finished turn `person` has
+ * seen ("scribe finished · acme · seen · yesterday"), newest first, at
+ * most SEEN_DONE_MAX; the same ones left out as doneAgents.
+ */
+export function seenDoneAgents(
+  records: readonly AgentRecordLike[],
+  person: string,
+  d: AgentStateDeps,
+  busy: ReadonlySet<string> = new Set(),
+  projectName: (ws: string) => string = (ws) => ws,
+): DoneAgent[] {
+  return finished(records, person, d, busy, projectName)
+    .filter((f) => f.seen)
+    .map((f) => f.row)
+    .sort((a, b) => b.at.localeCompare(a.at) || a.agent.localeCompare(b.agent))
+    .slice(0, SEEN_DONE_MAX);
 }

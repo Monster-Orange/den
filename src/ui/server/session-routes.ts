@@ -123,11 +123,7 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
-import {
-  agentOrderOf,
-  inAgentOrder,
-  placeInOrder,
-} from "../../shared/agents/order.js";
+import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
@@ -359,11 +355,6 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
-  /**
-   * Issue 773 + issue 96: an agent's place (0 first) in its project's saved
-   * order, when the person set one; the page keeps it inside each band.
-   */
-  place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
   workspace: string;
@@ -492,6 +483,8 @@ export interface ListedSession {
    */
   attn?: "needs" | "done" | "working" | "idle";
   attnSince?: string;
+  /** Issue 773: what it waits to do (Needs you: a permission's tool). */
+  attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;
@@ -803,18 +796,6 @@ export function listedSessions(
     });
   }
   const order = [...active];
-  // Issue 773: each agent's place in its project's saved order (read once
-  // per project), for the page's bands.
-  const saved = new Map<string, readonly string[]>();
-  const orderOf = (ws: string) => {
-    if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
-    return saved.get(ws)!;
-  };
-  for (const r of out)
-    if (r.kind === "agent" && r.agent) {
-      const place = placeInOrder(orderOf, r.workspace, r.agent);
-      if (place !== undefined) r.place = place;
-    }
   // Issue 96: within a project, the person's order for its agents (one helper
   // for every list: the page, the rail, the flyout read this one).
   return inAgentOrder(
@@ -828,7 +809,7 @@ export function listedSessions(
       r.kind === "agent" && r.agent
         ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
         : null,
-    orderOf,
+    (ws) => agentOrderOf(ws),
   );
 }
 

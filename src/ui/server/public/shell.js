@@ -2862,6 +2862,9 @@
       'Add the repo at {path} to a new project "{workspace}"',
     "ap.do.service_try": "Start {service}",
     "ap.do.den_restart": "Restart Den ({reason})",
+    "ap.do.den_update": "Update Den to {version} ({reason})",
+    "ap.do.hub_connect": "Set Hub's address to {url}",
+    "ap.do.hub_connect.clear": "Clear Hub's address",
     "ap.do.persona_create": "Add the persona {name} ({id})",
     "ap.do.persona_update": "Change the persona {id}: {fields}",
     "ap.do.persona_create.project":
@@ -3428,13 +3431,15 @@
     "ag.sub.idle": "{n} idle",
     "ag.sub.idleOne": "{n} idle",
     "ag.meta.finished": "finished {ago}",
-    "ag.meta.working": "began {ago}",
+    "ag.whyLong.command": "asks to run a command",
+    "ag.whyLong.tool": "asks to use {tool}",
     "ag.meta.seen": "seen just now",
     "ag.list.failed": "The list could not load.",
     "ag.list.retry": "Retry",
     "ag.list.keepRunning": "Your agents keep running.",
     "ag.list.loading": "Loading the agents",
     "bell.doneRow": "{name} finished",
+    "bell.seenSub": "{where} · seen",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
@@ -3883,7 +3888,6 @@
     "ag.ord.upOne": "Move {id} up",
     "ag.ord.downOne": "Move {id} down",
     "ag.ord.reorder": "Reorder",
-    "ag.ord.reorderBand": "Reorder the {band} agents",
     "ag.ord.reorderStopped": "Reorder the stopped agents",
     "ag.ord.done": "Done",
     "ag.ord.grip": "Drag to move it in its project's order",
@@ -5759,7 +5763,9 @@
       // Issue 773: the agents that need you (not Done); else (D32) the
       // helpers the agents started that run now.
       badge: function (s) {
-        if (s.agentsNeedYou > 0) return { n: s.agentsNeedYou, what: "waiting" };
+        // Mock v3: an amber pill.
+        if (s.agentsNeedYou > 0)
+          return { n: s.agentsNeedYou, what: "waiting", warn: true };
         return s.helpersRunning > 0
           ? { n: s.helpersRunning, what: "running" }
           : null;
@@ -8729,12 +8735,17 @@
             ? ".project"
             : p.loosens
               ? ".loosens"
-              : "");
+              : p.clears
+                ? ".clear"
+                : "");
     var s = t(key, p);
     if (s !== key) return s;
-    s = String(a.summary || a.action);
+    s = String(a.summary || a.what || a.action);
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+  // Issue 746: the bell words a held write (its Allow row, a lapsed item)
+  // as this dialog does, in the page's language.
+  window.denApWhat = apWhat;
   // Issue 199: Done, and for a project's mode, which agents follow it now
   // and which keep their own mode.
   function apDoneWords(a, res) {

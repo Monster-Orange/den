@@ -126,6 +126,28 @@ describe("issue 101: Needs you first, then Earlier", () => {
     );
     expect(p.sections.done).toContain('data-agent="builder"');
     expect(p.sections.done).toContain(">acme<");
+    // Mock v3: the project's display name, and "Server" for the server
+    // agent (as everywhere else).
+    const named = bellPanel({
+      groups: [],
+      unread: 0,
+      done: [
+        { ...b.done[0], project: "Acme Shop" },
+        {
+          agent: "helper",
+          name: "helper",
+          workspace: "den-server",
+          server: true,
+          project: "den-server",
+          at,
+          link: "/agents?agent=helper",
+        },
+      ],
+    });
+    if (!("sections" in named)) throw new Error("no sections");
+    expect(named.sections.done).toContain(">Acme Shop<");
+    expect(named.sections.done).toContain(">[ag.tag.server]<");
+    expect(named.sections.done).not.toContain("[bell.server]");
     // Counts: the bell shows Needs you plus Done, not seen.
     expect(bellCountOf(b)).toBe(2);
     // Nothing else: Done alone still shows (no empty state).
@@ -134,6 +156,32 @@ describe("issue 101: Needs you first, then Earlier", () => {
     expect(only.sections.done).toContain('data-kind="done"');
     expect(only.sections.needs).toBe("");
     expect(bellCountOf({ unread: 0, done: b.done })).toBe(1);
+  });
+
+  it("issue 773, mock v3: Earlier shows seen Done rows first: '<name> finished', '<project> · seen', when", async () => {
+    const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel({
+      groups: [],
+      unread: 0,
+      seenDone: [
+        {
+          agent: "scribe",
+          name: "scribe",
+          workspace: "acme",
+          project: "Acme Shop",
+          at,
+          link: "/agents?project=acme&agent=scribe",
+        },
+      ],
+    });
+    if (!("sections" in p)) throw new Error("no sections");
+    expect(p.sections.earlier).toContain('data-kind="seen-done"');
+    expect(p.sections.earlier).toContain("[bell.doneRow:scribe]");
+    expect(p.sections.earlier).toContain("[bell.seenSub:Acme Shop]");
+    expect(p.sections.earlier).toContain(
+      'href="/agents?project=acme&amp;agent=scribe"',
+    );
+    expect(p.sections.done ?? "").toBe("");
   });
 
   it("nothing at all: the empty state, no sections", async () => {

@@ -216,6 +216,29 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     const tag = (k: string) => row(k).locator('[data-ptag="project"]');
     expect(await tag("planner").textContent()).toBe("north");
     expect(await tag("reviewer").textContent()).toBe("south");
+    // Line 2 as mock v3 draws it: what a need asks, and Needs you's and
+    // Working's time with no "ago" ("3 min"; just now: "now").
+    const meta = async (k: string) =>
+      ((await row(k).locator(".meta").textContent()) ?? "").replace(
+        (await tag(k).textContent()) ?? "",
+        "",
+      );
+    expect(await meta("planner")).toMatch(
+      /^[Cc]laude · asks to run a command · (now|\d+ min)$/,
+    );
+    expect(await meta("reviewer")).toMatch(/^[Cc]laude · (now|\d+ min)$/);
+    expect(await meta("builder")).toMatch(/^[Cc]laude · finished /);
+    // Mock v3's rows and list: 9px 12px 9px 10px, gap 2px 10px, a
+    // hairline on top of every row; the list 380 px at 1280.
+    const css = await row("scribe").evaluate((el) => {
+      const c = getComputedStyle(el);
+      return [c.padding, c.rowGap, c.columnGap, c.borderTopWidth].join(" / ");
+    });
+    expect(css).toBe("9px 12px 9px 10px / 2px / 10px / 1px");
+    const w = await p
+      .locator("#agl")
+      .evaluate((el) => el.getBoundingClientRect().width);
+    expect(Math.abs(w - 380)).toBeLessThanOrEqual(1);
     // The sub-line: each state above zero.
     const sub = (await p.textContent("#ag-count")) ?? "";
     expect(sub).toMatch(/^\d+ agents · /);
@@ -223,6 +246,9 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     expect(sub).toMatch(/\b1 done\b/);
     expect(sub).toContain("1 working");
     expect(sub).toMatch(/\d+ idle/);
+    // The rail's Agents count: Needs you, an amber (warn) pill.
+    const pill = p.locator('.den-rail [data-nav="agents"] .den-bdg');
+    expect(await pill.getAttribute("class")).toBe("den-bdg warn");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
@@ -293,6 +319,20 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     );
     expect(heights.length).toBeGreaterThan(0);
     for (const h of heights) expect(h).toBeGreaterThanOrEqual(64);
+    // Mock v3's card: the chip says just "Needs you"; line 2 is the tag
+    // and the detail (no runtime, no time for Needs you); a › at the right.
+    const row = (k: string) => p.locator(`#agl button[data-id="${ag[k].sid}"]`);
+    const seen = (el: import("playwright").Locator) => el.innerText();
+    expect((await seen(row("planner").locator("[data-attn]"))).trim()).toBe(
+      "Needs you",
+    );
+    expect((await seen(row("planner").locator(".meta"))).trim()).toBe(
+      "northasks to run a command",
+    );
+    expect((await seen(row("reviewer").locator(".meta"))).trim()).toMatch(
+      /^south(now|\d+ min)$/,
+    );
+    expect(await row("planner").locator(".agchev").isVisible()).toBe(true);
     expect(
       await p.evaluate(
         () =>

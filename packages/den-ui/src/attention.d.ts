@@ -16,10 +16,6 @@ export interface AttentionItem {
   since?: string;
   name?: string;
   id?: string;
-  /** Issue 96: the person's own order: the group (project) it is ordered in. */
-  group?: string;
-  /** Issue 96: its place in that group's order (0 first), when the person set one. */
-  place?: number;
 }
 export interface AttentionCounts {
   needs: number;
@@ -47,9 +43,6 @@ export declare function compareAttention(
 export declare function sortByAttention<T extends AttentionItem>(
   items: readonly T[] | null | undefined,
   table?: AttentionTable,
-): T[];
-export declare function inPersonOrder<T extends AttentionItem>(
-  sorted: readonly T[],
 ): T[];
 export declare function attentionCounts(
   items: readonly AttentionItem[] | null | undefined,

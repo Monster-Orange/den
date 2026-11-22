@@ -8,16 +8,15 @@
  * in their own group, outside the bands.
  *
  *   rowState(r, seenNow?)    a row's state; Done opened just now is Idle
- *   bandsOf(rows, {seenNow}) [{ state, rows }], only the bands with rows;
- *                            inside a band the person's order holds (issue
- *                            96: each row's `place` in its project)
- *   bandGroup(rows, r, {seenNow})  the agent ids r moves among by drag or
- *                            Move up/down: its project's, in its band
+ *   bandsOf(rows, {seenNow}) [{ state, rows }], only the bands with rows
  *   markHtml(state)          the mark: !, a tick, a halo, a ring
  *   chipHtml(r, seenNow?)    the chip: "Needs you · permission", "Done", …
  *   tagHtml(r, {all, name})  the project tag (All projects), "Server"
  *   attnSub(rows, scope)     the sub-line: each state above zero
  *   railNeeds(rows)          the rail's count: Needs you only
+ *   sinceShort(iso, now?)    "3 min", "2 h": Needs you's and Working's time
+ *   needsWhy(r)              "asks to run a command", "asked you a question"
+ *   metaHtml({runtime, detail, time})  line 2, its parts marked for a phone
  */
 import {
   ATTENTION_STATES,
@@ -79,8 +78,6 @@ export function bandsOf(rows, { seenNow } = {}) {
     since: r.attnSince,
     name: sortName(r),
     id: r.id,
-    group: r.workspace,
-    ...(typeof r.place === "number" ? { place: r.place } : {}),
     r,
   }));
   const sorted = sortByAttention(items);
@@ -89,25 +86,6 @@ export function bandsOf(rows, { seenNow } = {}) {
     rows: sorted.filter((i) => i.state === state).map((i) => i.r),
   })).filter((b) => b.rows.length > 0);
 }
-
-/**
- * Issue 96: the agent ids a running row moves among: the agents of its
- * project in its band, as the band shows them. Issue 773: none in Needs
- * you and Done (the longest wait first there, always).
- */
-export function bandGroup(rows, r, { seenNow } = {}) {
-  if (!r || r.kind !== "agent" || !r.agent) return [];
-  const state = rowState(r, seenNow);
-  if (!personOrdered(state)) return [];
-  const band = bandsOf(rows, { seenNow }).find((b) => b.state === state);
-  return (band?.rows ?? [])
-    .filter((s) => s.kind === "agent" && s.agent && s.workspace === r.workspace)
-    .map((s) => s.agent);
-}
-
-/** Issue 773: a band the person orders (Working, Idle), by the table. */
-export const personOrdered = (state) =>
-  ATTENTION_TABLE[state]?.order === "name";
 
 const MARK = {
   needs: ["need", "!"],
@@ -131,8 +109,15 @@ export function chipHtml(r, seenNow) {
   if (s === "needs") {
     const k = r.waitingWhy ? `ag.why.${r.waitingWhy}` : "";
     const why = k ? t(k) : "";
-    word =
-      why && why !== k ? t("ag.chip.needsWhy", { why }) : t("ag.chip.needs");
+    // Mock v3: the reason on a wide screen; a phone's card says just
+    // "Needs you" (CSS shows one of the two).
+    if (why && why !== k)
+      return (
+        `<span class="cp ${cls}" data-attn="${s}">` +
+        `<span class="cpw">${esc(t("ag.chip.needsWhy", { why }))}</span>` +
+        `<span class="cpn">${esc(t("ag.chip.needs"))}</span></span>`
+      );
+    word = t("ag.chip.needs");
   } else word = t(`ag.chip.${s}`);
   return `<span class="cp ${cls}" data-attn="${s}">${esc(word)}</span>`;
 }
@@ -180,6 +165,53 @@ export function attnSub(rows, scope, seenNow) {
       );
   if (scope) parts.push(scope);
   return parts.join(" · ");
+}
+
+/**
+ * Mock v3: how long a row has been in Needs you or Working, without
+ * "ago" ("3 min", "2 h"); the bell's own words.
+ * @param {string | undefined} iso
+ * @param {number} [now]
+ */
+export function sinceShort(iso, now = Date.now()) {
+  const ms = now - Date.parse(String(iso ?? ""));
+  if (!Number.isFinite(ms)) return "";
+  const m = Math.round(ms / 60000);
+  if (m < 1) return t("bell.now");
+  if (m < 60) return t("bell.min", { n: m });
+  return t("bell.h", { n: Math.round(m / 60) });
+}
+
+/**
+ * Mock v3: what a Needs you row waits on, on its second line: a
+ * permission for Bash "asks to run a command", for another tool "asks to
+ * use <tool>"; else the wait's own words ("asked you a question").
+ * @param {BandRow} r
+ */
+export function needsWhy(r) {
+  const why = r?.waitingWhy;
+  if (!why) return "";
+  if (why === "permission" && r.attnWhat)
+    return r.attnWhat === "Bash"
+      ? t("ag.whyLong.command")
+      : t("ag.whyLong.tool", { tool: r.attnWhat });
+  return t(`ag.whyLong.${why}`);
+}
+
+/**
+ * A row's line 2 after its tag: the runtime, what its state is about and
+ * (Needs you) how long. Mock v3's phone card drops the runtime (.mrt) and
+ * Needs you's time (.mtm); a wide screen shows "Claude · asks to run a
+ * command · 3 min".
+ * @param {{ runtime?: string, detail?: string, time?: string }} p
+ */
+export function metaHtml({ runtime, detail, time } = {}) {
+  const body =
+    detail && time
+      ? `${esc(detail)}<span class="mtm"> · ${esc(time)}</span>`
+      : esc(detail || time || "");
+  if (!body) return runtime ? esc(runtime) : "";
+  return (runtime ? `<span class="mrt">${esc(runtime)} · </span>` : "") + body;
 }
 
 /** The rail's Agents count: the agents that need the person. */

@@ -128,8 +128,10 @@ describe("issue 773: marks and chips", () => {
 
   it("the chip says the state, and for Needs you which need", async () => {
     const { chipHtml } = await mod();
+    // Mock v3: the reason on a wide screen, just "Needs you" on a phone
+    // (CSS shows one of the two).
     expect(chipHtml(ag("p", "needs", { waitingWhy: "permission" }))).toBe(
-      '<span class="cp need" data-attn="needs">[ag.chip.needsWhy:[ag.why.permission]]</span>',
+      '<span class="cp need" data-attn="needs"><span class="cpw">[ag.chip.needsWhy:[ag.why.permission]]</span><span class="cpn">[ag.chip.needs]</span></span>',
     );
     expect(chipHtml(ag("q", "needs", { waitingWhy: "asked" }))).toContain(
       "[ag.why.asked]",
@@ -205,34 +207,79 @@ describe("issue 773 Counts: the sub-line and the rail", () => {
   });
 });
 
-describe("issue 773 + issue 96: the person's drag order inside a band", () => {
-  it("a project's dragged order holds inside each band; bands still come first", async () => {
+describe("issue 773 (mock v3 rules): A to Z inside Working and Idle", () => {
+  it("a saved drag order (place) does not move rows inside a band: same input, same order", async () => {
     const { bandsOf } = await mod();
-    const b = bandsOf([
+    const rows = [
       ag("alpha", "idle", { place: 2 }),
       ag("zeta", "idle", { place: 0 }),
       ag("planner", "needs", { attnSince: T(3), place: 3 }),
       ag("mid", "idle", { place: 1 }),
-    ]);
-    expect(b.map((x) => x.state)).toEqual(["needs", "idle"]);
-    expect(b[1].rows.map((r) => r.agent)).toEqual(["zeta", "mid", "alpha"]);
+      ag("worker", "working", { place: 0 }),
+      ag("beta", "working", { place: 1 }),
+    ];
+    const b = bandsOf(rows);
+    expect(b.map((x) => x.state)).toEqual(["needs", "working", "idle"]);
+    expect(b[1].rows.map((r) => r.agent)).toEqual(["beta", "worker"]);
+    expect(b[2].rows.map((r) => r.agent)).toEqual(["alpha", "mid", "zeta"]);
+    expect(bandsOf([...rows].reverse())).toEqual(b);
   });
 
-  it("bandGroup: the ids a running row moves among: its project, its band, as shown", async () => {
-    const { bandGroup } = await mod();
-    const rows = [
-      ag("alpha", "idle", { place: 1 }),
-      ag("zeta", "idle", { place: 0 }),
-      ag("other", "idle", { workspace: "south" }),
-      ag("planner", "needs", { attnSince: T(3) }),
-    ];
-    expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
-    // Needs you and Done keep the longest wait first: nothing moves there.
-    expect(bandGroup(rows, rows[3])).toEqual([]);
-    const done = [
-      ag("b1", "done", { attnSince: T(1) }),
-      ag("b2", "done", { attnSince: T(2) }),
-    ];
-    expect(bandGroup(done, done[0])).toEqual([]);
+  it("no in-band moves: the page has nothing to move a running row among", async () => {
+    const m = await mod();
+    expect("bandGroup" in m).toBe(false);
+    expect("personOrdered" in m).toBe(false);
+  });
+});
+
+describe("issue 773 (mock v3): a row's second line", () => {
+  const now = Date.UTC(2026, 10, 20, 10, 30);
+  it("Needs you and Working say how long, without 'ago': '3 min', '2 h'", async () => {
+    const { sinceShort } = await mod();
+    expect(sinceShort(new Date(now - 3 * 60_000).toISOString(), now)).toBe(
+      "[bell.min:3]",
+    );
+    expect(sinceShort(new Date(now - 2 * 3600_000).toISOString(), now)).toBe(
+      "[bell.h:2]",
+    );
+    expect(sinceShort(new Date(now - 10_000).toISOString(), now)).toBe(
+      "[bell.now]",
+    );
+    expect(sinceShort("not a time", now)).toBe("");
+  });
+
+  it("a permission says what it asks: a command for Bash, else the tool", async () => {
+    const { needsWhy } = await mod();
+    expect(needsWhy({ waitingWhy: "permission", attnWhat: "Bash" })).toBe(
+      "[ag.whyLong.command]",
+    );
+    expect(needsWhy({ waitingWhy: "permission", attnWhat: "Edit" })).toBe(
+      "[ag.whyLong.tool:Edit]",
+    );
+    expect(needsWhy({ waitingWhy: "permission" })).toBe(
+      "[ag.whyLong.permission]",
+    );
+    expect(needsWhy({ waitingWhy: "asked" })).toBe("[ag.whyLong.asked]");
+    expect(needsWhy({})).toBe("");
+  });
+});
+
+describe("issue 773 (mock v3): the phone card", () => {
+  it("line 2's parts are marked so a phone drops the runtime and Needs you's time", async () => {
+    const { metaHtml } = await mod();
+    expect(
+      metaHtml({
+        runtime: "Claude",
+        detail: "asks to run a command",
+        time: "3 min",
+      }),
+    ).toBe(
+      '<span class="mrt">Claude · </span>asks to run a command<span class="mtm"> · 3 min</span>',
+    );
+    expect(metaHtml({ runtime: "Codex", time: "1 min" })).toBe(
+      '<span class="mrt">Codex · </span>1 min',
+    );
+    expect(metaHtml({ detail: "a <b>", time: "" })).toBe("a &lt;b&gt;");
+    expect(metaHtml({})).toBe("");
   });
 });

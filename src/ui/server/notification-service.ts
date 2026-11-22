@@ -4,6 +4,8 @@
  * host (never starts one); a check every 2 s clears a waiting mark whose
  * agent's output moved.
  */
+import { projectDisplayName } from "../../shared/workspace-name.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import crypto from "node:crypto";
 import {
   listRecords,
@@ -33,6 +35,7 @@ import { seenMarks } from "../../shared/seen-mark.js";
 import {
   agentSubject,
   doneAgents,
+  seenDoneAgents,
   type AgentStateDeps,
   type DoneAgent,
 } from "./agent-state.js";
@@ -302,6 +305,7 @@ export function notificationDeps(): {
   prefs: () => BellPrefs;
   seen: ReturnType<typeof seenMarks>;
   doneAgents: (person: string) => DoneAgent[];
+  seenDone: (person: string) => DoneAgent[];
 } {
   store ??= new NotificationStore(getStateDir());
   attention ??= new Attention({
@@ -367,13 +371,35 @@ export function notificationDeps(): {
         listRecords(getStateDir()),
         person,
         agentStateDeps(),
-        new Set(
-          [...attention!.waitingNow()]
-            .filter(([, why]) => why !== "input")
-            .map(([agent]) => agent),
-        ),
+        busyNow(attention!),
+        // Mock v3: each Done row names its project as the person sees it.
+        doneProjectName(),
+      ),
+    // Mock v3's Earlier: the seen ones, newest first.
+    seenDone: (person) =>
+      seenDoneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        busyNow(attention!),
+        doneProjectName(),
       ),
   };
+}
+
+/** The agents waiting on their person now (not an idle notice). */
+function busyNow(a: Attention): Set<string> {
+  return new Set(
+    [...a.waitingNow()]
+      .filter(([, why]) => why !== "input")
+      .map(([agent]) => agent),
+  );
+}
+
+/** The project names a Done row shows (one read of workspaces.yml). */
+function doneProjectName(): (ws: string) => string {
+  const ws = readWorkspacesFile().workspaces ?? {};
+  return (slug) => projectDisplayName(slug, ws[slug]);
 }
 
 /**
@@ -386,6 +412,7 @@ export function agentStateDeps(): AgentStateDeps {
     seen: seenMarks(getStateDir()),
     working: () => a.workingNow(),
     waitingSince: (agent) => a.waitingDetail(agent)?.since,
+    waitingWhat: (agent) => a.waitingDetail(agent)?.what,
   };
 }
 

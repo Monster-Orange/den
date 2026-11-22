@@ -7,7 +7,6 @@ import {
   inAgentOrder,
   mergeAgentOrder,
   moveInOrder,
-  placeInOrder,
   parseAgentOrder,
   withAgentOrder,
 } from "../../../src/shared/agents/order.js";
@@ -151,16 +150,5 @@ describe("the store: per person, in their user config", () => {
     expect(
       agentOrderIn({ agents: { order: { north: [1, "a", "a"] } } }, "north"),
     ).toEqual(["a"]);
-  });
-});
-
-describe("issue 773 + issue 96: each agent's place, for the bands", () => {
-  it("its index in its project's saved order; none when the person set none or it isn't listed", () => {
-    const order: Record<string, string[]> = { north: ["zeta", "alpha"] };
-    const of = (ws: string) => order[ws] ?? [];
-    expect(placeInOrder(of, "north", "zeta")).toBe(0);
-    expect(placeInOrder(of, "north", "alpha")).toBe(1);
-    expect(placeInOrder(of, "north", "new")).toBeUndefined();
-    expect(placeInOrder(of, "south", "zeta")).toBeUndefined();
   });
 });

@@ -29,6 +29,7 @@ import {
   agentStateOf,
   agentSubject,
   doneAgents,
+  seenDoneAgents,
   personKey,
   withAgentStates,
   type AgentStateDeps,
@@ -69,6 +70,7 @@ function mk(seen = new SeenMarks(dir), hooked = true) {
     seen,
     working: () => a.workingNow(),
     waitingSince: (agent) => a.waitingDetail(agent)?.since,
+    waitingWhat: (agent) => a.waitingDetail(agent)?.what,
   };
   return { store, a, seen, deps };
 }
@@ -291,6 +293,8 @@ describe("issue 773: Needs you", () => {
     );
     expect(s?.attn).toBe("needs");
     expect(s?.attnSince).toBe(new Date(clock).toISOString());
+    // Mock v3: what it asks to do ("asks to run a command" for Bash).
+    expect(s?.attnWhat).toBe("Bash");
     for (const why of ["asked", "approval", "trust"])
       expect(
         agentStateOf(
@@ -372,12 +376,46 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
       workspace: "south",
       link: "/agents?project=south&agent=early",
     });
+    // Mock v3: each row names its project as the person sees it, and the
+    // server agent is "Server".
+    const named = doneAgents(recs, "person:a", d.deps, new Set(), (ws) =>
+      ws === "south" ? "South Shop" : ws,
+    );
+    expect(named[0].project).toBe("South Shop");
+    expect(named[0].server).toBeUndefined();
+    await d.a.event("helper", "den-server", { event: "finished" });
+    const srv = doneAgents(
+      [{ id: "helper", workspace: "den-server" }],
+      "person:a",
+      d.deps,
+    );
+    expect(srv[0]).toMatchObject({ server: true, project: "den-server" });
     // A second person has seen none of them.
     expect(doneAgents(recs, "person:b", d.deps).map((x) => x.agent)).toEqual([
       "early",
       "looked",
       "late",
     ]);
+  });
+
+  it("mock v3's Earlier: the agents whose finished work the person has seen, newest first, at most five", async () => {
+    const d = mk();
+    for (const id of ["a1", "a2", "a3", "a4", "a5", "a6", "fresh"]) {
+      await d.a.event(id, "north", { event: "finished" });
+      clock += 1000;
+    }
+    for (const id of ["a1", "a2", "a3", "a4", "a5", "a6"])
+      d.seen.markSeen({ subject: agentSubject(id), person: "person:a" });
+    const recs = ["a1", "a2", "a3", "a4", "a5", "a6", "fresh"].map((id) => ({
+      id,
+      workspace: "north",
+    }));
+    const seen = seenDoneAgents(recs, "person:a", d.deps, new Set(["a6"]));
+    // Newest first; a6 is busy (working or waiting again), fresh is unseen.
+    expect(seen.map((x) => x.agent)).toEqual(["a5", "a4", "a3", "a2", "a1"]);
+    expect(seen[0]).toMatchObject({ project: "north", workspace: "north" });
+    // Another person has seen none.
+    expect(seenDoneAgents(recs, "person:b", d.deps)).toEqual([]);
   });
 
   it("GET /api/notifications says the person's Done agents", async () => {
@@ -398,8 +436,13 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
           doneAgents([{ id: "builder", workspace: "north" }], person, d.deps),
       },
     );
-    const b = JSON.parse(out.body) as { done: { agent: string }[] };
+    const b = JSON.parse(out.body) as {
+      done: { agent: string }[];
+      seenDone: { agent: string }[];
+    };
     expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
+    // No seenDone list given: none.
+    expect(b.seenDone).toEqual([]);
   });
 
   async function bell(

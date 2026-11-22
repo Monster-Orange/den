@@ -564,6 +564,13 @@ body.den-has-shell > #den-content {
   background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--bad);
 }
+/* Issue 773: something needs the person (the rail's Agents count): the
+   amber pill. */
+.den-bdg.warn {
+  background: var(--warn);
+  color: var(--bg);
+  font-weight: 600;
+}
 /* Issue 307: a pin's or a cross-app link's kind (PROJECT, DEN, SERVICE,
    HUB, an artifact's word), at the row's end. Its look is the scope
    labels' (.den-k); this only places it. */
