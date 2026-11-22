@@ -7,6 +7,10 @@
 /** CSS with its comments taken out. */
 const bare = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, "");
 
+/** A selector or value as one line: prettier's wrapping taken out. */
+const norm = (s: string): string =>
+  s.replace(/\s+/g, " ").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")").trim();
+
 /** The custom properties a CSS block sets, by name (the first block that has it). */
 export function propsOf(css: string, selector: RegExp): Record<string, string> {
   const out: Record<string, string> = {};
@@ -35,10 +39,10 @@ export function resolve(value: string, vars: Record<string, string>): string {
 /** One declaration's value in a rule whose selector list names `sel`. */
 export function declOf(css: string, sel: string, prop: string): string | null {
   for (const m of bare(css).matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-    const sels = m[1].split(",").map((s) => s.trim());
+    const sels = m[1].split(",").map(norm);
     if (!sels.includes(sel)) continue;
     const d = new RegExp(`(?:^|;|\\s)${prop}\\s*:\\s*([^;]+);`).exec(m[2]);
-    if (d) return d[1].trim();
+    if (d) return norm(d[1]);
   }
   return null;
 }
@@ -51,12 +55,9 @@ export function rulesOf(
   for (const m of bare(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const decls: Record<string, string> = {};
     for (const d of m[2].matchAll(/([\w-]+)\s*:\s*([^;]+);/g))
-      decls[d[1]] = d[2].trim();
+      decls[d[1]] = norm(d[2]);
     out.push({
-      sels: m[1]
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      sels: m[1].split(",").map(norm).filter(Boolean),
       decls,
     });
   }

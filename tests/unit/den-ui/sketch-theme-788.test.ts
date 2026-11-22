@@ -105,10 +105,12 @@ describe("issue 788: themes without the new keys draw as before", () => {
   it("every kit border that was solid reads --edge-style, falling back to solid", () => {
     for (const f of fs.readdirSync(KIT).filter((f) => f.endsWith(".css"))) {
       const css = read(path.join(KIT, f));
-      expect({ f, left: css.match(/\bsolid var\(--border/g) ?? [] }).toEqual({
-        f,
-        left: [],
-      });
+      // Issue 1137: a row divider stays solid (marked so in the CSS).
+      const left = css
+        .split("\n")
+        .filter((l) => /\bsolid var\(--border/.test(l))
+        .filter((l) => !l.includes("issue 1137: a row divider stays solid"));
+      expect({ f, left }).toEqual({ f, left: [] });
       for (const m of css.matchAll(/var\(--edge-style([^)]*)\)/g))
         expect({ f, use: m[0] }).toEqual({
           f,
