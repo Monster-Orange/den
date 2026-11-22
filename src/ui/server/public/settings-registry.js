@@ -602,7 +602,8 @@ async function thisDeviceId() {
  */
 export function drawPushDevices(host, ctx) {
   let result = null; // the last test's answer, by device id
-  const busy = (name, path, body, button) => {
+  // The pressed button, named ({ button }), holds the kit's dots (issue 698).
+  const busy = (name, path, body, { button }) => {
     const run = (headers) => ctx.shell.api("POST", path, body, { headers });
     return ctx.shell.busyAction
       ? ctx.shell.busyAction(name, run, { button, toastFast: false })
@@ -666,7 +667,7 @@ export function drawPushDevices(host, ctx) {
     host.querySelector("#set-push-test")?.addEventListener("click", (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
-      void busy("push-test", "/api/alerts/test", {}, btn)
+      void busy("push-test", "/api/alerts/test", {}, { button: btn })
         .then((r) => {
           if (r && Array.isArray(r.devices))
             result = new Map(r.devices.map((d) => [d.id, d]));
@@ -681,7 +682,7 @@ export function drawPushDevices(host, ctx) {
           "push-forget",
           "/api/alerts/forget",
           { id: btn.dataset.forget },
-          btn,
+          { button: btn },
         ).finally(() => void load());
       }),
     );
