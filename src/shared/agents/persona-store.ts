@@ -23,6 +23,7 @@ import {
   type PermissionIntent,
 } from "./permissions.js";
 import type { RuntimeModel } from "./runtime.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** Where a person's own personas live. */
 export function localPersonasDir(stateDir: string): string {
@@ -289,9 +290,7 @@ export function writeProjectPersona(
 ): string {
   const file = projectPersonaFile(dir, id);
   fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, personaMarkdown(id, input), { mode: 0o644 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, personaMarkdown(id, input), { mode: 0o644 });
   return file;
 }
 

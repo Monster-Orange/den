@@ -22,6 +22,7 @@ import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import type { SessionRef } from "../sessions/types.js";
 import type { RotationEntry } from "./rotation.js";
 import type { PermissionIntent } from "./permissions.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export interface AgentRecord {
   id: string;
@@ -301,10 +302,7 @@ function ensureDir(dir: string): void {
 /** Write `content` to `file`, owner-only from the start, atomically. */
 export function writePrivate(file: string, content: string): void {
   ensureDir(path.dirname(file));
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, content, { mode: 0o600 });
 }
 
 function recordFile(stateDir: string, id: string): string {

@@ -117,6 +117,7 @@ import {
   type CheckDeps,
 } from "../../shared/edge/address-check.js";
 import { localDateTime } from "../../shared/local-time.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
   action: "up" | "down" | "restart" | "open";
@@ -721,9 +722,7 @@ function readWebServerState(): WebServerState | null {
 function writeWebServerState(state: WebServerState): void {
   const statePath = webServerStatePath();
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  const tmp = `${statePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
-  fs.renameSync(tmp, statePath);
+  writeFileAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function removeWebServerState(): void {

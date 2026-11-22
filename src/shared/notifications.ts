@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export type NotificationKind =
   | "waiting"
@@ -200,9 +201,7 @@ export class NotificationStore {
 
   private write(f: StoreFile): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(f)}\n`, { mode: 0o600 });
-    fs.renameSync(tmp, this.file);
+    writeFileAtomic(this.file, `${JSON.stringify(f)}\n`, { mode: 0o600 });
   }
 
   /** Newest first. */

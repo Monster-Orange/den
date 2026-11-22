@@ -30,6 +30,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { isServerScope } from "./agents/server-agent.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** The test operator's principal in the audit trail. */
 export const OPERATOR_PRINCIPAL = "test:operator";
@@ -89,8 +90,8 @@ export function claimAtBirth(o: {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") return false;
       if (!stateDirIsEmpty(o.stateDir)) return false;
     }
-    fs.writeFileSync(creationRecordPath(o.stateDir), `${CREATION_PENDING}\n`, {
-      flag: "wx",
+    writeFileAtomic(creationRecordPath(o.stateDir), `${CREATION_PENDING}\n`, {
+      exclusive: true,
       mode: 0o600,
     });
     return (
@@ -116,14 +117,11 @@ export function writeCreationRecord(
 ): void {
   const at = String(now);
   const f = creationRecordPath(stateDir);
-  const tmp = `${f}.${process.pid}.tmp`;
-  fs.writeFileSync(
-    tmp,
+  writeFileAtomic(
+    f,
     `v1.${at}.${sealOf(stateDir, at, secret).toString("base64url")}\n`,
     { mode: 0o600 },
   );
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, f);
 }
 
 /** Drop a pending record (the first start turned out not to be a test install). */
