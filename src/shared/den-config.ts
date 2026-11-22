@@ -2023,6 +2023,12 @@ export interface ResolvedAgentsConfig {
    */
   notReadFromOrg?: string[];
   /**
+   * Issue 1072: user.yml blocks under agents that look like an agent's
+   * (a grants- or sandbox-like key) but hold other keys, so they are
+   * skipped, sandbox setting and all: doctor names each with its keys.
+   */
+  notAgentBlocks?: { id: string; keys: string[] }[];
+  /**
    * Issue 242: agents.token_peer_wait_ms (default
    * TOKEN_PEER_WAIT_MS_DEFAULT): how long an agent's call waits for Den to
    * find the process that made it before refusing it as unknown.
@@ -2280,8 +2286,12 @@ export function applyUserSandbox(
     // An agent's block holds grants and sandbox only; other mappings here
     // (runtimes, layout, …) are settings, never an agent.
     const keys = Object.keys(block);
-    if (!keys.length || !keys.every((k) => k === "grants" || k === "sandbox"))
+    if (!keys.length || !keys.every((k) => k === "grants" || k === "sandbox")) {
+      // One that looks like an agent's (a misspelt or extra key) is named.
+      if (keys.some((k) => /^(grant|sandbox)/i.test(k)))
+        (out.notAgentBlocks ??= []).push({ id, keys });
       continue;
+    }
     const where = `agents.${id}`;
     // Issue 1072: its grants, from here only.
     if (block.grants !== undefined) {

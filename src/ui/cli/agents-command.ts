@@ -2444,8 +2444,9 @@ async function doctor(
   }
   // Issue 1072: widening keys in the distribution's config, not read.
   const notRead = notReadFromOrg(d);
-  if (notRead.length) {
-    for (const l of notReadLines(notRead)) d.out(l);
+  const skipped = notAgentBlocks(d);
+  if (notRead.length || skipped.length) {
+    for (const l of notReadLines(notRead, skipped)) d.out(l);
     d.out("");
   }
   d.out(
@@ -2506,14 +2507,32 @@ export function notReadFromOrg(d: AgentsResolved): string[] {
   return out;
 }
 
-export function notReadLines(keys: string[]): string[] {
+export function notReadLines(
+  keys: string[],
+  skipped: { id: string; keys: string[] }[] = [],
+): string[] {
   return [
     "Settings read from config/local only",
     ...keys.map(
       (k) =>
         `  ${k} is in the distribution's config, which Den no longer reads for it: move it to config/local/user.yml`,
     ),
+    ...skipped.map(
+      (b) =>
+        `  agents.${b.id} in config/local/user.yml is not an agent block (keys: ${b.keys.join(", ")}), so Den skips it: an agent's block takes grants and sandbox only`,
+    ),
   ];
+}
+
+/** Issue 1072: user.yml blocks that look like an agent's but aren't. */
+export function notAgentBlocks(
+  d: AgentsResolved,
+): { id: string; keys: string[] }[] {
+  try {
+    return d.agentsConfig().notAgentBlocks ?? [];
+  } catch {
+    return []; /* a bad config is its own row */
+  }
 }
 
 export function sandboxReport(d: AgentsResolved): SandboxReport {

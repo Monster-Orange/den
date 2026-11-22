@@ -137,6 +137,36 @@ describe("mcp.actions (issue 1072)", () => {
   });
 });
 
+describe("a user.yml block that looks like an agent's but isn't (issue 1072)", () => {
+  it("is not read, and is named for doctor with its keys", () => {
+    const c = readAgentsConfig(
+      org({}),
+      user({
+        agents: {
+          planner: { grant: ["south"], sandbox: "off" },
+          coder: { grants: ["south"], extra: 1 },
+          layout: { order: ["a"] },
+        },
+      }),
+    );
+    expect(c.agents.planner).toBeUndefined();
+    expect(c.agents.coder).toBeUndefined();
+    expect(c.notAgentBlocks).toEqual([
+      { id: "planner", keys: ["grant", "sandbox"] },
+      { id: "coder", keys: ["grants", "extra"] },
+    ]);
+  });
+
+  it("doctor says it: not an agent block, and its keys", async () => {
+    const r = await rig();
+    r.config.notAgentBlocks = [{ id: "planner", keys: ["grant"] }];
+    await cmdAgents(["doctor"], r.deps);
+    expect(r.out.join("\n")).toContain(
+      "  agents.planner in config/local/user.yml is not an agent block (keys: grant), so Den skips it: an agent's block takes grants and sandbox only",
+    );
+  });
+});
+
 describe("agents doctor names what it no longer reads (issue 1072)", () => {
   it("says each key and where to move it", async () => {
     const r = await rig();
