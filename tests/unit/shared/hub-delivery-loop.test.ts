@@ -723,4 +723,39 @@ describe("issue 664: held because the agent isn't at its prompt", () => {
     await loop.pump();
     expect(typed).toHaveLength(1);
   });
+
+  it("issue 962: a list on its screen (why: not_at_prompt) tags its card and the bell, though the turn check said only busy", async () => {
+    const notes: (string | number)[][] = [];
+    const states: Record<string, AgentState> = { "ag-1": "busy" };
+    let clock = 1_000_000;
+    const loop = new DeliveryLoop({
+      hub: {
+        stream: () => {
+          throw Object.assign(new Error("no stream"), { kind: "refused" });
+        },
+        list: async () => [],
+        ack: async () => undefined,
+      },
+      agents: {
+        state: async (a) => states[a] ?? "missing",
+        type: async () => true,
+        // The list reads as a dialog: inputState never marks it.
+        notAtPrompt: () => false,
+        why: async () => "not_at_prompt",
+      },
+      owner: () => ({ ownerId: "u_me", company: "Acme" }),
+      seen: new SeenDeliveries(path.join(dir, "seen.json")),
+      now: () => clock,
+      heldNote: (agent, n, waited, why) =>
+        notes.push([agent, n, waited, ...(why ? [why] : [])]),
+    });
+    await loop.take(dv("d1"));
+    expect(loop.work("ag-1")).toMatchObject({
+      queued: 1,
+      held: "not_at_prompt",
+    });
+    clock += 90_000;
+    await loop.pump();
+    expect(notes.at(-1)).toEqual(["ag-1", 1, 90_000, "not_at_prompt"]);
+  });
 });

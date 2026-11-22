@@ -11,6 +11,22 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  COACH_ROUTES,
+  handleCoachRoute,
+  type CoachRouteDeps,
+} from "./coach-routes.js";
+import { runCoach } from "../../shared/coach/run.js";
+import { readCoachReport } from "../../shared/coach/store.js";
+import {
+  dismissFinding,
+  openFindings,
+  readDismissals,
+} from "../../shared/coach/findings.js";
+import {
+  COACH_DEFAULTS,
+  type CoachSettings,
+} from "../../shared/coach/settings.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
@@ -95,6 +111,7 @@ import { planSuites } from "../../pillars/suites/run.js";
 import {
   listReposWithManifests,
   listServicesWithManifests,
+  workspaceNames,
 } from "../../shared/manifest/workspace-manifests.js";
 import {
   awsProfileEnv,
@@ -591,7 +608,7 @@ import { terminalLinkRedirect, terminalsPageHtml } from "./terminals-page.js";
 import {
   fixtureSave,
   mergeShellPrefs,
-  readFixturePins,
+  prunedFixturePins,
   writeFixturePins,
   pinnedItems,
   shellPrefs,
@@ -1281,6 +1298,11 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import {
+  handleScheduleRoutes,
+  isSchedulePath,
+  type ScheduleServerDeps,
+} from "./verify-schedule-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -3727,6 +3749,36 @@ function handleAgentViewAuth(
  * too), a claimed agent and the fixture person are refused. Setting it up
  * again replaces the key, which ends every older fixture session.
  */
+/** Issue 52: agents.coach now; its defaults (off) when the config can't be read. */
+function coachSettingsNow(): CoachSettings {
+  try {
+    return readAgentsConfig().coach ?? { ...COACH_DEFAULTS };
+  } catch {
+    return { ...COACH_DEFAULTS };
+  }
+}
+
+/** Issue 52: what the Coach's routes need from this server. */
+function coachRouteDeps(): CoachRouteDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    settings: coachSettingsNow,
+    latest: () => readCoachReport(getStateDir()),
+    run: () =>
+      runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    findings: (report) => ({
+      open: openFindings(getStateDir(), report?.findings ?? []),
+      dismissed: readDismissals(getStateDir()),
+    }),
+    dismiss: (id, reason) =>
+      dismissFinding(getStateDir(), id, reason, "person"),
+    readBody,
+  };
+}
+
 async function handleFixturePersonRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -4930,6 +4982,17 @@ function verifyDeps(): VerifyServerDeps {
     verifyConfig: () => readDenConfig().verify,
   };
 }
+/** Issue 214: Verify's schedules, on top of the verify deps. */
+function scheduleDeps(): ScheduleServerDeps {
+  return {
+    ...verifyDeps(),
+    projects: () => workspaceNames(),
+    bell: (n) => {
+      notificationDeps().store.add(n);
+    },
+    log: (l) => serverLog(`  ${l}`, "warn"),
+  };
+}
 /** The agent ids with a held write waiting (their rows say "waiting"). */
 function waitingAgentIds(): Set<string> {
   // NT-3b: one "needs you" state: a held Allow, or the attention hooks.
@@ -5201,6 +5264,21 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       const [first, retry] = lookupTimeouts({}, () => user);
       return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
     })(),
+    // Issue 532: the terminal limits in force (user.yml over den.yml).
+    sessions: (() => {
+      try {
+        const c = readSessionsConfig(undefined, user);
+        return {
+          max_concurrent: c.maxConcurrent,
+          close_grace_seconds: c.closeGraceSeconds,
+          pty_close_seconds: c.ptyCloseSeconds,
+          pty_warn_above: c.ptyWarnAbove,
+          pty_machine_warn_percent: c.ptyMachineWarnPercent,
+        };
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 742: how long a held write waits for the person's Allow.
     held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
     // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
@@ -5391,6 +5469,7 @@ async function handleRequest(
       method: req.method ?? "GET",
       pathname,
       forwarded: hasForwardingHeaders(req.headers),
+      edgeLocal: guard.edgeLocal,
     })
   ) {
     markOperatorAct(req, opAct);
@@ -5681,6 +5760,13 @@ async function handleRequest(
     guard.ok &&
     isApprovalPath(pathname) &&
     (await handleApprovalRoutes(req, res, pathname, guard, approvalDeps()))
+  )
+    return;
+  // Issue 214: Verify's schedules; allowing one or running it now is a person's.
+  if (
+    guard.ok &&
+    isSchedulePath(pathname) &&
+    (await handleScheduleRoutes(req, res, pathname, guard, scheduleDeps))
   )
     return;
   // 0.4.15: what lets another browser in needs the person, not just
@@ -6183,6 +6269,10 @@ async function handleRequest(
   // Imported by header.js (the workspace pill's picker models).
   if (pathname === "/workspace-picker.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
+  }
+  // Issue 168: the project colour picker the scope menu opens.
+  if (pathname === "/project-colour-picker.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "project-colour-picker.js"));
   }
 
   // Issue 644: the kit's site files at the root (/favicon.ico,
@@ -8768,6 +8858,14 @@ async function handleRequest(
 
   // ── API: changelog ────────────────────────────────────────────────────────
   // GET /api/changelog  — parses CHANGELOG.md and returns structured entries
+  // ── API: the Coach (issue 52) ─────────────────────────────────────────────
+  // GET /api/coach, POST /api/coach/run (Run now): coach-routes.ts.
+  if (
+    (COACH_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
+  )
+    return;
+
   if (pathname === "/api/changelog" && req.method === "GET") {
     const changelogPath = enginePath("CHANGELOG.md");
     try {
@@ -9019,6 +9117,11 @@ async function handleRequest(
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
+      // Issue 957: a pin dropped from user.yml leaves the fixture's record.
+      prunedFixturePins(
+        getStateDir(),
+        shellPrefs(user.shell, pinProjects()).pins,
+      );
       const editorList = editors.listEditors();
       const terminalList = editors.listTerminals();
       return sendJson(res, {
@@ -9156,6 +9259,7 @@ async function handleRequest(
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
+          sessions?: unknown;
           held_writes?: unknown;
           github?: unknown;
           embed?: unknown;
@@ -9220,6 +9324,7 @@ async function handleRequest(
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
+            sessions: body.sessions,
             held_writes: body.held_writes,
             github: body.github,
           });
@@ -9386,7 +9491,8 @@ async function handleRequest(
           if (!sh.ok) return send400(res, sh.error);
           // Issue 946: a pin makes a held write on it wait for an Allow, so
           // the fixture person adds pins and takes off only its own.
-          const added = readFixturePins(getStateDir());
+          // Issue 957: only the fixture's pins still stored before this save.
+          const added = prunedFixturePins(getStateDir(), before.pins);
           if (fixture) {
             const f = fixtureSave(before.pins, sh.value.pins, added);
             sh.value.pins = f.pins;
@@ -9987,6 +10093,7 @@ function handleUpgrade(
       method: "GET",
       pathname,
       forwarded: hasForwardingHeaders(req.headers),
+      edgeLocal: guard.edgeLocal,
     })
   ) {
     markOperatorAct(req, "terminal-attach");
@@ -10564,6 +10671,10 @@ void CRASH_GATE.then(() =>
     // Issue 714: an agent's gate slot held over MCP. Granted while it
     // waited: it is told (typed at its prompt) and claims it; passed on
     // unclaimed: told it is back in line; its lease lapsed: the bell.
+    // Issue 214: Verify's schedules run on their own, once a minute.
+    void import("./verify-schedule-routes.js").then((m) =>
+      m.startVerifySchedules(scheduleDeps()),
+    );
     void hubChecked
       .then(() => import("./gate-notices.js"))
       .then((m) =>

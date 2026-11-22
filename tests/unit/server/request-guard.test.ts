@@ -251,6 +251,7 @@ describe("CSRF and the bearer", () => {
       principal: { kind: "person-browser", session: "k".repeat(64) },
       via: "loopback",
       beyond: false,
+      edgeLocal: false,
       session: { key: "k".repeat(64), csrf: "the-csrf" },
     });
   });
@@ -265,6 +266,7 @@ describe("CSRF and the bearer", () => {
       principal: { kind: "person", actor: "person:someone" },
       via: "loopback",
       beyond: false,
+      edgeLocal: false,
       session: null,
     });
     expect(

@@ -100,6 +100,104 @@
     "v.old_link": "Abrir Pruebas",
     "v.err_load": "Verificación no pudo cargar los resultados.",
     "v.retry": "Intentar de nuevo",
+    "v.sch_link": "Programaciones",
+    "v.sch_t": "Programaciones",
+    "v.sch_s": "Pruebas que corren solas. Las pesadas corren en su ventana.",
+    "v.sch_tz":
+      "«Cuándo» y «Ventana» van en la zona horaria de este Den, {z}. Las pruebas pesadas corren de una en una.",
+    "v.sch_when": "Cuándo",
+    "v.sch_window_h": "Ventana",
+    "v.sch_next_h": "Próxima",
+    "v.sch_last_h": "Última corrida",
+    "v.sch_hourly": "Cada hora",
+    "v.sch_daily": "Cada día a las {t}",
+    "v.sch_weekly": "{d} a las {t}",
+    "v.sch_d0": "Los domingos",
+    "v.sch_d1": "Los lunes",
+    "v.sch_d2": "Los martes",
+    "v.sch_d3": "Los miércoles",
+    "v.sch_d4": "Los jueves",
+    "v.sch_d5": "Los viernes",
+    "v.sch_d6": "Los sábados",
+    "v.sch_any": "A cualquier hora",
+    "v.sch_night": "De noche (22:00 a 06:00)",
+    "v.sch_span": "De {a} a {b}",
+    "v.sch_st_allowed": "Permitida",
+    "v.sch_st_free": "Sin permiso necesario",
+    "v.sch_st_expiring": "Permiso por vencer",
+    "v.sch_st_paused": "En pausa",
+    "v.sch_free_code": "Solo lee el código, así que no necesita permiso.",
+    "v.sch_free_local": "Corre en local, así que no necesita permiso.",
+    "v.sch_needs": "Necesita un permiso antes de correr.",
+    "v.sch_needs_h": "Nada corre hasta que alguien permita esta programación.",
+    "v.sch_lapsed": "El permiso del {t} caducó cuando cambió el plan.",
+    "v.sch_expired": "El permiso venció el {t}.",
+    "v.sch_allow_until": "Permitida hasta el {t}.",
+    "v.sch_changed":
+      "El plan cambió, así que esta programación necesita un permiso nuevo.",
+    "v.sch_expiring":
+      "El permiso vence {t}. Cuando venza, esta programación se detiene hasta que alguien la permita de nuevo.",
+    "v.sch_code": "Código",
+    "v.sch_ro": "solo lectura",
+    "v.sch_ro_h":
+      "En producción es de solo lectura: solo GET, HEAD y OPTIONS, más las escrituras que el repositorio permite en write_allow.",
+    "v.sch_never": "Aún sin correr",
+    "v.sch_ask": "Permitir esta programación",
+    "v.sch_ask_t": "¿Permitir la programación «{s}» en {e}?",
+    "v.sch_ask_h":
+      "Un permiso cubre cada corrida de este plan hasta que cambie o venza el {t}.",
+    "v.sch_does": "Qué hace cada corrida",
+    "v.sch_mk_enforced": "lo garantiza Den",
+    "v.sch_mk_declared": "declarado de solo lectura",
+    "v.sch_mk_code": "solo lee el código",
+    "v.sch_touch_writes": "escribe",
+    "v.sch_touch_reads": "solo lee",
+    "v.sch_mk_service": "lo declara el servicio",
+    "v.sch_decline": "Rechazar",
+    "v.sch_decline_h":
+      "Rechazar deja la programación en pausa. Nada corre hasta que alguien la permita.",
+    "v.sch_revoke": "Retirar permiso",
+    "v.sch_revoked": "Permiso retirado. La programación espera uno nuevo.",
+    "v.sch_run": "Correr ahora",
+    "v.sch_runs": "Ver corridas",
+    "v.sch_ch_h": "Qué cambió",
+    "v.sch_ch_added": "{m} se sumó a la programación",
+    "v.sch_ch_removed": "{m} salió de la programación",
+    "v.sch_ch_cmd": "{m}: cambió su comando",
+    "v.sch_ch_writes": "{m} ahora escribe",
+    "v.sch_ch_window": "Cambió su ventana",
+    "v.sch_ch_cron": "Cambiaron sus horas",
+    "v.sch_missed_h": "Perdidas durante la pausa",
+    "v.sch_sk_allow": "necesita un permiso",
+    "v.sch_sk_changed": "necesita un permiso nuevo",
+    "v.sch_sk_expired": "su permiso venció",
+    "v.sch_sk_window": "su ventana cerró antes",
+    "v.sch_sk_busy": "había otra corrida en curso",
+    "v.sch_sk_cmdoff": "los comandos están apagados aquí",
+    "v.sch_sk_prodoff": "las programaciones en producción están apagadas aquí",
+    "v.sch_sk_often": "corre demasiado seguido para producción",
+    "v.sch_sk_host": "llega a un host que producción no permite",
+    "v.sch_lim_prod_off":
+      "Aquí las programaciones no corren en producción. Para activarlas, pon esto en el bloque verify: de Den:",
+    "v.sch_lim_often":
+      "Esto corre en producción más seguido de lo que Den permite. Córrelo menos seguido, o fija el intervalo mínimo en el bloque verify: de Den:",
+    "v.sch_lim_host":
+      "Una corrida en producción no puede llegar a estos hosts. Agrégalos a verify.schedule.production.hosts, o apunta la prueba a otro lugar:",
+    "v.sch_sk_unclear": "Den no pudo seguir su comando",
+    "v.sch_lim_off":
+      "Aquí los comandos no corren solos en un entorno compartido. Para activarlos, pon esto en el bloque verify: de Den:",
+    "v.sch_lim_unclear":
+      "Den no puede seguir este comando, así que no puede correr solo:",
+    "v.sch_empty":
+      "Aún no hay programaciones. Agrega {c} a un módulo para que corra solo.",
+    "v.sch_empty_h":
+      "Una programación en staging o producción pide un permiso una vez. Las de solo código y las locales corren sin él.",
+    "v.sch_how":
+      "Las programaciones vienen de {a} en el bloque {b} del repositorio. Para agregar, cambiar o quitar una, cambia el repositorio.",
+    "v.sch_started": "Empezó. Su resultado llega a la campana.",
+    "v.sch_allowed": "Permitida. Corre en su próxima hora.",
+    "v.sch_declined": "Rechazada. La programación sigue en pausa.",
+    "v.sch_err": "No funcionó: {e}",
     // Issue 441: an outside runner's gate results on Checks.
     "v.m_ran": "Se ejecutó de {a} a {b}.",
     "v.m_runner": "De un ejecutor externo.",
@@ -304,6 +402,26 @@
     "ws.pickTip":
       "Elegir un proyecto aquí también lo convierte en el predeterminado de la CLI, así que los comandos de __DEN_CLI__ se ejecutan allí.",
     "ws.none": "No hay proyectos activos",
+    "pc.title": "Color de {name}",
+    "pc.help":
+      "Se usa para sus agentes, pestañas y la línea «Para». Solo tuyo, nunca compartido. Automático elige uno por ti.",
+    "pc.auto": "Automático",
+    "pc.autoIs": "Automático ({colour})",
+    "pc.save": "Guardar",
+    "pc.change": "Cambiar color",
+    "pc.changeFor": "Cambiar el color de {name}",
+    "pc.failed": "No se guardó el color: {err}",
+    "pc.blue": "Azul",
+    "pc.teal": "Verde azulado",
+    "pc.green": "Verde",
+    "pc.purple": "Morado",
+    "pc.pink": "Rosa",
+    "pc.gold": "Dorado",
+    "pc.brown": "Marrón",
+    "pc.slate": "Pizarra",
+    "set.workspace.colour": "Color",
+    "set.workspace.colour.d":
+      "El color de los agentes, pestañas, línea «Para» y chip de la barra superior de este proyecto. Automático elige uno, siempre el mismo; solo tuyo, nunca compartido ni enviado a Hub.",
     "ws.manage": "Gestionar proyectos…",
     "ws.order.az": "Orden de la A a la Z",
     "ws.order.mine": "Tu orden",
@@ -619,6 +737,12 @@
     "busy.startF": "No se pudo iniciar {name}.",
     "busy.termW": "Abriendo una terminal…",
     "busy.termS": "Terminal abierta.",
+    "busy.schAllowW": "Permitiendo la programación…",
+    "busy.schAllowS": "Permitida. Corre en su próxima hora.",
+    "busy.schAllowF": "No se pudo permitir la programación.",
+    "busy.schRunW": "Iniciando las pruebas programadas…",
+    "busy.schRunS": "Empezó. Su resultado llega a la campana.",
+    "busy.schRunF": "No se pudieron iniciar las pruebas programadas.",
     "busy.termF": "No se pudo abrir una terminal.",
     "busy.sayW": "Enviando a {name}…",
     "busy.sayS": "Enviado a {name}.",
@@ -1209,6 +1333,22 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.server.sessions_max": "Terminales a la vez",
+    "set.server.sessions_max.d":
+      "Cuántas terminales simples pueden funcionar a la vez. Los agentes nunca cuentan. Una nueva por encima de esto se rechaza, y lo dice. __DEN_CLI__ config sessions.max_concurrent=8",
+    "set.server.sessions_close_grace": "Margen al cerrar una terminal",
+    "set.server.sessions_close_grace.d":
+      "Cuánto tiempo tiene una terminal para terminar después de que la cierras, antes de que se detenga a la fuerza. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_pty_close": "Cierre de terminal tras salir",
+    "set.server.sessions_pty_close.d":
+      "Cuánto tiempo después de que termina el programa de una terminal se cierra su terminal. 0 la cierra al instante. Su historial sigue legible en ambos casos. Se aplica la próxima vez que arranque el host de terminales. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    "set.server.sessions_pty_warn": "Aviso por número de terminales",
+    "set.server.sessions_pty_warn.d":
+      "Doctor falla cuando el host de terminales tiene más terminales que esto. __DEN_CLI__ config sessions.pty_warn_above=400",
+    "set.server.sessions_pty_machine":
+      "Aviso de terminales de la máquina, en porcentaje",
+    "set.server.sessions_pty_machine.d":
+      "Doctor falla cuando las terminales en uso en esta máquina llegan a esta parte de su límite. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
     "set.agents.hook_wait": "Espera de los hooks de agente",
     "set.agents.hook_wait.d":
       "Cuánto esperan los hooks de un agente a __DEN_TITLE__ en cada intento cuando le avisan de que el agente te necesita o revisan la bandeja de Hub. Una máquina ocupada puede tardar en responder. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
@@ -2059,6 +2199,8 @@
       "{module} no puede correr aquí: solo corre en {envs}.",
     "ap.vr.cant.production":
       "{module} aún no puede correr en producción: activarlo para producción llega en un Den posterior.",
+    "ap.vr.cant.production-declared":
+      "{module} queda fuera de una corrida programada en producción: Den no puede mantener un comando en solo lectura, así que allí solo corren las pruebas de humo y los análisis del código.",
     "ap.vr.cant.adapter-later":
       "{module} aún no puede correr: su adaptador ({adapter}) llega en un Den posterior.",
     "ap.vr.cant.no-health-url":
@@ -2445,6 +2587,16 @@
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
     "bell.m.gateLapsed":
       'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
+    "bell.m.vschedPass": "Corrida programada en {env}: pasaron {n} pruebas.",
+    "bell.m.vschedPass.one": "Corrida programada en {env}: pasó {n} prueba.",
+    "bell.m.vschedFail":
+      "Corrida programada en {env}: fallaron {n} de {total} pruebas.",
+    "bell.m.vschedFail.one":
+      "Corrida programada en {env}: falló {n} de {total} pruebas.",
+    "bell.m.vschedExpire":
+      'El permiso de la programación "{name}" vence en {n} días.',
+    "bell.m.vschedExpire.one":
+      'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
     "bell.m.heldLapsed":
       "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
@@ -2816,6 +2968,9 @@
     "busy.ordW": "Moviendo {id}…",
     "busy.ordS": "Hecho: {id} se movió.",
     "busy.ordF": "No se pudo mover {id}.",
+    "busy.pcW": "Guardando el color del proyecto…",
+    "busy.pcS": "Hecho: el color del proyecto está guardado.",
+    "busy.pcF": "No se pudo guardar el color del proyecto.",
     "busy.delProjW": "Eliminando {name}…",
     "busy.delProjS": "Se eliminó {name}.",
     "busy.delProjF": "No se pudo eliminar {name}.",

@@ -41,6 +41,8 @@ import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { dialogHtml, mountDialog } from "./dialog-den.js";
+import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
+import { projectColour, projectLabel } from "./workspace-picker.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -3504,6 +3506,79 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
   {
+    // Issue 532: the terminal limits (user.yml sessions.*, over den.yml).
+    id: "server.sessions_max",
+    category: "server",
+    label: "Terminals at once",
+    description:
+      "How many plain terminals may run at once. Agents never count. A new one past this is refused, and says so. __DEN_CLI__ config sessions.max_concurrent=8",
+    keywords: ["terminal", "sessions", "limit", "max_concurrent", "pty"],
+    scope: "user",
+    keys: ["sessions.max_concurrent"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.max_concurrent ?? 8,
+    write: (v, ctx) => ctx.post({ sessions: { max_concurrent: v } }),
+  },
+  {
+    id: "server.sessions_close_grace",
+    category: "server",
+    label: "Terminal close grace",
+    description:
+      "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    keywords: ["terminal", "close", "grace", "kill", "close_grace_seconds"],
+    scope: "user",
+    keys: ["sessions.close_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.close_grace_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_close",
+    category: "server",
+    label: "Terminal close after exit",
+    description:
+      "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    keywords: ["terminal", "pty", "exit", "close", "pty_close_seconds"],
+    scope: "user",
+    keys: ["sessions.pty_close_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.pty_close_seconds ?? 0,
+    write: (v, ctx) => ctx.post({ sessions: { pty_close_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_warn",
+    category: "server",
+    label: "Terminal count warning",
+    description:
+      "Doctor fails when the terminal host holds more terminals than this. __DEN_CLI__ config sessions.pty_warn_above=400",
+    keywords: ["terminal", "pty", "doctor", "warn", "pty_warn_above"],
+    scope: "user",
+    keys: ["sessions.pty_warn_above"],
+    control: { type: "number", min: 1, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.pty_warn_above ?? 400,
+    write: (v, ctx) => ctx.post({ sessions: { pty_warn_above: v } }),
+  },
+  {
+    id: "server.sessions_pty_machine",
+    category: "server",
+    label: "Machine terminal warning, in percent",
+    description:
+      "Doctor fails when the terminals in use on this machine reach this share of its limit. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
+    keywords: [
+      "terminal",
+      "pty",
+      "doctor",
+      "machine",
+      "percent",
+      "pty_machine_warn_percent",
+    ],
+    scope: "user",
+    keys: ["sessions.pty_machine_warn_percent"],
+    control: { type: "number", min: 1, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.sessions?.pty_machine_warn_percent ?? 90,
+    write: (v, ctx) => ctx.post({ sessions: { pty_machine_warn_percent: v } }),
+  },
+  {
     id: "server.restart",
     category: "server",
     label: "Restart Den",
@@ -3920,6 +3995,26 @@ export const DEN_SETTINGS = [
     scope: "workspace",
     control: { type: "custom", render: renderProjectName },
     read: () => null,
+  },
+  {
+    // Issue 168: the project's colour, the person's own (Manage projects
+    // has the same control on its dot).
+    id: "workspace.colour",
+    category: "workspace",
+    label: "Colour",
+    description:
+      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
+    keywords: ["colour", "color", "hue", "project"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectColour },
+    keys: ["shell.projectColours"],
+    read: () => null,
+    // The control saves through the choice (project-colour-picker.js);
+    // a write sets this project's colour, "" or null for Automatic.
+    write: (v, ctx) =>
+      ctx.post({
+        shell: { projectColours: { [ctx.workspace]: v || null } },
+      }),
   },
   {
     id: "workspace.editor",
@@ -6267,6 +6362,46 @@ function wireHubRename(host, ctx, ws, current, t) {
           if (r !== undefined) return renderProjectName(host, ctx);
         });
     });
+  });
+}
+
+/**
+ * Issue 168: Settings › Project setup › Colour: the project's dot and its
+ * colour's name (Automatic, or the one chosen), and Change colour, which
+ * opens the same choice as Manage projects.
+ */
+export function projectColourHtml(data, slug, t) {
+  const c = projectColour(data, slug);
+  if (!c) return "";
+  const said = chosenColour(data, slug)
+    ? t(`pc.${c}`)
+    : t("pc.autoIs", { colour: t(`pc.${c}`) });
+  return (
+    `<span class="pcp-now" data-pc-now data-pc="${escR(c)}"><span class="den-pc" aria-hidden="true"></span><span data-pc-said>${escR(said)}</span></span> ` +
+    `<button type="button" class="den-btn sm" data-pc-change>${escR(t("pc.change"))}</button>`
+  );
+}
+
+function renderProjectColour(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell.api("GET", "/api/workspaces").then((data) => {
+    host.innerHTML = projectColourHtml(data, ws, t);
+    const btn = host.querySelector("[data-pc-change]");
+    btn?.addEventListener("click", () =>
+      pickProjectColour({
+        slug: ws,
+        name: projectLabel(data, ws),
+        data,
+        opener: btn,
+      }).then((saved) => {
+        if (saved) return renderProjectColour(host, ctx);
+      }),
+    );
   });
 }
 
