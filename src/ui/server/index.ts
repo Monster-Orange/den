@@ -5692,6 +5692,10 @@ async function handleRequest(
       // Issue 403: a kept screenshot is the person's (proved, as approvals
       // ask) or this install's own agent's; never an anonymous request.
       shotReader: (r) => shotReaderOf(r, guard),
+      filedByFixture: () =>
+        guard.ok &&
+        guard.principal?.kind === "person-browser" &&
+        guard.principal.fixture === true,
       publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
       readBody,
       sendJson: (r, body, status) => sendJson(r, body, status),
