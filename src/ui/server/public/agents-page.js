@@ -2927,6 +2927,7 @@ function paneText(p, msg) {
     // sizes it.
     if (Number.isInteger(msg.n)) {
       p.viewers = msg.n;
+      if (p.el) p.el.dataset.viewers = String(msg.n);
       if (msg.n <= 1 && p.following) claimSize(p);
     }
   } else if (msg?.type === "exit") {
