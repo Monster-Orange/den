@@ -306,14 +306,38 @@ afterAll(async () => {
 
 describe("the mark counts only on a bound test install", () => {
   it("the bound install reads as a test install", async () => {
-    expect((await state(test)).testInstall).toBe(true);
+    const s = await state(test);
+    expect(s.testInstall).toBe(true);
+    expect(s.why).toBeUndefined();
+  });
+
+  // Issue 823: the read names the first condition missing, with this
+  // distribution's name for the launcher's flag and its config file.
+  it("names the launcher's flag and the config file for this distribution", async () => {
+    const s = await state(noflag);
+    expect(s.launchFlag).toBe("DEN_TEST_INSTALL");
+    expect(s.configFile).toBe("config/den.yml");
+  });
+
+  it("without the mark: why is no_mark", async () => {
+    const cfg = path.join(test.root, "config", "den.yml");
+    fs.writeFileSync(cfg, "environments: [local]\n");
+    try {
+      expect(await state(test)).toMatchObject({
+        testInstall: false,
+        why: "no_mark",
+      });
+    } finally {
+      fs.writeFileSync(cfg, MARKED.join("\n"));
+    }
   });
 
   it("ignored without the launcher's flag: Settings reads no, setup and sign-in refused", async () => {
-    expect(await state(noflag)).toEqual({
+    expect(await state(noflag)).toMatchObject({
       ok: true,
       testInstall: false,
       ready: false,
+      why: "no_launch_flag",
     });
     const p = await signedIn(noflag.stateDir, noflag.base);
     const r = await call(
@@ -344,13 +368,19 @@ describe("the mark counts only on a bound test install", () => {
   });
 
   it("ignored on the product's default state dir", async () => {
-    expect((await state(homedir)).testInstall).toBe(false);
+    expect(await state(homedir)).toMatchObject({
+      testInstall: false,
+      why: "default_state_dir",
+    });
   });
 
   it("ignored on an install with an owner", async () => {
     writeWebOwner({ id: 1, login: "someone" }, test.stateDir);
     try {
-      expect((await state(test)).testInstall).toBe(false);
+      expect(await state(test)).toMatchObject({
+        testInstall: false,
+        why: "owned",
+      });
     } finally {
       clearWebOwner(test.stateDir);
     }

@@ -3451,6 +3451,18 @@
     "set.ui.testPersonReady": "La persona de prueba está configurada.",
     "set.ui.testPersonMissing": "La persona de prueba aún no está configurada.",
     "set.ui.testPersonSetUp": "Configurar persona de prueba",
+    "set.ui.testInstallNoMark":
+      "No es una instalación de prueba: falta la marca de instalación de prueba. Una persona añade web.test_install: true a {config} a mano.",
+    "set.ui.testInstallNoFlag":
+      "No es una instalación de prueba: no la inició el lanzador de pruebas. Iníciala con {flag}=1 en su entorno de arranque.",
+    "set.ui.testInstallDefaultDir":
+      "No es una instalación de prueba: usa la carpeta de estado predeterminada. Iníciala con una carpeta de estado propia.",
+    "set.ui.testInstallOwned":
+      "No es una instalación de prueba: tiene propietario, u otra persona ha iniciado sesión. Una instalación de prueba no tiene ninguno de los dos.",
+    "set.ui.testPersonAgain": "Configurar de nuevo",
+    "set.ui.testPersonAgainTitle": "¿Configurar de nuevo la persona de prueba?",
+    "set.ui.testPersonAgainAsk":
+      "Esto crea una clave nueva para la persona de prueba. Cada acceso actual de la persona de prueba termina, y las comprobaciones en vivo vuelven a entrar con la clave nueva.",
     "set.ui.testInstallSignedIn":
       "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":

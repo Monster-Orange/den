@@ -3403,6 +3403,13 @@ function realOrResolved(p: string): string {
  * own, while it presses it). Checked at every fixture path and on every fixture request.
  */
 function testInstallNow(except?: string): boolean {
+  return testInstallState(except).ok;
+}
+
+/** Issue 823: testInstallNow, with the first condition missing. */
+function testInstallState(
+  except?: string,
+): ReturnType<typeof testInstallBinding> {
   let mark = false;
   try {
     mark = webAuthNow().testInstall;
@@ -3427,7 +3434,7 @@ function testInstallNow(except?: string): boolean {
             !s.testOperator &&
             s.key !== except),
       ),
-  }).ok;
+  });
 }
 
 /** Issue 810: the fixture key this server sealed, or null. */
@@ -3828,11 +3835,17 @@ async function handleFixturePersonRoute(
   if (method === "GET" || method === "HEAD") {
     // The person's own session doesn't count against the install for
     // them, as on the press: else signing in hides the button.
-    const testInstall = testInstallNow(browser ? session!.key : undefined);
+    const bound = testInstallState(browser ? session!.key : undefined);
+    const testInstall = bound.ok;
     return sendJson(res, {
       ok: true,
       testInstall,
       ready: testInstall && !!fixtureKeyNow(),
+      // Issue 823: the first condition missing, and this distribution's
+      // name for the launcher's flag, so the row says what to fix.
+      ...(bound.ok ? {} : { why: bound.why }),
+      launchFlag: envName(getProfile(), TEST_INSTALL_ENV_KEY),
+      configFile: product().configFile,
     });
   }
   if (g.ok && !g.principal)

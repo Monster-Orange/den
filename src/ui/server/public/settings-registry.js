@@ -2135,35 +2135,94 @@ const ACCESS_ROWS = [
   },
 ];
 
+/** Issue 823: what each missing condition says, and what to do. */
+const TEST_INSTALL_WHY = {
+  no_mark: [
+    "set.ui.testInstallNoMark",
+    "Not a test install: the test install mark is missing. A person adds web.test_install: true to {config} by hand.",
+  ],
+  no_launch_flag: [
+    "set.ui.testInstallNoFlag",
+    "Not a test install: it wasn't started by the test launcher. Start it with {flag}=1 in its start environment.",
+  ],
+  default_state_dir: [
+    "set.ui.testInstallDefaultDir",
+    "Not a test install: it runs on the default state folder. Start it on a state folder of its own.",
+  ],
+  owned: [
+    "set.ui.testInstallOwned",
+    "Not a test install: it has an owner, or another person is signed in. A test install has neither.",
+  ],
+};
+
 /**
- * Issue 810: Settings › Access › Test install. Read only: whether this is a
- * test install (set by hand in the distribution config) and whether its
- * test person is set up. Set up test person shows on a test install only.
+ * Issue 810, 823: the Test install row's HTML for the read `b` (GET
+ * /api/web/fixture-person). Not a test install: the first condition
+ * missing, in plain words. A test install, not set up: Set up test person.
+ * Set up: says so, with Set up again as a secondary button only.
  */
-function drawTestInstall(host, ctx) {
-  const draw = (b) => {
-    const lines = [
-      b.testInstall
-        ? L("set.ui.testInstallYes", "This is a test install.")
-        : L(
+export function testInstallHtml(b, l = L) {
+  const why = !b.testInstall && TEST_INSTALL_WHY[b.why];
+  const lines = [
+    b.testInstall
+      ? l("set.ui.testInstallYes", "This is a test install.")
+      : why
+        ? l(why[0], why[1], {
+            config: b.configFile || "config/den.yml",
+            flag: b.launchFlag || "DEN_TEST_INSTALL",
+          })
+        : l(
             "set.ui.testInstallNo",
             "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
           ),
-    ];
-    if (b.testInstall)
-      lines.push(
-        b.ready
-          ? L("set.ui.testPersonReady", "The test person is set up.")
-          : L("set.ui.testPersonMissing", "The test person isn't set up yet."),
-      );
-    host.innerHTML =
-      `<output class="set-ro" id="set-test-install" data-test-install="${b.testInstall ? "yes" : "no"}" data-ready="${b.ready ? "yes" : "no"}">${lines.map(escHtml).join(" ")}</output>` +
-      (b.testInstall
-        ? ` <button type="button" class="btn" id="set-test-person">${escHtml(L("set.ui.testPersonSetUp", "Set up test person"))}</button>`
-        : "");
+  ];
+  if (b.testInstall)
+    lines.push(
+      b.ready
+        ? l("set.ui.testPersonReady", "The test person is set up.")
+        : l("set.ui.testPersonMissing", "The test person isn't set up yet."),
+    );
+  const state = !b.testInstall ? "no" : b.ready ? "ready" : "missing";
+  const btn = !b.testInstall
+    ? ""
+    : b.ready
+      ? ` <button type="button" class="btn sm" id="set-test-person" data-test-person="again">${escHtml(l("set.ui.testPersonAgain", "Set up again"))}</button>`
+      : ` <button type="button" class="btn primary" id="set-test-person" data-test-person="setup">${escHtml(l("set.ui.testPersonSetUp", "Set up test person"))}</button>`;
+  return (
+    `<output class="set-ro" id="set-test-install" data-test-install="${b.testInstall ? "yes" : "no"}" data-ready="${b.ready ? "yes" : "no"}" data-test-state="${state}"${b.why ? ` data-why="${escHtml(b.why)}"` : ""}>${lines.map(escHtml).join(" ")}</output>` +
+    btn
+  );
+}
+
+/**
+ * Issue 810: Settings › Access › Test install. Read only: whether this is a
+ * test install (set by hand in the distribution config) and whether its
+ * test person is set up. Set up test person shows on a test install only;
+ * once set up, Set up again asks first (a new key ends every test-person
+ * sign-in), in the kit's dialog with Report (issue 823).
+ */
+function drawTestInstall(host, ctx) {
+  const draw = (b) => {
+    host.innerHTML = testInstallHtml(b);
     const btn = host.querySelector("#set-test-person");
     if (!btn) return;
     btn.addEventListener("click", async () => {
+      if (btn.dataset.testPerson === "again") {
+        const { askConfirm } = await import("/dialog-den.js");
+        const ok = await askConfirm({
+          title: L(
+            "set.ui.testPersonAgainTitle",
+            "Set up the test person again?",
+          ),
+          message: L(
+            "set.ui.testPersonAgainAsk",
+            "This makes a new key for the test person. Every current test-person sign-in ends, and live checks sign in again with the new key.",
+          ),
+          okLabel: L("set.ui.testPersonAgain", "Set up again"),
+          danger: true,
+        });
+        if (!ok) return;
+      }
       btn.disabled = true;
       try {
         const run = (headers) =>
