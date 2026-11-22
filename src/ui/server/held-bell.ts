@@ -104,6 +104,10 @@ export interface HeldWaiting {
   agent?: string;
   since: string;
   expiresAt: string;
+  /** Its Allow card's details lines, for the row's Review (as the dialog). */
+  details?: readonly string[];
+  /** One per details line: its message key and words (null: as is). */
+  detailKeys?: Approval["detailKeys"];
 }
 
 /**
@@ -122,6 +126,10 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       ...(a.agent ? { agent: a.agent } : {}),
       since: new Date(a.requestedAt).toISOString(),
       expiresAt: new Date(a.expiresAt).toISOString(),
+      ...(a.details?.length ? { details: a.details } : {}),
+      ...(a.details?.length && a.detailKeys?.length
+        ? { detailKeys: a.detailKeys }
+        : {}),
     }));
 }
 

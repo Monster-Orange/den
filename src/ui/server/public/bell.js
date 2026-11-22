@@ -192,8 +192,10 @@ export function allowsOf(b) {
 /**
  * Issue 746: one held write's row, first in Needs you: what it is, who
  * asked, how long it has waited and when it expires, and Allow and Deny.
+ * Review opens its details lines under it, the approval dialog's own
+ * (shell.js's denApDetailLines). `open`: Review is open.
  */
-function allowRowHtml(w) {
+function allowRowHtml(w, open) {
   const what = String(w.what ?? w.action ?? "");
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
@@ -205,10 +207,20 @@ function allowRowHtml(w) {
           time: formatTime(w.expiresAt),
         })
       : "";
+  const lines = window.denApDetailLines?.(w) ?? [];
+  const det = `den-bell-det-${w.id}`;
+  const review = lines.length
+    ? `<button type="button" class="den-bell-rv" data-bell="review" data-ap="${esc(w.id)}" aria-expanded="${open ? "true" : "false"}" aria-controls="${esc(det)}">${esc(tr(open ? "ap.hide" : "ap.review"))}</button>` +
+      `<div class="den-bell-det" data-ap-det id="${esc(det)}"${open ? "" : " hidden"}>` +
+      lines
+        .map((l) => `<div class="den-bell-detl" data-ap-line>${esc(l)}</div>`)
+        .join("") +
+      `</div>`
+    : "";
   return (
     `<div class="den-bell-row den-bell-allow" data-kind="allow" data-ap-row="${esc(w.id)}">` +
     `<span class="den-dot warn" aria-hidden="true"></span>` +
-    `<span class="den-bell-t">${esc(text)}${waits ? `<span class="den-bell-sub">${esc(waits)}</span>` : ""}</span>` +
+    `<span class="den-bell-t">${esc(text)}${waits ? `<span class="den-bell-sub">${esc(waits)}</span>` : ""}${review}</span>` +
     `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
     `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
     `</div>`
@@ -216,11 +228,11 @@ function allowRowHtml(w) {
 }
 
 /** Issue 746: the Allow rows' own group, heading Needs you. */
-function allowsHtml(allows) {
+function allowsHtml(allows, reviews = new Set()) {
   if (!allows.length) return "";
   return (
     `<section data-scope="allow"><div class="den-bell-sc"><span>${esc(tr("bell.ap.h"))}</span></div>` +
-    allows.map(allowRowHtml).join("") +
+    allows.map((w) => allowRowHtml(w, reviews.has(w.id))).join("") +
     `</section>`
   );
 }
@@ -274,6 +286,7 @@ function askHtml(sw) {
 export function bellPanel(b, ui = {}) {
   const u = {
     folds: ui.folds ?? new Set(),
+    reviews: ui.reviews ?? new Set(),
     older: !!ui.older,
     updates: !!ui.updates,
     ask: ui.ask,
@@ -322,7 +335,7 @@ export function bellPanel(b, ui = {}) {
   return {
     ...panel,
     sections: {
-      needs: allowsHtml(allows) + groupsHtml(groups, u, true),
+      needs: allowsHtml(allows, u.reviews) + groupsHtml(groups, u, true),
       earlier:
         updatesHtml +
         (older.count
@@ -420,7 +433,13 @@ export function initBell(doc = document) {
   }
   btn.dataset.wired = "1";
   // In memory only: a reload starts with every fold closed.
-  const ui = { folds: new Set(), older: false, updates: false, ask: null };
+  const ui = {
+    folds: new Set(),
+    reviews: new Set(),
+    older: false,
+    updates: false,
+    ask: null,
+  };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
   const bell = hydrateBell(btn, {
@@ -453,6 +472,7 @@ export function initBell(doc = document) {
         ? `[data-bell="${at.dataset.bell}"]` +
           (at.dataset.key ? `[data-key="${CSS.escape(at.dataset.key)}"]` : "") +
           (at.dataset.sw ? `[data-sw="${at.dataset.sw}"]` : "") +
+          (at.dataset.ap ? `[data-ap="${CSS.escape(at.dataset.ap)}"]` : "") +
           (at.dataset.scope
             ? `[data-scope="${CSS.escape(at.dataset.scope)}"]`
             : "")
@@ -493,6 +513,13 @@ export function initBell(doc = document) {
       return;
     }
     e.preventDefault();
+    if (what === "review") {
+      // Issue 746: a tap opens the held write's lines; another closes them.
+      const id = el.dataset.ap;
+      if (id && !ui.reviews.delete(id)) ui.reviews.add(id);
+      paint();
+      return;
+    }
     if (what === "allow" || what === "deny") {
       await decideHeld(el, what);
       await refresh();
