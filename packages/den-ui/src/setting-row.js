@@ -40,13 +40,11 @@
  */
 import { buttonHtml } from "./button.js";
 import { SAVING_AFTER_MS } from "./savestate.js";
-import { esc, kitT } from "./strings.js";
+import { esc, kitT, safeId } from "./strings.js";
 import { timeHtml, upgradeTimes } from "./time.js";
 
 const STATES = ["idle", "saving", "saved", "error"];
 
-/** An id made of safe characters: letters, digits, - and _. */
-const safeId = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "-");
 
 /** "Admins and Owners", in the row's language. */
 function joinWho(lang, who) {

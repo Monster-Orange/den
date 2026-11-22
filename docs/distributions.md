@@ -5024,7 +5024,8 @@ role: planner # a role (see Roles); a sentence here is the description
 category: engineering # see Categories; default: the role's
 description: Writes stories and their acceptance criteria. # one line
 model: some-model # optional; `inherit` means none
-version: latest # or a pinned version of the model
+model_version: latest # or a pinned version of the model (`version:` is still read; New persona and Edit write both, the same, for older Dens; doctor notes `version:` alone, or the two differing)
+persona_version: v3 # optional: a readable name for this version of the persona
 subagent_model: haiku # its subagents' model, over agents.subagents.model; `inherit`: the runtime decides
 allowed_commands: [npm test] # extra plain prefixes allowed without asking
 tools: Read, Grep # hints for the runtime; Den restricts nothing with them
@@ -5039,6 +5040,12 @@ argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
 
 You are the planner. …
 ```
+
+**A persona's version** (issue 137) is the sha256 of its file, so any edit
+makes a new one; `persona_version` gives it a readable name. An agent
+records the version it started with, and while its persona's file differs,
+the agent's row says so (`personaNewer` in `/api/agents`: the new version's
+name, else its hash's first 7 characters).
 
 Den ships a default pack: `planner` and `orchestrator` (standing), `fe-dev`,
 `be-dev` and `devops` (role `sde`), `reviewer`, `tester` and `ux-designer`

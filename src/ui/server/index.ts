@@ -11,6 +11,22 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  COACH_ROUTES,
+  handleCoachRoute,
+  type CoachRouteDeps,
+} from "./coach-routes.js";
+import { runCoach } from "../../shared/coach/run.js";
+import { readCoachReport } from "../../shared/coach/store.js";
+import {
+  dismissFinding,
+  openFindings,
+  readDismissals,
+} from "../../shared/coach/findings.js";
+import {
+  COACH_DEFAULTS,
+  type CoachSettings,
+} from "../../shared/coach/settings.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
@@ -3730,6 +3746,36 @@ function handleAgentViewAuth(
  * too), a claimed agent and the fixture person are refused. Setting it up
  * again replaces the key, which ends every older fixture session.
  */
+/** Issue 52: agents.coach now; its defaults (off) when the config can't be read. */
+function coachSettingsNow(): CoachSettings {
+  try {
+    return readAgentsConfig().coach ?? { ...COACH_DEFAULTS };
+  } catch {
+    return { ...COACH_DEFAULTS };
+  }
+}
+
+/** Issue 52: what the Coach's routes need from this server. */
+function coachRouteDeps(): CoachRouteDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    settings: coachSettingsNow,
+    latest: () => readCoachReport(getStateDir()),
+    run: () =>
+      runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    findings: (report) => ({
+      open: openFindings(getStateDir(), report?.findings ?? []),
+      dismissed: readDismissals(getStateDir()),
+    }),
+    dismiss: (id, reason) =>
+      dismissFinding(getStateDir(), id, reason, "person"),
+    readBody,
+  };
+}
+
 async function handleFixturePersonRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -6210,6 +6256,10 @@ async function handleRequest(
   // Imported by header.js (the workspace pill's picker models).
   if (pathname === "/workspace-picker.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
+  }
+  // Issue 168: the project colour picker the scope menu opens.
+  if (pathname === "/project-colour-picker.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "project-colour-picker.js"));
   }
 
   // Issue 644: the kit's site files at the root (/favicon.ico,
@@ -8795,6 +8845,14 @@ async function handleRequest(
 
   // ── API: changelog ────────────────────────────────────────────────────────
   // GET /api/changelog  — parses CHANGELOG.md and returns structured entries
+  // ── API: the Coach (issue 52) ─────────────────────────────────────────────
+  // GET /api/coach, POST /api/coach/run (Run now): coach-routes.ts.
+  if (
+    (COACH_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
+  )
+    return;
+
   if (pathname === "/api/changelog" && req.method === "GET") {
     const changelogPath = enginePath("CHANGELOG.md");
     try {
