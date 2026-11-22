@@ -66,6 +66,9 @@ const actions = heldActions({
 const queue = createApprovalQueue(actions, () => stateDir);
 let server: http.Server;
 let base = "";
+/** The route's clock, ahead of the queue's by `skew`, and its cooldown. */
+let skew = 0;
+let cooldownMinutes = 10;
 
 type Who = "anon" | "person" | "other-den" | "agent";
 
@@ -105,6 +108,9 @@ beforeAll(async () => {
           queue,
           action: actions.github_signin_setup,
           sendJson,
+          cooldownMs: () => cooldownMinutes * 60_000,
+          askerAddress: () => "192.0.2.7",
+          now: () => Date.now() + skew,
         })
       )
         return;
@@ -145,7 +151,12 @@ async function askFromPage() {
 }
 const waiting = () =>
   queue.pending().filter((a) => a.action === "github_signin_setup");
-async function decide(id: string, who: Who, key?: string) {
+async function decide(
+  id: string,
+  who: Who,
+  key?: string,
+  decision: "allow" | "deny" = "allow",
+) {
   const r = await fetch(`${base}/api/approvals/${id}/decide`, {
     method: "POST",
     headers: {
@@ -153,7 +164,7 @@ async function decide(id: string, who: Who, key?: string) {
       "x-test-who": who,
       ...(key ? { "x-den-approve-key": key } : {}),
     },
-    body: JSON.stringify({ decision: "allow" }),
+    body: JSON.stringify({ decision }),
   });
   return {
     status: r.status,
@@ -238,5 +249,61 @@ describe("issue 868: ask to turn on Sign in with GitHub from the sign-in page", 
   it("only a POST", async () => {
     const r = await fetch(`${base}${GITHUB_SETUP_PATH}`);
     expect(r.status).toBe(405);
+  });
+});
+
+describe("issue 868: after a Deny, the page can't ask again until the cooldown passes", () => {
+  it("Deny, ask again: refused as asked recently, nothing held; after web.signin_ask_cooldown_minutes, an ask is held again", async () => {
+    world.state = "no_client_id";
+    skew = 0;
+    const a = await askFromPage();
+    expect(a.status).toBe(202);
+    const id = waiting()[0].id;
+    const d = await decide(id, "person", KEY, "deny");
+    expect([d.status, d.body.state]).toEqual([200, "denied"]);
+
+    const again = await askFromPage();
+    expect([again.status, again.body.code]).toEqual([429, "asked_recently"]);
+    expect(String(again.body.error)).toMatch(/asked recently/);
+    expect(waiting()).toHaveLength(0);
+
+    // Just short of the cooldown: still refused.
+    skew = cooldownMinutes * 60_000 - 5_000;
+    expect((await askFromPage()).status).toBe(429);
+    expect(waiting()).toHaveLength(0);
+
+    // Past it: held again.
+    skew = cooldownMinutes * 60_000 + 1_000;
+    const later = await askFromPage();
+    expect(later.status).toBe(202);
+    expect(waiting()).toHaveLength(1);
+    await decide(waiting()[0].id, "person", KEY, "deny");
+    skew = 0;
+  });
+
+  it("a cooldown of 0: the page may ask again at once after a Deny", async () => {
+    cooldownMinutes = 0;
+    const a = await askFromPage();
+    expect(a.status).toBe(202);
+    await decide(waiting()[0].id, "person", KEY, "deny");
+    expect((await askFromPage()).status).toBe(202);
+    expect(waiting()).toHaveLength(1);
+    await decide(waiting()[0].id, "person", KEY, "deny");
+    cooldownMinutes = 10;
+  });
+});
+
+describe("issue 868: the person can tell whose browser asked", () => {
+  it("the held request names the asker's network address", async () => {
+    cooldownMinutes = 0;
+    expect((await askFromPage()).status).toBe(202);
+    const a = waiting()[0];
+    expect(a.details?.join("\n")).toMatch(/Asked from 192\.0\.2\.7/);
+    expect(a.detailKeys).toContainEqual({
+      key: "ap.det.github_signin_setup.from",
+      vars: { address: "192.0.2.7" },
+    });
+    await decide(a.id, "person", KEY, "deny");
+    cooldownMinutes = 10;
   });
 });
