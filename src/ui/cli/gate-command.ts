@@ -11,14 +11,18 @@
  *       release puts a release run a person waits on at the front of its
  *       kind's queue (never ahead of a holder), recorded with why
  *       Issue 625: --box any lets a browser run take a test box's slot
- *       (whichever frees first); the run gets DEN_GATE_BOX, DEN_PW_WS
+ *       (whichever frees first); the run gets DEN_GATE_BOX, DEN_PW_WS.
+ *       Issue 1033: with no --box it does so by default (the setting
+ *       browser_box_default, any or local); one that can't go to a box
+ *       (no --base-url, no matching Playwright, host-only) stays here and
+ *       says why in one line
  *       --browser-endpoint ws://…|self: where a browser run's browser
  *       runs (a container's Playwright endpoint, or a container the run
  *       starts itself); also read from DEN_PW_WS, HUB_PW_WEBKIT_WS,
  *       E2E_WEBKIT_WS. On macOS a browser run without one is refused
  *       (gates/browser-container.ts; a Setting)
  *   status [--json]          who holds, who waits, overruns, test boxes
- *   box <list|add|remove>    the test boxes (a person changes them)
+ *   box <list|add|remove|enable|disable>  the test boxes (a person's)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
@@ -36,10 +40,12 @@
  *            [--box-check-timeout-seconds N] [--box-recheck-seconds N]
  *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
  *            [--browser-requires-container 0|1]
+ *            [--browser-box-default any|local] [--browser-host-only <l>]
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
 import { spawn } from "child_process";
+import * as os from "os";
 import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { classOf, windowHeld } from "../../shared/gates/classes.js";
@@ -63,8 +69,14 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import * as fs from "fs";
-import { boxEnv, checkBox } from "../../shared/gates/boxes.js";
 import {
+  boxEnv,
+  checkBox,
+  defaultPlace,
+  hostOnlyMatch,
+} from "../../shared/gates/boxes.js";
+import {
+  SELF,
   browserSlotCheck,
   browserSlotRefusal,
   endpointFromEnv,
@@ -77,7 +89,11 @@ import {
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
-import { gateBoxesView, gateView } from "../../shared/gates/view.js";
+import {
+  boxOffWords,
+  gateBoxesView,
+  gateView,
+} from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
@@ -93,17 +109,26 @@ export const GATE_HELP = {
     "    waits for a slot, runs <cmd>, gives the slot back when it ends",
     "    --priority release --reason <why>: a release run a person waits on",
     "    goes to the front of its kind's queue (one at a time; recorded)",
-    "    --box any: a browser run that can use a test box's browser takes",
-    "    whichever slot frees first, here or on a box (DEN_PW_WS is set)",
+    "    a browser run takes whichever browser slot frees first, here or on a",
+    "    test box (DEN_PW_WS is set); --box local keeps it here, --box <name>",
+    "    sends it to one box. One with no --base-url, its own browser, no box",
+    "    for its Playwright version, or marked host-only stays here, saying why",
     "    --browser-endpoint ws://…: the container browser a browser run uses",
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
     "{cli} gate status [--json]      who holds a slot, who waits",
-    "{cli} gate box <list|add|remove> <name> [--ssh login@host] [--ssh-port N]",
+    "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
     "    [--hold-file <path>] [--time-scale X] [--min-free-mem-mb N]",
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
-    "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443)",
+    "    [--pw <version>=ws://…] (repeat it): a box with a Playwright address",
+    "    per version; a run gets the one for its version (--pw-version, else",
+    "    the installed Playwright, looking up to the repo's top folder)",
+    "    [--window HH:MM-HH:MM] when it may be used, this machine's time",
+    "    [--off] added turned off; [--recheck-seconds N] least time between",
+    "    checks of a box that says no. Off or outside its window: no slot, no contact",
+    "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443);",
+    "    127.0.0.1, localhost and <name>.localhost are one host there",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
@@ -118,6 +143,8 @@ export const GATE_HELP = {
     '    [--class-order "release, lane, other"] [--class-map "<project>=<class>, label:<pattern>=<class>, *=<class>"]',
     '    [--class-windows "<class>=22:00-06:00/30"]   priority classes per project ("" clears)',
     "    [--browser-requires-container 0|1]   a browser run declares a container browser",
+    "    [--browser-box-default any|local]   where a browser run with no --box goes",
+    '    [--browser-host-only "<project>, label:<pattern>"]   browser runs kept here ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
@@ -129,6 +156,13 @@ export interface GateRun {
   kill: (s: NodeJS.Signals) => void;
   /** Resolves with its exit code when it ends. */
   done: Promise<number>;
+  /**
+   * Issue 1023: true once the command can run no more, though it has not
+   * ended: it is writing a core dump (SIGQUIT, on Linux). Its threads are
+   * stopped for good, and the dump can take seconds (a crash handler reads
+   * all of it), so its slot is given back then, not at its exit.
+   */
+  dumping?: () => boolean;
 }
 
 export interface GateDeps {
@@ -142,7 +176,7 @@ export interface GateDeps {
   exec: (cmd: string, args: string[], env?: Record<string, string>) => GateRun;
   /** Runs `fn` every `ms` until the returned stop is called. */
   every: (ms: number, fn: () => void) => () => void;
-  /** Calls `h` on SIGINT, SIGTERM or SIGHUP; returns a stop. */
+  /** Calls `h` on each of GATE_RUN_SIGNALS; returns a stop. */
   onSignal: (h: (signal: NodeJS.Signals) => void) => () => void;
   /** Leaves at once with `code` (a signal while waiting). */
   exit: (code: number) => void;
@@ -156,6 +190,23 @@ export interface GateDeps {
 
 /** Issue 928: how often a nested run checks its slot still holds. */
 const NESTED_LOOK_MS = 5_000;
+
+/** Issue 1023: how often a run looks whether its command is dumping core. */
+const DUMP_LOOK_MS = 100;
+
+/**
+ * Issue 1023: whether a process is writing a core dump, from Linux's
+ * /proc/<pid>/status ("CoreDumping: 1"). False where there is no /proc.
+ */
+export function coreDumping(pid: number, read = fs.readFileSync): boolean {
+  try {
+    return /^CoreDumping:\s*1\s*$/m.test(
+      String(read(`/proc/${pid}/status`, "utf8")),
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 928: what `gate run` tells its command about the slot it holds. */
 export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
@@ -184,8 +235,42 @@ function heldSlotFor(
   return roots.some((r) => under(d.pid, r)) ? e : undefined;
 }
 
-const signalCode = (s: NodeJS.Signals | null) =>
-  s === "SIGINT" ? 130 : s === "SIGHUP" ? 129 : 143;
+/** Issue 1033: whether a --box name is this machine's own. */
+function isThisMachine(name: string): boolean {
+  const full = os.hostname().toLowerCase();
+  const n = name.toLowerCase();
+  return n === full || n === full.split(".")[0];
+}
+
+/**
+ * The machine a held slot is on, in words: a box's name; this machine
+ * for a browser run that could have gone to a box (issue 1033); else
+ * nothing, as before.
+ */
+function machineWords(e: GateEntry): string {
+  if (e.box) return ` on box ${e.box}`;
+  return e.kind === "browser" && (e.where || e.hostWhy)
+    ? " on this machine"
+    : "";
+}
+
+/** A signal's exit code, as a shell gives it (128 + its number). */
+const signalCode = (s: NodeJS.Signals | null) => {
+  const n = s ? os.constants.signals[s] : undefined;
+  return typeof n === "number" ? 128 + n : 143;
+};
+
+/**
+ * Issue 1023: the signals `gate run` passes to its command (or, while it
+ * waits, that give its place back). Each one that would end it: any of
+ * them reaching gate run ends its command, and so frees its slot.
+ */
+export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
+  "SIGINT",
+  "SIGTERM",
+  "SIGHUP",
+  "SIGQUIT",
+];
 
 const realExec = (
   cmd: string,
@@ -196,11 +281,17 @@ const realExec = (
     stdio: "inherit",
     ...(env ? { env: { ...process.env, ...env } } : {}),
   });
+  const running = () => k.exitCode === null && k.signalCode === null;
   return {
     pid: k.pid,
     kill: (s) => {
-      if (k.exitCode === null && k.signalCode === null) k.kill(s);
+      if (running()) k.kill(s);
     },
+    ...(process.platform === "linux"
+      ? {
+          dumping: () => running() && k.pid !== undefined && coreDumping(k.pid),
+        }
+      : {}),
     done: new Promise<number>((resolve) => {
       k.on("error", () => resolve(127));
       k.on("exit", (code, signal) => resolve(code ?? signalCode(signal)));
@@ -209,10 +300,17 @@ const realExec = (
 };
 
 const realOnSignal = (h: (s: NodeJS.Signals) => void) => {
-  const sigs: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
-  for (const s of sigs) process.on(s, h);
+  for (const s of GATE_RUN_SIGNALS) process.on(s, h);
+  // Issue 1023: a closed stdout or stderr (the terminal or the agent that
+  // started it went away) never ends gate run before its command, so the
+  // slot is still given back when the command ends.
+  const quiet = () => {};
+  process.stdout.on("error", quiet);
+  process.stderr.on("error", quiet);
   return () => {
-    for (const s of sigs) process.off(s, h);
+    for (const s of GATE_RUN_SIGNALS) process.off(s, h);
+    process.stdout.off("error", quiet);
+    process.stderr.off("error", quiet);
   };
 };
 
@@ -239,22 +337,101 @@ export function realGateDeps(): GateDeps {
 
 class GateUsage extends Error {}
 
-/** Clause 11: the Playwright client version installed where the run is. */
-export function playwrightVersion(cwd: string): string | undefined {
-  for (const p of ["playwright-core", "@playwright/test", "playwright"])
-    try {
-      const v = (
-        JSON.parse(
-          fs.readFileSync(
-            path.join(cwd, "node_modules", p, "package.json"),
-            "utf-8",
-          ),
-        ) as { version?: unknown }
-      ).version;
+const PW_PACKAGES = ["playwright-core", "@playwright/test", "playwright"];
+
+const readJson = (file: string): Record<string, unknown> | undefined => {
+  try {
+    const v = JSON.parse(fs.readFileSync(file, "utf-8")) as unknown;
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** The Playwright version installed for `dir` (its node_modules, or above). */
+function installedPlaywright(dir: string, stop: string): string | undefined {
+  for (let d = dir; ; d = path.dirname(d)) {
+    for (const p of PW_PACKAGES) {
+      const v = readJson(
+        path.join(d, "node_modules", p, "package.json"),
+      )?.version;
       if (typeof v === "string") return v;
-    } catch {
-      /* not this one */
     }
+    if (d === stop || path.dirname(d) === d) return undefined;
+  }
+}
+
+/** Whether a package.json depends on Playwright (its range; never a version). */
+function declaredPlaywright(dir: string): string | undefined | null {
+  const pkg = readJson(path.join(dir, "package.json"));
+  if (!pkg) return null;
+  for (const k of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ]) {
+    const deps = pkg[k];
+    if (!deps || typeof deps !== "object") continue;
+    for (const p of PW_PACKAGES) {
+      const r = (deps as Record<string, unknown>)[p];
+      if (typeof r === "string") return r;
+    }
+  }
+  return null;
+}
+
+/** The repo's top folder: the nearest at or above `dir` with a .git; else `dir`. */
+function repoTop(dir: string): string {
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, ".git"))) return d;
+    if (path.dirname(d) === d) return path.resolve(dir);
+  }
+}
+
+/**
+ * Clause 11, issue 1017: the run's exact Playwright client version, from
+ * an installed package.json only. First installed for the run's folder:
+ * its node_modules, or one above it up to the repo's top folder (a
+ * workspace run with Playwright hoisted to the root). Else installed for
+ * the nearest package.json below it that depends on Playwright (a repo
+ * whose Playwright lives in web/). Nearest is fewest folders down;
+ * node_modules and dot folders are never looked in. A range in a
+ * package.json is never read as a version: with nothing installed, the
+ * version is unknown (undefined).
+ */
+export function playwrightVersion(cwd: string): string | undefined {
+  const top = repoTop(cwd);
+  const here = installedPlaywright(cwd, top);
+  if (here) return here;
+  let level = [cwd];
+  while (level.length) {
+    for (const dir of level) {
+      const range = declaredPlaywright(dir);
+      if (typeof range !== "string") continue;
+      const v = installedPlaywright(dir, cwd);
+      if (v) return v;
+    }
+    const next: string[] = [];
+    for (const dir of level) {
+      let names: fs.Dirent[] = [];
+      try {
+        names = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const n of names)
+        if (
+          n.isDirectory() &&
+          n.name !== "node_modules" &&
+          !n.name.startsWith(".")
+        )
+          next.push(path.join(dir, n.name));
+    }
+    level = next.sort();
+  }
   return undefined;
 }
 
@@ -328,13 +505,14 @@ export function slotLine(
       : "") +
     (yields.length ? `  let ${yields.join(", ")} go ahead` : "") +
     (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "") +
+    (e.hostWhy ? `  stays here: ${e.hostWhy}` : "") +
     // Issue 999: a padded estimate, and what the queue uses instead.
     (e.padded && e.expectedMin !== undefined
       ? `  estimate ${e.estimateMin} min; this usually takes ${e.expectedMin}`
       : "");
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
-    const on = e.box ? ` on box ${e.box}` : "";
+    const on = machineWords(e);
     return `${e.id}  holds ${e.kind}${on}  ${e.who}  "${e.label}"  until about ${hm(queueEnd(e))}${late}${pri}`;
   }
   // Issue 625: a waiter that may go to a test box says so.
@@ -354,14 +532,42 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
     all.map((e) => ({ granted: !!e.grantedAt, box: e.box })),
   ).map((b) => {
     const base = `box ${b.name}: ${b.held} of ${b.slots} browser slots held`;
-    if (b.state === "held" || b.state === "unreachable" || b.state === "low")
-      return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}`;
-    return b.state === "unchecked" ? `${base}, not checked yet` : base;
+    // Issue 1017: the Playwright versions it serves.
+    const pw = b.playwrightVersions?.length
+      ? `, playwright ${b.playwrightVersions.join(", ")}`
+      : "";
+    // A run already on it finishes; it shows beside why the box is skipped.
+    const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
+    const off = boxOffWords(b);
+    if (off) return `box ${b.name}: skipped, ${off}${still}${pw}`;
+    if (
+      b.state === "held" ||
+      b.state === "unreachable" ||
+      b.state === "low" ||
+      b.state === "unknown"
+    )
+      return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}${pw}`;
+    return (b.state === "unchecked" ? `${base}, not checked yet` : base) + pw;
   });
 }
 
-function flags(args: string[], known: Record<string, boolean>) {
-  const f: Record<string, string | true> = {};
+/** Issue 1017: `--pw <version>=<ws>`, repeated, as version → address. */
+function pwPairs(v: string | true | string[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const p of Array.isArray(v) ? v : [String(v)]) {
+    const eq = p.indexOf("=");
+    if (eq < 1 || eq === p.length - 1)
+      throw new GateUsage(
+        `--pw is <version>=<ws address>, like 1.61=ws://box:3931 (got ${p.slice(0, 80)})`,
+      );
+    map[p.slice(0, eq).trim()] = p.slice(eq + 1).trim();
+  }
+  return map;
+}
+
+/** A flag that takes no value (false), one (true), or repeats ("many"). */
+function flags(args: string[], known: Record<string, boolean | "many">) {
+  const f: Record<string, string | true | string[]> = {};
   const pos: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -372,15 +578,20 @@ function flags(args: string[], known: Record<string, boolean>) {
     if (a.startsWith("--")) {
       // --flag=value, for a flag that takes one.
       const eq = a.indexOf("=");
-      if (eq > 2 && known[a.slice(0, eq)] === true) {
-        f[a.slice(0, eq)] = a.slice(eq + 1);
+      const put = (k: string, v: string) => {
+        if (known[k] !== "many") return void (f[k] = v);
+        const was = f[k];
+        f[k] = [...(Array.isArray(was) ? was : []), v];
+      };
+      if (eq > 2 && known[a.slice(0, eq)]) {
+        put(a.slice(0, eq), a.slice(eq + 1));
         continue;
       }
       if (!(a in known)) throw new GateUsage(`unknown option ${a}`);
       if (known[a]) {
         const v = args[++i];
         if (v === undefined) throw new GateUsage(`${a} needs a value`);
-        f[a] = v;
+        put(a, v);
       } else f[a] = true;
     } else pos.push(a);
   }
@@ -405,7 +616,14 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   if (kind !== "browser" && kind !== "cpu")
     throw new GateUsage("--kind is browser or cpu");
   // Issue 625: a browser run that can use a test box's browser says so.
-  const where = typeof f["--box"] === "string" ? f["--box"] : undefined;
+  let where = typeof f["--box"] === "string" ? f["--box"] : undefined;
+  // Issue 1033: this machine's own name (not a box's) is local.
+  if (
+    where !== undefined &&
+    isThisMachine(where) &&
+    !d.store.boxes().some((b) => b.name === where)
+  )
+    where = "local";
   if (where !== undefined) {
     if (kind !== "browser")
       throw new GateUsage("--box goes with --kind browser");
@@ -423,12 +641,30 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         })`,
       );
   }
+  const label =
+    typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
+  // Issue 1033: with no --box, a browser run may go anywhere (the
+  // setting browser_box_default).
+  const anyByDefault =
+    where === undefined &&
+    kind === "browser" &&
+    d.store.settings().browserBoxDefault === "any";
+  // Issue 1033: a host-only run never goes to a box, nor runs inside a
+  // box's slot: checked before the nested look.
+  const hostOnly =
+    anyByDefault &&
+    !!hostOnlyMatch(
+      { label, project: path.basename(d.cwd) },
+      d.store.settings().browserHostOnly,
+    );
   // Issue 928: inside a held slot of this kind and place: run in it, at
   // once. The outer run checked the browser and keeps the slot.
-  const inside = heldSlotFor(d, kind as GateKind, where);
+  const inside = heldSlotFor(
+    d,
+    kind as GateKind,
+    where ?? (anyByDefault && !hostOnly ? "any" : undefined),
+  );
   if (inside) {
-    const label =
-      typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
     d.err(
       `gate: inside ${inside.id} (holds ${kind}${inside.box ? ` on box ${inside.box}` : ""}); running ${label} in it`,
     );
@@ -474,6 +710,45 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ? endpointFromEnv(d.env)
       : undefined;
   const endpoint = flagEndpoint ?? fromEnv?.endpoint;
+  const urls = (typeof f["--base-url"] === "string" ? f["--base-url"] : "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const pwFlag =
+    typeof f["--pw-version"] === "string" ? f["--pw-version"] : undefined;
+  // Issue 1033: no --box: the first free browser slot, here or on a test
+  // box; or here, saying why in one line (never a failure for it).
+  let hostWhy: string | undefined;
+  let onlyBoxes: string[] | undefined;
+  if (anyByDefault && d.store.boxes().length) {
+    const badUrl = urls.map(checkBaseUrl).find(Boolean);
+    const pick = badUrl
+      ? { why: `--base-url ${badUrl}, so a test box can't reach the app` }
+      : defaultPlace({
+          setting: "any",
+          hostOnly: d.store.settings().browserHostOnly,
+          label,
+          project: path.basename(d.cwd),
+          boxes: d.store.boxes(),
+          baseUrl: urls.length > 0,
+          pwVersion: pwFlag ?? playwrightVersion(d.cwd),
+          // A run that brings its own browser (the flag, or its
+          // environment) keeps it: a box would only change DEN_PW_WS.
+          ...(endpoint !== undefined
+            ? {
+                ownBrowser:
+                  endpoint === SELF
+                    ? "it starts its own browser container"
+                    : `it brings its own browser (${fromEnv?.from ?? "--browser-endpoint"})`,
+              }
+            : {}),
+        });
+    where = pick.where;
+    hostWhy = pick.why;
+    onlyBoxes = pick.only;
+    if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
+    if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
+  }
   const verdict = browserSlotCheck({
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
@@ -496,11 +771,6 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // handed them (DEN_GATE_ALLOW) to guard every browser context.
   const allow: string[] = [];
   if (where && where !== "local") {
-    const raw = typeof f["--base-url"] === "string" ? f["--base-url"] : "";
-    const urls = raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
     if (!urls.length)
       throw new GateUsage(
         "a box run needs --base-url http://<name>.localhost:<port>[,…] (or http://127.0.0.1:* for the ports the run opens itself): the app's loopback addresses, never port 80 or 443",
@@ -514,18 +784,26 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // Clause 11: the run's Playwright client version (a box whose server
   // differs is skipped, saying why).
   const pwVersion =
-    typeof f["--pw-version"] === "string"
-      ? f["--pw-version"]
+    pwFlag !== undefined
+      ? pwFlag
       : where && where !== "local"
         ? playwrightVersion(d.cwd)
         : undefined;
+  // Issue 1017: a box with several Playwright servers can't pick one for a
+  // run whose version is unknown: said plainly, before it asks.
+  const named =
+    where && where !== "any" && where !== "local"
+      ? d.store.boxes().find((b) => b.name === where)
+      : undefined;
+  if (named?.playwright_endpoints && !pwVersion)
+    throw new GateUsage(
+      `box ${named.name} serves Playwright ${Object.keys(named.playwright_endpoints).join(", ")} and this run's Playwright version is unknown: pass --pw-version`,
+    );
   // Issue 999: none given: the gate measures it from the label's runs.
   const estimateMin =
     typeof f["--estimate"] === "string"
       ? parseEstimate(f["--estimate"])
       : undefined;
-  const label =
-    typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
   // Issue 715: a release run a person waits on, and why.
   const priority = f["--priority"];
   const reason = typeof f["--reason"] === "string" ? f["--reason"].trim() : "";
@@ -554,6 +832,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(where ? { where } : {}),
       ...(pwVersion ? { pwVersion } : {}),
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
+      ...(hostWhy ? { hostWhy } : {}),
+      ...(onlyBoxes ? { onlyBoxes } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
@@ -608,9 +888,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       if (!e) throw new Error(`the slot ${id} was ended while waiting`);
     }
     const box = e.box ? s.boxes().find((b) => b.name === e!.box) : undefined;
-    d.err(
-      `gate: ${id} holds ${kind}${e.box ? ` on box ${e.box}` : ""}; running ${label}`,
-    );
+    d.err(`gate: ${id} holds ${kind}${machineWords(e)}; running ${label}`);
     // Issue 928: the command knows the slot it runs in.
     const slotEnv = {
       [GATE_SLOT_ENV]: id,
@@ -619,7 +897,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     };
     child = box
       ? d.exec(pos[0]!, pos.slice(1), {
-          ...boxEnv(box),
+          // Issue 1017: the box's endpoint for this run's version.
+          ...boxEnv(box, e.pwVersion),
           DEN_GATE_ALLOW: allow.join(","),
           ...slotEnv,
         })
@@ -631,6 +910,15 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           })
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
+    // Issue 1023: a command that took SIGQUIT (from gate run or anyone)
+    // and is dumping core can run no more: its slot is given back then,
+    // not after the dump, which a crash handler may take seconds to read.
+    const dumping = child.dumping;
+    const noDump = dumping
+      ? d.every(DUMP_LOOK_MS, () => {
+          if (!released && dumping()) release();
+        })
+      : () => {};
     // Past its estimate plus the margin, it says so once; never stopped.
     let flagged = false;
     const stop = d.every(60_000, () => {
@@ -644,6 +932,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     try {
       return await child.done;
     } finally {
+      noDump();
       stop();
     }
   } finally {
@@ -672,8 +961,9 @@ function status(args: string[], d: GateDeps): number {
 /**
  * Issue 625: the test boxes. `box list`; `box add <name> --ssh <dest>
  * [--ssh-port N] [--ssh-identity <key file>] [--playwright ws://…]
- * [--slots N] [--hold-file <path>] [--time-scale X]` (adds or replaces);
- * `box remove <name>`. Adding and removing are a person's.
+ * [--slots N] [--hold-file <path>] [--time-scale X] [--window HH:MM-HH:MM]
+ * [--off] [--recheck-seconds N]` (adds or replaces); `box remove <name>`;
+ * `box enable|disable <name>`. Changing them is a person's.
  */
 function boxCmd(args: string[], d: GateDeps): number {
   const [verb, ...rest] = args;
@@ -685,15 +975,30 @@ function boxCmd(args: string[], d: GateDeps): number {
         `${b.name}  ${b.browser_slots} browser slot${b.browser_slots === 1 ? "" : "s"}` +
           (b.ssh ? `  ssh ${b.ssh}${b.ssh_port ? `:${b.ssh_port}` : ""}` : "") +
           (b.playwright ? `  playwright ${b.playwright}` : "") +
+          (b.playwright_endpoints
+            ? `  playwright ${Object.entries(b.playwright_endpoints)
+                .map(([v, ws]) => `${v}=${ws}`)
+                .join(", ")}`
+            : "") +
           (b.hold_file ? `  hold file ${b.hold_file}` : "") +
           (b.time_scale && b.time_scale !== 1
             ? `  time scale ${b.time_scale}`
-            : ""),
+            : "") +
+          (b.window ? `  window ${b.window} (this machine's time)` : "") +
+          (b.recheck_seconds
+            ? `  rechecked after ${b.recheck_seconds} s`
+            : "") +
+          (b.enabled === false ? "  turned off" : ""),
       );
     return 0;
   }
-  if (verb !== "add" && verb !== "remove")
-    throw new GateUsage("gate box <list|add|remove> ...");
+  if (
+    verb !== "add" &&
+    verb !== "remove" &&
+    verb !== "enable" &&
+    verb !== "disable"
+  )
+    throw new GateUsage("gate box <list|add|remove|enable|disable> ...");
   if (isAgentEnv(d.env))
     throw new GateUsage(
       `gate box ${verb}: only a person can change the test boxes (this is an agent)`,
@@ -708,9 +1013,26 @@ function boxCmd(args: string[], d: GateDeps): number {
     "--time-scale": true,
     "--min-free-mem-mb": true,
     "--playwright-version": true,
+    "--pw": "many",
+    "--window": true,
+    "--recheck-seconds": true,
+    "--off": false,
   });
   const [name, extra] = pos;
   if (!name || extra) throw new GateUsage(`gate box ${verb} needs one <name>`);
+  if (verb === "enable" || verb === "disable") {
+    const b = d.store.setBoxEnabled(name, verb === "enable");
+    if (!b) {
+      d.err(`gate box ${verb}: no box ${name}`);
+      return 1;
+    }
+    d.out(
+      verb === "enable"
+        ? `Box ${name} turned on${b.window ? `: slots within ${b.window}, this machine's time` : ""}.`
+        : `Box ${name} turned off: no new slots and no contact. Its running slots finish.`,
+    );
+    return 0;
+  }
   if (verb === "remove") {
     if (!d.store.removeBox(name)) {
       d.err(`gate box remove: no box ${name}`);
@@ -732,11 +1054,15 @@ function boxCmd(args: string[], d: GateDeps): number {
     time_scale: num("--time-scale"),
     min_free_mem_mb: num("--min-free-mem-mb"),
     playwright_version: f["--playwright-version"],
+    ...(f["--pw"] ? { playwright_endpoints: pwPairs(f["--pw"]) } : {}),
+    window: f["--window"],
+    recheck_seconds: num("--recheck-seconds"),
+    ...(f["--off"] ? { enabled: false } : {}),
   });
   if (!c.ok) throw new GateUsage(c.error);
   d.store.setBox(c.box);
   d.out(
-    `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}. A run takes it with gate run --kind browser --box any.`,
+    `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}. A browser run with --base-url takes it when it is free (gate settings --browser-box-default local: only with --box).`,
   );
   return 0;
 }
@@ -815,6 +1141,8 @@ function settings(args: string[], d: GateDeps): number {
     "--class-map": true,
     "--class-windows": true,
     "--browser-requires-container": true,
+    "--browser-box-default": true,
+    "--browser-host-only": true,
     "--yes": false,
   });
   const raw: Record<string, number | string | null> = {};
@@ -850,6 +1178,9 @@ function settings(args: string[], d: GateDeps): number {
     ["--class-order", "class_order"],
     ["--class-map", "class_map"],
     ["--class-windows", "class_windows"],
+    // Issue 1033: where a browser run with no --box goes.
+    ["--browser-box-default", "browser_box_default"],
+    ["--browser-host-only", "browser_host_only"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = v.trim() || null;
@@ -884,7 +1215,7 @@ function settings(args: string[], d: GateDeps): number {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

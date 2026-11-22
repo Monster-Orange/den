@@ -29,6 +29,7 @@
 import type { Browser, BrowserType, LaunchOptions, Page } from "playwright";
 import {
   allowFromEnv,
+  connectGuarded,
   guardBrowser,
   pinLoopbackNames,
 } from "../../../src/shared/gates/pw-guard.js";
@@ -126,7 +127,10 @@ export async function launchBrowser(
   }
   try {
     return boxGuarded(
-      await type.connect(ws, { exposeNetwork: "<loopback>" }),
+      // Issue 1033: DEN_PW_EXPOSE when the gate gave it; else the loopback.
+      await connectGuarded(type, ws, {
+        exposeNetwork: process.env.DEN_PW_EXPOSE?.trim() || "<loopback>",
+      }),
       process.env,
     );
   } catch (err) {

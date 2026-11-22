@@ -395,7 +395,7 @@ describe("gate end and settings: a person's only", () => {
     expect(t.d.store.settings().cpuSlots).toBe(2);
     expect(await cmdGate(["settings", "--cpu-slots", "4"], t.d)).toBe(0);
     expect(t.out.at(-1)).toBe(
-      `cpu slots 4, 2 beside a browser run, none beside a release one · browser runs at once here 1 · cpu runs wait at load ${GATE_DEFAULTS.cpuHoldLoad} while a release browser run holds · flagged 15 min past its estimate, in the bell past 2× it · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past another marked run, agents and people may ask · test boxes checked within 8 s, a held or unreachable one checked again after 30 s · browser runs need a container: no`,
+      `cpu slots 4, 2 beside a browser run, none beside a release one · browser runs at once here 1 · cpu runs wait at load ${GATE_DEFAULTS.cpuHoldLoad} while a release browser run holds · flagged 15 min past its estimate, in the bell past 2× it · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past another marked run, agents and people may ask · test boxes checked within 8 s, a held or unreachable one checked again after 30 s · browser runs need a container: no · a browser run with no --box: here or a test box`,
     );
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });

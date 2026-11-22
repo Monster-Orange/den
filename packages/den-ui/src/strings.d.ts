@@ -16,3 +16,5 @@ export declare function kitT(
 ): string;
 /** HTML-escaped text. */
 export declare function esc(v: unknown): string;
+/** An id safe in an attribute and a CSS selector: letters, digits, _ and -. */
+export declare function safeId(v: unknown): string;

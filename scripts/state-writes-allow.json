@@ -55,6 +55,10 @@
     "count": 1,
     "reason": "test results: the index is written to a temp file and renamed, async"
   },
+  "src/shared/verify/pin.ts": {
+    "count": 1,
+    "reason": "a pin note inside a temp folder that is renamed into place whole"
+  },
   "src/ui/cli/create.ts": {
     "count": 2,
     "reason": "new files in the person's new repo, created exclusively (wx)"

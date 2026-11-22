@@ -109,4 +109,35 @@ describe("gate_box_set and gate_box_remove", () => {
       args: { name: "box1" },
     });
   });
+
+  it("issue 1017: gate_box_set asks with playwright_endpoints, and refuses a bad one before asking", async () => {
+    const eps = {
+      "1.61": "ws://box1.example:3931",
+      "1.63": "ws://box1.example:3932",
+    };
+    const { api, calls } = fakeApi();
+    const ok = await callTool(
+      "gate_box_set",
+      { name: "box1", ssh: "runner@box1.example", playwright_endpoints: eps },
+      ctx(api),
+    );
+    expect(ok.isError).toBe(false);
+    expect((calls[0]?.body as { args: { box: unknown } }).args.box).toEqual({
+      name: "box1",
+      ssh: "runner@box1.example",
+      browser_slots: 1,
+      playwright_endpoints: eps,
+    });
+    const bad = fakeApi();
+    const r = await callTool(
+      "gate_box_set",
+      { name: "box1", playwright_endpoints: { "1.61": "http://box1:1" } },
+      ctx(bad.api),
+    );
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(
+      /playwright_endpoints 1\.61 is a ws:\/\/ or wss:\/\/ address/,
+    );
+    expect(bad.calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
 });

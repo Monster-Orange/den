@@ -45,6 +45,9 @@ export interface RunRecord {
   allowedBy?: RunActor;
   /** Issue 441: "import", a run an outside runner's results made. */
   source?: "import";
+  /** Issue 214: a schedule's run, and which schedule. */
+  trigger?: "schedule";
+  schedule?: string;
   /** The commit the run checked (the first repo's), when known. */
   commit?: string | null;
   modules: ModuleRecord[];
