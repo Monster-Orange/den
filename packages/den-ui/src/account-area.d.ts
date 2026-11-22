@@ -8,7 +8,8 @@ export type AccountHow = "github" | "local" | "paired";
 export interface AccountProfile {
   /** The display name; none (or the login itself): @login is the heading. */
   name?: string | null;
-  login: string;
+  /** None: no person known (a paired device may be anyone's), no person row. */
+  login?: string | null;
   role?: string | null;
   avatarUrl?: string | null;
   /** Edit on GitHub ↗ (none: left out). */
@@ -16,8 +17,11 @@ export interface AccountProfile {
   how: AccountHow;
   /** ISO-8601 UTC: "This browser, since …". */
   since?: string | null;
-  /** Sign out: a plain POST form (none: no Sign out, a local browser). */
-  signOut?: { url: string; csrf?: string } | null;
+  /**
+   * Sign out: a plain POST form (none: no Sign out, a local browser); true:
+   * a button, the host's action "sign-out".
+   */
+  signOut?: { url: string; csrf?: string } | true | null;
   /** Sign out everywhere (asked first). */
   signOutAll?: boolean;
 }
@@ -79,6 +83,7 @@ export interface AccountAreaData {
 }
 
 export type AccountAction =
+  | "sign-out"
   | "unlink"
   | "pair"
   | "new-token"

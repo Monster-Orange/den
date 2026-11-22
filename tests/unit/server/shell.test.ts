@@ -170,8 +170,9 @@ describe("the shell's source", () => {
     const hrefs = all.filter((h) => !h.includes("#") && !h.includes("?"));
     for (const h of all.filter((x) => x.includes("#") || x.includes("?")))
       expect([h, hrefs.includes(h.split(/[#?]/)[0])]).toEqual([h, true]);
+    // (The identity entry opens the Account area since issue 310: a
+    // button, no href.)
     expect(all.filter((h) => h.includes("#")).sort()).toEqual([
-      "/settings#access",
       "/settings#agents.hub",
     ]);
     expect(all.filter((h) => h.includes("?"))).toEqual(["/agents?terminal=1"]);
