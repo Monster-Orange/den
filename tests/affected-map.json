@@ -2840,6 +2840,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/shared/fixture-setup-secret.ts"],
+      "run": ["tests/unit/server/fixture-setup-secret.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/cli/create.ts", "src/ui/server/github-service.ts"],
       "run": ["tests/unit/server/fresh-create-ui.browser.test.ts"],
       "why": "starts Den as a process: its subject"
