@@ -59,6 +59,10 @@ interface Pending {
   push: (endpoints: string[]) => void;
 }
 
+/** The tab-first window's bounds (alerts.tab_first_seconds is clamped). */
+export const WINDOW_MIN_MS = 1000;
+export const WINDOW_MAX_MS = 10_000;
+
 const hash = (endpoint: string): string =>
   createHash("sha256").update(endpoint).digest("hex");
 
@@ -238,13 +242,16 @@ export class AlertHandoff {
     };
   }
 
+  /** The window, clamped to 1–10 s (a Setting can't make push "never"). */
   private windowMs(): number {
+    let ms = 3000;
     try {
-      const ms = this.d.windowMs();
-      return Number.isFinite(ms) && ms >= 0 ? ms : 3000;
+      ms = this.d.windowMs();
     } catch {
-      return 3000;
+      /* the default */
     }
+    if (!Number.isFinite(ms)) ms = 3000;
+    return Math.min(WINDOW_MAX_MS, Math.max(WINDOW_MIN_MS, ms));
   }
 
   /** `tab` no longer answers: where it was the last one, push now. */

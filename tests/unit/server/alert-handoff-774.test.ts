@@ -254,4 +254,79 @@ describe("774 row 7b: the open tab first, then push", () => {
     r.tab("person:a", LAPTOP, true);
     expect(JSON.stringify(r.h.debugState())).not.toContain("push.example");
   });
+
+  it("presence posts never extend the window: a tab that never acks can't hold push off", () => {
+    const r = rig();
+    const t = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    expect(r.timers.size).toBe(1);
+    for (let i = 0; i < 5; i += 1)
+      r.h.presence(
+        t,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      );
+    // Still the one timer set when the alert happened.
+    expect(r.timers.size).toBe(1);
+    r.fire();
+    expect(r.pushed).toEqual([[LAPTOP]]);
+  });
+
+  it("a tab dropped by the cap is dead: its presence and acks are refused; its alerts push", () => {
+    const r = rig({ maxTabs: 1 });
+    const a = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    r.tab("person:a", null, false);
+    expect(r.pushed).toEqual([[LAPTOP]]);
+    expect(r.h.ack(a, "person:a", "x1")).toBe("forbidden");
+    expect(
+      r.h.presence(
+        a,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      ),
+    ).toBe("forbidden");
+  });
+
+  it("a closed tab's id is dead too", () => {
+    const r = rig();
+    const a = r.tab("person:a", LAPTOP, true);
+    r.h.close(a);
+    expect(r.h.ack(a, "person:a", "x1")).toBe("forbidden");
+    expect(
+      r.h.presence(
+        a,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      ),
+    ).toBe("forbidden");
+  });
+
+  it("the window is clamped to 1–10 s: a Setting can't make push 'never'", () => {
+    const seen: number[] = [];
+    for (const ms of [0, 500, 3000, 60_000, Number.NaN]) {
+      const h = new AlertHandoff({
+        windowMs: () => ms,
+        maxTabs: () => 20,
+        setTimer: (_fn, w) => void seen.push(w),
+        clearTimer: () => undefined,
+      });
+      const t = h.open(
+        "person:a",
+        () => undefined,
+        () => undefined,
+      );
+      h.presence(
+        t,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      );
+      h.deliver({ id: "x" } as Alert, [LAPTOP], () => undefined);
+    }
+    expect(seen).toEqual([1000, 1000, 3000, 10_000, 3000]);
+  });
 });
