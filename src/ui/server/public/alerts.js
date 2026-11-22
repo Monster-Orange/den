@@ -22,7 +22,8 @@
  * a tab behind waits a moment, so the one in front wins. The alert's id
  * is the notification's tag. A browser that gets push (a service worker
  * subscription) leaves the notification to the push; its tab still
- * plays the sound.
+ * plays the sound. Issue 774 row 7b: unless the tab shows: then the
+ * server streams the alert to it first (alertStream) and the push waits.
  */
 import { playAlertSound, primeAlertSounds } from "./alert-sounds.js";
 import { tabCount } from "./tab-count.js";
@@ -104,11 +105,11 @@ export function alertPlan(a, prefs, env) {
  * play(kind), wait(ms) } (the page's own, or a test's).
  */
 export async function deliverAlert(win, a, prefs, env, deps) {
-  if (!a?.id) return;
+  if (!a?.id) return null;
   if (!env.front) await deps.wait(BEHIND_WAIT_MS);
   // The tab in front claims even when it does nothing: a tab behind then
   // shows no notification for what the person sees already.
-  if (!claim(win, a.id)) return;
+  if (!claim(win, a.id)) return null;
   const plan = alertPlan(a, prefs, env);
   if (plan.notify) {
     try {
@@ -124,6 +125,57 @@ export async function deliverAlert(win, a, prefs, env, deps) {
       /* no sound: the bell has it */
     }
   }
+  // What this tab did (null: another tab of this browser has it).
+  return plan;
+}
+
+/** This tab now: { front, permission, pushed, agent } (alertPlan's env). */
+function tabEnv(win) {
+  const doc = win.document;
+  const N = win.Notification;
+  return {
+    front: doc?.visibilityState === "visible" && !!doc?.hasFocus?.(),
+    permission: typeof N === "function" ? N.permission : "unsupported",
+    pushed: false,
+    agent: pageAgent(win),
+  };
+}
+
+/**
+ * Issue 774 row 7b: this tab's alert stream (GET /api/alerts/stream).
+ * The server names the tab; the tab says which device it is (this
+ * browser's push subscription's endpoint, in the body) and whether it
+ * shows. An alert streamed here is this device's: its push waits, so the
+ * tab shows it itself and acks it. `o`: { prefs() (the person's switches,
+ * from the last poll), deps (deliverAlert's), post(path, body) }.
+ */
+export function alertStream(win, o) {
+  let tab = "";
+  const presence = async () => {
+    if (!tab) return;
+    const sub = await pushSubscription(win);
+    await o.post("/api/alerts/presence", {
+      tab,
+      endpoint: sub?.endpoint || null,
+      visible: win.document?.visibilityState === "visible",
+    });
+  };
+  const onEvent = async (e) => {
+    if (e?.type === "tab" && typeof e.tab === "string") {
+      tab = e.tab;
+      await presence();
+    } else if (e?.type === "drop" && typeof e.id === "string") {
+      // Another tab of this device showed it: never here too.
+      claim(win, e.id);
+    } else if (e?.type === "alert" && tab && e.alert?.id) {
+      const env = tabEnv(win);
+      const plan = await deliverAlert(win, e.alert, o.prefs(), env, o.deps);
+      // Ack only what reached the person here: otherwise the push goes.
+      if (plan && (plan.notify || plan.sound || env.front))
+        await o.post("/api/alerts/ack", { tab, id: e.alert.id });
+    }
+  };
+  return { onEvent, presence };
 }
 
 /** The agent this page shows (the Agents page's ?agent=), or null. */
@@ -151,6 +203,33 @@ export function initAlerts(win = window) {
     play: (kind) => playAlertSound(win, kind),
     wait: (ms) => new Promise((r) => win.setTimeout(r, ms)),
   };
+  let lastPrefs = { desktop: true, sound: false, tab_count: true };
+  // Issue 774 row 7b: the stream, where this browser can get push.
+  if (typeof win.EventSource === "function" && pushSupported(win)) {
+    const post = async (path, body) => {
+      try {
+        const r = await win.fetch(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return r.ok;
+      } catch {
+        return false;
+      }
+    };
+    const st = alertStream(win, { prefs: () => lastPrefs, deps, post });
+    const es = new win.EventSource("/api/alerts/stream");
+    es.onmessage = (m) => {
+      try {
+        void st.onEvent(JSON.parse(m.data));
+      } catch {
+        /* not ours */
+      }
+    };
+    doc.addEventListener("visibilitychange", () => void st.presence());
+    win.addEventListener("pagehide", () => es.close());
+  }
   const tick = async () => {
     if (busy) return;
     busy = true;
@@ -162,6 +241,7 @@ export function initAlerts(win = window) {
       if (!r.ok) return;
       const b = await r.json();
       const prefs = b.prefs || { desktop: true, sound: false, tab_count: true };
+      lastPrefs = prefs;
       // Issue 774: the count, quiet hours or not; zero shows nothing.
       tab.show(prefs.tab_count === false ? 0 : Number(b.count) || 0);
       if (prefs.sound && !primed) {
@@ -172,13 +252,7 @@ export function initAlerts(win = window) {
       seq = typeof b.seq === "number" ? b.seq : seq;
       const list = Array.isArray(b.alerts) ? b.alerts : [];
       if (first || !list.length) return;
-      const N = win.Notification;
-      const env = {
-        front: doc.visibilityState === "visible" && !!doc.hasFocus?.(),
-        permission: typeof N === "function" ? N.permission : "unsupported",
-        pushed: false,
-        agent: pageAgent(win),
-      };
+      const env = tabEnv(win);
       if (env.permission === "granted") env.pushed = await pushed(win);
       for (const a of list) void deliverAlert(win, a, prefs, env, deps);
     } catch {
