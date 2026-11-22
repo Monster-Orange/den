@@ -27,6 +27,7 @@ import * as path from "path";
 import { writePrivate } from "../agents/records.js";
 import type { CoachAgentRow, CoachReport, CoachWindow } from "./breakdown.js";
 import type { FindingThresholds } from "./settings.js";
+import { replied, sendKey } from "./asks.js";
 
 export type FindingKind =
   | "subagent_opus"
@@ -167,7 +168,9 @@ function asksFindings(
   add: Add,
 ): void {
   if (!a.asks) return;
-  const { metrics: m, stats } = a.asks;
+  const m = a.asks.metrics;
+  // A saved report keeps no stats (run.ts strips them): no samples then.
+  const stats = a.asks.stats ?? { asks: [], sends: [], received: [] };
   if (m.asks >= t.min_asks && m.ask_r12_pass_pct < t.ask_r12_pass_pct)
     add(
       "ask_r12",
@@ -191,19 +194,24 @@ function asksFindings(
         .map((x) => sample(x.at, x.text)),
     );
   if (t.sends_repeated > 0 && m.sends_repeated >= t.sends_repeated) {
+    // The same text to the same agent, as askMetrics counts it.
     const count = new Map<string, number>();
     for (const s of stats.sends)
-      count.set(s.hash, (count.get(s.hash) ?? 0) + 1);
+      count.set(sendKey(s), (count.get(sendKey(s)) ?? 0) + 1);
     const top = [...stats.sends]
-      .filter((s, i, all) => all.findIndex((x) => x.hash === s.hash) === i)
-      .filter((s) => (count.get(s.hash) ?? 0) > 1)
-      .sort((x, y) => (count.get(y.hash) ?? 0) - (count.get(x.hash) ?? 0));
+      .filter(
+        (s, i, all) => all.findIndex((x) => sendKey(x) === sendKey(s)) === i,
+      )
+      .filter((s) => (count.get(sendKey(s)) ?? 0) > 1)
+      .sort(
+        (x, y) => (count.get(sendKey(y)) ?? 0) - (count.get(sendKey(x)) ?? 0),
+      );
     add(
       "msg_repeat",
       `${who} sent other agents the same text again ${m.sends_repeated} times.`,
       { sends: m.sends, sends_repeated: m.sends_repeated },
       "Find out why it resends: a missed reply, or a loop. Say it once, and wait to be told.",
-      top.map((s) => sample(s.at, s.text)),
+      top.map((s) => sample(s.at, `to ${s.to}: ${s.text}`)),
     );
   }
   const noReplyPct = m.sends
@@ -215,7 +223,9 @@ function asksFindings(
       `${who}: ${noReplyPct}% of its ${m.sends} messages to other agents got no reply.`,
       { sends: m.sends, sends_no_reply: m.sends_no_reply },
       "Check it sends to the agent that owns the answer, and that the other agent reads its messages.",
-      stats.sends.map((s) => sample(s.at, `to ${s.to}: ${s.text}`)),
+      stats.sends
+        .filter((s) => !replied(s, stats.received))
+        .map((s) => sample(s.at, `to ${s.to}: ${s.text}`)),
     );
 }
 

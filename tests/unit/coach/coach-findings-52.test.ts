@@ -270,6 +270,7 @@ describe("agents.coach.findings settings", () => {
       sends_repeated: 3,
       sends_no_reply_pct: 50,
       min_sends: 5,
+      sentence_words: 25,
     });
     expect(checkCoachConfig(undefined).findings).toEqual(FINDING_DEFAULTS);
     expect(COACH_DEFAULTS.findings).toEqual(FINDING_DEFAULTS);

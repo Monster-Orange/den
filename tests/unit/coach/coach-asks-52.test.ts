@@ -171,7 +171,7 @@ describe("mineAsks: asks and messages from one transcript", () => {
     ]);
     expect(s.sends[0].hash).toBe(s.sends[1].hash);
     expect(s.received).toEqual([
-      { at: t0 + 10 * MIN, from: "shop:Builder" },
+      { at: t0 + 10 * MIN, from: "uds:/tmp/a.sock", fromName: "shop:Builder" },
     ]);
   });
 
@@ -325,7 +325,7 @@ describe("T-c findings", () => {
     const kinds = f.map((x) => x.kind).sort();
     expect(kinds).toEqual(["ask_wait", "msg_no_reply", "msg_repeat"]);
     expect(f.find((x) => x.kind === "msg_repeat")!.samples![0].text).toBe(
-      "Item 52: started.",
+      "to Builder: Item 52: started.",
     );
   });
 
@@ -336,5 +336,89 @@ describe("T-c findings", () => {
     expect(s.findings.ask_r12_pass_pct).toBe(90);
     expect(s.findings.min_asks).toBe(1);
     expect(s.findings.sends_repeated).toBe(FINDING_DEFAULTS.sends_repeated);
+  });
+});
+
+describe("review fixes", () => {
+  const t0 = NOW - DAY;
+
+  it("a reply to a send addressed by socket counts, by from address or from-name", async () => {
+    const f = transcript([
+      toolUse(t0, "SendMessage", {
+        to: "uds:/tmp/socks/1.sock",
+        message: "Diff ready.",
+      }),
+      prompt(
+        t0 + 5 * MIN,
+        '<cross-session-message from="uds:/tmp/socks/1.sock" from-name="shop:Reviewer">ok</cross-session-message>',
+      ),
+    ]);
+    const s = await mineAsks(f, {});
+    expect(s.received).toEqual([
+      {
+        at: t0 + 5 * MIN,
+        from: "uds:/tmp/socks/1.sock",
+        fromName: "shop:Reviewer",
+      },
+    ]);
+    expect(askMetrics([s], 7).sends_no_reply).toBe(0);
+  });
+
+  it("msg_no_reply's samples are only the sends with no reply", () => {
+    const sends = Array.from({ length: 6 }, (_, i) => ({
+      at: t0 + i * MIN,
+      to: i === 0 ? "Reviewer" : "Builder",
+      hash: `h${i}`,
+      text: `send ${i}`,
+    }));
+    const f = coachFindings(
+      report({
+        asks: [],
+        sends,
+        received: [{ at: t0 + 30 * MIN, from: "x", fromName: "shop:Reviewer" }],
+      }),
+      FINDING_DEFAULTS,
+    );
+    const nr = f.find((x) => x.kind === "msg_no_reply")!;
+    expect(nr.samples!.map((x) => x.text)).toEqual([
+      "to Builder: send 1",
+      "to Builder: send 2",
+      "to Builder: send 3",
+    ]);
+  });
+
+  it("a repeat's samples are the same text to the same agent, as the count", () => {
+    const send = (i: number, to: string, hash: string, text: string) => ({
+      at: t0 + i * MIN,
+      to,
+      hash,
+      text,
+    });
+    const s: AskStats = {
+      asks: [],
+      sends: [
+        send(0, "A", "x", "Ping."),
+        send(1, "A", "x", "Ping."),
+        send(2, "B", "y", "Release is out."),
+        send(3, "C", "y", "Release is out."),
+      ],
+      received: [],
+    };
+    expect(askMetrics([s], 7).sends_repeated).toBe(1);
+    const f = coachFindings(report(s), {
+      ...FINDING_DEFAULTS,
+      sends_repeated: 1,
+    });
+    expect(
+      f.find((x) => x.kind === "msg_repeat")!.samples!.map((x) => x.text),
+    ).toEqual(["to A: Ping."]);
+  });
+
+  it("the longest sentence is a setting, 25 words by default", () => {
+    expect(FINDING_DEFAULTS.sentence_words).toBe(25);
+    expect(
+      checkCoachConfig({ findings: { sentence_words: 40 } }).findings
+        .sentence_words,
+    ).toBe(40);
   });
 });

@@ -33,7 +33,10 @@ export interface UsageSource {
   files(since: number, env?: NodeJS.ProcessEnv): string[];
   mine(file: string, opts?: { since?: number }): Promise<TranscriptStats>;
   /** Issue 52 (Coach T-c): the asks and agent messages in a transcript, when it can read them. */
-  asks?(file: string, opts?: { since?: number }): Promise<AskStats>;
+  asks?(
+    file: string,
+    opts?: { since?: number; maxWords?: number },
+  ): Promise<AskStats>;
 }
 
 /** A conversation id as Claude Code names its files: never a path. */

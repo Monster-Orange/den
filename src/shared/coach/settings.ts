@@ -35,6 +35,8 @@ export interface FindingThresholds {
   sends_no_reply_pct: number;
   /** ...when it sent at least this many. */
   min_sends: number;
+  /** R12: a sentence in an ask of more words than this is long. */
+  sentence_words: number;
 }
 
 export const FINDING_DEFAULTS: Readonly<FindingThresholds> = Object.freeze({
@@ -49,6 +51,7 @@ export const FINDING_DEFAULTS: Readonly<FindingThresholds> = Object.freeze({
   sends_repeated: 3,
   sends_no_reply_pct: 50,
   min_sends: 5,
+  sentence_words: 25,
 });
 
 export interface CoachSettings {

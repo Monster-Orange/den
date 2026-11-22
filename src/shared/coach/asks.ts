@@ -11,7 +11,9 @@
  *   sends     each SendMessage call: to whom, and a hash of its text with
  *             case and spacing folded, so the same thing sent twice shows
  *   received  each message from another agent (a `<cross-session-message>`
- *             prompt): from whom
+ *             prompt): its from address and its from-name, since a reply
+ *             may be sent to either
+ *   prompts   each prompt of the person's, for slice T-d's repeat check
  *
  * A subagent's transcript has no asks or messages of its own: its parent
  * makes them. Each text kept is cut to 300 characters with secrets taken
@@ -22,6 +24,7 @@ import fs from "node:fs";
 import readline from "node:readline";
 import { bareIds } from "../agents/handback.js";
 import { redactSecrets } from "../redact.js";
+import { FINDING_DEFAULTS } from "./settings.js";
 
 export type AskTool = "ask_human" | "AskUserQuestion";
 
@@ -48,7 +51,9 @@ export interface SendSeen {
 export interface AskStats {
   asks: AskSeen[];
   sends: SendSeen[];
-  received: { at: number; from: string }[];
+  received: { at: number; from: string; fromName?: string }[];
+  /** The person's prompts, cut short, secrets out (slice T-d). */
+  prompts?: { at: number; text: string }[];
 }
 
 export interface AskMetrics {
@@ -67,8 +72,8 @@ export interface AskMetrics {
 }
 
 export const MAX_TEXT = 300;
-/** R12: a sentence of more words than this is long. */
-export const SENTENCE_WORDS = 25;
+/** R12: a sentence of more words than this is long (agents.coach.findings.sentence_words). */
+export const SENTENCE_WORDS = FINDING_DEFAULTS.sentence_words;
 
 const QUESTION_WORD = /^(what|which|how|why|when|where|who|whom|whose)\b/i;
 const CAVEAT =
@@ -141,12 +146,13 @@ function textOf(content: unknown): string {
     .join("\n");
 }
 
-/** The sender of a peer message: its from-name, else its from. */
-function peerOf(text: string): string | null {
+/** The sender of a peer message: its from address and its from-name. */
+function peerOf(text: string): { from: string; fromName?: string } | null {
   if (!text.startsWith("<cross-session-message")) return null;
   const head = text.slice(0, text.indexOf(">") + 1 || 600);
-  const m = /\bfrom-name="([^"]*)"/.exec(head) ?? /\bfrom="([^"]*)"/.exec(head);
-  return m ? m[1] : "";
+  const from = /\bfrom="([^"]*)"/.exec(head)?.[1] ?? "";
+  const name = /\bfrom-name="([^"]*)"/.exec(head)?.[1];
+  return name ? { from, fromName: name } : { from };
 }
 
 /** Mine `file` for asks and messages at or after `since`. */
@@ -154,7 +160,7 @@ export async function mineAsks(
   file: string,
   opts: { since?: number; maxWords?: number } = {},
 ): Promise<AskStats> {
-  const r: AskStats = { asks: [], sends: [], received: [] };
+  const r: AskStats = { asks: [], sends: [], received: [], prompts: [] };
   if (/[\\/]subagents[\\/]/.test(file)) return r;
   const since = opts.since ?? -Infinity;
   /** Asks waiting on the person's next prompt. */
@@ -239,10 +245,11 @@ export async function mineAsks(
     const text = textOf(content).trim();
     const peer = peerOf(text);
     if (peer !== null) {
-      r.received.push({ at, from: peer });
+      r.received.push({ at, ...peer });
       continue;
     }
     if (!text || text.startsWith("<") || text.startsWith("Caveat:")) continue;
+    r.prompts!.push({ at, text: keep(text) });
     // A person's prompt answers every ask_human still waiting.
     for (const a of pending) a.answeredAt = at;
     pending = [];
@@ -257,6 +264,20 @@ const bare = (name: string) =>
     .replace(/^.*:/, "")
     .trim()
     .toLowerCase();
+
+/** The key two sends share when they are the same text to the same agent. */
+export const sendKey = (s: SendSeen) => `${bare(s.to)}\n${s.hash}`;
+
+/** Whether a message from `s.to` came after `s`: by from address or from-name. */
+export function replied(s: SendSeen, received: AskStats["received"]): boolean {
+  const who = bare(s.to);
+  return received.some(
+    (m) =>
+      m.at > s.at &&
+      (bare(m.from) === who ||
+        (m.fromName !== undefined && bare(m.fromName) === who)),
+  );
+}
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -282,11 +303,10 @@ export function askMetrics(
   let repeated = 0;
   let noReply = 0;
   for (const s of sends) {
-    const key = `${bare(s.to)}\n${s.hash}`;
+    const key = sendKey(s);
     if (seen.has(key)) repeated++;
     seen.add(key);
-    const who = bare(s.to);
-    if (!received.some((m) => m.at > s.at && bare(m.from) === who)) noReply++;
+    if (!replied(s, received)) noReply++;
   }
   const pass = asks.filter((a) => !a.problems.length).length;
   return {

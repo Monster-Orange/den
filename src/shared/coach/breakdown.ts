@@ -93,7 +93,7 @@ export interface CoachAgentRow {
    * Slice T-c: its asks to a person and its messages to other agents, when
    * its usage source reads them (asks.ts).
    */
-  asks?: { metrics: AskMetrics; stats: AskStats };
+  asks?: { metrics: AskMetrics; stats?: AskStats };
 }
 
 export interface CoachReport {
@@ -150,6 +150,8 @@ export interface CoachOptions {
   env?: NodeJS.ProcessEnv;
   /** The rotation limit (agents.rotate.after_compactions, default 3). */
   after?: number;
+  /** R12's longest sentence, in words (agents.coach.findings.sentence_words). */
+  sentenceWords?: number;
 }
 
 /** Transcripts read at once: many agents, each with many, would run out of file handles. */
@@ -246,12 +248,13 @@ export async function coachBreakdown(
       const asks = await mapLimited(
         files.filter((f) => !/[\\/]subagents[\\/]/.test(f)),
         MINE_AT_ONCE,
-        (f) => read(f, { since }),
+        (f) => read(f, { since, maxWords: o.sentenceWords }),
       );
       const merged: AskStats = {
         asks: asks.flatMap((a) => a.asks),
         sends: asks.flatMap((a) => a.sends),
         received: asks.flatMap((a) => a.received),
+        prompts: asks.flatMap((a) => a.prompts ?? []),
       };
       row.asks = { metrics: askMetrics(asks, o.days), stats: merged };
     }
