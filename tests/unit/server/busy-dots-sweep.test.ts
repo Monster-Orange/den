@@ -203,7 +203,7 @@ describe("issue 698: the approval buttons hold the dots", () => {
   };
 
   it("the Allow card's Allow and Deny (apDecide) hold the pressed button's dots", () => {
-    const f = body(read("shell.js"), /function apDecide\(/, /\n  function /);
+    const f = body(read("shell.js"), /function apDecide\(/, /\n {2}function /);
     expect(f).toMatch(/holdDots\(/);
   });
 
@@ -211,7 +211,7 @@ describe("issue 698: the approval buttons hold the dots", () => {
     const f = body(
       read("settings-registry.js"),
       /const act = \(btn, path, body\) =>/,
-      /\n        };\n/,
+      /\n {8}};\n/,
     );
     expect(f).toMatch(/holdDots\?\.\(btn\)/);
   });
