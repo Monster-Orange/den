@@ -865,6 +865,10 @@
       "En una terminal de este ordenador, ejecuta esto. Abre esta página con la sesión iniciada:",
     "shell.signin.line": "Inicia sesión para hacer cambios aquí.",
     "shell.signin.btn": "Iniciar sesión",
+    "shell.view.title": "Vista de solo lectura",
+    "shell.view.line":
+      "{agent} está viendo estas páginas. Aquí no se puede cambiar nada, y la vista termina en unos minutos.",
+    "shell.view.off": "Vista de solo lectura: esto no cambia nada aquí",
     "err.signin.codeExpired": "Este código caducó.",
     "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
     "err.signin.codeFailed":
@@ -1462,6 +1466,13 @@
       "Intervalo de códigos incorrectos, en segundos",
     "set.access.approve_window.d":
       "Durante cuánto tiempo se cuentan los códigos incorrectos. Cuando pasa, se puede volver a intentar aprobar. __DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.agent_view": "Los agentes pueden ver las páginas, solo lectura",
+    "set.access.agent_view.d":
+      "Activado, un agente que funciona aquí puede abrir estas páginas en solo lectura, como él mismo, para mirar o hacer una captura (page_view). No cambia nada, y cada página que abre queda registrada con su nombre. Desactivado, se le dice al agente que las vistas están desactivadas. __DEN_CLI__ config web.agent_view=true",
+    "set.access.agent_view_minutes":
+      "Duración de la vista de un agente, en minutos",
+    "set.access.agent_view_minutes.d":
+      "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
@@ -2928,6 +2939,7 @@
     "set.ui.viaGithubAs": "sesión iniciada con GitHub (@{login})",
     "set.ui.viaGithub": "sesión iniciada con GitHub",
     "set.ui.viaCode": "aprobado con un código",
+    "set.ui.viaAgentView": "vista de solo lectura de {agent}",
     "set.ui.viaClaim": "reclamado con un enlace de configuración",
     "set.ui.viaLink": "sesión iniciada con un enlace de un solo uso",
     "set.ui.unknownBrowser": "Navegador desconocido",

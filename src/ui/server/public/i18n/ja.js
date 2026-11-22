@@ -839,6 +839,10 @@
       "このコンピューターのターミナルで次を実行します。このページがサインインした状態で開きます:",
     "shell.signin.line": "ここで変更するにはサインインしてください。",
     "shell.signin.btn": "サインイン",
+    "shell.view.title": "閲覧専用",
+    "shell.view.line":
+      "{agent} がこのページを見ています。ここでは何も変更できません。この表示は数分で終わります。",
+    "shell.view.off": "閲覧専用: ここでは何も変更されません",
     "err.signin.codeExpired": "このコードは期限切れです。",
     "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
     "err.signin.codeFailed":
@@ -1414,6 +1418,12 @@
     "set.access.approve_window": "誤ったコードを数える時間 (秒)",
     "set.access.approve_window.d":
       "誤ったコードを数える時間です。過ぎると、もう一度承認を試せます。__DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.agent_view": "エージェントによるページの閲覧 (読み取り専用)",
+    "set.access.agent_view.d":
+      "オンにすると、ここで動くエージェントが自分自身としてこのページを読み取り専用で開き、確認やスクリーンショットができます (page_view)。何も変更せず、開いたページはそのエージェントの名前で記録されます。オフにすると、閲覧がオフであることがエージェントに伝えられます。 __DEN_CLI__ config web.agent_view=true",
+    "set.access.agent_view_minutes": "エージェントの閲覧時間 (分)",
+    "set.access.agent_view_minutes.d":
+      "エージェントの読み取り専用の閲覧が続く時間。過ぎると終わります。 __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
@@ -2821,6 +2831,7 @@
     "set.ui.viaGithubAs": "GitHub でサインイン (@{login})",
     "set.ui.viaGithub": "GitHub でサインイン",
     "set.ui.viaCode": "コードで承認",
+    "set.ui.viaAgentView": "{agent} の読み取り専用の閲覧",
     "set.ui.viaClaim": "セットアップリンクで登録",
     "set.ui.viaLink": "一回限りのリンクでサインイン",
     "set.ui.unknownBrowser": "不明なブラウザ",

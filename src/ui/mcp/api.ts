@@ -153,6 +153,8 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/approvals": "POST",
   // NT-1 (MCP ask_human): the agent's own waiting mark, nothing more.
   "/api/agents/self/attention": "POST",
+  // Issue 796 (MCP page_view): a one-time link to a read-only view.
+  "/api/agents/self/view": "POST",
   // issue_write: one GitHub issue write in the agent's own project's repos
   // (the server checks the role, the repo and the limit, and audits it).
   "/api/agents/self/issue-write": "POST",
