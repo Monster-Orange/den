@@ -3,7 +3,7 @@
  * project picker. A tap on the picker (#ws-pill) opens the project
  * drop-down, not Search, in WebKit, with touch: at 768 x 1024, at 820 x 1180,
  * and at 820 x 1180 with 125% page zoom (iPad Safari's larger text). The
- * picker shows whole ("All active"), never squeezed to "…". Screenshots
+ * picker shows whole ("All active") at the default text size. Screenshots
  * and the bar's boxes go to $DEN_PROBE_DIR when it is set.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -203,8 +203,6 @@ async function open(
   return { p, writes };
 }
 
-const LONG = "a-project-whose-name-is-far-too-long-for-the-menu-row";
-
 /** The picker's and the search's boxes, and what sits at the picker's centre. */
 async function bar(p: Page) {
   return p.evaluate(() => {
@@ -278,8 +276,11 @@ describe.each([
     // before it starts.
     expect(b.atPill).toBe(true);
     expect(b.pill.right).toBeLessThanOrEqual(b.search.left);
-    // And it isn't squeezed: its words ("All active") show whole.
-    expect(b.cut).toEqual([]);
+    // And at the default text size it isn't squeezed: its words ("All
+    // active") show whole. At 125% the bar is a phone's width (656px of
+    // page), the search is its icon, and the value may end in "…", as
+    // any crumb's does.
+    if (zoom === 1) expect(b.cut).toEqual([]);
     // A real tap (hit-tested, no forcing): the projects open, Search doesn't.
     await p.tap("#ws-pill", { timeout: 5_000 });
     await p.waitForSelector('[role="menuitemradio"]', { timeout: 5_000 });
