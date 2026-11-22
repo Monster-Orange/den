@@ -1056,6 +1056,29 @@ describe("issue 946: the fixture person reads only what a fixture session filed"
     expect(shotStore(state).get(id)?.record.byFixture).toBe(true);
   });
 
+  it("held for the person's approval: a filing of the other kind in between is never replaced", async () => {
+    const id = "0123456789abcdef";
+    const held = await call("POST", "/api/report/github-send", {
+      ...FORM,
+      draftId: id,
+      shot: SHOT,
+      shareShot: false,
+    });
+    expect(held.status).toBe(200);
+    // Before the person's Allow, the fixture person files under that id.
+    const r = await call(
+      "POST",
+      "/api/report/send",
+      { ...FORM, shot: SHOT_2, shareShot: false, draftId: id },
+      { origin: base, ...FIXTURE },
+    );
+    expect(r.status).toBe(200);
+    await approve();
+    const kept = shotStore(state).get(id);
+    expect(kept?.record.byFixture).toBe(true);
+    expect(kept?.png.equals(PNG_2)).toBe(true);
+  });
+
   it("the same filer sending its own report id again still keeps it", async () => {
     const id = await file(FIXTURE);
     const r = await call(

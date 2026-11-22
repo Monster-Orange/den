@@ -386,8 +386,13 @@ async function afterFiling(
   hub: ReportRouteDeps["shotHub"],
   now: number,
   update: (line: string) => Promise<void>,
-): Promise<ShotOutcome> {
+): Promise<ShotOutcome | null> {
   const store = shotStore(stateDir);
+  // Issue 957: checked again here, at the save. A held filing saves only
+  // after the person's approval, and another kind of filer may have kept
+  // a screenshot under this id meanwhile: that one stays, nothing kept.
+  const kept = store.get(p.id);
+  if (kept && (kept.record.byFixture === true) !== p.byFixture) return null;
   store.save(p.id, p.png, repo, now, { byFixture: p.byFixture });
   const local = (why?: UploadWhy): ShotOutcome => ({
     where: "local",
