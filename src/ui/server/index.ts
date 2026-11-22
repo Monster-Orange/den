@@ -360,6 +360,12 @@ import {
   testInstallByHandRefusal,
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
+import {
+  inTestPersonScope,
+  notTestBedRefusal,
+  TEST_PERSON_HEADER,
+  testPersonCredentialRefusal,
+} from "../../shared/test-person.js";
 import { routeClass } from "./route-classes.js";
 import { envName, readEnv } from "../../shared/profile.js";
 import {
@@ -2181,6 +2187,8 @@ const GUARD: GuardContext = {
   edgeUnattested: WEB_AUTH.edgeUnattested,
   // H1: the edge's forwarded client is believed only with its proof.
   edgeProved: (req) => EDGE_PROVED(req),
+  // Issue 636: the test-person path, on a test bed (issue 810's binding).
+  testBed: () => testInstallNow(),
 };
 
 // ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
@@ -2738,7 +2746,8 @@ function isPublicAsset(req: http.IncomingMessage, pathname: string): boolean {
 /** A refused request: R26 JSON for /api, the error page for a page. */
 /**
  * A refused write is audited (AG-DROP): an agent's token past its scope
- * (agent_forbidden), and a browser's write without its CSRF token. The
+ * (agent_forbidden), a browser's write without its CSRF token, and a
+ * refused test-person call (issue 636). The
  * other refusals carry no credential to name, and the request log has them.
  */
 function auditGuardRefusal(
@@ -2746,7 +2755,14 @@ function auditGuardRefusal(
   pathname: string,
   g: Extract<GuardResult, { ok: false }>,
 ): void {
-  if (g.code !== "agent_forbidden" && g.code !== "csrf") return;
+  if (
+    g.code !== "agent_forbidden" &&
+    g.code !== "csrf" &&
+    // Issue 636: a refused test-person call (it never ran).
+    g.code !== "test_person_refused" &&
+    g.code !== "not_test_bed"
+  )
+    return;
   if (g.principal) setPrincipal(req, g.principal);
   const method = (req.method ?? "GET").toUpperCase();
   try {
@@ -3442,6 +3458,72 @@ async function handleFixturePersonRoute(
   if (!r.ok)
     return sendJson(res, { ok: false, code: r.code, error: r.error }, 403);
   return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/**
+ * Issue 636: `POST /api/web/test-person {command}`: a test bed's CLI
+ * starting `<cli> --test-person <command>`. The request checks already let
+ * it in only with the person's token and the test-person header, from
+ * this machine, on a test bed; here it is checked once more and the row
+ * recorded (`via: "test-person"`). Only then does the CLI act.
+ */
+async function handleTestPersonRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    res.setHeader("Allow", "POST");
+    return sendJson(res, { ok: false, error: "use POST" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const onPath =
+    g.ok && g.principal?.kind === "person" && g.principal.testPerson === true;
+  let command = "";
+  try {
+    const b = JSON.parse((await readBody(req)) || "{}") as {
+      command?: unknown;
+    } | null;
+    if (typeof b?.command === "string") command = b.command;
+  } catch {
+    command = "";
+  }
+  command = command.replace(/[^A-Za-z0-9._ …-]/g, "").slice(0, 120);
+  if (!onPath || !testInstallNow()) {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "test-person",
+        detail: `${command || "a command"} as the person: refused`,
+        outcome: "refused",
+        reason: onPath ? "not_test_bed" : "test_person_refused",
+      },
+      principalOf(req),
+    );
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: onPath ? "not_test_bed" : "test_person_refused",
+        error: onPath
+          ? notTestBedRefusal(product().configFile)
+          : testPersonCredentialRefusal(),
+      },
+      403,
+    );
+  }
+  recordAction(
+    null,
+    {
+      verb: "test-person",
+      detail: `${command || "a command"} as the person (the test-person path, a test bed)`,
+    },
+    principalOf(req),
+  );
+  serverLog(
+    `  ${logTimestamp()}  the CLI acts as the person: ${command || "a command"} (the test-person path, a test bed)`,
+    "lifecycle",
+  );
+  return sendJson(res, { ok: true });
 }
 
 /** Issue 810: the sign-ins that are a person's own browser session. */
@@ -4998,6 +5080,9 @@ async function handleRequest(
   // Issue 810: Settings › Access, the test install and its fixture person.
   if (pathname === "/api/web/fixture-person")
     return handleFixturePersonRoute(req, res);
+  // Issue 636: a test bed's CLI starts a --test-person command.
+  if (pathname === "/api/web/test-person")
+    return handleTestPersonRoute(req, res);
 
   // SEC-2a: approve this computer with a code. Before config validation.
   if (
@@ -9040,10 +9125,17 @@ const server = http.createServer((req, res) => {
   // health dot) and leaves the request hanging. Fail the one request instead.
   // Each request in its own lock scope (SEC-1c: an agent's stays shut).
   const wait = agentPeerWaitMs(req);
-  inRequestLockScope(() =>
-    wait === null
-      ? handleRequest(req, res)
-      : peerSettled(req, wait).then(() => handleRequest(req, res)),
+  const handle = () =>
+    inRequestLockScope(() =>
+      wait === null
+        ? handleRequest(req, res)
+        : peerSettled(req, wait).then(() => handleRequest(req, res)),
+    );
+  // Issue 636: every audit row a test-person call makes says so (the
+  // request checks refuse the header anywhere but a test bed).
+  (req.headers[TEST_PERSON_HEADER] !== undefined
+    ? inTestPersonScope(handle)
+    : handle()
   ).catch((err: unknown) => {
     // R26: the log has the stack under the request id; the browser gets the
     // id, never the stack. The route is its template: no query values.

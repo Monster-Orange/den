@@ -2902,6 +2902,7 @@
     "ag.term.started": "Terminal opened in {w}",
     "ag.term.failed": "Den couldn't open a terminal: {e}",
     // Issue 503: the machine gave no PTY (the reason in {e}).
+    "ag.start.lastLines": "What it printed before it stopped:",
     "ag.term.ptyFailed":
       "Den couldn't open a terminal: this machine gave it no PTY ({e}). Close terminals you no longer need, or run doctor.",
     "ag.term.noWs": "no project is active. Activate one first.",

@@ -1774,6 +1774,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
+    // Issue 636: whether this install is a test bed.
+    r.checks.push(
+      (await import("./test-person.js")).testBedLines(readBrand().name).check,
+    );
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1875,6 +1879,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
+  // Issue 636: whether this install is a test bed.
+  for (const l of (await import("./test-person.js")).testBedLines(
+    readBrand().name,
+  ).lines)
+    console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
