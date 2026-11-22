@@ -18,7 +18,14 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import {
+  bindActorSession,
+  mintActorToken,
+} from "../../../src/shared/actor-token.js";
 import { fixturePersonPath } from "../../../src/shared/fixture-person.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
+import { TEST_PERSON_HEADER } from "../../../src/shared/test-person.js";
+import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { readFixtureMadeBy } from "../../../src/shared/fixture-setup-secret.js";
 import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
 
@@ -57,7 +64,19 @@ function baseEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-const MARKED = ["environments: [local]", "web:", "  test_install: true", ""];
+const MARKED = [
+  "environments: [local]",
+  "web:",
+  "  test_install: true",
+  "edge:",
+  "  org: acme",
+  "  domain: acme.localhost",
+  "  tls: none",
+  "",
+];
+/** The install's edge hostname, and a client the edge places away. */
+const EDGE = "den.acme.localhost";
+const AWAY = { host: EDGE, "x-forwarded-for": "203.0.113.7", ...EDGE_PROOF };
 
 async function startDen(name: string, o: { flag: boolean }): Promise<Den> {
   const root = path.join(tmp, name, "dist");
@@ -71,6 +90,7 @@ async function startDen(name: string, o: { flag: boolean }): Promise<Den> {
   fs.writeFileSync(path.join(stateDir, "earlier.txt"), "an earlier start\n");
   fs.writeFileSync(path.join(root, "den.yml"), "product:\n  name: den\n");
   fs.writeFileSync(path.join(root, "config", "den.yml"), MARKED.join("\n"));
+  writeTestEdgeProof(path.join(tmp, name, "edge-state"));
   const s = await startDenServer(
     TSX,
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
@@ -85,6 +105,7 @@ async function startDen(name: string, o: { flag: boolean }): Promise<Den> {
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
         DEN_FIXTURE_SETUP_SECRET: VALUE,
+        DEN_EDGE_DIR: path.join(tmp, name, "edge-state"),
         ...(o.flag ? { DEN_TEST_INSTALL: "1" } : {}),
       },
     },
@@ -225,6 +246,52 @@ describe("a test install", () => {
     expect(hasKey(once)).toBe(false);
   });
 
+  it("refuses from beyond this machine (the edge, a client away), and the value stays unspent", async () => {
+    const r = await post(once, { secret: VALUE }, AWAY);
+    expect([r.status, r.json.code]).toEqual([403, "not_this_machine"]);
+    expect(hasKey(once)).toBe(false);
+  });
+
+  it("refuses a real agent token before it reads the value", async () => {
+    fs.mkdirSync(sessionPaths(once.stateDir).dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionPaths(once.stateDir).dir, "s-builder.json"),
+      JSON.stringify({}),
+    );
+    const t = mintActorToken(once.stateDir, {
+      agentId: "builder",
+      workspace: "north",
+      sessionName: "builder",
+    });
+    bindActorSession(once.stateDir, t.key, "s-builder");
+    const r = await post(
+      once,
+      { secret: VALUE },
+      { authorization: `Bearer ${t.token}` },
+    );
+    // The request checks refuse it first (agent_token_elsewhere), else
+    // the route does (person_only): either way before the value is read.
+    expect(r.status).toBe(403);
+    expect(["agent_token_elsewhere", "person_only"]).toContain(r.json.code);
+    expect(hasKey(once)).toBe(false);
+  });
+
+  it("refuses the test-person path (issue 636) before it reads the value", async () => {
+    const r = await post(
+      once,
+      { secret: VALUE },
+      { [TEST_PERSON_HEADER]: "1" },
+    );
+    expect(r.status).toBe(403);
+    expect(hasKey(once)).toBe(false);
+  });
+
+  it("refuses a body over its cap, and the value stays unspent", async () => {
+    const r = await post(once, { secret: VALUE, pad: "x".repeat(8192) });
+    expect([r.status, r.json.code]).toEqual([413, "body_too_big"]);
+    expect(hasKey(once)).toBe(false);
+  });
+
   it("accepts it once: the key is written, audited, and fixture-login works", () => {
     const r = fromSecret(once, VALUE);
     expect([r.status, r.stderr]).toEqual([0, ""]);
@@ -236,7 +303,9 @@ describe("a test install", () => {
       .find((e) =>
         String(e.detail).includes("fixture person made from the setup secret"),
       );
-    expect(line?.principal).toBe("fixture:person");
+    // Who made it: the person whose bearer sent it; what: the fixture person.
+    expect(String(line?.principal)).toMatch(/^person:/);
+    expect(String(line?.detail)).toContain("fixture:person");
     const login = cli(
       once,
       ["fixture-login", "--origin", `http://localhost:${once.port}`],
@@ -272,4 +341,12 @@ describe("a test install", () => {
     expect(hasKey(wrong)).toBe(false);
     expect(leaks(wrong, r.stderr, again.stderr)).toBe(false);
   });
+
+  it("a restart with the same value doesn't bring it back", async () => {
+    await stopServer(once.server);
+    once = await startDen("once", { flag: true });
+    const r = fromSecret(once, VALUE);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/already used/);
+  }, 90_000);
 });

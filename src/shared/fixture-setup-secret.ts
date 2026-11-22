@@ -35,18 +35,52 @@ export type SetupSecretRefusal =
 const digest = (v: string) => createHash("sha256").update(v, "utf8").digest();
 
 /**
- * The value, held in memory only. `take` compares once: the first call
- * that reaches it spends it, whatever the answer.
+ * Spent values, in the state folder (one tag a line, 0600), so a restart
+ * with the same value doesn't bring it back. A tag is a hash of the value
+ * under its own context, never the value; the launcher's value is random,
+ * so a tag can't be turned back into it.
+ */
+export const SETUP_SECRET_SPENT_FILE = "fixture-setup-secret.spent";
+const SPENT_CONTEXT = "den-fixture-setup-spent-v1:";
+const spentTag = (v: string) =>
+  createHash("sha256")
+    .update(SPENT_CONTEXT + v, "utf8")
+    .digest("hex");
+
+function spentTags(stateDir: string): Set<string> {
+  try {
+    return new Set(
+      fs
+        .readFileSync(path.join(stateDir, SETUP_SECRET_SPENT_FILE), "utf8")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => /^[0-9a-f]{64}$/.test(l)),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * The value, held in memory only, as a digest. `take` compares once: the
+ * first call that reaches it spends it, whatever the answer, and (with a
+ * state folder) records it spent there before it compares. take() is
+ * synchronous, so two tries can't both reach it.
  */
 export class SetupSecret {
   private held: Buffer | null;
-  private given: boolean;
-  private spent = false;
+  private tag: string | null;
+  private spent: boolean;
+  private stateDir: string | null;
 
-  constructor(value: string | null | undefined) {
+  constructor(value: string | null | undefined, stateDir?: string) {
     const v = typeof value === "string" ? value : "";
-    this.given = v.length > 0;
-    this.held = this.given ? digest(v) : null;
+    this.held = v ? digest(v) : null;
+    this.tag = v ? spentTag(v) : null;
+    this.stateDir = stateDir ?? null;
+    this.spent =
+      !!this.tag && !!this.stateDir && spentTags(this.stateDir).has(this.tag);
+    if (this.spent) this.held = null;
   }
 
   /** Whether a value was kept at start and not yet spent. */
@@ -57,7 +91,8 @@ export class SetupSecret {
   /** Drops the value unread (the install isn't a test install). */
   drop(): void {
     this.held = null;
-    this.given = false;
+    this.tag = null;
+    this.spent = false;
   }
 
   take(
@@ -68,6 +103,19 @@ export class SetupSecret {
     const want = this.held;
     this.held = null;
     this.spent = true;
+    if (this.stateDir && this.tag) {
+      try {
+        fs.appendFileSync(
+          path.join(this.stateDir, SETUP_SECRET_SPENT_FILE),
+          `${this.tag}\n`,
+          { mode: 0o600 },
+        );
+      } catch {
+        // Not recorded: a match still makes no key (caller checks), and a
+        // restart with this value would be let in once more. Refuse.
+        return { ok: false, code: "setup_secret_used" };
+      }
+    }
     const got = digest(typeof presented === "string" ? presented : "");
     return timingSafeEqual(got, want)
       ? { ok: true }

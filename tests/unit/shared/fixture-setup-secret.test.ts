@@ -7,6 +7,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
+  SETUP_SECRET_SPENT_FILE,
   SetupSecret,
   readFixtureMadeBy,
   setupSecretRefusal,
@@ -68,6 +69,30 @@ describe("SetupSecret", () => {
     ).map((c) => setupSecretRefusal(c, "den"));
     expect(new Set(words).size).toBe(3);
     for (const w of words) expect(w).not.toContain(V);
+  });
+});
+
+describe("spent across a restart", () => {
+  it("a value once tried stays used for the next start on the same folder; another value doesn't", () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "den-spent-"));
+    expect(new SetupSecret(V, d).take("nope")).toEqual({
+      ok: false,
+      code: "setup_secret_wrong",
+    });
+    const again = new SetupSecret(V, d);
+    expect(again.waiting).toBe(false);
+    expect(again.take(V)).toEqual({ ok: false, code: "setup_secret_used" });
+    expect(new SetupSecret("another-value", d).take("another-value")).toEqual({
+      ok: true,
+    });
+    const file = fs.readFileSync(path.join(d, SETUP_SECRET_SPENT_FILE), "utf8");
+    expect(file).not.toContain(V);
+    expect(
+      (
+        fs.statSync(path.join(d, SETUP_SECRET_SPENT_FILE)).mode & 0o777
+      ).toString(8),
+    ).toBe("600");
+    fs.rmSync(d, { recursive: true, force: true });
   });
 });
 

@@ -1187,6 +1187,7 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readBodyCapped,
   readMethodOnly,
   sendJson,
   sendMethodNotAllowed,
@@ -3348,14 +3349,19 @@ const TEST_INSTALL_LAUNCH_FLAG = (() => {
 
 /**
  * Issue 1018: the launcher's one-time setup value, read once from the
- * server's own start environment and taken out of it, like the flag.
- * Held in memory only (as a digest); dropped at start unless this is a
- * test install then (keepSetupSecretIfTestInstall).
+ * server's own start environment and taken out of process.env, like the
+ * flag, so nothing this server starts (agents, terminals) inherits it.
+ * That hides it from children only: the process's own start environment
+ * stays readable to the same OS user (`ps eww <pid>`, Linux's
+ * /proc/<pid>/environ), the same limit as every secret this user's
+ * processes hold. Held in memory as a digest; spent values are recorded
+ * in the state folder, so a restart with one doesn't revive it; dropped
+ * at start unless this is a test install then.
  */
 const FIXTURE_SETUP_SECRET = (() => {
   const v = readEnv(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY);
   delete process.env[envName(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY)];
-  return new SetupSecret(v);
+  return new SetupSecret(v, getStateDir());
 })();
 
 function realOrResolved(p: string): string {
@@ -3821,6 +3827,9 @@ async function handleFixturePersonRoute(
  * match, the key is made exactly as Set up test person makes it. No
  * answer, log line or audit line holds the value.
  */
+/** Issue 1018: the setup route's body, `{"secret": …}`, at most this. */
+const SETUP_SECRET_BODY_MAX = 4096;
+
 async function handleFixtureSetupSecretRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -3831,10 +3840,11 @@ async function handleFixtureSetupSecretRoute(
   }
   const g = checkRequest(req, GUARD, product().cli, product().title);
   let presented: unknown = undefined;
+  let tooBig = false;
   try {
-    const b = JSON.parse((await readBody(req)) || "{}") as {
-      secret?: unknown;
-    } | null;
+    const raw = await readBodyCapped(req, SETUP_SECRET_BODY_MAX);
+    tooBig = raw === null;
+    const b = JSON.parse(raw ?? "{}") as { secret?: unknown } | null;
     presented = b?.secret;
   } catch {
     presented = undefined;
@@ -3857,6 +3867,13 @@ async function handleFixtureSetupSecretRoute(
     g.principal?.kind === "person" &&
     !g.principal.testPerson &&
     !notAPersonOf(req);
+  // Only from this machine, as the test-person path (issue 636): beyond
+  // it, the value and the person's bearer would cross the network.
+  if (person && g.beyond)
+    return refuse(
+      "not_this_machine",
+      `The ${FIXTURE_LABEL} is made from the setup value only on this computer, from its own command line; never through the edge or the network.`,
+    );
   if (!person)
     return refuse(
       "person_only",
@@ -3866,6 +3883,13 @@ async function handleFixtureSetupSecretRoute(
     return refuse(
       "not_test_install",
       notTestInstallRefusal(product().configFile),
+    );
+  // Before the value: a body over the cap spends nothing.
+  if (tooBig)
+    return refuse(
+      "body_too_big",
+      `The request is over ${SETUP_SECRET_BODY_MAX} bytes; it sends only {"secret": …}. Nothing was spent.`,
+      413,
     );
   const t = FIXTURE_SETUP_SECRET.take(presented);
   presented = undefined;
@@ -3878,10 +3902,15 @@ async function handleFixtureSetupSecretRoute(
   });
   if (!r.ok) return refuse(r.code, r.error);
   writeFixtureMadeBy(getStateDir(), "setup-secret");
+  // Who made it: the person whose bearer sent the value (as Settings'
+  // Set up test person records its presser); the fixture person is what.
   recordAction(
-    null,
-    { verb: "fixture-person", detail: SETUP_SECRET_AUDIT },
-    FIXTURE_PRINCIPAL,
+    auditActorOf(req),
+    {
+      verb: "fixture-person",
+      detail: `${SETUP_SECRET_AUDIT} (${FIXTURE_PRINCIPAL})`,
+    },
+    principalOf(req),
   );
   serverLog(`  ${logTimestamp()}  ${SETUP_SECRET_AUDIT}`, "lifecycle");
   return sendJson(res, { ok: true, testInstall: true, ready: true });
