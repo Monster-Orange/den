@@ -525,6 +525,11 @@ export interface UserConfig {
    * `screenshot_max_mb` (8) the largest kept, `hub_screenshot_max_mb` (6)
    * the largest sent to Hub, `hub_timeout_seconds` (10) the wait for Hub.
    */
+  /**
+   * Issue 707: the server's warning lines on disk while it runs as a
+   * service (<state>/logs/server.log): `max_mb` (20), then it rotates once.
+   */
+  server_log?: { max_mb?: unknown };
   reports?: {
     screenshot_keep_days?: unknown;
     screenshot_max_mb?: unknown;

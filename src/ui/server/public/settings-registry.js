@@ -2718,6 +2718,29 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ reports: { screenshot_keep_days: v } }),
   },
   {
+    // Issue 707: the server's warning lines on disk while it runs as a
+    // service (user.yml server_log.max_mb), rotated once. A person's only.
+    id: "server.server_log_max",
+    category: "server",
+    label: "Warnings log, largest size",
+    description:
+      "While __DEN_TITLE__ runs as a service, its warnings also go to logs/server.log in its state folder, so they are still there after a restart. At this size it moves to server.log.1 (once) and starts again. __DEN_CLI__ config server_log.max_mb=20",
+    keywords: [
+      "log",
+      "server",
+      "service",
+      "warnings",
+      "file",
+      "size",
+      "rotate",
+    ],
+    scope: "user",
+    keys: ["server_log.max_mb"],
+    control: { type: "number", min: 1, max: 1024, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.server_log?.max_mb ?? 20,
+    write: (v, ctx) => ctx.post({ server_log: { max_mb: v } }),
+  },
+  {
     // Issue 403: the largest report screenshot kept here (reports.*).
     id: "server.report_screenshot_max",
     category: "server",
