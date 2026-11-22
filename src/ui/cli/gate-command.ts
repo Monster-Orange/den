@@ -89,6 +89,7 @@ import {
 } from "../../shared/gates/browser-container.js";
 import {
   GATE_MEANINGS,
+  KEPT_PLACE_WORDS,
   PRIORITY_OFF_RUN,
   PRIORITY_OFF_STATUS,
   PRIORITY_OFF_WARNING,
@@ -503,6 +504,8 @@ export function slotLine(
   margin: { overrunMarginMinutes: number } & Partial<GateSettings> & {
       /** Issue 1009: the machine's 5-minute load, when read. */
       load?: number;
+      /** Issue 867: the person's language, for the kept-place words. */
+      lang?: UiLanguage;
       /** Issue 1048: the machine's cores. */
       cores?: number;
     },
@@ -542,7 +545,7 @@ export function slotLine(
         : "";
   // Issue 867: a waiter whose run is gone, its place kept a while.
   const kept = e.orphanedAt
-    ? `  run gone, place kept until ${hm(Date.parse(e.orphanedAt) + (margin.waiterReturnMinutes ?? GATE_DEFAULTS.waiterReturnMinutes) * 60_000)}`
+    ? `  ${KEPT_PLACE_WORDS[margin.lang ?? "en"].kept(hm(Date.parse(e.orphanedAt) + (margin.waiterReturnMinutes ?? GATE_DEFAULTS.waiterReturnMinutes) * 60_000))}`
     : "";
   return `${e.id}  waits for ${e.kind}${where}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now, margin))}${pri}${kept}`;
 }
@@ -863,15 +866,14 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   }
   // Issue 867: back in a place kept since a restart, or told what became
   // of the earlier one.
+  const kw = KEPT_PLACE_WORDS[d.lang ?? personLanguage()];
   if (s.lastAskReattached)
-    d.err(
-      `gate: back in your place (${e.id}), asked at ${hm(Date.parse(e.askedAt))}`,
-    );
+    d.err(`gate: ${kw.back(e.id, hm(Date.parse(e.askedAt)))}`);
   else {
     const was = s.droppedFor(e);
     if (was)
       d.err(
-        `gate: your earlier place (asked ${hm(Date.parse(was.askedAt))}) was let go at ${hm(Date.parse(was.at))}: its run was gone for ${s.settings().waiterReturnMinutes} min`,
+        `gate: ${kw.letGo(hm(Date.parse(was.askedAt)), hm(Date.parse(was.at)), s.settings().waiterReturnMinutes)}`,
       );
   }
   // Issue 963: asked for release priority, but it is off here.
@@ -994,6 +996,7 @@ function status(args: string[], d: GateDeps): number {
     ...d.store.settings(),
     load: d.store.load(),
     cores: d.store.cores(),
+    lang: d.lang ?? personLanguage(),
   };
   if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { KEPT_PLACE_WORDS } from "../../../src/shared/gates/meanings.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
 
@@ -186,4 +187,57 @@ describe("issue 867: gate run across a restart", () => {
     ).toBe(0);
     expect(t.d.store.settings().waiterReturnMinutes).toBe(30);
   });
+});
+
+describe("issue 867: the kept-place lines in the person's language", () => {
+  it("has en, es and ja for each line, and they differ", () => {
+    for (const l of ["en", "es", "ja"] as const) {
+      const w = KEPT_PLACE_WORDS[l];
+      expect(w.back("browser-1", "12:00")).toContain("browser-1");
+      expect(w.letGo("12:00", "12:11", 10)).toContain("10");
+      expect(w.kept("12:10")).toContain("12:10");
+    }
+    const back = (["en", "es", "ja"] as const).map((l) =>
+      KEPT_PLACE_WORDS[l].back("x", "y"),
+    );
+    expect(new Set(back).size).toBe(3);
+  });
+
+  it.each(["es", "ja"] as const)(
+    "gate run and gate status use the person's language (%s)",
+    async (lang) => {
+      const t = deps();
+      t.d.lang = lang;
+      const h = held(t);
+      await waitThen(t, "SIGHUP");
+      const first = ours(t)!;
+      t.live.delete(4242);
+      t.d.store = t.store();
+      await cmdGate(["status"], t.d);
+      const until = new Date(
+        Date.parse(first.askedAt) + 10 * MIN,
+      ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      expect(t.out.join("\n")).toContain(
+        KEPT_PLACE_WORDS[lang].kept(until).trim(),
+      );
+      t.d.pid = 4343;
+      t.live.add(4343);
+      let n = 0;
+      t.d.sleep = () => {
+        if (++n === 1) t.d.store.release(h.id);
+        return Promise.resolve();
+      };
+      await cmdGate(
+        ["run", "--kind", "browser", "--label", "full check", "--", "x"],
+        t.d,
+      );
+      const asked = new Date(Date.parse(first.askedAt)).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      expect(t.err).toContain(
+        `gate: ${KEPT_PLACE_WORDS[lang].back(first.id, asked)}`,
+      );
+    },
+  );
 });

@@ -208,3 +208,35 @@ export const PRIORITY_OFF_RUN: Record<UiLanguage, string> = {
   es: "se toma como una ejecución normal: la prioridad de versión está desactivada en esta máquina (priority_max 0)",
   ja: "通常の実行として扱います: このマシンではリリース優先がオフです (priority_max 0)",
 };
+
+/**
+ * Issue 867: the lines about a place kept for a waiting run whose run is
+ * gone (a restart): taken back, let go, and kept until when.
+ */
+export const KEPT_PLACE_WORDS: Record<
+  UiLanguage,
+  {
+    back: (id: string, asked: string) => string;
+    letGo: (asked: string, at: string, minutes: number) => string;
+    kept: (until: string) => string;
+  }
+> = {
+  en: {
+    back: (id, asked) => `back in your place (${id}), asked at ${asked}`,
+    letGo: (asked, at, m) =>
+      `your earlier place (asked ${asked}) was let go at ${at}: its run was gone for ${m} min`,
+    kept: (until) => `run gone, place kept until ${until}`,
+  },
+  es: {
+    back: (id, asked) => `de vuelta en tu lugar (${id}), pedido a las ${asked}`,
+    letGo: (asked, at, m) =>
+      `tu lugar anterior (pedido a las ${asked}) se liberó a las ${at}: su ejecución estuvo ausente ${m} min`,
+    kept: (until) => `ejecución ausente, lugar guardado hasta las ${until}`,
+  },
+  ja: {
+    back: (id, asked) => `元の順番に戻りました (${id})、${asked} に依頼`,
+    letGo: (asked, at, m) =>
+      `以前の順番（${asked} に依頼）は ${at} に手放されました: 実行が ${m} 分なかったため`,
+    kept: (until) => `実行なし、${until} まで順番を保持`,
+  },
+};

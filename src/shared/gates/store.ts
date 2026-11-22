@@ -948,9 +948,10 @@ export class GateStore {
     for (const e of this.readAll()) {
       // Issue 714: an MCP holder's lease lapses as a runner's does.
       const lapse = lapsed(e, now) || mcpLapsed(e, s, now);
-      // A kept waiter whose pid number is in use again stays kept (and is
-      // never given a slot) until its run asks: ask() takes it back.
-      if (!lapse && !gone(e, this.alive)) {
+      // Issue 867: a kept waiter stays on the kept-place path even when its
+      // old pid number is in use again (another process): its time still
+      // runs out, and only its own run asking again takes it back.
+      if (!lapse && !e.orphanedAt && !gone(e, this.alive)) {
         entries.push(e);
         continue;
       }

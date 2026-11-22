@@ -150,6 +150,21 @@ describe("issue 867: the queue survives a restart", () => {
     expect(s.droppedFor(next)).toBeNull();
   });
 
+  it("a kept place still runs out when its old pid number is in use again", () => {
+    const w = world();
+    const { a } = queued(w);
+    let s = w.open();
+    s.list();
+    expect(s.list().find((e) => e.id === a.id)!.orphanedAt).toBeDefined();
+    w.live.add(101); // another process now has that pid number
+    w.advance(10 * MIN + 1);
+    s = w.open();
+    expect(s.list().find((e) => e.id === a.id)).toBeUndefined();
+    expect(
+      s.events().find((r) => r.id === a.id && r.event === "taken-back-gone"),
+    ).toMatchObject({ reason: "waiter-gone" });
+  });
+
   it("waiter_return_minutes 0: a gone waiter is taken back at once, as before", () => {
     const w = world();
     const s0 = w.open();
