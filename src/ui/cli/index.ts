@@ -2604,6 +2604,12 @@ class DenCLI {
     return out;
   }
 
+  /** "project <name>" for the focused one (`-w` too), else "this project". */
+  private static projectLabel(): string {
+    const name = getActiveWorkspace()?.name;
+    return name ? `project ${name}` : "this project";
+  }
+
   /** "cfg (runs nothing), sdk (library)": repos with no runtime, and why. */
   private static noRuntimeList(none: Map<string, string>): string {
     return [...none].map(([r, why]) => `${r} (${why})`).join(", ");
@@ -2663,11 +2669,14 @@ class DenCLI {
       );
       for (const [repo, why] of none)
         this.upReport?.noRuntime.push({ repo, why });
+      // Issue 300: the project by its name; under `up -w` it may not be
+      // active yet (a dry run never makes it so).
+      const ws = DenCLI.projectLabel();
       console.log(
         chalk.yellow(
           none.size > 0
-            ? `\n  Nothing to start: no repo in the active project has a runtime of its own: ${DenCLI.noRuntimeList(none)}.\n`
-            : "\n  No services in the active project — nothing to start.\n",
+            ? `\n  Nothing to start in ${ws}: its repos run nothing: ${DenCLI.noRuntimeList(none)}.\n`
+            : `\n  Nothing to start in ${ws}: it has no services.\n`,
         ),
       );
       if (plan && none.size === 0) process.exitCode = 1;
@@ -2790,7 +2799,7 @@ class DenCLI {
     if (!target) {
       console.log(
         chalk.yellow(
-          "\n  No services in the active project — nothing to stop.\n",
+          `\n  Nothing to stop in ${DenCLI.projectLabel()}: it has no services.\n`,
         ),
       );
       return;

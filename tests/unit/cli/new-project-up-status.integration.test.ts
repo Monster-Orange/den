@@ -5,6 +5,8 @@
  * 1. A project made with `workspace create` is not active. `up` in it
  *    (`-w <project>`) makes it active, says so in one line, and starts it;
  *    it no longer stops with "is not active". A dry run says it would.
+ *    Issue 300: with nothing to start, the line names the project and
+ *    never calls it "the active project".
  * 2. `status <repo>` answers for that repo only. For a repo that runs
  *    nothing and is shared between two projects, `status <repo> -w
  *    <second project>` prints the same one line as in the first project,
@@ -156,8 +158,25 @@ describe("issue 291 item 1: up in a project just created", () => {
     const r = acme("up", "-a", "-w", "fresh", "--dry-run");
     expect(r.out).not.toMatch(/is not active/);
     expect(r.out).toMatch(/Would make project "fresh" active/);
+    // Issue 300: the project isn't active, so nothing calls it that; the
+    // line names it.
+    expect(r.out).not.toMatch(/active project/);
+    expect(r.out).toMatch(
+      /Nothing to start in project fresh: its repos run nothing: cfg \(runs nothing\)\./,
+    );
     expect(r.code).toBe(0);
     expect(active()).not.toContain("fresh");
+  }, 120_000);
+
+  it("issue 300: a dry run in an empty project that isn't active names it", () => {
+    expect(acme("workspace", "create", "bare").code).toBe(0);
+    const r = acme("up", "-a", "-w", "bare", "--dry-run");
+    expect(r.out).toMatch(/Would make project "bare" active/);
+    expect(r.out).not.toMatch(/active project/);
+    expect(r.out).toMatch(
+      /Nothing to start in project bare: it has no services\./,
+    );
+    expect(active()).not.toContain("bare");
   }, 120_000);
 
   it("up -w <new project> makes it active, says so in one line, and is ok", () => {
