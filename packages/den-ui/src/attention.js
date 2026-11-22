@@ -17,7 +17,7 @@
  *   compareAttention(a, b, table?), sortByAttention(items, table?)
  *     items: { state, since?, name?, id?, group?, place? } (since: an ISO
  *     time; group and place: the person's own order, issue 96)
- *   inPersonOrder(sorted)        the person's order inside each band
+ *   inPersonOrder(sorted, table?) the person's order inside Working and Idle
  *   attentionCounts(items, table?)  { needs, done, working, idle, rail, bell }
  */
 
@@ -127,6 +127,7 @@ export function compareAttention(a, b, table = ATTENTION_TABLE) {
 export function sortByAttention(items, table = ATTENTION_TABLE) {
   return inPersonOrder(
     [...(items ?? [])].sort((a, b) => compareAttention(a, b, table)),
+    table,
   );
 }
 
@@ -138,13 +139,15 @@ const placed = (i) =>
  * `sorted` (by state), the slots held by one group's placed items (those
  * with a `place` in their `group`, a project) are filled by those items in
  * the person's order. Other groups' items, and unplaced ones, keep their
- * slots, and the bands keep their order.
+ * slots, and the bands keep their order. Issue 773: only in a "name"
+ * band (Working, Idle); an "oldest" band (Needs you, Done) keeps the
+ * longest wait first.
  */
-export function inPersonOrder(sorted) {
+export function inPersonOrder(sorted, table = ATTENTION_TABLE) {
   const out = [...sorted];
   const slots = new Map();
   sorted.forEach((i, n) => {
-    if (!placed(i)) return;
+    if (!placed(i) || rowOf(table, i.state).order !== "name") return;
     const k = `${i.state}\0${i.group}`;
     const at = slots.get(k) ?? [];
     at.push(n);

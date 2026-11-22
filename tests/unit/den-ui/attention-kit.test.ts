@@ -169,7 +169,7 @@ describe("issue 773 + issue 96: the person's order inside a band", () => {
     ]);
   });
 
-  it("overrides the band's own order in Needs you too (the longest wait no longer first)", () => {
+  it("never overrides the longest wait first in Needs you or Done (the person's order is for Working and Idle)", () => {
     const items = [
       {
         id: "old",
@@ -188,7 +188,9 @@ describe("issue 773 + issue 96: the person's order inside a band", () => {
         place: 0,
       },
     ];
-    expect(sortByAttention(items).map((i) => i.id)).toEqual(["new", "old"]);
+    expect(sortByAttention(items).map((i) => i.id)).toEqual(["old", "new"]);
+    const done = items.map((i) => ({ ...i, state: "done" }));
+    expect(sortByAttention(done).map((i) => i.id)).toEqual(["old", "new"]);
   });
 
   it("only one project's placed rows trade slots; other projects and unplaced rows keep theirs", () => {
