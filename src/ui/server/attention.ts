@@ -337,7 +337,7 @@ export class Attention {
           what?: string;
           input?: string;
         },
-  ): Promise<{ lead: string } | void> {
+  ): Promise<{ lead: string; askId?: string } | void> {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
@@ -529,8 +529,9 @@ export class Attention {
       ...(ev.why === "asked" && ev.turn ? { turn: true } : {}),
     });
     if (lead) {
+      let row: Notification | null | undefined = null;
       if (prev?.lead !== lead || prev.text !== text)
-        this.d.store.add({
+        row = this.d.store.add({
           kind: "finished",
           subject,
           scope,
@@ -541,7 +542,17 @@ export class Attention {
           },
           link,
         });
-      return { lead };
+      // Issue 1058: the "asked the lead" row is the question's id.
+      row ??= this.d.store
+        .list()
+        .find(
+          (n) =>
+            n.subject === subject &&
+            !n.settled &&
+            n.msg?.key === "bell.m.toLead" &&
+            n.msg.vars.text === q,
+        );
+      return { lead, ...(row ? { askId: row.id } : {}) };
     }
     const looking = this.onScreen(agent);
     // Issue 172: a new need (not the same wait said again) alerts.
@@ -630,7 +641,16 @@ export class Attention {
       }),
     );
     if (!out) return null;
-    if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
+    const w = this.waiting.get(agent);
+    if (w?.why === "asked") this.clear(agent);
+    // Issue 1058: a question that went to the lead: the lead is told.
+    if (row.msg?.key === "bell.m.toLead" && w?.lead)
+      void this.d
+        .tellLead?.(
+          w.lead,
+          `Den: ${name}'s question to you is settled: ${out.settled?.reason ?? s.reason}. It asked: "${question}". Nothing is left to decide.`,
+        )
+        .catch(() => false);
     this.settledAsks.set(agent, {
       id,
       reason: out.settled?.reason ?? s.reason,
