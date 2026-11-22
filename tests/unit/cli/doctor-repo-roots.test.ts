@@ -85,4 +85,16 @@ describe("repoRootLines", () => {
     );
     expect(r.check.status).toBe("ok");
   });
+
+  it("is ok with a root that is a folder inside a repo", () => {
+    const home = tempDir();
+    const mono = path.join(home, "work", "mono");
+    fs.mkdirSync(path.join(mono, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(mono, "apps", "web"), { recursive: true });
+    const r = repoRootLines(
+      [{ project: "north", repoPath: path.join(mono, "apps", "web") }],
+      { home, stateDir: path.join(home, ".den") },
+    );
+    expect(r.check.status).toBe("ok");
+  });
 });

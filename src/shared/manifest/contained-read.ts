@@ -147,14 +147,43 @@ export function holdsGit(root: string): boolean {
   }
 }
 
-/** Why `root` can't be a repo root, or null when it can. */
+/**
+ * The top of the git work tree `root` is in (resolved): `root` itself or
+ * the nearest folder above it that holds a `.git`; null outside one.
+ */
+export function gitTop(root: string): string | null {
+  let dir: string;
+  try {
+    dir = fs.realpathSync.native(root);
+  } catch {
+    return null;
+  }
+  for (;;) {
+    if (holdsGit(dir)) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * Why `root` can't be a repo root, or null when it can: it is far too
+ * broad, or it is not in a git work tree whose top is itself a sound root
+ * (a home folder kept in git makes no folder in it a root). A folder inside
+ * a repo (a monorepo's app) can be a root.
+ */
 export function rootRefusal(
   root: string,
   opts: BroadRootOptions = {},
 ): string | null {
   if (!root || !path.isAbsolute(root)) return "it is not an absolute path";
-  return (
-    broadRootReason(root, opts) ??
-    (holdsGit(root) ? null : "it is not a git checkout (it holds no .git)")
-  );
+  const broad = broadRootReason(root, opts);
+  if (broad) return broad;
+  const top = gitTop(root);
+  if (!top)
+    return "it is not a git checkout, nor in one (no .git in it or above it)";
+  const topBroad = broadRootReason(top, opts);
+  return topBroad
+    ? `the git checkout it is in is far too broad (${topBroad})`
+    : null;
 }

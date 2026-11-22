@@ -8,8 +8,9 @@
  *     after every symlink;
  *   - the repo's own manifest: inside the configured repo roots;
  *   - a held manifest or override: inside the held manifests folder.
- * A configured repo root is used only when it is a git checkout and not
- * far too broad (rootRefusal); `doctor` says why one is not. The roots are
+ * A configured repo root is used only when it is in a git checkout (it,
+ * or a folder above it, holds the .git) and neither it nor that checkout
+ * is far too broad (rootRefusal); `doctor` says why one is not. The roots are
  * resolved and checked once, here, and every read uses those same roots.
  * The repo's own manifest may be anywhere in the configured repo roots (a
  * monorepo folder's manifest may link to another folder of its repo); the
@@ -23,6 +24,7 @@ import {
   validateManifestLayers,
 } from "../../shared/manifest/validate-manifest.js";
 import {
+  gitTop,
   isWithin,
   readWithin,
   realRoots,
@@ -99,6 +101,11 @@ export function validateAtPath(
     };
   const repoRoots = roots.real;
   const heldRoots = realRoots([deps.heldDir]);
+  // The git work trees the roots are in (a root may be a monorepo's app):
+  // the origin lookup reads only there. rootRefusal checked each is sound.
+  const gitRoots = [
+    ...new Set(repoRoots.map((r) => gitTop(r)).filter((t): t is string => !!t)),
+  ];
   // Errors name the file's line and column, never its text.
   const plain = (r: ReturnType<typeof validateManifest>) => ({
     ...r,
@@ -114,7 +121,7 @@ export function validateAtPath(
         read: (file, layer) =>
           readWithin(file, layer === "repo" ? repoRoots : heldRoots),
         readFailure: UNREADABLE,
-        gitRoots: repoRoots,
+        gitRoots,
       });
       if (layered.layers.length > 0)
         return {

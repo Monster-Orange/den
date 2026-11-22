@@ -29,11 +29,29 @@ const MANIFEST_NAMES = [
   `${product().manifestJson}`,
 ] as const;
 
+/**
+ * Is there an entry at `p`? Followed through links by default; with
+ * `entry`, any entry counts, a link whatever it points at (issue 583: a
+ * contained lookup then reads it, and refuses it, the same way every time).
+ */
+function present(p: string, entry = false): boolean {
+  if (!entry) return fs.existsSync(p);
+  try {
+    fs.lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The repo's own manifest file, or null. */
-export function repoManifestPath(repoPath: string): string | null {
+export function repoManifestPath(
+  repoPath: string,
+  look: HeldLookup = {},
+): string | null {
   for (const name of MANIFEST_NAMES) {
     const p = path.join(repoPath, name);
-    if (fs.existsSync(p)) return p;
+    if (present(p, !!look.gitRoots)) return p;
   }
   return null;
 }
@@ -47,9 +65,10 @@ export function repoManifestPath(repoPath: string): string | null {
 const originCache = new Map<string, string | null>();
 
 /**
- * How a held manifest is looked up (issue 583): with `gitRoots` (resolved,
- * checked repo roots), the git origin is read only inside them, and is not
- * cached (another caller's answer could come from outside them).
+ * How the manifest files are looked up (issue 583): with `gitRoots`
+ * (resolved, checked folders), the git origin is read only inside them,
+ * and is not cached (another caller's answer could come from outside
+ * them); and a manifest file is found by its entry, a link or not.
  */
 export interface HeldLookup {
   gitRoots?: readonly string[];
@@ -110,7 +129,7 @@ function heldFile(
 ): string | null {
   for (const key of repoKeys(repoPath, look)) {
     const p = path.join(heldManifestsDir(), `${key}${suffix}`);
-    if (fs.existsSync(p)) return p;
+    if (present(p, !!look.gitRoots)) return p;
   }
   return null;
 }
@@ -239,7 +258,7 @@ export function locateManifest(
 }
 
 function locate(repoPath: string, look: HeldLookup = {}): Located {
-  const own = repoManifestPath(repoPath);
+  const own = repoManifestPath(repoPath, look);
   const held = own ? null : heldManifestPath(repoPath, look);
   return {
     baseFile: own ?? held,

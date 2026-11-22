@@ -156,36 +156,56 @@ describe("validateAtPath", () => {
 
   it("every read failure says the same", () => {
     // A manifest that links outside, one whose link leads nowhere, and one
-    // that can't be opened: one answer for all three.
-    const answers: string[][] = [];
-    const linked = path.join(tempDir(), "one");
+    // that can't be opened: the same whole reply for all three.
+    const linked = path.join(tempDir(), "shop");
     fs.mkdirSync(path.join(linked, ".git"), { recursive: true });
     fs.symlinkSync(
       path.join(outside, "elsewhere.yml"),
       path.join(linked, ".den.yml"),
     );
-    const dangling = path.join(tempDir(), "two");
+    const dangling = path.join(tempDir(), "shop");
     fs.mkdirSync(path.join(dangling, ".git"), { recursive: true });
     fs.symlinkSync(
       path.join(outside, "none.yml"),
       path.join(dangling, ".den.yml"),
     );
-    const closed = path.join(tempDir(), "three");
+    const closed = path.join(tempDir(), "shop");
     fs.mkdirSync(path.join(closed, ".git"), { recursive: true });
     fs.writeFileSync(path.join(closed, ".den.yml"), GOOD);
     fs.chmodSync(path.join(closed, ".den.yml"), 0o000);
     const roots = [linked, dangling, closed];
-    for (const r of roots)
-      answers.push(
-        messages(
-          validateAtPath(r, { ...deps(), repoRoots: roots }).body as Body,
-        ),
-      );
+    // Each reply with its own repo's folder written the same way.
+    const answers = roots.map((r) =>
+      JSON.stringify(validateAtPath(r, { ...deps(), repoRoots: roots }).body)
+        .split(r)
+        .join("<repo>"),
+    );
     fs.chmodSync(path.join(closed, ".den.yml"), 0o600);
-    const canOpenAnything = process.getuid?.() === 0;
-    expect(answers[0]).toEqual([UNREADABLE]);
-    expect(answers[1]).toEqual([UNREADABLE]);
-    if (!canOpenAnything) expect(answers[2]).toEqual([UNREADABLE]);
+    expect(answers[0]).toContain(UNREADABLE);
+    expect(answers[1]).toBe(answers[0]);
+    if (process.getuid?.() !== 0) expect(answers[2]).toBe(answers[0]);
+  });
+
+  it("a configured monorepo subfolder validates", () => {
+    const mono = path.join(tempDir(), "mono");
+    const web = path.join(mono, "apps", "web");
+    fs.mkdirSync(path.join(mono, ".git"), { recursive: true });
+    fs.mkdirSync(web, { recursive: true });
+    fs.writeFileSync(path.join(web, ".den.yml"), GOOD);
+    const r = validateAtPath(web, { ...deps(), repoRoots: [web] });
+    expect(r.status).toBe(200);
+    expect((r.body as Body).valid).toBe(true);
+  });
+
+  it("a home folder kept in git is still no root, nor a broad folder in it", () => {
+    fs.mkdirSync(path.join(home, ".git"));
+    const library = path.join(home, "Library");
+    fs.mkdirSync(library);
+    fs.writeFileSync(path.join(library, ".den.yml"), GOOD);
+    for (const root of [home, library]) {
+      const r = validateAtPath(root, { ...deps(), repoRoots: [root] });
+      expect(r.status).toBe(403);
+    }
   });
 
   it("a folder's manifest may link to another folder of the same repo", () => {

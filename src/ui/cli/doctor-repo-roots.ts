@@ -4,13 +4,13 @@
  * top-level folder, the home folder or one holding it, the state folder or
  * one holding it) is refused by Validate, which would otherwise read
  * anything under it; ✗ names each one, its project and why. A root that
- * is there but is not a git checkout is skipped by Validate too: ⚠.
+ * is there but not in a sound git checkout is skipped by Validate too: ⚠.
  */
 import type { OnboardCheck } from "./doctor-onboard.js";
 import * as fs from "fs";
 import {
   broadRootReason,
-  holdsGit,
+  rootRefusal,
   type BroadRootOptions,
 } from "../../shared/manifest/contained-read.js";
 
@@ -33,8 +33,10 @@ export function repoRootLines(
     const why = broadRootReason(repoPath, opts);
     if (why) broad.push(`${project}: ${repoPath} (${why})`);
     // A root not there yet (a clone still to come) is fine.
-    else if (fs.existsSync(repoPath) && !holdsGit(repoPath))
-      notRepo.push(`${project}: ${repoPath}`);
+    else if (fs.existsSync(repoPath)) {
+      const refused = rootRefusal(repoPath, opts);
+      if (refused) notRepo.push(`${project}: ${repoPath} (${refused})`);
+    }
   }
   const parts: string[] = [];
   if (broad.length)
@@ -43,7 +45,7 @@ export function repoRootLines(
     );
   if (notRepo.length)
     parts.push(
-      `Validate skips ${notRepo.length === 1 ? "this repo root" : "these repo roots"}, not a git checkout (no .git): ${notRepo.join("; ")}`,
+      `Validate skips ${notRepo.length === 1 ? "this repo root" : "these repo roots"}: ${notRepo.join("; ")}`,
     );
   const status = broad.length ? "fail" : notRepo.length ? "warn" : "ok";
   const detail = parts.length

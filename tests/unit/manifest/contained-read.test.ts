@@ -157,6 +157,25 @@ describe("rootRefusal", () => {
     expect(rootRefusal(repo, { home })).toBe(null);
   });
 
+  it("a folder inside a repo can be a root", () => {
+    const home = tempDir();
+    const mono = path.join(home, "work", "mono");
+    fs.mkdirSync(path.join(mono, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(mono, "apps", "web"), { recursive: true });
+    expect(rootRefusal(path.join(mono, "apps", "web"), { home })).toBe(null);
+  });
+
+  it("a folder whose enclosing repo is the home folder is refused", () => {
+    const home = tempDir();
+    fs.mkdirSync(path.join(home, ".git"));
+    fs.mkdirSync(path.join(home, "Library"));
+    fs.mkdirSync(path.join(home, "work", "plain"), { recursive: true });
+    expect(rootRefusal(path.join(home, "Library"), { home })).not.toBe(null);
+    expect(rootRefusal(path.join(home, "work", "plain"), { home })).not.toBe(
+      null,
+    );
+  });
+
   it("a far too broad root is refused even when it holds a .git", () => {
     const home = tempDir();
     fs.mkdirSync(path.join(home, ".git"));
