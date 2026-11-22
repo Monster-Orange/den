@@ -326,11 +326,66 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
         store: d.store,
         attention: d.a,
         seen: d.seen,
+        // Not this machine's own bell switches.
+        prefs: () => ({ off: [], foldDays: 7 }),
         doneAgents: (person) =>
           doneAgents([{ id: "builder", workspace: "north" }], person, d.deps),
       },
     );
     const b = JSON.parse(out.body) as { done: { agent: string }[] };
     expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
+  });
+
+  async function bell(d: ReturnType<typeof mk>, off: string[] = []) {
+    const { r, out } = res();
+    await handleNotificationRoutes(
+      req("GET", "/api/notifications", undefined, "person:a"),
+      r,
+      "/api/notifications",
+      {
+        store: d.store,
+        attention: d.a,
+        seen: d.seen,
+        prefs: () => ({ off, foldDays: 7 }),
+        doneAgents: (person) =>
+          doneAgents([{ id: "builder", workspace: "north" }], person, d.deps),
+      },
+    );
+    return JSON.parse(out.body) as {
+      done: { agent: string }[];
+      updates: {
+        groups: {
+          subjects: { subject: string; items: { kind: string }[] }[];
+        }[];
+      };
+      older: { groups: { subjects: { subject: string }[] }[] };
+    };
+  }
+  const finishedIn = (
+    groups: { subjects: { subject: string; items?: { kind: string }[] }[] }[],
+  ) =>
+    groups.flatMap((g) =>
+      g.subjects
+        .filter((x) => (x.items ?? []).some((i) => i.kind === "finished"))
+        .map((x) => x.subject),
+    );
+
+  it("a Done agent shows once: in Done, not again in Earlier's updates", async () => {
+    const d = mk();
+    await d.a.event("builder", "north", { event: "finished" });
+    // "other" isn't one of the person's agents' records: not in Done.
+    await d.a.event("other", "north", { event: "finished" });
+    expect(d.store.list().filter((n) => n.kind === "finished").length).toBe(2);
+    const b = await bell(d);
+    expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
+    // The one not in Done stays in the updates; the Done one doesn't.
+    expect(finishedIn(b.updates.groups)).toEqual([agentSubject("other")]);
+  });
+
+  it("the person's finished switch off: no Done section either", async () => {
+    const d = mk();
+    await d.a.event("builder", "north", { event: "finished" });
+    const b = await bell(d, ["finished"]);
+    expect(b.done).toEqual([]);
   });
 });

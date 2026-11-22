@@ -39,6 +39,7 @@ import {
   bellView,
   needsYou,
   groupNotifications,
+  type Notification,
   type NotificationStore,
   type Which,
 } from "../../shared/notifications.js";
@@ -259,13 +260,22 @@ export async function handleNotificationRoutes(
   if (pathname === "/api/notifications") {
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
-    const v = bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null));
+    const prefs = (deps.prefs ?? bellPrefs)(null);
+    const all = bellView(deps.store.list(), prefs);
     let done: DoneAgent[] = [];
-    try {
-      done = deps.doneAgents?.(personKey(req)) ?? [];
-    } catch {
-      /* the bell is best effort: no Done section this time */
-    }
+    // Issue 773: Done is the person's "finished" switch's too.
+    if (!prefs.off.includes("finished"))
+      try {
+        done = deps.doneAgents?.(personKey(req)) ?? [];
+      } catch {
+        /* the bell is best effort: no Done section this time */
+      }
+    // Issue 773: an agent in Done shows once: its "finished" item is left
+    // out of Earlier (the updates and Older hold only what was seen).
+    const inDone = new Set(done.map((d) => agentSubject(d.agent)));
+    const once = (ns: Notification[]) =>
+      ns.filter((n) => !(n.kind === "finished" && inDone.has(n.subject)));
+    const v = { ...all, updates: once(all.updates), older: once(all.older) };
     sendJson(res, {
       ok: true,
       unread: v.unread,
