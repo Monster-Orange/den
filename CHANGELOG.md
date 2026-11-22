@@ -18,6 +18,9 @@ config and manifest changes a distribution must make to move to it under
 - Gate slots: up to `cpu_slots_beside_browser` cpu runs (new setting, default 2) run beside the browser runs on this machine. 0 keeps the old rule: a browser run runs alone. A browser run on a test box doesn't count. (issue 751)
 - Gate slots: a release-priority run passes every plain waiting run of its kind, however long it has waited. `priority_pass_limit_minutes` now defaults to 0 and applies only between release-priority runs. (issue 751)
 
+- Agents: when an agent exits right after it starts, the page shows the lines it printed, not just its exit code (issue 89).
+- Tests: browser tests no longer assume the browser runs on the same machine (issue 191).
+
 ### Migrations
 
 - None required. To keep the old gate rules, set `cpu_slots_beside_browser` to 0 and `priority_pass_limit_minutes` to 60.
