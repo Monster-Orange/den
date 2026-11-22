@@ -1260,7 +1260,7 @@ function paintList() {
       ? bands
           .map(
             (b) =>
-              `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(t(`ag.band.${b.state}`))}</span><span class="n">${esc(b.rows.length)}</span></div>` +
+              `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(t(`ag.band.${b.state}`))}</span><span class="n" data-count>${esc(b.rows.length)}</span></div>` +
               b.rows.map((r) => rowHtml(r)).join("") +
               `</div>`,
           )

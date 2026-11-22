@@ -274,17 +274,17 @@ describe("after setup", () => {
   it("Agents ranks it by its state like any agent, tagged Server (issue 773)", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");
-    const row = p.locator("#agl .agband .agr", { hasText: "Acme agent" });
-    await row.first().waitFor({ timeout: 20_000 });
+    const row = p.locator("#agl [data-band] button[data-kind]", {
+      hasText: "Acme agent",
+    });
+    await row.waitFor({ timeout: 20_000 });
     // Its tag says Server; it has no group of its own.
-    expect(
-      (await row.first().locator(".ptag").first().textContent())?.trim(),
-    ).toBe("Server");
-    expect(await p.locator('#agl .wsg[data-ws="den-server"]').count()).toBe(0);
+    expect(await row.locator('[data-ptag="server"]').count()).toBe(1);
+    expect(await p.locator('#agl [data-ws="den-server"]').count()).toBe(0);
     // In one of the four bands, by its state.
-    const band = await row
-      .first()
-      .evaluate((e) => e.closest(".agband")?.getAttribute("data-band"));
+    const band = await row.evaluate((e) =>
+      e.closest("[data-band]")?.getAttribute("data-band"),
+    );
     expect(["needs", "done", "working", "idle"]).toContain(band);
     await p.context().close();
   }, 60_000);
@@ -292,8 +292,19 @@ describe("after setup", () => {
   it("one project's view leaves it out: only All projects lists it (issue 773)", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents?ws=north");
-    await p.waitForSelector("#agl:not([aria-busy])", { timeout: 20_000 });
-    await p.waitForTimeout(500);
+    // The list has loaded: no placeholder rows (their status) left.
+    await p.waitForFunction(
+      () => {
+        const l = document.getElementById("agl");
+        return (
+          !!l &&
+          !l.hasAttribute("aria-busy") &&
+          !l.querySelector("[role=status][aria-label]")
+        );
+      },
+      null,
+      { timeout: 20_000 },
+    );
     expect(
       await p
         .locator("#agl button[data-kind]", { hasText: "Acme agent" })

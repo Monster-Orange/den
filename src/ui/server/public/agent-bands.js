@@ -101,8 +101,9 @@ const MARK = {
 
 /** The mark: its shape says the state as well as its colour. */
 export function markHtml(state) {
-  const [cls, sign] = MARK[state] ?? MARK.idle;
-  return `<span class="agm ${cls}" aria-hidden="true">${sign}</span>`;
+  const st = MARK[state] ? state : "idle";
+  const [cls, sign] = MARK[st];
+  return `<span class="agm ${cls}" data-mark="${st}" aria-hidden="true">${sign}</span>`;
 }
 
 /** The chip: the state's word; Needs you says which need. */
@@ -125,10 +126,10 @@ export function chipHtml(r, seenNow) {
  */
 export function tagHtml(r, { all = false, name } = {}) {
   if (r.server || r.workspace === SERVER_WS)
-    return `<span class="ptag">${esc(t("ag.tag.server"))}</span>`;
+    return `<span class="ptag" data-ptag="server">${esc(t("ag.tag.server"))}</span>`;
   if (!all) return "";
   const n = typeof name === "function" ? name(r.workspace) : r.workspace;
-  return `<span class="ptag">${esc(n)}</span>`;
+  return `<span class="ptag" data-ptag="project">${esc(n)}</span>`;
 }
 
 /**
