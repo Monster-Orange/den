@@ -154,6 +154,43 @@ describe("issue 844 clause 1: the directly affected tests", () => {
     expect(d).toEqual(["tests/a-one.browser.test.ts"]);
   });
 
+  it("the fan-out cap is DEN_DIRECT_FANOUT_MAX (default 10); a bad value is refused, naming it", () => {
+    expect(call<number>(AFFECTED, "directFanoutMax", {})).toBe(10);
+    expect(
+      call<number>(AFFECTED, "directFanoutMax", {
+        DEN_DIRECT_FANOUT_MAX: "25",
+      }),
+    ).toBe(25);
+    for (const bad of ["0", "-3", "ten", "2.5"]) {
+      const r = call<unknown>(AFFECTED, "directFanoutMaxOrError", {
+        DEN_DIRECT_FANOUT_MAX: bad,
+      });
+      expect(String(r)).toContain("DEN_DIRECT_FANOUT_MAX");
+    }
+    // Raised, the docs rule's 11 tests are direct.
+    const many = Array.from(
+      { length: 11 },
+      (_, i) => `tests/docs-${i}.test.ts`,
+    );
+    const d = call<string[]>(AFFECTED, "directTests", {
+      changed: ["CONTRIBUTING.md"],
+      allTests: [...tests, ...many],
+      related: [],
+      map: {
+        ...map,
+        rules: [
+          {
+            when: ["CONTRIBUTING.md"],
+            run: ["tests/docs-*.test.ts"],
+            why: "docs",
+          },
+        ],
+      },
+      fanoutMax: 11,
+    });
+    expect(d).toHaveLength(11);
+  });
+
   it("the pr job runs them first, in one step, before the rest of the subset", () => {
     const steps = WF.jobs.pr.steps;
     const select = steps.find((s) => s.id === "select");

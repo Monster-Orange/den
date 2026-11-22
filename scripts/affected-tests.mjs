@@ -192,8 +192,29 @@ export function selectTests({
  * further away, the smoke set or "everything". Leaves out what `fast` ran
  * (issue 843). In the order found, each once.
  */
-/** Issue 844: a map rule naming more tests than this isn't direct. */
-export const DIRECT_RULE_MAX = 10;
+/**
+ * Issue 844: a map rule naming more tests than this isn't direct: the
+ * DEN_DIRECT_FANOUT_MAX variable, 10 when unset. A value that isn't a
+ * whole number of at least 1 is refused, naming the variable.
+ */
+export function directFanoutMax(env = process.env) {
+  const raw = env.DEN_DIRECT_FANOUT_MAX;
+  if (raw === undefined || raw === "") return 10;
+  if (!/^[1-9]\d*$/.test(raw.trim()))
+    throw new Error(
+      "DEN_DIRECT_FANOUT_MAX must be a whole number of at least 1",
+    );
+  return Number(raw.trim());
+}
+
+/** directFanoutMax, or its error's message (for the tests' child Node). */
+export function directFanoutMaxOrError(env) {
+  try {
+    return directFanoutMax(env);
+  } catch (e) {
+    return e.message;
+  }
+}
 
 export function directTests({
   changed,
@@ -201,6 +222,7 @@ export function directTests({
   related,
   map,
   ranFirst = [],
+  fanoutMax = 10,
 }) {
   const skip = new Set(ranFirst);
   const tests = allTests.filter((f) => !skip.has(f));
@@ -216,7 +238,7 @@ export function directTests({
     const hits = tests.filter(run);
     // A rule naming many tests is a fan-out (the docs, read by dozens):
     // they run with the rest, not first.
-    if (hits.length <= DIRECT_RULE_MAX) hits.forEach(add);
+    if (hits.length <= fanoutMax) hits.forEach(add);
   }
   const rel = new Set(related);
   const stem = (f) =>
@@ -461,6 +483,7 @@ async function main(argv) {
       related,
       map,
       ranFirst: ranFirstTests(),
+      fanoutMax: directFanoutMax(),
     });
     fs.writeFileSync(opt.direct, direct.length ? direct.join("\n") + "\n" : "");
   }
