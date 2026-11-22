@@ -231,6 +231,30 @@ describe("issue 310: the Account area in a browser", () => {
     await done(p);
   }, 60_000);
 
+  it("Unlink GitHub asks first too: Cancel sends nothing, the danger button sends it", async () => {
+    if (skip()) return;
+    const p = await open({ query: "?account=access" });
+    const u = '.den-aa-pane:not([hidden]) [data-aa-act="unlink"]';
+    await p.click(u);
+    await p.waitForSelector("dialog.dk-confirm[open]");
+    expect(await p.textContent("dialog.dk-confirm")).toContain(
+      "Unlink GitHub?",
+    );
+    await p.keyboard.press("Escape");
+    await p.waitForFunction(
+      () => !document.querySelector("dialog.dk-confirm[open]"),
+    );
+    expect(await acts(p)).toEqual([]);
+    await p.click(u);
+    await p.waitForSelector("dialog.dk-confirm[open]");
+    await p.click("dialog.dk-confirm .dk-danger");
+    await p.waitForFunction(
+      () => (window as unknown as { acts: unknown[] }).acts.length === 1,
+    );
+    expect(await acts(p)).toEqual([["unlink", null, null]]);
+    await done(p);
+  }, 60_000);
+
   it("a notification switch flips at once, and back when the host refuses", async () => {
     if (skip()) return;
     const p = await open({ query: "?account=notifications" });

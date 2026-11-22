@@ -515,6 +515,18 @@ export function mountAccountArea(el, opts = {}) {
       });
       if (!ok) return;
     }
+    // Unlinking can stop the owner signing in from another machine: it asks
+    // first, like signing out everywhere.
+    if (name === "unlink") {
+      const ok = await askConfirm({
+        title: kitT(lang(), "kit.aa.unlinkQ"),
+        message: kitT(lang(), "kit.aa.unlinkBody"),
+        okLabel: kitT(lang(), "kit.aa.unlink"),
+        danger: true,
+        opener: b,
+      });
+      if (!ok) return;
+    }
     if (name === "notify") {
       const on = b.getAttribute("aria-checked") !== "true";
       const flip = (v) => {

@@ -283,6 +283,9 @@ export const en = {
     "{login} · linked {date}. Only its id is kept, never a token.",
   "kit.aa.githubNone": "Not linked",
   "kit.aa.unlink": "Unlink",
+  "kit.aa.unlinkQ": "Unlink GitHub?",
+  "kit.aa.unlinkBody":
+    "You will no longer sign in with this GitHub account. On a device that isn't paired, you may not get back in until you link it again from this computer.",
   "kit.aa.otherWay": "Another way in",
   "kit.aa.otherWayHelp":
     "A one-time link and QR code for a device without GitHub.",
@@ -580,6 +583,9 @@ export const es = {
     "{login} · vinculado el {date}. Solo se guarda su id, nunca un token.",
   "kit.aa.githubNone": "Sin vincular",
   "kit.aa.unlink": "Desvincular",
+  "kit.aa.unlinkQ": "¿Desvincular GitHub?",
+  "kit.aa.unlinkBody":
+    "Ya no entrarás con esta cuenta de GitHub. En un dispositivo sin vincular quizá no puedas volver a entrar hasta que la vincules de nuevo desde este ordenador.",
   "kit.aa.otherWay": "Otra forma de entrar",
   "kit.aa.otherWayHelp":
     "Un enlace de un solo uso y un código QR para un dispositivo sin GitHub.",
@@ -878,6 +884,9 @@ export const ja = {
     "{login} · {date} に連携。保存するのは ID だけで、トークンは保存しません。",
   "kit.aa.githubNone": "未連携",
   "kit.aa.unlink": "連携を解除",
+  "kit.aa.unlinkQ": "GitHub の連携を解除しますか？",
+  "kit.aa.unlinkBody":
+    "この GitHub アカウントでサインインできなくなります。ペアリングしていないデバイスでは、このコンピューターからもう一度連携するまで入れないことがあります。",
   "kit.aa.otherWay": "別の方法で入る",
   "kit.aa.otherWayHelp":
     "GitHub のないデバイス用の、一度だけ使えるリンクと QR コード。",
