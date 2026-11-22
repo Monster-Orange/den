@@ -141,12 +141,12 @@ describe("issue 1051: the project menu after a failed load", () => {
     await p
       .context()
       .route(/\/api\/workspaces(\?|$)/, (r) => r.abort("connectionreset"));
-    await p.evaluate(async () => {
-      const h = (await import("/header.js")) as {
+    await p.evaluate(async (url) => {
+      const h = (await import(url)) as {
         refreshWorkspacePill: () => Promise<void>;
       };
       await h.refreshWorkspacePill();
-    });
+    }, "/header.js");
     expect(await p.locator("#ws-pill").isHidden()).toBe(false);
     expect(await p.locator("#ws-pill").innerText()).toBe(label);
     await p.context().close();
