@@ -368,6 +368,11 @@ export interface UserConfig {
    */
   approvals?: unknown;
   /**
+   * Issue 1072: settings that widen what agents may do, read from here
+   * only (an agent's sandbox can't write this file): mcp.actions.
+   */
+  mcp?: { actions?: unknown };
+  /**
    * Issue 742: held writes. wait_minutes (default 1440, 10 to 10080): how
    * long a request waits for the person's Allow before it lapses.
    */
@@ -1731,6 +1736,8 @@ export interface McpConfig {
 /** `mcp:` with its defaults applied. */
 export interface ResolvedMcpConfig {
   actions: McpAction[];
+  /** Issue 1072: mcp.actions in the distribution's config, not read. */
+  notReadFromOrg?: string[];
   runTestsEnvs: Environment[];
   logsRemote: boolean;
   /** Whether the held writes are registered (default true). */
@@ -1747,10 +1754,21 @@ export interface ResolvedMcpConfig {
  * a typo must not silently turn a guard off (or an action on).
  */
 export function readMcpConfig(
-  config: DenConfig = readDenConfig(),
+  config?: DenConfig,
+  /** user.yml (default: read only when `config` is Den's own, unpassed). */
+  user?: UserConfig,
 ): ResolvedMcpConfig {
-  const raw = config.mcp ?? {};
-  const actions = (Array.isArray(raw.actions) ? raw.actions : []).map((a) => {
+  const c = config ?? readDenConfig();
+  const u = user ?? (config ? {} : readUserConfigQuiet());
+  const raw = c.mcp ?? {};
+  // Issue 1072: action tools widen what agents may do: user.yml only.
+  const orgActions = Array.isArray(raw.actions) ? raw.actions : [];
+  const mine = u.mcp?.actions;
+  if (mine !== undefined && mine !== null && !Array.isArray(mine))
+    throw new Error(
+      `mcp.actions: a list of action names (user.yml; got ${JSON.stringify(mine)})`,
+    );
+  const actions = ((mine as unknown[] | undefined) ?? []).map((a) => {
     if (!(MCP_ACTIONS as readonly string[]).includes(String(a)))
       throw new Error(
         `mcp.actions: unknown action "${String(a)}" (known: ${MCP_ACTIONS.join(", ")})`,
@@ -1773,6 +1791,7 @@ export function readMcpConfig(
     );
   return {
     actions: [...new Set(actions)],
+    ...(orgActions.length ? { notReadFromOrg: ["mcp.actions"] } : {}),
     runTestsEnvs: [...new Set(runTestsEnvs)],
     logsRemote: raw.logs?.remote === true,
     approvals: raw.approvals !== false,
@@ -1999,6 +2018,11 @@ export interface ResolvedAgentsConfig {
    */
   tokenBinding?: boolean;
   /**
+   * Issue 1072: widening keys found in the distribution's config, which
+   * Den no longer reads (agents.<id>.grants): doctor names each.
+   */
+  notReadFromOrg?: string[];
+  /**
    * Issue 242: agents.token_peer_wait_ms (default
    * TOKEN_PEER_WAIT_MS_DEFAULT): how long an agent's call waits for Den to
    * find the process that made it before refusing it as unknown.
@@ -2207,7 +2231,12 @@ export function readAgentsConfig(
   );
   // A signing key is per machine: user.yml's agents.git wins.
   const mine = u.agents?.git;
-  if (mine !== undefined && mine !== null) {
+  // An agent called git (grants or sandbox only) is no signing key.
+  const agentCalledGit =
+    isMapping(mine) &&
+    Object.keys(mine).length > 0 &&
+    Object.keys(mine).every((k) => k === "grants" || k === "sandbox");
+  if (mine !== undefined && mine !== null && !agentCalledGit) {
     const g = asConfigError(
       () => gitSigningBlock(mine),
       path.relative(ROOT, USER_CONFIG_PATH),
@@ -2244,14 +2273,35 @@ export function applyUserSandbox(
     out.sandboxSockets = [...new Set(socks as string[])];
   }
   for (const [id, block] of Object.entries(userAgents)) {
-    if (
-      AGENTS_RESERVED_KEYS.includes(id) ||
-      id === "git" ||
-      id === "sandbox_sockets"
-    )
-      continue;
+    // agents.git is the signing key, unless it holds an agent's keys only
+    // (an agent called git): the keys check below tells them apart.
+    if (AGENTS_RESERVED_KEYS.includes(id) || id === "sandbox_sockets") continue;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block)) continue;
-    const one = sandboxValue(block.sandbox, `agents.${id}.sandbox`);
+    // An agent's block holds grants and sandbox only; other mappings here
+    // (runtimes, layout, …) are settings, never an agent.
+    const keys = Object.keys(block);
+    if (!keys.length || !keys.every((k) => k === "grants" || k === "sandbox"))
+      continue;
+    const where = `agents.${id}`;
+    // Issue 1072: its grants, from here only.
+    if (block.grants !== undefined) {
+      const grants = block.grants;
+      if (!Array.isArray(grants))
+        throw new Error(
+          `${where}.grants: must be a list of project names (got ${JSON.stringify(grants)})`,
+        );
+      grants.forEach((g, i) => {
+        if (typeof g !== "string" || !AGENT_KEY_RE.test(g))
+          throw new Error(
+            `${where}.grants[${i}]: ${JSON.stringify(g)} is not a project name`,
+          );
+      });
+      out.agents[id] = {
+        ...(out.agents[id] ?? {}),
+        grants: [...new Set(grants as string[])],
+      };
+    }
+    const one = sandboxValue(block.sandbox, `${where}.sandbox`);
     if (one === undefined) continue;
     out.agents[id] = {
       ...(out.agents[id] ?? { grants: [] }),
@@ -2439,7 +2489,8 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     });
     if (block.sandbox !== undefined)
       throw new Error(SANDBOX_IN_USER_YML(`${where}.sandbox`));
-    out.agents[id] = { grants: [...new Set(grants as string[])] };
+    // Issue 1072: a grant widens what an agent may do: user.yml only.
+    if (grants.length) (out.notReadFromOrg ??= []).push(`${where}.grants`);
   }
   return out;
 }

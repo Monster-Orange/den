@@ -3129,7 +3129,7 @@ to one project for one agent:
 (agent:<id>; no grants); "<other>" is another project`; with grants,
   `grants: <a>, <b>`) before anything reaches the web server. The refusal
   says how to get more: a person adds `<other>` to `agents.<id>.grants` in
-  the org config and restarts the agent; an agent can't grant itself one. A
+  `config/local/user.yml` and restarts the agent; an agent can't grant itself one. A
   refused call is recorded in the activity trail, read tools included.
 - **Says so.** Every scoped answer (`status`, `services`, `applications`,
   `graph`, `stacks`, `workspaces`) carries a `scope` block: the project
@@ -3163,7 +3163,7 @@ to one project for one agent:
 agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 <id>)` for every exec, run and sync.
 - **Granted.** `--grant <other>` (repeatable) also serves `<other>`, but only
-  when the org config's `agents.<id>.grants` lists it; otherwise the server
+  when `agents.<id>.grants` in `config/local/user.yml` lists it; otherwise the server
   exits 2 (an agent can't grant itself one). A call naming a granted
   project is reported to the web server before it runs, and its activity
   entry names both (`workspace` and `targetWorkspace`; the log line reads
@@ -3210,13 +3210,21 @@ refusal, a failed action, the web server down).
 
 ### Config
 
-Without an `mcp:` block in the org config (`config/<name>.yml`) only the read
-tools are registered. Actions are opt-in, by name:
+Without `mcp.actions` in `config/local/user.yml`, only the read tools are
+registered. Actions widen what agents may do, so they are opt-in, by name,
+in that file only (an agent's sandbox can't write it):
 
 ```yaml
+# config/local/user.yml
 mcp:
   actions:
     [service_up, service_down, service_restart, workspace_sync, run_tests]
+```
+
+The rest of the `mcp:` block stays in the org config (`config/<name>.yml`):
+
+```yaml
+mcp:
   run_tests:
     envs: [local] # the default; production is refused even if listed
   logs:
@@ -3227,6 +3235,11 @@ mcp:
 An unknown action or environment name is an error, so a typo never turns a
 guard off; so is an `approvals` that isn't `true` or `false`. See
 [Onboarding writes, held for the person](#onboarding-writes-held-for-the-person).
+
+Migrating (issue 1072): Den no longer reads `mcp.actions` or
+`agents.<id>.grants` from the org config. `<cli> agents doctor` names each
+one still there ("Settings read from config/local only"). Move them to
+`config/local/user.yml`. A later release refuses them in the org config.
 
 ### Tools
 

@@ -59,7 +59,7 @@
  *   handoff-check <id|file|->  (den#4) the handoff check (handoff.ts), like
  *           handback-check.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
@@ -2442,6 +2442,12 @@ async function doctor(
     for (const l of sandboxLines(sandbox)) d.out(l);
     d.out("");
   }
+  // Issue 1072: widening keys in the distribution's config, not read.
+  const notRead = notReadFromOrg(d);
+  if (notRead.length) {
+    for (const l of notReadLines(notRead)) d.out(l);
+    d.out("");
+  }
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
@@ -2482,6 +2488,32 @@ export interface SandboxReport {
   outside: { id: string; project: string; reason: string }[];
   /** The rollout: agents from before the sandbox, not turned on yet. */
   fromBefore: number;
+}
+
+/** Issue 1072: the widening keys Den no longer reads from the org config. */
+export function notReadFromOrg(d: AgentsResolved): string[] {
+  const out: string[] = [];
+  try {
+    out.push(...(d.agentsConfig().notReadFromOrg ?? []));
+  } catch {
+    /* a bad config is its own row */
+  }
+  try {
+    out.push(...d.mcpNotReadFromOrg());
+  } catch {
+    /* a bad config is its own row */
+  }
+  return out;
+}
+
+export function notReadLines(keys: string[]): string[] {
+  return [
+    "Settings read from config/local only",
+    ...keys.map(
+      (k) =>
+        `  ${k} is in the distribution's config, which Den no longer reads for it: move it to config/local/user.yml`,
+    ),
+  ];
 }
 
 export function sandboxReport(d: AgentsResolved): SandboxReport {
