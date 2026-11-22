@@ -218,6 +218,10 @@ export const HELD_WRITE_RISK: Readonly<
     kind: "auto",
     why: "closes a stale or superseded PR after a Hub note: runs unless watched",
   },
+  report: {
+    risk: "widens",
+    why: "files a report on GitHub as the person: to a public (or not known) repository it is visible to everyone, so the person's own Allow; to a private one the policy",
+  },
 };
 
 /**

@@ -202,12 +202,16 @@ import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { USAGE_HELP, cmdUsage } from "./usage-command.js";
+import { COACH_HELP, cmdCoach } from "./coach-command.js";
 import { GATE_HELP, cmdGate } from "./gate-command.js";
 import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
 } from "./notifications-command.js";
+import { GITHUB_HELP, cmdGithub } from "./github-command.js";
+import { ASK_HELP, cmdAsk } from "./ask-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
+import { cmdVerify, VERIFY_HELP } from "./verify-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
@@ -561,10 +565,19 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   sessions: SESSIONS_HELP,
   agents: AGENTS_HELP,
   usage: USAGE_HELP,
+  coach: COACH_HELP,
   gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
-  feedback: FEEDBACK_HELP,
+  ask: ASK_HELP,
+  github: GITHUB_HELP,
+  feedback: {
+    ...FEEDBACK_HELP,
+    usage: FEEDBACK_HELP.usage.replace(/^report/, "feedback"),
+  },
+  // Issue 565: Report from a shell, for the person and for agents.
+  report: FEEDBACK_HELP,
+  verify: VERIFY_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -621,7 +634,11 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "gate",
   "hub",
   "notifications",
+  "ask",
+  "github",
   "feedback",
+  "report",
+  "verify",
   "service",
   "theme",
   "plugin",
@@ -659,9 +676,14 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "hub",
   // NT: the bell's own file, no org data.
   "notifications",
+  // Issue 1008: the bell's own withdraw route, no org data.
+  "ask",
+  // The shared GitHub watcher's status file, no org data.
+  "github",
   // FB: Den's own report routes; a report matters most when the config is
-  // what's wrong.
+  // what's wrong. Issue 565: `report` is the same command.
   "feedback",
+  "report",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -809,6 +831,17 @@ class DenCLI {
       try {
         const parsed = parseCliArgs(args);
         telCmd = telemetryCommandName(parsed.command);
+        // Issue 636: a test bed's driver acting as the person; refused
+        // (and nothing runs) anywhere else. A parent on the path leaves
+        // its children its tag.
+        {
+          const { enterTestPerson, testPersonAsked, testPersonCommand } =
+            await import("./test-person.js");
+          if (testPersonAsked(parsed.flags))
+            await enterTestPerson(
+              testPersonCommand(parsed.command, parsed.args),
+            );
+        }
         if (!this.applyGlobalFlags(parsed)) return;
         this.prepareServiceCommand(parsed.command);
         await this.handleCommand(
@@ -1188,6 +1221,10 @@ class DenCLI {
           process.exitCode = await cmdUsage(args.slice(1));
           break;
 
+        case "coach":
+          process.exitCode = await cmdCoach(args.slice(1));
+          break;
+
         case "gate":
           process.exitCode = await cmdGate(args.slice(1));
           break;
@@ -1200,8 +1237,22 @@ class DenCLI {
           process.exitCode = await cmdNotifications(args.slice(1));
           break;
 
+        case "ask":
+          process.exitCode = await cmdAsk(args.slice(1));
+          break;
+
+        case "github":
+          process.exitCode = await cmdGithub(args.slice(1));
+          break;
+
         case "feedback":
+        case "report":
           process.exitCode = await cmdFeedback(args.slice(1));
+          break;
+
+        // Issue 441: an outside runner's gate results, imported.
+        case "verify":
+          process.exitCode = await cmdVerify(args.slice(1));
           break;
 
         case "mcp": {
@@ -2604,6 +2655,12 @@ class DenCLI {
     return out;
   }
 
+  /** "project <name>" for the focused one (`-w` too), else "this project". */
+  private static projectLabel(): string {
+    const name = getActiveWorkspace()?.name;
+    return name ? `project ${name}` : "this project";
+  }
+
   /** "cfg (runs nothing), sdk (library)": repos with no runtime, and why. */
   private static noRuntimeList(none: Map<string, string>): string {
     return [...none].map(([r, why]) => `${r} (${why})`).join(", ");
@@ -2663,11 +2720,14 @@ class DenCLI {
       );
       for (const [repo, why] of none)
         this.upReport?.noRuntime.push({ repo, why });
+      // Issue 300: the project by its name; under `up -w` it may not be
+      // active yet (a dry run never makes it so).
+      const ws = DenCLI.projectLabel();
       console.log(
         chalk.yellow(
           none.size > 0
-            ? `\n  Nothing to start: no repo in the active project has a runtime of its own: ${DenCLI.noRuntimeList(none)}.\n`
-            : "\n  No services in the active project — nothing to start.\n",
+            ? `\n  Nothing to start in ${ws}: its repos run nothing: ${DenCLI.noRuntimeList(none)}.\n`
+            : `\n  Nothing to start in ${ws}: it has no services.\n`,
         ),
       );
       if (plan && none.size === 0) process.exitCode = 1;
@@ -2790,7 +2850,7 @@ class DenCLI {
     if (!target) {
       console.log(
         chalk.yellow(
-          "\n  No services in the active project — nothing to stop.\n",
+          `\n  Nothing to stop in ${DenCLI.projectLabel()}: it has no services.\n`,
         ),
       );
       return;
@@ -5455,6 +5515,9 @@ class DenCLI {
     console.log(
       "  feedback                 Report an issue: shows exactly what is posted, then asks",
     );
+    console.log(
+      '  ask withdraw <id> --reason "…"  Withdraw a question settled elsewhere',
+    );
     console.log();
     console.log(
       "  workspace list           List projects (active set + focus)",
@@ -5496,6 +5559,9 @@ class DenCLI {
     console.log("  --no-tabs              Force daemon mode for up/restart");
     console.log(
       "  --skip-secrets       Skip local secrets preflight for up/restart/logs",
+    );
+    console.log(
+      "  --test-person          On a test bed only: act as the person (live checks)",
     );
     console.log("\nExamples:");
     console.log(`  ${product().cli} --help`);

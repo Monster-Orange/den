@@ -10,11 +10,40 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
+// Issue 814: first, before anything writes to the state folder.
+import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
+import {
+  COACH_ROUTES,
+  handleCoachRoute,
+  type CoachRouteDeps,
+} from "./coach-routes.js";
+import { runCoach } from "../../shared/coach/run.js";
+import { readCoachReport } from "../../shared/coach/store.js";
+import {
+  dismissFinding,
+  openFindings,
+  readDismissals,
+} from "../../shared/coach/findings.js";
+import {
+  COACH_DEFAULTS,
+  type CoachSettings,
+} from "../../shared/coach/settings.js";
+import {
+  healthCacheTtlMs,
+  healthPollSeconds,
+} from "../../shared/health-poll.js";
+import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
+import { handleAppFeedRoutes, isAppFeedPath } from "./app-feed-routes.js";
+import { githubWatchSettings } from "../../shared/github-watch/settings.js";
+import {
+  handleGithubWatchRoutes,
+  isGithubWatchPath,
+} from "./github-watch-routes.js";
 import {
   alertFeed,
   attentionDetail,
@@ -44,6 +73,7 @@ import {
 } from "../../shared/crash-loop.js";
 import {
   PERSON_ONLY_SETTINGS,
+  FIXTURE_PAGE_SETTINGS,
   patchCliRows,
 } from "../../shared/settings-cli-rows.js";
 import {
@@ -61,6 +91,14 @@ import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
+import {
+  TEST_RESOLVE_ENV_KEY,
+  parseTestResolve,
+  setTestResolve,
+  testResolveIgnored,
+  testResolver,
+  writeTestResolveState,
+} from "../../shared/test-resolve.js";
 import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
@@ -85,6 +123,7 @@ import { planSuites } from "../../pillars/suites/run.js";
 import {
   listReposWithManifests,
   listServicesWithManifests,
+  workspaceNames,
 } from "../../shared/manifest/workspace-manifests.js";
 import {
   awsProfileEnv,
@@ -100,7 +139,10 @@ import type {
 } from "../../shared/types/index.js";
 import { getRunDonePayload } from "./perf-report.js";
 import { oldKindWarning } from "../../shared/run-outcome.js";
-import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import {
+  readCatalog,
+  resolveRepoGhSlug,
+} from "../../shared/environment-manager/catalog.js";
 import {
   getActiveWorkspace,
   getActiveWorkspaces,
@@ -117,6 +159,7 @@ import {
   parseAddress,
   readManifestAnyBranch,
   workspacesOverridingAgentMode,
+  workspaceEventFeedsRaw,
 } from "../../shared/environment-manager/workspaces.js";
 import {
   parseScope,
@@ -164,7 +207,7 @@ import {
 } from "../../shared/environment-manager/service-runner.js";
 import { reapDeadDaemons } from "./daemon-reaper.js";
 import {
-  loadManifest,
+  heldManifestsDir,
   readManifest,
 } from "../../shared/manifest/read-manifest.js";
 import {
@@ -204,6 +247,7 @@ import {
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
   agentsShellPathTimeoutSeconds,
+  heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import {
@@ -235,10 +279,8 @@ import {
   webServerEnv,
 } from "../cli/web-command.js";
 import { recordInvocation } from "../../shared/dev-metrics/emit.js";
-import {
-  validateManifest,
-  validateManifestLayers,
-} from "../../shared/manifest/validate-manifest.js";
+import { validateManifest } from "../../shared/manifest/validate-manifest.js";
+import { validateAtPath } from "./manifest-validate-path.js";
 import { depService } from "../../shared/manifest/deps.js";
 import {
   placementRefusal,
@@ -293,8 +335,12 @@ import {
 } from "./onboard-routes.js";
 import {
   agentPrincipalOf,
+  AGENT_VIEW_CLIENT,
+  agentRefusal,
   auditActorOf,
   notAPersonOf,
+  fixturePersonOf,
+  markOperatorAct,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -310,6 +356,7 @@ import {
   type GuardContext,
   type GuardResult,
   type Via,
+  viewAgent,
 } from "./request-guard.js";
 import {
   clientRequestId,
@@ -325,6 +372,7 @@ import {
 } from "../../shared/web-secret.js";
 import {
   ACTOR_TOKEN_PREFIX,
+  agentTokenLive,
   checkActorToken,
   sessionPid,
   revokeAllActorTokens,
@@ -343,6 +391,7 @@ import {
   sessionIdPrefix,
   WebSessionStore,
   withApproveKey,
+  type SessionVia,
   type WebAuthConfig,
 } from "../../shared/web-session.js";
 import {
@@ -360,6 +409,39 @@ import {
   testInstallByHandRefusal,
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
+import {
+  FIXTURE_SETUP_SECRET_ENV_KEY,
+  SETUP_SECRET_AUDIT,
+  SetupSecret,
+  setupSecretRefusal,
+  writeFixtureMadeBy,
+} from "../../shared/fixture-setup-secret.js";
+import {
+  AGENT_VIEW_LINK_PARAM,
+  AGENT_VIEW_LINK_TTL_MS,
+  AgentViewCodes,
+  agentViewExpired,
+  agentViewOffText,
+  agentViewRefusedText,
+  agentViewScopeRefusal,
+  isAgentViewLink,
+} from "../../shared/agent-view.js";
+import {
+  dropPendingRecord,
+  hasForwardingHeaders,
+  OPERATOR_LABEL,
+  OPERATOR_PRINCIPAL,
+  operatorAct,
+  operatorRefusal,
+  verifiedCreationRecord,
+  writeCreationRecord,
+} from "../../shared/test-operator.js";
+import {
+  inTestPersonScope,
+  notTestBedRefusal,
+  TEST_PERSON_HEADER,
+  testPersonCredentialRefusal,
+} from "../../shared/test-person.js";
 import { routeClass } from "./route-classes.js";
 import { envName, readEnv } from "../../shared/profile.js";
 import {
@@ -390,6 +472,7 @@ import {
   readWebUrl,
   setWebUrl,
 } from "../../shared/web-url.js";
+import { peopleWebUrl } from "../../shared/agent-links.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
@@ -440,9 +523,12 @@ import {
   handleReportRoutes,
   machineSection,
   publicSearchOpen,
+  reportAgentOf,
   runGh,
   shotReaderOf,
+  type ReportRouteDeps,
 } from "./report-routes.js";
+import { reportHeld } from "./report-held.js";
 import { publicRepoVisibility } from "./report-visibility.js";
 import {
   feedbackSettings,
@@ -527,6 +613,7 @@ import {
   readHubConfig,
   type HubConfig,
 } from "../../shared/hub.js";
+import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
@@ -542,8 +629,12 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
+import { terminalLinkRedirect, terminalsPageHtml } from "./terminals-page.js";
 import {
+  fixtureSave,
   mergeShellPrefs,
+  prunedFixturePins,
+  writeFixturePins,
   pinnedItems,
   shellPrefs,
   storedShell,
@@ -672,7 +763,6 @@ function healthForViewer(
   return (r) => ({ ...rewrite(r), inView: inView(r.workspaces) });
 }
 
-const HEALTH_CACHE_TTL_MS = 8_000;
 /** Consecutive timed-out health cycles per check (see TimeoutStreaks). */
 const healthTimeouts = new TimeoutStreaks();
 const healthCache = new Map<string, { results: HealthResult[]; at: number }>();
@@ -1045,52 +1135,6 @@ function pinProjects(): PinProjects {
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
-/** A message's first line: a parser's code frame quotes the file. */
-function firstLine(m: string): string {
-  return String(m).split("\n")[0].replace(/:\s*$/, "");
-}
-
-/**
- * Where `p` really is, when it is a project repo's checkout or inside one,
- * both as written and after resolving every symlink; else null.
- */
-function manifestPathInRepo(p: string): string | null {
-  if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
-  let roots: string[];
-  try {
-    roots = allWorkspaceCheckouts()
-      .map((c) => c.repoPath)
-      .filter((r): r is string => !!r && path.isAbsolute(r));
-  } catch {
-    return null;
-  }
-  const within = (x: string, rs: string[]) =>
-    rs.some(
-      (r) => x === r || x.startsWith(r.endsWith(path.sep) ? r : r + path.sep),
-    );
-  if (
-    !within(
-      path.resolve(p),
-      roots.map((r) => path.resolve(r)),
-    )
-  )
-    return null;
-  let real: string;
-  try {
-    real = fs.realpathSync(p);
-  } catch {
-    return null;
-  }
-  const realRoots = roots.flatMap((r) => {
-    try {
-      return [fs.realpathSync(r)];
-    } catch {
-      return [];
-    }
-  });
-  return within(real, realRoots) ? real : null;
-}
-
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
   return Object.entries(readWorkspacesFile().workspaces).flatMap(
@@ -1177,6 +1221,7 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readBodyCapped,
   readMethodOnly,
   sendJson,
   sendMethodNotAllowed,
@@ -1205,6 +1250,7 @@ import {
   type ErrorPageData,
 } from "./http-errors.js";
 import {
+  githubOrgFor,
   readOrgContext,
   resolveAllWorkspaceOrgs,
   withOrgMembership,
@@ -1231,7 +1277,18 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
-import { syncHeldBell } from "./held-bell.js";
+import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
+import { gateOverrunWaiting } from "./gate-overrun-bell.js";
+import {
+  ISSUE_WRITE_PATH,
+  handleIssueWriteRoute,
+  type IssueWriteDeps,
+} from "./issue-write-routes.js";
+import {
+  IssueWriteLimit,
+  issueWriteSettings,
+} from "../../shared/issue-write.js";
+import { defaultInstallLabel } from "./hub-connect.js";
 import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
@@ -1266,6 +1323,11 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import {
+  handleScheduleRoutes,
+  isSchedulePath,
+  type ScheduleServerDeps,
+} from "./verify-schedule-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -1292,11 +1354,12 @@ import {
   backMessage,
   recordPageRestart,
   restartMarkerPath,
+  selfUpdateAutoAllow,
   takeRestartMarker,
   tellBack,
   writeRestartMarker,
 } from "./server-restart.js";
-import type { ApprovalQueue } from "./approvals.js";
+import type { Approval, ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
@@ -1332,6 +1395,7 @@ import {
   runPersonaUpdate,
   runProjectMode,
   runAgentImport,
+  personaLookup,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -2170,6 +2234,16 @@ const GUARD: GuardContext = {
       webSessions.end(s.key);
       return null;
     }
+    // Issue 796: an agent's view ends at its time, when the install turns
+    // views off, or when the agent's token goes; it counts on loopback only.
+    if (s?.via === "agent-view") {
+      if (!agentViewStands(s)) {
+        webSessions.end(s.key);
+        closeSessionSockets([s.key]);
+        return null;
+      }
+      if (via !== "loopback") return null;
+    }
     return s ? { ...s, secure: s.secure === true } : null;
   },
   // Once Den's own named https address works, the session lives there.
@@ -2186,6 +2260,8 @@ const GUARD: GuardContext = {
   edgeUnattested: WEB_AUTH.edgeUnattested,
   // H1: the edge's forwarded client is believed only with its proof.
   edgeProved: (req) => EDGE_PROVED(req),
+  // Issue 636: the test-person path, on a test bed (issue 810's binding).
+  testBed: () => testInstallNow(),
 };
 
 // ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
@@ -2252,6 +2328,76 @@ let CLI_PREFIX: string | null = null;
 function printedCli(): string {
   CLI_PREFIX ??= cliPrefix(product().cli, getDistRoot(), getEngineRoot());
   return CLI_PREFIX;
+}
+
+/** issue_write's limit: the install's writes in the last hour, every agent's. */
+const issueWriteLimit = new IssueWriteLimit();
+
+/**
+ * issue_write's wiring: the agent's record and persona role, the
+ * project's GitHub repos (the catalog's gh, else the project's org), the
+ * settings from user.yml, pr_close's gh call path (runGh), and the audit.
+ */
+function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
+  return {
+    agentOf: (id) => {
+      const rec = readAgentRecord(getStateDir(), id);
+      if (!rec) return null;
+      let role: string | undefined;
+      try {
+        role = personaLookup(agentWebDeps())(rec)?.role;
+      } catch {
+        role = undefined;
+      }
+      return {
+        name: rec.displayName || rec.persona || id,
+        ...(role ? { role } : {}),
+      };
+    },
+    projectExists: (p) =>
+      Object.hasOwn(readWorkspacesFile().workspaces ?? {}, p),
+    projectRepos: (p) => {
+      const ws = (readWorkspacesFile().workspaces ?? {})[p];
+      if (!ws) return [];
+      const names = new Set<string>([
+        ...Object.keys(ws.services ?? {}).map((a) => a.split("/")[0]),
+        ...Object.keys(ws.repos ?? {}),
+      ]);
+      const catalog = readCatalog();
+      const out: string[] = [];
+      for (const n of names)
+        try {
+          out.push(resolveRepoGhSlug(n, catalog, () => githubOrgFor(p)));
+        } catch {
+          /* a repo with no GitHub owner: not one issue_write reaches */
+        }
+      return out.sort();
+    },
+    settings: () =>
+      issueWriteSettings(
+        () => readUserConfig(),
+        () => readDenConfig(),
+      ),
+    limit: issueWriteLimit,
+    gh: runGh,
+    installLabel: () => defaultInstallLabel(),
+    audit: (e) => {
+      try {
+        recordAction(
+          auditActorOf(req),
+          {
+            verb: "issue_write",
+            detail: `${e.project ? `project ${e.project}: ` : ""}${e.summary}`,
+            ...(e.refused ? { outcome: "refused" as const } : {}),
+            ...(e.reason ? { reason: e.reason } : {}),
+          },
+          principalOf(req),
+        );
+      } catch {
+        /* the audit is best-effort; the write's answer still goes back */
+      }
+    },
+  };
 }
 
 /**
@@ -2347,10 +2493,11 @@ function closeSessionSockets(keys: Iterable<string>): void {
  */
 function startSession(
   req: http.IncomingMessage,
-  via: "github" | "link" | "code" | "claim" | "fixture",
+  via: SessionVia,
   login?: string,
   name?: string,
   fixtureKey?: string,
+  view?: { agent: string; workspace: string },
 ): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
@@ -2358,7 +2505,7 @@ function startSession(
   // the address is proven.
   const secure = httpsOf(req, named);
   // Issue 819: a person's sign-in ends first run, for good.
-  if (via !== "fixture") FIRST_RUN.mark();
+  if (via !== "fixture" && via !== "agent-view") FIRST_RUN.mark();
   const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
@@ -2366,6 +2513,7 @@ function startSession(
     secure,
     via,
     ...(fixtureKey ? { fixtureKey } : {}),
+    ...(view ? { agent: view.agent, agentWorkspace: view.workspace } : {}),
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
     ...(login && name ? { name } : {}),
@@ -2537,6 +2685,8 @@ function sendToNamedAddress(
 ): boolean {
   // Once proven, sign-in on every other host goes to the address.
   if (!guard.ok) return false;
+  // Issue 796: an agent's view link opens on loopback only.
+  if (isAgentViewLink(url)) return false;
   const method = (req.method ?? "GET").toUpperCase();
   const get = method === "GET" || method === "HEAD";
   // /auth on every method it answers (a code's POST too: it mints a
@@ -2743,7 +2893,8 @@ function isPublicAsset(req: http.IncomingMessage, pathname: string): boolean {
 /** A refused request: R26 JSON for /api, the error page for a page. */
 /**
  * A refused write is audited (AG-DROP): an agent's token past its scope
- * (agent_forbidden), and a browser's write without its CSRF token. The
+ * (agent_forbidden), a browser's write without its CSRF token, and a
+ * refused test-person call (issue 636). The
  * other refusals carry no credential to name, and the request log has them.
  */
 function auditGuardRefusal(
@@ -2751,7 +2902,14 @@ function auditGuardRefusal(
   pathname: string,
   g: Extract<GuardResult, { ok: false }>,
 ): void {
-  if (g.code !== "agent_forbidden" && g.code !== "csrf") return;
+  if (
+    g.code !== "agent_forbidden" &&
+    g.code !== "csrf" &&
+    // Issue 636: a refused test-person call (it never ran).
+    g.code !== "test_person_refused" &&
+    g.code !== "not_test_bed"
+  )
+    return;
   if (g.principal) setPrincipal(req, g.principal);
   const method = (req.method ?? "GET").toUpperCase();
   try {
@@ -2998,6 +3156,8 @@ async function handleAuth(
     return handleClaim(req, res, url, requestId);
   if (url.searchParams.has(FIXTURE_LINK_PARAM))
     return handleFixtureAuth(req, res, url, requestId);
+  if (url.searchParams.has(AGENT_VIEW_LINK_PARAM))
+    return handleAgentViewAuth(req, res, url, requestId);
   const method = (req.method ?? "GET").toUpperCase();
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
@@ -3226,6 +3386,42 @@ const TEST_INSTALL_LAUNCH_FLAG = (() => {
   return on;
 })();
 
+/**
+ * Issue 1073: the launcher's name map for Den's own address checks, read
+ * once from the server's start environment (never a file, a setting or a
+ * request) and taken out of it like the flag above. It counts only while
+ * this install is a test install (asked at every lookup); otherwise it is
+ * ignored, and the log and doctor say so.
+ */
+const TEST_RESOLVE = (() => {
+  const name = envName(getProfile(), TEST_RESOLVE_ENV_KEY);
+  const raw = readEnv(getProfile(), TEST_RESOLVE_ENV_KEY);
+  delete process.env[name];
+  if (raw === undefined || raw.trim() === "") return null;
+  const parsed = parseTestResolve(raw);
+  if (!parsed.ok) return { name, ignored: parsed.error };
+  if (!TEST_INSTALL_LAUNCH_FLAG)
+    return { name, ignored: "this install wasn't started as a test install" };
+  return { name, map: parsed.map };
+})();
+
+/**
+ * Issue 1018: the launcher's one-time setup value, read once from the
+ * server's own start environment and taken out of process.env, like the
+ * flag, so nothing this server starts (agents, terminals) inherits it.
+ * That hides it from children only: the process's own start environment
+ * stays readable to the same OS user (`ps eww <pid>`, Linux's
+ * /proc/<pid>/environ), the same limit as every secret this user's
+ * processes hold. Held in memory as a digest; spent values are recorded
+ * in the state folder, so a restart with one doesn't revive it; dropped
+ * at start unless this is a test install then.
+ */
+const FIXTURE_SETUP_SECRET = (() => {
+  const v = readEnv(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY);
+  delete process.env[envName(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY)];
+  return new SetupSecret(v, getStateDir());
+})();
+
 function realOrResolved(p: string): string {
   try {
     return fs.realpathSync(p);
@@ -3270,9 +3466,80 @@ function testInstallNow(except?: string): boolean {
   }).ok;
 }
 
+// Issue 1073: install the name map's hook, and tell the log and doctor.
+if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
+  setTestResolve(testResolver(TEST_RESOLVE.map, () => testInstallNow()));
+  writeTestResolveState(getStateDir(), {
+    state: "used",
+    names: [...TEST_RESOLVE.map.keys()],
+  });
+} else if (TEST_RESOLVE && "ignored" in TEST_RESOLVE && TEST_RESOLVE.ignored) {
+  serverLog(
+    `  ${testResolveIgnored(TEST_RESOLVE.name, TEST_RESOLVE.ignored)}`,
+    "lifecycle",
+  );
+  writeTestResolveState(getStateDir(), {
+    state: "ignored",
+    env: TEST_RESOLVE.name,
+    why: TEST_RESOLVE.ignored,
+  });
+} else writeTestResolveState(getStateDir(), null);
+
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
   return verifiedFixtureKey(getStateDir(), webSecret.current());
+}
+
+/**
+ * Issue 814: whether this is an operator install right now: a test
+ * install (testInstallNow), created as one (its sealed creation record),
+ * bound to loopback only. Checked on every test operator request.
+ */
+function operatorInstallNow(): boolean {
+  return (
+    isLoopbackBind(BIND_HOST) &&
+    testInstallNow() &&
+    verifiedCreationRecord(getStateDir(), webSecret.current())
+  );
+}
+
+/**
+ * Issue 814: at a new test install's first start (test-install-birth.ts
+ * claimed its empty state folder), once its secret exists: seal the
+ * creation record and give it its fixture person, so no one has to press
+ * Set up test person. When the claim wasn't a test install after all (no
+ * mark, an owner), the claim is dropped.
+ */
+function sealNewTestInstall(): void {
+  if (!BORN_AS_TEST_INSTALL) return;
+  const stateDir = getStateDir();
+  const secret = webSecret.current();
+  if (!secret || !testInstallNow()) return dropPendingRecord(stateDir);
+  writeCreationRecord(stateDir, secret);
+  const had = !!fixtureKeyNow();
+  const r = had
+    ? ({ ok: true } as const)
+    : setupFixturePerson(stateDir, {
+        testInstall: true,
+        agent: false,
+        webSecret: secret,
+        configFile: product().configFile,
+      });
+  if (r.ok && !had) writeFixtureMadeBy(stateDir, "creation");
+  recordAction(
+    null,
+    {
+      verb: "test-install",
+      detail: r.ok
+        ? `a new test install: its ${FIXTURE_LABEL} given at creation, and the ${OPERATOR_LABEL}'s acts on loopback`
+        : `a new test install: its ${FIXTURE_LABEL} couldn't be made (${r.code})`,
+    },
+    OPERATOR_PRINCIPAL,
+  );
+  serverLog(
+    `  ${logTimestamp()}  a new test install: ${FIXTURE_LABEL} and ${OPERATOR_LABEL} ready`,
+    "lifecycle",
+  );
 }
 
 /**
@@ -3378,6 +3645,183 @@ function handleFixtureAuth(
   res.end();
 }
 
+// ── Issue 796: an agent's read-only view of this Den's pages ─────────────────
+
+/** The one-time view links not yet opened (memory only). */
+const AGENT_VIEW_CODES = new AgentViewCodes();
+
+/**
+ * Issue 796: whether an agent's view still stands: views on, within its
+ * minutes, and the agent's token still live (stopping the agent, or `web
+ * logout --all`, ends its view too).
+ */
+function agentViewStands(s: { createdAt: number; agent?: string }): boolean {
+  const w = webAuthNow();
+  const id = (s.agent ?? "").replace(/^agent:/, "");
+  return (
+    w.agentView &&
+    !!id &&
+    !agentViewExpired(s.createdAt, Date.now(), w.agentViewMinutes) &&
+    agentTokenLive(getStateDir(), id)
+  );
+}
+
+/** Issue 796: one refused or logged step of an agent's view, in the audit. */
+function auditAgentView(
+  agent: string,
+  workspace: string,
+  detail: string,
+  refused?: string,
+): void {
+  recordAction(
+    {
+      kind: "agent",
+      client: AGENT_VIEW_CLIENT,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      agent: agent as `agent:${string}`,
+      workspace,
+    },
+    {
+      verb: "agent-view",
+      detail: detail.slice(0, 200),
+      ...(refused ? { outcome: "refused" as const, reason: refused } : {}),
+    },
+    agent,
+  );
+}
+
+/**
+ * Issue 796: `POST /api/agents/self/view` (MCP page_view): an agent asks
+ * for a read-only view of this Den's pages. Its actor token only (never a
+ * person's credential, a browser session or a claimed agent), on this
+ * machine's loopback only, and only while `web.agent_view` is on. Answers
+ * a one-time link, opened once within a minute on this machine.
+ */
+async function handleAgentViewRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  guard: Extract<GuardResult, { ok: true }>,
+): Promise<void> {
+  const p = guard.principal;
+  if (p?.kind !== "agent")
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "agent_only",
+        error:
+          "A read-only page view is for an agent running in this Den, with its own token. A person signs in instead.",
+      },
+      403,
+    );
+  const refuse = (status: number, code: string, error: string) => {
+    auditAgentView(p.actor, p.workspace, "view link refused", code);
+    return sendJson(res, { ok: false, code, error }, status);
+  };
+  if (guard.beyond)
+    return refuse(
+      403,
+      "agent_view_loopback",
+      "A read-only page view is made on this machine only, never from another one.",
+    );
+  const w = webAuthNow();
+  if (!w.agentView)
+    return refuse(403, "agent_view_off", agentViewOffText(product().cli));
+  let body: { next?: unknown } = {};
+  try {
+    body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
+  } catch {
+    return send400(res, "the body must be JSON: { next? }");
+  }
+  const next = safeNext(typeof body.next === "string" ? body.next : "/agents");
+  const { code, expiresAt } = AGENT_VIEW_CODES.mint({
+    agent: p.actor,
+    workspace: p.workspace,
+  });
+  auditAgentView(p.actor, p.workspace, `view link made for ${next}`);
+  return sendJson(res, {
+    ok: true,
+    url:
+      `${localhostOrigin(PORT)}/auth?${AGENT_VIEW_LINK_PARAM}=${encodeURIComponent(code)}` +
+      (next === "/" ? "" : `&next=${encodeURIComponent(next)}`),
+    expiresAt: new Date(expiresAt).toISOString(),
+    linkSeconds: AGENT_VIEW_LINK_TTL_MS / 1000,
+    minutes: w.agentViewMinutes,
+  });
+}
+
+/**
+ * Issue 796: `GET /auth?agent_view=<code>&next=<path>`: the agent's
+ * browser opens its view. On loopback only, with a code this server
+ * minted for the agent, once. The session (via "agent-view") is the
+ * agent's: no approval key, never first run, never an owner.
+ */
+function handleAgentViewAuth(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  requestId: string,
+): void {
+  const refuse = (status: number, why: string, msg: string) => {
+    recordAction(null, {
+      verb: "agent-view",
+      detail: "an agent's view link refused",
+      outcome: "refused",
+      reason: why,
+    });
+    res.writeHead(status, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end(`${msg} (request id ${requestId})`);
+  };
+  // GET only: a HEAD (a link preview) never spends the one-time code.
+  if (req.method !== "GET")
+    return refuse(405, "method", "Open the view link with GET.");
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  if (!g.ok || g.beyond || g.via !== "loopback")
+    return refuse(
+      403,
+      "agent_view_loopback",
+      "An agent's view link opens on this machine only.",
+    );
+  if (!webAuthNow().agentView)
+    return refuse(403, "agent_view_off", agentViewOffText(product().cli));
+  const who = AGENT_VIEW_CODES.redeem(
+    url.searchParams.get(AGENT_VIEW_LINK_PARAM) ?? "",
+  );
+  if (!who)
+    return refuse(
+      401,
+      "used",
+      "That view link expired, was used, or isn't this install's. Ask page_view for a new one.",
+    );
+  const s = startSession(
+    req,
+    "agent-view",
+    undefined,
+    undefined,
+    undefined,
+    who,
+  );
+  auditAgentView(who.agent, who.workspace, "read-only view opened");
+  serverLog(
+    `  ${logTimestamp()}  ${who.agent} opened a read-only view (${webAuthNow().agentViewMinutes} min)`,
+    "lifecycle",
+  );
+  res.writeHead(303, {
+    // No approval key: an agent's view never approves.
+    Location: safeNext(url.searchParams.get("next")),
+    "Set-Cookie": s.cookie,
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+  });
+  res.end();
+}
+
 /**
  * Issue 810: Settings › Access › Test install. GET: whether this is a test
  * install and whether the fixture person is set up (never its secret).
@@ -3387,6 +3831,36 @@ function handleFixtureAuth(
  * too), a claimed agent and the fixture person are refused. Setting it up
  * again replaces the key, which ends every older fixture session.
  */
+/** Issue 52: agents.coach now; its defaults (off) when the config can't be read. */
+function coachSettingsNow(): CoachSettings {
+  try {
+    return readAgentsConfig().coach ?? { ...COACH_DEFAULTS };
+  } catch {
+    return { ...COACH_DEFAULTS };
+  }
+}
+
+/** Issue 52: what the Coach's routes need from this server. */
+function coachRouteDeps(): CoachRouteDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    settings: coachSettingsNow,
+    latest: () => readCoachReport(getStateDir()),
+    run: () =>
+      runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    findings: (report) => ({
+      open: openFindings(getStateDir(), report?.findings ?? []),
+      dismissed: readDismissals(getStateDir()),
+    }),
+    dismiss: (id, reason) =>
+      dismissFinding(getStateDir(), id, reason, "person"),
+    readBody,
+  };
+}
+
 async function handleFixturePersonRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -3433,6 +3907,7 @@ async function handleFixturePersonRoute(
     configFile: product().configFile,
   });
   if (r.ok && browser) webSessions.markTestOperator(session!.key);
+  if (r.ok) writeFixtureMadeBy(getStateDir(), "settings");
   recordAction(
     auditActorOf(req),
     {
@@ -3447,6 +3922,171 @@ async function handleFixturePersonRoute(
   if (!r.ok)
     return sendJson(res, { ok: false, code: r.code, error: r.error }, 403);
   return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/**
+ * Issue 1018: `POST /api/web/fixture-person/setup-secret {secret}`: a test
+ * install's CLI (`web fixture-person --from-setup-secret`) makes the
+ * fixture person with the launcher's one-time setup value, no browser
+ * needed. Refused first for an agent (a person grant, as everywhere),
+ * before the value is read; then off a test install; then by the value
+ * itself (none at start, used, wrong), which the first try spends. On a
+ * match, the key is made exactly as Set up test person makes it. No
+ * answer, log line or audit line holds the value.
+ */
+/** Issue 1018: the setup route's body, `{"secret": …}`, at most this. */
+const SETUP_SECRET_BODY_MAX = 4096;
+
+async function handleFixtureSetupSecretRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    res.setHeader("Allow", "POST");
+    return sendJson(res, { ok: false, error: "use POST" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  let presented: unknown = undefined;
+  let tooBig = false;
+  try {
+    const raw = await readBodyCapped(req, SETUP_SECRET_BODY_MAX);
+    tooBig = raw === null;
+    const b = JSON.parse(raw ?? "{}") as { secret?: unknown } | null;
+    presented = b?.secret;
+  } catch {
+    presented = undefined;
+  }
+  const refuse = (code: string, error: string, status = 403) => {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "fixture-person",
+        detail: `${FIXTURE_LABEL} from the setup secret: refused`,
+        outcome: "refused",
+        reason: code,
+      },
+      principalOf(req),
+    );
+    return sendJson(res, { ok: false, code, error }, status);
+  };
+  const person =
+    g.ok &&
+    g.principal?.kind === "person" &&
+    !g.principal.testPerson &&
+    !notAPersonOf(req);
+  // Only from this machine, as the test-person path (issue 636): beyond
+  // it, the value and the person's bearer would cross the network.
+  if (person && g.beyond)
+    return refuse(
+      "not_this_machine",
+      `The ${FIXTURE_LABEL} is made from the setup value only on this computer, from its own command line; never through the edge or the network.`,
+    );
+  if (!person)
+    return refuse(
+      "person_only",
+      `Only the person's own command line makes the ${FIXTURE_LABEL} from the setup value: an agent, a claimed agent or the ${FIXTURE_LABEL} itself can't.`,
+    );
+  if (!testInstallNow())
+    return refuse(
+      "not_test_install",
+      notTestInstallRefusal(product().configFile),
+    );
+  // Before the value: a body over the cap spends nothing.
+  if (tooBig)
+    return refuse(
+      "body_too_big",
+      `The request is over ${SETUP_SECRET_BODY_MAX} bytes; it sends only {"secret": …}. Nothing was spent.`,
+      413,
+    );
+  const t = FIXTURE_SETUP_SECRET.take(presented);
+  presented = undefined;
+  if (!t.ok) return refuse(t.code, setupSecretRefusal(t.code, product().cli));
+  const r = setupFixturePerson(getStateDir(), {
+    testInstall: true,
+    agent: false,
+    webSecret: webSecret.current(),
+    configFile: product().configFile,
+  });
+  if (!r.ok) return refuse(r.code, r.error);
+  writeFixtureMadeBy(getStateDir(), "setup-secret");
+  // Who made it: the person whose bearer sent the value (as Settings'
+  // Set up test person records its presser); the fixture person is what.
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "fixture-person",
+      detail: `${SETUP_SECRET_AUDIT} (${FIXTURE_PRINCIPAL})`,
+    },
+    principalOf(req),
+  );
+  serverLog(`  ${logTimestamp()}  ${SETUP_SECRET_AUDIT}`, "lifecycle");
+  return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/**
+ * Issue 636: `POST /api/web/test-person {command}`: a test bed's CLI
+ * starting `<cli> --test-person <command>`. The request checks already let
+ * it in only with the person's token and the test-person header, from
+ * this machine, on a test bed; here it is checked once more and the row
+ * recorded (`via: "test-person"`). Only then does the CLI act.
+ */
+async function handleTestPersonRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    res.setHeader("Allow", "POST");
+    return sendJson(res, { ok: false, error: "use POST" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const onPath =
+    g.ok && g.principal?.kind === "person" && g.principal.testPerson === true;
+  let command = "";
+  try {
+    const b = JSON.parse((await readBody(req)) || "{}") as {
+      command?: unknown;
+    } | null;
+    if (typeof b?.command === "string") command = b.command;
+  } catch {
+    command = "";
+  }
+  command = command.replace(/[^A-Za-z0-9._ …-]/g, "").slice(0, 120);
+  if (!onPath || !testInstallNow()) {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "test-person",
+        detail: `${command || "a command"} as the person: refused`,
+        outcome: "refused",
+        reason: onPath ? "not_test_bed" : "test_person_refused",
+      },
+      principalOf(req),
+    );
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: onPath ? "not_test_bed" : "test_person_refused",
+        error: onPath
+          ? notTestBedRefusal(product().configFile)
+          : testPersonCredentialRefusal(),
+      },
+      403,
+    );
+  }
+  recordAction(
+    null,
+    {
+      verb: "test-person",
+      detail: `${command || "a command"} as the person (the test-person path, a test bed)`,
+    },
+    principalOf(req),
+  );
+  serverLog(
+    `  ${logTimestamp()}  the CLI acts as the person: ${command || "a command"} (the test-person path, a test bed)`,
+    "lifecycle",
+  );
+  return sendJson(res, { ok: true });
 }
 
 /** Issue 810: the sign-ins that are a person's own browser session. */
@@ -3499,6 +4139,14 @@ function deviceApproverRefusal(
       code: "approve_not_agent",
       error:
         "Only a person approves a device, from a signed-in browser (Settings › Access). An agent can't.",
+    };
+  // Issue 796: nor an agent's read-only view.
+  if (p?.kind === "person-browser" && p.view)
+    return {
+      status: 403,
+      code: "approve_not_agent",
+      error:
+        "Only a person approves a device, from a signed-in browser (Settings › Access). An agent's view can't.",
     };
   if (p?.kind === "person-browser" && p.fixture)
     return {
@@ -3600,16 +4248,77 @@ function declaredCommand<T>(
   return own(forEnv, cmd) ? forEnv![cmd] : undefined;
 }
 
+/**
+ * FB (den#81): Report's server side, as the page, the command line and
+ * (issue 565) an agent's held `report` use it. A request's own reader of
+ * kept screenshots is added by the route.
+ */
+function reportRouteDeps(): ReportRouteDeps {
+  return {
+    settings: () =>
+      readFeedbackSettings(
+        getEngineRoot(),
+        path.join(getDistRoot(), product().configFile),
+        readUserConfig().feedback,
+      ),
+    stateDir: () => getStateDir(),
+    gh: runGh,
+    names: () => {
+      const w = readWebUrl();
+      let webHost: string | undefined;
+      try {
+        webHost = w ? new URL(w.url).hostname : undefined;
+      } catch {
+        webHost = undefined;
+      }
+      return {
+        home: os.homedir(),
+        hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
+        orgs: [product().name],
+      };
+    },
+    diagnostics: async () => ({
+      Den: `${product().cli} ${engineVersion() ?? "?"}`,
+      Machine: machineSection(),
+    }),
+    agentOf: (r) => reportAgentOf(agentPrincipalOf(r), auditActorOf(r)),
+    personOf: () => "person",
+    flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
+    searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+    // Issue 403: a report's screenshot to Hub, with the install's Bearer.
+    shotHub: REPORT_SHOT_HUB,
+    shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+    publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    // Issue 565: who filed a report and where it went, in the trail.
+    audit: ({ by, repo, url, added }) =>
+      recordAction(
+        null,
+        {
+          verb: "report-file",
+          detail: `${added ? "added to" : "filed"} ${url || repo} on ${repo}, by ${by}`,
+        },
+        by.startsWith("agent:") ? by : undefined,
+      ),
+    readBody,
+    sendJson: (r, body, status) => sendJson(r, body, status),
+  };
+}
+
 // ── ON-3: the writes held for the person (approval-routes.ts) ─────────────────
 type ApprovalDeps = {
   queue: ApprovalQueue;
   actions: HeldActions;
   enabled: () => boolean;
-  autoAllow: (action: string, agent: string) => string | null;
+  autoAllow: (
+    action: string,
+    agent: string,
+    workspace: string | undefined,
+  ) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  webUrl: () => string | null;
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
@@ -3812,6 +4521,8 @@ function approvalDeps(): ApprovalDeps {
       );
       return res;
     },
+    // Issue 565: an agent files a report as the page does (public: Allow).
+    report: reportHeld(reportRouteDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
     // Issue 160: an agent closes a stale or superseded pull request after
@@ -4023,17 +4734,23 @@ function approvalDeps(): ApprovalDeps {
   });
   approvals = {
     actions,
-    queue: createApprovalQueue(actions, () => getStateDir()),
+    // Issue 746: one that lapses unanswered rings the bell and tells its asker.
+    // Issue 742: it waits held_writes.wait_minutes (read per ask), and
+    // what waits is kept under the state dir: a restart brings it back,
+    // and what it can't bring back is lost, out loud.
+    queue: createApprovalQueue(actions, () => getStateDir(), {
+      ttlMs: () => heldWriteWaitMinutes() * 60_000,
+      file: path.join(getStateDir(), HELD_WRITES_FILE),
+      onExpire: (a) => void heldWriteLapsed(a),
+      onLost: (a, why) => void heldWriteLost(a, why),
+    }),
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
     // SRV-1a: the server agent's own restart, per server_agent.self_update.
-    autoAllow: (action, agent) =>
-      (action === "den_restart" || action === "den_update") &&
-      agent === SERVER_AGENT_ID &&
-      selfUpdateAuto()
-        ? "server_agent.self_update: auto"
-        : null,
+    // A project's agent's den_update always waits for a person.
+    autoAllow: (action, agent, workspace) =>
+      selfUpdateAutoAllow(action, agent, workspace, selfUpdateAuto),
     // Issue 160: the approval policy, the person's (user.yml) and each
     // project's (workspaces.yml), read per ask. A bad value throws: held.
     // Issue 160: what the write is on, against what the person watches
@@ -4055,6 +4772,8 @@ function approvalDeps(): ApprovalDeps {
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
     // Issue 142: a held write counts in the bell while it waits.
     changed: syncHeldWrites,
+    // Issue 1016: an agent's held write carries its full Allow link.
+    webUrl: () => peopleWebUrl(),
   };
   return approvals;
 }
@@ -4067,26 +4786,120 @@ function syncHeldWrites(): void {
     syncHeldBell(
       notificationDeps().store,
       approvals ? approvals.queue.pending() : [],
-      {
-        projectOf: (a) =>
-          typeof a.args.project === "string"
-            ? a.args.project
-            : a.agent
-              ? (readAgentRecord(getStateDir(), a.agent)?.workspace ??
-                undefined)
-              : undefined,
-      },
+      { projectOf: heldProjectOf },
     );
   } catch {
     /* the bell is best effort */
   }
 }
+/** The project a held write is in: its args', else its asking agent's. */
+function heldProjectOf(a: Approval): string | undefined {
+  return typeof a.args.project === "string"
+    ? a.args.project
+    : a.agent
+      ? (readAgentRecord(getStateDir(), a.agent)?.workspace ?? undefined)
+      : undefined;
+}
 /**
- * Issue 142: at the start (a restart ended every request: their items go)
- * and every few seconds while any wait (one that expired: its item goes).
+ * Issue 746: a held write lapsed unanswered. The bell says so, and the
+ * agent that asked is told in its session once it is at its prompt (never
+ * into a dialog for its person), as Den's own "Server is back" line is
+ * (tellBack, up to ui.restart_wait_seconds). One audit row says who was
+ * told what.
+ */
+async function heldWriteLapsed(a: Approval): Promise<void> {
+  let store: ReturnType<typeof notificationDeps>["store"];
+  try {
+    store = notificationDeps().store;
+  } catch {
+    return;
+  }
+  const told = await heldLapsed(a, {
+    store,
+    projectOf: heldProjectOf,
+    tell: tellHeldAsker,
+  });
+  try {
+    recordAction(
+      null,
+      {
+        verb: "approval-expired",
+        detail: `lapsed unanswered: ${a.action}: ${a.summary} [${a.id}]; ${a.actor} ${told}`,
+      },
+      a.actor,
+    );
+  } catch {
+    /* the trail is best effort here */
+  }
+}
+/**
+ * Issue 746: tells a held write's asking agent `text` in its session once
+ * it is at its prompt (never into a dialog for its person), as Den's own
+ * "Server is back" line is (tellBack, up to ui.restart_wait_seconds).
+ */
+async function tellHeldAsker(agent: string, text: string): Promise<string> {
+  const ops = await import("../cli/agent-ops.js");
+  const { webDeps } = await import("./agent-routes.js");
+  const d = webDeps();
+  const server = agent === SERVER_AGENT_ID;
+  return tellBack(text, {
+    state: () =>
+      server
+        ? ops.serverAgentInputState(d)
+        : ops.agentInputState(d, agent, typingHeldIds()),
+    type: (t) => ops.typeIntoAgent(d, agent, t),
+    dialog: () =>
+      server
+        ? ops.serverAgentDialogOpen(d)
+        : ops.agentDialogKind(d, agent).then((k) => k !== null),
+    waitMs: restartWaitSeconds() * 1000,
+  });
+}
+/** Issue 742: the held-write queue's file, under the state dir. */
+const HELD_WRITES_FILE = "held-writes.json";
+/**
+ * Issue 742: a restart could not bring back a held write (or, the queue
+ * file unreadable, any). The bell says so, the asking agent is told, and
+ * one audit row says what was lost and who was told.
+ */
+async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
+  let told = "nobody told";
+  try {
+    told = await heldLost(a, why, {
+      store: notificationDeps().store,
+      projectOf: heldProjectOf,
+      tell: tellHeldAsker,
+    });
+  } catch {
+    /* the bell is best effort; the trail below still says it */
+  }
+  try {
+    recordAction(
+      null,
+      {
+        verb: "approval-lost",
+        detail: a
+          ? `lost at a restart: ${a.action}: ${a.summary} [${a.id}] (${why}); ${a.actor} ${told}`
+          : `lost at a restart: ${why}`,
+      },
+      a?.actor,
+    );
+  } catch {
+    /* the trail is best effort here */
+  }
+}
+/**
+ * Issue 142: at the start and every few seconds while any wait (one that
+ * expired: its item goes). Issue 742: the queue is made at the start, so
+ * what waited before a restart is read back and shows in the bell.
  */
 function startHeldWritesBell(): void {
   let shown = true;
+  try {
+    approvalDeps();
+  } catch {
+    /* made on first use instead; the bell follows then */
+  }
   syncHeldWrites();
   setInterval(() => {
     const n = approvals ? approvals.queue.pending().length : 0;
@@ -4188,7 +5001,7 @@ async function runPinCommit(
                 summary: ok.summary,
                 params: ok.params,
                 details: ok.details,
-                ttlMs: UPDATE_ASK_TTL_MS,
+                ttlMs: updateAskTtlMs(),
               });
               recordAction(null, {
                 verb: "approval-ask",
@@ -4229,12 +5042,23 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
         args: { version },
         summary: `commit the distribution's pin to Den ${version}`,
         params: { version },
-        details: [
+        // Issue 205: each Review line in the page's language.
+        ...reviewLines([
           mode === "pr"
-            ? `Den commits package.json and package-lock.json on the branch den/pin-${version} and opens a pull request.`
-            : "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
-          "Nothing else in the distribution's folder is committed.",
-        ],
+            ? line(
+                `Den commits package.json and package-lock.json on the branch den/pin-${version} and opens a pull request.`,
+                "ap.det.den_pin_commit.pr",
+                { version },
+              )
+            : line(
+                "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
+                "ap.det.den_pin_commit.push",
+              ),
+          line(
+            "Nothing else in the distribution's folder is committed.",
+            "ap.det.den_pin_commit.only",
+          ),
+        ]),
       };
     },
     run: async (a) => {
@@ -4358,6 +5182,19 @@ function verifyDeps(): VerifyServerDeps {
     focusedProject: () => getFocusedWorkspaceName(),
     repos: (p) => listReposWithManifests(p),
     environments: () => orgEnvironments(),
+    // Issue 441: verify.environments and verify.import, read per request.
+    verifyConfig: () => readDenConfig().verify,
+  };
+}
+/** Issue 214: Verify's schedules, on top of the verify deps. */
+function scheduleDeps(): ScheduleServerDeps {
+  return {
+    ...verifyDeps(),
+    projects: () => workspaceNames(),
+    bell: (n) => {
+      notificationDeps().store.add(n);
+    },
+    log: (l) => serverLog(`  ${l}`, "warn"),
   };
 }
 /** The agent ids with a held write waiting (their rows say "waiting"). */
@@ -4589,6 +5426,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
             : 10,
       };
     })(),
+    // Issue 796: agents' read-only page views (web.agent_view*).
+    web_agent_view: (() => {
+      const c = webAuthNow();
+      return { on: c.agentView, minutes: c.agentViewMinutes };
+    })(),
     // Issue 819: new-device requests and wrong codes.
     web_pairing: (() => {
       const c = webAuthNow();
@@ -4626,6 +5468,23 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       const [first, retry] = lookupTimeouts({}, () => user);
       return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
     })(),
+    // Issue 532: the terminal limits in force (user.yml over den.yml).
+    sessions: (() => {
+      try {
+        const c = readSessionsConfig(undefined, user);
+        return {
+          max_concurrent: c.maxConcurrent,
+          close_grace_seconds: c.closeGraceSeconds,
+          pty_close_seconds: c.ptyCloseSeconds,
+          pty_warn_above: c.ptyWarnAbove,
+          pty_machine_warn_percent: c.ptyMachineWarnPercent,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 742: how long a held write waits for the person's Allow.
+    held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
     // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
     agent_hooks: (() => {
       const c = hookCallSettings(() => user);
@@ -4633,6 +5492,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         timeout_seconds: c.timeoutMs / 1000,
         retries: c.retries,
         backoff_seconds: c.backoffMs / 1000,
+      };
+    })(),
+    // The shared GitHub watcher's pace and API budget (github.*).
+    github: (() => {
+      const g = githubWatchSettings(user);
+      return {
+        watch_interval_seconds: g.intervalSeconds,
+        watch_max_interval_seconds: g.maxIntervalSeconds,
+        api_budget_floor: g.budgetFloor,
+        watches_max: g.watchesMax,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
@@ -4644,6 +5513,15 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       }
     })(),
     // Issue 456: how long Den waits for the shell's PATH.
+    // issue_write: which roles write GitHub issues, and how many an hour.
+    agent_issue_writes: (() => {
+      try {
+        const c = issueWriteSettings(() => user, readDenConfig);
+        return { roles: c.roles, per_hour: c.perHour };
+      } catch {
+        return null;
+      }
+    })(),
     agents_shell: (() => {
       try {
         return {
@@ -4775,7 +5653,36 @@ async function handleRequest(
   if (guard.ok) setPrincipal(req, guard.principal);
   // Issue 810: the fixture person stays on this install and never acts
   // as the person (approve, let a browser in, Hub).
+  // Issue 814: one of the test operator's acts, on an operator install,
+  // on loopback, not through a proxy: let through as that act only, and
+  // audited as the test operator. Anything else falls to the fixture
+  // person's allow-list below.
+  const opAct =
+    guard.ok &&
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+      ? operatorAct(req.method ?? "GET", pathname)
+      : null;
   if (
+    guard.ok &&
+    opAct &&
+    !operatorRefusal({
+      operatorInstall: operatorInstallNow(),
+      via: guard.via,
+      beyond: guard.beyond,
+      method: req.method ?? "GET",
+      pathname,
+      forwarded: hasForwardingHeaders(req.headers),
+      edgeLocal: guard.edgeLocal,
+    })
+  ) {
+    markOperatorAct(req, opAct);
+    recordAction(
+      auditActorOf(req),
+      { verb: "test-operator", detail: `${opAct} ${pathname.slice(0, 200)}` },
+      OPERATOR_PRINCIPAL,
+    );
+  } else if (
     guard.ok &&
     guard.principal?.kind === "person-browser" &&
     guard.principal.fixture
@@ -4800,6 +5707,60 @@ async function handleRequest(
         res,
         { ok: false, code: "fixture_scope", error: why },
         403,
+      );
+    }
+  }
+  // Issue 796: an agent's view reads pages and read-only routes, and
+  // nothing else; each page it opens and each refusal names the agent.
+  if (
+    guard.ok &&
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.view
+  ) {
+    const v = guard.principal.view;
+    const m = req.method ?? "GET";
+    const cls = routeClass(m, pathname);
+    // And whatever an agent's own token is refused (agentRefusal), as
+    // that agent: a view never reaches more than its agent does.
+    const why = guard.beyond
+      ? agentViewRefusedText(v.agent)
+      : (agentViewScopeRefusal(m, pathname, cls, v.agent) ??
+        ((m.toUpperCase() === "GET" || m.toUpperCase() === "HEAD") &&
+        agentRefusal(
+          viewAgent(v),
+          m.toUpperCase(),
+          pathname,
+          cls ?? "readonly",
+          url.searchParams,
+        )
+          ? agentViewRefusedText(v.agent)
+          : null));
+    if (why) {
+      auditAgentView(
+        v.agent,
+        v.workspace,
+        `${m.toUpperCase()} ${routeTemplate(pathname)}`,
+        "agent_view",
+      );
+      serverLog(
+        `  ${logTimestamp()}  ${v.agent} (read-only view) refused ${m.toUpperCase()} ${loggedPath(pathname)}`,
+        "request",
+      );
+      return sendJson(
+        res,
+        { ok: false, code: "agent_view", error: why, requestId },
+        403,
+      );
+    }
+    if (
+      (m === "GET" || m === "HEAD") &&
+      !pathname.startsWith("/api/") &&
+      !STATIC_EXTS.has(path.extname(pathname))
+    ) {
+      auditAgentView(v.agent, v.workspace, `viewed ${routeTemplate(pathname)}`);
+      serverLog(
+        `  ${logTimestamp()}  ${v.agent} (read-only view) viewed ${loggedPath(pathname)}`,
+        "request",
       );
     }
   }
@@ -4951,9 +5912,51 @@ async function handleRequest(
     });
     return;
   }
+  // Issue 459: an agent reads its own app feeds (app_feed_read).
+  if (guard.ok && isAppFeedPath(pathname)) {
+    await handleAppFeedRoutes(req, res, pathname, url);
+    return;
+  }
+  // Issue 796: an agent asks for a read-only view of these pages.
+  if (guard.ok && pathname === "/api/agents/self/view") {
+    if (req.method !== "POST") return sendMethodNotAllowed(res);
+    return handleAgentViewRequest(req, res, guard);
+  }
+  // issue_write: an agent writes a GitHub issue in its own project's repos
+  // (direct and audited; the route checks the role, the repo and the limit).
+  if (guard.ok && pathname === ISSUE_WRITE_PATH) {
+    await handleIssueWriteRoute(req, res, pathname, issueWriteDeps(req));
+    return;
+  }
   // NT: the bell, and agents saying they wait for their person.
   if (guard.ok && isNotificationPath(pathname)) {
-    await handleNotificationRoutes(req, res, pathname, notificationDeps());
+    await handleNotificationRoutes(req, res, pathname, {
+      ...notificationDeps(),
+      // Issue 746: what waits for the person's Allow leads Needs you.
+      held: () => (approvals ? approvals.queue.pending() : []),
+      // Issue 993: a gate slot held past the multiple of its estimate.
+      gateOverruns: () => {
+        const s = gates();
+        return gateOverrunWaiting(s.list(), s.settings(), Date.now());
+      },
+    });
+    return;
+  }
+  // The shared GitHub watcher: an agent's own watches (MCP github_watch).
+  if (guard.ok && isGithubWatchPath(pathname)) {
+    const { githubWatcher } = await import("./github-watch-service.js");
+    const { projectRepos } = await import("../../shared/project-repos.js");
+    await handleGithubWatchRoutes(req, res, pathname, {
+      watcher: githubWatcher,
+      reposOf: projectRepos,
+      allRepos: () => [
+        ...new Set(
+          Object.keys(readWorkspacesFile().workspaces ?? {}).flatMap((ws) =>
+            projectRepos(ws),
+          ),
+        ),
+      ],
+    });
     return;
   }
   // ON-3: an agent's held writes; Allow from the person's browser only.
@@ -4961,6 +5964,13 @@ async function handleRequest(
     guard.ok &&
     isApprovalPath(pathname) &&
     (await handleApprovalRoutes(req, res, pathname, guard, approvalDeps()))
+  )
+    return;
+  // Issue 214: Verify's schedules; allowing one or running it now is a person's.
+  if (
+    guard.ok &&
+    isSchedulePath(pathname) &&
+    (await handleScheduleRoutes(req, res, pathname, guard, scheduleDeps))
   )
     return;
   // 0.4.15: what lets another browser in needs the person, not just
@@ -5025,6 +6035,12 @@ async function handleRequest(
   // Issue 810: Settings › Access, the test install and its fixture person.
   if (pathname === "/api/web/fixture-person")
     return handleFixturePersonRoute(req, res);
+  // Issue 1018: the same, from the launcher's one-time setup value.
+  if (pathname === "/api/web/fixture-person/setup-secret")
+    return handleFixtureSetupSecretRoute(req, res);
+  // Issue 636: a test bed's CLI starts a --test-person command.
+  if (pathname === "/api/web/test-person")
+    return handleTestPersonRoute(req, res);
 
   // SEC-2a: approve this computer with a code. Before config validation.
   if (
@@ -5214,6 +6230,26 @@ async function handleRequest(
     })
   )
     return;
+
+  // Issue 482: an older Terminal link goes to the Terminals page.
+  {
+    const to = terminalLinkRedirect(pathname, url.searchParams);
+    if (to) {
+      res.writeHead(302, { Location: to });
+      res.end();
+      return;
+    }
+  }
+  // Issue 482: the Terminals page, agents.html with its own page id.
+  if (pathname === "/terminals") {
+    const bad = sectionConfigError("agents");
+    if (bad && wantsHtmlPage(req, pathname)) throw bad;
+    return serveFile(
+      res,
+      path.join(PUBLIC_DIR, "agents.html"),
+      terminalsPageHtml,
+    );
+  }
 
   // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
   if (pathname === "/agents" || pathname === "/agents.html") {
@@ -5442,48 +6478,14 @@ async function handleRequest(
   // FB (den#81): Report an issue, filed as the person with their `gh`.
   if (
     handleReportRoutes(req, res, pathname, {
-      settings: () =>
-        readFeedbackSettings(
-          getEngineRoot(),
-          path.join(getDistRoot(), product().configFile),
-          readUserConfig().feedback,
-        ),
-      stateDir: () => getStateDir(),
-      gh: runGh,
-      names: () => {
-        const w = readWebUrl();
-        let webHost: string | undefined;
-        try {
-          webHost = w ? new URL(w.url).hostname : undefined;
-        } catch {
-          webHost = undefined;
-        }
-        return {
-          home: os.homedir(),
-          hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
-          orgs: [product().name],
-        };
-      },
-      diagnostics: async () => ({
-        Den: `${product().cli} ${engineVersion() ?? "?"}`,
-        Machine: machineSection(),
-      }),
-      agentOf: (r) => {
-        const a = agentPrincipalOf(r) || auditActorOf(r);
-        return a ? String(a) : null;
-      },
-      personOf: () => "person",
-      flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
-      searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
-      // Issue 403: a report's screenshot to Hub, with the install's Bearer.
-      shotHub: REPORT_SHOT_HUB,
-      shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+      ...reportRouteDeps(),
       // Issue 403: a kept screenshot is the person's (proved, as approvals
       // ask) or this install's own agent's; never an anonymous request.
       shotReader: (r) => shotReaderOf(r, guard),
-      publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
-      readBody,
-      sendJson: (r, body, status) => sendJson(r, body, status),
+      filedByFixture: () =>
+        guard.ok &&
+        guard.principal?.kind === "person-browser" &&
+        guard.principal.fixture === true,
     })
   )
     return;
@@ -5498,6 +6500,10 @@ async function handleRequest(
   // Imported by header.js (the workspace pill's picker models).
   if (pathname === "/workspace-picker.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
+  }
+  // Issue 168: the project colour picker the scope menu opens.
+  if (pathname === "/project-colour-picker.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "project-colour-picker.js"));
   }
 
   // Issue 644: the kit's site files at the root (/favicon.ico,
@@ -6225,7 +7231,9 @@ async function handleRequest(
     const refresh = url.searchParams.get("refresh") === "1";
     const cacheKey = healthCacheKey(env, wsParam);
     const hit = refresh ? null : healthCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+    // Issue 1022: a hidden page's poll keeps the answer for the slow interval.
+    const ttl = healthCacheTtlMs(url.searchParams.get("hidden") === "1");
+    if (hit && Date.now() - hit.at < ttl) {
       return sendJson(res, hit.results.map(forViewer));
     }
     return sendJson(
@@ -6254,7 +7262,9 @@ async function handleRequest(
     const refresh = url.searchParams.get("refresh") === "1";
     const cacheKey = healthCacheKey(env, wsParam);
     const hit = refresh ? null : healthCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+    // Issue 1022: a hidden page's poll keeps the answer for the slow interval.
+    const ttl = healthCacheTtlMs(url.searchParams.get("hidden") === "1");
+    if (hit && Date.now() - hit.at < ttl) {
       // Cached: replay in one go. Nothing to stagger — it's already known.
       for (const r of hit.results)
         send({ type: "result", result: forViewer(r) });
@@ -7500,6 +8510,33 @@ async function handleRequest(
       });
     // SEC-2a: who this browser is (the rail's identity chip), and, once
     // after a sign-in, that it just signed in (the shell's toast).
+    // Issue 796: an agent's read-only view: the shell shows it, and no
+    // live write buttons. Its CSRF token signs it out only.
+    if (
+      g?.session &&
+      g.principal?.kind === "person-browser" &&
+      g.principal.view
+    ) {
+      const rec = webSessions.list().find((x) => x.key === g.session!.key);
+      const minutes = webAuthNow().agentViewMinutes;
+      return sendJson(res, {
+        csrf: g.session.csrf,
+        actor: g.principal.view.agent,
+        signedIn: true,
+        view: {
+          agent: g.principal.view.agent,
+          readOnly: true,
+          ...(rec
+            ? {
+                endsAt: new Date(
+                  rec.createdAt + minutes * 60_000,
+                ).toISOString(),
+              }
+            : {}),
+        },
+        identity: { kind: "device", via: "agent-view" },
+      });
+    }
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
       const github = rec?.via === "github" && !!rec.login;
@@ -7572,6 +8609,8 @@ async function handleRequest(
         name: deviceName(x.userAgent),
         via: x.via ?? "link",
         ...(x.login ? { login: x.login } : {}),
+        // Issue 796: an agent's read-only view names its agent.
+        ...(x.via === "agent-view" && x.agent ? { agent: x.agent } : {}),
         ...(x.client ? { client: x.client } : {}),
         ...(x.key === mine ? { current: true } : {}),
       })),
@@ -8035,75 +9074,33 @@ async function handleRequest(
     if (req.method === "GET" || req.method === "HEAD") {
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
-      // Only inside a project's repo: the path as written and, after every
-      // symlink, where it really is. Any other path is refused the same way,
-      // there or not.
-      const real = manifestPathInRepo(filePath);
-      if (!real)
-        return sendJson(
-          res,
-          {
-            ok: false,
-            code: "outside_repos",
-            error:
-              "Validate reads only a repo folder (or a file in one) of a project here.",
-          },
-          403,
-        );
-      // Errors name the file's line and column, never its text.
-      const plain = (r: ReturnType<typeof validateManifest>) => ({
-        ...r,
-        errors: r.errors.map((e) => ({ ...e, message: firstLine(e.message) })),
-        warnings: r.warnings.map((w) => ({
-          ...w,
-          message: firstLine(w.message),
-        })),
-      });
+      // Issue 583: every file it opens is checked where it really is, and
+      // read at that same path; a far too broad repo root is no root.
+      let repoRoots: string[] = [];
       try {
-        const isDir = fs.statSync(real).isDirectory();
-        // A repo folder: every layer that applies (repo or held, override,
-        // merged), flattened into the usual shape; each error names its file.
-        if (isDir) {
-          const layered = validateManifestLayers(real);
-          if (layered.layers.length > 0)
-            return sendJson(res, {
-              valid: layered.valid,
-              version: layered.layers[0].result.version,
-              errors: layered.layers.flatMap((l) => plain(l.result).errors),
-              warnings: layered.layers.flatMap((l) => plain(l.result).warnings),
-              manifestLayers: loadManifest(real).layers,
-              layers: layered.layers.map((l) => ({
-                ...l,
-                result: plain(l.result),
-              })),
-            });
-        }
-        const denYml = isDir
-          ? path.join(real, `${product().manifestYml}`)
-          : real;
-        const content = fs.readFileSync(denYml, "utf-8");
-        return sendJson(res, plain(validateManifest(content)));
-      } catch (e) {
-        return sendJson(res, {
-          valid: false,
-          version: 1,
-          errors: [
-            {
-              path: "",
-              message:
-                (e as NodeJS.ErrnoException).code === "ENOENT"
-                  ? "No manifest there."
-                  : "The manifest couldn't be read.",
-            },
-          ],
-          warnings: [],
-        });
+        repoRoots = allWorkspaceCheckouts().map((c) => c.repoPath);
+      } catch {
+        repoRoots = [];
       }
+      const r = validateAtPath(filePath, {
+        repoRoots,
+        heldDir: heldManifestsDir(),
+        stateDir: getStateDir(),
+      });
+      return sendJson(res, r.body, r.status);
     }
   }
 
   // ── API: changelog ────────────────────────────────────────────────────────
   // GET /api/changelog  — parses CHANGELOG.md and returns structured entries
+  // ── API: the Coach (issue 52) ─────────────────────────────────────────────
+  // GET /api/coach, POST /api/coach/run (Run now): coach-routes.ts.
+  if (
+    (COACH_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
+  )
+    return;
+
   if (pathname === "/api/changelog" && req.method === "GET") {
     const changelogPath = enginePath("CHANGELOG.md");
     try {
@@ -8321,6 +9318,8 @@ async function handleRequest(
   //     206); null or "" clears it (the browser's)
   //   hub_allow_tools: true | false, hub.allow_tools (HUB-1.5: agents use
   //     Hub's tools without asking); null clears it (on)
+  //   hub_delivery_loop: true | false, hub.delivery_loop (issue 158: the
+  //     Hub delivery loop in agents' instructions); null clears it (on)
   //   hub_url: Hub's address, hub.url (#267, Settings › Hub); null or ""
   //     clears it. The page restarts Den after.
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -8353,6 +9352,11 @@ async function handleRequest(
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
+      // Issue 957: a pin dropped from user.yml leaves the fixture's record.
+      prunedFixturePins(
+        getStateDir(),
+        shellPrefs(user.shell, pinProjects()).pins,
+      );
       const editorList = editors.listEditors();
       const terminalList = editors.listTerminals();
       return sendJson(res, {
@@ -8384,6 +9388,15 @@ async function handleRequest(
         time_zone: timeZonePref(user.time_zone),
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // Issue 1022: how often the page polls health, visible and hidden.
+        health_poll: healthPollSeconds(() => user),
+        // Issue 158: the Hub delivery loop in agents' instructions.
+        hub_delivery_loop:
+          (
+            (user as Record<string, unknown>).hub as
+              | { delivery_loop?: unknown }
+              | undefined
+          )?.delivery_loop !== false,
         // Issue 268: the projects that override it (Settings › Agents).
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
@@ -8459,6 +9472,7 @@ async function handleRequest(
           alerts?: unknown;
           editor_open?: unknown;
           hub_allow_tools?: unknown;
+          hub_delivery_loop?: unknown;
           hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
@@ -8471,15 +9485,21 @@ async function handleRequest(
           web_github?: unknown;
           web_ready?: unknown;
           web_pairing?: unknown;
+          web_agent_view?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
           feedback?: unknown;
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
+          sessions?: unknown;
+          held_writes?: unknown;
+          health_poll?: unknown;
+          github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -8503,8 +9523,13 @@ async function handleRequest(
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
         // of them is refused before anything is written.
+        // Issue 402: the fixture person saves its pages' own view prefs
+        // (the rail's pins), as live checks press ☆/★; nothing else here.
+        const fixture = fixturePersonOf(req);
         const personOnly = PERSON_ONLY_SETTINGS.filter(
-          (k) => (body as Record<string, unknown>)[k] !== undefined,
+          (k) =>
+            (body as Record<string, unknown>)[k] !== undefined &&
+            !(fixture && FIXTURE_PAGE_SETTINGS.includes(k)),
         );
         if (personOnly.length && notAPersonOf(req))
           return sendJson(
@@ -8527,14 +9552,20 @@ async function handleRequest(
             web_github: body.web_github,
             web_ready: body.web_ready,
             web_pairing: body.web_pairing,
+            web_agent_view: body.web_agent_view,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
             feedback: body.feedback,
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
+            sessions: body.sessions,
+            held_writes: body.held_writes,
+            health_poll: body.health_poll,
+            github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -8602,6 +9633,15 @@ async function handleRequest(
           const h = patchHubAllowTools(
             user as Record<string, unknown>,
             body.hub_allow_tools,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
+        // Issue 158: hub.delivery_loop, the Hub delivery loop in every
+        // agent's instructions (Settings › Hub); null clears it (on).
+        if (body.hub_delivery_loop !== undefined) {
+          const h = patchHubDeliveryLoop(
+            user as Record<string, unknown>,
+            body.hub_delivery_loop,
           );
           if (!h.ok) return send400(res, h.error);
         }
@@ -8675,17 +9715,28 @@ async function handleRequest(
         // goes too, so setting a pref and clearing it again leaves the
         // file byte-identical.
         // The rail's pins and collapse (R14): a view preference only.
-        if (body.shell === null) delete user.shell;
-        else if (body.shell !== undefined) {
+        // Issue 946: the fixture person's null clears only its own pins.
+        const shellBody =
+          body.shell === null && fixture ? { pins: [] } : body.shell;
+        if (shellBody === null) {
+          delete user.shell;
+          writeFixturePins(getStateDir(), [], []);
+        } else if (shellBody !== undefined) {
           // Issue 402: old id-only pins (stored, or posted by an older
           // page) migrate on the way through.
           const projectsOf = pinProjects();
-          const sh = mergeShellPrefs(
-            shellPrefs(user.shell, projectsOf),
-            body.shell,
-            projectsOf,
-          );
+          const before = shellPrefs(user.shell, projectsOf);
+          const sh = mergeShellPrefs(before, shellBody, projectsOf);
           if (!sh.ok) return send400(res, sh.error);
+          // Issue 946: a pin makes a held write on it wait for an Allow, so
+          // the fixture person adds pins and takes off only its own.
+          // Issue 957: only the fixture's pins still stored before this save.
+          const added = prunedFixturePins(getStateDir(), before.pins);
+          if (fixture) {
+            const f = fixtureSave(before.pins, sh.value.pins, added);
+            sh.value.pins = f.pins;
+            writeFixturePins(getStateDir(), f.added, f.pins);
+          } else writeFixturePins(getStateDir(), added, sh.value.pins);
           const stored = storedShell(sh.value);
           if (stored) user.shell = stored as UserConfig["shell"];
           else delete user.shell;
@@ -8786,7 +9837,14 @@ async function handleRequest(
               ),
             );
         }
-        if (gatePatch) gates().writeSettings(gatePatch);
+        // Issue 963: who changed it, in the slot log (named as an ask is).
+        if (gatePatch) {
+          const a = auditActorOf(req);
+          gates().writeSettings(
+            gatePatch,
+            a ? actorLabel(a) : `${product().title} · Settings page · a person`,
+          );
+        }
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
@@ -8795,6 +9853,12 @@ async function handleRequest(
           // Issue 144: the gate slots, as GET shows them (issue 424).
           gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
+          hub_delivery_loop:
+            (
+              (user as Record<string, unknown>).hub as
+                | { delivery_loop?: unknown }
+                | undefined
+            )?.delivery_loop !== false,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals),
           editor: user.editor ?? null,
@@ -9066,10 +10130,17 @@ const server = http.createServer((req, res) => {
   // health dot) and leaves the request hanging. Fail the one request instead.
   // Each request in its own lock scope (SEC-1c: an agent's stays shut).
   const wait = agentPeerWaitMs(req);
-  inRequestLockScope(() =>
-    wait === null
-      ? handleRequest(req, res)
-      : peerSettled(req, wait).then(() => handleRequest(req, res)),
+  const handle = () =>
+    inRequestLockScope(() =>
+      wait === null
+        ? handleRequest(req, res)
+        : peerSettled(req, wait).then(() => handleRequest(req, res)),
+    );
+  // Issue 636: every audit row a test-person call makes says so (the
+  // request checks refuse the header anywhere but a test bed).
+  (req.headers[TEST_PERSON_HEADER] !== undefined
+    ? inTestPersonScope(handle)
+    : handle()
   ).catch((err: unknown) => {
     // R26: the log has the stack under the request id; the browser gets the
     // id, never the stack. The route is its template: no query values.
@@ -9238,8 +10309,45 @@ function handleUpgrade(
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
-  // Issue 810: the fixture person never opens a terminal (or any socket).
-  if (guard.principal?.kind === "person-browser" && guard.principal.fixture) {
+  // Issue 796: an agent's view never opens a terminal (or any socket).
+  if (guard.principal?.kind === "person-browser" && guard.principal.view) {
+    const v = guard.principal.view;
+    auditAgentView(
+      v.agent,
+      v.workspace,
+      `WS ${routeTemplate(pathname)}`,
+      "agent_view",
+    );
+    return refuse(403, agentViewRefusedText(v.agent), "agent_view");
+  }
+  // Issue 810: the fixture person never opens a terminal (or any socket);
+  // issue 814: except the test operator, its own shells only.
+  if (
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture &&
+    !operatorRefusal({
+      operatorInstall: operatorInstallNow(),
+      via: guard.via,
+      beyond: guard.beyond,
+      method: "GET",
+      pathname,
+      forwarded: hasForwardingHeaders(req.headers),
+      edgeLocal: guard.edgeLocal,
+    })
+  ) {
+    markOperatorAct(req, "terminal-attach");
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "test-operator",
+        detail: `terminal-attach ${pathname.slice(0, 200)}`,
+      },
+      OPERATOR_PRINCIPAL,
+    );
+  } else if (
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+  ) {
     recordAction(
       null,
       {
@@ -9558,6 +10666,19 @@ try {
 } catch (e) {
   serverLog(`  ⚠ web.secret could not be created: ${(e as Error).message}`);
 }
+try {
+  sealNewTestInstall();
+} catch (e) {
+  serverLog(
+    `  ⚠ the new test install couldn't be set up: ${(e as Error).message}`,
+  );
+}
+// Issue 1018: the setup value is kept only on a test install at start.
+try {
+  if (!testInstallNow()) FIXTURE_SETUP_SECRET.drop();
+} catch {
+  FIXTURE_SETUP_SECRET.drop();
+}
 // AG-0.1: the login shell's PATH, once, in the background (at most
 // agents.shell_path_timeout_seconds, 10 s unset: issue 456),
 // so agents find their CLI as the person's terminal would: a launchd
@@ -9795,6 +10916,10 @@ void CRASH_GATE.then(() =>
     // Issue 714: an agent's gate slot held over MCP. Granted while it
     // waited: it is told (typed at its prompt) and claims it; passed on
     // unclaimed: told it is back in line; its lease lapsed: the bell.
+    // Issue 214: Verify's schedules run on their own, once a minute.
+    void import("./verify-schedule-routes.js").then((m) =>
+      m.startVerifySchedules(scheduleDeps()),
+    );
     void hubChecked
       .then(() => import("./gate-notices.js"))
       .then((m) =>
@@ -9808,6 +10933,66 @@ void CRASH_GATE.then(() =>
           bell: (n) => {
             notificationDeps().store.add(n);
           },
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
+    // Issue 459: a project's app event feeds, each to one of its agents,
+    // through the same loop as Hub's comments (typed when it is idle).
+    void hubChecked
+      .then(() =>
+        Promise.all([
+          import("./app-feed-service.js"),
+          import("./hub-delivery-service.js"),
+          import("../../shared/secrets/index.js"),
+        ]),
+      )
+      .then(([m, dl, sec]) =>
+        m.startAppFeeds({
+          projects: () => {
+            try {
+              return Object.keys(readWorkspacesFile().workspaces ?? {});
+            } catch {
+              return [];
+            }
+          },
+          feedsOf: (ws) => workspaceEventFeedsRaw(ws),
+          agentProject: (agent) =>
+            readAgentRecord(getStateDir(), agent)?.workspace ?? null,
+          secret: async (ref) => {
+            const sref = sec.namedSecretRef(ref);
+            if (!sref) return null;
+            return sec.getSecretsProvider().get(sref);
+          },
+          relay: (dv) => dl.relayMessage(dv),
+          seen: (id) => dl.relaySeen(id),
+          holds: (id) => dl.relayHolds(id),
+          limits: () => {
+            const e = embedSettings(readUserConfig());
+            return {
+              maxStreams: e.feed_max_streams,
+              eventMaxKb: e.feed_event_max_kb,
+              perMinute: e.feed_events_per_minute,
+              keepEvents: e.feed_keep_events,
+              readMaxKb: e.feed_read_max_kb,
+              listTimeoutSeconds: e.feed_list_timeout_seconds,
+              listMaxMb: e.feed_list_max_mb,
+            };
+          },
+          bell: (n) => {
+            notificationDeps().store.add(n);
+          },
+          stateDir: getStateDir(),
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
+    // The shared GitHub watcher: one loop for every agent's watches; a
+    // finished one is typed at its agent's prompt (the relayed path).
+    void hubChecked
+      .then(() => import("./github-watch-service.js"))
+      .then((m) =>
+        m.startGithubWatch({
+          relay: async (dv) =>
+            (await import("./hub-delivery-service.js")).relayMessage(dv),
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
@@ -9918,8 +11103,13 @@ function updateCheckSettings(): {
   };
 }
 
-/** SRV-P6: how long Den's own "update to X" waits in Needs you. */
-const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
+/**
+ * SRV-P6: how long Den's own "update to X" waits in Needs you: a day, or
+ * the held-write window when that is longer (issue 742).
+ */
+function updateAskTtlMs(): number {
+  return Math.max(24 * 60 * 60_000, heldWriteWaitMinutes() * 60_000);
+}
 /** The update states that mean an update is under way. */
 const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
 
@@ -10235,7 +11425,7 @@ function startUpdateCheck(): void {
               summary: ok.summary,
               params: ok.params,
               details: ok.details,
-              ttlMs: UPDATE_ASK_TTL_MS,
+              ttlMs: updateAskTtlMs(),
             });
             recordAction(null, {
               verb: "approval-ask",

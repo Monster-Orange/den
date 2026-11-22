@@ -15,11 +15,16 @@
  *
  * The run's own Playwright setup calls these, with what Den handed it:
  *
- *   import { allowFromEnv, guardBrowser, pinLoopbackNames }
+ *   import { allowFromEnv, connectGuarded, guardBrowser, pinLoopbackNames }
  *   pinLoopbackNames();
  *   const allow = allowFromEnv(process.env);   // DEN_GATE_ALLOW
- *   guardBrowser(await chromium.connect(ws, { exposeNetwork: "<loopback>" }),
+ *   guardBrowser(await connectGuarded(chromium, process.env.DEN_PW_WS),
  *     allow, (url) => console.error(`blocked: ${url}`));
+ *
+ * Issue 1033: connectGuarded connects with exposeNetwork from
+ * DEN_PW_EXPOSE (the gate hands a box run "<loopback>"), so the box's
+ * browser reaches this machine's ports. A box run that connects without
+ * it is told once (warnBoxExpose).
  */
 import dns from "dns";
 
@@ -34,11 +39,19 @@ export function isLoopbackHost(host: string): boolean {
   );
 }
 
+/**
+ * Issue 991: `host:*`, any port on that host but 80 and 443 (Den's own
+ * browser suites start their server on a free port). URL can't parse a
+ * `*` port, so it is read here: the URL with the port taken out.
+ */
+const ANY_PORT = /^([a-z][a-z0-9+.-]*:\/\/[^/:@]+):\*(\/.*)?$/i;
+
 /** A box run's base URL: null when fine, else what is wrong. */
 export function checkBaseUrl(raw: string): string | null {
+  const any = ANY_PORT.exec(raw);
   let u: URL;
   try {
-    u = new URL(raw);
+    u = new URL(any ? any[1]! + (any[2] ?? "") : raw);
   } catch {
     return `${raw} is not an address`;
   }
@@ -46,13 +59,16 @@ export function checkBaseUrl(raw: string): string | null {
     return `${raw}: a base URL is http or https`;
   if (!isLoopbackHost(u.hostname))
     return `${raw}: a box run's base URL is loopback (localhost, *.localhost or 127.0.0.1)`;
+  if (any) return null;
   if (!u.port || u.port === "80" || u.port === "443")
-    return `${raw}: give an explicit port other than 80 or 443 (this machine's live services may be there)`;
+    return `${raw}: give an explicit port other than 80 or 443, or * for any other port (this machine's live services may be there)`;
   return null;
 }
 
-/** "host:port" for a checked base URL. */
+/** "host:port" for a checked base URL ("host:*" for any port). */
 export function allowOf(raw: string): string {
+  const any = ANY_PORT.exec(raw);
+  if (any) return `${new URL(any[1]!).hostname.toLowerCase()}:*`;
   const u = new URL(raw);
   return `${u.hostname.toLowerCase()}:${u.port}`;
 }
@@ -67,8 +83,17 @@ export function allowFromEnv(env: NodeJS.ProcessEnv): string[] {
 
 const HARMLESS = new Set(["about:", "data:"]);
 
-/** Whether a page may load `raw`: only a declared host:port, never 80/443. */
-export function allowedUrl(raw: string, allow: string[]): boolean {
+/**
+ * Whether a page may load `raw`: only a declared host:port, never 80/443.
+ * A "host:*" entry (issue 991) covers only `ownPorts`, the ports the run
+ * opened itself; with none given it covers nothing, so a box's browser
+ * never reaches another service on this machine's loopback.
+ */
+export function allowedUrl(
+  raw: string,
+  allow: string[],
+  ownPorts?: { has(port: number): boolean },
+): boolean {
   let u: URL;
   try {
     u = new URL(raw);
@@ -76,12 +101,33 @@ export function allowedUrl(raw: string, allow: string[]): boolean {
     return false;
   }
   if (HARMLESS.has(u.protocol)) return true;
-  if (u.protocol === "blob:") return allowedUrl(u.pathname, allow);
+  if (u.protocol === "blob:") return allowedUrl(u.pathname, allow, ownPorts);
   if (!["http:", "https:", "ws:", "wss:"].includes(u.protocol)) return false;
   if (u.username || u.password) return false;
+  // 80 and 443 (written out, or the scheme's own) are never allowed, not
+  // even by a "host:*" entry.
   if (!u.port || u.port === "80" || u.port === "443") return false;
-  const want = `${u.hostname.toLowerCase()}:${u.port}`;
-  return allow.map((a) => a.toLowerCase()).includes(want);
+  const host = sameHost(u.hostname);
+  const own = ownPorts?.has(Number(u.port)) ?? false;
+  return allow.some((a) => {
+    const at = a.lastIndexOf(":");
+    if (at < 0) return false;
+    if (sameHost(a.slice(0, at)) !== host) return false;
+    const port = a.slice(at + 1);
+    return port === u.port || (own && port === "*");
+  });
+}
+
+/**
+ * The host an allow entry is matched by. A box run pins localhost and
+ * *.localhost to 127.0.0.1 (`pinLoopbackNames`), and Den's own test
+ * servers listen on "localhost", so the three are one host: a run allowed
+ * 127.0.0.1:* reaches localhost:<its port>, and the reverse. ::1 and the
+ * rest of 127/8 aren't pinned, so they stay names of their own.
+ */
+function sameHost(host: string): string {
+  const h = host.toLowerCase();
+  return h === "127.0.0.1" || isLocalName(h) ? "127.0.0.1" : h;
 }
 
 /** The few Playwright shapes the guard uses (no Playwright import). */
@@ -108,10 +154,11 @@ export async function guardContext<C extends ContextLike>(
   ctx: C,
   allow: string[],
   onBlock: (url: string) => void = () => {},
+  ownPorts?: { has(port: number): boolean },
 ): Promise<C> {
   await ctx.route("**/*", async (route) => {
     const url = route.request().url();
-    if (allowedUrl(url, allow)) {
+    if (allowedUrl(url, allow, ownPorts)) {
       await route.continue();
       return;
     }
@@ -121,7 +168,7 @@ export async function guardContext<C extends ContextLike>(
   if (typeof ctx.routeWebSocket === "function")
     await ctx.routeWebSocket(/.*/, (ws) => {
       const url = ws.url();
-      if (allowedUrl(url, allow)) {
+      if (allowedUrl(url, allow, ownPorts)) {
         ws.connectToServer();
         return;
       }
@@ -134,10 +181,20 @@ export async function guardContext<C extends ContextLike>(
 /** Every context the browser makes is guarded (service workers off). */
 export function guardBrowser<
   B extends { newContext(o?: Record<string, unknown>): Promise<ContextLike> },
->(browser: B, allow: string[], onBlock: (url: string) => void = () => {}): B {
+>(
+  browser: B,
+  allow: string[],
+  onBlock: (url: string) => void = () => {},
+  ownPorts?: { has(port: number): boolean },
+): B {
   const make = browser.newContext.bind(browser);
   browser.newContext = async (o: Record<string, unknown> = {}) =>
-    guardContext(await make({ ...o, serviceWorkers: "block" }), allow, onBlock);
+    guardContext(
+      await make({ ...o, serviceWorkers: "block" }),
+      allow,
+      onBlock,
+      ownPorts,
+    );
   return browser;
 }
 
@@ -198,4 +255,61 @@ export function pinLoopbackNames(): () => void {
     (dns as { lookup: unknown }).lookup = orig;
     (dns.promises as { lookup: unknown }).lookup = origP;
   };
+}
+
+/** Issue 1033: where the gate says what a box run's client exposes. */
+export const PW_EXPOSE_ENV = "DEN_PW_EXPOSE";
+
+/**
+ * Issue 1033: connect() options with exposeNetwork from DEN_PW_EXPOSE,
+ * unless the caller gave its own. Nothing set: the options as given.
+ */
+export function connectOptions<O extends { exposeNetwork?: string }>(
+  env: NodeJS.ProcessEnv,
+  o?: O,
+): O & { exposeNetwork?: string } {
+  const out = { ...(o ?? {}) } as O & { exposeNetwork?: string };
+  const want = env[PW_EXPOSE_ENV]?.trim();
+  if (out.exposeNetwork === undefined && want) out.exposeNetwork = want;
+  return out;
+}
+
+let warnedExpose = false;
+
+/**
+ * Issue 1033: a box run (DEN_GATE_SLOT_BOX set, not "local") connecting
+ * without exposeNetwork <loopback> (or *): its pages on this machine are
+ * refused. Said once per process; true when it was said now.
+ */
+export function warnBoxExpose(
+  env: NodeJS.ProcessEnv,
+  o: { exposeNetwork?: string } | undefined,
+  say: (line: string) => void = (l) => console.error(l),
+): boolean {
+  const box = env.DEN_GATE_SLOT_BOX?.trim();
+  if (!box || box === "local" || warnedExpose) return false;
+  const exposed = (o?.exposeNetwork ?? "").split(",").map((x) => x.trim());
+  if (exposed.includes("<loopback>") || exposed.includes("*")) return false;
+  warnedExpose = true;
+  say(
+    "box run without exposeNetwork <loopback>: pages on this machine will be refused; pass DEN_PW_EXPOSE to connect()",
+  );
+  return true;
+}
+
+/**
+ * Issue 1033: connects to the run's Playwright server with exposeNetwork
+ * from DEN_PW_EXPOSE (connectOptions), saying once if a box run still
+ * goes without it.
+ */
+export async function connectGuarded<O extends { exposeNetwork?: string }, B>(
+  type: { connect(ws: string, o: O): Promise<B> },
+  ws: string,
+  o?: O,
+  env: NodeJS.ProcessEnv = process.env,
+  say?: (line: string) => void,
+): Promise<B> {
+  const opts = connectOptions(env, o);
+  warnBoxExpose(env, opts, say);
+  return type.connect(ws, opts);
 }

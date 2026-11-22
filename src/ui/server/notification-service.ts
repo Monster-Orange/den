@@ -21,13 +21,13 @@ import {
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
 import { AlertFeed } from "./alert-feed.js";
-import { alertPrefs } from "./alerts.js";
+import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
 import { uiLanguage } from "./ui-language.js";
 import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
 import { readWebUrl } from "../../shared/web-url.js";
 import { pushContact } from "../../shared/push-contact.js";
-import { PushSubscriptions, pushAll, vapidKeys } from "./web-push.js";
+import { PushSubscriptions, pushAll, pushEach, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
 
 let store: NotificationStore | null = null;
@@ -233,11 +233,34 @@ let pushSubs: PushSubscriptions | null = null;
 export function pushDeps(): {
   subs: PushSubscriptions;
   publicKey: () => string;
+  test: () => Promise<{ endpoint: string; status: number }[]>;
 } {
   pushSubs ??= new PushSubscriptions(getStateDir());
+  const subs = pushSubs;
   return {
-    subs: pushSubs,
+    subs,
     publicKey: () => vapidKeys(getStateDir()).publicKey,
+    // Issue 172: Settings' Send a test alert. It goes now, whatever the
+    // switches and quiet hours say: the person asked for it.
+    test: () => {
+      const user = readUserConfig();
+      const prefs = alertPrefs(user);
+      return pushEach(
+        {
+          title: product().title,
+          body: ALERT_TEST_WORDS[uiLanguage(user.language)],
+          link: "/settings#notifications",
+          tag: `test-${crypto.randomUUID()}`,
+        },
+        {
+          subs,
+          keys: () => vapidKeys(getStateDir()),
+          subject: pushSubject(),
+          timeoutMs: prefs.pushTimeoutSeconds * 1000,
+          ttlSeconds: prefs.pushTtlSeconds,
+        },
+      );
+    },
   };
 }
 
@@ -285,6 +308,8 @@ export function notificationDeps(): {
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
+    // Issue 1008: an answer after a withdraw; the agent is told.
+    tell: tellLead,
   });
   if (!timer) {
     let busy = false;
@@ -326,7 +351,8 @@ export function notificationDeps(): {
  * is answered. Never throws.
  */
 export function personTyped(sessionId: string): void {
-  if (!attention?.waitingNow().size) return;
+  // Issue 1008: a withdrawn question counts too (a late answer).
+  if (!attention?.waitingNow().size && !attention?.hasSettled()) return;
   try {
     const rec = listRecords(getStateDir()).find(
       (r) => r.session.id === sessionId,

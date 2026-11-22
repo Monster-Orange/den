@@ -17,6 +17,7 @@ import type {
   NotificationStore,
 } from "../../shared/notifications.js";
 import type { Approval } from "./approvals.js";
+import { allowPath } from "../../shared/agent-links.js";
 
 /** A held write's bell item: `record:held-<request id>`. */
 export const HELD_SUBJECT_PREFIX = "record:held-";
@@ -33,11 +34,8 @@ export function heldLink(
   agent: string | undefined,
   project: string | undefined,
 ): string {
-  if (!agent) return "/agents";
-  const q = new URLSearchParams();
-  if (project) q.set("project", project);
-  q.set("agent", agent);
-  return `/agents?${q.toString()}`;
+  // Issue 1016: the same page an agent's held write links its person to.
+  return allowPath(agent, project);
 }
 
 const isHeld = (n: Notification) =>
@@ -89,4 +87,198 @@ export function syncHeldBell(
     if (n) added++;
   }
   return { added, removed };
+}
+
+/**
+ * Issue 746: one held write waiting on the person, as GET
+ * /api/notifications' `waiting` lists it (first, above agents' questions):
+ * what it is, who asked, since when and until when.
+ */
+export interface HeldWaiting {
+  kind: "allow";
+  id: string;
+  action: string;
+  what: string;
+  agent?: string;
+  since: string;
+  expiresAt: string;
+  /**
+   * Issue 746: the summary's parts, so the page words it in its language
+   * as the Allow dialog does (shell.js apWhat); `what` is the fallback.
+   */
+  params?: Approval["params"];
+  /** Its Allow card's details lines, for the row's Review (as the dialog). */
+  details?: readonly string[];
+  /** One per details line: its message key and words (null: as is). */
+  detailKeys?: Approval["detailKeys"];
+}
+
+/**
+ * Issue 746: the queue's pending requests as Needs you entries, oldest
+ * first. Den's own update ask has its own item (isUpdateAskRequest).
+ */
+export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
+  return pending
+    .filter((a) => a.state === "pending" && !isUpdateAskRequest(a))
+    .sort((x, y) => x.requestedAt - y.requestedAt)
+    .map((a) => ({
+      kind: "allow" as const,
+      id: a.id,
+      action: a.action,
+      what: a.summary,
+      ...(a.agent ? { agent: a.agent } : {}),
+      since: new Date(a.requestedAt).toISOString(),
+      expiresAt: new Date(a.expiresAt).toISOString(),
+      ...(a.params ? { params: a.params } : {}),
+      ...(a.details?.length ? { details: a.details } : {}),
+      ...(a.details?.length && a.detailKeys?.length
+        ? { detailKeys: a.detailKeys }
+        : {}),
+    }));
+}
+
+/** Issue 746: a lapsed request's bell item: `record:held-lapsed-<id>`. */
+export const LAPSED_SUBJECT_PREFIX = "record:held-lapsed-";
+
+/** Issue 746: what the asking agent is told when its request lapsed. */
+export function lapsedNotice(
+  a: Pick<Approval, "id" | "action" | "summary">,
+): string {
+  return (
+    `Den: your request ${a.id} (${a.action}: ${a.summary}) lapsed: ` +
+    `the person did not answer before it expired. Nothing ran. ` +
+    `If it is still needed, ask again (call ${a.action} again).`
+  );
+}
+
+export interface LapsedDeps {
+  store: Pick<NotificationStore, "add">;
+  /** The project the request is in, when known. */
+  projectOf?: (a: Approval) => string | undefined;
+  /**
+   * Tells agent `agent` (its id) `text` in its session; resolves to what
+   * happened ("told", "missing", ...). Absent: nobody is told.
+   */
+  tell?: (agent: string, text: string) => Promise<string>;
+}
+
+/**
+ * Issue 746: a held write expired unanswered. The bell says it lapsed (an
+ * update, not a decision: nothing waits on the person now), and the agent
+ * that asked is told directly, with the reason and a hint to ask again.
+ * Den's own update ask is left to its own item. Resolves to what telling
+ * the agent did, or why nobody was told.
+ */
+export async function heldLapsed(a: Approval, d: LapsedDeps): Promise<string> {
+  if (isUpdateAskRequest(a)) return "update ask";
+  let project: string | undefined;
+  try {
+    project = d.projectOf?.(a);
+  } catch {
+    project = undefined;
+  }
+  const what = a.summary;
+  try {
+    d.store.add({
+      kind: "service",
+      subject: `${LAPSED_SUBJECT_PREFIX}${a.id}`,
+      scope: `workspace/${project || "den-server"}`,
+      text: a.agent
+        ? `${a.agent}'s request lapsed unanswered: ${what}. Nothing ran; the agent was told to ask again.`
+        : `A request lapsed unanswered: ${what}. Nothing ran.`,
+      // The action and params let the page word `what` in its language
+      // (shell.js apWhat); `what` stays, the English fallback.
+      msg: {
+        key: a.agent ? "bell.m.heldLapsed" : "bell.m.heldLapsedAsk",
+        vars: {
+          ...(a.agent ? { name: a.agent } : {}),
+          what,
+          action: a.action,
+          ...(a.params ? { params: JSON.stringify(a.params) } : {}),
+        },
+      },
+      link: heldLink(a.agent, project),
+    });
+  } catch {
+    /* the bell is best effort */
+  }
+  if (!a.actor.startsWith("agent:")) return "not an agent";
+  if (!d.tell) return "nobody to tell";
+  try {
+    return await d.tell(a.actor.slice("agent:".length), lapsedNotice(a));
+  } catch (e) {
+    return `not told: ${(e as Error)?.message ?? String(e)}`;
+  }
+}
+
+/** Issue 742: a lost request's bell item: `record:held-lost-<id>`. */
+export const LOST_SUBJECT_PREFIX = "record:held-lost-";
+
+/** Issue 742: what the asking agent is told when a restart lost its request. */
+export function lostNotice(
+  a: Pick<Approval, "id" | "action" | "summary">,
+  why: string,
+): string {
+  return (
+    `Den: your request ${a.id} (${a.action}: ${a.summary}) was lost at a restart: ${why} ` +
+    `Nothing ran from it. If it is still needed, ask again (call ${a.action} again).`
+  );
+}
+
+/**
+ * Issue 742: a restart could not bring back a held write (`a`), or, the
+ * queue file being unreadable, any of them (`a` null). The bell says so,
+ * and the agent that asked, when known, is told directly. Never silent.
+ */
+export async function heldLost(
+  a: Approval | null,
+  why: string,
+  d: LapsedDeps & { now?: () => number },
+): Promise<string> {
+  if (!a) {
+    try {
+      d.store.add({
+        kind: "service",
+        subject: `${LOST_SUBJECT_PREFIX}all-${(d.now ?? Date.now)()}`,
+        scope: "workspace/den-server",
+        text: `Requests waiting for your Allow could not be read back after a restart (${why}). They are lost; agents that ask again are shown here.`,
+        msg: { key: "bell.m.heldLostAll", vars: {} },
+        link: heldLink(undefined, undefined),
+      });
+    } catch {
+      /* the bell is best effort */
+    }
+    return "nobody to tell (unreadable queue)";
+  }
+  if (isUpdateAskRequest(a)) return "update ask";
+  let project: string | undefined;
+  try {
+    project = d.projectOf?.(a);
+  } catch {
+    project = undefined;
+  }
+  const what = a.summary;
+  try {
+    d.store.add({
+      kind: "service",
+      subject: `${LOST_SUBJECT_PREFIX}${a.id}`,
+      scope: `workspace/${project || "den-server"}`,
+      text: a.agent
+        ? `${a.agent}'s request was lost at a restart: ${what}. Nothing ran from it; the agent was told to ask again.`
+        : `A request was lost at a restart: ${what}. Nothing ran from it.`,
+      msg: a.agent
+        ? { key: "bell.m.heldLost", vars: { name: a.agent, what } }
+        : { key: "bell.m.heldLostAsk", vars: { what } },
+      link: heldLink(a.agent, project),
+    });
+  } catch {
+    /* the bell is best effort */
+  }
+  if (!a.actor.startsWith("agent:")) return "not an agent";
+  if (!d.tell) return "nobody to tell";
+  try {
+    return await d.tell(a.actor.slice("agent:".length), lostNotice(a, why));
+  } catch (e) {
+    return `not told: ${(e as Error)?.message ?? String(e)}`;
+  }
 }

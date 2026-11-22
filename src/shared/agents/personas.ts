@@ -38,6 +38,7 @@
  * built-in. Hub comes later; only its origin value exists now.
  */
 import { checkSubagentModel } from "./subagents.js";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
@@ -45,6 +46,7 @@ import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import { checkCommands } from "./permissions.js";
 import { DEN_ROLES, REGISTRY_ID_RE } from "./roles.js";
 import { enginePath } from "../engine.js";
+import { addressBriefLine } from "../agent-links.js";
 import {
   SERVER_PACK_DIR,
   SERVER_PERSONA_ID,
@@ -82,8 +84,22 @@ export interface Persona {
   description: string;
   /** Its category (roles.ts): the role's, else engineering. */
   category: string;
-  /** "latest" (default) or a pinned version of its model. */
+  /**
+   * "latest" (default) or a pinned version of its model: front matter
+   * `model_version` (PSN-2), or the old `version`, still read.
+   */
   version?: string;
+  /** PSN-2: the model's version came from the old `version` key alone. */
+  legacyVersionKey?: true;
+  /**
+   * PSN-2: `model_version` and the old `version` give different values:
+   * this Den reads model_version, an older one version.
+   */
+  versionKeysDiffer?: true;
+  /** PSN-2: its version, the sha256 of its file's text. */
+  hash?: string;
+  /** PSN-2: the version's readable name, front matter `persona_version`. */
+  personaVersion?: string;
   /** Plain command prefixes it may run without asking (AG-13.4). */
   allowedCommands: string[];
   /** Where it came from (loadPersonas sets it). */
@@ -127,6 +143,8 @@ export interface Persona {
 
 /** A model version as a persona pins it: "latest" or a version id. */
 export const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._@:-]{0,63}$/;
+/** PSN-2: a persona version's readable name ("v3", "2026.11-a"). */
+export const PERSONA_VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 
 /** A persona id: the same rules as an agent id or a workspace name. */
 export const PERSONA_ID_RE = WORKSPACE_NAME_RE;
@@ -240,10 +258,34 @@ export function parsePersona(
     throw new Error(
       `${file}: category "${category.slice(0, 40)}" must be lowercase letters, digits and "-"`,
     );
-  const version = optString(f, "version", file);
-  if (version && !VERSION_RE.test(version))
+  // PSN-2: the model's version is model_version; the old key is still read.
+  const modelVersion = optString(f, "model_version", file);
+  const oldVersion = optString(f, "version", file);
+  for (const [key, v] of [
+    ["model_version", modelVersion],
+    ["version", oldVersion],
+  ] as const)
+    if (v && !VERSION_RE.test(v))
+      throw new Error(
+        `${file}: ${key} must be "latest" or a version id (letters, digits, . _ @ : -)`,
+      );
+  const version = modelVersion ?? oldVersion;
+  // Both keys with one value is what New persona and Edit write (older
+  // Dens in a team still read `version`): fine. The old key alone, or the
+  // two disagreeing, is noted.
+  const legacyVersionKey = !modelVersion && !!oldVersion;
+  const versionKeysDiffer =
+    !!modelVersion && !!oldVersion && modelVersion !== oldVersion;
+  const pv = f.persona_version;
+  const personaVersion =
+    pv === undefined || pv === null
+      ? undefined
+      : typeof pv === "string" || typeof pv === "number"
+        ? String(pv).trim()
+        : "";
+  if (personaVersion !== undefined && !PERSONA_VERSION_RE.test(personaVersion))
     throw new Error(
-      `${file}: version must be "latest" or a version id (letters, digits, . _ @ : -)`,
+      `${file}: persona_version must be a short name (letters, digits, . _ -, at most 40)`,
     );
   let allowedCommands: string[];
   try {
@@ -277,6 +319,10 @@ export function parsePersona(
       DEN_ROLES.find((r) => r.id === role)?.category ??
       "engineering",
     ...(version && version !== "latest" ? { version } : {}),
+    ...(legacyVersionKey ? { legacyVersionKey: true as const } : {}),
+    ...(versionKeysDiffer ? { versionKeysDiffer: true as const } : {}),
+    hash: createHash("sha256").update(text).digest("hex"),
+    ...(personaVersion ? { personaVersion } : {}),
     allowedCommands,
     origin,
     prompt: text.slice(m[0].length).trim(),
@@ -419,6 +465,8 @@ export function rolePrompt(
   agentId: string,
   workspace: string,
   mcpName: string,
+  /** Issue 1016: the install's address for people (web.url), null unset. */
+  webUrl: string | null = null,
 ): string {
   const lines = isServerScope(workspace)
     ? [
@@ -433,6 +481,8 @@ export function rolePrompt(
   lines.push(
     "When you need your person's decision, call ask_human with the question, then end your turn: their answer comes as your next input.",
   );
+  // Issue 1016: the address people open; links on it, never loopback.
+  lines.push(addressBriefLine(webUrl));
   if (persona.context.length)
     lines.push(`Read first: ${persona.context.join("; ")}.`);
   const shared = persona.guardrails?.instructions

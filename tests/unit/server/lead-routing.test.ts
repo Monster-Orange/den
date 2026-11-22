@@ -118,7 +118,8 @@ describe("issue 101: an agent's question goes to its lead", () => {
       text: "Ship it today?",
       hooked: true,
     });
-    expect(r).toEqual({ lead: "boss" });
+    // Issue 1058: with the "asked the lead" row's id, for a withdraw.
+    expect(r).toEqual({ lead: "boss", askId: expect.any(String) });
     expect(tells).toEqual([
       { lead: "boss", text: leadAskText("DEV", "dev", "Ship it today?") },
     ]);

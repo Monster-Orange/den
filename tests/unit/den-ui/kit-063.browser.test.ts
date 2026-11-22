@@ -134,7 +134,9 @@ const painted = (p: Page) =>
       ),
   );
 
-const PRIMARY = process.platform === "darwin" ? "Meta+Enter" : "Control+Enter";
+// The browser's own OS picks the key: a remote browser runs on another OS
+// than this runner.
+const PRIMARY = "ControlOrMeta+Enter";
 
 for (const engine of ["chromium", "webkit"]) {
   describe(`den-ui 0.6.3 kit fixes (${engine})`, () => {

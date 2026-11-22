@@ -369,7 +369,7 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
       r.persona ?? "-",
       r.runtime ?? "-",
       r.rotation?.due
-        ? `${r.state}, ${r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
+        ? `${r.state}, ${r.rotation.waiting ? `waits for ${r.rotation.waiting} background item(s)` : r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
         : r.restartFailed
           ? // Issue 631: why it didn't come back.
             `${r.state}: didn't come back after a restart (${r.restartFailed.why})`
@@ -749,9 +749,11 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
       const code = report(
         d,
         s,
-        s.fresh
-          ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
-          : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
+        s.relaunched
+          ? `restarted agent ${s.rec.id}; it had rotated (${s.relaunched.why}), so it relaunched from its handoff in a new conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`
+          : s.fresh
+            ? `restarted agent ${s.rec.id}; ${FRESH_NOTE}, as ${s.rec.sessionName} in ${s.rec.cwd}`
+            : `restarted agent ${s.rec.id}; same conversation, as ${s.rec.sessionName} in ${s.rec.cwd}`,
       );
       return {
         code,
@@ -2396,6 +2398,24 @@ async function doctor(
   d.out("");
   for (const l of staleLines(stale, d.cli)) d.out(l);
   d.out("");
+  // PSN-2: personas still on the old model-version key. Unreadable
+  // personas are another check's to report.
+  let oldKey: { id: string; source: string }[] = [];
+  let differ: { id: string; source: string }[] = [];
+  try {
+    const all = personaList(d, ws);
+    oldKey = all
+      .filter((p) => p.legacyVersionKey)
+      .map((p) => ({ id: p.id, source: p.source }));
+    differ = all
+      .filter((p) => p.versionKeysDiffer)
+      .map((p) => ({ id: p.id, source: p.source }));
+  } catch {
+    oldKey = [];
+    differ = [];
+  }
+  for (const l of personaVersionLines(oldKey, differ)) d.out(l);
+  d.out("");
   if (links) {
     for (const l of linkLines(links, d.cli)) d.out(l);
     d.out("");
@@ -2404,6 +2424,32 @@ async function doctor(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
   return code;
+}
+
+/**
+ * PSN-2 (issue 137): doctor's note on personas that still name their
+ * model's version `version:` (still read; `model_version:` is its name).
+ */
+export function personaVersionLines(
+  old: { id: string; source: string }[],
+  differ: { id: string; source: string }[] = [],
+): string[] {
+  if (!old.length && !differ.length)
+    return [
+      "Persona keys      every persona names its model's version model_version",
+    ];
+  const out: string[] = [];
+  if (old.length)
+    out.push(
+      `Persona keys      ${old.length} ${old.length === 1 ? "persona names its" : "personas name their"} model's version \`version:\`, still read; \`model_version:\` is its name now:`,
+      ...old.map((p) => `  ${p.id} (${p.source})`),
+    );
+  if (differ.length)
+    out.push(
+      `Persona keys      ${differ.length} ${differ.length === 1 ? "persona gives" : "personas give"} model_version and version different values; older Dens read \`version:\`, so they run another model version:`,
+      ...differ.map((p) => `  ${p.id} (${p.source})`),
+    );
+  return out;
 }
 
 /** D65 v2: doctor's lines on which repo each agent works on. */

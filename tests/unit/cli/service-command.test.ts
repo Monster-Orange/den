@@ -368,6 +368,25 @@ describe("service install --plan", () => {
     expect(await cmdService(["install", "--plan"], h.deps)).toBe(0);
   });
 
+  it("install --no-open parses, as web up's does, and opens nothing (issue 317)", async () => {
+    const plain = harness();
+    expect(await cmdService(["install"], plain.deps)).toBe(0);
+    const h = harness();
+    expect(await cmdService(["install", "--no-open"], h.deps)).toBe(0);
+    // The same install as without it: no browser, nothing else run.
+    expect(h.calls).toEqual(plain.calls);
+    expect(h.calls.map((c) => c.cmd)).not.toContain("open");
+    expect(h.calls.some((c) => c.args.includes("--no-open"))).toBe(false);
+    // With --plan and --mode too.
+    const p = harness();
+    expect(
+      await cmdService(
+        ["install", "--plan", "--no-open", "--mode", "login"],
+        p.deps,
+      ),
+    ).toBe(0);
+  });
+
   it("refuses an unknown flag before running anything (a typo must not install)", async () => {
     const h = harness();
     await expect(cmdService(["install", "--paln"], h.deps)).rejects.toThrow(

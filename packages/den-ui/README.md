@@ -431,6 +431,10 @@ pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
   `data-instant="opens a menu"`. An empty reason doesn't count;
   `instantProblems(html)` lists each one (a kit test runs it over the
   kit and its first product's pages).
+- A wait that says its own words and isn't one request through
+  `busyAction` (a stream's output, a form with its own error line) holds
+  its button with the dots alone: `holdDots(button)`, then
+  `holdDots(button, false)` to give the label back. No pop-up opens.
 - `opts.dots: false` on busyAction holds a button the old way (no dots,
   the pop-up at `OPEN_MS`).
 - The look is in `src/busy.css`, under "issue 699: the held button"
@@ -664,11 +668,17 @@ Three pieces, data in, the kit's words out (en, es, ja).
 
 - **The general button** (issue 556): `src/button.css` and `src/button.js`
   (exports `./button.css`, `./button`). `.den-btn` for any page, inside the
-  frame or not: secondary is the base, `.primary` the accent fill, `.sm`
-  the small size; a link drawn as a button is `a.den-btn`. A visible focus
-  ring, and a 44px tap on a touch screen (its box unchanged). These are
-  the values Den's frame drew; Den now links `button.css` and keeps no
-  copy.
+  frame or not: secondary is the base, `.primary` the accent fill,
+  `.danger` a step that takes something away (red words), `.sm` the small
+  size; a link drawn as a button is `a.den-btn`. Its words and an icon sit
+  in a row, 6px apart. A visible focus ring, and a 44px tap on a touch
+  screen (its box unchanged). These are the values Den's frame drew and
+  the second product's shipped button (issue 673). It is the one button:
+  the kit's dialogs and the working pop-up draw `.den-btn` too, and
+  `den-ui-parity` counts a product's own `.btn` as a copy. A page that
+  links `dialog.css` (or `busy.css`) must link `button.css` beside it:
+  `.dk-btn` sets only the size, so without it the dialog's buttons have
+  no look. Neither imports it, so it is asked for by one URL (issue 231).
 
       buttonHtml({ label, variant: "primary", size: "sm", href?, type?,
                    disabled?, id?, attrs: { "data-…": …, "aria-…": … } })
@@ -730,6 +740,34 @@ Three pieces, data in, the kit's words out (en, es, ja).
 - `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
   `DenUI.settingRow(el, opts)` are the same, in the kit's language.
 
+- **The text-field settings row** (issue 584): `src/setting-field.js` and
+  `src/setting-field.css` (exports `./setting-field`,
+  `./setting-field.css`). Link them with `button.css`.
+
+      const row = mountSettingField(el, {
+        id: "folders", label: "Folders it may read",
+        help: "One folder per line.", placeholder: "~/notes",
+        value: ["~/notes", "~/code"], multiline: true, lang,
+        // save: { verb: "save" } by default, or the host's own words
+        onSave: (value, lines) => api.save(lines),  // resolves to the saved value
+      });
+      row.value(); row.error("Not a folder: ~/x"); row.destroy();
+
+  A label, a single-line input or a multi-line box, help text, Save, and
+  an error line under the box. The host's words are its own text or
+  `{ key, vars }` (a key it added with `addStrings`). Save is disabled
+  until the value changes, and runs through the working pop-up
+  (`busy.js`'s `pending`; pass `busy` to use another). Done, the row shows
+  the value as saved and Save is disabled again; refused, the error line
+  says "Not saved. Try again." and typing clears it.
+  `settingFieldHtml(o)` draws it in Node, `hydrateSettingField(el, opts)`
+  wires it, and `DenUI.settingField(el, opts)` is the same in the kit's
+  language.
+
+- **Shared button verbs** (issue 584): `kit.verb.save`, `kit.verb.cancel`,
+  `kit.verb.delete`, `kit.verb.close` and `kit.verb.tryAgain`, in en, es
+  and ja. A host uses `kitT(lang, "kit.verb.save")` instead of its own.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).
@@ -746,6 +784,10 @@ The top bar's search sits in the same place in every product (issue 303).
   256 at 960, 82 / 54 on a phone), the same in any host. The left part is
   the smaller of `--den-top-left` (444px) and what the search and the
   right group's reserve (`--den-top-right`, 380px) leave.
+  Under 944px the search gives way first (issue 981): the left part keeps
+  `--den-top-left-min` (220px), so the project picker is never under the
+  search, and the search narrows down to its icon
+  (`--den-top-search-min`, 56px; 240 / 128 at 768).
 - **The right group is anchored from the right edge.** ◐ at the bar's
   padding, then the version in a fixed slot (`--den-top-version` 96px;
   `--den-top-version-md` 64px up to 1100px; its text ends in "…", the
@@ -780,7 +822,8 @@ The top bar's search sits in the same place in every product (issue 303).
   its search in `start` and puts it in its slot; a host's markup is
   unchanged.
 - **Settings** (custom properties on `.den-top`, with their defaults):
-  `--den-top-left` (444px), `--den-top-search` (304px), and under 720px
+  `--den-top-left` (444px), `--den-top-search` (304px),
+  `--den-top-left-min` (220px), `--den-top-search-min` (56px), and under 720px
   `--den-top-left-md`
   (200px) and, under 480px, `--den-top-left-sm` (62px: ☰ and the mark).
   At 1280px the search is at x 464, 304 wide; on a phone at x 82.

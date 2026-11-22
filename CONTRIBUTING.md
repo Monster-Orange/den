@@ -194,6 +194,9 @@ export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000; // optional; a cell over it is ok: false
 // Optional: it changes nothing in Den, so it may run beside others.
 export const readOnly = true;
+// Optional: other release items whose clauses it proves, its own issue first.
+// One line: the bed reads it from the source to plan a tag's items.
+export const items = [406, 991];
 export async function setup(ctx) {} // prepare the bed; returns state
 export async function run(ctx, state) {} // act; returns what it saw
 export async function teardown(ctx, state) {} // optional; always called
@@ -337,6 +340,36 @@ counts as an agent at every person-only check, reaches only the pages and
 the few writes live checks need, never opens a terminal, and ends as soon
 as the install stops being a test install, the key goes, or its time is
 up.
+
+### A new test install, and the test operator
+
+A test install can also be **created** as one. Start the server with the
+launcher's flag on a state folder that is missing or empty, with the mark
+already in the distribution config. At that first start the server claims
+the folder (a creation record, sealed for that folder), and gives the
+install its fixture person: no one presses Set up test person, and
+`web fixture-login` works at once. Adding the mark to an install that
+already ran never does this.
+
+On such an install, bound to loopback only, the fixture session is also
+the **test operator** for a few person-only requests the live checks
+need, each audited as `test:operator`:
+
+| Request                                                 | For                                |
+| ------------------------------------------------------- | ---------------------------------- |
+| `POST /api/workspaces/:ws/sessions` (no `cwd`)          | Terminal opens a terminal; the cap |
+| WebSocket `/api/sessions/:id/io`, its own, by host id   | typing into it, taking focus       |
+| `POST /api/sessions/:id/close`, its own                 | closing what a check opened        |
+| `POST /api/workspaces/:ws/agents/:id/say`, project only | a message to an agent              |
+| `POST /api/workspaces/:ws/agents/:id/relaunch`, project | Resume after a relaunch            |
+
+Its terminal is never a shell: it is Den's fixed stub, which echoes what
+is typed and does nothing else, in the project's folder. Say and relaunch
+reach project agents only, never the server agent. A request through the
+edge, a LAN name or a proxy is refused. Everything else stays the fixture
+person's: no shell, no Allow on a held write, no person-only setting, no
+Hub, no sign-in or device routes, no runtime path. Clauses that need
+those keep skipping as `person` and are covered by CI.
 
 `node scripts/gate-shape.mjs` checks every file has this shape, and
 `tests/unit/test-infra/gate-checks.test.ts` runs it in CI, along with

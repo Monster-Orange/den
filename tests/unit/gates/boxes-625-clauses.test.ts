@@ -212,6 +212,53 @@ describe("clause 9: a remote browser never reaches the host's live services", ()
       DEN_GATE_ALLOW: "den.localhost:4100",
     });
   });
+
+  // Issue 991: Den's own browser suites start their server on a free port,
+  // so a box run may name a loopback host with any port; 80 and 443 stay
+  // refused, wildcard or not.
+  it("gate run takes http://127.0.0.1:* for a box run, and still refuses 80 and 443", async () => {
+    const s = storeWith([{ name: "b1", playwright: "ws://b1.test:3000" }]);
+    const t = deps(s.store);
+    for (const bad of ["http://127.0.0.1:80", "https://127.0.0.1:443"])
+      expect(
+        await cmdGate(
+          [
+            "run",
+            "--kind",
+            "browser",
+            "--box",
+            "b1",
+            "--base-url",
+            bad,
+            "--",
+            "npm",
+            "test",
+          ],
+          t.d,
+        ),
+      ).toBe(2);
+    expect(
+      await cmdGate(
+        [
+          "run",
+          "--kind",
+          "browser",
+          "--box",
+          "b1",
+          "--base-url",
+          "http://127.0.0.1:*",
+          "--",
+          "npm",
+          "test",
+        ],
+        t.d,
+      ),
+    ).toBe(0);
+    expect(t.ran.at(-1)!.env).toMatchObject({
+      DEN_GATE_BOX: "b1",
+      DEN_GATE_ALLOW: "127.0.0.1:*",
+    });
+  });
 });
 
 describe("clause 10: *.localhost resolves to 127.0.0.1 on the client", () => {

@@ -22,7 +22,8 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
-import { kitPseudo } from "./helpers/kit-shell.js";
+import { kitAsset, kitPseudo } from "./helpers/kit-shell.js";
+import { NotificationStore } from "../../../src/shared/notifications.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -167,6 +168,12 @@ async function open(next: string): Promise<Page> {
     const res = await r.fetch();
     r.fulfill({ response: res, body: (await res.text()) + kitPseudo("es") });
   });
+  // Issue 1025: the bell imports the kit as modules, with their own
+  // strings.js: that copy gets the pseudo-locale's words too.
+  await p.route(`${s!.base}/kit/strings.js*`, (r) => {
+    const a = kitAsset("/kit/strings.js", "es")!;
+    r.fulfill({ contentType: a.contentType, body: a.body });
+  });
   await p.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
@@ -296,9 +303,22 @@ describe("pages in a pseudo-locale: no literal inside <main>", () => {
 
   it("the bell, open", async () => {
     if (!browser) return;
+    // Issue 1025: a row in Earlier (ten days old, so folded as older), so
+    // the bell draws its section headings (the kit's own words) every run,
+    // not only when a run left one.
+    new NotificationStore(
+      s!.stateDir,
+      () => new Date(Date.now() - 10 * 86_400_000),
+    ).add({
+      kind: "service",
+      subject: "agent:shipper",
+      scope: "workspace/north",
+      text: "Release shipped",
+    });
     const p = await open("/agents");
     await p.click("#den-bell");
     await p.waitForSelector(".den-bell-pop");
+    await p.waitForSelector("#den-bell-earlier");
     const found = await leaks(p, ".den-bell-pop");
     await p.close();
     expect(found).toEqual([]);
