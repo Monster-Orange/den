@@ -9,6 +9,7 @@
  *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
  *                     cpu_slots_beside_release_browser (its follow-up),
  *                     cpu_hold_load (issue 1009),
+ *                     load_hold_per_core (issue 1048),
  *                     local_browser_slots,
  *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -111,6 +112,8 @@ export type GateSettingsPatch = {
   local_browser_slots?: number | null;
   /** Issue 1009: cpu asks wait at this load under a release run (0: off). */
   cpu_hold_load?: number | null;
+  /** Issue 1048: cpu asks wait over this many times the cores (0: off). */
+  load_hold_per_core?: number | null;
   overrun_margin_minutes?: number | null;
   /** Issue 993: held past this many times its estimate: the bell. */
   overrun_bell_multiple?: number | null;
@@ -171,6 +174,8 @@ export const GATE_LIMITS: Record<
   local_browser_slots: { min: 1, max: 64, int: true },
   // Issue 1009: a 5-minute load average; 0 turns the hold off.
   cpu_hold_load: { min: 0, max: 1024, int: false },
+  // Issue 1048: a multiple of the cores; 0 turns the hold off.
+  load_hold_per_core: { min: 0, max: 64, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 993: 1 is "as soon as it passes its estimate".
   overrun_bell_multiple: { min: 1, max: 100, int: false },
@@ -366,7 +371,23 @@ export interface GateStoreOpts {
    * os.loadavg()[1]); tests pass a stub.
    */
   load?: () => number;
+  /** Issue 1048: the machine's cores (default os.availableParallelism). */
+  cores?: () => number;
 }
+
+/**
+ * Issue 1048: this machine's 5-minute load average. DEN_GATE_LOAD5 fixes
+ * the reading (the test setup sets 0, so a busy machine never holds an
+ * unrelated test's slot; a drill can set it high).
+ */
+export function realLoad(env: NodeJS.ProcessEnv = process.env): number {
+  const fixed = Number((env.DEN_GATE_LOAD5 ?? "").trim() || NaN);
+  return Number.isFinite(fixed) ? fixed : (os.loadavg()[1] ?? 0);
+}
+
+/** Issue 1048: this machine's cores. */
+export const realCores = (): number =>
+  os.availableParallelism?.() ?? os.cpus().length;
 
 /**
  * Issue 621: renew and lapse, seconds. A lapse shorter than two renews
@@ -421,6 +442,7 @@ export class GateStore {
   private readonly lockWaitMs: number;
   private readonly probe: BoxProbe;
   private readonly readLoad: () => number;
+  private readonly readCores: () => number;
   readonly platform: NodeJS.Platform;
 
   constructor(o: GateStoreOpts = {}) {
@@ -430,7 +452,18 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.probe = o.probe ?? realBoxProbe;
-    this.readLoad = o.load ?? (() => os.loadavg()[1]!);
+    this.readLoad = o.load ?? (() => realLoad());
+    this.readCores = o.cores ?? realCores;
+  }
+
+  /** Issue 1048: this machine's cores (at least 1). */
+  cores(): number {
+    try {
+      const n = this.readCores();
+      return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    } catch {
+      return 1;
+    }
   }
 
   /** Issue 1009: the machine's 5-minute load average now (NaN: unread). */
@@ -484,6 +517,10 @@ export class GateStore {
           num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),
         ),
         cpuHoldLoad: num("cpu_hold_load", GATE_DEFAULTS.cpuHoldLoad),
+        loadHoldPerCore: num(
+          "load_hold_per_core",
+          GATE_DEFAULTS.loadHoldPerCore,
+        ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -813,7 +850,14 @@ export class GateStore {
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
     // Issue 1009: the machine's load, read once per pass.
-    for (const g of assign(entries, s, now, caps.caps, this.load())) {
+    for (const g of assign(
+      entries,
+      s,
+      now,
+      caps.caps,
+      this.load(),
+      this.cores(),
+    )) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its
