@@ -37,7 +37,7 @@
  * route, container, daemon or server process changes. Start and Restart
  * are the explicit actions, through the page's own runner.
  */
-import { hydrateSearch } from "/kit/shell-client.js";
+import { hydrateSearch, setChip } from "/kit/shell-client.js";
 import { isMac } from "./term-input.js";
 import { formatTime } from "/kit/time.js";
 import { healthReason } from "./value-words.js";
@@ -551,21 +551,25 @@ function paintChip() {
   // R26d, and SEC-1b's refusal pages (421, signed out: sh().apiOff), where
   // no health is asked for: unknown, neutral, never "Checking…" forever.
   if (serverDown || sh()?.apiOff?.() === true) {
-    chip.classList.remove("bad");
-    chip.setAttribute("aria-busy", "false");
-    chip.title = t("status.unknownTip");
-    chip.innerHTML =
-      `<span class="den-dot off" aria-hidden="true"></span>` +
-      `<span class="den-n">${esc(t("status.unknown"))}</span>`;
+    setChip(chip, {
+      dot: "off",
+      text: t("status.unknown"),
+      tone: null,
+      busy: false,
+      title: t("status.unknownTip"),
+    });
     return;
   }
   const c = statusChip(statusSummary(health.row), t);
-  chip.classList.toggle("bad", c.bad);
-  chip.setAttribute("aria-busy", c.busy ? "true" : "false");
-  chip.title = c.title;
-  chip.innerHTML =
-    `<span class="den-dot ${c.dot}" aria-hidden="true"></span>` +
-    `<span class="den-n">${c.lead ? `<span class="den-lbl-l">${esc(c.lead)}</span>` : ""}${esc(c.text)}</span>`;
+  // Issue 313: the kit's chip, from data.
+  setChip(chip, {
+    dot: c.dot,
+    lead: c.lead,
+    text: c.text,
+    tone: c.bad ? "bad" : null,
+    busy: !!c.busy,
+    title: c.title,
+  });
 }
 
 // ── status drawer (R15) ─────────────────────────────────────────────────────
@@ -1158,15 +1162,17 @@ function paintRuns() {
       : [...running.values()];
   const n = labels.length;
   const last = lastRun();
-  chip.title = n
-    ? labels.join(", ")
-    : last
-      ? t("runs.last", { s: last.label })
-      : t("runs.title");
-  chip.setAttribute("aria-label", n ? t("runs.aria", { n }) : t("runs.title"));
-  chip.innerHTML =
-    `<span class="den-dot ${n ? "run" : "off"}" aria-hidden="true"></span>` +
-    `<span class="den-n den-lbl-l">${esc(n ? t("runs.n", { n }) : t("runs.title"))}</span>`;
+  setChip(chip, {
+    dot: n ? "run" : "off",
+    text: n ? t("runs.n", { n }) : t("runs.title"),
+    short: true,
+    title: n
+      ? labels.join(", ")
+      : last
+        ? t("runs.last", { s: last.label })
+        : t("runs.title"),
+    name: n ? t("runs.aria", { n }) : t("runs.title"),
+  });
 }
 
 /**
@@ -1346,17 +1352,20 @@ function paintLock() {
   const chip = $("den-lock");
   if (!chip) return;
   const w = sudo.waiting;
-  chip.hidden = !w;
   if (!w) {
+    chip.hidden = true;
     chip.removeAttribute("title");
     return;
   }
   const label = t("lock.waiting");
-  chip.title = t("lock.needs", { cmd: needWhat(w.need) });
-  chip.innerHTML =
-    '<span class="den-lock-ic" aria-hidden="true">🔑</span>' +
-    `<span class="den-lbl-l">${esc(label)}</span>`;
-  chip.setAttribute("aria-label", label);
+  setChip(chip, {
+    icon: "key",
+    text: label,
+    short: true,
+    title: t("lock.needs", { cmd: needWhat(w.need) }),
+    name: label,
+    hidden: false,
+  });
 }
 
 async function getJson(url, fallback, init) {

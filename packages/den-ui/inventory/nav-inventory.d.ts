@@ -116,7 +116,11 @@ export declare const NAV_THEME: NavTheme;
  */
 export declare const PINNED_CLASSES: readonly string[];
 /** The search's x and width for a viewport width, the same in any host. */
-export declare function searchSlot(viewportW: number): { x: number; w: number };
+/** The search's slot; barW: the bar's width when a host's HTML narrows it (issue 313). */
+export declare function searchSlot(
+  viewportW: number,
+  barW?: number,
+): { x: number; w: number };
 export declare const TOP_RIGHT_MIN: number;
 /** The search away from searchSlot (slot.x, slot.w), at any width. */
 export declare function searchSlotDiffs(
@@ -149,6 +153,8 @@ export declare function collectNav(
 export declare function fingerprint(snap: NavSnapshot): string;
 /** A font family or face key as one line: whitespace runs one space, trimmed. */
 export declare function navFamily(s: string): string;
+/** Issue 313: every box measured from the top bar's corner (a host's HTML around the bar moves nothing). */
+export declare function atBar(snap: NavSnapshot): NavSnapshot;
 export declare function compareNav(
   actual: NavSnapshot,
   reference: NavSnapshot,

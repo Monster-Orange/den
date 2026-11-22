@@ -232,6 +232,10 @@ const ALLOWED_ATTRS = new Set([
   "data-nav-shape",
   "data-nav-legacy",
   "data-nav-kit",
+  // Issue 313: the kit's marks for a crumb's label too narrow to show
+  // whole letters (hidden, never part of a glyph) and a chip behind ⋯.
+  "data-den-cut",
+  "data-den-over",
 ]);
 
 interface Node {

@@ -3,6 +3,7 @@ import type {
   AppearanceMenu,
   BellItem,
   BellPanelOptions,
+  Chip,
   PageMenuItem,
   WaitingOptions,
 } from "./shell-html.js";
@@ -27,6 +28,8 @@ export interface Shell {
   openDrawer(): void;
   closeDrawer(refocus?: boolean): void;
   drawerOpen(): boolean;
+  /** Issue 313: fit the crumbs' labels and the chips (⋯) again now. */
+  fitTop(): void;
   syncPinToggles(root: ParentNode, isPinned: (id: string) => boolean): void;
 }
 export declare function syncPinToggles(
@@ -34,6 +37,23 @@ export declare function syncPinToggles(
   isPinned: (id: string) => boolean,
   lang?: string,
 ): void;
+/** Issue 313: the chips that don't fit go behind ⋯, the last first. */
+export declare function fitChips<C>(io: {
+  chips(): C[];
+  overflows(): boolean;
+  setOver(chip: C, on: boolean): void;
+  showMore(on: boolean): void;
+}): C[];
+/** Issue 313: a crumb's label narrower than min() and cut hides. */
+export declare function fitCrumbLabels<L>(io: {
+  labels(): L[];
+  min(): number;
+  width(label: L): number;
+  whole(label: L): boolean;
+  setCut(label: L, on: boolean): void;
+}): L[];
+/** Issue 313: repaint a chip from new data, in place. */
+export declare function setChip(el: Element | null, c?: Chip): void;
 export declare function hydrateShell(
   root: ParentNode,
   opts?: HydrateOptions,

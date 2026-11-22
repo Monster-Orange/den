@@ -601,13 +601,13 @@ const COLUMN = ["rail", "foot"];
  * its column gap 8px. Mirrors shell.css's .den-top columns (defaults).
  */
 export const TOP_RIGHT_MIN = 380;
-export function searchSlot(viewportW) {
+export function searchSlot(viewportW, barW = viewportW) {
   const pad = 12;
   const gap = 8;
   if (viewportW > 720) {
     const left = Math.max(
       0,
-      Math.min(444, viewportW - 2 * pad - 304 - 2 * gap - TOP_RIGHT_MIN),
+      Math.min(444, barW - 2 * pad - 304 - 2 * gap - TOP_RIGHT_MIN),
     );
     return { x: pad + left + gap, w: 304 };
   }
@@ -620,7 +620,8 @@ export function searchSlot(viewportW) {
  */
 export function searchSlotDiffs(snap, tolerance = 2) {
   const out = [];
-  const slot = searchSlot(snap.viewport.w);
+  snap = atBar(snap);
+  const slot = searchSlot(snap.viewport.w, barWidth(snap));
   for (const e of snap.elements) {
     if (e.slot !== "top" || !e.classes.includes("den-search") || !e.box)
       continue;
@@ -692,6 +693,7 @@ export function versionSlotW(viewportW) {
  */
 export function topSlotDiffs(snap, tolerance = 2) {
   const out = searchSlotDiffs(snap, tolerance);
+  snap = atBar(snap);
   const vw = snap.viewport.w;
   if (vw <= 720) return out;
   const near = (a, b) => Math.abs(a - b) <= tolerance;
@@ -709,7 +711,7 @@ export function topSlotDiffs(snap, tolerance = 2) {
       reference: String(Math.round(want * 100) / 100),
       actual: String(Math.round(got * 100) / 100),
     });
-  let right = vw - 12;
+  let right = barWidth(snap) - 12;
   for (const e of [ap, ver, bell, rb]) {
     if (!e) continue;
     if (e === ver && !near(e.box.w, versionSlotW(vw)))
@@ -816,7 +818,41 @@ function firstOfRoles(els) {
   return out;
 }
 
+/**
+ * Issue 313: the snapshot with every box measured from the top bar's own
+ * corner (header.den-top), so a host's own HTML around the bar (a banner
+ * above it, a wrapper with a margin) that moves the whole nav is no
+ * difference. The bar at 0,0 (Den's references): the same snapshot.
+ */
+/** The top bar's width (the viewport's when there is no bar). */
+function barWidth(snap) {
+  const bar = (snap.elements || []).find(
+    (e) => e.slot === "top" && e.tag === "header" && e.parent == null && e.box,
+  );
+  return bar ? bar.box.w : snap.viewport.w;
+}
+
+export function atBar(snap) {
+  const bar = (snap.elements || []).find(
+    (e) => e.slot === "top" && e.tag === "header" && e.parent == null && e.box,
+  );
+  const dx = bar ? bar.box.x : 0;
+  const dy = bar ? bar.box.y : 0;
+  if (!dx && !dy) return snap;
+  const r = (n) => Math.round(n * 100) / 100;
+  return {
+    ...snap,
+    elements: snap.elements.map((e) =>
+      e.box
+        ? { ...e, box: { ...e.box, x: r(e.box.x - dx), y: r(e.box.y - dy) } }
+        : e,
+    ),
+  };
+}
+
 export function compareNav(actual, reference, opts = {}) {
+  actual = atBar(actual);
+  reference = atBar(reference);
   const hostSlots = opts.hostSlots || [];
   const themeTokens = new Set(opts.themeTokens || []);
   const tol = opts.tolerance == null ? 2 : opts.tolerance;

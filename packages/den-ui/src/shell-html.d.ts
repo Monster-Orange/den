@@ -83,15 +83,47 @@ export interface NavGroup {
   /** A "from <d>" tag on the group's heading. */
   from?: string;
 }
+/** Issue 313: a status chip's data (chipHtml). */
+export interface Chip {
+  id?: string;
+  /** Its words: the last part, which ends in "…" when it gives way. */
+  text?: string;
+  /** Words before them that hide on a narrow bar (860px). */
+  lead?: string;
+  /** A status dot: "", "ok", "bad", "warn", "off", "run" or "pending". */
+  dot?: string;
+  /** In place of the dot: one of the kit's glyphs ("key"). */
+  icon?: "key";
+  /** Its border: something is wrong, or waits. */
+  tone?: "bad" | "warn";
+  /** All its words hide on a narrow bar (860px); the dot stays. */
+  short?: boolean;
+  title?: string;
+  /** Its accessible name. */
+  name?: string;
+  popup?: "dialog" | "menu";
+  busy?: boolean;
+  hidden?: boolean;
+  /** A link, else a button. */
+  href?: string;
+}
+export declare const CHIP_DOTS: readonly string[];
+export declare const CHIP_TONES: readonly ("bad" | "warn")[];
+export declare function chipHtml(c?: Chip): string;
+/** A chip's inside (its dot or icon, then its words). */
+export declare function chipInnerHtml(c?: Chip): string;
 export interface Slots {
   /** After the brand (a search, a scope menu). */
   start?: string;
-  /** The right group's start, before Report (status chips). */
-  end?: string;
-  /** After Report. */
-  bell?: string;
-  /** Last, after the version chip. */
-  account?: string;
+  /**
+   * The right group's start, before Report: the status chips' data
+   * (issue 313); HTML still draws, for one release.
+   */
+  end?: Chip[] | string;
+  /** After Report: bellButtonHtml's options (issue 313), or HTML. */
+  bell?: BellButtonOptions | string;
+  /** Last, after the version chip: ◐ ▾'s options (issue 313), or HTML. */
+  account?: { id?: string; label?: string; title?: string } | string;
 }
 export interface RailModel {
   nav?: NavItem[];
@@ -108,6 +140,8 @@ export interface RailModel {
 export interface ShellModel extends RailModel {
   product?: Product;
   slots?: Slots;
+  /** Issue 313: the same as a list in slots.end. */
+  chips?: Chip[];
   /** false: no Report button (reports off). */
   report?: boolean;
   /**

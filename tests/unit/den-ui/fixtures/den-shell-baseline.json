@@ -362,7 +362,7 @@
          "tag": "button",
          "attrs": {
           "type": "button",
-          "class": "den-chip",
+          "class": "den-chip warn",
           "id": "den-lock",
           "aria-haspopup": "dialog",
           "aria-expanded": "false",
@@ -375,7 +375,7 @@
           {
            "tag": "span",
            "attrs": {
-            "class": "den-lock-ic",
+            "class": "den-chip-ic",
             "aria-hidden": "true"
            },
            "kids": [],
@@ -384,7 +384,7 @@
           {
            "tag": "span",
            "attrs": {
-            "class": "den-lbl-l"
+            "class": "den-n den-lbl-l"
            },
            "kids": [],
            "text": "Admin password needed"
@@ -2266,7 +2266,7 @@
          "tag": "button",
          "attrs": {
           "type": "button",
-          "class": "den-chip",
+          "class": "den-chip warn",
           "id": "den-lock",
           "aria-haspopup": "dialog",
           "aria-expanded": "false",
@@ -2279,7 +2279,7 @@
           {
            "tag": "span",
            "attrs": {
-            "class": "den-lock-ic",
+            "class": "den-chip-ic",
             "aria-hidden": "true"
            },
            "kids": [],
@@ -2288,7 +2288,7 @@
           {
            "tag": "span",
            "attrs": {
-            "class": "den-lbl-l"
+            "class": "den-n den-lbl-l"
            },
            "kids": [],
            "text": "Admin password needed"

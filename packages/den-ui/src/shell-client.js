@@ -90,12 +90,73 @@ import {
   appearanceMenuHtml,
   bellCount,
   bellPanelHtml,
+  chipInnerHtml,
+  CHIP_TONES,
+  menuRowHtml,
   menuFilterParts,
   menuHasFilter,
   pageMenuHtml,
   waitingHtml,
 } from "./shell-html.js";
 import { focusBack } from "./dialog.js";
+
+/**
+ * Issue 313: the chips that don't fit go behind ⋯, the last first. io:
+ * { chips() (the shown chips, in order), overflows() (true while what is
+ * shown runs past the group), setOver(chip, on), showMore(on) }. Every
+ * chip comes back first, so a wider bar shows them all again.
+ * → the chips behind ⋯, in order.
+ */
+export function fitChips(io) {
+  const chips = io.chips();
+  for (const c of chips) io.setOver(c, false);
+  io.showMore(false);
+  if (!io.overflows()) return [];
+  io.showMore(true);
+  const over = [];
+  for (let i = chips.length - 1; i >= 0 && io.overflows(); i--) {
+    io.setOver(chips[i], true);
+    over.unshift(chips[i]);
+  }
+  return over;
+}
+
+/**
+ * Issue 313: a crumb's label ends in whole letters and "…", or hides. io:
+ * { labels(), min() (the least width, px), width(label) (-1: not drawn),
+ * whole(label) (its words fit), setCut(label, on) }. Every label shows
+ * first; one cut narrower than min() is then hidden.
+ */
+export function fitCrumbLabels(io) {
+  const labels = io.labels();
+  for (const k of labels) io.setCut(k, false);
+  const min = io.min();
+  const cut = labels.filter((k) => {
+    const w = io.width(k);
+    return w >= 0 && !io.whole(k) && w < min;
+  });
+  for (const k of cut) io.setCut(k, true);
+  return cut;
+}
+
+/**
+ * Issue 313: a chip drawn by chipHtml, repainted from new data in place
+ * (its listeners stay): its words, dot or icon, tone, title, name, busy
+ * and hidden. A field left out of `c` is left as it is, but the inside.
+ */
+export function setChip(el, c = {}) {
+  if (!el) return;
+  el.innerHTML = chipInnerHtml(c);
+  if ("tone" in c)
+    for (const t of CHIP_TONES) el.classList.toggle(t, c.tone === t);
+  const set = (attr, v) =>
+    v == null ? el.removeAttribute(attr) : el.setAttribute(attr, v);
+  if ("title" in c) set("title", c.title);
+  if ("name" in c) set("aria-label", c.name);
+  if ("busy" in c)
+    set("aria-busy", c.busy == null ? null : c.busy ? "true" : "false");
+  if ("hidden" in c) el.hidden = !!c.hidden;
+}
 
 const all = (root, sel) =>
   Array.prototype.slice.call(root.querySelectorAll(sel));
@@ -129,6 +190,7 @@ export function hydrateShell(root, opts = {}) {
   function nameHostChips() {
     if (!end) return;
     for (const c of end.children) {
+      if (c.hasAttribute("data-den-more")) continue;
       const words = (c.textContent || "").replace(/\s+/g, " ").trim();
       const set = c.getAttribute("data-den-named");
       if (set != null) {
@@ -154,14 +216,146 @@ export function hydrateShell(root, opts = {}) {
     }
   }
   nameHostChips();
+
+  // Issue 313: chips that don't fit go behind ⋯ (the last first), a kit
+  // menu that names each; a pick is a click on the chip itself. Wider
+  // again, they come back. Kept in .den-end, after the chips, so the
+  // group's own width (and the kit's buttons beside it) never moves.
+  let more = null;
+  let moreMenu = null;
+  let overChips = [];
+  function chipWords(c) {
+    return (
+      c.getAttribute("aria-label") ||
+      c.getAttribute("title") ||
+      (c.textContent || "").replace(/\s+/g, " ").trim()
+    );
+  }
+  function moreButton() {
+    if (more) return more;
+    more = document.createElement("button");
+    more.type = "button";
+    more.className = "den-ib den-chips-more";
+    more.id = "den-chips-more";
+    more.setAttribute("data-den-more", "");
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    const word = kitT(lang(), "kit.chips.more");
+    more.setAttribute("aria-label", word);
+    more.title = word;
+    more.textContent = "⋯";
+    end.appendChild(more);
+    moreMenu = popMenu(more, {
+      id: "den-chips-more",
+      label: () => kitT(lang(), "kit.chips.more"),
+      html: () =>
+        overChips
+          .map((c, i) =>
+            menuRowHtml({ label: chipWords(c), kind: "chip", value: i }),
+          )
+          .join(""),
+      onPick: (kind, value) => {
+        const c = kind === "chip" ? overChips[Number(value)] : null;
+        if (c) c.click();
+      },
+    });
+    return more;
+  }
+  function fitHostChips() {
+    if (!end || !end.getClientRects().length) return;
+    const chips = Array.prototype.filter.call(
+      end.children,
+      (c) => !c.hasAttribute("data-den-more") && !c.hidden,
+    );
+    // Host chips that were hidden come back out of the menu.
+    for (const c of end.children)
+      if (c.hidden && c.hasAttribute("data-den-over"))
+        c.removeAttribute("data-den-over");
+    const outside = () => {
+      const r = end.getBoundingClientRect();
+      for (const c of end.children) {
+        if (!c.getClientRects().length) continue;
+        const b = c.getBoundingClientRect();
+        if (b.left < r.left - 0.5 || b.right > r.right + 0.5) return true;
+      }
+      return false;
+    };
+    overChips = fitChips({
+      chips: () => chips,
+      overflows: outside,
+      setOver: (c, on) =>
+        on
+          ? c.setAttribute("data-den-over", "")
+          : c.removeAttribute("data-den-over"),
+      showMore: (on) => {
+        if (!on && !more) return;
+        const b = moreButton();
+        if (on) b.setAttribute("data-den-on", "");
+        else {
+          b.removeAttribute("data-den-on");
+          if (moreMenu) moreMenu.close(false);
+        }
+      },
+    });
+  }
+
+  // Issue 313: a crumb's label that gives way ends in "…"; narrower than
+  // --den-crumb-label-min (24px) it hides, never showing part of a glyph.
+  const scope = root.querySelector(".den-top .den-scope");
+  function fitScopeLabels() {
+    if (!scope) return;
+    const min =
+      parseFloat(
+        getComputedStyle(scope).getPropertyValue("--den-crumb-label-min"),
+      ) || 24;
+    fitCrumbLabels({
+      labels: () => all(scope, ".den-ib > .den-k"),
+      min: () => min,
+      width: (k) =>
+        k.getClientRects().length ? k.getBoundingClientRect().width : -1,
+      whole: (k) => k.scrollWidth <= k.clientWidth + 0.5,
+      setCut: (k, on) =>
+        on
+          ? k.setAttribute("data-den-cut", "")
+          : k.removeAttribute("data-den-cut"),
+    });
+  }
+
+  function fitTop() {
+    fitScopeLabels();
+    fitHostChips();
+  }
+  fitTop();
   if (end && typeof MutationObserver === "function")
-    new MutationObserver(nameHostChips).observe(end, {
+    new MutationObserver(() => {
+      nameHostChips();
+      fitHostChips();
+    }).observe(end, {
       childList: true,
       subtree: true,
       characterData: true,
       attributes: true,
-      attributeFilter: ["title", "aria-label"],
+      attributeFilter: ["title", "aria-label", "hidden"],
     });
+  if (scope && typeof MutationObserver === "function")
+    new MutationObserver(fitScopeLabels).observe(scope, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["hidden"],
+    });
+  // The bar's parts change size with the window, and with the fonts once
+  // they load; the chips' group and the left part never change size with
+  // what they hold, so this never loops.
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(() => fitTop());
+    if (end) ro.observe(end);
+    const left = root.querySelector(".den-top .den-left");
+    if (left) ro.observe(left);
+  }
+  if (document.fonts && document.fonts.ready)
+    document.fonts.ready.then(fitTop, () => {});
 
   function rove() {
     if (!nav) return;
@@ -341,6 +535,7 @@ export function hydrateShell(root, opts = {}) {
   return {
     nav,
     rove,
+    fitTop,
     paint,
     setCollapsed,
     unpin,

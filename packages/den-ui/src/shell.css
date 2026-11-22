@@ -845,7 +845,14 @@ body.den-has-shell .den-upd {
   flex: 0 1000 auto;
   min-width: 0;
   overflow: hidden;
+  /* Issue 313: a label that gives way ends in whole letters and "…",
+     never part of a glyph; narrower than --den-crumb-label-min it hides
+     (the kit marks it data-den-cut). */
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+.den-scope .den-ib > .den-k[data-den-cut] {
+  display: none !important;
 }
 .den-scope .den-ib:not(.den-last) > .den-v {
   min-width: calc(5ch + 0.28em);
@@ -1371,4 +1378,92 @@ body.den-has-shell .den-upd {
   .den-top kbd {
     display: none;
   }
+}
+
+/* Issue 313: the chip, the kit's (chipHtml): a host gives its data, never
+   its markup or its look. Last in the file, so it holds over the rules
+   above as a host's own copy did. */
+.den-top {
+  /* A crumb's label narrower than this hides (shell-client.js). */
+  --den-crumb-label-min: 24px;
+}
+.den-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--text);
+}
+.den-chip:hover {
+  border-color: var(--border-strong);
+}
+.den-chip.bad {
+  border-color: color-mix(in srgb, var(--bad) 50%, var(--border));
+}
+.den-chip.warn {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+}
+.den-chip .den-n {
+  font-variant-numeric: tabular-nums;
+}
+.den-chip .den-dot {
+  margin: 0;
+}
+.den-chip[aria-expanded="true"] {
+  border-color: var(--border-strong);
+}
+.den-chip[hidden] {
+  display: none;
+}
+.den-dot.run {
+  background: var(--accent);
+  animation: den-pulse 1.2s infinite;
+}
+.den-dot.pending {
+  background: var(--faint);
+  animation: den-pulse 1.2s infinite;
+}
+@keyframes den-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-dot.run,
+  .den-dot.pending {
+    animation: none;
+  }
+}
+/* A chip's words end in "…" when it gives way. */
+.den-top .den-chip .den-n {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Narrow: a chip's short words hide, its dot stays. */
+@media (max-width: 860px) {
+  .den-chip .den-lbl-l {
+    display: none;
+  }
+}
+/* Issue 313: the chips that don't fit are behind ⋯ (shell-client.js). */
+.den-top .den-end > [data-den-over] {
+  display: none !important;
+}
+.den-top .den-end > .den-chips-more {
+  flex: none;
+  min-width: auto;
+  max-width: none;
+}
+.den-top .den-end > .den-chips-more:not([data-den-on]) {
+  display: none;
 }

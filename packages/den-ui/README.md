@@ -730,6 +730,35 @@ Three pieces, data in, the kit's words out (en, es, ja).
 - `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
   `DenUI.settingRow(el, opts)` are the same, in the kit's language.
 
+## The top bar's shared slots (0.9.2, issue 313)
+
+- **Chips from data.** `chipHtml({ id, text, lead?, dot?, icon?, tone?,
+short?, title?, name?, popup?, busy?, hidden?, href? })` draws a status
+  chip: its dot (`""`, `ok`, `bad`, `warn`, `off`, `run`, `pending`) or
+  icon (`key`), then its words; `tone` (`bad`, `warn`) is its border;
+  `lead` (or all the words, with `short`) hides at 860px; `popup` is
+  `dialog` or `menu`; with `href` it is a link. Any other value is
+  dropped. `setChip(el, data)` (shell-client.js) repaints one in place,
+  its listeners kept. The chip's look is the kit's (`.den-chip` in
+  shell.css): a host deletes its own copy.
+- **Slots as data.** `slots.end` (or `chips`) takes a list of chips'
+  data, `slots.bell` bellButtonHtml's options, and `slots.account` ◐ ▾'s
+  (`{ label, title }`, drawn in `#den-user`). HTML in those slots still
+  draws, for this release.
+- **The ⋯ overflow.** Chips that don't fit, even given way to their dot
+  and "…", go behind ⋯ (the last first): a kit menu ("More in the bar")
+  that names each; a pick clicks the chip itself. Wider again, they come
+  back. ⋯ sits last in `div.den-end`, so the kit's buttons never move.
+  `fitChips(io)` is the rule; `shell.fitTop()` runs it now.
+- **Crumb labels cut cleanly.** A label that gives way ends in whole
+  letters and "…"; one narrower than `--den-crumb-label-min` (24px, on
+  `.den-top`) hides, so no part of a glyph ever shows.
+- **The inventory and a host's own HTML.** `compareNav` measures every
+  box from the top bar's corner (`atBar`), and the slot checks use the
+  bar's width: a banner above the bar, or a wrapper with a margin, moves
+  the whole nav and is no difference. One element moved inside the bar
+  still is.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

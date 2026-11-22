@@ -5298,23 +5298,28 @@
     }) +
     // The ⌘K search field (R5), the kit's; ⌘K opens the palette (topbar.js).
     DUI.searchHtml({ lang: lang });
-  var slotEnd =
-    '<button type="button" class="den-chip" id="den-status" aria-haspopup="dialog" aria-expanded="false" aria-busy="true">' +
-    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n">' +
-    esc(t("status.checking")) +
-    "</span></button>" +
-    '<button type="button" class="den-chip" id="den-runs">' +
-    '<span class="den-dot off" aria-hidden="true"></span><span class="den-n den-lbl-l">' +
-    esc(t("runs.title")) +
-    "</span></button>" +
+  // Issue 313: the chips are data; the kit draws them (chipHtml) and
+  // topbar.js repaints them with the kit's setChip.
+  var slotEnd = [
+    {
+      id: "den-status",
+      dot: "off",
+      text: t("status.checking"),
+      popup: "dialog",
+      busy: true,
+    },
+    { id: "den-runs", dot: "off", text: t("runs.title"), short: true },
     // LK-0: shown only while a run waits for the admin password (topbar.js).
-    '<button type="button" class="den-chip" id="den-lock" aria-haspopup="dialog" aria-expanded="false" hidden>' +
-    '<span class="den-lock-ic" aria-hidden="true">🔑</span><span class="den-lbl-l">' +
-    esc(t("lock.waiting")) +
-    "</span></button>";
-  // NT-3: the bell, the kit's (bell.js paints its count and fills its
-  // panel).
-  var slotBell = DUI.bellButtonHtml({ label: t("bell.title") });
+    {
+      id: "den-lock",
+      icon: "key",
+      text: t("lock.waiting"),
+      short: true,
+      tone: "warn",
+      popup: "dialog",
+      hidden: true,
+    },
+  ];
   host.className = "den-shell";
   // The kit draws the frame: skip link, top bar (☰, brand, Den's slots,
   // Report · bell · version · ◐ ▾ in that order, UK-3), and the rail, its
@@ -5326,15 +5331,12 @@
     slots: {
       start: slotStart,
       end: slotEnd,
-      bell: slotBell,
-      // ◐ ▾, the kit's (appearance.js gives its menu and takes the pick).
-      account:
-        '<span class="den-user" id="den-user">' +
-        DUI.appearanceButtonHtml({
-          label: t("um.label"),
-          title: t("um.title"),
-        }) +
-        "</span>",
+      // NT-3: the bell, the kit's (bell.js paints its count and fills its
+      // panel).
+      bell: { label: t("bell.title") },
+      // ◐ ▾, the kit's, in #den-user (appearance.js gives its menu and
+      // takes the pick).
+      account: { label: t("um.label"), title: t("um.title") },
     },
   });
   // The rail is drawn by renderRail from the registries (below).
@@ -9048,15 +9050,8 @@
     ".ptabs [role='tab']:hover { color: var(--text); }",
     ".ptabs [role='tab'][aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }",
     // The key caps (⌘K, Report's ⌘⇧F) are the kit's (.den-kbd, den-ui 0.7.0).
-    ".den-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);",
-    "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer; font: inherit;",
-    "  font-size: 13px; white-space: nowrap; flex-shrink: 0; color: var(--text); }",
-    ".den-chip:hover { border-color: var(--border-strong); }",
-    ".den-chip.bad { border-color: color-mix(in srgb, var(--bad) 50%, var(--border)); }",
-    ".den-chip .den-n { font-variant-numeric: tabular-nums; }",
-    ".den-chip .den-dot, .den-drawer .den-dot, .den-pal .den-dot { margin: 0; }",
-    ".den-chip[aria-expanded='true'] { border-color: var(--border-strong); }",
-    ".den-chip[hidden] { display: none; }",
+    // The chips' look is the kit's too (issue 313: shell.css).
+    ".den-drawer .den-dot, .den-pal .den-dot { margin: 0; }",
     // The bell's own rows (its button, badge, panel, heading, plain rows and
     // empty state are the kit's, den-ui 0.7.0).
     ".den-bell-sc button { font: inherit; font-size: 12px; background: none; border: 0;",
@@ -9089,21 +9084,13 @@
     // panel full width and its rows 44px).
     "@media (max-width: 480px) {",
     "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 32px; min-width: 32px; } }",
-    "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
-    ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
-    ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
-    "@keyframes den-pulse { 50% { opacity: .35; } }",
-    "@media (prefers-reduced-motion: reduce) { .den-dot.run, .den-dot.pending { animation: none; } }",
     // Buttons (.den-btn, .sm, .primary) are the kit's general button:
     // button.css (issue 556), linked in every page with the frame
     // (KIT_PAGE_CSS).
     // A phone's top bar makes room for Report: Runs is in the dock bar.
     "@media (max-width: 480px) { #den-runs { display: none; } }",
     // …and the status chip's words shorten (…) rather than push the page
-    // sideways, whatever they say.
-    // The kit's chips give way under 1100px (issue 303): Den's chip words
-    // end in … when they do.
-    ".den-top .den-chip .den-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    // sideways, whatever they say (the kit's chip, issue 313).
     "@media (max-width: 720px) { .den-top .den-chips, .den-top #den-status { min-width: 0; flex-shrink: 1; } }",
     // D27: Visit is a link styled as a button (a.den-btn: the kit's).
     "a.den-pvisit { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }",
@@ -9309,9 +9296,8 @@
     // counts): the scope's keys give way from 960px, not 860, so the bar
     // fits without the scope shrinking.
     "@media (max-width: 960px) { .den-scope .den-k { display: none; } }",
-    // (The kit's shell.css hides the crumbs' keys at 860px, the crumbs and
-    // the search's words at 720px.)
-    "@media (max-width: 860px) { .den-chip .den-lbl-l { display: none; } }",
+    // (The kit's shell.css hides the crumbs' keys and the chips' short
+    // words at 860px, the crumbs and the search's words at 720px.)
     // A phone's tap targets (issue 209, T9): the dock's buttons 32 px or
     // more each way. The top bar's, and the title visually hidden, are the
     // kit's shell.css (den-ui 0.7.0).

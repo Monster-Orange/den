@@ -242,6 +242,7 @@ export const en = {
   "kit.bulk.action": "{label} {n}",
   // The page action menu (issue 555) and the settings row (issue 554).
   "kit.pmenu.more": "More",
+  "kit.chips.more": "More in the bar",
   "kit.setrow.save": "Save",
   "kit.setrow.who": "{who} can change this",
   "kit.setrow.nobody": "Nobody can change this",
@@ -480,6 +481,7 @@ export const es = {
   "kit.bulk.cleared": "Selección quitada",
   "kit.bulk.action": "{label} {n}",
   "kit.pmenu.more": "Más",
+  "kit.chips.more": "Más en la barra",
   "kit.setrow.save": "Guardar",
   "kit.setrow.who": "{who} pueden cambiar esto",
   "kit.setrow.nobody": "Nadie puede cambiar esto",
@@ -718,6 +720,7 @@ export const ja = {
   "kit.bulk.cleared": "選択を解除しました",
   "kit.bulk.action": "{label}（{n}）",
   "kit.pmenu.more": "その他",
+  "kit.chips.more": "バーのその他",
   "kit.setrow.save": "保存",
   "kit.setrow.who": "{who}が変更できます",
   "kit.setrow.nobody": "誰も変更できません",

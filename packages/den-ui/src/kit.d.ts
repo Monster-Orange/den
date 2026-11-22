@@ -44,6 +44,7 @@ import type {
   searchHtml,
   bellButtonHtml,
   bellPanelHtml,
+  chipHtml,
   accountHtml,
   accountWho,
   accountMenuHtml,
@@ -64,7 +65,7 @@ import type {
   SettingRowOptions,
   settingRowHtml,
 } from "./setting-row.js";
-import type { syncPinToggles } from "./shell-client.js";
+import type { setChip, syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
 import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
@@ -227,6 +228,8 @@ export interface DenUIKit {
   scopeHtml: typeof scopeHtml;
   scopeCrumbHtml: typeof scopeCrumbHtml;
   searchHtml: typeof searchHtml;
+  chipHtml: typeof chipHtml;
+  setChip: typeof setChip;
   bellButtonHtml: typeof bellButtonHtml;
   bellPanelHtml: typeof bellPanelHtml;
   accountHtml: typeof accountHtml;

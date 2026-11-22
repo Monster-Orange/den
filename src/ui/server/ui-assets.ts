@@ -285,6 +285,9 @@ const KIT_SHELL_NAMES = [
   "attachMenuFilter",
   "hydrateAppearance",
   "setWaiting",
+  // Issue 313: the status chips, from data.
+  "chipHtml",
+  "setChip",
 ];
 
 /**

@@ -28,10 +28,14 @@
  *     account  (0.7.0) the account entry, last in the foot: { label,
  *              detail?, href? | action? } (accountHtml)
  *     lang     "en", "es" or "ja" (the kit's words; else en)
- *     slots    { start, end, bell, account }: the product's own HTML in
+ *     slots    { start, end, bell, account }: the product's parts of
  *              the top bar. start: after the brand; end: the right group's
  *              start, before Report; bell, account: after Report, so the
- *              right group reads Report · bell · version · account
+ *              right group reads Report · bell · version · account.
+ *              Issue 313: end is a list of chips' data (chipHtml), bell
+ *              bellButtonHtml's options, account appearanceButtonHtml's;
+ *              HTML still draws as before, for one release
+ *     chips    (issue 313) the same as a list in slots.end
  *     collapsed  the rail drawn collapsed (the toggle says Expand)
  *     report   false: no Report button (reports off)
  *
@@ -344,6 +348,102 @@ export function railHtml({
   return html;
 }
 
+/** A chip's dot tones (issue 313); "" or "ok" is the plain dot. */
+export const CHIP_DOTS = ["", "ok", "bad", "warn", "off", "run", "pending"];
+/** A chip's tones: its border says something is wrong, or waits. */
+export const CHIP_TONES = ["bad", "warn"];
+/** A chip's icons, the kit's glyphs (never a host's markup). */
+const CHIP_ICONS = { key: "🔑" };
+/** A chip's pop-ups (aria-haspopup). */
+const CHIP_POPUPS = ["dialog", "menu"];
+
+/**
+ * A chip's inside, from its data (issue 313): its dot or icon, then its
+ * words. setChip (shell-client.js) repaints a chip with it.
+ */
+export function chipInnerHtml(c = {}) {
+  let h = "";
+  if (c.icon != null && CHIP_ICONS[c.icon])
+    h +=
+      '<span class="den-chip-ic" aria-hidden="true">' +
+      CHIP_ICONS[c.icon] +
+      "</span>";
+  else if (c.dot != null) {
+    const tone = CHIP_DOTS.includes(c.dot) && c.dot !== "ok" ? c.dot : "";
+    h +=
+      '<span class="den-dot' +
+      (tone ? " " + tone : "") +
+      '" aria-hidden="true"></span>';
+  }
+  h +=
+    '<span class="den-n' +
+    (c.short ? " den-lbl-l" : "") +
+    '">' +
+    (c.lead ? '<span class="den-lbl-l">' + esc(c.lead) + "</span>" : "") +
+    esc(c.text ?? "") +
+    "</span>";
+  return h;
+}
+
+/**
+ * A status chip in the top bar's `end` slot, from data (issue 313): no
+ * product hands the kit its own chip markup.
+ *   chipHtml({ id, text, lead?, dot?, icon?, tone?, short?, title?, name?,
+ *              popup?, busy?, hidden?, href? })
+ * `text`: its words (the last part, which ends in "…" when it gives way);
+ * `lead`: words before them that hide on a narrow bar, as `short` hides
+ * all of them (860px); `dot`: a status dot (CHIP_DOTS; any other value is
+ * the plain dot); `icon`: "key" in place of the dot; `tone`: "bad" or
+ * "warn" (its border); `title`, `name`: its tooltip and accessible name;
+ * `popup`: "dialog" or "menu" (aria-haspopup, aria-expanded false);
+ * `busy`: aria-busy; `href`: a link, else a button. Any other value is
+ * dropped. The kit stamps it data-nav-kit="chip".
+ */
+export function chipHtml(c = {}) {
+  const link = c.href != null;
+  const tone = CHIP_TONES.includes(c.tone) ? " " + c.tone : "";
+  return (
+    (link ? "<a" : '<button type="button"') +
+    ' class="den-chip' +
+    tone +
+    '"' +
+    (c.id != null ? ' id="' + esc(safeId(c.id)) + '"' : "") +
+    ' data-nav-kit="chip"' +
+    (link ? ' href="' + esc(c.href) + '"' : "") +
+    (CHIP_POPUPS.includes(c.popup)
+      ? ' aria-haspopup="' + c.popup + '" aria-expanded="false"'
+      : "") +
+    (c.busy != null ? ' aria-busy="' + (c.busy ? "true" : "false") + '"' : "") +
+    (c.title != null ? ' title="' + esc(c.title) + '"' : "") +
+    (c.name != null ? ' aria-label="' + esc(c.name) + '"' : "") +
+    (c.hidden ? " hidden" : "") +
+    ">" +
+    chipInnerHtml(c) +
+    (link ? "</a>" : "</button>")
+  );
+}
+
+/**
+ * A slot's content (issue 313): data the kit draws, or (one release) the
+ * host's HTML as before. end: a list of chips; bell: bellButtonHtml's
+ * options; account: appearanceButtonHtml's (◐ ▾, in #den-user).
+ */
+function endSlotHtml(end) {
+  return Array.isArray(end) ? end.map(chipHtml).join("") : end || "";
+}
+function bellSlotHtml(bell, lang) {
+  return bell && typeof bell === "object"
+    ? bellButtonHtml({ lang, ...bell })
+    : bell || "";
+}
+function accountSlotHtml(account, lang) {
+  return account && typeof account === "object"
+    ? '<span class="den-user" id="den-user">' +
+        appearanceButtonHtml({ lang, ...account }) +
+        "</span>"
+    : account || "";
+}
+
 /** The version chip: "v<version>" (v… until known); a click opens What's new. */
 export function versionChipHtml({ version, lang } = {}) {
   return (
@@ -450,6 +550,7 @@ export function topBarHtml({
   product = {},
   lang,
   slots = {},
+  chips,
   report = true,
   rail = true,
 } = {}) {
@@ -485,12 +586,12 @@ export function topBarHtml({
     // The host's chips' group, always drawn (empty without chips): the
     // bar's structure is the same in any host.
     '<div class="den-end">' +
-    (slots.end || "") +
+    endSlotHtml(chips || slots.end) +
     "</div>" +
     (report === false ? "" : reportButtonHtml({ inTop: true, lang })) +
-    (slots.bell || "") +
+    bellSlotHtml(slots.bell, lang) +
     versionChipHtml({ version: product.version, lang }) +
-    (slots.account || "") +
+    accountSlotHtml(slots.account, lang) +
     "</div>" +
     "</header>"
   );

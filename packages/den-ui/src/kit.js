@@ -29,6 +29,8 @@
  *   accountHtml (0.7.0)         the scope crumbs, the search with ⌘K
  *                               inside, the bell and its panel, and the
  *                               rail's account entry; hydrate wires them
+ *   DenUI.chipHtml, setChip    a status chip from data, and repainted in
+ *                               place (issue 313)
  *   DenUI.settingsHtml, appearanceButtonHtml, appearanceMenuHtml,
  *   waitingHtml (0.7.0)         the rail's Settings, ◐ ▾ and its menu
  *                               (hydrate's opts.appearance: { menu,
@@ -70,6 +72,7 @@ import {
   appearanceMenuHtml,
   bellButtonHtml,
   bellPanelHtml,
+  chipHtml,
   esc,
   icon,
   navItemHtml,
@@ -98,6 +101,7 @@ import {
   hydrateScope,
   hydrateSearch,
   hydrateShell,
+  setChip,
   setWaiting,
   syncPinToggles,
 } from "./shell-client.js";
@@ -332,6 +336,8 @@ const DenUI = {
   scopeHtml,
   scopeCrumbHtml,
   searchHtml,
+  chipHtml,
+  setChip,
   bellButtonHtml,
   bellPanelHtml,
   accountHtml,
