@@ -976,6 +976,9 @@
     "set.server.gate_cpu_beside": "ブラウザーテストと並んで動かす単体テスト",
     "set.server.gate_cpu_beside.d":
       "ブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。同時に動かす単体テストの数を超えることはありません。0 ではブラウザーテストは単独で動きます。テスト用マシンで動くブラウザーテストは数えません。__DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_local_browser": "このマシンで同時に動かすブラウザーテスト",
+    "set.server.gate_local_browser.d":
+      "このマシンで同時に動かせるブラウザーテスト実行の数です。それぞれ専用のコンテナーで動きます。テスト用マシンで動くブラウザーテストは数えません。1 では 1 つずつ動きます。__DEN_CLI__ gate settings --local-browser-slots 1",
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",

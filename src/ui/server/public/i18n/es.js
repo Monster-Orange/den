@@ -1004,6 +1004,10 @@
       "Pruebas unitarias junto a una prueba de navegador",
     "set.server.gate_cpu_beside.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador, nunca más que las pruebas unitarias a la vez. 0: una prueba de navegador se ejecuta sola. Una prueba de navegador en una máquina de pruebas no se incluye. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_local_browser":
+      "Pruebas de navegador a la vez en esta máquina",
+    "set.server.gate_local_browser.d":
+      "Cuántas pruebas de navegador pueden ejecutarse a la vez en esta máquina, cada una en su propio contenedor. Una prueba de navegador en una máquina de pruebas no se incluye. 1: una a la vez. __DEN_CLI__ gate settings --local-browser-slots 1",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
