@@ -113,7 +113,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
 
   /** A person types in shell `id`, on a machine of its own, then leaves. */
   async function typeIn(id: string) {
-    const p = await open(`/agents?open=${id}`);
+    const p = await open(`/terminals?open=${id}`);
     await p.waitForSelector(`.pane[data-id="${id}"] .xterm-screen`);
     await p.click(`.pane[data-id="${id}"] .xterm-screen`);
     const pty = ptys.get(id)!;
@@ -244,7 +244,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
   it("(c) a shell that ends while the page is open never opens", async () => {
     if (skip() || !south1) return;
     // The page lists south1 running and in front; it ends while open.
-    const p = await open(`/agents?project=south&open=${south1}`);
+    const p = await open(`/terminals?project=south&open=${south1}`);
     await p.waitForSelector(`.pane[data-id="${south1}"] .xterm-screen`);
     await p.click(`.pane[data-id="${south1}"] .xterm-screen`);
     await p.keyboard.type("x");

@@ -1856,8 +1856,15 @@ async function plainSession(
     const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
     if (b.cwd !== undefined && typeof b.cwd !== "string")
       throw new AgentError("cwd must be a string", { usage: true });
+    // Issue 482: { replaces } (Restart): the exited terminal it replaces.
+    if (b.replaces !== undefined && typeof b.replaces !== "string")
+      throw new AgentError("replaces must be a string", { usage: true });
     const cwd = b.cwd as string | undefined;
-    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    const replaces = b.replaces as string | undefined;
+    const { info } = await startPlainSession(d, ws, {
+      ...(cwd ? { cwd } : {}),
+      ...(replaces ? { replaces } : {}),
+    });
     what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {

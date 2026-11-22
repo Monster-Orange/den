@@ -45,6 +45,7 @@
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import type * as http from "http";
+import * as os from "os";
 import * as path from "path";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
@@ -397,6 +398,8 @@ export interface ListedSession {
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
   cwd?: string;
+  /** Issue 482: a shell's cwd with the home folder as ~ (its row says it). */
+  folder?: string;
   /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
   state: string;
   exited: boolean;
@@ -522,6 +525,13 @@ export async function leaveExitedShells(
     }
   }
   return sessions.filter((s) => !gone.has(s.ref.id));
+}
+
+/** Issue 482: `dir` with the home folder written as ~ (a row's folder). */
+export function homeTilde(dir: string, home = os.homedir()): string {
+  if (!home || home === "/") return dir;
+  if (dir === home) return "~";
+  return dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir;
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -750,6 +760,9 @@ export function listedSessions(
       startedAt: s.startedAt,
       // Issue 448: when a person last typed in it (the rail's Terminal).
       ...(s.inputAt ? { inputAt: s.inputAt } : {}),
+      // Issue 482: its folder, and the same with the home folder as ~ (the
+      // Terminals list's row).
+      ...(s.cwd ? { cwd: s.cwd, folder: homeTilde(s.cwd) } : {}),
       attachable: true,
     });
   }

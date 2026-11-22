@@ -2062,16 +2062,36 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agentes",
-    "n.terminal": "Terminal",
+    "n.terminal": "Terminales",
     "n.terminalTip":
-      "Abrir una terminal en la carpeta de este proyecto, en Den",
+      "Tus terminales en una lista, cada una en la carpeta de un proyecto",
     "ag.term.started": "Terminal abierta en {w}",
     "ag.term.failed": "Den no pudo abrir una terminal: {e}",
     "ag.term.ptyFailed":
       "Den no pudo abrir una terminal: esta máquina no le dio un PTY ({e}). Cierra las terminales que ya no uses o ejecuta doctor.",
     "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
-    "ws.termHere": "Terminal aquí",
+    "ws.termHere": "Nueva terminal",
+    // Issue 482: la página Terminales.
+    "ws.termHereTip":
+      "Abrir una terminal nueva en la carpeta de este proyecto, en Den",
+    "tm.count": "{n} terminales",
+    "tm.count1": "{n} terminal",
+    "tm.running": "En ejecución ({n})",
+    "tm.exited": "Terminadas ({n})",
+    "tm.lastUsed": "Último uso {when}",
+    "tm.restart": "Reiniciar",
+    "tm.restartName": "Reiniciar {id} en la misma carpeta",
+    "tm.none": "Aún no hay terminales",
+    "tm.noneP": "Pulsa Nueva terminal para abrir una en {scope}.",
+    "tm.empty":
+      "Elige una terminal a la izquierda para abrirla. Abre más para verlas en mosaico (hasta 4).",
+    "tm.pick": "Nueva terminal en…",
+    "tm.moved": "{n} terminales se movieron a Terminales. No se cerró nada.",
+    "tm.moved1": "{n} terminal se movió a Terminales. No se cerró nada.",
+    "tm.openList": "Abrir Terminales",
+    "tm.dismiss": "Descartar",
     "kind.agent": "Agente",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agentes",
     "ag.sub.agent": "{n} agente",
     "ag.sub.shells": "{n} shells",
@@ -2321,8 +2341,8 @@
       "La dirección de Hub no es https, así que Den no la abre. Mira Ajustes › Hub.",
     "ag.session": "shell",
     "ag.empty":
-      "Elige un agente o un shell a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
-    "ag.none.scope": "Aún no hay agentes ni shells en {scope}",
+      "Elige un agente a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
+    "ag.none.scope": "Aún no hay agentes en {scope}",
     "ag.detach": "Cerrar panel",
     "ag.to": "Para {name} · {ws}",
     "ag.toName": "Para {name}",
@@ -2377,6 +2397,7 @@
       "No hay ningún host de sesiones en marcha: aún no se ha iniciado nada",
     "ag.ws": "Proyecto",
     "ag.pal": "Agentes › {ws} / {name}",
+    "tm.pal": "Terminales › {ws} / {name}",
     "ag.palStart": "Iniciar agente…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "Agente de __DEN_TITLE__",
