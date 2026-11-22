@@ -958,6 +958,11 @@
       "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
     "set.ui.testPersonReady": "The test person is set up.",
     "set.ui.testPersonMissing": "The test person isn't set up yet.",
+    "set.ui.testInstallsNone":
+      "No test install on this computer is waiting for its test person.",
+    "set.ui.testInstallsOne": "{where} (test install {id})",
+    "set.ui.testInstallsSignedIn":
+      "Only the signed-in person sees the test installs on this computer.",
     "set.ui.testPersonSetUp": "Set up test person",
     "set.ui.testInstallSignedIn":
       "The test install can only be read signed in, or on this machine.",
@@ -1362,6 +1367,8 @@
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_installs_here.d":
+      "Test installs on this computer whose launcher announces them and that wait for their test person. Set up test person sets it up from here, in any browser, on your own Allow.",
     "set.access.test_install.d":
       "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     "set.distribution.brand.d":
@@ -2530,6 +2537,7 @@
     "set.access.agent_view_minutes": "An agent's view lasts, in minutes",
     "set.access.agent_view_minutes.d":
       "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.test_installs_here": "Test installs on this computer",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
@@ -2913,6 +2921,11 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.test_person_setup": "Set up the test person on test install {id}",
+    "ap.det.test_person_setup.which":
+      "Test install {id}, state folder {where}, on this computer.",
+    "ap.det.test_person_setup.what":
+      "Its live checks can then sign in there as its test person. It can't sign in anywhere else.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",

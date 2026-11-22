@@ -806,6 +806,26 @@ export function agentsDefaultMode(
 }
 
 /** web.url_check_seconds (user.yml): how long Check and save waits (10). */
+/**
+ * Issue 816: how long a test-person setup grant your Den mints at your
+ * Allow lasts (web.test_grant_seconds): 30 s by default, 1 to 120. The
+ * Allow mints and sends it in one step, so it need only cover the request.
+ */
+export function testGrantSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  let v: unknown;
+  try {
+    const w = read().web as Record<string, unknown> | undefined;
+    v = w && typeof w === "object" ? w.test_grant_seconds : undefined;
+  } catch {
+    return 30;
+  }
+  return typeof v === "number" && Number.isFinite(v) && v >= 1
+    ? Math.min(Math.floor(v), 120)
+    : 30;
+}
+
 export function webUrlCheckSeconds(
   read: () => UserConfig = readUserConfig,
 ): number {

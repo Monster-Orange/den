@@ -18,7 +18,13 @@ import { auditVia } from "./test-person.js";
 
 export interface ConfigAuditRow {
   /** issue 216: "agents" is a restart, stop or resume from the CLI. */
-  verb: "config-write" | "hub-link" | "agents" | "web-url";
+  /** issue 816: "test-person-setup", a test install set up from this Den. */
+  verb:
+    | "config-write"
+    | "hub-link"
+    | "agents"
+    | "web-url"
+    | "test-person-setup";
   detail: string;
   /** Set when it never happened: refused, or still busy. */
   outcome?: "refused";

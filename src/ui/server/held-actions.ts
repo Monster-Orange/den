@@ -94,6 +94,10 @@
  *   report            issue 565: file a report the way the page's Report
  *                     does (report-held.ts): to a public destination the
  *                     person's own Allow, to a private one the policy
+ *   test_person_setup issue 816: set up the test person of a test install
+ *                     announced on this computer (test-person-held.ts):
+ *                     one grant and that install's bearer, sent once over
+ *                     loopback at the Allow. The person's own Allow only
  */
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { UPDATE_SPEC_RE } from "./den-update.js";
@@ -233,6 +237,8 @@ export interface HeldActionDeps {
   }) => Promise<unknown>;
   /** Issue 565: file a report as the page does (report-held.ts reportHeld). */
   report?: HeldAction;
+  /** Issue 816: set up a test install's test person (test-person-held.ts). */
+  testPersonSetup?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
@@ -270,6 +276,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "test_person_setup",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -1020,5 +1027,15 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     gate_box_set: gateBoxSet,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    test_person_setup: d.testPersonSetup ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+      run: async () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+    },
   };
 }

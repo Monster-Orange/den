@@ -2133,7 +2133,88 @@ const ACCESS_ROWS = [
     control: { type: "custom", render: drawTestInstall },
     read: () => null,
   },
+  {
+    id: "access.test_installs_here",
+    category: "access",
+    label: "Test installs on this computer",
+    description:
+      "Test installs on this computer whose launcher announces them and that wait for their test person. Set up test person sets it up from here, in any browser, on your own Allow.",
+    keywords: ["test", "test install", "test person", "live checks", "bed"],
+    scope: "user",
+    control: { type: "custom", render: drawTestInstallsHere },
+    read: () => null,
+  },
 ];
+
+/**
+ * Issue 816: the row's list. `installs`: GET /api/web/test-installs's,
+ * each {id, where, port}. `t(key, en, vars)` words it.
+ */
+export function testInstallsHereHtml(installs, t = (_k, en) => en) {
+  if (!installs || !installs.length)
+    return `<output class="set-ro" id="set-test-installs" data-count="0">${escHtml(t("set.ui.testInstallsNone", "No test install on this computer is waiting for its test person."))}</output>`;
+  return (
+    `<ul class="set-list" id="set-test-installs" data-count="${installs.length}">` +
+    installs
+      .map(
+        (i) =>
+          `<li><span>${escHtml(t("set.ui.testInstallsOne", "{where} (test install {id})", { where: i.where, id: i.id }))}</span> ` +
+          `<button type="button" class="btn sm" data-test-install-setup="${escHtml(i.id)}">${escHtml(t("set.ui.testPersonSetUp", "Set up test person"))}</button></li>`,
+      )
+      .join("") +
+    `</ul>`
+  );
+}
+
+/**
+ * Issue 816: Settings › Access › Test installs on this computer. Set up
+ * test person asks for the held write test_person_setup; the shell's Allow
+ * dialog takes it from there, and the list is read again when it's done.
+ */
+function drawTestInstallsHere(host, ctx) {
+  const load = () =>
+    fetch("/api/web/test-installs", { cache: "no-store" })
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+      )
+      .then((b) => {
+        host.innerHTML = testInstallsHereHtml(b.installs || [], L);
+        for (const btn of host.querySelectorAll("[data-test-install-setup]"))
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-test-install-setup");
+            const run = (headers) =>
+              ctx.shell.api(
+                "POST",
+                "/api/approvals",
+                { action: "test_person_setup", args: { id } },
+                { headers },
+              );
+            void (
+              ctx.shell.busyAction
+                ? ctx.shell.busyAction("ask-allow", run, {
+                    button: btn,
+                  })
+                : run({})
+            )
+              .then(() =>
+                window.dispatchEvent(new CustomEvent("den:approvals-poll")),
+              )
+              .catch((e) => {
+                host.insertAdjacentHTML(
+                  "beforeend",
+                  `<p class="set-note set-warn" role="alert">${escHtml(e.message)}</p>`,
+                );
+              });
+          });
+      })
+      .catch(() => {
+        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.testInstallsSignedIn", "Only the signed-in person sees the test installs on this computer."))}</output>`;
+      });
+  load();
+  window.addEventListener("den:approval-done", (ev) => {
+    if (host.isConnected && ev.detail?.action === "test_person_setup") load();
+  });
+}
 
 /**
  * Issue 810: Settings › Access › Test install. Read only: whether this is a
