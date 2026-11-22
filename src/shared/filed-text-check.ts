@@ -44,7 +44,7 @@ export function filedTextRefusal(hits: readonly FiledHit[]): string {
   const where = hits
     .map((h) => `${h.field} line ${h.line} matches listed pattern #${h.index}`)
     .join("; ");
-  return `${where}. The repo is public (or its visibility isn't known), and this text names an organization, host or person on the list; nothing was sent. Rewrite it without that name.`;
+  return `${where}. The repo is public (or its visibility isn't known), and this text holds a name, host or person on the list; nothing was sent. Rewrite it without that name.`;
 }
 
 /** Whether a repo of this visibility is checked (null: not known). */
