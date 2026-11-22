@@ -847,8 +847,6 @@
     "err.signin.methods.github": "Iniciar sesión con GitHub",
     "err.signin.methods.githubReady":
       "Usa Iniciar sesión con GitHub más abajo, desde cualquier ordenador.",
-    "err.signin.methods.githubNoClient":
-      "No hay ningún id de cliente de GitHub App ({setting}). Una persona lo pone en {file} en {host} y después ejecuta {restart} allí.",
     "err.signin.methods.githubNoOwner":
       "Aún no hay ningún propietario vinculado en GitHub, así que nadie puede usarlo desde otro ordenador.",
     "err.signin.methods.pair": "Pedir iniciar sesión desde este dispositivo",
@@ -862,8 +860,15 @@
       "Ejecuta {cmd} en una terminal en {host} y abre el enlace que imprime.",
     "err.signin.methods.stuck":
       "Aún no se puede iniciar sesión en {name} desde otro ordenador. Iniciar sesión con GitHub no está configurado, y no hay ningún navegador con sesión iniciada en {name} que apruebe este.",
-    "err.signin.methods.fixClient":
-      "Para arreglarlo, en {host} pon en {setting} un id de cliente de GitHub App en {file} y ejecuta {restart}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.githubAsk":
+      "Todavía no hay ninguna GitHub App configurada para {name}. Pídela aquí: una persona con sesión iniciada en {name} la permite, y después Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.githubAskBtn":
+      "Pedir que se active Iniciar sesión con GitHub",
+    "err.signin.methods.githubAsked":
+      "Pedido. Una persona con sesión iniciada en {name} lo ve en su navegador y lo permite; después recarga esta página.",
+    "err.signin.methods.githubAskFailed": "No se pidió: {error}",
+    "err.signin.methods.fixAsk":
+      "Para arreglarlo, pide abajo que se active Iniciar sesión con GitHub. Una persona con sesión iniciada en {name} lo permite; después Iniciar sesión con GitHub funciona desde cualquier ordenador.",
     "err.signin.methods.fixOwner":
       "Para arreglarlo, vincula al propietario en GitHub: en {host}, ejecuta {cmd}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
     "err.signin.methods.fixFirst":
@@ -1752,6 +1757,17 @@
     "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.github_signin_setup": "Activar Iniciar sesión con GitHub",
+    "ap.det.github_signin_setup.set":
+      "Pone en {setting} la GitHub App propia de Den (su id de cliente público) en {file}.",
+    "ap.det.github_signin_setup.restart":
+      "Den se reinicia; los agentes y las terminales siguen donde estaban.",
+    "ap.det.github_signin_setup.then":
+      "Después, Iniciar sesión con GitHub aparece en la página de inicio de sesión, desde cualquier ordenador.",
+    "ap.viaSignin":
+      "Un navegador en la página de inicio de sesión (sin sesión iniciada)",
+    "ap.viaSigninWarn":
+      "Cualquiera que pueda abrir la página de inicio de sesión puede pedir esto. Si no lo esperas, deniégalo.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":

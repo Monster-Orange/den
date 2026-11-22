@@ -74,6 +74,7 @@ describe("signinMethods: what the page is told", () => {
       setting: "web.github_client_id",
       file: "config/local/user.yml",
       restart: RESTART,
+      ask: true,
       browser: false,
       terminal: CMD,
       remote: true,
@@ -161,11 +162,23 @@ describe("methodsBlock: the list on the signed-out page", () => {
     expect(html).toMatch(/data-method="github" data-ready="0"/);
     expect(html).toMatch(/data-method="pair" data-ready="0"/);
     const words = text(html);
-    expect(words).toContain("web.github_client_id");
     expect(words).toContain(CMD);
-    // Settings has no control for it: the file on the host, then a restart.
-    expect(words).toContain("config/local/user.yml");
-    expect(words).toContain(RESTART);
+    // Ruling 11-21: no file to edit on the host and no restart to run:
+    // the page asks, and a person signed in to this Den allows it.
+    expect(words).not.toContain("config/local/user.yml");
+    expect(words).not.toContain(RESTART);
+    expect(html).toMatch(/<button [^>]*id="den-signin-gh-ask"/);
+    expect(html).toContain('id="den-signin-gh-asked"');
+  });
+
+  it("GitHub sign-in that is set up, or only lacks an owner: no ask", () => {
+    for (const github of ["ready", "no_owner"])
+      expect(
+        methodsBlock(
+          { ...s, methods: { ...s.methods, github, ask: false } },
+          tFor("en"),
+        ),
+      ).not.toContain("den-signin-gh-ask");
   });
 
   it("from another computer with no way in: says so plainly, and offers the fix", () => {

@@ -828,8 +828,6 @@
     "err.signin.methods.github": "GitHub でサインイン",
     "err.signin.methods.githubReady":
       "下の「GitHub でサインイン」を使ってください。どのコンピューターからでも使えます。",
-    "err.signin.methods.githubNoClient":
-      "GitHub App のクライアント ID（{setting}）が設定されていません。{host} で人が {file} に設定し、そこで {restart} を実行します。",
     "err.signin.methods.githubNoOwner":
       "所有者がまだ GitHub でリンクされていないため、他のコンピューターからは誰も使えません。",
     "err.signin.methods.pair": "このデバイスからサインインを依頼",
@@ -843,8 +841,15 @@
       "{host} のターミナルで {cmd} を実行し、表示されたリンクを開きます。",
     "err.signin.methods.stuck":
       "{name} にはまだ他のコンピューターからサインインできません。GitHub でのサインインが設定されておらず、このデバイスを承認できる、{name} にサインイン済みのブラウザーもありません。",
-    "err.signin.methods.fixClient":
-      "解決するには、{host} で {file} の {setting} に GitHub App のクライアント ID を設定し、{restart} を実行します。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
+    "err.signin.methods.githubAsk":
+      "{name} にはまだ GitHub App が設定されていません。ここで依頼してください: {name} にサインインしている人が許可すると、どのコンピューターからでも GitHub でサインインできるようになります。",
+    "err.signin.methods.githubAskBtn":
+      "GitHub でのサインインを有効にするよう依頼",
+    "err.signin.methods.githubAsked":
+      "依頼しました。{name} にサインインしている人がブラウザーで確認して許可します。その後、このページを再読み込みしてください。",
+    "err.signin.methods.githubAskFailed": "依頼できませんでした: {error}",
+    "err.signin.methods.fixAsk":
+      "解決するには、下で GitHub でのサインインを有効にするよう依頼してください。{name} にサインインしている人が許可すると、どのコンピューターからでも GitHub でサインインできます。",
     "err.signin.methods.fixOwner":
       "解決するには、所有者を GitHub でリンクします。{host} で {cmd} を実行してください。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
     "err.signin.methods.fixFirst":
@@ -1706,6 +1711,16 @@
     "ap.det.gate_box_set.min_free_mem_mb": "最小空きメモリ (MB): {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.github_signin_setup": "GitHub でのサインインを有効にする",
+    "ap.det.github_signin_setup.set":
+      "{file} の {setting} を Den 自身の GitHub App（公開クライアント ID）に設定します。",
+    "ap.det.github_signin_setup.restart":
+      "Den は再起動します。エージェントとターミナルはそのまま続きます。",
+    "ap.det.github_signin_setup.then":
+      "その後、サインインページに GitHub でのサインインが表示され、どのコンピューターからでも使えます。",
+    "ap.viaSignin": "サインインページのブラウザー（未サインイン）",
+    "ap.viaSigninWarn":
+      "サインインページを開ける人なら誰でもこれを依頼できます。心当たりがなければ拒否してください。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",

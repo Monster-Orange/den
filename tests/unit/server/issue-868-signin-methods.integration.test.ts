@@ -34,14 +34,19 @@ interface Reply {
   type: string;
   body: string;
 }
-function call(p: string, headers: Record<string, string>): Promise<Reply> {
+function call(
+  p: string,
+  headers: Record<string, string>,
+  method = "GET",
+  body?: string,
+): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
         host: "localhost",
         port,
         path: p,
-        method: "GET",
+        method,
         agent: false,
         timeout: 20_000,
         setHost: false,
@@ -61,7 +66,7 @@ function call(p: string, headers: Record<string, string>): Promise<Reply> {
     );
     req.on("error", reject);
     req.on("timeout", () => req.destroy(new Error(`timeout: ${p}`)));
-    req.end();
+    req.end(body);
   });
 }
 const nav = { "sec-fetch-site": "none", accept: "text/html" };
@@ -73,6 +78,7 @@ interface Methods {
   setting: string;
   file: string;
   restart: string;
+  ask: boolean;
   browser: boolean;
   terminal: string;
   remote: boolean;
@@ -157,6 +163,7 @@ describe("issue 868: the sign-in page names the methods this install has", () =>
       setting: "web.github_client_id",
       file: "config/local/user.yml",
       restart: expect.stringMatching(/web restart/),
+      ask: true,
       browser: false,
       terminal: expect.stringMatching(/web login/),
       remote: true,
@@ -191,6 +198,31 @@ describe("issue 868: the sign-in page names the methods this install has", () =>
     const r = await call("/settings", { ...AWAY, accept: "*/*" });
     expect([r.status, r.type]).toEqual([401, "text/plain"]);
     expect(r.body).toMatch(/^Sign in to use Den: run `den web login`/);
+  });
+
+  it("ruling 11-21: from another computer, not signed in, the page asks to turn on Sign in with GitHub; one waits", async () => {
+    const post = (extra: Record<string, string> = {}) =>
+      call(
+        "/api/signin/github-setup",
+        {
+          ...AWAY,
+          origin: `http://${EDGE}`,
+          "content-type": "application/json",
+          "content-length": "2",
+          ...extra,
+        },
+        "POST",
+        "{}",
+      );
+    const a = await post();
+    expect(a.status).toBe(202);
+    expect(JSON.parse(a.body)).toEqual({ ok: true, state: "pending" });
+    const again = await post();
+    expect(JSON.parse(again.body)).toMatchObject({ ok: true, again: true });
+    // Another site's page can't ask: an allowed Origin only.
+    expect((await post({ origin: "http://elsewhere.example" })).status).toBe(
+      403,
+    );
   });
 
   it("on this machine: the list, never stuck", async () => {

@@ -10,6 +10,10 @@
  *             host, `restart` the command that applies it); `no_owner` when nobody can use it yet
  *             (no owner linked, or only a GitHub org that claims it from
  *             the host itself)
+ *   ask       issue 868 (ruling 11-21): with no client id, the page asks
+ *             to turn Sign in with GitHub on (POST /api/signin/github-setup,
+ *             github-setup-held.ts); a person signed in to this Den allows
+ *             it, instead of editing `file` and running `restart` on the host
  *   browser   a person's browser is signed in, so it can approve this one
  *             by typing the code this page shows (issue 819)
  *   terminal  the command that prints a sign-in link, run on the host
@@ -34,6 +38,7 @@ export interface SigninMethods {
   setting: typeof GITHUB_CLIENT_SETTING;
   file: typeof GITHUB_CLIENT_FILE;
   restart: string;
+  ask: boolean;
   browser: boolean;
   terminal: string;
   remote: boolean;
@@ -65,6 +70,7 @@ export function signinMethods(o: {
     setting: GITHUB_CLIENT_SETTING,
     file: GITHUB_CLIENT_FILE,
     restart: o.restart,
+    ask: github === "no_client_id",
     browser: o.signedInBrowser,
     terminal: o.terminal,
     remote: o.remote,

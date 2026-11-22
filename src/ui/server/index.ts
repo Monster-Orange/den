@@ -469,7 +469,13 @@ import {
   githubEndpoints,
   noClientIdMessage,
   GITHUB_SIGNIN_DOCS,
+  MO_DEN_GITHUB_CLIENT_ID,
 } from "../../shared/github-app.js";
+import {
+  githubSetupHeld,
+  handleGithubSetupAsk,
+} from "./github-setup-held.js";
+import { GITHUB_CLIENT_FILE, GITHUB_CLIENT_SETTING } from "./signin-methods.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
 import { FirstRun } from "./first-run.js";
@@ -3944,6 +3950,28 @@ function approvalDeps(): ApprovalDeps {
     })(),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
+    // Issue 868: the sign-in page's ask to turn on Sign in with GitHub; a
+    // person signed in to this Den allows it. Den's own app, then restart.
+    githubSetup: githubSetupHeld({
+      state: () => githubSignin().state,
+      setting: GITHUB_CLIENT_SETTING,
+      file: GITHUB_CLIENT_FILE,
+      enable: () => {
+        const user = readUserConfig() as Record<string, unknown>;
+        const web =
+          user.web && typeof user.web === "object"
+            ? (user.web as Record<string, unknown>)
+            : {};
+        user.web = { ...web, github_client_id: MO_DEN_GITHUB_CLIENT_ID };
+        writeUserConfig(user as UserConfig);
+      },
+      restart: (reason, asked) =>
+        actions.den_restart.run({ reason }, asked) as Promise<{
+          ok: boolean;
+          restarting?: boolean;
+          error?: string;
+        }>,
+    }),
     terminalHostRestart: hostRestartOp({
       refreshing: terminalHostRefreshing,
       waitSeconds: () => {
@@ -5034,6 +5062,30 @@ async function handleRequest(
     }))
   )
     return;
+
+  // Issue 868: the signed-out page asks to turn on Sign in with GitHub.
+  if (pathname === "/api/signin/github-setup") {
+    const ad = approvalDeps();
+    await handleGithubSetupAsk(req, res, pathname, {
+      queue: ad.queue,
+      action: ad.actions.github_signin_setup,
+      changed: ad.changed,
+      audit: (r, detail, refused) =>
+        recordAction(
+          auditActorOf(r),
+          {
+            verb: "approval-ask",
+            detail,
+            ...(refused
+              ? { outcome: "refused" as const, reason: refused }
+              : {}),
+          },
+          principalOf(r),
+        ),
+      sendJson,
+    });
+    return;
+  }
 
   // A mutating request may change what /api/services would list (exec and
   // sync stream over GET, for EventSource).

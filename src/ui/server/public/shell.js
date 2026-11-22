@@ -1739,8 +1739,6 @@
     "err.signin.methods.github": "Sign in with GitHub",
     "err.signin.methods.githubReady":
       "Use Sign in with GitHub below, from any computer.",
-    "err.signin.methods.githubNoClient":
-      "No GitHub App client id is set ({setting}). A person sets it in {file} on {host}, then runs {restart} there.",
     "err.signin.methods.githubNoOwner":
       "No owner is linked on GitHub yet, so nobody can use it from another computer.",
     "err.signin.methods.pair": "Ask to sign in from this device",
@@ -1754,8 +1752,14 @@
       "Run {cmd} in a terminal on {host}, then open the link it prints.",
     "err.signin.methods.stuck":
       "{name} can't be signed into from another computer yet. Sign in with GitHub isn't set up, and no browser is signed in to {name} to approve this one.",
-    "err.signin.methods.fixClient":
-      "To fix it, on {host} set {setting} to a GitHub App client id in {file}, then run {restart}. Then Sign in with GitHub works from any computer.",
+    "err.signin.methods.githubAsk":
+      "No GitHub App is set up for {name} yet. Ask for it here: a person signed in to {name} allows it, and then Sign in with GitHub works from any computer.",
+    "err.signin.methods.githubAskBtn": "Ask to turn on Sign in with GitHub",
+    "err.signin.methods.githubAsked":
+      "Asked. A person signed in to {name} sees it in their browser and allows it; then reload this page.",
+    "err.signin.methods.githubAskFailed": "Not asked: {error}",
+    "err.signin.methods.fixAsk":
+      "To fix it, ask to turn on Sign in with GitHub below. A person signed in to {name} allows it; then Sign in with GitHub works from any computer.",
     "err.signin.methods.fixOwner":
       "To fix it, link the owner on GitHub: on {host}, run {cmd}. Then Sign in with GitHub works from any computer.",
     "err.signin.methods.fixFirst":
@@ -2607,6 +2611,16 @@
     "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.github_signin_setup": "Turn on Sign in with GitHub",
+    "ap.det.github_signin_setup.set":
+      "Sets {setting} to Den's own GitHub App (its public client id) in {file}.",
+    "ap.det.github_signin_setup.restart":
+      "Den restarts; agents and terminals carry on where they were.",
+    "ap.det.github_signin_setup.then":
+      "Then Sign in with GitHub shows on the sign-in page, from any computer.",
+    "ap.viaSignin": "A browser on the sign-in page (not signed in)",
+    "ap.viaSigninWarn":
+      "Anyone who can open the sign-in page can ask this. If you don't expect it, Deny.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -8105,11 +8119,19 @@
     var same = ap.shown && ap.shown.id === a.id;
     ap.shown = a;
     // No agent token: say so, and what to do if no agent was asked.
+    // Issue 868: asked from the signed-out page: says so, not "this machine".
+    var fromSignin = !a.agent && a.via === "signin-page";
     $("den-ap-h").textContent = t("ap.title", {
-      agent: a.agent ? t("ap.agent", { name: a.agent }) : t("ap.noAgent"),
+      agent: a.agent
+        ? t("ap.agent", { name: a.agent })
+        : fromSignin
+          ? t("ap.viaSignin")
+          : t("ap.noAgent"),
     });
     $("den-ap-who").hidden = !!a.agent;
-    $("den-ap-who").textContent = a.agent ? "" : t("ap.noAgentWarn");
+    $("den-ap-who").textContent = a.agent
+      ? ""
+      : t(fromSignin ? "ap.viaSigninWarn" : "ap.noAgentWarn");
     $("den-ap-what").textContent = apWhat(a);
     var note = $("den-ap-note");
     note.hidden = !a.note;

@@ -873,6 +873,9 @@ export function methodsBlock(s, t) {
     body +
     `</li>`;
   const gh = m.github === "ready";
+  // Issue 868 (ruling 11-21): no client id: ask for it here; a person
+  // signed in to this Den allows it. Never a file to edit on the host.
+  const askGh = m.github === "no_client_id";
   const github = row(
     "github",
     gh,
@@ -882,11 +885,19 @@ export function methodsBlock(s, t) {
       t,
       gh
         ? "err.signin.methods.githubReady"
-        : m.github === "no_client_id"
-          ? "err.signin.methods.githubNoClient"
+        : askGh
+          ? "err.signin.methods.githubAsk"
           : "err.signin.methods.githubNoOwner",
       v,
-    )}</p>`,
+    )}</p>` +
+      (askGh
+        ? `<div class="acts" style="margin-top:0">${buttonHtml({
+            label: t("err.signin.methods.githubAskBtn"),
+            id: "den-signin-gh-ask",
+            size: "sm",
+          })}</div>` +
+          `<p class="help" id="den-signin-gh-asked" aria-live="polite" hidden></p>`
+        : ""),
   );
   const pair = row(
     "pair",
@@ -921,7 +932,7 @@ export function methodsBlock(s, t) {
       `<p id="den-signin-fix">${withMarks(
         t,
         m.github === "no_client_id"
-          ? "err.signin.methods.fixClient"
+          ? "err.signin.methods.fixAsk"
           : "err.signin.methods.fixOwner",
         { ...v, cmd: (s.github && s.github.owner) || m.terminal },
       )}` +
@@ -939,6 +950,52 @@ export function methodsBlock(s, t) {
 
 /** Where a sign-in lands instead of its own next (issue 666's offer). */
 let landingOverride = null;
+
+/**
+ * Issue 868: "Ask to turn on Sign in with GitHub" holds a request a person
+ * signed in to this Den allows (POST /api/signin/github-setup). The page
+ * says it asked; once allowed, Den restarts with it on.
+ */
+function wireGithubAsk(root, t, s) {
+  const btn = root.querySelector("#den-signin-gh-ask");
+  const out = root.querySelector("#den-signin-gh-asked");
+  if (!btn || !out) return;
+  const name = s.name || "Den";
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    btn.setAttribute("aria-disabled", "true");
+    btn.disabled = true;
+    fetch("/api/signin/github-setup", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => {
+        out.hidden = false;
+        out.dataset.state = b && b.ok ? "asked" : "failed";
+        out.textContent =
+          b && b.ok
+            ? t("err.signin.methods.githubAsked", { name })
+            : t("err.signin.methods.githubAskFailed", {
+                error: (b && b.error) || "?",
+              });
+      })
+      .catch(() => {
+        out.hidden = false;
+        out.dataset.state = "failed";
+        out.textContent = t("err.signin.methods.githubAskFailed", {
+          error: "?",
+        });
+      })
+      .finally(() => {
+        btn.removeAttribute("aria-disabled");
+        btn.disabled = false;
+      });
+  });
+}
 
 function mountSignedOut(root, sh, d) {
   const t = sh.t;
@@ -1088,6 +1145,7 @@ function mountSignedOut(root, sh, d) {
   wireGithub(root, t, s, claim ? takeAttestCode() : "");
   watchOwner(root, t, s, window.__denOwnerPollMs || OWNER_POLL_MS);
   wirePair(root, t, s);
+  wireGithubAsk(root, t, s);
   if (s.expired) return;
   // D67: Sign in again (the approvals banner) has a session on purpose:
   // it wants the approval key. Reloading would only make a second code.

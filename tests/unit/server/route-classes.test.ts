@@ -178,6 +178,7 @@ describe("the classes", () => {
         "/api/signin/code/:id",
         // Issue 320: the page's beacon withdraw (its poll id, the proof).
         "/api/signin/code/:id/withdraw",
+        "/api/signin/github-setup",
         // MODE-5: the address check's other end: 204 or 404, nothing else.
         "/api/web-url/probe",
         // Issue 455: the identity probe's other end (a challenge's answer).
@@ -209,6 +210,7 @@ describe("the classes", () => {
     expect([...SIGNIN_CSRF_FREE]).toEqual([
       "/api/github/signin",
       "/api/signin/code",
+      "/api/signin/github-setup",
       "/auth",
       // Issue 103: the embedded pane's key, in a header, is the proof.
       "/api/embed/say",

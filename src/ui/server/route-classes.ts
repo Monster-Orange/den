@@ -419,6 +419,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/signin/code/:id/withdraw",
     "issue 320: the same, as the signed-out page's beacon sends it",
   ),
+  M(
+    ["POST"],
+    "/api/signin/github-setup",
+    "issue 868: the signed-out page asks to turn on Sign in with GitHub; a person signed in to this Den allows it (one waits at a time)",
+  ),
   R(
     "/api/web/fixture-person",
     "issue 810: whether this is a test install and its fixture person is set up (never the secret)",
@@ -956,6 +961,9 @@ export const SIGNIN_FREE: readonly string[] = [
   "/api/signin/code/:id",
   // Issue 320: the page's beacon withdraw (its poll id is the proof).
   "/api/signin/code/:id/withdraw",
+  // Issue 868: ask to turn on Sign in with GitHub, from the signed-out
+  // page; it only holds a request a signed-in person allows.
+  "/api/signin/github-setup",
   // HUB-1.7: Hub's redirect back (no session cookie on it): the state
   // this server issued is the proof (hub-connect.ts).
   "/hub/callback",
@@ -1003,6 +1011,8 @@ export const EMBED_KEY_ROUTES: readonly string[] = [
 export const SIGNIN_CSRF_FREE: readonly string[] = [
   "/api/github/signin",
   "/api/signin/code",
+  // Issue 868: ask to turn on Sign in with GitHub (it only holds a request).
+  "/api/signin/github-setup",
   // SEC-2a: a waited-on link's page posts the code `web login` printed.
   "/auth",
   // Issue 103: the embedded pane's key is in a header no other site can

@@ -200,6 +200,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
   },
+  github_signin_setup: {
+    risk: "critical",
+    why: "changes how people sign in to this Den: a person's own Allow",
+  },
   approval_policy: {
     risk: "critical",
     why: "changes the approval policy itself: a person's only",

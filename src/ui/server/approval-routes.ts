@@ -213,6 +213,7 @@ export function approvalView(
     ...(a.note ? { note: a.note } : {}),
     ...(a.ownMode ? { ownMode: a.ownMode } : {}),
     ...(a.choices ? { choices: a.choices } : {}),
+    ...(a.via ? { via: a.via } : {}),
     ...(a.chosen ? { chosen: a.chosen } : {}),
     state: a.state,
     requestedAt: new Date(a.requestedAt).toISOString(),

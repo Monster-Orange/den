@@ -199,6 +199,11 @@ export interface Approval {
   ownMode?: readonly { agent: string; mode: string }[];
   /** Issue 199: choices the person may turn on as they Allow (off by default). */
   choices?: readonly string[];
+  /**
+   * Issue 868: asked from the signed-out page (no identity): the dialog
+   * says so instead of "something on this machine".
+   */
+  via?: "signin-page";
   /** Issue 199: the ones the person turned on. */
   chosen?: Readonly<Record<string, true>>;
   requestedAt: number;
@@ -310,6 +315,7 @@ export class ApprovalQueue {
     note?: string;
     ownMode?: { agent: string; mode: string }[];
     choices?: string[];
+    via?: "signin-page";
     ticketHash?: string;
     /**
      * SRV-P6 (0.4.48): how long this one waits for the person (default
@@ -394,6 +400,7 @@ export class ApprovalQueue {
       ...(r.choices?.length
         ? { choices: Object.freeze(r.choices.slice(0, 8)) }
         : {}),
+      ...(r.via === "signin-page" ? { via: r.via } : {}),
       ...(r.ticketHash ? { ticketHash: r.ticketHash } : {}),
       requestedAt: t,
       expiresAt: t + (r.ttlMs ?? this.ttlMs),

@@ -91,6 +91,11 @@
  *                     idle (host-restart-held.ts): the web start's refresh,
  *                     its wait, restart, resumes and audit. Doctor's fix,
  *                     never `sessions host --stop`. The person's own Allow
+ *   github_signin_setup
+ *                     issue 868: the sign-in page's ask to turn on Sign in
+ *                     with GitHub (github-setup-held.ts): sets the client id
+ *                     to Den's own app and restarts. A person signed in to
+ *                     this Den allows it; never an agent's ask
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -200,6 +205,8 @@ export interface HeldActionDeps {
   gateBoxRemove?: HeldOp;
   /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
   terminalHostRestart?: HeldOp;
+  /** Issue 868: github_signin_setup (github-setup-held.ts githubSetupHeld). */
+  githubSetup?: HeldAction;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -264,6 +271,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "github_signin_setup",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -907,5 +915,12 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     gate_box_set: gateBoxSet,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    github_signin_setup: d.githubSetup ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't set up GitHub sign-in here",
+      }),
+      run: () => Promise.resolve({ ok: false, error: "not here" }),
+    },
   };
 }
