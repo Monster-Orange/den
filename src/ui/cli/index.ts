@@ -202,12 +202,14 @@ import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { USAGE_HELP, cmdUsage } from "./usage-command.js";
+import { COACH_HELP, cmdCoach } from "./coach-command.js";
 import { GATE_HELP, cmdGate } from "./gate-command.js";
 import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
 } from "./notifications-command.js";
 import { GITHUB_HELP, cmdGithub } from "./github-command.js";
+import { ASK_HELP, cmdAsk } from "./ask-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
 import { cmdVerify, VERIFY_HELP } from "./verify-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
@@ -564,9 +566,11 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   sessions: SESSIONS_HELP,
   agents: AGENTS_HELP,
   usage: USAGE_HELP,
+  coach: COACH_HELP,
   gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
+  ask: ASK_HELP,
   github: GITHUB_HELP,
   feedback: {
     ...FEEDBACK_HELP,
@@ -631,6 +635,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "gate",
   "hub",
   "notifications",
+  "ask",
   "github",
   "feedback",
   "report",
@@ -673,6 +678,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "hub",
   // NT: the bell's own file, no org data.
   "notifications",
+  // Issue 1008: the bell's own withdraw route, no org data.
+  "ask",
   // The shared GitHub watcher's status file, no org data.
   "github",
   // FB: Den's own report routes; a report matters most when the config is
@@ -1220,6 +1227,10 @@ class DenCLI {
           process.exitCode = await cmdUsage(args.slice(1));
           break;
 
+        case "coach":
+          process.exitCode = await cmdCoach(args.slice(1));
+          break;
+
         case "gate":
           process.exitCode = await cmdGate(args.slice(1));
           break;
@@ -1230,6 +1241,10 @@ class DenCLI {
 
         case "notifications":
           process.exitCode = await cmdNotifications(args.slice(1));
+          break;
+
+        case "ask":
+          process.exitCode = await cmdAsk(args.slice(1));
           break;
 
         case "github":
@@ -5506,6 +5521,9 @@ class DenCLI {
     );
     console.log(
       "  feedback                 Report an issue: shows exactly what is posted, then asks",
+    );
+    console.log(
+      '  ask withdraw <id> --reason "…"  Withdraw a question settled elsewhere',
     );
     console.log();
     console.log(

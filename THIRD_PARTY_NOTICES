@@ -17,6 +17,9 @@ by Den (issue 770: agent state from screen rules):
   src/detect/manifests/codex.toml  -> src/shared/agents/detect/rules/codex.ts
   src/detect/manifests/gemini.toml -> src/shared/agents/detect/rules/gemini.ts
   src/detect/manifests/grok.toml   -> src/shared/agents/detect/rules/grok.ts
+  src/detect/manifests/antigravity.toml
+                                   -> src/shared/agents/detect/rules/antigravity.ts
+      (issue 97)
       The rules, rewritten from TOML as TypeScript modules. herdr's rules
       are unchanged; Den adds one Gemini rule (den_prompt_box_idle),
       marked as added in that file.

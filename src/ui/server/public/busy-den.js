@@ -49,6 +49,16 @@ export const DEN_ACTIONS = {
       failure: "busy.ordF",
     },
   },
+  // Issue 168: a project's colour, saved from its colour picker.
+  "project-colour": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pcW",
+      success: "busy.pcS",
+      failure: "busy.pcF",
+    },
+  },
   // Issue 133: the Projects and Services pages' confirm actions.
   "delete-project": {
     who: "__DEN_TITLE__",
@@ -162,6 +172,25 @@ export const DEN_ACTIONS = {
       working: "busy.termW",
       success: "busy.termS",
       failure: "busy.termF",
+    },
+  },
+  // Issue 214: a schedule's standing Allow, and Run now (Verify › Schedules).
+  "schedule-allow": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.schAllowW",
+      success: "busy.schAllowS",
+      failure: "busy.schAllowF",
+    },
+  },
+  "schedule-run": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.schRunW",
+      success: "busy.schRunS",
+      failure: "busy.schRunF",
     },
   },
   "restart-agent": {
