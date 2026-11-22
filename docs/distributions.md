@@ -4849,13 +4849,29 @@ An agent's commit is never signed with your key:
   agent working there without Den's env (in a terminal of its own) still
   signs as the agents. A repo you add with `repo add` is your checkout,
   and Den doesn't change its config.
-- **`<cli> doctor`** lists each agent's repo (an agent's folder, at its
-  repo's top) whose own config, read from the config files only, would
-  sign with another key or format, with the line that fixes it:
+- **An agents key set.** The agent's env sets `gpg.format ssh`, the
+  agents' `user.signingkey` and `commit.gpgsign true`, and points
+  `gpg.program` and `gpg.x509.program` at `false`, so an agent's
+  `-c gpg.format=openpgp` can't reach your GPG key. git verifies with the
+  same programs, so an agent's `verify-commit` (and
+  `merge.verifySignatures`) fails for OpenPGP and x509 signatures; with
+  no key, for SSH ones too.
+- **`<cli> doctor`** looks at each agent's repo (an agent's folder, at
+  its repo's top), reading its config files only:
+  - Its config signs nothing (`commit.gpgsign` and `tag.gpgsign` off): a
+    note. The agents sign there through Den's env.
+  - It signs with another key or format, in a linked worktree (`git
+    worktree add`): doctor fails, with the line that gives that worktree
+    alone the agents' key. It never writes the repo's shared
+    `.git/config`, which your other checkouts read too:
 
-  ```sh
-  git -C <repo> config gpg.format ssh && git -C <repo> config user.signingkey <the key>
-  ```
+    ```sh
+    git -C '<repo>' config extensions.worktreeConfig true && git -C '<repo>' config --worktree gpg.format ssh && git -C '<repo>' config --worktree user.signingkey '<the key>'
+    ```
+
+  - It signs with another key or format, in the repo's main checkout:
+    doctor fails, with no config line. That checkout is yours: give the
+    agents a worktree of their own.
 
 ### An agent's token
 
