@@ -8577,15 +8577,33 @@ const TRUST_MAX_MOVES = 4;
  * quiet (as a first instruction is, AG-10.1). False when it isn't running,
  * or its screen ends with a dialog for its person (never typed into).
  */
+export function typeIntoAgent(
+  d: AgentsResolved,
+  id: string,
+  text: string,
+): Promise<boolean>;
+/**
+ * Issue 629: with `ready`, it is asked once this text's turn in the queue
+ * comes (what was typed just ahead may have started a turn); "not-ready"
+ * when it says no, and nothing is typed.
+ */
+export function typeIntoAgent(
+  d: AgentsResolved,
+  id: string,
+  text: string,
+  opts: { ready: () => Promise<boolean> },
+): Promise<boolean | "not-ready">;
 export async function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-): Promise<boolean> {
+  opts?: { ready: () => Promise<boolean> },
+): Promise<boolean | "not-ready"> {
   // Everything Den types into one agent (Hub comments, the tools note)
   // goes one at a time: two texts at once would land mixed in the pane.
   const before = typing.get(id) ?? Promise.resolve();
-  const mine = before.then(async () => {
+  const mine = before.then(async (): Promise<boolean | "not-ready"> => {
+    if (opts && !(await opts.ready())) return "not-ready";
     const rec = readRecord(d.stateDir(), id);
     if (!rec) return false;
     return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {

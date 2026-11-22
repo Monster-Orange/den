@@ -18,6 +18,7 @@ import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
   agentTools,
   resolveAgentsDeps,
+  typeIntoAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import {
   RECONNECTED_LINE,
@@ -297,6 +298,96 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     await until(() => rc.waiting().length === 0, 15_000);
     expect(typed(r, 1)).toContain(RECONNECTED_LINE);
   }, 45_000);
+
+  it("issue 629: a Hub comment typed just ahead starts a turn: the note isn't typed until the agent is idle again", async () => {
+    const { r, d, token } = await startedWhileHubFailed();
+    const held: string[] = [];
+    const file = path.join(
+      r.dir,
+      "claude-config",
+      "projects",
+      "-work",
+      `${token}.jsonl`,
+    );
+    const turn = (content: string) =>
+      fs.appendFileSync(
+        file,
+        JSON.stringify({
+          type: "user",
+          cwd: r.wsDir("north"),
+          message: { content },
+        }) + "\n",
+      );
+    const endTurn = () =>
+      fs.appendFileSync(
+        file,
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            model: "opus",
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: "Done." }],
+          },
+        }) + "\n",
+      );
+    const COMMENT = "A Hub comment for you: please look at the build.";
+    // The restarted agent draws its prompt and is in a turn at once. Once
+    // the comment's Enter lands, it starts another turn and runs a quiet
+    // tool: no output for a while.
+    let turned = false;
+    const push = r.made.push.bind(r.made);
+    r.made.push = (...ps) => {
+      const n = push(...ps);
+      if (n === 2) {
+        const p = r.made[1];
+        turn("Carry on with the plan");
+        setTimeout(() => p.emit("> "), 0);
+        const write = p.write.bind(p);
+        p.write = (data: Buffer) => {
+          write(data);
+          const all = Buffer.concat(p.writes).toString("utf-8");
+          if (!turned && all.includes(COMMENT) && /\r/.test(String(data))) {
+            turned = true;
+            turn(COMMENT);
+            p.emit("\r✻ Running a tool…\r\n> ");
+          }
+        };
+      }
+      return n;
+    };
+    const rc = mcpReconnect(d, {
+      hubUp: async () => true,
+      attempts: () => 3,
+      pollMs: 20,
+      heldPollMs: 50,
+      held: (id) => held.push(id),
+      log: () => undefined,
+    });
+    expect(await rc.tick()).toEqual(["planner"]);
+    await until(() => r.made.length >= 2, 15_000);
+    await new Promise((res) => setTimeout(res, 500));
+    expect(rc.waiting()).toEqual(["planner"]);
+    // Its turn ends, and in the same moment a Hub comment gets in the
+    // typing queue ahead of the note.
+    endTurn();
+    const comment = typeIntoAgent(d, "planner", COMMENT);
+    expect(await comment).toBe(true);
+    expect(turned).toBe(true);
+    // The comment's turn (quiet): the note waits, and rings no bell.
+    const at = Date.now();
+    while (Date.now() - at < 6_000) {
+      expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
+      await new Promise((res) => setTimeout(res, 100));
+    }
+    expect(held).toEqual([]);
+    expect(rc.waiting()).toEqual(["planner"]);
+    // That turn ends: the note is typed, after the comment.
+    endTurn();
+    r.made[1].emit("\x1b[2J\x1b[H> ");
+    await until(() => rc.waiting().length === 0, 20_000);
+    const out = typed(r, 1);
+    expect(out.indexOf(RECONNECTED_LINE)).toBeGreaterThan(out.indexOf(COMMENT));
+  }, 60_000);
 
   it("issue 629: an agent that never shows its prompt: the restart's call ends, the note stays queued and belled, nothing hangs", async () => {
     const { r, d } = await startedWhileHubFailed();

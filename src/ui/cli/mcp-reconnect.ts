@@ -102,8 +102,15 @@ export function mcpReconnect(
     if (st === "missing") return { told: false, why: "it is gone" };
     if (st === "stopped") return { told: false, why: "it stopped" };
     if (st === "idle") {
-      if (await typeIntoAgent(d, id, RECONNECTED_LINE)) return { told: true };
-      hold("its screen didn't take it; Den tries again");
+      // Asked again once its turn in the typing queue comes: a Hub comment
+      // typed just ahead may have started a turn. Not ready: it just waits.
+      const r = await typeIntoAgent(d, id, RECONNECTED_LINE, {
+        ready: async () =>
+          !(await agentDialogKind(d, id)) &&
+          (await agentInputState(d, id, new Set(), 1500)) === "idle",
+      });
+      if (r === true) return { told: true };
+      if (r === false) hold("its screen didn't take it; Den tries again");
     } else if (heldNotAtPrompt(id))
       hold("it isn't at its input prompt (a list or a question shows)");
     return null;
