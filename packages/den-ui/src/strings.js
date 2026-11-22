@@ -248,6 +248,12 @@ export const en = {
   "kit.setrow.last": "Last changed {time} by {who}",
   "kit.setrow.never": "No changes yet",
   "kit.setrow.error": "Not saved. Try again.",
+  // Issue 584: the shared button verbs.
+  "kit.verb.save": "Save",
+  "kit.verb.cancel": "Cancel",
+  "kit.verb.delete": "Delete",
+  "kit.verb.close": "Close",
+  "kit.verb.tryAgain": "Try again",
 };
 
 export const es = {
@@ -486,6 +492,11 @@ export const es = {
   "kit.setrow.last": "Último cambio: {time}, por {who}",
   "kit.setrow.never": "Sin cambios todavía",
   "kit.setrow.error": "No se guardó. Inténtalo de nuevo.",
+  "kit.verb.save": "Guardar",
+  "kit.verb.cancel": "Cancelar",
+  "kit.verb.delete": "Eliminar",
+  "kit.verb.close": "Cerrar",
+  "kit.verb.tryAgain": "Reintentar",
 };
 
 export const ja = {
@@ -724,6 +735,11 @@ export const ja = {
   "kit.setrow.last": "最終変更: {time}（{who}）",
   "kit.setrow.never": "まだ変更はありません",
   "kit.setrow.error": "保存できませんでした。もう一度お試しください。",
+  "kit.verb.save": "保存",
+  "kit.verb.cancel": "キャンセル",
+  "kit.verb.delete": "削除",
+  "kit.verb.close": "閉じる",
+  "kit.verb.tryAgain": "再試行",
 };
 
 /** The kit's tables, by language (en is the fallback for any key). */
