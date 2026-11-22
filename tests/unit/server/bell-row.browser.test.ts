@@ -150,9 +150,9 @@ const row = (p: Page, link: string) =>
 async function peeked(p: Page, link: string): Promise<void> {
   await p.locator("dialog#den-peek[open]").waitFor({ timeout: 10_000 });
   const agent = new URL(link, "http://x").searchParams.get("agent");
-  await expect(p.locator("#den-peek .dk-hd h2").textContent()).resolves.toBe(
-    agent,
-  );
+  await expect(
+    p.locator("#den-peek").getByRole("heading", { level: 2 }).textContent(),
+  ).resolves.toBe(agent);
   expect(new URL(p.url()).pathname).toBe("/services");
 }
 
@@ -352,7 +352,7 @@ describe("issues 93, 187: no Open in any row, and the pointer on each, in en, es
         const texts = await p.$$eval("#den-bell-pop .den-bell-row", (els) =>
           els.map((e) => {
             const c = e.cloneNode(true) as HTMLElement;
-            c.querySelectorAll(".den-bell-page").forEach((x) => x.remove());
+            c.querySelectorAll('[data-bell="page"]').forEach((x) => x.remove());
             return c.textContent ?? "";
           }),
         );

@@ -36,7 +36,7 @@ const KEY_ALIASES: Record<string, ConfigKey> = {
  * panes.reconnect_max_failures=20`): the Settings field and its limit, so
  * the same checks hold here as on the page.
  */
-const DOTTED: Record<string, [field: string, limit: string]> = {
+export const DOTTED: Record<string, [field: string, limit: string]> = {
   "panes.reconnect_seconds": ["panes_reconnect", "seconds"],
   "panes.reconnect_max_seconds": ["panes_reconnect", "max_seconds"],
   "panes.reconnect_max_failures": ["panes_reconnect", "max_failures"],
@@ -134,6 +134,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   ),
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes.wait_minutes": ["held_writes", "wait_minutes"],
+  // Issue 1022: how often the page polls health, visible and hidden.
+  "health_poll.visible_seconds": ["health_poll", "visible_seconds"],
+  "health_poll.hidden_seconds": ["health_poll", "hidden_seconds"],
 };
 
 /** Issue 532: a terminal limit's effective value (user.yml over den.yml). */

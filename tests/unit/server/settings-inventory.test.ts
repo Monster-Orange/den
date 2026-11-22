@@ -62,6 +62,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots_beside_release_browser: true,
     // Issue 1009: cpu runs wait at this load under a release run.
     cpu_hold_load: true,
+    // Issue 1048: new cpu runs wait over this × the cores.
+    load_hold_per_core: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -175,6 +177,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
+  // Issue 1022: how often the page polls health, visible and hidden.
+  health_poll: { visible_seconds: true, hidden_seconds: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -295,6 +299,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
         "gate_slots.cpu_slots_beside_release_browser",
+        "gate_slots.load_hold_per_core",
         "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
@@ -386,6 +391,9 @@ describe("the settings inventory (R21)", () => {
         "agent_hooks.backoff_seconds",
         // Issue 742: how long a held write waits for the person's Allow.
         "held_writes.wait_minutes",
+        // Issue 1022: how often the page polls health, visible and hidden.
+        "health_poll.visible_seconds",
+        "health_poll.hidden_seconds",
       ].sort(),
     );
   });

@@ -68,12 +68,10 @@ beforeAll(async () => {
   host.close();
   sid = info.ref.id;
   pty = s.made.at(-1)!;
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
   s.seed({
     id: "planner",
     persona: "builder",
@@ -153,13 +151,12 @@ async function openBell(p: Page): Promise<void> {
   if (!(await p.locator("#den-bell-pop").isVisible()))
     await p.click("#den-bell");
   await p
-    .locator('#den-bell-pop .den-bell-row[data-kind="waiting"]')
-    .first()
+    .locator('#den-bell-pop [data-kind="waiting"]:has(a[data-peek="planner"])')
     .waitFor();
 }
 
 const plannerRow = (p: Page) =>
-  p.locator(".den-bell-row", {
+  p.locator("#den-bell-pop [data-kind]", {
     has: p.locator(`a[data-peek="planner"]`),
   });
 
@@ -202,29 +199,32 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     await peek(p);
     expect(new URL(p.url()).pathname).toBe("/services");
     const d = p.locator("dialog#den-peek");
-    await expect(d.locator(".dk-hd h2").textContent()).resolves.toBe("planner");
+    await expect(
+      d.getByRole("heading", { level: 2 }).textContent(),
+    ).resolves.toBe("planner");
     // Report, as every pop-up has.
     expect(await d.getAttribute("data-dk-report")).not.toBeNull();
     // Seen: the agent's items are read.
     await eventually(() => read !== null);
     expect(read).toEqual({ subject: "agent:planner", seen: true });
     // Live: the agent's output shows.
-    await d.locator(".xterm").waitFor({ timeout: 15_000 });
+    await p
+      .locator('dialog#den-peek[data-conn="live"]')
+      .waitFor({ timeout: 15_000 });
     const mark = `peek-${Math.random().toString(36).slice(2, 8)}`;
-    await new Promise((r) => setTimeout(r, 300));
     pty.emit(`${mark}$ `);
     await p.waitForFunction(
       (m) =>
         document
-          .querySelector("#den-peek .xterm-rows")
+          .querySelector("#den-peek [data-peek-term]")
           ?.textContent?.includes(m),
       mark,
       { timeout: 15_000 },
     );
     // The footer says who typing goes to; typing reaches the agent.
-    await expect(d.locator(".den-peek-foot").textContent()).resolves.toContain(
-      "planner",
-    );
+    await expect(
+      d.locator("[data-peek-foot]").textContent(),
+    ).resolves.toContain("planner");
     const writes = pty.writes.length;
     await p.focus("#den-peek .xterm-helper-textarea");
     await p.keyboard.type("y");
@@ -280,9 +280,12 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     await sw.click();
     await eventually(
       async () =>
-        (await p.locator("#den-peek .dk-hd h2").textContent()) === "reviewer",
+        (await p
+          .locator("#den-peek")
+          .getByRole("heading", { level: 2 })
+          .textContent()) === "reviewer",
     );
-    expect(await p.locator("dialog.den-peek").count()).toBe(1);
+    expect(await p.locator("dialog#den-peek").count()).toBe(1);
     await p.context().close();
   }, 90_000);
 
@@ -315,7 +318,7 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
   it("over the Agents page with the agent's pane open: opening and closing the peek leave the PTY's size alone", async () => {
     if (skip()) return;
     const p = await open(1440, `/agents?open=${sid}`);
-    await p.locator(`.pane[data-id="${sid}"] .xterm`).waitFor({
+    await p.locator(`[data-id="${sid}"][data-cols]`).waitFor({
       timeout: 20_000,
     });
     // The page's pane leads: the PTY is its size.
@@ -334,12 +337,18 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
     const before = pty.resizes.length;
     const size = pty.resizes.at(-1);
     await peek(p);
-    await p.locator("#den-peek .xterm").waitFor({ timeout: 15_000 });
-    await new Promise((r) => setTimeout(r, 800));
+    // The server heard the panel's size and kept the PTY's (the page's
+    // pane leads): the panel follows. Only then is "no resize" proved.
+    await p
+      .locator('dialog#den-peek[data-conn="live"][data-following]')
+      .waitFor({ timeout: 15_000 });
     expect(pty.resizes.slice(before)).toEqual([]);
     await p.keyboard.press("Escape");
     await p.locator("dialog#den-peek").waitFor({ state: "detached" });
-    await new Promise((r) => setTimeout(r, 800));
+    // The server saw the panel go: the page's pane is the one viewer.
+    await p
+      .locator(`[data-id="${sid}"][data-cols][data-viewers="1"]`)
+      .waitFor({ timeout: 15_000 });
     expect(pty.resizes.at(-1)).toEqual(size);
     await p.context().close();
   }, 90_000);

@@ -167,7 +167,7 @@ describe("rule: Closes (Esc, ×, the dim area)", () => {
       "/agents",
     );
     expect(h).toMatch(
-      /<button type="submit" class="dk-btn dk-x" value="close" data-dk="close" aria-label="\[peek\.close\]" title="\[peek\.close\]">×<\/button>/,
+      /<button type="submit" class="[^"]*\bdk-x\b[^"]*" value="close" data-dk="close" aria-label="\[peek\.close\]" title="\[peek\.close\]">×<\/button>/,
     );
   });
 });
@@ -180,7 +180,7 @@ describe("rule: Keep it (Open in layout)", () => {
       "/agents?project=north&agent=planner",
     );
     expect(h).toMatch(
-      /<a class="dk-btn den-peek-layout" href="\/agents\?project=north&amp;agent=planner" data-peek="layout">\[peek\.openInLayout\]<\/a>/,
+      /<a class="[^"]*\bden-peek-layout\b[^"]*" href="\/agents\?project=north&amp;agent=planner" data-peek="layout">\[peek\.openInLayout\]<\/a>/,
     );
   });
 });

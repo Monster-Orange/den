@@ -223,8 +223,8 @@ export function peekHtml(v, link) {
     closeAttrs: { "aria-label": tr("peek.close"), title: tr("peek.close") },
     body:
       `<div class="den-peek-stripw">${stripHtml(v)}</div>` +
-      `<div class="den-peek-term"><div class="den-peek-msg">${esc(v.body)}</div><div class="den-peek-tbox"></div></div>`,
-    foot: `<div class="den-peek-foot">${footHtml(v)}</div>`,
+      `<div class="den-peek-term"><div class="den-peek-msg">${esc(v.body)}</div><div class="den-peek-tbox" data-peek-term></div></div>`,
+    foot: `<div class="den-peek-foot" data-peek-foot>${footHtml(v)}</div>`,
   });
   return html
     .replace(
@@ -412,6 +412,8 @@ async function load(st, first) {
 function paint(st) {
   const d = st.dialog;
   if (!d) return;
+  // Its connection, for a test to wait on (connecting, live, failed).
+  if (d.dataset.conn !== st.conn) d.dataset.conn = st.conn;
   const v = view(st);
   const h = d.querySelector(".dk-hd h2");
   if (h && h.textContent !== v.name) h.textContent = v.name;
@@ -672,6 +674,7 @@ function sendSize(st, claimIt) {
 function claim(st) {
   st.following = false;
   st.dialog?.classList.remove("following");
+  st.dialog?.removeAttribute("data-following");
   fitBox(st);
   sendSize(st, true);
 }
@@ -680,6 +683,9 @@ function claim(st) {
 function follow(st) {
   st.following = true;
   st.dialog?.classList.add("following");
+  // The server heard this panel's size and kept the PTY's (another view
+  // leads): a test waits on this.
+  st.dialog?.setAttribute("data-following", "");
   const t = st.term;
   if (t && st.pty && (t.cols !== st.pty.cols || t.rows !== st.pty.rows))
     t.resize(st.pty.cols, st.pty.rows);
@@ -725,6 +731,7 @@ function detachTerm(st) {
   st.fit = null;
   st.following = false;
   st.dialog?.classList.remove("following");
+  st.dialog?.removeAttribute("data-following");
 }
 
 /** Nothing left open: the socket, the terminal, the panel's state. */
