@@ -530,9 +530,12 @@ import {
 } from "./report-routes.js";
 import { reportHeld } from "./report-held.js";
 import { publicRepoVisibility, repoVisibilities } from "./report-visibility.js";
-import { orgPatterns } from "../../shared/org-names.js";
+import { orgMask, orgPatterns } from "../../shared/org-names.js";
 import {
-  filedTextCheck,
+  filedTextHits,
+  filedTextRefusal,
+  needsFiledCheck,
+  type FiledHit,
   type FiledText,
 } from "../../shared/filed-text-check.js";
 import {
@@ -2367,12 +2370,16 @@ async function repoVisibilityFor(
 async function reportWordsCheck(
   repo: string,
   texts: FiledText[],
-): Promise<string | null> {
+): Promise<{ error: string; hits: FiledHit[] } | null> {
   let patterns: RegExp[];
   try {
     patterns = orgPatterns();
   } catch {
-    return "the listed-names file this install names can't be read; nothing was sent";
+    // Fixed words: the error can quote a line of the list.
+    return {
+      error: "the names list can't be read; nothing was sent",
+      hits: [],
+    };
   }
   if (!patterns.length) return null;
   let minutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
@@ -2385,7 +2392,19 @@ async function reportWordsCheck(
     /* a wrong agents.* value: the default */
   }
   const vis = await repoVisibilityFor(repo, minutes * 60_000);
-  return filedTextCheck(texts, repo, vis, patterns);
+  if (!needsFiledCheck(vis)) return null;
+  const hits = filedTextHits(texts, patterns, repo);
+  return hits.length ? { error: filedTextRefusal(hits), hits } : null;
+}
+
+/** Issue 1127: Den's own report sections, with listed names masked. */
+function reportMaskListed(text: string): string {
+  try {
+    return orgMask(text, orgPatterns());
+  } catch {
+    // An unreadable list: the person's check refuses the send anyway.
+    return text;
+  }
 }
 
 function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
@@ -4320,6 +4339,7 @@ function reportRouteDeps(): ReportRouteDeps {
     gh: runGh,
     // Issue 1127: listed names, before a report is filed.
     wordsCheck: reportWordsCheck,
+    maskListed: reportMaskListed,
     names: () => {
       const w = readWebUrl();
       let webHost: string | undefined;

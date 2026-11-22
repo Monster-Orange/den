@@ -65,6 +65,18 @@ export declare function configureReport(o?: ReportOptions): void;
 /** A report target's visibility as the form reads it (issue 415). */
 export type ReportVisibility = "public" | "private" | "internal" | "unknown";
 /**
+ * Issue 1127: a refusal for a listed name (the host's code "words", with
+ * its hits) in the person's language: each hit's field, line and pattern
+ * number, never the term. Null for any other answer.
+ */
+export declare function reportRefusalText(
+  data: {
+    code?: string;
+    hits?: { field: string; line: number; index: number }[];
+  } | null,
+  lang?: string,
+): string | null;
+/**
  * Who can see a report sent to `repo` (one of info().repos): its
  * visibility ("unknown" unless the host said public, private or internal),
  * the audience (private and internal only), and the pill and the note

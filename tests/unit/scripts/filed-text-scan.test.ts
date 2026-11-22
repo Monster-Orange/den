@@ -6,6 +6,7 @@
  * quoted match, and never edits the item. Invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
@@ -180,6 +181,8 @@ describe("issue 1127: the scheduled scan", () => {
     expect(wf.on).toHaveProperty("workflow_dispatch");
     // This repo's token only reads: findings go elsewhere.
     expect(wf.permissions.issues).toBe("read");
+    // Pull requests and review comments read with their own grant.
+    expect(wf.permissions["pull-requests"]).toBe("read");
     const steps = Object.values(wf.jobs).flatMap((j) => j.steps);
     const scanStep = steps.find((s) =>
       (s.run ?? "").includes("filed-text-scan.mjs"),
@@ -200,7 +203,19 @@ describe("issue 1127: the scheduled scan", () => {
     expect(app?.with?.["private-key"]).toBe(
       "${{ secrets.DEN_FINDINGS_APP_KEY }}",
     );
-    expect(app?.with?.repositories).toBe("den-bed");
+    // The App's repo comes from the findings variable (the part after the
+    // slash), by a step before it: never a repo name written here.
+    const nameStep = steps.find((s) =>
+      (s.run ?? "").includes("FILED_TEXT_FINDINGS_REPO"),
+    );
+    expect(nameStep?.id).toBeDefined();
+    expect(steps.indexOf(nameStep!)).toBeLessThan(steps.indexOf(app!));
+    expect(nameStep?.env?.FILED_TEXT_FINDINGS_REPO).toBe(
+      "${{ vars.FILED_TEXT_FINDINGS_REPO }}",
+    );
+    expect(app?.with?.repositories).toBe(
+      `\${{ steps.${nameStep?.id}.outputs.name }}`,
+    );
     // Missing App secrets: the step is skipped, the scan still runs and
     // fails safely (a count and numbers only).
     expect(app?.if).toBeDefined();
@@ -212,6 +227,26 @@ describe("issue 1127: the scheduled scan", () => {
       "utf-8",
     );
     expect(text).not.toContain("secrets.FILED_TEXT_FINDINGS_TOKEN");
+    expect(text).not.toMatch(/repositories:\s*[\w.-]+\s*$/m);
+  });
+
+  it("a bad line in the list: the command fails naming its line number only", () => {
+    const r = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "scripts", "filed-text-scan.mjs"), "--repo", "o/r"],
+      {
+        cwd: ROOT,
+        encoding: "utf-8",
+        env: {
+          PATH: process.env.PATH,
+          DEN_ORG_NAMES: "zorblax\nqx(secretword",
+        },
+        timeout: 60_000,
+      },
+    );
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("line 2");
+    expect(`${r.stdout}${r.stderr}`).not.toMatch(/qx|secretword|zorblax/);
   });
 
   it("findings carry the findings repo's own label", async () => {

@@ -166,8 +166,9 @@ export async function runIssueWrite(
       issueNo,
     );
 
-  // Issue 1127: the text a create or comment files, checked for listed
-  // names before it is sent (and before it counts against the limit).
+  // Issue 1127: the text a write files (a title, body or comment, and the
+  // names of labels and milestones), checked for listed names before it is
+  // sent (and before it counts against the limit).
   const texts: FiledText[] =
     op.action === "create"
       ? [
@@ -176,14 +177,23 @@ export async function runIssueWrite(
         ]
       : op.action === "comment"
         ? [{ field: "comment", text: op.body }]
-        : [];
+        : op.action === "label"
+          ? op.add.map((text) => ({ field: "label" as const, text }))
+          : [{ field: "milestone", text: op.milestone }];
   if (texts.length) {
     let patterns: RegExp[];
     try {
       patterns = d.namePatterns();
-    } catch (e) {
-      // A list file named but missing: fail closed.
-      return refuse(500, "bad_config", (e as Error).message, issueNo);
+    } catch {
+      // A list file named but missing, or a line that isn't a valid
+      // pattern: fail closed, with a fixed message (the error can quote the
+      // line, and this answer can end up on GitHub).
+      return refuse(
+        500,
+        "bad_config",
+        "the names list can't be read; nothing was sent",
+        issueNo,
+      );
     }
     if (patterns.length) {
       const vis = await d.visibility(

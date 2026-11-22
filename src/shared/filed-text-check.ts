@@ -13,7 +13,13 @@
  */
 import { orgHitsByLine } from "./org-names.js";
 
-export type FiledField = "title" | "body" | "comment";
+export type FiledField =
+  | "title"
+  | "body"
+  | "description"
+  | "comment"
+  | "label"
+  | "milestone";
 
 export interface FiledText {
   field: FiledField;

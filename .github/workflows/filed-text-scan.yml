@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   issues: read
+  pull-requests: read
   actions: read
 concurrency:
   group: filed-text-scan
@@ -37,16 +38,23 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.13.0"
+      # The findings repo's name (after the slash), from the variable: the
+      # App's token is minted for that repo alone, and no repo is named here.
+      - id: findings-repo
+        env:
+          FILED_TEXT_FINDINGS_REPO: ${{ vars.FILED_TEXT_FINDINGS_REPO }}
+        run: echo "name=${FILED_TEXT_FINDINGS_REPO#*/}" >> "$GITHUB_OUTPUT"
       # The findings repo's token, for this run only. Skipped with no App
-      # secrets: the scan then files nothing and fails safely.
+      # secrets or no findings repo: the scan then files nothing and fails
+      # safely.
       - id: findings-token
-        if: env.HAS_FINDINGS_APP == 'true'
+        if: env.HAS_FINDINGS_APP == 'true' && steps.findings-repo.outputs.name != ''
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ secrets.DEN_FINDINGS_APP_ID }}
           private-key: ${{ secrets.DEN_FINDINGS_APP_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: den-bed
+          repositories: ${{ steps.findings-repo.outputs.name }}
       - name: Scan issues, pull requests and comments
         env:
           GH_TOKEN: ${{ github.token }}

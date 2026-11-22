@@ -34,11 +34,32 @@ export function orgPatterns(env = process.env) {
   const own = userNamesFile(env);
   const file = env.DEN_ORG_NAMES_FILE || (own && existsSync(own) ? own : "");
   const raw = env.DEN_ORG_NAMES ?? (file ? readFileSync(file, "utf-8") : "");
-  return raw
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#"))
-    .map((l) => new RegExp(l, "i"));
+  // Issue 1127: a line that isn't a valid pattern throws naming its line
+  // number only. RegExp's own error quotes the line, and this message can
+  // reach a log, an agent or a GitHub answer.
+  const patterns = [];
+  raw.split("\n").forEach((line, i) => {
+    const l = line.trim();
+    if (!l || l.startsWith("#")) return;
+    try {
+      patterns.push(new RegExp(l, "i"));
+    } catch {
+      throw new Error(`line ${i + 1} of the names list is not a valid pattern`);
+    }
+  });
+  return patterns;
+}
+
+/**
+ * Issue 1127: `text` with each match of a listed pattern replaced by
+ * "<listed>": for text Den adds itself (a report's page and version
+ * sections), so what Den writes never holds a listed name.
+ */
+export function orgMask(text, patterns) {
+  let out = String(text ?? "");
+  for (const p of patterns)
+    out = out.replace(new RegExp(p.source, "gi"), "<listed>");
+  return out;
 }
 
 /**

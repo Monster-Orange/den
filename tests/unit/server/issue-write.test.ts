@@ -734,3 +734,55 @@ describe("issue 1127: issue_write checks the text it files for listed names", ()
     expect(ok.status).toBe(200);
   });
 });
+
+describe("issue 1127: issue_write never echoes the list, and checks label and milestone names", () => {
+  it("a bad line in the list refuses with a fixed message: no part of the line", async () => {
+    const f = fakes({ names: "zorblax\nqx(secretword" });
+    const r = await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "A crash",
+      body: BODY,
+    });
+    expect(r.status).toBe(500);
+    expect(JSON.stringify([r.body, f.audits])).not.toMatch(
+      /qx|secretword|zorblax/,
+    );
+    expect(f.calls).toEqual([]);
+  });
+
+  it("whatever the list reader throws, the refusal is a fixed message", async () => {
+    const f = fakes({ names: "zorblax" });
+    f.deps.namePatterns = () => {
+      throw new Error("Invalid regular expression: /qx(secretword/i");
+    };
+    const r = await runIssueWrite(f.deps, agent, {
+      action: "comment",
+      repo: "acme/api",
+      issue: 7,
+      body: BODY,
+    });
+    expect(r.status).toBe(500);
+    expect(JSON.stringify([r.body, f.audits])).not.toMatch(/qx|secretword/);
+  });
+
+  it("refuses a label or a milestone name that holds a listed name", async () => {
+    const f = fakes({ names: "zorblax" });
+    const label = await runIssueWrite(f.deps, agent, {
+      action: "label",
+      repo: "acme/api",
+      issue: 7,
+      add: ["zorblax-customer"],
+    });
+    expect(label.body.code).toBe("issue_write_words");
+    expect(String(label.body.error)).toContain("label line 1");
+    const ms = await runIssueWrite(f.deps, agent, {
+      action: "milestone",
+      repo: "acme/api",
+      issue: 7,
+      milestone: "Zorblax launch",
+    });
+    expect(ms.body.code).toBe("issue_write_words");
+    expect(f.calls).toEqual([]);
+  });
+});

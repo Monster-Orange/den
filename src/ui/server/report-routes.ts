@@ -53,13 +53,14 @@
  *
  * `gh` runs through `deps.gh` (tests pass a fake: never the real one).
  */
-import type { FiledText } from "../../shared/filed-text-check.js";
+import type { FiledHit, FiledText } from "../../shared/filed-text-check.js";
 import * as http from "http";
 import * as os from "os";
 import { spawn } from "child_process";
 import {
   issueBody,
   issueTitle,
+  redactReport,
   type RedactNames,
   type ReportForm,
   type ReportKind,
@@ -110,12 +111,22 @@ export function reportAgentOf(
 
 export interface ReportRouteDeps {
   /**
-   * Issue 1127: the listed-names check (shared/filed-text-check.ts) for a
-   * report's title and body in its destination: the refusal, or null to
-   * file it. The server checks public destinations and those whose
-   * visibility isn't known; none given, nothing is checked.
+   * Issue 1127: the listed-names check (shared/filed-text-check.ts) for the
+   * person's own text (the title and description) in its destination: the
+   * refusal (its hits and a plain line), or null to file it. The server
+   * checks public destinations and those whose visibility isn't known;
+   * none given, nothing is checked.
    */
-  wordsCheck?: (repo: string, texts: FiledText[]) => Promise<string | null>;
+  wordsCheck?: (
+    repo: string,
+    texts: FiledText[],
+  ) => Promise<{ error: string; hits: FiledHit[] } | null>;
+  /**
+   * Issue 1127: the sections Den adds (the page, the version…) with each
+   * listed name masked, so what Den writes never holds one and the person
+   * is never asked to rewrite it. None given: as they are.
+   */
+  maskListed?: (text: string) => string;
   settings: () => FeedbackSettings;
   stateDir: () => string;
   /** Runs `gh` with `args` (stdin: the body), as the person. */
@@ -528,7 +539,15 @@ export async function compose(
   b: Draftish,
   d: ReportRouteDeps,
 ): Promise<
-  { title: string; body: string; repo: string; label: string } | string
+  | {
+      title: string;
+      body: string;
+      repo: string;
+      label: string;
+      /** Issue 1127: the person's own text, redacted as filed. */
+      own: FiledText[];
+    }
+  | string
 > {
   const form = formOf(b);
   if (typeof form === "string") return form;
@@ -543,6 +562,10 @@ export async function compose(
   const diag: Record<string, unknown> = { ...server };
   for (const [k, v] of Object.entries(client))
     if (typeof v === "string") diag[k] = v.slice(0, 20_000);
+  // Issue 1127: Den's sections never carry a listed name.
+  const mask = d.maskListed;
+  if (mask)
+    for (const [k, v] of Object.entries(diag)) diag[k] = maskDeep(v, mask);
   const opts = { names: b.redact !== false };
   const names = d.names();
   return {
@@ -550,6 +573,41 @@ export async function compose(
     body: issueBody(form, diag, names, opts),
     repo,
     label: KIND_LABEL[form.kind],
+    own: [
+      { field: "title", text: issueTitle(form, names, opts) },
+      {
+        field: "description",
+        text: redactReport(form.description, names, opts),
+      },
+    ],
+  };
+}
+
+/** Issue 1127: every string inside `v` (objects, lists) through `mask`. */
+function maskDeep(v: unknown, mask: (s: string) => string): unknown {
+  if (typeof v === "string") return mask(v);
+  if (Array.isArray(v)) return v.map((x) => maskDeep(x, mask));
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, maskDeep(x, mask)]),
+    );
+  return v;
+}
+
+/**
+ * Issue 1127: the listed-names refusal for a composed report: 400 with
+ * code "words", the hits (the page says them in the person's language)
+ * and a plain line (for den report and the tool); or null to go on.
+ */
+async function wordsRefusal(
+  d: ReportRouteDeps,
+  c: { repo: string; own: FiledText[] },
+): Promise<FiledReport | null> {
+  const r = await d.wordsCheck?.(c.repo, c.own);
+  if (!r) return null;
+  return {
+    status: 400,
+    body: { ok: false, code: "words", hits: r.hits, error: r.error },
   };
 }
 
@@ -626,12 +684,8 @@ export async function fileReport(
   if (typeof c === "string")
     return { status: 400, body: { ok: false, error: c } };
   // Issue 1127: listed names, before anything is counted or sent.
-  const refusal = await d.wordsCheck?.(c.repo, [
-    { field: "title", text: c.title },
-    { field: "body", text: c.body },
-  ]);
-  if (refusal)
-    return { status: 400, body: { ok: false, code: "words", error: refusal } };
+  const words = await wordsRefusal(d, c);
+  if (words) return words;
   const s = d.settings();
   const log = sentLog(d.stateDir());
   if (log.recent(who, now()) >= s.maxPerHour)
@@ -956,6 +1010,9 @@ export function handleReportRoutes(
       const c = await compose(b, d);
       if (typeof c === "string")
         return d.sendJson(res, { ok: false, error: c }, 400);
+      // Issue 1127: listed names, as the send through `gh` checks them.
+      const words = await wordsRefusal(d, c);
+      if (words) return d.sendJson(res, words.body, words.status);
       const link = newIssueUrl(c.repo, c.title, c.body);
       // Issue 403: held with the report; nothing kept or sent before the
       // person approves and GitHub files it (decideReport).

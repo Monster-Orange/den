@@ -115,3 +115,25 @@ describe("issue 1127: the check as a write runs it", () => {
     );
   });
 });
+
+describe("issue 1127: a bad line in the list never shows its text", () => {
+  it("an invalid pattern throws naming only its line number", () => {
+    let msg = "";
+    try {
+      shared.orgPatterns({
+        DEN_ORG_NAMES: "# a comment\nzorblax\nqx(secretword",
+      });
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    expect(msg).toContain("line 3");
+    expect(msg).not.toMatch(/qx|secretword|zorblax/);
+  });
+
+  it("orgMask replaces each listed match, and nothing else", () => {
+    expect(
+      shared.orgMask("page /projects/Zorblax/agents and zorblax.lan", patterns),
+    ).toBe("page /projects/<listed>/agents and <listed>.lan");
+    expect(shared.orgMask("clean text", patterns)).toBe("clean text");
+  });
+});
