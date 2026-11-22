@@ -147,6 +147,22 @@ async function open(route: string, width = 1440): Promise<Page> {
 }
 
 /**
+ * What's new out of the way (issue 986). It opens on its own, as a modal
+ * dialog, on a new version's first visit, after the page's changelog
+ * fetch. Hidden by a style added after it opened, it stays modal, so the
+ * rest of the page is inert and every click lands on <html>. So: the
+ * style first (a later open sees it and closes itself), then close one
+ * already open, and wait until none is.
+ */
+async function hideWhatsNew(p: Page): Promise<void> {
+  await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+  await p.evaluate(() =>
+    (window as { closeChangelog?: () => void }).closeChangelog?.(),
+  );
+  await p.waitForFunction(() => !document.querySelector("#cl-overlay[open]"));
+}
+
+/**
  * Every pop-up showing now with no Report button, by what it is (not by
  * the injector's own list), as `tag.class#id`. The form itself, the
  * working pop-up (its own Report), the rail as a drawer and the bell's
@@ -284,7 +300,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     async (w) => {
       if (skip()) return;
       const p = await open("/agents", w);
-      await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+      await hideWhatsNew(p);
       expect(await topBarPlacement(p, w >= 1000)).toEqual([]);
       await p.keyboard.press("Control+k");
       await p.waitForSelector(".den-pal");
@@ -309,7 +325,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
   it("the palette, the status drawer, the bell and the admin password ask", async () => {
     if (skip()) return;
     const p = await open("/settings");
-    await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+    await hideWhatsNew(p);
     await p.keyboard.press("Control+k");
     await p.waitForSelector(".den-pal");
     await clean(p);
@@ -362,7 +378,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     await p.waitForFunction(
       () => !!(window as { denShell?: unknown }).denShell,
     );
-    await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+    await hideWhatsNew(p);
     // The bell: shown, then its refresh while open repaints it (every 5 s).
     await p.click("#den-bell");
     await p.waitForSelector("#den-bell-pop:not([hidden])");
@@ -416,7 +432,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     await p.evaluate(() =>
       (window as { closeChangelog?: () => void }).closeChangelog?.(),
     );
-    await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+    await hideWhatsNew(p);
     await p.click("#ag-start");
     await p.waitForSelector("#ag-dlg[open]");
     await clean(p);

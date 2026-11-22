@@ -38,6 +38,11 @@
       "packages/den-ui/src/shell.css",
       "packages/den-ui/src/shell-html.js",
       "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/bell-allow-review.browser.test.ts": [
+      "src/ui/server/held-bell.ts",
+      "src/ui/server/public/bell.js",
+      "src/ui/server/public/shell.js"
     ]
   },
   "subjectless": [
@@ -1525,8 +1530,16 @@
     },
     {
       "when": ["scripts/release-dry-run.mjs"],
-      "run": ["tests/unit/scripts/release-dry-run.test.ts"],
+      "run": [
+        "tests/unit/scripts/release-dry-run.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/release-dry-run.mjs"
+    },
+    {
+      "when": ["scripts/release-tree-check.mjs", "scripts/ci-force-all.mjs"],
+      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "why": "tests that run scripts/release-tree-check.mjs"
     },
     {
       "when": ["scripts/setup-secrets.ts"],

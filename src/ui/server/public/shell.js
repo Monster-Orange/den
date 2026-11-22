@@ -2113,9 +2113,17 @@
       "Unit test runs beside a release browser test run",
     "set.server.gate_cpu_beside_release.d":
       "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_cpu_hold_load":
+      "Machine load that holds unit test runs during a release browser run",
+    "set.server.gate_cpu_hold_load.d":
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
+    "set.server.gate_overrun_bell":
+      "Test slot in the bell past this many times its estimate",
+    "set.server.gate_overrun_bell.d":
+      "A test slot held this many times longer than its estimate shows in the bell under Needs you, with End. If an agent holds it, Den tells that agent once to release it. 2: twice its estimate. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
     "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
     "set.server.gate_overrun.d":
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -3304,6 +3312,11 @@
       "A request was lost at a restart: {what}. Nothing ran from it.",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
+    "bell.go.h": "Test slots past their estimate",
+    "bell.go.row": "{who} holds the {kind} test slot: {label}",
+    "bell.go.sub": "Since {time} · estimate {est} min · {over} min over",
+    "bell.go.end": "End",
+    "bell.go.ended": "Ended the test slot. The next in line starts.",
     "bell.ap.h": "Waiting for your Allow",
     "bell.ap.row": "{name} asks: {what}",
     "bell.ap.rowAsk": "Asked: {what}",
@@ -3663,6 +3676,7 @@
     "gate.popH": "Test runs on this machine",
     "gate.holds": "Runs {kind}, until about {at}",
     "gate.waits": "Waits to run {kind}, from about {at}",
+    "gate.padded": "estimate {est} min; this usually takes {usual}",
     "gate.over": "past its estimate",
     "gate.none": "No test runs hold or wait.",
     "gate.end": "End early",
@@ -3687,6 +3701,8 @@
     "gate.yielded": "Let {to} go ahead",
     "gate.class": "Class: {name}",
     "gate.window": "waits for its {window} window",
+    "gate.loadHold":
+      "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
@@ -4317,6 +4333,20 @@
       return typeof vars[k] === "number" ? num(vars[k]) : String(vars[k]);
     });
   }
+
+  /**
+   * A held write's details lines as its Allow card shows them: a line with
+   * a key in the page's language, else as sent. The approval dialog and the
+   * bell's Allow row (its Review) both show these, so they can't differ.
+   */
+  function apDetailLines(a) {
+    var dk = (a && a.detailKeys) || [];
+    return ((a && a.details) || []).map(function (l, i) {
+      var k = dk[i];
+      return k && k.key ? t(k.key, k.vars || {}) : String(l);
+    });
+  }
+  window.denApDetailLines = apDetailLines;
 
   /**
    * A built-in text's words in this page's language (0.4.45): `en` is the
@@ -8532,14 +8562,7 @@
     var note = $("den-ap-note");
     note.hidden = !a.note;
     note.textContent = a.note ? t("ap.says") + " “" + a.note + "”" : "";
-    // A line with a key is shown in the page's language; else as sent.
-    var dk = a.detailKeys || [];
-    $("den-ap-det").textContent = (a.details || [])
-      .map(function (l, i) {
-        var k = dk[i];
-        return k && k.key ? t(k.key, k.vars || {}) : l;
-      })
-      .join("\n");
+    $("den-ap-det").textContent = apDetailLines(a).join("\n");
     // Issue 199: the agents that keep their own mode, and the choice.
     var own = a.ownMode || [];
     $("den-ap-own").hidden = !own.length;
@@ -9536,6 +9559,19 @@
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
     // Issue 167: the pick item's line under its title.
     ".den-bell-sub { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }",
+    // Issue 746: the Allow row's Review, and the lines it opens.
+    ".den-bell-rv { display: inline; font: 500 12.5px var(--sans); background: none; border: 0;",
+    "  color: var(--accent-text); cursor: pointer; padding: 4px 0; margin-top: 2px; }",
+    ".den-bell-det { display: block; margin-top: 4px; padding: 6px 8px; border-radius: 6px;",
+    "  background: var(--surface-2, var(--surface)); border: 1px solid var(--border);",
+    "  color: var(--text); font-size: 12.5px; }",
+    ".den-bell-det[hidden] { display: none; }",
+    // Allow and Deny stay put when Review opens: the row keeps to its top,
+    // on a phone too (the kit centers a phone's rows).
+    ".den-bell-row.den-bell-allow { align-items: flex-start; }",
+    ".den-bell-detl { overflow-wrap: anywhere; }",
+    // A phone's finger needs 44 px to hit Review.
+    "@media (max-width: 600px) { .den-bell-rv { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px 0 0; } }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
