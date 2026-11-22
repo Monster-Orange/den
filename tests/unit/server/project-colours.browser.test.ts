@@ -110,8 +110,10 @@ async function open(url: string, opts: { width?: number } = {}): Promise<Page> {
   return p;
 }
 
+// All active: no ?ws= (the scope, "all" here). ?ws=all would name a
+// project called "all", which isn't one.
 const agentsUrl = () =>
-  `/agents?ws=all&layout=tabs&open=${sid.planner},${sid.builder}`;
+  `/agents?layout=tabs&open=${sid.planner},${sid.builder}`;
 
 async function agentsPage(width?: number): Promise<Page> {
   const p = await open(agentsUrl(), { width });
