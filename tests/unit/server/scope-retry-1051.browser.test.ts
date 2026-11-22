@@ -141,12 +141,14 @@ describe("issue 1051: the project menu after a failed load", () => {
     await p
       .context()
       .route(/\/api\/workspaces(\?|$)/, (r) => r.abort("connectionreset"));
-    await p.evaluate(async (url) => {
-      const h = (await import(url)) as {
-        refreshWorkspacePill: () => Promise<void>;
-      };
-      await h.refreshWorkspacePill();
-    }, "/header.js");
+    // The page's own header.js (its URL has ?v=<version>; another URL is
+    // a second copy of the module), imported in the page: a string, so
+    // the page's import() runs, not a compiled helper.
+    await p.evaluate(
+      `import(performance.getEntriesByType("resource").map((e) => e.name)` +
+        `.find((n) => /\\/header\\.js\\?/.test(n)))` +
+        `.then((h) => h.refreshWorkspacePill())`,
+    );
     expect(await p.locator("#ws-pill").isHidden()).toBe(false);
     expect(await p.locator("#ws-pill").innerText()).toBe(label);
     await p.context().close();
