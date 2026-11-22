@@ -68,6 +68,8 @@ export class RestartQueue {
    * next batch waits a whole gap from then, even one a later add starts.
    */
   private lastAt: number | null = null;
+  /** How many started in the window that began at lastAt. */
+  private inWindow = 0;
 
   constructor(private readonly d: RestartQueueDeps) {}
 
@@ -152,19 +154,30 @@ export class RestartQueue {
         this.d.changed?.(0);
         return;
       }
-      const wait = this.lastAt === null ? 0 : cfg.gapMs - (now() - this.lastAt);
-      if (wait > 0) await this.d.sleep(wait);
-      if (!this.pending.length) return;
-      const load = this.d.load();
-      this.lastAt = now();
-      if (cfg.loadCeiling > 0 && load > cfg.loadCeiling) {
-        this.d.log?.(
-          `Agent restarts wait: load ${load.toFixed(1)} is over ${cfg.loadCeiling} (${this.pending.length} waiting)`,
-        );
-        continue;
+      const t = now();
+      // A new window: a whole gap since the last one began (or none yet).
+      if (this.lastAt === null || t - this.lastAt >= cfg.gapMs) {
+        this.lastAt = t;
+        const load = this.d.load();
+        if (cfg.loadCeiling > 0 && load > cfg.loadCeiling) {
+          this.inWindow = cfg.batch; // this window starts nobody
+          this.d.log?.(
+            `Agent restarts wait: load ${load.toFixed(1)} is over ${cfg.loadCeiling} (${this.pending.length} waiting)`,
+          );
+        } else this.inWindow = 0;
       }
-      for (const e of this.ordered().slice(0, cfg.batch)) this.take(e);
-      this.d.changed?.(this.pending.length);
+      // Room left in this window: restarts that came one at a time fill it.
+      if (this.inWindow < cfg.batch) {
+        for (const e of this.ordered().slice(0, cfg.batch - this.inWindow)) {
+          this.take(e);
+          this.inWindow += 1;
+        }
+        this.d.changed?.(this.pending.length);
+        if (!this.pending.length) return;
+      }
+      // The window is full: wait for its end, then a new one begins.
+      await this.d.sleep(Math.max(0, cfg.gapMs - (now() - this.lastAt)));
+      this.lastAt = null;
     }
   }
 

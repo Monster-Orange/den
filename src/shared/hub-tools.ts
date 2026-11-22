@@ -319,6 +319,11 @@ export class HubToolsWatch {
   private readonly running = new Map<string, Promise<void>>();
   private checking: Promise<void> | null = null;
   private lastSaid = "";
+  /**
+   * Issue 1129: whether Hub answered the last read (null: not read yet).
+   * An agent launched while it didn't has none of Hub's tools.
+   */
+  private answered: boolean | null = null;
 
   constructor(private readonly d: HubToolsWatchDeps) {
     try {
@@ -365,8 +370,10 @@ export class HubToolsWatch {
         if (list === null) return;
         const tools = toolShape(list);
         this.live = { hash: toolsHash(tools), tools };
+        this.answered = true;
         this.lastSaid = "";
       } catch (e) {
+        this.answered = false;
         // Once per different reason, not every check.
         const why = `Hub's tools not checked: ${String((e as Error)?.message ?? e).slice(0, 200)}`;
         if (why !== this.lastSaid) this.d.log?.(why);
@@ -393,7 +400,11 @@ export class HubToolsWatch {
       for (const a of launched) {
         const prev = this.launches.get(a.id);
         const s = this.seen[a.id];
-        let hash = this.live?.hash;
+        // Issue 1129: launched while Hub didn't answer: no Hub tools at
+        // all, so it restarts once Hub does (a restart tried before
+        // doesn't count for this launch).
+        let hash = this.answered === false ? UNKNOWN : this.live?.hash;
+        if (hash === UNKNOWN) delete this.tried[a.id];
         // A launch Den never saw, on a conversation it knew (a state file
         // from before 0.4.57): it read the seen list only when that was
         // recorded at or before it. Else unknown: older than Hub's.
@@ -413,6 +424,12 @@ export class HubToolsWatch {
     }
     const live = this.live;
     if (!live) return; // nothing known yet: nothing to save
+    // Issue 1129: Hub doesn't answer: a restart now would launch without
+    // its tools again. Wait until it does (launches seen are kept).
+    if (this.answered === false) {
+      if (dirty) this.persist();
+      return;
+    }
     const ids = new Set(agents.map((a) => a.id));
     for (const id of new Set([
       ...Object.keys(this.seen),
@@ -426,17 +443,22 @@ export class HubToolsWatch {
         dirty = true;
       }
     for (const a of agents) {
-      const s = this.seen[a.id];
-      if (!s || s.conv !== a.conv) {
-        this.seen[a.id] = { conv: a.conv!, ...live, at: now() };
-        dirty = true;
-        continue;
-      }
-      if (s.hash === live.hash || this.running.has(a.id)) continue;
+      let s = this.seen[a.id];
       // Hub's list as its tool list has it: its launch's (unknown: Hub's).
       const loaded =
         this.d.reloadsInPlace(a.id) ||
         (this.launches.get(a.id)?.hash ?? live.hash) === live.hash;
+      if (!s || s.conv !== a.conv) {
+        s = this.seen[a.id] = { conv: a.conv!, ...live, at: now() };
+        dirty = true;
+        // Issue 1129: a new conversation needs no note, but a launch
+        // without Hub's tools (Hub was down) still restarts below.
+        if (loaded) continue;
+      }
+      if (this.running.has(a.id)) continue;
+      // Issue 1129: told Hub's list, and its launch has it: nothing to do.
+      // A launch without it (Hub was down) still restarts.
+      if (s.hash === live.hash && loaded) continue;
       const restartOn = this.d.restartOn?.(a.id) ?? true;
       if (!loaded && restartOn && this.tried[a.id] !== live.hash) {
         if ((await this.d.state(a.id).catch(() => "busy")) !== "idle") continue;
