@@ -333,11 +333,59 @@ describe("SRV-1b: den_update", () => {
     });
   });
 
-  it("a project's agent can't update Den: refused before anything is asked", async () => {
-    const { api, calls } = fakeApi([]);
+  it("a project's agent asks too: a held write, and the answer says it waits for a person's Allow and where", async () => {
+    const { api, calls } = fakeApi([{ state: "pending" }]);
+    const r = await callTool(
+      "den_update",
+      { reason: "a fix we need", version: "0.4.44" },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "den_update",
+      args: { version: "0.4.44", reason: "a fix we need" },
+    });
+    // Asked and read back; never decided from here.
+    expect(calls.some((c) => /\/decide$/.test(c.path))).toBe(false);
+    expect(r.text).toMatch(/Den is not updated until a person Allows it/);
+    expect(r.text).toMatch(/Den's browser/);
+    expect(r.text).toMatch(/Needs you/);
+    expect(r.text).toContain(`request ${ID}`);
+    expect(r.text).toMatch(/approval_check/);
+  });
+
+  it("a project's agent's update, once a person Allows it: the server's result, and to end the turn", async () => {
+    const { api } = fakeApi([
+      { state: "pending" },
+      { state: "done", result: { ok: true, to: "0.4.44", restarting: true } },
+    ]);
+    const r = await callTool(
+      "den_update",
+      { reason: "a fix we need", version: "0.4.44" },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(JSON.parse(r.text)).toMatchObject({
+      approved: true,
+      result: { to: "0.4.44", restarting: true },
+      next: expect.stringMatching(/End your turn now/),
+    });
+  });
+
+  it("a project's agent's update the person denies: refused, nothing ran", async () => {
+    const { api } = fakeApi([{ state: "denied" }]);
     const r = await callTool("den_update", { reason: "x" }, ctx(api, true));
     expect(r.isError).toBe(true);
-    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+    expect(r.text).toMatch(/denied it .*nothing ran/);
+  });
+
+  it("Den's own agent's pending update reads as before", async () => {
+    const { api } = fakeApi([{ state: "pending" }]);
+    const r = await callTool("den_update", { reason: "x" }, ctx(api));
+    expect(r.isError).toBe(false);
+    expect(r.text).toBe(
+      `Waiting for the person to approve in Den (request ${ID}); call approval_check with this id later.`,
+    );
   });
 });
 

@@ -294,7 +294,12 @@ export async function handleApprovalRoutes(
      * person's Allow ("server_agent.self_update: auto"), or null. Asked
      * only for an agent its token proves, never a claim.
      */
-    autoAllow?: (action: string, agent: string) => string | null;
+    /** The asker's agent id and its token's scope (workspace). */
+    autoAllow?: (
+      action: string,
+      agent: string,
+      workspace: string | undefined,
+    ) => string | null;
     /**
      * Issue 160: the approval policy's kind for an agent's routine write
      * in `project` (shared/approval-policy.ts policyFor). Never asked for
@@ -486,7 +491,7 @@ export async function handleApprovalRoutes(
           !checked.areas?.length &&
           !heldBy &&
           !askAnyway
-            ? (deps.autoAllow?.(action, a.agent) ?? null)
+            ? (deps.autoAllow?.(action, a.agent, agent?.workspace) ?? null)
             : null;
       } catch {
         auto = null; // a bad setting: held, as with ask
