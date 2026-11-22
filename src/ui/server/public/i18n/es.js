@@ -1279,7 +1279,7 @@
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
     "set.server.gate_boxes": "Máquinas de pruebas",
     "set.server.gate_boxes.d":
-      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. Una máquina con horario solo toma ejecuciones dentro de él, en la hora de esta máquina. Fuera de él, o apagada, Den nunca la contacta; una ejecución que ya está en ella termina. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     "set.server.gate_box_check":
       "Espera de la comprobación de una máquina, en segundos",
     "set.server.gate_box_check.d":
@@ -2569,6 +2569,11 @@
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
     "bell.m.toLead": "{name} preguntó al líder, {lead}: {text}",
+    "bell.m.settled": "{name} retiró su pregunta, resuelta: {reason} ({text})",
+    "bell.m.settledYou":
+      "Retiraste la pregunta de {name}, resuelta: {reason} ({text})",
+    "bell.m.settledLate":
+      "La pregunta de {name} se resolvió: {reason}; tu respuesta llegó después y se le pasó ({text})",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",
@@ -3013,7 +3018,11 @@
     "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
     "gate.boxDown": "{box}: omitida, no responde ({reason})",
     "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: omitida, no se puede leer su memoria libre ({reason})",
     "gate.boxSkip": "no puede usar {box}: {reason}",
+    "gate.boxOff": "{box}: omitida, apagada",
+    "gate.boxClosed": "{box}: omitida, fuera de su horario (abre a las {time})",
     "gate.yielded": "Dejó pasar a {to}",
     "gate.class": "Clase: {name}",
     "gate.window": "espera su horario {window}",
@@ -3416,6 +3425,13 @@
     "set.ui.boxHoldIs": "archivo de pausa {path}",
     "set.ui.boxScaleIs": "tiempo ×{n}",
     "set.ui.boxRemove": "Quitar",
+    "set.ui.boxWindow": "Horario (hora de esta máquina)",
+    "set.ui.boxRecheck": "Volver a comprobar tras, en segundos",
+    "set.ui.boxOn": "Encendida",
+    "set.ui.boxWindowIs": "{window}, hora de esta máquina",
+    "set.ui.boxIsOff": "apagada",
+    "set.ui.boxTurnOn": "Encender",
+    "set.ui.boxTurnOff": "Apagar",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",
