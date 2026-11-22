@@ -30,6 +30,25 @@ drops or the release run ends. `gate status` and the Gate panel say why:
 "waiting: load 38 ≥ 24 while a release run holds the browser slot".
 `gate settings --cpu-hold-load N` sets it.
 
+Issue 1048: a plain cpu ask also waits while the 5-minute load is over
+`load_hold_per_core` × the cores (default 3: 54 on 18 cores), but only while
+another cpu run is going. With none going, the next one starts whatever the
+load, so the line slows down and never stops. Release-priority asks and
+holders never wait. The reason reads "waiting: this machine's load is 60.0,
+over 3 × 18 cores (54), while another unit test run is going; it starts once
+the load drops or that run ends". 0 turns it off; `gate settings
+--load-hold-per-core N` sets it.
+
+`DEN_GATE_LOAD5` is a test override: when set, the gate reads that number as
+the 5-minute load instead of the machine's, for both holds (issues 1009 and
+1048). Den's test setup sets it to 0, so a busy machine never holds a test's
+own slot, and a drill can set it high. Anything that sets it skips the real
+load, so never set it in a service's environment.
+
+Each cpu run on this machine gets `DEN_GATE_WORKERS`: the cores shared by
+the cpu slots, at least 2 (9 on 18 cores with 2 slots). Den's jest config
+reads it when `DEN_TEST_WORKERS` is unset; any runner can.
+
 A browser run that waits only because more cpu runs hold the machine than
 may run beside it is never starved: while it waits, no new cpu run starts
 past that number. Once they drop to it, the browser run starts.

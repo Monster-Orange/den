@@ -98,13 +98,43 @@ function localVars(vars) {
 }
 
 /**
+ * Issue 746: a held write's item (a lapsed request) keeps its action and
+ * params: `what` in the page's language, as the Allow dialog words it
+ * (shell.js apWhat). An item from before, or a page without apWhat, keeps
+ * the stored English `what`.
+ */
+function heldWhat(vars) {
+  const words = window.denApWhat;
+  if (typeof vars?.action !== "string" || typeof words !== "function")
+    return vars;
+  let params = {};
+  try {
+    params = vars.params ? JSON.parse(String(vars.params)) : {};
+  } catch {
+    params = {};
+  }
+  return {
+    ...vars,
+    what: words({ action: vars.action, params, summary: vars.what }),
+  };
+}
+
+/** Issue 746: a Needs you entry's request in the page's words. */
+function allowWhat(w) {
+  const words = window.denApWhat;
+  return typeof words === "function"
+    ? String(words({ action: w.action, params: w.params, summary: w.what }))
+    : String(w.what ?? w.action ?? "");
+}
+
+/**
  * What a row says: Den's own items in the page's language (their key and
  * values), else the stored text (Hub's, or an item from before keys).
  */
 export function noteText(n) {
   const m = n?.msg;
   if (m && typeof m.key === "string" && /^bell\.m\./.test(m.key)) {
-    const said = tr(m.key, localVars(m.vars ?? {}));
+    const said = tr(m.key, heldWhat(localVars(m.vars ?? {})));
     if (said && said !== m.key) return said;
   }
   return n?.text ?? "";
@@ -215,7 +245,7 @@ export function allowsOf(b) {
  * (shell.js's denApDetailLines). `open`: Review is open.
  */
 function allowRowHtml(w, open) {
-  const what = String(w.what ?? w.action ?? "");
+  const what = allowWhat(w);
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
     : tr("bell.ap.rowAsk", { what });
