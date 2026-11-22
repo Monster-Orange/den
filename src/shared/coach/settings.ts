@@ -13,7 +13,10 @@
  *                prompts, secrets taken out) to the agent runtime's model
  *                provider, on the cheap model, within budget_tokens a run.
  *                Each call also carries the runtime CLI's own context (about
- *                650 tokens), which includes the signed-in account's email
+ *                650 tokens), which includes the email the CLI is signed in with.
+ *                judge.enabled counts only in config/local/user.yml: the
+ *                distribution's value is never read (readAgentsConfig), and
+ *                doctor names it, so an agent can't switch judging on.
  *
  * Config-driven, with permissive defaults. A counted run uses no model;
  * only judging (judge.enabled) does.
@@ -84,7 +87,7 @@ export const JUDGE_DEFAULTS: Readonly<JudgeSettings> = Object.freeze({
 
 /** What Settings says about turning judging on. */
 export const JUDGE_SENDS_NOTE =
-  "On, the Coach sends short samples of agents' asks, messages and the person's prompts, with secrets taken out, to the model provider, to judge them. Each call also carries the runtime CLI's own context, which includes the signed-in account's email.";
+  "On, the Coach sends short samples of agents' asks, messages and the person's prompts, with secrets taken out, to the model provider, to judge them. Each call also carries the runtime CLI's own context, which includes the email the CLI is signed in with.";
 
 export interface CoachSettings {
   enabled: boolean;

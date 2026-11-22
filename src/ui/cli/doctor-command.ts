@@ -1690,7 +1690,31 @@ export function deprecatedKeys(
     ...userYmlOrgKeys(readUser),
     ...collapseDoneKey(),
     ...teamSelfUpdateKey(),
+    ...teamJudgeKey(),
   ];
+}
+
+/**
+ * Issue 52: agents.coach.judge.enabled is the person's, read only from
+ * config/local/user.yml. Judging sends samples, the person's prompts among
+ * them, to the model provider, so an agent working beside the
+ * distribution's config can't switch it on there. Set there, doctor says
+ * it does nothing and where it belongs.
+ */
+export function teamJudgeKey(
+  read: () => { agents?: unknown } = readDenConfig,
+): string[] {
+  try {
+    const coach = (read().agents as { coach?: unknown } | undefined)?.coach;
+    const judge = (coach as { judge?: unknown } | null | undefined)?.judge;
+    if (!judge || typeof judge !== "object" || !("enabled" in judge)) return [];
+    const file = product().configFile;
+    return [
+      `${file}: agents.coach.judge.enabled does nothing there: it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on sending samples to the model provider`,
+    ];
+  } catch {
+    return [];
+  }
 }
 
 /**

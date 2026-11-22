@@ -75,7 +75,15 @@ function overlap(a: Set<string>, b: Set<string>): number {
   return n;
 }
 
-const clean = (t: string) => redactSecrets(String(t ?? "")).slice(0, 300);
+/**
+ * Control and direction-changing characters out: a model's reason, or an
+ * agent's words, are shown as plain text on a terminal and a page.
+ */
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+/g;
+export const plainText = (t: string) => t.replace(CONTROL, " ");
+const clean = (t: string) =>
+  plainText(redactSecrets(String(t ?? ""))).slice(0, 300);
 
 /** The items the model judges, at most `max`: repeats, relays, then asks. */
 export function judgeCandidates(report: CoachReport, max: number): JudgeItem[] {
@@ -173,7 +181,7 @@ function verdictsOf(text: string, ids: Set<string>): Verdict[] {
       {
         id: o.id,
         yes: o.yes,
-        why: typeof o.why === "string" ? o.why.slice(0, 300) : "",
+        why: typeof o.why === "string" ? plainText(o.why).slice(0, 300) : "",
       },
     ];
   });

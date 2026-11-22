@@ -27,6 +27,12 @@ import {
   JUDGE_DEFAULTS,
   checkCoachConfig,
 } from "../../../src/shared/coach/settings.js";
+import {
+  readAgentsConfig,
+  type DenConfig,
+  type UserConfig,
+} from "../../../src/shared/den-config.js";
+import { teamJudgeKey } from "../../../src/ui/cli/doctor-command.js";
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -487,5 +493,89 @@ describe("T-d review fixes", () => {
       checkCoachConfig({ judge: { budget_tokens_day: 5 } }).judge
         .budget_tokens_day,
     ).toBe(5);
+  });
+});
+
+describe("T-d second review: judging is the person's to switch on", () => {
+  const dist = (enabled: unknown) =>
+    ({
+      environments: [],
+      agents: { coach: { enabled: true, judge: { enabled } } },
+    }) as unknown as DenConfig;
+
+  it("agents.coach.judge.enabled in the distribution's config does nothing", () => {
+    expect(readAgentsConfig(dist(true), {}).coach?.judge.enabled).toBe(false);
+  });
+
+  it("it comes from config/local/user.yml only", () => {
+    expect(
+      readAgentsConfig(dist(false), {
+        agents: { coach: { judge: { enabled: true } } },
+      } as UserConfig).coach?.judge.enabled,
+    ).toBe(true);
+    // user.yml's switch with no Coach block in the distribution.
+    expect(
+      readAgentsConfig(
+        { environments: [] } as unknown as DenConfig,
+        {
+          agents: { coach: { judge: { enabled: true } } },
+        } as UserConfig,
+      ).coach?.judge.enabled,
+    ).toBe(true);
+  });
+
+  it("a user.yml value that isn't true or false is refused, naming the key", () => {
+    expect(() =>
+      readAgentsConfig(dist(false), {
+        agents: { coach: { judge: { enabled: "yes" } } },
+      } as UserConfig),
+    ).toThrow(/agents\.coach\.judge\.enabled/);
+  });
+
+  it("budgets and model stay in the distribution's config (they only narrow)", () => {
+    const c = readAgentsConfig(
+      {
+        environments: [],
+        agents: { coach: { judge: { budget_tokens: 5000, model: "sonnet" } } },
+      } as unknown as DenConfig,
+      {},
+    ).coach!;
+    expect(c.judge.budget_tokens).toBe(5000);
+    expect(c.judge.model).toBe("sonnet");
+  });
+
+  it("doctor names the distribution's switch and where it belongs", () => {
+    const out = teamJudgeKey(() => dist(true));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatch(/agents\.coach\.judge\.enabled/);
+    expect(out[0]).toMatch(/config\/local\/user\.yml/);
+    expect(
+      teamJudgeKey(() => ({ environments: [] }) as unknown as DenConfig),
+    ).toEqual([]);
+  });
+
+  it("a verdict's reason keeps no control characters (it is shown as text)", async () => {
+    const r = structuredClone(sample);
+    await judgeReport(
+      r,
+      { ...JUDGE_DEFAULTS, enabled: true },
+      async (prompt) => {
+        const ids = [...prompt.matchAll(/"id":\s*"([^"]+)"/g)].map((m) => m[1]);
+        return {
+          text: JSON.stringify(
+            ids.map((id) => ({
+              id,
+              yes: true,
+              why: "ok\u001b[31m red\u0007‮<b>x</b>",
+            })),
+          ),
+          tokens: 10,
+        };
+      },
+    );
+    const why = r.findings![0].samples![0].problems[0];
+    for (const c of ["\u001b", "\u0007", "\u202e"])
+      expect(why).not.toContain(c);
+    expect(why).toContain("<b>x</b>"); // kept as text; the page sets textContent
   });
 });
