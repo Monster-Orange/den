@@ -68,12 +68,13 @@ function codexOnPath(r: Rig): string {
 const ids = (rows: { id: string }[]) => rows.map((x) => x.id);
 
 describe("the catalog", () => {
-  it("ships Claude Code, Codex CLI, Gemini CLI and Grok Build, each valid by its own validator", () => {
+  it("ships Claude Code, Codex CLI, Gemini CLI, Grok Build and Antigravity CLI, each valid by its own validator", () => {
     expect(ids(BUILTIN_CATALOG)).toEqual([
       "den-claude",
       "codex",
       "gemini",
       "grok",
+      "antigravity",
     ]);
     for (const e of BUILTIN_CATALOG) {
       expect(validateCatalogEntry(e, e.id)).toEqual(e);
@@ -87,6 +88,7 @@ describe("the catalog", () => {
       ["codex", "OpenAI", "codex"],
       ["gemini", "Google", "gemini"],
       ["grok", "xAI", "grok"],
+      ["antigravity", "Google", "agy"],
     ]);
   });
 
@@ -151,6 +153,8 @@ describe("the catalog", () => {
       ["gemini", "esc-cr", undefined, undefined],
       // Grok Build: no documented key; the default.
       ["grok", undefined, undefined, undefined],
+      // Antigravity CLI: Ctrl+J (LF) inserts a newline.
+      ["antigravity", "lf", undefined, undefined],
     ]);
     expect(softNewlineSeq(BUILTIN_CATALOG[0])).toBe("\x1b\r");
     expect(softNewlineSeq(BUILTIN_CATALOG[1])).toBe("\n");
@@ -213,6 +217,7 @@ describe("discovery", () => {
       "codex",
       "gemini",
       "grok",
+      "antigravity",
       "generic",
     ]);
     expect(rows[1]).toMatchObject({
@@ -234,6 +239,7 @@ describe("discovery", () => {
       "den-claude",
       "gemini",
       "grok",
+      "antigravity",
       "generic",
     ]);
     expect(fs.existsSync(r.ran)).toBe(false);
@@ -283,7 +289,7 @@ describe("discovery", () => {
       path.join(r.dir, "fake-shell"),
       `#!/bin/sh\necho "$1" >> "${asked}"\n`,
     );
-    for (const b of ["codex", "gemini", "grok"])
+    for (const b of ["codex", "gemini", "grok", "agy"])
       write(path.join(path.dirname(r.claude), b), fakeCli(r.ran, `${b} 1.0.0`));
     r.deps.env = { ...r.deps.env, DEN_LOGIN_SHELL: shell };
     const d = resolveAgentsDeps(r.deps);
@@ -301,8 +307,13 @@ describe("discovery", () => {
       path.join(r.dir, "fake-shell"),
       `#!/bin/sh\necho "$1" >> "${asked}"\n`,
     );
-    for (const b of ["codex", "gemini", "grok"])
-      r.runtimeBins[b] = write(
+    for (const [id, b] of [
+      ["codex", "codex"],
+      ["gemini", "gemini"],
+      ["grok", "grok"],
+      ["antigravity", "agy"],
+    ])
+      r.runtimeBins[id] = write(
         path.join(path.dirname(r.claude), b),
         fakeCli(r.ran, `${b} 1.0.0`),
       );

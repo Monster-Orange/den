@@ -41,6 +41,8 @@ import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { dialogHtml, mountDialog } from "./dialog-den.js";
+import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
+import { projectColour, projectLabel } from "./workspace-picker.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -418,6 +420,27 @@ function alertRows() {
       read: (ctx) => ctx.data.alerts?.phone !== false,
       write: (v, ctx) => ctx.post({ alerts: { phone: v === true } }),
     },
+    {
+      // Issue 172: which devices get push, a test alert to each, and
+      // Forget for one no longer used (a lost phone).
+      id: "notifications.push_devices",
+      category: "notifications",
+      label: "Devices that get push",
+      description:
+        "Each device that turned on push. Send a test alert to check that your phone gets it: each device says whether its push service took it. Forget one you no longer use.",
+      keywords: [
+        "notifications",
+        "alerts",
+        "phone",
+        "push",
+        "devices",
+        "test",
+        "iphone",
+      ],
+      scope: "user",
+      control: { type: "custom", render: drawPushDevices },
+      read: () => null,
+    },
     ...[
       [
         "quiet_from",
@@ -535,6 +558,8 @@ function drawPush(host, ctx, io) {
       got = "failed";
     }
     if (got === "ok" && on) await io.save(true);
+    if (got === "ok" && typeof window !== "undefined")
+      window.dispatchEvent(new CustomEvent("den:push-devices"));
     const now = !!(await pushSubscription());
     draw(now, got === "ok" ? "" : why[got]());
   };
@@ -542,6 +567,146 @@ function drawPush(host, ctx, io) {
   void pushSubscription().then((s) => {
     if (s && ctx.data.alerts?.phone !== false) draw(true, "");
   });
+}
+
+/** A push service, as the device list says it. */
+const pushServiceName = (svc) =>
+  ({
+    apple: () => L("set.notifications.svc.apple", "Apple push"),
+    google: () => L("set.notifications.svc.google", "Google push"),
+    mozilla: () => L("set.notifications.svc.mozilla", "Firefox push"),
+    microsoft: () => L("set.notifications.svc.microsoft", "Microsoft push"),
+  })[svc]?.() ?? L("set.notifications.svc.other", "Other push service");
+
+/** This browser's device id (the server's: a hash of its endpoint), or "". */
+async function thisDeviceId() {
+  try {
+    const sub = await pushSubscription();
+    if (!sub?.endpoint || !globalThis.crypto?.subtle) return "";
+    const d = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(sub.endpoint),
+    );
+    return [...new Uint8Array(d)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 16);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Issue 172: the person's devices that get push. Each one: what it is,
+ * its push service, when it was added (local time), "this device", and
+ * Forget. Send a test alert pushes to each and says, per device, whether
+ * its push service took it. Both writes go through the working pop-up.
+ */
+export function drawPushDevices(host, ctx) {
+  let result = null; // the last test's answer, by device id
+  // The pressed button, named ({ button }), holds the kit's dots (issue 698).
+  const busy = (name, path, body, { button }) => {
+    const run = (headers) => ctx.shell.api("POST", path, body, { headers });
+    return ctx.shell.busyAction
+      ? ctx.shell.busyAction(name, run, { button, toastFast: false })
+      : run({}).catch(() => null);
+  };
+  const outcome = (d) =>
+    d.reached
+      ? L("set.notifications.test.reached", "Sent: its push service took it.")
+      : d.gone
+        ? L(
+            "set.notifications.test.gone",
+            "Gone: this device no longer takes push, so it was removed.",
+          )
+        : d.status
+          ? L(
+              "set.notifications.test.refused",
+              "Not sent: its push service answered {status}.",
+              { status: d.status },
+            )
+          : L(
+              "set.notifications.test.noAnswer",
+              "Not sent: no answer from its push service in time (Push wait).",
+            );
+  const draw = (devices, mine) => {
+    const rows = devices
+      .map((d) => {
+        const what = [d.device, pushServiceName(d.service)]
+          .filter(Boolean)
+          .join(" \u00b7 ");
+        const r = result?.get(d.id);
+        return (
+          `<li class="set-push-device" data-device="${escHtml(d.id)}" data-service="${escHtml(d.service ?? "")}"${d.id === mine ? " data-this" : ""}>` +
+          `<span><b>${escHtml(what)}</b>` +
+          (d.id === mine
+            ? ` <span class="set-note">${escHtml(L("set.notifications.devices.this", "(this device)"))}</span>`
+            : "") +
+          `<br><span class="set-note">${escHtml(L("set.notifications.devices.added", "Added {t}", { t: shortTime(d.at) }))}</span>` +
+          (r
+            ? `<br><span class="${r.reached ? "set-note" : "set-warn"}" data-test-result role="status">${escHtml(outcome(r))}</span>`
+            : "") +
+          `</span> <button type="button" class="btn" data-forget="${escHtml(d.id)}">${escHtml(L("set.notifications.devices.forget", "Forget"))}</button></li>`
+        );
+      })
+      .join("");
+    const gone = result
+      ? [...result.values()].filter(
+          (r) => r.gone && !devices.some((d) => d.id === r.id),
+        )
+      : [];
+    host.innerHTML =
+      (devices.length
+        ? `<ul id="set-push-devices" style="list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px">${rows}</ul>`
+        : `<p class="set-note" id="set-push-none">${escHtml(L("set.notifications.devices.none", "No device gets push yet. Open __DEN_TITLE__ on your phone (Pair a device, under Access, signs it in), then turn on Alerts on this device by push there."))}</p>`) +
+      gone
+        .map(
+          (r) =>
+            `<p class="set-warn" data-test-result role="status">${escHtml([r.device, pushServiceName(r.service)].filter(Boolean).join(" \u00b7 "))}: ${escHtml(outcome(r))}</p>`,
+        )
+        .join("") +
+      `<button type="button" class="btn" id="set-push-test"${devices.length ? "" : " disabled"}>${escHtml(L("set.notifications.devices.test", "Send a test alert"))}</button>`;
+    host.querySelector("#set-push-test")?.addEventListener("click", (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      void busy("push-test", "/api/alerts/test", {}, { button: btn })
+        .then((r) => {
+          if (r && Array.isArray(r.devices))
+            result = new Map(r.devices.map((d) => [d.id, d]));
+        })
+        .finally(() => void load());
+    });
+    host.querySelectorAll("[data-forget]").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        btn.disabled = true;
+        result?.delete(btn.dataset.forget);
+        void busy(
+          "push-forget",
+          "/api/alerts/forget",
+          { id: btn.dataset.forget },
+          { button: btn },
+        ).finally(() => void load());
+      }),
+    );
+  };
+  const load = async () => {
+    let devices = [];
+    try {
+      const r = await ctx.shell.api("GET", "/api/alerts/devices");
+      devices = Array.isArray(r?.devices) ? r.devices : [];
+    } catch {
+      devices = [];
+    }
+    if (host.isConnected !== false) draw(devices, await thisDeviceId());
+  };
+  // This device's push switch (drawPush) changed the list: read it again.
+  const changed = () =>
+    host.isConnected === false
+      ? window.removeEventListener("den:push-devices", changed)
+      : void load();
+  if (typeof window !== "undefined")
+    window.addEventListener("den:push-devices", changed);
+  void load();
 }
 
 /** "3 min ago", "2 h ago", "5 d ago", or "just now"; `now` for tests. */
@@ -595,7 +760,11 @@ export function deviceLine(d, now = Date.now()) {
         ? L("set.ui.viaCode", "approved with a code")
         : d.via === "claim"
           ? L("set.ui.viaClaim", "claimed with a setup link")
-          : L("set.ui.viaLink", "signed in with a one-time link");
+          : d.via === "agent-view"
+            ? L("set.ui.viaAgentView", "{agent}'s read-only view", {
+                agent: d.agent || "",
+              })
+            : L("set.ui.viaLink", "signed in with a one-time link");
   const name = deviceWords(d.name);
   const from = d.client || d.host;
   return {
@@ -811,16 +980,30 @@ function drawDevices(host, ctx) {
   load();
 }
 
-/** One waiting device's line: its code, browser and OS, address, age. */
+/** "10:42" in the person's chosen time zone (the kit's). */
+function clockOf(iso) {
+  return formatTime(iso, { style: "time" });
+}
+
+/**
+ * One waiting device's line: its browser and OS, address, age, and the
+ * `web login` run it came from. Issue 819: never its code (the person reads
+ * that off the new device's own screen and types it).
+ */
 export function waitingLine(w, now = Date.now()) {
   return {
-    title: `${w.code} · ${deviceWords(w.device)}`,
+    title: deviceWords(w.device),
     tip: w.createdAt
       ? L("set.ui.asked", "asked {ago}", { ago: formatTitle(w.createdAt) })
       : "",
     detail: [
       w.client,
       L("set.ui.asked", "asked {ago}", { ago: seenAgo(w.createdAt, now) }),
+      w.fromLogin
+        ? L("set.ui.fromLogin", "from the web login run at {time}", {
+            time: clockOf(w.fromLogin),
+          })
+        : "",
     ]
       .filter(Boolean)
       .join(" · "),
@@ -828,11 +1011,66 @@ export function waitingLine(w, now = Date.now()) {
 }
 
 /**
- * Waiting devices (SEC-2a): the computers whose signed-out page shows a
- * code, with Approve and Deny. Approving signs that page in by itself.
+ * Issue 819: a typed pairing code as the server reads it: any case, spaces
+ * and dashes ignored. Approve is offered once it has six characters.
+ */
+export function typedPairCode(v) {
+  return String(v ?? "")
+    .toUpperCase()
+    .replace(/[\s-]/g, "");
+}
+
+/** Issue 819: whether a typed code can be sent (six characters). */
+export function pairCodeReady(v) {
+  return typedPairCode(v).length === 6;
+}
+
+/**
+ * Issue 819: an Approve or Deny refused, in this page's language when the
+ * server says why (only a person's signed-in browser approves a device,
+ * with the code that device's screen shows).
+ */
+export function approveRefusal(e) {
+  const code = e && e.code;
+  if (code === "approve_not_agent" || code === "fixture_cannot_approve")
+    return L(
+      "set.access.approveNotAgent",
+      "Only a person approves a device, from their own signed-in browser.",
+    );
+  if (code === "approve_needs_browser" || code === "signin_to_approve")
+    return L(
+      "set.access.approveNeedsBrowser",
+      "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
+    );
+  if (code === "wrong" || code === "malformed")
+    return L(
+      "set.access.wrongCode",
+      "That code doesn't match the one on that computer's screen. Check it and type it again.",
+    );
+  if (code === "rate_limited")
+    return L(
+      "set.access.tooManyTries",
+      "Too many tries. Wait a minute and try again.",
+    );
+  if (code === "ended" || code === "expired" || code === "unknown")
+    return L(
+      "set.access.ended",
+      "That request ended or expired. Nothing was allowed.",
+    );
+  return String((e && e.message) || e);
+}
+
+/**
+ * Waiting devices (SEC-2a; issue 819): the computers whose signed-out page
+ * shows a code (a sign-in link opened there among them), each with a field
+ * for that code, Approve and Deny. Approving needs the code typed off that
+ * computer's own screen; it then signs in by itself. Only a person's
+ * signed-in browser may. A request past its time is dropped.
  */
 function drawWaiting(host, ctx) {
   let timer = null;
+  let shown = "";
+  let first = true;
   const load = () => {
     clearTimeout(timer);
     if (!host.isConnected && timer !== null) return;
@@ -841,54 +1079,117 @@ function drawWaiting(host, ctx) {
         r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
       )
       .then((b) => {
-        const list = b.waiting || [];
         const now = Date.now();
+        const list = (b.waiting || []).filter(
+          (w) =>
+            w &&
+            typeof w.ref === "string" &&
+            !(w.expiresAt && Date.parse(w.expiresAt) <= now),
+        );
+        const refs = list.map((w) => w.ref).join(",");
+        // A new request shows up without a reload.
+        timer = setTimeout(load, 5000);
+        if (refs === shown && list.length) {
+          // The same requests: only their ages change; typed codes stay.
+          list.forEach((w) => {
+            const el = host.querySelector(
+              `.set-waiting[data-ref="${CSS.escape(w.ref)}"] .set-note`,
+            );
+            if (el) el.textContent = waitingLine(w, now).detail;
+          });
+          return;
+        }
+        // Typed codes survive a redraw (a request came or went).
+        const typed = {};
+        host.querySelectorAll("input[data-code-for]").forEach((i) => {
+          typed[i.dataset.codeFor] = i.value;
+        });
+        const focused =
+          document.activeElement && document.activeElement.dataset
+            ? document.activeElement.dataset.codeFor
+            : undefined;
+        shown = refs;
         host.innerHTML = list.length
           ? '<div id="set-waiting" style="width:100%">' +
             list
-              .map((w) => {
+              .map((w, i) => {
                 const l = waitingLine(w, now);
+                const ref = escHtml(w.ref);
+                const id = `set-waiting-code-${i}`;
                 return (
-                  `<div class="set-waiting" data-code="${escHtml(w.code)}" style="${ROW_STYLE}">` +
-                  `<div style="flex:1 1 220px;min-width:0"><div class="mono">${escHtml(l.title)}</div>` +
+                  `<div class="set-waiting" data-ref="${ref}" style="${ROW_STYLE}">` +
+                  `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}</div>` +
                   `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
-                  `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">${escHtml(L("set.ui.approve", "Approve"))}</button>` +
-                  `<button type="button" class="btn" data-deny="${escHtml(w.code)}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
+                  `<label for="${id}" class="set-note">${escHtml(L("set.ui.codeLabel", "Code on its screen"))}</label>` +
+                  `<input id="${id}" class="mono" data-code-for="${ref}" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" style="width:10ch">` +
+                  `<button type="button" class="btn primary" data-approve="${ref}" disabled>${escHtml(L("set.ui.approve", "Approve"))}</button>` +
+                  `<button type="button" class="btn" data-deny="${ref}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
                 );
               })
               .join("") +
             '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
           : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve."))}</output>`;
-        const act = (btn, path, code) => {
+        const act = (btn, path, body) => {
           btn.disabled = true;
+          // Issue 698: the kit's dots on the button until the server answers.
+          const release = window.denShell?.holdDots?.(btn) ?? (async () => {});
           ctx.shell
-            .api("POST", path, { code })
-            .then(load)
-            .catch((e) => {
+            .api("POST", path, body)
+            .then(async () => {
+              await release();
+              shown = "";
+              load();
+            })
+            .catch(async (e) => {
+              await release();
               btn.disabled = false;
               const out = host.querySelector("#set-waiting-out");
               if (out)
-                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(approveRefusal(e))}</span>`;
+              if (e && (e.code === "ended" || e.code === "expired")) {
+                shown = "";
+                load();
+              }
             });
         };
-        host
-          .querySelectorAll("[data-approve]")
-          .forEach((b) =>
-            b.addEventListener("click", () =>
-              act(b, "/api/web/approve", b.dataset.approve),
-            ),
+        host.querySelectorAll("input[data-code-for]").forEach((input) => {
+          const ref = input.dataset.codeFor;
+          const go = host.querySelector(`[data-approve="${CSS.escape(ref)}"]`);
+          const sync = () => {
+            go.disabled = !pairCodeReady(input.value);
+          };
+          if (typed[ref] !== undefined) input.value = typed[ref];
+          sync();
+          input.addEventListener("input", sync);
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !go.disabled) {
+              e.preventDefault();
+              go.click();
+            }
+          });
+          go.addEventListener("click", () =>
+            act(go, "/api/web/approve", {
+              ref,
+              code: typedPairCode(input.value),
+            }),
           );
+          if (focused === ref) input.focus();
+        });
+        // The first (newest, or a link's) request's field is ready to type.
+        if (first && list.length && !focused) {
+          host.querySelector("input[data-code-for]")?.focus();
+          first = false;
+        }
         host
           .querySelectorAll("[data-deny]")
           .forEach((b) =>
             b.addEventListener("click", () =>
-              act(b, "/api/web/deny", b.dataset.deny),
+              act(b, "/api/web/deny", { ref: b.dataset.deny }),
             ),
           );
-        // A new request shows up without a reload.
-        timer = setTimeout(load, 5000);
       })
       .catch(() => {
+        shown = "";
         host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.waitingSignedIn", "Waiting devices can only be listed signed in, or on this machine."))}</output>`;
       });
   };
@@ -1260,6 +1561,242 @@ function drawRunnerTokens(host, ctx) {
   draw();
 }
 
+/**
+ * Issue 625: the test boxes, browser slots on other machines. A person
+ * adds one (its name, how Den reaches it, its slots, its hold file and
+ * time scale, its window in this machine's time, its recheck time, on or
+ * off), turns one on or off, and removes one. Saving a box of the same
+ * name replaces it.
+ * Never a key: ssh names a key file on this machine.
+ */
+function drawGateBoxes(host, ctx) {
+  const shell = ctx.shell;
+  const field = (id, key, en, type, extra) =>
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L(key, en))}</span>` +
+    `<input id="${id}" type="${type}" ${extra || ""}></label>`;
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;flex-basis:100%">` +
+    field("set-box-name", "set.ui.boxName", "Name", "text", 'maxlength="64"') +
+    field(
+      "set-box-ssh",
+      "set.ui.boxSsh",
+      "ssh (login@host)",
+      "text",
+      'maxlength="320"',
+    ) +
+    field(
+      "set-box-port",
+      "set.ui.boxPort",
+      "ssh port",
+      "number",
+      'min="1" max="65535" step="1"',
+    ) +
+    field(
+      "set-box-key",
+      "set.ui.boxKey",
+      "ssh key file",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-pw",
+      "set.ui.boxPw",
+      "Playwright address (ws://)",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-slots",
+      "set.ui.boxSlots",
+      "Browser slots",
+      "number",
+      'min="1" max="64" step="1" value="1"',
+    ) +
+    field(
+      "set-box-hold",
+      "set.ui.boxHold",
+      "Hold file (on the box)",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-scale",
+      "set.ui.boxScale",
+      "Time scale",
+      "number",
+      'min="1" max="10" step="0.1" value="1"',
+    ) +
+    field(
+      "set-box-mem",
+      "set.ui.boxMem",
+      "Keep free memory (MB)",
+      "number",
+      'min="0" step="256" placeholder="2048"',
+    ) +
+    field(
+      "set-box-pwv",
+      "set.ui.boxPwv",
+      "Playwright version on the box",
+      "text",
+      'maxlength="48" placeholder="1.48.0"',
+    ) +
+    field(
+      "set-box-pws",
+      "set.ui.boxPws",
+      "Or Playwright by version (1.61=ws://…, 1.63=ws://…)",
+      "text",
+      `maxlength="2048" placeholder="${escHtml(L("set.ui.boxPwsEx", "1.61=ws://box:3931, 1.63=ws://box:3932"))}"`,
+    ) +
+    field(
+      "set-box-window",
+      "set.ui.boxWindow",
+      "Window (this machine's time)",
+      "text",
+      'maxlength="11" placeholder="00:00-08:00"',
+    ) +
+    field(
+      "set-box-recheck",
+      "set.ui.boxRecheck",
+      "Recheck after, in seconds",
+      "number",
+      'min="1" max="86400" step="1"',
+    ) +
+    `<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="set-box-on" checked> ${escHtml(L("set.ui.boxOn", "On"))}</label>` +
+    `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
+    `</div>` +
+    `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-box-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-box-out");
+  const list = host.querySelector("#set-box-list");
+  const save = host.querySelector("#set-box-save");
+  const val = (id) => host.querySelector(id).value.trim();
+  const num = (id) => (val(id) === "" ? undefined : Number(val(id)));
+  const pwPairs = (text) => {
+    if (!text) return undefined;
+    const map = {};
+    for (const part of text.split(",")) {
+      const p = part.trim();
+      if (!p) continue;
+      const eq = p.indexOf("=");
+      // A pair without "=" goes to the server as is, which says what is wrong.
+      if (eq < 1) map[p] = "";
+      else map[p.slice(0, eq).trim()] = p.slice(eq + 1).trim();
+    }
+    return map;
+  };
+  const warn = (e) => {
+    out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+  };
+  const post = (path, body, button) =>
+    shell
+      .busyAction(
+        "save",
+        (headers) => shell.api("POST", path, body, { headers }),
+        { button },
+      )
+      .then(() => {
+        out.innerHTML = "";
+        draw();
+      });
+  const draw = () =>
+    shell
+      .api("GET", "/api/gate-slots/boxes")
+      .then((b) => {
+        const boxes = (b && b.boxes) || [];
+        if (!boxes.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.boxNone", "No test boxes. Browser runs use this machine only."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          boxes
+            .map(
+              (x) =>
+                `<li style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span>${escHtml(x.name)}</span>` +
+                `<span class="set-note">${escHtml(
+                  L("set.ui.boxSlotsN", "{n} browser slots", {
+                    n: x.browser_slots,
+                  }),
+                )}</span>` +
+                `<span class="set-note mono">${escHtml(
+                  [
+                    x.ssh,
+                    x.playwright,
+                    ...Object.entries(x.playwright_endpoints || {}).map(
+                      ([v, ws]) => `${v}=${ws}`,
+                    ),
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                )}</span>` +
+                (x.hold_file
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxHoldIs", "hold file {path}", { path: x.hold_file }))}</span>`
+                  : "") +
+                (x.time_scale && x.time_scale !== 1
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxScaleIs", "time ×{n}", { n: x.time_scale }))}</span>`
+                  : "") +
+                (x.window
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxWindowIs", "{window}, this machine's time", { window: x.window }))}</span>`
+                  : "") +
+                (x.enabled === false
+                  ? `<span class="set-note set-warn">${escHtml(L("set.ui.boxIsOff", "turned off"))}</span>`
+                  : "") +
+                `<button type="button" class="btn sm" data-box-on="${escHtml(x.name)}" data-on="${x.enabled === false ? "1" : "0"}">${escHtml(
+                  x.enabled === false
+                    ? L("set.ui.boxTurnOn", "Turn on")
+                    : L("set.ui.boxTurnOff", "Turn off"),
+                )}</button>` +
+                `<button type="button" class="btn sm" data-box-rm="${escHtml(x.name)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-box-on]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/boxes/enable",
+              {
+                name: btn.getAttribute("data-box-on"),
+                enabled: btn.getAttribute("data-on") === "1",
+              },
+              btn,
+            ).catch(warn);
+          });
+        for (const btn of list.querySelectorAll("[data-box-rm]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/boxes/remove",
+              { name: btn.getAttribute("data-box-rm") },
+              btn,
+            ).catch(warn);
+          });
+      })
+      .catch(() => {});
+  save.addEventListener("click", () => {
+    const box = {
+      name: val("#set-box-name"),
+      ssh: val("#set-box-ssh") || undefined,
+      ssh_port: num("#set-box-port"),
+      ssh_identity: val("#set-box-key") || undefined,
+      playwright: val("#set-box-pw") || undefined,
+      browser_slots: num("#set-box-slots"),
+      hold_file: val("#set-box-hold") || undefined,
+      time_scale: num("#set-box-scale"),
+      min_free_mem_mb: num("#set-box-mem"),
+      playwright_version: val("#set-box-pwv") || undefined,
+      // Issue 1017: "1.61=ws://…, 1.63=ws://…" → version → address.
+      playwright_endpoints: pwPairs(val("#set-box-pws")),
+      window: val("#set-box-window") || undefined,
+      recheck_seconds: num("#set-box-recheck"),
+      enabled: host.querySelector("#set-box-on").checked,
+    };
+    post("/api/gate-slots/boxes", { box }, save).catch(warn);
+  });
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
   {
@@ -1326,6 +1863,111 @@ const EMBED_ROWS = [
     write: (v, ctx) => ctx.post({ embed: { app_key_audit_window_seconds: v } }),
   },
   {
+    // Issue 459: app event feeds read at once, across every project.
+    id: "embed.feed_max_streams",
+    category: "embed",
+    label: "App feeds read at once",
+    description:
+      "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
+    keywords: ["feed", "events", "stream", "limit"],
+    scope: "user",
+    keys: ["embed.feed_max_streams"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.embed?.feed_max_streams ?? 50,
+    write: (v, ctx) => ctx.post({ embed: { feed_max_streams: v } }),
+  },
+  {
+    id: "embed.feed_event_max_kb",
+    category: "embed",
+    label: "Largest app feed event",
+    description:
+      "The largest event an app feed keeps for its agent. A larger one is kept as a note that it came, without its data, and the project's notifications say so.",
+    keywords: ["feed", "event", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_event_max_kb"],
+    control: { type: "number", min: 1, max: 10240, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.feed_event_max_kb ?? 32,
+    write: (v, ctx) => ctx.post({ embed: { feed_event_max_kb: v } }),
+  },
+  {
+    id: "embed.feed_events_per_minute",
+    category: "embed",
+    label: "App feed events a minute",
+    description:
+      "How many events Den reads from one app feed in a minute. Past it, Den reads the rest as the rate allows, and the project's notifications say so.",
+    keywords: ["feed", "events", "rate", "minute", "limit"],
+    scope: "user",
+    keys: ["embed.feed_events_per_minute"],
+    control: { type: "number", min: 1, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.embed?.feed_events_per_minute ?? 600,
+    write: (v, ctx) => ctx.post({ embed: { feed_events_per_minute: v } }),
+  },
+  {
+    id: "embed.feed_keep_events",
+    category: "embed",
+    label: "Events one app feed keeps",
+    description:
+      "The most events Den keeps for one app feed. Past it, the oldest go, and the project's notifications say so when one wasn't read yet.",
+    keywords: ["feed", "events", "keep", "limit"],
+    scope: "user",
+    keys: ["embed.feed_keep_events"],
+    control: { type: "number", min: 1, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.embed?.feed_keep_events ?? 1000,
+    write: (v, ctx) => ctx.post({ embed: { feed_keep_events: v } }),
+  },
+  {
+    id: "embed.feed_read_max_kb",
+    category: "embed",
+    label: "Most app feed data in one read",
+    description:
+      "The most event data one app_feed_read call gives an agent. It reads the rest with another call.",
+    keywords: ["feed", "read", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_read_max_kb"],
+    control: { type: "number", min: 1, max: 102400, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.feed_read_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { feed_read_max_kb: v } }),
+  },
+  {
+    id: "embed.feed_list_timeout",
+    category: "embed",
+    label: "App feed list wait",
+    description:
+      "How long Den waits for an app's list of events (it fills a gap after a cut) before it tries again later.",
+    keywords: ["feed", "list", "timeout", "wait"],
+    scope: "user",
+    keys: ["embed.feed_list_timeout_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.embed?.feed_list_timeout_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ embed: { feed_list_timeout_seconds: v } }),
+  },
+  {
+    id: "embed.feed_list_max_mb",
+    category: "embed",
+    label: "Largest app feed list answer",
+    description:
+      "The largest list of events Den reads from an app at once. A larger answer is refused and tried again later.",
+    keywords: ["feed", "list", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_list_max_mb"],
+    control: { type: "number", min: 1, max: 1024, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.embed?.feed_list_max_mb ?? 8,
+    write: (v, ctx) => ctx.post({ embed: { feed_list_max_mb: v } }),
+  },
+  {
+    id: "embed.paste_max_kb",
+    category: "embed",
+    label: "Most text typed into an agent at once",
+    description:
+      "The most text Den types into an agent in one go: Hub comments, relayed messages and app feed lines. The rest are typed next.",
+    keywords: ["paste", "type", "agent", "limit", "size"],
+    scope: "user",
+    keys: ["embed.paste_max_kb"],
+    control: { type: "number", min: 1, max: 102400, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.paste_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { paste_max_kb: v } }),
+  },
+  {
     id: "embed.url_max",
     category: "embed",
     label: "Longest link context",
@@ -1368,11 +2010,92 @@ const ACCESS_ROWS = [
     category: "access",
     label: "Waiting devices",
     description:
-      "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+      "Computers whose signed-out page shows a code. Type the code that computer's screen shows to approve it, and its page signs in by itself; a request lasts 10 minutes. __DEN_CLI__ web approve --list lists them.",
     keywords: ["waiting", "approve", "code", "pair", "device", "deny"],
     scope: "user",
     control: { type: "custom", render: drawWaiting },
     read: () => null,
+  },
+  {
+    // Issue 819: how many new devices one address may ask for a minute.
+    id: "access.pair_requests",
+    category: "access",
+    label: "New sign-in requests per address, a minute",
+    description:
+      "How many new devices one address may ask to sign in a minute. More are turned away until the minute is up. __DEN_CLI__ config web.pair_requests_per_minute=30",
+    keywords: [
+      "pair",
+      "sign-in",
+      "requests",
+      "limit",
+      "rate",
+      "web.pair_requests_per_minute",
+    ],
+    scope: "user",
+    keys: ["web_pairing.requests_per_minute"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.web_pairing?.requestsPerMinute ?? 30,
+    write: (v, ctx) => ctx.post({ web_pairing: { requests_per_minute: v } }),
+  },
+  {
+    // Issue 819: wrong codes approving a device may take, per window.
+    id: "access.approve_attempts",
+    category: "access",
+    label: "Wrong codes allowed when approving",
+    description:
+      "How many wrong codes approving a device may take in the window below before it waits. __DEN_CLI__ config web.approve_attempts=10",
+    keywords: ["approve", "code", "wrong", "limit", "web.approve_attempts"],
+    scope: "user",
+    keys: ["web_pairing.approve_attempts"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.web_pairing?.approveAttempts ?? 10,
+    write: (v, ctx) => ctx.post({ web_pairing: { approve_attempts: v } }),
+  },
+  {
+    id: "access.approve_window",
+    category: "access",
+    label: "Wrong-code window, in seconds",
+    description:
+      "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
+    keywords: [
+      "approve",
+      "code",
+      "wrong",
+      "window",
+      "web.approve_window_seconds",
+    ],
+    scope: "user",
+    keys: ["web_pairing.approve_window_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_pairing?.approveWindowSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ web_pairing: { approve_window_seconds: v } }),
+  },
+  {
+    // Issue 796: an agent's read-only view of these pages (MCP page_view).
+    id: "access.agent_view",
+    category: "access",
+    label: "Agents may view pages, read-only",
+    description:
+      "On, an agent running here may open these pages read-only, as itself, to look or take a screenshot (page_view). It changes nothing, and each page it opens is logged with its name. Off, the agent is told views are off. __DEN_CLI__ config web.agent_view=true",
+    keywords: ["agent", "view", "read-only", "page_view", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.on"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.web_agent_view?.on !== false,
+    write: (v, ctx) => ctx.post({ web_agent_view: { on: !!v } }),
+  },
+  {
+    id: "access.agent_view_minutes",
+    category: "access",
+    label: "An agent's view lasts, in minutes",
+    description:
+      "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+    keywords: ["agent", "view", "read-only", "minutes", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.minutes"],
+    control: { type: "number", min: 1, max: 60, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.web_agent_view?.minutes ?? 10,
+    write: (v, ctx) => ctx.post({ web_agent_view: { minutes: v } }),
   },
   {
     id: "access.machine_name",
@@ -2240,6 +2963,80 @@ export const DEN_SETTINGS = [
     write: (v, ctx) =>
       ctx.post({ web_github: { owner_name_timeout_seconds: v } }),
   },
+  // The shared GitHub watcher (MCP github_watch): its pace and API budget.
+  {
+    id: "server.github_watch_interval",
+    category: "server",
+    label: "GitHub watch: first interval, in seconds",
+    description:
+      "How often __DEN_TITLE__'s one GitHub watcher looks at the pull requests and runs agents watch (MCP github_watch). It doubles while nothing changes, and starts again on a change. __DEN_CLI__ config github.watch_interval_seconds=60",
+    keywords: [
+      "github",
+      "watch",
+      "checks",
+      "interval",
+      "poll",
+      "github.watch_interval_seconds",
+    ],
+    scope: "user",
+    keys: ["github.watch_interval_seconds"],
+    control: { type: "number", min: 10, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github?.watch_interval_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_interval_seconds: v } }),
+  },
+  {
+    id: "server.github_watch_max_interval",
+    category: "server",
+    label: "GitHub watch: longest interval, in seconds",
+    description:
+      "The most the GitHub watcher waits between looks while nothing changes. __DEN_CLI__ config github.watch_max_interval_seconds=300",
+    keywords: [
+      "github",
+      "watch",
+      "checks",
+      "interval",
+      "backoff",
+      "github.watch_max_interval_seconds",
+    ],
+    scope: "user",
+    keys: ["github.watch_max_interval_seconds"],
+    control: { type: "number", min: 10, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github?.watch_max_interval_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ github: { watch_max_interval_seconds: v } }),
+  },
+  {
+    id: "server.github_api_budget_floor",
+    category: "server",
+    label: "GitHub watch: API calls kept in reserve",
+    description:
+      "Below this many GitHub API calls left this hour, the GitHub watcher asks GitHub nothing and refuses new watches until GitHub's reset, and says so with the reset time. __DEN_CLI__ config github.api_budget_floor=500",
+    keywords: [
+      "github",
+      "api",
+      "rate limit",
+      "budget",
+      "floor",
+      "github.api_budget_floor",
+    ],
+    scope: "user",
+    keys: ["github.api_budget_floor"],
+    control: { type: "number", min: 0, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.github?.api_budget_floor ?? 500,
+    write: (v, ctx) => ctx.post({ github: { api_budget_floor: v } }),
+  },
+  {
+    id: "server.github_watches_max",
+    category: "server",
+    label: "GitHub watch: watches at once",
+    description:
+      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+    keywords: ["github", "watch", "limit", "github.watches_max"],
+    scope: "user",
+    keys: ["github.watches_max"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.github?.watches_max ?? 50,
+    write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
   {
     // den#143: how long `web up` waits for the server (user.yml
     // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
@@ -2289,13 +3086,91 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Unit test runs at once, on this machine",
     description:
-      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. Unit and browser test runs wait in separate lines. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
     keywords: ["gate", "slot", "tests", "queue", "cpu", "parallel"],
     scope: "user",
     keys: ["gate_slots.cpu_slots"],
     control: { type: "number", min: 1, max: 64, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.cpuSlots ?? 2,
     write: (v, ctx) => ctx.post({ gate_slots: { cpu_slots: v } }),
+  },
+  {
+    // Issue 751: cpu runs beside a browser run on this machine.
+    id: "server.gate_cpu_beside",
+    category: "server",
+    label: "Unit test runs beside a browser test run",
+    description:
+      "How many unit-test runs may run on this machine while a browser test run does, never more than the unit test runs at once. 0: a browser test run runs alone. A browser run on a test box doesn't count. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    keywords: ["gate", "slot", "tests", "queue", "cpu", "browser", "beside"],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots_beside_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlotsBesideBrowser ?? 2,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { cpu_slots_beside_browser: v } }),
+  },
+  {
+    // Issue 751 follow-up: cpu runs beside a release browser run (0).
+    id: "server.gate_cpu_beside_release",
+    category: "server",
+    label: "Unit test runs beside a release browser test run",
+    description:
+      "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "browser",
+      "beside",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots_beside_release_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlotsBesideReleaseBrowser ?? 0,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
+  },
+  {
+    // Issue 1009: cpu runs wait at this load under a release browser run.
+    id: "server.gate_cpu_hold_load",
+    category: "server",
+    label:
+      "Machine load that holds unit test runs during a release browser run",
+    description:
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "load",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_hold_load"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuHoldLoad ?? 0,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_hold_load: v } }),
+  },
+  {
+    // Browser runs that may hold this machine at once (each in a container).
+    id: "server.gate_local_browser",
+    category: "server",
+    label: "Browser runs at once on this machine",
+    description:
+      "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
+    keywords: ["gate", "slot", "tests", "queue", "browser", "container"],
+    scope: "user",
+    keys: ["gate_slots.local_browser_slots"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.localBrowserSlots ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { local_browser_slots: v } }),
   },
   {
     id: "server.gate_overrun",
@@ -2309,6 +3184,20 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 1440, step: 1, unit: "min" },
     read: (ctx) => ctx.data.gate_slots?.overrunMarginMinutes ?? 15,
     write: (v, ctx) => ctx.post({ gate_slots: { overrun_margin_minutes: v } }),
+  },
+  {
+    // Issue 993: a slot past this many times its estimate: the bell.
+    id: "server.gate_overrun_bell",
+    category: "server",
+    label: "Test slot in the bell past this many times its estimate",
+    description:
+      "A test slot held this many times longer than its estimate shows in the bell under Needs you, with End. If an agent holds it, Den tells that agent once to release it. 2: twice its estimate. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
+    keywords: ["gate", "slot", "overrun", "estimate", "bell", "end"],
+    scope: "user",
+    keys: ["gate_slots.overrun_bell_multiple"],
+    control: { type: "number", min: 1, max: 100, step: 0.5 },
+    read: (ctx) => ctx.data.gate_slots?.overrunBellMultiple ?? 2,
+    write: (v, ctx) => ctx.post({ gate_slots: { overrun_bell_multiple: v } }),
   },
   {
     // Issue 621: a CI runner (a job in a VM) holds its slot by lease.
@@ -2376,19 +3265,35 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.priority_max"],
     control: { type: "number", min: 0, max: 16, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.priorityMax ?? 1,
-    write: (v, ctx) => ctx.post({ gate_slots: { priority_max: v } }),
+    // Issue 963: 0 turns release priority off for the whole machine: it
+    // asks first, saying what it does. Cancelled, nothing changes.
+    write: async (v, ctx) => {
+      if (Number(v) === 0 && (ctx.data.gate_slots?.priorityMax ?? 1) !== 0) {
+        const t = (k, x) => ctx.shell.t(k, x);
+        const { askConfirm } = await import("/dialog-den.js");
+        const ok = await askConfirm({
+          title: t("gate.priorityOffTitle"),
+          message: t("gate.priorityOffAsk"),
+          okLabel: t("gate.priorityOffOk"),
+          danger: true,
+        });
+        if (!ok) return false;
+      }
+      return ctx.post({ gate_slots: { priority_max: v } });
+    },
   },
   {
     id: "server.gate_priority_pass",
     category: "server",
-    label: "A run waiting this long is never passed, in minutes",
+    label:
+      "Waiting this long, a marked release run is never passed, in minutes",
     description:
-      "A release run with priority goes ahead of other waiting runs, but never ahead of one that has waited this long. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+      "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     keywords: ["gate", "slot", "priority", "release", "starvation", "wait"],
     scope: "user",
     keys: ["gate_slots.priority_pass_limit_minutes"],
-    control: { type: "number", min: 1, max: 1440, step: 1 },
-    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 60,
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 0,
     write: (v, ctx) =>
       ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
   },
@@ -2406,6 +3311,147 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { priority_agents: v ? 1 : 0 } }),
   },
   {
+    // Issue 739: a CI runner's ask over HTTP may carry release priority.
+    id: "server.gate_priority_runners",
+    category: "server",
+    label: "CI runners may ask for release priority",
+    description:
+      "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    keywords: ["gate", "slot", "priority", "release", "runner", "ci"],
+    scope: "user",
+    keys: ["gate_slots.priority_runners"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.priorityRunners !== false,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { priority_runners: v ? 1 : 0 } }),
+  },
+  {
+    // A browser run on a macOS host declares a container browser.
+    id: "server.gate_browser_container",
+    category: "server",
+    label: "Browser runs need a container",
+    description:
+      "On, a browser test run on this machine must say where its browser runs: a container's Playwright endpoint (ws:// or wss://, also from DEN_PW_WS, HUB_PW_WEBKIT_WS or E2E_WEBKIT_WS), or self when the run starts its own container. A run without one is refused, so no test starts a browser on this Mac itself. On by default on macOS, off elsewhere. __DEN_CLI__ gate settings --browser-requires-container 1",
+    keywords: [
+      "gate",
+      "slot",
+      "browser",
+      "container",
+      "webkit",
+      "playwright",
+      "mac",
+    ],
+    scope: "user",
+    keys: ["gate_slots.browser_requires_container"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.browserRequiresContainer === true,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { browser_requires_container: v ? 1 : 0 } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_claim",
+    category: "server",
+    label: "An agent's gate slot: minutes to claim it",
+    description:
+      "When a slot an agent waited for is granted, Den tells the agent. Not claimed within this time, it goes to the next in line and the agent goes back in line. __DEN_CLI__ gate settings --claim-minutes 3",
+    keywords: ["gate", "slot", "agent", "claim", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.claim_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.claimMinutes ?? 3,
+    write: (v, ctx) => ctx.post({ gate_slots: { claim_minutes: v } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_mcp_renew",
+    category: "server",
+    label: "An agent's gate slot: renew it every, in minutes",
+    description:
+      "How often an agent holding a slot is asked to renew it while it works. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    keywords: ["gate", "slot", "agent", "renew", "lease", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.mcp_renew_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.mcpRenewMinutes ?? 5,
+    write: (v, ctx) => ctx.post({ gate_slots: { mcp_renew_minutes: v } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_mcp_lapse",
+    category: "server",
+    label: "An agent's gate slot lapses unrenewed after, in minutes",
+    description:
+      "A slot an agent holds and doesn't renew this long, once past its estimate plus the grace, goes to the next in line. The bell says so. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    keywords: ["gate", "slot", "agent", "lapse", "lease", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.mcp_lapse_minutes"],
+    control: { type: "number", min: 1, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.mcpLapseMinutes ?? 15,
+    write: (v, ctx) => ctx.post({ gate_slots: { mcp_lapse_minutes: v } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_mcp_grace",
+    category: "server",
+    label: "An agent's gate slot: grace past its estimate, in minutes",
+    description:
+      "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    keywords: ["gate", "slot", "agent", "grace", "estimate", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.mcp_grace_minutes"],
+    control: { type: "number", min: 0, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.mcpGraceMinutes ?? 15,
+    write: (v, ctx) => ctx.post({ gate_slots: { mcp_grace_minutes: v } }),
+  },
+  {
+    // Issue 803: priority classes per project; empty is first-come.
+    id: "server.gate_class_order",
+    category: "server",
+    label: "Gate classes, highest first",
+    description:
+      "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
+    keywords: ["gate", "slot", "class", "priority", "release", "queue"],
+    scope: "user",
+    keys: ["gate_slots.class_order"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classOrder ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { class_order: String(v ?? "").trim() || null },
+      }),
+  },
+  {
+    id: "server.gate_class_map",
+    category: "server",
+    label: "Gate class of each project",
+    description:
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    keywords: ["gate", "slot", "class", "project", "label", "priority"],
+    scope: "user",
+    keys: ["gate_slots.class_map"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classMap ?? "",
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { class_map: String(v ?? "").trim() || null } }),
+  },
+  {
+    id: "server.gate_class_windows",
+    category: "server",
+    label: "Gate class windows",
+    description:
+      "Comma-separated: <class>=HH:MM-HH:MM/<minutes>, in this machine's time. Outside its window, a run of that class estimated at least that many minutes waits while a higher-class run holds or waits; with none, it runs at once. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
+    keywords: ["gate", "slot", "class", "window", "night", "overnight"],
+    scope: "user",
+    keys: ["gate_slots.class_windows"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classWindows ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { class_windows: String(v ?? "").trim() || null },
+      }),
+  },
+  {
     // Issue 621: the gate-only runner tokens; an agent asks for one (a
     // held write the person allows), and the person revokes one here.
     id: "server.gate_runners",
@@ -2417,6 +3463,98 @@ export const DEN_SETTINGS = [
     scope: "user",
     control: { type: "custom", render: drawRunnerTokens },
     read: () => null,
+  },
+  {
+    // Issue 625: test boxes, a browser slot source each.
+    id: "server.gate_boxes",
+    category: "server",
+    label: "Test boxes",
+    description:
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. A box with a window takes runs only within it, in this machine's time. Outside it, or turned off, Den never contacts the box; a run already on it finishes. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    keywords: [
+      "gate",
+      "slot",
+      "box",
+      "remote",
+      "browser",
+      "tests",
+      "machine",
+      "window",
+      "off",
+    ],
+    scope: "user",
+    control: { type: "custom", render: drawGateBoxes },
+    read: () => null,
+  },
+  {
+    id: "server.gate_box_check",
+    category: "server",
+    label: "Test box check waits, in seconds",
+    description:
+      "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    keywords: ["gate", "slot", "box", "timeout", "check"],
+    scope: "user",
+    keys: ["gate_slots.box_check_timeout_seconds"],
+    control: { type: "number", min: 1, max: 120, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.boxCheckTimeoutSeconds ?? 8,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { box_check_timeout_seconds: v } }),
+  },
+  {
+    id: "server.gate_box_recheck",
+    category: "server",
+    label: "A skipped test box is checked again after, in seconds",
+    description:
+      "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    keywords: ["gate", "slot", "box", "hold", "recheck"],
+    scope: "user",
+    keys: ["gate_slots.box_recheck_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.boxRecheckSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ gate_slots: { box_recheck_seconds: v } }),
+  },
+  {
+    // Issue 1033: a browser run with no --box takes a test box by default.
+    id: "server.gate_box_default",
+    category: "server",
+    label: "Browser runs go to",
+    description:
+      "Where a browser test run with no --box goes. Here or a test box: the first free browser slot, here or on a test box. A run with no --base-url, or no box for its Playwright version, stays here and says why. Here only: as before; a run goes to a box only with --box. __DEN_CLI__ gate settings --browser-box-default any",
+    keywords: ["gate", "slot", "box", "browser", "default", "any", "local"],
+    scope: "user",
+    keys: ["gate_slots.browser_box_default"],
+    control: {
+      type: "select",
+      options: () => [
+        {
+          value: "any",
+          label: L("set.server.gate_box_default.any", "Here or a test box"),
+        },
+        {
+          value: "local",
+          label: L("set.server.gate_box_default.local", "Here only"),
+        },
+      ],
+    },
+    read: (ctx) => ctx.data.gate_slots?.browserBoxDefault ?? "any",
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { browser_box_default: v || null } }),
+  },
+  {
+    id: "server.gate_host_only",
+    category: "server",
+    label: "Browser runs kept here",
+    description:
+      "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    keywords: ["gate", "slot", "box", "browser", "host", "label", "project"],
+    scope: "user",
+    keys: ["gate_slots.browser_host_only"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.browserHostOnly ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { browser_host_only: String(v ?? "").trim() || null },
+      }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version
@@ -2461,6 +3599,79 @@ export const DEN_SETTINGS = [
     scope: "user",
     control: { type: "custom", render: renderAddress },
     read: () => null,
+  },
+  {
+    // Issue 532: the terminal limits (user.yml sessions.*, over den.yml).
+    id: "server.sessions_max",
+    category: "server",
+    label: "Terminals at once",
+    description:
+      "How many plain terminals may run at once. Agents never count. A new one past this is refused, and says so. __DEN_CLI__ config sessions.max_concurrent=8",
+    keywords: ["terminal", "sessions", "limit", "max_concurrent", "pty"],
+    scope: "user",
+    keys: ["sessions.max_concurrent"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.max_concurrent ?? 8,
+    write: (v, ctx) => ctx.post({ sessions: { max_concurrent: v } }),
+  },
+  {
+    id: "server.sessions_close_grace",
+    category: "server",
+    label: "Terminal close grace",
+    description:
+      "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    keywords: ["terminal", "close", "grace", "kill", "close_grace_seconds"],
+    scope: "user",
+    keys: ["sessions.close_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.close_grace_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_close",
+    category: "server",
+    label: "Terminal close after exit",
+    description:
+      "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    keywords: ["terminal", "pty", "exit", "close", "pty_close_seconds"],
+    scope: "user",
+    keys: ["sessions.pty_close_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.pty_close_seconds ?? 0,
+    write: (v, ctx) => ctx.post({ sessions: { pty_close_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_warn",
+    category: "server",
+    label: "Terminal count warning",
+    description:
+      "Doctor fails when the terminal host holds more terminals than this. __DEN_CLI__ config sessions.pty_warn_above=400",
+    keywords: ["terminal", "pty", "doctor", "warn", "pty_warn_above"],
+    scope: "user",
+    keys: ["sessions.pty_warn_above"],
+    control: { type: "number", min: 1, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.pty_warn_above ?? 400,
+    write: (v, ctx) => ctx.post({ sessions: { pty_warn_above: v } }),
+  },
+  {
+    id: "server.sessions_pty_machine",
+    category: "server",
+    label: "Machine terminal warning, in percent",
+    description:
+      "Doctor fails when the terminals in use on this machine reach this share of its limit. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
+    keywords: [
+      "terminal",
+      "pty",
+      "doctor",
+      "machine",
+      "percent",
+      "pty_machine_warn_percent",
+    ],
+    scope: "user",
+    keys: ["sessions.pty_machine_warn_percent"],
+    control: { type: "number", min: 1, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.sessions?.pty_machine_warn_percent ?? 90,
+    write: (v, ctx) => ctx.post({ sessions: { pty_machine_warn_percent: v } }),
   },
   {
     id: "server.restart",
@@ -2881,6 +4092,26 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
   {
+    // Issue 168: the project's colour, the person's own (Manage projects
+    // has the same control on its dot).
+    id: "workspace.colour",
+    category: "workspace",
+    label: "Colour",
+    description:
+      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
+    keywords: ["colour", "color", "hue", "project"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectColour },
+    keys: ["shell.projectColours"],
+    read: () => null,
+    // The control saves through the choice (project-colour-picker.js);
+    // a write sets this project's colour, "" or null for Automatic.
+    write: (v, ctx) =>
+      ctx.post({
+        shell: { projectColours: { [ctx.workspace]: v || null } },
+      }),
+  },
+  {
     id: "workspace.editor",
     category: "workspace",
     label: "IDE for this project",
@@ -2904,6 +4135,56 @@ export const DEN_SETTINGS = [
     scope: "workspace",
     control: { type: "custom", render: renderHubProject },
     read: () => null,
+  },
+
+  {
+    // Issue 158: the Hub delivery loop for this project, over the install.
+    id: "workspace.hub_delivery_loop",
+    category: "workspace",
+    label: "Hub delivery loop: this project",
+    description:
+      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+    keywords: [
+      "hub",
+      "delivery",
+      "loop",
+      "instructions",
+      "project",
+      "override",
+    ],
+    scope: "workspace",
+    control: seg([
+      { value: "install", label: "As everywhere" },
+      { value: "on", label: "On" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) =>
+      ctx.wsSettings?.hub_delivery_loop === true
+        ? "on"
+        : ctx.wsSettings?.hub_delivery_loop === false
+          ? "off"
+          : "install",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop: v === "on" ? true : v === "off" ? false : null,
+      }),
+  },
+  {
+    // Issue 158: the project's own text after Den's copy of the loop.
+    id: "workspace.hub_delivery_loop_extra",
+    category: "workspace",
+    label: "Added to the Hub delivery loop",
+    description:
+      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
+    keywords: ["hub", "delivery", "loop", "add", "project", "instructions"],
+    scope: "workspace",
+    // The server's limit (HUB_LOOP_EXTRA_MAX), so a long paste stops here.
+    control: { type: "text", maxLength: 2000 },
+    read: (ctx) => ctx.wsSettings?.hub_delivery_loop_extra ?? "",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop_extra: String(v ?? "").trim() || null,
+      }),
   },
 
   {
@@ -2992,6 +4273,20 @@ export const DEN_SETTINGS = [
     control: { type: "custom", render: renderProjectMcp },
     read: () => null,
   },
+  {
+    // Issue 459: the project's app event feeds (agents.event_feeds in
+    // workspaces.yml), each with its state. Names, agents and addresses
+    // only: a bearer is read from the install's secrets store and never shown.
+    id: "workspace.event_feeds",
+    category: "workspace",
+    label: "App event feeds: this project",
+    description:
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+    keywords: ["feed", "events", "stream", "app", "sse"],
+    scope: "workspace",
+    control: { type: "custom", render: renderAppFeeds },
+    read: () => null,
+  },
 
   // ── Agents ─────────────────────────────────────────────────────────────
   {
@@ -3040,6 +4335,81 @@ export const DEN_SETTINGS = [
     read: (ctx) => (ctx.data.approvals_critical ?? []).join(", "),
     write: (v, ctx) =>
       ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
+  },
+  {
+    // Issue 742: how long an agent's request waits for your Allow
+    // (user.yml held_writes.wait_minutes). A person's only.
+    id: "agents.held_wait",
+    category: "agents",
+    label: "Requests wait for your Allow",
+    description:
+      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    keywords: [
+      "approval",
+      "allow",
+      "wait",
+      "expire",
+      "lapse",
+      "held",
+      "request",
+    ],
+    scope: "user",
+    keys: ["held_writes.wait_minutes"],
+    control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
+    write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
+  },
+  {
+    // issue_write: which persona roles write GitHub issues in their
+    // project's repos (user.yml agents.issue_writes). A person's only.
+    id: "agents.issue_writes",
+    category: "agents",
+    label: "Who writes GitHub issues",
+    description:
+      "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+    keywords: [
+      "issue",
+      "issues",
+      "github",
+      "role",
+      "comment",
+      "label",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.roles"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.agent_issue_writes?.roles ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({
+        agent_issue_writes: {
+          roles: String(v ?? "")
+            .split(",")
+            .map((r) => r.trim())
+            .filter(Boolean),
+        },
+      }),
+  },
+  {
+    id: "agents.issue_writes_per_hour",
+    category: "agents",
+    label: "GitHub issue writes an hour",
+    description:
+      "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+    keywords: [
+      "issue",
+      "issues",
+      "github",
+      "limit",
+      "rate",
+      "hour",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.per_hour"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.agent_issue_writes?.per_hour ?? 60,
+    write: (v, ctx) => ctx.post({ agent_issue_writes: { per_hour: v } }),
   },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
@@ -3362,6 +4732,22 @@ export const DEN_SETTINGS = [
     keys: ["hub_allow_tools", "hub_url"],
     read: () => null,
     write: (v, ctx) => ctx.post({ hub_allow_tools: v }),
+  },
+
+  {
+    // Issue 158: the Hub delivery loop, built into every Den.
+    id: "agents.hub_delivery_loop",
+    category: "hub",
+    label: "Hub delivery loop",
+    description:
+      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    keywords: ["hub", "delivery", "loop", "instructions", "agents", "review"],
+    scope: "user",
+    keys: ["hub_delivery_loop"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.hub_delivery_loop !== false,
+    write: (v, ctx) =>
+      ctx.post({ hub_delivery_loop: v === true ? null : false }),
   },
 
   {
@@ -4699,6 +6085,66 @@ export function projectMcpHtml(v, t) {
   );
 }
 
+/**
+ * Issue 459: Settings › Project setup › App event feeds, as GET
+ * /api/workspaces/:ws/event-feeds serves them: each feed's name, agent,
+ * address and state, with its last event's time. `fmt`: a time's words.
+ */
+export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
+  const feeds = Array.isArray(v?.feeds) ? v.feeds : [];
+  const problems = Array.isArray(v?.problems) ? v.problems : [];
+  const STATES = [
+    "connecting",
+    "connected",
+    "retrying",
+    "no_secret",
+    "over_limit",
+    "no_agent",
+    "stopped",
+  ];
+  const rows = feeds.map((f) => {
+    const state = STATES.includes(f.state) ? f.state : "connecting";
+    const last =
+      typeof f.last_event_at === "number"
+        ? t("feed.last", { time: fmt(f.last_event_at) })
+        : t("feed.noEvents");
+    const waiting = f.unread > 0 ? ` ${t("feed.unread", { n: f.unread })}` : "";
+    return (
+      `<li data-feed="${escR(f.name)}" data-feed-state="${escR(state)}">` +
+      `<span data-feed-text>${escR(t("feed.row", { name: f.name, agent: f.agent, url: f.url }))}</span> ` +
+      `<strong data-feed-st>${escR(t(`feed.st.${state}`))}</strong>` +
+      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span></li>`
+    );
+  });
+  const list = rows.length
+    ? `<ul class="set-note" data-feed-list>${rows.join("")}</ul>`
+    : `<p class="set-note" data-feed-none>${escR(t("feed.none"))}</p>`;
+  const bad = problems.length
+    ? `<p class="set-note" data-feed-problems>${escR(t("feed.problems", { n: problems.length }))}</p>` +
+      `<ul class="set-note">${problems.map((p) => `<li>${escR(p)}</li>`).join("")}</ul>`
+    : "";
+  return list + bad;
+}
+
+function renderAppFeeds(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell
+    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`)
+    .then((v) => {
+      host.innerHTML = appFeedsHtml(v, t, (ms) =>
+        formatTime(new Date(ms).toISOString()),
+      );
+    })
+    .catch(() => {
+      host.innerHTML = `<p class="set-note">${escR(t("feed.failed"))}</p>`;
+    });
+}
+
 function renderProjectMcp(host, ctx) {
   const ws = ctx.workspace;
   if (!ws || ctx.shell?.configInvalid?.() === true) {
@@ -5014,6 +6460,46 @@ function wireHubRename(host, ctx, ws, current, t) {
   });
 }
 
+/**
+ * Issue 168: Settings › Project setup › Colour: the project's dot and its
+ * colour's name (Automatic, or the one chosen), and Change colour, which
+ * opens the same choice as Manage projects.
+ */
+export function projectColourHtml(data, slug, t) {
+  const c = projectColour(data, slug);
+  if (!c) return "";
+  const said = chosenColour(data, slug)
+    ? t(`pc.${c}`)
+    : t("pc.autoIs", { colour: t(`pc.${c}`) });
+  return (
+    `<span class="pcp-now" data-pc-now data-pc="${escR(c)}"><span class="den-pc" aria-hidden="true"></span><span data-pc-said>${escR(said)}</span></span> ` +
+    `<button type="button" class="den-btn sm" data-pc-change>${escR(t("pc.change"))}</button>`
+  );
+}
+
+function renderProjectColour(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell.api("GET", "/api/workspaces").then((data) => {
+    host.innerHTML = projectColourHtml(data, ws, t);
+    const btn = host.querySelector("[data-pc-change]");
+    btn?.addEventListener("click", () =>
+      pickProjectColour({
+        slug: ws,
+        name: projectLabel(data, ws),
+        data,
+        opener: btn,
+      }).then((saved) => {
+        if (saved) return renderProjectColour(host, ctx);
+      }),
+    );
+  });
+}
+
 function renderProjectName(host, ctx) {
   const ws = ctx.workspace;
   if (!ws || ctx.shell?.configInvalid?.() === true) {
@@ -5181,8 +6667,8 @@ function renderAddress(host, ctx) {
         if (!url) return say(t("addr.empty"), true);
         say("");
         input.disabled = true;
-        btn.textContent = t("addr.checking");
-        // BUSY-1: the working pop-up says it is checking, then what happened.
+        // BUSY-1: the working pop-up says it is checking, then what happened;
+        // issue 698: Check shows the kit's dots until the answer.
         ctx.shell
           .busyAction(
             "check-address",
@@ -5207,7 +6693,6 @@ function renderAddress(host, ctx) {
           })
           .finally(() => {
             input.disabled = false;
-            btn.textContent = t("addr.check");
           });
       });
     })

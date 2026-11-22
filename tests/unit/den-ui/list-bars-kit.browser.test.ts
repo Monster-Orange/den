@@ -297,8 +297,10 @@ describe("filter bar in a browser", () => {
         selected: { kind: ["doc"], made: ["mine"], status: ["draft"] },
       }),
     );
-    const chip = (n: number) => p.locator(".den-fb-chip").nth(n);
-    await chip(1).focus();
+    // The middle chip: Made: Mine.
+    await p
+      .locator('.den-fb-chip[data-facet="made"][data-value="mine"]')
+      .focus();
     await p.keyboard.press("Enter");
     expect(await focused(p)).toBe(".den-fb-chip Remove Status: Draft");
     expect(await lastChange(p)).toEqual({
@@ -366,8 +368,7 @@ describe("filter bar in a browser", () => {
     if (skip()) return;
     const p = await open();
     await toggle(p).click();
-    const box = async (sel: string) =>
-      (await p.locator(sel).first().boundingBox())!;
+    const box = async (sel: string) => (await p.locator(sel).boundingBox())!;
     const find = await box("#find");
     const btn = await box(".den-fb-toggle");
     const sort = await box("#sort");
@@ -479,7 +480,7 @@ describe("bulk bar in a browser", () => {
       "polite",
     );
     // From the last row, Tab goes into the bar.
-    await p.locator("#list input").last().focus();
+    await p.getByRole("checkbox", { name: "Row 60", exact: true }).focus();
     const order: string[] = [];
     for (let i = 0; i < 4; i++) {
       await p.keyboard.press("Tab");

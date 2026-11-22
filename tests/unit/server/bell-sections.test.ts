@@ -117,6 +117,7 @@ describe("issue 101: Needs you first, then Earlier", () => {
       ],
     };
     const p = bellPanel(b);
+    if (!("sections" in p)) throw new Error("no sections");
     expect(p.sections.needs).toContain('data-kind="waiting"');
     expect(p.sections.done).toContain('data-kind="done"');
     expect(p.sections.done).toContain("[bell.doneRow:builder]");
@@ -129,6 +130,7 @@ describe("issue 101: Needs you first, then Earlier", () => {
     expect(bellCountOf(b)).toBe(2);
     // Nothing else: Done alone still shows (no empty state).
     const only = bellPanel({ groups: [], unread: 0, done: b.done });
+    if (!("sections" in only)) throw new Error("no sections");
     expect(only.sections.done).toContain('data-kind="done"');
     expect(only.sections.needs).toBe("");
     expect(bellCountOf({ unread: 0, done: b.done })).toBe(1);

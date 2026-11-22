@@ -21,8 +21,24 @@
  * once, on the server, from the stored args, and keeps the result;
  * "deny" and expiry run nothing; a second decision is refused; Allow is
  * refused once the agent that asked has been stopped. An agent may have 5
- * requests waiting; settled ones are dropped an hour later. In memory: a
- * restart drops what waits (the agent asks again).
+ * requests waiting; settled ones are dropped an hour later.
+ *
+ * Issue 742: a request waits held_writes.wait_minutes (24 hours by
+ * default), and what waits survives a restart: the queue is written under
+ * the state dir (tmp file + rename, owner-only) at each change, and read
+ * back at the start. Only what may still matter is written: pending, mid-
+ * run, and lost requests, never a run's result. Den's own asks (actor
+ * den:...) are not written: the update check asks again. What can't be
+ * read back is "lost", never dropped without a trace: a request whose
+ * action no longer exists, one a restart cut off mid-run (did it take
+ * effect?), and, when the file itself is unreadable, every request (an id
+ * Den no longer knows reads as lost for a week, the longest window).
+ *
+ * A finished request (done, denied, expired, withdrawn, lost) never reads
+ * as "no such request": once its whole record goes (an hour on, or at a
+ * restart), a small one stays for a week, written with the queue: its id,
+ * asker, action, state, times, and the run's ok/error only (never its
+ * outputs). Its asker's read then says how it ended, and when.
  *
  * Who may read what waits (Vision 2026-11-07): the person's list needs
  * the same proof as approving, on a GET (approverAllowed(…, "read"): the
@@ -36,12 +52,15 @@
  * other person-only routes; only an OS boundary is stronger.
  */
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import * as fs from "fs";
+import * as path from "path";
 import type * as http from "http";
 import {
   APPROVE_KEY_HEADER,
   approveKeyMatches,
 } from "../../shared/web-session.js";
 import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
+import { redactSecrets } from "../../shared/redact.js";
 
 /** The header an anonymous asker reads its own request with. */
 export const APPROVAL_TICKET_HEADER = "x-den-approval-ticket";
@@ -59,7 +78,7 @@ export type ApproverCheck =
   | { ok: true; session: string }
   | {
       ok: false;
-      code: "signin_to_approve" | "fixture_cannot_approve";
+      code: "signin_to_approve" | "fixture_cannot_approve" | "agent_view";
       error: string;
     };
 
@@ -98,6 +117,13 @@ export function approverAllowed(
     };
   // Issue 810: the fixture person (a test install's live checks) never
   // decides what waits for a person.
+  // Issue 796: nor does an agent's read-only view.
+  if (p?.kind === "person-browser" && p.view)
+    return {
+      ok: false,
+      code: "agent_view",
+      error: "An agent's read-only view can't approve: that is a person's.",
+    };
   if (p?.kind === "person-browser" && p.fixture)
     return {
       ok: false,
@@ -127,15 +153,16 @@ function same(a: string, b: string): boolean {
 }
 
 /**
- * Routes that let another browser in (pair a device, a sign-in link for
- * an edge hostname, link or unlink the GitHub owner). These need more
+ * Routes that let another browser in (a sign-in link for an edge
+ * hostname, link or unlink the GitHub owner). Approving a waiting device
+ * (/api/web/approve) is stricter: a signed-in browser only (issue 819,
+ * pair-routes.ts). These need more
  * than a sign-in: the person's bearer (the CLI, which
  * refuses inside an agent's session), or what may approve (a signed-in
  * browser holding its approval key).
  */
 export const PERSON_GRANT_ROUTES: readonly string[] = [
   "/api/web/pair",
-  "/api/web/approve",
   "/api/web/owner/link",
   "/api/web/owner/unlink",
 ];
@@ -166,7 +193,9 @@ export type ApprovalState =
   | "denied"
   | "expired"
   /** Issue 142: its asker took it back before anyone decided. */
-  | "withdrawn";
+  | "withdrawn"
+  /** Issue 742: a restart could not bring it back (lostBecause says why). */
+  | "lost";
 
 /** A Review line as a message key and its words, for the page's t(). */
 export interface DetailKeyRec {
@@ -212,6 +241,36 @@ export interface Approval {
   endedBecause?: "actor_gone";
   /** sha256 of the anonymous asker's ticket; never in a view. */
   ticketHash?: string;
+  /** Issue 742: why a restart lost it (state "lost"). */
+  lostBecause?: string;
+  /**
+   * Issue 742: a stand-in for an id Den no longer knows, after an
+   * unreadable queue file: it holds nothing but the id and why.
+   */
+  unknown?: true;
+  /**
+   * A finished request read from its small record (its whole record is
+   * gone): state, times, and the run's ok/error only.
+   */
+  ended?: true;
+}
+
+/** A finished request's small record: what its asker may still ask about. */
+interface EndedRec {
+  id: string;
+  actor: string;
+  agent?: string;
+  action: string;
+  state: ApprovalState;
+  requestedAt: number;
+  expiresAt: number;
+  decidedAt: number;
+  /** The run's outcome (done only): whether it worked, and its error. */
+  ok?: boolean;
+  error?: string;
+  lostBecause?: string;
+  endedBecause?: "actor_gone";
+  ticketHash?: string;
 }
 
 export type Decision = "allow" | "deny";
@@ -221,7 +280,7 @@ export type DecideResult =
   | { ok: true; approval: Approval; repeat?: true }
   | {
       ok: false;
-      code: "not_found" | "already_decided" | "expired" | "actor_gone";
+      code: "not_found" | "already_decided" | "expired" | "actor_gone" | "lost";
       error: string;
     };
 
@@ -230,7 +289,7 @@ export type WithdrawResult =
   | { ok: true; approval: Approval }
   | {
       ok: false;
-      code: "not_found" | "not_asker" | "already_decided" | "expired";
+      code: "not_found" | "not_asker" | "already_decided" | "expired" | "lost";
       error: string;
     };
 
@@ -243,8 +302,25 @@ export interface AskedBy {
 
 export interface ApprovalQueueDeps {
   now?: () => number;
-  /** How long a request waits for a person (default 10 minutes). */
-  ttlMs?: number;
+  /**
+   * How long a request waits for a person (default 24 hours); a function
+   * is read at each ask (issue 742: held_writes.wait_minutes).
+   */
+  ttlMs?: number | (() => number);
+  /** Issue 742: the file the queue is kept in (none: in memory only). */
+  file?: string;
+  /** Issue 742: whether an action still exists (one that doesn't: lost). */
+  knownAction?: (action: string) => boolean;
+  /**
+   * Issue 742: a restart lost a request (`a`), or, the file being
+   * unreadable, every request (`a` null). Called once each.
+   */
+  onLost?: (a: Approval | null, why: string) => void;
+  /**
+   * Issue 746: a request ended unanswered (pending past its expiry). Called
+   * once per request, when the queue first sees it expired.
+   */
+  onExpire?: (a: Approval) => void;
   /** Whether the agent that asked still runs (its token not revoked). */
   actorLive?: (actor: string) => boolean;
   /** Runs an allowed action from its stored args; `asked`: which request, whose. */
@@ -277,6 +353,150 @@ function frozenCopy(
 export const MAX_PENDING_PER_ACTOR = 5;
 /** How long a settled request is kept (to show its outcome). */
 const KEEP_SETTLED_MS = 60 * 60_000;
+/** Issue 742: the default wait, held_writes.wait_minutes' (24 hours). */
+export const DEFAULT_HELD_WAIT_MS = 24 * 60 * 60_000;
+/** Issue 742: how long an unreadable file's "lost" answers last (the longest window). */
+const LOST_UNKNOWN_MS = 7 * 24 * 60 * 60_000;
+/** How long a finished request's small record is kept (the longest window). */
+const KEEP_ENDED_MS = 7 * 24 * 60 * 60_000;
+/** At most this many small records are kept (the newest). */
+const MAX_ENDED = 5000;
+/** The states a request ends in. */
+const ENDED_STATES: ReadonlySet<ApprovalState> = new Set<ApprovalState>([
+  "done",
+  "denied",
+  "expired",
+  "withdrawn",
+  "lost",
+]);
+
+/** A finished request's small record, from its whole one. */
+function endedOf(a: Approval): EndedRec {
+  const r = a.result as { ok?: unknown; error?: unknown } | undefined;
+  const failed =
+    a.state === "done" && !!r && typeof r === "object" && r.ok === false;
+  return {
+    id: a.id,
+    actor: a.actor,
+    ...(a.agent ? { agent: a.agent } : {}),
+    action: a.action,
+    state: a.state,
+    requestedAt: a.requestedAt,
+    expiresAt: a.expiresAt,
+    decidedAt: a.decidedAt ?? a.expiresAt,
+    ...(a.state === "done" ? { ok: !failed } : {}),
+    ...(failed && typeof r.error === "string"
+      ? { error: redactSecrets(r.error).slice(0, 300) }
+      : {}),
+    ...(a.lostBecause
+      ? { lostBecause: redactSecrets(a.lostBecause).slice(0, 300) }
+      : {}),
+    ...(a.endedBecause ? { endedBecause: a.endedBecause } : {}),
+    ...(a.ticketHash ? { ticketHash: a.ticketHash } : {}),
+  };
+}
+
+/** A small record read back from the file, checked; null: unusable. */
+function reviveEnded(raw: unknown): EndedRec | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const str = (k: string) =>
+    typeof r[k] === "string" ? (r[k] as string) : undefined;
+  const num = (k: string) =>
+    typeof r[k] === "number" && Number.isFinite(r[k]) ? (r[k] as number) : NaN;
+  const id = str("id");
+  const actor = str("actor");
+  const action = str("action");
+  const state = r.state as ApprovalState;
+  if (
+    !id ||
+    !ID_RE.test(id) ||
+    !actor ||
+    !action ||
+    !ENDED_STATES.has(state) ||
+    [num("requestedAt"), num("expiresAt"), num("decidedAt")].some((n) =>
+      Number.isNaN(n),
+    )
+  )
+    return null;
+  const agent = str("agent");
+  const error = str("error");
+  const lostBecause = str("lostBecause");
+  const ticketHash = str("ticketHash");
+  return {
+    id,
+    actor,
+    ...(agent ? { agent } : {}),
+    action,
+    state,
+    requestedAt: num("requestedAt"),
+    expiresAt: num("expiresAt"),
+    decidedAt: num("decidedAt"),
+    ...(typeof r.ok === "boolean" ? { ok: r.ok } : {}),
+    ...(error ? { error } : {}),
+    ...(lostBecause ? { lostBecause } : {}),
+    ...(r.endedBecause === "actor_gone"
+      ? { endedBecause: "actor_gone" as const }
+      : {}),
+    ...(ticketHash ? { ticketHash } : {}),
+  };
+}
+
+/** What a small record reads as. */
+function approvalOfEnded(e: EndedRec): Approval {
+  return {
+    id: e.id,
+    actor: e.actor,
+    ...(e.agent ? { agent: e.agent } : {}),
+    action: e.action,
+    args: {},
+    summary: "",
+    requestedAt: e.requestedAt,
+    expiresAt: e.expiresAt,
+    decidedAt: e.decidedAt,
+    state: e.state,
+    ...(e.ok !== undefined
+      ? { result: { ok: e.ok, ...(e.error ? { error: e.error } : {}) } }
+      : {}),
+    ...(e.lostBecause ? { lostBecause: e.lostBecause } : {}),
+    ...(e.endedBecause ? { endedBecause: e.endedBecause } : {}),
+    ended: true,
+  };
+}
+
+/** Issue 742: the states written to the queue file. */
+const KEPT_STATES: ReadonlySet<ApprovalState> = new Set<ApprovalState>([
+  "pending",
+  "running",
+  "lost",
+]);
+const ID_RE = /^[A-Za-z0-9_-]{16}$/;
+
+/** A record read back from the file, checked field by field; null: unusable. */
+function revive(raw: unknown): Approval | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const str = (k: string) => (typeof r[k] === "string" ? (r[k] as string) : "");
+  const num = (k: string) =>
+    typeof r[k] === "number" && Number.isFinite(r[k]) ? (r[k] as number) : NaN;
+  if (
+    !ID_RE.test(str("id")) ||
+    !str("actor") ||
+    !str("action") ||
+    !r.args ||
+    typeof r.args !== "object" ||
+    Array.isArray(r.args) ||
+    Number.isNaN(num("requestedAt")) ||
+    Number.isNaN(num("expiresAt")) ||
+    !KEPT_STATES.has(r.state as ApprovalState)
+  )
+    return null;
+  const rest = { ...r };
+  delete rest.result;
+  const a = { ...rest, summary: str("summary") } as unknown as Approval;
+  a.args = frozenCopy(r.args as Record<string, unknown>);
+  return a;
+}
 
 export class ApprovalQueue {
   private readonly items = new Map<string, Approval>();
@@ -290,11 +510,170 @@ export class ApprovalQueue {
     { decision: Decision; done: Promise<DecideResult> }
   >();
   private readonly now: () => number;
-  private readonly ttlMs: number;
+  /** Issue 742: an unreadable file's moment and why (ids then read as lost). */
+  private lostUnknown: { at: number; why: string } | null = null;
+  /** Finished requests whose whole record is gone: their small one, a week. */
+  private readonly ended = new Map<string, EndedRec>();
 
   constructor(private readonly deps: ApprovalQueueDeps) {
     this.now = deps.now ?? Date.now;
-    this.ttlMs = deps.ttlMs ?? 10 * 60_000;
+    this.load();
+  }
+
+  /** Issue 742: the wait for a new request, the setting's at this ask. */
+  private ttlMs(): number {
+    const t = this.deps.ttlMs;
+    let v: unknown;
+    try {
+      v = typeof t === "function" ? t() : t;
+    } catch {
+      v = undefined;
+    }
+    return typeof v === "number" && Number.isFinite(v) && v > 0
+      ? v
+      : DEFAULT_HELD_WAIT_MS;
+  }
+
+  private markLost(a: Approval, why: string): void {
+    a.state = "lost";
+    a.lostBecause = why;
+    a.decidedAt = this.now();
+    this.tellLost(a, why);
+  }
+
+  private tellLost(a: Approval | null, why: string): void {
+    try {
+      this.deps.onLost?.(a ? { ...a } : null, why);
+    } catch {
+      /* telling is best effort: the request reads as lost either way */
+    }
+  }
+
+  /** Issue 742: what waited before the restart, read back. */
+  private load(): void {
+    const file = this.deps.file;
+    if (!file) return;
+    let text: string;
+    try {
+      text = fs.readFileSync(file, "utf-8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return;
+      return this.loadFailed(
+        file,
+        `the file can't be read (${String((e as Error)?.message ?? e)})`,
+      );
+    }
+    let doc: {
+      items?: unknown;
+      ended?: unknown;
+      lostAt?: unknown;
+      lostWhy?: unknown;
+    };
+    try {
+      doc = JSON.parse(text) as typeof doc;
+      if (!doc || typeof doc !== "object" || !Array.isArray(doc.items))
+        throw new Error("no items list");
+    } catch (e) {
+      return this.loadFailed(
+        file,
+        `the file is broken (${String((e as Error)?.message ?? e)})`,
+      );
+    }
+    if (
+      typeof doc.lostAt === "number" &&
+      this.now() - doc.lostAt < LOST_UNKNOWN_MS
+    )
+      this.lostUnknown = {
+        at: doc.lostAt,
+        why:
+          typeof doc.lostWhy === "string" ? doc.lostWhy : "lost at a restart",
+      };
+    if (Array.isArray(doc.ended))
+      for (const raw of doc.ended as unknown[]) {
+        const e = reviveEnded(raw);
+        if (e && this.now() - e.decidedAt < KEEP_ENDED_MS)
+          this.ended.set(e.id, e);
+      }
+    let unusable = 0;
+    for (const raw of doc.items as unknown[]) {
+      const a = revive(raw);
+      if (!a) {
+        unusable++;
+        continue;
+      }
+      this.items.set(a.id, a);
+      if (a.state === "running")
+        this.markLost(
+          a,
+          "Den restarted while it ran: check whether it took effect before asking again.",
+        );
+      else if (
+        a.state === "pending" &&
+        this.deps.knownAction &&
+        !this.deps.knownAction(a.action)
+      )
+        this.markLost(a, `this Den no longer has the action ${a.action}.`);
+    }
+    if (unusable) {
+      const why = `${unusable} waiting request${unusable === 1 ? "" : "s"} in the queue file could not be read back after a restart. Ask again.`;
+      this.lostUnknown = { at: this.now(), why };
+      this.tellLost(null, why);
+    }
+    this.persist();
+  }
+
+  private loadFailed(file: string, detail: string): void {
+    const why = `the held-write queue could not be read back after a restart: ${detail}. Requests that waited are lost; ask again.`;
+    try {
+      fs.renameSync(file, `${file}.corrupt-${this.now()}`);
+    } catch {
+      /* kept where it is; the next write replaces it */
+    }
+    this.lostUnknown = { at: this.now(), why };
+    this.tellLost(null, why);
+    this.persist();
+  }
+
+  /** Issue 742: the queue to its file, atomically (tmp + rename), owner-only. */
+  private persist(): void {
+    const file = this.deps.file;
+    if (!file) return;
+    const items: Record<string, unknown>[] = [];
+    const ended: EndedRec[] = [...this.ended.values()].filter(
+      (e) => !e.actor.startsWith("den:"),
+    );
+    for (const a of this.items.values()) {
+      if (a.actor.startsWith("den:")) continue;
+      if (!KEPT_STATES.has(a.state)) {
+        // Finished: only its small record (a restart ends the whole one).
+        if (ENDED_STATES.has(a.state)) ended.push(endedOf(a));
+        continue;
+      }
+      const rest: Record<string, unknown> = { ...a };
+      delete rest.result;
+      items.push(rest);
+    }
+    const doc = {
+      version: 1,
+      items,
+      ...(ended.length ? { ended } : {}),
+      ...(this.lostUnknown
+        ? { lostAt: this.lostUnknown.at, lostWhy: this.lostUnknown.why }
+        : {}),
+    };
+    const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(tmp, JSON.stringify(doc), { mode: 0o600 });
+      fs.renameSync(tmp, file);
+    } catch {
+      // Best effort: the queue in memory still holds it.
+      try {
+        fs.rmSync(tmp, { force: true });
+      } catch {
+        /* nothing more to do */
+      }
+    }
   }
 
   request(r: {
@@ -395,10 +774,11 @@ export class ApprovalQueue {
         : {}),
       ...(r.ticketHash ? { ticketHash: r.ticketHash } : {}),
       requestedAt: t,
-      expiresAt: t + (r.ttlMs ?? this.ttlMs),
+      expiresAt: t + (r.ttlMs ?? this.ttlMs()),
       state: "pending",
     };
     this.items.set(a.id, a);
+    this.persist();
     return { ...a };
   }
 
@@ -406,12 +786,19 @@ export class ApprovalQueue {
     if (a.state === "pending" && this.now() >= a.expiresAt) {
       a.state = "expired";
       a.decidedAt = a.expiresAt;
+      try {
+        this.deps.onExpire?.({ ...a });
+      } catch {
+        /* telling is best effort: the request has ended either way */
+      }
+      this.persist();
     }
   }
 
   /** Drop what settled more than an hour ago. */
   private prune(): void {
     const now = this.now();
+    let dropped = false;
     for (const [id, a] of this.items) {
       this.settle(a);
       if (
@@ -419,14 +806,58 @@ export class ApprovalQueue {
         a.state !== "running" &&
         a.decidedAt !== undefined &&
         now - a.decidedAt > KEEP_SETTLED_MS
-      )
+      ) {
         this.items.delete(id);
+        if (ENDED_STATES.has(a.state)) this.ended.set(id, endedOf(a));
+        dropped = dropped || a.state === "lost";
+      }
     }
+    for (const [id, e] of this.ended)
+      if (now - e.decidedAt >= KEEP_ENDED_MS) {
+        this.ended.delete(id);
+        dropped = true;
+      }
+    if (this.ended.size > MAX_ENDED) {
+      const oldest = [...this.ended.values()]
+        .sort((x, y) => x.decidedAt - y.decidedAt)
+        .slice(0, this.ended.size - MAX_ENDED);
+      for (const e of oldest) this.ended.delete(e.id);
+      dropped = true;
+    }
+    if (this.lostUnknown && now - this.lostUnknown.at >= LOST_UNKNOWN_MS) {
+      this.lostUnknown = null;
+      dropped = true;
+    }
+    if (dropped) this.persist();
   }
 
   get(id: string): Approval | null {
     const a = this.items.get(id);
-    if (!a) return null;
+    const e = a ? undefined : this.ended.get(id);
+    if (e) {
+      if (this.now() - e.decidedAt >= KEEP_ENDED_MS) return null;
+      return approvalOfEnded(e);
+    }
+    if (!a) {
+      // Issue 742: after an unreadable queue file, an id Den doesn't know
+      // may be one it lost: say so, never "no such request".
+      const l = this.lostUnknown;
+      if (!l || !ID_RE.test(id) || this.now() - l.at >= LOST_UNKNOWN_MS)
+        return null;
+      return {
+        id,
+        actor: "",
+        action: "",
+        args: {},
+        summary: "",
+        requestedAt: l.at,
+        expiresAt: l.at,
+        decidedAt: l.at,
+        state: "lost",
+        lostBecause: l.why,
+        unknown: true,
+      };
+    }
     this.settle(a);
     return { ...a };
   }
@@ -444,7 +875,7 @@ export class ApprovalQueue {
 
   /** Whether `ticket` is the one this request's anonymous asker was given. */
   ticketMatches(id: string, ticket: string | undefined): boolean {
-    const h = this.items.get(id)?.ticketHash;
+    const h = (this.items.get(id) ?? this.ended.get(id))?.ticketHash;
     return !!h && typeof ticket === "string" && same(ticketHash(ticket), h);
   }
 
@@ -472,12 +903,21 @@ export class ApprovalQueue {
    */
   withdraw(id: string, actor: string): WithdrawResult {
     const a = this.items.get(id);
-    if (!a)
+    if (!a) {
+      const e = this.ended.get(id);
+      if (e && e.actor !== actor)
+        return {
+          ok: false,
+          code: "not_asker",
+          error: "Only the one that asked may withdraw a request.",
+        };
+      if (e) return this.endedRefusal(e);
       return {
         ok: false,
         code: "not_found",
         error: "No such request (it may have ended at a restart).",
       };
+    }
     if (a.actor !== actor)
       return {
         ok: false,
@@ -499,6 +939,7 @@ export class ApprovalQueue {
       };
     a.state = "withdrawn";
     a.decidedAt = this.now();
+    this.persist();
     return { ok: true, approval: { ...a } };
   }
 
@@ -531,6 +972,32 @@ export class ApprovalQueue {
     }
   }
 
+  /** A finished request's answer to a decide or withdraw: how it ended. */
+  private endedRefusal(e: EndedRec): {
+    ok: false;
+    code: "already_decided" | "expired" | "lost";
+    error: string;
+  } {
+    const at = new Date(e.decidedAt).toISOString();
+    if (e.state === "expired")
+      return {
+        ok: false,
+        code: "expired",
+        error: `This request waited too long; it ended at ${at}.`,
+      };
+    if (e.state === "lost")
+      return {
+        ok: false,
+        code: "lost",
+        error: `This request was lost at a restart (${e.lostBecause ?? "Den could not bring it back"}). Nothing ran. Ask the agent to try again.`,
+      };
+    return {
+      ok: false,
+      code: "already_decided",
+      error: `This request was already decided (${e.state} at ${at}).`,
+    };
+  }
+
   private async decideOnce(
     id: string,
     decision: Decision,
@@ -538,18 +1005,27 @@ export class ApprovalQueue {
     chosen: Record<string, true>,
   ): Promise<DecideResult> {
     const a = this.items.get(id);
-    if (!a)
+    if (!a) {
+      const e = this.ended.get(id);
+      if (e) return this.endedRefusal(e);
       return {
         ok: false,
         code: "not_found",
         error: "No such request (it may have ended at a restart).",
       };
+    }
     this.settle(a);
     if (a.state === "expired")
       return {
         ok: false,
         code: "expired",
         error: "This request waited too long. Ask the agent to try again.",
+      };
+    if (a.state === "lost")
+      return {
+        ok: false,
+        code: "lost",
+        error: `This request was lost at a restart (${a.lostBecause ?? "Den could not bring it back"}). Nothing ran. Ask the agent to try again.`,
       };
     if (a.state !== "pending")
       return {
@@ -562,11 +1038,13 @@ export class ApprovalQueue {
     a.decidedAt = this.now();
     if (decision === "deny") {
       a.state = "denied";
+      this.persist();
       return { ok: true, approval: { ...a } };
     }
     if (this.deps.actorLive && !this.deps.actorLive(a.actor)) {
       a.state = "denied";
       a.endedBecause = "actor_gone";
+      this.persist();
       return {
         ok: false,
         code: "actor_gone",
@@ -575,6 +1053,8 @@ export class ApprovalQueue {
       };
     }
     a.state = "running";
+    // Issue 742: written as running, so a restart mid-run says lost.
+    this.persist();
     // Issue 199: only a choice the request offered reaches the run.
     const on = Object.fromEntries(
       Object.keys(chosen)
@@ -596,6 +1076,7 @@ export class ApprovalQueue {
       a.result = { ok: false, error: String((e as Error)?.message ?? e) };
     }
     a.state = "done";
+    this.persist();
     return { ok: true, approval: { ...a } };
   }
 }

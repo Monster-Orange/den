@@ -69,6 +69,22 @@ function scopeLabel(scope, name) {
   return scope;
 }
 
+/**
+ * Issue 168: a project's group heading carries its colour, a dot beside its
+ * name (the shell knows the colours: denShell.projectColour); "" for the
+ * server, Hub and anything else.
+ */
+function scopeDot(scope) {
+  if (!scope.startsWith("workspace/")) return "";
+  const pc =
+    typeof window !== "undefined"
+      ? window.denShell?.projectColour?.(scope.slice("workspace/".length))
+      : null;
+  return pc
+    ? `<i class="den-pc" data-pc="${esc(pc)}" aria-hidden="true"></i>`
+    : "";
+}
+
 /** The name Hub gave a group's project, from any of its items. */
 const groupName = (g) =>
   g.subjects
@@ -143,9 +159,12 @@ function rowHtml(n, fold) {
   const sub = noteSub(n);
   const long = n.msg?.key === "bell.m.asked" && text.length > LONG;
   const sw = switchOf(n.kind);
+  // Issue 214: a failed scheduled run is an alert while it is unread.
+  const alert = !n.read && n.msg?.key === "bell.m.vschedFail";
   return (
-    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
-    `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
+    // Issue 187: a row that opens on a click looks it (the pointer).
+    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}"${alert ? ' role="alert"' : ""}>` +
+    `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" || alert ? "warn" : "ok"}" aria-hidden="true"></span>` +
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
     (link
@@ -208,9 +227,150 @@ function doneRowHtml(d) {
   );
 }
 
+/**
+ * Issue 746: the held writes waiting for the person's Allow (`waiting`
+ * entries of kind "allow"), oldest first.
+ */
+export function allowsOf(b) {
+  return (b?.waiting ?? []).filter(
+    (w) => w && w.kind === "allow" && typeof w.id === "string" && w.id,
+  );
+}
+
+/**
+ * Issue 746: one held write's row, first in Needs you: what it is, who
+ * asked, how long it has waited and when it expires, and Allow and Deny.
+ * Review opens its details lines under it, the approval dialog's own
+ * (shell.js's denApDetailLines). `open`: Review is open.
+ */
+function allowRowHtml(w, open) {
+  const what = String(w.what ?? w.action ?? "");
+  const text = w.agent
+    ? tr("bell.ap.row", { name: w.agent, what })
+    : tr("bell.ap.rowAsk", { what });
+  const waits =
+    typeof w.since === "string" && typeof w.expiresAt === "string"
+      ? tr("bell.ap.waits", {
+          ago: bellAgo(w.since),
+          time: formatTime(w.expiresAt),
+        })
+      : "";
+  const lines = window.denApDetailLines?.(w) ?? [];
+  const det = `den-bell-det-${w.id}`;
+  const review = lines.length
+    ? `<button type="button" class="den-bell-rv" data-bell="review" data-ap="${esc(w.id)}" aria-expanded="${open ? "true" : "false"}" aria-controls="${esc(det)}">${esc(tr(open ? "ap.hide" : "ap.review"))}</button>` +
+      `<div class="den-bell-det" data-ap-det id="${esc(det)}"${open ? "" : " hidden"}>` +
+      lines
+        .map((l) => `<div class="den-bell-detl" data-ap-line>${esc(l)}</div>`)
+        .join("") +
+      `</div>`
+    : "";
+  return (
+    `<div class="den-bell-row den-bell-allow" data-kind="allow" data-ap-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t">${esc(text)}${waits ? `<span class="den-bell-sub">${esc(waits)}</span>` : ""}${review}</span>` +
+    `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
+    `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
+    `</div>`
+  );
+}
+
 /** Issue 773: the badge's count: Needs you plus Done, not seen. */
 export function bellCountOf(b) {
   return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
+}
+
+/**
+ * Issue 993: the gate slots held past the overrun multiple of their
+ * estimate (`waiting` entries of kind "gate_overrun"), longest first.
+ */
+export function overrunsOf(b) {
+  return (b?.waiting ?? []).filter(
+    (w) => w && w.kind === "gate_overrun" && typeof w.id === "string" && w.id,
+  );
+}
+
+/**
+ * Issue 993: one overrun slot's row: who holds it, what it runs, since
+ * when and its estimate, and End (the person-only end route).
+ */
+function overrunRowHtml(w) {
+  const text = tr("bell.go.row", {
+    who: String(w.who ?? ""),
+    kind: String(w.slot ?? ""),
+    label: String(w.label ?? ""),
+  });
+  const sub =
+    typeof w.since === "string"
+      ? tr("bell.go.sub", {
+          time: formatTime(w.since),
+          est: Number(w.estimateMin) || 0,
+          over: Number(w.overMin) || 0,
+        })
+      : "";
+  return (
+    `<div class="den-bell-row den-bell-allow" data-kind="gate_overrun" data-go-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t">${esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</span>` +
+    `<button type="button" class="den-btn" data-bell="gate-end" data-slot="${esc(w.id)}" data-label="${esc(String(w.label ?? ""))}">${esc(tr("bell.go.end"))}</button>` +
+    `</div>`
+  );
+}
+
+/** Issue 993: the overrun slots' own group, in Needs you. */
+function overrunsHtml(list) {
+  if (!list.length) return "";
+  return (
+    `<section data-scope="gate_overrun"><div class="den-bell-sc"><span>${esc(tr("bell.go.h"))}</span></div>` +
+    list.map(overrunRowHtml).join("") +
+    `</section>`
+  );
+}
+
+/**
+ * Issue 993: End from the bell: the person-only POST /api/gate-slots/end
+ * (it records who; an agent is refused there). A toast says what happened.
+ */
+async function endSlot(el) {
+  const id = el.dataset.slot;
+  if (!id) return;
+  const shell = window.denShell;
+  // BUSY-1: through the working pop-up, as the gate chip's End.
+  const run = (headers) =>
+    shell.api("POST", "/api/gate-slots/end", { id }, { headers });
+  try {
+    const j = shell?.busyAction
+      ? await shell.busyAction("gate-end", run, {
+          button: el,
+          vars: { name: el.dataset.label ?? "" },
+        })
+      : await run({});
+    if (j) shell?.toast?.(tr("bell.go.ended"));
+  } catch (err) {
+    shell?.errorToast?.(err);
+  }
+}
+
+/** Issue 746: the Allow rows' own group, heading Needs you. */
+function allowsHtml(allows, reviews = new Set()) {
+  if (!allows.length) return "";
+  return (
+    `<section data-scope="allow"><div class="den-bell-sc"><span>${esc(tr("bell.ap.h"))}</span></div>` +
+    allows.map((w) => allowRowHtml(w, reviews.has(w.id))).join("") +
+    `</section>`
+  );
+}
+
+/** Issue 746: groups without the held items an Allow row already shows. */
+function withoutAllowed(groups, allows) {
+  if (!allows.length) return groups;
+  const shown = new Set(allows.map((w) => `record:held-${w.id}`));
+  return groups
+    .map((g) => ({
+      ...g,
+      subjects: (g.subjects ?? []).filter((s) => !shown.has(s.subject)),
+    }))
+    .filter((g) => g.subjects.length);
 }
 
 /** `needs`: issue 101, a Needs you group has no Mark read. */
@@ -218,7 +378,7 @@ function groupsHtml(groups, ui, needs = false) {
   return groups
     .map(
       (g) =>
-        `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
+        `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
         (!needs && g.subjects.some((s) => s.items.some((n) => !n.read))
           ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}">${esc(tr("bell.read"))}</button>`
           : "") +
@@ -250,11 +410,14 @@ function askHtml(sw) {
 export function bellPanel(b, ui = {}) {
   const u = {
     folds: ui.folds ?? new Set(),
+    reviews: ui.reviews ?? new Set(),
     older: !!ui.older,
     updates: !!ui.updates,
     ask: ui.ask,
   };
-  const groups = b?.groups ?? [];
+  // Issue 746: what waits for the person's Allow leads Needs you.
+  const allows = allowsOf(b);
+  const groups = withoutAllowed(b?.groups ?? [], allows);
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
@@ -278,7 +441,14 @@ export function bellPanel(b, ui = {}) {
     ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
       (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
     : "";
-  if (!groups.length && !older.count && !updates.count && !done.length)
+  if (
+    !allows.length &&
+    !overrunsOf(b).length &&
+    !groups.length &&
+    !older.count &&
+    !updates.count &&
+    !done.length
+  )
     return {
       ...panel,
       items: [],
@@ -297,7 +467,10 @@ export function bellPanel(b, ui = {}) {
   return {
     ...panel,
     sections: {
-      needs: groupsHtml(groups, u, true),
+      needs:
+        allowsHtml(allows, u.reviews) +
+        overrunsHtml(overrunsOf(b)) +
+        groupsHtml(groups, u, true),
       // Issue 773: Done, not seen, under Needs you (when there is any).
       ...(done.length ? { done: done.map(doneRowHtml).join("") } : {}),
       earlier:
@@ -337,6 +510,55 @@ async function post(path, body) {
   }
 }
 
+/**
+ * Issue 746: Allow or Deny from a Needs you row, through the same decide
+ * route as the Allow dialog (the page's fetch adds the session's CSRF
+ * token and approval key). A toast says what happened.
+ */
+async function decideHeld(el, decision) {
+  const id = el.dataset.ap;
+  if (!id) return;
+  const btns = el
+    .closest(".den-bell-row")
+    ?.querySelectorAll("button[data-ap]") ?? [el];
+  for (const b of btns) b.disabled = true;
+  const again = () => {
+    for (const b of btns) b.disabled = false;
+  };
+  const shell = window.denShell;
+  // BUSY-1: the write goes through the working pop-up, which shows a
+  // refusal itself and resolves null then.
+  const path = `/api/approvals/${encodeURIComponent(id)}/decide`;
+  const run = (headers) => shell.api("POST", path, { decision }, { headers });
+  let j = null;
+  try {
+    j = shell?.busyAction
+      ? await shell.busyAction(`decide-${decision}`, run, { button: el })
+      : await run({});
+  } catch (err) {
+    shell?.errorToast?.(err);
+    again();
+    return;
+  }
+  if (!j) return again();
+  const res = j.result;
+  if (decision === "allow" && res && res.ok === false)
+    shell?.toast?.(tr("bell.ap.failed", { error: res.error || "?" }));
+  else
+    shell?.toast?.(
+      tr(decision === "allow" ? "bell.ap.done" : "bell.ap.denied", {
+        what: j.summary ?? "",
+      }),
+    );
+  // The page that asked hears what ran, as from the Allow dialog.
+  if (decision === "allow" && res && res.ok !== false)
+    window.dispatchEvent(
+      new CustomEvent("den:approval-done", {
+        detail: { id, action: j.action, result: res },
+      }),
+    );
+}
+
 /** Wire the bell on this page; a page without #den-bell does nothing. */
 export function initBell(doc = document) {
   const btn = doc.getElementById("den-bell");
@@ -348,7 +570,13 @@ export function initBell(doc = document) {
   }
   btn.dataset.wired = "1";
   // In memory only: a reload starts with every fold closed.
-  const ui = { folds: new Set(), older: false, updates: false, ask: null };
+  const ui = {
+    folds: new Set(),
+    reviews: new Set(),
+    older: false,
+    updates: false,
+    ask: null,
+  };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
   const bell = hydrateBell(btn, {
@@ -381,6 +609,7 @@ export function initBell(doc = document) {
         ? `[data-bell="${at.dataset.bell}"]` +
           (at.dataset.key ? `[data-key="${CSS.escape(at.dataset.key)}"]` : "") +
           (at.dataset.sw ? `[data-sw="${at.dataset.sw}"]` : "") +
+          (at.dataset.ap ? `[data-ap="${CSS.escape(at.dataset.ap)}"]` : "") +
           (at.dataset.scope
             ? `[data-scope="${CSS.escape(at.dataset.scope)}"]`
             : "")
@@ -392,7 +621,8 @@ export function initBell(doc = document) {
     const b = await load();
     if (!b) return;
     last = b;
-    bell.setCount(bellCountOf(b));
+    // Issue 993: an overrun slot counts until it ends (it has no item).
+    bell.setCount(bellCountOf(b) + overrunsOf(b).length);
     if (bell.isOpen()) paint();
     // Issue 791: an open peek hears what needs the person now.
     if (peekOpen()) peekRefresh(b);
@@ -479,6 +709,23 @@ export function initBell(doc = document) {
       return;
     }
     e.preventDefault();
+    if (what === "gate-end") {
+      await endSlot(el);
+      await refresh();
+      return;
+    }
+    if (what === "review") {
+      // Issue 746: a tap opens the held write's lines; another closes them.
+      const id = el.dataset.ap;
+      if (id && !ui.reviews.delete(id)) ui.reviews.add(id);
+      paint();
+      return;
+    }
+    if (what === "allow" || what === "deny") {
+      await decideHeld(el, what);
+      await refresh();
+      return;
+    }
     if (what === "all") await post("/api/notifications/read", { all: true });
     else if (what === "clear") await post("/api/notifications/clear", {});
     else if (what === "scope")
@@ -527,6 +774,10 @@ export function initBell(doc = document) {
       attributes: true,
       attributeFilter: ["data-den-tz"],
     });
+  // Issue 168: a project's colour changed: the open panel's headings.
+  window.addEventListener("den:project-colours-shown", () => {
+    if (bell.isOpen()) paint();
+  });
   void refresh();
   const timer = setInterval(() => {
     if (doc.visibilityState !== "hidden") void refresh();

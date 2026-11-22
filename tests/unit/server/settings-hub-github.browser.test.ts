@@ -16,7 +16,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -80,7 +80,7 @@ async function open(
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   for (const [glob, fn] of Object.entries(routes)) await p.route(glob, fn);
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
+  await signInPage(p, s!.stateDir, s!.base, path);
   return p;
 }
 
@@ -129,8 +129,11 @@ describe("Den Hub's GitHub access (H5)", () => {
     expect(syncs).toBe(0);
 
     installed = true;
-    await p.goto(
-      signInUrl(s!.stateDir, s!.base, "/settings?hub=installed#distribution"),
+    await signInPage(
+      p,
+      s!.stateDir,
+      s!.base,
+      "/settings?hub=installed#distribution",
     );
     await p.waitForSelector(`${row} [data-hubgh-access="all"]`);
     expect(syncs).toBe(1);

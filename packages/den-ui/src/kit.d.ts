@@ -7,6 +7,7 @@ import type {
   configureBusy,
   pending,
   watchForms,
+  holdDots,
 } from "./busy.js";
 import type {
   AccountHydrateOptions,
@@ -64,6 +65,12 @@ import type {
   SettingRowOptions,
   settingRowHtml,
 } from "./setting-row.js";
+import type {
+  SettingField,
+  SettingFieldHydrateOptions,
+  SettingFieldOptions,
+  settingFieldHtml,
+} from "./setting-field.js";
 import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
@@ -176,6 +183,8 @@ export declare const busy: {
   pending: typeof pending;
   /** Issue 699: plain POST forms' submitters show dots. Returns stop(). */
   watchForms: typeof watchForms;
+  /** Issue 698: the dots alone (no pop-up); (button, false) lets go. */
+  holdDots: typeof holdDots;
   configure: typeof configureBusy;
 };
 /** An autosaving editor's save-state line, in the kit's language. */
@@ -203,6 +212,14 @@ export declare function settingRow(
   el: HTMLElement,
   opts: SettingRowHydrateOptions & Partial<SettingRowOptions>,
 ): SettingRow;
+/**
+ * The text-field settings row, in the kit's language: with a row's data
+ * (a label), drawn into el first; else the row el holds is wired.
+ */
+export declare function settingField(
+  el: HTMLElement,
+  opts: SettingFieldHydrateOptions & Partial<SettingFieldOptions>,
+): SettingField;
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
@@ -263,6 +280,8 @@ export interface DenUIKit {
   pageMenu: typeof pageMenu;
   settingRowHtml: typeof settingRowHtml;
   settingRow: typeof settingRow;
+  settingFieldHtml: typeof settingFieldHtml;
+  settingField: typeof settingField;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

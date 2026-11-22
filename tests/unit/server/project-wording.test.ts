@@ -63,6 +63,8 @@ function withoutCode(s: string): string {
         /(?:\{cli\}|<cli>|\$\{cli\}|\bden|\bacme)\s+workspaces?\b/gi,
         " ",
       )
+      // a config command a row shows: __DEN_CLI__ config sessions.max_concurrent=8
+      .replace(/__DEN_CLI__ config \S+/g, " ")
       // help's own command column: "  workspace list   …"
       .replace(/^\s{2,}workspace(?= [a-z<[])/gim, " ")
   );

@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { reportAtOnce, reportMisses, reportSeen } from "./report-at-once.js";
 import {
   startAgentsPageServer,
@@ -141,9 +141,25 @@ async function open(route: string, width = 1440): Promise<Page> {
     reducedMotion: "reduce",
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, route));
+  await signInPage(p, s!.stateDir, s!.base, route);
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   return p;
+}
+
+/**
+ * What's new out of the way (issue 986). It opens on its own, as a modal
+ * dialog, on a new version's first visit, after the page's changelog
+ * fetch. Hidden by a style added after it opened, it stays modal, so the
+ * rest of the page is inert and every click lands on <html>. So: the
+ * style first (a later open sees it and closes itself), then close one
+ * already open, and wait until none is.
+ */
+async function hideWhatsNew(p: Page): Promise<void> {
+  await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+  await p.evaluate(() =>
+    (window as { closeChangelog?: () => void }).closeChangelog?.(),
+  );
+  await p.waitForFunction(() => !document.querySelector("#cl-overlay[open]"));
 }
 
 /**
@@ -284,7 +300,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     async (w) => {
       if (skip()) return;
       const p = await open("/agents", w);
-      await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+      await hideWhatsNew(p);
       expect(await topBarPlacement(p, w >= 1000)).toEqual([]);
       await p.keyboard.press("Control+k");
       await p.waitForSelector(".den-pal");
@@ -309,7 +325,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
   it("the palette, the status drawer, the bell and the admin password ask", async () => {
     if (skip()) return;
     const p = await open("/settings");
-    await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+    await hideWhatsNew(p);
     await p.keyboard.press("Control+k");
     await p.waitForSelector(".den-pal");
     await clean(p);
@@ -358,11 +374,11 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     });
     await reportAtOnce(ctx);
     const p = await ctx.newPage();
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/graph?ws=north"));
+    await signInPage(p, s!.stateDir, s!.base, "/graph?ws=north");
     await p.waitForFunction(
       () => !!(window as { denShell?: unknown }).denShell,
     );
-    await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+    await hideWhatsNew(p);
     // The bell: shown, then its refresh while open repaints it (every 5 s).
     await p.click("#den-bell");
     await p.waitForSelector("#den-bell-pop:not([hidden])");
@@ -416,7 +432,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     await p.evaluate(() =>
       (window as { closeChangelog?: () => void }).closeChangelog?.(),
     );
-    await p.addStyleTag({ content: "#cl-overlay{display:none!important}" });
+    await hideWhatsNew(p);
     await p.click("#ag-start");
     await p.waitForSelector("#ag-dlg[open]");
     await clean(p);

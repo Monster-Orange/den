@@ -241,6 +241,7 @@ describe("an account is named for the vendor, not the CLI", () => {
       codex: "ChatGPT",
       gemini: "Google",
       grok: "xAI",
+      antigravity: "Google",
     });
   });
 

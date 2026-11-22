@@ -60,6 +60,8 @@ const LISTING: Record<string, Entry> = {
   // Issue 95: the top bar's Report button is drawn by the UI kit
   // (shell-html.js's reportButtonHtml), through shell.js.
   feedback: page("shell.js", "DUI.reportButtonHtml("),
+  // Issue 565: the same command, by the button's own name.
+  report: page("shell.js", "DUI.reportButtonHtml("),
   onboard: R,
   repo: R,
 
@@ -122,6 +124,11 @@ const LISTING: Record<string, Entry> = {
 
   "notifications list": R,
   "notifications read": page("bell.js", "/api/notifications"),
+  // Issue 1008: an agent withdraws its own question (its token).
+  ask: script("an agent withdraws its own question, settled elsewhere"),
+
+  // The shared GitHub watcher's line: doctor shows it too (a read).
+  "github status": R,
 
   "hub link": page("settings-registry.js", "/hub-project"),
   // den#49: an agent's commands, with its own Den token; a person uses Hub.
@@ -135,7 +142,11 @@ const LISTING: Record<string, Entry> = {
   "gate run": script("wraps a test command, in a terminal or a gate script"),
   "gate status": page("agents.html", 'id="ag-gate"'),
   "gate end": page("gate-chip.js", "/api/gate-slots/end"),
+  // Issue 795: the waiting run's owner (an agent's shell, or MCP) yields.
+  "gate yield": script("a waiting run's owner lets one run ahead of it"),
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
+  // Issue 625: the test boxes, set on the Settings page.
+  "gate box": page("settings-registry.js", 'id: "server.gate_boxes"'),
 
   "repo detect": R,
 
@@ -198,6 +209,10 @@ const LISTING: Record<string, Entry> = {
     "0.4.67",
     "remove a vendor's account and its token (the CLI only for now)",
   ),
+  // Issue 441: an outside runner (the bed gate) hands its verdict file to
+  // the CLI; the Checks page shows the run it makes.
+  "verify import": script("an outside runner's verdict file, from its script"),
+  "verify remove": script("takes back an imported run, from a gate's cleanup"),
   "agents permission": slot(
     "0.4.46",
     "MODE-1: a project's and an agent's mode",
@@ -218,6 +233,7 @@ const DISPATCH: Record<string, { file: string; not?: string[] }> = {
   stack: { file: "stack-command.ts" },
   sessions: { file: "sessions-command.ts" },
   notifications: { file: "notifications-command.ts" },
+  github: { file: "github-command.ts" },
   hub: { file: "hub-command.ts" },
   theme: { file: "theme-command.ts" },
   plugin: { file: "plugin-command.ts" },
@@ -225,6 +241,7 @@ const DISPATCH: Record<string, { file: string; not?: string[] }> = {
   gate: { file: "gate-command.ts" },
   repo: { file: "repo-command.ts" },
   onboard: { file: "onboard-command.ts" },
+  verify: { file: "verify-command.ts" },
 };
 
 /** The CLI's registered commands (index.ts TELEMETRY_COMMANDS). */

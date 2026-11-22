@@ -23,7 +23,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -80,12 +81,10 @@ beforeAll(async () => {
     throw err;
   }
   s = await startAgentsPageServer();
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
   await startAgent("north", "planner");
   await startAgent("north", "builder");
   await startAgent("south", "reviewer");
@@ -145,8 +144,8 @@ async function open(path: string, width = 1280): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
-  await p.locator("#agl .agband").first().waitFor({ timeout: 20_000 });
+  await signInPage(p, s!.stateDir, s!.base, path);
+  await p.waitForSelector("#agl [data-band]", { timeout: 20_000 });
   return p;
 }
 
@@ -155,12 +154,12 @@ async function open(path: string, width = 1280): Promise<Page> {
  * test's agents (an install's own server agent may be listed too).
  */
 async function bands(p: Page): Promise<[string, string[]][]> {
-  const all = await p.$$eval("#agl .agband", (bs) =>
+  const all = await p.$$eval("#agl [data-band]", (bs) =>
     bs.map(
       (b) =>
         [
           (b as HTMLElement).dataset.band ?? "",
-          [...b.querySelectorAll("button.agr")].map(
+          [...b.querySelectorAll("button[data-kind]")].map(
             (r) => (r as HTMLElement).dataset.id ?? "",
           ),
         ] as [string, string[]],
@@ -179,7 +178,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     if (skip()) return;
     const p = await open("/agents");
     await p.waitForFunction(
-      () => document.querySelectorAll("#agl .agband").length >= 4,
+      () => document.querySelectorAll("#agl [data-band]").length >= 4,
       null,
       { timeout: 20_000 },
     );
@@ -189,37 +188,39 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
       ["working", [ag.reviewer.sid]],
       ["idle", [ag.scribe.sid]],
     ]);
-    // Each band headed by its word, then its count.
+    // Each band headed by its word (its own heading id), then its count.
     expect(
-      await p.$$eval("#agl .agband > .wsh > span:first-child", (hs) =>
-        hs.map((h) => h.textContent?.trim()),
+      await p.$$eval('#agl [data-band] [id^="agb-"]', (hs) =>
+        hs.map((h) => h.id),
       ),
-    ).toEqual(["Needs you", "Done, not seen", "Working", "Idle"]);
-    expect(
-      await p.textContent('#agl .agband[data-band="needs"] > .wsh .n'),
-    ).toBe("1");
-    const row = (k: string) =>
-      p.locator(`#agl button.agr[data-id="${ag[k].sid}"]`);
-    // The marks: their own shape and sign.
-    expect(await row("planner").locator(".agm.need").textContent()).toBe("!");
-    expect(await row("builder").locator(".agm.done").textContent()).toBe("✓");
-    expect(await row("reviewer").locator(".agm.work").count()).toBe(1);
-    expect(await row("scribe").locator(".agm.idle").count()).toBe(1);
-    // The chips.
-    expect(await row("planner").locator(".cp").textContent()).toBe(
-      "Needs you · permission",
+    ).toEqual(["agb-needs", "agb-done", "agb-working", "agb-idle"]);
+    expect(await p.textContent('#agl [data-band="needs"] [data-count]')).toBe(
+      "1",
     );
-    expect(await row("builder").locator(".cp").textContent()).toBe("Done");
-    expect(await row("reviewer").locator(".cp").textContent()).toBe("Working");
-    expect(await row("scribe").locator(".cp").textContent()).toBe("Idle");
+    const row = (k: string) => p.locator(`#agl button[data-id="${ag[k].sid}"]`);
+    // The marks: their own shape and sign.
+    const mark = (k: string, st: string) =>
+      row(k).locator(`[data-mark="${st}"]`);
+    expect(await mark("planner", "needs").textContent()).toBe("!");
+    expect(await mark("builder", "done").textContent()).toBe("✓");
+    expect(await mark("reviewer", "working").count()).toBe(1);
+    expect(await mark("scribe", "idle").count()).toBe(1);
+    // The chips (their words: agent-bands-773.test.ts).
+    const chip = (k: string) =>
+      row(k).locator("[data-attn]").getAttribute("data-attn");
+    expect(await chip("planner")).toBe("needs");
+    expect(await chip("builder")).toBe("done");
+    expect(await chip("reviewer")).toBe("working");
+    expect(await chip("scribe")).toBe("idle");
     // Each row has its project tag.
-    expect(await row("planner").locator(".ptag").textContent()).toBe("north");
-    expect(await row("reviewer").locator(".ptag").textContent()).toBe("south");
+    const tag = (k: string) => row(k).locator('[data-ptag="project"]');
+    expect(await tag("planner").textContent()).toBe("north");
+    expect(await tag("reviewer").textContent()).toBe("south");
     // The sub-line: each state above zero.
     const sub = (await p.textContent("#ag-count")) ?? "";
     expect(sub).toMatch(/^\d+ agents · /);
-    expect(sub).toContain("1 needs you");
-    expect(sub).toContain("1 done, not seen");
+    expect(sub).toMatch(/\b1 needs\b/);
+    expect(sub).toMatch(/\b1 done\b/);
     expect(sub).toContain("1 working");
     expect(sub).toMatch(/\d+ idle/);
     expect(errors).toEqual([]);
@@ -240,29 +241,29 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     expect(order.slice(0, 2)).toEqual(["needs", "done"]);
     expect(
       await pop
-        .locator('[data-sec="done"] .den-bell-row')
-        .first()
-        .textContent(),
-    ).toContain("finished");
+        .locator(`[data-sec="done"] [data-agent="${ag.builder.id}"]`)
+        .count(),
+    ).toBe(1);
     await p.context().close();
   }, 60_000);
 
   it("Done turns into Idle when the person opens the agent; the Done band goes; a reload keeps it", async () => {
     if (skip()) return;
     const p = await open("/agents");
-    await p.click(`#agl button.agr[data-id="${ag.builder.sid}"]`);
+    await p.click(`#agl button[data-id="${ag.builder.sid}"]`);
     await p.waitForFunction(
-      () => !document.querySelector('#agl .agband[data-band="done"]'),
+      () => !document.querySelector('#agl [data-band="done"]'),
       null,
       { timeout: 10_000 },
     );
     const idle = await bands(p);
     expect(idle.map(([b]) => b)).toEqual(["needs", "working", "idle"]);
     expect(idle.find(([b]) => b === "idle")![1]).toContain(ag.builder.sid);
-    expect(await p.locator('#agl .agband[data-band="done"]').count()).toBe(0);
+    expect(await p.locator('#agl [data-band="done"]').count()).toBe(0);
     await p.reload();
-    await p.locator("#agl .agband").first().waitFor({ timeout: 20_000 });
-    await p.waitForTimeout(500);
+    await p.waitForSelector('#agl:not([aria-busy]) [data-band="idle"]', {
+      timeout: 20_000,
+    });
     expect((await bands(p)).map(([b]) => b)).toEqual([
       "needs",
       "working",
@@ -274,18 +275,20 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
   it("one project: only its agents, no project tag", async () => {
     if (skip()) return;
     const p = await open("/agents?ws=north");
-    await p.waitForTimeout(500);
+    await p.waitForSelector("#agl:not([aria-busy]) [data-band]", {
+      timeout: 20_000,
+    });
     const ids = (await bands(p)).flatMap(([, rows]) => rows);
     expect(ids).not.toContain(ag.reviewer.sid);
     expect(ids).toContain(ag.planner.sid);
-    expect(await p.locator("#agl .agband .ptag").count()).toBe(0);
+    expect(await p.locator("#agl [data-band] [data-ptag]").count()).toBe(0);
     await p.context().close();
   }, 60_000);
 
   it("a phone, 390 px: the same bands, each row 64 px or more, no sideways scroll", async () => {
     if (skip()) return;
     const p = await open("/agents", 390);
-    const heights = await p.$$eval("#agl .agband button.agr", (bs) =>
+    const heights = await p.$$eval("#agl [data-band] button[data-kind]", (bs) =>
       bs.map((b) => b.getBoundingClientRect().height),
     );
     expect(heights.length).toBeGreaterThan(0);

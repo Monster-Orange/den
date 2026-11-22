@@ -21,6 +21,7 @@
  */
 import {
   ATTENTION_STATES,
+  ATTENTION_TABLE,
   attentionCounts,
   sortByAttention,
 } from "/kit/attention.js";
@@ -61,7 +62,17 @@ const sortName = (r) =>
     ? r.displayName || r.agent || r.label || ""
     : r.label || r.id || "";
 
-/** The bands in order, each with its rows sorted; empty bands left out. */
+/**
+ * @typedef {Record<string, any>} BandRow A session row from /api/sessions.
+ * @typedef {{ state: string, rows: BandRow[] }} Band
+ */
+
+/**
+ * The bands in order, each with its rows sorted; empty bands left out.
+ * @param {BandRow[] | null | undefined} rows
+ * @param {{ seenNow?: Map<string, unknown> | Set<string> }} [opts]
+ * @returns {Band[]}
+ */
 export function bandsOf(rows, { seenNow } = {}) {
   const items = (rows ?? []).map((r) => ({
     state: rowState(r, seenNow),
@@ -81,16 +92,22 @@ export function bandsOf(rows, { seenNow } = {}) {
 
 /**
  * Issue 96: the agent ids a running row moves among: the agents of its
- * project in its band, as the band shows them.
+ * project in its band, as the band shows them. Issue 773: none in Needs
+ * you and Done (the longest wait first there, always).
  */
 export function bandGroup(rows, r, { seenNow } = {}) {
   if (!r || r.kind !== "agent" || !r.agent) return [];
   const state = rowState(r, seenNow);
+  if (!personOrdered(state)) return [];
   const band = bandsOf(rows, { seenNow }).find((b) => b.state === state);
   return (band?.rows ?? [])
     .filter((s) => s.kind === "agent" && s.agent && s.workspace === r.workspace)
     .map((s) => s.agent);
 }
+
+/** Issue 773: a band the person orders (Working, Idle), by the table. */
+export const personOrdered = (state) =>
+  ATTENTION_TABLE[state]?.order === "name";
 
 const MARK = {
   needs: ["need", "!"],
@@ -101,8 +118,9 @@ const MARK = {
 
 /** The mark: its shape says the state as well as its colour. */
 export function markHtml(state) {
-  const [cls, sign] = MARK[state] ?? MARK.idle;
-  return `<span class="agm ${cls}" aria-hidden="true">${sign}</span>`;
+  const st = MARK[state] ? state : "idle";
+  const [cls, sign] = MARK[st];
+  return `<span class="agm ${cls}" data-mark="${st}" aria-hidden="true">${sign}</span>`;
 }
 
 /** The chip: the state's word; Needs you says which need. */
@@ -123,12 +141,16 @@ export function chipHtml(r, seenNow) {
  * The tag before a row's meta: "Server" for the server agent (in every
  * view), else its project's name on All projects; none on one project.
  */
+/**
+ * @param {BandRow} r
+ * @param {{ all?: boolean, name?: (workspace: string) => string }} [opts]
+ */
 export function tagHtml(r, { all = false, name } = {}) {
   if (r.server || r.workspace === SERVER_WS)
-    return `<span class="ptag">${esc(t("ag.tag.server"))}</span>`;
+    return `<span class="ptag" data-ptag="server">${esc(t("ag.tag.server"))}</span>`;
   if (!all) return "";
   const n = typeof name === "function" ? name(r.workspace) : r.workspace;
-  return `<span class="ptag">${esc(n)}</span>`;
+  return `<span class="ptag" data-ptag="project">${esc(n)}</span>`;
 }
 
 /**

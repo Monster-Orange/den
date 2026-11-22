@@ -494,7 +494,7 @@ describe("Settings › Access", () => {
     expect([after.status, json(after).code]).toEqual([401, "signin_required"]);
   });
 
-  it("Pair a device: a one-time link for an edge hostname, which signs a browser in there once", async () => {
+  it("Pair a device: a one-time link for an edge hostname, which opens the pairing screen there once (issue 819)", async () => {
     // 0.4.12: an anonymous localhost page can't make one (a write needs a
     // sign-in on this machine too, 0.4.71), nor a signed-in page without
     // its approval key; the person can.
@@ -534,14 +534,24 @@ describe("Settings › Access", () => {
     secrets.push(url.href);
     expect([url.origin, url.pathname]).toEqual([`http://${EDGE}`, "/auth"]);
     const nav = { host: EDGE, "sec-fetch-site": "none", accept: "text/html" };
+    const count = async () =>
+      (
+        json(await call("GET", "/api/web/sessions", bearer())).sessions as
+          | unknown[]
+          | undefined
+      )?.length ?? 0;
+    const before = await count();
+    // Issue 819: the link alone signs nothing in: it opens the pairing
+    // screen, and a signed-in browser approves the device.
     const first = await call("GET", url.pathname + url.search, nav);
-    expect(first.status).toBe(303);
-    expect(cookieOf(first).length).toBeGreaterThan(0);
+    expect([first.status, cookieOf(first)]).toEqual([401, ""]);
+    expect(first.body).toMatch(
+      /"pair":\{"id":"[A-Za-z0-9_-]+","code":"[0-9A-Z]{3}-[0-9A-Z]{3}"/,
+    );
     const again = await call("GET", url.pathname + url.search, nav);
-    expect(again.status).toBe(401);
-    const list = json(await call("GET", "/api/web/sessions", bearer()))
-      .sessions as Record<string, unknown>[];
-    expect(list[0]).toMatchObject({ via: "link", host: EDGE });
+    expect([again.status, cookieOf(again)]).toEqual([401, ""]);
+    expect(again.body).not.toContain('"pair":');
+    expect(await count()).toBe(before);
   });
 
   it("unlinking the owner is shell-grade too; then Sign in with GitHub says to link one", async () => {

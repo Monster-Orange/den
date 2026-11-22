@@ -92,6 +92,8 @@ export const UI_MODULES: readonly string[] = [
   "/peek.css",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
+  // Issue 482: the Terminals list's rules.
+  "/terminals-list.js",
   // Issue 503: the words for a terminal that got no PTY.
   "/pty-refusal.js",
   // D64: Restart Den from the browser, in place.
@@ -181,6 +183,8 @@ export const KIT_FILES: readonly string[] = [
   "button.css",
   "setting-row.js",
   "setting-row.css",
+  "setting-field.js",
+  "setting-field.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // Issue 773: who needs the person, one sort rule for Den and Hub.

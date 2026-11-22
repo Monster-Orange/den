@@ -113,16 +113,16 @@ describe("issue 773: marks and chips", () => {
   it("each mark has its own shape and word: !, a tick, a halo, a ring", async () => {
     const { markHtml } = await mod();
     expect(markHtml("needs")).toBe(
-      '<span class="agm need" aria-hidden="true">!</span>',
+      '<span class="agm need" data-mark="needs" aria-hidden="true">!</span>',
     );
     expect(markHtml("done")).toBe(
-      '<span class="agm done" aria-hidden="true">✓</span>',
+      '<span class="agm done" data-mark="done" aria-hidden="true">✓</span>',
     );
     expect(markHtml("working")).toBe(
-      '<span class="agm work" aria-hidden="true"></span>',
+      '<span class="agm work" data-mark="working" aria-hidden="true"></span>',
     );
     expect(markHtml("idle")).toBe(
-      '<span class="agm idle" aria-hidden="true"></span>',
+      '<span class="agm idle" data-mark="idle" aria-hidden="true"></span>',
     );
   });
 
@@ -147,7 +147,7 @@ describe("issue 773 Project picker and Server agent: the tag", () => {
   it("All projects: each row has its project tag; one project: none", async () => {
     const { tagHtml } = await mod();
     expect(tagHtml(ag("a", "idle"), { all: true, name: () => "Acme" })).toBe(
-      '<span class="ptag">Acme</span>',
+      '<span class="ptag" data-ptag="project">Acme</span>',
     );
     expect(tagHtml(ag("a", "idle"), { all: false })).toBe("");
   });
@@ -159,10 +159,10 @@ describe("issue 773 Project picker and Server agent: the tag", () => {
       workspace: "den-server",
     });
     expect(tagHtml(srv, { all: true })).toBe(
-      '<span class="ptag">[ag.tag.server]</span>',
+      '<span class="ptag" data-ptag="server">[ag.tag.server]</span>',
     );
     expect(tagHtml(srv, { all: false })).toBe(
-      '<span class="ptag">[ag.tag.server]</span>',
+      '<span class="ptag" data-ptag="server">[ag.tag.server]</span>',
     );
   });
 
@@ -227,6 +227,12 @@ describe("issue 773 + issue 96: the person's drag order inside a band", () => {
       ag("planner", "needs", { attnSince: T(3) }),
     ];
     expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
-    expect(bandGroup(rows, rows[3])).toEqual(["planner"]);
+    // Needs you and Done keep the longest wait first: nothing moves there.
+    expect(bandGroup(rows, rows[3])).toEqual([]);
+    const done = [
+      ag("b1", "done", { attnSince: T(1) }),
+      ag("b2", "done", { attnSince: T(2) }),
+    ];
+    expect(bandGroup(done, done[0])).toEqual([]);
   });
 });

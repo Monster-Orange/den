@@ -17,9 +17,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
-import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
 import { writeRecord } from "../../../src/shared/agents/records.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { denAuth } from "./helpers/den-auth.js";
@@ -156,7 +155,8 @@ async function page(signIn: boolean): Promise<Page> {
     errors.push(`console: ${m.text()}`);
   });
   if (signIn) {
-    await p.goto(claimLink(base(), mintClaimCode(readWebSecret(stateDir)!)));
+    // Issue 819: first run, then approved by a signed-in browser.
+    await signInPage(p, stateDir, base());
     await p.waitForFunction(
       () => localStorage.getItem("den.approveKey")?.length === 43,
     );

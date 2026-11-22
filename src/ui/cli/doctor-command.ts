@@ -21,14 +21,13 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { fixturePersonPath } from "../../shared/fixture-person.js";
+import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { readWebUrl } from "../../shared/web-url.js";
-import {
-  aliasCandidates,
-  loopbackRefusal,
-} from "../../shared/web-url-check.js";
+import { rankFindings, readWebUrl } from "../../shared/web-url.js";
+import { loopbackRefusal } from "../../shared/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
@@ -634,6 +633,47 @@ export function whereCheck(r: WhereRow): OnboardCheck {
  * HUB-1.5: doctor's Hub row, or none when hub.url isn't set. Never the
  * token: hubStatus doesn't have it to give.
  */
+/** The stacks' project clashes; none when the stacks can't be read. */
+async function safeStackClashes(): Promise<
+  import("../../shared/stacks/status.js").ProjectClash[]
+> {
+  try {
+    const { stackProjectClashes } =
+      await import("../../shared/stacks/status.js");
+    return stackProjectClashes();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * D53: Compose projects Den's stacks can't call their own: a name two
+ * stacks render to, or one already running containers Den didn't start
+ * (its up, down and restart are refused). A warning: nothing is broken
+ * until one of them is acted on.
+ */
+export function stackClashLines(
+  clashes: import("../../shared/stacks/status.js").ProjectClash[],
+  title: string,
+  cli: string,
+): { lines: string[]; check?: OnboardCheck } {
+  if (!clashes.length) return { lines: [] };
+  const each = clashes.map((c) =>
+    c.stacks.length > 1
+      ? `Compose project "${c.project}" is the name of ${c.stacks.length} stacks: ${c.stacks.join(", ")}. Give each a compose.name of its own in its repo's .den.yml.`
+      : `Compose project "${c.project}" (stack ${c.stacks[0]}) is running containers ${cli} didn't start: ${c.foreign.slice(0, 5).join(", ")}${c.foreign.length > 5 ? ` and ${c.foreign.length - 5} more` : ""}. Its up, down and restart are refused. Give the stack a compose.name of its own in its repo's .den.yml.`,
+  );
+  return {
+    lines: [
+      "",
+      `${title} doctor: stacks`,
+      "",
+      ...each.map((l) => `  stacks  ⚠  ${l}`),
+    ],
+    check: { id: "stacks:projects", status: "warn", detail: each.join(" ") },
+  };
+}
+
 export function hubLines(
   st: import("../../shared/hub.js").HubStatus,
   title: string,
@@ -666,6 +706,10 @@ export function hubLines(
       `${title} doctor: Hub`,
       "",
       `  hub  ${good ? "✓" : "⚠"}  ${detail}`,
+      // Issue 158: a bad hub.delivery_loop is ignored, and said here.
+      ...("deliveryLoopIgnored" in st && st.deliveryLoopIgnored
+        ? [`  hub loop  ⚠  ${st.deliveryLoopIgnored}`]
+        : []),
     ],
     problem: false, // a Hub that is down never fails doctor: agents still run
     check: { id: "hub", status: good ? "ok" : "warn", detail },
@@ -691,6 +735,10 @@ export function hubDeliveryLines(
   h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
   now: number,
   minutes: number,
+  /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
+  journal:
+    | import("../../shared/hub-delivery-journal.js").JournalSummary
+    | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
   const alert = deliveryAlert(h, now, minutes);
@@ -703,6 +751,27 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
+  if (journal) {
+    const words: [keyof typeof journal.counts, string][] = [
+      ["typed", "typed"],
+      ["done", "done"],
+      ["held", "held"],
+      ["passed", "passed over"],
+      ["refused", "refused"],
+      ["failed", "failed"],
+      ["no-answer", "no answer"],
+    ];
+    const said = words
+      .filter(([k]) => journal.counts[k])
+      .map(([k, w]) => `${journal.counts[k]} ${w}`);
+    parts.push(
+      `last 24 h: ${said.length ? said.join(", ") : "none"}` +
+        (journal.lastTypedAt !== null
+          ? `, last typed ${agoText(now - journal.lastTypedAt)}`
+          : "") +
+        ` (log: ${journal.file})`,
+    );
+  }
   const detail = alert
     ? `Hub comments aren't arriving: ${TROUBLE_TEXT[alert]} (${parts.join("; ")})`
     : parts.join("; ");
@@ -710,6 +779,26 @@ export function hubDeliveryLines(
     lines: [`  hub comments  ${alert ? "⚠" : "✓"}  ${detail}`],
     problem: false, // like the Hub row: agents still run
     check: { id: "hub:comments", status: alert ? "warn" : "ok", detail },
+  };
+}
+
+/**
+ * The shared GitHub watcher's row (MCP github_watch): GitHub calls left,
+ * the reset, the active watches and the interval, from the server's
+ * github/watch-status.json. Warns while paused (never a failure: agents
+ * still run). None before the server wrote it.
+ */
+async function githubWatchRow(): Promise<{
+  lines: string[];
+  check?: OnboardCheck;
+}> {
+  const { githubWatchLine, readWatchStatus } =
+    await import("../../shared/github-watch/status-line.js");
+  const l = githubWatchLine(readWatchStatus(getStateDir()));
+  if (!l) return { lines: [] };
+  return {
+    lines: [`  github watch  ${l.ok ? "✓" : "⚠"}  ${l.text}`],
+    check: { id: "github:watch", status: l.ok ? "ok" : "warn", detail: l.text },
   };
 }
 
@@ -724,12 +813,18 @@ async function hubDeliveryDoctor(): Promise<
   } catch {
     /* the Hub row says what's wrong with the hub block */
   }
+  const { journalSummary } =
+    await import("../../shared/hub-delivery-journal.js");
   return hubDeliveryLines(
     readDeliveryHealth(
       path.join(getStateDir(), "hub", "deliveries-health.json"),
     ),
     Date.now(),
     minutes,
+    journalSummary(
+      path.join(getStateDir(), "hub", "deliveries.jsonl"),
+      Date.now(),
+    ),
   );
 }
 
@@ -973,8 +1068,10 @@ export function addressLines(
   title: string,
   cli: string,
   checked: DoctorAddress | null = null,
-  /** Issue 666: this install's edge alias (aliasCandidates), if any. */
+  /** Issue 666: this install's edge alias (edgeAddresses' first), if any. */
   alias: string | null = null,
+  /** The install's other edge addresses, named when web.url is unconfirmed. */
+  others: readonly string[] = [],
 ): { lines: string[]; problem: boolean; check: OnboardCheck } {
   // Issue 666: a loopback address is a problem, never ✓ and never one to
   // confirm: other devices can't open it. The fix is the alias, if any.
@@ -1051,9 +1148,11 @@ export function addressLines(
       };
     }
   }
+  const rest = others.filter((u) => u !== w.url);
   const detail = w.confirmed
     ? w.url
-    : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\``;
+    : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\`` +
+      (rest.length ? `. Other edge addresses: ${rest.join(", ")}` : "");
   return {
     lines: [
       "",
@@ -1122,6 +1221,38 @@ function addressLastAnswered(): string | null {
 }
 
 /**
+ * Issue 1018: doctor's Sign-in row for a test install's fixture person:
+ * how its key was made (the launcher's setup value, Set up test person,
+ * or at creation). Null when there's no key.
+ */
+export function fixtureMadeByLine(
+  hasKey: boolean,
+  how: import("../../shared/fixture-setup-secret.js").FixtureMadeBy | null,
+): string | null {
+  if (!hasKey) return null;
+  const words =
+    how === "setup-secret"
+      ? "made from the setup secret"
+      : how === "settings"
+        ? "made by Settings › Access › Set up test person"
+        : how === "creation"
+          ? "made at creation (a new test install)"
+          : "set up (how isn't recorded)";
+  return `  test person  ✓  ${words}`;
+}
+
+function fixtureLineNow(): string | null {
+  try {
+    return fixtureMadeByLine(
+      fs.existsSync(fixturePersonPath(getStateDir())),
+      readFixtureMadeBy(getStateDir()),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Where the browser sign-in lives. With a working https address (web.url,
  * through the edge) the session cookie lives only there, host-only and
  * Secure. Without one it lives on the host the person uses (localhost
@@ -1167,21 +1298,24 @@ export function sessionHostLines(
  * web.url isn't set or the web port can't be read.
  */
 /**
- * Issue 666: this install's edge alias, the address doctor offers when
- * web.url names this machine only: the first edge route to Den's web port
- * that isn't loopback (https first), or null.
+ * Issue 666: the edge routes to Den's web port that can be its address,
+ * best first (doctor offers the first when web.url names this machine
+ * only, and lists the rest while web.url is unconfirmed):
+ * a route edge.routes names before the brand's, https first, never
+ * loopback (rankFindings, the migration's order). Empty with no edge.
  */
-export async function edgeAlias(): Promise<string | null> {
+export async function edgeAddresses(): Promise<string[]> {
   try {
     const { readWebPort } = await import("../../shared/edge/config.js");
-    const { webRouteHosts } = await import("../../shared/edge/render.js");
-    if (!hasEdgeBlock()) return null;
-    const urls = webRouteHosts(readEdgeConfig(), new Set([readWebPort()])).map(
-      (r) => r.url,
-    );
-    return aliasCandidates(urls)[0] ?? null;
+    const { webRouteFindings } = await import("../../shared/edge/render.js");
+    if (!hasEdgeBlock()) return [];
+    const hits = webRouteFindings(
+      readEdgeConfig(),
+      new Set([readWebPort()]),
+    ).map((r) => ({ url: r.url, from: "", named: r.named }));
+    return rankFindings(hits).map((r) => r.url);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -1680,8 +1814,18 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
       r.checks.push(hm.check);
       if (hm.problem) r.ok = false;
+      // Issue 583: a far too broad repo root, and why Validate refuses it.
+      const rr = await repoRootRows();
+      r.checks.push(rr.check);
+      if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 625: the test boxes, and why one is skipped.
+      const bx = await gateBoxRows();
+      if (bx.lines.length) r.checks.push(bx.check);
+      // The shared GitHub watcher: calls left, reset, watches, interval.
+      const gw = await githubWatchRow();
+      if (gw.check) r.checks.push(gw.check);
     }
     {
       const { hubStatus } = await import("../../shared/hub.js");
@@ -1707,6 +1851,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       }
     }
     r.checks.push(...(await projectMcpDoctor()).checks);
+    {
+      // D53 (issue 39): Compose projects Den's stacks can't call their own.
+      const sc = stackClashLines(
+        await safeStackClashes(),
+        readBrand().name,
+        product().cli,
+      );
+      if (sc.check) r.checks.push(sc.check);
+    }
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
     if (cfg.problem) r.ok = false;
@@ -1714,12 +1867,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...sign.checks);
     if (sign.problem) r.ok = false;
     const checked = await doctorAddress(product().cli);
+    const edges = await edgeAddresses();
     const addr = addressLines(
       readWebUrl(),
       readBrand().name,
       product().cli,
       checked,
-      await edgeAlias(),
+      edges[0] ?? null,
+      edges,
     );
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
@@ -1761,6 +1916,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
+    // Issue 636: whether this install is a test bed.
+    r.checks.push(
+      (await import("./test-person.js")).testBedLines(readBrand().name).check,
+    );
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1791,8 +1950,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     defaultHostModuleDeps(getStateDir()),
   );
   for (const l of hm.lines) console.log(l);
+  // Issue 583: a far too broad repo root, and why Validate refuses it.
+  const roots = await repoRootRows();
+  for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  // Issue 625: the test boxes, and why one is skipped.
+  for (const l of (await gateBoxRows()).lines) console.log(l);
+  // The shared GitHub watcher: calls left, reset, watches, interval.
+  for (const l of (await githubWatchRow()).lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
@@ -1815,17 +1981,25 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
   }
   for (const l of (await projectMcpDoctor()).lines) console.log(l);
+  for (const l of stackClashLines(
+    await safeStackClashes(),
+    readBrand().name,
+    product().cli,
+  ).lines)
+    console.log(l);
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
   const checked = await doctorAddress(product().cli);
+  const edges = await edgeAddresses();
   const addr = addressLines(
     readWebUrl(),
     readBrand().name,
     product().cli,
     checked,
-    await edgeAlias(),
+    edges[0] ?? null,
+    edges,
   );
   for (const l of addr.lines) console.log(l);
   {
@@ -1844,6 +2018,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       addressLastAnswered(),
     ).lines)
       console.log(l);
+    const fx = fixtureLineNow();
+    if (fx) console.log(fx);
   }
   for (const l of pushContactLines(
     readWebUrl(),
@@ -1858,6 +2034,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
+  // Issue 636: whether this install is a test bed.
+  for (const l of (await import("./test-person.js")).testBedLines(
+    readBrand().name,
+  ).lines)
+    console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
@@ -1871,6 +2052,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ownerProblem ||
       pty.problem ||
       hm.problem ||
+      roots.problem ||
       cfg.problem ||
       sign.problem ||
       addr.problem
@@ -1899,6 +2081,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ownerProblem ||
     pty.problem ||
     hm.problem ||
+    roots.problem ||
     cfg.problem ||
     found
     ? 1
@@ -1906,6 +2089,20 @@ export async function cmdDoctor(args: string[]): Promise<number> {
 }
 
 /** Issue 726: doctor's rows for state from an earlier Hub. */
+/** Issue 625: the machine's test boxes (never checked from here). */
+async function gateBoxRows() {
+  const { boxLines } = await import("./doctor-boxes.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    return boxLines(new GateStore());
+  } catch {
+    return {
+      lines: [] as string[],
+      check: { id: "gate_boxes", status: "ok" as const, detail: "" },
+    };
+  }
+}
+
 async function previousHubRows(): Promise<
   ReturnType<typeof import("./doctor-hub-previous.js").previousHubLines>
 > {
@@ -1936,4 +2133,11 @@ async function heldHubLines(): Promise<
     now: Date.now(),
     bellMinutes,
   });
+}
+
+/** Issue 583: doctor's repo roots row, for this install's projects. */
+async function repoRootRows() {
+  const { repoRootLines, defaultRepoRoots } =
+    await import("./doctor-repo-roots.js");
+  return repoRootLines(await defaultRepoRoots(), { stateDir: getStateDir() });
 }
