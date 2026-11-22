@@ -66,12 +66,15 @@ export function checkHubAddress(
   type Line = [string, { key: string; vars?: Record<string, string> }];
   const lines: Line[] = [
     p.url
-      ? [
-          `Hub's address: ${was || "none"} → ${p.url}.`,
-          was
-            ? { key: "ap.det.hub_connect.set", vars: { was, url: p.url } }
-            : { key: "ap.det.hub_connect.setNew", vars: { url: p.url } },
-        ]
+      ? was
+        ? [
+            `Hub's address: ${was} → ${p.url}.`,
+            { key: "ap.det.hub_connect.set", vars: { was, url: p.url } },
+          ]
+        : [
+            `Hub's address: none → ${p.url}.`,
+            { key: "ap.det.hub_connect.setNew", vars: { url: p.url } },
+          ]
       : [
           `Hub's address ${was} is cleared; this Den stops using Hub.`,
           { key: "ap.det.hub_connect.clear", vars: { was } },

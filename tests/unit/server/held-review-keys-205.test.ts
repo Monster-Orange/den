@@ -13,6 +13,7 @@ import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import * as vm from "vm";
+import ts from "typescript";
 import {
   heldActions,
   type HeldActionDeps,
@@ -184,5 +185,204 @@ describe("issue 205: held-actions.ts's checks, run: one key per line", () => {
     expect(c.details?.length).toBeGreaterThan(0);
     expect(c.detailKeys?.length).toBe(c.details!.length);
     expect(c.detailKeys!.every((k) => k && k.key)).toBe(true);
+  });
+});
+
+/**
+ * Issue 205 (review): the Allow dialog says exactly what Den does, in
+ * every language, so each Review line's key, rendered in English, is that
+ * line word for word. Read from the source with TypeScript's parser:
+ *
+ *   - every key sits beside its line: `[text, { key, vars }]`, or
+ *     `line(text, key, vars)` / `rl(…)` (never a separate list of keys);
+ *   - the line's text with each `${expr}` put back as the `{var}` its
+ *     vars give that expr is the en catalog's string for the key.
+ */
+type Pair = { at: string; text: string | null; key: string; why?: string };
+
+function reviewPairs(): { pairs: Pair[]; unpaired: string[] } {
+  const pairs: Pair[] = [];
+  const unpaired: string[] = [];
+  for (const f of walk(SRC)) {
+    const src = fs.readFileSync(f, "utf-8");
+    if (!src.includes('"ap.')) continue;
+    const sf = ts.createSourceFile(f, src, ts.ScriptTarget.Latest, true);
+    const at = (n: ts.Node) =>
+      `${path.relative(process.cwd(), f)}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
+    const consts = new Map<string, ts.Expression>();
+    const keyOf = (o: ts.Node): string | null => {
+      if (!ts.isObjectLiteralExpression(o)) return null;
+      for (const p of o.properties)
+        if (
+          ts.isPropertyAssignment(p) &&
+          p.name.getText(sf) === "key" &&
+          ts.isStringLiteral(p.initializer) &&
+          p.initializer.text.startsWith("ap.")
+        )
+          return p.initializer.text;
+      return null;
+    };
+    /** An expression as it renders: String(x), String(x ?? ""), x! are x. */
+    const norm = (x: string): string => {
+      let t = x.trim();
+      for (;;) {
+        const m = /^String\(([\s\S]*)\)$/.exec(t);
+        const n = /^([\s\S]*?)\s*\?\?\s*""$/.exec(t);
+        if (m) t = m[1].trim();
+        else if (n) t = n[1].trim();
+        else if (t.endsWith("!")) t = t.slice(0, -1).trim();
+        else return t;
+      }
+    };
+    /** var name → the expression's source text. */
+    const varsOf = (
+      o: ts.Expression | undefined,
+    ): Map<string, string> | null => {
+      const m = new Map<string, string>();
+      if (!o) return m;
+      if (!ts.isObjectLiteralExpression(o)) return null;
+      for (const p of o.properties) {
+        if (ts.isShorthandPropertyAssignment(p))
+          m.set(p.name.text, p.name.text);
+        else if (ts.isPropertyAssignment(p))
+          m.set(p.name.getText(sf), norm(p.initializer.getText(sf)));
+        else return null;
+      }
+      return m;
+    };
+    const textOf = (
+      e: ts.Expression,
+      vars: Map<string, string>,
+    ): { text: string | null; why?: string } => {
+      if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e))
+        return { text: e.text };
+      if (ts.isIdentifier(e) && consts.has(e.text))
+        return textOf(consts.get(e.text)!, vars);
+      // A line that is one var, whole (a persona's own words).
+      const whole = [...vars].find(([, v]) => v === norm(e.getText(sf)));
+      if (whole) return { text: `{${whole[0]}}` };
+      if (ts.isTemplateExpression(e)) {
+        let out = e.head.text;
+        for (const s of e.templateSpans) {
+          const x = norm(s.expression.getText(sf));
+          const name = [...vars].find(([, v]) => v === x)?.[0];
+          if (!name) return { text: null, why: `\${${x}} is in no var` };
+          out += `{${name}}${s.literal.text}`;
+        }
+        return { text: out };
+      }
+      return { text: null, why: `its text is ${ts.SyntaxKind[e.kind]}` };
+    };
+    const pairAt = (n: ts.Node, textE: ts.Expression, keyE: ts.Node) => {
+      const key =
+        keyOf(keyE) ??
+        (ts.isStringLiteral(keyE) && keyE.text.startsWith("ap.")
+          ? keyE.text
+          : null);
+      if (!key) return false;
+      const vars = ts.isObjectLiteralExpression(keyE)
+        ? varsOf(
+            keyE.properties
+              .filter(ts.isPropertyAssignment)
+              .find((p) => p.name.getText(sf) === "vars")?.initializer,
+          )
+        : null;
+      if (!vars) {
+        pairs.push({
+          at: at(n),
+          text: null,
+          key,
+          why: "its vars aren't an object",
+        });
+        return true;
+      }
+      const t = textOf(textE, vars);
+      pairs.push({ at: at(n), key, ...t });
+      return true;
+    };
+    const paired = new Set<ts.Node>();
+    const visit = (n: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(n) &&
+        ts.isIdentifier(n.name) &&
+        n.initializer &&
+        (ts.isStringLiteral(n.initializer) ||
+          ts.isNoSubstitutionTemplateLiteral(n.initializer))
+      )
+        consts.set(n.name.text, n.initializer);
+      if (ts.isArrayLiteralExpression(n) && n.elements.length === 2) {
+        const [a, b] = n.elements;
+        if (!keyOf(a) && keyOf(b) && pairAt(n, a, b)) paired.add(b);
+      }
+      if (
+        ts.isCallExpression(n) &&
+        ts.isIdentifier(n.expression) &&
+        ["line", "rl"].includes(n.expression.text) &&
+        n.arguments.length >= 2 &&
+        ts.isStringLiteral(n.arguments[1])
+      ) {
+        const vars = varsOf(n.arguments[2]);
+        const key = n.arguments[1].text;
+        if (!vars)
+          pairs.push({
+            at: at(n),
+            text: null,
+            key,
+            why: "its vars aren't an object",
+          });
+        else pairs.push({ at: at(n), key, ...textOf(n.arguments[0], vars) });
+      }
+      if (keyOf(n) && !paired.has(n)) unpaired.push(`${at(n)} ${keyOf(n)}`);
+      ts.forEachChild(n, visit);
+    };
+    // Constants first (a line may use one defined below it).
+    const collect = (n: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(n) &&
+        ts.isIdentifier(n.name) &&
+        n.initializer &&
+        (ts.isStringLiteral(n.initializer) ||
+          ts.isNoSubstitutionTemplateLiteral(n.initializer) ||
+          ts.isTemplateExpression(n.initializer))
+      )
+        consts.set(n.name.text, n.initializer);
+      ts.forEachChild(n, collect);
+    };
+    collect(sf);
+    // Pairs first, so a key inside one isn't counted as unpaired.
+    const pairsFirst = (n: ts.Node): void => {
+      if (ts.isArrayLiteralExpression(n) && n.elements.length === 2) {
+        const [a, b] = n.elements;
+        if (!keyOf(a) && keyOf(b)) paired.add(b);
+      }
+      ts.forEachChild(n, pairsFirst);
+    };
+    pairsFirst(sf);
+    visit(sf);
+  }
+  return { pairs, unpaired };
+}
+
+describe("issue 205: each Review key says its line, word for word", () => {
+  const { pairs, unpaired } = reviewPairs();
+
+  it("finds the lines (a sanity floor)", () => {
+    expect(pairs.length).toBeGreaterThan(60);
+  });
+
+  it("every key sits beside its line, never in a separate list", () => {
+    expect(unpaired).toEqual([]);
+  });
+
+  it("each key, in English, is its line exactly", () => {
+    const en = catalogs().en;
+    const wrong = pairs
+      .filter((p) => p.text === null || en[p.key] !== p.text)
+      .map((p) =>
+        p.text === null
+          ? `${p.at} ${p.key}: ${p.why}`
+          : `${p.at} ${p.key}:\n  line: ${p.text}\n  en:   ${en[p.key] ?? "(none)"}`,
+      );
+    expect(wrong).toEqual([]);
   });
 });

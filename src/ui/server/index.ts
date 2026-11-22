@@ -10,6 +10,7 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
+import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
   handleNotificationRoutes,
@@ -4373,19 +4374,23 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
         args: { version },
         summary: `commit the distribution's pin to Den ${version}`,
         params: { version },
-        details: [
-          mode === "pr"
-            ? `Den commits package.json and package-lock.json on the branch den/pin-${version} and opens a pull request.`
-            : "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
-          "Nothing else in the distribution's folder is committed.",
-        ],
         // Issue 205: each Review line in the page's language.
-        detailKeys: [
+        ...reviewLines([
           mode === "pr"
-            ? { key: "ap.det.den_pin_commit.pr", vars: { version } }
-            : { key: "ap.det.den_pin_commit.push" },
-          { key: "ap.det.den_pin_commit.only" },
-        ],
+            ? line(
+                `Den commits package.json and package-lock.json on the branch den/pin-${version} and opens a pull request.`,
+                "ap.det.den_pin_commit.pr",
+                { version },
+              )
+            : line(
+                "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
+                "ap.det.den_pin_commit.push",
+              ),
+          line(
+            "Nothing else in the distribution's folder is committed.",
+            "ap.det.den_pin_commit.only",
+          ),
+        ]),
       };
     },
     run: async (a) => {

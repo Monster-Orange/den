@@ -51,6 +51,12 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
+  line as rl,
+  reviewLines as review,
+  type DetailKey,
+  type ReviewLine,
+} from "../../shared/review-lines.js";
+import {
   agentOrderOf,
   inAgentOrder,
   moveInOrder,
@@ -2358,19 +2364,6 @@ function personaReview(input: PersonaInput): ReviewLine[] {
     rl(input.instructions, "ap.det.asWritten", { v: input.instructions }),
   ];
 }
-
-/** Issue 205: a Review line and its message key (the page's language). */
-type ReviewLine = [string, DetailKey];
-const rl = (
-  text: string,
-  key: string,
-  vars?: Record<string, string>,
-): ReviewLine => [text, vars ? { key, vars } : { key }];
-/** Review lines as a held check returns them: each with its key. */
-const review = (lines: ReviewLine[]) => ({
-  details: lines.map((l) => l[0]),
-  detailKeys: lines.map((l) => l[1]),
-});
 
 const heldError = (e: unknown): { ok: false; error: string } => ({
   ok: false,
@@ -4823,10 +4816,7 @@ function folderTarget(
 }
 
 /** A details line as a message key with its words (the page's t()). */
-export interface DetailKey {
-  key: string;
-  vars?: Record<string, string>;
-}
+export type { DetailKey };
 
 /** Issue 205: "Agent: name (id), project p", as a Review line. */
 function agentLine(shown: string, id: string, project: string): ReviewLine {
@@ -5047,9 +5037,8 @@ export function checkProjectMode(
     const rankAfter =
       after === undefined ? INTENT_RANK.all + 1 : INTENT_RANK[after];
     const widensOwn = ownMode.some((o) => rankAfter > INTENT_RANK[o.mode]);
-    const ownList = ownMode
-      .map((o) => `${o.agent} (own mode: ${o.mode})`)
-      .join(", ");
+    // One list for the line and its key: the same in every language.
+    const ownList = ownMode.map((o) => `${o.agent} (${o.mode})`).join(", ");
     // Each line in English, with its key for the Allow dialog's language.
     const lines: [string, DetailKey][] = [
       ...(loosens
@@ -5078,9 +5067,7 @@ export function checkProjectMode(
               `These keep their own mode and won't follow the project: ${ownList}`,
               {
                 key: "ap.pm.own",
-                vars: {
-                  list: ownMode.map((o) => `${o.agent} (${o.mode})`).join(", "),
-                },
+                vars: { list: ownList },
               },
             ] as [string, DetailKey],
           ]
