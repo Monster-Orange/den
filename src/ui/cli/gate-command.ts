@@ -148,6 +148,9 @@ export interface GateDeps {
   descends?: (pid: number, root: number) => boolean;
 }
 
+/** Issue 928: how often a nested run checks its slot still holds. */
+const NESTED_LOOK_MS = 5_000;
+
 /** Issue 928: what `gate run` tells its command about the slot it holds. */
 export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
 export const GATE_SLOT_KIND_ENV = "DEN_GATE_SLOT_KIND";
@@ -171,7 +174,7 @@ function heldSlotFor(
   const want = where ?? "local";
   if (want !== "any" && want !== place) return undefined;
   const under = d.descends ?? ((p, r) => descendsFrom(p, r));
-  const roots = [e.runPid, e.pid].filter((p): p is number => !!p && p > 0);
+  const roots = [e.runPid, e.pid].filter((p): p is number => !!p && p > 1);
   return roots.some((r) => under(d.pid, r)) ? e : undefined;
 }
 
@@ -408,11 +411,27 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     d.err(
       `gate: inside ${inside.id} (holds ${kind}${inside.box ? ` on box ${inside.box}` : ""}); running ${label} in it`,
     );
+    if (typeof f["--browser-endpoint"] === "string")
+      d.err(
+        `gate: --browser-endpoint is not used inside ${inside.id}: the held slot's browser is`,
+      );
     const child = d.exec(pos[0]!, pos.slice(1));
     const off = d.onSignal((sig) => child.kill(sig));
+    // Never past its slot: when the outer run gives it back (it ended),
+    // this command stops too, so two runs never share a slot unheld.
+    let gone = false;
+    const look = d.every(NESTED_LOOK_MS, () => {
+      if (gone || d.store.get(inside.id)?.grantedAt) return;
+      gone = true;
+      d.err(
+        `gate: ${inside.id}'s run ended and gave its slot back; stopping ${label}`,
+      );
+      child.kill("SIGTERM");
+    });
     try {
       return await child.done;
     } finally {
+      look();
       off();
     }
   }

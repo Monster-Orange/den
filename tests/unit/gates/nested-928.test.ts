@@ -90,6 +90,45 @@ describe("issue 928: gate run hands its command the slot", () => {
   });
 });
 
+describe("issue 928: a nested run never outlives its slot", () => {
+  it("its command is stopped when the outer run gives the slot back", async () => {
+    const s = store();
+    const outer = held(s, "browser");
+    let end: (c: number) => void = () => {};
+    const killed: string[] = [];
+    const beats: (() => void)[] = [];
+    const { d, err } = deps(s, {
+      env: { DEN_GATE_SLOT: outer.id },
+      descends: () => true,
+      exec: () => ({
+        pid: 7002,
+        kill: (sig) => {
+          killed.push(sig);
+          end(143);
+        },
+        done: new Promise<number>((r) => (end = r)),
+      }),
+      every: (_ms, fn) => {
+        beats.push(fn);
+        return () => {
+          beats.length = 0;
+        };
+      },
+    });
+    const ran = cmdGate(["run", "--kind", "browser", "--", "npx", "x"], d);
+    await Promise.resolve();
+    // Still held: a look leaves it running.
+    beats.forEach((b) => b());
+    expect(killed).toEqual([]);
+    // The outer run ends and gives the slot back: the nested one stops.
+    s.release(outer.id);
+    beats.forEach((b) => b());
+    expect(killed).toEqual(["SIGTERM"]);
+    expect(await ran).toBe(143);
+    expect(err.join("\n")).toMatch(/gave its slot back/);
+  });
+});
+
 describe("issue 928: a nested run of the held kind", () => {
   it("runs inside the held slot at once: one entry, no wait", async () => {
     const s = store();
