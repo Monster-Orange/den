@@ -256,7 +256,8 @@ for (const engine of ["chromium", "webkit"]) {
           });
         await new Promise((r) => requestAnimationFrame(() => r(null)));
         await new Promise((r) => requestAnimationFrame(() => r(null)));
-        const m = document.querySelector('[role="menu"]');
+        // ⋯'s own menu, by its id: the crumbs' hidden menus come first.
+        const m = document.getElementById("den-chips-more-menu");
         return {
           open: !!m && m.isConnected,
           focusIn: !!m && m.contains(document.activeElement),
