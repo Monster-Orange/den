@@ -30,6 +30,7 @@ import {
   macProfile,
   realPath,
   SESSION_READ_DIRS,
+  bwrapStarts,
   SESSION_READ_FILES,
   localProofDirs,
   sandboxErrorHint,
@@ -41,6 +42,7 @@ import {
   sandboxLines,
   type SandboxReport,
 } from "../../../src/ui/cli/agents-command.js";
+import { agentSandboxInput } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig } from "./helpers/rig.js";
 import {
   readAgentsConfig,
@@ -123,12 +125,13 @@ function layout(name: string) {
 }
 
 describe("agentSandboxPolicy (issue 936)", () => {
-  it("makes the state dir and config/local read-only", () => {
+  it("makes the state dir, config/local and the denied folders read-only", () => {
     const l = layout("policy");
     const p = agentSandboxPolicy(l);
     expect(p.readOnly).toEqual([
       l.stateDir,
       path.join(l.distRoot, "config", "local"),
+      l.proof,
     ]);
   });
 
@@ -160,6 +163,50 @@ describe("agentSandboxPolicy (issue 936)", () => {
     expect(at(`(literal "${l.gateDir}")`)).toBeGreaterThan(
       at("(allow file-write*"),
     );
+  });
+
+  it("refuses Apple Events and LaunchServices opens, on macOS", () => {
+    const prof = macProfile(agentSandboxPolicy(layout("policy-ls")));
+    expect(prof).toContain("(deny lsopen)");
+    expect(prof).toContain("(deny appleevent-send)");
+  });
+
+  it("on Linux, masks the container engines' sockets that exist", () => {
+    const l = layout("bwrap-docker");
+    const socks = [
+      "/run/docker.sock",
+      "/var/run/docker.sock",
+      "/run/containerd/containerd.sock",
+      "/run/podman/podman.sock",
+    ];
+    const a = bwrapArgs(
+      agentSandboxPolicy(l),
+      (f) => socks.includes(f) || fs.existsSync(f),
+    ).join(" ");
+    for (const s of socks) expect(a).toContain(`--ro-bind /dev/null ${s}`);
+    expect(
+      bwrapArgs(agentSandboxPolicy(l), fs.existsSync).join(" "),
+    ).not.toContain("/run/podman/podman.sock");
+  });
+
+  it("checks bwrap with the flags a session uses", () => {
+    const seen: string[][] = [];
+    const why = bwrapStarts("/x/bwrap", (exe, args) => {
+      seen.push([exe, ...args]);
+      return { status: 0 };
+    });
+    expect(why).toBeNull();
+    expect(seen[0]).toEqual([
+      "/x/bwrap",
+      "--ro-bind",
+      "/",
+      "/",
+      "--unshare-pid",
+      "--proc",
+      "/proc",
+      "--die-with-parent",
+      "true",
+    ]);
   });
 
   it("refuses every unix socket but the allowed folders, on macOS", () => {
@@ -410,6 +457,7 @@ function realTool(): "darwin" | "linux" | null {
 }
 const real = realTool();
 const itReal = real ? it : it.skip;
+const l0 = () => layout(`real-${Math.random().toString(36).slice(2, 8)}`);
 
 /** Runs `script` with /bin/sh inside the agent's sandbox; its exit lines. */
 function inSandbox(l: ReturnType<typeof layout>, script: string): string {
@@ -538,6 +586,33 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
       }
     },
   );
+
+  itReal(
+    "can't write, remove or move the local-proof folder or its files",
+    () => {
+      const l = layout("real-proof-write");
+      const parent = path.dirname(l.proof);
+      const out = inSandbox(
+        l,
+        [
+          step("write", `echo x > ${l.proof}/k`),
+          step("new", `echo x > ${l.proof}/planted`),
+          step("rm", `rm -f ${l.proof}/k`),
+          step("mv", `mv ${l.proof} ${l.proof}.old`),
+          step("mvparent", `mv ${parent} ${parent}.old`),
+        ].join("; "),
+      );
+      for (const s of ["write", "new", "rm", "mv", "mvparent"])
+        expect(out).toMatch(new RegExp(`^${s}=[1-9]`, "m"));
+      expect(fs.readFileSync(path.join(l.proof, "k"), "utf-8")).toBe("proof\n");
+    },
+  );
+
+  itReal("can't start a program through LaunchServices", () => {
+    // Finder runs already: kept in the background, nothing shows if it opens.
+    const out = inSandbox(l0(), step("open", "/usr/bin/open -g -j -a Finder"));
+    expect(out).toMatch(/^open=[1-9]/m);
+  });
 
   itReal("can't read Den's private files or another agent's token", () => {
     const l = layout("real-read");
@@ -793,5 +868,27 @@ describe("localProofDirs (issue 936)", () => {
         "ACME_LOCAL_PROOF_DIR",
       ),
     ).toEqual(["/x/den/local-proof", "/p", "/q"]);
+  });
+});
+
+describe("agentSandboxInput (issue 936)", () => {
+  it("denies an agent the machine's local-proof folders, as the start builds it", () => {
+    const i = agentSandboxInput({
+      stateDir: "/s",
+      distRoot: "/r",
+      env: { DEN_LOCAL_PROOF_DIR: "/p" },
+      agentId: "a1",
+      platform: "darwin",
+      home: "/h",
+    });
+    expect(i.deniedDirs).toEqual([
+      "/h/Library/Application Support/den/local-proof",
+      "/p",
+    ]);
+    expect(agentSandboxPolicy(i).unreadable).toEqual(
+      expect.arrayContaining([
+        "/h/Library/Application Support/den/local-proof",
+      ]),
+    );
   });
 });

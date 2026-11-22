@@ -66,7 +66,7 @@ export const GATE_LOCKED_FILES = ["settings.json"] as const;
 
 /**
  * What a session reads in the state dir, relative to it: the rest of it
- * can't be read (only listed). Each entry holds no secret; a test keeps
+ * can't be read or listed. Each entry holds no secret; a test keeps
  * secret-looking names out of it. Den's CLI inside a session needs these
  * to find the web server and run `gate run`, `doctor` and `mcp --call`.
  */
@@ -104,7 +104,8 @@ export const SESSION_READ_FILES: readonly string[] = [
 export const SESSION_LIST_DIRS: readonly string[] = ["agent-files"];
 /**
  * Written from the session: the api_only guardrail's audit (its hook runs
- * there). Slice 2 (issue 988) moves it to the server.
+ * there). So an agent can rewrite its own audit lines in this slice; slice
+ * 2 (issue 988) moves the audit to the server, out of its reach.
  */
 export const SESSION_WRITE_DIRS: readonly string[] = ["audit"];
 
@@ -154,8 +155,8 @@ export interface SandboxPolicy {
   gateDir: string;
   locked: string[];
   /**
-   * Not readable: the state dir as a whole (its names can be listed, no
-   * contents read), and `deniedDirs` (other private folders). What a
+   * Not readable: the state dir as a whole (a path can be stat'd, never
+   * listed or read), and `deniedDirs` (other private folders). What a
    * session reads in the state dir is `readable`, allowed back.
    */
   unreadable: string[];
@@ -203,7 +204,13 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
   const tokensDir = path.join(state, "actor-token");
   const gate = realPath(i.gateDir);
   return {
-    readOnly: [state, realPath(path.join(i.distRoot, "config", "local"))],
+    // The denied folders can't be written either: a file planted there
+    // would be trusted as the machine's own.
+    readOnly: [
+      state,
+      realPath(path.join(i.distRoot, "config", "local")),
+      ...(i.deniedDirs ?? []).map(realPath),
+    ],
     writable: [
       own,
       gate,
@@ -323,10 +330,14 @@ export function macProfile(p: SandboxPolicy): string {
     // moved away (and a forged one moved in): renames refused.
     `(deny file-write* ${guarded.map(lit).join(" ")})`,
     `(deny file-read* ${p.unreadable.map(sub).join(" ")})`,
-    // Names can be listed and stat'd, never read.
+    // Stat'd only: never listed or read (listing needs file-read-data).
     `(allow file-read-metadata ${p.unreadable.map(sub).join(" ")})`,
     `(allow file-read* ${[...p.readable.map(sub), ...p.readableFiles.map(lit), ...p.listable.map(lit)].join(" ")})`,
     `(deny file-read* ${p.hidden.map(lit).join(" ")})`,
+    // A program started through LaunchServices (open, an app's script)
+    // runs outside the sandbox.
+    "(deny lsopen)",
+    "(deny appleevent-send)",
     // Unix sockets: none but the allowed (a listener runs outside it).
     "(deny network-outbound (remote unix-socket))",
     `(allow network-outbound ${p.socketsAllowed.map((d) => `(remote unix-socket (path-regex ${underRegex(d)}))`).join(" ")})`,
@@ -359,6 +370,14 @@ export function ensureLockedGateFiles(p: SandboxPolicy): void {
 }
 
 /** bwrap's arguments, up to and with "--": later mounts cover earlier. */
+/** Linux: container engines' sockets, masked in every session. */
+export const CONTAINER_SOCKETS: readonly string[] = [
+  "/run/docker.sock",
+  "/var/run/docker.sock",
+  "/run/containerd/containerd.sock",
+  "/run/podman/podman.sock",
+];
+
 export function bwrapArgs(
   p: SandboxPolicy,
   exists: (f: string) => boolean = fs.existsSync,
@@ -396,6 +415,9 @@ export function bwrapArgs(
   for (const l of p.locked) if (exists(l)) a.push("--ro-bind", l, l);
   for (const h of [...p.hidden, ...p.sockets])
     if (exists(h) && !inside(h)) a.push("--ro-bind", "/dev/null", h);
+  // A container engine's socket runs anything as root on this machine.
+  for (const c of CONTAINER_SOCKETS)
+    if (exists(c)) a.push("--ro-bind", "/dev/null", c);
   for (const u of p.unreadable) if (exists(u)) a.push("--remount-ro", u);
   a.push("--");
   return a;
@@ -464,13 +486,27 @@ export interface SandboxOptions {
 
 const bwrapChecked = new Map<string, string | null>();
 /** Runs bwrap once: null when it starts, else why not (its first line). */
-export function bwrapStarts(exe: string): string | null {
+export function bwrapStarts(
+  exe: string,
+  run: (
+    exe: string,
+    args: string[],
+  ) => { status: number | null; stderr?: string; error?: Error } = (e, a) =>
+    spawnSync(e, a, { encoding: "utf-8", timeout: 10_000 }),
+): string | null {
   const known = bwrapChecked.get(exe);
   if (known !== undefined) return known;
-  const r = spawnSync(exe, ["--ro-bind", "/", "/", "true"], {
-    encoding: "utf-8",
-    timeout: 10_000,
-  });
+  // The flags a session's bwrap uses: a host without pid namespaces fails.
+  const r = run(exe, [
+    "--ro-bind",
+    "/",
+    "/",
+    "--unshare-pid",
+    "--proc",
+    "/proc",
+    "--die-with-parent",
+    "true",
+  ]);
   const why =
     r.status === 0
       ? null

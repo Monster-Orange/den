@@ -359,6 +359,7 @@ import {
 import { denWebBase } from "../../shared/web-dial.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
+  type AgentSandboxInput,
   localProofDirs,
   sandboxFor,
   sandboxRequired,
@@ -844,6 +845,36 @@ function defaultMcpServer(cli: string): {
   return { command: [e.command, ...e.args], env: s.env };
 }
 
+/**
+ * Issue 936: what an agent's sandbox is built from on this machine: Den's
+ * state, the distribution, the gate store, the socket folders allowed, and
+ * the folders no session reads (the machine's local proof).
+ */
+export function agentSandboxInput(o: {
+  stateDir: string;
+  distRoot: string;
+  env: NodeJS.ProcessEnv;
+  agentId: string;
+  sockets?: string[];
+  platform?: NodeJS.Platform;
+  home?: string;
+}): AgentSandboxInput {
+  return {
+    stateDir: o.stateDir,
+    distRoot: o.distRoot,
+    gateDir: gateDir(o.env),
+    agentId: o.agentId,
+    env: o.env,
+    socketsAllowed: o.sockets ?? [],
+    deniedDirs: localProofDirs(
+      o.env,
+      o.platform ?? process.platform,
+      o.home ?? os.homedir(),
+      envKey("LOCAL_PROOF_DIR"),
+    ),
+  };
+}
+
 export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
   return withServerScope({
@@ -854,22 +885,14 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       ((argv, agentId) =>
         sandboxFor(
           argv,
-          {
+          agentSandboxInput({
             stateDir: base.stateDir(),
             distRoot: (d.distRoot ?? getDistRoot)(),
-            gateDir: gateDir(base.env),
-            agentId,
             env: base.env,
-            socketsAllowed:
-              (d.agentsConfig ?? (() => readAgentsConfig()))().sandboxSockets ??
-              [],
-            deniedDirs: localProofDirs(
-              base.env,
-              process.platform,
-              os.homedir(),
-              envKey("LOCAL_PROOF_DIR"),
-            ),
-          },
+            agentId,
+            sockets: (d.agentsConfig ?? (() => readAgentsConfig()))()
+              .sandboxSockets,
+          }),
           {
             on: sandboxSetting(
               (d.agentsConfig ?? (() => readAgentsConfig()))(),
