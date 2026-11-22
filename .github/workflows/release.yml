@@ -90,11 +90,41 @@ jobs:
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "$name@$version: release=$release ($GITHUB_EVENT_NAME)"
 
-  # The gates and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615).
-  gates:
+  # Issue 996: the release runs no test suite. It publishes only a tree that was tested: this commit is the newest
+  # dev tag of its version with the release's versions applied, and that tag's tree has a green pull-request CI run
+  # and the bed's success status (context: the DEN_BED_CONTEXT variable, default den/bed; posted from the bed's
+  # verdict). scripts/release-tree-check.mjs decides, and says in one line why not.
+  tested:
     needs: check
-    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # ci.yml's runs
+      statuses: read # the bed's status
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the dev tags and their trees
+          fetch-tags: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+      - name: This tree was tested (its pull request's CI and the bed)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEN_BED_CONTEXT: ${{ vars.DEN_BED_CONTEXT }}
+        run: node scripts/release-tree-check.mjs "${{ needs.check.outputs.version }}"
+
+  # The checks and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615), here
+  # without the tests (issue 996).
+  gates:
+    needs: [check, tested]
+    if: ${{ !cancelled() && ((needs.check.outputs.release == 'true' && needs.tested.result == 'success') || github.event_name == 'workflow_dispatch') }}
     uses: ./.github/workflows/release-gates.yml
+    with:
+      tests: false
     secrets:
       DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
 

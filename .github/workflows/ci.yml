@@ -2,16 +2,22 @@
 # packaged-install smoke (dist-smoke), and the org-name gate (no org's names, hosts or accounts in this public repo; the
 # patterns live in the DEN_ORG_NAMES secret, never in the repo).
 #
-# Issue 398: a push to main runs everything on both Nodes (checks, tests,
-# den-ui-nav, dist-smoke). A pull request runs on both Nodes too: the pr
-# job (the same checks and dist-smoke, then the tests the change affects:
-# scripts/affected-tests.mjs), and pr-shards when that subset is large.
+# Issue 996: the tests run once, on the pull request. A pull request runs
+# on both Nodes: the pr job (the checks and dist-smoke, then the tests the
+# change affects: scripts/affected-tests.mjs), and pr-shards when that
+# subset is large. A push to main runs the fast checks only (lint, types,
+# the org-name gates), as a tripwire: main's tree is a pull request's tested
+# tree, and release.yml publishes only a tree that was tested
+# (scripts/release-tree-check.mjs). The whole suite on both Nodes (tests,
+# den-ui-nav, dist-smoke) still runs when started by hand
+# (workflow_dispatch).
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,7 +25,7 @@ permissions:
 # A newer push to the same pull request cancels the older run: only the
 # newest commit's result counts, and the old run held runner slots other
 # PRs were queued for. Pushes to main are never cancelled (each main
-# commit gets its full run).
+# commit gets its checks).
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -44,7 +50,7 @@ jobs:
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
@@ -87,6 +93,8 @@ jobs:
       # a PR's base..head, a push's before..after. Needs the full history
       # (fetch-depth above). Messages already on main are not rewritten.
       - name: Org-name gate, commit messages
+        # a run by hand has no range of new commits
+        if: github.event_name != 'workflow_dispatch'
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
           RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -98,7 +106,7 @@ jobs:
   # took 17–20 min against a 20-min limit and was cut off; six parts and a
   # 30-min limit leave room.
   tests:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
@@ -160,7 +168,7 @@ jobs:
   # the subset when den-ui or the shell changed: the pr job's "nav" output).
   den-ui-nav:
     needs: [pr]
-    if: ${{ !cancelled() && (github.event_name == 'push' || needs.pr.outputs.nav == 'true') }}
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.pr.outputs.nav == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -194,7 +202,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
