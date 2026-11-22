@@ -4383,6 +4383,44 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
   },
   {
+    // Issue 1022: how often a visible page checks health (user.yml
+    // health_poll.visible_seconds).
+    id: "server.health_poll",
+    category: "server",
+    label: "Health checks while you look",
+    description:
+      "How often an open, visible page checks every service's health: 2 to 300 seconds. __DEN_CLI__ config health_poll.visible_seconds=5",
+    keywords: ["health", "poll", "check", "status", "interval", "visible"],
+    scope: "user",
+    keys: ["health_poll.visible_seconds"],
+    control: { type: "number", min: 2, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.health_poll?.visible ?? 5,
+    write: (v, ctx) => ctx.post({ health_poll: { visible_seconds: v } }),
+  },
+  {
+    // Issue 1022: how often a hidden page checks health; the server keeps
+    // its answer this long (user.yml health_poll.hidden_seconds).
+    id: "server.health_poll_hidden",
+    category: "server",
+    label: "Health checks in a hidden tab",
+    description:
+      "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    keywords: [
+      "health",
+      "poll",
+      "check",
+      "hidden",
+      "background",
+      "tab",
+      "interval",
+    ],
+    scope: "user",
+    keys: ["health_poll.hidden_seconds"],
+    control: { type: "number", min: 10, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.health_poll?.hidden ?? 60,
+    write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
+  },
+  {
     // issue_write: which persona roles write GitHub issues in their
     // project's repos (user.yml agents.issue_writes). A person's only.
     id: "agents.issue_writes",
