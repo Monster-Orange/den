@@ -12,6 +12,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Issue 998: pull requests run on Node 24 only; Node 22 runs here, nightly,
+  # on main (nightly-node22), and a red night opens or updates one issue.
+  schedule:
+    - cron: "0 9 * * *"
 
 permissions:
   contents: read
@@ -228,11 +232,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["22.13.0", "24.13.0"] # as checks: the supported range's ends
-    # Both Nodes pick the same subset (a diff and file lists), so either
-    # one's outputs will do.
+        # Issue 998: Node 24 only, the Node installs run. Node 22 runs
+        # nightly on main (nightly-node22).
+        node: ["24.13.0"]
     outputs:
       shards: ${{ steps.select.outputs.shards }}
+      shard_count: ${{ steps.select.outputs.shard_count }}
       nav: ${{ steps.select.outputs.nav }}
     env:
       DEN_TEST_WORKERS: "2"
@@ -283,7 +288,17 @@ jobs:
           n=$(grep -c . affected.txt)
           b=$(grep -c '\.browser\.test\.ts$' affected.txt || true)
           if [ "$(head -1 affected.txt)" = ALL ] || [ "$n" -gt 150 ] || [ "$b" -gt 30 ]; then
-            echo 'shards=[1,2,3,4,5,6]' >> "$GITHUB_OUTPUT"
+            # Issue 998: as many shards as the measured times need for each
+            # to stay under the limit (scripts/shard-plan.cjs), at least six.
+            if [ "$(head -1 affected.txt)" = ALL ]; then
+              npx jest --listTests | sed "s#^$PWD/##" | sort > plan-files.txt
+            else
+              cp affected.txt plan-files.txt
+            fi
+            count=$(node scripts/shard-plan.cjs --files plan-files.txt --count)
+            node scripts/shard-plan.cjs --files plan-files.txt --summary >> "$GITHUB_STEP_SUMMARY"
+            echo "shards=$(seq -s, 1 "$count" | sed 's/^/[/; s/$/]/')" >> "$GITHUB_OUTPUT"
+            echo "shard_count=$count" >> "$GITHUB_OUTPUT"
           else
             echo 'shards=[]' >> "$GITHUB_OUTPUT"
           fi
@@ -334,9 +349,9 @@ jobs:
         run: npx jest --forceExit --passWithNoTests
 
   # A large subset (all the tests, more than 150 files or 30 browser
-  # specs), in four parts side by side on each Node. Each part picks the
-  # same subset again (a diff and jest's file lists: seconds) and runs its
-  # share of it.
+  # specs), in parts side by side on Node 24. Each part picks the same
+  # subset again (a diff and jest's file lists: seconds), plans the split by
+  # measured time (issue 998) and runs its share of it.
   pr-shards:
     needs: [pr]
     if: needs.pr.outputs.shards != '[]'
@@ -348,7 +363,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["22.13.0", "24.13.0"]
+        node: ["24.13.0"] # issue 998, as pr
         shard: ${{ fromJSON(needs.pr.outputs.shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -364,8 +379,14 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
-          # ALL: no file list, jest runs every test.
-          if [ "$(head -1 affected.txt)" = ALL ]; then : > affected.txt; fi
+          # ALL: every test file, listed, so the plan can split them.
+          if [ "$(head -1 affected.txt)" = ALL ]; then
+            npx jest --listTests | sed "s#^$PWD/##" | sort > affected.txt
+          fi
+          # Issue 998: this shard's files from the plan (scripts/shard-plan.cjs,
+          # by measured time). The same input gives every shard the same plan.
+          node scripts/shard-plan.cjs --files affected.txt --shard ${{ matrix.shard }} > shard.txt
+          echo "shard ${{ matrix.shard }} of ${{ needs.pr.outputs.shard_count }}: $(grep -c . shard.txt || true) files"
       - id: pw
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -378,10 +399,13 @@ jobs:
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
+      # An empty shard.txt runs nothing: jest with no files would run them all.
       - env:
           DEN_TEST_DOCKER: skip
           DEN455_SHOTS: ${{ runner.temp }}/den455-shots
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests "${files[@]}"
+        run: |
+          [ -s shard.txt ] || { echo "no files in this shard"; exit 0; }
+          mapfile -t files < shard.txt && npm test -- --passWithNoTests --json --outputFile="$RUNNER_TEMP/times-skip.json" "${files[@]}"
       # Issue 455: the address banner's and Edge card's screenshots (only
       # address-banner.browser.test.ts writes them, when DEN455_SHOTS is
       # set), for design review. Nothing when that suite didn't run here.
@@ -395,10 +419,80 @@ jobs:
           retention-days: 7
       - env:
           DEN_TEST_DOCKER: only
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests "${files[@]}"
+        run: |
+          [ -s shard.txt ] || { echo "no files in this shard"; exit 0; }
+          mapfile -t files < shard.txt && npm test -- --passWithNoTests --json --outputFile="$RUNNER_TEMP/times-only.json" "${files[@]}"
+      # Issue 998: each file's measured time, to refresh tests/shard-times.json
+      # (node scripts/shard-plan.cjs --merge tests/shard-times.json <files>).
+      - name: Test times
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-times-${{ matrix.shard }}
+          path: ${{ runner.temp }}/times-*.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Quarantined tests (never blocks)
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           DEN_TEST_QUARANTINE: only
-        run: npx jest --forceExit --shard=${{ matrix.shard }}/6 --passWithNoTests
+        run: npx jest --forceExit --shard=${{ matrix.shard }}/${{ needs.pr.outputs.shard_count }} --passWithNoTests
+
+  # Issue 998: Node 22, the lowest Node engines allows, nightly on main, in
+  # six parts. Pull requests run on Node 24 only.
+  nightly-node22:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEN_TEST_WORKERS: "2"
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.13.0"]
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - id: pw
+        run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+      - name: Playwright's browsers and system packages
+        timeout-minutes: 15
+        run: bash scripts/ci-pw-install.sh
+      - run: npm test -- --shard=${{ matrix.shard }}/6
+        env:
+          DEN_TEST_DOCKER: skip
+      - run: npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests
+        env:
+          DEN_TEST_DOCKER: only
+
+  # A red night opens one issue, or adds a comment to the open one.
+  nightly-node22-report:
+    needs: [nightly-node22]
+    if: ${{ github.event_name == 'schedule' && failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly: Node 22 tests fail"
+          n=$(gh issue list --state open --search "in:title $title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          body="The nightly Node 22 run on main failed: $RUN_URL"
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

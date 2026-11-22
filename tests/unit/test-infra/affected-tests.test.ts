@@ -414,15 +414,14 @@ describe("the replay's real failures stay caught", () => {
     for (const c of cases) expect(c.verdict).not.toBe("flake");
   });
 
-  it("the map catches every one, on the Node it failed on (ci.yml's pr matrix)", () => {
-    const nodes = call<string[]>(
-      REPLAY,
-      "prNodesOf",
-      fs.readFileSync(
-        path.join(ROOT, ".github", "workflows", "ci.yml"),
-        "utf-8",
-      ),
+  it("the map catches every one, on the Node it failed on (the pr matrix, or the nightly run for Node 22)", () => {
+    const ciText = fs.readFileSync(
+      path.join(ROOT, ".github", "workflows", "ci.yml"),
+      "utf-8",
     );
+    // Issue 998: a pull request runs Node 24; Node 22 runs nightly on main.
+    expect(call<string[]>(REPLAY, "prNodesOf", ciText)).toEqual(["24.13.0"]);
+    const nodes = call<string[]>(REPLAY, "caughtNodesOf", ciText);
     expect(nodes).toEqual(["22.13.0", "24.13.0"]);
     for (const c of cases) expect(c.nodes?.length).toBeGreaterThan(0);
     const rows = call<Case[]>(REPLAY, "recheck", cases, MAP, nodes);
@@ -688,7 +687,7 @@ describe("ci.yml (issue 398)", () => {
     expect(ci.jobs["den-ui-nav"].if).toContain("github.event_name == 'push'");
   });
 
-  it("a pull request: both Nodes, the checks, then the subset with its reasons in the summary", () => {
+  it("a pull request: Node 24, the checks, then the subset with its reasons in the summary", () => {
     const pr = ci.jobs.pr;
     expect(pr.if).toBe("github.event_name == 'pull_request'");
     expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
@@ -711,11 +710,11 @@ describe("ci.yml (issue 398)", () => {
       /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --summary "\$GITHUB_STEP_SUMMARY"/,
     );
     for (const name of ["pr", "pr-shards"]) {
-      // The same Nodes as main's matrix: the replay found real failures
-      // that showed on Node 22 alone.
+      // Issue 998: Node 24 only (the Node installs run); Node 22 runs
+      // nightly on main.
       expect([name, ci.jobs[name].strategy?.matrix?.node]).toEqual([
         name,
-        ci.jobs.tests.strategy?.matrix?.node,
+        ["24.13.0"],
       ]);
       const versions = ci.jobs[name].steps
         .map(
@@ -726,8 +725,8 @@ describe("ci.yml (issue 398)", () => {
         )
         .filter(Boolean);
       expect([name, versions]).toEqual([name, ["${{ matrix.node }}"]]);
-      expect(runs(ci.jobs[name])).toContain(
-        "mapfile -t files < affected.txt && npm test",
+      expect(runs(ci.jobs[name])).toMatch(
+        /mapfile -t files < (affected|shard)\.txt && npm test/,
       );
     }
   });

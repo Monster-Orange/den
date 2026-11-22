@@ -268,6 +268,21 @@ export async function prNodesOf(ciText) {
   return doc.jobs?.pr?.strategy?.matrix?.node ?? [];
 }
 
+/**
+ * Issue 998: the Nodes a failure is caught on, the pull request's and the
+ * nightly run's on main (jobs that run on a schedule). A Node-22-only
+ * failure is caught the night it merges, not before.
+ */
+export async function caughtNodesOf(ciText) {
+  const { parse } = await import("yaml");
+  const doc = parse(ciText);
+  const out = new Set(doc.jobs?.pr?.strategy?.matrix?.node ?? []);
+  for (const j of Object.values(doc.jobs ?? {}))
+    if (String(j?.if ?? "").includes("github.event_name == 'schedule'"))
+      for (const n of j?.strategy?.matrix?.node ?? []) out.add(n);
+  return [...out].sort();
+}
+
 /** The real failures the subset misses. */
 export const missedFailures = (rows) =>
   rows.filter((r) => isReal(r) && !r.caught);
@@ -569,10 +584,10 @@ function report(rows) {
   return 0;
 }
 
-/** --nodes 22.13.0,24.13.0, or the pr job's matrix in ci.yml. */
+/** --nodes 22.13.0,24.13.0, or ci.yml's pr and nightly Nodes (issue 998). */
 async function readPrNodes(flag) {
   if (flag) return flag.split(",");
-  return prNodesOf(
+  return caughtNodesOf(
     fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf-8"),
   );
 }
