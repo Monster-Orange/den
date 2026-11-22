@@ -24,6 +24,11 @@ import * as path from "path";
 import { product } from "./product.js";
 
 export const TEST_ANNOUNCE_ENV_KEY = "TEST_ANNOUNCE";
+/**
+ * One tag per grant taken, in the test install's state folder. It only
+ * grows: a test install takes a grant once, or a handful of times over its
+ * life (Set up again), and its state folder goes with it.
+ */
 export const SETUP_GRANT_SPENT_FILE = "fixture-grant.spent";
 export const SETUP_GRANT_DEFAULT_SECONDS = 30;
 export const SETUP_GRANT_MAX_SECONDS = 120;
