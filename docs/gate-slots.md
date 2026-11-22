@@ -404,7 +404,11 @@ set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
 A test suite that starts its own server on a free port (Den's own browser
 suites do) names a loopback host (`127.0.0.1`, `localhost` or
 `<name>.localhost`) with `*` for the port. The `*` covers only the ports the
-run opened itself, never 80 or 443:
+run opened itself, never 80 or 443. A box run pins `localhost` and
+`<name>.localhost` to `127.0.0.1`, so the three names are one host: a run
+allowed `127.0.0.1:*` reaches `localhost:<its port>` (where Den's test
+servers listen), and the reverse. `::1` and the rest of `127.0.0.0/8` are
+not the same host:
 
 ```sh
 den gate run --kind browser --box mini --base-url 'http://127.0.0.1:*' -- npx jest tests/unit/server/x.browser.test.ts
@@ -493,4 +497,3 @@ runs.
 A project's own lock helper can read the same variables: when
 `DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
 held slot and should not lock again.
-
