@@ -46,7 +46,7 @@ describe("issue 1086: Remove all stopped (N), on the stopped list's own header",
     const g = fn(PAGE, "function stoppedGroupHtml(");
     expect(g).toMatch(/\.filter\(isStopped\)/);
     expect(g).toMatch(
-      /<button type="button" class="den-btn sm" data-act="remove-stopped"/,
+      /<button type="button" class="den-btn sm" data-act="remove-stopped" data-n="\$\{agents\}">/,
     );
     expect(g).toMatch(/t\("ag\.rmAll",\s*\{\s*n/);
     // None stopped (only exited shells): no button.

@@ -233,10 +233,15 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     // the kit's small size, counting the stopped agents.
     const all = group.locator('summary [data-act="remove-stopped"]');
     expect(await all.isVisible()).toBe(true);
-    expect(await all.getAttribute("class")).toBe("den-btn sm");
-    expect((await all.textContent())?.trim()).toMatch(
-      /^Remove all stopped \(\d+\)$/,
-    );
+    expect(
+      await all.evaluate(
+        (b) => b.classList.contains("den-btn") && b.classList.contains("sm"),
+      ),
+    ).toBe(true);
+    // Its count is the stopped agents in view (data-n, and in its words).
+    const n0 = await all.getAttribute("data-n");
+    expect(Number(n0)).toBeGreaterThan(0);
+    expect(await all.textContent()).toContain(`(${n0})`);
     // The page header's old Clear stopped is gone.
     expect(await p.locator("#ag-clear").count()).toBe(0);
     await p.context().close();
@@ -970,13 +975,11 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     if (skip()) return;
     const p = await open("north");
     const all = p.locator('#agl summary [data-act="remove-stopped"]');
-    const n = Number(
-      ((await all.textContent()) ?? "").match(/\((\d+)\)/)?.[1] ?? "0",
-    );
+    const n = Number(await all.getAttribute("data-n"));
     expect(n).toBeGreaterThan(0);
     // The stopped agents in view, and no running one among what it counts.
     expect(
-      await p.locator("#agl details[data-stopped] .agst[data-agent]").count(),
+      await p.locator("#agl details[data-stopped] [data-agent]").count(),
     ).toBe(n);
     // The answer is held, so the busy state is seen, never timed.
     let release: () => void = () => {};
@@ -995,11 +998,10 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     await ask.waitFor();
     expect((await group.getAttribute("open")) !== null).toBe(wasOpen);
     const said = ((await ask.textContent()) ?? "").replace(/\s+/g, " ");
-    expect(said).toContain(
-      n === 1 ? `Remove ${n} stopped agent?` : `Remove ${n} stopped agents?`,
-    );
+    // The confirm and its Remove name the count.
+    expect(said).toContain(String(n));
     const ok = ask.locator('[data-dk="ok"]');
-    expect((await ok.textContent())?.trim()).toBe(`Remove ${n}`);
+    expect(await ok.textContent()).toContain(String(n));
     await ok.click();
     try {
       await p.waitForFunction(

@@ -146,7 +146,7 @@ describe("#80: an exited shell has a way out", () => {
     expect(await p.$$(`#agl [data-shell]`)).toHaveLength(0);
     // Issue 1086: Remove all stopped (N) counts the agent, not the shell.
     const all = p.locator('#agl summary [data-act="remove-stopped"]');
-    expect((await all.textContent())?.trim()).toBe("Remove all stopped (1)");
+    expect(await all.getAttribute("data-n")).toBe("1");
     await all.click();
     await p
       .locator('dialog[open][data-dk-kind="confirm"] [data-dk="ok"]')

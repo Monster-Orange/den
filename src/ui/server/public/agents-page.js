@@ -1341,7 +1341,7 @@ function stoppedGroupHtml(rows) {
   // one is stopped.
   const agents = rows.filter(isStopped).length;
   const rmAll = agents
-    ? `<button type="button" class="den-btn sm" data-act="remove-stopped">${esc(t("ag.rmAll", { n: agents }))}</button>`
+    ? `<button type="button" class="den-btn sm" data-act="remove-stopped" data-n="${agents}">${esc(t("ag.rmAll", { n: agents }))}</button>`
     : "";
   return (
     `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
