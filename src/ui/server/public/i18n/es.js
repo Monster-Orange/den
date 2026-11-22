@@ -2812,6 +2812,7 @@
     "gate.popH": "Pruebas en esta máquina",
     "gate.holds": "Ejecuta {kind}, hasta las {at} más o menos",
     "gate.waits": "Espera para ejecutar {kind}, desde las {at} más o menos",
+    "gate.padded": "estimación {est} min; esto suele tardar {usual}",
     "gate.over": "pasada su estimación",
     "gate.none": "Ninguna prueba tiene turno ni espera.",
     "gate.end": "Terminar antes",

@@ -55,6 +55,7 @@ import {
   readClasses,
 } from "./classes.js";
 import {
+  DEFAULT_ESTIMATE_MIN,
   GATE_DEFAULTS,
   byAsked,
   expectedStart,
@@ -257,6 +258,14 @@ function settingValue(s: GateSettings, key: string): number | string | null {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number" || typeof v === "string") return v;
   return null;
+}
+
+/** Issue 999: the median of some minutes, to a whole minute. */
+function median(xs: number[]): number {
+  const v = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  const m = v.length % 2 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
+  return Math.max(1, Math.round(m));
 }
 
 export interface GateEventRow {
@@ -773,6 +782,73 @@ export class GateStore {
     return this.locked(() => this.settle());
   }
 
+  /**
+   * Issue 999: a run's estimate from the slot log's finished runs: the
+   * median of the label's last 10 (3 or more), else of the asker's last
+   * 10 of its kind, else none. The asker: the same `who`, or its agent.
+   */
+  measured(o: {
+    kind: GateKind;
+    label: string;
+    who: string;
+    actor?: string;
+  }): { minutes: number; from: "label" | "actor" } | null {
+    const done = this.events().filter(
+      (r) => r.event === "released" && typeof r.minutes === "number",
+    );
+    const last10 = (rows: GateEventRow[]) =>
+      rows.slice(-10).map((r) => r.minutes!);
+    const label = last10(
+      done.filter((r) => r.kind === o.kind && r.label === o.label),
+    );
+    if (label.length >= 3) return { minutes: median(label), from: "label" };
+    // Its agent's runs from any project, or the same asker in words.
+    const mine = last10(
+      done.filter(
+        (r) =>
+          r.kind === o.kind &&
+          (r.who === o.who || (!!o.actor && r.actor === o.actor)),
+      ),
+    );
+    return mine.length ? { minutes: median(mine), from: "actor" } : null;
+  }
+
+  /**
+   * Issue 999: the entry's estimate fields. None given: the measured
+   * median, else the kind's default. Given and over twice the median: kept
+   * and flagged, and the queue uses the median.
+   */
+  private estimateOf(o: {
+    kind: GateKind;
+    label: string;
+    who: string;
+    actor?: string;
+    estimateMin?: number;
+  }): Pick<
+    GateEntry,
+    "estimateMin" | "estimateFrom" | "expectedMin" | "expectedFrom" | "padded"
+  > {
+    const m = this.measured({
+      kind: o.kind,
+      label: o.label.slice(0, 120),
+      who: o.who.slice(0, 200),
+      ...(o.actor ? { actor: o.actor } : {}),
+    });
+    if (o.estimateMin === undefined)
+      return m
+        ? { estimateMin: m.minutes, estimateFrom: m.from }
+        : { estimateMin: DEFAULT_ESTIMATE_MIN, estimateFrom: "default" };
+    if (m && o.estimateMin > 2 * m.minutes)
+      return {
+        estimateMin: o.estimateMin,
+        estimateFrom: "given",
+        expectedMin: m.minutes,
+        expectedFrom: m.from,
+        padded: true,
+      };
+    return { estimateMin: o.estimateMin, estimateFrom: "given" };
+  }
+
   /** One slot now (after settling), or null when it is gone. */
   get(id: string): GateEntry | null {
     return this.list().find((e) => e.id === id) ?? null;
@@ -784,7 +860,8 @@ export class GateStore {
     who: string;
     label: string;
     pid: number;
-    estimateMin: number;
+    /** Issue 999: absent: the measured median, else the kind's default. */
+    estimateMin?: number;
     agent?: boolean;
     actor?: string;
     /** Issue 715: a release run a person waits on, and why. */
@@ -816,7 +893,7 @@ export class GateStore {
         label: o.label.slice(0, 120),
         pid: o.pid,
         askedAt: new Date(this.now()).toISOString(),
-        estimateMin: o.estimateMin,
+        ...this.estimateOf(o),
         ...(o.agent ? { agent: true } : {}),
         ...(o.actor && /^agent:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(o.actor)
           ? { actor: o.actor }

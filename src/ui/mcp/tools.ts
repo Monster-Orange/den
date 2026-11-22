@@ -569,7 +569,9 @@ const READ_TOOLS: DenTool[] = [
         .number()
         .positive()
         .optional()
-        .describe("How long you expect to hold it (default 10)"),
+        .describe(
+          "How long you expect to hold it. Leave it out: the gate uses the median of this label's last runs (else yours of this kind, else 10).",
+        ),
       label: z
         .string()
         .optional()
@@ -642,8 +644,10 @@ const READ_TOOLS: DenTool[] = [
           who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
           label: (str(a.label) ?? "tests").slice(0, 120),
           pid: process.pid,
-          estimateMin:
-            typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
+          // Issue 999: none given: the gate measures it from the label.
+          ...(typeof a.estimate_minutes === "number"
+            ? { estimateMin: a.estimate_minutes }
+            : {}),
           agent: true,
           ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
           mcp: { install: ctx.install ?? path.resolve(getStateDir()) },

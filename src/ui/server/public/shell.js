@@ -3663,6 +3663,7 @@
     "gate.popH": "Test runs on this machine",
     "gate.holds": "Runs {kind}, until about {at}",
     "gate.waits": "Waits to run {kind}, from about {at}",
+    "gate.padded": "estimate {est} min; this usually takes {usual}",
     "gate.over": "past its estimate",
     "gate.none": "No test runs hold or wait.",
     "gate.end": "End early",

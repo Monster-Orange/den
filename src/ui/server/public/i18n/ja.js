@@ -2714,6 +2714,7 @@
     "gate.popH": "このマシンのテスト実行",
     "gate.holds": "{kind} を実行中、{at} ごろまで",
     "gate.waits": "{kind} の実行待ち、{at} ごろから",
+    "gate.padded": "見込み {est} 分。通常は {usual} 分ほどです",
     "gate.over": "見込みを過ぎています",
     "gate.none": "実行中や待機中のテストはありません。",
     "gate.end": "早めに終える",

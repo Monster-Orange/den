@@ -44,8 +44,8 @@ import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
-  expectedEnd,
   expectedStart,
+  queueEnd,
   overrun,
   priorityIds,
   yieldedTo,
@@ -314,11 +314,15 @@ export function slotLine(
     (cls ? `  class ${cls}` : "") +
     (win ? `  waits for its ${win.text} window` : "") +
     (yields.length ? `  let ${yields.join(", ")} go ahead` : "") +
-    (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "");
+    (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "") +
+    // Issue 999: a padded estimate, and what the queue uses instead.
+    (e.padded && e.expectedMin !== undefined
+      ? `  estimate ${e.estimateMin} min; this usually takes ${e.expectedMin}`
+      : "");
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
     const on = e.box ? ` on box ${e.box}` : "";
-    return `${e.id}  holds ${e.kind}${on}  ${e.who}  "${e.label}"  until about ${hm(expectedEnd(e))}${late}${pri}`;
+    return `${e.id}  holds ${e.kind}${on}  ${e.who}  "${e.label}"  until about ${hm(queueEnd(e))}${late}${pri}`;
   }
   // Issue 625: a waiter that may go to a test box says so.
   const where =
@@ -502,9 +506,11 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       : where && where !== "local"
         ? playwrightVersion(d.cwd)
         : undefined;
-  const estimateMin = parseEstimate(
-    typeof f["--estimate"] === "string" ? f["--estimate"] : "10m",
-  );
+  // Issue 999: none given: the gate measures it from the label's runs.
+  const estimateMin =
+    typeof f["--estimate"] === "string"
+      ? parseEstimate(f["--estimate"])
+      : undefined;
   const label =
     typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
   // Issue 715: a release run a person waits on, and why.

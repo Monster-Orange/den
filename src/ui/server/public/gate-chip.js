@@ -114,6 +114,17 @@ export function startGateChip(o) {
       (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
       (yld ? '<div class="gate-pri">' + esc(yld) + "</div>" : "") +
       (cls ? '<div class="gate-pri">' + esc(cls) + "</div>" : "") +
+      // Issue 999: a padded estimate, and what the queue uses instead.
+      (s.padded && s.expected
+        ? '<div class="gate-pri" data-gate-padded>' +
+          esc(
+            t("gate.padded", {
+              est: s.estimate?.minutes ?? "?",
+              usual: s.expected.minutes,
+            }),
+          ) +
+          "</div>"
+        : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"

@@ -5809,6 +5809,14 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - A slot whose processes are gone is taken back at once (on the next
   read): the wrapper and the command it started both count, so a wrapper
   killed with SIGKILL leaves the slot to its command until that ends.
+- A run's estimate is measured when it gives none (issue 999): the median
+  of its label's last 10 finished runs (3 or more), else of the asker's
+  last 10 runs of that kind, else 10 minutes. A given estimate over twice
+  that median is kept but flagged ("estimate 150 min; this usually takes
+  74" in `gate status` and on the Gate panel), and the queue's wait times
+  use the median. `gate status --json` gives each slot's `estimate` (given
+  or measured) and `expected` (what the queue uses), each with `from`:
+  `given`, `label`, `actor` or `default`.
 - Past its estimate plus `overrun_margin_minutes` (default 15) a run is
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.

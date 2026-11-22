@@ -3,11 +3,13 @@
  * `gate status --json` show it.
  */
 import {
-  expectedEnd,
   expectedStart,
   overrun,
   priorityIds,
+  queueEnd,
+  queueMinOf,
   yieldedTo,
+  type EstimateSource,
 } from "./rules.js";
 import { boxSkipReason } from "./boxes.js";
 import { classOf, windowHeld } from "./classes.js";
@@ -19,6 +21,12 @@ export interface GateSlotView {
   who: string;
   label: string;
   granted: boolean;
+  /** Issue 999: the estimate given (or measured), and where from. */
+  estimate: { minutes: number; from: EstimateSource };
+  /** Issue 999: what the queue's wait times use, and where from. */
+  expected: { minutes: number; from: EstimateSource };
+  /** Issue 999: the given estimate is over twice the measured median. */
+  padded?: boolean;
   agent: boolean;
   actor?: string;
   /** Issue 621: a CI runner's slot (held by lease): the runner's name. */
@@ -102,6 +110,14 @@ export function gateView(store: GateStore, now = Date.now()) {
     who: e.who,
     label: e.label,
     granted: !!e.grantedAt,
+    // Issue 999: the given estimate and what the queue uses, each with
+    // where it came from; padded: the given one is over twice the median.
+    estimate: { minutes: e.estimateMin, from: e.estimateFrom ?? "given" },
+    expected: {
+      minutes: queueMinOf(e),
+      from: e.expectedFrom ?? e.estimateFrom ?? "given",
+    },
+    ...(e.padded ? { padded: true } : {}),
     agent: e.agent === true,
     ...(e.actor ? { actor: e.actor } : {}),
     ...(e.remote ? { runner: e.remote.runner } : {}),
@@ -120,7 +136,8 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,
-          expectedEnd: new Date(expectedEnd(e)).toISOString(),
+          // Issue 999: what the queue expects (a padded one's median).
+          expectedEnd: new Date(queueEnd(e)).toISOString(),
           overrun: overrun(e, settings, now),
         }
       : {

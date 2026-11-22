@@ -52,6 +52,16 @@ import {
 
 export type GateKind = "browser" | "cpu";
 
+/** Issue 999: where a run's estimate came from. */
+export type EstimateSource = "given" | "label" | "actor" | "default";
+
+/** Issue 999: a run with no estimate and no history: minutes. */
+export const DEFAULT_ESTIMATE_MIN = 10;
+
+/** Issue 999: the minutes the queue's wait times use for a run. */
+export const queueMinOf = (e: GateEntry): number =>
+  e.expectedMin ?? e.estimateMin;
+
 export interface GateEntry {
   id: string;
   kind: GateKind;
@@ -73,6 +83,20 @@ export interface GateEntry {
   flaggedAt?: string;
   /** How long the run expects to take, minutes. */
   estimateMin: number;
+  /**
+   * Issue 999: where estimateMin came from: given by the caller, or the
+   * median of the label's runs, of the asker's runs of its kind, or the
+   * kind's default. Absent on entries from before: given.
+   */
+  estimateFrom?: EstimateSource;
+  /**
+   * Issue 999: a given estimate over twice the measured median: the
+   * median the queue's wait times use instead, and where it came from.
+   */
+  expectedMin?: number;
+  expectedFrom?: EstimateSource;
+  /** Issue 999: the given estimate is over twice the measured median. */
+  padded?: boolean;
   /** An agent asked (an agent token or DEN_AGENT), not a person. */
   agent?: boolean;
   /** Which agent (`agent:<id>`), when it said; its row on Agents shows it. */
@@ -514,6 +538,16 @@ export function expectedEnd(e: GateEntry): number {
   );
 }
 
+/**
+ * Issue 999: when the queue expects a holder to end (ms): as expectedEnd,
+ * with the measured median in place of a padded estimate.
+ */
+export function queueEnd(e: GateEntry): number {
+  return (
+    t(e.grantedAt ?? e.askedAt) + queueMinOf(e) * (e.boxTimeScale ?? 1) * 60_000
+  );
+}
+
 /** Past its estimate plus the margin: flagged, never stopped. */
 export function overrun(
   e: GateEntry,
@@ -556,21 +590,21 @@ export function expectedStart(
   if (me?.kind === "browser" && n > 1) {
     const ends = entries
       .filter((e) => e.grantedAt && e.kind === "browser" && !e.box)
-      .map((e) => Math.max(now, expectedEnd(e)))
+      .map((e) => Math.max(now, queueEnd(e)))
       .sort((a, b) => a - b)
       .slice(-n);
     const slots = [...Array<number>(n - ends.length).fill(now), ...ends];
     for (const w of ahead.filter((x) => x.kind === "browser")) {
       const i = slots.indexOf(Math.min(...slots));
-      slots[i] = slots[i]! + w.estimateMin * 60_000;
+      slots[i] = slots[i]! + queueMinOf(w) * 60_000;
     }
     free = Math.min(...slots);
   } else {
     free = Math.max(
       now,
-      ...entries.filter((e) => e.grantedAt && mine(e)).map(expectedEnd),
+      ...entries.filter((e) => e.grantedAt && mine(e)).map(queueEnd),
     );
-    for (const w of ahead) free += w.estimateMin * 60_000;
+    for (const w of ahead) free += queueMinOf(w) * 60_000;
   }
   // Issue 803: held for its window: not before the window opens.
   const win = windowHeld(entries, s.classes, now).get(id);
