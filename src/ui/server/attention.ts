@@ -326,6 +326,10 @@ export class Attention {
         (this.d.endedAsking
           ? await this.d.endedAsking(agent).catch(() => null)
           : null);
+      // A wait that came while the transcript was read (a delivery typed
+      // at this turn's end starts a new turn, which may ask) is newer than
+      // this end: it stands, and this older end changes nothing.
+      if (this.waiting.get(agent) !== prior) return;
       // The same question again: the same wait (no second row or alert).
       if (prior?.turn && q && prior.text === `${name} asked: ${q}`) return;
       this.clear(agent);

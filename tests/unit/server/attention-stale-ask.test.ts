@@ -154,3 +154,39 @@ describe("the same question at the next turn's end", () => {
     expect(waitingRows(store, "ag-1").map((n) => n.id)).toEqual(before);
   });
 });
+
+describe("a question that arrives while a turn's end is read", () => {
+  it("an ask_human during the transcript read stays; the older turn's end never clears it", async () => {
+    const store = new NotificationStore(dir, () => new Date(clock));
+    let release: (q: string | null) => void = () => {};
+    const a = new Attention({
+      store,
+      outputMark: async () => "m",
+      nameOf: () => "Builder",
+      now: () => clock,
+      hooked: () => true,
+      ended: async () => new Map(),
+      endedAsking: () => new Promise((r) => (release = r)),
+    });
+    await a.event("ag-1", "web", {
+      event: "finished",
+      question: "1. Do you allow the first sign-off?",
+    });
+    clock += 60_000;
+    // A turn ends with no question in the hook: Den reads its transcript.
+    const ending = a.event("ag-1", "web", { event: "finished" });
+    // Meanwhile a delivery starts a new turn, and it asks.
+    clock += 1_000;
+    await a.event("ag-1", "web", {
+      event: "waiting",
+      why: "asked",
+      text: "1. Do you allow the second sign-off?",
+    });
+    release(null);
+    await ending;
+    expect(a.waitingNow().get("ag-1")).toBe("asked");
+    const rows = waitingRows(store, "ag-1");
+    expect(rows).toHaveLength(1);
+    expect(String(rows[0]!.text)).toMatch(/second sign-off/);
+  });
+});
