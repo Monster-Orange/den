@@ -499,7 +499,6 @@
     "lock.saveTo": "{s} に保存",
     "lock.pw": "管理者パスワード",
     "lock.go": "続行",
-    "lock.checking": "確認中…",
     "lock.note":
       "Den はこれを sudo にだけ使います。エージェントは入力できません。",
     "lock.saved": "このセッションの間、管理者パスワードを保持します",
@@ -675,6 +674,13 @@
     "busy.askAllowW": "確認しています…",
     "busy.askAllowS": "確認しました。ダイアログで許可してください。",
     "busy.askAllowF": "確認できませんでした。",
+    "busy.pushTestW": "テスト通知を送信中…",
+    "busy.pushTestS":
+      "テスト通知を送りました。結果はデバイスごとに表示されます。",
+    "busy.pushTestF": "テスト通知を送信できませんでした。",
+    "busy.pushForgetW": "このデバイスを削除中…",
+    "busy.pushForgetS": "このデバイスはプッシュを受け取らなくなりました。",
+    "busy.pushForgetF": "このデバイスを削除できませんでした。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -1180,7 +1186,6 @@
     "addr.unset": "未設定です。__DEN_TITLE__ が渡すリンクに必要です。",
     "addr.label": "アドレス",
     "addr.check": "確認して保存",
-    "addr.checking": "確認しています…",
     "addr.checkW": "{url} が応答するか確認しています",
     "addr.saved": "保存しました: {url} が応答しました。",
     "addr.notSaved": "保存していません。前のアドレスのままです。",
@@ -1473,8 +1478,6 @@
     "ag.runtime.default": "{name}（ペルソナの既定）",
     "ag.unavailable": "利用不可",
     "ag.go": "開始",
-    "ag.starting": "開始中…",
-    "ag.working": "処理中…",
     "ag.cancel": "キャンセル",
     "ag.started": "エージェント {id} を開始しました",
     "ag.stopped": "エージェント {id} を停止しました",
@@ -1635,7 +1638,6 @@
     "ag.pc.note":
       "Den はいったん停止し、同じ会話を新しいペルソナで再開します。ID、名前、フォルダー、タブはそのままです。",
     "ag.pc.go": "ペルソナを変更",
-    "ag.pc.going": "変更中…",
     "ag.pc.current": "現在",
     "ag.pc.busy":
       "作業中です。このターンの後に変更しますか、それとも今すぐ停止しますか?",
@@ -1722,7 +1724,6 @@
     "ag.stoppedGroupTip":
       "実行していないエージェント。開くと詳細が表示されます。",
     "ag.bring.go": "取り込む",
-    "ag.bring.going": "取り込み中…",
     "ag.bring.done": "{id} として取り込みました",
     "ag.bring.now": "たった今",
     "ag.bring.min": "{n} 分前",
@@ -1816,6 +1817,22 @@
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
     "ap.det.host_restart.resume":
       "実行中だったエージェントは元の場所から再開し、開いているターミナルは閉じます。結果はアクティビティ履歴に記録されます。",
+    "ap.do.report": "{repo} にレポートを送る: {title}",
+    "ap.det.report.to": "送り先: {repo}",
+    "ap.det.report.pub":
+      "公開リポジトリ: 本文は誰でも見られます。スクリーンショットはそこには投稿されません。送る前にシークレット、トークン、メールアドレス、IP アドレス、ストア参照は取り除かれます。",
+    "ap.det.report.priv":
+      "非公開リポジトリ: このリポジトリにアクセスできる人だけが見られます。",
+    "ap.det.report.int":
+      "内部リポジトリ: このリポジトリにアクセスできる人だけが見られます。",
+    "ap.det.report.unk":
+      "公開範囲が不明: このリポジトリを誰が見られるか分からないため、公開として扱います。本文は誰でも見られる可能性があります。スクリーンショットはそこには投稿されません。",
+    "ap.det.report.title": "タイトル: {title}",
+    "ap.det.report.addTo": "issue {n} にコメントとして追加します。",
+    "ap.det.report.as":
+      "あなたとして GitHub に送ります（あなたの gh サインイン）。送られる内容:",
+    "ap.det.report.shot":
+      "エージェントが撮ったスクリーンショット付き。マスクはされません。消去されるのは上の本文だけです。",
     "ap.det.embed_key_revoke.reach":
       "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
     "ap.det.embed_key_revoke.held":
@@ -2252,15 +2269,38 @@
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "エージェント",
     "n.terminal": "ターミナル",
-    "n.terminalTip": "このプロジェクトのフォルダーでシェルを Den 内に開く",
+    "n.terminalTip":
+      "ターミナルの一覧。それぞれプロジェクトのフォルダーで開きます",
     "ag.term.started": "{w} でターミナルを開きました",
     "ag.term.failed": "Den はターミナルを開けませんでした: {e}",
     "ag.start.lastLines": "停止する前に表示した内容:",
     "ag.term.ptyFailed":
       "Den はターミナルを開けませんでした: このマシンが PTY を割り当てませんでした ({e})。不要なターミナルを閉じるか、doctor を実行してください。",
     "ag.term.noWs": "有効なプロジェクトがありません。先に有効にしてください。",
-    "ws.termHere": "ここでターミナル",
+    "ws.termHere": "新しいターミナル",
+    // Issue 482: ターミナルのページ。
+    "ws.termHereTip":
+      "このプロジェクトのフォルダーで新しいターミナルを Den 内に開く",
+    "tm.count": "ターミナル {n}",
+    "tm.count1": "ターミナル {n}",
+    "tm.running": "実行中 ({n})",
+    "tm.exited": "終了 ({n})",
+    "tm.lastUsed": "最終使用 {when}",
+    "tm.restart": "再起動",
+    "tm.restartName": "{id} を同じフォルダーで再起動",
+    "tm.none": "まだターミナルはありません",
+    "tm.noneP": "「新しいターミナル」を押すと {scope} で開きます。",
+    "tm.empty":
+      "左のターミナルを選ぶと開きます。複数開くと並べて表示します（最大 4）。",
+    "tm.pick": "新しいターミナルを開くプロジェクト…",
+    "tm.moved":
+      "{n} 個のターミナルを「ターミナル」に移しました。閉じたものはありません。",
+    "tm.moved1":
+      "{n} 個のターミナルを「ターミナル」に移しました。閉じたものはありません。",
+    "tm.openList": "ターミナルを開く",
+    "tm.dismiss": "閉じる",
     "kind.agent": "エージェント",
+    "kind.terminal": "ターミナル",
     "ag.sub.agents": "エージェント {n}",
     "ag.sub.agent": "エージェント {n}",
     "ag.sub.shells": "シェル {n}",
@@ -2498,8 +2538,8 @@
       "Hub のアドレスが https ではないため、Den は開きません。設定 › Hub を確認してください。",
     "ag.session": "シェル",
     "ag.empty":
-      "左のエージェントかシェルを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
-    "ag.none.scope": "{scope} にはまだエージェントもシェルもありません",
+      "左のエージェントを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
+    "ag.none.scope": "{scope} にはまだエージェントはありません",
     "ag.detach": "ペインを閉じる",
     "ag.to": "宛先: {name} · {ws}",
     "ag.toName": "宛先: {name}",
@@ -2552,6 +2592,7 @@
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
     "ag.ws": "プロジェクト",
     "ag.pal": "エージェント › {ws} / {name}",
+    "tm.pal": "ターミナル › {ws} / {name}",
     "ag.palStart": "エージェントを開始…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ エージェント",
@@ -3419,6 +3460,28 @@
       "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
     "set.notifications.phone.failed":
       "ここではプッシュをオンにできませんでした。",
+    "set.notifications.push_devices": "プッシュを受け取るデバイス",
+    "set.notifications.push_devices.d":
+      "プッシュをオンにした各デバイスです。テスト通知を送って、スマートフォンに届くか確かめてください。デバイスごとに、プッシュサービスが受け取ったかが表示されます。使わなくなったデバイスは削除できます。",
+    "set.notifications.devices.none":
+      "プッシュを受け取るデバイスはまだありません。スマートフォンで __DEN_TITLE__ を開き（「アクセス」の「デバイスをペアリング」でサインインできます）、そこで「このデバイスへのプッシュ通知」をオンにしてください。",
+    "set.notifications.devices.this": "（このデバイス）",
+    "set.notifications.devices.added": "追加: {t}",
+    "set.notifications.devices.forget": "削除",
+    "set.notifications.devices.test": "テスト通知を送る",
+    "set.notifications.test.reached":
+      "送信済み: プッシュサービスが受け取りました。",
+    "set.notifications.test.gone":
+      "なし: このデバイスはもうプッシュを受け取らないため、削除しました。",
+    "set.notifications.test.refused":
+      "送信できませんでした: プッシュサービスの応答は {status} でした。",
+    "set.notifications.test.noAnswer":
+      "送信できませんでした: プッシュサービスから時間内に応答がありませんでした（プッシュの待ち時間）。",
+    "set.notifications.svc.apple": "Apple のプッシュ",
+    "set.notifications.svc.google": "Google のプッシュ",
+    "set.notifications.svc.mozilla": "Firefox のプッシュ",
+    "set.notifications.svc.microsoft": "Microsoft のプッシュ",
+    "set.notifications.svc.other": "その他のプッシュサービス",
     "set.notifications.quiet_from": "通知を止める時間の開始",
     "set.notifications.quiet_from.d":
       "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",
@@ -3769,7 +3832,6 @@
     "lg.search.none": "どのサービスの履歴にも「{q}」は見つかりません",
     "lg.aws.expired": "AWS のサインインが期限切れです",
     "lg.aws.reauth": "再認証",
-    "lg.aws.authenticating": "認証中…",
     "lg.aws.retry": "再試行",
     "lg.aws.failed": "ログインに失敗しました",
     "lg.aws.connErr": "接続エラー",

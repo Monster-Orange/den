@@ -10,6 +10,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
+  ALERT_TEST_WORDS,
   ALERT_WORDS,
   alertBody,
   alertPrefs,
@@ -69,6 +70,19 @@ describe("issue 172: the words", () => {
       "Planner needs your permission",
     );
     expect(alertBody("en", "allow", "a<b>\nc")).toBe("a b c needs your Allow");
+  });
+});
+
+describe("issue 172: a test alert's words", () => {
+  it("every language has one; it names no agent", () => {
+    for (const lang of UI_LANGUAGES) {
+      expect(typeof ALERT_TEST_WORDS[lang]).toBe("string");
+      expect(ALERT_TEST_WORDS[lang].length).toBeGreaterThan(10);
+      expect(ALERT_TEST_WORDS[lang]).not.toContain("{name}");
+    }
+    expect(ALERT_TEST_WORDS.en).toBe(
+      "Test alert: this device gets alerts when an agent needs you.",
+    );
   });
 });
 
