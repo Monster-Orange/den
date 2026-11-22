@@ -2758,7 +2758,9 @@ logout, so it watches who owns the console (`/dev/console`: you while
 logged in, root at the login window) every `ui.console_check_seconds`
 (user.yml, 30). When you come back after longer than
 `ui.restart_wait_seconds` (90), the bell says "While you were logged out
-(N min), these agents ran: <names>", linked to the Agents page.
+(N min), these agents ran: <names>", linked to the Agents page. Agents
+that stopped meanwhile get a second note, "While you were logged out (N
+min), these agents stopped: <names>", also when nothing else ran.
 
 **Agents' sign-in under `always`.** A LaunchDaemon started after a logout
 isn't assumed to reach the login keychain, and the CLI's interactive

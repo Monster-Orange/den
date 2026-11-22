@@ -69,7 +69,9 @@ running (always)`.
     "While you were logged out (N min), these agents ran: <names>", and
     `<names>` includes the agent from step 8. (The web server ran through
     the logout, so it is this note, not the restart note "While <title>
-    was away".)
+    was away".) An agent that stopped during the logout is named in a
+    second note: "While you were logged out (N min), these agents
+    stopped: <names>".
 15. `./bin/acme doctor` again: as in step 6.
 
 ## Fail-closed check (optional)
