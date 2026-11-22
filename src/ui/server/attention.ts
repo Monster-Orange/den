@@ -188,6 +188,11 @@ interface Waiting {
   input?: string;
   /** Issue 101: the lead its question went to, instead of its person. */
   lead?: string;
+  /**
+   * An ask its turn's end said (a hand-back's decision), not ask_human:
+   * the agent's next turn ending with no question says it no longer asks.
+   */
+  turn?: boolean;
 }
 
 export class Attention {
@@ -257,6 +262,8 @@ export class Attention {
           hooked?: boolean;
           /** Issue 609: the asked tool's input hash. */
           input?: string;
+          /** The ask is its turn's last line, not an ask_human call. */
+          turn?: boolean;
         }
       | { event: "finished"; text?: string; question?: string }
       | {
@@ -305,9 +312,12 @@ export class Attention {
       return;
     }
     if (ev.event === "finished") {
-      // Asked, then ended its turn to wait for the answer: still waiting.
-      if (this.waiting.get(agent)?.why === "asked") return;
-      this.clear(agent);
+      // Asked (ask_human), then ended its turn to wait for the answer:
+      // still waiting. A question its last turn ended on is the turn's
+      // own: this turn's end says again whether it asks (a hand-back with
+      // "Decisions: none" doesn't), so it goes and this end decides.
+      const prior = this.waiting.get(agent);
+      if (prior?.why === "asked" && !prior.turn) return;
       // #142: a turn that ended on a question to its person needs them:
       // the question the hook said (issue 142, Claude Code's last answer),
       // else the one its transcript ends on.
@@ -316,12 +326,16 @@ export class Attention {
         (this.d.endedAsking
           ? await this.d.endedAsking(agent).catch(() => null)
           : null);
+      // The same question again: the same wait (no second row or alert).
+      if (prior?.turn && q && prior.text === `${name} asked: ${q}`) return;
+      this.clear(agent);
       if (q)
         return this.event(agent, workspace, {
           event: "waiting",
           why: "asked",
           text: q,
           hooked: true,
+          turn: true,
         });
       // Issue 142: kept even while a page shows the agent. That page's
       // next "looking" takes it out (opening an agent clears its updates);
@@ -370,7 +384,15 @@ export class Attention {
           ? { key: "bell.m.permissionWhat", vars: { name, what } }
           : { key: "bell.m.permission", vars: { name } }
         : ev.why === "asked"
-          ? { key: "bell.m.asked", vars: { name, text: ev.text ?? "" } }
+          ? {
+              key: "bell.m.asked",
+              // Kept on the row, so a restart knows a turn's ask (reconcile).
+              vars: {
+                name,
+                text: ev.text ?? "",
+                ...(ev.turn ? { turn: 1 } : {}),
+              },
+            }
           : { key: "bell.m.input", vars: { name } };
     // Claude Code's idle "waiting for your input" while an ask is open:
     // still the ask.
@@ -419,6 +441,7 @@ export class Attention {
       byHook: hooked,
       input: what === cur?.what ? (cur?.input ?? ev.input) : ev.input,
       ...(lead ? { lead } : {}),
+      ...(ev.why === "asked" && ev.turn ? { turn: true } : {}),
     });
     if (lead) {
       if (prev?.lead !== lead || prev.text !== text)
@@ -500,7 +523,10 @@ export class Attention {
   private clear(agent: string): void {
     const w = this.waiting.get(agent);
     this.waiting.delete(agent);
-    this.d.store.withdraw(`agent:${agent}`);
+    // The wait's row goes with it, read or not: "Needs you" lists read
+    // rows too, so a row the person had opened stayed after its answer.
+    const subject = `agent:${agent}`;
+    this.d.store.remove((n) => n.subject === subject && n.kind === "waiting");
     // #142: a hookless bell's update ("is waiting for you") goes with it.
     if (w?.why === "input") this.d.store.withdraw(`agent:${agent}`, "finished");
   }
@@ -674,6 +700,7 @@ export class Attention {
             ? n.scope.slice("workspace/".length)
             : n.scope,
           byHook: !!this.d.hooked?.(agent),
+          ...(why === "asked" && n.msg?.vars.turn === 1 ? { turn: true } : {}),
         });
       }
     } catch {
