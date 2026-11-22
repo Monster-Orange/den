@@ -163,6 +163,22 @@ describe("issue 998: ci.yml's Nodes and shards", () => {
       ]);
   });
 
+  it("the nightly Node 22 run keeps what a pull request ran on Node 22: the checks and the install smoke", () => {
+    const nightly22 = Object.values(doc.jobs).filter(
+      (j) =>
+        (j.if ?? "").includes("github.event_name == 'schedule'") &&
+        (j.strategy?.matrix?.node ?? []).includes("22.13.0"),
+    );
+    const text = nightly22.map(runs).join("\n");
+    for (const gate of [
+      "npm run typecheck",
+      "npm run lint",
+      "scripts/words-gate.mjs",
+      "scripts/dist-smoke.sh",
+    ])
+      expect([gate, text.includes(gate)]).toEqual([gate, true]);
+  });
+
   it("Node 22 runs nightly on main, and a red night opens or updates one issue", () => {
     expect(doc.on.schedule).toBeDefined();
     const nightly = Object.entries(doc.jobs).filter(([, j]) =>
