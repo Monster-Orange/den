@@ -358,7 +358,7 @@ den gate box remove box2
   box is given it as `DEN_PW_WS`.
 - `--pw <version>=ws://…`, repeated: a box with several Playwright servers,
   one per version (`--pw 1.61=ws://box1.example:3931 --pw
-  1.63=ws://box1.example:3932`). A run gets the one whose version matches
+1.63=ws://box1.example:3932`). A run gets the one whose version matches
   its own (`1.61` serves any 1.61.x). Use it instead of `--playwright` and
   `--playwright-version`. The box's `--slots` count is the box's, whatever
   version a run takes. In settings.json it is `playwright_endpoints`
@@ -485,4 +485,3 @@ runs.
 A project's own lock helper can read the same variables: when
 `DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
 held slot and should not lock again.
-
