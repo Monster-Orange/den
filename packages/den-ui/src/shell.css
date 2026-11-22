@@ -1025,6 +1025,10 @@ body.den-has-shell .den-upd {
   align-items: flex-start;
   padding: 6px 12px;
 }
+.den-bell-row:has(a[href]) {
+  /* Issue 420: a row that opens on a click looks it. */
+  cursor: pointer;
+}
 .den-bell-row:hover {
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }

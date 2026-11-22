@@ -980,6 +980,11 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   returns has `.scope`, `.search`, `.bell` and `.appearance`. For a host's own wiring,
   use `hydrateScope`, `hydrateSearch`, `hydrateBell`, `hydrateAccount`,
   `hydrateAppearance` and `setWaiting` in `shell-client.js`.
+- A bell row opens on a click anywhere on it (its time, its dot, the
+  space around), as its link does; its own buttons and fields stay
+  theirs, and a row with no link does nothing (issue 420). The same
+  behaviour for a host's own list: `wireRowOpens(root, rowSelector)` in
+  `shell-client.js` (it returns a function that unwires it).
 - The words: `kit.scope`, `kit.search.ph`, `kit.bell`, `kit.bell.n`,
   `kit.bell.empty`, `kit.settings`, `kit.appearance`,
   `kit.appearance.title`, `kit.mode.system`, `kit.mode.dark`,
