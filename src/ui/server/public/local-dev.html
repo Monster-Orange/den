@@ -1752,8 +1752,15 @@
                 "ws.hubTip",
                 "This project's agents file their Hub work in this Hub project. Change it in Project setup.",
               );
+          // ws.hubChipCo ("{company} · {name}"): the company in its own
+          // span; the rest (" · <project>") in the span a phone hides.
+          const co = wsT("ws.hubChipCo", "{company} · {name}");
+          const rest = `<span class="ws-hub-pj">${escHtml(fill(co.replace("{company}", ""), v))}</span>`;
+          const coSpan = `<span class="ws-hub-co">${escHtml(m.company)}</span>`;
           const text = m.company
-            ? `<span class="ws-hub-co">${escHtml(m.company)}</span><span class="ws-hub-pj"> · ${escHtml(m.project)}</span>`
+            ? co.indexOf("{company}") <= co.indexOf("{name}")
+              ? coSpan + rest
+              : rest + coSpan
             : escHtml(fill(wsT("ws.hubChip", "Hub: {name}"), v));
           return `<a class="ws-head-link" id="ws-hub-project" data-hub-chip="linked" href="${escHtml(m.href)}" title="${escHtml(title)}">${text}</a>`;
         }
