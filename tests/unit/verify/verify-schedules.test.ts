@@ -1,0 +1,186 @@
+/**
+ * Issue 214 (T18, pure part): schedules from modules, the plan behind a
+ * schedule, its standing Allow and when it may run.
+ *   - A schedule on a shared environment runs only with a standing Allow.
+ *   - Changing its plan lapses the Allow.
+ *   - The Allow expires after verify.schedule.allow_expiry (30 days).
+ *   - A local or code-only schedule runs without one.
+ */
+import { describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import type { VerifyModule } from "../../../src/shared/verify/config.js";
+import {
+  listSchedules,
+  planHash,
+  readScheduleSettings,
+  readAllows,
+  writeAllow,
+  removeAllow,
+  scheduleState,
+  mayRun,
+  SCHEDULE_DEFAULTS,
+} from "../../../src/shared/verify/schedules.js";
+
+const DAY = 86_400_000;
+
+function mod(name: string, over: Partial<VerifyModule> = {}): VerifyModule {
+  const layer = name.split("/")[0];
+  return {
+    id: `shop:${name}`,
+    repo: "shop",
+    repoPath: "/tmp/shop",
+    name,
+    layer,
+    kind: "performance",
+    adapter: "cmd",
+    mark: "declared-read-only",
+    environments: ["staging"],
+    cmd: "make speed",
+    writes: false,
+    healthUrls: {},
+    ...over,
+  };
+}
+
+const speed = mod("web/speed", {
+  schedule: { cron: "0 2 * * *", window: "01:00-05:00", name: "Nightly speed", env: "staging" },
+});
+const devices = mod("web/devices", {
+  schedule: { cron: "0 22 * * 2,5", window: "20:00-06:00", name: "Devices", env: "staging" },
+});
+const checkout = mod("web/checkout", {
+  schedule: { cron: "0 22 * * 2,5", window: "20:00-06:00", name: "Devices", env: "staging" },
+});
+const deps = mod("code/deps", {
+  kind: "security",
+  adapter: "trivy",
+  mark: "reads-code-only",
+  environments: "all",
+  cmd: undefined,
+  schedule: { cron: "0 3 * * 1", env: "local" },
+});
+
+describe("listSchedules", () => {
+  it("one schedule per environment, cron, window and name, with its modules", () => {
+    const s = listSchedules("shop", [speed, devices, checkout, deps, mod("web/smoke")]);
+    expect(s.map((x) => [x.name ?? null, x.env, x.modules.map((m) => m.name)])).toEqual([
+      [null, "local", ["code/deps"]],
+      ["Devices", "staging", ["web/checkout", "web/devices"]],
+      ["Nightly speed", "staging", ["web/speed"]],
+    ]);
+    const dev = s[1];
+    expect(dev.id).toMatch(/^[a-z0-9-]{1,40}$/);
+    expect(dev.shared).toBe(true);
+    expect(dev.needsAllow).toBe(true);
+    // A scan of the code, and anything on local: no Allow.
+    expect(s[0].needsAllow).toBe(false);
+    expect(s[0].codeOnly).toBe(true);
+  });
+
+  it("the id stays the same when the plan changes", () => {
+    const a = listSchedules("shop", [devices])[0];
+    const b = listSchedules("shop", [devices, checkout])[0];
+    expect(a.id).toBe(b.id);
+    expect(a.hash).not.toBe(b.hash);
+  });
+});
+
+describe("planHash", () => {
+  it("changes with a module, its command, its writes or the window", () => {
+    const base = listSchedules("shop", [devices])[0].hash;
+    expect(planHash({ env: "staging", cron: "0 22 * * 2,5", window: "20:00-06:00", modules: [devices] })).toBe(base);
+    const changed = [
+      [mod("web/devices", { ...devices, cmd: "make devices --all" })],
+      [mod("web/devices", { ...devices, writes: true })],
+      [devices, checkout],
+    ];
+    for (const modules of changed)
+      expect(planHash({ env: "staging", cron: "0 22 * * 2,5", window: "20:00-06:00", modules })).not.toBe(base);
+    expect(planHash({ env: "staging", cron: "0 22 * * 2,5", window: "21:00-06:00", modules: [devices] })).not.toBe(base);
+  });
+});
+
+describe("settings", () => {
+  it("30 and 3 days by default; days as a number or with d or h", () => {
+    expect(readScheduleSettings(undefined)).toEqual(SCHEDULE_DEFAULTS);
+    expect(SCHEDULE_DEFAULTS).toEqual({ allowExpiryMs: 30 * DAY, expiryWarningMs: 3 * DAY });
+    expect(
+      readScheduleSettings({ schedule: { allow_expiry: 7, expiry_warning: "12h" } }),
+    ).toEqual({ allowExpiryMs: 7 * DAY, expiryWarningMs: 12 * 3_600_000 });
+    expect(() => readScheduleSettings({ schedule: { allow_expiry: "soon" } })).toThrow(
+      /verify\.schedule\.allow_expiry/,
+    );
+    expect(() => readScheduleSettings({ schedule: { allow_expiry: 0 } })).toThrow(
+      /verify\.schedule\.allow_expiry/,
+    );
+  });
+});
+
+describe("the standing Allow (T18)", () => {
+  const now = new Date("2026-11-21T12:00:00Z");
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-"));
+
+  it("is stored per project, survives a read, and can be removed", () => {
+    const dir = tmp();
+    const s = listSchedules("shop", [devices])[0];
+    const a = writeAllow(dir, "shop", s, { kind: "person", name: "ward" }, now, SCHEDULE_DEFAULTS);
+    expect(a).toMatchObject({
+      schedule: s.id,
+      hash: s.hash,
+      by: { kind: "person", name: "ward" },
+      at: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 30 * DAY).toISOString(),
+      modules: [{ id: "shop:web/devices", writes: false, cmd: "make speed" }],
+    });
+    expect(readAllows(dir, "shop")[s.id]).toEqual(a);
+    expect(fs.statSync(path.join(dir, "verify", "shop", "schedule-allows.json")).mode & 0o077).toBe(0);
+    removeAllow(dir, "shop", s.id);
+    expect(readAllows(dir, "shop")[s.id]).toBeUndefined();
+  });
+
+  it("a shared schedule runs only with an Allow; a plan change lapses it; it expires", () => {
+    const dir = tmp();
+    const s = listSchedules("shop", [devices])[0];
+    expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe("needs-allow");
+    expect(mayRun(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(false);
+
+    const a = writeAllow(dir, "shop", s, { kind: "person", name: "ward" }, now, SCHEDULE_DEFAULTS);
+    expect(scheduleState(s, a, now, SCHEDULE_DEFAULTS)).toBe("allowed");
+    expect(mayRun(s, a, now, SCHEDULE_DEFAULTS)).toBe(true);
+
+    // Three days before it expires, the bell warns; it still runs.
+    const late = new Date(now.getTime() + 27 * DAY + 1);
+    expect(scheduleState(s, a, late, SCHEDULE_DEFAULTS)).toBe("expiring");
+    expect(mayRun(s, a, late, SCHEDULE_DEFAULTS)).toBe(true);
+
+    const gone = new Date(now.getTime() + 30 * DAY);
+    expect(scheduleState(s, a, gone, SCHEDULE_DEFAULTS)).toBe("expired");
+    expect(mayRun(s, a, gone, SCHEDULE_DEFAULTS)).toBe(false);
+
+    // The plan changed: a module joined.
+    const next = listSchedules("shop", [devices, checkout])[0];
+    expect(scheduleState(next, a, now, SCHEDULE_DEFAULTS)).toBe("plan-changed");
+    expect(mayRun(next, a, now, SCHEDULE_DEFAULTS)).toBe(false);
+  });
+
+  it("a local or code-only schedule runs without one", () => {
+    const local = listSchedules("shop", [
+      mod("web/speed", { environments: ["local"], schedule: { cron: "0 2 * * *", env: "local" } }),
+    ])[0];
+    const code = listSchedules("shop", [deps])[0];
+    for (const s of [local, code]) {
+      expect(s.needsAllow).toBe(false);
+      expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe("no-allow-needed");
+      expect(mayRun(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(true);
+    }
+  });
+
+  it("an unreadable file means no Allows, never a crash", () => {
+    const dir = tmp();
+    fs.mkdirSync(path.join(dir, "verify", "shop"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "verify", "shop", "schedule-allows.json"), "{not json");
+    expect(readAllows(dir, "shop")).toEqual({});
+  });
+});
