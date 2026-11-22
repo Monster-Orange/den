@@ -1877,6 +1877,8 @@
       "git とあなた自身の認証情報で行います（GitHub ではないので gh は使いません）。",
     "ap.det.repo_clone.into":
       "先: {path}（新しいフォルダーです。既にあるものは何も変わりません）。",
+    "ap.det.repo_clone.sign":
+      "このフォルダー独自の git 設定にエージェントの署名鍵（gpg.format ssh）が入るので、そこでのコミットにあなたの鍵が使われることはありません。",
     "ap.det.repo_clone.then":
       "その後、エージェントがマニフェストを下書きし（manifest_draft）、追加を頼みます（repo_add）。どちらも改めてあなたに確認します。",
     "ap.det.agent_import.what":
@@ -2457,6 +2459,10 @@
       "__DEN_TITLE__ {v}: 固定バージョンはコミット ({sha}) されましたが、プッシュに失敗しました: {why}。__DEN_TITLE__ は次の更新チェックで再試行します",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
+    "bell.m.pinSigningRefused":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットしませんでした: {repo} の署名鍵がエージェントの鍵ではありません（{settings}）。他の人の鍵で署名することはありません。リポジトリにエージェントの鍵を設定してください: {fix}",
+    "bell.m.pinSigningNoKey":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットしませんでした: {repo} で署名が有効のままです（{settings}）が、エージェント用の署名鍵がありません。他の人の鍵で署名することはありません。",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
     "bell.m.pinBranchPushed":

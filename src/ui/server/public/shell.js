@@ -2805,6 +2805,8 @@
       "With git and your own credentials (not gh: it isn't GitHub).",
     "ap.det.repo_clone.into":
       "Into: {path} (a new folder; nothing there changes).",
+    "ap.det.repo_clone.sign":
+      "Its own git config gets the agents' signing key (gpg.format ssh), so commits there never use your key.",
     "ap.det.repo_clone.then":
       "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
     "ap.det.agent_import.what": "Project: {project}. Persona: {persona}.",
@@ -3401,6 +3403,10 @@
       "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push failed: {why}. __DEN_TITLE__ tries again at the next update check",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
+    "bell.m.pinSigningRefused":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ didn't commit its pin: in {repo}, the signing key isn't the agents' key ({settings}). It never signs with anyone else's key. Give the repo the agents' key: {fix}",
+    "bell.m.pinSigningNoKey":
+      "__DEN_TITLE__ {v}: __DEN_TITLE__ didn't commit its pin: in {repo}, signing is still on ({settings}) and there is no agents signing key. It never signs with anyone else's key.",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
     "bell.m.pinBranchPushed":

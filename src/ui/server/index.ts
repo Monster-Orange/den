@@ -12,6 +12,7 @@
 
 // Issue 814: first, before anything writes to the state folder.
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
+import { pinSigningBell } from "../../shared/agents/git-signing.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
@@ -4462,6 +4463,21 @@ function approvalDeps(): ApprovalDeps {
     },
     // SRV-P3: clones go where Den finds repos.
     reposRoot: () => getReposRoot(),
+    // Issue 523: a clone gets the agents' signing key as its own config.
+    agentsGit: () => {
+      try {
+        return readAgentsConfig().git;
+      } catch {
+        return undefined;
+      }
+    },
+    language: () => {
+      try {
+        return uiLanguage(readUserConfig().language);
+      } catch {
+        return "en";
+      }
+    },
     // SRV-P2: an agent asks to add or change a persona.
     personas: {
       checkCreate: (a, who) => checkPersonaCreate(agentWebDeps(), a, who),
@@ -4863,6 +4879,16 @@ function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
         return;
       }
       case "commit_failed":
+        // Issue 523: refused for its signing key: the bell's own words.
+        if (step.signing) {
+          const bell = pinSigningBell(step.signing);
+          add(
+            `${t} ${v}: ${t} didn't commit its pin: ${step.why}`,
+            bell.key,
+            bell.vars,
+          );
+          return;
+        }
         add(
           `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
           "bell.m.pinCommitFailed",
