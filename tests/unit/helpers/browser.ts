@@ -15,10 +15,26 @@
  * whether DEN_SKIP_BROWSER_TESTS=1 skips it. `openBrowser` does that itself:
  * it gives null instead of throwing when DEN_SKIP_BROWSER_TESTS=1.
  *
+ * - The gate gave the run a test box (DEN_GATE_BOX, issue 991): every
+ *   context is held to the run's base URLs (DEN_GATE_ALLOW, Den's
+ *   shared/gates/pw-guard), localhost names are pinned to 127.0.0.1, and
+ *   each refused request is recorded (`boxGuardBlocks`) and printed. A
+ *   "host:*" base URL covers only the ports this run serves (./own-ports:
+ *   its servers while they listen, and child servers a helper saw answer).
+ *   A box run with no base URLs opens no browser.
+ *
  * The check (tests/unit/pw-launch-check.test.ts): no file under tests/ but
  * this one launches or connects a browser itself.
  */
 import type { Browser, BrowserType, LaunchOptions, Page } from "playwright";
+import {
+  allowFromEnv,
+  guardBrowser,
+  pinLoopbackNames,
+} from "../../../src/shared/gates/pw-guard.js";
+import { ownPorts } from "./own-ports.js";
+
+export { boxOwnPort } from "./own-ports.js";
 
 export type BrowserEngine = "chromium" | "firefox" | "webkit";
 
@@ -47,11 +63,56 @@ export function hostWebkitRefusal(
   );
 }
 
+const blocks: string[] = [];
+let pinned = false;
+
+/** Requests the box guard refused in this process (issue 991). */
+export function boxGuardBlocks(): string[] {
+  return [...blocks];
+}
+
+/** On a box run, holds `browser` to the run's base URLs. */
+function boxGuarded(browser: Browser, env: NodeJS.ProcessEnv): Browser {
+  if (!env.DEN_GATE_BOX) return browser;
+  const allow = allowFromEnv(env);
+  if (!pinned) {
+    pinLoopbackNames();
+    pinned = true;
+  }
+  guardBrowser(
+    browser,
+    allow,
+    (url) => {
+      blocks.push(url);
+      console.error(
+        `box guard: refused ${url} (allowed: ${allow.join(", ")}; a "host:*" ` +
+          "entry covers only the ports this test process opened)",
+      );
+    },
+    ownPorts(),
+  );
+  // browser.newPage() makes its own context, not through newContext: give
+  // it a guarded one, closed with the page as Playwright's would be.
+  browser.newPage = async (o?: Parameters<Browser["newPage"]>[0]) => {
+    const ctx = await browser.newContext(o);
+    const page = await ctx.newPage();
+    page.once("close", () => void ctx.close().catch(() => {}));
+    return page;
+  };
+  return browser;
+}
+
 /** A browser for a test: DEN_PW_WS's server, else a local launch. */
 export async function launchBrowser(
   engine: BrowserEngine | BrowserType = "chromium",
   options?: LaunchOptions,
 ): Promise<Browser> {
+  if (process.env.DEN_GATE_BOX && !allowFromEnv(process.env).length)
+    throw new Error(
+      `The gate gave this run test box ${process.env.DEN_GATE_BOX} but no ` +
+        "base URLs (DEN_GATE_ALLOW is empty): no browser opens. Ask with " +
+        "gate run --base-url http://127.0.0.1:* (any port but 80 and 443).",
+    );
   const type = await browserType(engine);
   const ws = process.env.DEN_PW_WS;
   if (!ws) {
@@ -61,10 +122,13 @@ export async function launchBrowser(
       process.platform,
     );
     if (refused) throw new Error(refused);
-    return type.launch(options);
+    return boxGuarded(await type.launch(options), process.env);
   }
   try {
-    return await type.connect(ws, { exposeNetwork: "<loopback>" });
+    return boxGuarded(
+      await type.connect(ws, { exposeNetwork: "<loopback>" }),
+      process.env,
+    );
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
     throw new Error(
