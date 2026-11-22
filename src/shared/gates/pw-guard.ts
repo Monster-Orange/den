@@ -102,12 +102,27 @@ export function allowedUrl(
   // 80 and 443 (written out, or the scheme's own) are never allowed, not
   // even by a "host:*" entry.
   if (!u.port || u.port === "80" || u.port === "443") return false;
-  const host = u.hostname.toLowerCase();
-  const want = `${host}:${u.port}`;
+  const host = sameHost(u.hostname);
   const own = ownPorts?.has(Number(u.port)) ?? false;
-  return allow
-    .map((a) => a.toLowerCase())
-    .some((a) => a === want || (own && a === `${host}:*`));
+  return allow.some((a) => {
+    const at = a.lastIndexOf(":");
+    if (at < 0) return false;
+    if (sameHost(a.slice(0, at)) !== host) return false;
+    const port = a.slice(at + 1);
+    return port === u.port || (own && port === "*");
+  });
+}
+
+/**
+ * The host an allow entry is matched by. A box run pins localhost and
+ * *.localhost to 127.0.0.1 (`pinLoopbackNames`), and Den's own test
+ * servers listen on "localhost", so the three are one host: a run allowed
+ * 127.0.0.1:* reaches localhost:<its port>, and the reverse. ::1 and the
+ * rest of 127/8 aren't pinned, so they stay names of their own.
+ */
+function sameHost(host: string): string {
+  const h = host.toLowerCase();
+  return h === "127.0.0.1" || isLocalName(h) ? "127.0.0.1" : h;
 }
 
 /** The few Playwright shapes the guard uses (no Playwright import). */
