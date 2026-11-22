@@ -170,6 +170,22 @@ command for each.
 
 In a distribution the command is that distribution's `cli` name.
 
+### Test beds
+
+A test bed is an install that runs Den's live checks against stub agents.
+Mark it at install time with `den create <name> --test-bed` (it writes
+`web.test_install: true` in the distribution config; Settings, `config` and
+an agent's token can't change it), and start it with the test launcher on
+its own state folder, with no owner. `den doctor` says whether an install is
+a test bed.
+
+A test driver that runs inside an agent-like environment and needs to act
+as the person (start or end a stub agent, answer a fixture prompt) runs
+`den --test-person <command>`. It doesn't remove environment variables. On
+a test bed the command runs as the person, and the audit row says it came
+from the test-person path. On any other install it is refused with a clear
+error, and nothing runs.
+
 ## Sending feedback about Den
 
 **Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and

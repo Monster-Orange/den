@@ -424,6 +424,35 @@ function restarted(what: string, s: { already?: { at: string } }): string {
     : what;
 }
 
+/** Issue 89: how many of its last lines the error's own words carry. */
+const EARLY_LINES_SAID = 3;
+
+/**
+ * Issue 89: the answer to a start (or resume) whose agent exited at once:
+ * its exit code and its last lines (redacted) in the words every page and
+ * pop-up shows, and all of its tail for a page to show line by line.
+ */
+export function earlyExitAnswer(
+  id: string,
+  early: NonNullable<Started["early"]>,
+  warnings: readonly string[] = [],
+): Record<string, unknown> {
+  const code = early.exitCode === undefined ? "" : ` (exit ${early.exitCode})`;
+  const last = early.tail.slice(-EARLY_LINES_SAID);
+  const said = last.length
+    ? `. Its last ${last.length === 1 ? "line" : `${last.length} lines`}: ${last.join(" / ")}`
+    : ". It printed nothing";
+  return {
+    ok: false,
+    error: `agent ${id} exited at once${code}${said}`,
+    code: "exited_at_once",
+    ...(early.exitCode === undefined ? {} : { exitCode: early.exitCode }),
+    tail: early.tail,
+    session: early.sessionName,
+    ...(warnings.length ? { warnings } : {}),
+  };
+}
+
 function sendStarted(
   res: http.ServerResponse,
   s: Started & { fresh?: boolean },
@@ -431,20 +460,7 @@ function sendStarted(
   extra: Record<string, unknown> = {},
 ): void {
   if (s.early) {
-    const code =
-      s.early.exitCode === undefined ? "" : ` (exit ${s.early.exitCode})`;
-    sendJson(
-      res,
-      {
-        ok: false,
-        error: `agent ${s.rec.id} exited at once${code}`,
-        code: "exited_at_once",
-        tail: s.early.tail,
-        session: s.early.sessionName,
-        ...(s.warnings.length ? { warnings: s.warnings } : {}),
-      },
-      502,
-    );
+    sendJson(res, earlyExitAnswer(s.rec.id, s.early, s.warnings), 502);
     return;
   }
   sendJson(res, {
