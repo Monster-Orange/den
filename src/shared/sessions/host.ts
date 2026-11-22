@@ -46,6 +46,7 @@ import {
   type SessionInfo,
   type SessionPool,
 } from "./types.js";
+import { keepUnreadable } from "../state-backup.js";
 
 export const BACKEND_ID = "den-pty";
 
@@ -476,8 +477,15 @@ export class SessionHost {
         };
         this.sessions.set(rec.id, s);
         if (!rec.exited) this.persist(s);
-      } catch {
-        /* an unreadable record is skipped, not fatal */
+      } catch (e) {
+        // An unreadable record is skipped, not fatal. Issue 786: one that
+        // can't be parsed is kept in <state>/backup, with a bell item.
+        if (e instanceof SyntaxError)
+          keepUnreadable(
+            this.opts.stateDir,
+            path.join(this.paths.dir, f),
+            e.message,
+          );
       }
     }
   }

@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { readStateJson } from "./state-backup.js";
 
 export type NotificationKind =
   | "waiting"
@@ -165,7 +166,7 @@ export class NotificationStore {
   private readonly file: string;
 
   constructor(
-    stateDir: string,
+    private readonly stateDir: string,
     private readonly now: () => Date = () => new Date(),
   ) {
     this.file = path.join(stateDir, NOTIFICATIONS_FILE);
@@ -173,7 +174,10 @@ export class NotificationStore {
 
   private read(): StoreFile {
     try {
-      const v = JSON.parse(fs.readFileSync(this.file, "utf-8")) as {
+      // Issue 786: a file that can't be parsed is kept in backup, not reset.
+      const r = readStateJson(this.stateDir, this.file);
+      if (!r.ok) return { items: [], mutes: [] };
+      const v = (r.value ?? {}) as {
         items?: unknown;
         mutes?: unknown;
       };

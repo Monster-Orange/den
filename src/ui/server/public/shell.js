@@ -3303,6 +3303,8 @@
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.noHub": "{n} agents started without Hub",
+    "bell.m.stateKept":
+      "A state file couldn't be read: {file}. A copy is kept in backup/{saved}, and it started fresh",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
       "{name} ended without Den asking (exit {code}): {why}",

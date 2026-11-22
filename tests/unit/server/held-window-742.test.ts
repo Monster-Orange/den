@@ -247,8 +247,15 @@ describe("issue 742: waiting requests survive a restart", () => {
     });
     expect(String(approvalView(r!).reason)).toMatch(/lost/i);
     expect(lost).toHaveLength(1);
-    // The broken file is kept aside for a look, never overwritten.
-    expect(fs.readdirSync(dir).some((f) => f.includes("corrupt"))).toBe(true);
+    // The broken file is kept aside for a look, never overwritten. Issue
+    // 786: in <state>/backup, with its body.
+    const kept = fs
+      .readdirSync(path.join(dir, "backup"))
+      .filter((f) => f.startsWith("held-writes.json.") && f.endsWith(".bad"));
+    expect(kept).toHaveLength(1);
+    expect(fs.readFileSync(path.join(dir, "backup", kept[0]), "utf8")).toBe(
+      "{ not json",
+    );
   });
 
   it("a request whose action no longer exists, or that a restart cut off mid-run, is lost", async () => {

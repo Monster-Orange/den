@@ -54,6 +54,7 @@ import {
   approveKeyMatches,
 } from "../../shared/web-session.js";
 import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
+import { keepUnreadable } from "../../shared/state-backup.js";
 
 /** The header an anonymous asker reads its own request with. */
 export const APPROVAL_TICKET_HEADER = "x-den-approval-ticket";
@@ -474,11 +475,13 @@ export class ApprovalQueue {
 
   private loadFailed(file: string, detail: string): void {
     const why = `the held-write queue could not be read back after a restart: ${detail}. Requests that waited are lost; ask again.`;
-    try {
-      fs.renameSync(file, `${file}.corrupt-${this.now()}`);
-    } catch {
-      /* kept where it is; the next write replaces it */
-    }
+    // Issue 786: kept in <state>/backup (the newest 3), else beside itself.
+    if (!keepUnreadable(path.dirname(file), file, detail))
+      try {
+        fs.renameSync(file, `${file}.corrupt-${this.now()}`);
+      } catch {
+        /* kept where it is; the next write replaces it */
+      }
     this.lostUnknown = { at: this.now(), why };
     this.tellLost(null, why);
     this.persist();

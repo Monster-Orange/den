@@ -22,6 +22,7 @@ import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import type { SessionRef } from "../sessions/types.js";
 import type { RotationEntry } from "./rotation.js";
 import type { PermissionIntent } from "./permissions.js";
+import { keepUnreadable } from "../state-backup.js";
 
 export interface AgentRecord {
   id: string;
@@ -321,13 +322,20 @@ export function writeRecord(stateDir: string, rec: AgentRecord): void {
 
 export function readRecord(stateDir: string, id: string): AgentRecord | null {
   if (!AGENT_ID_RE.test(id)) return null;
+  const file = recordFile(stateDir, id);
+  let text: string;
   try {
-    return JSON.parse(
-      fs.readFileSync(recordFile(stateDir, id), "utf-8"),
-    ) as AgentRecord;
+    text = fs.readFileSync(file, "utf-8");
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
+  }
+  try {
+    return JSON.parse(text) as AgentRecord;
+  } catch (e) {
+    // Issue 786: kept in <state>/backup with a bell item, never lost.
+    keepUnreadable(stateDir, file, (e as Error).message);
+    return null;
   }
 }
 

@@ -2379,6 +2379,8 @@
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
+    "bell.m.stateKept":
+      "状態ファイルを読めませんでした: {file}。コピーを backup/{saved} に残し、新しく始めました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.unaskedExit":
       "{name} は Den が求めていないのに終了しました (終了コード {code}): {why}",

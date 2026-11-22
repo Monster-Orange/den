@@ -1420,6 +1420,7 @@ import {
 import { product } from "../../shared/product.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
+import { startStateKeptBell } from "./state-kept-bell.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -10400,6 +10401,13 @@ const CRASH_GATE: Promise<void> = (() => {
   }
   return new Promise((r) => setTimeout(r, boot.waitMs));
 })();
+// Issue 786: a state file that couldn't be read was kept in backup; the
+// bell names it (those kept while no server ran, then each from now on).
+try {
+  startStateKeptBell(getStateDir(), () => notificationDeps().store);
+} catch {
+  /* the bell is best effort: doctor's row still names them */
+}
 // AG-14: agents interrupted by a restart, and stopped ones to forget
 // (after the crash-loop wait: a start that waits resumes nothing yet).
 void CRASH_GATE.then(() =>

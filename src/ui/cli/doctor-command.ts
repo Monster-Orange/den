@@ -136,6 +136,11 @@ import {
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import {
+  BACKUP_DIR,
+  KEEP_PER_FILE,
+  readKept,
+} from "../../shared/state-backup.js";
 
 export interface DoctorRow {
   kind: string;
@@ -1347,6 +1352,39 @@ export function pushContactLines(
 }
 
 /**
+ * Issue 786 clause 3: the state files Den couldn't read and kept in
+ * <state>/backup in the last KEPT_DAYS days (a warn row naming them), or
+ * nothing when none: never a silent reset.
+ */
+export const KEPT_DAYS = 30;
+export function stateKeptLines(
+  title: string,
+  stateDir: () => string = getStateDir,
+  now: () => number = Date.now,
+): { lines: string[]; check?: OnboardCheck } {
+  let dir: string;
+  try {
+    dir = stateDir();
+  } catch {
+    return { lines: [] };
+  }
+  const since = now() - KEPT_DAYS * 24 * 3600_000;
+  const recent = readKept(dir).filter((k) => Date.parse(k.at) >= since);
+  if (!recent.length) return { lines: [] };
+  const files = [...new Set(recent.map((k) => k.file))];
+  const detail = `${title} couldn't read ${files.length === 1 ? "a state file" : `${files.length} state files`} and kept ${recent.length === 1 ? "a copy" : "copies"} in ${path.join(dir, BACKUP_DIR)} (the newest ${KEEP_PER_FILE} per file): ${files.join(", ")}. Each started fresh; to put one back, stop ${title} and copy it over the file`;
+  return {
+    lines: [
+      "",
+      `${title} doctor: State files`,
+      "",
+      `  state files  ⚠  ${detail}`,
+    ],
+    check: { id: "state_kept", status: "warn", detail },
+  };
+}
+
+/**
  * H1 (0.4.48): whether the edge set up here carries Den's proof (the
  * generated edge.yml has the current one). Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
@@ -1878,6 +1916,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
     }
+    {
+      const sk = stateKeptLines(readBrand().name);
+      if (sk.check) r.checks.push(sk.check);
+    }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
     // Issue 609: attention marks Den never took, per agent.
@@ -1996,6 +2038,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
+  for (const l of stateKeptLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   // Issue 636: whether this install is a test bed.
