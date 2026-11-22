@@ -179,10 +179,12 @@ describe("issue 394: applyShellSave keeps the newer save of each key", () => {
     const r = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
     expect(r).toEqual({
       ok: true,
-      value: { pins: ["a"], changedAt: { pins: 100 } },
+      value: { pins: [{ item: "a" }], changedAt: { pins: 100 } },
       ignored: [],
     });
-    expect(shellPrefs(r.ok ? r.value : null).pins).toEqual(["a"]);
+    expect(shellPrefs(r.ok ? r.value : null).pins).toEqual([
+      { item: "a", project: null },
+    ]);
     expect(shellPrefs(r.ok ? r.value : null)).not.toHaveProperty("changedAt");
   });
 
@@ -227,7 +229,7 @@ describe("issue 394: applyShellSave keeps the newer save of each key", () => {
   it("a save with no changedAt (an older page) applies and clears that key's stamp", () => {
     const a = applyShellSave(undefined, { pins: ["a"], changedAt: 100 });
     const b = applyShellSave(a.ok ? a.value : undefined, { pins: ["b"] });
-    expect(b.ok && b.value).toEqual({ pins: ["b"] });
+    expect(b.ok && b.value).toEqual({ pins: [{ item: "b" }] });
   });
 
   it("a bad changedAt or a bad field is refused", () => {
@@ -246,7 +248,7 @@ describe("issue 394: applyShellSave keeps the newer save of each key", () => {
       { pins: ["b"], changedAt: 1 },
     );
     expect(r.ok && r.value).toEqual({
-      pins: ["b"],
+      pins: [{ item: "b" }],
       changedAt: { pins: 1, order: 5 },
     });
   });
@@ -273,7 +275,10 @@ describe("issue 394 review: inherited names and far-future stamps", () => {
       { pins: ["a"], changedAt: JSON.parse('{"constructor":5,"toString":6}') },
       { pins: ["b"], changedAt: 1 },
     );
-    expect(r.ok && r.value).toEqual({ pins: ["b"], changedAt: { pins: 1 } });
+    expect(r.ok && r.value).toEqual({
+      pins: [{ item: "b" }],
+      changedAt: { pins: 1 },
+    });
   });
 
   it("a changedAt later than now plus the allowance is stored as now; the next real save wins", () => {
@@ -306,7 +311,7 @@ describe("issue 394 review: inherited names and far-future stamps", () => {
       { now: 1_000_000, skewMs: 300_000 },
     );
     expect(r.ok && r.value).toEqual({
-      pins: ["a"],
+      pins: [{ item: "a" }],
       changedAt: { pins: 1_299_000 },
     });
   });

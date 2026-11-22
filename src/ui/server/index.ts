@@ -8345,6 +8345,15 @@ async function handleRequest(
   // takes { shell } only: nothing else can be changed this way. A key's
   // save older than the stored one is ignored, answering ok.
   if (pathname === "/api/settings/shell" && req.method === "POST") {
+    // The rail's prefs are a person's (PERSON_ONLY_SETTINGS "shell"), as
+    // on /api/settings: a claimed agent is refused; a test install's
+    // fixture person saves its pages' pins (issue 402).
+    if (notAPersonOf(req) && !fixturePersonOf(req))
+      return sendJson(
+        res,
+        { ok: false, error: "only a person can change shell" },
+        403,
+      );
     const maxKb = shellSaveMaxKb(readUserConfig());
     let body: unknown;
     try {

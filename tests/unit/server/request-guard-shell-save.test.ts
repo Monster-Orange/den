@@ -7,7 +7,7 @@
  *  - the request's Origin must be one of this install's own
  *    (originAllowed: the loopback names on Den's port, the edge hosts, the
  *    LAN hosts); any other Origin, or none, is refused (403);
- *  - sign-in stays as it is: beyond loopback, a session (or a bearer);
+ *  - sign-in stays as it is: a session (or a bearer), on loopback too;
  *  - an agent's token never reaches it (a person's write);
  *  - only that route: /api/settings itself still needs the CSRF token.
  * The real server's wiring is shell-save.integration.test.ts.
@@ -86,7 +86,7 @@ describe("issue 394: the shell save's beacon form", () => {
       `http://[::1]:${PORT}`,
     ])
       expect(
-        checkRequest(beacon("loopback", { origin: o }), ctx(false)),
+        checkRequest(beacon("loopback", { origin: o }), ctx(true)),
       ).toMatchObject({ ok: true });
   });
 
@@ -101,7 +101,7 @@ describe("issue 394: the shell save's beacon form", () => {
         checkRequest(beacon("edge", { origin: o }), ctx(true)),
       ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
       expect(
-        checkRequest(beacon("loopback", { origin: o }), ctx(false)),
+        checkRequest(beacon("loopback", { origin: o }), ctx(true)),
       ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
     }
   });
@@ -112,16 +112,22 @@ describe("issue 394: the shell save's beacon form", () => {
       status: 403,
       code: "origin_rejected",
     });
-    expect(checkRequest(beacon("loopback", {}), ctx(false))).toMatchObject({
+    expect(checkRequest(beacon("loopback", {}), ctx(true))).toMatchObject({
       ok: false,
       status: 403,
       code: "origin_rejected",
     });
   });
 
-  it("beyond loopback, sign-in is still needed (401 with no session)", () => {
+  it("sign-in is still needed, beyond loopback and on it (401 with no session)", () => {
     expect(
       checkRequest(beacon("edge", { origin: `https://${EDGE}` }), ctx(false)),
+    ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
+    expect(
+      checkRequest(
+        beacon("loopback", { origin: `http://localhost:${PORT}` }),
+        ctx(false),
+      ),
     ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
   });
 
@@ -151,7 +157,7 @@ describe("issue 394: the shell save's beacon form", () => {
           { origin: `http://localhost:${PORT}` },
           "/api/settings",
         ),
-        ctx(false),
+        ctx(true),
       ),
     ).toMatchObject({ ok: false, status: 403, code: "csrf" });
   });

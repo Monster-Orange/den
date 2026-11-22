@@ -319,6 +319,8 @@ export function fixtureLoginLink(
 export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/session\/logout$/],
   ["POST", /^\/api\/settings$/],
+  // Issue 394: the rail's own save (pins), as the page sends it.
+  ["POST", /^\/api\/settings\/shell$/],
   ["POST", /^\/api\/scope$/],
   ["POST", /^\/api\/notifications\/(?:read|clear)$/],
   ["POST", /^\/api\/report\/drafts$/],

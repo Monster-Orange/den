@@ -20,6 +20,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { denAuth } from "./helpers/den-auth.js";
+import { signedIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -27,6 +28,8 @@ let tmp = "";
 let userYml = "";
 let port = 0;
 let server: ChildProcess;
+/** A signed-in browser's session cookie: a beacon carries it (no header). */
+let cookie = "";
 
 function write(file: string, content: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -50,6 +53,7 @@ function beacon(
           "content-type": o.type ?? "application/json",
           "content-length": Buffer.byteLength(data),
           ...(o.origin !== undefined ? { origin: o.origin } : {}),
+          ...(cookie ? { cookie } : {}),
         },
       },
       (res) => {
@@ -62,13 +66,17 @@ function beacon(
     r.end(data);
   });
 }
+/** The stored shell; a pin read as its item (issue 402's { item, project }). */
 async function settings(): Promise<{
   shell: { pins: string[]; collapsed: boolean };
 }> {
   const r = await fetch(`http://localhost:${port}/api/settings`, {
     headers: denAuth(path.join(tmp, "home", ".den")),
   });
-  return (await r.json()) as { shell: { pins: string[]; collapsed: boolean } };
+  const b = (await r.json()) as {
+    shell: { pins: { item: string }[]; collapsed: boolean };
+  };
+  return { shell: { ...b.shell, pins: b.shell.pins.map((p) => p.item) } };
 }
 async function postSettings(body: unknown): Promise<number> {
   const r = await fetch(`http://localhost:${port}/api/settings`, {
@@ -112,6 +120,10 @@ beforeAll(async () => {
   );
   server = started.server;
   port = started.port;
+  // Sign-in is needed on loopback too: the page's beacon carries its cookie.
+  cookie = (
+    await signedIn(path.join(tmp, "home", ".den"), `http://localhost:${port}`)
+  ).cookie;
 }, 60_000);
 
 afterAll(async () => {

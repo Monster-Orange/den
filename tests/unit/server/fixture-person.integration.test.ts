@@ -512,6 +512,37 @@ describe("what the fixture person saves from a page", () => {
   });
 });
 
+describe("what the fixture person saves from a page, on the rail's own route", () => {
+  it("POST /api/settings/shell saves the pins (issue 394's save)", async () => {
+    const f = await fixtureSignIn(test);
+    const r = await call(test, "POST", "/api/settings/shell", f.headers, {
+      shell: { pins: [{ item: "svc-c", project: null }], changedAt: 1 },
+    });
+    expect([r.status, r.json.ok]).toEqual([200, true]);
+    const back = await call(test, "GET", "/api/settings", {
+      cookie: f.cookie,
+      "sec-fetch-site": "same-origin",
+    });
+    const stored = (back.json.shell as { pins?: { item: string }[] }).pins;
+    expect((stored ?? []).map((p) => p.item)).toEqual(["svc-c"]);
+    await call(test, "POST", "/api/settings", f.headers, {
+      shell: { pins: [] },
+    });
+  });
+
+  it("a claimed agent on the fixture session can't save there", async () => {
+    const f = await fixtureSignIn(test);
+    const r = await call(
+      test,
+      "POST",
+      "/api/settings/shell",
+      { ...f.headers, ...AGENT_CLAIM },
+      { shell: { pins: [{ item: "svc-claimed", project: null }] } },
+    );
+    expect(r.status).toBe(403);
+  });
+});
+
 describe("what the fixture person can't reach", () => {
   it("can't Allow a held write", async () => {
     const f = await fixtureSignIn(test);
