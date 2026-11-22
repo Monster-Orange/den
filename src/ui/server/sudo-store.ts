@@ -328,3 +328,15 @@ export function hasPasswordlessSudo(): boolean {
   _passwordlessCache = { value, at: now };
   return value;
 }
+
+/**
+ * Issue 592: whether sudo is ready for a run that needs it: a password is
+ * held, or sudo needs none (`sudo -n true`, hasPasswordlessSudo). A test
+ * server (`testInstall`: the test-install launch flag) never runs sudo for
+ * this: it answers not ready, so an Allow that needs sudo asks for the
+ * password and nothing runs.
+ */
+export function sudoReadyNow(o: { testInstall: boolean }): boolean {
+  if (o.testInstall) return false;
+  return hasSudoPassword() || hasPasswordlessSudo();
+}

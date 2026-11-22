@@ -1190,6 +1190,7 @@ import {
   prewarmSudo,
   hasSudoPassword,
   hasPasswordlessSudo,
+  sudoReadyNow,
   watchSudo,
 } from "./sudo-store.js";
 import {
@@ -4260,7 +4261,7 @@ function keepRunningCore(): KeepRunningCore {
   return {
     platform: () => process.platform,
     installed: installedServiceMode,
-    sudoReady: () => hasSudoPassword() || hasPasswordlessSudo(),
+    sudoReady: () => sudoReadyNow({ testInstall: TEST_INSTALL_LAUNCH_FLAG }),
     current: () => {
       try {
         return agentsKeepRunningAfterLogout();
@@ -4718,7 +4719,7 @@ function approvalDeps(): ApprovalDeps {
       onLost: (a, why) => void heldWriteLost(a, why),
     }),
     // Issue 592: an Allow whose run needs sudo asks the browser first.
-    sudoReady: () => hasSudoPassword() || hasPasswordlessSudo(),
+    sudoReady: () => sudoReadyNow({ testInstall: TEST_INSTALL_LAUNCH_FLAG }),
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
