@@ -152,6 +152,21 @@ describe("a finished request reads back as its state, never 404", () => {
     expect(fs.readFileSync(s.file, "utf-8")).not.toContain("tok-secret-value");
   });
 
+  it("a token in the run's error is redacted, stored and read back", async () => {
+    // A token shape (invented): built at run time, never a literal.
+    const tok = ["ghp", "_", "Z".repeat(36)].join("");
+    const s = setup({ ok: false, error: `push refused for ${tok}` });
+    const q = s.queue();
+    const a = q.request(ask("helper"));
+    await q.decide(a.id, "allow", "sess");
+    s.clock.t += 2 * HOUR;
+    q.pending();
+    expect(fs.readFileSync(s.file, "utf-8")).not.toContain(tok);
+    const err = (s.queue().get(a.id)?.result as { error?: string }).error;
+    expect(err).toMatch(/^push refused for /);
+    expect(err).not.toContain(tok);
+  });
+
   it("deciding a finished one again says so, never 'No such request'", async () => {
     const s = setup();
     const q = s.queue();

@@ -60,6 +60,7 @@ import {
   approveKeyMatches,
 } from "../../shared/web-session.js";
 import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
+import { redactSecrets } from "../../shared/redact.js";
 
 /** The header an anonymous asker reads its own request with. */
 export const APPROVAL_TICKET_HEADER = "x-den-approval-ticket";
@@ -385,9 +386,11 @@ function endedOf(a: Approval): EndedRec {
     decidedAt: a.decidedAt ?? a.expiresAt,
     ...(a.state === "done" ? { ok: !failed } : {}),
     ...(failed && typeof r.error === "string"
-      ? { error: r.error.slice(0, 300) }
+      ? { error: redactSecrets(r.error).slice(0, 300) }
       : {}),
-    ...(a.lostBecause ? { lostBecause: a.lostBecause.slice(0, 300) } : {}),
+    ...(a.lostBecause
+      ? { lostBecause: redactSecrets(a.lostBecause).slice(0, 300) }
+      : {}),
     ...(a.endedBecause ? { endedBecause: a.endedBecause } : {}),
     ...(a.ticketHash ? { ticketHash: a.ticketHash } : {}),
   };
