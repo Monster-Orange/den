@@ -2260,6 +2260,8 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.toolsNoteHeld":
+      "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":
