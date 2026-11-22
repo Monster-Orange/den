@@ -984,6 +984,21 @@ export async function handleAgentRoutes(
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Any other agent: refused, as a
+    // person-only act is.
+    const opAct = operatorActOf(req);
+    if (
+      (opAct === "agent-say" || opAct === "agent-relaunch") &&
+      (id === undefined || agentRecord(d, id, ws).testBed !== true)
+    )
+      throw new AgentError(
+        opAct === "agent-say"
+          ? "only a person can send an agent a message"
+          : "only a person can relaunch an agent",
+        { status: 403 },
+      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
