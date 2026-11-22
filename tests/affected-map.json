@@ -43,6 +43,11 @@
       "src/ui/server/held-bell.ts",
       "src/ui/server/public/bell.js",
       "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/picker-tablet-981.browser.test.ts": [
+      "packages/den-ui/src/shell.css",
+      "packages/den-ui/inventory/nav-inventory.js",
+      "src/ui/server/public/shell.js"
     ]
   },
   "subjectless": [
