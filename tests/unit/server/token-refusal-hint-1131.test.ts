@@ -21,7 +21,6 @@ function ctx(): GuardContext {
     loopbackNames: ["localhost", "127.0.0.1", "[::1]"],
     edgeHosts: () => [],
     verifyBearer: () => "elsewhere",
-    csrfToken: "server-start-csrf-token-aaaaaaaaaaaaaaaaaaaaaa",
     session: () => null,
   };
 }
