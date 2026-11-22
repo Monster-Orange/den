@@ -28,11 +28,17 @@
  *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
  *                                     web.approve_window_seconds (issue 819)
+ *   web_agent_view: { on?: boolean, minutes? }
+ *                                     user.yml web.agent_view,
+ *                                     web.agent_view_minutes (issue 796)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
+ *   agent_issue_writes: { roles?: [role, …] | null, per_hour? }
+ *                                     user.yml agents.issue_writes and
+ *                                     agents.issue_writes_per_hour (issue_write)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
@@ -49,6 +55,10 @@
  *                                     user.yml process_lookup.* (issue 609)
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
+ *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
+ *     api_budget_floor?, watches_max? }
+ *                                     user.yml github.* (the shared GitHub
+ *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -59,7 +69,11 @@ import {
   SHOT_KEEP_DAYS_MIN,
   SHOT_LIMITS,
 } from "./report-shots.js";
-import { PAIR_LIMITS, WEB_WAIT_RANGE } from "./web-session.js";
+import {
+  AGENT_VIEW_RANGE,
+  PAIR_LIMITS,
+  WEB_WAIT_RANGE,
+} from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
   SHELL_SAVE_MAX_KB_RANGE,
@@ -67,9 +81,11 @@ import {
   SHELL_PENDING_RANGE,
 } from "../ui/server/shell-prefs.js";
 import { SHELL_PATH_TIMEOUT } from "./den-config.js";
+import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
+import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -89,6 +105,8 @@ export const PERSON_ONLY_SETTINGS = [
   "shell_save",
   // Issue 819: how many new-device requests and wrong codes are allowed.
   "web_pairing",
+  // Issue 796: whether agents may view this Den's pages, read-only.
+  "web_agent_view",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -97,11 +115,15 @@ export const PERSON_ONLY_SETTINGS = [
   "reports",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
+  // issue_write: which roles write GitHub issues, and how many an hour.
+  "agent_issue_writes",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
   // then holds its deliveries.
   "agent_context",
   // Review M5 (0.4.46): what agents may do without asking.
   "hub_allow_tools",
+  // Issue 158: the Hub delivery loop in every agent's instructions.
+  "hub_delivery_loop",
   // Issue 267: Hub's address (an agent asks with hub_connect).
   "hub_url",
   // The programs Den runs when a person opens a file or a terminal.
@@ -128,6 +150,8 @@ export const PERSON_ONLY_SETTINGS = [
   "process_lookup",
   // Issue 609: how agents' hooks wait for Den, and retry.
   "agent_hooks",
+  // The shared GitHub watcher's pace and API budget: every agent's polls.
+  "github",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -297,6 +321,11 @@ const WEB_PAIRING: Record<string, Limit> = {
   },
 };
 
+/** Issue 796: how long an agent's read-only view lasts (agent-view.ts). */
+const WEB_AGENT_VIEW: Record<string, Limit> = {
+  minutes: { key: "agent_view_minutes", ...AGENT_VIEW_RANGE, int: true },
+};
+
 const AGENTS_LIST: Record<string, Limit> = {
   host_timeout_seconds: {
     key: "host_timeout_seconds",
@@ -319,6 +348,16 @@ const AGENTS_SHELL: Record<string, Limit> = {
     min: SHELL_PATH_TIMEOUT.min,
     max: SHELL_PATH_TIMEOUT.max,
     int: false,
+  },
+};
+
+/** issue_write: user.yml agents.issue_writes_per_hour (issue-write.ts). */
+const AGENT_ISSUE_WRITES: Record<string, Limit> = {
+  per_hour: {
+    key: "issue_writes_per_hour",
+    min: ISSUE_WRITES_PER_HOUR.min,
+    max: ISSUE_WRITES_PER_HOUR.max,
+    int: true,
   },
 };
 
@@ -360,6 +399,14 @@ const FEEDBACK: Record<string, Limit> = Object.fromEntries(
   Object.entries(VISIBILITY_LIMITS).map(([k, l]) => [
     k,
     { key: k, min: l.min, max: l.max, int: false },
+  ]),
+);
+
+/** The shared GitHub watcher: user.yml github.* (github-watch/settings.ts). */
+const GITHUB_WATCH: Record<string, Limit> = Object.fromEntries(
+  Object.entries(GITHUB_WATCH_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: true },
   ]),
 );
 
@@ -518,6 +565,25 @@ export function patchCliRows(
       });
     if (Object.keys(rest).length) bridgeRest = rest;
   }
+  // Issue 796: web.agent_view (a switch) and how long a view lasts.
+  const av = body.web_agent_view;
+  let viewRest: unknown = undefined;
+  if (av !== undefined) {
+    if (!isObj(av))
+      return { ok: false, error: "web_agent_view is an object: on, minutes" };
+    const { on, ...rest } = av;
+    if (on !== undefined && on !== null && typeof on !== "boolean")
+      return { ok: false, error: "web_agent_view.on is true, false or null" };
+    if (on !== undefined)
+      apply.push(() => {
+        const w = isObj(user.web) ? { ...user.web } : {};
+        if (on === null) delete w.agent_view;
+        else w.agent_view = on;
+        if (Object.keys(w).length) user.web = w;
+        else delete user.web;
+      });
+    if (Object.keys(rest).length) viewRest = rest;
+  }
   // Issue 278: agent_context.pause_after_loop (a switch) and its numbers.
   const ac = body.agent_context;
   let contextRest: unknown = undefined;
@@ -543,7 +609,51 @@ export function patchCliRows(
       });
     if (Object.keys(rest).length) contextRest = rest;
   }
+  // issue_write: agents.issue_writes (a list of roles; [] none, null the
+  // default) and its limit.
+  const iw = body.agent_issue_writes;
+  let issueRest: unknown = undefined;
+  if (iw !== undefined) {
+    if (!isObj(iw))
+      return {
+        ok: false,
+        error: "agent_issue_writes is an object: roles, per_hour",
+      };
+    const { roles, ...rest } = iw;
+    if (
+      roles !== undefined &&
+      roles !== null &&
+      !(
+        Array.isArray(roles) &&
+        roles.every(
+          (r) => typeof r === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(r),
+        )
+      )
+    )
+      return {
+        ok: false,
+        error:
+          "agent_issue_writes.roles is a list of roles (lowercase letters, digits and -), or null",
+      };
+    if (roles !== undefined)
+      apply.push(() => {
+        const a = isObj(user.agents) ? { ...user.agents } : {};
+        if (roles === null) delete a.issue_writes;
+        else a.issue_writes = [...new Set(roles as string[])];
+        if (Object.keys(a).length) user.agents = a;
+        else delete user.agents;
+      });
+    if (Object.keys(rest).length) issueRest = rest;
+  }
   const e =
+    patchBlock(
+      user,
+      "agent_issue_writes",
+      "agents",
+      AGENT_ISSUE_WRITES,
+      issueRest,
+      apply,
+    ) ??
     patchBlock(
       user,
       "agent_context",
@@ -562,6 +672,14 @@ export function patchCliRows(
       "web",
       WEB_PAIRING,
       body.web_pairing,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "web_agent_view",
+      "web",
+      WEB_AGENT_VIEW,
+      viewRest,
       apply,
     ) ??
     patchBlock(
@@ -614,7 +732,8 @@ export function patchCliRows(
       AGENT_HOOKS,
       body.agent_hooks,
       apply,
-    );
+    ) ??
+    patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

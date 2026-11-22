@@ -595,7 +595,11 @@ export function deviceLine(d, now = Date.now()) {
         ? L("set.ui.viaCode", "approved with a code")
         : d.via === "claim"
           ? L("set.ui.viaClaim", "claimed with a setup link")
-          : L("set.ui.viaLink", "signed in with a one-time link");
+          : d.via === "agent-view"
+            ? L("set.ui.viaAgentView", "{agent}'s read-only view", {
+                agent: d.agent || "",
+              })
+            : L("set.ui.viaLink", "signed in with a one-time link");
   const name = deviceWords(d.name);
   const from = d.client || d.host;
   return {
@@ -1721,6 +1725,33 @@ const ACCESS_ROWS = [
     write: (v, ctx) => ctx.post({ web_pairing: { approve_window_seconds: v } }),
   },
   {
+    // Issue 796: an agent's read-only view of these pages (MCP page_view).
+    id: "access.agent_view",
+    category: "access",
+    label: "Agents may view pages, read-only",
+    description:
+      "On, an agent running here may open these pages read-only, as itself, to look or take a screenshot (page_view). It changes nothing, and each page it opens is logged with its name. Off, the agent is told views are off. __DEN_CLI__ config web.agent_view=true",
+    keywords: ["agent", "view", "read-only", "page_view", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.on"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.web_agent_view?.on !== false,
+    write: (v, ctx) => ctx.post({ web_agent_view: { on: !!v } }),
+  },
+  {
+    id: "access.agent_view_minutes",
+    category: "access",
+    label: "An agent's view lasts, in minutes",
+    description:
+      "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+    keywords: ["agent", "view", "read-only", "minutes", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.minutes"],
+    control: { type: "number", min: 1, max: 60, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.web_agent_view?.minutes ?? 10,
+    write: (v, ctx) => ctx.post({ web_agent_view: { minutes: v } }),
+  },
+  {
     id: "access.machine_name",
     category: "access",
     label: "Machine name",
@@ -2586,6 +2617,80 @@ export const DEN_SETTINGS = [
     write: (v, ctx) =>
       ctx.post({ web_github: { owner_name_timeout_seconds: v } }),
   },
+  // The shared GitHub watcher (MCP github_watch): its pace and API budget.
+  {
+    id: "server.github_watch_interval",
+    category: "server",
+    label: "GitHub watch: first interval, in seconds",
+    description:
+      "How often __DEN_TITLE__'s one GitHub watcher looks at the pull requests and runs agents watch (MCP github_watch). It doubles while nothing changes, and starts again on a change. __DEN_CLI__ config github.watch_interval_seconds=60",
+    keywords: [
+      "github",
+      "watch",
+      "checks",
+      "interval",
+      "poll",
+      "github.watch_interval_seconds",
+    ],
+    scope: "user",
+    keys: ["github.watch_interval_seconds"],
+    control: { type: "number", min: 10, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github?.watch_interval_seconds ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_interval_seconds: v } }),
+  },
+  {
+    id: "server.github_watch_max_interval",
+    category: "server",
+    label: "GitHub watch: longest interval, in seconds",
+    description:
+      "The most the GitHub watcher waits between looks while nothing changes. __DEN_CLI__ config github.watch_max_interval_seconds=300",
+    keywords: [
+      "github",
+      "watch",
+      "checks",
+      "interval",
+      "backoff",
+      "github.watch_max_interval_seconds",
+    ],
+    scope: "user",
+    keys: ["github.watch_max_interval_seconds"],
+    control: { type: "number", min: 10, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.github?.watch_max_interval_seconds ?? 300,
+    write: (v, ctx) => ctx.post({ github: { watch_max_interval_seconds: v } }),
+  },
+  {
+    id: "server.github_api_budget_floor",
+    category: "server",
+    label: "GitHub watch: API calls kept in reserve",
+    description:
+      "Below this many GitHub API calls left this hour, the GitHub watcher asks GitHub nothing and refuses new watches until GitHub's reset, and says so with the reset time. __DEN_CLI__ config github.api_budget_floor=500",
+    keywords: [
+      "github",
+      "api",
+      "rate limit",
+      "budget",
+      "floor",
+      "github.api_budget_floor",
+    ],
+    scope: "user",
+    keys: ["github.api_budget_floor"],
+    control: { type: "number", min: 0, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.github?.api_budget_floor ?? 500,
+    write: (v, ctx) => ctx.post({ github: { api_budget_floor: v } }),
+  },
+  {
+    id: "server.github_watches_max",
+    category: "server",
+    label: "GitHub watch: watches at once",
+    description:
+      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+    keywords: ["github", "watch", "limit", "github.watches_max"],
+    scope: "user",
+    keys: ["github.watches_max"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.github?.watches_max ?? 50,
+    write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
   {
     // den#143: how long `web up` waits for the server (user.yml
     // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
@@ -2701,13 +2806,67 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Unit test runs at once, on this machine",
     description:
-      "How many unit-test runs (`gate run --kind cpu`) share this machine. A browser test run always runs alone. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
+      "How many unit-test runs (`gate run --kind cpu`) share this machine. Unit and browser test runs wait in separate lines. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
     keywords: ["gate", "slot", "tests", "queue", "cpu", "parallel"],
     scope: "user",
     keys: ["gate_slots.cpu_slots"],
     control: { type: "number", min: 1, max: 64, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.cpuSlots ?? 2,
     write: (v, ctx) => ctx.post({ gate_slots: { cpu_slots: v } }),
+  },
+  {
+    // Issue 751: cpu runs beside a browser run on this machine.
+    id: "server.gate_cpu_beside",
+    category: "server",
+    label: "Unit test runs beside a browser test run",
+    description:
+      "How many unit-test runs may run on this machine while a browser test run does, never more than the unit test runs at once. 0: a browser test run runs alone. A browser run on a test box doesn't count. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    keywords: ["gate", "slot", "tests", "queue", "cpu", "browser", "beside"],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots_beside_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlotsBesideBrowser ?? 2,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { cpu_slots_beside_browser: v } }),
+  },
+  {
+    // Issue 751 follow-up: cpu runs beside a release browser run (0).
+    id: "server.gate_cpu_beside_release",
+    category: "server",
+    label: "Unit test runs beside a release browser test run",
+    description:
+      "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "browser",
+      "beside",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots_beside_release_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlotsBesideReleaseBrowser ?? 0,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
+  },
+  {
+    // Browser runs that may hold this machine at once (each in a container).
+    id: "server.gate_local_browser",
+    category: "server",
+    label: "Browser runs at once on this machine",
+    description:
+      "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
+    keywords: ["gate", "slot", "tests", "queue", "browser", "container"],
+    scope: "user",
+    keys: ["gate_slots.local_browser_slots"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.localBrowserSlots ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { local_browser_slots: v } }),
   },
   {
     id: "server.gate_overrun",
@@ -2793,14 +2952,15 @@ export const DEN_SETTINGS = [
   {
     id: "server.gate_priority_pass",
     category: "server",
-    label: "A run waiting this long is never passed, in minutes",
+    label:
+      "Waiting this long, a marked release run is never passed, in minutes",
     description:
-      "A release run with priority goes ahead of other waiting runs, but never ahead of one that has waited this long. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+      "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     keywords: ["gate", "slot", "priority", "release", "starvation", "wait"],
     scope: "user",
     keys: ["gate_slots.priority_pass_limit_minutes"],
-    control: { type: "number", min: 1, max: 1440, step: 1 },
-    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 60,
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 0,
     write: (v, ctx) =>
       ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
   },
@@ -3499,6 +3659,56 @@ export const DEN_SETTINGS = [
   },
 
   {
+    // Issue 158: the Hub delivery loop for this project, over the install.
+    id: "workspace.hub_delivery_loop",
+    category: "workspace",
+    label: "Hub delivery loop: this project",
+    description:
+      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+    keywords: [
+      "hub",
+      "delivery",
+      "loop",
+      "instructions",
+      "project",
+      "override",
+    ],
+    scope: "workspace",
+    control: seg([
+      { value: "install", label: "As everywhere" },
+      { value: "on", label: "On" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) =>
+      ctx.wsSettings?.hub_delivery_loop === true
+        ? "on"
+        : ctx.wsSettings?.hub_delivery_loop === false
+          ? "off"
+          : "install",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop: v === "on" ? true : v === "off" ? false : null,
+      }),
+  },
+  {
+    // Issue 158: the project's own text after Den's copy of the loop.
+    id: "workspace.hub_delivery_loop_extra",
+    category: "workspace",
+    label: "Added to the Hub delivery loop",
+    description:
+      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
+    keywords: ["hub", "delivery", "loop", "add", "project", "instructions"],
+    scope: "workspace",
+    // The server's limit (HUB_LOOP_EXTRA_MAX), so a long paste stops here.
+    control: { type: "text", maxLength: 2000 },
+    read: (ctx) => ctx.wsSettings?.hub_delivery_loop_extra ?? "",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop_extra: String(v ?? "").trim() || null,
+      }),
+  },
+
+  {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
     // Issue 268: named as the override of the Den-wide default.
@@ -3632,6 +3842,58 @@ export const DEN_SETTINGS = [
     read: (ctx) => (ctx.data.approvals_critical ?? []).join(", "),
     write: (v, ctx) =>
       ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
+  },
+  {
+    // issue_write: which persona roles write GitHub issues in their
+    // project's repos (user.yml agents.issue_writes). A person's only.
+    id: "agents.issue_writes",
+    category: "agents",
+    label: "Who writes GitHub issues",
+    description:
+      "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+    keywords: [
+      "issue",
+      "issues",
+      "github",
+      "role",
+      "comment",
+      "label",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.roles"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.agent_issue_writes?.roles ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({
+        agent_issue_writes: {
+          roles: String(v ?? "")
+            .split(",")
+            .map((r) => r.trim())
+            .filter(Boolean),
+        },
+      }),
+  },
+  {
+    id: "agents.issue_writes_per_hour",
+    category: "agents",
+    label: "GitHub issue writes an hour",
+    description:
+      "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+    keywords: [
+      "issue",
+      "issues",
+      "github",
+      "limit",
+      "rate",
+      "hour",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.per_hour"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.agent_issue_writes?.per_hour ?? 60,
+    write: (v, ctx) => ctx.post({ agent_issue_writes: { per_hour: v } }),
   },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
@@ -3954,6 +4216,22 @@ export const DEN_SETTINGS = [
     keys: ["hub_allow_tools", "hub_url"],
     read: () => null,
     write: (v, ctx) => ctx.post({ hub_allow_tools: v }),
+  },
+
+  {
+    // Issue 158: the Hub delivery loop, built into every Den.
+    id: "agents.hub_delivery_loop",
+    category: "hub",
+    label: "Hub delivery loop",
+    description:
+      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    keywords: ["hub", "delivery", "loop", "instructions", "agents", "review"],
+    scope: "user",
+    keys: ["hub_delivery_loop"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.hub_delivery_loop !== false,
+    write: (v, ctx) =>
+      ctx.post({ hub_delivery_loop: v === true ? null : false }),
   },
 
   {

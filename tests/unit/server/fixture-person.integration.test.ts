@@ -586,7 +586,7 @@ describe("what the fixture person can't reach", () => {
   it("can't change a person-only setting alongside the rail's own prefs", async () => {
     const f = await fixtureSignIn(test);
     const r = await call(test, "POST", "/api/settings", f.headers, {
-      shell: { collapsed: ["develop"] },
+      shell: { collapsed: true },
       editor: "vi",
     });
     expect(r.status).toBe(403);

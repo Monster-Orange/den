@@ -53,6 +53,11 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
     "web_github",
     "owner_name_timeout_seconds",
   ],
+  // The shared GitHub watcher's pace and API budget.
+  "github.watch_interval_seconds": ["github", "watch_interval_seconds"],
+  "github.watch_max_interval_seconds": ["github", "watch_max_interval_seconds"],
+  "github.api_budget_floor": ["github", "api_budget_floor"],
+  "github.watches_max": ["github", "watches_max"],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
@@ -64,10 +69,17 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
   "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
+  // Issue 796: agents' read-only page views, and how long one lasts.
+  "web.agent_view": ["web_agent_view", "on"],
+  "web.agent_view_minutes": ["web_agent_view", "minutes"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // issue_write: which roles write GitHub issues ([planner, sde]), and the
+  // install's writes an hour.
+  "agents.issue_writes": ["agent_issue_writes", "roles"],
+  "agents.issue_writes_per_hour": ["agent_issue_writes", "per_hour"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",
