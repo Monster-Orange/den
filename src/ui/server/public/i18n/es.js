@@ -827,6 +827,9 @@
     "acct.up": "Subir",
     "acct.down": "Bajar",
     "acct.failed": "No se guardó: {error}",
+    "busy.ghAskW": "Pidiendo…",
+    "busy.ghAskS": "Pedido. Lo permite una persona con la sesión iniciada en este Den.",
+    "busy.ghAskF": "No se pudo pedir.",
     "busy.askAllowW": "Preguntando…",
     "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
     "busy.askAllowF": "No se pudo preguntar.",
@@ -1645,6 +1648,9 @@
     "set.access.approve_attempts": "Códigos incorrectos permitidos al aprobar",
     "set.access.approve_attempts.d":
       "Cuántos códigos incorrectos se aceptan al aprobar un dispositivo en el intervalo de abajo antes de esperar. __DEN_CLI__ config web.approve_attempts=10",
+    "set.access.signin_ask_cooldown": "Tras denegar, la página de inicio espera (minutos)",
+    "set.access.signin_ask_cooldown.d":
+      "Después de denegar la petición de la página de inicio para activar Iniciar con GitHub, cuánto tarda esa página en poder pedirlo de nuevo. 0 le deja pedirlo enseguida. __DEN_CLI__ config web.signin_ask_cooldown_minutes=10",
     "set.access.approve_window":
       "Intervalo de códigos incorrectos, en segundos",
     "set.access.approve_window.d":
@@ -2056,6 +2062,7 @@
       "Pone en {setting} la GitHub App propia de Den (su id de cliente público) en {file}.",
     "ap.det.github_signin_setup.restart":
       "Den se reinicia; los agentes y las terminales siguen donde estaban.",
+    "ap.det.github_signin_setup.from": "Pedido desde {address}.",
     "ap.det.github_signin_setup.then":
       "Después, Iniciar sesión con GitHub aparece en la página de inicio de sesión, desde cualquier ordenador.",
     "ap.viaSignin":

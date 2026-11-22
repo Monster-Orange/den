@@ -50,6 +50,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     requests_per_minute: true,
     approve_attempts: true,
     approve_window_seconds: true,
+    // Issue 868: after a Deny, the sign-in page's GitHub ask waits.
+    signin_ask_cooldown_minutes: true,
   },
   // Issue 796: agents' read-only page views.
   web_agent_view: { on: true, minutes: true },
@@ -276,6 +278,7 @@ describe("the settings inventory (R21)", () => {
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",
+        "web_pairing.signin_ask_cooldown_minutes",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",

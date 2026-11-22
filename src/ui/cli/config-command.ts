@@ -68,6 +68,11 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
   "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
+  // Issue 868: after a Deny, the sign-in page's GitHub ask waits.
+  "web.signin_ask_cooldown_minutes": [
+    "web_pairing",
+    "signin_ask_cooldown_minutes",
+  ],
   // Issue 796: agents' read-only page views, and how long one lasts.
   "web.agent_view": ["web_agent_view", "on"],
   "web.agent_view_minutes": ["web_agent_view", "minutes"],

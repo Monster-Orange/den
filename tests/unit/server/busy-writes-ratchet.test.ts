@@ -21,6 +21,7 @@ const LEFT: Record<string, number> = {
   "agents-section.js": 1,
   "appearance.js": 2,
   "bell.js": 1,
+  "error-page.js": 4,
   "graph.js": 1,
   "header.js": 2,
   "local-dev.html": 16,
@@ -44,11 +45,6 @@ const LEFT: Record<string, number> = {
  */
 const NO_SHELL: Record<string, number> = {
   "embed-page.js": 2,
-  // error.html draws the signed-out and sign-in pages: no session, so no
-  // denShell. Its writes (pairing, the confirm code, issue 868's ask to
-  // turn on GitHub sign-in) say their answer on the page; the 868 ask
-  // holds its button with the kit's dots (holdDots). Held exactly.
-  "error-page.js": 5,
 };
 
 const WRITE =

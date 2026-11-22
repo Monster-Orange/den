@@ -1787,6 +1787,9 @@
     "acct.up": "Move up",
     "acct.down": "Move down",
     "acct.failed": "Not saved: {error}",
+    "busy.ghAskW": "Asking…",
+    "busy.ghAskS": "Asked. A person signed in to this Den allows it.",
+    "busy.ghAskF": "Couldn't ask.",
     "busy.askAllowW": "Asking…",
     "busy.askAllowS": "Asked. Allow it in the dialog.",
     "busy.askAllowF": "Couldn't ask.",
@@ -2568,6 +2571,9 @@
     "set.access.approve_attempts": "Wrong codes allowed when approving",
     "set.access.approve_attempts.d":
       "How many wrong codes approving a device may take in the window below before it waits. __DEN_CLI__ config web.approve_attempts=10",
+    "set.access.signin_ask_cooldown": "After a Deny, the sign-in page waits, in minutes",
+    "set.access.signin_ask_cooldown.d":
+      "After you deny the sign-in page's ask to turn on Sign in with GitHub, how long before that page can ask again. 0 lets it ask at once. __DEN_CLI__ config web.signin_ask_cooldown_minutes=10",
     "set.access.approve_window": "Wrong-code window, in seconds",
     "set.access.approve_window.d":
       "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
@@ -2965,6 +2971,7 @@
       "Sets {setting} to Den's own GitHub App (its public client id) in {file}.",
     "ap.det.github_signin_setup.restart":
       "Den restarts; agents and terminals carry on where they were.",
+    "ap.det.github_signin_setup.from": "Asked from {address}.",
     "ap.det.github_signin_setup.then":
       "Then Sign in with GitHub shows on the sign-in page, from any computer.",
     "ap.viaSignin": "A browser on the sign-in page (not signed in)",

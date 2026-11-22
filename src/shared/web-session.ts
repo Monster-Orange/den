@@ -241,6 +241,11 @@ export interface WebAuthConfig {
   approveAttempts: number;
   approveWindowSeconds: number;
   /**
+   * Issue 868: `web.signin_ask_cooldown_minutes`: after a Deny, how long the
+   * sign-in page's ask to turn on GitHub sign-in is refused. Default 10.
+   */
+  signinAskCooldownMinutes: number;
+  /**
    * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
    */
@@ -596,6 +601,7 @@ export function readWebAuthConfig(
     pairRequestsPerMinute: pairLimits.pair_requests_per_minute,
     approveAttempts: pairLimits.approve_attempts,
     approveWindowSeconds: pairLimits.approve_window_seconds,
+    signinAskCooldownMinutes: pairLimits.signin_ask_cooldown_minutes,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
     ...(team.allow_plain_http_remote !== undefined
       ? { plainHttpInDistribution: configFile }
@@ -614,6 +620,9 @@ export const PAIR_LIMITS = {
   pair_requests_per_minute: { min: 1, max: 10_000, int: true, dflt: 30 },
   approve_attempts: { min: 1, max: 1000, int: true, dflt: 10 },
   approve_window_seconds: { min: 1, max: 3600, int: false, dflt: 30 },
+  // Issue 868: after a Deny, the sign-in page's ask to turn on GitHub
+  // sign-in waits this long (0: none; at most 60, the queue's memory).
+  signin_ask_cooldown_minutes: { min: 0, max: 60, int: true, dflt: 10 },
 } as const;
 
 /** den#143: `web.ready_probe_seconds`'s default. */

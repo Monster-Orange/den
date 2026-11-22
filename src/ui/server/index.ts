@@ -344,6 +344,7 @@ import {
   bindRefusal,
   checkRequest,
   isEdgePeer,
+  forwardedClient,
   isDockerBridgeAddress,
   isLoopbackAddress,
   isLoopbackBind,
@@ -5438,6 +5439,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         requestsPerMinute: c.pairRequestsPerMinute,
         approveAttempts: c.approveAttempts,
         approveWindowSeconds: c.approveWindowSeconds,
+        signinAskCooldownMinutes: c.signinAskCooldownMinutes,
       };
     })(),
     // den#143: how long `web up` waits for the server.
@@ -6099,6 +6101,22 @@ async function handleRequest(
           principalOf(r),
         ),
       sendJson,
+      // Issue 868: the asker's address in the dialog (the edge's vouched
+      // client, else the TCP peer).
+      askerAddress: (r) => {
+        const peer = r.socket?.remoteAddress;
+        if (!isEdgePeer(peer)) return peer;
+        const xff = r.headers["x-forwarded-for"];
+        return forwardedClient(Array.isArray(xff) ? xff.join(",") : xff);
+      },
+      // Issue 868: after a Deny, the page's ask waits out a cooldown.
+      cooldownMs: () => {
+        try {
+          return webAuthNow().signinAskCooldownMinutes * 60_000;
+        } catch {
+          return 10 * 60_000;
+        }
+      },
     });
     return;
   }

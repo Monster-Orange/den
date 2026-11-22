@@ -2071,6 +2071,28 @@ const ACCESS_ROWS = [
     write: (v, ctx) => ctx.post({ web_pairing: { approve_window_seconds: v } }),
   },
   {
+    // Issue 868: after a Deny, the sign-in page's GitHub ask waits.
+    id: "access.signin_ask_cooldown",
+    category: "access",
+    label: "After a Deny, the sign-in page waits, in minutes",
+    description:
+      "After you deny the sign-in page's ask to turn on Sign in with GitHub, how long before that page can ask again. 0 lets it ask at once. __DEN_CLI__ config web.signin_ask_cooldown_minutes=10",
+    keywords: [
+      "sign-in",
+      "github",
+      "deny",
+      "ask",
+      "wait",
+      "web.signin_ask_cooldown_minutes",
+    ],
+    scope: "user",
+    keys: ["web_pairing.signin_ask_cooldown_minutes"],
+    control: { type: "number", min: 0, max: 60, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.web_pairing?.signinAskCooldownMinutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ web_pairing: { signin_ask_cooldown_minutes: v } }),
+  },
+  {
     // Issue 796: an agent's read-only view of these pages (MCP page_view).
     id: "access.agent_view",
     category: "access",

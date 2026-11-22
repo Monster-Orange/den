@@ -802,6 +802,9 @@
     "acct.up": "上へ",
     "acct.down": "下へ",
     "acct.failed": "保存できませんでした: {error}",
+    "busy.ghAskW": "依頼中…",
+    "busy.ghAskS": "依頼しました。この Den にサインインしている人が許可します。",
+    "busy.ghAskF": "依頼できませんでした。",
     "busy.askAllowW": "確認しています…",
     "busy.askAllowS": "確認しました。ダイアログで許可してください。",
     "busy.askAllowF": "確認できませんでした。",
@@ -1600,6 +1603,9 @@
     "set.access.approve_attempts": "承認時に許される誤ったコードの数",
     "set.access.approve_attempts.d":
       "下の時間内にデバイスの承認で受け付ける誤ったコードの数です。超えると待ちになります。__DEN_CLI__ config web.approve_attempts=10",
+    "set.access.signin_ask_cooldown": "拒否後にサインインページが待つ時間 (分)",
+    "set.access.signin_ask_cooldown.d":
+      "サインインページからの「GitHub でサインイン」を有効にする依頼を拒否したあと、そのページが再び依頼できるまでの時間。0 ならすぐに依頼できます。__DEN_CLI__ config web.signin_ask_cooldown_minutes=10",
     "set.access.approve_window": "誤ったコードを数える時間 (秒)",
     "set.access.approve_window.d":
       "誤ったコードを数える時間です。過ぎると、もう一度承認を試せます。__DEN_CLI__ config web.approve_window_seconds=30",
@@ -1999,6 +2005,7 @@
       "{file} の {setting} を Den 自身の GitHub App（公開クライアント ID）に設定します。",
     "ap.det.github_signin_setup.restart":
       "Den は再起動します。エージェントとターミナルはそのまま続きます。",
+    "ap.det.github_signin_setup.from": "{address} から依頼されました。",
     "ap.det.github_signin_setup.then":
       "その後、サインインページに GitHub でのサインインが表示され、どのコンピューターからでも使えます。",
     "ap.viaSignin": "サインインページのブラウザー（未サインイン）",

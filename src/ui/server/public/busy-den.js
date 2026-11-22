@@ -368,6 +368,17 @@ export const DEN_ACTIONS = {
       failure: "busy.askAllowF",
     },
   },
+  // Issue 868: the sign-in page's ask to turn on Sign in with GitHub (a
+  // person signed in to this Den allows it, elsewhere).
+  "signin-github-ask": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.ghAskW",
+      success: "busy.ghAskS",
+      failure: "busy.ghAskF",
+    },
+  },
   // Issue 163: Settings › Sign-in token › Clear.
   "clear-token": {
     who: "Den",

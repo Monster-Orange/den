@@ -94,6 +94,19 @@ export interface GithubSetupRouteDeps {
   changed?: () => void;
   audit?: (req: http.IncomingMessage, detail: string, refused?: string) => void;
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
+  /**
+   * After a Deny, how long the page's ask is refused
+   * (web.signin_ask_cooldown_minutes, at most 60: the queue keeps a decided
+   * request that long). Anyone who reaches the signed-out page can ask, so
+   * a Deny is not undone by asking again at once. Unset: no cooldown.
+   */
+  cooldownMs?: () => number;
+  now?: () => number;
+  /**
+   * The asker's network address (the one the edge vouches for, else the
+   * TCP peer), so the person can tell their own browser from another's.
+   */
+  askerAddress?: (req: http.IncomingMessage) => string | undefined;
 }
 
 /** POST /api/signin/github-setup; false for any other path. */
@@ -119,6 +132,33 @@ export async function handleGithubSetupAsk(
     d.sendJson(res, { ok: true, state: "pending", again: true }, 202);
     return true;
   }
+  const cooldown = d.cooldownMs?.() ?? 0;
+  if (cooldown > 0) {
+    const deniedAt = Math.max(
+      0,
+      ...d.queue
+        .ofActor(SIGNIN_PAGE_ACTOR)
+        .filter((a) => a.action === GITHUB_SETUP_ACTION && a.state === "denied")
+        .map((a) => a.decidedAt ?? 0),
+    );
+    const left = deniedAt + cooldown - (d.now ?? Date.now)();
+    if (deniedAt > 0 && left > 0) {
+      const retryAfterSeconds = Math.ceil(left / 1000);
+      d.audit?.(req, GITHUB_SETUP_ACTION, "asked recently (after a Deny)");
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      d.sendJson(
+        res,
+        {
+          ok: false,
+          code: "asked_recently",
+          error: "asked recently; try again later",
+          retryAfterSeconds,
+        },
+        429,
+      );
+      return true;
+    }
+  }
   const checked = d.action
     ? await d.action.check({})
     : ({
@@ -134,6 +174,16 @@ export async function handleGithubSetupAsk(
     );
     return true;
   }
+  const address = d.askerAddress?.(req);
+  const details = [...(checked.details ?? [])];
+  const detailKeys = [...(checked.detailKeys ?? [])];
+  if (address) {
+    details.push(`Asked from ${address}.`);
+    detailKeys.push({
+      key: "ap.det.github_signin_setup.from",
+      vars: { address },
+    });
+  }
   try {
     const a = d.queue.request({
       actor: SIGNIN_PAGE_ACTOR,
@@ -142,8 +192,8 @@ export async function handleGithubSetupAsk(
       args: checked.args,
       summary: checked.summary,
       params: checked.params,
-      details: checked.details,
-      ...(checked.detailKeys?.length ? { detailKeys: checked.detailKeys } : {}),
+      details,
+      ...(detailKeys.length ? { detailKeys } : {}),
     });
     d.audit?.(req, `${GITHUB_SETUP_ACTION}: ${a.summary} [${a.id}]`);
   } catch (e) {

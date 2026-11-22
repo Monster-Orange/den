@@ -200,6 +200,8 @@ describe("issue 868: ask to turn on Sign in with GitHub from the sign-in page", 
       "ap.det.github_signin_setup.set",
       "ap.det.github_signin_setup.restart",
       "ap.det.github_signin_setup.then",
+      // The asker's address, so the person can tell whose browser it is.
+      "ap.det.github_signin_setup.from",
     ]);
     expect([world.enabled, world.restarts.length]).toEqual([0, 0]);
   });

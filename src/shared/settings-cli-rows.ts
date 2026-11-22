@@ -21,9 +21,11 @@
  *                                     user.yml web.ready_probe_seconds,
  *                                     web.start_wait_seconds (den#143)
  *   web_pairing: { requests_per_minute?, approve_attempts?,
- *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
+ *     approve_window_seconds?, signin_ask_cooldown_minutes? }
+ *                                     user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
- *                                     web.approve_window_seconds (issue 819)
+ *                                     web.approve_window_seconds (issue 819),
+ *                                     web.signin_ask_cooldown_minutes (868)
  *   web_agent_view: { on?: boolean, minutes? }
  *                                     user.yml web.agent_view,
  *                                     web.agent_view_minutes (issue 796)
@@ -314,6 +316,10 @@ const WEB_PAIRING: Record<string, Limit> = {
   approve_window_seconds: {
     key: "approve_window_seconds",
     ...PAIR_LIMITS.approve_window_seconds,
+  },
+  signin_ask_cooldown_minutes: {
+    key: "signin_ask_cooldown_minutes",
+    ...PAIR_LIMITS.signin_ask_cooldown_minutes,
   },
 };
 

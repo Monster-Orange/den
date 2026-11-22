@@ -185,6 +185,7 @@ describe("MODE-5: Settings rows that were the command line's", () => {
       requestsPerMinute: 30,
       approveAttempts: 10,
       approveWindowSeconds: 30,
+      signinAskCooldownMinutes: 10,
     });
     expect(
       await s.settings({
@@ -198,12 +199,16 @@ describe("MODE-5: Settings rows that were the command line's", () => {
       requestsPerMinute: 5,
       approveAttempts: 10,
       approveWindowSeconds: 60,
+      signinAskCooldownMinutes: 10,
     });
     const before = JSON.stringify(user());
     for (const bad of [
       { web_pairing: { approve_attempts: 0 } },
       { web_pairing: { requests_per_minute: 2.5 } },
       { web_pairing: { speed: 1 } },
+      // Issue 868: the cooldown is 0..60 whole minutes (the queue's memory).
+      { web_pairing: { signin_ask_cooldown_minutes: 61 } },
+      { web_pairing: { signin_ask_cooldown_minutes: -1 } },
     ])
       expect([bad, await s.settings(bad)]).toEqual([bad, 400]);
     const r = await asAgent({ web_pairing: { approve_attempts: 999 } });

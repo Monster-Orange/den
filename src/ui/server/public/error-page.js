@@ -25,7 +25,6 @@
 import { rankCommands } from "/topbar.js";
 import { timeHtml } from "/kit/time.js";
 import { buttonHtml } from "/kit/button.js";
-import { holdDots } from "/kit/busy.js";
 
 // Its words are the shell's catalog (shell.js MESSAGES, R19: the err.*
 // keys), so the page is in the page's language. "Copy details" is a
@@ -964,28 +963,18 @@ function wireGithubAsk(root, t, s) {
   const name = s.name || "Den";
   btn.addEventListener("click", (e) => {
     e.preventDefault();
-    if (btn.getAttribute("aria-busy") === "true") return;
-    // Busy in the button (the kit's dots); the page says the answer itself.
-    holdDots(btn);
-    btn.setAttribute("aria-disabled", "true");
-    btn.disabled = true;
-    fetch("/api/signin/github-setup", {
-      method: "POST",
-      cache: "no-store",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    })
-      .then((r) => r.json().catch(() => ({})))
-      .then((b) => {
+    const sh = window.denShell;
+    if (!sh?.busyAction || btn.getAttribute("aria-busy") === "true") return;
+    // BUSY-1: through the working pop-up, the button busy in itself. A
+    // failure is said in the pop-up (with Try again); the answer is null.
+    const run = (headers) =>
+      sh.api("POST", "/api/signin/github-setup", {}, { headers });
+    sh.busyAction("signin-github-ask", run, { button: btn, toastFast: false })
+      .then((data) => {
+        if (!data) return;
         out.hidden = false;
-        out.dataset.state = b && b.ok ? "asked" : "failed";
-        out.textContent =
-          b && b.ok
-            ? t("err.signin.methods.githubAsked", { name })
-            : t("err.signin.methods.githubAskFailed", {
-                error: (b && b.error) || "?",
-              });
+        out.dataset.state = "asked";
+        out.textContent = t("err.signin.methods.githubAsked", { name });
       })
       .catch(() => {
         out.hidden = false;
@@ -993,11 +982,6 @@ function wireGithubAsk(root, t, s) {
         out.textContent = t("err.signin.methods.githubAskFailed", {
           error: "?",
         });
-      })
-      .finally(() => {
-        holdDots(btn, false);
-        btn.removeAttribute("aria-disabled");
-        btn.disabled = false;
       });
   });
 }
