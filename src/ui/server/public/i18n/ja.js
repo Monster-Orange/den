@@ -976,6 +976,10 @@
     "set.server.gate_cpu_beside": "ブラウザーテストと並んで動かす単体テスト",
     "set.server.gate_cpu_beside.d":
       "ブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。同時に動かす単体テストの数を超えることはありません。0 ではブラウザーテストは単独で動きます。テスト用マシンで動くブラウザーテストは数えません。__DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_cpu_beside_release":
+      "リリース用ブラウザーテストと並んで動かす単体テスト",
+    "set.server.gate_cpu_beside_release.d":
+      "リリース優先のブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。0 (既定) ではリリース用の実行は単独で動き、ほかの実行がそのチェックを遅くしません。ほかのブラウザーテストは上の設定に従います。__DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
     "set.server.gate_local_browser": "このマシンで同時に動かすブラウザーテスト",
     "set.server.gate_local_browser.d":
       "このマシンで同時に動かせるブラウザーテスト実行の数です。それぞれ専用のコンテナーで動きます。テスト用マシンで動くブラウザーテストは数えません。1 では 1 つずつ動きます。__DEN_CLI__ gate settings --local-browser-slots 1",

@@ -2733,6 +2733,31 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_browser: v } }),
   },
   {
+    // Issue 751 follow-up: cpu runs beside a release browser run (0).
+    id: "server.gate_cpu_beside_release",
+    category: "server",
+    label: "Unit test runs beside a release browser test run",
+    description:
+      "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "browser",
+      "beside",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots_beside_release_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlotsBesideReleaseBrowser ?? 0,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
+  },
+  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",

@@ -7,6 +7,7 @@
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
  *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
+ *                     cpu_slots_beside_release_browser (its follow-up),
  *                     local_browser_slots,
  *                     overrun_margin_minutes,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -95,6 +96,8 @@ export type GateSettingsPatch = {
   cpu_slots?: number | null;
   /** Issue 751: cpu runs beside a browser run here; 0: it runs alone. */
   cpu_slots_beside_browser?: number | null;
+  /** Issue 751 follow-up: cpu runs beside a release browser run (0). */
+  cpu_slots_beside_release_browser?: number | null;
   /** Browser runs that may hold this machine at once (default 1). */
   local_browser_slots?: number | null;
   overrun_margin_minutes?: number | null;
@@ -139,6 +142,8 @@ export const GATE_LIMITS: Record<
   cpu_slots: { min: 1, max: 64, int: true },
   // Issue 751: 0 is "a browser run runs alone".
   cpu_slots_beside_browser: { min: 0, max: 64, int: true },
+  // 0 (the default) is "a release browser run runs alone".
+  cpu_slots_beside_release_browser: { min: 0, max: 64, int: true },
   // Each local browser run is in its own container; 1 is one at a time.
   local_browser_slots: { min: 1, max: 64, int: true },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
@@ -375,6 +380,12 @@ export class GateStore {
         cpuSlots: Math.floor(num("cpu_slots", GATE_DEFAULTS.cpuSlots)),
         cpuSlotsBesideBrowser: Math.floor(
           num("cpu_slots_beside_browser", GATE_DEFAULTS.cpuSlotsBesideBrowser),
+        ),
+        cpuSlotsBesideReleaseBrowser: Math.floor(
+          num(
+            "cpu_slots_beside_release_browser",
+            GATE_DEFAULTS.cpuSlotsBesideReleaseBrowser,
+          ),
         ),
         localBrowserSlots: Math.floor(
           num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),

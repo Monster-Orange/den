@@ -56,6 +56,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots: true,
     // Issue 751: cpu runs beside a browser run.
     cpu_slots_beside_browser: true,
+    // Its follow-up: cpu runs beside a release browser run.
+    cpu_slots_beside_release_browser: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     remote_renew_seconds: true,
@@ -256,6 +258,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.class_windows",
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
+        "gate_slots.cpu_slots_beside_release_browser",
         "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",

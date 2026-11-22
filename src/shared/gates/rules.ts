@@ -141,6 +141,12 @@ export interface GateSettings {
    */
   cpuSlotsBesideBrowser: number;
   /**
+   * Issue 751 follow-up: cpu runs that may run beside a release-priority
+   * browser run on this machine. Default 0: a release run runs alone, so
+   * its checks aren't slowed.
+   */
+  cpuSlotsBesideReleaseBrowser: number;
+  /**
    * Browser runs that may hold this machine at once (each runs in its own
    * container), counted as a test box's slots are. Default 1.
    */
@@ -190,6 +196,7 @@ export interface GateSettings {
 export const GATE_DEFAULTS: GateSettings = {
   cpuSlots: 2,
   cpuSlotsBesideBrowser: 2,
+  cpuSlotsBesideReleaseBrowser: 0,
   localBrowserSlots: 1,
   overrunMarginMinutes: 15,
   remoteRenewSeconds: 30,
@@ -221,13 +228,29 @@ type PrioritySettings = Pick<
 
 /** What the queue's order and guesses read (issue 751 adds the beside count). */
 type QueueSettings = PrioritySettings &
-  Pick<GateSettings, "cpuSlotsBesideBrowser" | "localBrowserSlots">;
+  Pick<
+    GateSettings,
+    | "cpuSlotsBesideBrowser"
+    | "cpuSlotsBesideReleaseBrowser"
+    | "localBrowserSlots"
+  >;
 
 /** Issue 751: cpu runs that may run beside a browser run here. */
 function besideOf(s: Partial<QueueSettings>): number {
   const n = s.cpuSlotsBesideBrowser ?? GATE_DEFAULTS.cpuSlotsBesideBrowser;
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 }
+
+/** Issue 751 follow-up: cpu runs beside a release browser run here. */
+function besideReleaseOf(s: Partial<QueueSettings>): number {
+  const n =
+    s.cpuSlotsBesideReleaseBrowser ??
+    GATE_DEFAULTS.cpuSlotsBesideReleaseBrowser;
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
+/** What localRoom reads of a run: its kind, and whether it is release. */
+type RoomRun = Pick<GateEntry, "kind" | "priority">;
 
 /** Browser runs that may hold this machine at once (at least 1). */
 function localBrowserOf(s: Partial<QueueSettings>): number {
@@ -243,6 +266,8 @@ function localBrowserOf(s: Partial<QueueSettings>): number {
  * browser runs) while any browser run holds here. A browser waiter
  * kept out only by cpu runs (`wait`) caps later cpu grants at the beside
  * count, so the cpu runs drain to it and the browser run starts.
+ * Issue 751 follow-up: a release-priority browser run uses the release
+ * beside count instead, holding or waiting.
  */
 export function localRoom(
   entries: GateEntry[],
@@ -252,25 +277,41 @@ export function localRoom(
   // Issue 625: a browser run on a test box doesn't hold this machine.
   let browser = holders.filter((e) => e.kind === "browser" && !e.box).length;
   let cpu = holders.filter((e) => e.kind === "cpu").length;
-  let draining = false;
+  const local = holders.filter((e) => e.kind === "browser" && !e.box);
+  let release = local.some((e) => !!e.priority);
+  let draining: number | undefined;
   const beside = besideOf(s);
+  const besideRelease = besideReleaseOf(s);
   const browserSlots = localBrowserOf(s);
   const slots = Math.max(1, Math.floor(s.cpuSlots));
+  const besideFor = (r: RoomRun) => (r.priority ? besideRelease : beside);
+  /** cpu runs allowed beside the browser runs holding or draining for. */
+  const cap = (): number => {
+    let n = slots;
+    if (browser > 0) n = Math.min(n, release ? besideRelease : beside);
+    if (draining !== undefined) n = Math.min(n, draining);
+    return n;
+  };
   return {
-    fits(kind: GateKind): boolean {
-      if (kind === "browser") return browser < browserSlots && cpu <= beside;
-      return cpu < (browser > 0 || draining ? Math.min(slots, beside) : slots);
+    fits(r: RoomRun): boolean {
+      if (r.kind === "browser")
+        return browser < browserSlots && cpu <= besideFor(r);
+      return cpu < cap();
     },
-    take(kind: GateKind): void {
-      if (kind === "browser") browser++;
-      else cpu++;
+    take(r: RoomRun): void {
+      if (r.kind === "browser") {
+        browser++;
+        if (r.priority) release = true;
+      } else cpu++;
     },
     /**
-     * A waiter of `kind` that wanted this machine and could not start: a
-     * browser waiter with a browser slot free waits only on cpu runs.
+     * A waiter that wanted this machine and could not start: a browser
+     * waiter with a browser slot free waits only on cpu runs, so later cpu
+     * grants stop at its beside count.
      */
-    wait(kind: GateKind): void {
-      if (kind === "browser" && browser < browserSlots) draining = true;
+    wait(r: RoomRun): void {
+      if (r.kind === "browser" && browser < browserSlots)
+        draining = Math.min(draining ?? Infinity, besideFor(r));
     },
   };
 }
@@ -423,12 +464,12 @@ export function grants(
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
     if (stopped.has(w.kind)) continue;
-    if (!room.fits(w.kind)) {
-      room.wait(w.kind);
+    if (!room.fits(w)) {
+      room.wait(w);
       stopped.add(w.kind);
       continue;
     }
-    room.take(w.kind);
+    room.take(w);
     out.push(w.id);
   }
   return out;
