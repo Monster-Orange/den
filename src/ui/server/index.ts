@@ -9488,7 +9488,14 @@ async function handleRequest(
               ),
             );
         }
-        if (gatePatch) gates().writeSettings(gatePatch);
+        // Issue 963: who changed it, in the slot log (named as an ask is).
+        if (gatePatch) {
+          const a = auditActorOf(req);
+          gates().writeSettings(
+            gatePatch,
+            a ? actorLabel(a) : `${product().title} · Settings page · a person`,
+          );
+        }
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {

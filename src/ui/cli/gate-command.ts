@@ -69,6 +69,10 @@ import {
   personLanguage,
   type UiLanguage,
 } from "../../shared/gates/browser-container.js";
+import {
+  GATE_MEANINGS,
+  PRIORITY_OFF_WARNING,
+} from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
@@ -106,7 +110,7 @@ export const GATE_HELP = {
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
     "    [--priority-max N] [--priority-pass-limit-minutes N] [--priority-agents 0|1]",
-    "    [--priority-runners 0|1]",
+    "    [--priority-runners 0|1]   (--priority-max 0 needs --yes: it turns release priority off)",
     "    [--claim-minutes N] [--mcp-renew-minutes N] [--mcp-lapse-minutes N] [--mcp-grace-minutes N]",
     "    [--box-check-timeout-seconds N] [--box-recheck-seconds N]",
     '    [--class-order "release, lane, other"] [--class-map "<project>=<class>, label:<pattern>=<class>, *=<class>"]',
@@ -536,6 +540,11 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
     throw err;
   }
+  // Issue 963: asked for release priority, but it is off here.
+  if (priority && s.settings().priorityMax === 0)
+    d.err(
+      "gate: taken as an ordinary run: release priority is off on this machine (priority_max 0)",
+    );
   const id = e.id;
   let child: GateRun | undefined;
   let released = false;
@@ -626,6 +635,8 @@ function status(args: string[], d: GateDeps): number {
   if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
+  // Issue 963: said plainly, so a release run waiting in line has a why.
+  if (set.priorityMax === 0) d.out("release priority: off (priority_max 0)");
   return 0;
 }
 
@@ -774,6 +785,7 @@ function settings(args: string[], d: GateDeps): number {
     "--class-map": true,
     "--class-windows": true,
     "--browser-requires-container": true,
+    "--yes": false,
   });
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
@@ -818,11 +830,30 @@ function settings(args: string[], d: GateDeps): number {
       );
     const c = checkGatePatch(raw);
     if (!c.ok) throw new GateUsage(c.error);
-    d.store.writeSettings(c.patch as GateSettingsPatch);
+    // Issue 963: turning release priority off warns first; --yes goes on.
+    const lang = d.lang ?? personLanguage();
+    if (
+      (c.patch as GateSettingsPatch).priority_max === 0 &&
+      d.store.settings().priorityMax !== 0 &&
+      !f["--yes"]
+    ) {
+      d.err(`gate settings: ${PRIORITY_OFF_WARNING[lang]}`);
+      return 1;
+    }
+    d.store.writeSettings(c.patch as GateSettingsPatch, whoAsks(d.env, d.cwd));
   }
   const s = d.store.settings();
+  // Issue 963: each setting, its value and what it means.
+  const meanings = GATE_MEANINGS[d.lang ?? personLanguage()];
+  for (const [k, m] of Object.entries(meanings)) {
+    const camel = k.replace(/_([a-z])/g, (_x, c: string) => c.toUpperCase());
+    const v = (s as unknown as Record<string, unknown>)[camel];
+    const shown =
+      typeof v === "boolean" ? (v ? 1 : 0) : v === undefined ? "" : v;
+    d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
+  }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

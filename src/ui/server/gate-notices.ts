@@ -45,7 +45,11 @@ export class GateNotices {
   private from = 0;
   /** Lines the relay wasn't ready for: tried again next tick. */
   private pending: Delivery[] = [];
-  /** Issue 993: overrun slots whose agent was told (once per slot). */
+  /**
+   * Issue 993: overrun slots whose agent was told (once per slot). Kept in
+   * memory: after a server restart a still-overrun slot's agent is told
+   * once more.
+   */
   private toldOverrun = new Set<string>();
 
   constructor(private readonly d: GateNoticeDeps) {}
