@@ -389,3 +389,20 @@ export function writeFixturePins(
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   fs.writeFileSync(file, JSON.stringify(keep), { mode: 0o600 });
 }
+
+/**
+ * Issue 957: the fixture person's own pins, kept only while they are still
+ * stored. A pin dropped from user.yml (by hand, or any other way) leaves
+ * the record at once, so the same pin made again later is the person's.
+ * Rewrites the record when it shrinks.
+ */
+export function prunedFixturePins(
+  stateDir: string,
+  stored: readonly Pin[],
+): Pin[] {
+  const had = readFixturePins(stateDir);
+  const now = new Set(stored.map(pinKey));
+  const keep = had.filter((p) => now.has(pinKey(p)));
+  if (keep.length !== had.length) writeFixturePins(stateDir, keep, stored);
+  return keep;
+}

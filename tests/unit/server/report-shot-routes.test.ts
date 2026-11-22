@@ -342,6 +342,12 @@ const PNG = Buffer.from(
 );
 const PNG_SHA = createHash("sha256").update(PNG).digest("hex");
 const SHOT = `data:image/png;base64,${PNG.toString("base64")}`;
+/** Another PNG (a 2×1), so a replaced screenshot shows. */
+const PNG_2 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mNk+M9QzwAEjDAAEPYB/qFqXnoAAAAASUVORK5CYII=",
+  "base64",
+);
+const SHOT_2 = `data:image/png;base64,${PNG_2.toString("base64")}`;
 const FORM = {
   kind: "bug",
   title: "Pane drops",
@@ -1014,15 +1020,51 @@ describe("issue 946: the fixture person reads only what a fixture session filed"
     expect(r.status).toBe(200);
   });
 
-  it("the person's filing again of the same id takes the mark off", async () => {
+  // Issue 957: a filing never replaces a kept screenshot of another kind
+  // of filer (the fixture person's, or anyone else's).
+  it("the fixture person reusing a person's report id is refused, and the person's stays", async () => {
+    const id = await file(PERSON);
+    const r = await call(
+      "POST",
+      "/api/report/send",
+      { ...FORM, shot: SHOT_2, shareShot: false, draftId: id },
+      { origin: base, ...FIXTURE },
+    );
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/another/);
+    const kept = shotStore(state).get(id);
+    expect(kept?.record.byFixture).toBeUndefined();
+    expect(kept?.png.equals(PNG)).toBe(true);
+    const read = await call(
+      "GET",
+      `/api/report/shots/${id}`,
+      undefined,
+      FIXTURE,
+    );
+    expect(read.status).toBe(404);
+  });
+
+  it("the person reusing the fixture person's report id is refused, and the fixture's stays", async () => {
     const id = await file(FIXTURE);
-    await call(
+    const r = await call(
+      "POST",
+      "/api/report/send",
+      { ...FORM, shot: SHOT_2, shareShot: false, draftId: id },
+      PERSON,
+    );
+    expect(r.status).toBe(409);
+    expect(shotStore(state).get(id)?.record.byFixture).toBe(true);
+  });
+
+  it("the same filer sending its own report id again still keeps it", async () => {
+    const id = await file(FIXTURE);
+    const r = await call(
       "POST",
       "/api/report/send",
       { ...FORM, shot: SHOT, shareShot: false, draftId: id },
-      PERSON,
+      { origin: base, ...FIXTURE },
     );
-    const r = await call("GET", `/api/report/shots/${id}`, undefined, FIXTURE);
-    expect(r.status).toBe(404);
+    expect(r.status).toBe(200);
+    expect(shotStore(state).get(id)?.record.byFixture).toBe(true);
   });
 });

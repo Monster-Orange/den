@@ -347,7 +347,8 @@ function pendingShot(
   b: Record<string, unknown>,
   maxBytes: number,
   byFixture = false,
-): PendingShot | null | string {
+  stateDir?: string,
+): PendingShot | null | string | { conflict: string } {
   if (b.shot === undefined || b.shot === null) return null;
   const png = pngOfDataUrl(b.shot, maxBytes);
   if (!png)
@@ -356,6 +357,14 @@ function pendingShot(
     typeof b.draftId === "string" && REPORT_ID.test(b.draftId)
       ? b.draftId
       : newReportId();
+  // Issue 957: a filing never replaces a kept screenshot of another kind of
+  // filer (the fixture person's, or anyone else's): nothing is filed.
+  const kept = stateDir ? shotStore(stateDir).get(id) : null;
+  if (kept && (kept.record.byFixture === true) !== byFixture)
+    return {
+      conflict:
+        "that report id holds another filer's screenshot: send it as a new report",
+    };
   return { id, png, share: b.shareShot === true, byFixture };
 }
 
@@ -740,9 +749,12 @@ export function handleReportRoutes(
         b,
         d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
         d.filedByFixture?.(req) === true,
+        d.stateDir(),
       );
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
+      if (pending && "conflict" in pending)
+        return d.sendJson(res, { ok: false, error: pending.conflict }, 409);
       const body = c.body + filedLine(pending);
       const r =
         addTo !== null
@@ -849,9 +861,12 @@ export function handleReportRoutes(
         b,
         d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
         d.filedByFixture?.(req) === true,
+        d.stateDir(),
       );
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
+      if (pending && "conflict" in pending)
+        return d.sendJson(res, { ok: false, error: pending.conflict }, 409);
       const s = d.settings();
       const who = d.personOf(req);
       const log = sentLog(d.stateDir());
