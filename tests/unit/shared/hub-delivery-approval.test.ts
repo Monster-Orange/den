@@ -139,4 +139,15 @@ describe("P0-D2: approvals reach Den on arrival", () => {
       many.logs.filter((l) => /early approval.*dropped/.test(l)),
     ).toHaveLength(1);
   });
+
+  it("the early list drops what can't be an approval: many comments never crowd out an approval", async () => {
+    const { loop, approved, who, logs } = setup(false);
+    for (let i = 0; i < 600; i++)
+      await loop.take(raw(`n${i}`, { body: "nice work" }));
+    await loop.take(raw("a9", { kind: "approve" }));
+    who.known = true;
+    await loop.pump();
+    expect(approved.map((d) => d.id)).toEqual(["a9"]);
+    expect(logs.filter((l) => /early approval/.test(l))).toEqual([]);
+  });
 });

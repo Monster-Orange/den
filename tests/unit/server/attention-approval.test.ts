@@ -16,6 +16,9 @@ import {
   approvalKeys,
   approvalNoticeText,
   approvalVersion,
+  heldOutcome,
+  deliveryRaw,
+  parseDelivery,
   isApproval,
   type Delivery,
 } from "../../../src/shared/hub-delivery";
@@ -67,9 +70,9 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 describe("P0-D2: which deliveries are approvals", () => {
   it("an owner's approve, held decision, or 'approved vN of' info comment", () => {
     expect(isApproval(dv(), OWNER)).toBe(true);
-    expect(
-      isApproval(dv({ kind: "held", body: `applied ${HELD}` }), OWNER),
-    ).toBe(true);
+    expect(isApproval(dv({ kind: "held", body: "Applied." }), OWNER)).toBe(
+      true,
+    );
     expect(
       isApproval(
         dv({
@@ -116,11 +119,31 @@ describe("P0-D2: which deliveries are approvals", () => {
     ).toBe(false);
   });
 
-  it("a held decision counts only when it says allowed, approved or applied", () => {
-    for (const body of [`applied ${HELD}`, "Allowed.", "Approved by Pat."])
+  it("with no decision field, a held decision counts only in an exact form, quoted lines aside", () => {
+    for (const body of [
+      "Allowed",
+      "Approved.",
+      "applied",
+      "Decision: allowed",
+      "> the ask: approved by nobody\nDecision: allowed",
+    ])
       expect([body, isApproval(dv({ kind: "held", body }), OWNER)]).toEqual([
         body,
         true,
+      ]);
+    for (const body of [
+      "approved by nobody",
+      "Allowed: false",
+      "Cancelled (was approved)",
+      "Revoked.",
+      `applied ${HELD}`,
+      "Approved by Pat.",
+      "> Decision: allowed",
+      "Decision: denied",
+    ])
+      expect([body, isApproval(dv({ kind: "held", body }), OWNER)]).toEqual([
+        body,
+        false,
       ]);
   });
 
@@ -232,5 +255,108 @@ describe("P0-D2: an approval clears the questions that name it", () => {
     ).toBe(5);
     expect(approvalVersion(dv())).toBe(3);
     expect(approvalVersion(dv({ version: undefined }))).toBeUndefined();
+  });
+
+  it("Hub's decision field: allowed (applied or failed) and denied all clear, as the person answered; no field, the words", () => {
+    const held = (o: Partial<Delivery>) =>
+      dv({ kind: "held", heldId: HELD, ...o });
+    for (const d of [
+      held({ decision: "allowed", body: "applied" }),
+      held({ decision: "allowed", body: "The apply failed." }),
+      held({ decision: "denied", body: "" }),
+      held({ decision: "allowed", body: "No" }),
+    ])
+      expect([d.decision, d.body, isApproval(d, OWNER)]).toEqual([
+        d.decision,
+        d.body,
+        true,
+      ]);
+    expect(heldOutcome(held({ decision: "allowed", body: "applied" }))).toBe(
+      "allowed",
+    );
+    expect(
+      heldOutcome(held({ decision: "allowed", body: "The apply failed." })),
+    ).toBe("failed");
+    expect(heldOutcome(held({ decision: "denied" }))).toBe("denied");
+    // No field: today's words.
+    expect(isApproval(dv({ kind: "held", body: "Applied." }), OWNER)).toBe(
+      true,
+    );
+    expect(isApproval(dv({ kind: "held", body: "Not allowed." }), OWNER)).toBe(
+      false,
+    );
+    expect(heldOutcome(dv({ kind: "held", body: "applied" }))).toBeUndefined();
+  });
+
+  it("with the field, only the held id matches: a question naming just the doc's link stays", async () => {
+    const { a } = mk();
+    const d = dv({ kind: "held", decision: "denied", heldId: HELD });
+    await ask(a, "ag-1", "web", `1. Do you allow ${URL}?`);
+    await ask(a, "ag-2", "web", `1. Do you allow held ${HELD}?`);
+    expect(approvalKeys(d)).toEqual([HELD]);
+    expect(
+      a.approvedAbout("ag-1", "web", approvalKeys(d)).map((c) => c.agent),
+    ).toEqual(["ag-2"]);
+    expect(a.waitingNow().get("ag-1")).toBe("asked");
+  });
+
+  it("the notice to another agent says how it was decided", () => {
+    const held = (o: Partial<Delivery>) =>
+      dv({ kind: "held", heldId: HELD, ...o });
+    expect(
+      approvalNoticeText(held({ decision: "allowed", body: "applied" }), OWNER),
+    ).toMatch(/allowed/);
+    expect(
+      approvalNoticeText(
+        held({ decision: "allowed", body: "The apply failed." }),
+        OWNER,
+      ),
+    ).toMatch(/didn't land/);
+    expect(approvalNoticeText(held({ decision: "denied" }), OWNER)).toMatch(
+      /said no/,
+    );
+  });
+
+  it("Hub's held_id is a key, and both fields survive parsing and Den's held file", () => {
+    const r = {
+      id: "h9",
+      kind: "held",
+      decision: "allowed",
+      held_id: HELD,
+      agent: "ag-1",
+      project: "web",
+      thread: { kind: "held", id: "th9", url: URL },
+      author: {
+        id: "u_me",
+        login: "pat",
+        name: "Pat Example",
+        kind: "person",
+        verified: "hub_session",
+      },
+      body: "",
+      created_at: "2026-01-02T03:00:00Z",
+    };
+    const d = parseDelivery(r)!;
+    expect(d).toMatchObject({ decision: "allowed", heldId: HELD });
+    expect(approvalKeys(d)).toContain(HELD);
+    expect(parseDelivery(deliveryRaw(d))).toMatchObject({
+      decision: "allowed",
+      heldId: HELD,
+    });
+    expect(
+      parseDelivery({ ...r, decision: "maybe", held_id: "x y" }),
+    ).not.toHaveProperty("decision");
+    expect(
+      parseDelivery({ ...r, decision: "maybe", held_id: "x y" }),
+    ).not.toHaveProperty("heldId");
+  });
+
+  it("a question naming several versions, or a version only inside a link", async () => {
+    const { a } = mk();
+    await ask(a, "ag-1", "web", `1. Approve v2 or v3 of ${URL}?`);
+    await ask(a, "ag-2", "web", `1. Approve ${URL}/v4/frames?`);
+    const got = a.approvedAbout("ag-1", "web", [URL], 3);
+    expect(got.map((c) => c.agent)).toEqual(["ag-2"]);
+    expect(a.waitingNow().get("ag-1")).toBe("asked");
   });
 });
