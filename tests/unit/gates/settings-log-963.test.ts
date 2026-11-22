@@ -153,6 +153,8 @@ describe("issue 963: each setting says what it means", () => {
     "class_order",
     "class_map",
     "class_windows",
+    "browser_box_default",
+    "browser_host_only",
   ];
 
   it.each(["en", "es", "ja"] as UiLanguage[])(

@@ -531,7 +531,10 @@ export class DeliveryLoop {
     return {
       working: a?.ids.length ?? 0,
       queued: q,
-      ...(q && this.notAtPrompt.has(agent)
+      // Issue 962: or why() found a list or a question on its screen.
+      ...(q &&
+      (this.notAtPrompt.has(agent) ||
+        this.heldCode.get(agent) === "not_at_prompt")
         ? { held: "not_at_prompt" as const }
         : {}),
       ...((first?.artifact ?? next?.thread.artifact)
@@ -851,7 +854,7 @@ export class DeliveryLoop {
       q > 0 &&
       s === "busy" &&
       !this.active.has(agent) &&
-      this.d.agents.notAtPrompt?.(agent) === true;
+      (this.d.agents.notAtPrompt?.(agent) === true || code === "not_at_prompt");
     const since = this.notAtPrompt.get(agent);
     if (away) {
       if (since === undefined) {

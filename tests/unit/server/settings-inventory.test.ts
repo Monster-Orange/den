@@ -90,6 +90,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     class_order: true,
     class_map: true,
     class_windows: true,
+    // Issue 1033: where a browser run with no --box goes, and the
+    // projects and labels kept on this machine.
+    browser_box_default: true,
+    browser_host_only: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -142,6 +146,14 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 609: how long Den's process lookups wait.
   process_lookup: { first_seconds: true, retry_seconds: true },
+  // Issue 532: the terminal limits (user.yml sessions.*).
+  sessions: {
+    max_concurrent: true,
+    close_grace_seconds: true,
+    pty_close_seconds: true,
+    pty_warn_above: true,
+    pty_machine_warn_percent: true,
+  },
   // Issue 609: how agents' hooks wait for Den, and retry.
   agent_hooks: {
     timeout_seconds: true,
@@ -230,6 +242,8 @@ describe("the settings inventory (R21)", () => {
         "shell.hidden",
         "shell.order",
         "shell.pins",
+        // Issue 168: a project's colour, the person's own.
+        "shell.projectColours",
         // 0.4.45: this person's project order.
         "shell.projectOrder",
         "terminal",
@@ -263,6 +277,8 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
+        "gate_slots.browser_box_default",
+        "gate_slots.browser_host_only",
         "gate_slots.browser_requires_container",
         "gate_slots.claim_minutes",
         "gate_slots.class_map",
@@ -345,6 +361,12 @@ describe("the settings inventory (R21)", () => {
         // Issue 609: how long Den's process lookups wait.
         "process_lookup.first_seconds",
         "process_lookup.retry_seconds",
+        // Issue 532: the terminal limits.
+        "sessions.close_grace_seconds",
+        "sessions.max_concurrent",
+        "sessions.pty_close_seconds",
+        "sessions.pty_machine_warn_percent",
+        "sessions.pty_warn_above",
         // Issue 609: how agents' hooks wait for Den, and retry.
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",

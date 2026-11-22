@@ -29,7 +29,9 @@ export type GateSettingKey =
   | "browser_requires_container"
   | "class_order"
   | "class_map"
-  | "class_windows";
+  | "class_windows"
+  | "browser_box_default"
+  | "browser_host_only";
 
 export const GATE_MEANINGS: Record<
   UiLanguage,
@@ -77,6 +79,10 @@ export const GATE_MEANINGS: Record<
     class_map: "Which projects and labels go in which class",
     class_windows:
       "When each class's long runs may start ahead of a higher class",
+    browser_box_default:
+      "Where a browser run with no --box goes (any: the first free slot here or on a test box; local: here only)",
+    browser_host_only:
+      "Projects and label patterns whose browser runs stay on this machine",
   },
   es: {
     cpu_slots: "Ejecuciones de pruebas unitarias a la vez en esta máquina",
@@ -124,6 +130,10 @@ export const GATE_MEANINGS: Record<
     class_map: "Qué proyectos y etiquetas van en cada clase",
     class_windows:
       "Cuándo las ejecuciones largas de cada clase pueden empezar antes que una clase más alta",
+    browser_box_default:
+      "Adónde va una prueba de navegador sin --box (any: el primer turno libre aquí o en una máquina de pruebas; local: solo aquí)",
+    browser_host_only:
+      "Proyectos y patrones de etiqueta cuyas pruebas de navegador se quedan en esta máquina",
   },
   ja: {
     cpu_slots: "このマシンで同時に動くユニットテストの数",
@@ -164,6 +174,10 @@ export const GATE_MEANINGS: Record<
     class_order: "優先クラス、高い順（空: すべて先着順）",
     class_map: "どのプロジェクトとラベルがどのクラスに入るか",
     class_windows: "各クラスの長い実行が上のクラスより先に始められる時間帯",
+    browser_box_default:
+      "--box のないブラウザテストの行き先（any: ここかテスト用マシンの先に空いた枠、local: ここだけ）",
+    browser_host_only:
+      "ブラウザテストをこのマシンに残すプロジェクトとラベルのパターン",
   },
 };
 

@@ -42,6 +42,7 @@
  *   GET  /api/gate-slots/boxes          the boxes as set
  *   POST /api/gate-slots/boxes          {box}: adds or replaces one
  *   POST /api/gate-slots/boxes/remove   {name}
+ *   POST /api/gate-slots/boxes/enable   {name, enabled}: on or off
  * A runner's ask may say `where`: "any", or a box's name (a runner on
  * that box). The box is checked just before its slot is given.
  */
@@ -89,6 +90,7 @@ export const GATE_PATHS = [
   "/api/gate-slots/runners/revoke",
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
+  "/api/gate-slots/boxes/enable",
 ] as const;
 
 export const isGatePath = (p: string) =>
@@ -561,6 +563,18 @@ async function handleBoxes(
     return sendJson(res, { ok: true, boxes: store.boxes() });
   }
   const name = typeof body.name === "string" ? body.name : "";
+  if (pathname === "/api/gate-slots/boxes/enable") {
+    if (typeof body.enabled !== "boolean")
+      return sendJson(
+        res,
+        { ok: false, error: "enabled is true or false" },
+        400,
+      );
+    if (!store.setBoxEnabled(name, body.enabled))
+      return sendJson(res, { ok: false, error: "no such test box" }, 404);
+    audit(`test box ${name} turned ${body.enabled ? "on" : "off"}`);
+    return sendJson(res, { ok: true, boxes: store.boxes() });
+  }
   if (!removeTestBox(store, name, audit))
     return sendJson(res, { ok: false, error: "no such test box" }, 404);
   return sendJson(res, { ok: true, boxes: store.boxes() });
@@ -659,7 +673,8 @@ export async function handleGateRoutes(
     return handleRunnerTokens(req, res, pathname, d);
   if (
     pathname === "/api/gate-slots/boxes" ||
-    pathname === "/api/gate-slots/boxes/remove"
+    pathname === "/api/gate-slots/boxes/remove" ||
+    pathname === "/api/gate-slots/boxes/enable"
   )
     return handleBoxes(req, res, pathname, d);
   if (pathname === "/api/gate-slots") {
@@ -805,8 +820,8 @@ export function gateBoxOps(d: {
         params: { name: b.name, ...(replaces ? {} : { isNew: "1" }) },
         details: [
           replaces
-            ? `Replaces the test box "${b.name}" with these settings. Its browser slots take gate runs from agents.`
-            : `Adds the test box "${b.name}". Its browser slots take gate runs from agents.`,
+            ? `Replaces the test box ${b.name} with these settings. Its browser slots take gate runs from agents.`
+            : `Adds the test box ${b.name}. Its browser slots take gate runs from agents.`,
           ...BOX_CARD_FIELDS.map(
             ([k, w]) => `${BOX_CARD_WORDS[w]}: ${shown(k)}`,
           ),
