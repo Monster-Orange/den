@@ -140,6 +140,8 @@ const READ_ROUTES = new Set([
   "/api/onboard/manifest",
   // NT (MCP notifications_list): the bell, read as the agent sees it.
   "/api/notifications",
+  // Issue 565 (MCP report): Report's destinations, each with its visibility.
+  "/api/report",
   // Issue 459 (MCP app_feed_read): the agent's own app feeds. A read.
   "/api/agents/self/app-feeds",
 ]);
@@ -164,6 +166,9 @@ const ACTION_ROUTES: Record<string, string> = {
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",
   "/api/verify/run": "POST",
+  // Issue 565 (MCP report): the agent's own draft, holding its screenshot
+  // until the held `report` files it. Saves on this computer only.
+  "/api/report/drafts": "POST",
 };
 
 /**
