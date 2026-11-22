@@ -21,9 +21,11 @@
  * is on the map's `subjectless` list (which only shrinks).
  * The everything list, the smoke set and $comment are kept as they are.
  */
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { globToRegExp } from "./affected-tests.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MAP = path.join(ROOT, "tests", "affected-map.json");
@@ -231,7 +233,38 @@ export function subjectGaps(map) {
   const stale = [...listed].filter(
     (t) => !subj.has(t) || subj.get(t).length > 0,
   );
-  return { missing: missing.sort(), stale: stale.sort() };
+  return {
+    missing: missing.sort(),
+    stale: stale.sort(),
+    empty: emptySubjects(map),
+  };
+}
+
+/**
+ * Issue 709: each declared subject names a test that is there, and each
+ * of its globs names at least one file in the repo. A typo or a moved
+ * file would otherwise count as a subject that never runs the test.
+ */
+function emptySubjects(map) {
+  const files = execFileSync("git", ["ls-files"], {
+    cwd: ROOT,
+    encoding: "utf-8",
+  })
+    .split("\n")
+    .filter(Boolean);
+  const out = [];
+  for (const [test, globs] of Object.entries(map.subjects ?? {})) {
+    if (!fs.existsSync(path.join(ROOT, test))) {
+      out.push(`${test}: the test isn't there`);
+      continue;
+    }
+    for (const g of [globs].flat()) {
+      const re = typeof g === "string" && g.trim() ? globToRegExp(g) : null;
+      if (!re || !files.some((f) => re.test(f)))
+        out.push(`${test}: ${JSON.stringify(g)}`);
+    }
+  }
+  return out;
 }
 
 const readMap = () => JSON.parse(fs.readFileSync(MAP, "utf-8"));
@@ -359,7 +392,11 @@ function main(argv) {
   const map = readMap();
   const rules = buildRules(map);
   if (argv.includes("--check")) {
-    const { missing, stale } = subjectGaps(map);
+    const { missing, stale, empty } = subjectGaps(map);
+    for (const e of empty)
+      console.error(
+        `tests/affected-map.json "subjects": ${e} names no file: fix the path or drop it`,
+      );
     for (const t of missing)
       console.error(
         `${t} starts Den but has no subject: name it like its module, or add it to "subjects" in tests/affected-map.json`,
@@ -368,7 +405,7 @@ function main(argv) {
       console.error(
         `${t} is on "subjectless" but has a subject now (or starts no Den): take it off`,
       );
-    if (missing.length || stale.length) return 1;
+    if (missing.length || stale.length || empty.length) return 1;
     if (JSON.stringify(map.rules) === JSON.stringify(rules)) return 0;
     console.error(
       "tests/affected-map.json is out of date: run node scripts/affected-map.mjs (then prettier)",
