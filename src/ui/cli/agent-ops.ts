@@ -157,6 +157,10 @@ import {
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
+import {
+  operatorStubArgv,
+  operatorStubEnv,
+} from "../../shared/test-operator.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
@@ -8620,7 +8624,7 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
-  opts: { cwd?: string } = {},
+  opts: { cwd?: string; operator?: boolean } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
@@ -8657,8 +8661,10 @@ export async function startPlainSession(
         {
           name,
           cwd: dir,
-          argv: [shell, "-l"],
-          env: plainSessionEnv(d.env),
+          // Issue 814, the Builder's decision (a): the test operator's
+          // terminal is Den's fixed stub, never a shell, with its own env.
+          argv: opts.operator ? operatorStubArgv() : [shell, "-l"],
+          env: opts.operator ? operatorStubEnv() : plainSessionEnv(d.env),
           cols: 80,
           rows: 24,
         },

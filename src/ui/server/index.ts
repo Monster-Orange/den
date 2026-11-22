@@ -10,6 +10,8 @@
  *   GET /api/run?pillar=X&...    — SSE stream: runs tests, emits output line-by-line
  */
 
+// Issue 814: first, before anything writes to the state folder.
+import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
   handleNotificationRoutes,
@@ -303,6 +305,7 @@ import {
   agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
+  markOperatorAct,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -368,6 +371,16 @@ import {
   testInstallByHandRefusal,
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
+import {
+  dropPendingRecord,
+  hasForwardingHeaders,
+  OPERATOR_LABEL,
+  OPERATOR_PRINCIPAL,
+  operatorAct,
+  operatorRefusal,
+  verifiedCreationRecord,
+  writeCreationRecord,
+} from "../../shared/test-operator.js";
 import {
   inTestPersonScope,
   notTestBedRefusal,
@@ -3376,6 +3389,56 @@ function fixtureKeyNow(): Buffer | null {
 }
 
 /**
+ * Issue 814: whether this is an operator install right now: a test
+ * install (testInstallNow), created as one (its sealed creation record),
+ * bound to loopback only. Checked on every test operator request.
+ */
+function operatorInstallNow(): boolean {
+  return (
+    isLoopbackBind(BIND_HOST) &&
+    testInstallNow() &&
+    verifiedCreationRecord(getStateDir(), webSecret.current())
+  );
+}
+
+/**
+ * Issue 814: at a new test install's first start (test-install-birth.ts
+ * claimed its empty state folder), once its secret exists: seal the
+ * creation record and give it its fixture person, so no one has to press
+ * Set up test person. When the claim wasn't a test install after all (no
+ * mark, an owner), the claim is dropped.
+ */
+function sealNewTestInstall(): void {
+  if (!BORN_AS_TEST_INSTALL) return;
+  const stateDir = getStateDir();
+  const secret = webSecret.current();
+  if (!secret || !testInstallNow()) return dropPendingRecord(stateDir);
+  writeCreationRecord(stateDir, secret);
+  const r = fixtureKeyNow()
+    ? ({ ok: true } as const)
+    : setupFixturePerson(stateDir, {
+        testInstall: true,
+        agent: false,
+        webSecret: secret,
+        configFile: product().configFile,
+      });
+  recordAction(
+    null,
+    {
+      verb: "test-install",
+      detail: r.ok
+        ? `a new test install: its ${FIXTURE_LABEL} given at creation, and the ${OPERATOR_LABEL}'s acts on loopback`
+        : `a new test install: its ${FIXTURE_LABEL} couldn't be made (${r.code})`,
+    },
+    OPERATOR_PRINCIPAL,
+  );
+  serverLog(
+    `  ${logTimestamp()}  a new test install: ${FIXTURE_LABEL} and ${OPERATOR_LABEL} ready`,
+    "lifecycle",
+  );
+}
+
+/**
  * Issue 810: whether a fixture session still stands: a test install, the
  * sealed key it signed in with still the current one, and within its
  * lifetime.
@@ -4938,7 +5001,35 @@ async function handleRequest(
   if (guard.ok) setPrincipal(req, guard.principal);
   // Issue 810: the fixture person stays on this install and never acts
   // as the person (approve, let a browser in, Hub).
+  // Issue 814: one of the test operator's acts, on an operator install,
+  // on loopback, not through a proxy: let through as that act only, and
+  // audited as the test operator. Anything else falls to the fixture
+  // person's allow-list below.
+  const opAct =
+    guard.ok &&
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+      ? operatorAct(req.method ?? "GET", pathname)
+      : null;
   if (
+    guard.ok &&
+    opAct &&
+    !operatorRefusal({
+      operatorInstall: operatorInstallNow(),
+      via: guard.via,
+      beyond: guard.beyond,
+      method: req.method ?? "GET",
+      pathname,
+      forwarded: hasForwardingHeaders(req.headers),
+    })
+  ) {
+    markOperatorAct(req, opAct);
+    recordAction(
+      auditActorOf(req),
+      { verb: "test-operator", detail: `${opAct} ${pathname.slice(0, 200)}` },
+      OPERATOR_PRINCIPAL,
+    );
+  } else if (
     guard.ok &&
     guard.principal?.kind === "person-browser" &&
     guard.principal.fixture
@@ -9414,8 +9505,33 @@ function handleUpgrade(
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
-  // Issue 810: the fixture person never opens a terminal (or any socket).
-  if (guard.principal?.kind === "person-browser" && guard.principal.fixture) {
+  // Issue 810: the fixture person never opens a terminal (or any socket);
+  // issue 814: except the test operator, its own shells only.
+  if (
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture &&
+    !operatorRefusal({
+      operatorInstall: operatorInstallNow(),
+      via: guard.via,
+      beyond: guard.beyond,
+      method: "GET",
+      pathname,
+      forwarded: hasForwardingHeaders(req.headers),
+    })
+  ) {
+    markOperatorAct(req, "terminal-attach");
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "test-operator",
+        detail: `terminal-attach ${pathname.slice(0, 200)}`,
+      },
+      OPERATOR_PRINCIPAL,
+    );
+  } else if (
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+  ) {
     recordAction(
       null,
       {
@@ -9733,6 +9849,13 @@ try {
   webSecret.ensure();
 } catch (e) {
   serverLog(`  ⚠ web.secret could not be created: ${(e as Error).message}`);
+}
+try {
+  sealNewTestInstall();
+} catch (e) {
+  serverLog(
+    `  ⚠ the new test install couldn't be set up: ${(e as Error).message}`,
+  );
 }
 // AG-0.1: the login shell's PATH, once, in the background (at most
 // agents.shell_path_timeout_seconds, 10 s unset: issue 456),
