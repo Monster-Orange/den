@@ -365,9 +365,12 @@ describe("#80: scope wins", () => {
     // longer than a fixed pause), then hold it to exactly bo's. The keys go
     // down one connection, so a wrongly reached PTY would get them in the
     // same writes as bo's, not later.
-    await expect
-      .poll(() => reached().length, { timeout: 10_000, intervals: [100] })
-      .toBeGreaterThan(0);
+    // (jest has no expect.poll: a short-step loop with a time limit.)
+    for (
+      const end = Date.now() + 10_000;
+      !reached().length && Date.now() < end;
+    )
+      await new Promise((r) => setTimeout(r, 50));
     expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
