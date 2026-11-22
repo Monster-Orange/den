@@ -156,6 +156,13 @@ export interface GateRun {
   kill: (s: NodeJS.Signals) => void;
   /** Resolves with its exit code when it ends. */
   done: Promise<number>;
+  /**
+   * Issue 1023: true once the command can run no more, though it has not
+   * ended: it is writing a core dump (SIGQUIT, on Linux). Its threads are
+   * stopped for good, and the dump can take seconds (a crash handler reads
+   * all of it), so its slot is given back then, not at its exit.
+   */
+  dumping?: () => boolean;
 }
 
 export interface GateDeps {
@@ -183,6 +190,23 @@ export interface GateDeps {
 
 /** Issue 928: how often a nested run checks its slot still holds. */
 const NESTED_LOOK_MS = 5_000;
+
+/** Issue 1023: how often a run looks whether its command is dumping core. */
+const DUMP_LOOK_MS = 100;
+
+/**
+ * Issue 1023: whether a process is writing a core dump, from Linux's
+ * /proc/<pid>/status ("CoreDumping: 1"). False where there is no /proc.
+ */
+export function coreDumping(pid: number, read = fs.readFileSync): boolean {
+  try {
+    return /^CoreDumping:\s*1\s*$/m.test(
+      String(read(`/proc/${pid}/status`, "utf8")),
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 928: what `gate run` tells its command about the slot it holds. */
 export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
@@ -245,6 +269,7 @@ export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
   "SIGINT",
   "SIGTERM",
   "SIGHUP",
+  "SIGQUIT",
 ];
 
 const realExec = (
@@ -256,11 +281,17 @@ const realExec = (
     stdio: "inherit",
     ...(env ? { env: { ...process.env, ...env } } : {}),
   });
+  const running = () => k.exitCode === null && k.signalCode === null;
   return {
     pid: k.pid,
     kill: (s) => {
-      if (k.exitCode === null && k.signalCode === null) k.kill(s);
+      if (running()) k.kill(s);
     },
+    ...(process.platform === "linux"
+      ? {
+          dumping: () => running() && k.pid !== undefined && coreDumping(k.pid),
+        }
+      : {}),
     done: new Promise<number>((resolve) => {
       k.on("error", () => resolve(127));
       k.on("exit", (code, signal) => resolve(code ?? signalCode(signal)));
@@ -879,6 +910,15 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           })
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
+    // Issue 1023: a command that took SIGQUIT (from gate run or anyone)
+    // and is dumping core can run no more: its slot is given back then,
+    // not after the dump, which a crash handler may take seconds to read.
+    const dumping = child.dumping;
+    const noDump = dumping
+      ? d.every(DUMP_LOOK_MS, () => {
+          if (!released && dumping()) release();
+        })
+      : () => {};
     // Past its estimate plus the margin, it says so once; never stopped.
     let flagged = false;
     const stop = d.every(60_000, () => {
@@ -892,6 +932,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     try {
       return await child.done;
     } finally {
+      noDump();
       stop();
     }
   } finally {
