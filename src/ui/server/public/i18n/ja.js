@@ -2768,6 +2768,9 @@
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",
+    "busy.addSvcW": "{name} を追加しています…",
+    "busy.addSvcS": "{name} を追加しました。",
+    "busy.addSvcF": "{name} を追加できませんでした。",
     "ag.orphan.one":
       "{names} にはプロジェクトがありません (削除されました)。⋯ › 別のプロジェクトへ移動… で割り当ててください。",
     "ag.orphan.many":

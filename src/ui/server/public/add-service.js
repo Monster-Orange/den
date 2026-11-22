@@ -290,11 +290,28 @@ async function add() {
   say("");
   let data;
   try {
-    data = await window.denShell.api(
-      "POST",
-      "/api/workspaces/services",
-      req.body,
-    );
+    // BUSY-1: through the working pop-up. A quick refusal (or no answer
+    // before it opens) comes back here and says why inside the dialog.
+    const run = (headers) =>
+      window.denShell.api("POST", "/api/workspaces/services", req.body, {
+        headers,
+      });
+    const busy = window.denShell?.busyAction;
+    data = busy
+      ? await busy("add-service", run, {
+          button: btn,
+          vars: { name: req.name },
+          quietFail: true,
+          inlineError: true,
+          // The dialog says it was added (and what setup still needs).
+          skipDone: () => true,
+        })
+      : await run({});
+    // A slow failure: the failure pop-up said it; the dialog stays.
+    if (data === null) {
+      btn.disabled = false;
+      return;
+    }
   } catch (err) {
     // R26c: the server's message, inside the dialog.
     btn.disabled = false;

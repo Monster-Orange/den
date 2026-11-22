@@ -3753,6 +3753,9 @@
     "busy.rmSvcW": "Removing {name}…",
     "busy.rmSvcS": "Removed {name}.",
     "busy.rmSvcF": "Couldn't remove {name}.",
+    "busy.addSvcW": "Adding {name}…",
+    "busy.addSvcS": "Added {name}.",
+    "busy.addSvcF": "Couldn't add {name}.",
     "ag.orphan.one":
       "{names} has no project: its project was deleted. Give it one with ⋯ › Move to project….",
     "ag.orphan.many":

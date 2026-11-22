@@ -126,14 +126,9 @@ async function open(lang = "en"): Promise<{
     reducedMotion: "reduce",
   });
   await signIn(ctx, path.join(tmp, "home"), base);
-  await ctx.addInitScript(() => {
-    try {
-      // What's new stays shut: this version counts as seen.
-      localStorage.setItem("den-changelog-seen", "9999.0.0");
-    } catch {
-      /* none */
-    }
-  });
+  // What's new stays shut: with no release notes there is nothing to open
+  // (it opens on a version not seen yet, matched exactly, over the page).
+  await ctx.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
   const adds: Record<string, unknown>[] = [];
   await ctx.route("**/api/workspaces/available-repos*", (r) =>
     r.fulfill({ json: LOCAL }),

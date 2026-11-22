@@ -2867,6 +2867,9 @@
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",
+    "busy.addSvcW": "Añadiendo {name}…",
+    "busy.addSvcS": "Se añadió {name}.",
+    "busy.addSvcF": "No se pudo añadir {name}.",
     "ag.orphan.one":
       "{names} no tiene proyecto: se eliminó. Asígnale uno con ⋯ › Mover a otro proyecto….",
     "ag.orphan.many":
