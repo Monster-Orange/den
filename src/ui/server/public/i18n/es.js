@@ -2424,6 +2424,11 @@
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
     "bell.m.toLead": "{name} preguntó al líder, {lead}: {text}",
+    "bell.m.settled": "{name} retiró su pregunta, resuelta: {reason} ({text})",
+    "bell.m.settledYou":
+      "Retiraste la pregunta de {name}, resuelta: {reason} ({text})",
+    "bell.m.settledLate":
+      "La pregunta de {name} se resolvió: {reason}; tu respuesta llegó después y se le pasó ({text})",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",

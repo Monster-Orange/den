@@ -804,6 +804,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/notifications/withdraw",
+    "Issue 1008: withdraw a question settled elsewhere (the agent that asked, or the person); audited",
+  ),
+  M(
+    ["POST"],
     "/api/notifications/looking",
     "NT-2: a page shows these agents now, so they don't notify",
   ),

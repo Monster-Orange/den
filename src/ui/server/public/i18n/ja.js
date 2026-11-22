@@ -2363,6 +2363,12 @@
     "bell.m.input": "{name} があなたを待っています",
     "bell.m.asked": "{name} からの質問: {text}",
     "bell.m.toLead": "{name} からリード {lead} への質問: {text}",
+    "bell.m.settled":
+      "{name} が質問を取り下げました。解決済み: {reason}（{text}）",
+    "bell.m.settledYou":
+      "{name} の質問を取り下げました。解決済み: {reason}（{text}）",
+    "bell.m.settledLate":
+      "{name} の質問は解決済みでした: {reason}。あなたの回答はその後に届き、エージェントに渡しました（{text}）",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",

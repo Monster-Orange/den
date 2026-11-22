@@ -3284,6 +3284,12 @@
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.toLead": "{name} asked the lead, {lead}: {text}",
+    "bell.m.settled":
+      "{name} withdrew its question, settled: {reason} ({text})",
+    "bell.m.settledYou":
+      "You withdrew {name}'s question, settled: {reason} ({text})",
+    "bell.m.settledLate":
+      "{name}'s question was settled: {reason}; your answer came after it and was passed on ({text})",
     "bell.m.pick": "{n} projects need your pick",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
