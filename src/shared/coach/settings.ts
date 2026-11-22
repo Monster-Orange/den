@@ -11,7 +11,9 @@
  *   judge        slice T-d, the judged findings (JUDGE_DEFAULTS): off by
  *                default. Turning it on sends short samples (asks, messages,
  *                prompts, secrets taken out) to the agent runtime's model
- *                provider, on the cheap model, within budget_tokens a run
+ *                provider, on the cheap model, within budget_tokens a run.
+ *                Each call also carries the runtime CLI's own context (about
+ *                650 tokens), which includes the signed-in account's email
  *
  * Config-driven, with permissive defaults. A counted run uses no model;
  * only judging (judge.enabled) does.
@@ -82,7 +84,7 @@ export const JUDGE_DEFAULTS: Readonly<JudgeSettings> = Object.freeze({
 
 /** What Settings says about turning judging on. */
 export const JUDGE_SENDS_NOTE =
-  "On, the Coach sends short samples of agents' asks, messages and the person's prompts, with secrets taken out, to the model provider, to judge them.";
+  "On, the Coach sends short samples of agents' asks, messages and the person's prompts, with secrets taken out, to the model provider, to judge them. Each call also carries the runtime CLI's own context, which includes the signed-in account's email.";
 
 export interface CoachSettings {
   enabled: boolean;

@@ -459,6 +459,10 @@ describe("T-d review fixes", () => {
     );
     expect(n).toBe(0);
     expect(r.judge!.why!.join(" ")).toMatch(/day's budget/);
+    expect(r.judge!.skipped).toBe(r.judge!.items);
+    expect(r.judge!.items).toBe(
+      judgeCandidates(sample, JUDGE_DEFAULTS.max_items).length,
+    );
   });
 
   it("4: runCoach records each run's judging spend, and the next run counts it", async () => {
