@@ -5,6 +5,8 @@
  *  - no GitHub identity known at all: the kit's "Local";
  *  - a browser on this machine: the install owner's GitHub identity, the
  *    name over @login, its role (Owner) in an account menu's header only;
+ *    before an owner is linked, web.owner_github with the name Den keeps
+ *    for it in its state, never in user.yml (issue 315);
  *  - a browser signed in with a one-time link from another machine (no
  *    GitHub sign-in of its own): "Local", never the owner's name;
  *  - signed in with GitHub: that sign-in's name over @login, or @login
@@ -23,6 +25,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { writeWebOwner } from "../../../src/shared/web-owner.js";
+import { writeOwnerGithubName } from "../../../src/shared/owner-github.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn, signInPage } from "./helpers/signed-in.js";
@@ -208,6 +211,33 @@ describe("the account entry draws who is signed in", () => {
     expect(await identity(p)).toEqual({ kind: "local" });
     await noDeviceWords(p);
     await ctx.close();
+  }, 60_000);
+
+  it("issue 315: web.owner_github's name comes from Den's state, not user.yml", async () => {
+    if (skip()) return;
+    const userYml = path.join(tmp, "dist", "config", "local", "user.yml");
+    const was = fs.readFileSync(userYml, "utf-8");
+    fs.writeFileSync(userYml, `${was}  owner_github: octo-lead\n`);
+    writeOwnerGithubName("octo-lead", "Odette Lead", stateDir);
+    try {
+      const ctx = await browser!.newContext({
+        viewport: { width: 1280, height: 900 },
+      });
+      await signIn(ctx, stateDir, `http://localhost:${port}`);
+      const p = await ctx.newPage();
+      await p.goto(`http://localhost:${port}/`);
+      expect(await identity(p)).toEqual({
+        kind: "local",
+        owner: { login: "octo-lead", name: "Odette Lead", role: "owner" },
+      });
+      expect(fs.readFileSync(userYml, "utf-8")).not.toContain(
+        "owner_github_name",
+      );
+      await ctx.close();
+    } finally {
+      fs.writeFileSync(userYml, was);
+      writeOwnerGithubName("octo-lead", undefined, stateDir);
+    }
   }, 60_000);
 
   it("a browser on this machine: the owner's name over @login; Owner only in a menu's header", async () => {

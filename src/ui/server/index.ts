@@ -474,7 +474,10 @@ import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
 import { FirstRun } from "./first-run.js";
 import { signinMethods } from "./signin-methods.js";
-import { ownerNameFromGithub } from "../../shared/owner-github.js";
+import {
+  localOwnerIdentity,
+  ownerNameFromGithub,
+} from "../../shared/owner-github.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
 import { DeviceFlows, type Decide } from "./device-flows.js";
 import {
@@ -2382,20 +2385,9 @@ function ownerIdentity(): {
   name?: string;
   role: "owner";
 } | null {
-  const linked = readWebOwner(getStateDir());
-  if (linked)
-    return {
-      login: linked.login,
-      ...(linked.name ? { name: linked.name } : {}),
-      role: "owner",
-    };
-  const w = webAuthNow();
-  if (!w.ownerGithub) return null;
-  return {
-    login: w.ownerGithub,
-    ...(w.ownerGithubName ? { name: w.ownerGithubName } : {}),
-    role: "owner",
-  };
+  // Issue 315: web.owner_github's name is in Den's state (an old user.yml
+  // value until `web up` moves it).
+  return localOwnerIdentity(webAuthNow(), getStateDir());
 }
 
 /**

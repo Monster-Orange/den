@@ -2,8 +2,9 @@
  * The install owner's GitHub display name, for the account entry of a
  * browser on this machine: read from the same `gh api user` call as the
  * login (a fake gh, by its full path in a temp dir: never the real one),
- * and kept with the login (web.owner_github_name, or the linked owner's
- * web-owner.json). gh runs only while the name isn't known yet.
+ * and kept with the login (issue 315: in Den's state, owner-github-name.json,
+ * never in the person's user.yml; or the linked owner's web-owner.json).
+ * gh runs only while the name isn't known yet.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -11,8 +12,11 @@ import * as os from "os";
 import * as path from "path";
 import {
   ghUser,
+  localOwnerIdentity,
   ownerNameFromGithub,
+  readOwnerGithubName,
   recordOwnerGithub,
+  writeOwnerGithubName,
 } from "../../../src/shared/owner-github.js";
 import {
   githubDisplayName,
@@ -87,48 +91,120 @@ describe("ghUser: one gh api user call, the login and the name", () => {
   });
 });
 
-describe("recordOwnerGithub keeps the name with the login", () => {
-  it("records gh's login and name together", () => {
+describe("recordOwnerGithub keeps the name with the login, in Den's state (issue 315)", () => {
+  /** Den's state for one case: the name file, read back. */
+  function state(name: string) {
+    const dir = path.join(tmp, name);
+    return {
+      dir,
+      readName: () => readOwnerGithubName(dir),
+      writeName: (l: string, n?: string) => writeOwnerGithubName(l, n, dir),
+    };
+  }
+
+  it("records gh's login in user.yml and the name in Den's state, not user.yml", () => {
     const s = store({ web: { machine_name: "Studio" } });
+    const st = state("state-recorded");
     const r = recordOwnerGithub({
       ownerLinked: () => false,
       ghUser: () => ({ login: "octo-lead", name: "Odette Lead" }),
       read: s.read,
       write: s.write,
+      readName: st.readName,
+      writeName: st.writeName,
     });
     expect(r).toEqual({ state: "recorded", login: "octo-lead" });
     expect(s.writes).toEqual([
-      {
-        web: {
-          machine_name: "Studio",
-          owner_github: "octo-lead",
-          owner_github_name: "Odette Lead",
-        },
-      },
+      { web: { machine_name: "Studio", owner_github: "octo-lead" } },
     ]);
+    expect(JSON.stringify(s.writes)).not.toContain("owner_github_name");
+    expect(readOwnerGithubName(st.dir)).toEqual({
+      login: "octo-lead",
+      name: "Odette Lead",
+    });
   });
 
-  it("a login set before names were kept: the name from gh once, when it is that login", () => {
+  it("a login set before names were kept: the name from gh once, into state, when it is that login", () => {
     const s = store({ web: { owner_github: "octo-lead" } });
+    const st = state("state-set");
     let calls = 0;
     const gh = () => (calls++, { login: "Octo-Lead", name: "Odette Lead" });
-    expect(
-      recordOwnerGithub({ ownerLinked: () => false, ghUser: gh, ...s }),
-    ).toEqual({ state: "set", login: "octo-lead" });
-    expect(s.writes).toEqual([
-      { web: { owner_github: "octo-lead", owner_github_name: "Odette Lead" } },
-    ]);
+    const deps = { ownerLinked: () => false, ghUser: gh, ...s, ...st };
+    expect(recordOwnerGithub(deps)).toEqual({
+      state: "set",
+      login: "octo-lead",
+    });
+    expect(s.writes).toEqual([]);
+    expect(readOwnerGithubName(st.dir)?.name).toBe("Odette Lead");
     // Known now: gh doesn't run again.
-    recordOwnerGithub({ ownerLinked: () => false, ghUser: gh, ...s });
+    recordOwnerGithub(deps);
     expect(calls).toBe(1);
     // gh signed in as someone else: their name is never kept.
     const other = store({ web: { owner_github: "octo-lead" } });
+    const ost = state("state-other");
     recordOwnerGithub({
       ownerLinked: () => false,
       ghUser: () => ({ login: "someone-else", name: "Sam Else" }),
       ...other,
+      ...ost,
     });
     expect(other.writes).toEqual([]);
+    expect(readOwnerGithubName(ost.dir)).toBeNull();
+  });
+
+  it("an old user.yml value moves to state once, and leaves user.yml", () => {
+    const s = store({
+      web: {
+        machine_name: "Studio",
+        owner_github: "octo-lead",
+        owner_github_name: "Odette Lead",
+      },
+    });
+    const st = state("state-moved");
+    let calls = 0;
+    const deps = {
+      ownerLinked: () => false,
+      ghUser: () => (calls++, null),
+      ...s,
+      ...st,
+    };
+    expect(recordOwnerGithub(deps)).toEqual({
+      state: "set",
+      login: "octo-lead",
+    });
+    expect(s.writes).toEqual([
+      { web: { machine_name: "Studio", owner_github: "octo-lead" } },
+    ]);
+    expect(readOwnerGithubName(st.dir)).toEqual({
+      login: "octo-lead",
+      name: "Odette Lead",
+    });
+    // Moved: gh isn't asked, and user.yml isn't written again.
+    recordOwnerGithub(deps);
+    expect(calls).toBe(0);
+    expect(s.writes).toHaveLength(1);
+  });
+
+  it("the local identity takes the name from state, for that login only", () => {
+    const dir = path.join(tmp, "state-identity");
+    writeOwnerGithubName("octo-lead", "Odette Lead", dir);
+    expect(localOwnerIdentity({ ownerGithub: "Octo-Lead" }, dir)).toEqual({
+      login: "Octo-Lead",
+      name: "Odette Lead",
+      role: "owner",
+    });
+    expect(localOwnerIdentity({ ownerGithub: "someone-else" }, dir)).toEqual({
+      login: "someone-else",
+      role: "owner",
+    });
+    expect(localOwnerIdentity({}, dir)).toBeNull();
+    // A linked owner wins, with its own name.
+    writeWebOwner({ id: 7, login: "linked-one", name: "Lin Ked" }, dir);
+    expect(localOwnerIdentity({ ownerGithub: "octo-lead" }, dir)).toEqual({
+      login: "linked-one",
+      name: "Lin Ked",
+      role: "owner",
+    });
   });
 
   it("a linked owner with no name: gh's, when gh is that owner; never again once kept", () => {

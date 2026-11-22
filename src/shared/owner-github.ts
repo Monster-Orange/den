@@ -6,13 +6,19 @@
  * any machine (a devbox they reach from a laptop), and nobody else can
  * claim the instance from another machine (github-routes.ts decideFlow).
  *
- * Only the login and the display name are kept (web.owner_github_name, or
- * the linked owner's web-owner.json): never a token. `gh api user` runs
+ * Only the login and the display name are kept: never a token. The login
+ * is the person's setting (user.yml); the display name is Den's data, kept
+ * in Den's state (issue 315: owner-github-name.json, or the linked owner's
+ * web-owner.json), never in the person's user.yml. `gh api user` runs
  * once, at `web up`, with a short timeout, and only while the name isn't
  * known yet; gh missing or signed out records nothing.
  */
 import { execFileSync } from "child_process";
+import { randomBytes } from "crypto";
+import * as fs from "fs";
+import * as path from "path";
 import { readUserConfig, writeUserConfig } from "./den-config.js";
+import { getStateDir } from "./paths.js";
 import { parseGithubName } from "./web-session.js";
 import {
   githubDisplayName,
@@ -20,6 +26,85 @@ import {
   setWebOwnerName,
   type WebOwner,
 } from "./web-owner.js";
+
+/** Issue 315: the display name kept with web.owner_github, in Den's state. */
+export const OWNER_GITHUB_NAME_FILE = "owner-github-name.json";
+
+/** web.owner_github's display name as kept: the login it is for, and it. */
+export interface OwnerGithubName {
+  login: string;
+  name: string;
+}
+
+/** The kept name, or null (none, or a file that isn't one). */
+export function readOwnerGithubName(
+  stateDir: string = getStateDir(),
+): OwnerGithubName | null {
+  try {
+    const o = JSON.parse(
+      fs.readFileSync(path.join(stateDir, OWNER_GITHUB_NAME_FILE), "utf-8"),
+    ) as { login?: unknown; name?: unknown } | null;
+    const name = githubDisplayName(o?.name);
+    if (!o || typeof o.login !== "string" || !o.login || !name) return null;
+    return { login: o.login, name };
+  } catch {
+    return null;
+  }
+}
+
+/** Keep `login`'s display name (atomic, 0600); no name: forget it. */
+export function writeOwnerGithubName(
+  login: string,
+  name: string | undefined,
+  stateDir: string = getStateDir(),
+): void {
+  const file = path.join(stateDir, OWNER_GITHUB_NAME_FILE);
+  const n = githubDisplayName(name);
+  if (!n) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify({ v: 1, login, name: n })}\n`, {
+    mode: 0o600,
+  });
+  fs.renameSync(tmp, file);
+}
+
+/** The kept name when it is `login`'s (logins ignore case), else undefined. */
+function keptNameOf(
+  login: string,
+  kept: OwnerGithubName | null,
+): string | undefined {
+  return kept && kept.login.toLowerCase() === login.toLowerCase()
+    ? kept.name
+    : undefined;
+}
+
+/**
+ * The install owner's identity for a browser on the Den machine: the
+ * linked owner (web-owner.json), else web.owner_github with the name Den
+ * keeps for it (issue 315), else an old user.yml name not moved yet.
+ * Files only: no gh call. Null: none known.
+ */
+export function localOwnerIdentity(
+  web: { ownerGithub?: string; ownerGithubName?: string },
+  stateDir: string = getStateDir(),
+): { login: string; name?: string; role: "owner" } | null {
+  const linked = readWebOwner(stateDir);
+  if (linked)
+    return {
+      login: linked.login,
+      ...(linked.name ? { name: linked.name } : {}),
+      role: "owner",
+    };
+  if (!web.ownerGithub) return null;
+  const name =
+    keptNameOf(web.ownerGithub, readOwnerGithubName(stateDir)) ??
+    web.ownerGithubName;
+  return { login: web.ownerGithub, ...(name ? { name } : {}), role: "owner" };
+}
 
 /** Who `gh` is signed in as here: the login, and the display name if set. */
 export interface GhUser {
@@ -40,6 +125,10 @@ export interface OwnerGithubDeps {
   setOwnerName?: (login: string, name: string) => void;
   read?: typeof readUserConfig;
   write?: typeof writeUserConfig;
+  /** The name kept with web.owner_github (Den's state). */
+  readName?: () => OwnerGithubName | null;
+  /** Keep (or, with none, forget) the name for a login (Den's state). */
+  writeName?: (login: string, name?: string) => void;
 }
 
 /**
@@ -121,7 +210,11 @@ export function recordOwnerGithub(
       return { state: "linked" };
     }
     const read = deps.read ?? readUserConfig;
-    const cfg = read();
+    const write = deps.write ?? writeUserConfig;
+    const readName = deps.readName ?? (() => readOwnerGithubName());
+    const writeName =
+      deps.writeName ?? ((l: string, n?: string) => writeOwnerGithubName(l, n));
+    let cfg = read();
     const web = { ...((cfg as { web?: Record<string, unknown> }).web ?? {}) };
     let set: string | undefined;
     try {
@@ -133,24 +226,28 @@ export function recordOwnerGithub(
     } catch {
       return { state: "none" }; // a value someone typed: leave it alone
     }
+    // Issue 315: a name an older Den kept in user.yml moves to Den's
+    // state once; user.yml never holds it again.
+    if ("owner_github_name" in web) {
+      const old = githubDisplayName(web.owner_github_name);
+      if (set && old && !keptNameOf(set, readName())) writeName(set, old);
+      delete web.owner_github_name;
+      cfg = { ...cfg, web } as typeof cfg;
+      write(cfg);
+    }
     if (set) {
-      // The name kept with it (web.owner_github_name), once, from gh
-      // signed in as that same login.
-      if (!githubDisplayName(web.owner_github_name)) {
+      // The name kept with it, once, from gh signed in as that same login.
+      if (!keptNameOf(set, readName())) {
         const u = gh();
-        if (u?.name && same(u.login, set)) {
-          web.owner_github_name = u.name;
-          (deps.write ?? writeUserConfig)({ ...cfg, web } as typeof cfg);
-        }
+        if (u?.name && same(u.login, set)) writeName(set, u.name);
       }
       return { state: "set", login: set };
     }
     const u = gh();
     if (!u) return { state: "none" };
     web.owner_github = u.login;
-    if (u.name) web.owner_github_name = u.name;
-    else delete web.owner_github_name;
-    (deps.write ?? writeUserConfig)({ ...cfg, web } as typeof cfg);
+    write({ ...cfg, web } as typeof cfg);
+    writeName(u.login, u.name);
     return { state: "recorded", login: u.login };
   } catch {
     return { state: "none" };

@@ -259,9 +259,9 @@ export interface WebAuthConfig {
    */
   ownerGithub?: string;
   /**
-   * `web.owner_github_name` (user.yml only): that person's GitHub display
-   * name, kept with the login from the same `gh api user` (the account
-   * entry on a browser on this machine). Unset: none known.
+   * `web.owner_github_name`: an older Den's copy of that person's GitHub
+   * display name in user.yml, read only until `web up` moves it to Den's
+   * state (issue 315: owner-github-name.json). Unset: none there.
    */
   ownerGithubName?: string;
   /**

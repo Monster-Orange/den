@@ -44,14 +44,18 @@ describe("recordOwnerGithub", () => {
 
   it("leaves a value already set, an owner already linked, and a silent gh alone", () => {
     // (Its name kept too: gh has nothing left to say; owner-github-name.test.ts.)
-    const set = store({
-      web: { owner_github: "someone", owner_github_name: "Some One" },
-    });
+    // (Issue 315: the name is in Den's state, not user.yml.)
+    const set = store({ web: { owner_github: "someone" } });
     const gh = () => {
       throw new Error("gh must not run");
     };
     expect(
-      recordOwnerGithub({ ownerLinked: () => false, ghLogin: gh, ...set }),
+      recordOwnerGithub({
+        ownerLinked: () => false,
+        ghLogin: gh,
+        readName: () => ({ login: "someone", name: "Some One" }),
+        ...set,
+      }),
     ).toEqual({ state: "set", login: "someone" });
     const linked = store();
     expect(
