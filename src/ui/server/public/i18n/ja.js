@@ -1782,6 +1782,9 @@
       "{path} のリポジトリを新しいプロジェクト「{workspace}」に追加",
     "ap.do.service_try": "{service} を起動",
     "ap.do.den_restart": "Den を再起動 ({reason})",
+    "ap.do.den_update": "Den を {version} に更新 ({reason})",
+    "ap.do.hub_connect": "Hub のアドレスを {url} に設定",
+    "ap.do.hub_connect.clear": "Hub のアドレスを消去",
     "ap.do.persona_create": "ペルソナ {name} ({id}) を追加",
     "ap.do.persona_update": "ペルソナ {id} を変更: {fields}",
     "ap.do.persona_create.project":

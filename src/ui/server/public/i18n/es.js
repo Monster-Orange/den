@@ -1841,6 +1841,9 @@
       'Añadir el repositorio de {path} a un proyecto nuevo "{workspace}"',
     "ap.do.service_try": "Iniciar {service}",
     "ap.do.den_restart": "Reiniciar Den ({reason})",
+    "ap.do.den_update": "Actualizar Den a {version} ({reason})",
+    "ap.do.hub_connect": "Poner la dirección de Hub en {url}",
+    "ap.do.hub_connect.clear": "Borrar la dirección de Hub",
     "ap.do.persona_create": "Añadir la persona {name} ({id})",
     "ap.do.persona_update": "Cambiar la persona {id}: {fields}",
     "ap.do.persona_create.project":
