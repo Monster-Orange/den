@@ -17,7 +17,11 @@
  *                     back (process gone, or lease lapsed), overdue, ended
  *                     early (Coach reads time lost); issue 715: priority
  *                     (who, why, what it passed) and priority-waits;
- *                     issue 795: yielded (the entry and the one let ahead)
+ *                     issue 795: yielded (the entry and the one let ahead);
+ *                     issue 867: waiter-gone, reattached, and a gone
+ *                     waiter taken back with reason "waiter-gone"
+ *   dropped.json      issue 867: places taken back from gone waiters, until
+ *                     their asker asks again (told once) or a day passes
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone (or, issue 621,
@@ -126,6 +130,7 @@ export type GateSettingsPatch = {
   mcp_renew_minutes?: number | null;
   mcp_lapse_minutes?: number | null;
   mcp_grace_minutes?: number | null;
+  waiter_return_minutes?: number | null;
   box_check_timeout_seconds?: number | null;
   box_recheck_seconds?: number | null;
   /** 1: a browser ask on this host declares a container browser. */
@@ -190,6 +195,8 @@ export const GATE_LIMITS: Record<
   mcp_renew_minutes: { min: 1, max: 24 * 60, int: false },
   mcp_lapse_minutes: { min: 1, max: 7 * 24 * 60, int: false },
   mcp_grace_minutes: { min: 0, max: 7 * 24 * 60, int: false },
+  // Issue 867: how long a gone waiter keeps its place.
+  waiter_return_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 625: a test box's check, and how long a no from it is kept.
   // The check runs outside the lock, so it may take its time.
   // Clause 12: never more than 25 s (BOX_CHECK_CAP_MS).
@@ -260,7 +267,10 @@ export type GateEvent =
   | "priority"
   | "priority-waits"
   | "passed-unclaimed"
-  | "yielded";
+  | "yielded"
+  // Issue 867: a waiter's run is gone, its place kept; and taken back.
+  | "waiter-gone"
+  | "reattached";
 
 /** Issue 963: one key's change: the value in effect before and after. */
 export interface GateSettingChange {
@@ -284,6 +294,29 @@ function settingValue(s: GateSettings, key: string): number | string | null {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number" || typeof v === "string") return v;
   return null;
+}
+
+/** Issue 867: a place taken back from a waiter whose run was gone. */
+export interface DroppedPlace {
+  id: string;
+  kind: GateKind;
+  who: string;
+  label: string;
+  askedAt: string;
+  /** When it was taken back (ISO). */
+  at: string;
+  reason: "waiter-gone";
+}
+
+/**
+ * Issue 867: a waiter (not a holder) asked through `gate run`, whose place
+ * is kept while its run is gone. An MCP or runner entry has its lease.
+ */
+function keptWaiter(
+  e: GateEntry,
+  s: Pick<GateSettings, "waiterReturnMinutes">,
+): boolean {
+  return !e.grantedAt && !e.mcp && !e.remote && s.waiterReturnMinutes > 0;
 }
 
 /** Issue 999: the median of some minutes, to a whole minute. */
@@ -419,6 +452,8 @@ export class GateStore {
   private readonly now: () => number;
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
+  /** Issue 867: the last ask took back a kept place (not a new entry). */
+  lastAskReattached = false;
   private readonly probe: BoxProbe;
   private readonly readLoad: () => number;
   readonly platform: NodeJS.Platform;
@@ -523,6 +558,10 @@ export class GateStore {
         mcpGraceMinutes: num(
           "mcp_grace_minutes",
           GATE_DEFAULTS.mcpGraceMinutes,
+        ),
+        waiterReturnMinutes: num(
+          "waiter_return_minutes",
+          GATE_DEFAULTS.waiterReturnMinutes,
         ),
         boxCheckTimeoutSeconds: num(
           "box_check_timeout_seconds",
@@ -658,6 +697,98 @@ export class GateStore {
   }
 
   /**
+   * Issue 867: a kept place of a gone waiter that this ask is the same run
+   * as (kind, asker, label, and where it may run), taken back: its pid is
+   * the new one, its place and id as they were. Call under the lock.
+   */
+  private keptPlaceFor(o: {
+    kind: GateKind;
+    who: string;
+    label: string;
+    pid: number;
+    where?: string;
+    mcp?: { install: string };
+  }): GateEntry | null {
+    if (o.mcp) return null;
+    const s = this.settings();
+    const now = this.now();
+    const who = o.who.slice(0, 200);
+    const label = o.label.slice(0, 120);
+    const where = (whereOf(o.kind, o.where) as { where?: string }).where;
+    const e = this.readAll()
+      .filter(
+        (x) =>
+          x.kind === o.kind &&
+          x.who === who &&
+          x.label === label &&
+          x.where === where &&
+          keptWaiter(x, s) &&
+          (x.orphanedAt || gone(x, this.alive)),
+      )
+      .sort((a, b) => a.askedAt.localeCompare(b.askedAt))[0];
+    if (!e) return null;
+    if (
+      e.orphanedAt &&
+      now - Date.parse(e.orphanedAt) > s.waiterReturnMinutes * 60_000
+    )
+      return null;
+    e.pid = o.pid;
+    delete e.runPid;
+    delete e.orphanedAt;
+    this.write(e);
+    this.record(e, { event: "reattached" });
+    return this.settle().find((x) => x.id === e.id) ?? e;
+  }
+
+  private get droppedFile(): string {
+    return path.join(this.dir, "dropped.json");
+  }
+
+  private readDropped(): DroppedPlace[] {
+    try {
+      const v = JSON.parse(fs.readFileSync(this.droppedFile, "utf-8"));
+      return Array.isArray(v) ? (v as DroppedPlace[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Issue 867: a place taken back from a gone waiter, kept a day (50 at most). */
+  private noteDropped(e: GateEntry, at: string): void {
+    const day = this.now() - 24 * 60 * 60_000;
+    const kept = this.readDropped().filter((d) => Date.parse(d.at) > day);
+    kept.push({
+      id: e.id,
+      kind: e.kind,
+      who: e.who,
+      label: e.label,
+      askedAt: e.askedAt,
+      at,
+      reason: "waiter-gone",
+    });
+    writeFileAtomic(this.droppedFile, JSON.stringify(kept.slice(-50)) + "\n");
+  }
+
+  /**
+   * Issue 867: what became of this asker's earlier place of the same run,
+   * if a gone waiter's place was taken back in the last day. Told once.
+   */
+  droppedFor(
+    e: Pick<GateEntry, "kind" | "who" | "label">,
+  ): DroppedPlace | null {
+    return this.locked(() => {
+      const all = this.readDropped();
+      const i = all.findIndex(
+        (d) => d.kind === e.kind && d.who === e.who && d.label === e.label,
+      );
+      if (i < 0) return null;
+      const [d] = all.splice(i, 1);
+      writeFileAtomic(this.droppedFile, JSON.stringify(all) + "\n");
+      return d!;
+    });
+  }
+
+  /**
    * Holds the lock while `fn` runs. The lock names its holder's pid; a
    * lock whose holder is gone (killed while holding it) is taken back at
    * once (issue 275), and any lock older than 30 s is stale.
@@ -770,15 +901,33 @@ export class GateStore {
     for (const e of this.readAll()) {
       // Issue 714: an MCP holder's lease lapses as a runner's does.
       const lapse = lapsed(e, now) || mcpLapsed(e, s, now);
+      // A kept waiter whose pid number is in use again stays kept (and is
+      // never given a slot) until its run asks: ask() takes it back.
       if (!lapse && !gone(e, this.alive)) {
         entries.push(e);
         continue;
       }
+      // Issue 867: a waiter whose run is gone keeps its place a while;
+      // one whose process was gone as it asked never waited, so not it.
+      if (!lapse && e.id !== claimNow && keptWaiter(e, s)) {
+        if (!e.orphanedAt) {
+          e.orphanedAt = at;
+          this.write(e);
+          this.record(e, { event: "waiter-gone" });
+        }
+        if (now - Date.parse(e.orphanedAt) <= s.waiterReturnMinutes * 60_000) {
+          entries.push(e);
+          continue;
+        }
+      }
       this.remove(e.id);
+      const why = !lapse && e.orphanedAt ? "waiter-gone" : undefined;
       this.record(e, {
         event: lapse ? "taken-back-lapsed" : "taken-back-gone",
         ...this.heldFor(e, now),
+        ...(why ? { reason: why } : {}),
       });
+      if (why) this.noteDropped(e, at);
     }
     // Issue 714: an MCP slot granted while it waited and not claimed in
     // time passes on, when someone waits: back in line, at its end.
@@ -813,7 +962,9 @@ export class GateStore {
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
     // Issue 1009: the machine's load, read once per pass.
-    for (const g of assign(entries, s, now, caps.caps, this.load())) {
+    // Issue 867: a gone waiter keeps its place but is never given a slot.
+    const live = entries.filter((x) => !x.orphanedAt);
+    for (const g of assign(live, s, now, caps.caps, this.load())) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its
@@ -962,6 +1113,10 @@ export class GateStore {
         throw new GatePriorityRefused(
           "only a person may ask for release priority on this machine (Settings, gate priority)",
         );
+      // Issue 867: the same run asking again takes back its kept place.
+      const back = this.keptPlaceFor(o);
+      this.lastAskReattached = !!back;
+      if (back) return back;
       const e: GateEntry = {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,

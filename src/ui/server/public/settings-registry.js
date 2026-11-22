@@ -3405,6 +3405,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { mcp_grace_minutes: v } }),
   },
   {
+    // Issue 867: a waiting run ended by a restart keeps its place a while.
+    id: "server.gate_waiter_return",
+    category: "server",
+    label:
+      "A waiting test run keeps its place this long after it ends, in minutes",
+    description:
+      "When a waiting test run ends without giving up its place (a restart, or a closed terminal), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
+    keywords: ["gate", "slot", "queue", "restart", "place", "waiting"],
+    scope: "user",
+    keys: ["gate_slots.waiter_return_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.waiterReturnMinutes ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { waiter_return_minutes: v } }),
+  },
+  {
     // Issue 803: priority classes per project; empty is first-come.
     id: "server.gate_class_order",
     category: "server",

@@ -81,6 +81,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     mcp_renew_minutes: true,
     mcp_lapse_minutes: true,
     mcp_grace_minutes: true,
+    // Issue 867: a gone waiter keeps its place this long.
+    waiter_return_minutes: true,
     // Issue 625: test boxes' check and recheck.
     box_check_timeout_seconds: true,
     box_recheck_seconds: true,
@@ -302,6 +304,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
+        "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",

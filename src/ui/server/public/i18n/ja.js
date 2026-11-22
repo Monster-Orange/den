@@ -1227,6 +1227,10 @@
       "エージェントのゲート枠: 見積もり後の猶予（分）",
     "set.server.gate_mcp_grace.d":
       "更新されない枠も、見積もりをこの時間過ぎるまでは保持されます。__DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_waiter_return":
+      "待っているテスト実行が終わったあと順番を保つ時間（分）",
+    "set.server.gate_waiter_return.d":
+      "待っているテスト実行が順番を手放さずに終わったとき（再起動や、閉じたターミナル）、列の順番をこの時間保ちます。もう一度実行すると、その順番に戻ります。過ぎると順番は手放され、次に頼んだときにそのことを伝えます。0: すぐに手放す。__DEN_CLI__ gate settings --waiter-return-minutes 10",
     "set.server.gate_class_order": "順番のクラス(高い順)",
     "set.server.gate_class_order.d":
       "カンマ区切りで、たとえば release, lane, other。高いクラスの待機中の実行が先に始まり、同じクラスの中では先着順です。順番を持っている実行は止まりません。空なら全員が先着順です。__DEN_CLI__ gate settings --class-order release,lane,other",

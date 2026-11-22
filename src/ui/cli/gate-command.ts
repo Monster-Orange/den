@@ -51,6 +51,7 @@ import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   expectedStart,
+  GATE_DEFAULTS,
   loadHold,
   queueEnd,
   queueMinOf,
@@ -522,7 +523,11 @@ export function slotLine(
       : e.where
         ? ` (box ${e.where})`
         : "";
-  return `${e.id}  waits for ${e.kind}${where}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now, margin))}${pri}`;
+  // Issue 867: a waiter whose run is gone, its place kept a while.
+  const kept = e.orphanedAt
+    ? `  run gone, place kept until ${hm(Date.parse(e.orphanedAt) + (margin.waiterReturnMinutes ?? GATE_DEFAULTS.waiterReturnMinutes) * 60_000)}`
+    : "";
+  return `${e.id}  waits for ${e.kind}${where}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now, margin))}${pri}${kept}`;
 }
 
 /** Issue 625: one line per test box: its slots, or why it is skipped. */
@@ -839,6 +844,19 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
     throw err;
   }
+  // Issue 867: back in a place kept since a restart, or told what became
+  // of the earlier one.
+  if (s.lastAskReattached)
+    d.err(
+      `gate: back in your place (${e.id}), asked at ${hm(Date.parse(e.askedAt))}`,
+    );
+  else {
+    const was = s.droppedFor(e);
+    if (was)
+      d.err(
+        `gate: your earlier place (asked ${hm(Date.parse(was.askedAt))}) was let go at ${hm(Date.parse(was.at))}: its run was gone for ${s.settings().waiterReturnMinutes} min`,
+      );
+  }
   // Issue 963: asked for release priority, but it is off here.
   if (priority && s.settings().priorityMax === 0)
     d.err(
@@ -855,9 +873,15 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // While waiting, a signal gives the place back and leaves. While the
   // command runs, it goes to the command, whose end gives the slot back:
   // a slot is never free while the run it was for goes on.
+  // Issue 867: a hang-up or terminate while waiting (a restart ending
+  // this run) keeps the place for the run's return; Ctrl-C gives it back.
   const off = d.onSignal((sig) => {
     if (child) return child.kill(sig);
-    release();
+    const keep =
+      (sig === "SIGHUP" || sig === "SIGTERM") &&
+      s.settings().waiterReturnMinutes > 0;
+    if (keep) released = true;
+    else release();
     cancelled = signalCode(sig);
     d.exit(cancelled);
   });
@@ -1135,6 +1159,7 @@ function settings(args: string[], d: GateDeps): number {
     "--mcp-renew-minutes": true,
     "--mcp-lapse-minutes": true,
     "--mcp-grace-minutes": true,
+    "--waiter-return-minutes": true,
     "--box-check-timeout-seconds": true,
     "--box-recheck-seconds": true,
     "--class-order": true,
@@ -1166,6 +1191,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--mcp-renew-minutes", "mcp_renew_minutes"],
     ["--mcp-lapse-minutes", "mcp_lapse_minutes"],
     ["--mcp-grace-minutes", "mcp_grace_minutes"],
+    ["--waiter-return-minutes", "waiter_return_minutes"],
     ["--box-check-timeout-seconds", "box_check_timeout_seconds"],
     ["--box-recheck-seconds", "box_recheck_seconds"],
     ["--browser-requires-container", "browser_requires_container"],

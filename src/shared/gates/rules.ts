@@ -78,6 +78,11 @@ export interface GateEntry {
   runPid?: number;
   /** When it asked (ISO); the queue's order. */
   askedAt: string;
+  /**
+   * Issue 867: a waiter whose run is gone (a restart ended it), kept in
+   * line since then (ISO) until its run asks again or the time is up.
+   */
+  orphanedAt?: string;
   /** When it got the slot (ISO), or absent while waiting. */
   grantedAt?: string;
   /** When it was flagged past its estimate (ISO), once. */
@@ -227,6 +232,8 @@ export interface GateSettings {
   mcpLapseMinutes: number;
   /** Issue 714: past its estimate by this much, an unrenewed slot may lapse. */
   mcpGraceMinutes: number;
+  /** Issue 867: minutes a gone waiter keeps its place (0: taken back at once). */
+  waiterReturnMinutes: number;
   /** Issue 803: the classes, read from the three lines; absent: off. */
   classes?: GateClasses;
   /** Issue 803: the lines as typed (absent when no classes are set). */
@@ -278,6 +285,7 @@ export const GATE_DEFAULTS: GateSettings = {
   mcpRenewMinutes: 5,
   mcpLapseMinutes: 15,
   mcpGraceMinutes: 15,
+  waiterReturnMinutes: 10,
   browserRequiresContainer: process.platform === "darwin",
   browserBoxDefault: "any",
   browserHostOnly: "",
