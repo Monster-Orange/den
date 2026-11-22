@@ -1,5 +1,5 @@
 /** The general button's look: secondary (the base) or the accent fill. */
-export type ButtonVariant = "secondary" | "primary";
+export type ButtonVariant = "secondary" | "primary" | "danger";
 /** The general button's size: md (the base) or small. */
 export type ButtonSize = "md" | "sm";
 
