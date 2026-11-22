@@ -194,4 +194,52 @@ describe("the Coach's routes on a real server", () => {
     );
     expect([401, 403]).toContain(r.status);
   });
+
+  it("issue 110: Apply's held persona_update waits; on the person's Allow it sets subagent_model and keeps the file's other keys", async () => {
+    const dir = path.join(stateDir, "personas");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "copy-checker.md");
+    fs.writeFileSync(
+      file,
+      [
+        "---",
+        "name: copy-checker",
+        "role: reviewer",
+        "category: marketing",
+        "description: Checks copy.",
+        "runtime: den-claude",
+        "model_version: latest",
+        "permission_mode: ask",
+        "persona_version: v3",
+        "tools: Read, Grep",
+        "---",
+        "",
+        "Read the changed copy.",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+    const before = fs.readFileSync(file, "utf-8");
+    // The finding's proposal (findings.ts applyOf), as Apply asks it.
+    const asked = await call("POST", "/api/approvals", person.headers, {
+      action: "persona_update",
+      args: { id: "copy-checker", subagentModel: "sonnet" },
+    });
+    expect(asked.status).toBe(202);
+    const id = String(asked.json.id);
+    expect(asked.json.state).toBe("pending");
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    const allowed = await call(
+      "POST",
+      `/api/approvals/${id}/decide`,
+      { ...person.headers, "x-den-approve-key": person.approveKey },
+      { decision: "allow" },
+    );
+    expect(allowed.status).toBe(200);
+    expect(allowed.json.state).toBe("done");
+    const after = fs.readFileSync(file, "utf-8");
+    expect(after).toMatch(/^subagent_model: sonnet$/m);
+    expect(after).toMatch(/^persona_version: v3$/m);
+    expect(after).toMatch(/^tools: Read, Grep$/m);
+  });
 });

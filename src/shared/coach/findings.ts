@@ -2,7 +2,8 @@
  * Issue 52, Coach slice T-b (TUNE-3): the findings that need no judging,
  * read from a run's counts (breakdown.ts). Each names its agent, carries
  * its evidence (the numbers that tripped it) and a proposal for a person.
- * Nothing is applied in this phase: Apply comes with issue 110.
+ * Issue 110: a finding with an Apply carries it as a held write (`apply`):
+ * nothing changes until a person allows it.
  *
  *   subagent_opus    most subagent calls on Opus, with enough calls to tell
  *   polling          polls a day at or over the threshold (den#5)
@@ -39,9 +40,33 @@ export interface CoachFinding {
   title: string;
   /** The numbers that tripped it. */
   evidence: Record<string, number>;
-  /** What a person could do (never applied in this phase). */
+  /** What a person could do, in words. */
   proposal: string;
   window: CoachWindow;
+  /** The agent's persona, when it has one. */
+  persona?: string;
+  /**
+   * Issue 110: the proposal as a held write. A person's Apply asks
+   * POST /api/approvals to hold it, and nothing changes until they allow
+   * it in the approval dialog. Kinds with no Apply yet leave it out.
+   */
+  apply?: CoachApply;
+}
+
+/** A held write: one of Den's held actions and its args. */
+export interface CoachApply {
+  action: "persona_update";
+  args: Record<string, string>;
+}
+
+/** Issue 110: the held write that applies finding `kind` on row `a`. */
+function applyOf(kind: FindingKind, a: CoachAgentRow): CoachApply | undefined {
+  if (kind === "subagent_opus" && a.persona)
+    return {
+      action: "persona_update",
+      args: { id: a.persona, project: a.workspace, subagentModel: "sonnet" },
+    };
+  return undefined;
 }
 
 const MB = 1024 * 1024;
@@ -59,7 +84,8 @@ function findingsOf(
     title: string,
     evidence: Record<string, number>,
     proposal: string,
-  ) =>
+  ) => {
+    const apply = applyOf(kind, a);
     out.push({
       id: `${kind}:${a.agent}`,
       kind,
@@ -69,7 +95,10 @@ function findingsOf(
       evidence,
       proposal,
       window,
+      ...(a.persona ? { persona: a.persona } : {}),
+      ...(apply ? { apply } : {}),
     });
+  };
   const subCalls = Object.values(a.models?.subagent ?? {}).reduce(
     (n, c) => n + c,
     0,

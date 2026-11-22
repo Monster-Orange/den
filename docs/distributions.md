@@ -4960,6 +4960,14 @@ argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
 You are the planner. …
 ```
 
+**Editing a persona** (the Personas page's Edit, or a held
+`persona_update`) rewrites only the fields the form has: name, role,
+category, description, runtime, model and its version, mode, allowed
+commands and the instructions. Every other key in the file (`subagent_model`,
+`persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was.
+`persona_update` also takes `subagentModel`, written as `subagent_model`
+(issue 110: the Coach's Apply proposes it).
+
 **A persona's version** (issue 137) is the sha256 of its file, so any edit
 makes a new one; `persona_version` gives it a readable name. An agent
 records the version it started with, and while its persona's file differs,

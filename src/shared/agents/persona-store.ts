@@ -23,6 +23,7 @@ import {
   type PermissionIntent,
 } from "./permissions.js";
 import type { RuntimeModel } from "./runtime.js";
+import { checkSubagentModel } from "./subagents.js";
 
 /** Where a person's own personas live. */
 export function localPersonasDir(stateDir: string): string {
@@ -41,6 +42,11 @@ export interface PersonaInput {
   version: string;
   permission: PermissionIntent;
   allowedCommands: string[];
+  /**
+   * Issue 110: its subagents' model (`subagent_model`). Written only when
+   * given: an edit that leaves it out keeps the file's own.
+   */
+  subagentModel?: string;
 }
 
 /** What a field may name: the registries and runtimes it is checked against. */
@@ -66,6 +72,7 @@ export const PERSONA_KEYS = [
   "version",
   "permission",
   "allowedCommands",
+  "subagentModel",
 ] as const;
 const KEYS = PERSONA_KEYS;
 
@@ -212,6 +219,13 @@ export function checkPersonaInput(
     MAX_PERSONA_NAME,
     false,
   );
+  let subagentModel: string | undefined;
+  if (r.subagentModel !== undefined && r.subagentModel !== null)
+    try {
+      subagentModel = checkSubagentModel(r.subagentModel, "subagentModel");
+    } catch (e) {
+      throw new PersonaInputError((e as Error).message);
+    }
   return {
     ...(displayName ? { displayName } : {}),
     role,
@@ -223,11 +237,16 @@ export function checkPersonaInput(
     version,
     permission,
     allowedCommands,
+    ...(subagentModel ? { subagentModel } : {}),
   };
 }
 
 /** The persona file for `input`: front matter (YAML) and its instructions. */
-export function personaMarkdown(id: string, input: PersonaInput): string {
+export function personaMarkdown(
+  id: string,
+  input: PersonaInput,
+  kept: Record<string, unknown> = {},
+): string {
   const fm: Record<string, unknown> = {
     name: id,
     ...(input.displayName ? { display_name: input.displayName } : {}),
@@ -246,8 +265,50 @@ export function personaMarkdown(id: string, input: PersonaInput): string {
     ...(input.allowedCommands.length
       ? { allowed_commands: input.allowedCommands }
       : {}),
+    ...(input.subagentModel ? { subagent_model: input.subagentModel } : {}),
   };
+  // Issue 110: the keys this doesn't manage, as the file had them.
+  for (const [k, v] of Object.entries(kept))
+    if (!(k in fm) && !MANAGED_KEYS.has(k)) fm[k] = v;
   return `---\n${yaml.stringify(fm).trimEnd()}\n---\n\n${input.instructions}\n`;
+}
+
+/**
+ * Front-matter keys the form writes (and their other spellings the reader
+ * takes). subagent_model is written only when given, so a file's own is
+ * kept otherwise.
+ */
+const MANAGED_KEYS: ReadonlySet<string> = new Set([
+  "name",
+  "id",
+  "display_name",
+  "role",
+  "category",
+  "description",
+  "runtime",
+  "model",
+  "model_version",
+  "version",
+  "permission_mode",
+  "allowed_commands",
+]);
+
+/**
+ * Issue 110: the front matter of the persona file at `file` (none, or
+ * unreadable: {}), so a rewrite keeps the keys the form doesn't manage.
+ */
+function keptFrontMatter(file: string): Record<string, unknown> {
+  try {
+    const m = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(
+      fs.readFileSync(file, "utf-8"),
+    );
+    const v = m ? (yaml.parse(m[1]) as unknown) : null;
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 function fileOf(stateDir: string, id: string): string {
@@ -268,7 +329,7 @@ export function writeLocalPersona(
   input: PersonaInput,
 ): string {
   const file = fileOf(stateDir, id);
-  writePrivate(file, personaMarkdown(id, input));
+  writePrivate(file, personaMarkdown(id, input, keptFrontMatter(file)));
   return file;
 }
 
@@ -295,7 +356,9 @@ export function writeProjectPersona(
   const file = projectPersonaFile(dir, id);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, personaMarkdown(id, input), { mode: 0o644 });
+  fs.writeFileSync(tmp, personaMarkdown(id, input, keptFrontMatter(file)), {
+    mode: 0o644,
+  });
   fs.renameSync(tmp, file);
   return file;
 }
