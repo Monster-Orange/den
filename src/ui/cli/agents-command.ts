@@ -369,7 +369,7 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
       r.persona ?? "-",
       r.runtime ?? "-",
       r.rotation?.due
-        ? `${r.state}, ${r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
+        ? `${r.state}, ${r.rotation.waiting ? `waits for ${r.rotation.waiting} background item(s)` : r.rotation.ready ? "ready to relaunch" : "handoff due"} (${reasonText(r.rotation.due, r.rotation.compactions)})`
         : r.restartFailed
           ? // Issue 631: why it didn't come back.
             `${r.state}: didn't come back after a restart (${r.restartFailed.why})`

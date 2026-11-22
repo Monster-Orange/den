@@ -2332,6 +2332,10 @@
     "ag.relaunchHandoff": "Relaunch from its last handoff",
     "ag.rc.autoAsk":
       "Due ({why}). Den asks it for its handoff when it is idle, then relaunches it.",
+    "ag.rc.waiting.one":
+      "Due ({why}). Den waits for the {n} background task it started to finish, then rotates it.",
+    "ag.rc.waiting":
+      "Due ({why}). Den waits for the {n} background tasks it started to finish, then rotates it.",
     "ag.rc.autoReady":
       "Due ({why}). Its handoff is ready: Den relaunches it when it is idle.",
     "ag.rc.ready": "Due ({why}). Its handoff is ready.",

@@ -260,6 +260,7 @@ import {
   clearWaiting,
   keepConversation,
   noteAsked,
+  noteLeftAsked,
   noteLeftRunning,
   noteWaiting,
   type LeftRunning,
@@ -8819,16 +8820,19 @@ export async function rotationTick(
       // agents.rotation_wait_minutes, then goes ahead with a handoff
       // that lists each one.
       const left = await leftRunningOf(d, rec, s);
+      // Forced, and its listing handoff not asked for yet: asked once,
+      // whatever the person's Relaunch now or the gap between asks.
+      let mustAsk = false;
       if (!left.length) clearWaiting(files);
       else {
         const was = readRotation(files)?.waitingSince;
-        const since = noteWaiting(files, now);
+        const since = noteWaiting(files, now, left.length);
         if (now.getTime() - since < rotationWaitOf(d)) {
           if (!was)
             events.push({ kind: "waiting", ...who, running: left.length });
           continue;
         }
-        noteLeftRunning(files, left);
+        mustAsk = noteLeftRunning(files, left);
       }
       if (readHandoff(files).status === "ok") {
         const r = await relaunchAgent(d, rec.id, rec.workspace, {
@@ -8842,13 +8846,15 @@ export async function rotationTick(
         });
         continue;
       }
-      const last = st.askedAt ? Date.parse(st.askedAt) : 0;
-      if (now.getTime() - last < gap) continue;
-      if (wanted) continue; // asked once, by the person: no more asks
-      if ((st.asked ?? 0) >= ROTATION_MAX_ASKS) {
-        noteFellBack(files);
-        events.push({ kind: "fell-back", ...who });
-        continue;
+      if (!mustAsk) {
+        const last = st.askedAt ? Date.parse(st.askedAt) : 0;
+        if (now.getTime() - last < gap) continue;
+        if (wanted) continue; // asked once, by the person: no more asks
+        if ((st.asked ?? 0) >= ROTATION_MAX_ASKS) {
+          noteFellBack(files);
+          events.push({ kind: "fell-back", ...who });
+          continue;
+        }
       }
       const text = rotationInstruction(files, rot.due, rot.compactions);
       if (
@@ -8857,7 +8863,8 @@ export async function rotationTick(
           maxMs: 5000,
         })
       ) {
-        const n = noteAsked(files, now);
+        const n = noteAsked(files, now, wanted);
+        if (mustAsk) noteLeftAsked(files);
         events.push({ kind: "asked", ...who, asked: n?.asked ?? 1 });
       }
     } catch (e) {

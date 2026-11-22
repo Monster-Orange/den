@@ -77,11 +77,18 @@ export interface RotationState {
    * here, at most agents.rotation_wait_minutes.
    */
   waitingSince?: string;
+  /** Issue 914: how many background items it waits on (the row says so). */
+  waitingOn?: number;
   /**
    * Issue 914: the background work still running when the wait ran out.
    * The handoff must list each one; the next session starts each again.
    */
   leftRunning?: LeftRunning[];
+  /**
+   * Issue 914: Den asked for the handoff that lists leftRunning. Until it
+   * has, it asks once, whatever the person's Relaunch now or the gap.
+   */
+  leftAsked?: boolean;
 }
 
 /**
@@ -98,17 +105,27 @@ export interface LeftRunning {
   branch?: string;
 }
 
-const LEFT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** A helper's id as its runtime gives it (Claude Code: up to 128), or a pid. */
+const LEFT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+/** The most items kept: far more than any agent runs at once. */
+const LEFT_MAX = 500;
 
 /** Where a helper left running writes its own handoff. */
 export function helperHandoffFile(filesDir: string, id: string): string {
-  return path.join(filesDir, HANDOFFS_DIR, `helper-${id}.md`);
+  const safe = id.replace(/[^A-Za-z0-9_-]/g, "-");
+  return path.join(filesDir, HANDOFFS_DIR, `helper-${safe}.md`);
+}
+
+/** Whether `text` names `id` as a whole word (never inside a longer one). */
+function namesId(text: string, id: string): boolean {
+  const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9_-])${esc}($|[^A-Za-z0-9_-])`).test(text);
 }
 
 function leftOf(v: unknown): LeftRunning[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const out: LeftRunning[] = [];
-  for (const x of v.slice(0, 50)) {
+  for (const x of v.slice(0, LEFT_MAX)) {
     if (!x || typeof x !== "object") continue;
     const o = x as Record<string, unknown>;
     if (o.kind !== "helper" && o.kind !== "job") continue;
@@ -205,6 +222,8 @@ export function readRotation(filesDir: string): RotationState | null {
   if (o.fellBack === true) s.fellBack = true;
   if (o.relaunchWanted === true) s.relaunchWanted = true;
   if (typeof o.waitingSince === "string") s.waitingSince = o.waitingSince;
+  if (count(o.waitingOn)) s.waitingOn = count(o.waitingOn);
+  if (o.leftAsked === true) s.leftAsked = true;
   const left = leftOf(o.leftRunning);
   if (left) s.leftRunning = left;
   return s;
@@ -214,24 +233,48 @@ export function readRotation(filesDir: string): RotationState | null {
  * Issue 914: the due agent's background work still runs at `now`. The
  * first time, the wait starts; returns when it started (ms).
  */
-export function noteWaiting(filesDir: string, now: Date): number {
+export function noteWaiting(
+  filesDir: string,
+  now: Date,
+  running: number,
+): number {
   const s = readRotation(filesDir);
   if (!s) return now.getTime();
   const at = s.waitingSince ? Date.parse(s.waitingSince) : Number.NaN;
-  if (Number.isFinite(at)) return at;
-  writeRotation(filesDir, { ...s, waitingSince: now.toISOString() });
-  return now.getTime();
+  const since = Number.isFinite(at) ? at : now.getTime();
+  if (since !== at || s.waitingOn !== running)
+    writeRotation(filesDir, {
+      ...s,
+      waitingSince: new Date(since).toISOString(),
+      waitingOn: running,
+    });
+  return since;
 }
 
-/** Issue 914: the wait ran out: the handoff must list `left`. */
-export function noteLeftRunning(filesDir: string, left: LeftRunning[]): void {
+/**
+ * Issue 914: the wait ran out: the handoff must list `left`. A changed
+ * list is asked for again. Returns whether Den still has to ask for it.
+ */
+export function noteLeftRunning(
+  filesDir: string,
+  left: LeftRunning[],
+): boolean {
   const s = readRotation(filesDir);
-  if (!s) return;
+  if (!s) return false;
   const kept = leftOf(left);
+  const ids = (l?: LeftRunning[]) => (l ?? []).map((x) => x.id).join("\n");
   const next: RotationState = { ...s };
   if (kept) next.leftRunning = kept;
   else delete next.leftRunning;
+  if (ids(kept) !== ids(s.leftRunning)) delete next.leftAsked;
   writeRotation(filesDir, next);
+  return Boolean(kept) && !next.leftAsked;
+}
+
+/** Issue 914: Den asked for the handoff that lists leftRunning. */
+export function noteLeftAsked(filesDir: string): void {
+  const s = readRotation(filesDir);
+  if (s) writeRotation(filesDir, { ...s, leftAsked: true });
 }
 
 /** Issue 914: nothing runs any more: no wait, nothing to list. */
@@ -240,7 +283,9 @@ export function clearWaiting(filesDir: string): void {
   if (!s || (!s.waitingSince && !s.leftRunning)) return;
   const next: RotationState = { ...s };
   delete next.waitingSince;
+  delete next.waitingOn;
   delete next.leftRunning;
+  delete next.leftAsked;
   writeRotation(filesDir, next);
 }
 
@@ -255,7 +300,7 @@ export function leftRunningProblems(
 ): string[] {
   const problems: string[] = [];
   for (const l of left) {
-    if (!text.includes(l.id))
+    if (!namesId(text, l.id))
       problems.push(
         `It leaves out ${leftName(l)}, still running when this conversation ended. List it: what it was doing, its branch, and its handoff file.`,
       );
@@ -512,6 +557,8 @@ export interface RotationInfo {
   problems?: string[];
   /** Due and handoff.md passes: Relaunch from handoff, not Resume. */
   ready: boolean;
+  /** Issue 914: it waits on this many background items it left running. */
+  waiting?: number;
 }
 
 /**
@@ -564,6 +611,9 @@ export function rotationInfo(
     handoff: h.status,
     ...(h.status === "invalid" ? { problems: h.problems } : {}),
     ready: Boolean(due) && h.status === "ok",
+    ...(due && read.waitingSince && !read.leftRunning && read.waitingOn
+      ? { waiting: read.waitingOn }
+      : {}),
   };
 }
 

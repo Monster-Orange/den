@@ -27,9 +27,12 @@ import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import {
+  helperHandoffFile,
+  noteAsked,
   noteCompaction,
   readHandoff,
   readRotation,
+  rotationInfo,
 } from "../../../src/shared/agents/rotation.js";
 import {
   resolveAgentsDeps,
@@ -335,5 +338,91 @@ describe("rotation waits for running background work (issue 914)", () => {
     const ev = await rotationTick(d, later(5 * MIN), { send });
     expect(ev[0]).toMatchObject({ kind: "relaunched" });
     expect(readRotation(files(r, "be-dev"))?.leftRunning).toBeUndefined();
+  });
+  it("a person's Relaunch now, then a helper that never ends: past the wait Den still asks for the listing handoff, once", async () => {
+    const r = await rig();
+    await started(r);
+    r.config.rotationWaitMs = 30 * MIN;
+    due(r);
+    // Relaunch now, asked before the wait: the handoff passed then.
+    noteAsked(files(r, "be-dev"), T0, true);
+    helper(r, "a1b2c3", "Build the export page", "feat/export");
+    const d = resolveAgentsDeps(r.deps);
+    const { sent, send } = sender();
+    await rotationTick(d, T0, { send });
+    expect(sent).toEqual([]);
+    const ev = await rotationTick(d, later(31 * MIN), { send });
+    expect(ev).toEqual([
+      { kind: "asked", agent: "be-dev", workspace: "north", asked: 2 },
+    ]);
+    expect(sent[0]).toContain("a1b2c3");
+    // Asked once for this list: no more asks while it is written.
+    expect(await rotationTick(d, later(32 * MIN), { send })).toEqual([]);
+    expect(sent).toHaveLength(1);
+    // Written: Den relaunches, as the person asked.
+    const own = helperHandoffFile(files(r, "be-dev"), "a1b2c3");
+    fs.mkdirSync(path.dirname(own), { recursive: true });
+    fs.writeFileSync(own, GOOD_HANDOFF);
+    fs.writeFileSync(
+      path.join(files(r, "be-dev"), "handoff.md"),
+      `${GOOD_HANDOFF}\nHelper a1b2c3 (Build the export page): its handoff is ${own}.\n`,
+    );
+    expect((await rotationTick(d, later(33 * MIN), { send }))[0]).toMatchObject(
+      { kind: "relaunched" },
+    );
+  });
+
+  it("an item counts as listed only by its whole ID, never inside a longer word", async () => {
+    const r = await rig();
+    await started(r);
+    r.config.rotationWaitMs = 30 * MIN;
+    due(r);
+    helper(r, "a1b2c3", "Build the export page");
+    const d = resolveAgentsDeps(r.deps);
+    const { send } = sender();
+    await rotationTick(d, T0, { send });
+    await rotationTick(d, later(31 * MIN), { send });
+    const own = helperHandoffFile(files(r, "be-dev"), "a1b2c3");
+    fs.mkdirSync(path.dirname(own), { recursive: true });
+    fs.writeFileSync(own, GOOD_HANDOFF);
+    fs.writeFileSync(
+      path.join(files(r, "be-dev"), "handoff.md"),
+      `${GOOD_HANDOFF}\nHelper xa1b2c3d (another one) ran too.\n`,
+    );
+    const h = readHandoff(files(r, "be-dev"));
+    expect(h.status).toBe("invalid");
+    expect(h.problems.join(" ")).toMatch(/leaves out helper a1b2c3/);
+  });
+
+  it("keeps a helper with a long ID (up to the 128 its runtime allows), and every one of many", async () => {
+    const r = await rig();
+    await started(r);
+    r.config.rotationWaitMs = 30 * MIN;
+    due(r);
+    const long = "a".repeat(100);
+    helper(r, long, "A workflow's agent");
+    for (let i = 0; i < 60; i++) helper(r, `h${i}`, `Helper ${i}`);
+    const d = resolveAgentsDeps(r.deps);
+    const { sent, send } = sender();
+    await rotationTick(d, T0, { send });
+    await rotationTick(d, later(31 * MIN), { send });
+    const ids = (readRotation(files(r, "be-dev"))?.leftRunning ?? []).map(
+      (l) => l.id,
+    );
+    expect(ids).toContain(long);
+    expect(ids).toHaveLength(61);
+    expect(sent[0]).toContain(helperHandoffFile(files(r, "be-dev"), long));
+  });
+
+  it("while it waits, the agent's rotation says so (the row and the CLI)", async () => {
+    const r = await rig();
+    await started(r);
+    due(r);
+    helper(r, "a1b2c3", "Build the export page");
+    const d = resolveAgentsDeps(r.deps);
+    await rotationTick(d, T0, { send: sender().send });
+    expect(rotationInfo(r.stateDir, rec(r, "be-dev"))).toMatchObject({
+      waiting: 1,
+    });
   });
 });
