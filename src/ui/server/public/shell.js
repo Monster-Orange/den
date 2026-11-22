@@ -2862,6 +2862,9 @@
       'Add the repo at {path} to a new project "{workspace}"',
     "ap.do.service_try": "Start {service}",
     "ap.do.den_restart": "Restart Den ({reason})",
+    "ap.do.den_update": "Update Den to {version} ({reason})",
+    "ap.do.hub_connect": "Set Hub's address to {url}",
+    "ap.do.hub_connect.clear": "Clear Hub's address",
     "ap.do.persona_create": "Add the persona {name} ({id})",
     "ap.do.persona_update": "Change the persona {id}: {fields}",
     "ap.do.persona_create.project":
@@ -8676,12 +8679,17 @@
             ? ".project"
             : p.loosens
               ? ".loosens"
-              : "");
+              : p.clears
+                ? ".clear"
+                : "");
     var s = t(key, p);
     if (s !== key) return s;
-    s = String(a.summary || a.action);
+    s = String(a.summary || a.what || a.action);
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+  // Issue 746: the bell words a held write (its Allow row, a lapsed item)
+  // as this dialog does, in the page's language.
+  window.denApWhat = apWhat;
   // Issue 199: Done, and for a project's mode, which agents follow it now
   // and which keep their own mode.
   function apDoneWords(a, res) {
