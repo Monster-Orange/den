@@ -222,7 +222,7 @@ describe("project colours (issue 168)", () => {
       expect(
         await p
           .locator(
-            `.den-bell-pop section[data-scope="workspace/${ws}"] .den-bell-sc .den-pc`,
+            `#den-bell-pop section[data-scope="workspace/${ws}"] [data-pc]`,
           )
           .getAttribute("data-pc"),
       ).toBe(want[ws].row);
@@ -231,7 +231,7 @@ describe("project colours (issue 168)", () => {
       expect(
         await computed(
           p,
-          `.den-bell-pop section[data-scope="workspace/${ws}"] .den-pc`,
+          `#den-bell-pop section[data-scope="workspace/${ws}"] [data-pc]`,
           "background-color",
         ),
       ).toBe(
