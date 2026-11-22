@@ -30,6 +30,7 @@ import {
   type McpAction,
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
+import { peopleAddress } from "../../shared/agent-links.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
 import { checkIssueWrite } from "../../shared/issue-write.js";
@@ -431,7 +432,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "whoami",
     "Who you are to Den, and your tools",
-    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (your session started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
+    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (you started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. Issue 1016: `webUrl` is this Den's address for people (null when it isn't set), and `links` the full links on it to give your person (`agent`: your page, `project`, `notifications`, `allow`: where they Allow your held writes); `address` says it in one line, or where a person sets it. Give only these links, never a localhost or 127.0.0.1 one. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
     {},
     async (_a, { api, scope }) => {
       const id = scope?.actor.startsWith("agent:")
@@ -1941,14 +1942,14 @@ async function askPerson(
     Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
   );
   const note = own.note;
-  let asked: { id?: unknown; ticket?: unknown };
+  let asked: { id?: unknown; ticket?: unknown; allowLink?: unknown };
   try {
     asked = (await ctx.api.get("/api/approvals", {}, "POST", {
       action,
       args: clean,
       ...(typeof note === "string" && note.trim() ? { note: note.trim() } : {}),
       ...(own.ask === true ? { ask: true } : {}),
-    })) as { id?: unknown; ticket?: unknown };
+    })) as { id?: unknown; ticket?: unknown; allowLink?: unknown };
   } catch (e) {
     if (e instanceof DenHttpError && [400, 403, 409, 429].includes(e.status))
       throw new Refusal(`${tool}: ${e.body}`);
@@ -1956,8 +1957,17 @@ async function askPerson(
   }
   const id = String(asked?.id ?? "");
   keepTicket(id, asked?.ticket);
+  // Issue 1016: the full Allow link on Den's address, when the server
+  // gives one (web.url set); never made up here.
+  const allowLink =
+    typeof asked?.allowLink === "string" && peopleAddress(asked.allowLink)
+      ? asked.allowLink
+      : null;
+  const waitingWithLink = allowLink
+    ? (x: string) => `${waiting(x)} The person Allows it at ${allowLink}`
+    : waiting;
   try {
-    return await waitForPerson(tool, id, asked, ctx, waiting);
+    return await waitForPerson(tool, id, asked, ctx, waitingWithLink);
   } catch (e) {
     if (
       lostAfterAsk &&
