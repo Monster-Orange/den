@@ -1,10 +1,12 @@
 /**
  * The release job's tree check (scripts/release-tree.sh): the release
- * commit holds what its newest gated candidate held, apart from the
- * version lines and the changelog. Found when a pull request merged
- * straight to main after the candidate was tagged: the ancestry check
- * passed, and the release would have shipped work no gate had run.
- * A temp git repo, no signing, no global config.
+ * commit is its newest gated candidate with the release commit's own edits
+ * applied (release-dry-run.mjs apply: Den's version in package.json, the
+ * lockfile and the example distribution, the kit's version in the kit and
+ * the lockfile), and nothing else; the changelog may differ. Found when a
+ * pull request merged straight to main after the candidate was tagged: the
+ * ancestry check passed, and the release would have shipped work no gate
+ * had run. A temp git repo shaped like Den's, no signing, no global config.
  */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
@@ -36,12 +38,38 @@ const git = (...args: string[]) => {
   if (r.status !== 0) throw new Error(r.stderr);
   return r.stdout.trim();
 };
-const write = (file: string, text: string) =>
+const write = (file: string, text: string) => {
+  fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
   fs.writeFileSync(path.join(repo, file), text);
-const pkg = (version: string, extra = "") =>
-  `{\n  "name": "den",\n  "version": "${version}",${extra}\n  "private": true\n}\n`;
-const lock = (version: string, dep = "1.0.0", integrity = dep) =>
-  `{\n  "name": "den",\n  "version": "${version}",\n  "packages": {\n    "node_modules/x": {\n      "version": "${dep}",\n      "integrity": "sha512-${integrity}"\n    }\n  }\n}\n`;
+};
+const read = (file: string) => fs.readFileSync(path.join(repo, file), "utf8");
+
+/** The release-commit files, in the line shapes release-dry-run.mjs edits. */
+type V = {
+  den: string;
+  kit: string;
+  dep?: string;
+  example?: string;
+  extra?: string;
+};
+const files = ({ den, kit, dep = "1.0.0", example = den, extra = "" }: V) => {
+  write(
+    "package.json",
+    `{\n  "name": "@acme/den",\n  "version": "${den}",${extra}\n  "private": false\n}\n`,
+  );
+  write(
+    "package-lock.json",
+    `{\n  "name": "@acme/den",\n  "version": "${den}",\n  "lockfileVersion": 3,\n  "packages": {\n    "": {\n      "name": "@acme/den",\n      "version": "${den}"\n    },\n    "node_modules/x": {\n      "version": "${dep}",\n      "integrity": "sha512-1"\n    },\n    "packages/den-ui": {\n      "name": "@acme/den-ui",\n      "version": "${kit}"\n    }\n  }\n}\n`,
+  );
+  write(
+    "examples/distribution/package.json",
+    `{\n  "name": "example",\n  "dependencies": {\n    "@acme/den": "${example}"\n  }\n}\n`,
+  );
+  write(
+    "packages/den-ui/package.json",
+    `{\n  "name": "@acme/den-ui",\n  "version": "${kit}"\n}\n`,
+  );
+};
 const commitAll = (msg: string) => {
   git("add", "-A");
   git("commit", "-q", "-m", msg);
@@ -49,12 +77,13 @@ const commitAll = (msg: string) => {
 };
 const check = (version: string, sha: string) =>
   spawnSync("sh", [SCRIPT, version, sha], { cwd: repo, env, encoding: "utf8" });
+const out = (r: ReturnType<typeof check>) => r.stdout + r.stderr;
 
 beforeEach(() => {
   repo = fs.mkdtempSync(path.join(os.tmpdir(), "den-reltree-"));
   git("init", "-q", "-b", "main");
-  write("package.json", pkg("1.1.0"));
-  write("package-lock.json", lock("1.1.0"));
+  // the candidate line carries the last release's version, as next/queue does
+  files({ den: "1.1.0", kit: "0.5.0" });
   write("CHANGELOG.md", "# Changelog\n");
   write("app.js", "one\n");
   commitAll("base");
@@ -63,22 +92,37 @@ afterEach(() => fs.rmSync(repo, { recursive: true, force: true }));
 
 /** A candidate v1.2.0-dev.N on the current commit. */
 const candidate = (n: number) => git("tag", `v1.2.0-dev.${n}`);
-/** The release commit: version lines and the changelog only. */
-const releaseCommit = () => {
-  write("package.json", pkg("1.2.0"));
-  write("package-lock.json", lock("1.2.0"));
-  write("CHANGELOG.md", "# Changelog\n\n## [1.2.0]\n");
+/** The release commit as the release makes it: the version edits and the changelog. */
+const releaseCommit = (v: Partial<V> = {}) => {
+  const kit = JSON.parse(read("packages/den-ui/package.json"))
+    .version as string;
+  files({ den: "1.2.0", kit, ...v });
+  write("CHANGELOG.md", "# Changelog\n\n## [1.2.0] - 2026-11-22\n");
   return commitAll("Den 1.2.0");
 };
 
 describe("release-tree.sh", () => {
-  it("the candidate plus only the version and changelog: passes", () => {
+  it("the candidate plus the release's version edits in all four files and the changelog: passes", () => {
     write("app.js", "two\n");
     commitAll("work");
     candidate(1);
-    const r = check("1.2.0", releaseCommit());
+    const rel = releaseCommit();
+    expect(
+      git("diff", "--name-only", "v1.2.0-dev.1", rel).split("\n").sort(),
+    ).toEqual([
+      "CHANGELOG.md",
+      "examples/distribution/package.json",
+      "package-lock.json",
+      "package.json",
+    ]);
+    const r = check("1.2.0", rel);
+    expect(out(r)).toContain("v1.2.0-dev.1");
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("v1.2.0-dev.1");
+  });
+
+  it("a kit bump in the release commit, as the dry run plans it: passes", () => {
+    candidate(1);
+    expect(check("1.2.0", releaseCommit({ kit: "0.6.0" })).status).toBe(0);
   });
 
   it("work merged after the candidate was tagged: fails, naming the file", () => {
@@ -87,7 +131,7 @@ describe("release-tree.sh", () => {
     commitAll("a pull request straight to main");
     const r = check("1.2.0", releaseCommit());
     expect(r.status).toBe(1);
-    expect(r.stdout + r.stderr).toMatch(/::error::.*v1\.2\.0-dev\.1.*gate\.js/);
+    expect(out(r)).toMatch(/::error::.*v1\.2\.0-dev\.1.*gate\.js/);
   });
 
   it("compares with the newest candidate, by number not by name order", () => {
@@ -100,41 +144,48 @@ describe("release-tree.sh", () => {
 
   it("a package.json change beyond its version: fails", () => {
     candidate(1);
-    write("package.json", pkg("1.2.0", '\n  "main": "other.js",'));
-    write("package-lock.json", lock("1.2.0"));
-    const rel = commitAll("Den 1.2.0, with a sneaked change");
-    const r = check("1.2.0", rel);
+    const r = check(
+      "1.2.0",
+      releaseCommit({ extra: '\n  "main": "other.js",' }),
+    );
     expect(r.status).toBe(1);
-    expect(r.stdout + r.stderr).toMatch(/::error::.*package\.json/);
-  });
-
-  it("a dependency change in the lockfile: fails", () => {
-    candidate(1);
-    write("package.json", pkg("1.2.0"));
-    write("package-lock.json", lock("1.2.0", "2.0.0"));
-    const rel = commitAll("Den 1.2.0, with a new dependency");
-    const r = check("1.2.0", rel);
-    expect(r.status).toBe(1);
-    expect(r.stdout + r.stderr).toMatch(/::error::.*package-lock\.json/);
+    expect(out(r)).toMatch(/::error::.*package\.json/);
   });
 
   it("a dependency's version line alone changes in the lockfile: fails", () => {
     candidate(1);
-    write("package.json", pkg("1.2.0"));
-    write("package-lock.json", lock("1.2.0", "1.0.1", "1.0.0"));
-    const rel = commitAll("Den 1.2.0, with a hand-edited dependency version");
-    const r = check("1.2.0", rel);
+    const r = check("1.2.0", releaseCommit({ dep: "1.0.1" }));
     expect(r.status).toBe(1);
-    expect(r.stdout + r.stderr).toMatch(/::error::.*package-lock\.json/);
+    expect(out(r)).toMatch(/::error::.*package-lock\.json/);
   });
 
-  it("package.json's version set to something other than the release's: fails", () => {
+  it("Den's version set to something other than the release's: fails", () => {
     candidate(1);
-    write("package.json", pkg("1.2.1"));
-    write("package-lock.json", lock("1.2.0"));
-    const r = check("1.2.0", commitAll("Den 1.2.0, wrong version"));
+    const r = check("1.2.0", releaseCommit({ den: "1.2.1" }));
     expect(r.status).toBe(1);
-    expect(r.stdout + r.stderr).toMatch(/::error::.*package\.json/);
+    expect(out(r)).toMatch(/::error::.*package\.json/);
+  });
+
+  it("the example's dependency set to something other than the release's: fails", () => {
+    candidate(1);
+    const r = check("1.2.0", releaseCommit({ example: "1.2.0-dev.1" }));
+    expect(r.status).toBe(1);
+    expect(out(r)).toMatch(/::error::.*examples\/distribution\/package\.json/);
+  });
+
+  it("another change in the example distribution's package.json: fails", () => {
+    candidate(1);
+    releaseCommit();
+    write(
+      "examples/distribution/package.json",
+      read("examples/distribution/package.json").replace(
+        '"example"',
+        '"other"',
+      ),
+    );
+    const r = check("1.2.0", commitAll("Den 1.2.0, and a renamed example"));
+    expect(r.status).toBe(1);
+    expect(out(r)).toMatch(/::error::.*examples\/distribution\/package\.json/);
   });
 
   it("no candidate for this version: warns and passes, as the ancestry check does", () => {
@@ -142,6 +193,12 @@ describe("release-tree.sh", () => {
     const r = check("1.2.0", releaseCommit());
     expect(r.status).toBe(0);
     expect(r.stdout).toMatch(/::warning::/);
+  });
+
+  it("leaves no worktree behind", () => {
+    candidate(1);
+    check("1.2.0", releaseCommit());
+    expect(git("worktree", "list").split("\n")).toHaveLength(1);
   });
 
   it("bad arguments: exit 2", () => {
