@@ -7,7 +7,8 @@
  *    open, and allows the run's own port (a "host:*" entry, ownPorts).
  *  - The committed build (lib/pw-guard/) matches its source.
  *  - Den's own deep paths still resolve (the exports map keeps them).
- *  - The semver promise is in the README and the CHANGELOG.
+ *  - The semver promise is in the README. (The CHANGELOG gets it from the
+ *    release commit, which writes each version's entry.)
  *  - Den's own browser helper imports it from the subpath.
  * Temp dirs only.
  */
@@ -65,8 +66,8 @@ describe("issue 1010: the exported guard", () => {
     expect(pkg.files).toContain("lib/pw-guard/");
   });
 
-  it("the semver promise is in the README and the CHANGELOG", () => {
-    for (const f of ["README.md", "CHANGELOG.md"]) {
+  it("the semver promise is in the README", () => {
+    for (const f of ["README.md"]) {
       const t = fs.readFileSync(path.join(ROOT, f), "utf8");
       expect(t).toMatch(/@monster-orange\/den\/pw-guard/);
       expect(t).toMatch(/only in a major version/);
