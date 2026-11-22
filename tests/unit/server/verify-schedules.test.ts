@@ -34,7 +34,13 @@ afterAll(() => {
 
 let clock = new Date(2026, 10, 21, 12, 0);
 let verifyBlock: Record<string, unknown> = {};
-let speedCmd = "make speed";
+// A repo with the script the scheduled commands run (Den follows only a
+// command whose files it can find).
+const REPO = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-repo-"));
+fs.mkdirSync(path.join(REPO, "scripts"));
+fs.writeFileSync(path.join(REPO, "scripts/speed.sh"), "echo ok\n");
+const ON = { shared_commands: true };
+let speedCmd = "./scripts/speed.sh";
 let cmds: string[] = [];
 let probes: string[] = [];
 let bell: BellNote[] = [];
@@ -55,7 +61,7 @@ function deps(): ScheduleServerDeps {
       return [
         {
           repo: "shop",
-          repoPath: "/repos/shop",
+          repoPath: REPO,
           manifest: {
             name: "shop",
             services: {
@@ -111,8 +117,8 @@ beforeEach(() => {
   stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-vsched-"));
   roots.push(stateDir);
   clock = new Date(2026, 10, 21, 12, 0);
-  verifyBlock = {};
-  speedCmd = "make speed";
+  verifyBlock = { schedule: ON };
+  speedCmd = "./scripts/speed.sh";
   cmds = [];
   probes = [];
   bell = [];
@@ -168,6 +174,48 @@ const idOf = async (name: string) =>
   ((await get()).schedules as any[]).find((s) => s.name === name).id as string;
 
 describe("T18: the standing Allow", () => {
+  it("schedule Allow scope: by default a shared command can't be allowed or run, and the row says why", async () => {
+    verifyBlock = {};
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    const row = ((await get()).schedules as any[]).find((s) => s.id === id);
+    expect(row).toMatchObject({
+      runs: false,
+      limit: { reason: "commands-off" },
+    });
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("commands-off");
+    expect(
+      (await post("/api/verify/schedules/run", { project: "north", id }))
+        .status,
+    ).toBe(409);
+    await tick(at(22, 2, 1));
+    expect(cmds).toEqual([]);
+  });
+
+  it("schedule Allow scope: a command Den can't follow can't be allowed, and the row names why", async () => {
+    speedCmd = "make speed";
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    const row = ((await get()).schedules as any[]).find((s) => s.id === id);
+    expect(row.limit).toMatchObject({ reason: "command-unclear" });
+    expect(row.limit.why).toMatch(
+      /web\/speed: make isn't a script in the repo/,
+    );
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("command-unclear");
+  });
+
   it("schedule Allow scope: a plan that changes between the tick's check and the run does not run", async () => {
     await tick(at(21, 12));
     clock = at(21, 13);
@@ -233,7 +281,7 @@ describe("T18: the standing Allow", () => {
     });
 
     // The plan changes (its command): the Allow lapses, and it is skipped.
-    speedCmd = "make speed --all";
+    speedCmd = "./scripts/speed.sh --all";
     cmds = [];
     notes = await tick(at(24, 2, 1));
     expect(notes.find((n) => n.schedule === id)).toMatchObject({
@@ -320,7 +368,7 @@ describe("T20: the bell", () => {
       project: "north",
       id: await idOf("Nightly speed"),
     });
-    speedCmd = "make speed fail";
+    speedCmd = "./scripts/speed.sh fail";
     // Its Allow was for "make speed": allow the failing plan too.
     await post("/api/verify/schedules/allow", {
       project: "north",
@@ -333,7 +381,7 @@ describe("T20: the bell", () => {
   });
 
   it("warns once, 3 days before an Allow expires; the 3 days come from a setting", async () => {
-    verifyBlock = { schedule: { allow_expiry: 10, expiry_warning: 4 } };
+    verifyBlock = { schedule: { ...ON, allow_expiry: 10, expiry_warning: 4 } };
     clock = at(1, 12);
     await post("/api/verify/schedules/allow", {
       project: "north",

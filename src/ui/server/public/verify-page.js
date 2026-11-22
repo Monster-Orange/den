@@ -663,6 +663,10 @@ function allowLine(row) {
 }
 
 function flagOf(row) {
+  if (row.limit)
+    return row.limit.reason === "commands-off"
+      ? `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t("v.sch_lim_off"))} <code>schedule: { shared_commands: true }</code></div>`
+      : `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t("v.sch_lim_unclear"))} <code>${esc(row.limit.why ?? "")}</code></div>`;
   if (row.state === "plan-changed")
     return `<div class="vf-flag" role="status">${schTag(row.state)} ${esc(t("v.sch_changed"))}</div>`;
   if (row.state === "needs-allow" || row.state === "expired")
@@ -685,6 +689,8 @@ const SKIP_WORD = {
   expired: "v.sch_sk_expired",
   window: "v.sch_sk_window",
   busy: "v.sch_sk_busy",
+  "commands-off": "v.sch_sk_cmdoff",
+  "command-unclear": "v.sch_sk_unclear",
 };
 
 const modName = (row, id) =>
@@ -784,7 +790,7 @@ function scheduleRow(row, sv, open) {
     flagOf(row) +
     (row.state === "plan-changed" ? changeCard(row) : "") +
     `<div class="vf-btns">` +
-    (row.needsAllow && ASKS.has(row.state)
+    (row.needsAllow && !row.limit && ASKS.has(row.state)
       ? `<button type="button" class="den-btn${row.runs ? "" : " primary"}" data-sch-ask="${esc(row.id)}" aria-expanded="${open === row.id}">${esc(t("v.sch_ask"))}</button>`
       : "") +
     (row.runs

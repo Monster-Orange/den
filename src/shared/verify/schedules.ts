@@ -55,12 +55,20 @@ export interface ScheduleAllow {
 export interface ScheduleSettings {
   allowExpiryMs: number;
   expiryWarningMs: number;
+  /**
+   * verify.schedule.shared_commands: whether a schedule on a shared
+   * environment may run a command (`cmd`). Off by default: Den can't see
+   * all a command will run, so until a run can be pinned to the commit its
+   * Allow named, a command runs on its own only where the org turns it on.
+   */
+  sharedCommands: boolean;
 }
 
 const DAY = 86_400_000;
 export const SCHEDULE_DEFAULTS: Readonly<ScheduleSettings> = Object.freeze({
   allowExpiryMs: 30 * DAY,
   expiryWarningMs: 3 * DAY,
+  sharedCommands: false,
 });
 
 const obj = (v: unknown): Record<string, unknown> =>
@@ -86,7 +94,12 @@ function span(v: unknown, name: string, fallback: number): number {
 /** verify.schedule.allow_expiry and expiry_warning, from Den's `verify:` block. */
 export function readScheduleSettings(raw: unknown): ScheduleSettings {
   const s = obj(obj(raw).schedule);
+  if (s.shared_commands !== undefined && typeof s.shared_commands !== "boolean")
+    throw new Error(
+      `verify.schedule.shared_commands: true or false, got ${JSON.stringify(s.shared_commands)}`,
+    );
   return {
+    sharedCommands: s.shared_commands === true,
     allowExpiryMs: span(
       s.allow_expiry,
       "allow_expiry",
@@ -365,12 +378,89 @@ export function scheduleState(
   return left <= settings.expiryWarningMs ? "expiring" : "allowed";
 }
 
+const INTERPRETERS = new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "node",
+  "python",
+  "python3",
+  "ruby",
+  "perl",
+]);
+
+/**
+ * Whether Den understands a command's shape well enough to fingerprint it:
+ * one or more steps joined by `&&`, each a script in the repo (`./x.sh`)
+ * or an interpreter and a script in the repo (`bash scripts/x.sh --quick`),
+ * every named file there. No shell syntax beyond that (no $, quotes,
+ * pipes, redirects, globs, `;`, `cd` or variables), no interpreter flags
+ * (`-c`, `-m`, `-e`), and no runner whose own file says what runs next
+ * (make, npm and the like): what those call isn't followed, so they are
+ * refused. Returns null when understood, else why not.
+ */
+export function cmdUnclear(repoPath: string, cmd: string): string | null {
+  if (/[$`'"\\<>|;*?~(){}[\]!#\n]/.test(cmd))
+    return "it uses shell syntax Den doesn't follow";
+  const root = path.resolve(repoPath);
+  const file = (w: string) => {
+    const abs = path.resolve(root, w);
+    if (abs === root || !abs.startsWith(root + path.sep)) return false;
+    try {
+      return fs.statSync(abs).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const steps = cmd
+    .split("&&")
+    .map((x) => x.trim().split(/\s+/).filter(Boolean));
+  if (!steps.length || steps.some((w) => !w.length))
+    return "it has an empty step";
+  for (const w of steps) {
+    if (/=/.test(w[0])) return "it sets a variable";
+    let i = 0;
+    if (INTERPRETERS.has(w[0])) {
+      i = 1;
+      if (!w[1] || w[1].startsWith("-"))
+        return `${w[0]} takes a script in the repo, with no flags before it`;
+    } else if (!(w[0].includes("/") || SCRIPT_RE.test(w[0])))
+      return `${w[0]} isn't a script in the repo`;
+    if (!file(w[i])) return `${w[i]} isn't a file in the repo`;
+    for (const a of w.slice(i + 1))
+      if (
+        !a.startsWith("-") &&
+        (a.includes("/") || SCRIPT_RE.test(a)) &&
+        !file(a)
+      )
+        return `${a} isn't a file in the repo`;
+  }
+  return null;
+}
+
+/** Why a schedule's commands may not run on their own, or null. */
+export function commandLimit(
+  s: Schedule,
+  settings: ScheduleSettings,
+): { reason: "commands-off" | "command-unclear"; why?: string } | null {
+  if (!s.shared) return null;
+  const cmds = s.modules.filter(runsCmd);
+  if (!cmds.length) return null;
+  if (!(settings.sharedCommands ?? false)) return { reason: "commands-off" };
+  for (const m of cmds) {
+    const why = cmdUnclear(m.repoPath, m.cmd!);
+    if (why) return { reason: "command-unclear", why: `${m.name}: ${why}` };
+  }
+  return null;
+}
+
 export function mayRun(
   s: Schedule,
   a: ScheduleAllow | undefined,
   now: Date,
   settings: ScheduleSettings,
 ): boolean {
+  if (commandLimit(s, settings)) return false;
   const st = scheduleState(s, a, now, settings);
   return st === "no-allow-needed" || st === "allowed" || st === "expiring";
 }

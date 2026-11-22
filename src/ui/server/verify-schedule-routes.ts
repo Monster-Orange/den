@@ -22,6 +22,7 @@ import { httpProbe, spawnCmd } from "../../shared/verify/run.js";
 import { realGit } from "../../shared/verify/changes.js";
 import {
   cmdFiles,
+  commandLimit,
   listSchedules,
   mayRun,
   readAllows,
@@ -153,6 +154,8 @@ export interface ScheduleRow {
   readOnly: boolean;
   state: ScheduleState;
   runs: boolean;
+  /** Why its commands may not run on their own here, if they may not. */
+  limit?: { reason: string; why?: string };
   allow: { by: RunActor; at: string; expiresAt: string } | null;
   /** The next due time; null when none comes. */
   next: string | null;
@@ -189,6 +192,10 @@ function rowOf(
     readOnly: s.env === "production",
     state,
     runs: mayRun(s, a, now, set),
+    ...(() => {
+      const l = commandLimit(s, set);
+      return l ? { limit: l } : {};
+    })(),
     allow: a ? { by: a.by, at: a.at, expiresAt: a.expiresAt } : null,
     next: nextRun(s.cron, now)?.toISOString() ?? null,
     last: r.last ?? null,
@@ -309,6 +316,18 @@ async function runSchedule(
       return {
         ok: false,
         error: "the plan changed since it was checked, so it did not run",
+      };
+    let set: ScheduleSettings;
+    try {
+      set = settingsOf(d);
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+    const lim = commandLimit(fresh, set);
+    if (lim)
+      return {
+        ok: false,
+        error: `its command may not run on its own here (${lim.reason}${lim.why ? `: ${lim.why}` : ""})`,
       };
   }
   const git = d.git ?? realGit;
@@ -545,6 +564,22 @@ export async function handleScheduleRoutes(
   }
   const allows = readAllows(d.stateDir(), p.project);
   if (pathname === "/api/verify/schedules/allow") {
+    const lim = commandLimit(s, set);
+    if (lim) {
+      sendJson(
+        res,
+        {
+          ok: false,
+          code: lim.reason,
+          error:
+            lim.reason === "commands-off"
+              ? "Commands don't run on their own on a shared environment here (verify.schedule.shared_commands is off)."
+              : `Den can't follow this schedule's command, so it can't be allowed: ${lim.why}.`,
+        },
+        409,
+      );
+      return true;
+    }
     if (!s.needsAllow) {
       sendJson(res, { ok: false, error: "This schedule needs no Allow." }, 409);
       return true;

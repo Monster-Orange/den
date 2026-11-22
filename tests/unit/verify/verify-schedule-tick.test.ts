@@ -20,6 +20,13 @@ import {
   noteScheduleRun,
 } from "../../../src/shared/verify/schedule-tick.js";
 
+// A repo with the script the scheduled commands run (Den follows only a
+// command whose files it can find).
+const REPO = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-repo-"));
+fs.mkdirSync(path.join(REPO, "scripts"));
+fs.writeFileSync(path.join(REPO, "scripts/speed.sh"), "echo ok\n");
+// Commands on a shared environment: on (off is Den's default; its own tests).
+const ON = { ...SCHEDULE_DEFAULTS, sharedCommands: true };
 const at = (d: number, h: number, mi = 0) => new Date(2026, 10, d, h, mi);
 const DAY = 86_400_000;
 
@@ -31,14 +38,14 @@ function mod(
   return {
     id: `shop:${name}`,
     repo: "shop",
-    repoPath: "/tmp/shop",
+    repoPath: REPO,
     name,
     layer: name.split("/")[0],
     kind: "performance",
     adapter: "cmd",
     mark: "declared-read-only",
     environments: [env],
-    cmd: "make speed",
+    cmd: "./scripts/speed.sh",
     writes: false,
     healthUrls: {},
     schedule: { cron: "0 2 * * *", window: "01:00-05:00", env },
@@ -53,8 +60,81 @@ const local: Schedule = listSchedules("shop", [mod("web/speed", "local")])[0];
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "den-tick-"));
 
 describe("decide", () => {
+  it("schedule Allow scope: a command on a shared environment is skipped by default (commands-off), even when allowed", () => {
+    const r = { lastDue: at(21, 3).toISOString() };
+    const a = writeAllow(
+      tmp(),
+      "shop",
+      staging,
+      { kind: "person" },
+      at(21, 12),
+      SCHEDULE_DEFAULTS,
+    );
+    expect(
+      decide(staging, a, r, at(22, 2, 1), SCHEDULE_DEFAULTS),
+    ).toMatchObject({
+      action: "skip",
+      reason: "commands-off",
+    });
+    // Local is the person's own machine: no limit there.
+    expect(
+      decide(local, undefined, r, at(22, 2, 1), SCHEDULE_DEFAULTS).action,
+    ).toBe("run");
+  });
+
+  it("schedule Allow scope: with commands on, one Den can't follow is skipped (command-unclear)", () => {
+    const r = { lastDue: at(21, 3).toISOString() };
+    for (const cmd of [
+      "make speed",
+      "npm run speed",
+      "cd scripts && sh speed.sh",
+      "python -m tool",
+      "sh -c ./scripts/speed.sh",
+      "./scripts/gone.sh",
+      "./scripts/speed.sh > out.txt",
+      "FOO=1 ./scripts/speed.sh",
+      "bash scripts/speed.sh $HOME",
+    ]) {
+      const s = listSchedules("shop", [
+        mod("web/speed", "staging", { cmd }),
+      ])[0];
+      const a = writeAllow(
+        tmp(),
+        "shop",
+        s,
+        { kind: "person" },
+        at(21, 12),
+        ON,
+      );
+      expect([cmd, decide(s, a, r, at(22, 2, 1), ON)]).toMatchObject([
+        cmd,
+        { action: "skip", reason: "command-unclear" },
+      ]);
+    }
+    for (const cmd of [
+      "./scripts/speed.sh --quick",
+      "bash scripts/speed.sh && ./scripts/speed.sh",
+    ]) {
+      const s = listSchedules("shop", [
+        mod("web/speed", "staging", { cmd }),
+      ])[0];
+      const a = writeAllow(
+        tmp(),
+        "shop",
+        s,
+        { kind: "person" },
+        at(21, 12),
+        ON,
+      );
+      expect([cmd, decide(s, a, r, at(22, 2, 1), ON).action]).toEqual([
+        cmd,
+        "run",
+      ]);
+    }
+  });
+
   it("first sight: a baseline, so nothing runs for times before Den saw it", () => {
-    expect(decide(local, undefined, {}, at(21, 3), SCHEDULE_DEFAULTS)).toEqual({
+    expect(decide(local, undefined, {}, at(21, 3), ON)).toEqual({
       action: "baseline",
     });
   });
@@ -66,7 +146,7 @@ describe("decide", () => {
         undefined,
         { lastDue: at(21, 3).toISOString() },
         at(21, 23),
-        SCHEDULE_DEFAULTS,
+        ON,
       ),
     ).toEqual({ action: "wait" });
   });
@@ -78,7 +158,7 @@ describe("decide", () => {
         undefined,
         { lastDue: at(21, 3).toISOString() },
         at(22, 2, 1),
-        SCHEDULE_DEFAULTS,
+        ON,
       ),
     ).toEqual({ action: "run", due: at(22, 2).toISOString() });
   });
@@ -90,10 +170,10 @@ describe("decide", () => {
       }),
     ])[0];
     const r = { lastDue: at(21, 6).toISOString() };
-    expect(decide(s, undefined, r, at(22, 0, 30), SCHEDULE_DEFAULTS)).toEqual({
+    expect(decide(s, undefined, r, at(22, 0, 30), ON)).toEqual({
       action: "wait",
     });
-    expect(decide(s, undefined, r, at(22, 1, 0), SCHEDULE_DEFAULTS)).toEqual({
+    expect(decide(s, undefined, r, at(22, 1, 0), ON)).toEqual({
       action: "run",
       due: at(22, 0).toISOString(),
     });
@@ -106,7 +186,7 @@ describe("decide", () => {
         undefined,
         { lastDue: at(21, 3).toISOString() },
         at(22, 5, 0),
-        SCHEDULE_DEFAULTS,
+        ON,
       ),
     ).toEqual({
       action: "skip",
@@ -122,7 +202,7 @@ describe("decide", () => {
         undefined,
         { lastDue: at(21, 3).toISOString() },
         at(22, 2, 1),
-        SCHEDULE_DEFAULTS,
+        ON,
       ),
     ).toEqual({
       action: "skip",
@@ -139,22 +219,18 @@ describe("decide", () => {
       staging,
       { kind: "person" },
       at(20, 12),
-      SCHEDULE_DEFAULTS,
+      ON,
     );
     const r = { lastDue: at(21, 3).toISOString() };
-    expect(decide(staging, a, r, at(22, 2, 1), SCHEDULE_DEFAULTS).action).toBe(
-      "run",
-    );
+    expect(decide(staging, a, r, at(22, 2, 1), ON).action).toBe("run");
     const changed = listSchedules("shop", [
-      mod("web/speed", "staging", { cmd: "make speed --all" }),
+      mod("web/speed", "staging", { cmd: "./scripts/speed.sh --all" }),
     ])[0];
-    expect(
-      decide(changed, a, r, at(22, 2, 1), SCHEDULE_DEFAULTS),
-    ).toMatchObject({
+    expect(decide(changed, a, r, at(22, 2, 1), ON)).toMatchObject({
       action: "skip",
       reason: "plan-changed",
     });
-    const short = { ...SCHEDULE_DEFAULTS, allowExpiryMs: DAY };
+    const short = { ...ON, allowExpiryMs: DAY };
     const b = writeAllow(
       dir,
       "shop",

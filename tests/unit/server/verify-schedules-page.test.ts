@@ -227,7 +227,9 @@ describe("issue 214: Schedules (S11)", () => {
     expect(card).toMatch(
       /<code>web\/checkout<\/code>.*?data-part="touch">writes</s,
     );
-    expect(card).toMatch(/<code>web\/devices<\/code>.*?data-part="touch">reads only</s);
+    expect(card).toMatch(
+      /<code>web\/devices<\/code>.*?data-part="touch">reads only</s,
+    );
     expect(card).toMatch(
       /One Allow covers every run of this plan until it changes or expires on .+\./,
     );
@@ -259,6 +261,43 @@ describe("issue 214: Schedules (S11)", () => {
     expect(html).toContain(
       "A schedule on staging or production asks for an Allow once.",
     );
+  });
+
+  it("schedule Allow scope: a row whose command may not run on its own says why, with no Allow button", () => {
+    const off = {
+      ...SV,
+      schedules: SV.schedules.map((r: any) =>
+        r.id === "devices-9c0d1e2f"
+          ? { ...r, runs: false, limit: { reason: "commands-off" } }
+          : r.id === "nightly-speed-1a2b3c4d"
+            ? {
+                ...r,
+                runs: false,
+                limit: {
+                  reason: "command-unclear",
+                  why: "web/speed: make isn't a script in the repo",
+                },
+              }
+            : r,
+      ),
+    };
+    const html = schedulesView(off);
+    const devices = rowOf(html, "devices-9c0d1e2f");
+    expect(devices).toContain(
+      "Commands don&#39;t run on their own on a shared environment here.",
+    );
+    expect(devices).toContain(
+      "<code>schedule: { shared_commands: true }</code>",
+    );
+    expect(devices).not.toMatch(/data-sch-ask=/);
+    const speed = rowOf(html, "nightly-speed-1a2b3c4d");
+    expect(speed).toContain(
+      "Den can&#39;t follow this command, so it can&#39;t run on its own:",
+    );
+    expect(speed).toContain(
+      "<code>web/speed: make isn&#39;t a script in the repo</code>",
+    );
+    expect(speed).not.toMatch(/data-sch-run=/);
   });
 
   it("a name or a module from the repo stays plain text", () => {

@@ -24,6 +24,12 @@ import {
   SCHEDULE_DEFAULTS,
 } from "../../../src/shared/verify/schedules.js";
 
+// A repo with the script the scheduled commands run (Den follows only a
+// command whose files it can find).
+const REPO = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-repo-"));
+fs.mkdirSync(path.join(REPO, "scripts"));
+fs.writeFileSync(path.join(REPO, "scripts/speed.sh"), "echo ok\n");
+const ON = { ...SCHEDULE_DEFAULTS, sharedCommands: true };
 const DAY = 86_400_000;
 
 function mod(name: string, over: Partial<VerifyModule> = {}): VerifyModule {
@@ -31,14 +37,14 @@ function mod(name: string, over: Partial<VerifyModule> = {}): VerifyModule {
   return {
     id: `shop:${name}`,
     repo: "shop",
-    repoPath: "/tmp/shop",
+    repoPath: REPO,
     name,
     layer,
     kind: "performance",
     adapter: "cmd",
     mark: "declared-read-only",
     environments: ["staging"],
-    cmd: "make speed",
+    cmd: "./scripts/speed.sh",
     writes: false,
     healthUrls: {},
     ...over,
@@ -300,12 +306,24 @@ describe("settings", () => {
     expect(SCHEDULE_DEFAULTS).toEqual({
       allowExpiryMs: 30 * DAY,
       expiryWarningMs: 3 * DAY,
+      sharedCommands: false,
     });
+    expect(
+      readScheduleSettings({ schedule: { shared_commands: true } })
+        .sharedCommands,
+    ).toBe(true);
+    expect(() =>
+      readScheduleSettings({ schedule: { shared_commands: "yes" } }),
+    ).toThrow(/verify\.schedule\.shared_commands/);
     expect(
       readScheduleSettings({
         schedule: { allow_expiry: 7, expiry_warning: "12h" },
       }),
-    ).toEqual({ allowExpiryMs: 7 * DAY, expiryWarningMs: 12 * 3_600_000 });
+    ).toEqual({
+      allowExpiryMs: 7 * DAY,
+      expiryWarningMs: 12 * 3_600_000,
+      sharedCommands: false,
+    });
     expect(() =>
       readScheduleSettings({ schedule: { allow_expiry: "soon" } }),
     ).toThrow(/verify\.schedule\.allow_expiry/);
@@ -328,7 +346,7 @@ describe("the standing Allow (T18)", () => {
       s,
       { kind: "person", name: "ward" },
       now,
-      SCHEDULE_DEFAULTS,
+      ON,
     );
     expect(a).toMatchObject({
       schedule: s.id,
@@ -336,7 +354,7 @@ describe("the standing Allow (T18)", () => {
       by: { kind: "person", name: "ward" },
       at: now.toISOString(),
       expiresAt: new Date(now.getTime() + 30 * DAY).toISOString(),
-      modules: [{ id: "shop:web/devices", writes: false, cmd: "make speed" }],
+      modules: [{ id: "shop:web/devices", writes: false, cmd: "./scripts/speed.sh" }],
     });
     expect(readAllows(dir, "shop")[s.id]).toEqual(a);
     expect(
@@ -350,10 +368,8 @@ describe("the standing Allow (T18)", () => {
   it("a shared schedule runs only with an Allow; a plan change lapses it; it expires", () => {
     const dir = tmp();
     const s = listSchedules("shop", [devices])[0];
-    expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(
-      "needs-allow",
-    );
-    expect(mayRun(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(false);
+    expect(scheduleState(s, undefined, now, ON)).toBe("needs-allow");
+    expect(mayRun(s, undefined, now, ON)).toBe(false);
 
     const a = writeAllow(
       dir,
@@ -361,24 +377,24 @@ describe("the standing Allow (T18)", () => {
       s,
       { kind: "person", name: "ward" },
       now,
-      SCHEDULE_DEFAULTS,
+      ON,
     );
-    expect(scheduleState(s, a, now, SCHEDULE_DEFAULTS)).toBe("allowed");
-    expect(mayRun(s, a, now, SCHEDULE_DEFAULTS)).toBe(true);
+    expect(scheduleState(s, a, now, ON)).toBe("allowed");
+    expect(mayRun(s, a, now, ON)).toBe(true);
 
     // Three days before it expires, the bell warns; it still runs.
     const late = new Date(now.getTime() + 27 * DAY + 1);
-    expect(scheduleState(s, a, late, SCHEDULE_DEFAULTS)).toBe("expiring");
-    expect(mayRun(s, a, late, SCHEDULE_DEFAULTS)).toBe(true);
+    expect(scheduleState(s, a, late, ON)).toBe("expiring");
+    expect(mayRun(s, a, late, ON)).toBe(true);
 
     const gone = new Date(now.getTime() + 30 * DAY);
-    expect(scheduleState(s, a, gone, SCHEDULE_DEFAULTS)).toBe("expired");
-    expect(mayRun(s, a, gone, SCHEDULE_DEFAULTS)).toBe(false);
+    expect(scheduleState(s, a, gone, ON)).toBe("expired");
+    expect(mayRun(s, a, gone, ON)).toBe(false);
 
     // The plan changed: a module joined.
     const next = listSchedules("shop", [devices, checkout])[0];
-    expect(scheduleState(next, a, now, SCHEDULE_DEFAULTS)).toBe("plan-changed");
-    expect(mayRun(next, a, now, SCHEDULE_DEFAULTS)).toBe(false);
+    expect(scheduleState(next, a, now, ON)).toBe("plan-changed");
+    expect(mayRun(next, a, now, ON)).toBe(false);
   });
 
   it("a local or code-only schedule runs without one", () => {
@@ -391,10 +407,8 @@ describe("the standing Allow (T18)", () => {
     const code = listSchedules("shop", [deps])[0];
     for (const s of [local, code]) {
       expect(s.needsAllow).toBe(false);
-      expect(scheduleState(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(
-        "no-allow-needed",
-      );
-      expect(mayRun(s, undefined, now, SCHEDULE_DEFAULTS)).toBe(true);
+      expect(scheduleState(s, undefined, now, ON)).toBe("no-allow-needed");
+      expect(mayRun(s, undefined, now, ON)).toBe(true);
     }
   });
 

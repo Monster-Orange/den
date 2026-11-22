@@ -699,6 +699,7 @@ verify:
   schedule:
     allow_expiry: 30d # a schedule's standing Allow lasts this long
     expiry_warning: 3d # the bell warns this long before it ends
+    shared_commands: false # a command (cmd) runs on its own on staging or production
 ```
 
 `environments` can also be a map, when an environment needs its own
@@ -768,18 +769,26 @@ verify:
 - Modules with the same environment, cron, window and name are one
   schedule. Heavy runs go one at a time. After Den was down, a schedule
   catches up once, not once for every time it missed.
-- A schedule on `local`, or one whose modules only read the code, runs
-  without an Allow.
+- A schedule on `local`, or one whose modules only read the code and run
+  no command, runs without an Allow.
+- On staging and production a scheduled command (`cmd`) runs only when
+  `verify.schedule.shared_commands` is true. It's off by default. Even when
+  it's on, Den runs only a command it can follow: one or more steps joined
+  by `&&`, each a script in the repo (`./scripts/speed.sh --quick`), or an
+  interpreter and a script (`bash scripts/speed.sh`), every file there. A
+  runner such as `make` or `npm`, shell syntax, or a file Den can't find:
+  the schedule can't be allowed, and its row says why.
 - A schedule on staging or production runs only under a standing Allow. A
   person gives it once, on the Checks page's Schedules screen
   (`/verify?schedules=1`). It covers every run of that plan. It lapses when
-  the plan changes (a module, its command, what it writes, the times or
-  the window). It ends after `verify.schedule.allow_expiry`. An agent
+  the plan changes (a module, its command or the scripts it names, what it
+  writes, its health URLs, the environment's method rule, the times or the
+  window). It ends after `verify.schedule.allow_expiry`. An agent
   can't give or use one: the routes refuse an agent's token.
 - On production a scheduled run is read-only. It sends only GET, HEAD and
   OPTIONS, plus the `write_allow` pairs for that environment. Any other
   request is blocked before it leaves, and the run's record names it.
-  Only modules Den enforces, or that only read the code, run there.
+  Only built-in smoke and built-in code scans run there: never a command.
 - Each result goes to the bell, a failure as an alert. The bell warns once,
   `verify.schedule.expiry_warning` before an Allow ends.
 

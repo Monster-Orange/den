@@ -167,6 +167,12 @@
     "v.sch_sk_expired": "許可が期限切れ",
     "v.sch_sk_window": "先に時間帯が終わった",
     "v.sch_sk_busy": "別の実行中だった",
+    "v.sch_sk_cmdoff": "ここではコマンドがオフ",
+    "v.sch_sk_unclear": "Den がコマンドをたどれなかった",
+    "v.sch_lim_off":
+      "ここでは共有環境のコマンドは自動で実行されません。オンにするには、Den の verify: ブロックにこれを書きます:",
+    "v.sch_lim_unclear":
+      "Den はこのコマンドをたどれないため、自動では実行できません:",
     "v.sch_empty":
       "まだスケジュールはありません。モジュールに {c} を追加すると自動で実行されます。",
     "v.sch_empty_h":

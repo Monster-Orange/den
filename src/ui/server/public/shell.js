@@ -283,6 +283,12 @@
     "v.sch_sk_expired": "its Allow expired",
     "v.sch_sk_window": "its window closed first",
     "v.sch_sk_busy": "another run was going",
+    "v.sch_sk_cmdoff": "commands are off here",
+    "v.sch_sk_unclear": "Den couldn't follow its command",
+    "v.sch_lim_off":
+      "Commands don't run on their own on a shared environment here. To turn them on, set this in Den's verify: block:",
+    "v.sch_lim_unclear":
+      "Den can't follow this command, so it can't run on its own:",
     "v.sch_empty":
       "No schedules yet. Add {c} to a module to run it on its own.",
     "v.sch_empty_h":

@@ -171,6 +171,12 @@
     "v.sch_sk_expired": "su permiso venció",
     "v.sch_sk_window": "su ventana cerró antes",
     "v.sch_sk_busy": "había otra corrida en curso",
+    "v.sch_sk_cmdoff": "los comandos están apagados aquí",
+    "v.sch_sk_unclear": "Den no pudo seguir su comando",
+    "v.sch_lim_off":
+      "Aquí los comandos no corren solos en un entorno compartido. Para activarlos, pon esto en el bloque verify: de Den:",
+    "v.sch_lim_unclear":
+      "Den no puede seguir este comando, así que no puede correr solo:",
     "v.sch_empty":
       "Aún no hay programaciones. Agrega {c} a un módulo para que corra solo.",
     "v.sch_empty_h":
