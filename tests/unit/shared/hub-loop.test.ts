@@ -41,6 +41,12 @@ describe("issue 158: which agents get the loop", () => {
     expect(HUB_DELIVERY_LOOP).toMatch(/status comes from git/);
     expect(HUB_DELIVERY_LOOP).toMatch(/missing is a gap/);
   });
+
+  it("deciding the rest never covers a held action: that is always a person's", () => {
+    expect(HUB_DELIVERY_LOOP).toMatch(
+      /decide the rest yourself\. A held action is always a person's decision\./,
+    );
+  });
 });
 
 describe("issue 158: saving the settings", () => {
@@ -93,6 +99,15 @@ describe("issue 158: saving the settings", () => {
       } as never);
     expect(at()?.deliveryLoop).toBe(true);
     expect(at(false)?.deliveryLoop).toBe(false);
-    expect(() => at("off")).toThrow(/hub\.delivery_loop/);
+    expect(at()?.deliveryLoopIgnored).toBeUndefined();
+  });
+
+  it("a bad hub.delivery_loop never drops Hub: it is ignored (the default, on) and said", () => {
+    const c = readHubConfig({
+      hub: { url: "https://hub.example.test", delivery_loop: "off" },
+    } as never);
+    expect(c?.url).toBe("https://hub.example.test");
+    expect(c?.deliveryLoop).toBe(true);
+    expect(c?.deliveryLoopIgnored).toMatch(/hub\.delivery_loop/);
   });
 });

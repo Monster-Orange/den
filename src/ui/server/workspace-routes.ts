@@ -1169,16 +1169,24 @@ export async function handleWorkspaceRoutes(
           ] as const
         ).filter((k) => body[k] !== undefined);
         // Issue 160: the approval policy is a person's: an agent (or a
-        // command-line token) asks with approval_policy instead.
-        if (policyKeys.length && (agentPrincipalOf(req) || auditActorOf(req)))
+        // command-line token) asks with approval_policy instead. Issue
+        // 158: the Hub delivery loop is a person's too, and no tool sets
+        // it: a person changes it in Project setup.
+        if (policyKeys.length && (agentPrincipalOf(req) || auditActorOf(req))) {
+          const loop = policyKeys.some((k) =>
+            k.startsWith("hub_delivery_loop"),
+          );
           return sendJson(
             res,
             {
               ok: false,
-              error: `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
+              error: loop
+                ? `only a person can change ${policyKeys.join(", ")}, in Project setup`
+                : `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
             },
             403,
           );
+        }
         if (body.editor === null || body.editor === "") {
           delete ws.editor;
         } else if (body.editor !== undefined) {

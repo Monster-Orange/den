@@ -107,6 +107,9 @@ describe("issue 158: the Hub delivery loop's settings", () => {
       AGENT_CLAIM,
     );
     expect(claim.status).toBe(403);
+    // It doesn't send the agent to a tool that can't set it.
+    expect(String(claim.json.error)).not.toMatch(/approval_policy/);
+    expect(String(claim.json.error)).toMatch(/only a person/);
     expect(south().hub_delivery_loop).toBe(false);
     // "As everywhere" and an empty addition clear the project's own.
     await post("/api/workspaces/settings", {

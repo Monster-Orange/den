@@ -678,7 +678,8 @@ export async function agentHub(
   try {
     if (ws) project = projectHubLoop(d.workspaceHubLoop(ws));
   } catch {
-    /* unreadable: as the install */
+    // Unreadable workspaces.yml: as the install. So a project a person
+    // turned off gets the loop back until it reads again (the next start).
   }
   const loop = hubLoopPrompt(h.deliveryLoop !== false, project);
   return {

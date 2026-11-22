@@ -18,6 +18,15 @@ import {
   DEN_SETTING_CATEGORIES,
 } from "../../../src/ui/server/public/settings-registry.js";
 
+describe("issue 158: the loop's addition", () => {
+  it("its field stops at the server's limit, so a long paste isn't a bare 400", () => {
+    const row = DEN_SETTINGS.find(
+      (r) => r.id === "workspace.hub_delivery_loop_extra",
+    ) as { control: { type: string; maxLength?: number } } | undefined;
+    expect(row?.control).toEqual({ type: "text", maxLength: 2000 });
+  });
+});
+
 const cats = DEN_SETTING_CATEGORIES.slice().sort((a, b) => a.order - b.order);
 const ids = (q: string) =>
   sections(cats, DEN_SETTINGS, q).map((s) => [

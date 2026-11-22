@@ -363,6 +363,23 @@ describe("Settings › Hub and doctor", () => {
     expect(await (await fetch(url)).json()).toEqual(st);
   });
 
+  it("issue 158: doctor says a bad hub.delivery_loop was ignored, and never fails for it", () => {
+    const r = hubLines(
+      {
+        configured: true,
+        url: "https://hub.example.test",
+        connected: true,
+        deliveryLoopIgnored:
+          "hub.delivery_loop must be true or false; Den uses the default (on) until it is fixed",
+      },
+      "Acme",
+    );
+    expect(r.problem).toBe(false);
+    expect(r.lines.join("\n")).toContain(
+      "hub loop  ⚠  hub.delivery_loop must be true or false",
+    );
+  });
+
   it("doctor: no row without Hub; a down Hub warns and never fails", () => {
     expect(hubLines({ configured: false }, "Acme")).toEqual({
       lines: [],

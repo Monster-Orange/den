@@ -3473,7 +3473,8 @@ export const DEN_SETTINGS = [
       "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
     keywords: ["hub", "delivery", "loop", "add", "project", "instructions"],
     scope: "workspace",
-    control: { type: "text" },
+    // The server's limit (HUB_LOOP_EXTRA_MAX), so a long paste stops here.
+    control: { type: "text", maxLength: 2000 },
     read: (ctx) => ctx.wsSettings?.hub_delivery_loop_extra ?? "",
     write: (v, ctx) =>
       ctx.saveWorkspace({

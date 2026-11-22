@@ -83,6 +83,8 @@ export interface HubConfig {
    * own setting wins.
    */
   deliveryLoop: boolean;
+  /** Issue 158: why a bad hub.delivery_loop was ignored (doctor says it). */
+  deliveryLoopIgnored?: string;
   /**
    * H5 hub.sync_check_seconds (default 30, at least 5): how often Den
    * checks whether its project list changed, to send it to Hub.
@@ -282,9 +284,13 @@ export function readHubConfig(
   const at = h.allow_tools;
   if (at !== undefined && at !== null && typeof at !== "boolean")
     throw new Error("hub.allow_tools must be true or false");
+  // Issue 158: a bad hub.delivery_loop is ignored (the default, on) and
+  // said in doctor; it never drops every agent's Hub connection.
   const dl = h.delivery_loop;
-  if (dl !== undefined && dl !== null && typeof dl !== "boolean")
-    throw new Error("hub.delivery_loop must be true or false");
+  const dlIgnored =
+    dl !== undefined && dl !== null && typeof dl !== "boolean"
+      ? "hub.delivery_loop must be true or false; Den uses the default (on) until it is fixed"
+      : undefined;
   let mcpUrl = `${url}/mcp`;
   if (h.mcp_url !== undefined && h.mcp_url !== null && h.mcp_url !== "") {
     if (typeof h.mcp_url !== "string")
@@ -395,6 +401,7 @@ export function readHubConfig(
     mcpUrl,
     allowTools: at !== false,
     deliveryLoop: dl !== false,
+    ...(dlIgnored ? { deliveryLoopIgnored: dlIgnored } : {}),
     inboxOnStop: ios === "off" ? "off" : "nudge",
     syncCheckSeconds: typeof scs === "number" ? scs : 30,
     namesCheckSeconds: names,
@@ -807,6 +814,8 @@ export type HubStatus =
       allowTools?: boolean;
       /** Issue 158: hub.delivery_loop (Settings › Hub). */
       deliveryLoop?: boolean;
+      /** Issue 158: why a bad hub.delivery_loop was ignored. */
+      deliveryLoopIgnored?: string;
       /** The company's name (Hub's company.name). */
       team?: string;
       /** Its page on Hub, for the deep link. */
@@ -1657,6 +1666,9 @@ async function hubStatusOnce(
     url: cfg.url,
     allowTools: cfg.allowTools,
     deliveryLoop: cfg.deliveryLoop,
+    ...(cfg.deliveryLoopIgnored
+      ? { deliveryLoopIgnored: cfg.deliveryLoopIgnored }
+      : {}),
   };
   if (!cfg.tokenRef && !cfg.tokenSource)
     return {

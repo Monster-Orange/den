@@ -18,8 +18,8 @@ export const HUB_DELIVERY_LOOP =
   " Work that needs a person's agreement starts as a requirement doc in Hub." +
   " Link each doc to its issue in full form (owner/repo#number), and confirm the link is there." +
   " Submit the doc for review in Hub; feedback comes in Hub's threads, and you answer there." +
-  " A build names its issue in the branch, the commits and the pull request; status comes from git, so never edit it by hand." +
-  " Ask a person only for the critical parts; decide the rest yourself." +
+  " A build names its issue in the branch, the commits and the pull request; a build's status comes from git, so never set it by hand." +
+  " Ask a person only for the critical parts; decide the rest yourself. A held action is always a person's decision." +
   " A Hub tool you need that is missing is a gap: say so, never skip the step.";
 
 /** The most a project's own addition may be. */

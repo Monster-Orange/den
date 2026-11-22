@@ -663,6 +663,10 @@ export function hubLines(
       `${title} doctor: Hub`,
       "",
       `  hub  ${good ? "✓" : "⚠"}  ${detail}`,
+      // Issue 158: a bad hub.delivery_loop is ignored, and said here.
+      ...("deliveryLoopIgnored" in st && st.deliveryLoopIgnored
+        ? [`  hub loop  ⚠  ${st.deliveryLoopIgnored}`]
+        : []),
     ],
     problem: false, // a Hub that is down never fails doctor: agents still run
     check: { id: "hub", status: good ? "ok" : "warn", detail },
