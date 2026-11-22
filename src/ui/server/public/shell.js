@@ -403,7 +403,6 @@
     "org.title": "Org: {title}",
     "org.titleId": "Org: {title} ({id})",
     "ws.all": "All active",
-    "ws.focus": "CLI default",
     "ws.hubChip": "Hub: {name}",
     "ws.hubUnseen": "Den Hub can't see {n} repos",
     "ws.hubTip":
@@ -5908,7 +5907,7 @@
       items.push({
         label: it.label,
         checked: !!it.checked,
-        tag: it.focused ? t("ws.focus") : null,
+        // Issue 897: no "CLI default" tag: picking a project sets it.
         title: it.title || null,
         onSelect: function () {
           if (typeof model.onSelect !== "function") return;

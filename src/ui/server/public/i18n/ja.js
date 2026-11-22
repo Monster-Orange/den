@@ -277,7 +277,6 @@
     "org.title": "組織: {title}",
     "org.titleId": "組織: {title} ({id})",
     "ws.all": "すべてのアクティブ",
-    "ws.focus": "CLI の既定",
     "ws.hubChip": "Hub: {name}",
     "ws.hubUnseen": "Den Hub が参照できないリポジトリ: {n} 件",
     "ws.hubTip":
