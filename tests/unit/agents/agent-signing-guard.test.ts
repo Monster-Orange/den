@@ -17,12 +17,13 @@ import * as path from "path";
 import {
   agentGitEnv,
   checkRepoSigning,
+  pinSigningBell,
   repoSigningFixLine,
   setRepoSigning,
 } from "../../../src/shared/agents/git-signing.js";
 import { agentSessionEnv } from "../../../src/shared/agents/runtimes.js";
 import { SIGNING_WORDS, signingWord } from "../../../src/shared/agents/signing-words.js";
-import { pinGit, pinSigningBell } from "../../../src/ui/server/pin-commit.js";
+import { pinGit } from "../../../src/ui/server/pin-commit.js";
 import { runClone } from "../../../src/shared/repo-clone.js";
 import { agentRepoSigningLines } from "../../../src/ui/cli/doctor-command.js";
 

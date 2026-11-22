@@ -42,7 +42,9 @@ export function gitSigningBlock(
     );
   for (const k of Object.keys(raw))
     if (k !== "signing_key")
-      throw new Error(`agents.git.${k}: unknown key (agents.git takes signing_key)`);
+      throw new Error(
+        `agents.git.${k}: unknown key (agents.git takes signing_key)`,
+      );
   const key = (raw as { signing_key?: unknown }).signing_key;
   if (key === undefined || key === null) return undefined;
   if (typeof key !== "string" || !key.trim())
@@ -69,11 +71,20 @@ export function agentGitEnv(
   // Issue 523: no agents key, no signing. The person's commit.gpgsign,
   // tag.gpgsign and user.signingkey are switched off for the agent, and an
   // explicit -S fails (every signer is `false`) rather than sign as them.
+  // With a key, only the ssh signer is left: an agent's `-c gpg.format=
+  // openpgp` or x509 finds `false`, not the person's gpg.
+  //
+  // git verifies with the same programs it signs with (there is no
+  // separate verify setting), so an agent's verify-commit, verify-tag and
+  // merge.verifySignatures fail for OpenPGP and x509 signatures, and with
+  // no key for ssh ones too. Signing as the person is the worse failure.
   const pairs: [string, string][] = git
     ? [
         ["gpg.format", "ssh"],
         ["user.signingkey", git.signingKey],
         ["commit.gpgsign", "true"],
+        ["gpg.program", "false"],
+        ["gpg.x509.program", "false"],
       ]
     : [
         ["commit.gpgsign", "false"],
@@ -95,8 +106,11 @@ export function agentGitEnv(
 
 /** What the person runs once so GitHub shows the agents' commits Verified. */
 export function signingKeyAddLine(git: AgentGitSettings): string {
-  return `gh ssh-key add ${JSON.stringify(`${git.signingKey}.pub`)} --type signing --title "Den agents"`;
+  return `gh ssh-key add ${sq(`${git.signingKey}.pub`)} --type signing --title "Den agents"`;
 }
+
+/** One shell word in single quotes: $ and backticks stay text. */
+const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 export interface SigningCheck {
   ok: boolean;
@@ -158,10 +172,18 @@ export function checkAgentSigning(
       });
     const steps: [string, string[]][] = [
       ["git init", ["init", "-q", repo]],
-      ["a signed commit", ["commit", "-q", "--allow-empty", "-m", "Den: signing check"]],
+      [
+        "a signed commit",
+        ["commit", "-q", "--allow-empty", "-m", "Den: signing check"],
+      ],
       [
         "git verify-commit",
-        ["-c", `gpg.ssh.allowedSignersFile=${allowed}`, "verify-commit", "HEAD"],
+        [
+          "-c",
+          `gpg.ssh.allowedSignersFile=${allowed}`,
+          "verify-commit",
+          "HEAD",
+        ],
       ],
     ];
     for (const [what, args] of steps) {
@@ -178,7 +200,10 @@ export function checkAgentSigning(
         };
       }
     }
-    return { ok: true, detail: `commits sign with ${git.signingKey} and verify` };
+    return {
+      ok: true,
+      detail: `commits sign with ${git.signingKey} and verify`,
+    };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -188,9 +213,7 @@ export function checkAgentSigning(
 const GIT_CONFIG_ENV = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/;
 
 /** `env` without any GIT_CONFIG_* override: only the config files speak. */
-export function withoutGitConfigEnv(
-  env: NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv {
+export function withoutGitConfigEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(env).filter(([k]) => !GIT_CONFIG_ENV.test(k)),
   );
@@ -250,13 +273,44 @@ export function effectiveSigning(
 /** Where a setting came from, in git's own words ("-c/env" for command). */
 const scopeOf = (s: Setting) => (s.scope === "command" ? "-c/env" : s.scope);
 
-/** The line that gives `repo` the agents' key as its own config. */
+/**
+ * The line that gives the worktree `repo` the agents' key. It writes that
+ * worktree's own config (`--worktree`), never the repo's shared
+ * .git/config, which the person's other checkouts read too.
+ */
 export function repoSigningFixLine(
   repo: string,
   git: AgentGitSettings,
 ): string {
-  const r = JSON.stringify(repo);
-  return `git -C ${r} config gpg.format ssh && git -C ${r} config user.signingkey ${JSON.stringify(git.signingKey)}`;
+  const g = `git -C ${sq(repo)} config`;
+  return [
+    `${g} extensions.worktreeConfig true`,
+    `${g} --worktree gpg.format ssh`,
+    `${g} --worktree user.signingkey ${sq(git.signingKey)}`,
+  ].join(" && ");
+}
+
+/**
+ * Whether `repo` is a linked worktree (`git worktree add`), not the
+ * repo's main checkout: its --worktree config is its own.
+ */
+export function isLinkedWorktree(
+  repo: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const r = spawnSync(
+    "git",
+    ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"],
+    { cwd: repo, env, encoding: "utf8", timeout: 20_000 },
+  );
+  if (r.status !== 0) return false;
+  const [dir, common] = (r.stdout ?? "").trim().split("\n");
+  return !!dir && !!common && path.resolve(dir) !== path.resolve(common);
+}
+
+/** Whether `repo`'s config signs commits or tags at all. */
+export function signsAtAll(e: EffectiveSigning): boolean {
+  return e.commitSign?.value === "true" || e.tagSign?.value === "true";
 }
 
 function sameKey(value: string, git: AgentGitSettings): boolean {
@@ -273,6 +327,28 @@ function sameKey(value: string, git: AgentGitSettings): boolean {
 export interface SigningRefusal {
   code: "noKey" | "notAgentsKey";
   vars: { repo: string; settings: string; fix?: string };
+}
+
+/**
+ * Issue 523: the bell's own line for a pin commit refused for its signing
+ * key, and that line's placeholders.
+ */
+export function pinSigningBell(signing: SigningRefusal): {
+  key: "bell.m.pinSigningNoKey" | "bell.m.pinSigningRefused";
+  vars: Record<string, string>;
+} {
+  const v = signing.vars;
+  return {
+    key:
+      signing.code === "noKey"
+        ? "bell.m.pinSigningNoKey"
+        : "bell.m.pinSigningRefused",
+    vars: {
+      repo: v.repo,
+      settings: v.settings,
+      ...(v.fix ? { fix: v.fix } : {}),
+    },
+  };
 }
 
 export type RepoSigningCheck =

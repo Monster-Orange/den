@@ -12,6 +12,7 @@
 
 // Issue 814: first, before anything writes to the state folder.
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
+import { pinSigningBell } from "../../shared/agents/git-signing.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
@@ -4880,17 +4881,11 @@ function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
       case "commit_failed":
         // Issue 523: refused for its signing key: the bell's own words.
         if (step.signing) {
-          const sv = step.signing.vars;
+          const bell = pinSigningBell(step.signing);
           add(
             `${t} ${v}: ${t} didn't commit its pin: ${step.why}`,
-            step.signing.code === "noKey"
-              ? "bell.m.pinSigningNoKey"
-              : "bell.m.pinSigningRefused",
-            {
-              repo: sv.repo,
-              settings: sv.settings,
-              ...(sv.fix ? { fix: sv.fix } : {}),
-            },
+            bell.key,
+            bell.vars,
           );
           return;
         }

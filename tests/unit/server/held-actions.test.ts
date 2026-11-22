@@ -295,7 +295,9 @@ describe("repo_clone's Allow card and the agents' signing key (issue 523)", () =
       expect(signed.detailKeys?.[at]?.key).toBe("ap.det.repo_clone.sign");
       const plain = await card();
       expect(plain.details.join("\n")).not.toMatch(/signing key/);
-      expect((plain.detailKeys ?? []).map((k) => k?.key)).not.toContain("ap.det.repo_clone.sign");
+      expect((plain.detailKeys ?? []).map((k) => k?.key)).not.toContain(
+        "ap.det.repo_clone.sign",
+      );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

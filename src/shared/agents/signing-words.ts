@@ -22,7 +22,9 @@ export type SigningWord =
   | "doctor.head"
   | "doctor.unsigned"
   | "doctor.thenSet"
-  | "doctor.reposHead";
+  | "doctor.reposHead"
+  | "doctor.repoMain"
+  | "doctor.repoNote";
 
 export const SIGNING_WORDS: Readonly<
   Record<UiLanguage, Readonly<Record<SigningWord, string>>>
@@ -40,6 +42,10 @@ export const SIGNING_WORDS: Readonly<
       "then agents.git.signing_key: ~/.ssh/den_agents in config/local/user.yml",
     "doctor.reposHead":
       "{title} doctor: agent repos that don't sign with the agents' key",
+    "doctor.repoMain":
+      "{repo}: commits there sign with a key that isn't the agents' key ({settings}). It's the repo's main checkout, so Den leaves its config alone: give the agents a worktree of their own (git worktree add).",
+    "doctor.repoNote":
+      "{repo}: its own config doesn't name the agents' key ({settings}), but it signs nothing, so no commit there signs with another key. Agents sign there with the agents' key, which Den sets for each agent.",
   },
   es: {
     noKey:
@@ -55,6 +61,10 @@ export const SIGNING_WORDS: Readonly<
       "después agents.git.signing_key: ~/.ssh/den_agents en config/local/user.yml",
     "doctor.reposHead":
       "{title} doctor: repos de agentes que no firman con la clave de los agentes",
+    "doctor.repoMain":
+      "{repo}: los commits ahí se firman con una clave que no es la de los agentes ({settings}). Es la copia principal del repo, así que Den no cambia su configuración: dale a los agentes su propio worktree (git worktree add).",
+    "doctor.repoNote":
+      "{repo}: su configuración no indica la clave de los agentes ({settings}), pero no firma nada, así que ningún commit ahí se firma con otra clave. Los agentes firman ahí con la clave de los agentes, que Den configura para cada agente.",
   },
   ja: {
     noKey:
@@ -70,6 +80,10 @@ export const SIGNING_WORDS: Readonly<
       "その後 config/local/user.yml に agents.git.signing_key: ~/.ssh/den_agents を追加",
     "doctor.reposHead":
       "{title} doctor: エージェントの鍵で署名しないエージェントのリポジトリ",
+    "doctor.repoMain":
+      "{repo}: ここでのコミットはエージェントの鍵ではない鍵で署名されます（{settings}）。リポジトリのメインのチェックアウトなので、Den はその設定を変更しません。エージェント専用の worktree を作成してください（git worktree add）。",
+    "doctor.repoNote":
+      "{repo}: 自身の設定にエージェントの鍵が指定されていません（{settings}）が、何も署名しないため、ここで他の鍵で署名されるコミットはありません。エージェントは Den がエージェントごとに設定するエージェントの鍵で署名します。",
   },
 };
 

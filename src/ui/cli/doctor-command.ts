@@ -45,6 +45,9 @@ import {
   checkAgentSigning,
   checkRepoSigning,
   repoSigningFixLine,
+  effectiveSigning,
+  isLinkedWorktree,
+  signsAtAll,
   signingKeyAddLine,
   withoutGitConfigEnv,
   type AgentGitSettings,
@@ -1672,12 +1675,31 @@ export function agentRepoSigningLines(
   const checks: OnboardCheck[] = [];
   for (const top of [...tops].sort()) {
     const r = checkRepoSigning(top, git, files, [], lang);
-    if (!r.ok)
+    if (r.ok) continue;
+    const vars = { repo: top, settings: r.refusal.vars.settings };
+    // Agents sign through Den's env whatever the repo says, so a repo
+    // whose own config signs nothing is a note. One that signs with
+    // another key fails: a commit there without Den's env (or the
+    // person's own) would carry it. The fix writes that worktree's own
+    // config; a main checkout is the person's, and gets none.
+    if (!signsAtAll(effectiveSigning(top, files)))
+      checks.push({
+        id: "agents:signing:repo",
+        status: "warn",
+        detail: signingWord(lang, "doctor.repoNote", vars),
+      });
+    else if (isLinkedWorktree(top, files))
       checks.push({
         id: "agents:signing:repo",
         status: "fail",
         detail: r.reason,
         fix: repoSigningFixLine(top, git),
+      });
+    else
+      checks.push({
+        id: "agents:signing:repo",
+        status: "fail",
+        detail: signingWord(lang, "doctor.repoMain", vars),
       });
   }
   if (!checks.length) return { lines: [], problem: false, checks };
@@ -1686,9 +1708,11 @@ export function agentRepoSigningLines(
       "",
       signingWord(lang, "doctor.reposHead", { title }),
       "",
-      ...checks.flatMap((c) => [`  signing  ✗  ${c.detail}`]),
+      ...checks.map(
+        (c) => `  signing  ${c.status === "fail" ? "✗" : "ℹ"}  ${c.detail}`,
+      ),
     ],
-    problem: true,
+    problem: checks.some((c) => c.status === "fail"),
     checks,
   };
 }
