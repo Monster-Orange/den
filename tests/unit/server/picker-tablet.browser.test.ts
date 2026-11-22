@@ -171,12 +171,24 @@ async function open(
   url: string,
   size = { width: 1440, height: 800 },
   touch = false,
-): Promise<{ p: Page; writes: string[] }> {
+  configDelayMs = 0,
+): Promise<{ p: Page; writes: string[]; configServed: Promise<void> }> {
   // An iPad is a touch screen: (pointer: coarse) styles apply.
   const ctx = await browser!.newContext({
     viewport: size,
     ...(touch ? { hasTouch: true, isMobile: true } : {}),
   });
+  // Issue 1044: a slow runner, made certain. The page's own config (its
+  // one company) answers late, after the test has set its two.
+  let served = () => {};
+  const configServed = new Promise<void>((res) => (served = res));
+  if (configDelayMs)
+    await ctx.route("**/api/*/config", async (r) => {
+      await new Promise((res) => setTimeout(res, configDelayMs));
+      await r.continue();
+      served();
+    });
+  else served();
   // A signed-in browser: its picks write (a write needs a sign-in on this
   // machine too, 0.4.71).
   await signIn(ctx, stateDir(), base());
@@ -203,7 +215,7 @@ async function open(
   await p.evaluate(() =>
     (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
   );
-  return { p, writes };
+  return { p, writes, configServed };
 }
 
 const LONG = "a-project-whose-name-is-far-too-long-for-the-menu-row";
@@ -322,16 +334,23 @@ describe.each([
 // project count and, when picked, the mark.
 const LONG_CO = "A company whose name is far too long for the menu row";
 describe.each([
-  [1024, 1366, 1, true],
-  [1180, 820, 1, true],
-  [1366, 1024, 1, true],
-  [1366, 1024, 1, false],
+  [1024, 1366, 1, true, 0],
+  [1180, 820, 1, true, 0],
+  [1366, 1024, 1, true, 0],
+  [1366, 1024, 1, false, 0],
+  // Issue 1044: the page's config answers 2 s late.
+  [1366, 1024, 1, false, 2000],
 ])(
-  "company drop-down at %i x %i (text %f, touch %s) in WebKit",
-  (width, height, zoom, touch) => {
+  "company drop-down at %i x %i (text %f, touch %s, config %i ms late) in WebKit",
+  (width, height, zoom, touch, configDelayMs) => {
     it("the checkmark stays on its row's line", async () => {
       if (!browser) return;
-      const { p } = await open("/services", { width, height }, touch);
+      const { p, configServed } = await open(
+        "/services",
+        { width, height },
+        touch,
+        configDelayMs,
+      );
       if (zoom !== 1) {
         await p.addInitScript((z) => {
           document.addEventListener("DOMContentLoaded", () => {
@@ -385,6 +404,12 @@ describe.each([
         expect(row.labelRight).toBeLessThan(row.rowRight - 8);
         await p.keyboard.press("Escape");
       }
+      // Issue 1044: once the page's own config has landed, the two
+      // companies set above are still a menu (the page's one company never
+      // turns the crumb back into a label under the test).
+      await configServed;
+      await p.evaluate(() => new Promise((res) => setTimeout(res, 300)));
+      expect(await p.locator("#org-crumb[aria-haspopup]").count()).toBe(1);
       await p.context().close();
     }, 60_000);
   },
