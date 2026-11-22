@@ -739,7 +739,10 @@ function askCard(row, sv) {
     `<h4>${esc(t("v.sch_does"))}</h4><ol class="vf-sch-mods">${row.modules
       .map(
         (m) =>
-          `<li><code>${esc(m.name)}</code> <span class="vf-meta">${esc(t(MARK_WORD[m.mark] ?? "v.sch_mk_declared"))}</span></li>`,
+          `<li><code>${esc(m.name)}</code> <span class="vf-meta">${esc(t(MARK_WORD[m.mark] ?? "v.sch_mk_declared"))}</span>` +
+          ` <span class="vf-st vf-${m.writes ? "warn" : "ok"}" data-part="touch">${esc(t(m.writes ? "v.sch_touch_writes" : "v.sch_touch_reads"))}</span>` +
+          (m.cost ? ` <span class="vf-meta">${esc(m.cost)}</span>` : "") +
+          `</li>`,
       )
       .join("")}</ol>` +
     `<p class="vf-meta">${esc(t("v.sch_ask_h", { t: day(until) }))}</p>` +
@@ -750,6 +753,8 @@ function askCard(row, sv) {
 }
 
 const ASKS = new Set(["needs-allow", "plan-changed", "expired", "expiring"]);
+/** States whose flag already carries the symbol and word. */
+const FLAGGED = new Set(["needs-allow", "plan-changed", "expired"]);
 
 function scheduleRow(row, sv, open) {
   const s = SCH_STATE[row.state] ?? SCH_STATE["needs-allow"];
@@ -775,7 +780,7 @@ function scheduleRow(row, sv, open) {
     `</span></div>` +
     `<div class="vf-sch-mods">${row.modules.map((m) => `<code>${esc(m.name)}</code>`).join(" ")}</div>` +
     `<dl class="vf-sch-facts">${facts.map(([k, v]) => `<div><dt>${esc(t(k))}</dt><dd>${v}</dd></div>`).join("")}</dl>` +
-    `<p class="vf-meta" data-part="meta">${allowLine(row)}</p>` +
+    `<p class="vf-meta" data-part="meta">${FLAGGED.has(row.state) ? "" : `${schTag(row.state)} `}${allowLine(row)}</p>` +
     flagOf(row) +
     (row.state === "plan-changed" ? changeCard(row) : "") +
     `<div class="vf-btns">` +

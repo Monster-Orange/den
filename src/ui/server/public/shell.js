@@ -262,6 +262,8 @@
     "v.sch_mk_enforced": "enforced by Den",
     "v.sch_mk_declared": "declared read-only",
     "v.sch_mk_code": "reads the code only",
+    "v.sch_touch_writes": "writes",
+    "v.sch_touch_reads": "reads only",
     "v.sch_mk_service": "declared by the service",
     "v.sch_decline": "Decline",
     "v.sch_decline_h":

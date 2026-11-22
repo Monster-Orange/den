@@ -150,6 +150,8 @@
     "v.sch_mk_enforced": "lo garantiza Den",
     "v.sch_mk_declared": "declarado de solo lectura",
     "v.sch_mk_code": "solo lee el código",
+    "v.sch_touch_writes": "escribe",
+    "v.sch_touch_reads": "solo lee",
     "v.sch_mk_service": "lo declara el servicio",
     "v.sch_decline": "Rechazar",
     "v.sch_decline_h":

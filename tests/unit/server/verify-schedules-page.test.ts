@@ -88,7 +88,12 @@ const SV = {
       words: { kind: "weekly", time: "22:00", days: [2, 5] },
       window: "20:00-06:00",
       modules: [
-        { id: "shop:web/checkout", name: "web/checkout", mark: "enforced" },
+        {
+          id: "shop:web/checkout",
+          name: "web/checkout",
+          mark: "enforced",
+          writes: true,
+        },
         {
           id: "shop:web/devices",
           name: "web/devices",
@@ -166,6 +171,10 @@ describe("issue 214: Schedules (S11)", () => {
     expect(speed).toContain("Every day at 02:00");
     expect(speed).toContain("01:00 to 05:00");
     expect(speed).toMatch(/Allowed until /);
+    // Every state has a symbol and a word, not only the paused ones.
+    expect(speed).toMatch(
+      /<span class="vf-st vf-ok"><span class="vf-mk" aria-hidden="true">✓<\/span>[^<]+<\/span> Allowed until /,
+    );
     expect(speed).toMatch(/data-sch-run="nightly-speed-1a2b3c4d"/);
     expect(speed).not.toMatch(/data-sch-ask=/);
 
@@ -175,6 +184,7 @@ describe("issue 214: Schedules (S11)", () => {
     expect(code).toContain("Mondays at 03:00");
     expect(code).toContain("Any time");
     expect(code).toContain("Reads code only, so it needs no Allow.");
+    expect(code).toMatch(/<span class="vf-mk" aria-hidden="true">✓<\/span>/);
 
     const devices = rowOf(html, "devices-9c0d1e2f");
     expect(devices).toContain('data-state="plan-changed"');
@@ -194,6 +204,7 @@ describe("issue 214: Schedules (S11)", () => {
       /The Allow expires .+ When it does, this schedule stops until someone allows it again\./,
     );
     expect(prod).toMatch(/data-sch-ask="production-smoke-3a4b5c6d"/);
+    expect(prod).toMatch(/<span class="vf-mk" aria-hidden="true">◔<\/span>/);
     // Never colour alone: a symbol and a word.
     expect(prod).toMatch(
       /<span class="vf-st [^"]*"><span class="vf-mk" aria-hidden="true">✕<\/span>failed<\/span>/,
@@ -212,6 +223,11 @@ describe("issue 214: Schedules (S11)", () => {
     expect(card).toContain("<code>web/checkout</code>");
     expect(card).toContain("enforced by Den");
     expect(card).toContain("declared by the service");
+    // What it will touch: each module says whether it writes.
+    expect(card).toMatch(
+      /<code>web\/checkout<\/code>.*?data-part="touch">writes</s,
+    );
+    expect(card).toMatch(/<code>web\/devices<\/code>.*?data-part="touch">reads only</s);
     expect(card).toMatch(
       /One Allow covers every run of this plan until it changes or expires on .+\./,
     );

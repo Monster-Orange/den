@@ -123,7 +123,13 @@ export interface ScheduleRow {
   cron: string;
   words: CronWords;
   window?: string;
-  modules: { id: string; name: string; mark: string; cost?: string }[];
+  modules: {
+    id: string;
+    name: string;
+    mark: string;
+    writes: boolean;
+    cost?: string;
+  }[];
   shared: boolean;
   codeOnly: boolean;
   needsAllow: boolean;
@@ -157,6 +163,7 @@ function rowOf(
       id: m.id,
       name: m.name,
       mark: m.mark,
+      writes: m.writes === true,
       ...(m.cost ? { cost: m.cost } : {}),
     })),
     shared: s.shared,

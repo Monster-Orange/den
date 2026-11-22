@@ -146,6 +146,8 @@
     "v.sch_mk_enforced": "Den が保証",
     "v.sch_mk_declared": "読み取り専用と宣言",
     "v.sch_mk_code": "コードを読むだけ",
+    "v.sch_touch_writes": "書き込む",
+    "v.sch_touch_reads": "読むだけ",
     "v.sch_mk_service": "サービスが宣言",
     "v.sch_decline": "断る",
     "v.sch_decline_h":
