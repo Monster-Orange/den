@@ -1462,6 +1462,7 @@ import {
 import { product } from "../../shared/product.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -1968,7 +1969,7 @@ const NAMED = new NamedAddressWatch({
   // For doctor: whether it is proven, and when it last answered as this Den.
   onChange: (st) => {
     try {
-      fs.writeFileSync(
+      writeFileAtomic(
         path.join(getStateDir(), ADDRESS_PROOF_FILE),
         JSON.stringify({
           proven: st.proven,

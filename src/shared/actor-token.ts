@@ -28,6 +28,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { AGENT_ACTOR_RE, WORKSPACE_NAME_RE } from "./agent-actor.js";
 import { sessionPaths } from "./sessions/paths.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export const ACTOR_TOKEN_PREFIX = "den_at_";
 /** The agent's session carries its token here (AG spec §5a-env). */
@@ -104,10 +105,7 @@ function load(stateDir: string): StoreFile {
 function save(stateDir: string, data: StoreFile): void {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const file = actorTokensPath(stateDir);
-  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
 }
 
 /**
@@ -381,9 +379,7 @@ export function writeActorTokenFile(
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.chmodSync(dir, 0o700);
   const file = path.join(dir, "token");
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, token + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, token + "\n", { mode: 0o600 });
   return file;
 }
 

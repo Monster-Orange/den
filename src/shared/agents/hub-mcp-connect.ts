@@ -9,6 +9,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { agentFilesDir } from "./records.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export interface HubMcpInit {
   ok: boolean;
@@ -74,9 +75,7 @@ function write(
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = path.join(dir, FILE);
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(v) + "\n", { mode: 0o600 });
-    fs.renameSync(tmp, file);
+    writeFileAtomic(file, JSON.stringify(v) + "\n", { mode: 0o600 });
   } catch {
     // A note that can't be written never stops the agent's call.
   }
