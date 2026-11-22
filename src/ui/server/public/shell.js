@@ -2032,7 +2032,7 @@
       "Asks for a gate slot still waiting on an answer. One more is refused, saying why, until one answers. __DEN_CLI__ gate settings --remote-max-asks 4",
     "set.server.gate_priority_max": "Release priority runs at a time, per kind",
     "set.server.gate_priority_max.d":
-      "A release run a person waits on, marked for release priority, goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
+      "A release run a person waits on, marked for release priority, goes ahead of the other waiting runs of its kind. It never stops a running one. A second ask is refused while the first waits. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
     "set.server.gate_priority_pass":
       "Waiting this long, a marked release run is never passed, in minutes",
     "set.server.gate_priority_pass.d":

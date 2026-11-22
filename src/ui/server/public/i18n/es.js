@@ -1031,7 +1031,7 @@
     "set.server.gate_priority_max":
       "Ejecuciones de versión con prioridad a la vez, por tipo",
     "set.server.gate_priority_max.d":
-      "Una ejecución de versión que una persona espera, marcada con prioridad de versión, pasa delante de las demás que esperan de su tipo. Nunca detiene una que ya se ejecuta. Una segunda espera detrás de la primera. 0 lo desactiva. __DEN_CLI__ gate settings --priority-max 1",
+      "Una ejecución de versión que una persona espera, marcada con prioridad de versión, pasa delante de las demás que esperan de su tipo. Nunca detiene una que ya se ejecuta. Una segunda petición se rechaza mientras la primera espera. 0 lo desactiva. __DEN_CLI__ gate settings --priority-max 1",
     "set.server.gate_priority_pass":
       "Una ejecución de versión marcada que espera tanto nunca se adelanta, en minutos",
     "set.server.gate_priority_pass.d":

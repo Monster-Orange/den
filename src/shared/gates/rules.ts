@@ -19,8 +19,10 @@
  * waiter of its kind, however long it has waited; `priorityPassLimitMinutes`
  * applies only between marked runs (a marked run that has waited past it
  * is never passed; 0: none is). At most `priorityMax` such runs per kind
- * hold priority at a time (the first asked); a later one waits in line as
- * an ordinary run until the one ahead starts, then takes priority. The
+ * hold priority at a time (the first asked). The store refuses a further
+ * marked ask while that many wait (11-21); should more be marked (the cap
+ * lowered), a later one waits in line as an ordinary run until the one
+ * ahead starts, then takes priority. The
  * store records each jump (who, why, what it passed).
  *
  * Issue 803: with classes set (classes.ts), a higher class's waiters go

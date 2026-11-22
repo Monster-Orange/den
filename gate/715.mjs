@@ -6,7 +6,8 @@
 // check starts: a browser holder (ends in ~10 s), an ordinary waiter "a",
 // a release run "first" marked with priority, and an ordinary waiter "b"
 // that asked after it. Then the bed's `gate status` (text and --json), and
-// a real `gate run --priority release` ("second"). It reads the slot log
+// a real `gate run --priority release` ("second"), which is refused while
+// "first" waits (11-21 ruling: never queued). It reads the slot log
 // the bed's CLI wrote. Teardown stops its sleeps and removes the folder.
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -16,7 +17,7 @@ import * as path from "path";
 export const issue = 715;
 export const clauses = [
   "a release run marked with priority goes to the front of its kind's queue, never ahead of a holder",
-  "a second marked run waits behind the first",
+  "a second marked run is refused while the first waits, and nothing is queued",
   "a run with no priority never jumps",
   "each jump is in the slot log: who asked, why, and which runs it passed",
   "gate status (text and --json) shows the priority holder and its reason",
@@ -128,6 +129,8 @@ export async function run(ctx, state) {
       "1m",
       "--label",
       "715-second",
+      // A browser run on a macOS host names its browser; `true` uses none.
+      "--browser-endpoint=self",
       "--priority",
       "release",
       "--reason",
@@ -140,6 +143,16 @@ export async function run(ctx, state) {
   r.secondCode = second?.code ?? null;
   r.secondMs = Date.now() - t0;
   r.secondErr = String(second?.err ?? "").slice(-300);
+  // The second is refused at once, so wait here (each look settles the
+  // queue) for the holder to end and "first" to start, at most 45 s.
+  const until = Date.now() + 45000;
+  while (Date.now() < until) {
+    const v = parse(
+      (await ctx.cli(["gate", "status", "--json"], { env, timeout: 30000 }))
+        ?.out ?? "",
+    );
+    if ((v?.slots ?? []).some((s) => s.id === ID.first && s.granted)) break;
+  }
   let log = "";
   try {
     log = fs.readFileSync(path.join(state.dir, "events.jsonl"), "utf-8");
@@ -199,6 +212,7 @@ export function expect(cells) {
   }
   const ev = r.events ?? [];
   const second = ev.find((e) => e.label === "715-second")?.id;
+  const refused = /already waiting/.test(r.secondErr ?? "");
   const granted = ev.filter((e) => e.event === "granted").map((e) => e.id);
   const at = (event, id) =>
     ev.find((e) => e.event === event && e.id === id)?.at;
@@ -207,8 +221,6 @@ export function expect(cells) {
   const firstIn = at("granted", ID.first);
   const pri = ev.filter((e) => e.event === "priority");
   const priFirst = pri.find((e) => e.id === ID.first);
-  const priSecond = pri.find((e) => e.id === second);
-  const waits = ev.find((e) => e.event === "priority-waits" && e.id === second);
   const order = `granted in order: ${granted.join(", ") || "none"}; waiting at the start: ${(r.waitOrder ?? []).join(", ")}; gate run --priority exited ${r.secondCode}${r.secondCode ? ` (${r.secondErr})` : ""} after ${Math.round((r.secondMs ?? 0) / 1000)} s`;
   return [
     {
@@ -225,14 +237,11 @@ export function expect(cells) {
     {
       clause: clauses[1],
       ok:
-        !!second &&
-        r.secondCode === 0 &&
-        Array.isArray(waits?.behind) &&
-        waits.behind.includes(ID.first) &&
-        granted.indexOf(second) === granted.indexOf(ID.first) + 1 &&
-        (granted.indexOf(ID.a) === -1 ||
-          granted.indexOf(ID.a) > granted.indexOf(second)),
-      detail: `${order}; priority-waits behind: ${JSON.stringify(waits?.behind ?? null)}`,
+        r.secondCode === 2 &&
+        refused &&
+        !second &&
+        (r.secondMs ?? Infinity) < 30000,
+      detail: `${order}; the second's log rows: ${second ? "written" : "none"}; its error: ${r.secondErr ?? ""}`,
       evidence: ["715-events.json"],
     },
     {
@@ -250,9 +259,7 @@ export function expect(cells) {
         priFirst?.reason === WHY_FIRST &&
         !!priFirst?.by &&
         (priFirst?.passed ?? []).includes(ID.a) &&
-        priSecond?.reason === WHY_SECOND &&
-        !!priSecond?.by &&
-        (priSecond?.passed ?? []).includes(ID.a),
+        !pri.some((e) => e.reason === WHY_SECOND),
       detail: `priority rows: ${JSON.stringify(pri)}`,
       evidence: ["715-events.json"],
     },

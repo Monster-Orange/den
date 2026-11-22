@@ -998,7 +998,7 @@
     "set.server.gate_priority_max":
       "種類ごとに同時に順番を飛ばせるリリース実行",
     "set.server.gate_priority_max.d":
-      "人が待っていて、リリース優先の印が付いたリリース実行は、同じ種類の待機中の実行より先に進みます。実行中のものを止めることはありません。2 つ目は 1 つ目の後ろで待ちます。0 でオフになります。__DEN_CLI__ gate settings --priority-max 1",
+      "人が待っていて、リリース優先の印が付いたリリース実行は、同じ種類の待機中の実行より先に進みます。実行中のものを止めることはありません。1 つ目が待っている間、2 つ目の依頼は断られます。0 でオフになります。__DEN_CLI__ gate settings --priority-max 1",
     "set.server.gate_priority_pass":
       "この時間待った印付きのリリース実行は追い越されない（分）",
     "set.server.gate_priority_pass.d":

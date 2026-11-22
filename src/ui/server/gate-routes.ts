@@ -64,6 +64,7 @@ import { product } from "../../shared/product.js";
 import {
   GateFullError,
   GatePriorityRefused,
+  GatePriorityWaiting,
   type GateStore,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
@@ -222,6 +223,13 @@ async function askAndWait(
       ...(a.browserEndpoint ? { browserEndpoint: a.browserEndpoint } : {}),
     });
   } catch (err) {
+    // Issue 715: one marked run of the kind already waits.
+    if (err instanceof GatePriorityWaiting)
+      return sendJson(
+        res,
+        { ok: false, code: "priority_waiting", error: err.message },
+        409,
+      );
     if (err instanceof GatePriorityRefused)
       return sendJson(
         res,

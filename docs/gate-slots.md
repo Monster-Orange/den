@@ -117,8 +117,9 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 - It goes ahead of every plain waiting run of its kind, however long that
   run has waited.
 - One such run per kind has priority at a time (`priority_max`, default 1).
-  A second waits behind the first, then takes priority once the first
-  starts.
+  A second ask is refused while the first waits, from the same caller or
+  any other, and nothing is queued: ask again once the first starts, or
+  ask without priority to wait in line.
 - Between marked runs only: it never passes another marked run that has
   waited `priority_pass_limit_minutes`. The default, 0, means it never
   passes another marked run.

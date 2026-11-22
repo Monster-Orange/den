@@ -617,6 +617,20 @@ describe("a runner asks for release priority (issue 739)", () => {
     expect(store.events().some((e) => e.event === "priority")).toBe(false);
   });
 
+  it("4. a second marked ask while one waits: 409, nothing queued (issue 715)", async () => {
+    const t = await serve();
+    const { store, tokens, call } = t;
+    const { token } = tokens.create("ci-linux");
+    const h = local(t, "holder");
+    const first = await ask(call, token, { priority: "release", reason: "r1" });
+    expect(first.json).toMatchObject({ ok: true, granted: false });
+    t.advance(1);
+    const again = await ask(call, token, { priority: "release", reason: "r2" });
+    expect([again.status, again.json.code]).toEqual([409, "priority_waiting"]);
+    expect(store.list()).toHaveLength(2);
+    expect(store.list()[0]?.id).toBe(h.id);
+  });
+
   it("the setting is checked like the others", () => {
     expect(checkGatePatch({ priority_runners: 0 })).toEqual({
       ok: true,

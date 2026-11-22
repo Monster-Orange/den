@@ -327,6 +327,12 @@ function browserEndpointOf(kind: GateKind, v: string | undefined) {
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
 
+/**
+ * Issue 715: a second priority ask while the cap's worth of marked runs of
+ * that kind already wait (any caller, the same one too). Nothing is queued.
+ */
+export class GatePriorityWaiting extends GatePriorityRefused {}
+
 /** Issue 795: a yield that isn't the owner's, or isn't waiting to waiting. */
 export class GateYieldRefused extends Error {}
 
@@ -733,6 +739,7 @@ export class GateStore {
         throw new GatePriorityRefused(
           "only a person may ask for release priority on this machine (Settings, gate priority)",
         );
+      if (reason) this.refuseSecondPriority(o.kind);
       const e: GateEntry = {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
@@ -818,6 +825,7 @@ export class GateStore {
         throw new GatePriorityRefused(
           "CI runners may not ask for release priority on this machine (Settings, gate priority); ask without it to wait in the normal queue",
         );
+      if (reason) this.refuseSecondPriority(o.kind);
       // One token's live slots are capped (a Setting): a retrying or
       // runaway runner can't fill the queue.
       const max = this.settings().remoteMaxSlots;
@@ -849,6 +857,27 @@ export class GateStore {
       writeFileAtomic(this.file(e.id), JSON.stringify(e), { exclusive: true });
       return this.afterAsk(e);
     });
+  }
+
+  /**
+   * Issue 715: at most `priorityMax` marked runs of a kind wait at once. A
+   * further ask is refused (never queued): the caller asks again once one
+   * starts, or asks without priority to wait in line. 0 (priority off):
+   * a marked ask waits as an ordinary run, as before. Call under the lock.
+   */
+  private refuseSecondPriority(kind: GateKind): void {
+    const max = Math.max(0, Math.floor(this.settings().priorityMax));
+    if (max <= 0) return;
+    const waiting = this.settle().filter(
+      (x) => x.kind === kind && !x.grantedAt && x.priority,
+    );
+    if (waiting.length < max) return;
+    const first = waiting.sort(
+      (a, b) => Date.parse(a.askedAt) - Date.parse(b.askedAt),
+    )[0]!;
+    throw new GatePriorityWaiting(
+      `a release-priority ${kind} run is already waiting ("${first.label}", ${first.who}); ask again once it starts, or ask without priority to wait in line`,
+    );
   }
 
   private leaseEnd(): string {

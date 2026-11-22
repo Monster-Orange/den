@@ -2,7 +2,8 @@
  * Issue 715: `gate run --priority release --reason "<why>"`. A release run
  * a person waits on goes to the front of its kind's queue, never ahead of
  * a holder; at most `priority_max` (default 1) such runs per kind hold
- * priority at a time, and a second waits behind the first; an unmarked run
+ * priority at a time, and a second ask is refused while one waits (the
+ * rules still order more, should the cap be lowered); an unmarked run
  * never jumps; a waiter past `priority_pass_limit_minutes` is not passed
  * again; every jump is in the slot log (who, why, what it passed).
  * The store lives in a temp dir; no Den runs and no suite runs.
@@ -206,26 +207,60 @@ describe("the store's audit (issue 715)", () => {
     expect(s.get(a.id)?.grantedAt).toBeUndefined();
   });
 
-  it("a second marked ask waits behind the first, and says so", () => {
+  it("a second marked ask is refused while the first waits, from the same caller or another; nothing is queued", () => {
     const s = store();
     const h = ask(s, "holder");
     const a = ask(s, "a");
-    const p1 = ask(s, "rc1", { reason: "first" });
-    const p2 = ask(s, "rc2", { reason: "second" });
-    const waits = s.events().find((e) => e.event === "priority-waits");
-    expect(waits).toMatchObject({
-      id: p2.id,
-      behind: [p1.id],
-      reason: "second",
-    });
-    expect(s.events().filter((e) => e.event === "priority")).toHaveLength(1);
-    expect(s.list().map((e) => e.id)).toEqual([h.id, p1.id, a.id, p2.id]);
+    const p1 = ask(s, "rc1", { reason: "first", actor: "agent:rel" });
+    const before = s.events().length;
+    // The same caller asks again.
+    expect(() =>
+      ask(s, "rc1-again", { reason: "again", actor: "agent:rel" }),
+    ).toThrow(GatePriorityRefused);
+    // Another caller.
+    expect(() => ask(s, "rc2", { reason: "second" })).toThrow(
+      /already waiting.*rc1/,
+    );
+    expect(s.list().map((e) => e.id)).toEqual([h.id, p1.id, a.id]);
+    expect(s.events()).toHaveLength(before);
+    // An ask without priority still waits in line.
+    const b = ask(s, "b");
+    expect(s.list().map((e) => e.id)).toEqual([h.id, p1.id, a.id, b.id]);
+    // Once the first starts, another may ask, and goes first.
     s.release(h.id);
-    // p1 holds; p2 now takes priority, and the log says what it passed.
-    expect(s.list().map((e) => e.id)).toEqual([p1.id, p2.id, a.id]);
+    expect(s.get(p1.id)?.grantedAt).toBeDefined();
+    const p2 = ask(s, "rc2", { reason: "second" });
+    expect(s.list().map((e) => e.id)).toEqual([p1.id, p2.id, a.id, b.id]);
     const rows = s.events().filter((e) => e.event === "priority");
     expect(rows.map((r) => r.id)).toEqual([p1.id, p2.id]);
-    expect(rows[1]).toMatchObject({ passed: [a.id] });
+    expect(rows[1]).toMatchObject({ passed: [a.id, b.id] });
+  });
+
+  it("the cap is per kind, and priority_max sets how many may wait", () => {
+    const s = store();
+    ask(s, "holder");
+    const p1 = ask(s, "rc1", { reason: "first" });
+    // Another kind has its own.
+    const cpu = s.ask({
+      kind: "cpu",
+      who: "Den · repo · a person",
+      label: "rc-cpu",
+      pid: 1,
+      estimateMin: 10,
+      priority: { reason: "cpu" },
+    });
+    expect(cpu.priority?.reason).toBe("cpu");
+    s.writeSettings({ priority_max: 2 });
+    const p2 = ask(s, "rc2", { reason: "second" });
+    expect(() => ask(s, "rc3", { reason: "third" })).toThrow(
+      GatePriorityRefused,
+    );
+    expect(
+      s
+        .list()
+        .filter((e) => e.kind === "browser" && e.priority)
+        .map((e) => e.id),
+    ).toEqual([p1.id, p2.id]);
   });
 
   it("an agent's priority ask is refused when only people may ask", () => {
@@ -244,7 +279,10 @@ describe("the store's audit (issue 715)", () => {
     ask(s, "holder");
     ask(s, "a");
     const p1 = ask(s, "rc1", { reason: "first" });
+    // Two may wait under a cap of 2; lowered to 1, only the first holds.
+    s.writeSettings({ priority_max: 2 });
     const p2 = ask(s, "rc2", { reason: "second" });
+    s.writeSettings({ priority_max: 1 });
     const v = gateView(s, at(10));
     expect(v.slots.find((x) => x.id === p1.id)?.priority).toEqual({
       reason: "first",
@@ -344,6 +382,45 @@ describe("gate run --priority (issue 715)", () => {
       reason: "the person waits",
       by: "a person",
     });
+  });
+
+  it("a second --priority run while one waits: refused, exit 2, nothing queued", async () => {
+    const t = deps();
+    const s = t.d.store;
+    s.ask({
+      kind: "browser",
+      who: "h",
+      label: "holder",
+      pid: 1,
+      estimateMin: 10,
+    });
+    s.ask({
+      kind: "browser",
+      who: "p",
+      label: "rc",
+      pid: 1,
+      estimateMin: 10,
+      priority: { reason: "the person waits" },
+    });
+    const n = s.list().length;
+    expect(
+      await cmdGate(
+        [
+          "run",
+          "--kind",
+          "browser",
+          "--priority",
+          "release",
+          "--reason",
+          "again",
+          "--",
+          "true",
+        ],
+        t.d,
+      ),
+    ).toBe(2);
+    expect(t.err.join("\n")).toMatch(/already waiting/);
+    expect(s.list()).toHaveLength(n);
   });
 
   it("is refused for an agent when only people may ask", async () => {
@@ -476,5 +553,15 @@ describe("gate_slot_request with priority (issue 715)", () => {
       by: "agent:coder",
       reason: "the person reported it",
     });
+    // The same agent asks again while that one waits: refused, not queued.
+    const n = store.list().length;
+    const again = await callTool(
+      "gate_slot_request",
+      { kind: "browser", priority: "release", reason: "again" },
+      ctx(store),
+    );
+    expect(again.isError).toBe(true);
+    expect(again.text).toMatch(/already waiting/);
+    expect(store.list()).toHaveLength(n);
   });
 });
