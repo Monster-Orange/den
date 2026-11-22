@@ -7,7 +7,9 @@
  *   class_map      which class each project, or label pattern, is in:
  *                  "den=lane, label:release*=release, *=other". The first
  *                  label pattern that matches wins, then the project's
- *                  rule, then `*`, else the last class.
+ *                  rule, then `*`, else the last class. A label pattern
+ *                  may be for one project only: "den label:release*=P0r"
+ *                  (a sub-order inside that project's class).
  *   class_windows  a class's window for its long runs:
  *                  "other=22:00-06:00/30" (local time; runs estimated 30
  *                  min or more; without /N, every run of the class).
@@ -30,7 +32,8 @@ export interface GateClasses {
   /** Highest first. */
   order: string[];
   projects: Record<string, string>;
-  labels: { pattern: string; class: string }[];
+  /** A label pattern, for every project or (issue 803) only `project`. */
+  labels: { pattern: string; class: string; project?: string }[];
   fallback: string;
   windows: Record<string, GateWindow>;
 }
@@ -75,8 +78,21 @@ export function parseClassMap(s: string): MapRule[] | string {
     const key = it.slice(0, at).trim();
     const cls = it.slice(at + 1).trim();
     if (at < 1 || !NAME.test(cls))
-      return `"${it}" is not <project>=<class>, label:<pattern>=<class> or *=<class>`;
-    if (key.startsWith("label:")) {
+      return `"${it}" is not <project>=<class>, label:<pattern>=<class>, <project> label:<pattern>=<class> or *=<class>`;
+    // Issue 803: "<project> label:<pattern>" is for that project only.
+    const scoped = /^(\S+)\s+label:(.*)$/.exec(key);
+    if (scoped) {
+      const pattern = scoped[2]!.trim();
+      if (!pattern || pattern.length > 120)
+        return `"${it}" needs a label pattern`;
+      if (scoped[1]!.length > 120) return `"${it}": the project name is long`;
+      // "* label:<pattern>" is every project, as "label:<pattern>" is.
+      out.push(
+        scoped[1] === "*"
+          ? { label: pattern, class: cls }
+          : { project: scoped[1]!, label: pattern, class: cls },
+      );
+    } else if (key.startsWith("label:")) {
       const pattern = key.slice(6).trim();
       if (!pattern || pattern.length > 120)
         return `"${it}" needs a label pattern`;
@@ -153,7 +169,12 @@ export function readClasses(
   if (typeof rules !== "string")
     for (const r of rules) {
       if (!known.has(r.class)) continue;
-      if (r.label) c.labels.push({ pattern: r.label, class: r.class });
+      if (r.label)
+        c.labels.push({
+          pattern: r.label,
+          class: r.class,
+          ...(r.project ? { project: r.project } : {}),
+        });
       else if (r.project === "*") c.fallback = r.class;
       else if (r.project && !(r.project in c.projects))
         c.projects[r.project] = r.class;
@@ -170,7 +191,10 @@ export function classOf(
   c: GateClasses | null | undefined,
 ): string | undefined {
   if (!c) return undefined;
-  const l = c.labels.find((x) => glob(x.pattern).test(e.label));
+  const l = c.labels.find(
+    (x) =>
+      (!x.project || x.project === e.project) && glob(x.pattern).test(e.label),
+  );
   if (l) return l.class;
   if (e.project && Object.prototype.hasOwnProperty.call(c.projects, e.project))
     return c.projects[e.project];
