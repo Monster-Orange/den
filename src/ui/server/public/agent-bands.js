@@ -62,7 +62,17 @@ const sortName = (r) =>
     ? r.displayName || r.agent || r.label || ""
     : r.label || r.id || "";
 
-/** The bands in order, each with its rows sorted; empty bands left out. */
+/**
+ * @typedef {Record<string, any>} BandRow A session row from /api/sessions.
+ * @typedef {{ state: string, rows: BandRow[] }} Band
+ */
+
+/**
+ * The bands in order, each with its rows sorted; empty bands left out.
+ * @param {BandRow[] | null | undefined} rows
+ * @param {{ seenNow?: Map<string, unknown> | Set<string> }} [opts]
+ * @returns {Band[]}
+ */
 export function bandsOf(rows, { seenNow } = {}) {
   const items = (rows ?? []).map((r) => ({
     state: rowState(r, seenNow),
@@ -130,6 +140,10 @@ export function chipHtml(r, seenNow) {
 /**
  * The tag before a row's meta: "Server" for the server agent (in every
  * view), else its project's name on All projects; none on one project.
+ */
+/**
+ * @param {BandRow} r
+ * @param {{ all?: boolean, name?: (workspace: string) => string }} [opts]
  */
 export function tagHtml(r, { all = false, name } = {}) {
   if (r.server || r.workspace === SERVER_WS)

@@ -46,6 +46,8 @@ export function personKey(req: http.IncomingMessage): string {
 }
 
 interface RowLike {
+  id?: string;
+  workspace?: string;
   kind?: string;
   agent?: string;
   state?: string;
