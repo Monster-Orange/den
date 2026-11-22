@@ -83,6 +83,8 @@ const AGENTS_MAY: Record<string, string> = {
     "an agent's report stays a draft, stamped as its own, for its person to send",
   "POST /api/agents/self/attention":
     "NT-1: the agent's own waiting mark, by its own token only",
+  "POST /api/agents/self/view":
+    "issue 796: a one-time link to the agent's own read-only view of these pages; it changes nothing",
   "POST /hub/*": "D52: the agent's own Hub calls, with its own Hub token",
   "PUT /hub/*": "as POST",
   "DELETE /hub/*": "as POST",
