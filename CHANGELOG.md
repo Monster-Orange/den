@@ -6,7 +6,11 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.84] - unreleased
 
+This release includes 0.4.83, which was not published.
+
 ### Changed
+
+- Tests: the agents page's stop-ship typing check waits for the reloaded pane's terminal, then for the typing, instead of a fixed pause. (issue 983)
 
 - Gate: a test box can run Den's own browser suites. `gate run --box … --base-url http://127.0.0.1:*` covers the ports the run opens itself, never 80 or 443, and the browser test helper holds a box's pages to the run's base URLs. (issue 991)
 
