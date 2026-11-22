@@ -47,6 +47,11 @@ export interface CreateOptions {
   githubOrg?: string;
   /** Issue 727: `hub.url`, the Hub this Den connects to. Unset: none. */
   hubUrl?: string;
+  /**
+   * Issue 636: `web.test_install: true`: the install is a test bed (its
+   * live checks run against stub agents), marked at install time only.
+   */
+  testBed?: boolean;
 }
 
 const GITHUB_ORG = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -208,8 +213,20 @@ export function renderDistribution(
     "# Who may claim an instance. Each developer runs their own and opens it",
     "# in the browser; a member of this GitHub org connects their GitHub",
     "# account there, on their own computer, and owns that instance.",
-    ...(opts.githubOrg
-      ? ["web:", `  allowed_github_org: ${opts.githubOrg}`]
+    ...(opts.githubOrg || opts.testBed
+      ? [
+          "web:",
+          ...(opts.githubOrg
+            ? [`  allowed_github_org: ${opts.githubOrg}`]
+            : ["  # allowed_github_org: your-github-org"]),
+          ...(opts.testBed
+            ? [
+                "  # A test bed: its live checks run against stub agents, and the",
+                "  # CLI's --test-person acts as the person (set at install time only).",
+                "  test_install: true",
+              ]
+            : []),
+        ]
       : ["# web:", "#   allowed_github_org: your-github-org"]),
     "",
     "# The Hub this Den connects to (Settings › Hub › Connect).",
@@ -381,7 +398,7 @@ export interface CreateOrgOptions {
 }
 
 const CREATE_USAGE =
-  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--github-org <org>] [--url <address>] [--hub <url>] [--yes] [--json]";
+  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--github-org <org>] [--url <address>] [--hub <url>] [--test-bed] [--yes] [--json]";
 
 /** Parse `create` argv (after the word `create`). `cwd` resolves the dir. */
 export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
@@ -389,6 +406,7 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
   const flags: Record<string, string> = {};
   let yes = false;
   let json = false;
+  let testBed = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--yes" || a === "-y") {
@@ -397,6 +415,10 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
     }
     if (a === "--json") {
       json = true;
+      continue;
+    }
+    if (a === "--test-bed") {
+      testBed = true;
       continue;
     }
     const m =
@@ -424,6 +446,7 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
       : {}),
     yes,
     json,
+    ...(testBed ? { testBed } : {}),
     ...(flags.port !== undefined ? { port: parsePortFlag(flags.port) } : {}),
     ...(flags.url !== undefined ? { url: parseUrlFlag(flags.url) } : {}),
     ...(flags.hub !== undefined ? { hubUrl: parseHubFlag(flags.hub) } : {}),
@@ -478,6 +501,10 @@ config/environments/local.json, manifests/ and tests/pillars/.
                          proposes one); else set it next: <cli> web url <address>
   --hub <url>            hub.url: the Hub this Den connects to (https), so
                          Settings › Hub opens on Connect
+  --test-bed             mark the install a test bed (web.test_install: true):
+                         its live checks run against stub agents, and the
+                         CLI's --test-person acts as the person there. Set
+                         at install time only
   --yes, -y              never prompt (for agents)
   --json                 print one JSON object: { ok, dir, cli, existed, port, next }
 

@@ -35,6 +35,8 @@ export interface ParsedCliArgs {
     workspace?: string;
     forceTabs?: boolean;
     skipSecrets?: boolean;
+    /** Issue 636: `--test-person`, a test bed's CLI acting as the person. */
+    testPerson?: boolean;
   };
 }
 
@@ -140,6 +142,10 @@ function applyFlag(
     flags.skipSecrets = true;
     return index + 1;
   }
+  if (token === "--test-person") {
+    flags.testPerson = true;
+    return index + 1;
+  }
   return null;
 }
 
@@ -149,7 +155,8 @@ function validateFlagScopes(parsed: ParsedCliArgs): void {
     if (
       parsed.flags.workspace ||
       parsed.flags.forceTabs !== undefined ||
-      parsed.flags.skipSecrets
+      parsed.flags.skipSecrets ||
+      parsed.flags.testPerson
     ) {
       throw new Error("Global flags require a command");
     }
