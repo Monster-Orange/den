@@ -286,6 +286,7 @@ type Kit = {
   ) => Promise<unknown>;
   watchForms: (root?: unknown) => () => void;
   instantProblems: (html: string) => string[];
+  holdDots: (button: El | null, on?: boolean) => void;
 };
 
 /**
@@ -776,5 +777,39 @@ describe('issue 699: data-instant="<reason>"', () => {
     };
     for (const d of dirs) walk(d);
     expect(bad).toEqual([]);
+  });
+});
+
+describe("issue 698: holdDots, the dots alone (a wait with its own words)", () => {
+  it("holds the button with dots at once and opens no pop-up, however long", async () => {
+    const b = button("Unlock");
+    kit.holdDots(b);
+    expect(held(b)).toBe(true);
+    expect(b.getAttribute("aria-label")).toBe("Unlock");
+    await tick(60_000);
+    expect(dialog()).toBeNull();
+    expect(held(b)).toBe(true);
+  });
+  it("holdDots(button, false) gives the label back, enabled", () => {
+    const b = button("Unlock");
+    kit.holdDots(b);
+    kit.holdDots(b, false);
+    expect(b.disabled).toBe(false);
+    expect(b.getAttribute("aria-busy")).toBeNull();
+    expect(b.querySelectorAll(".bz-dots")).toHaveLength(0);
+    expect(b.textContent).toBe("Unlock");
+    expect(b.getAttribute("aria-label")).toBeNull();
+  });
+  it("a second hold is one set of dots; a page's new label stays on release", () => {
+    const b = button("Sign in");
+    kit.holdDots(b);
+    kit.holdDots(b);
+    expect(b.querySelectorAll(".bz-dots")).toHaveLength(1);
+    b.textContent = "Try again";
+    kit.holdDots(b, false);
+    expect(b.textContent).toBe("Try again");
+  });
+  it("no button: nothing happens", () => {
+    expect(() => kit.holdDots(null)).not.toThrow();
   });
 });

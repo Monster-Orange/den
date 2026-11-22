@@ -534,6 +534,7 @@ describe("issue 479 (1): Open a terminal there, in Den's own terminal", () => {
       "/api/workspaces/north/sessions",
       { cwd: "/opt/a" },
     ]);
-    expect(opened).toEqual(["/agents?project=north&open=s-1"]);
+    // Issue 482: a terminal opens on the Terminals page.
+    expect(opened).toEqual(["/terminals?project=north&open=s-1"]);
   });
 });

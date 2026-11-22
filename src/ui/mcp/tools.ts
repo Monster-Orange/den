@@ -9,6 +9,8 @@
  */
 import * as path from "path";
 import { z } from "zod";
+import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
+import { shotFileDataUrl } from "../../shared/report-shots.js";
 import {
   GatePriorityRefused,
   GateStore,
@@ -769,7 +771,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2980,6 +2982,120 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  // Issue 565: an agent files a report the way the page's Report does.
+  {
+    name: "report",
+    title: "Report an issue",
+    description:
+      "Report an issue with Den, the same as the Report button on every page: it goes to one of this install's report destinations as a GitHub issue filed as your person, with the Den version, the page you name and an optional screenshot. Secrets, tokens, emails, IP addresses and store references are removed first, as on the page. With no `title`: lists the destinations, each with who can see it (Public repository, Private repository, or Visibility not known), and files nothing. To a public destination, or one whose visibility is not known, it always waits for the person's Allow, and they see exactly what will be posted; to a private one Den's approval policy decides. `screenshot` is a PNG file's path on this machine: it is posted as it is (nothing in it is masked), so leave out anything private. An open report with the same title is answered with its number: ask again with `addTo` (a comment there) or `fileNew`." +
+      " A request waits up to " +
+      HELD_WAIT +
+      " for the person (held_writes.wait_minutes); this call waits up to 2 minutes for the answer, then returns the request id for approval_check.",
+    action: true,
+    shape: {
+      title: z
+        .string()
+        .max(200)
+        .optional()
+        .describe("The report's title (none: list the destinations)"),
+      kind: z
+        .enum(["bug", "idea", "question"])
+        .optional()
+        .describe("bug (the default), idea or question"),
+      description: z
+        .string()
+        .max(20_000)
+        .optional()
+        .describe("What happened, what you expected, how to see it again"),
+      page: z
+        .string()
+        .max(2000)
+        .optional()
+        .describe("The page it is about (its path, e.g. /agents)"),
+      repo: z
+        .string()
+        .optional()
+        .describe(
+          "The destination, owner/name (default: the first one the list gives)",
+        ),
+      screenshot: z
+        .string()
+        .optional()
+        .describe("A PNG file's path on this machine, posted with the report"),
+      addTo: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Add it as a comment to this open report instead"),
+      fileNew: z
+        .boolean()
+        .optional()
+        .describe("true: file a new one even though one has the same title"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const title = str(a.title)?.trim();
+      if (!title) {
+        const info = (await ctx.api.get("/api/report")) as {
+          enabled?: unknown;
+          repos?: { repo?: unknown; visibility?: unknown }[];
+        };
+        if (info.enabled === false)
+          return "Reports are turned off here (feedback.enabled: false).";
+        const repos = Array.isArray(info.repos) ? info.repos : [];
+        return repos.length
+          ? `This install's report destinations:\n${repos
+              .map(
+                (r) =>
+                  `- ${String(r.repo)}: ${visibilityWords(r.visibility)}${visibleToEveryone(r.visibility) ? " (a report there waits for the person's Allow)" : ""}`,
+              )
+              .join("\n")}`
+          : "This install has no report destination.";
+      }
+      const kind = str(a.kind) ?? "bug";
+      const args: Args = {
+        kind,
+        title,
+        ...(str(a.description) !== undefined
+          ? { description: str(a.description) }
+          : {}),
+        ...(str(a.page)?.trim() ? { page: str(a.page)!.trim() } : {}),
+        ...(str(a.repo)?.trim() ? { repo: str(a.repo)!.trim() } : {}),
+        ...(typeof a.addTo === "number" ? { addTo: a.addTo } : {}),
+        ...(a.fileNew === true ? { fileNew: true } : {}),
+      };
+      const file = str(a.screenshot)?.trim();
+      if (file) {
+        let shot: string;
+        try {
+          shot = shotFileDataUrl(path.resolve(file));
+        } catch (e) {
+          throw new Refusal(
+            `report: ${(e as Error).message}; nothing was asked.`,
+          );
+        }
+        // Kept as this agent's own draft until the report is filed.
+        const saved = (await ctx.api.get("/api/report/drafts", {}, "POST", {
+          kind,
+          title,
+          description: args.description ?? "",
+          ...(args.repo ? { repo: args.repo } : {}),
+          sections: {},
+          redact: true,
+          shot,
+        })) as { draft?: { id?: unknown } };
+        const id = saved?.draft?.id;
+        if (typeof id !== "string")
+          throw new Refusal(
+            "report: the screenshot wasn't kept; nothing was asked.",
+          );
+        args.draftId = id;
+      }
+      return askPerson("report", "report", args, a, ctx);
     },
   },
 ];
