@@ -71,14 +71,43 @@ export function wsLabel(data, slug) {
  * projectDisplayName in src/shared/workspace-name.ts.
  */
 export function projectLabel(data, slug) {
-  const h = data?.workspaces?.[slug]?.hub_project?.name;
-  return typeof h === "string" && h.trim() ? h.trim() : wsLabel(data, slug);
+  const h = hubNameOf(data, slug);
+  return h || wsLabel(data, slug);
 }
 
 /** Where that name comes from: "hub" or "local". */
 export function projectNameSource(data, slug) {
+  return hubNameOf(data, slug) ? "hub" : "local";
+}
+
+/**
+ * The linked Hub project's name, or "". Issue 646: a link to another Hub
+ * (the server's hubElsewhere) counts as not linked.
+ */
+function hubNameOf(data, slug) {
+  if (data?.hubElsewhere?.[slug]) return "";
   const h = data?.workspaces?.[slug]?.hub_project?.name;
-  return typeof h === "string" && h.trim() ? "hub" : "local";
+  return typeof h === "string" && h.trim() ? h.trim() : "";
+}
+
+/**
+ * Issue 646 (mock v2, part 2): the project header's Hub chip. `hub`: the
+ * shell's Hub status (team, url), or null before it answers. Linked:
+ * {kind: "linked", company, project, host, href}; a link to another Hub:
+ * {kind: "elsewhere", href}; not linked: null.
+ */
+export function hubChipModel(data, slug, hub) {
+  const href = `/settings?project=${encodeURIComponent(slug)}#workspace`;
+  if (data?.hubElsewhere?.[slug]) return { kind: "elsewhere", href };
+  const project = hubNameOf(data, slug);
+  if (!project) return null;
+  return {
+    kind: "linked",
+    company: typeof hub?.team === "string" ? hub.team : "",
+    project,
+    host: String(hub?.url || "").replace(/^https?:\/\//, ""),
+    href,
+  };
 }
 
 /**

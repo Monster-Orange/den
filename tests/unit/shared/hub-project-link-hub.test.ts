@@ -83,6 +83,15 @@ describe("issue 646: a link records its Hub and company", () => {
     expect(m.hubLinkElsewhere("north")).toBeNull();
   });
 
+  it("hubElsewhereMap: the projects whose link points at another Hub (for the page)", () => {
+    bind({ url: TWO, origin: TWO, company: "acme", at: "x" });
+    expect(m.hubElsewhereMap(["north", "south", "nope"])).toEqual({
+      north: true,
+    });
+    bind({ url: ONE, origin: ONE, company: "acme", at: "x" });
+    expect(m.hubElsewhereMap(["north", "south"])).toEqual({});
+  });
+
   it("a link from before (no Hub recorded) is the bound Hub's", () => {
     bind({ url: TWO, origin: TWO, at: "x" });
     // Written by hand, as an older Den wrote it.

@@ -405,6 +405,11 @@
     "ws.all": "All active",
     "ws.focus": "CLI default",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "Connected to {company} ({host}). This project: {name}.",
+    "ws.hubAway": "Another Hub",
+    "ws.hubAwayTip":
+      "This project's link points at another Hub, so it doesn't count here. Relink it in Project setup.",
     "ws.hubUnseen": "Den Hub can't see {n} repos",
     "ws.hubTip":
       "This project's agents file their Hub work in this Hub project. Change it in Project setup.",
@@ -1909,6 +1914,9 @@
     "hubp.whyRepo": "has these repos",
     "hubp.whyName": "same name",
     "hubp.link": "Link",
+    "hubp.elsewhere":
+      "{project} points at “{name}” on another Hub ({host}, {company}). This Den is connected to {nowHost} ({nowCompany}), so the link doesn’t count. Relink it here, or unlink it.",
+    "hubp.relink": "Relink",
     "hubp.unlink": "Unlink",
     "hubp.none": "Your company has no Hub projects yet.",
     "hubp.noOther": "Your company has no other Hub projects to switch to.",
@@ -1967,6 +1975,9 @@
     "hubp.createF": "Hub didn't take the ask. Nothing was created.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
+    "hub.addressMore": "Hub address…",
+    "hub.justConnected":
+      "Connected to {company} ({host}). Not the company you meant?",
     "hub.reconnect": "Reconnect",
     "hubgh.offline": "This install isn't connected to Hub yet.",
     "hubgh.failed": "Den couldn't ask Hub about GitHub access.",
@@ -9176,6 +9187,13 @@
             if (k !== last) {
               last = k;
               setState({ hub: h });
+              // Issue 646: pages that name the company (a project's Hub
+              // chip) redraw from it.
+              try {
+                window.dispatchEvent(new CustomEvent("den:hub", { detail: h }));
+              } catch (e) {
+                /* none */
+              }
             }
           },
           function () {},
@@ -9291,6 +9309,10 @@
   });
 
   window.denShell = {
+    /** Issue 646: the rail's Hub status (team, url, state), or null. */
+    hub: function () {
+      return state.hub;
+    },
     /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
     report: openReport,
     /** FB: My reports (the person's reports and the drafts). */

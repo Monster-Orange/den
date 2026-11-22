@@ -16,6 +16,11 @@ type Mod = {
   hubPickerHtml: (o: Record<string, unknown>, t: typeof tt) => string;
   hubReviewResultHtml: (r: unknown, company: string, t: typeof tt) => string;
   hubHtml: (b: unknown, f: unknown, t: typeof tt) => string;
+  hubProjectHtml: (
+    b: unknown,
+    t: typeof tt,
+    name: (p: { name: string; slug: string }) => string,
+  ) => string;
 };
 const mod = () =>
   import("../../../src/ui/server/public/settings-registry.js") as unknown as Promise<Mod>;
@@ -323,5 +328,84 @@ describe("issue 646: done, and Switch company", () => {
     expect(html).toMatch(
       /data-hub-action="switch" data-hub-switch>\[hubrv.switch\]/,
     );
+  });
+});
+
+describe("issue 646 (mock v2, 3b): Project setup, a link to another Hub", () => {
+  const away = {
+    ok: true,
+    project: "north",
+    hub: null,
+    connected: true,
+    suggestions: [{ ...WEB, why: "repo" }],
+    projects: [WEB, DOCS],
+    uncovered: [],
+    pick: false,
+    elsewhere: {
+      name: "Old Web",
+      origin: "https://old-hub.example.test",
+      company: "old-co",
+      now: { origin: "https://hub.example.test", company: "acme" },
+    },
+  };
+  it("a warn row naming both Hubs, Relink on the connected company's projects, and Unlink", async () => {
+    const { hubProjectHtml } = await mod();
+    const html = hubProjectHtml(away, tt, (p) => p.name);
+    expect(html).toContain('data-hubp-state="elsewhere"');
+    expect(html).toContain(
+      "[hubp.elsewhere:north|Old Web|old-hub.example.test|old-co|hub.example.test|acme]",
+    );
+    // Relink: the picker, on the connected company's projects.
+    expect(html).toContain('data-hubp-action="link">[hubp.relink]');
+    expect(html).toContain(`value="${WEB.id}"`);
+    expect(html).toContain(`value="${DOCS.id}"`);
+    expect(html).toContain('data-hubp-action="unlink"');
+    // Never shown as linked.
+    expect(html).not.toContain('data-hubp-state="linked"');
+  });
+});
+
+describe("issue 646 (mock v2, 1b and 1c): Settings › Hub names the company first", () => {
+  const B = {
+    configured: true,
+    connected: true,
+    state: "connected",
+    url: "https://hub.example.test",
+    team: "Acme Co",
+    role: "owner",
+    login: "sam",
+    label: "den on a box",
+  };
+  it("1b: the company first and big, the line under it, then Switch company, Hub address… and Disconnect beside it", async () => {
+    const { hubHtml } = await mod();
+    const html = hubHtml(B, null, tt);
+    const co = html.indexOf("data-hub-co-name");
+    expect(co).toBeGreaterThan(-1);
+    expect(co).toBeLessThan(html.indexOf("data-hub-addr"));
+    expect(co).toBeLessThan(html.indexOf('class="hub-st"'));
+    expect(html).toContain(
+      "data-hub-co-sub>hub.example.test · [hubrv.youAre:[hubrv.role.owner]] · [hubrv.signedAs:sam]<",
+    );
+    const acts = html.slice(html.indexOf('class="hub-acts"'));
+    expect(acts.indexOf('data-hub-action="switch"')).toBeLessThan(
+      acts.indexOf('data-hub-action="address"'),
+    );
+    expect(acts.indexOf('data-hub-action="address"')).toBeLessThan(
+      acts.indexOf('data-hub-action="disconnect"'),
+    );
+    // The address waits behind Hub address…; the list no longer repeats the company.
+    expect(html).toMatch(/data-hub-addr-wrap hidden/);
+    expect(html).not.toContain("<dt>Company</dt>");
+  });
+
+  it("1c: right after Connect, one line: Connected to <company> (<host>), and Switch company", async () => {
+    const { hubHtml } = await mod();
+    const html = hubHtml(B, { ok: true, message: "Connected." }, tt);
+    expect(html).toContain(
+      "data-hub-just>[hub.justConnected:Acme Co|hub.example.test]",
+    );
+    expect(html.match(/data-hub-action="switch"/g)).toHaveLength(2);
+    // Not on a later visit (no flash).
+    expect(hubHtml(B, null, tt)).not.toContain("data-hub-just");
   });
 });

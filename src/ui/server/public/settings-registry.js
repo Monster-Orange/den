@@ -5493,15 +5493,28 @@ export function hubHtml(b, flash, t = (k) => k) {
         `<a href="${escR(b.teamUrl)}">${escR(b.team)}</a>`
       : escR(b.team)
     : "";
+  // Issue 646 (mock v2, 1b): connected to a known company, it comes first
+  // and big, with "<host> · you are owner|member · signed in as <login>"
+  // under it, and the address waits behind Hub address….
+  const first = state === "connected" && !!team;
+  const host = String(b.url || "").replace(/^https?:\/\//, "");
+  const coSub = [
+    host,
+    b.role === "owner" || b.role === "member"
+      ? t("hubrv.youAre", { role: t(`hubrv.role.${b.role}`) })
+      : "",
+    b.login ? t("hubrv.signedAs", { login: b.login }) : "",
+  ].filter(Boolean);
+  const switchBtn = `<button type="button" class="btn sm" data-hub-action="switch" data-hub-switch>${escR(t("hubrv.switch"))}</button> `;
   const rows = [
     ["Hub", `<span class="den-mono">${escR(b.url || "")}</span>`],
     [
       L("set.ui.hub.status", "Status"),
       `<span class="set-tag ${status[0]}" data-hub-state="${escR(state)}">${escR(status[1])}</span>`,
     ],
-    ...(team ? [[L("set.ui.hub.company", "Company"), team]] : []),
-    ...(b.role ? [[L("set.ui.hub.role", "Role"), escR(b.role)]] : []),
-    ...(b.login
+    ...(team && !first ? [[L("set.ui.hub.company", "Company"), team]] : []),
+    ...(b.role && !first ? [[L("set.ui.hub.role", "Role"), escR(b.role)]] : []),
+    ...(b.login && !first
       ? [[L("set.ui.hub.signedInAs", "Signed in as"), escR(b.login)]]
       : []),
     ...(b.label
@@ -5535,22 +5548,44 @@ export function hubHtml(b, flash, t = (k) => k) {
           )
         : L("set.ui.hub.toolsOff", "Agents ask before each Hub tool runs."),
     )}</p>`;
-  return (
-    flashHtml +
-    hubAddressHtml(b) +
-    `<dl class="hub-st" data-hub>` +
-    rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
-    `</dl>` +
-    (why ? note(why, "data-hub-problem") : "") +
+  const acts =
     `<div class="hub-acts">` +
     (state === "rejected" || b.legacy
       ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
       : // Issue 646: the same Connect flow, to pick another company.
         state === "connected"
-        ? `<button type="button" class="btn sm" data-hub-action="switch" data-hub-switch>${escR(t("hubrv.switch"))}</button> `
+        ? switchBtn
         : "") +
+    (first
+      ? `<button type="button" class="btn sm" data-hub-action="address" aria-expanded="false">${escR(t("hub.addressMore"))}</button> `
+      : "") +
     `<button type="button" class="btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
-    `</div>` +
+    `</div>`;
+  // Issue 646 (mock v2, 1c): right after Connect, one line naming the
+  // company, with Switch company; a later visit has no flash, so no line.
+  const just =
+    first && flash?.ok
+      ? `<p class="set-note ok hub-just" role="status" data-hub-flash="ok" data-hub-just>${escR(t("hub.justConnected", { company: b.team, host }))} ${switchBtn}</p>`
+      : "";
+  const head = first
+    ? `<div class="hub-co" data-hub-co>` +
+      `<div><b class="hub-co-name" data-hub-co-name>${team}</b>` +
+      (coSub.length
+        ? `<p class="set-note" data-hub-co-sub>${escR(coSub.join(" · "))}</p>`
+        : "") +
+      `</div>${acts}</div>`
+    : "";
+  return (
+    (just || flashHtml) +
+    head +
+    (first
+      ? `<div data-hub-addr-wrap hidden>${hubAddressHtml(b)}</div>`
+      : hubAddressHtml(b)) +
+    `<dl class="hub-st" data-hub>` +
+    rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
+    `</dl>` +
+    (why ? note(why, "data-hub-problem") : "") +
+    (first ? "" : acts) +
     // Disconnect asks first, saying what it does (Hub revokes the key).
     `<div class="hub-confirm" data-hub-confirm hidden>` +
     `<p class="set-note set-warn">${escR(L("set.ui.hub.disconnectWarn", "This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again."))}</p>` +
@@ -6577,6 +6612,8 @@ export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
  * (b.owner), else who must allow it. Declined or ended: said, and Create
  * is offered again.
  */
+const hubHostOf = (u) => String(u || "").replace(/^https?:\/\//, "");
+
 export function hubProjectHtml(b, t, name) {
   const ws = String(b?.project ?? "");
   const st = (dot, text) =>
@@ -6693,6 +6730,34 @@ export function hubProjectHtml(b, t, name) {
           }),
         )}</p>`
       : "";
+  // Issue 646 (mock v2, 3b): a link to another Hub counts as not linked:
+  // say both Hubs, Relink on this company's projects, or Unlink.
+  const away =
+    b.elsewhere && typeof b.elsewhere === "object" ? b.elsewhere : null;
+  if (away)
+    return (
+      `<div data-hubp data-hubp-state="elsewhere">` +
+      st(
+        "warn",
+        t("hubp.elsewhere", {
+          project: ws,
+          name: String(away.name || ""),
+          host: hubHostOf(away.origin),
+          company: String(away.company || ""),
+          nowHost: hubHostOf(away.now?.origin),
+          nowCompany: String(away.now?.company || ""),
+        }),
+      ) +
+      picker(
+        t("hubp.linkProject", { project: ws }),
+        t("hubp.relink"),
+        true,
+      ).replace(
+        "</form>",
+        `<button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button></form>`,
+      ) +
+      tail
+    );
   if (b.pick)
     return (
       `<div data-hubp data-hubp-state="pick">` +
@@ -6834,7 +6899,7 @@ function wireHubProject(host, ctx, url, t, b) {
         ctx,
         t,
         String(b?.project ?? ""),
-        b?.hub?.name || b?.hub?.slug || "",
+        b?.hub?.name || b?.hub?.slug || b?.elsewhere?.name || "",
       ).then((yes) => {
         if (yes) put(null);
       }),
@@ -7257,6 +7322,15 @@ function wireHub(host, ctx) {
       connect();
     });
   wireHubAddress(host, ctx, err, busy);
+  // Issue 646 (mock v2, 1b): Hub address… shows the address form.
+  const addrBtn = host.querySelector('[data-hub-action="address"]');
+  const addrWrap = host.querySelector("[data-hub-addr-wrap]");
+  addrBtn?.addEventListener("click", () => {
+    if (!addrWrap) return;
+    addrWrap.hidden = !addrWrap.hidden;
+    addrBtn.setAttribute("aria-expanded", String(!addrWrap.hidden));
+    if (!addrWrap.hidden) addrWrap.querySelector("#hub-addr")?.focus();
+  });
   // Issue 646: Switch company runs the same Connect flow from a connected card.
   host
     .querySelectorAll(

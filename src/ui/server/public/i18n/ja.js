@@ -279,6 +279,11 @@
     "ws.all": "すべてのアクティブ",
     "ws.focus": "CLI の既定",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "{company}（{host}）に接続中。このプロジェクト: {name}。",
+    "ws.hubAway": "別の Hub",
+    "ws.hubAwayTip":
+      "このプロジェクトのリンクは別の Hub を指しているため、ここでは無効です。プロジェクト設定でリンクし直してください。",
     "ws.hubUnseen": "Den Hub が参照できないリポジトリ: {n} 件",
     "ws.hubTip":
       "このプロジェクトのエージェントは Hub の作業をこの Hub プロジェクトに保存します。プロジェクト設定で変更できます。",
@@ -1285,6 +1290,9 @@
     "hubp.whyRepo": "同じリポジトリ",
     "hubp.whyName": "同じ名前",
     "hubp.link": "リンク",
+    "hubp.elsewhere":
+      "{project} は別の Hub（{host}、{company}）の「{name}」を指しています。この Den は {nowHost}（{nowCompany}）に接続しているため、このリンクは無効です。ここでリンクし直すか、リンクを解除してください。",
+    "hubp.relink": "リンクし直す",
     "hubp.unlink": "リンクを解除",
     "hubp.none": "あなたの会社にはまだ Hub のプロジェクトがありません。",
     "hubp.noOther": "切り替えられる Hub のプロジェクトはほかにありません。",
@@ -1346,6 +1354,9 @@
       "Hub は依頼を受け付けませんでした。何も作成されていません。",
     "hub.legacy":
       "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
+    "hub.addressMore": "Hub のアドレス…",
+    "hub.justConnected":
+      "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
     "hub.reconnect": "再接続",
     "hubgh.offline": "このインストールはまだ Hub に接続されていません。",
     "hubgh.failed":

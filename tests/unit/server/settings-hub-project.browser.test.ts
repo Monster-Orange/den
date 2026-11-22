@@ -598,6 +598,85 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     await ctx.close();
   }, 60_000);
 
+  it("issue 646: the chip names the company (the company alone on a phone); a link to another Hub reads Another Hub", async () => {
+    if (skip()) return;
+    const open = async (width: number, away: boolean) => {
+      const ctx = await browser!.newContext({
+        viewport: { width, height: 900 },
+      });
+      await ctx.addInitScript((v) => {
+        try {
+          for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+            localStorage.setItem(k, v);
+        } catch {
+          /* none */
+        }
+      }, latest);
+      const p = await ctx.newPage();
+      p.on("pageerror", (e) => errors.push(e.message));
+      await p.route("**/api/workspaces", async (r) => {
+        const res = await r.fetch();
+        const b = (await res.json()) as {
+          workspaces: Record<string, Record<string, unknown>>;
+          hubElsewhere?: Record<string, true>;
+        };
+        if (b.workspaces?.north) b.workspaces.north.hub_project = BACK;
+        if (away) b.hubElsewhere = { north: true };
+        return r.fulfill({ response: res, body: JSON.stringify(b) });
+      });
+      await p.route(
+        (u) => u.pathname === "/api/hub",
+        (r) =>
+          r.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({
+              configured: true,
+              connected: true,
+              state: "connected",
+              url: "https://hub.example.test",
+              team: "Acme Co",
+            }),
+          }),
+      );
+      await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
+      await p.waitForSelector(".content-header #ws-hub-project");
+      return p;
+    };
+    let p = await open(1440, false);
+    await p.waitForFunction(
+      () =>
+        document.getElementById("ws-hub-project")?.dataset.hubChip ===
+          "linked" && !!document.querySelector("#ws-hub-project .ws-hub-co"),
+    );
+    expect((await p.textContent("#ws-hub-project"))?.trim()).toBe(
+      "Acme Co · Back office",
+    );
+    expect(await p.getAttribute("#ws-hub-project", "title")).toBe(
+      "Connected to Acme Co (hub.example.test). This project: Back office.",
+    );
+    await p.context().close();
+    p = await open(390, false);
+    await p.waitForSelector("#ws-hub-project .ws-hub-co");
+    expect(await p.isVisible("#ws-hub-project .ws-hub-pj")).toBe(false);
+    expect(await p.isVisible("#ws-hub-project .ws-hub-co")).toBe(true);
+    await p.context().close();
+    p = await open(1440, true);
+    expect(await p.getAttribute("#ws-hub-project", "data-hub-chip")).toBe(
+      "elsewhere",
+    );
+    expect((await p.textContent("#ws-hub-project"))?.trim()).toBe(
+      "Another Hub",
+    );
+    expect(await p.getAttribute("#ws-hub-project", "href")).toBe(
+      "/settings?project=north#workspace",
+    );
+    // The project shows its own name, not the old Hub's.
+    expect(await p.textContent(".content-header h2")).not.toContain(
+      "Back office",
+    );
+    await p.context().close();
+  }, 90_000);
+
   it("no page errors", () => {
     expect(errors).toEqual([]);
   });

@@ -295,6 +295,11 @@
     "ws.all": "Todos los activos",
     "ws.focus": "predeterminado de la CLI",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "Conectado a {company} ({host}). Este proyecto: {name}.",
+    "ws.hubAway": "Otro Hub",
+    "ws.hubAwayTip":
+      "El enlace de este proyecto apunta a otro Hub, así que aquí no vale. Vuelve a enlazarlo en Configuración del proyecto.",
     "ws.hubUnseen": "Den Hub no puede ver {n} repos",
     "ws.hubTip":
       "Los agentes de este proyecto archivan su trabajo de Hub en este proyecto de Hub. Cámbialo en Configuración del proyecto.",
@@ -1333,6 +1338,9 @@
     "hubp.whyRepo": "tiene estos repos",
     "hubp.whyName": "mismo nombre",
     "hubp.link": "Vincular",
+    "hubp.elsewhere":
+      "{project} apunta a “{name}” en otro Hub ({host}, {company}). Este Den está conectado a {nowHost} ({nowCompany}), así que el enlace no vale aquí. Vuelve a enlazarlo aquí o desenlázalo.",
+    "hubp.relink": "Volver a enlazar",
     "hubp.unlink": "Desvincular",
     "hubp.none": "Tu empresa aún no tiene proyectos en Hub.",
     "hubp.noOther":
@@ -1394,6 +1402,9 @@
     "hubp.createF": "Hub no aceptó la petición. No se creó nada.",
     "hub.legacy":
       "Esta instalación usa un token antiguo de Hub, guardado donde Den no puede reemplazarlo. Vuelve a conectar para pasar a uno nuevo.",
+    "hub.addressMore": "Dirección del Hub…",
+    "hub.justConnected":
+      "Conectado a {company} ({host}). ¿No es la empresa que querías?",
     "hub.reconnect": "Volver a conectar",
     "hubgh.offline": "Esta instalación aún no está conectada a Hub.",
     "hubgh.failed": "Den no pudo preguntar a Hub por el acceso a GitHub.",

@@ -675,6 +675,14 @@ export async function handleWorkspaceRoutes(
         .map((ws) => [ws, sync.uncoveredFor(ws)] as const)
         .filter(([, u]) => u.length),
     );
+    // Issue 646: links to another Hub or company count as not linked: the
+    // page shows the project's own name and "Another Hub" on its chip.
+    const { hubElsewhereMap } =
+      await import("../../shared/hub-project-link.js");
+    const hubElsewhere = hubElsewhereMap(
+      Object.keys(wsFile.workspaces),
+      () => wsFile,
+    );
     // 0.4.45: this person's project order (Manage projects); the picker
     // lists A to Z without one.
     const { shellPrefs } = await import("./shell-prefs.js");
@@ -685,6 +693,7 @@ export async function handleWorkspaceRoutes(
       codeWorkspacePaths,
       stackNamespaces,
       hubUncovered,
+      hubElsewhere,
       projectOrder,
     });
   }

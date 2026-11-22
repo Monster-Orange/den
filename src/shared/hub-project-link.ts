@@ -135,6 +135,29 @@ export function hubLinkElsewhere(
 }
 
 /**
+ * Issue 646: of `names`, the projects whose link points at another Hub or
+ * company ({ws: true}); the page counts them as not linked. One read.
+ */
+export function hubElsewhereMap(
+  names: string[],
+  read: () => WorkspacesFile = readWorkspacesFile,
+  bound: () => HubBinding | null = boundNow,
+): Record<string, true> {
+  const out: Record<string, true> = {};
+  try {
+    const file = read();
+    const b = bound();
+    for (const ws of names) {
+      const link = parseHubProjectLink(file.workspaces[ws]?.hub_project);
+      if (link && isLinkElsewhere(link, b)) out[ws] = true;
+    }
+  } catch {
+    /* none: nothing marked */
+  }
+  return out;
+}
+
+/**
  * Link project `ws` to a Hub project, or unlink it (null). `by` names who
  * asked, for the audit row (0.4.44): "Settings (person:…)", "cli hub link".
  */
