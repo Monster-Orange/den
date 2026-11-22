@@ -18,28 +18,47 @@ import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
 
-const SCRIPT = path.join(process.cwd(), "scripts", "release-tree-check.mjs");
-/** The script's rule, in a child Node (an .mjs script; Jest here runs CommonJS). */
-function decide(o: unknown): { ok: boolean; line: string } {
+const SCRIPTS = path.join(process.cwd(), "scripts");
+/** One export of an .mjs script, called in a child Node (Jest here runs CommonJS). */
+function call(file: string, fn: string, ...args: unknown[]): unknown {
   const out = execFileSync(
     process.execPath,
     [
       "--input-type=module",
       "-e",
-      `const { decide } = await import(${JSON.stringify("file://" + SCRIPT)});` +
-        "console.log(JSON.stringify(decide(JSON.parse(process.argv[1]))));",
-      JSON.stringify({ required: true, poster: POSTER, ...(o as object) }),
+      `const m = await import(${JSON.stringify("file://" + path.join(SCRIPTS, file))});` +
+        `console.log(JSON.stringify(m[${JSON.stringify(fn)}](...JSON.parse(process.argv[1]))));`,
+      JSON.stringify(args),
     ],
     { encoding: "utf8" },
   );
-  return JSON.parse(out) as { ok: boolean; line: string };
+  return JSON.parse(out);
+}
+/** The script's rule. */
+function decide(o: unknown): { ok: boolean; line: string } {
+  return call("release-tree-check.mjs", "decide", {
+    required: true,
+    poster: POSTER,
+    ...(o as object),
+  }) as { ok: boolean; line: string };
 }
 
 // The bed's poster (DEN_BED_POSTER): an app or bot login, never a person's.
 const POSTER = "bed-poster[bot]";
 const T = "a".repeat(40);
 const OTHER = "b".repeat(40);
-const green = [{ tree: T, sha: "1".repeat(40), run: 101 }];
+// A green run as its `tested` artifact recorded it: the tree CI checked out
+// (on a pull request, the merge of head and base), the selection, the attempt.
+const green = [
+  {
+    tree: T,
+    sha: "1".repeat(40),
+    run: 101,
+    attempt: 1,
+    selection: "all",
+    event: "pull_request",
+  },
+];
 const bed = (
   state: string,
   sha = "2".repeat(40),
@@ -248,13 +267,167 @@ describe("release-tree-check: the bed's status is required only when DEN_BED_REQ
   it("a green merge_group run on the tree counts as tested", () => {
     const r = decide({
       tree: T,
-      green: [{ tree: T, sha: "5".repeat(40), run: 202, event: "merge_group" }],
+      green: [
+        {
+          tree: T,
+          sha: "5".repeat(40),
+          run: 202,
+          attempt: 1,
+          selection: "all",
+          event: "merge_group",
+        },
+      ],
       statuses: [],
       context: "den/bed",
       required: false,
     });
     expect(r.ok).toBe(true);
     expect(r.line).toMatch(/merge_group run 202/);
+  });
+});
+
+describe("release-tree-check: the tree CI tested, with the whole suite (its `tested` artifact)", () => {
+  it("a PR run whose base moved on doesn't count for the head's tree", () => {
+    // CI tested the merge of head and the newer base (MERGE), not the head (T).
+    const MERGE = "c".repeat(40);
+    const r = decide({
+      tree: T,
+      green: [{ ...green[0], tree: MERGE, headTree: T }],
+      statuses: [],
+      context: "den/bed",
+      required: false,
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("an affected-only run is refused: tested means the full suite", () => {
+    const r = decide({
+      tree: T,
+      green: [{ ...green[0], selection: "affected" }],
+      statuses: [],
+      context: "den/bed",
+      required: false,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.line).toMatch(/full suite/);
+  });
+
+  it("the accepted line names the run's attempt, so a re-run to green shows", () => {
+    const r = decide({
+      tree: T,
+      green: [{ ...green[0], attempt: 3 }],
+      statuses: [],
+      context: "den/bed",
+      required: false,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.line).toMatch(/run 101 attempt 3/);
+  });
+
+  it("the no-match line says only the newest 100 runs per event are searched", () => {
+    const r = decide({
+      tree: OTHER,
+      green,
+      statuses: [],
+      context: "den/bed",
+      required: false,
+    });
+    expect(r.line).toMatch(/newest 100 runs per event/);
+  });
+
+  describe("candidates: the runs whose artifact may count", () => {
+    const REPO = "owner-x/repo-x";
+    const BLOB = "d".repeat(40);
+    const run = (id: number, o: Record<string, unknown> = {}) => ({
+      id,
+      path: ".github/workflows/ci.yml",
+      head_sha: String(id).repeat(40).slice(0, 40),
+      head_commit: { tree_id: T },
+      head_repository: { full_name: REPO },
+      run_attempt: 1,
+      ci_blob: BLOB,
+      ...o,
+    });
+    const pick = (runs: unknown[]) =>
+      (
+        call("release-tree-check.mjs", "candidates", runs, T, {
+          repo: REPO,
+          ciBlob: BLOB,
+        }) as { id: number }[]
+      ).map((r) => r.id);
+
+    it("ci.yml's own runs whose head has the tree", () => {
+      expect(
+        pick([
+          run(1),
+          run(2, { path: ".github/workflows/other.yml" }),
+          run(3, { head_commit: { tree_id: OTHER } }),
+        ]),
+      ).toEqual([1]);
+    });
+
+    it("a fork's run is refused: its artifact came from outside", () => {
+      expect(
+        pick([run(4, { head_repository: { full_name: "fork-y/repo-x" } })]),
+      ).toEqual([]);
+    });
+
+    it("a run whose head has another ci.yml is refused: that workflow wrote its artifact", () => {
+      expect(pick([run(5, { ci_blob: "e".repeat(40) })])).toEqual([]);
+      expect(pick([run(6, { ci_blob: null })])).toEqual([]);
+    });
+  });
+
+  it("a run's entry comes from its artifact; no artifact, no entry", () => {
+    const r = { id: 7, head_sha: "7".repeat(40), run_attempt: 2 };
+    expect(
+      call("release-tree-check.mjs", "entryOf", r, {
+        tree: T,
+        selection: "all",
+        attempt: 2,
+        event: "merge_group",
+      }),
+    ).toEqual({
+      tree: T,
+      sha: "7".repeat(40),
+      run: 7,
+      attempt: 2,
+      selection: "all",
+      event: "merge_group",
+    });
+    expect(call("release-tree-check.mjs", "entryOf", r, null)).toBeNull();
+    expect(
+      call("release-tree-check.mjs", "entryOf", r, { selection: "all" }),
+    ).toBeNull();
+  });
+});
+
+describe("ci-force-all: some changes always run the whole suite", () => {
+  const force = (o: object) => call("ci-force-all.mjs", "forceAll", o);
+  it("a pull request that changes package.json's version (a release or dev-tag commit)", () => {
+    expect(
+      force({
+        event: "pull_request",
+        baseVersion: "0.4.83",
+        headVersion: "0.4.84-dev.1",
+      }),
+    ).toBe(true);
+    expect(
+      force({
+        event: "pull_request",
+        baseVersion: "0.4.83",
+        headVersion: "0.4.83",
+      }),
+    ).toBe(false);
+  });
+  it("every merge-queue run", () => {
+    expect(
+      force({
+        event: "merge_group",
+        baseVersion: "1.0.0",
+        headVersion: "1.0.0",
+      }),
+    ).toBe(true);
   });
 });
 
@@ -277,6 +450,36 @@ describe("ci.yml: tests run on the pull request, not again on main", () => {
     expect(ci.jobs.checks.if).toBe(
       "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
     );
+  });
+
+  it("the pr job records what it tested in an artifact named tested", () => {
+    const steps = (ci.jobs.pr.steps ?? []) as {
+      name?: string;
+      uses?: string;
+      if?: string;
+      run?: string;
+      with?: Record<string, unknown>;
+    }[];
+    const rec = steps.find((st) => (st.run ?? "").includes("tested.json"));
+    expect(rec?.run).toContain("git rev-parse 'HEAD^{tree}'");
+    expect(rec?.run).toContain("github.run_attempt");
+    const up = steps.find(
+      (st) =>
+        (st.uses ?? "").startsWith("actions/upload-artifact@") &&
+        st.with?.name === "tested",
+    );
+    expect(up).toBeDefined();
+    expect(up?.with?.path).toBe("tested.json");
+  });
+
+  it("both selections force the whole suite through ci-force-all", () => {
+    for (const job of ["pr", "pr-shards"]) {
+      const runs = JSON.stringify(ci.jobs[job].steps);
+      expect([job, runs.includes("scripts/ci-force-all.mjs")]).toEqual([
+        job,
+        true,
+      ]);
+    }
   });
 
   it("a merge queue's run (merge_group) runs the pull request's tests", () => {

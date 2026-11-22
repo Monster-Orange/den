@@ -11,9 +11,11 @@
  *        versions applied (scripts/release-dry-run.mjs apply, with HEAD's
  *        own versions and changelog date): the release commit changes
  *        versions and the date, nothing else.
- *     2. The tag's tree must have a green ci.yml run on a pull request or in
- *        the merge queue (merge_group: the base and the pull request
- *        together, the tree that lands).
+ *     2. The tag's tree must be the tree a green ci.yml run tested, with the
+ *        whole suite, as its `tested` artifact records it: on a pull request
+ *        or in the merge queue (merge_group: the base and the pull request
+ *        together, the tree that lands). Only this repository's runs, and
+ *        only those whose head has the release's own ci.yml.
  *     3. Only when DEN_BED_REQUIRED is "true": a commit with that tree must
  *        carry the bed's status (context DEN_BED_CONTEXT, default den/bed)
  *        as success, posted by DEN_BED_POSTER (default github-actions[bot]:
@@ -49,13 +51,21 @@ export const DEFAULT_POSTER = "github-actions[bot]";
  * @returns {{ ok: boolean, line: string }}
  */
 export function decide({ tree, green, statuses, context, poster, required }) {
-  const run = green.find((g) => g.tree === tree);
+  // `tree` is the tree each run's `tested` artifact recorded: what CI
+  // checked out (a pull request's merge with its base), not the head's.
+  const same = green.filter((g) => g.tree === tree);
+  if (!same.length)
+    return {
+      ok: false,
+      line: `tree ${tree}: no green pull-request or merge-queue CI run recorded this tree as tested, so it was never tested (only the newest 100 runs per event are searched)`,
+    };
+  const run = same.find((g) => g.selection === "all");
   if (!run)
     return {
       ok: false,
-      line: `tree ${tree}: no green pull-request or merge-queue CI run has this tree, so it was never tested`,
+      line: `tree ${tree}: green CI run(s) ${same.map((g) => g.run).join(", ")} ran only the affected tests, not the full suite`,
     };
-  const ran = `${run.event === "merge_group" ? "merge_group" : "pull-request CI"} run ${run.run} on ${run.sha.slice(0, 8)}`;
+  const ran = `${run.event === "merge_group" ? "merge_group" : "pull-request CI"} run ${run.run} attempt ${run.attempt ?? 1} on ${run.sha.slice(0, 8)}`;
   if (!required)
     return {
       ok: true,
@@ -88,6 +98,46 @@ export function decide({ tree, green, statuses, context, poster, required }) {
   };
 }
 
+/**
+ * The green runs whose `tested` artifact may count for `tree`:
+ * - ci.yml's own runs (by path), with `tree` at their head (on a pull
+ *   request the tested tree is the merge with its base, so the artifact
+ *   decides; this only narrows what is downloaded);
+ * - from this repository, never a fork;
+ * - whose head has the release's own ci.yml (`ci_blob`, attached by the
+ *   caller): the workflow that wrote the artifact is the release's.
+ *
+ * @param {object[]} runs @param {string} tree
+ * @param {{ repo: string, ciBlob: string }} o
+ */
+export function candidates(runs, tree, { repo, ciBlob }) {
+  return runs.filter(
+    (r) =>
+      r.path === ".github/workflows/ci.yml" &&
+      r.head_commit?.tree_id === tree &&
+      String(r.head_repository?.full_name ?? "").toLowerCase() ===
+        String(repo).toLowerCase() &&
+      !!r.ci_blob &&
+      r.ci_blob === ciBlob,
+  );
+}
+
+/**
+ * A run's entry, from its `tested` artifact (tested.json): null when there
+ * is none, or it names no tree. A run with no artifact doesn't count.
+ */
+export function entryOf(run, tested) {
+  if (!tested || typeof tested.tree !== "string" || !tested.tree) return null;
+  return {
+    tree: tested.tree,
+    sha: run.head_sha,
+    run: run.id,
+    attempt: Number(tested.attempt ?? run.run_attempt ?? 1),
+    selection: tested.selection === "all" ? "all" : "affected",
+    event: String(tested.event ?? ""),
+  };
+}
+
 const git = (...a) =>
   execFileSync("git", a, {
     encoding: "utf8",
@@ -97,13 +147,58 @@ const gh = (p) =>
   JSON.parse(
     execFileSync("gh", ["api", p], { encoding: "utf8", maxBuffer: 64 << 20 }),
   );
-const treeOf = (sha) => {
+/** ci.yml's blob at `sha`, fetching the commit when it isn't here; null if none. */
+function blobAt(sha) {
   try {
-    return git("rev-parse", `${sha}^{tree}`);
+    git("cat-file", "-e", `${sha}^{commit}`);
+  } catch {
+    try {
+      git("fetch", "-q", "origin", sha);
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return git("rev-parse", `${sha}:.github/workflows/ci.yml`);
   } catch {
     return null;
   }
-};
+}
+
+/** A run's `tested` artifact (tested.json), parsed; null when it has none. */
+function testedOf(repo, runId) {
+  // the newest: a re-run's attempt writes its own
+  const art = (
+    gh(`repos/${repo}/actions/runs/${runId}/artifacts?name=tested`).artifacts ??
+    []
+  )
+    .filter((a) => a.name === "tested" && !a.expired)
+    .sort((a, b) =>
+      String(b.created_at).localeCompare(String(a.created_at)),
+    )[0];
+  if (!art) return null;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tested-"));
+  try {
+    const zip = path.join(dir, "tested.zip");
+    fs.writeFileSync(
+      zip,
+      execFileSync(
+        "gh",
+        ["api", `repos/${repo}/actions/artifacts/${art.id}/zip`],
+        {
+          maxBuffer: 16 << 20,
+        },
+      ),
+    );
+    return JSON.parse(
+      execFileSync("unzip", ["-p", zip, "tested.json"], { encoding: "utf8" }),
+    );
+  } catch {
+    return null;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /** The newest v<version>-dev.N, by N. */
 export function newestDevTag(version) {
@@ -188,15 +283,22 @@ function main(version) {
     `${tag} (${tagTree}) is the tested candidate; this commit only sets the release's versions`,
   );
   // A pull request's run, or the merge queue's (the base and the pull
-  // request together: the tree that lands).
+  // request together: the tree that lands). Each counts by what its own
+  // `tested` artifact recorded, never by its head's tree.
+  const ciBlob = blobAt("HEAD");
   const green = [];
-  for (const event of ["pull_request", "merge_group"])
-    for (const r of gh(
+  for (const event of ["pull_request", "merge_group"]) {
+    const runs = gh(
       `repos/${repo}/actions/workflows/ci.yml/runs?event=${event}&status=success&per_page=100`,
-    ).workflow_runs) {
-      const tree = r.head_commit?.tree_id ?? treeOf(r.head_sha);
-      if (tree) green.push({ tree, sha: r.head_sha, run: r.id, event });
+    ).workflow_runs;
+    // only runs whose head has the tree are worth a ci.yml lookup
+    for (const r of runs)
+      if (r.head_commit?.tree_id === tagTree) r.ci_blob = blobAt(r.head_sha);
+    for (const r of candidates(runs, tagTree, { repo, ciBlob })) {
+      const e = entryOf(r, testedOf(repo, r.id));
+      if (e) green.push(e);
     }
+  }
   const required = process.env.DEN_BED_REQUIRED === "true";
   const shas = new Set([
     git("rev-parse", `${tag}^{commit}`),

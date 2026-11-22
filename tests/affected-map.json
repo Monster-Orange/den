@@ -1526,7 +1526,7 @@
       "why": "tests that run scripts/release-dry-run.mjs"
     },
     {
-      "when": ["scripts/release-tree-check.mjs"],
+      "when": ["scripts/release-tree-check.mjs", "scripts/ci-force-all.mjs"],
       "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
       "why": "tests that run scripts/release-tree-check.mjs"
     },
