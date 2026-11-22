@@ -21,6 +21,20 @@ past that number. Once they drop to it, the browser run starts.
 den gate settings --cpu-slots-beside-browser 0   # a browser run runs alone
 ```
 
+## More than one browser run on this machine
+
+`local_browser_slots` (default 1) is how many browser runs may hold this
+machine at once, counted the way a test box's slots are. Each browser run
+here is in its own container, so a person may set it higher. A browser run
+on a test box doesn't use one. The cpu runs beside them stay at
+`cpu_slots_beside_browser` in all, however many browser runs hold. With
+more than one, `gate status` guesses a browser waiter's start from the slot
+that frees first.
+
+```sh
+den gate settings --local-browser-slots 2
+```
+
 `gate status`, `gate_slot_status` and the runner route's `place` give a
 waiting run's place in its own kind's line (1 is next).
 

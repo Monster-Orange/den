@@ -187,3 +187,60 @@ describe("issue 751 rule 3: release priority passes every plain waiter", () => {
     expect(ids(queueOrder(es, short, at(100)))).toEqual(["hi", "rel", "plain"]);
   });
 });
+
+describe("local_browser_slots: browser runs this machine holds at once", () => {
+  const TWO = { ...GATE_DEFAULTS, localBrowserSlots: 2 };
+
+  it("defaults to 1: one local browser run at a time, as before", () => {
+    expect(GATE_DEFAULTS.localBrowserSlots).toBe(1);
+    const es = [entry("b1", "browser", 0), entry("b2", "browser", 1)];
+    expect(grants(es, GATE_DEFAULTS, at(2))).toEqual(["b1"]);
+  });
+
+  it("at 2, two local browser waiters start at once", () => {
+    const es = [
+      entry("b1", "browser", 0),
+      entry("b2", "browser", 1),
+      entry("b3", "browser", 2),
+    ];
+    expect(grants(es, TWO, at(3))).toEqual(["b1", "b2"]);
+    expect(assign(es, TWO, at(3))).toEqual([{ id: "b1" }, { id: "b2" }]);
+  });
+
+  it("a browser holder on a test box doesn't use a local slot", () => {
+    const es = [
+      entry("h", "browser", 0, { granted: 0, box: "box1" }),
+      entry("b1", "browser", 1),
+      entry("b2", "browser", 2),
+    ];
+    expect(grants(es, TWO, at(3))).toEqual(["b1", "b2"]);
+    const local = [entry("h", "browser", 0, { granted: 0 }), ...es.slice(1)];
+    expect(grants(local, TWO, at(3))).toEqual(["b1"]);
+  });
+
+  it("the cpu beside cap is one total with two browser holders", () => {
+    const es = [
+      entry("h1", "browser", 0, { granted: 0 }),
+      entry("h2", "browser", 0, { granted: 0 }),
+      entry("c1", "cpu", 1),
+      entry("c2", "cpu", 2),
+      entry("c3", "cpu", 3),
+    ];
+    const s = { ...TWO, cpuSlots: 4 };
+    expect(grants(es, s, at(4))).toEqual(["c1", "c2"]);
+  });
+
+  it("expectedStart spreads browser waiters over the local slots", () => {
+    const es = [
+      entry("h1", "browser", 0, { granted: 0, estimate: 30 }),
+      entry("h2", "browser", 0, { granted: 0, estimate: 60 }),
+      entry("b1", "browser", 1, { estimate: 10 }),
+      entry("b2", "browser", 2, { estimate: 10 }),
+    ];
+    // b1 takes h1's slot at 30; b2 the next free one, at 40 (b1's end).
+    expect(expectedStart(es, "b1", at(5), TWO)).toBe(at(30));
+    expect(expectedStart(es, "b2", at(5), TWO)).toBe(at(40));
+    // At 1, today's math: the latest holder's end plus the waiters ahead.
+    expect(expectedStart(es, "b2", at(5), GATE_DEFAULTS)).toBe(at(70));
+  });
+});

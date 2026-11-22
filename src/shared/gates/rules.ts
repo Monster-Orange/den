@@ -140,6 +140,11 @@ export interface GateSettings {
    * (never more than cpuSlots). 0: a browser run runs alone.
    */
   cpuSlotsBesideBrowser: number;
+  /**
+   * Browser runs that may hold this machine at once (each runs in its own
+   * container), counted as a test box's slots are. Default 1.
+   */
+  localBrowserSlots: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
   /** Issue 621: how often a runner renews its lease, seconds (it is told). */
@@ -185,6 +190,7 @@ export interface GateSettings {
 export const GATE_DEFAULTS: GateSettings = {
   cpuSlots: 2,
   cpuSlotsBesideBrowser: 2,
+  localBrowserSlots: 1,
   overrunMarginMinutes: 15,
   remoteRenewSeconds: 30,
   remoteLapseSeconds: 120,
@@ -215,7 +221,7 @@ type PrioritySettings = Pick<
 
 /** What the queue's order and guesses read (issue 751 adds the beside count). */
 type QueueSettings = PrioritySettings &
-  Pick<GateSettings, "cpuSlotsBesideBrowser">;
+  Pick<GateSettings, "cpuSlotsBesideBrowser" | "localBrowserSlots">;
 
 /** Issue 751: cpu runs that may run beside a browser run here. */
 function besideOf(s: Partial<QueueSettings>): number {
@@ -223,11 +229,18 @@ function besideOf(s: Partial<QueueSettings>): number {
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 }
 
+/** Browser runs that may hold this machine at once (at least 1). */
+function localBrowserOf(s: Partial<QueueSettings>): number {
+  const n = s.localBrowserSlots ?? GATE_DEFAULTS.localBrowserSlots;
+  return Number.isFinite(n) ? Math.max(1, Math.floor(n)) : 1;
+}
+
 /**
  * Issue 751: this machine's room, as one assignment fills it. A browser run
- * starts when no browser run holds here and at most the beside count of
- * cpu runs do; a cpu run starts while fewer than cpuSlots hold, or fewer
- * than the beside count while a browser run holds here. A browser waiter
+ * starts while fewer than localBrowserSlots browser runs hold here and at
+ * most the beside count of cpu runs do; a cpu run starts while fewer than
+ * cpuSlots hold, or fewer than the beside count (one total, however many
+ * browser runs) while any browser run holds here. A browser waiter
  * kept out only by cpu runs (`wait`) caps later cpu grants at the beside
  * count, so the cpu runs drain to it and the browser run starts.
  */
@@ -237,23 +250,27 @@ export function localRoom(
 ) {
   const holders = entries.filter((e) => e.grantedAt);
   // Issue 625: a browser run on a test box doesn't hold this machine.
-  let browser = holders.some((e) => e.kind === "browser" && !e.box);
+  let browser = holders.filter((e) => e.kind === "browser" && !e.box).length;
   let cpu = holders.filter((e) => e.kind === "cpu").length;
   let draining = false;
   const beside = besideOf(s);
+  const browserSlots = localBrowserOf(s);
   const slots = Math.max(1, Math.floor(s.cpuSlots));
   return {
     fits(kind: GateKind): boolean {
-      if (kind === "browser") return !browser && cpu <= beside;
-      return cpu < (browser || draining ? Math.min(slots, beside) : slots);
+      if (kind === "browser") return browser < browserSlots && cpu <= beside;
+      return cpu < (browser > 0 || draining ? Math.min(slots, beside) : slots);
     },
     take(kind: GateKind): void {
-      if (kind === "browser") browser = true;
+      if (kind === "browser") browser++;
       else cpu++;
     },
-    /** A waiter of `kind` that wanted this machine and could not start. */
+    /**
+     * A waiter of `kind` that wanted this machine and could not start: a
+     * browser waiter with a browser slot free waits only on cpu runs.
+     */
     wait(kind: GateKind): void {
-      if (kind === "browser" && !browser) draining = true;
+      if (kind === "browser" && browser < browserSlots) draining = true;
     },
   };
 }
@@ -471,7 +488,10 @@ export function overrun(
  * For a waiter: when it may expect to start (ms): the holders' latest
  * expected end, plus the estimates of the waiters ahead of it. A guess.
  * Issue 751: only its own kind's holders and line count, unless a browser
- * run runs alone (cpuSlotsBesideBrowser 0), when both kinds do.
+ * run runs alone (cpuSlotsBesideBrowser 0), when both kinds do. With
+ * localBrowserSlots above 1, a browser waiter's guess runs that many slots:
+ * each frees at its holder's expected end (or now), and each waiter ahead
+ * takes the slot that frees first.
  */
 export function expectedStart(
   entries: GateEntry[],
@@ -490,11 +510,27 @@ export function expectedStart(
       queue.findIndex((e) => e.id === id),
     ),
   );
-  let free = Math.max(
-    now,
-    ...entries.filter((e) => e.grantedAt && mine(e)).map(expectedEnd),
-  );
-  for (const w of ahead) free += w.estimateMin * 60_000;
+  const n = localBrowserOf(s);
+  let free: number;
+  if (me?.kind === "browser" && n > 1) {
+    const ends = entries
+      .filter((e) => e.grantedAt && e.kind === "browser" && !e.box)
+      .map((e) => Math.max(now, expectedEnd(e)))
+      .sort((a, b) => a - b)
+      .slice(-n);
+    const slots = [...Array<number>(n - ends.length).fill(now), ...ends];
+    for (const w of ahead.filter((x) => x.kind === "browser")) {
+      const i = slots.indexOf(Math.min(...slots));
+      slots[i] = slots[i]! + w.estimateMin * 60_000;
+    }
+    free = Math.min(...slots);
+  } else {
+    free = Math.max(
+      now,
+      ...entries.filter((e) => e.grantedAt && mine(e)).map(expectedEnd),
+    );
+    for (const w of ahead) free += w.estimateMin * 60_000;
+  }
   // Issue 803: held for its window: not before the window opens.
   const win = windowHeld(entries, s.classes, now).get(id);
   return win ? Math.max(free, windowOpens(win, now)) : free;

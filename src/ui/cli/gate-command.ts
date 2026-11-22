@@ -24,6 +24,7 @@
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
  *                            waiting entry go just ahead of it (yours only)
  *   settings [--cpu-slots N] [--cpu-slots-beside-browser N]
+ *            [--local-browser-slots N]
  *            [--overrun-margin-minutes N]
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
@@ -99,7 +100,8 @@ export const GATE_HELP = {
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
-    "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--overrun-margin-minutes N]",
+    "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--local-browser-slots N]",
+    "    [--overrun-margin-minutes N]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
     "    [--priority-max N] [--priority-pass-limit-minutes N] [--priority-agents 0|1]",
@@ -672,6 +674,7 @@ function settings(args: string[], d: GateDeps): number {
     "--remote-max-slots": true,
     "--remote-max-asks": true,
     "--cpu-slots-beside-browser": true,
+    "--local-browser-slots": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
@@ -691,6 +694,7 @@ function settings(args: string[], d: GateDeps): number {
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
     ["--cpu-slots-beside-browser", "cpu_slots_beside_browser"],
+    ["--local-browser-slots", "local_browser_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
     ["--remote-lapse-seconds", "remote_lapse_seconds"],
@@ -731,7 +735,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

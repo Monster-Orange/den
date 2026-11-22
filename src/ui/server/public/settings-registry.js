@@ -2477,6 +2477,20 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_browser: v } }),
   },
   {
+    // Browser runs that may hold this machine at once (each in a container).
+    id: "server.gate_local_browser",
+    category: "server",
+    label: "Browser runs at once on this machine",
+    description:
+      "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
+    keywords: ["gate", "slot", "tests", "queue", "browser", "container"],
+    scope: "user",
+    keys: ["gate_slots.local_browser_slots"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.localBrowserSlots ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { local_browser_slots: v } }),
+  },
+  {
     id: "server.gate_overrun",
     category: "server",
     label: "Test run flagged past its estimate, in minutes",
@@ -2560,7 +2574,8 @@ export const DEN_SETTINGS = [
   {
     id: "server.gate_priority_pass",
     category: "server",
-    label: "Waiting this long, a marked release run is never passed, in minutes",
+    label:
+      "Waiting this long, a marked release run is never passed, in minutes",
     description:
       "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     keywords: ["gate", "slot", "priority", "release", "starvation", "wait"],

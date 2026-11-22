@@ -281,6 +281,7 @@ export function assign(
       Pick<
         GateSettings,
         | "cpuSlotsBesideBrowser"
+        | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
         | "classes"
@@ -337,6 +338,7 @@ export function boxesWanted(
       Pick<
         GateSettings,
         | "cpuSlotsBesideBrowser"
+        | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
         | "classes"
