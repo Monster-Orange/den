@@ -41,6 +41,8 @@ import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { dialogHtml, mountDialog } from "./dialog-den.js";
+import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
+import { projectColour, projectLabel } from "./workspace-picker.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -1562,7 +1564,9 @@ function drawRunnerTokens(host, ctx) {
 /**
  * Issue 625: the test boxes, browser slots on other machines. A person
  * adds one (its name, how Den reaches it, its slots, its hold file and
- * time scale), and removes one. Saving a box of the same name replaces it.
+ * time scale, its window in this machine's time, its recheck time, on or
+ * off), turns one on or off, and removes one. Saving a box of the same
+ * name replaces it.
  * Never a key: ssh names a key file on this machine.
  */
 function drawGateBoxes(host, ctx) {
@@ -1644,6 +1648,21 @@ function drawGateBoxes(host, ctx) {
       "text",
       `maxlength="2048" placeholder="${escHtml(L("set.ui.boxPwsEx", "1.61=ws://box:3931, 1.63=ws://box:3932"))}"`,
     ) +
+    field(
+      "set-box-window",
+      "set.ui.boxWindow",
+      "Window (this machine's time)",
+      "text",
+      'maxlength="11" placeholder="00:00-08:00"',
+    ) +
+    field(
+      "set-box-recheck",
+      "set.ui.boxRecheck",
+      "Recheck after, in seconds",
+      "number",
+      'min="1" max="86400" step="1"',
+    ) +
+    `<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="set-box-on" checked> ${escHtml(L("set.ui.boxOn", "On"))}</label>` +
     `<button type="button" class="den-btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
     `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
@@ -1718,11 +1737,33 @@ function drawGateBoxes(host, ctx) {
                 (x.time_scale && x.time_scale !== 1
                   ? `<span class="set-note">${escHtml(L("set.ui.boxScaleIs", "time ×{n}", { n: x.time_scale }))}</span>`
                   : "") +
+                (x.window
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxWindowIs", "{window}, this machine's time", { window: x.window }))}</span>`
+                  : "") +
+                (x.enabled === false
+                  ? `<span class="set-note set-warn">${escHtml(L("set.ui.boxIsOff", "turned off"))}</span>`
+                  : "") +
+                `<button type="button" class="den-btn sm" data-box-on="${escHtml(x.name)}" data-on="${x.enabled === false ? "1" : "0"}">${escHtml(
+                  x.enabled === false
+                    ? L("set.ui.boxTurnOn", "Turn on")
+                    : L("set.ui.boxTurnOff", "Turn off"),
+                )}</button>` +
                 `<button type="button" class="den-btn sm" data-box-rm="${escHtml(x.name)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
                 `</li>`,
             )
             .join("") +
           `</ul>`;
+        for (const btn of list.querySelectorAll("[data-box-on]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/boxes/enable",
+              {
+                name: btn.getAttribute("data-box-on"),
+                enabled: btn.getAttribute("data-on") === "1",
+              },
+              btn,
+            ).catch(warn);
+          });
         for (const btn of list.querySelectorAll("[data-box-rm]"))
           btn.addEventListener("click", () => {
             post(
@@ -1747,6 +1788,9 @@ function drawGateBoxes(host, ctx) {
       playwright_version: val("#set-box-pwv") || undefined,
       // Issue 1017: "1.61=ws://…, 1.63=ws://…" → version → address.
       playwright_endpoints: pwPairs(val("#set-box-pws")),
+      window: val("#set-box-window") || undefined,
+      recheck_seconds: num("#set-box-recheck"),
+      enabled: host.querySelector("#set-box-on").checked,
     };
     post("/api/gate-slots/boxes", { box }, save).catch(warn);
   });
@@ -3426,8 +3470,18 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Test boxes",
     description:
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
-    keywords: ["gate", "slot", "box", "remote", "browser", "tests", "machine"],
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. A box with a window takes runs only within it, in this machine's time. Outside it, or turned off, Den never contacts the box; a run already on it finishes. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    keywords: [
+      "gate",
+      "slot",
+      "box",
+      "remote",
+      "browser",
+      "tests",
+      "machine",
+      "window",
+      "off",
+    ],
     scope: "user",
     control: { type: "custom", render: drawGateBoxes },
     read: () => null,
@@ -3545,6 +3599,79 @@ export const DEN_SETTINGS = [
     scope: "user",
     control: { type: "custom", render: renderAddress },
     read: () => null,
+  },
+  {
+    // Issue 532: the terminal limits (user.yml sessions.*, over den.yml).
+    id: "server.sessions_max",
+    category: "server",
+    label: "Terminals at once",
+    description:
+      "How many plain terminals may run at once. Agents never count. A new one past this is refused, and says so. __DEN_CLI__ config sessions.max_concurrent=8",
+    keywords: ["terminal", "sessions", "limit", "max_concurrent", "pty"],
+    scope: "user",
+    keys: ["sessions.max_concurrent"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.max_concurrent ?? 8,
+    write: (v, ctx) => ctx.post({ sessions: { max_concurrent: v } }),
+  },
+  {
+    id: "server.sessions_close_grace",
+    category: "server",
+    label: "Terminal close grace",
+    description:
+      "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    keywords: ["terminal", "close", "grace", "kill", "close_grace_seconds"],
+    scope: "user",
+    keys: ["sessions.close_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.close_grace_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_close",
+    category: "server",
+    label: "Terminal close after exit",
+    description:
+      "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    keywords: ["terminal", "pty", "exit", "close", "pty_close_seconds"],
+    scope: "user",
+    keys: ["sessions.pty_close_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.pty_close_seconds ?? 0,
+    write: (v, ctx) => ctx.post({ sessions: { pty_close_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_warn",
+    category: "server",
+    label: "Terminal count warning",
+    description:
+      "Doctor fails when the terminal host holds more terminals than this. __DEN_CLI__ config sessions.pty_warn_above=400",
+    keywords: ["terminal", "pty", "doctor", "warn", "pty_warn_above"],
+    scope: "user",
+    keys: ["sessions.pty_warn_above"],
+    control: { type: "number", min: 1, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.pty_warn_above ?? 400,
+    write: (v, ctx) => ctx.post({ sessions: { pty_warn_above: v } }),
+  },
+  {
+    id: "server.sessions_pty_machine",
+    category: "server",
+    label: "Machine terminal warning, in percent",
+    description:
+      "Doctor fails when the terminals in use on this machine reach this share of its limit. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
+    keywords: [
+      "terminal",
+      "pty",
+      "doctor",
+      "machine",
+      "percent",
+      "pty_machine_warn_percent",
+    ],
+    scope: "user",
+    keys: ["sessions.pty_machine_warn_percent"],
+    control: { type: "number", min: 1, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.sessions?.pty_machine_warn_percent ?? 90,
+    write: (v, ctx) => ctx.post({ sessions: { pty_machine_warn_percent: v } }),
   },
   {
     id: "server.restart",
@@ -3963,6 +4090,26 @@ export const DEN_SETTINGS = [
     scope: "workspace",
     control: { type: "custom", render: renderProjectName },
     read: () => null,
+  },
+  {
+    // Issue 168: the project's colour, the person's own (Manage projects
+    // has the same control on its dot).
+    id: "workspace.colour",
+    category: "workspace",
+    label: "Colour",
+    description:
+      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
+    keywords: ["colour", "color", "hue", "project"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectColour },
+    keys: ["shell.projectColours"],
+    read: () => null,
+    // The control saves through the choice (project-colour-picker.js);
+    // a write sets this project's colour, "" or null for Automatic.
+    write: (v, ctx) =>
+      ctx.post({
+        shell: { projectColours: { [ctx.workspace]: v || null } },
+      }),
   },
   {
     id: "workspace.editor",
@@ -6310,6 +6457,46 @@ function wireHubRename(host, ctx, ws, current, t) {
           if (r !== undefined) return renderProjectName(host, ctx);
         });
     });
+  });
+}
+
+/**
+ * Issue 168: Settings › Project setup › Colour: the project's dot and its
+ * colour's name (Automatic, or the one chosen), and Change colour, which
+ * opens the same choice as Manage projects.
+ */
+export function projectColourHtml(data, slug, t) {
+  const c = projectColour(data, slug);
+  if (!c) return "";
+  const said = chosenColour(data, slug)
+    ? t(`pc.${c}`)
+    : t("pc.autoIs", { colour: t(`pc.${c}`) });
+  return (
+    `<span class="pcp-now" data-pc-now data-pc="${escR(c)}"><span class="den-pc" aria-hidden="true"></span><span data-pc-said>${escR(said)}</span></span> ` +
+    `<button type="button" class="den-btn sm" data-pc-change>${escR(t("pc.change"))}</button>`
+  );
+}
+
+function renderProjectColour(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell.api("GET", "/api/workspaces").then((data) => {
+    host.innerHTML = projectColourHtml(data, ws, t);
+    const btn = host.querySelector("[data-pc-change]");
+    btn?.addEventListener("click", () =>
+      pickProjectColour({
+        slug: ws,
+        name: projectLabel(data, ws),
+        data,
+        opener: btn,
+      }).then((saved) => {
+        if (saved) return renderProjectColour(host, ctx);
+      }),
+    );
   });
 }
 

@@ -20,6 +20,7 @@ describe("shellPrefs", () => {
       dock: false,
       dockHeight: 0,
       projectOrder: [],
+      projectColours: {},
     };
     expect(shellPrefs(undefined)).toEqual({
       pins: [],
@@ -48,6 +49,7 @@ describe("shellPrefs", () => {
       dock: false,
       dockHeight: 0,
       projectOrder: [],
+      projectColours: {},
     });
   });
   it("the runs dock (R16a): collapsed and 170px by default; a stored height outside 60–2000 falls back", () => {
@@ -71,6 +73,7 @@ describe("mergeShellPrefs", () => {
     dock: false,
     dockHeight: 0,
     projectOrder: [] as string[],
+    projectColours: {},
   };
   it("replaces pins and sets collapsed, keeping the rest", () => {
     expect(mergeShellPrefs(cur, { collapsed: true })).toEqual({
@@ -138,6 +141,7 @@ describe("mergeShellPrefs", () => {
       dock: false,
       dockHeight: 0,
       projectOrder: [],
+      projectColours: {},
     };
     expect(
       storedShell({ pins: [], collapsed: false, ...none }),

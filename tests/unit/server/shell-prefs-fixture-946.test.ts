@@ -4,8 +4,17 @@
  * stay, in place. A pin is (item, project): the same item in another
  * project is another pin.
  */
-import { describe, expect, it } from "@jest/globals";
-import { fixtureSave, type Pin } from "../../../src/ui/server/shell-prefs.js";
+import { afterEach, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import {
+  fixtureSave,
+  prunedFixturePins,
+  readFixturePins,
+  writeFixturePins,
+  type Pin,
+} from "../../../src/ui/server/shell-prefs.js";
 
 const pin = (item: string, project: string | null = null): Pin => ({
   item,
@@ -45,5 +54,32 @@ describe("issue 946: what a fixture save does to the pins", () => {
   it("forgets an added pin that is no longer stored", () => {
     const r = fixtureSave([pin("a")], [pin("a")], [pin("gone")]);
     expect(r.added).toEqual([]);
+  });
+});
+
+describe("issue 957: the record follows the stored pins", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0))
+      fs.rmSync(d, { recursive: true, force: true });
+  });
+  const tmp = () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "den-fxpins-"));
+    dirs.push(d);
+    return d;
+  };
+
+  it("a recorded pin that is no longer stored leaves the record", () => {
+    const d = tmp();
+    writeFixturePins(d, [pin("a"), pin("b")], [pin("a"), pin("b")]);
+    expect(prunedFixturePins(d, [pin("a")])).toEqual([pin("a")]);
+    expect(readFixturePins(d)).toEqual([pin("a")]);
+  });
+
+  it("none stored: the record goes", () => {
+    const d = tmp();
+    writeFixturePins(d, [pin("a")], [pin("a")]);
+    expect(prunedFixturePins(d, [])).toEqual([]);
+    expect(readFixturePins(d)).toEqual([]);
   });
 });

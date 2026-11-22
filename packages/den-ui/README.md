@@ -737,6 +737,34 @@ Three pieces, data in, the kit's words out (en, es, ja).
 - `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
   `DenUI.settingRow(el, opts)` are the same, in the kit's language.
 
+- **The text-field settings row** (issue 584): `src/setting-field.js` and
+  `src/setting-field.css` (exports `./setting-field`,
+  `./setting-field.css`). Link them with `button.css`.
+
+      const row = mountSettingField(el, {
+        id: "folders", label: "Folders it may read",
+        help: "One folder per line.", placeholder: "~/notes",
+        value: ["~/notes", "~/code"], multiline: true, lang,
+        // save: { verb: "save" } by default, or the host's own words
+        onSave: (value, lines) => api.save(lines),  // resolves to the saved value
+      });
+      row.value(); row.error("Not a folder: ~/x"); row.destroy();
+
+  A label, a single-line input or a multi-line box, help text, Save, and
+  an error line under the box. The host's words are its own text or
+  `{ key, vars }` (a key it added with `addStrings`). Save is disabled
+  until the value changes, and runs through the working pop-up
+  (`busy.js`'s `pending`; pass `busy` to use another). Done, the row shows
+  the value as saved and Save is disabled again; refused, the error line
+  says "Not saved. Try again." and typing clears it.
+  `settingFieldHtml(o)` draws it in Node, `hydrateSettingField(el, opts)`
+  wires it, and `DenUI.settingField(el, opts)` is the same in the kit's
+  language.
+
+- **Shared button verbs** (issue 584): `kit.verb.save`, `kit.verb.cancel`,
+  `kit.verb.delete`, `kit.verb.close` and `kit.verb.tryAgain`, in en, es
+  and ja. A host uses `kitT(lang, "kit.verb.save")` instead of its own.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).

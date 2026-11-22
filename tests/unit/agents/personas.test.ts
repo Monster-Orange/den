@@ -6,6 +6,7 @@
  * there, and a distribution's pack overrides it by id.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -55,6 +56,8 @@ describe("parsePersona", () => {
     const p = parsePersona(CLAUDE_CODE_AGENT, "/pack/code-reviewer.md");
     expect(p).toEqual({
       id: "code-reviewer",
+      // PSN-2: its version, the hash of its file.
+      hash: createHash("sha256").update(CLAUDE_CODE_AGENT).digest("hex"),
       // Claude Code's description is the one line a list shows (AG-10.2).
       description:
         "Reviews code for quality and security. Use after every change.",
