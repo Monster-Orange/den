@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.84] - unreleased
+
+### Changed
+
+- Gate: a test box can run Den's own browser suites. `gate run --box … --base-url http://127.0.0.1:*` covers the ports the run opens itself, never 80 or 443, and the browser test helper holds a box's pages to the run's base URLs. (issue 991)
+
 ## [0.4.83] - 2026-11-22
 
 ### Added
