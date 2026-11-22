@@ -66,6 +66,11 @@ export function hostWebkitRefusal(
 const blocks: string[] = [];
 let pinned = false;
 
+/** Requests the box guard refused in this process (issue 991). */
+export function boxGuardBlocks(): string[] {
+  return [...blocks];
+}
+
 /** On a box run, holds `browser` to the run's base URLs. */
 function boxGuarded(browser: Browser, env: NodeJS.ProcessEnv): Browser {
   if (!env.DEN_GATE_BOX) return browser;

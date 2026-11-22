@@ -78,7 +78,11 @@ describe("issue 991: a box run's browser is held to its base URLs", () => {
         expect([url, failed]).toEqual([url, true]);
       }
       expect(boxGuardBlocks()).toEqual(
-        expect.arrayContaining(["http://127.0.0.1/", "https://127.0.0.1/"]),
+        expect.arrayContaining([
+          "http://127.0.0.1/",
+          "https://127.0.0.1/",
+          `http://127.0.0.1:${otherPort}/`,
+        ]),
       );
     } finally {
       await browser?.close();
