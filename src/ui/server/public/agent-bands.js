@@ -8,11 +8,7 @@
  * in their own group, outside the bands.
  *
  *   rowState(r, seenNow?)    a row's state; Done opened just now is Idle
- *   bandsOf(rows, {seenNow}) [{ state, rows }], only the bands with rows;
- *                            inside a band the person's order holds (issue
- *                            96: each row's `place` in its project)
- *   bandGroup(rows, r, {seenNow})  the agent ids r moves among by drag or
- *                            Move up/down: its project's, in its band
+ *   bandsOf(rows, {seenNow}) [{ state, rows }], only the bands with rows
  *   markHtml(state)          the mark: !, a tick, a halo, a ring
  *   chipHtml(r, seenNow?)    the chip: "Needs you · permission", "Done", …
  *   tagHtml(r, {all, name})  the project tag (All projects), "Server"
@@ -79,8 +75,6 @@ export function bandsOf(rows, { seenNow } = {}) {
     since: r.attnSince,
     name: sortName(r),
     id: r.id,
-    group: r.workspace,
-    ...(typeof r.place === "number" ? { place: r.place } : {}),
     r,
   }));
   const sorted = sortByAttention(items);
@@ -89,25 +83,6 @@ export function bandsOf(rows, { seenNow } = {}) {
     rows: sorted.filter((i) => i.state === state).map((i) => i.r),
   })).filter((b) => b.rows.length > 0);
 }
-
-/**
- * Issue 96: the agent ids a running row moves among: the agents of its
- * project in its band, as the band shows them. Issue 773: none in Needs
- * you and Done (the longest wait first there, always).
- */
-export function bandGroup(rows, r, { seenNow } = {}) {
-  if (!r || r.kind !== "agent" || !r.agent) return [];
-  const state = rowState(r, seenNow);
-  if (!personOrdered(state)) return [];
-  const band = bandsOf(rows, { seenNow }).find((b) => b.state === state);
-  return (band?.rows ?? [])
-    .filter((s) => s.kind === "agent" && s.agent && s.workspace === r.workspace)
-    .map((s) => s.agent);
-}
-
-/** Issue 773: a band the person orders (Working, Idle), by the table. */
-export const personOrdered = (state) =>
-  ATTENTION_TABLE[state]?.order === "name";
 
 const MARK = {
   needs: ["need", "!"],

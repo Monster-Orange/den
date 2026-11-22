@@ -2905,7 +2905,6 @@
     "ag.ord.upOne": "{id} を上へ移動",
     "ag.ord.downOne": "{id} を下へ移動",
     "ag.ord.reorder": "並べ替え",
-    "ag.ord.reorderBand": "{band} のエージェントを並べ替え",
     "ag.ord.reorderStopped": "停止中のエージェントを並べ替え",
     "ag.ord.done": "完了",
     "ag.ord.grip": "ドラッグしてプロジェクト内の順番を変更",

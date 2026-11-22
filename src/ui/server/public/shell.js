@@ -3862,7 +3862,6 @@
     "ag.ord.upOne": "Move {id} up",
     "ag.ord.downOne": "Move {id} down",
     "ag.ord.reorder": "Reorder",
-    "ag.ord.reorderBand": "Reorder the {band} agents",
     "ag.ord.reorderStopped": "Reorder the stopped agents",
     "ag.ord.done": "Done",
     "ag.ord.grip": "Drag to move it in its project's order",
