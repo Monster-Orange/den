@@ -16,7 +16,10 @@ name: ci
 on:
   push:
     branches: [main]
+  # ready_for_review: a draft runs static checks and unit tests only (pr),
+  # so marking it ready starts the full run.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   # A merge queue's run tests the base and the pull request together: the
   # tree that lands. pr and pr-shards run on it as on a pull request.
   merge_group:
@@ -250,6 +253,8 @@ jobs:
       shards: ${{ steps.select.outputs.shards }}
       shard_count: ${{ steps.select.outputs.shard_count }}
       nav: ${{ steps.select.outputs.nav }}
+      browser: ${{ steps.select.outputs.browser }}
+      force_all: ${{ steps.select.outputs.force_all }}
     env:
       DEN_TEST_WORKERS: "2"
       DEN_TEST_QUARANTINE: exclude
@@ -292,6 +297,7 @@ jobs:
         id: select
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
           # Issue 996: the merge queue, and a change to package.json's version
@@ -299,7 +305,17 @@ jobs:
           # be cut from what they tested.
           if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then
             echo ALL > affected.txt
+            echo 'force_all=yes' >> "$GITHUB_OUTPUT"
             echo "The whole suite: a merge-queue run, or a change to package.json's version (issue 996)." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$DRAFT" = true ]; then
+            # Testing policy 1: a draft runs static checks and unit tests
+            # only (jest.config.js, DEN_TEST_BROWSER). Ready for review
+            # starts the full run.
+            export DEN_TEST_BROWSER=skip
+            echo "DEN_TEST_BROWSER=skip" >> "$GITHUB_ENV"
+            echo 'browser=skip' >> "$GITHUB_OUTPUT"
+            if [ "$(head -1 affected.txt)" != ALL ]; then grep -v '\.browser\.test\.ts$' affected.txt > unit.txt || :; mv unit.txt affected.txt; fi
+            echo "A draft: static checks and unit tests only. Mark it ready for review for the browser specs." >> "$GITHUB_STEP_SUMMARY"
           fi
           # Large: everything, more than 150 files, or more than 30 browser
           # specs (they take most of the time: ~30 s each against ~2 s).
@@ -320,7 +336,7 @@ jobs:
           else
             echo 'shards=[]' >> "$GITHUB_OUTPUT"
           fi
-          if grep -qxE 'ALL|tests/unit/den-ui/nav-inventory\.browser\.test\.ts' affected.txt; then
+          if [ "${DEN_TEST_BROWSER:-}" != skip ] && grep -qxE 'ALL|tests/unit/den-ui/nav-inventory\.browser\.test\.ts' affected.txt; then
             echo 'nav=true' >> "$GITHUB_OUTPUT"
           fi
       # Issue 996: what this run tests, for the release (scripts/release-tree-check.mjs):
@@ -337,6 +353,8 @@ jobs:
           # "affected".
           sel=affected
           if [ "$(head -1 affected.txt)" = ALL ]; then sel=all; fi
+          # A draft's run leaves out the browser specs: never the whole suite.
+          if [ "${DEN_TEST_BROWSER:-}" = skip ]; then sel=affected; fi
           printf '{"tree":"%s","selection":"%s","attempt":%s,"event":"%s"}\n' \
             "$(git rev-parse 'HEAD^{tree}')" "$sel" "${{ github.run_attempt }}" "$GITHUB_EVENT_NAME" > tested.json
           cat tested.json
@@ -347,10 +365,10 @@ jobs:
           path: tested.json
           if-no-files-found: error
           retention-days: 90
-      - if: steps.select.outputs.shards == '[]'
+      - if: steps.select.outputs.shards == '[]' && env.DEN_TEST_BROWSER != 'skip'
         id: pw
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
-      - if: steps.select.outputs.shards == '[]'
+      - if: steps.select.outputs.shards == '[]' && env.DEN_TEST_BROWSER != 'skip'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -359,7 +377,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
           restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
-        if: steps.select.outputs.shards == '[]'
+        if: steps.select.outputs.shards == '[]' && env.DEN_TEST_BROWSER != 'skip'
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the rest.
@@ -402,8 +420,13 @@ jobs:
     env:
       DEN_TEST_WORKERS: "2"
       DEN_TEST_QUARANTINE: exclude
+      DEN_TEST_BROWSER: ${{ needs.pr.outputs.browser }}
     strategy:
       fail-fast: false
+      # Testing policy 1: the org runs 60 GitHub-hosted jobs at once, so one
+      # pull request takes at most 4 of them. A whole-suite run (the merge
+      # queue, a version change) is not capped: releases never wait on it.
+      max-parallel: ${{ needs.pr.outputs.force_all == 'yes' && 32 || 4 }}
       matrix:
         node: ["24.13.0"] # issue 998, as pr
         shard: ${{ fromJSON(needs.pr.outputs.shards) }}
@@ -427,13 +450,17 @@ jobs:
           if [ "$(head -1 affected.txt)" = ALL ]; then
             npx jest --listTests | sed "s#^$PWD/##" | sort > affected.txt
           fi
+          # A draft (pr's browser output): no browser specs.
+          if [ "${DEN_TEST_BROWSER:-}" = skip ]; then grep -v '\.browser\.test\.ts$' affected.txt > unit.txt || :; mv unit.txt affected.txt; fi
           # Issue 998: this shard's files from the plan (scripts/shard-plan.cjs,
           # by measured time). The same input gives every shard the same plan.
           node scripts/shard-plan.cjs --files affected.txt --shard ${{ matrix.shard }} > shard.txt
           echo "shard ${{ matrix.shard }} of ${{ needs.pr.outputs.shard_count }}: $(grep -c . shard.txt || true) files"
       - id: pw
+        if: env.DEN_TEST_BROWSER != 'skip'
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: env.DEN_TEST_BROWSER != 'skip'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cache/ms-playwright
@@ -441,6 +468,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
           restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
+        if: env.DEN_TEST_BROWSER != 'skip'
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
       # An empty shard.txt runs nothing: jest with no files would run them all.

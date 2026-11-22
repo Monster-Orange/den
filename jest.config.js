@@ -19,6 +19,14 @@ const dockerIgnored = {
   only: [`^(?!.*${dockerSuiteRegex()})`],
 }[docker];
 
+// Testing policy 1: DEN_TEST_BROWSER=skip leaves out the browser specs
+// (*.browser.test.ts). CI sets it on a draft pull request: static checks and
+// unit tests only. Unset or blank, every file.
+const browser = (process.env.DEN_TEST_BROWSER ?? "").trim();
+if (browser && browser !== "skip")
+  throw new Error(`DEN_TEST_BROWSER is skip or blank (got "${browser}")`);
+const browserIgnored = browser === "skip" ? ["\\.browser\\.test\\.ts$"] : [];
+
 // Issue 397: DEN_TEST_QUARANTINE (tests/quarantine.cjs). Off unless set:
 // only CI's pull request runs set it. "exclude" skips the quarantined
 // tests, "only" runs just them (only their files). Both use the
@@ -36,8 +44,8 @@ const quarantineIgnored =
       })()
     : [];
 const ignored =
-  dockerIgnored || quarantineIgnored.length
-    ? [...(dockerIgnored ?? []), ...quarantineIgnored]
+  dockerIgnored || quarantineIgnored.length || browserIgnored.length
+    ? [...(dockerIgnored ?? []), ...quarantineIgnored, ...browserIgnored]
     : undefined;
 
 export default {
