@@ -1034,7 +1034,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
         // Where the height goes (issue 194's log line).
         why:
           `content ${at(c)} scroll ${c.scrollHeight}/${c.clientHeight}, ` +
-          `ph ${at(c.querySelector(".ph"))}, agx ${at(document.getElementById("agx"))} ` +
+          `h1 ${at(document.getElementById("ag-h"))}, agx ${at(document.getElementById("agx"))} ` +
           `rows ${getComputedStyle(document.getElementById("agx")!).gridTemplateRows}, ` +
           `agl ${at(document.getElementById("agl"))}, agr ${at(document.getElementById("agr"))}, ` +
           `pane ${at(pane)} min ${getComputedStyle(pane).minHeight}`,
