@@ -58,7 +58,9 @@ const page = (around: boolean) => `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 ${STYLES.map((s) => `<link rel="stylesheet" href="/kit/${s}.css">`).join("\n")}
 <style>body { margin: 0; }
-#host-wrap { transform: translate(0, 40px); }
+/* The host's frame under its banner: the kit's fixed bar and rail sit
+   in it (a transform makes it their containing block). */
+#host-wrap { position: fixed; top: 40px; left: 0; right: 0; bottom: 0; transform: translateZ(0); }
 #host-banner { height: 40px; background: #eee; }</style>
 </head>
 <body class="den-has-shell">
@@ -263,10 +265,10 @@ for (const engine of ["chromium", "webkit"]) {
       const around = await open(b, "?chips=2", 1280, true);
       const ref = await collectNav(plain);
       const got = await collectNav(around);
-      // The bar really moved (below the banner, and the wrapper's shift).
+      // The bar really moved, under the host's banner.
       const bar = (s: typeof ref) =>
         s.elements.find((e) => e.tag === "header" && e.parent == null)!.box.y;
-      expect(bar(got) - bar(ref)).toBeGreaterThanOrEqual(40);
+      expect(bar(got) - bar(ref)).toBe(40);
       expect(compareNav(got, ref)).toEqual([]);
       expect(navWarnings(got)).toEqual([]);
       await plain.context().close();
