@@ -274,6 +274,34 @@ describe("SRV-P3: repo_clone", () => {
   });
 });
 
+describe("repo_clone's Allow card and the agents' signing key (issue 523)", () => {
+  it("says the clone gets the agents' key when one is set, and not when none is", async () => {
+    const f = fakes();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "den-held-clone-"));
+    try {
+      const card = async (key?: string) => {
+        const c = await heldActions({
+          ...f.deps,
+          reposRoot: () => root,
+          gitRun: async () => {},
+          agentsGit: () => (key ? { signingKey: key } : undefined),
+        }).repo_clone.check({ source: "acme/notes" }, {});
+        if (!c.ok) throw new Error(c.error);
+        return c as typeof c & { detailKeys?: ({ key: string } | null)[] };
+      };
+      const signed = await card("/keys/agents");
+      const at = signed.details.findIndex((d) => /agents' signing key/.test(d));
+      expect(at).toBeGreaterThan(-1);
+      expect(signed.detailKeys?.[at]?.key).toBe("ap.det.repo_clone.sign");
+      const plain = await card();
+      expect(plain.details.join("\n")).not.toMatch(/signing key/);
+      expect((plain.detailKeys ?? []).map((k) => k?.key)).not.toContain("ap.det.repo_clone.sign");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("issue 160: agent_import and approval_policy are held writes", () => {
   it("agent_import: checks the asker's project, session and persona; on Allow brings it in", async () => {
     const f = fakes();

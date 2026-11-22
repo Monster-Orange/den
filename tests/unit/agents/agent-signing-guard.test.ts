@@ -17,11 +17,12 @@ import * as path from "path";
 import {
   agentGitEnv,
   checkRepoSigning,
+  repoSigningFixLine,
   setRepoSigning,
 } from "../../../src/shared/agents/git-signing.js";
 import { agentSessionEnv } from "../../../src/shared/agents/runtimes.js";
 import { SIGNING_WORDS, signingWord } from "../../../src/shared/agents/signing-words.js";
-import { pinGit } from "../../../src/ui/server/pin-commit.js";
+import { pinGit, pinSigningBell } from "../../../src/ui/server/pin-commit.js";
 import { runClone } from "../../../src/shared/repo-clone.js";
 import { agentRepoSigningLines } from "../../../src/ui/cli/doctor-command.js";
 
@@ -194,6 +195,23 @@ describe("an agents key set (issue 523)", () => {
     expect(fs.readFileSync(globalCfg, "utf8")).toBe(globalText);
   });
 
+  it("an agent with the agents key can't switch to the person's GPG or x509 signer", () => {
+    const repo = newRepo();
+    const env = agentEnv(agentsKey);
+    for (const fmt of ["openpgp", "x509"]) {
+      const c = git(repo, ["-c", `gpg.format=${fmt}`, "commit", "-q", "--allow-empty", "-S", "-m", fmt], env);
+      expect([fmt, c.status]).not.toEqual([fmt, 0]);
+    }
+    const k = git(
+      repo,
+      ["-c", "gpg.format=openpgp", "commit", "-q", "--allow-empty", `-S${PERSON_KEY}`, "-m", "k"],
+      env,
+    );
+    expect(k.status).not.toBe(0);
+    expect(signerLog()).not.toContain("gpg ");
+    expect(signerLog()).not.toContain(PERSON_KEY);
+  });
+
   it("Den's pin commit refuses when a leaked config would sign as the person", async () => {
     const repo = newRepo();
     fs.writeFileSync(path.join(repo, "package.json"), "{}\n");
@@ -247,21 +265,85 @@ describe("a repo Den clones for agents (issue 523)", () => {
 });
 
 describe("doctor: agent repos whose signing key isn't the agents key (issue 523)", () => {
-  it("lists the repo that would sign as someone else, with the fix line; not the one set up", () => {
+  /** A linked worktree of `repo` (one commit first, made unsigned). */
+  function worktreeOf(repo: string, name: string): string {
+    const plain = {
+      ...base,
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "commit.gpgsign",
+      GIT_CONFIG_VALUE_0: "false",
+    };
+    expect(git(repo, ["commit", "-q", "--allow-empty", "-m", "first"], plain).status).toBe(0);
+    const wt = path.join(dir, name);
+    expect(git(repo, ["worktree", "add", "-q", wt], plain).status).toBe(0);
+    return wt;
+  }
+
+  it("fails a linked worktree that would sign as someone else, with a fix for that worktree only", () => {
     const good = newRepo("good");
-    const bad = newRepo("bad");
     setRepoSigning(good, { signingKey: agentsKey }, base);
-    const r = agentRepoSigningLines("Acme", [good, bad, path.join(bad, "sub")], { signingKey: agentsKey }, base);
+    const main = newRepo("main");
+    const wt = worktreeOf(main, "wt");
+    const r = agentRepoSigningLines("Acme", [good, wt, path.join(wt, "sub")], { signingKey: agentsKey }, base);
     expect(r.problem).toBe(true);
     const rows = r.checks.filter((c) => c.id === "agents:signing:repo");
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("fail");
-    expect(rows[0].detail).toContain(bad);
-    expect(rows[0].fix).toBe(
-      `git -C ${JSON.stringify(bad)} config gpg.format ssh && git -C ${JSON.stringify(bad)} config user.signingkey ${JSON.stringify(agentsKey)}`,
-    );
-    expect(r.lines.join("\n")).toContain(bad);
+    expect(rows[0].detail).toContain(wt);
+    expect(rows[0].fix).toBe(repoSigningFixLine(wt, { signingKey: agentsKey }));
+    expect(rows[0].fix).toContain("config --worktree");
     expect(r.lines.join("\n")).not.toContain(PERSON_KEY);
+    // The fix changes that worktree only: the person's main checkout still
+    // signs with their own key.
+    const fixed = spawnSync("sh", ["-c", rows[0].fix!], { env: base, encoding: "utf8" });
+    expect(fixed.stderr).toBe("");
+    expect(checkRepoSigning(wt, { signingKey: agentsKey }, base)).toEqual({ ok: true });
+    expect(git(main, ["config", "--get", "user.signingkey"], base).stdout.trim()).toBe(PERSON_KEY);
+    expect(checkRepoSigning(main, { signingKey: agentsKey }, base).ok).toBe(false);
+  });
+
+  it("a main checkout that would sign as someone else fails with no config fix: Den won't change the person's checkout", () => {
+    const main = newRepo("main");
+    const r = agentRepoSigningLines("Acme", [main], { signingKey: agentsKey }, base);
+    expect(r.problem).toBe(true);
+    const [row] = r.checks.filter((c) => c.id === "agents:signing:repo");
+    expect(row.status).toBe("fail");
+    expect(row.fix).toBeUndefined();
+    expect(row.detail).toBe(
+      signingWord("en", "doctor.repoMain", {
+        repo: main,
+        settings: "gpg.format=openpgp (default), user.signingkey≠agents (global)",
+      }),
+    );
+  });
+
+  it("a repo whose config signs nothing is a note, not a fault: agents sign there through Den's env", () => {
+    const quiet = newRepo("quiet");
+    git(quiet, ["config", "commit.gpgsign", "false"], base);
+    git(quiet, ["config", "tag.gpgsign", "false"], base);
+    const r = agentRepoSigningLines("Acme", [quiet], { signingKey: agentsKey }, base);
+    expect(r.problem).toBe(false);
+    const [row] = r.checks.filter((c) => c.id === "agents:signing:repo");
+    expect(row).toEqual({
+      id: "agents:signing:repo",
+      status: "warn",
+      detail: signingWord("en", "doctor.repoNote", {
+        repo: quiet,
+        settings: "gpg.format=openpgp (default), user.signingkey≠agents (global)",
+      }),
+    });
+    expect(r.lines.join("\n")).toContain("ℹ");
+  });
+
+  it("the fix line single-quotes the folder and key, so $ and backticks stay text", () => {
+    const repo = path.join(dir, "a $(touch x) `touch y`");
+    const key = path.join(dir, "k $HOME `id`");
+    const line = repoSigningFixLine(repo, { signingKey: key });
+    expect(line).toContain(`git -C '${repo}' config extensions.worktreeConfig true`);
+    expect(line).toContain(`git -C '${repo}' config --worktree gpg.format ssh`);
+    expect(line).toContain(`config --worktree user.signingkey '${key}'`);
+    // A quote in the folder name is closed and reopened, never left open.
+    expect(repoSigningFixLine("/r'q", { signingKey: "/k" })).toContain(`git -C '/r'\\''q' config`);
   });
 
   it("no agents key: a warning that agent commits are unsigned, with the line to set one", () => {
@@ -282,7 +364,9 @@ describe("doctor: agent repos whose signing key isn't the agents key (issue 523)
     expect(es.checks[0].detail).toBe(SIGNING_WORDS.es["doctor.unsigned"]);
     const bad = newRepo("bad");
     const ja = agentRepoSigningLines("Acme", [bad], { signingKey: agentsKey }, base, "ja");
-    expect(ja.lines.join("\n")).toContain("エージェントの鍵ではありません");
+    expect(ja.checks[0].detail).toBe(
+      signingWord("ja", "doctor.repoMain", { repo: bad, settings: "gpg.format=openpgp (default), user.signingkey≠agents (global)" }),
+    );
     expect(ja.lines.join("\n")).toContain(bad);
   });
 });
@@ -313,6 +397,25 @@ describe("the refusal's words (issue 523)", () => {
     });
     expect(r.reason).toBe(signingWord("ja", "notAgentsKey", r.refusal!.vars));
     expect(r.reason).not.toContain(PERSON_KEY);
+  });
+
+  it("the pin bell picks its own line for each refusal", () => {
+    expect(
+      pinSigningBell({ code: "noKey", vars: { repo: "/r", settings: "commit.gpgsign=true (global)" } }),
+    ).toEqual({
+      key: "bell.m.pinSigningNoKey",
+      vars: { repo: "/r", settings: "commit.gpgsign=true (global)" },
+    });
+    expect(
+      pinSigningBell({ code: "notAgentsKey", vars: { repo: "/r", settings: "s", fix: "git f" } }),
+    ).toEqual({
+      key: "bell.m.pinSigningRefused",
+      vars: { repo: "/r", settings: "s", fix: "git f" },
+    });
+    expect(pinSigningBell({ code: "notAgentsKey", vars: { repo: "/r", settings: "s" } }).vars).toEqual({
+      repo: "/r",
+      settings: "s",
+    });
   });
 
   it("Den's pin commit hands the bell the refusal, not only text", async () => {
