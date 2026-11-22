@@ -128,8 +128,10 @@ describe("issue 773: marks and chips", () => {
 
   it("the chip says the state, and for Needs you which need", async () => {
     const { chipHtml } = await mod();
+    // Mock v3: the reason on a wide screen, just "Needs you" on a phone
+    // (CSS shows one of the two).
     expect(chipHtml(ag("p", "needs", { waitingWhy: "permission" }))).toBe(
-      '<span class="cp need" data-attn="needs">[ag.chip.needsWhy:[ag.why.permission]]</span>',
+      '<span class="cp need" data-attn="needs"><span class="cpw">[ag.chip.needsWhy:[ag.why.permission]]</span><span class="cpn">[ag.chip.needs]</span></span>',
     );
     expect(chipHtml(ag("q", "needs", { waitingWhy: "asked" }))).toContain(
       "[ag.why.asked]",
@@ -259,5 +261,25 @@ describe("issue 773 (mock v3): a row's second line", () => {
     );
     expect(needsWhy({ waitingWhy: "asked" })).toBe("[ag.whyLong.asked]");
     expect(needsWhy({})).toBe("");
+  });
+});
+
+describe("issue 773 (mock v3): the phone card", () => {
+  it("line 2's parts are marked so a phone drops the runtime and Needs you's time", async () => {
+    const { metaHtml } = await mod();
+    expect(
+      metaHtml({
+        runtime: "Claude",
+        detail: "asks to run a command",
+        time: "3 min",
+      }),
+    ).toBe(
+      '<span class="mrt">Claude · </span>asks to run a command<span class="mtm"> · 3 min</span>',
+    );
+    expect(metaHtml({ runtime: "Codex", time: "1 min" })).toBe(
+      '<span class="mrt">Codex · </span>1 min',
+    );
+    expect(metaHtml({ detail: "a <b>", time: "" })).toBe("a &lt;b&gt;");
+    expect(metaHtml({})).toBe("");
   });
 });

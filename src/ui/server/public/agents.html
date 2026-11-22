@@ -679,6 +679,10 @@
       body:has(#den-shell[data-page="agents"]) .agx {
         grid-template-columns: 380px minmax(0, 1fr);
       }
+      .agband .cp .cpn,
+      .agchev {
+        display: none;
+      }
       .agband .agr {
         gap: 2px 10px;
         padding: 9px 12px 9px 10px;
@@ -704,6 +708,28 @@
       @media (max-width: 720px) {
         .agband .agr {
           min-height: 64px;
+          position: relative;
+          padding: 10px 40px 10px 16px;
+        }
+        /* Mock v3's phone card: the chip says just "Needs you", line 2 is
+           the tag and the detail (no runtime, no Needs you time), a › at
+           the right. */
+        .agband .cp .cpw,
+        .agband .meta .mrt,
+        .agband .meta .mtm {
+          display: none;
+        }
+        .agband .cp .cpn {
+          display: inline;
+        }
+        .agband .agchev {
+          display: block;
+          position: absolute;
+          right: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--faint);
+          font-size: 18px;
         }
       }
       .wbdg {

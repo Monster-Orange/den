@@ -319,6 +319,20 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     );
     expect(heights.length).toBeGreaterThan(0);
     for (const h of heights) expect(h).toBeGreaterThanOrEqual(64);
+    // Mock v3's card: the chip says just "Needs you"; line 2 is the tag
+    // and the detail (no runtime, no time for Needs you); a › at the right.
+    const row = (k: string) => p.locator(`#agl button[data-id="${ag[k].sid}"]`);
+    const seen = (el: import("playwright").Locator) => el.innerText();
+    expect((await seen(row("planner").locator("[data-attn]"))).trim()).toBe(
+      "Needs you",
+    );
+    expect((await seen(row("planner").locator(".meta"))).trim()).toBe(
+      "northasks to run a command",
+    );
+    expect((await seen(row("reviewer").locator(".meta"))).trim()).toMatch(
+      /^south(now|\d+ min)$/,
+    );
+    expect(await row("planner").locator(".agchev").isVisible()).toBe(true);
     expect(
       await p.evaluate(
         () =>

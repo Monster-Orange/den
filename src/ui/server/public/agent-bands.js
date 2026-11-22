@@ -16,6 +16,7 @@
  *   railNeeds(rows)          the rail's count: Needs you only
  *   sinceShort(iso, now?)    "3 min", "2 h": Needs you's and Working's time
  *   needsWhy(r)              "asks to run a command", "asked you a question"
+ *   metaHtml({runtime, detail, time})  line 2, its parts marked for a phone
  */
 import {
   ATTENTION_STATES,
@@ -108,8 +109,15 @@ export function chipHtml(r, seenNow) {
   if (s === "needs") {
     const k = r.waitingWhy ? `ag.why.${r.waitingWhy}` : "";
     const why = k ? t(k) : "";
-    word =
-      why && why !== k ? t("ag.chip.needsWhy", { why }) : t("ag.chip.needs");
+    // Mock v3: the reason on a wide screen; a phone's card says just
+    // "Needs you" (CSS shows one of the two).
+    if (why && why !== k)
+      return (
+        `<span class="cp ${cls}" data-attn="${s}">` +
+        `<span class="cpw">${esc(t("ag.chip.needsWhy", { why }))}</span>` +
+        `<span class="cpn">${esc(t("ag.chip.needs"))}</span></span>`
+      );
+    word = t("ag.chip.needs");
   } else word = t(`ag.chip.${s}`);
   return `<span class="cp ${cls}" data-attn="${s}">${esc(word)}</span>`;
 }
@@ -188,6 +196,22 @@ export function needsWhy(r) {
       ? t("ag.whyLong.command")
       : t("ag.whyLong.tool", { tool: r.attnWhat });
   return t(`ag.whyLong.${why}`);
+}
+
+/**
+ * A row's line 2 after its tag: the runtime, what its state is about and
+ * (Needs you) how long. Mock v3's phone card drops the runtime (.mrt) and
+ * Needs you's time (.mtm); a wide screen shows "Claude · asks to run a
+ * command · 3 min".
+ * @param {{ runtime?: string, detail?: string, time?: string }} p
+ */
+export function metaHtml({ runtime, detail, time } = {}) {
+  const body =
+    detail && time
+      ? `${esc(detail)}<span class="mtm"> · ${esc(time)}</span>`
+      : esc(detail || time || "");
+  if (!body) return runtime ? esc(runtime) : "";
+  return (runtime ? `<span class="mrt">${esc(runtime)} · </span>` : "") + body;
 }
 
 /** The rail's Agents count: the agents that need the person. */

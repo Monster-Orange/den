@@ -138,6 +138,7 @@ import {
   bandsOf,
   chipHtml,
   markHtml,
+  metaHtml,
   needsWhy,
   railNeeds,
   rowState,
@@ -1035,27 +1036,35 @@ function allProjects() {
   return viewWorkspaces().length > 1;
 }
 
-/** Issue 773: what a row's state is about, on its second line. */
-function attnDetail(r, attn) {
+/**
+ * Issue 773: what a row's state is about, on its second line: `detail`,
+ * and `time` (Needs you: how long, which a phone's card drops).
+ */
+function attnParts(r, attn) {
   const ago = (iso) =>
     iso && Number.isFinite(Date.parse(iso))
       ? formatTime(iso, { style: "relative" })
       : "";
-  if (r.kind !== "agent") return cwdText(r);
+  if (r.kind !== "agent") return { detail: cwdText(r) };
   // Mock v3: Needs you's and Working's time without "ago" ("3 min").
   if (attn === "needs") {
     const w = needsWhy(r);
-    const why = w && !w.startsWith("ag.whyLong.") ? w : waitingText(r);
-    return [why, r.attnSince ? sinceShort(r.attnSince) : ""]
-      .filter(Boolean)
-      .join(" · ");
+    return {
+      detail: w && !w.startsWith("ag.whyLong.") ? w : waitingText(r),
+      time: r.attnSince ? sinceShort(r.attnSince) : "",
+    };
   }
   if (attn === "done")
-    return r.attnSince ? t("ag.meta.finished", { ago: ago(r.attnSince) }) : "";
-  if (attn === "working") return r.attnSince ? sinceShort(r.attnSince) : "";
+    return {
+      detail: r.attnSince
+        ? t("ag.meta.finished", { ago: ago(r.attnSince) })
+        : "",
+    };
+  if (attn === "working")
+    return { detail: r.attnSince ? sinceShort(r.attnSince) : "" };
   // Idle: seen just now (opened on this page), else its last finish.
-  if (r.attn === "done") return t("ag.meta.seen");
-  return r.attnSince ? ago(r.attnSince) : cwdText(r);
+  if (r.attn === "done") return { detail: t("ag.meta.seen") };
+  return { detail: r.attnSince ? ago(r.attnSince) : cwdText(r) };
 }
 
 function rowHtml(r) {
@@ -1070,7 +1079,7 @@ function rowHtml(r) {
   const seen = seenMap();
   const attn = rowState(r, seen);
   const right = chipHtml(r, seen);
-  const meta = [r.runtime, attnDetail(r, attn)].filter(Boolean).join(" · ");
+  const meta = metaHtml({ runtime: r.runtime, ...attnParts(r, attn) });
   const ptag = tagHtml(r, { all: allProjects(), name: projName });
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
   // column (it pushed this row's name right of the others').
@@ -1119,11 +1128,13 @@ function rowHtml(r) {
     markHtml(attn) +
     `<span class="nm">${tileHtml(r.kind === "agent" ? displayName(r) : r.label)}${nm}</span>${right}` +
     (chip
-      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta">${ptag}${esc(meta)}</span>` : ""}</span>`
+      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta">${ptag}${meta}</span>` : ""}</span>`
       : meta || ptag
-        ? `<span class="meta">${ptag}${esc(meta)}</span>`
+        ? `<span class="meta">${ptag}${meta}</span>`
         : "") +
     tags +
+    // Mock v3: a phone's card ends in a › (CSS shows it there only).
+    (attn ? `<span class="agchev" aria-hidden="true">›</span>` : "") +
     `</button>`;
   // D28: a running agent whose rotation is due: its callout, with buttons
   // (before, only a tag: nothing to press).
