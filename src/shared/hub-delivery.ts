@@ -415,9 +415,15 @@ export class SseReader {
   private data: string[] = [];
   lastId: string | null = null;
   private readonly max: number;
+  private readonly overflow: (() => void) | undefined;
 
-  constructor(o: { maxBuffer?: number } = {}) {
+  /**
+   * `onOverflow` (issue 459): a line longer than `maxBuffer` was skipped,
+   * so whoever reads can say so (never dropped without a word).
+   */
+  constructor(o: { maxBuffer?: number; onOverflow?: () => void } = {}) {
     this.max = o.maxBuffer ?? 1024 * 1024;
+    this.overflow = o.onOverflow;
   }
 
   feed(chunk: string): SseEvent[] {
@@ -436,6 +442,7 @@ export class SseReader {
     }
     if (this.buf.length > this.max) {
       this.buf = "";
+      if (!this.skipping) this.overflow?.();
       this.skipping = true;
     }
     return out;

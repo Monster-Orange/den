@@ -272,6 +272,9 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        "embed.feed_event_max_kb",
+        "embed.feed_events_per_minute",
+        "embed.feed_max_streams",
         // Issue 172: alerts outside the bell.
         "alerts.desktop",
         "alerts.phone",

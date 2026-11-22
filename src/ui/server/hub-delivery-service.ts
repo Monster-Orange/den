@@ -563,6 +563,11 @@ export async function relayMessage(dv: Delivery): Promise<boolean> {
   return l.takeLocal(dv);
 }
 
+/** Issue 459: whether the loop has taken (or passed over) Den's own item `id`. */
+export function relaySeen(id: string): boolean {
+  return loop?.seenLocal(id) ?? false;
+}
+
 /** Issue 334: how many relayed messages wait for `agent`. */
 export function relayedWaiting(agent: string): number {
   return loop?.work(agent)?.queued ?? 0;

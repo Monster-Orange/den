@@ -1833,6 +1833,45 @@
     "set.workspace.mcp_servers.d":
       "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。ここで変更や削除もできます。エージェントは project_mcp_add、project_mcp_update、project_mcp_remove で求め、あなたが許可します。",
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
+    "set.workspace.event_feeds": "アプリのイベントフィード: このプロジェクト",
+    "set.workspace.event_feeds.d":
+      "このプロジェクトのアプリが自分のストリームで送るイベントです。各イベントは 1 つのエージェントが待機中のときに入力され、ターンの途中には入力されません。各フィードは接続しているかと最後のイベントの時刻を示します。agents.event_feeds に追加します。bearer は secrets.refs の名前です。",
+    "set.embed.feed_max_streams": "同時に読むアプリフィード",
+    "set.embed.feed_max_streams.d":
+      "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数です。超えたフィードは読まれず、そのプロジェクトの通知でお知らせします。",
+    "set.embed.feed_event_max_kb": "アプリフィードのイベントの最大サイズ",
+    "set.embed.feed_event_max_kb.d":
+      "アプリフィードがエージェントに入力するイベントの最大サイズです。それより大きいものは、データなしで届いたことを知らせる文として入力され、プロジェクトの通知でお知らせします。",
+    "set.embed.feed_events_per_minute":
+      "アプリフィードの 1 分あたりのイベント数",
+    "set.embed.feed_events_per_minute.d":
+      "1 つのアプリフィードが 1 分間にエージェントへ入力するイベント数です。超えた分は待ち、許される速さで入力され、プロジェクトの通知でお知らせします。",
+    "feed.none": "このプロジェクトにはアプリのイベントフィードがありません。",
+    "feed.row": "{name} から {agent} へ: {url}",
+    "feed.last": "最後のイベント {time}。",
+    "feed.noEvents": "まだイベントはありません。",
+    "feed.waiting": "待機中: {n}。",
+    "feed.problems": "読めない agents.event_feeds の項目: {n}。",
+    "feed.failed":
+      "このプロジェクトのアプリのイベントフィードを読めませんでした。",
+    "feed.st.connecting": "接続中",
+    "feed.st.connected": "接続済み",
+    "feed.st.retrying": "再試行中",
+    "feed.st.no_secret": "bearer がシークレットストアにありません",
+    "feed.st.over_limit": "読んでいません: フィード数の上限を超えています",
+    "feed.st.no_agent":
+      "読んでいません: このプロジェクトにそのエージェントはいません",
+    "feed.st.stopped": "停止",
+    "bell.m.appFeed.no_secret":
+      "{agent} のアプリフィード {name}: bearer をシークレットストアから読めません。Den は再試行を続けます。",
+    "bell.m.appFeed.rejected":
+      "{agent} のアプリフィード {name}: アプリが Den のリクエストを拒否しました。Den は再試行を続けます。",
+    "bell.m.appFeed.too_big":
+      "{agent} のアプリフィード {name}: イベントがサイズの上限を超えました。エージェントにはデータなしで届いたことを伝えました。",
+    "bell.m.appFeed.over_rate":
+      "{agent} のアプリフィード {name}: 速さの上限を超えています。イベントは待ち、許される速さで入力されます。",
+    "bell.m.appFeed.over_streams":
+      "{agent} のアプリフィード {name}: 同時に読むフィードの上限を超えているため読んでいません。",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "このプロジェクトの MCP を読み込めませんでした。",
     "pmcp.edit": "変更",

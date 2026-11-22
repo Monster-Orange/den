@@ -13,6 +13,13 @@
  *   app_key_audit_window_seconds  issue 334: an app key's reads are
  *                   audited one line per key, route and outcome per this
  *                   many seconds, with their count (60)
+ *   feed_max_streams        issue 459: app event feeds read at once,
+ *                           across every project (50)
+ *   feed_event_max_kb       the largest event an app feed types in, in KB
+ *                           (32); a larger one is typed as Den's note
+ *                           that it came, never dropped
+ *   feed_events_per_minute  events one app feed types in a minute (600);
+ *                           more wait, typed as the rate allows
  *
  * Every other page refuses to be framed by anyone but Den itself
  * (frameHeaders: `frame-ancestors 'self'`, X-Frame-Options SAMEORIGIN):
@@ -31,13 +38,19 @@ export const EMBED_DEFAULTS = {
   key_minutes: 15,
   context_max_kb: 256,
   app_key_audit_window_seconds: 60,
+  feed_max_streams: 50,
+  feed_event_max_kb: 32,
+  feed_events_per_minute: 600,
 };
 
 type NumKey =
   | "url_max_chars"
   | "key_minutes"
   | "context_max_kb"
-  | "app_key_audit_window_seconds";
+  | "app_key_audit_window_seconds"
+  | "feed_max_streams"
+  | "feed_event_max_kb"
+  | "feed_events_per_minute";
 
 /** The bounds each number may take. */
 const LIMITS: Record<NumKey, [number, number]> = {
@@ -45,6 +58,10 @@ const LIMITS: Record<NumKey, [number, number]> = {
   key_minutes: [1, 1440],
   context_max_kb: [1, 10_240],
   app_key_audit_window_seconds: [1, 86_400],
+  feed_max_streams: [1, 10_000],
+  // The delivery loop's held file keeps 40,000 characters of an item.
+  feed_event_max_kb: [1, 36],
+  feed_events_per_minute: [1, 1_000_000],
 };
 
 /** The most origins the list holds. */
@@ -56,6 +73,9 @@ export interface EmbedSettings {
   key_minutes: number;
   context_max_kb: number;
   app_key_audit_window_seconds: number;
+  feed_max_streams: number;
+  feed_event_max_kb: number;
+  feed_events_per_minute: number;
 }
 
 /**
@@ -146,6 +166,12 @@ export function embedSettings(user: UserConfig): EmbedSettings {
     app_key_audit_window_seconds: num(
       e.app_key_audit_window_seconds,
       "app_key_audit_window_seconds",
+    ),
+    feed_max_streams: num(e.feed_max_streams, "feed_max_streams"),
+    feed_event_max_kb: num(e.feed_event_max_kb, "feed_event_max_kb"),
+    feed_events_per_minute: num(
+      e.feed_events_per_minute,
+      "feed_events_per_minute",
     ),
   };
 }
