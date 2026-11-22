@@ -87,6 +87,8 @@ const AGENTS_MAY: Record<string, string> = {
     "MCP github_watch_cancel: stops one of its own watches",
   "POST /api/agents/self/attention":
     "NT-1: the agent's own waiting mark, by its own token only",
+  "POST /api/notifications/withdraw":
+    "issue 1008: withdraws the agent's own question; another agent's is refused and recorded",
   "POST /api/agents/self/view":
     "issue 796: a one-time link to the agent's own read-only view of these pages; it changes nothing",
   "POST /api/agents/self/issue-write":
