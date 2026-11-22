@@ -117,8 +117,6 @@ export type GateSettingsPatch = {
   box_recheck_seconds?: number | null;
   /** 1: a browser ask on this host declares a container browser. */
   browser_requires_container?: number | null;
-  /** Issue 1048: cpu grants wait over this many times the cores (0: never). */
-  load_hold?: number | null;
   /** Issue 803: priority classes (text; "" or null clears). */
   class_order?: string | null;
   class_map?: string | null;
@@ -173,8 +171,6 @@ export const GATE_LIMITS: Record<
   // A browser ask declares a container browser; 1 yes, 0 no. Unset: yes
   // on a macOS host, no elsewhere (browser-container.ts).
   browser_requires_container: { min: 0, max: 1, int: true },
-  // Issue 1048: a multiple of the cores; 0 never holds.
-  load_hold: { min: 0, max: 64, int: false },
 };
 
 /**
@@ -302,22 +298,7 @@ export interface GateStoreOpts {
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
   platform?: NodeJS.Platform;
-  /** Issue 1048: the 5-minute load and the cores (tests pass a fake). */
-  load?: () => { load5: number; cores: number };
 }
-
-/**
- * Issue 1048: this machine's 5-minute load average and its cores.
- * DEN_GATE_LOAD5 fixes the reading (the test setup sets 0, so a busy
- * machine never holds an unrelated test's slot; a drill can set it high).
- */
-export const realLoad = (env: NodeJS.ProcessEnv = process.env) => {
-  const fixed = Number((env.DEN_GATE_LOAD5 ?? "").trim() || NaN);
-  return {
-    load5: Number.isFinite(fixed) ? fixed : (os.loadavg()[1] ?? 0),
-    cores: os.availableParallelism?.() ?? os.cpus().length,
-  };
-};
 
 /**
  * Issue 621: renew and lapse, seconds. A lapse shorter than two renews
@@ -363,7 +344,6 @@ export class GateStore {
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
   private readonly probe: BoxProbe;
-  private readonly load: () => { load5: number; cores: number };
   readonly platform: NodeJS.Platform;
 
   constructor(o: GateStoreOpts = {}) {
@@ -373,23 +353,6 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.probe = o.probe ?? realBoxProbe;
-    this.load = o.load ?? realLoad;
-  }
-
-  /**
-   * Issue 1048: the load now, the hold (load_hold × cores; 0: none) and
-   * whether new cpu grants wait for it.
-   */
-  /** Issue 1048: this machine's cores, as the load reading counts them. */
-  cores(): number {
-    return this.load().cores;
-  }
-
-  loadState(): { load5: number; cores: number; hold: number; held: boolean } {
-    const { load5, cores } = this.load();
-    const f = this.settings().loadHold;
-    const hold = f > 0 ? Math.round(f * cores * 100) / 100 : 0;
-    return { load5, cores, hold, held: hold > 0 && load5 > hold };
   }
 
   private get slots() {
@@ -476,7 +439,6 @@ export class GateStore {
             "browser_requires_container",
             browserRequiresContainerDefault(this.platform) ? 1 : 0,
           ) === 1,
-        loadHold: num("load_hold", GATE_DEFAULTS.loadHold),
         // Issue 803: priority classes; none set is today's queue (and
         // today's settings, key for key).
         ...classSettings(
@@ -708,13 +670,7 @@ export class GateStore {
     }
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
-    // Issue 1048: over the load hold, no new cpu run starts (holders keep
-    // going; a browser run, in its own container or on a box, still may).
-    const held = entries.some((x) => x.kind === "cpu" && !x.grantedAt)
-      ? this.loadState().held
-      : false;
     for (const g of assign(entries, s, now, caps.caps)) {
-      if (held && entries.find((x) => x.id === g.id)?.kind === "cpu") continue;
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its

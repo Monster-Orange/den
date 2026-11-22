@@ -191,11 +191,6 @@ export interface GateSettings {
    * (browser-container.ts). Default: on for a macOS host, off elsewhere.
    */
   browserRequiresContainer: boolean;
-  /**
-   * Issue 1048: new cpu grants wait while the 5-minute load average is over
-   * this many times the cores (0: never). Holders are never stopped.
-   */
-  loadHold: number;
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -217,16 +212,7 @@ export const GATE_DEFAULTS: GateSettings = {
   mcpLapseMinutes: 15,
   mcpGraceMinutes: 15,
   browserRequiresContainer: process.platform === "darwin",
-  loadHold: 1.5,
 };
-
-/**
- * Issue 1048: the workers a cpu slot's run may use (DEN_GATE_WORKERS): the
- * machine's cores shared by the cpu slots, at least 2.
- */
-export function gateWorkers(cores: number, cpuSlots: number): number {
-  return Math.max(2, Math.floor(cores / Math.max(1, Math.floor(cpuSlots))));
-}
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
 

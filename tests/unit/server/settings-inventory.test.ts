@@ -60,8 +60,6 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots_beside_browser: true,
     // Its follow-up: cpu runs beside a release browser run.
     cpu_slots_beside_release_browser: true,
-    // Issue 1048: hold new cpu runs over this load.
-    load_hold: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     remote_renew_seconds: true,
@@ -269,7 +267,6 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
         "gate_slots.cpu_slots_beside_release_browser",
-        "gate_slots.load_hold",
         "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",

@@ -20,12 +20,6 @@ import {
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
 
-// Issue 1048: the gate reads this machine's load to hold new cpu slots. A
-// test that wants a load passes its own; every other test reads 0, so a busy
-// machine never holds an unrelated test's slot. Den processes tests start
-// inherit it.
-process.env.DEN_GATE_LOAD5 = "0";
-
 // No test reads the developer's own state dir: its web.secret would put a
 // real person token on a test server's request (SEC-1a). A suite that needs
 // a state dir sets DEN_HOME itself.

@@ -150,7 +150,6 @@ describe("gate slots over MCP", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
-      loadHold: 1.5,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
@@ -176,36 +175,5 @@ describe("gate slots over MCP", () => {
       (await callTool("gate_slot_request", { id: other.id }, c)).isError,
     ).toBe(true);
     expect(c.gates!.list().map((e) => e.id)).toEqual([other.id]);
-  });
-});
-
-describe("issue 1048: an agent's cpu slot over MCP", () => {
-  it("says how many workers its run may use, and why it waits on the load", async () => {
-    let load5 = 0;
-    const dir = ctx().gates!.dir;
-    const as = (actor: string) => ({
-      ...ctx(dir, actor),
-      gates: new GateStore({
-        platform: "linux",
-        dir,
-        alive: () => true,
-        load: () => ({ load5, cores: 18 }),
-      }),
-    });
-    const ask = { kind: "cpu", label: "unit", estimate_minutes: 5 };
-    const a = json(await callTool("gate_slot_request", ask, as("agent:one")));
-    expect(a.granted).toBeTruthy();
-    expect(a.workers).toBe(9);
-    load5 = 40;
-    const b = json(await callTool("gate_slot_request", ask, as("agent:two")));
-    expect(b.granted).toBeFalsy();
-    expect(b.workers).toBeUndefined();
-    expect(b.loadHold).toEqual({ load5: 40, cores: 18, hold: 27, held: true });
-    load5 = 10;
-    const c = json(
-      await callTool("gate_slot_request", { id: b.id }, as("agent:two")),
-    );
-    expect(c.granted).toBeTruthy();
-    expect(c.loadHold).toBeUndefined();
   });
 });

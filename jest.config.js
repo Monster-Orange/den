@@ -1,14 +1,12 @@
 import { dockerSuiteRegex } from "./tests/docker-suites.mjs";
 import quarantineList from "./tests/quarantine.cjs";
-import testWorkersModule from "./tests/test-workers.cjs";
 
 const { loadQuarantine, quarantinedFiles, quarantineMode } = quarantineList;
 
 // den#143: on a busy machine fewer workers means fewer load flakes. A
-// setting, never a number here: DEN_TEST_WORKERS (8, or 50%); else, issue
-// 1048, the gate slot's cap DEN_GATE_WORKERS; neither set, jest's own default.
-// CI's test shards set 2; `npm run preflight` asks for 8.
-const workers = testWorkersModule.testWorkers();
+// setting, never a number here: DEN_TEST_WORKERS (8, or 50%); unset or
+// blank, jest's own default. CI's test shards set 2; `npm run preflight` asks for 8.
+const workers = (process.env.DEN_TEST_WORKERS ?? "").trim();
 
 // Issue 296: DEN_TEST_DOCKER=skip leaves out the files that start Docker
 // containers, =only runs just them (tests/docker-suites.mjs says why).

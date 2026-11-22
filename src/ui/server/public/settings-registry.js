@@ -3061,29 +3061,6 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
   },
   {
-    // Issue 1048: new cpu runs wait while the load is over this × cores.
-    id: "server.gate_load_hold",
-    category: "server",
-    label: "Hold new unit test runs over this load",
-    description:
-      "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores. Runs already going are never stopped. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold 1.5",
-    keywords: [
-      "gate",
-      "slot",
-      "tests",
-      "queue",
-      "cpu",
-      "load",
-      "workers",
-      "cores",
-    ],
-    scope: "user",
-    keys: ["gate_slots.load_hold"],
-    control: { type: "number", min: 0, max: 64, step: 0.1 },
-    read: (ctx) => ctx.data.gate_slots?.loadHold ?? 1.5,
-    write: (v, ctx) => ctx.post({ gate_slots: { load_hold: v } }),
-  },
-  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",
