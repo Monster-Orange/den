@@ -272,6 +272,24 @@ describe("issue 565: the held write `report`", () => {
     ]);
   });
 
+  it("an agent can't turn the name scrub off: redact false is ignored, even to a private repo", async () => {
+    await reset();
+    const r = await ask({
+      kind: "bug",
+      title: "Seen on pat-laptop.lan",
+      description: "It broke on pat-laptop.lan in /home/pat/work.",
+      repo: PRIV,
+      redact: false,
+    });
+    if (r.body.state === "pending")
+      await queue.decide(r.body.id, "allow", "s1");
+    const sent = filed();
+    expect(sent).toHaveLength(1);
+    const all = JSON.stringify(sent[0]);
+    expect(all).not.toMatch(/pat-laptop\.lan/);
+    expect(all).not.toMatch(/\/home\/pat/);
+  });
+
   it("to a private destination follows the approval policy: runs at once by default", async () => {
     await reset();
     const r = await ask({ kind: "idea", title: "Sort by date", repo: PRIV });

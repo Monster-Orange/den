@@ -52,7 +52,8 @@ function formOf(a: Record<string, unknown>) {
     title: a.title,
     description: typeof a.description === "string" ? a.description : "",
     repo: a.repo,
-    redact: a.redact !== false,
+    // An agent's report is always scrubbed: it can't turn that off.
+    redact: true,
     // The Den version always; the page when one is named.
     sections: { Den: true, ...(page ? { Page: true } : {}) },
     client: page ? { Page: page } : {},

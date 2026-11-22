@@ -465,6 +465,7 @@ import {
   handleReportRoutes,
   machineSection,
   publicSearchOpen,
+  reportAgentOf,
   runGh,
   shotReaderOf,
   type ReportRouteDeps,
@@ -3818,10 +3819,7 @@ function reportRouteDeps(): ReportRouteDeps {
       Den: `${product().cli} ${engineVersion() ?? "?"}`,
       Machine: machineSection(),
     }),
-    agentOf: (r) => {
-      const a = agentPrincipalOf(r) || auditActorOf(r);
-      return a ? String(a) : null;
-    },
+    agentOf: (r) => reportAgentOf(agentPrincipalOf(r), auditActorOf(r)),
     personOf: () => "person",
     flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
     searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),

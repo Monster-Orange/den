@@ -92,6 +92,21 @@ export interface GhResult {
   stderr: string;
 }
 
+/**
+ * Issue 565: who a report request comes from, as drafts are matched
+ * (`agent:<id>`, the bare agent id): an agent's token gives its id; a
+ * claim with no agent token (the fixture person, a header) is never the
+ * person, so it is named by its client; null is the person.
+ */
+export function reportAgentOf(
+  principal: { actor: string } | null,
+  actor: { client?: string; agent?: string } | null,
+): string | null {
+  if (principal) return principal.actor.replace(/^agent:/, "");
+  if (!actor) return null;
+  return (actor.agent ?? actor.client ?? "unverified").replace(/^agent:/, "");
+}
+
 export interface ReportRouteDeps {
   settings: () => FeedbackSettings;
   stateDir: () => string;
@@ -1094,7 +1109,8 @@ export function handleReportRoutes(
         title: form.title,
         description: form.description,
         sections: form.sections,
-        redact: b.redact !== false,
+        // An agent's draft is always scrubbed: it can't turn that off.
+        redact: agent ? true : b.redact !== false,
         ...(typeof b.repo === "string" ? { repo: b.repo } : {}),
         ...(shot ? { shot } : {}),
       });

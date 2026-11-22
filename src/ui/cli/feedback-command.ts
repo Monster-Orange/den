@@ -53,7 +53,7 @@ export const FEEDBACK_HELP = {
     "  --page <path>         the page it is about (e.g. /agents)",
     "  --screenshot <file>   a PNG posted with it, as it is: mask it first",
     "  --repo <owner/repo>   where it goes (default: the first destination)",
-    "  --no-redact           keep host names and paths (on by default)",
+    "  --no-redact           keep host names and paths (on by default; not for agents)",
     "  --add-to <n> | --new  when an open report has the same title",
     "  --preview             print it, send nothing",
     "  --yes                 send without asking (needed off a terminal)",
@@ -243,7 +243,8 @@ export async function cmdFeedback(
     title,
     description: description ?? "",
     repo,
-    redact: !flags.has("--no-redact"),
+    // An agent's report is always scrubbed (the server does so too).
+    redact: agent || !flags.has("--no-redact"),
     sections: { Den: true, ...(page ? { Page: true } : {}) },
     client: page ? { Page: page } : {},
   };
@@ -261,7 +262,6 @@ export async function cmdFeedback(
       ...(description ? { description } : {}),
       ...(page ? { page } : {}),
       repo,
-      ...(flags.has("--no-redact") ? { redact: false } : {}),
       ...(addTo !== undefined ? { addTo } : {}),
       ...(flags.has("--new") ? { fileNew: true } : {}),
       shot,
