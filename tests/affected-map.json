@@ -1464,6 +1464,7 @@
         "tests/unit/server/request-path-sync.integration.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
+        "tests/unit/shared/github-watch/watcher.test.ts",
         "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
@@ -1614,6 +1615,15 @@
     },
     {
       "when": [
+        "scripts/words-gate.mjs"
+      ],
+      "run": [
+        "tests/unit/scripts/words-gate-vendored.test.ts"
+      ],
+      "why": "tests that run scripts/words-gate.mjs"
+    },
+    {
+      "when": [
         "scripts/words.js"
       ],
       "run": [
@@ -1621,6 +1631,7 @@
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
+        "tests/unit/scripts/words-gate-vendored.test.ts",
         "tests/unit/scripts/words.test.ts",
         "tests/unit/server/i18n-171-values.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts"
@@ -1808,6 +1819,17 @@
     },
     {
       "when": [
+        "src/shared/agents/guardrails/attention-hook.ts",
+        "src/ui/server/hub-approval.ts"
+      ],
+      "run": [
+        "tests/unit/server/hub-approval.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/hub-delivery-journal.ts",
         "src/shared/hub-delivery-loop.ts",
         "src/shared/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts"
@@ -1823,6 +1845,15 @@
       ],
       "run": [
         "tests/unit/server/hub-editions.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/hub-loop.ts"
+      ],
+      "run": [
+        "tests/unit/server/hub-loop-settings.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
@@ -2029,6 +2060,37 @@
       ],
       "run": [
         "tests/unit/server/signin-token.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/test-operator.ts",
+        "src/ui/cli/agent-ops.ts",
+        "src/ui/server/agent-routes.ts",
+        "src/ui/server/request-guard.ts"
+      ],
+      "run": [
+        "tests/unit/server/test-operator-acts.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/test-operator.ts"
+      ],
+      "run": [
+        "tests/unit/server/test-operator.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/test-person.ts",
+        "src/ui/cli/test-person.ts"
+      ],
+      "run": [
+        "tests/unit/server/test-person.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },

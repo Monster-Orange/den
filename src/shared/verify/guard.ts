@@ -2,7 +2,8 @@
  * Issue 214 (VERIFY-SPEC section 6, "Methods"): the method rule for a run on
  * an environment. Production sends only GET, HEAD and OPTIONS, plus the exact
  * method-and-path pairs in verify.environments.<env>.write_allow; other
- * environments send any method unless the org lists `methods`. A blocked
+ * environments send any method unless the org lists `methods` (on
+ * production, `methods` can only narrow the read-only list). A blocked
  * request never leaves, and is logged with the ones that did.
  */
 
@@ -55,7 +56,9 @@ export function methodRules(raw: unknown, env: string): MethodRules {
       throw new Error(
         `verify.environments.${env}.methods: HTTP methods, got ${JSON.stringify(e.methods)}`,
       );
-    methods = list;
+    // Production only narrows its read-only list: a write goes in
+    // write_allow, by method and path.
+    methods = production ? list.filter((m) => READ_ONLY.includes(m)) : list;
   }
   return { methods, writeAllow: pairs(e.write_allow, env) };
 }

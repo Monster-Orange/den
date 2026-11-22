@@ -39,6 +39,8 @@ let cmds: string[] = [];
 let probes: string[] = [];
 let bell: BellNote[] = [];
 let stateDir = "";
+// Runs at each read of the repos' manifests (the tick reads them, then the run).
+let onRepos: (() => void) | null = null;
 
 function deps(): ScheduleServerDeps {
   return {
@@ -48,44 +50,47 @@ function deps(): ScheduleServerDeps {
     projects: () => ["north"],
     environments: () => ["local", "staging", "production"],
     verifyConfig: () => verifyBlock,
-    repos: () => [
-      {
-        repo: "shop",
-        repoPath: "/repos/shop",
-        manifest: {
-          name: "shop",
-          services: {
-            web: {
-              health: { production: { url: "https://shop.example/health" } },
+    repos: () => {
+      onRepos?.();
+      return [
+        {
+          repo: "shop",
+          repoPath: "/repos/shop",
+          manifest: {
+            name: "shop",
+            services: {
+              web: {
+                health: { production: { url: "https://shop.example/health" } },
+              },
             },
-          },
-          verify: {
-            modules: {
-              "web/speed": {
-                kind: "performance",
-                cmd: speedCmd,
-                environments: ["staging"],
-                schedule: {
-                  cron: "0 2 * * *",
-                  window: "01:00-05:00",
-                  name: "Nightly speed",
+            verify: {
+              modules: {
+                "web/speed": {
+                  kind: "performance",
+                  cmd: speedCmd,
+                  environments: ["staging"],
+                  schedule: {
+                    cron: "0 2 * * *",
+                    window: "01:00-05:00",
+                    name: "Nightly speed",
+                  },
                 },
-              },
-              "code/deps": {
-                kind: "security",
-                cmd: "make audit",
-                schedule: { cron: "0 3 * * *", name: "Code scans" },
-              },
-              "web/smoke": {
-                kind: "smoke",
-                environments: ["production"],
-                schedule: { cron: "0 * * * *", name: "Production smoke" },
+                "code/deps": {
+                  kind: "security",
+                  cmd: "make audit",
+                  schedule: { cron: "0 3 * * *", name: "Code scans" },
+                },
+                "web/smoke": {
+                  kind: "smoke",
+                  environments: ["production"],
+                  schedule: { cron: "0 * * * *", name: "Production smoke" },
+                },
               },
             },
           },
         },
-      },
-    ],
+      ];
+    },
     git: { head: () => "c0ffee1", changedSince: () => [] },
     runCmd: async (m) => {
       cmds.push(m.name);
@@ -111,6 +116,7 @@ beforeEach(() => {
   cmds = [];
   probes = [];
   bell = [];
+  onRepos = null;
 });
 
 const at = (d: number, h: number, mi = 0) => new Date(2026, 10, d, h, mi);
@@ -162,6 +168,27 @@ const idOf = async (name: string) =>
   ((await get()).schedules as any[]).find((s) => s.name === name).id as string;
 
 describe("T18: the standing Allow", () => {
+  it("schedule Allow scope: a plan that changes between the tick's check and the run does not run", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    expect(
+      (await post("/api/verify/schedules/allow", { project: "north", id }))
+        .status,
+    ).toBe(200);
+    // The tick reads the allowed plan; by the time the run reads the
+    // manifests again, the command is another.
+    let reads = 0;
+    onRepos = () => {
+      if (++reads === 2) speedCmd = "curl -X DELETE https://shop.example/";
+    };
+    const notes = await tick(at(22, 2, 1));
+    expect(notes.find((n) => n.schedule === id)).toMatchObject({
+      action: "error",
+    });
+    expect(cmds).toEqual([]);
+  });
+
   it("staging runs only with an Allow; a plan change lapses it; code-only runs without one", async () => {
     await tick(at(21, 12)); // first sight: baselines
     // 02:01: speed (staging) is skipped, no Allow; 03:01: the code scan runs.

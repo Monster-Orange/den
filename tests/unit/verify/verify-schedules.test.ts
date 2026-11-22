@@ -12,6 +12,7 @@ import * as os from "os";
 import * as path from "path";
 import type { VerifyModule } from "../../../src/shared/verify/config.js";
 import {
+  cmdFiles,
   listSchedules,
   planHash,
   readScheduleSettings,
@@ -143,6 +144,153 @@ describe("planHash", () => {
         modules: [devices],
       }),
     ).not.toBe(base);
+  });
+});
+
+describe("schedule Allow scope", () => {
+  const sched = {
+    cron: "*/5 * * * *",
+    name: "Scan",
+    env: "staging",
+  };
+  it("a code-layer module that runs a command is not code-only: on a shared environment it needs the Allow", () => {
+    const s = listSchedules("shop", [
+      mod("code/scan", {
+        layer: "code",
+        mark: "reads-code-only",
+        environments: "all",
+        cmd: "make scan",
+        schedule: sched,
+      }),
+    ])[0];
+    expect(s.codeOnly).toBe(false);
+    expect(s.needsAllow).toBe(true);
+  });
+
+  it("a code-layer module with no command (a built-in scan) stays code-only, with no Allow", () => {
+    const s = listSchedules("shop", [
+      mod("code/scan", {
+        layer: "code",
+        mark: "reads-code-only",
+        environments: "all",
+        cmd: undefined,
+        adapter: "semgrep",
+        schedule: sched,
+      }),
+    ])[0];
+    expect(s.codeOnly).toBe(true);
+    expect(s.needsAllow).toBe(false);
+  });
+
+  const smoke = (over: Partial<VerifyModule> = {}) =>
+    mod("web/smoke", {
+      adapter: "smoke",
+      mark: "enforced",
+      cmd: undefined,
+      environments: ["production"],
+      healthUrls: { production: ["https://shop.example/health"] },
+      schedule: { cron: "0 * * * *", env: "production" },
+      ...over,
+    });
+  const hashOf = (
+    m: VerifyModule,
+    inputs?: Parameters<typeof planHash>[0]["inputs"],
+  ) =>
+    planHash({
+      env: "production",
+      cron: "0 * * * *",
+      modules: [m],
+      ...(inputs ? { inputs } : {}),
+    });
+
+  it("the fingerprint covers the health URL, the repo, the results file and the layer", () => {
+    const base = hashOf(smoke());
+    for (const m of [
+      smoke({ healthUrls: { production: ["http://169.254.169.254/latest"] } }),
+      smoke({ repoPath: "/tmp/other" }),
+      smoke({ repo: "other" }),
+      smoke({ results: "out/results.json" }),
+      smoke({ layer: "api" }),
+    ])
+      expect(hashOf(m)).not.toBe(base);
+  });
+
+  it("the fingerprint covers the environment's method rule", () => {
+    const m = smoke();
+    const ro = hashOf(m, {
+      rules: () => ({ methods: ["GET", "HEAD", "OPTIONS"], writeAllow: [] }),
+    });
+    const w = hashOf(m, {
+      rules: () => ({
+        methods: ["GET", "HEAD", "OPTIONS"],
+        writeAllow: [{ method: "POST", path: "/login" }],
+      }),
+    });
+    expect(ro).not.toBe(w);
+  });
+
+  it("the fingerprint covers the bytes of the files a command names", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-files-"));
+    try {
+      fs.mkdirSync(path.join(repo, "scripts"));
+      fs.writeFileSync(path.join(repo, "scripts/speed.sh"), "echo ok\n");
+      fs.writeFileSync(
+        path.join(repo, "Makefile"),
+        "speed:\n\t./scripts/speed.sh\n",
+      );
+      const m = mod("web/speed", {
+        repoPath: repo,
+        cmd: "make speed && ./scripts/speed.sh --quick",
+      });
+      const inputs = {
+        files: (x: VerifyModule) => cmdFiles(x.repoPath, x.cmd!),
+      };
+      const files = cmdFiles(repo, m.cmd!);
+      expect(Object.keys(files).sort()).toEqual([
+        "./scripts/speed.sh",
+        "GNUmakefile",
+        "Makefile",
+        "makefile",
+      ]);
+      expect(files.GNUmakefile).toBeNull();
+      const before = planHash({
+        env: "staging",
+        cron: "0 2 * * *",
+        modules: [m],
+        inputs,
+      });
+      fs.writeFileSync(
+        path.join(repo, "scripts/speed.sh"),
+        "curl -X DELETE https://shop.example/\n",
+      );
+      const after = planHash({
+        env: "staging",
+        cron: "0 2 * * *",
+        modules: [m],
+        inputs,
+      });
+      expect(after).not.toBe(before);
+      fs.writeFileSync(
+        path.join(repo, "Makefile"),
+        "speed:\n\trm -rf /tmp/x\n",
+      );
+      expect(
+        planHash({ env: "staging", cron: "0 2 * * *", modules: [m], inputs }),
+      ).not.toBe(after);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("a path a command names outside the repo is kept by name, never read", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-out-"));
+    try {
+      expect(cmdFiles(repo, "sh ../../etc/x.sh")).toEqual({
+        "../../etc/x.sh": "outside",
+      });
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
 

@@ -103,12 +103,18 @@ function cantReason(
 ): CantReason | null {
   if (m.environments !== "all" && !m.environments.includes(env))
     return "environment";
-  if (env === PRODUCTION && m.mark !== "reads-code-only") {
-    // Issue 214: on a schedule, production takes built-in smoke (GET and
-    // HEAD, through the guard); anything Den can't see inside is left out.
-    if (trigger !== "schedule") return "production";
-    if (!(m.mark === "enforced" && m.adapter === "smoke"))
-      return "production-declared";
+  if (env === PRODUCTION) {
+    if (trigger === "schedule") {
+      // Issue 214: on a schedule, production takes built-in smoke (GET and
+      // HEAD, through the guard) and built-in code scans; any command, and
+      // anything else Den can't see inside, is left out.
+      if (m.cmd !== undefined) return "production-declared";
+      if (
+        m.mark !== "reads-code-only" &&
+        !(m.mark === "enforced" && m.adapter === "smoke")
+      )
+        return "production-declared";
+    } else if (m.mark !== "reads-code-only") return "production";
   }
   if (!RUNS_NOW.has(m.adapter)) return "adapter-later";
   if (m.adapter === "smoke" && !(m.healthUrls[env] ?? []).length)

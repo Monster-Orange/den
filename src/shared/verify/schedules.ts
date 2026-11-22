@@ -4,7 +4,14 @@
  * a window and a name. On a shared environment it runs only under a
  * standing Allow: a person allows its plan once, the Allow lapses when the
  * plan changes, and it expires after verify.schedule.allow_expiry. Local and
- * code-only schedules need no Allow.
+ * code-only schedules need no Allow. Code-only means every module only
+ * reads the code and none runs a command (`cmd`): a command needs the Allow
+ * on any shared environment.
+ *
+ * The plan's fingerprint covers everything a run uses: each module's repo,
+ * command, results file, writes, environments and health URLs for the
+ * environment, the environment's method rule, and the bytes of the files a
+ * command names (its scripts, and a Makefile or package manifest it runs).
  *
  * Allows live in <state>/verify/<project>/schedule-allows.json (0600).
  */
@@ -25,7 +32,7 @@ export interface Schedule {
   modules: VerifyModule[];
   /** The environment isn't local. */
   shared: boolean;
-  /** Every module only reads the code. */
+  /** Every module only reads the code, and none runs a command. */
   codeOnly: boolean;
   needsAllow: boolean;
   /** The plan's fingerprint: any change to it lapses the Allow. */
@@ -93,7 +100,76 @@ export function readScheduleSettings(raw: unknown): ScheduleSettings {
   };
 }
 
-const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+const sha = (s: string | Buffer) =>
+  createHash("sha256").update(s).digest("hex");
+
+/** What a run uses besides its modules' own fields. */
+export interface PlanInputs {
+  /** The environment's method rule (verify.environments.<env>). */
+  rules?: (env: string) => unknown;
+  /** The files a module's command names, path → sha256 (null: missing). */
+  files?: (m: VerifyModule) => Record<string, string | null>;
+}
+
+/** A module runs a command Den can't see inside. */
+export const runsCmd = (m: VerifyModule) => m.cmd !== undefined;
+
+/** Only reads the code and runs no command: needs no Allow. */
+export const codeOnlyModule = (m: VerifyModule) =>
+  m.mark === "reads-code-only" && !runsCmd(m);
+
+const SCRIPT_RE = /\.(?:sh|bash|zsh|mjs|cjs|js|ts|py|rb|pl|php)$/;
+const RUNNERS: Record<string, string[]> = {
+  make: ["Makefile", "GNUmakefile", "makefile"],
+  npm: ["package.json", "package-lock.json"],
+  npx: ["package.json", "package-lock.json"],
+  pnpm: ["package.json", "pnpm-lock.yaml"],
+  yarn: ["package.json", "yarn.lock"],
+  bun: ["package.json", "bun.lockb"],
+  node: ["package.json"],
+  just: ["justfile", "Justfile"],
+  task: ["Taskfile.yml"],
+};
+
+/**
+ * The files in the repo a command names, path → sha256 of its bytes, or
+ * null when the path names no file: a script it calls (a word with a slash
+ * or a script's extension), and the Makefile or package manifest of a
+ * runner it starts. A path outside the repo is kept by name only.
+ */
+export function cmdFiles(
+  repoPath: string,
+  cmd: string,
+): Record<string, string | null> {
+  const root = path.resolve(repoPath);
+  const names = new Set<string>();
+  for (const seg of cmd.split(/&&|\|\||[;&|\n]/)) {
+    const words = seg
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.replace(/^['"]|['"]$/g, ""))
+      .filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+    if (!words.length) continue;
+    for (const f of RUNNERS[path.basename(words[0])] ?? []) names.add(f);
+    for (const w of words)
+      if (!w.startsWith("-") && (w.includes("/") || SCRIPT_RE.test(w)))
+        names.add(w);
+  }
+  const out: Record<string, string | null> = {};
+  for (const n of [...names].sort()) {
+    const abs = path.resolve(root, n);
+    if (abs !== root && !abs.startsWith(root + path.sep)) {
+      out[n] = "outside";
+      continue;
+    }
+    try {
+      out[n] = fs.statSync(abs).isFile() ? sha(fs.readFileSync(abs)) : null;
+    } catch {
+      out[n] = null;
+    }
+  }
+  return out;
+}
 
 /** The plan behind a schedule: what runs, how, where and when. */
 export function planHash(p: {
@@ -101,22 +177,30 @@ export function planHash(p: {
   cron: string;
   window?: string;
   modules: VerifyModule[];
+  inputs?: PlanInputs;
 }): string {
   const mods = [...p.modules]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((m) => ({
       id: m.id,
+      repo: m.repo,
+      repoPath: m.repoPath,
+      layer: m.layer,
       adapter: m.adapter,
       mark: m.mark,
       cmd: m.cmd ?? null,
+      results: m.results ?? null,
       writes: m.writes,
       environments: m.environments,
+      health: m.healthUrls[p.env] ?? [],
+      files: runsCmd(m) ? (p.inputs?.files?.(m) ?? null) : null,
     }));
   return sha(
     JSON.stringify({
       env: p.env,
       cron: p.cron,
       window: p.window ?? null,
+      rules: p.inputs?.rules?.(p.env) ?? null,
       mods,
     }),
   ).slice(0, 16);
@@ -145,6 +229,7 @@ function idOf(
 export function listSchedules(
   project: string,
   modules: VerifyModule[],
+  inputs?: PlanInputs,
 ): Schedule[] {
   const groups = new Map<string, VerifyModule[]>();
   for (const m of modules) {
@@ -163,7 +248,7 @@ export function listSchedules(
     const s = mods[0].schedule!;
     const sorted = [...mods].sort((a, b) => a.name.localeCompare(b.name));
     const shared = s.env !== "local";
-    const codeOnly = sorted.every((m) => m.mark === "reads-code-only");
+    const codeOnly = sorted.every(codeOnlyModule);
     out.push({
       id: idOf(project, s),
       project,
@@ -180,6 +265,7 @@ export function listSchedules(
         cron: s.cron,
         window: s.window,
         modules: sorted,
+        ...(inputs ? { inputs } : {}),
       }),
     });
   }

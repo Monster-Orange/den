@@ -62,15 +62,13 @@ describe("the plan", () => {
     expect(p.readOnly).toBe(true);
   });
 
-  it("on a schedule: read-only, smoke and code scans only; a command is left out, named", () => {
+  it("on a schedule: read-only built-in smoke only; every command is left out, named, a code-layer one too", () => {
     const p = planOf("schedule");
     expect(p.readOnly).toBe(true);
     expect(p.trigger).toBe("schedule");
-    expect(p.modules.map((m) => m.name).sort()).toEqual([
-      "code/lint",
-      "web/smoke",
-    ]);
-    expect(p.cantRun.map((m) => [m.name, m.reason])).toEqual([
+    expect(p.modules.map((m) => m.name)).toEqual(["web/smoke"]);
+    expect(p.cantRun.map((m) => [m.name, m.reason]).sort()).toEqual([
+      ["code/lint", "production-declared"],
       ["web/checkout", "production-declared"],
     ]);
   });

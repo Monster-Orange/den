@@ -21,12 +21,14 @@ import { runPlan } from "../../shared/verify/run.js";
 import { httpProbe, spawnCmd } from "../../shared/verify/run.js";
 import { realGit } from "../../shared/verify/changes.js";
 import {
+  cmdFiles,
   listSchedules,
   mayRun,
   readAllows,
   readScheduleSettings,
   scheduleState,
   writeAllow,
+  type PlanInputs,
   type Schedule,
   type ScheduleAllow,
   type ScheduleSettings,
@@ -78,7 +80,22 @@ function schedulesOf(
 ): { ok: true; schedules: Schedule[] } | { ok: false; error: string } {
   const m = modulesOf(d, project);
   if (!m.ok) return m;
-  return { ok: true, schedules: listSchedules(project, m.modules) };
+  try {
+    return {
+      ok: true,
+      schedules: listSchedules(project, m.modules, inputsOf(d)),
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** What a schedule's fingerprint reads besides its modules. */
+function inputsOf(d: VerifyServerDeps): PlanInputs {
+  return {
+    rules: (env) => methodRules(d.verifyConfig?.(), env),
+    files: (m) => (m.cmd ? cmdFiles(m.repoPath, m.cmd) : {}),
+  };
 }
 
 /** What changed since the Allow: modules in or out, a command, a write. */
@@ -268,6 +285,32 @@ async function runSchedule(
     { trigger: "schedule" },
   );
   if (!plan.ok) return plan;
+  // The run uses the modules this plan was built from, read now: hash them
+  // again and run only when they are still the plan that was checked (and,
+  // when it needs one, allowed). Any change in between: not run.
+  {
+    const ids = new Set(s.modules.map((m) => m.id));
+    let fresh: Schedule | undefined;
+    try {
+      fresh = listSchedules(
+        s.project,
+        plan.modules.filter((m) => ids.has(m.id)),
+        inputsOf(d),
+      ).find((x) => x.id === s.id);
+    } catch {
+      fresh = undefined;
+    }
+    if (
+      !fresh ||
+      fresh.hash !== s.hash ||
+      fresh.modules.length !== s.modules.length ||
+      (fresh.needsAllow && (!a || a.hash !== fresh.hash))
+    )
+      return {
+        ok: false,
+        error: "the plan changed since it was checked, so it did not run",
+      };
+  }
   const git = d.git ?? realGit;
   const now = d.now ?? (() => new Date());
   const r = await runPlan(plan.plan, {

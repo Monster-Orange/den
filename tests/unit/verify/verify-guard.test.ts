@@ -37,6 +37,20 @@ describe("methodRules", () => {
     expect(methodRules(raw, "staging").methods).toEqual(["GET"]);
   });
 
+  it("production's methods only narrow the read-only list: a write method there is dropped", () => {
+    const raw = {
+      environments: { production: { methods: ["DELETE", "GET", "post"] } },
+    };
+    expect(methodRules(raw, "production").methods).toEqual(["GET"]);
+    expect(
+      allowedRequest(
+        methodRules(raw, "production"),
+        "DELETE",
+        "https://shop.example/x",
+      ),
+    ).toBe(false);
+  });
+
   it("a list of imported environments (issue 441) is not a map: defaults", () => {
     expect(
       methodRules({ environments: ["bed"] }, "production").methods,
