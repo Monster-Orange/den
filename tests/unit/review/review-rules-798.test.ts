@@ -22,6 +22,10 @@ import {
   validateManifest,
   validateManifestLayers,
 } from "../../../src/shared/manifest/validate-manifest.js";
+import { product } from "../../../src/shared/product.js";
+
+/** The running product's manifest name (a Den agent's shell may run another distribution). */
+const YML = product().manifestYml;
 
 const pr = (o: Partial<ReviewPr> = {}): ReviewPr => ({
   paths: ["src/app.ts"],
@@ -276,7 +280,7 @@ describe("in the layered manifest", () => {
     repo = path.join(temp(), "shop");
     fs.mkdirSync(repo);
     fs.writeFileSync(
-      path.join(repo, ".den.yml"),
+      path.join(repo, YML),
       [
         "name: shop",
         "review:",
@@ -317,7 +321,7 @@ describe("in the layered manifest", () => {
   });
 
   it("an override may add a review section the base lacks, if it tightens the default", () => {
-    fs.writeFileSync(path.join(repo, ".den.yml"), "name: shop\n");
+    fs.writeFileSync(path.join(repo, YML), "name: shop\n");
     const ov = path.join(held, "shop.override.yml");
     fs.writeFileSync(
       ov,
@@ -359,7 +363,7 @@ describe("in the layered manifest", () => {
     git("checkout", "-q", "-b", "pr");
     // The PR turns its own review off.
     fs.writeFileSync(
-      path.join(repo, ".den.yml"),
+      path.join(repo, YML),
       "name: shop\nreview:\n  rules: []\n",
     );
     git(
@@ -374,11 +378,22 @@ describe("in the layered manifest", () => {
       "no review",
     );
     const at = reviewAt(repo, "main")!;
-    expect(at.file).toBe(".den.yml");
+    expect(at.file).toBe(YML);
     expect(
       names(matchReview(at.review, pr({ paths: ["src/core/a.ts"] }))),
     ).toEqual(["core"]);
     expect(reviewAt(repo, "no-such-ref")).toBeNull();
+    // A ref git would read as an option is refused, and writes nothing.
+    const out = path.join(repo, "written.txt");
+    for (const bad of [
+      `--output=${out}`,
+      "-p",
+      "main:.den.yml",
+      "main\n-x",
+      "",
+    ])
+      expect(reviewAt(repo, bad)).toBeNull();
+    expect(fs.existsSync(out)).toBe(false);
     // A base with no manifest file: no section, so the default applies.
     git("checkout", "-q", "--orphan", "bare");
     git("rm", "-rqf", ".");

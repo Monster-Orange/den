@@ -33,6 +33,7 @@
 import { execFileSync } from "child_process";
 import { parse } from "yaml";
 import { z } from "zod";
+import { product } from "../product.js";
 import { globRegExp } from "../verify/changes.js";
 
 const words = z.array(z.string().min(1));
@@ -210,8 +211,14 @@ export function reviewLoosenings(
   return out;
 }
 
-/** The manifest file names Den reads at a repo's root, in order. */
-const MANIFEST_NAMES = [".den.yml", ".den.yaml"];
+/** A ref reviewAt reads: a branch, tag or commit name; never "-…" or a "x:path". */
+const SAFE_REF_RE = /^[A-Za-z0-9_][A-Za-z0-9_./-]{0,254}$/;
+
+/** The manifest file names this product reads at a repo's root, in order. */
+const manifestNames = (): string[] => [
+  product().manifestYml,
+  product().manifestJson,
+];
 
 /**
  * The review section on `ref` (the PR's base branch), read from git, never
@@ -222,7 +229,7 @@ const MANIFEST_NAMES = [".den.yml", ".den.yaml"];
 export function reviewAt(
   repoPath: string,
   ref: string,
-  names: readonly string[] = MANIFEST_NAMES,
+  names: readonly string[] = manifestNames(),
 ): { file: string | null; review: Review | undefined } | null {
   const git = (args: string[]) =>
     execFileSync("git", args, {
@@ -230,8 +237,16 @@ export function reviewAt(
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf-8",
     });
+  // A ref is a branch or commit name, never an option or a path.
+  if (!SAFE_REF_RE.test(ref) || ref.includes("..")) return null;
   try {
-    git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+    git([
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "--end-of-options",
+      `${ref}^{commit}`,
+    ]);
   } catch {
     return null;
   }
