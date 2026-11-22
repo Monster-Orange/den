@@ -181,8 +181,8 @@ async function open(
   // machine too, 0.4.71).
   await signIn(ctx, stateDir(), base());
   // No first-visit changelog pop-up over the page: the latest is seen.
-  const latest = (await getJson<{ version: string }[]>("/api/changelog"))[0]
-    ?.version;
+  const [newest] = await getJson<{ version: string }[]>("/api/changelog");
+  const latest = newest?.version;
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);
@@ -199,7 +199,7 @@ async function open(
       );
   });
   await p.goto(`http://127.0.0.1:${port}${url}`);
-  await p.waitForSelector(".den-rail .den-ni");
+  await p.waitForSelector('[data-nav-role="crumb"]');
   await p.evaluate(() =>
     (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
   );
@@ -213,9 +213,9 @@ const LONG = "a-project-whose-name-is-far-too-long-for-the-menu-row";
  * height (the name, and any tag beside it), and where the mark sits.
  */
 async function checkedRow(p: Page) {
-  return p.$eval(".den-pop .den-mi[aria-checked='true']", (row) => {
+  return p.$eval('[role="menuitemradio"][aria-checked="true"]', (row) => {
     const r = row.getBoundingClientRect();
-    const l = row.querySelector(".den-mi-l")!;
+    const l = row.firstElementChild!;
     const lr = l.getBoundingClientRect();
     const cs = getComputedStyle(row);
     const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
@@ -243,10 +243,10 @@ async function checkedRow(p: Page) {
 
 async function pick(p: Page, name: string) {
   await p.click("#ws-pill");
-  await p.waitForSelector(".den-pop .den-mi");
+  await p.waitForSelector('[role="menuitemradio"]');
   await Promise.all([
     p.waitForNavigation(),
-    p.click(`.den-pop .den-mi:has-text("${name}")`),
+    p.getByRole("menuitemradio", { name, exact: true }).click(),
   ]);
   await p.waitForSelector("#ws-pill:not([hidden])");
 }
@@ -285,7 +285,7 @@ describe.each([
       for (const name of ["ws-b", LONG]) {
         await pick(p, name);
         await p.click("#ws-pill");
-        await p.waitForSelector(".den-pop .den-mi[aria-checked='true']");
+        await p.waitForSelector('[role="menuitemradio"][aria-checked="true"]');
         const row = await checkedRow(p);
         expect(row.text).toBe(name);
         expect(row.mark).toMatch(/✓/);
@@ -364,7 +364,7 @@ describe.each([
         );
         await p.waitForSelector("#org-crumb[aria-haspopup]");
         await p.click("#org-crumb");
-        await p.waitForSelector(".den-pop .den-mi[aria-checked='true']");
+        await p.waitForSelector('[role="menuitemradio"][aria-checked="true"]');
         const row = await checkedRow(p);
         expect(row.text).toBe(name);
         expect(row.mark).toMatch(/✓/);
