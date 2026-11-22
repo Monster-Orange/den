@@ -112,6 +112,7 @@ import {
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
+import { rememberOperatorShell } from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
@@ -185,6 +186,7 @@ import {
   rotationSettings,
   setRotationSetting,
   rotationTick,
+  exitTick,
   trustTick,
   TRUST_DECLINED,
   TRUST_WAITING,
@@ -225,7 +227,9 @@ import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
   auditActorOf,
-  isFixturePrincipal,
+  notAPersonOf,
+  operatorActOf,
+  personOrOperator,
   principalOf,
 } from "./request-guard.js";
 import {
@@ -244,23 +248,7 @@ import {
   type HostRefreshState,
 } from "../../shared/sessions/host-refresh-state.js";
 
-/**
- * Issue 943: whether the fixture person may send `rec` a message: only on
- * a test install, only to an agent Den marked as the bed's own when it
- * started it on the test-person path, and never in Den's own server
- * workspace.
- */
-export function fixtureMaySay(
-  rec: Pick<AgentRecord, "testBed">,
-  ws: string,
-  testInstall: boolean,
-): boolean {
-  return testInstall && rec.testBed === true && !isServerScope(ws);
-}
-
 export interface AgentRouteDeps {
-  /** Issue 943: whether this install is a test install now (fixture-person.ts). */
-  testInstall?: () => boolean;
   /** The operations' deps (tests: an in-process host, a temp state dir). */
   agents?: AgentsDeps;
   /** When a first instruction counts its session ready (tests: shorter). */
@@ -1035,21 +1023,7 @@ export async function handleAgentRoutes(
       });
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
-    // Issue 943: the fixture person (a test install's live checks) may
-    // message the bed's own stub agents, and only those (fixtureMaySay).
-    if (
-      verb === "say" &&
-      (agent || actor) &&
-      !(
-        !agent &&
-        isFixturePrincipal(req) &&
-        fixtureMaySay(
-          agentRecord(d, id!, ws),
-          ws,
-          deps.testInstall?.() === true,
-        )
-      )
-    )
+    if (verb === "say" && !personOrOperator(req, "agent-say"))
       throw new AgentError("only a person can send an agent a message", {
         status: 403,
       });
@@ -1885,10 +1859,13 @@ async function plainSession(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person,
+    // except as the test operator's terminal-start.
+    if (!personOrOperator(req, "terminal-start"))
       throw new AgentError("an agent can't start a session from the page", {
         status: 403,
       });
+    const operator = operatorActOf(req) === "terminal-start";
     // Issue 479: an optional { cwd } (Open a terminal there). No body,
     // or none of it: the project's folder, as before.
     const raw = await readBody(req).catch(() => "");
@@ -1904,7 +1881,18 @@ async function plainSession(
     if (b.cwd !== undefined && typeof b.cwd !== "string")
       throw new AgentError("cwd must be a string", { usage: true });
     const cwd = b.cwd as string | undefined;
-    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    // Issue 814: the test operator's terminal (Den's fixed stub, never a
+    // shell) opens in the project's folder only, remembered by host id.
+    if (operator && cwd !== undefined)
+      throw new AgentError("the test operator's terminal takes no cwd", {
+        status: 403,
+      });
+    const { info } = await startPlainSession(
+      d,
+      ws,
+      operator ? { operator: true } : cwd ? { cwd } : {},
+    );
+    if (operator) rememberOperatorShell(info.ref.id);
     what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {
@@ -1942,7 +1930,9 @@ async function runtimePath(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person
+    // (it was let through here by its unverified claim).
+    if (notAPersonOf(req))
       throw new AgentError("an agent can't set a runtime's path", {
         status: 403,
       });
@@ -2461,11 +2451,29 @@ export function startAgentUpkeep(
           log(`Relaunched ${who} from its handoff after ${e.why}`);
         } else if (e.kind === "asked")
           log(`Asked ${who} for its handoff (${e.asked} of 2)`);
+        else if (e.kind === "waiting")
+          log(
+            `Rotation of ${who} waits: ${e.running} background item(s) it started still run`,
+          );
         else if (e.kind === "fell-back")
           log(
             `  ⚠ ${who} wrote no handoff after 2 asks: its callout asks the person`,
           );
         else log(`  ⚠ rotation of ${who}: ${e.why}`);
+      }
+      // Issue 926: a session that ended without Den asking: recorded,
+      // told, and brought back once (exit 0 is left down).
+      for (const e of await exitTick(d)) {
+        const who = `${e.agent} in ${e.workspace}`;
+        if (e.kind === "resumed" || e.kind === "relaunched")
+          log(
+            `Agent ${who} ended without Den asking (exit ${e.code}); ${e.kind === "relaunched" ? "relaunched from its handoff" : "resumed"}`,
+          );
+        else if (e.kind === "left")
+          log(
+            `  ⚠ agent ${who} ended without Den asking (exit ${e.code}): ${e.why}`,
+          );
+        else log(`Agent ${who} quit by itself (exit 0)`);
       }
       // Issue 658: a relaunch whose conversation was never written (it
       // ended at the folder-trust question, say) can relaunch again.

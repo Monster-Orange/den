@@ -100,6 +100,59 @@
     "v.old_link": "Abrir Pruebas",
     "v.err_load": "Verificación no pudo cargar los resultados.",
     "v.retry": "Intentar de nuevo",
+    // Issue 441: an outside runner's gate results on Checks.
+    "v.m_ran": "Se ejecutó de {a} a {b}.",
+    "v.m_runner": "De un ejecutor externo.",
+    "v.i_nothing":
+      "{t} se ejecutó en {e}, pero ninguna cláusula se ejecutó allí. Esto no es un aprobado.",
+    "v.i_fail": "{t} en {e} falló: {a}, {b}, {c}.",
+    "v.i_pass": "{t} en {e} pasó: {a}, {b}, {c}.",
+    "v.i_np": "pasaron {n} cláusulas",
+    "v.i_np.one": "pasó {n} cláusula",
+    "v.i_nm": "{n} necesitan a una persona",
+    "v.i_nm.one": "{n} necesita a una persona",
+    "v.i_nf": "fallaron {n}",
+    "v.i_nf.one": "falló {n}",
+    "v.i_from": "De resultados importados.",
+    "v.i_cfg": "Los resultados importados están desactivados: {e}",
+    "v.i_b_failed": "Falló",
+    "v.i_b_passed": "Pasó",
+    "v.i_nchecks": "{n} comprobaciones",
+    "v.i_nchecks.one": "{n} comprobación",
+    "v.i_nclauses": "{n} cláusulas",
+    "v.i_nclauses.one": "{n} cláusula",
+    "v.i_sizes": "{a} y {b}.",
+    "v.n_passed": "pasaron",
+    "v.n_failed": "fallaron",
+    "v.n_needs": "te necesitan",
+    "v.n_cantrun": "no se pudieron ejecutar",
+    "v.i_failed_h": "Fallaron ({n})",
+    "v.i_cantrun_h": "No se pudieron ejecutar ({n})",
+    "v.i_needs_h": "Te necesitan ({n})",
+    "v.i_needs_p":
+      "Una comprobación nunca toma la decisión de una persona. Estas te toca probarlas en {e}.",
+    "v.i_issue": "incidencia {n}",
+    "v.i_checks_h": "Comprobaciones de esta etiqueta",
+    "v.i_chk": "pasaron {p} de {n} cláusulas",
+    "v.i_chk.one": "pasó {p} de {n} cláusula",
+    "v.i_chk_needs": ", {n} te necesitan",
+    "v.i_chk_needs.one": ", {n} te necesita",
+    "v.i_on": "en {t}",
+    "v.i_allran": "Todas las cláusulas aquí pasaron.",
+    "v.c_passed": "pasó",
+    "v.c_failed": "falló",
+    "v.c_error": "con error",
+    "v.c_needs": "Te necesita",
+    "v.c_cantrun": "no se pudo ejecutar",
+    "v.ct_result": "Resultado",
+    "v.ct_clause": "Cláusula",
+    "v.ct_note": "Nota",
+    "v.ct_time": "Tiempo",
+    "v.t_ms": "{n} ms",
+    "v.t_s": "{n} seg",
+    "v.who_runner": "Un ejecutor externo",
+    "v.actor_runner": "ejecutor externo",
+    "v.fd_imported": "envió sus resultados de {t} en {e}.",
     "n.environments": "Entornos",
     "n.releases": "Versiones",
     "n.edge": "Edge",
@@ -812,6 +865,10 @@
       "En una terminal de este ordenador, ejecuta esto. Abre esta página con la sesión iniciada:",
     "shell.signin.line": "Inicia sesión para hacer cambios aquí.",
     "shell.signin.btn": "Iniciar sesión",
+    "shell.view.title": "Vista de solo lectura",
+    "shell.view.line":
+      "{agent} está viendo estas páginas. Aquí no se puede cambiar nada, y la vista termina en unos minutos.",
+    "shell.view.off": "Vista de solo lectura: esto no cambia nada aquí",
     "err.signin.codeExpired": "Este código caducó.",
     "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
     "err.signin.codeFailed":
@@ -1004,6 +1061,10 @@
       "Pruebas unitarias junto a una prueba de navegador",
     "set.server.gate_cpu_beside.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador, nunca más que las pruebas unitarias a la vez. 0: una prueba de navegador se ejecuta sola. Una prueba de navegador en una máquina de pruebas no se incluye. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_cpu_beside_release":
+      "Pruebas unitarias junto a una prueba de navegador de versión",
+    "set.server.gate_cpu_beside_release.d":
+      "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador con prioridad de versión. 0 (el valor predeterminado): la prueba de versión se ejecuta sola, para que otras no ralenticen sus comprobaciones. Las demás pruebas de navegador usan el ajuste de arriba. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
     "set.server.gate_local_browser":
       "Pruebas de navegador a la vez en esta máquina",
     "set.server.gate_local_browser.d":
@@ -1331,6 +1392,19 @@
     "set.agents.hub_link_all": "Coincidencias dudosas",
     "set.agents.hub_link_all.d":
       "Vincular une un proyecto con su proyecto de Hub, para que sus agentes guarden allí documentos, maquetas y comentarios. Den lista aquí un proyecto solo cuando no sabe cuál de Hub corresponde. Elige uno y pulsa Vincular. Hasta entonces, no se guarda nada de ese proyecto.",
+    "set.agents.hub_delivery_loop": "Ciclo de entrega de Hub",
+    "set.agents.hub_delivery_loop.d":
+      "Activado, cada agente que Den inicia en un proyecto conectado a Hub recibe el ciclo de entrega en sus instrucciones: documentos de requisitos en Hub, issues enlazados completos, revisión y comentarios en los hilos de Hub, estado desde git. Desactivado para todos los proyectos de aquí, salvo que un proyecto lo active. Llega a un agente en su próximo inicio.",
+    "set.workspace.hub_delivery_loop": "Ciclo de entrega de Hub: este proyecto",
+    "set.workspace.hub_delivery_loop.d":
+      "Si los agentes de este proyecto reciben el ciclo de entrega de Hub en sus instrucciones, por encima del ajuste de la instalación. Llega a un agente en su próximo inicio.",
+    "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
+    "set.workspace.hub_delivery_loop.o.on": "Activado",
+    "set.workspace.hub_delivery_loop.o.off": "Desactivado",
+    "set.workspace.hub_delivery_loop_extra":
+      "Añadido al ciclo de entrega de Hub",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "El texto propio de este proyecto, añadido tras la copia de Den del ciclo en las instrucciones de sus agentes. La copia de Den no se puede editar. Vacío no añade nada.",
     "ub.intro":
       "Den no sabe qué proyecto de Hub corresponde a estos. Elige uno para cada uno y pulsa Vincular.",
     "ub.why.repos": "Dos proyectos de Hub comparten sus repositorios",
@@ -1392,6 +1466,13 @@
       "Intervalo de códigos incorrectos, en segundos",
     "set.access.approve_window.d":
       "Durante cuánto tiempo se cuentan los códigos incorrectos. Cuando pasa, se puede volver a intentar aprobar. __DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.agent_view": "Los agentes pueden ver las páginas, solo lectura",
+    "set.access.agent_view.d":
+      "Activado, un agente que funciona aquí puede abrir estas páginas en solo lectura, como él mismo, para mirar o hacer una captura (page_view). No cambia nada, y cada página que abre queda registrada con su nombre. Desactivado, se le dice al agente que las vistas están desactivadas. __DEN_CLI__ config web.agent_view=true",
+    "set.access.agent_view_minutes":
+      "Duración de la vista de un agente, en minutos",
+    "set.access.agent_view_minutes.d":
+      "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
@@ -1484,6 +1565,10 @@
     "ag.relaunchHandoff": "Relanzar desde su último traspaso",
     "ag.rc.autoAsk":
       "Toca rotar ({why}). Den le pide el traspaso cuando esté libre y luego lo relanza.",
+    "ag.rc.waiting.one":
+      "Toca rotar ({why}). Den espera a que termine {n} tarea en segundo plano que inició y luego lo rota.",
+    "ag.rc.waiting":
+      "Toca rotar ({why}). Den espera a que terminen las {n} tareas en segundo plano que inició y luego lo rota.",
     "ag.rc.autoReady":
       "Toca rotar ({why}). Su traspaso está listo: Den lo relanza cuando esté libre.",
     "ag.rc.ready": "Toca rotar ({why}). Su traspaso está listo.",
@@ -2140,6 +2225,8 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
+    "bell.m.unaskedExit":
+      "{name} terminó sin que Den lo pidiera (salida {code}): {why}",
     "bell.m.trust": "{name}: En espera: ¿confiar en esta carpeta?",
     "bell.m.trustDeclined":
       "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
@@ -2207,6 +2294,8 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.toolsNoteHeld":
+      "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":
@@ -2850,6 +2939,7 @@
     "set.ui.viaGithubAs": "sesión iniciada con GitHub (@{login})",
     "set.ui.viaGithub": "sesión iniciada con GitHub",
     "set.ui.viaCode": "aprobado con un código",
+    "set.ui.viaAgentView": "vista de solo lectura de {agent}",
     "set.ui.viaClaim": "reclamado con un enlace de configuración",
     "set.ui.viaLink": "sesión iniciada con un enlace de un solo uso",
     "set.ui.unknownBrowser": "Navegador desconocido",

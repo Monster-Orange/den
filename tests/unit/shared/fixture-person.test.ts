@@ -228,8 +228,6 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["POST", "/api/session/logout", "mutating"],
     ["POST", "/api/notifications/read", "mutating"],
     ["POST", "/api/workspaces/notes/agents/a1/stop", "mutating"],
-    // Issue 943: to the bed's own stub agents only (agent-routes.ts).
-    ["POST", "/api/workspaces/notes/agents/a1/say", "mutating"],
   ] as const)("%s %s passes", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toBeNull();
   });
@@ -251,6 +249,7 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["GET", "/api/nowhere", null],
     ["DELETE", "/api/workspaces", "mutating"],
     // Hardening: agent writes that are refused to a fixture session anyway.
+    ["POST", "/api/workspaces/notes/agents/a1/say", "mutating"],
     ["POST", "/api/workspaces/notes/agents/a1/restart", "mutating"],
   ] as const)("%s %s is refused", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toMatch(/fixture person/);

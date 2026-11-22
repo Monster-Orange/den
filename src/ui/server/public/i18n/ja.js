@@ -94,6 +94,52 @@
     "v.old_link": "テストを開く",
     "v.err_load": "検証の結果を読み込めませんでした。",
     "v.retry": "もう一度試す",
+    // Issue 441: an outside runner's gate results on Checks.
+    "v.m_ran": "{a}〜{b}に実行。",
+    "v.m_runner": "外部ランナーから。",
+    "v.i_nothing":
+      "{t} は {e} で実行されましたが、項目は一つも実行されませんでした。合格ではありません。",
+    "v.i_fail": "{e} の {t} は失敗: {a}、{b}、{c}。",
+    "v.i_pass": "{e} の {t} は合格: {a}、{b}、{c}。",
+    "v.i_np": "{n} 項目が合格",
+    "v.i_nm": "{n} 項目は人の操作が必要",
+    "v.i_nf": "{n} 項目が失敗",
+    "v.i_from": "インポートした結果です。",
+    "v.i_cfg": "インポートした結果は無効です: {e}",
+    "v.i_b_failed": "失敗",
+    "v.i_b_passed": "合格",
+    "v.i_nchecks": "チェック {n} 件",
+    "v.i_nclauses": "項目 {n} 件",
+    "v.i_sizes": "{a}、{b}。",
+    "v.n_passed": "合格",
+    "v.n_failed": "失敗",
+    "v.n_needs": "あなたの番",
+    "v.n_cantrun": "実行できず",
+    "v.i_failed_h": "失敗 ({n})",
+    "v.i_cantrun_h": "実行できず ({n})",
+    "v.i_needs_h": "あなたの番 ({n})",
+    "v.i_needs_p":
+      "チェックは人の判断を代わりに行いません。これらは {e} であなたが試してください。",
+    "v.i_issue": "issue {n}",
+    "v.i_checks_h": "このタグのチェック",
+    "v.i_chk": "{n} 項目中 {p} 項目が合格",
+    "v.i_chk_needs": "、{n} 項目があなたの番",
+    "v.i_on": "({t})",
+    "v.i_allran": "ここの項目はすべて合格しました。",
+    "v.c_passed": "合格",
+    "v.c_failed": "失敗",
+    "v.c_error": "エラー",
+    "v.c_needs": "あなたの番",
+    "v.c_cantrun": "実行できず",
+    "v.ct_result": "結果",
+    "v.ct_clause": "項目",
+    "v.ct_note": "メモ",
+    "v.ct_time": "時間",
+    "v.t_ms": "{n} ms",
+    "v.t_s": "{n} 秒",
+    "v.who_runner": "外部ランナー",
+    "v.actor_runner": "外部ランナー",
+    "v.fd_imported": "{e} の {t} の結果を送りました。",
     "n.environments": "環境",
     "n.releases": "リリース",
     "n.edge": "エッジ",
@@ -793,6 +839,10 @@
       "このコンピューターのターミナルで次を実行します。このページがサインインした状態で開きます:",
     "shell.signin.line": "ここで変更するにはサインインしてください。",
     "shell.signin.btn": "サインイン",
+    "shell.view.title": "閲覧専用",
+    "shell.view.line":
+      "{agent} がこのページを見ています。ここでは何も変更できません。この表示は数分で終わります。",
+    "shell.view.off": "閲覧専用: ここでは何も変更されません",
     "err.signin.codeExpired": "このコードは期限切れです。",
     "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
     "err.signin.codeFailed":
@@ -976,6 +1026,10 @@
     "set.server.gate_cpu_beside": "ブラウザーテストと並んで動かす単体テスト",
     "set.server.gate_cpu_beside.d":
       "ブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。同時に動かす単体テストの数を超えることはありません。0 ではブラウザーテストは単独で動きます。テスト用マシンで動くブラウザーテストは数えません。__DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_cpu_beside_release":
+      "リリース用ブラウザーテストと並んで動かす単体テスト",
+    "set.server.gate_cpu_beside_release.d":
+      "リリース優先のブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。0 (既定) ではリリース用の実行は単独で動き、ほかの実行がそのチェックを遅くしません。ほかのブラウザーテストは上の設定に従います。__DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
     "set.server.gate_local_browser": "このマシンで同時に動かすブラウザーテスト",
     "set.server.gate_local_browser.d":
       "このマシンで同時に動かせるブラウザーテスト実行の数です。それぞれ専用のコンテナーで動きます。テスト用マシンで動くブラウザーテストは数えません。1 では 1 つずつ動きます。__DEN_CLI__ gate settings --local-browser-slots 1",
@@ -1291,6 +1345,19 @@
     "set.agents.hub_link_all": "判断できない候補",
     "set.agents.hub_link_all.d":
       "リンクすると、プロジェクトが Hub プロジェクトとつながり、エージェントがそこにドキュメント、モック、コメントを保存します。どの Hub プロジェクトが合うか Den が判断できないときだけ、ここに表示されます。1つ選んで「リンク」を押してください。それまで、そのプロジェクトの分は何も保存されません。",
+    "set.agents.hub_delivery_loop": "Hub のデリバリーループ",
+    "set.agents.hub_delivery_loop.d":
+      "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
+    "set.workspace.hub_delivery_loop":
+      "Hub のデリバリーループ: このプロジェクト",
+    "set.workspace.hub_delivery_loop.d":
+      "このプロジェクトのエージェントの指示に Hub のデリバリーループを入れるかどうか。インストール全体の設定より優先されます。エージェントの次の起動から反映されます。",
+    "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
+    "set.workspace.hub_delivery_loop.o.on": "オン",
+    "set.workspace.hub_delivery_loop.o.off": "オフ",
+    "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
+    "set.workspace.hub_delivery_loop_extra.d":
+      "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
     "ub.intro":
       "どの Hub プロジェクトが合うか、Den には判断できません。それぞれ1つ選んで「リンク」を押してください。",
     "ub.why.repos": "2つの Hub プロジェクトが同じリポジトリを持っています",
@@ -1351,6 +1418,12 @@
     "set.access.approve_window": "誤ったコードを数える時間 (秒)",
     "set.access.approve_window.d":
       "誤ったコードを数える時間です。過ぎると、もう一度承認を試せます。__DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.agent_view": "エージェントによるページの閲覧 (読み取り専用)",
+    "set.access.agent_view.d":
+      "オンにすると、ここで動くエージェントが自分自身としてこのページを読み取り専用で開き、確認やスクリーンショットができます (page_view)。何も変更せず、開いたページはそのエージェントの名前で記録されます。オフにすると、閲覧がオフであることがエージェントに伝えられます。 __DEN_CLI__ config web.agent_view=true",
+    "set.access.agent_view_minutes": "エージェントの閲覧時間 (分)",
+    "set.access.agent_view_minutes.d":
+      "エージェントの読み取り専用の閲覧が続く時間。過ぎると終わります。 __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
@@ -1440,6 +1513,8 @@
     "ag.relaunchHandoff": "最後の引き継ぎから再起動",
     "ag.rc.autoAsk":
       "交代の時期です（{why}）。待機中になったら Den が引き継ぎを書かせ、再起動します。",
+    "ag.rc.waiting":
+      "交代の時期です（{why}）。始めたバックグラウンド作業 {n} 件が終わるのを待ってから、Den が交代させます。",
     "ag.rc.autoReady":
       "交代の時期です（{why}）。引き継ぎは準備済み: 待機中になったら Den が再起動します。",
     "ag.rc.ready": "交代の時期です（{why}）。引き継ぎは準備済みです。",
@@ -2077,6 +2152,8 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
+    "bell.m.unaskedExit":
+      "{name} は Den が求めていないのに終了しました (終了コード {code}): {why}",
     "bell.m.trust": "{name}: 待機中: このフォルダを信頼しますか?",
     "bell.m.trustDeclined":
       "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
@@ -2122,6 +2199,8 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
     "bell.m.updatedSecurity":
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.toolsNoteHeld":
+      "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ が戻りました。{agent} への連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.restartedWhileWorking":
@@ -2752,6 +2831,7 @@
     "set.ui.viaGithubAs": "GitHub でサインイン (@{login})",
     "set.ui.viaGithub": "GitHub でサインイン",
     "set.ui.viaCode": "コードで承認",
+    "set.ui.viaAgentView": "{agent} の読み取り専用の閲覧",
     "set.ui.viaClaim": "セットアップリンクで登録",
     "set.ui.viaLink": "一回限りのリンクでサインイン",
     "set.ui.unknownBrowser": "不明なブラウザ",
