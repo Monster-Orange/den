@@ -1099,6 +1099,12 @@ export function projectMcpServers(
  */
 export interface AgentRow {
   agent: string;
+  /**
+   * PSN-4 (issue 137): its persona changed since it started: the new
+   * version's readable name (persona_version, else its hash's first 7)
+   * and its hash.
+   */
+  personaNewer?: { version: string; hash: string };
   /** The name a person gave it (AG-4b), when one did. */
   displayName?: string;
   /**
@@ -1445,6 +1451,7 @@ export async function listAgents(
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
   await addMcpStale(d, rows);
+  addPersonaNewer(d, rows, records, ws);
   // Issue 96: the person's order, as every list of the project's agents shows.
   const ordered = inAgentOrder(
     rows,
@@ -2037,6 +2044,36 @@ export function projectPersonaDirs(
   return [...workspaceRepoFolders(d, ws).values()].map((dir) =>
     path.join(dir, ".den", "personas"),
   );
+}
+
+/**
+ * PSN-4 (issue 137): mark each row whose persona's file changed since the
+ * agent started (its recorded hash). A persona gone, unreadable personas,
+ * or no hash recorded: no mark. Never throws.
+ */
+function addPersonaNewer(
+  d: AgentsResolved,
+  rows: AgentRow[],
+  records: AgentRecord[],
+  ws: string,
+): void {
+  let all: Map<string, Persona>;
+  try {
+    all = personas(d, d.agentsConfig(), ws);
+  } catch {
+    return;
+  }
+  const byId = new Map(records.map((r) => [r.id, r]));
+  for (const row of rows) {
+    const rec = byId.get(row.agent);
+    const p = rec?.personaHash ? all.get(rec.persona) : undefined;
+    const now = p ? personaHashOf(p) : undefined;
+    if (!p || !now || now === rec!.personaHash) continue;
+    row.personaNewer = {
+      version: p.personaVersion ?? now.slice(0, 7),
+      hash: now,
+    };
+  }
 }
 
 /** PSN-3: the sha256 of persona `p`'s file, or undefined if unreadable. */

@@ -2398,6 +2398,18 @@ async function doctor(
   d.out("");
   for (const l of staleLines(stale, d.cli)) d.out(l);
   d.out("");
+  // PSN-2: personas still on the old model-version key. Unreadable
+  // personas are another check's to report.
+  let oldKey: { id: string; source: string }[] = [];
+  try {
+    oldKey = personaList(d, ws)
+      .filter((p) => p.legacyVersionKey)
+      .map((p) => ({ id: p.id, source: p.source }));
+  } catch {
+    oldKey = [];
+  }
+  for (const l of personaVersionLines(oldKey)) d.out(l);
+  d.out("");
   if (links) {
     for (const l of linkLines(links, d.cli)) d.out(l);
     d.out("");
@@ -2406,6 +2418,23 @@ async function doctor(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
   return code;
+}
+
+/**
+ * PSN-2 (issue 137): doctor's note on personas that still name their
+ * model's version `version:` (still read; `model_version:` is its name).
+ */
+export function personaVersionLines(
+  old: { id: string; source: string }[],
+): string[] {
+  if (!old.length)
+    return [
+      "Persona keys      every persona names its model's version model_version",
+    ];
+  return [
+    `Persona keys      ${old.length} ${old.length === 1 ? "persona names its" : "personas name their"} model's version \`version:\`, still read; \`model_version:\` is its name now:`,
+    ...old.map((p) => `  ${p.id} (${p.source})`),
+  ];
 }
 
 /** D65 v2: doctor's lines on which repo each agent works on. */

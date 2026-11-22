@@ -236,7 +236,8 @@ export function personaMarkdown(id: string, input: PersonaInput): string {
     description: input.description,
     runtime: input.runtime,
     ...(input.model ? { model: input.model } : {}),
-    version: input.version,
+    // PSN-2: the model's version key (the old `version` is still read).
+    model_version: input.version,
     permission_mode: input.permission,
     ...(input.allowedCommands.length
       ? { allowed_commands: input.allowedCommands }
