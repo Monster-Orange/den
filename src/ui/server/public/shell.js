@@ -2292,6 +2292,9 @@
     "set.agents.approvals_critical": "Critical",
     "set.agents.approvals_critical.d":
       "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    "set.agents.held_wait": "Requests wait for your Allow",
+    "set.agents.held_wait.d":
+      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
       "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
@@ -3132,6 +3135,24 @@
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.heldLapsed":
+      "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
+    "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
+    "bell.m.heldLost":
+      "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
+    "bell.m.heldLostAsk":
+      "A request was lost at a restart: {what}. Nothing ran from it.",
+    "bell.m.heldLostAll":
+      "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
+    "bell.ap.h": "Waiting for your Allow",
+    "bell.ap.row": "{name} asks: {what}",
+    "bell.ap.rowAsk": "Asked: {what}",
+    "bell.ap.waits": "Waiting {ago} · expires {time}",
+    "bell.ap.allow": "Allow",
+    "bell.ap.deny": "Deny",
+    "bell.ap.done": "Allowed: {what}",
+    "bell.ap.denied": "Denied: {what}",
+    "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
