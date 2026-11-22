@@ -23,6 +23,7 @@ import * as readline from "node:readline";
 import { execFileSync } from "node:child_process";
 import { ENGINE_PACKAGE, getEngineRoot } from "../../shared/paths.js";
 import { profileFrom } from "../../shared/profile.js";
+import { hubUrlProblem } from "../../shared/hub.js";
 import { parse as parseYaml } from "yaml";
 import { plural } from "../../shared/plural.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
@@ -44,6 +45,8 @@ export interface CreateOptions {
    * an instance of it (each developer's own). Unset: a commented line.
    */
   githubOrg?: string;
+  /** Issue 727: `hub.url`, the Hub this Den connects to. Unset: none. */
+  hubUrl?: string;
 }
 
 const GITHUB_ORG = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -209,6 +212,11 @@ export function renderDistribution(
       ? ["web:", `  allowed_github_org: ${opts.githubOrg}`]
       : ["# web:", "#   allowed_github_org: your-github-org"]),
     "",
+    "# The Hub this Den connects to (Settings › Hub › Connect).",
+    ...(opts.hubUrl
+      ? ["hub:", `  url: ${opts.hubUrl}`]
+      : ["# hub:", "#   url: https://hub.example.com"]),
+    "",
     "# Secrets backend: none (this distribution needs no secrets store), or",
     "# env (plain environment variables), doppler or 1password. A backend's",
     "# refs say where Den's own features find their secrets, e.g.",
@@ -373,7 +381,7 @@ export interface CreateOrgOptions {
 }
 
 const CREATE_USAGE =
-  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--github-org <org>] [--url <address>] [--yes] [--json]";
+  "usage: den create <name> [dir] [--title <title>] [--cli <cli>] [--env-prefix <PREFIX>] [--port <n>] [--github-org <org>] [--url <address>] [--hub <url>] [--yes] [--json]";
 
 /** Parse `create` argv (after the word `create`). `cwd` resolves the dir. */
 export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
@@ -391,9 +399,8 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
       json = true;
       continue;
     }
-    const m = /^--(title|cli|env-prefix|port|github-org|url)(?:=(.*))?$/.exec(
-      a,
-    );
+    const m =
+      /^--(title|cli|env-prefix|port|github-org|url|hub)(?:=(.*))?$/.exec(a);
     if (m) {
       const value = m[2] ?? argv[++i];
       if (value === undefined)
@@ -419,7 +426,19 @@ export function parseCreateArgs(argv: string[], cwd: string): ParsedCreateArgs {
     json,
     ...(flags.port !== undefined ? { port: parsePortFlag(flags.port) } : {}),
     ...(flags.url !== undefined ? { url: parseUrlFlag(flags.url) } : {}),
+    ...(flags.hub !== undefined ? { hubUrl: parseHubFlag(flags.hub) } : {}),
   };
+}
+
+/** Issue 727: `--hub <url>`, checked as Den checks hub.url. */
+function parseHubFlag(v: string): string {
+  const url = v.trim().replace(/\/+$/, "");
+  const bad = hubUrlProblem(url);
+  if (bad)
+    throw new Error(
+      `--hub: ${bad.replace("hub.url", "Hub's address")}\n${CREATE_USAGE}`,
+    );
+  return url;
 }
 
 function parseUrlFlag(v: string): string {
@@ -457,6 +476,8 @@ config/environments/local.json, manifests/ and tests/pillars/.
                          open, for example https://<cli>.local.example.com.
                          Without it, at a terminal, create asks (and
                          proposes one); else set it next: <cli> web url <address>
+  --hub <url>            hub.url: the Hub this Den connects to (https), so
+                         Settings › Hub opens on Connect
   --yes, -y              never prompt (for agents)
   --json                 print one JSON object: { ok, dir, cli, existed, port, next }
 
@@ -496,6 +517,8 @@ export interface CreateJson {
   portPicked?: { wanted: number; file: string };
   /** D17: web.allowed_github_org as written, or null when it wasn't known. */
   githubOrg?: string | null;
+  /** Issue 727: hub.url as written (only with --hub). */
+  hub?: string;
   next?: string[];
   error?: string;
   fix?: string;
@@ -659,6 +682,7 @@ export async function createResult(
       port,
       ...(portPicked ? { portPicked } : {}),
       githubOrg: githubOrg ?? null,
+      ...(args.hubUrl ? { hub: args.hubUrl } : {}),
       next: next(args.dir, githubOrg ?? null),
     };
   } catch (e) {
