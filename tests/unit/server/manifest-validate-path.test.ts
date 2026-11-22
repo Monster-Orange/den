@@ -147,12 +147,13 @@ describe("validateAtPath", () => {
     expect(r.status).toBe(403);
   });
 
-  it("a root that isn't a repo is refused", () => {
+  it("a configured folder without .git still validates", () => {
     const plain = path.join(tempDir(), "plain");
     fs.mkdirSync(plain);
     fs.writeFileSync(path.join(plain, ".den.yml"), GOOD);
     const r = validateAtPath(plain, { ...deps(), repoRoots: [plain] });
-    expect(r.status).toBe(403);
+    expect(r.status).toBe(200);
+    expect((r.body as Body).valid).toBe(true);
   });
 
   it("every read failure says the same", () => {
@@ -187,13 +188,14 @@ describe("validateAtPath", () => {
     if (process.getuid?.() !== 0) expect(answers[2]).toBe(answers[0]);
   });
 
-  it("a root whose .git is an empty file is refused", () => {
+  it("a configured folder whose .git is an empty file still validates", () => {
     const root = path.join(tempDir(), "shop");
     fs.mkdirSync(root);
     fs.writeFileSync(path.join(root, ".git"), "");
     fs.writeFileSync(path.join(root, ".den.yml"), GOOD);
     const r = validateAtPath(root, { ...deps(), repoRoots: [root] });
-    expect(r.status).toBe(403);
+    expect(r.status).toBe(200);
+    expect((r.body as Body).valid).toBe(true);
   });
 
   it("a configured monorepo subfolder validates", () => {
@@ -207,15 +209,26 @@ describe("validateAtPath", () => {
     expect((r.body as Body).valid).toBe(true);
   });
 
-  it("a home folder kept in git is still no root, nor a broad folder in it", () => {
+  it("a home folder kept in git is still no root", () => {
     fs.mkdirSync(path.join(home, ".git"));
-    const library = path.join(home, "Library");
-    fs.mkdirSync(library);
-    fs.writeFileSync(path.join(library, ".den.yml"), GOOD);
-    for (const root of [home, library]) {
-      const r = validateAtPath(root, { ...deps(), repoRoots: [root] });
-      expect(r.status).toBe(403);
-    }
+    fs.writeFileSync(path.join(home, ".den.yml"), GOOD);
+    const r = validateAtPath(home, { ...deps(), repoRoots: [home] });
+    expect(r.status).toBe(403);
+  });
+
+  it("a folder in a home folder kept in git goes by its own name, never home's origin", () => {
+    fs.mkdirSync(path.join(home, ".git"));
+    fs.writeFileSync(
+      path.join(home, ".git", "config"),
+      originConfig("https://example.com/acme/store.git"),
+    );
+    const plain = path.join(home, "work", "plain");
+    fs.mkdirSync(plain, { recursive: true });
+    fs.writeFileSync(path.join(held, "store.den.yml"), GOOD);
+    fs.writeFileSync(path.join(held, "plain.den.yml"), GOOD);
+    const body = validateAtPath(plain, { ...deps(), repoRoots: [plain] })
+      .body as Body & { layers?: { file: string | null }[] };
+    expect(body.layers?.[0]?.file).toBe(path.join(held, "plain.den.yml"));
   });
 
   it("a folder's manifest may link to another folder of the same repo", () => {
@@ -305,13 +318,20 @@ describe("validateAtPath", () => {
     ).toEqual(["held"]);
   });
 
-  it("a root whose .git file names an ordinary folder is refused", () => {
+  it("a configured folder whose .git file names an ordinary folder validates by its folder name", () => {
     const root = path.join(tempDir(), "shop");
     fs.mkdirSync(root);
+    fs.writeFileSync(
+      path.join(outside, "config"),
+      originConfig("https://example.com/acme/store.git"),
+    );
     fs.writeFileSync(path.join(root, ".git"), `gitdir: ${outside}\n`);
-    fs.writeFileSync(path.join(root, ".den.yml"), GOOD);
+    fs.writeFileSync(path.join(held, "store.den.yml"), GOOD);
+    fs.writeFileSync(path.join(held, "shop.den.yml"), GOOD);
     const r = validateAtPath(root, { ...deps(), repoRoots: [root] });
-    expect(r.status).toBe(403);
+    expect(r.status).toBe(200);
+    const body = r.body as Body & { layers?: { file: string | null }[] };
+    expect(body.layers?.[0]?.file).toBe(path.join(held, "shop.den.yml"));
   });
 
   it("a worktree whose main repo isn't configured falls back to the folder name", () => {

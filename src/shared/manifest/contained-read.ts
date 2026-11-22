@@ -11,7 +11,8 @@
  * `rootRefusal` says why a configured repo root can't be a root: far too
  * broad to read inside (`broadRootReason`: the whole disk, a top-level
  * folder, the home folder or one that holds it, the state folder or one
- * that holds it, however the path is spelled), or not a git checkout.
+ * that holds it, however the path is spelled). `gitTop` finds the git
+ * checkout a folder is in, counting only a real `.git` (see holdsGit).
  */
 import * as fs from "fs";
 import * as os from "os";
@@ -242,23 +243,15 @@ export function gitTop(
 }
 
 /**
- * Why `root` can't be a repo root, or null when it can: it is far too
- * broad, or it is not in a git work tree whose top is itself a sound root
- * (a home folder kept in git makes no folder in it a root). A folder inside
- * a repo (a monorepo's app) can be a root.
+ * Why a configured repo root can't be a root, or null when it can: only
+ * when it is far too broad. A configured folder need not be a git checkout
+ * (configs that work today keep working); the git checkout it is in
+ * (gitTop) matters only to where its git origin may be read.
  */
 export function rootRefusal(
   root: string,
   opts: BroadRootOptions = {},
 ): string | null {
   if (!root || !path.isAbsolute(root)) return "it is not an absolute path";
-  const broad = broadRootReason(root, opts);
-  if (broad) return broad;
-  const top = gitTop(root, opts);
-  if (!top)
-    return "it is not a git checkout, nor in one (no .git in it or above it)";
-  const topBroad = broadRootReason(top, opts);
-  return topBroad
-    ? `the git checkout it is in is far too broad (${topBroad})`
-    : null;
+  return broadRootReason(root, opts);
 }

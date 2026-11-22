@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import {
   broadRootReason,
+  gitTop,
   isWithin,
   readWithin,
   rootRefusal,
@@ -147,11 +148,11 @@ describe("isWithin", () => {
 });
 
 describe("rootRefusal", () => {
-  it("a root that isn't a repo is refused", () => {
+  it("a configured folder that isn't a git checkout can be a root", () => {
     const home = tempDir();
     const plain = path.join(home, "work", "plain");
     fs.mkdirSync(plain, { recursive: true });
-    expect(rootRefusal(plain, { home })).toMatch(/not a git checkout/);
+    expect(rootRefusal(plain, { home })).toBe(null);
   });
 
   it("a repo root passes", () => {
@@ -161,50 +162,66 @@ describe("rootRefusal", () => {
     expect(rootRefusal(repo, { home })).toBe(null);
   });
 
-  it("a root whose .git is an empty file is refused", () => {
+  it("a far too broad root is refused even when it holds a .git", () => {
     const home = tempDir();
-    const root = path.join(home, "work", "shop");
-    fs.mkdirSync(root, { recursive: true });
-    fs.writeFileSync(path.join(root, ".git"), "");
-    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+    fs.mkdirSync(path.join(home, ".git"));
+    expect(rootRefusal(home, { home })).toMatch(/home folder/);
   });
 
-  it("a root whose .git file names a folder that isn't there is refused", () => {
+  it("a home folder kept in git stays refused; a folder in it may be a root", () => {
     const home = tempDir();
-    const root = path.join(home, "work", "shop");
-    fs.mkdirSync(root, { recursive: true });
+    fs.mkdirSync(path.join(home, ".git"));
+    fs.mkdirSync(path.join(home, "work", "plain"), { recursive: true });
+    expect(rootRefusal(home, { home })).not.toBe(null);
+    expect(rootRefusal(path.join(home, "work", "plain"), { home })).toBe(null);
+  });
+});
+
+describe("gitTop", () => {
+  /** A folder at home/work/<name>, made. */
+  function folder(home: string, name: string): string {
+    const dir = path.join(home, "work", name);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  it("a .git that is an empty file is no checkout", () => {
+    const home = tempDir();
+    const root = folder(home, "shop");
+    fs.writeFileSync(path.join(root, ".git"), "");
+    expect(gitTop(root, { home })).toBe(null);
+  });
+
+  it("a .git file naming a folder that isn't there is no checkout", () => {
+    const home = tempDir();
+    const root = folder(home, "shop");
     fs.writeFileSync(
       path.join(root, ".git"),
       `gitdir: ${path.join(home, "gone", ".git", "worktrees", "shop")}\n`,
     );
-    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+    expect(gitTop(root, { home })).toBe(null);
   });
 
-  it("a root whose .git file names an ordinary folder is refused", () => {
+  it("a .git file naming an ordinary folder is no checkout", () => {
     const home = tempDir();
-    const root = path.join(home, "work", "shop");
-    const plain = path.join(home, "work", "plain");
-    fs.mkdirSync(root, { recursive: true });
-    fs.mkdirSync(plain, { recursive: true });
+    const root = folder(home, "shop");
+    const plain = folder(home, "plain");
     fs.writeFileSync(path.join(root, ".git"), `gitdir: ${plain}\n`);
-    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+    expect(gitTop(root, { home })).toBe(null);
   });
 
-  it("a root whose .git file names a folder with only a HEAD file is refused", () => {
+  it("a .git file naming a folder with only a HEAD file is no checkout", () => {
     const home = tempDir();
-    const root = path.join(home, "work", "shop");
-    const half = path.join(home, "work", "half");
-    fs.mkdirSync(root, { recursive: true });
-    fs.mkdirSync(half, { recursive: true });
+    const root = folder(home, "shop");
+    const half = folder(home, "half");
     fs.writeFileSync(path.join(half, "HEAD"), "ref: refs/heads/main\n");
     fs.writeFileSync(path.join(root, ".git"), `gitdir: ${half}\n`);
-    expect(rootRefusal(root, { home })).toMatch(/not a git checkout/);
+    expect(gitTop(root, { home })).toBe(null);
   });
 
-  it("a root whose .git file names a git folder in a far too broad place is refused", () => {
+  it("a .git file naming a git folder in a far too broad place is no checkout of its own", () => {
     const home = tempDir();
-    const root = path.join(home, "work", "shop");
-    fs.mkdirSync(root, { recursive: true });
+    const root = folder(home, "shop");
     // A home folder kept in git, with a worktree's git folder in it.
     const common = path.join(home, ".git");
     fs.mkdirSync(path.join(common, "objects"), { recursive: true });
@@ -214,21 +231,20 @@ describe("rootRefusal", () => {
     fs.writeFileSync(path.join(admin, "HEAD"), "ref: refs/heads/shop\n");
     fs.writeFileSync(path.join(admin, "commondir"), "../..\n");
     fs.writeFileSync(path.join(root, ".git"), `gitdir: ${admin}\n`);
-    expect(rootRefusal(root, { home })).not.toBe(null);
+    expect(gitTop(root, { home })).not.toBe(root);
   });
 
-  it("a real repo still works", () => {
+  it("a real repo is its own checkout", () => {
     const home = tempDir();
-    const repo = path.join(home, "work", "repo");
-    fs.mkdirSync(repo, { recursive: true });
+    const repo = folder(home, "repo");
     expect(git(repo, ["init", "-q"])).toBe(true);
+    expect(gitTop(repo, { home })).toBe(fs.realpathSync.native(repo));
     expect(rootRefusal(repo, { home })).toBe(null);
   });
 
-  it("a real git worktree add checkout still works", () => {
+  it("a real git worktree add checkout is its own checkout", () => {
     const home = tempDir();
-    const main = path.join(home, "work", "main");
-    fs.mkdirSync(main, { recursive: true });
+    const main = folder(home, "main");
     expect(git(main, ["init", "-q"])).toBe(true);
     expect(
       git(main, [
@@ -247,7 +263,7 @@ describe("rootRefusal", () => {
     ).toBe(true);
     const wt = path.join(home, "work", "wt");
     expect(git(main, ["worktree", "add", "-q", wt, "-b", "wt"])).toBe(true);
-    expect(rootRefusal(wt, { home })).toBe(null);
+    expect(gitTop(wt, { home })).toBe(fs.realpathSync.native(wt));
     // A relative gitdir, as git can write it, works too.
     const line = fs.readFileSync(path.join(wt, ".git"), "utf-8");
     const admin = line.replace(/^gitdir:\s*/, "").trim();
@@ -255,32 +271,18 @@ describe("rootRefusal", () => {
       path.join(wt, ".git"),
       `gitdir: ${path.relative(wt, admin)}\n`,
     );
-    expect(rootRefusal(wt, { home })).toBe(null);
+    expect(gitTop(wt, { home })).toBe(fs.realpathSync.native(wt));
   });
 
-  it("a folder inside a repo can be a root", () => {
+  it("a folder inside a repo is in that repo's checkout", () => {
     const home = tempDir();
-    const mono = path.join(home, "work", "mono");
-    fs.mkdirSync(path.join(mono, ".git"), { recursive: true });
+    const mono = folder(home, "mono");
+    fs.mkdirSync(path.join(mono, ".git"));
     fs.mkdirSync(path.join(mono, "apps", "web"), { recursive: true });
-    expect(rootRefusal(path.join(mono, "apps", "web"), { home })).toBe(null);
-  });
-
-  it("a folder whose enclosing repo is the home folder is refused", () => {
-    const home = tempDir();
-    fs.mkdirSync(path.join(home, ".git"));
-    fs.mkdirSync(path.join(home, "Library"));
-    fs.mkdirSync(path.join(home, "work", "plain"), { recursive: true });
-    expect(rootRefusal(path.join(home, "Library"), { home })).not.toBe(null);
-    expect(rootRefusal(path.join(home, "work", "plain"), { home })).not.toBe(
-      null,
+    expect(gitTop(path.join(mono, "apps", "web"), { home })).toBe(
+      fs.realpathSync.native(mono),
     );
-  });
-
-  it("a far too broad root is refused even when it holds a .git", () => {
-    const home = tempDir();
-    fs.mkdirSync(path.join(home, ".git"));
-    expect(rootRefusal(home, { home })).toMatch(/home folder/);
+    expect(rootRefusal(path.join(mono, "apps", "web"), { home })).toBe(null);
   });
 });
 

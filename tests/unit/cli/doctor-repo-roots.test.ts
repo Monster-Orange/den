@@ -63,7 +63,7 @@ describe("repoRootLines", () => {
     expect(r.check.detail).toMatch(/whole disk/);
   });
 
-  it("warns on a root that isn't a repo, naming it", () => {
+  it("is ok with a configured root that isn't a git checkout", () => {
     const home = tempDir();
     const plain = path.join(home, "work", "plain");
     fs.mkdirSync(plain, { recursive: true });
@@ -71,10 +71,9 @@ describe("repoRootLines", () => {
       home,
       stateDir: path.join(home, ".den"),
     });
-    expect(r.check.status).toBe("warn");
+    expect(r.check.status).toBe("ok");
     expect(r.problem).toBe(false);
-    expect(r.check.detail).toContain(plain);
-    expect(r.check.detail).toMatch(/not a git checkout/);
+    expect(r.lines.join("\n")).not.toMatch(/⚠/);
   });
 
   it("says nothing about a root not there yet", () => {
