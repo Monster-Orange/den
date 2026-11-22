@@ -285,6 +285,8 @@ function stage(raw) {
   }
   const words = [];
   const inputs = [];
+  /** Files a redirect writes (issue 765: never a helper to handoff.md). */
+  const outputs = [];
   let stdoutRedirected = false;
   for (let j = k; j < raw.length; j++) {
     const w = raw[j];
@@ -293,6 +295,7 @@ function stage(raw) {
       // Claude Code shows stdout and stderr both, so only stdout sent to a
       // file leaves the chat: `>f`, `1>f`, `&>f`. `2>f`, `2>&1`, `>&2` don't.
       const toFd = r[2] === "&" && /^\d+$/.test(raw[j + 1] ?? "");
+      if (!toFd && raw[j + 1] !== undefined) outputs.push(raw[j + 1]);
       if ((r[1] === "" || r[1] === "1" || r[1] === "&") && !toFd)
         stdoutRedirected = true;
       j++;
@@ -309,7 +312,14 @@ function stage(raw) {
     }
     words.push(w);
   }
-  return { words, inputs, stdoutRedirected, background: false, assigns };
+  return {
+    words,
+    inputs,
+    outputs,
+    stdoutRedirected,
+    background: false,
+    assigns,
+  };
 }
 
 const base = (w) => String(w).slice(String(w).lastIndexOf("/") + 1);
@@ -408,6 +418,59 @@ export function decide(input, env = process.env) {
   return null;
 }
 
+/**
+ * Issue 765: a helper (a background subagent, a fork) runs in the agent's
+ * process; Claude Code adds agent_id and agent_type to its hook input (Den
+ * never launches with --agent, so agent_type alone marks one too).
+ */
+export function fromHelper(input) {
+  const set = (v) => typeof v === "string" && v.length > 0;
+  return !!input && (set(input.agent_id) || set(input.agent_type));
+}
+
+/** Commands that write the file a word names. */
+const WRITERS = new Set(["tee", "cp", "mv", "install", "ln", "rsync"]);
+
+/**
+ * Issue 765: the reason to refuse a helper's write to the agent's own
+ * handoff.md (`handoff`, an absolute path), or null. Write, Edit and
+ * MultiEdit by their file_path; Bash by its redirects and a writer's
+ * file words. The agent's own session is never refused.
+ */
+export function handoffDecision(input, handoff) {
+  if (!handoff || !fromHelper(input)) return null;
+  const ti =
+    input.tool_input && typeof input.tool_input === "object"
+      ? input.tool_input
+      : {};
+  const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd();
+  const target = path.resolve(handoff);
+  const hits = (f) =>
+    typeof f === "string" && f !== "" && path.resolve(cwd, f) === target;
+  const id = String(input.agent_id || input.agent_type).replace(
+    /[^A-Za-z0-9_-]/g,
+    "-",
+  );
+  const mine = path.join(path.dirname(target), "handoffs", `helper-${id}.md`);
+  const why = `Den blocked a write to ${target}: that is the agent's own handoff, and this is a helper. Write your handoff to ${mine} instead.`;
+  if (["Write", "Edit", "MultiEdit", "NotebookEdit"].includes(input.tool_name))
+    return hits(ti.file_path) || hits(ti.notebook_path) ? why : null;
+  if (input.tool_name !== "Bash") return null;
+  let pipelines;
+  try {
+    pipelines = parseShell(String(ti.command ?? ""));
+  } catch {
+    return null;
+  }
+  for (const stages of pipelines)
+    for (const st of stages) {
+      if (st.outputs.some(hits)) return why;
+      if (WRITERS.has(base(st.words[0] ?? "")) && st.words.slice(1).some(hits))
+        return why;
+    }
+  return null;
+}
+
 /** `--name value` from the hook's own arguments, or null. */
 function arg(name, argv = process.argv) {
   const i = argv.indexOf(name);
@@ -438,6 +501,8 @@ async function main() {
         reason = apiOnlyMessage(r);
       }
     }
+    // Issue 765: whatever the guardrails, a helper never writes handoff.md.
+    reason ??= handoffDecision(input, arg("--handoff"));
     if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
   } catch {
     reason = null;

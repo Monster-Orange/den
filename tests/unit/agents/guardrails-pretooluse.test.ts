@@ -143,3 +143,92 @@ describe("it never blocks anything else", () => {
     expect(run({ tool_name: "Bash", tool_input: {} }).code).toBe(0);
   });
 });
+
+/**
+ * Issue 765: a helper (a background subagent, a fork: agent_id or
+ * agent_type in its hook input) never writes the agent's handoff.md. The
+ * hook gets the file with --handoff; the refusal names the helper's own.
+ */
+describe("issue 765: a helper never writes the agent's handoff.md", () => {
+  const files = path.join(dir, "agent-files");
+  const handoff = path.join(files, "handoff.md");
+  const as = (who: Record<string, unknown>, tool: string, ti: unknown) => {
+    const r = spawnSync(process.execPath, [HOOK, "--handoff", handoff], {
+      input: JSON.stringify({
+        tool_name: tool,
+        tool_input: ti,
+        cwd: files,
+        session_id: "s1",
+        ...who,
+      }),
+      encoding: "utf-8",
+      env: { PATH: process.env.PATH ?? "", HOME: dir },
+    });
+    return { code: r.status, stderr: r.stderr };
+  };
+  const helper = { agent_id: "agent-def456", agent_type: "fork" };
+
+  it.each([
+    ["Write", { file_path: handoff, content: "x" }],
+    ["Edit", { file_path: "handoff.md", old_string: "a", new_string: "b" }],
+    ["MultiEdit", { file_path: handoff, edits: [] }],
+    ["Bash", { command: `cat > ${handoff} <<'X'\nhi\nX` }],
+    ["Bash", { command: "echo hi >> handoff.md" }],
+    ["Bash", { command: `printf hi | tee ${handoff}` }],
+    ["Bash", { command: `cp /tmp/mine.md ${handoff}` }],
+    ["Bash", { command: "mv draft.md ./handoff.md" }],
+  ])("a helper's %s to handoff.md is refused", (tool, ti) => {
+    const r = as(helper, tool, ti);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain(
+      path.join(files, "handoffs", "helper-agent-def456.md"),
+    );
+  });
+
+  it("agent_type alone is a helper too", () => {
+    expect(
+      as({ agent_type: "general-purpose" }, "Write", {
+        file_path: handoff,
+        content: "x",
+      }).code,
+    ).toBe(2);
+  });
+
+  it.each([
+    [
+      "the agent's own Write to handoff.md",
+      {},
+      "Write",
+      { file_path: handoff, content: "x" },
+    ],
+    [
+      "the agent's own redirect",
+      {},
+      "Bash",
+      { command: `echo hi > ${handoff}` },
+    ],
+    [
+      "a helper's own handoff",
+      helper,
+      "Write",
+      {
+        file_path: path.join(files, "handoffs", "helper-agent-def456.md"),
+        content: "x",
+      },
+    ],
+    [
+      "a helper reading handoff.md",
+      helper,
+      "Bash",
+      { command: `head -n 20 ${handoff}` },
+    ],
+    [
+      "a helper's write elsewhere",
+      helper,
+      "Bash",
+      { command: "echo hi > notes.md" },
+    ],
+  ])("%s goes through", (_name, who, tool, ti) => {
+    expect(as(who, tool, ti).code).toBe(0);
+  });
+});

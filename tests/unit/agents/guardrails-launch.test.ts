@@ -99,7 +99,13 @@ describe("a default-pack persona's launch", () => {
       "SessionStart",
       "Stop",
     ]);
-    expect(hooks.PreToolUse[0].matcher).toBe("Bash|Read");
+    // Issue 765: the file tools too, so a helper never writes handoff.md.
+    expect(hooks.PreToolUse[0].matcher).toBe(
+      "Bash|Read|Write|Edit|MultiEdit|NotebookEdit",
+    );
+    expect(hooks.PreToolUse[0].hooks[0].command).toMatch(
+      /--handoff \S*handoff\.md/,
+    );
     expect(hooks.PreToolUse[0].hooks[0].type).toBe("command");
     expect(hooks.PreToolUse[0].hooks[0].command).toContain(
       path.join("guardrails", "pretooluse.mjs"),
