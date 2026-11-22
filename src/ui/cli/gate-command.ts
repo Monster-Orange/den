@@ -25,7 +25,7 @@
  *                            waiting entry go just ahead of it (yours only)
  *   settings [--cpu-slots N] [--cpu-slots-beside-browser N]
  *            [--local-browser-slots N]
- *            [--overrun-margin-minutes N]
+ *            [--overrun-margin-minutes N] [--overrun-bell-multiple X]
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
  *            [--priority-max N] [--priority-pass-limit-minutes N]
@@ -106,7 +106,7 @@ export const GATE_HELP = {
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
     "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--local-browser-slots N]",
-    "    [--overrun-margin-minutes N]",
+    "    [--overrun-margin-minutes N] [--overrun-bell-multiple X]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
     "    [--priority-max N] [--priority-pass-limit-minutes N] [--priority-agents 0|1]",
@@ -769,6 +769,7 @@ function settings(args: string[], d: GateDeps): number {
   const { f } = flags(args, {
     "--cpu-slots": true,
     "--overrun-margin-minutes": true,
+    "--overrun-bell-multiple": true,
     "--remote-renew-seconds": true,
     "--remote-lapse-seconds": true,
     "--remote-max-slots": true,
@@ -799,6 +800,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--cpu-slots-beside-release-browser", "cpu_slots_beside_release_browser"],
     ["--local-browser-slots", "local_browser_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
+    ["--overrun-bell-multiple", "overrun_bell_multiple"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
     ["--remote-lapse-seconds", "remote_lapse_seconds"],
     ["--remote-max-slots", "remote_max_slots"],
@@ -857,7 +859,7 @@ function settings(args: string[], d: GateDeps): number {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

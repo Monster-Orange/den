@@ -177,6 +177,11 @@ export interface GateSettings {
   localBrowserSlots: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
+  /**
+   * Issue 993: held past this many times its estimate, a slot is in the
+   * bell's Needs you (End for the person) and its agent is told once.
+   */
+  overrunBellMultiple: number;
   /** Issue 621: how often a runner renews its lease, seconds (it is told). */
   remoteRenewSeconds: number;
   /** Issue 621: a runner's lease not renewed this long is taken back. */
@@ -223,6 +228,7 @@ export const GATE_DEFAULTS: GateSettings = {
   cpuSlotsBesideReleaseBrowser: 0,
   localBrowserSlots: 1,
   overrunMarginMinutes: 15,
+  overrunBellMultiple: 2,
   remoteRenewSeconds: 30,
   remoteLapseSeconds: 120,
   remoteMaxSlots: 4,
@@ -557,6 +563,20 @@ export function overrun(
   return (
     !!e.grantedAt && now > expectedEnd(e) + s.overrunMarginMinutes * 60_000
   );
+}
+
+/**
+ * Issue 993: held past `overrunBellMultiple` times its estimate (the box's
+ * time scale counted): the bell shows it, with End for the person.
+ */
+export function overrunBell(
+  e: GateEntry,
+  s: Pick<GateSettings, "overrunBellMultiple">,
+  now: number,
+): boolean {
+  if (!e.grantedAt) return false;
+  const est = e.estimateMin * (e.boxTimeScale ?? 1) * 60_000;
+  return now - t(e.grantedAt) > s.overrunBellMultiple * est;
 }
 
 /**

@@ -96,6 +96,7 @@ describe("gate-slot routes", () => {
       cpuSlotsBesideReleaseBrowser: 0,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
+      overrunBellMultiple: 2,
       priorityMax: 1,
       priorityPassLimitMinutes: 0,
       priorityAgents: true,

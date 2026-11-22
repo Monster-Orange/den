@@ -1235,6 +1235,7 @@ import {
   type HeldActions,
 } from "./approval-routes.js";
 import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
+import { gateOverrunWaiting } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
   handleIssueWriteRoute,
@@ -5646,6 +5647,11 @@ async function handleRequest(
       ...notificationDeps(),
       // Issue 746: what waits for the person's Allow leads Needs you.
       held: () => (approvals ? approvals.queue.pending() : []),
+      // Issue 993: a gate slot held past the multiple of its estimate.
+      gateOverruns: () => {
+        const s = gates();
+        return gateOverrunWaiting(s.list(), s.settings(), Date.now());
+      },
     });
     return;
   }

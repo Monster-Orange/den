@@ -5820,8 +5820,15 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - Past its estimate plus `overrun_margin_minutes` (default 15) a run is
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
-- A person ends a slot early on the Agents page (the gate chip) or with
-  `gate end`; the run is not stopped. An agent can't: the web route
+- Held past `overrun_bell_multiple` times its estimate (default 2; `gate
+  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+  the bell's Needs you: who holds it, what it runs, since when and its
+  estimate, with End for the person. When an agent holds it, Den types one
+  line at that agent's prompt, once per slot, to release it with
+  `gate_slot_release` or let its command finish. The line leaves the bell
+  as soon as the slot ends, however it ends (issue 993).
+- A person ends a slot early on the Agents page (the gate chip), from the
+  bell, or with `gate end`; the run is not stopped. An agent can't: the web route
   refuses an agent's token, `gate end` refuses in an agent's terminal, and
   the MCP tools give back only the agent's own slot.
 - The slots are the machine user's, shared by every install and repo, and

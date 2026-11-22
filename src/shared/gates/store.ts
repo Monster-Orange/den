@@ -9,7 +9,7 @@
  *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
  *                     cpu_slots_beside_release_browser (its follow-up),
  *                     local_browser_slots,
- *                     overrun_margin_minutes,
+ *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
  *                     803: class_order, class_map, class_windows (text)
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
@@ -102,6 +102,8 @@ export type GateSettingsPatch = {
   /** Browser runs that may hold this machine at once (default 1). */
   local_browser_slots?: number | null;
   overrun_margin_minutes?: number | null;
+  /** Issue 993: held past this many times its estimate: the bell. */
+  overrun_bell_multiple?: number | null;
   remote_renew_seconds?: number | null;
   remote_lapse_seconds?: number | null;
   remote_max_slots?: number | null;
@@ -148,6 +150,8 @@ export const GATE_LIMITS: Record<
   // Each local browser run is in its own container; 1 is one at a time.
   local_browser_slots: { min: 1, max: 64, int: true },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  // Issue 993: 1 is "as soon as it passes its estimate".
+  overrun_bell_multiple: { min: 1, max: 100, int: false },
   remote_renew_seconds: { min: 5, max: 3600, int: true },
   remote_lapse_seconds: { min: 10, max: 24 * 3600, int: true },
   remote_max_slots: { min: 1, max: 256, int: true },
@@ -392,6 +396,11 @@ export class GateStore {
     return path.join(this.dir, "slots");
   }
 
+  /** Issue 993: the store's clock (ms), as its rules read the time. */
+  clock(): number {
+    return this.now();
+  }
+
   settings(): GateSettings & BoxSettings {
     try {
       const v = JSON.parse(
@@ -426,6 +435,10 @@ export class GateStore {
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
+        ),
+        overrunBellMultiple: num(
+          "overrun_bell_multiple",
+          GATE_DEFAULTS.overrunBellMultiple,
         ),
         ...leaseTimes(
           num("remote_renew_seconds", GATE_DEFAULTS.remoteRenewSeconds),
