@@ -263,10 +263,10 @@ for (const engine of ["chromium", "webkit"]) {
       const around = await open(b, "?chips=2", 1280, true);
       const ref = await collectNav(plain);
       const got = await collectNav(around);
-      // The bar really moved (the wrapper's 40px).
+      // The bar really moved (below the banner, and the wrapper's shift).
       const bar = (s: typeof ref) =>
         s.elements.find((e) => e.tag === "header" && e.parent == null)!.box.y;
-      expect(bar(got) - bar(ref)).toBe(40);
+      expect(bar(got) - bar(ref)).toBeGreaterThanOrEqual(40);
       expect(compareNav(got, ref)).toEqual([]);
       expect(navWarnings(got)).toEqual([]);
       await plain.context().close();

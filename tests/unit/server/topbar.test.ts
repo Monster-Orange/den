@@ -324,10 +324,11 @@ describe("the pages", () => {
     // `account`.
     const order = [
       "DUI.searchHtml(",
-      'id="den-status"',
-      'id="den-runs"',
-      'id="den-lock"',
-      'id="den-user"',
+      // Issue 313: the chips, the bell and ◐ ▾ are data the kit draws.
+      'id: "den-status"',
+      'id: "den-runs"',
+      'id: "den-lock"',
+      "account: { label",
     ].map(at);
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);

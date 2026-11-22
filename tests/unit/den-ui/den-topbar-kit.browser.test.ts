@@ -138,16 +138,15 @@ const slotCheck = (p: Page) =>
       problems.push(
         "start is not exactly the kit's scopeHtml + searchHtml output",
       );
-    if (!outs("bellButtonHtml").includes(slots.bell ?? ""))
-      problems.push("bell is not exactly the kit's bellButtonHtml output");
-    const acct =
-      /^<span class="den-user" id="den-user">([\s\S]*)<\/span>$/.exec(
-        slots.account ?? "",
-      );
-    if (!acct || !outs("appearanceButtonHtml").includes(acct[1]!))
-      problems.push(
-        "account is not the kit's appearanceButtonHtml in its container",
-      );
+    // Issue 313: the end, bell and account slots are data the kit draws
+    // (chipHtml, bellButtonHtml, ◐ ▾ in #den-user), never Den's HTML.
+    const raw = slots as Record<string, unknown>;
+    if (!Array.isArray(raw.end) || raw.end.some((c) => typeof c !== "object"))
+      problems.push("end is not a list of chips' data");
+    if (!raw.bell || typeof raw.bell !== "object")
+      problems.push("bell is not bellButtonHtml's options");
+    if (!raw.account || typeof raw.account !== "object")
+      problems.push("account is not the appearance button's options");
     return problems;
   });
 
@@ -278,7 +277,7 @@ for (const name of BROWSERS)
         ).toEqual([
           "button#den-status.den-chip",
           "button#den-runs.den-chip",
-          "button#den-lock.den-chip",
+          "button#den-lock.den-chip.warn",
         ]);
       } finally {
         await p.context().close();
