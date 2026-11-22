@@ -69,7 +69,12 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import * as fs from "fs";
-import { boxEnv, checkBox, defaultPlace } from "../../shared/gates/boxes.js";
+import {
+  boxEnv,
+  checkBox,
+  defaultPlace,
+  hostOnlyMatch,
+} from "../../shared/gates/boxes.js";
 import {
   SELF,
   browserSlotCheck,
@@ -102,8 +107,8 @@ export const GATE_HELP = {
     "    goes to the front of its kind's queue (one at a time; recorded)",
     "    a browser run takes whichever browser slot frees first, here or on a",
     "    test box (DEN_PW_WS is set); --box local keeps it here, --box <name>",
-    "    sends it to one box. One with no --base-url, no box for its Playwright",
-    "    version, or marked host-only stays here and says why",
+    "    sends it to one box. One with no --base-url, its own browser, no box",
+    "    for its Playwright version, or marked host-only stays here, saying why",
     "    --browser-endpoint ws://…: the container browser a browser run uses",
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
@@ -597,12 +602,20 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     where === undefined &&
     kind === "browser" &&
     d.store.settings().browserBoxDefault === "any";
+  // Issue 1033: a host-only run never goes to a box, nor runs inside a
+  // box's slot: checked before the nested look.
+  const hostOnly =
+    anyByDefault &&
+    !!hostOnlyMatch(
+      { label, project: path.basename(d.cwd) },
+      d.store.settings().browserHostOnly,
+    );
   // Issue 928: inside a held slot of this kind and place: run in it, at
   // once. The outer run checked the browser and keeps the slot.
   const inside = heldSlotFor(
     d,
     kind as GateKind,
-    where ?? (anyByDefault ? "any" : undefined),
+    where ?? (anyByDefault && !hostOnly ? "any" : undefined),
   );
   if (inside) {
     d.err(
@@ -671,7 +684,16 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           boxes: d.store.boxes(),
           baseUrl: urls.length > 0,
           pwVersion: pwFlag ?? playwrightVersion(d.cwd),
-          ownBrowser: endpoint === SELF,
+          // A run that brings its own browser (the flag, or its
+          // environment) keeps it: a box would only change DEN_PW_WS.
+          ...(endpoint !== undefined
+            ? {
+                ownBrowser:
+                  endpoint === SELF
+                    ? "it starts its own browser container"
+                    : `it brings its own browser (${fromEnv?.from ?? "--browser-endpoint"})`,
+              }
+            : {}),
         });
     where = pick.where;
     hostWhy = pick.why;

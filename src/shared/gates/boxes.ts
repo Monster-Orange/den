@@ -794,8 +794,11 @@ export function defaultPlace(o: {
   /** The run gave --base-url (a box's browser reaches the app by it). */
   baseUrl: boolean;
   pwVersion?: string;
-  /** The run starts its own browser container (--browser-endpoint self). */
-  ownBrowser: boolean;
+  /**
+   * Issue 1033: the run brings its own browser (--browser-endpoint, or
+   * one in its environment): why it stays here, in words.
+   */
+  ownBrowser?: string;
 }): { where?: "any"; why?: string } {
   if (o.setting === "local" || !o.boxes.length) return {};
   const rule = hostOnlyMatch(o, o.hostOnly);
@@ -805,7 +808,7 @@ export function defaultPlace(o: {
         ? `${o.label} is host-only (browser_host_only ${rule.text})`
         : `project ${o.project ?? "*"} is host-only (browser_host_only ${rule.text})`,
     };
-  if (o.ownBrowser) return { why: "it starts its own browser container" };
+  if (o.ownBrowser) return { why: o.ownBrowser };
   if (!o.baseUrl)
     return { why: "no --base-url, so a test box can't reach the app" };
   const skips = o.boxes.map((b) => ({

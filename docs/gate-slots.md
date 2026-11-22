@@ -423,7 +423,9 @@ A run with no `--box` stays on this machine, and says why in one line
 (`gate: stays on this machine: …`), when:
 
 - its project or label is host-only (`browser_host_only`, below);
-- it starts its own browser container (`--browser-endpoint=self`);
+- it brings its own browser: `--browser-endpoint` (an address, or `self`
+  for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
+  `E2E_WEBKIT_WS` in its environment;
 - it has no `--base-url`, or one a box can't use;
 - no box serves its Playwright version.
 

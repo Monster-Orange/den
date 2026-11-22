@@ -354,3 +354,122 @@ describe("the two settings: gate settings and the Settings page", () => {
     }
   });
 });
+
+describe("a run that brings its own browser stays on this machine", () => {
+  it("--browser-endpoint ws://…: stays, saying so", async () => {
+    const store = storeWith();
+    const t = deps(store);
+    expect(
+      await cmdGate(
+        plain(["--browser-endpoint", "ws://c.test:3000", ...BASE]),
+        t.d,
+      ),
+    ).toBe(0);
+    expect(t.ran[0]!.env?.DEN_GATE_SLOT_BOX).toBe("local");
+    expect(t.ran[0]!.env?.DEN_PW_WS).toBe("ws://c.test:3000");
+    expect(t.err).toContain(
+      "gate: stays on this machine: it brings its own browser (--browser-endpoint)",
+    );
+  });
+
+  it("--browser-endpoint=self: stays, saying so", async () => {
+    const store = storeWith();
+    holdHost(store);
+    const t = deps(store);
+    expect(
+      await cmdGate(plain(["--browser-endpoint=self", ...BASE]), t.d),
+    ).toBe(1);
+    expect(t.ran).toEqual([]);
+    expect(t.err).toContain(
+      "gate: stays on this machine: it starts its own browser container",
+    );
+  });
+
+  it.each(["DEN_PW_WS", "HUB_PW_WEBKIT_WS", "E2E_WEBKIT_WS"])(
+    "an endpoint in %s: stays, even with this machine's slot held",
+    async (name) => {
+      const store = storeWith();
+      holdHost(store);
+      const t = deps(store);
+      t.d.env = { [name]: "ws://c.test:3000" };
+      expect(await cmdGate(plain(BASE), t.d)).toBe(1);
+      expect(t.err).toContain("gate: waited for this machine's slot");
+      expect(t.ran).toEqual([]);
+      expect(t.err).toContain(
+        `gate: stays on this machine: it brings its own browser (${name})`,
+      );
+    },
+  );
+});
+
+describe("a run inside a slot a default pick put on a box", () => {
+  /** A browser slot on box b1, taken by default (where any). */
+  async function outerOnBox(store: GateStore) {
+    holdHost(store);
+    const o = store.ask({
+      kind: "browser",
+      who: "outer",
+      label: "outer",
+      pid: 7,
+      estimateMin: 10,
+      where: "any",
+    });
+    await store.checkBoxes();
+    const e = store.get(o.id)!;
+    expect(e.box).toBe("b1");
+    return e;
+  }
+
+  it("a plain nested run runs in that slot", async () => {
+    const store = storeWith();
+    const outer = await outerOnBox(store);
+    const t = deps(store);
+    t.d.env = { DEN_GATE_SLOT: outer.id };
+    t.d.descends = () => true;
+    const before = store.list().length;
+    expect(await cmdGate(plain(BASE), t.d)).toBe(0);
+    expect(t.ran).toHaveLength(1);
+    expect(t.err[0]).toBe(
+      `gate: inside ${outer.id} (holds browser on box b1); running e2e in it`,
+    );
+    expect(store.list()).toHaveLength(before);
+  });
+
+  it("a host-only nested run never runs in the box's slot", async () => {
+    const store = storeWith();
+    store.writeSettings({ browser_host_only: "label:e2e" });
+    const outer = await outerOnBox(store);
+    const t = deps(store);
+    t.d.env = { DEN_GATE_SLOT: outer.id };
+    t.d.descends = () => true;
+    // This machine's slot is held: it waits for it, never runs on b1.
+    expect(await cmdGate(plain(BASE), t.d)).toBe(1);
+    expect(t.ran).toEqual([]);
+    expect(t.err.some((l) => /inside /.test(l))).toBe(false);
+    expect(t.err).toContain(
+      "gate: stays on this machine: e2e is host-only (browser_host_only label:e2e)",
+    );
+  });
+});
+
+describe("a bad --base-url", () => {
+  const BAD = ["--base-url", "http://den.localhost:80"];
+
+  it("by default: stays on this machine, saying why", async () => {
+    const store = storeWith();
+    const t = deps(store);
+    expect(await cmdGate(plain(BAD), t.d)).toBe(0);
+    expect(t.ran[0]!.env?.DEN_GATE_SLOT_BOX).toBe("local");
+    expect(t.err).toContain(
+      "gate: stays on this machine: --base-url http://den.localhost:80: give an explicit port other than 80 or 443 (this machine's live services may be there), so a test box can't reach the app",
+    );
+  });
+
+  it("with --box any: refused", async () => {
+    const store = storeWith();
+    const t = deps(store);
+    expect(await cmdGate(plain(["--box", "any", ...BAD]), t.d)).toBe(2);
+    expect(t.ran).toEqual([]);
+    expect(store.list()).toEqual([]);
+  });
+});
