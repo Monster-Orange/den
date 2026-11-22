@@ -184,8 +184,9 @@ describe("issue 242: the caller is found when it connects", () => {
       }) as unknown as http.IncomingMessage;
     const on = { on: true, waitMs: 1234 };
     expect(tb.agentPeerWait(req(`Bearer ${AGENT}`), on)).toBe(1234);
+    // The person's token is placed too (it counts only outside agents).
     expect(tb.agentPeerWait(req("Bearer den_pt_TESTONLY_person"), on)).toBe(
-      null,
+      1234,
     );
     expect(tb.agentPeerWait(req(), on)).toBe(null);
     expect(

@@ -1280,7 +1280,11 @@ import {
   type VerifyServerDeps,
 } from "./verify-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
-import { sessionRootPids } from "../../shared/person-here.js";
+import {
+  agentSessionIds,
+  agentSessionRoots,
+  sessionRootPids,
+} from "../../shared/person-here.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
 
 /** Sign-in: Den's own processes, this server always among them. */
@@ -1291,6 +1295,7 @@ function denPidsNow(): number[] | null {
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
+  personTokenPlace,
   callerLine,
   callerPid,
   forwardedRequest,
@@ -2213,6 +2218,37 @@ const GUARD: GuardContext = {
   edgeProved: (req) => EDGE_PROVED(req),
   // Issue 636: the test-person path, on a test bed (issue 810's binding).
   testBed: () => testInstallNow(),
+  // The person's token only from outside every agent's processes.
+  personTokenFrom: (req) => {
+    let from: "ok" | "in_agent" | "unknown";
+    try {
+      const ids = agentSessionIds(getStateDir());
+      from = personTokenPlace({
+        loopback: isLoopbackAddress(req.socket?.remoteAddress),
+        // Only the edge's proof, never a forwarding header any caller can send.
+        edgeProved: EDGE_PROVED(req),
+        line: callerLine(req),
+        roots: ids ? agentSessionRoots(getStateDir(), ids) : null,
+      });
+    } catch {
+      from = "unknown";
+    }
+    if (from !== "ok")
+      recordAction(
+        null,
+        {
+          verb: "person-token",
+          detail: `the person's token from ${from === "in_agent" ? "an agent's processes" : "a process Den couldn't place"} (pid ${callerPid(req) ?? "?"}): ${req.method ?? "GET"} ${new URL(req.url ?? "/", "http://x").pathname}`,
+          outcome: "refused" as const,
+          reason:
+            from === "in_agent"
+              ? "person_token_in_agent"
+              : "person_token_unplaced",
+        },
+        "person",
+      );
+    return from;
+  },
 };
 
 // ── SEC-2a: Sign in with GitHub, the owner, pairing ──────────────────────────
