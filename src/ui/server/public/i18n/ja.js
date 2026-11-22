@@ -641,6 +641,10 @@
     "keep.tokenSave": "保存",
     "keep.tokenFailed": "保存されませんでした: {error}",
     "keep.tokenClear": "削除",
+    "gate.priorityOffTitle": "リリース優先をオフにしますか?",
+    "gate.priorityOffAsk":
+      "0 にすると、このマシンのすべてのリポジトリでリリース優先がオフになります。人が待っているリリース実行も、通常の実行の後ろで待つことになります。",
+    "gate.priorityOffOk": "オフにする",
     "keep.clearTitle": "サインイントークンを削除しますか?",
     "keep.clearAsk":
       "シークレットストアから削除されます。「ログアウト後もエージェントを動かす」のエージェントは、新しいトークンを設定するまでサインインできません。",

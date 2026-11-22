@@ -1568,6 +1568,10 @@
     "keep.tokenSave": "Save",
     "keep.tokenFailed": "Not saved: {error}",
     "keep.tokenClear": "Clear",
+    "gate.priorityOffTitle": "Turn release priority off?",
+    "gate.priorityOffAsk":
+      "0 turns release priority off for every repo on this machine. A release run a person waits on then waits behind plain runs.",
+    "gate.priorityOffOk": "Turn it off",
     "keep.clearTitle": "Remove the sign-in token?",
     "keep.clearAsk":
       "It's removed from the secrets store. Agents under Keep agents running after logout can't sign in until a new one is set.",

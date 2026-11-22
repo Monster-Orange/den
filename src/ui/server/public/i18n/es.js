@@ -668,6 +668,10 @@
     "keep.tokenSave": "Guardar",
     "keep.tokenFailed": "No se guardó: {error}",
     "keep.tokenClear": "Quitar",
+    "gate.priorityOffTitle": "¿Desactivar la prioridad de versión?",
+    "gate.priorityOffAsk":
+      "0 desactiva la prioridad de versión para todos los repositorios de esta máquina. Una ejecución de versión que alguien espera queda entonces detrás de las normales.",
+    "gate.priorityOffOk": "Desactivarla",
     "keep.clearTitle": "¿Quitar el token de inicio de sesión?",
     "keep.clearAsk":
       "Se quita del almacén de secretos. Con «Mantener los agentes al cerrar sesión», los agentes no podrán iniciar sesión hasta que se defina uno nuevo.",

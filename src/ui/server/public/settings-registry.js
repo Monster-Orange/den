@@ -2986,7 +2986,22 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.priority_max"],
     control: { type: "number", min: 0, max: 16, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.priorityMax ?? 1,
-    write: (v, ctx) => ctx.post({ gate_slots: { priority_max: v } }),
+    // Issue 963: 0 turns release priority off for the whole machine: it
+    // asks first, saying what it does. Cancelled, nothing changes.
+    write: async (v, ctx) => {
+      if (Number(v) === 0 && (ctx.data.gate_slots?.priorityMax ?? 1) !== 0) {
+        const t = (k, x) => ctx.shell.t(k, x);
+        const { askConfirm } = await import("/dialog-den.js");
+        const ok = await askConfirm({
+          title: t("gate.priorityOffTitle"),
+          message: t("gate.priorityOffAsk"),
+          okLabel: t("gate.priorityOffOk"),
+          danger: true,
+        });
+        if (!ok) return false;
+      }
+      return ctx.post({ gate_slots: { priority_max: v } });
+    },
   },
   {
     id: "server.gate_priority_pass",
