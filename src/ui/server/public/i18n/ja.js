@@ -1799,6 +1799,8 @@
       "{module} はここでは実行できません: 実行先は {envs} だけです。",
     "ap.vr.cant.production":
       "{module} はまだ本番で実行できません: 本番での有効化は今後の Den で入ります。",
+    "ap.vr.cant.production-declared":
+      "{module} は本番の予定実行から外れます: Den はコマンドを読み取り専用に保てないため、本番ではスモークチェックとコードのスキャンだけが実行されます。",
     "ap.vr.cant.adapter-later":
       "{module} はまだ実行できません: そのアダプター({adapter})は今後の Den で入ります。",
     "ap.vr.cant.no-health-url":

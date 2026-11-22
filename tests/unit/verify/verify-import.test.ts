@@ -111,6 +111,20 @@ describe("the settings", () => {
     );
   });
 
+  it("issue 214: verify.environments as a map (VERIFY-SPEC section 6); imported: true marks one", () => {
+    expect(
+      readImportSettings({
+        environments: {
+          bed: { imported: true },
+          production: { write_allow: ["POST /login"] },
+        },
+      }).environments,
+    ).toEqual(["bed"]);
+    expect(() =>
+      readImportSettings({ environments: { "Bed Box": { imported: true } } }),
+    ).toThrow(/verify\.environments/);
+  });
+
   it("its keys never overlap the run, flaky, history and security keys", () => {
     expect(IMPORT_KEYS).toEqual(["environments", "import"]);
     for (const k of ["run", "flaky", "history", "security"])

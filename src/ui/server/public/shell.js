@@ -2706,6 +2706,8 @@
       "{module} can't run here: it runs on {envs} only.",
     "ap.vr.cant.production":
       "{module} can't run on production yet: opting in to production comes in a later Den.",
+    "ap.vr.cant.production-declared":
+      "{module} is left out of a scheduled production run: Den can't keep a command read-only, so only smoke checks and code scans run there.",
     "ap.vr.cant.adapter-later":
       "{module} can't run yet: its adapter ({adapter}) comes in a later Den.",
     "ap.vr.cant.no-health-url":

@@ -224,6 +224,11 @@ function cantLine(c: CantRunModule, env: string): [string, DetailKey] {
         `${c.name} can't run on production yet: opting in to production comes in a later Den.`,
         { key: "ap.vr.cant.production", vars: { module: c.name } },
       ];
+    case "production-declared":
+      return [
+        `${c.name} is left out of a scheduled production run: Den can't keep a command read-only, so only smoke checks and code scans run there.`,
+        { key: "ap.vr.cant.production-declared", vars: { module: c.name } },
+      ];
     case "adapter-later":
       return [
         `${c.name} can't run yet: its adapter (${c.adapter}) comes in a later Den.`,

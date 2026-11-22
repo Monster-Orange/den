@@ -1854,6 +1854,8 @@
       "{module} no puede correr aquí: solo corre en {envs}.",
     "ap.vr.cant.production":
       "{module} aún no puede correr en producción: activarlo para producción llega en un Den posterior.",
+    "ap.vr.cant.production-declared":
+      "{module} queda fuera de una corrida programada en producción: Den no puede mantener un comando en solo lectura, así que allí solo corren las pruebas de humo y los análisis del código.",
     "ap.vr.cant.adapter-later":
       "{module} aún no puede correr: su adaptador ({adapter}) llega en un Den posterior.",
     "ap.vr.cant.no-health-url":

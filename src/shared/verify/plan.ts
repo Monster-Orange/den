@@ -41,6 +41,8 @@ export type PlanWhy =
 export type CantReason =
   | "environment"
   | "production"
+  /** Issue 214: a scheduled production run takes only checks Den keeps read-only. */
+  | "production-declared"
   | "adapter-later"
   | "no-health-url";
 
@@ -67,6 +69,10 @@ export interface VerifyPlan {
   /** Each layer and the layers it depends on (a run blocks by them). */
   layers: Record<string, string[]>;
   nothingToRun: boolean;
+  /** Issue 214: production, under the read-only method rule. */
+  readOnly: boolean;
+  /** Issue 214: how the run started; by hand when absent. */
+  trigger?: "schedule";
   /** Why nothing runs: nothing changed, none declared, none can run here. */
   reason?: "unchanged" | "none-declared" | "none-here";
 }
@@ -81,6 +87,8 @@ export interface PlanInput {
   layers: Record<string, string[]>;
   /** By module id; a module not listed counts as never checked. */
   changes: Record<string, ChangeState>;
+  /** Issue 214: a schedule's run. */
+  trigger?: "schedule";
 }
 
 /** Den runs these itself today: a command, and built-in smoke. */
@@ -88,10 +96,20 @@ const RUNS_NOW = new Set(["cmd", "smoke"]);
 
 export const PRODUCTION = "production";
 
-function cantReason(m: VerifyModule, env: string): CantReason | null {
+function cantReason(
+  m: VerifyModule,
+  env: string,
+  trigger?: "schedule",
+): CantReason | null {
   if (m.environments !== "all" && !m.environments.includes(env))
     return "environment";
-  if (env === PRODUCTION && m.mark !== "reads-code-only") return "production";
+  if (env === PRODUCTION && m.mark !== "reads-code-only") {
+    // Issue 214: on a schedule, production takes built-in smoke (GET and
+    // HEAD, through the guard); anything Den can't see inside is left out.
+    if (trigger !== "schedule") return "production";
+    if (!(m.mark === "enforced" && m.adapter === "smoke"))
+      return "production-declared";
+  }
   if (!RUNS_NOW.has(m.adapter)) return "adapter-later";
   if (m.adapter === "smoke" && !(m.healthUrls[env] ?? []).length)
     return "no-health-url";
@@ -191,7 +209,7 @@ export function planVerify(input: PlanInput): VerifyPlan {
   const modules: PlanModule[] = [];
   const cantRun: CantRunModule[] = [];
   for (const m of picked) {
-    const r = cantReason(m, env);
+    const r = cantReason(m, env, input.trigger);
     if (r) cantRun.push({ ...m, reason: r });
     else modules.push(m);
   }
@@ -209,6 +227,8 @@ export function planVerify(input: PlanInput): VerifyPlan {
     cantRun: sortModules(cantRun, layers),
     layers,
     nothingToRun: modules.length === 0,
+    readOnly: env === PRODUCTION,
+    ...(input.trigger ? { trigger: input.trigger } : {}),
     ...(modules.length === 0 && reason ? { reason } : {}),
   };
 }
