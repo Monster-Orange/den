@@ -385,6 +385,49 @@ describe("one tick of the watch, its parts passed in", () => {
     expect(fs.existsSync(awayFile(dir))).toBe(false);
   });
 
+  it("the running agents can't be looked up: no note, no record, the next tick tries again", async () => {
+    const dir = tmp();
+    const { added, store } = storeOf();
+    let owner: number | null = ROOT;
+    let now = T0;
+    let fail = true;
+    const tick = () =>
+      logoutWatchTick({
+        me: ME,
+        owner: () => owner,
+        stateDir: dir,
+        running: async () => {
+          if (fail) throw new Error("host not answering");
+          return ["planner"];
+        },
+        store: () => store as never,
+        now: () => now,
+        waitMs: 90_000,
+      });
+    // Leaving with a failed lookup: no empty record.
+    expect(await tick()).toBeNull();
+    expect(fs.existsSync(awayFile(dir))).toBe(false);
+    fail = false;
+    await tick();
+    expect(fs.existsSync(awayFile(dir))).toBe(true);
+    // Back with a failed lookup: no "stopped: <every agent>", record kept.
+    owner = ME;
+    now += 20 * 60_000;
+    fail = true;
+    expect(await tick()).toBeNull();
+    expect(added).toHaveLength(0);
+    expect(fs.existsSync(awayFile(dir))).toBe(true);
+    // The next tick, with the lookup back: the one right note.
+    fail = false;
+    expect(await tick()).toMatchObject({ kept: ["planner"], ended: [] });
+    expect(added).toEqual([
+      expect.objectContaining({
+        subject: "record:agents-ran-while-logged-out",
+      }),
+    ]);
+    expect(fs.existsSync(awayFile(dir))).toBe(false);
+  });
+
   it("a web server running as root never watches: at the login window root owns the console", async () => {
     const dir = tmp();
     // As if a record were left from before: root at the login window must

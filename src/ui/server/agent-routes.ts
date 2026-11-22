@@ -2451,7 +2451,15 @@ export async function logoutWatchTick(d: {
   const away = fs.existsSync(path.join(d.stateDir, CONSOLE_AWAY_FILE));
   // Nothing changed: logged in and not away, or still away.
   if ((owner === d.me) !== away) return null;
-  const running = await d.running().catch(() => [] as string[]);
+  // A failed lookup is not "nobody is running": it would save an empty
+  // record at the leave, or name every agent as stopped at the return.
+  // Leave the record as it is; the next tick tries again.
+  let running: string[];
+  try {
+    running = await d.running();
+  } catch {
+    return null;
+  }
   const store = await d.store();
   return consoleTick({
     stateDir: d.stateDir,
