@@ -239,38 +239,22 @@ function colourSeed(slug) {
 /**
  * Issue 168: every project's colour, slug to colour name. A project the
  * person gave a colour (data.projectColours, theirs only) has it. Each
- * other one starts at its slug's own pick and takes the next colour no
- * project has yet, in slug order, so two projects differ while there are
- * colours to go round, and the answer never depends on the list's order.
+ * other one has its slug's own pick (Automatic): the slug alone decides
+ * it, so a project has the same colour on every screen and every device,
+ * whatever other projects there are or what colours they wear. Two
+ * projects may share one; the person can choose another.
  */
 export function projectColours(data) {
   const saved =
     data?.projectColours && typeof data.projectColours === "object"
       ? data.projectColours
       : {};
-  const slugs = Object.keys(data?.workspaces ?? {})
-    .filter((s) => !NO_COLOUR.has(s))
-    .sort();
   const out = {};
-  const taken = new Set();
-  for (const s of slugs)
-    if (PROJECT_COLOURS.includes(saved[s])) {
-      out[s] = saved[s];
-      taken.add(saved[s]);
-    }
-  for (const s of slugs) {
-    if (out[s]) continue;
-    const seed = colourSeed(s);
-    let pick = PROJECT_COLOURS[seed];
-    for (let i = 0; i < PROJECT_COLOURS.length; i++) {
-      const c = PROJECT_COLOURS[(seed + i) % PROJECT_COLOURS.length];
-      if (!taken.has(c)) {
-        pick = c;
-        break;
-      }
-    }
-    out[s] = pick;
-    taken.add(pick);
+  for (const s of Object.keys(data?.workspaces ?? {})) {
+    if (NO_COLOUR.has(s)) continue;
+    out[s] = PROJECT_COLOURS.includes(saved[s])
+      ? saved[s]
+      : PROJECT_COLOURS[colourSeed(s)];
   }
   return out;
 }

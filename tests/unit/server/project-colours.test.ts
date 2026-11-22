@@ -73,12 +73,10 @@ describe("a project's colour on the page", () => {
     for (const c of PROJECT_COLOURS) expect(c).not.toMatch(/orange|red/);
   });
 
-  it("two projects have different colours by default, the same every time", () => {
+  it("Automatic is a stable pick from the slug alone, the same every time and in any order", () => {
     const one = projectColours(data);
-    expect(new Set(Object.values(one)).size).toBe(4);
     expect(projectColours({ ...data })).toEqual(one);
     for (const c of Object.values(one)) expect(PROJECT_COLOURS).toContain(c);
-    // A project's own pick doesn't depend on the order the server lists them.
     const rev = {
       workspaces: Object.fromEntries(
         Object.keys(data.workspaces)
@@ -87,6 +85,25 @@ describe("a project's colour on the page", () => {
       ),
     };
     expect(projectColours(rev)).toEqual(one);
+    // On its own, a project has the same colour it has beside the others.
+    for (const s of Object.keys(data.workspaces))
+      expect(projectColour({ workspaces: { [s]: {} } }, s)).toBe(one[s]);
+  });
+
+  it("adding a project, or choosing another's colour, never moves an Automatic one", () => {
+    const one = projectColours(data);
+    for (const extra of ["a", "zz", "omega", "b-2"]) {
+      const more = projectColours({
+        workspaces: { ...data.workspaces, [extra]: {} },
+      });
+      for (const s of Object.keys(data.workspaces))
+        expect(more[s]).toBe(one[s]);
+    }
+    for (const pick of PROJECT_COLOURS) {
+      const saved = { ...data, projectColours: { alpha: pick } };
+      for (const s of ["beta", "gamma", "delta"])
+        expect(projectColour(saved, s)).toBe(one[s]);
+    }
   });
 
   it("the person's choice wins; a choice two projects share is theirs to make", () => {
@@ -95,9 +112,6 @@ describe("a project's colour on the page", () => {
     const saved = { ...data, projectColours: { alpha: pick, beta: pick } };
     expect(projectColour(saved, "alpha")).toBe(pick);
     expect(projectColour(saved, "beta")).toBe(pick);
-    // Automatic projects never take a colour someone picked while one is free.
-    expect([pick]).not.toContain(projectColour(saved, "gamma"));
-    expect([pick]).not.toContain(projectColour(saved, "delta"));
   });
 
   it("the server agent has none (neutral grey), and nor does no project", () => {
