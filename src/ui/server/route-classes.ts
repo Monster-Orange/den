@@ -94,6 +94,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/header.js",
     "/perf-report.js",
     "/workspace-picker.js",
+    "/project-colour-picker.js",
     "/favicon.ico",
     // Issue 644: the kit's site files (its head snippet names them).
     "/favicon.svg",

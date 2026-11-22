@@ -448,6 +448,10 @@ export function initBell(doc = document) {
       attributes: true,
       attributeFilter: ["data-den-tz"],
     });
+  // Issue 168: a project's colour changed: the open panel's headings.
+  window.addEventListener("den:project-colours-shown", () => {
+    if (bell.isOpen()) paint();
+  });
   void refresh();
   const timer = setInterval(() => {
     if (doc.visibilityState !== "hidden") void refresh();

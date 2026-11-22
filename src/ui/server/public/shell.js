@@ -5561,10 +5561,19 @@
   /** Issue 168: every project's colour, from the last setWorkspaces. */
   var projectColourMap = {};
   function setWorkspaces(model) {
+    var coloursWere = JSON.stringify(projectColourMap);
     projectColourMap =
       model && model.colours && typeof model.colours === "object"
         ? model.colours
         : {};
+    // Issue 168: what wears a project's colour repaints (the bell's
+    // headings, the Agents page).
+    if (JSON.stringify(projectColourMap) !== coloursWere)
+      try {
+        window.dispatchEvent(new CustomEvent("den:project-colours-shown"));
+      } catch (e) {
+        /* no CustomEvent */
+      }
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
     // Issue 402: the project picked (null under All): the rail and every

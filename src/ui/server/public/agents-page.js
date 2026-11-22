@@ -95,7 +95,11 @@ import {
   runtimeOptions,
   wireQuarantine,
 } from "/agent-start.js";
-import { projectColour, projectLabel } from "/workspace-picker.js";
+import {
+  PROJECT_COLOURS_KEY,
+  projectColour,
+  projectLabel,
+} from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
@@ -1497,9 +1501,12 @@ async function refreshOnce() {
         .then((x) => (x.ok ? x.json() : null))
         .then((d) => {
           if (!d) return false;
-          const was = JSON.stringify(st.projects?.workspaces ?? null);
+          // Issue 168: a colour change repaints too, not only a name.
+          const key = (x) =>
+            JSON.stringify([x?.workspaces ?? null, x?.projectColours ?? null]);
+          const was = key(st.projects);
           st.projects = d;
-          return JSON.stringify(d.workspaces ?? null) !== was;
+          return key(d) !== was;
         })
         .catch(() => false);
       // At most 3 s: a slow answer paints the slugs, then the names.
@@ -5090,6 +5097,21 @@ function wireDocument() {
     for (const p of st.panes.values())
       if (p.lost && p.conn) p.conn.retry();
       else if (!p.sock) p.conn ? p.conn.nudge() : void connect(p);
+    void refresh();
+  });
+  // Issue 168: a colour chosen here, or in another tab, repaints at once.
+  window.addEventListener("den:project-colours", (e) => {
+    const d = e.detail;
+    if (!st.projects || !d?.slug) return;
+    const next = { ...(st.projects.projectColours ?? {}) };
+    if (d.picked) next[d.slug] = d.picked;
+    else delete next[d.slug];
+    st.projects = { ...st.projects, projectColours: next };
+    repaintNames();
+  });
+  window.addEventListener("storage", (e) => {
+    if (e.key !== PROJECT_COLOURS_KEY) return;
+    st.projectsAt = 0;
     void refresh();
   });
   window.addEventListener("den:appearance", () => {

@@ -226,6 +226,12 @@ export const PROJECT_COLOURS = [
 /** The server agent's scope: no project, so no colour (neutral grey). */
 const NO_COLOUR = new Set(["den-server"]);
 
+/**
+ * Issue 168: the localStorage key a colour save stamps (a time), so the
+ * person's other tabs hear of it (a storage event) and repaint.
+ */
+export const PROJECT_COLOURS_KEY = "den-project-colours-at";
+
 /** A stable start in the eight for `slug`: the same on every screen. */
 function colourSeed(slug) {
   let h = 2166136261;

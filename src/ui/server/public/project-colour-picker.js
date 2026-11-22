@@ -10,7 +10,11 @@
  *                               a project's dot, a button that opens it
  *   pickProjectColour(opts)     opens it; resolves true once saved
  */
-import { PROJECT_COLOURS, projectColour } from "./workspace-picker.js";
+import {
+  PROJECT_COLOURS,
+  PROJECT_COLOURS_KEY,
+  projectColour,
+} from "./workspace-picker.js";
 import { dialogHtml, mountDialog } from "./dialog-den.js";
 
 const esc = (s) =>
@@ -136,6 +140,12 @@ export async function pickProjectColour({ slug, name, data, opener }) {
     );
   } catch {
     /* no CustomEvent */
+  }
+  // The person's other tabs: their storage event repaints them.
+  try {
+    localStorage.setItem(PROJECT_COLOURS_KEY, String(Date.now()));
+  } catch {
+    /* no storage: they show it at their next load */
   }
   return true;
 }
