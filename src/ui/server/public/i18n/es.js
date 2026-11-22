@@ -3533,6 +3533,9 @@
     "env.run.title": "La ejecución del despliegue en GitHub",
     "env.run": "ejecución",
     "env.timedOut": "se agotó el tiempo tras {s} s",
+    "env.fetchFailed": "Sin respuesta: ¿está en marcha?",
+    "env.fetchFailedWhy":
+      "{url} no respondió. Comprueba que está en marcha y que este ordenador llega a esa dirección.",
     "env.up": "activo",
     "env.down": "caído",
     "env.service": "Servicio",

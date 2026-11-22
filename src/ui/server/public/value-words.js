@@ -140,6 +140,19 @@ export function healthReason(error, ms) {
  * title's reason. `r` is one check's result from /api/health/stream.
  */
 export function healthCellWords(r) {
+  // Issue 188: a check that couldn't reach its target ("fetch failed"):
+  // its own line in every language, English too (the raw words say
+  // neither what didn't answer nor what to try).
+  const raw = String(r.error ?? "").replace(/ \(twice in a row\)$/, "");
+  if (r.ok === false && !r.status && raw === "fetch failed") {
+    const target = r.url ?? r.check ?? r.label ?? "";
+    const why = t("env.fetchFailedWhy", { url: target });
+    return {
+      what: t("env.fetchFailed"),
+      why,
+      title: [r.label, why].filter(Boolean).join(" — "),
+    };
+  }
   // English: the reason as sent, a timeout with how long it waited (0.4.17).
   const known = inEnglish()
     ? r.error === "timeout" && r.ms
