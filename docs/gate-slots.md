@@ -39,6 +39,12 @@ over 3 × 18 cores (54), while another unit test run is going; it starts once
 the load drops or that run ends". 0 turns it off; `gate settings
 --load-hold-per-core N` sets it.
 
+`DEN_GATE_LOAD5` is a test override: when set, the gate reads that number as
+the 5-minute load instead of the machine's, for both holds (issues 1009 and
+1048). Den's test setup sets it to 0, so a busy machine never holds a test's
+own slot, and a drill can set it high. Anything that sets it skips the real
+load, so never set it in a service's environment.
+
 Each cpu run on this machine gets `DEN_GATE_WORKERS`: the cores shared by
 the cpu slots, at least 2 (9 on 18 cores with 2 slots). Den's jest config
 reads it when `DEN_TEST_WORKERS` is unset; any runner can.
