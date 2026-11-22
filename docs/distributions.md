@@ -75,8 +75,10 @@ That file is the install-den skill, also in the package at
 Claude skill front matter. `den --help` prints the line. The skill does three
 things only: it installs Den (after checking Node and git), helps the person
 pick its name and folder (default `~/<name>`), then runs `web up` and hands
-over the one-time link from `web claim-link`: "Den's own agent takes it from
-there." It adds no repo and creates no project: that is
+over: on the same computer, the person runs `<cli> web open` in their own
+terminal, which opens Den signed in; from another computer, they connect with
+`ssh -t <host>`, run `<cli> web login`, and open the printed link where they
+are. "Den's own agent takes it from there." It adds no repo and creates no project: that is
 [the server agent](#the-server-agent)'s job. Every command below also stays a
 person's own: `npm i -g @monster-orange/den` → `den create <name>` →
 `<cli> repo add` → `<cli> up` skips both agents. The skill runs the first
@@ -3068,6 +3070,7 @@ Read tools (always registered):
 | `gate_slot_status`   | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                |
 | `gate_slot_request`  | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                       |
 | `gate_slot_release`  | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                    |
+| `gate_slot_yield`    | the machine's slot store                   | Your waiting slot (`id`) lets another waiting slot (`to`) go just ahead of it, and keeps its place otherwise (issue 795); your own only, never a holder                                                                                                                        |
 | `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
 | `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
 | `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |

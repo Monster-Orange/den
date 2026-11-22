@@ -73,6 +73,8 @@ async function login(edgeDown: boolean | null) {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
     webUrl: () => ({ url: wanted, confirmed: true }),
     addressDeps: { edgeDown: () => edgeDown },
   });

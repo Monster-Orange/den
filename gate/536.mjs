@@ -11,6 +11,9 @@ export const timeoutMs = 60000;
 
 const NAMES = ["../outside", "a b", "a;b", "a|b", ".hidden", 'a"b'];
 
+// Read only (issue 845): asks the log routes with names they refuse.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }

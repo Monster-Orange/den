@@ -319,7 +319,20 @@ code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applic
 [ "$code" = "401" ] && ok "POST /api/settings without a token: 401" || bad "POST /api/settings without a token answered $code"
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: evil.example" "http://localhost:$PORT/api/health")"
 [ "$code" = "421" ] && ok "a rebinding Host: 421" || bad "a rebinding Host answered $code"
-SEC_TOKEN="$(cd "$DIST" && ./bin/acme web token --print 2>/dev/null)"
+# Sign-in: a link or the person's token is printed only in a terminal, so
+# those commands run in one (script(1); macOS and util-linux spell it
+# differently).
+in_terminal() {
+  if [ "$(uname)" = Darwin ]; then script -q /dev/null "$@" </dev/null
+  else script -qec "$(printf '%q ' "$@")" /dev/null </dev/null; fi
+}
+cli_token() {
+  (cd "$DIST" && in_terminal ./bin/acme web token --print 2>/dev/null | tr -d '\r' | grep -m1 -Eo 'den_pt_[A-Za-z0-9_-]+' || true)
+}
+SEC_TOKEN="$(cli_token)"
+piped="$(cd "$DIST" && ./bin/acme web token --print 2>/dev/null || true)"
+[ -z "$piped" ] && ok "\`acme web token --print\` prints no token outside a terminal" || bad "\`acme web token --print\` printed a token outside a terminal"
+piped=""
 code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $SEC_TOKEN" --data '{"editor":null}' "http://localhost:$PORT/api/settings")"
 SEC_TOKEN=""
@@ -328,7 +341,10 @@ SEC_TOKEN=""
 # server swaps for a session cookie, once.
 # D80: the link is on the install's address; this check has no DNS for
 # it, so the link is made for this server's own origin (--origin).
-SEC_LINK="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" --origin "http://localhost:$PORT" 2>/dev/null)"
+SEC_LINK="$(cd "$DIST" && in_terminal ./bin/acme web login --no-wait --port "$PORT" --origin "http://localhost:$PORT" 2>/dev/null | tr -d '\r' | grep -m1 -Eo 'https?://[^[:space:]]+' || true)"
+piped="$(cd "$DIST" && ./bin/acme web login --no-wait --port "$PORT" --origin "http://localhost:$PORT" 2>/dev/null || true)"
+[ -z "$piped" ] && ok "\`acme web login\` prints no link outside a terminal" || bad "\`acme web login\` printed a link outside a terminal"
+piped=""
 SEC_HDR="$(curl -sS -o /dev/null -D - -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 again="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: none' "$SEC_LINK")"
 SEC_LINK=""
@@ -359,7 +375,7 @@ SEC_CSRF=""
 if [ "$code" = "401" ] && grep -q signin_required "$SEC_BODY"; then
   ok "agent start on localhost without a sign-in: 401 signin_required"
 else bad "agent start on localhost without a sign-in answered $code"; fi
-SEC_TOKEN="$(cd "$DIST" && ./bin/acme web token --print 2>/dev/null)"
+SEC_TOKEN="$(cli_token)"
 code="$(curl -sS -o "$SEC_BODY" -w '%{http_code}' -X POST -H "Authorization: Bearer $SEC_TOKEN" \
   -H 'Content-Type: application/json' --data '{}' \
   "http://localhost:$PORT/api/workspaces/main/agents")"

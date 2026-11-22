@@ -100,6 +100,24 @@ export function envKey(key: string): string {
   return `${product().envPrefix}_${key}`;
 }
 
+/**
+ * Where the install is, from `env`: DEN_ROOT, `<PREFIX>_ROOT` and
+ * `<PREFIX>_HOME` (its distribution and its state folder), the ones set.
+ * An agent's env is an allowlist, so its session and its MCP server get
+ * these from Den instead, and a CLI it runs reaches the same distribution
+ * and state folder as the Den that started it. Paths, never secrets.
+ */
+export function installLocationEnv(
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of new Set(["DEN_ROOT", envKey("ROOT"), envKey("HOME")])) {
+    const v = env[k];
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
 /** The value of this product's `key` env var, or undefined. */
 export function envValue(
   key: string,

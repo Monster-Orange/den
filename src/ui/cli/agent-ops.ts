@@ -160,7 +160,7 @@ import { getDistRoot } from "../../shared/paths.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { envKey } from "../../shared/product.js";
+import { installLocationEnv, product } from "../../shared/product.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -990,22 +990,6 @@ function withServerScope(r: AgentsResolved): AgentsResolved {
 
 // ── the agent's MCP ─────────────────────────────────────────────────────────
 
-/**
- * Where the distribution is, from the caller's env (DEN_ROOT,
- * `<PREFIX>_ROOT`, `<PREFIX>_HOME`): the agent's env is an allowlist, so
- * its MCP server gets them in its own config instead, and reaches the same
- * distribution and state dir as the CLI that started it. Paths, never
- * secrets.
- */
-function distLocationEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of new Set(["DEN_ROOT", envKey("ROOT"), envKey("HOME")])) {
-    const v = env[k];
-    if (v) out[k] = v;
-  }
-  return out;
-}
-
 /** `<cli> mcp --workspace <ws> --actor agent:<id> [--grant <g>…]`. */
 export function agentMcp(
   d: AgentsResolved,
@@ -1026,7 +1010,7 @@ export function agentMcp(
       `agent:${id}`,
       ...grants.flatMap((g) => ["--grant", g]),
     ],
-    env: { ...distLocationEnv(d.env), ...server.env },
+    env: { ...installLocationEnv(d.env), ...server.env },
     scope: ws,
     ...(() => {
       // Issue 335: the project's own HTTP servers; a bearer is read at
@@ -1038,7 +1022,7 @@ export function agentMcp(
           ? {
               headersHelper: projectMcpHeadersHelper(
                 bin,
-                { ...distLocationEnv(d.env), ...server.env },
+                { ...installLocationEnv(d.env), ...server.env },
                 s.name,
               ),
             }
@@ -3303,6 +3287,8 @@ function launchInput(
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
     personConfigDir: path.join(d.distRoot(), "config", "local"),
+    // Issue 810: the distribution config (the test-install mark).
+    distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,
     ...(bin ? { bin } : {}),
     // den#3: its subagents' model (the persona's, else the org's), and
@@ -6271,12 +6257,46 @@ export const TURN_POLL_MS = 1_000;
 /**
  * Whether agent `rec` is mid-turn: true or false from its runtime (den-
  * claude: its transcript), null when it can't tell. Not running: false.
- * 0.4.48: a turn that ended with a job it started still running under it
- * (a gate in the background) is busy too, so "after its turn" never
- * kills a running gate.
  * Issue 607: busy comes from the live session, not the transcript alone:
  * a turn last written before that session started was cut with the one
  * that ran it (a terminal host restart), and reads idle.
+ * Issue 732: the turn alone. What Den types (Hub comments, notes, the
+ * bell's "busy") goes by this: an agent takes typed input while a
+ * background shell it started runs. Restarts use agentBusy.
+ */
+async function agentTurnBusy(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  live?: SessionInfo | null,
+): Promise<boolean | null> {
+  const s =
+    live !== undefined
+      ? live
+      : await withClient(d, async (c) => {
+          const x = sessionOf(await c.list(), rec);
+          return x && !x.exited ? x : null;
+        });
+  if (s === null) return false;
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.turnBusy || !rec.resumeToken) return null;
+  let readMaxBytes: number | undefined;
+  try {
+    readMaxBytes = d.agentsConfig().turnReadMaxBytes;
+  } catch {
+    /* unreadable config: the default */
+  }
+  return rt.turnBusy(rec.resumeToken, d.env, {
+    readMaxBytes,
+    since: liveSince(s, rec),
+  });
+}
+
+/**
+ * Its turn, or a job it left running: for what stops its session (a
+ * restart, a persona change, a move, a relaunch). 0.4.48: a turn that
+ * ended with a job it started still running under it (a gate in the
+ * background) is busy too, so "after its turn" never kills a running
+ * gate. Issue 732: never for typing (agentTurnBusy).
  */
 async function agentBusy(
   d: AgentsResolved,
@@ -6287,21 +6307,34 @@ async function agentBusy(
     return s && !s.exited ? s : null;
   });
   if (live === null) return false;
-  const pid = live.pid;
-  const rt = getRuntime(rec.runtime);
-  if (!rt?.turnBusy || !rec.resumeToken) return null;
-  let readMaxBytes: number | undefined;
-  try {
-    readMaxBytes = d.agentsConfig().turnReadMaxBytes;
-  } catch {
-    /* unreadable config: the default */
-  }
-  const busy = rt.turnBusy(rec.resumeToken, d.env, {
-    readMaxBytes,
-    since: liveSince(live, rec),
-  });
+  const busy = await agentTurnBusy(d, rec, live);
   if (busy !== false) return busy;
-  return (await agentJob(d, rec, pid)) !== null;
+  return (await agentJob(d, rec, live.pid)) !== null;
+}
+
+/**
+ * Issue 732: why a wait for agent `rec`'s turn (and jobs) ran out, in
+ * honest words: a background job it started, when its turn has ended
+ * and a job still runs; else "still working".
+ */
+async function stillBusyWhy(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  where: string,
+  waitedMs: number,
+  outcome: string,
+): Promise<AgentError> {
+  const min = Math.round(waitedMs / 60_000);
+  if ((await agentTurnBusy(d, rec).catch(() => null)) === false) {
+    const job = await agentJob(d, rec).catch(() => null);
+    if (job)
+      return stillBusy(
+        `${where}: agent ${rec.id}: a background job it started is still running (${job.minutes} min) after a wait of ${min} min; ${outcome}`,
+      );
+  }
+  return stillBusy(
+    `${where}: agent ${rec.id} was still working after ${min} min; ${outcome}`,
+  );
 }
 
 /**
@@ -6355,7 +6388,7 @@ export async function askAboutJob(
   const job = await agentJob(d, rec);
   if (job)
     throw new AgentError(
-      `agent ${rec.id} has a job still running (${job.minutes} min). Restart anyway? That ends the job (--now).`,
+      `agent ${rec.id}: a background job it started is still running (${job.minutes} min). Restart anyway? That ends the job (--now).`,
       { status: 409, code: "job_running", job },
     );
 }
@@ -6471,8 +6504,12 @@ export async function changePersona(
     const deadline = Date.now() + (opts.maxMs ?? restartWaitOf(d));
     while (busy) {
       if (Date.now() >= deadline)
-        throw stillBusy(
-          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? restartWaitOf(d)) / 60_000)} min; nothing changed`,
+        throw await stillBusyWhy(
+          d,
+          agentRecord(d, id, ws),
+          where,
+          opts.maxMs ?? restartWaitOf(d),
+          "nothing changed",
         );
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
@@ -6533,8 +6570,12 @@ export async function restartAgent(
     const deadline = Date.now() + (opts.maxMs ?? restartWaitOf(d));
     while (busy) {
       if (Date.now() >= deadline)
-        throw stillBusy(
-          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? restartWaitOf(d)) / 60_000)} min; not restarted`,
+        throw await stillBusyWhy(
+          d,
+          agentRecord(d, id, ws),
+          where,
+          opts.maxMs ?? restartWaitOf(d),
+          "not restarted",
         );
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
@@ -6787,8 +6828,12 @@ export async function moveAgent(
     const deadline = Date.now() + (opts.maxMs ?? restartWaitOf(d));
     while (busy) {
       if (Date.now() >= deadline)
-        throw stillBusy(
-          `${where}: agent ${rec.id} was still working after ${Math.round((opts.maxMs ?? restartWaitOf(d)) / 60_000)} min; not moved`,
+        throw await stillBusyWhy(
+          d,
+          agentRecord(d, id, rec.workspace),
+          where,
+          opts.maxMs ?? restartWaitOf(d),
+          "not moved",
         );
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, rec.workspace));
@@ -7874,7 +7919,13 @@ export function noteNotBackAfterHostRestart(
   }
 }
 
-/** Issue 563: of `ids`, the agents mid-turn now (in doubt: mid-turn). */
+/**
+ * Issue 563: of `ids`, the agents mid-turn now (in doubt: mid-turn), for
+ * the terminal host's restart wait (issue 597). Issue 732: an agent with
+ * a background job it started still running counts too: the host's
+ * restart ends the job with its session, a real loss, so the wait holds
+ * for it as "after its turn" does.
+ */
 export async function busyAgentIds(
   d: AgentsResolved,
   ids: readonly string[],
@@ -7883,9 +7934,12 @@ export async function busyAgentIds(
   for (const id of ids) {
     const rec = readRecord(d.stateDir(), id);
     if (!rec) continue;
+    const st = await inputState(d, rec, new Set(), 3000, {
+      promptCheck: false,
+    });
     if (
-      (await inputState(d, rec, new Set(), 3000, { promptCheck: false })) ===
-      "busy"
+      st === "busy" ||
+      (st === "idle" && (await agentJob(d, rec).catch(() => null)) !== null)
     )
       out.push(id);
   }
@@ -8127,7 +8181,8 @@ export async function sendFirstInstruction(
 /**
  * 0.4.40 comment delivery: whether agent `id` can take a Hub comment now.
  * missing: no such agent here (or the server agent, which Hub never
- * addresses); stopped: not running; busy: mid-turn, waiting on an approval,
+ * addresses); stopped: not running; busy: mid-turn (its turn alone: a
+ * background job it left running doesn't count, issue 732), waiting on an approval,
  * or Den can't tell; idle: waiting for its person. Never throws.
  */
 export async function agentInputState(
@@ -8243,7 +8298,10 @@ async function inputState(
     if (!live) return "stopped";
     if (screen === "dialog") return "busy";
     if (waiting.has(id)) return "busy";
-    const busy = await agentBusy(d, rec);
+    // Issue 732: its turn alone. A background shell it left running (a
+    // watcher, a gate) never holds what Den types: it takes input while
+    // one runs. The restart waits count jobs (agentBusy, busyAgentIds).
+    const busy = await agentTurnBusy(d, rec);
     if (busy === true) return "busy";
     // A runtime that can't say: quiet output for quietMs is waiting (a
     // working TUI redraws its spinner; a waiting one is still).
@@ -8788,7 +8846,9 @@ export async function askForHandoff(
     noteAsked(files, new Date(), true);
     return { ...r.rec, resumed: true };
   }
-  if ((await agentBusy(d, rec)) === true)
+  // Issue 732: typed in, so by its turn alone (a job it left running
+  // doesn't hold what Den types).
+  if ((await agentTurnBusy(d, rec)) === true)
     throw refused(`agent ${rec.id} is mid-turn: ask again when its turn ends`);
   const rot = rotationOf(d, rec);
   const files = agentFilesDir(d.stateDir(), rec.id);

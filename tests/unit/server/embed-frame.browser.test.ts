@@ -27,8 +27,7 @@ import type { Browser, Frame, Page } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { ScriptedPty } from "../sessions/helpers/fake-pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
-import { signIn, signedIn } from "./helpers/signed-in.js";
+import { signIn, signedIn, signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -292,7 +291,7 @@ describe("issue 103: a listed origin frames the pane", () => {
     await list([LISTED]);
     const p = await newPage();
     // A Den cookie in this browser: signed in at Den's own origin.
-    await p.goto(signInUrl(s.stateDir, s.base, "/settings"));
+    await signInPage(p, s.stateDir, s.base, "/settings");
     const cookies = await p.context().cookies(s.base);
     expect(cookies.some((c) => c.name.startsWith("den_session_"))).toBe(true);
     const sent: { url: string; cookie: string | undefined }[] = [];

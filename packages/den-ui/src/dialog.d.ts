@@ -138,3 +138,8 @@ export declare function tell(opts: DialogOptions): Promise<void>;
 export declare function openerOf(hint?: Element | null): HTMLElement | null;
 /** Focuses `el` again (no scroll) when it is still on the page and focusable. */
 export declare function focusBack(el: Element | null | undefined): boolean;
+/**
+ * Focuses `el` now, or, while a kit pop-up is open over it, when that
+ * pop-up closes (in place of what opened it). Issue 793.
+ */
+export declare function focusWhenFree(el: HTMLElement | null | undefined): void;

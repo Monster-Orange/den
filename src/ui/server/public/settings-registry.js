@@ -811,16 +811,30 @@ function drawDevices(host, ctx) {
   load();
 }
 
-/** One waiting device's line: its code, browser and OS, address, age. */
+/** "10:42" in the person's chosen time zone (the kit's). */
+function clockOf(iso) {
+  return formatTime(iso, { style: "time" });
+}
+
+/**
+ * One waiting device's line: its browser and OS, address, age, and the
+ * `web login` run it came from. Issue 819: never its code (the person reads
+ * that off the new device's own screen and types it).
+ */
 export function waitingLine(w, now = Date.now()) {
   return {
-    title: `${w.code} · ${deviceWords(w.device)}`,
+    title: deviceWords(w.device),
     tip: w.createdAt
       ? L("set.ui.asked", "asked {ago}", { ago: formatTitle(w.createdAt) })
       : "",
     detail: [
       w.client,
       L("set.ui.asked", "asked {ago}", { ago: seenAgo(w.createdAt, now) }),
+      w.fromLogin
+        ? L("set.ui.fromLogin", "from the web login run at {time}", {
+            time: clockOf(w.fromLogin),
+          })
+        : "",
     ]
       .filter(Boolean)
       .join(" · "),
@@ -828,11 +842,66 @@ export function waitingLine(w, now = Date.now()) {
 }
 
 /**
- * Waiting devices (SEC-2a): the computers whose signed-out page shows a
- * code, with Approve and Deny. Approving signs that page in by itself.
+ * Issue 819: a typed pairing code as the server reads it: any case, spaces
+ * and dashes ignored. Approve is offered once it has six characters.
+ */
+export function typedPairCode(v) {
+  return String(v ?? "")
+    .toUpperCase()
+    .replace(/[\s-]/g, "");
+}
+
+/** Issue 819: whether a typed code can be sent (six characters). */
+export function pairCodeReady(v) {
+  return typedPairCode(v).length === 6;
+}
+
+/**
+ * Issue 819: an Approve or Deny refused, in this page's language when the
+ * server says why (only a person's signed-in browser approves a device,
+ * with the code that device's screen shows).
+ */
+export function approveRefusal(e) {
+  const code = e && e.code;
+  if (code === "approve_not_agent" || code === "fixture_cannot_approve")
+    return L(
+      "set.access.approveNotAgent",
+      "Only a person approves a device, from their own signed-in browser.",
+    );
+  if (code === "approve_needs_browser" || code === "signin_to_approve")
+    return L(
+      "set.access.approveNeedsBrowser",
+      "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
+    );
+  if (code === "wrong" || code === "malformed")
+    return L(
+      "set.access.wrongCode",
+      "That code doesn't match the one on that computer's screen. Check it and type it again.",
+    );
+  if (code === "rate_limited")
+    return L(
+      "set.access.tooManyTries",
+      "Too many tries. Wait a minute and try again.",
+    );
+  if (code === "ended" || code === "expired" || code === "unknown")
+    return L(
+      "set.access.ended",
+      "That request ended or expired. Nothing was allowed.",
+    );
+  return String((e && e.message) || e);
+}
+
+/**
+ * Waiting devices (SEC-2a; issue 819): the computers whose signed-out page
+ * shows a code (a sign-in link opened there among them), each with a field
+ * for that code, Approve and Deny. Approving needs the code typed off that
+ * computer's own screen; it then signs in by itself. Only a person's
+ * signed-in browser may. A request past its time is dropped.
  */
 function drawWaiting(host, ctx) {
   let timer = null;
+  let shown = "";
+  let first = true;
   const load = () => {
     clearTimeout(timer);
     if (!host.isConnected && timer !== null) return;
@@ -841,54 +910,113 @@ function drawWaiting(host, ctx) {
         r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
       )
       .then((b) => {
-        const list = b.waiting || [];
         const now = Date.now();
+        const list = (b.waiting || []).filter(
+          (w) =>
+            w &&
+            typeof w.ref === "string" &&
+            !(w.expiresAt && Date.parse(w.expiresAt) <= now),
+        );
+        const refs = list.map((w) => w.ref).join(",");
+        // A new request shows up without a reload.
+        timer = setTimeout(load, 5000);
+        if (refs === shown && list.length) {
+          // The same requests: only their ages change; typed codes stay.
+          list.forEach((w) => {
+            const el = host.querySelector(
+              `.set-waiting[data-ref="${CSS.escape(w.ref)}"] .set-note`,
+            );
+            if (el) el.textContent = waitingLine(w, now).detail;
+          });
+          return;
+        }
+        // Typed codes survive a redraw (a request came or went).
+        const typed = {};
+        host.querySelectorAll("input[data-code-for]").forEach((i) => {
+          typed[i.dataset.codeFor] = i.value;
+        });
+        const focused =
+          document.activeElement && document.activeElement.dataset
+            ? document.activeElement.dataset.codeFor
+            : undefined;
+        shown = refs;
         host.innerHTML = list.length
           ? '<div id="set-waiting" style="width:100%">' +
             list
-              .map((w) => {
+              .map((w, i) => {
                 const l = waitingLine(w, now);
+                const ref = escHtml(w.ref);
+                const id = `set-waiting-code-${i}`;
                 return (
-                  `<div class="set-waiting" data-code="${escHtml(w.code)}" style="${ROW_STYLE}">` +
-                  `<div style="flex:1 1 220px;min-width:0"><div class="mono">${escHtml(l.title)}</div>` +
+                  `<div class="set-waiting" data-ref="${ref}" style="${ROW_STYLE}">` +
+                  `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}</div>` +
                   `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
-                  `<button type="button" class="btn primary" data-approve="${escHtml(w.code)}">${escHtml(L("set.ui.approve", "Approve"))}</button>` +
-                  `<button type="button" class="btn" data-deny="${escHtml(w.code)}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
+                  `<label for="${id}" class="set-note">${escHtml(L("set.ui.codeLabel", "Code on its screen"))}</label>` +
+                  `<input id="${id}" class="mono" data-code-for="${ref}" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" style="width:10ch">` +
+                  `<button type="button" class="btn primary" data-approve="${ref}" disabled>${escHtml(L("set.ui.approve", "Approve"))}</button>` +
+                  `<button type="button" class="btn" data-deny="${ref}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
                 );
               })
               .join("") +
             '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
           : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve."))}</output>`;
-        const act = (btn, path, code) => {
+        const act = (btn, path, body) => {
           btn.disabled = true;
           ctx.shell
-            .api("POST", path, { code })
-            .then(load)
+            .api("POST", path, body)
+            .then(() => {
+              shown = "";
+              load();
+            })
             .catch((e) => {
               btn.disabled = false;
               const out = host.querySelector("#set-waiting-out");
               if (out)
-                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(approveRefusal(e))}</span>`;
+              if (e && (e.code === "ended" || e.code === "expired")) {
+                shown = "";
+                load();
+              }
             });
         };
-        host
-          .querySelectorAll("[data-approve]")
-          .forEach((b) =>
-            b.addEventListener("click", () =>
-              act(b, "/api/web/approve", b.dataset.approve),
-            ),
+        host.querySelectorAll("input[data-code-for]").forEach((input) => {
+          const ref = input.dataset.codeFor;
+          const go = host.querySelector(`[data-approve="${CSS.escape(ref)}"]`);
+          const sync = () => {
+            go.disabled = !pairCodeReady(input.value);
+          };
+          if (typed[ref] !== undefined) input.value = typed[ref];
+          sync();
+          input.addEventListener("input", sync);
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !go.disabled) {
+              e.preventDefault();
+              go.click();
+            }
+          });
+          go.addEventListener("click", () =>
+            act(go, "/api/web/approve", {
+              ref,
+              code: typedPairCode(input.value),
+            }),
           );
+          if (focused === ref) input.focus();
+        });
+        // The first (newest, or a link's) request's field is ready to type.
+        if (first && list.length && !focused) {
+          host.querySelector("input[data-code-for]")?.focus();
+          first = false;
+        }
         host
           .querySelectorAll("[data-deny]")
           .forEach((b) =>
             b.addEventListener("click", () =>
-              act(b, "/api/web/deny", b.dataset.deny),
+              act(b, "/api/web/deny", { ref: b.dataset.deny }),
             ),
           );
-        // A new request shows up without a reload.
-        timer = setTimeout(load, 5000);
       })
       .catch(() => {
+        shown = "";
         host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.waitingSignedIn", "Waiting devices can only be listed signed in, or on this machine."))}</output>`;
       });
   };
@@ -1260,6 +1388,170 @@ function drawRunnerTokens(host, ctx) {
   draw();
 }
 
+/**
+ * Issue 625: the test boxes, browser slots on other machines. A person
+ * adds one (its name, how Den reaches it, its slots, its hold file and
+ * time scale), and removes one. Saving a box of the same name replaces it.
+ * Never a key: ssh names a key file on this machine.
+ */
+function drawGateBoxes(host, ctx) {
+  const shell = ctx.shell;
+  const field = (id, key, en, type, extra) =>
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L(key, en))}</span>` +
+    `<input id="${id}" type="${type}" ${extra || ""}></label>`;
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;flex-basis:100%">` +
+    field("set-box-name", "set.ui.boxName", "Name", "text", 'maxlength="64"') +
+    field(
+      "set-box-ssh",
+      "set.ui.boxSsh",
+      "ssh (login@host)",
+      "text",
+      'maxlength="320"',
+    ) +
+    field(
+      "set-box-port",
+      "set.ui.boxPort",
+      "ssh port",
+      "number",
+      'min="1" max="65535" step="1"',
+    ) +
+    field(
+      "set-box-key",
+      "set.ui.boxKey",
+      "ssh key file",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-pw",
+      "set.ui.boxPw",
+      "Playwright address (ws://)",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-slots",
+      "set.ui.boxSlots",
+      "Browser slots",
+      "number",
+      'min="1" max="64" step="1" value="1"',
+    ) +
+    field(
+      "set-box-hold",
+      "set.ui.boxHold",
+      "Hold file (on the box)",
+      "text",
+      'maxlength="512"',
+    ) +
+    field(
+      "set-box-scale",
+      "set.ui.boxScale",
+      "Time scale",
+      "number",
+      'min="1" max="10" step="0.1" value="1"',
+    ) +
+    field(
+      "set-box-mem",
+      "set.ui.boxMem",
+      "Keep free memory (MB)",
+      "number",
+      'min="0" step="256" placeholder="2048"',
+    ) +
+    field(
+      "set-box-pwv",
+      "set.ui.boxPwv",
+      "Playwright version on the box",
+      "text",
+      'maxlength="48" placeholder="1.48.0"',
+    ) +
+    `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
+    `</div>` +
+    `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-box-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-box-out");
+  const list = host.querySelector("#set-box-list");
+  const save = host.querySelector("#set-box-save");
+  const val = (id) => host.querySelector(id).value.trim();
+  const num = (id) => (val(id) === "" ? undefined : Number(val(id)));
+  const warn = (e) => {
+    out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+  };
+  const post = (path, body, button) =>
+    shell
+      .busyAction(
+        "save",
+        (headers) => shell.api("POST", path, body, { headers }),
+        { button },
+      )
+      .then(() => {
+        out.innerHTML = "";
+        draw();
+      });
+  const draw = () =>
+    shell
+      .api("GET", "/api/gate-slots/boxes")
+      .then((b) => {
+        const boxes = (b && b.boxes) || [];
+        if (!boxes.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.boxNone", "No test boxes. Browser runs use this machine only."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          boxes
+            .map(
+              (x) =>
+                `<li style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span>${escHtml(x.name)}</span>` +
+                `<span class="set-note">${escHtml(
+                  L("set.ui.boxSlotsN", "{n} browser slots", {
+                    n: x.browser_slots,
+                  }),
+                )}</span>` +
+                `<span class="set-note mono">${escHtml(
+                  [x.ssh, x.playwright].filter(Boolean).join(" · "),
+                )}</span>` +
+                (x.hold_file
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxHoldIs", "hold file {path}", { path: x.hold_file }))}</span>`
+                  : "") +
+                (x.time_scale && x.time_scale !== 1
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxScaleIs", "time ×{n}", { n: x.time_scale }))}</span>`
+                  : "") +
+                `<button type="button" class="btn sm" data-box-rm="${escHtml(x.name)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-box-rm]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/boxes/remove",
+              { name: btn.getAttribute("data-box-rm") },
+              btn,
+            ).catch(warn);
+          });
+      })
+      .catch(() => {});
+  save.addEventListener("click", () => {
+    const box = {
+      name: val("#set-box-name"),
+      ssh: val("#set-box-ssh") || undefined,
+      ssh_port: num("#set-box-port"),
+      ssh_identity: val("#set-box-key") || undefined,
+      playwright: val("#set-box-pw") || undefined,
+      browser_slots: num("#set-box-slots"),
+      hold_file: val("#set-box-hold") || undefined,
+      time_scale: num("#set-box-scale"),
+      min_free_mem_mb: num("#set-box-mem"),
+      playwright_version: val("#set-box-pwv") || undefined,
+    };
+    post("/api/gate-slots/boxes", { box }, save).catch(warn);
+  });
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
   {
@@ -1368,11 +1660,65 @@ const ACCESS_ROWS = [
     category: "access",
     label: "Waiting devices",
     description:
-      "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+      "Computers whose signed-out page shows a code. Type the code that computer's screen shows to approve it, and its page signs in by itself; a request lasts 10 minutes. __DEN_CLI__ web approve --list lists them.",
     keywords: ["waiting", "approve", "code", "pair", "device", "deny"],
     scope: "user",
     control: { type: "custom", render: drawWaiting },
     read: () => null,
+  },
+  {
+    // Issue 819: how many new devices one address may ask for a minute.
+    id: "access.pair_requests",
+    category: "access",
+    label: "New sign-in requests per address, a minute",
+    description:
+      "How many new devices one address may ask to sign in a minute. More are turned away until the minute is up. __DEN_CLI__ config web.pair_requests_per_minute=30",
+    keywords: [
+      "pair",
+      "sign-in",
+      "requests",
+      "limit",
+      "rate",
+      "web.pair_requests_per_minute",
+    ],
+    scope: "user",
+    keys: ["web_pairing.requests_per_minute"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.web_pairing?.requestsPerMinute ?? 30,
+    write: (v, ctx) => ctx.post({ web_pairing: { requests_per_minute: v } }),
+  },
+  {
+    // Issue 819: wrong codes approving a device may take, per window.
+    id: "access.approve_attempts",
+    category: "access",
+    label: "Wrong codes allowed when approving",
+    description:
+      "How many wrong codes approving a device may take in the window below before it waits. __DEN_CLI__ config web.approve_attempts=10",
+    keywords: ["approve", "code", "wrong", "limit", "web.approve_attempts"],
+    scope: "user",
+    keys: ["web_pairing.approve_attempts"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.web_pairing?.approveAttempts ?? 10,
+    write: (v, ctx) => ctx.post({ web_pairing: { approve_attempts: v } }),
+  },
+  {
+    id: "access.approve_window",
+    category: "access",
+    label: "Wrong-code window, in seconds",
+    description:
+      "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
+    keywords: [
+      "approve",
+      "code",
+      "wrong",
+      "window",
+      "web.approve_window_seconds",
+    ],
+    scope: "user",
+    keys: ["web_pairing.approve_window_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_pairing?.approveWindowSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ web_pairing: { approve_window_seconds: v } }),
   },
   {
     id: "access.machine_name",
@@ -1399,7 +1745,70 @@ const ACCESS_ROWS = [
     control: { type: "custom", render: drawPair },
     read: () => null,
   },
+  {
+    id: "access.test_install",
+    category: "access",
+    label: "Test install",
+    description:
+      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
+    keywords: ["test", "test install", "live checks", "fixture", "gate"],
+    scope: "user",
+    control: { type: "custom", render: drawTestInstall },
+    read: () => null,
+  },
 ];
+
+/**
+ * Issue 810: Settings › Access › Test install. Read only: whether this is a
+ * test install (set by hand in the distribution config) and whether its
+ * test person is set up. Set up test person shows on a test install only.
+ */
+function drawTestInstall(host, ctx) {
+  const draw = (b) => {
+    const lines = [
+      b.testInstall
+        ? L("set.ui.testInstallYes", "This is a test install.")
+        : L(
+            "set.ui.testInstallNo",
+            "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
+          ),
+    ];
+    if (b.testInstall)
+      lines.push(
+        b.ready
+          ? L("set.ui.testPersonReady", "The test person is set up.")
+          : L("set.ui.testPersonMissing", "The test person isn't set up yet."),
+      );
+    host.innerHTML =
+      `<output class="set-ro" id="set-test-install" data-test-install="${b.testInstall ? "yes" : "no"}" data-ready="${b.ready ? "yes" : "no"}">${lines.map(escHtml).join(" ")}</output>` +
+      (b.testInstall
+        ? ` <button type="button" class="btn" id="set-test-person">${escHtml(L("set.ui.testPersonSetUp", "Set up test person"))}</button>`
+        : "");
+    const btn = host.querySelector("#set-test-person");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const run = (headers) =>
+          ctx.shell.api("POST", "/api/web/fixture-person", {}, { headers });
+        const r = ctx.shell.busyAction
+          ? await ctx.shell.busyAction("test-person", run, { button: btn })
+          : await run({});
+        if (r?.ok) draw(r);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  };
+  fetch("/api/web/fixture-person", { cache: "no-store" })
+    .then((r) =>
+      r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+    )
+    .then(draw)
+    .catch(() => {
+      host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.testInstallSignedIn", "The test install can only be read signed in, or on this machine."))}</output>`;
+    });
+}
 
 /**
  * Issue 163: Apply for Keep agents running after logout. The server says
@@ -2301,6 +2710,189 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { remote_max_asks: v } }),
   },
   {
+    // Issue 715: release runs a person waits on (`gate run --priority
+    // release --reason <why>`) go to the front of their kind's queue.
+    id: "server.gate_priority_max",
+    category: "server",
+    label: "Release priority runs at a time, per kind",
+    description:
+      "A release run a person waits on, marked for release priority, goes ahead of the other waiting runs of its kind. It never stops a running one. A second such run waits behind the first. 0 turns this off. __DEN_CLI__ gate settings --priority-max 1",
+    keywords: ["gate", "slot", "priority", "release", "queue", "jump"],
+    scope: "user",
+    keys: ["gate_slots.priority_max"],
+    control: { type: "number", min: 0, max: 16, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.priorityMax ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { priority_max: v } }),
+  },
+  {
+    id: "server.gate_priority_pass",
+    category: "server",
+    label: "A run waiting this long is never passed, in minutes",
+    description:
+      "A release run with priority goes ahead of other waiting runs, but never ahead of one that has waited this long. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    keywords: ["gate", "slot", "priority", "release", "starvation", "wait"],
+    scope: "user",
+    keys: ["gate_slots.priority_pass_limit_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 60,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
+  },
+  {
+    id: "server.gate_priority_agents",
+    category: "server",
+    label: "Agents may ask for release priority",
+    description:
+      "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
+    keywords: ["gate", "slot", "priority", "release", "agent", "person"],
+    scope: "user",
+    keys: ["gate_slots.priority_agents"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.priorityAgents !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { priority_agents: v ? 1 : 0 } }),
+  },
+  {
+    // Issue 739: a CI runner's ask over HTTP may carry release priority.
+    id: "server.gate_priority_runners",
+    category: "server",
+    label: "CI runners may ask for release priority",
+    description:
+      "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    keywords: ["gate", "slot", "priority", "release", "runner", "ci"],
+    scope: "user",
+    keys: ["gate_slots.priority_runners"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.priorityRunners !== false,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { priority_runners: v ? 1 : 0 } }),
+  },
+  {
+    // A browser run on a macOS host declares a container browser.
+    id: "server.gate_browser_container",
+    category: "server",
+    label: "Browser runs need a container",
+    description:
+      "On, a browser test run on this machine must say where its browser runs: a container's Playwright endpoint (ws:// or wss://, also from DEN_PW_WS, HUB_PW_WEBKIT_WS or E2E_WEBKIT_WS), or self when the run starts its own container. A run without one is refused, so no test starts a browser on this Mac itself. On by default on macOS, off elsewhere. __DEN_CLI__ gate settings --browser-requires-container 1",
+    keywords: [
+      "gate",
+      "slot",
+      "browser",
+      "container",
+      "webkit",
+      "playwright",
+      "mac",
+    ],
+    scope: "user",
+    keys: ["gate_slots.browser_requires_container"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.browserRequiresContainer === true,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { browser_requires_container: v ? 1 : 0 } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_claim",
+    category: "server",
+    label: "An agent's gate slot: minutes to claim it",
+    description:
+      "When a slot an agent waited for is granted, Den tells the agent. Not claimed within this time, it goes to the next in line and the agent goes back in line. __DEN_CLI__ gate settings --claim-minutes 3",
+    keywords: ["gate", "slot", "agent", "claim", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.claim_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.claimMinutes ?? 3,
+    write: (v, ctx) => ctx.post({ gate_slots: { claim_minutes: v } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_mcp_renew",
+    category: "server",
+    label: "An agent's gate slot: renew it every, in minutes",
+    description:
+      "How often an agent holding a slot is asked to renew it while it works. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    keywords: ["gate", "slot", "agent", "renew", "lease", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.mcp_renew_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.mcpRenewMinutes ?? 5,
+    write: (v, ctx) => ctx.post({ gate_slots: { mcp_renew_minutes: v } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_mcp_lapse",
+    category: "server",
+    label: "An agent's gate slot lapses unrenewed after, in minutes",
+    description:
+      "A slot an agent holds and doesn't renew this long, once past its estimate plus the grace, goes to the next in line. The bell says so. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    keywords: ["gate", "slot", "agent", "lapse", "lease", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.mcp_lapse_minutes"],
+    control: { type: "number", min: 1, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.mcpLapseMinutes ?? 15,
+    write: (v, ctx) => ctx.post({ gate_slots: { mcp_lapse_minutes: v } }),
+  },
+  {
+    // Issue 714: an agent's gate slot held over MCP.
+    id: "server.gate_mcp_grace",
+    category: "server",
+    label: "An agent's gate slot: grace past its estimate, in minutes",
+    description:
+      "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    keywords: ["gate", "slot", "agent", "grace", "estimate", "mcp"],
+    scope: "user",
+    keys: ["gate_slots.mcp_grace_minutes"],
+    control: { type: "number", min: 0, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.mcpGraceMinutes ?? 15,
+    write: (v, ctx) => ctx.post({ gate_slots: { mcp_grace_minutes: v } }),
+  },
+  {
+    // Issue 803: priority classes per project; empty is first-come.
+    id: "server.gate_class_order",
+    category: "server",
+    label: "Gate classes, highest first",
+    description:
+      "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
+    keywords: ["gate", "slot", "class", "priority", "release", "queue"],
+    scope: "user",
+    keys: ["gate_slots.class_order"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classOrder ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { class_order: String(v ?? "").trim() || null },
+      }),
+  },
+  {
+    id: "server.gate_class_map",
+    category: "server",
+    label: "Gate class of each project",
+    description:
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    keywords: ["gate", "slot", "class", "project", "label", "priority"],
+    scope: "user",
+    keys: ["gate_slots.class_map"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classMap ?? "",
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { class_map: String(v ?? "").trim() || null } }),
+  },
+  {
+    id: "server.gate_class_windows",
+    category: "server",
+    label: "Gate class windows",
+    description:
+      "Comma-separated: <class>=HH:MM-HH:MM/<minutes>, in this machine's time. Outside its window, a run of that class estimated at least that many minutes waits while a higher-class run holds or waits; with none, it runs at once. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
+    keywords: ["gate", "slot", "class", "window", "night", "overnight"],
+    scope: "user",
+    keys: ["gate_slots.class_windows"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.classWindows ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { class_windows: String(v ?? "").trim() || null },
+      }),
+  },
+  {
     // Issue 621: the gate-only runner tokens; an agent asks for one (a
     // held write the person allows), and the person revokes one here.
     id: "server.gate_runners",
@@ -2312,6 +2904,45 @@ export const DEN_SETTINGS = [
     scope: "user",
     control: { type: "custom", render: drawRunnerTokens },
     read: () => null,
+  },
+  {
+    // Issue 625: test boxes, a browser slot source each.
+    id: "server.gate_boxes",
+    category: "server",
+    label: "Test boxes",
+    description:
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    keywords: ["gate", "slot", "box", "remote", "browser", "tests", "machine"],
+    scope: "user",
+    control: { type: "custom", render: drawGateBoxes },
+    read: () => null,
+  },
+  {
+    id: "server.gate_box_check",
+    category: "server",
+    label: "Test box check waits, in seconds",
+    description:
+      "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    keywords: ["gate", "slot", "box", "timeout", "check"],
+    scope: "user",
+    keys: ["gate_slots.box_check_timeout_seconds"],
+    control: { type: "number", min: 1, max: 120, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.boxCheckTimeoutSeconds ?? 8,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { box_check_timeout_seconds: v } }),
+  },
+  {
+    id: "server.gate_box_recheck",
+    category: "server",
+    label: "A skipped test box is checked again after, in seconds",
+    description:
+      "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    keywords: ["gate", "slot", "box", "hold", "recheck"],
+    scope: "user",
+    keys: ["gate_slots.box_recheck_seconds"],
+    control: { type: "number", min: 1, max: 86400, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.boxRecheckSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ gate_slots: { box_recheck_seconds: v } }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

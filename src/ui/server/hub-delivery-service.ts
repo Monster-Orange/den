@@ -151,6 +151,23 @@ export function stopDeliveries(): void {
   bell?.(null);
 }
 
+/**
+ * Issue 726: the Hub changed. Stop reading it, and drop what the loops
+ * hold in memory (seen ids, the cursor, held comments, the inbox's since),
+ * so the next start reads the fresh files and nothing from the old Hub is
+ * typed or reported to the new one. A relay's next message makes a new
+ * loop at once (Den's own relays were kept in the fresh file).
+ */
+export function dropDeliveryState(): void {
+  stopDeliveries();
+  if (pumpTimer) clearInterval(pumpTimer);
+  pumpTimer = null;
+  loop = null;
+  inbox = null;
+  streamUrl = null;
+  heldSaid.clear();
+}
+
 /** hub.delivery_alert_minutes, read each time (a bad hub block: 15). */
 async function alertMinutes(): Promise<number> {
   const hub = await import("../../shared/hub.js");

@@ -16,11 +16,8 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
-import {
-  cliAuthHeaders,
-  readWebSecret,
-} from "../../../src/shared/web-secret.js";
-import { mintClaimCode } from "../../../src/shared/claim-code.js";
+import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { signedIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { denAuth } from "./helpers/den-auth.js";
 
@@ -85,35 +82,18 @@ const json = (r: Reply) => JSON.parse(r.body) as Record<string, unknown>;
 const bearer = () => ({
   authorization: cliAuthHeaders(stateDir).Authorization ?? "",
 });
-const cookieName = () => `den_session_${port}`;
 
-/** A browser signed in with a setup link: its cookie, CSRF token and approval key. */
+/**
+ * A person's browser, signed in (issue 819: first run, then approved by a
+ * signed-in browser): its cookie, CSRF token and approval key.
+ */
 async function browser(): Promise<{
   cookie: string;
   csrf: string;
   key: string;
 }> {
-  const c = mintClaimCode(readWebSecret(stateDir)!);
-  const r = await call("GET", `/auth?claim=${encodeURIComponent(c)}`, {
-    "sec-fetch-site": "none",
-    accept: "text/html",
-  });
-  expect(r.status).toBe(303);
-  const key =
-    /#ak=([A-Za-z0-9_-]{43})$/.exec(String(r.headers.location ?? ""))?.[1] ??
-    "";
-  const line =
-    ([] as string[])
-      .concat(r.headers["set-cookie"] ?? [])
-      .find((x) => x.startsWith(`${cookieName()}=`)) ?? "";
-  const cookie = line.split(";")[0];
-  const s = json(
-    await call("GET", "/api/session", {
-      "sec-fetch-site": "same-origin",
-      cookie,
-    }),
-  );
-  return { cookie, csrf: String(s.csrf ?? ""), key };
+  const s = await signedIn(stateDir, `http://localhost:${port}`);
+  return { cookie: s.cookie, csrf: s.csrf, key: s.approveKey };
 }
 const page = (b: { cookie: string; csrf: string }) => ({
   cookie: b.cookie,

@@ -188,6 +188,18 @@ export const HELD_WRITE_RISK: Readonly<
     areas: ["secrets"],
     why: "makes a token a CI runner uses to take gate slots on this machine",
   },
+  gate_box_set: {
+    risk: "critical",
+    why: "adds or changes a test box whose browsers take agents' gate runs (CRITICAL_HELD_ACTIONS)",
+  },
+  gate_box_remove: {
+    risk: "critical",
+    why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+  },
+  host_restart: {
+    risk: "critical",
+    why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
+  },
   approval_policy: {
     risk: "critical",
     why: "changes the approval policy itself: a person's only",

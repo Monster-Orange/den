@@ -22,7 +22,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
@@ -124,7 +124,7 @@ describe("a sign-in on this machine too (0.4.71)", () => {
     expect(page?.status()).toBe(200);
     expect(await signedIn(p)).toBe(false);
     // Signed in through the one-time link: /signin goes on to its page.
-    await p.goto(signInUrl(stateDir, `http://localhost:${port}`, "/"));
+    await signInPage(p, stateDir, `http://localhost:${port}`, "/");
     await p.goto(`http://localhost:${port}/signin?next=%2Fsettings`);
     await p.waitForURL(`http://localhost:${port}/settings`);
     expect(await signedIn(p)).toBe(true);
@@ -199,7 +199,7 @@ describe("refusal pages start no polls (no /api answers 421 or 401 after load)",
       ),
     );
     expect(await p.locator("#den-signin-local").count()).toBe(0);
-    const r = await p.goto(signInUrl(stateDir, `http://${EDGE}:${port}`, "/"));
+    const r = await signInPage(p, stateDir, `http://${EDGE}:${port}`, "/");
     expect(r?.status()).toBe(200);
     expect(await p.locator("#den-error-page").count()).toBe(0);
     await ctx.close();
@@ -218,7 +218,7 @@ describe("a link from another site", () => {
     const ctx = await browser!.newContext({ extraHTTPHeaders: AWAY });
     const p = await ctx.newPage();
     const den = `http://${EDGE}:${port}`;
-    const r = await p.goto(signInUrl(stateDir, den, "/"));
+    const r = await signInPage(p, stateDir, den, "/");
     expect(r?.status()).toBe(200);
     expect(await signedIn(p)).toBe(true);
     // Another site: a link to Den, and a form that posts to it.

@@ -350,9 +350,13 @@ export async function defaultLinkAfter(): Promise<
   void import("./hub-sync-service.js")
     .then((m) => m.refreshHubNamesNow())
     .catch(() => undefined);
-  if ("unclear" in r && r.unclear.length) {
+  if ("unclear" in r) {
     const { notificationDeps } = await import("./notification-service.js");
-    notificationDeps().store.add(pickNote(r.unclear.length));
+    const store = notificationDeps().store;
+    // Issue 726: after a Hub change the bell offered every project that
+    // had a link; now the count is what still needs a pick (none: it goes).
+    if (r.unclear.length) store.add(pickNote(r.unclear.length));
+    else store.withdraw(PICK_SUBJECT, "decision");
   }
   return r;
 }

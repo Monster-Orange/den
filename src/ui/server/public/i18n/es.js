@@ -588,6 +588,10 @@
       "No se pudo abrir Terminal.app automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "No se pudo abrir la terminal automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "¿Desactivar el inicio automático de {repo}?",
+    "dlg.autoOff":
+      "Es una dependencia estricta de: {list}. Mientras esté desactivado, el Up de su proyecto puede fallar la comprobación de disponibilidad.",
+    "dlg.autoOffGo": "Desactivar",
     "rd.keepsHead": "Sigue en marcha:",
     "rd.keepsAgents": "Los agentes y sus terminales",
     "rd.keepsServices": "Los servicios y los despliegues en GitHub",
@@ -636,6 +640,9 @@
     "busy.edgeW": "Iniciando el edge…",
     "busy.edgeS": "Edge iniciado",
     "busy.edgeF": "El edge no se inició.",
+    "busy.testPersonW": "Configurando la persona de prueba…",
+    "busy.testPersonS": "Persona de prueba configurada",
+    "busy.testPersonF": "La persona de prueba no se configuró.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -860,6 +867,14 @@
     "err.signin.youreIn": "Ya estás dentro.",
     "err.signin.expiredLead":
       "Ese enlace de inicio de sesión caducó o ya se usó. Inicia sesión de nuevo abajo.",
+    "err.signin.pairLinkLead":
+      "Para dejar entrar a este navegador, apruébalo desde un navegador que ya tenga la sesión iniciada: abre allí Ajustes › Acceso y aprueba el código de abajo.",
+    "err.signin.pairLinkWaiting":
+      "Esperando a que lo apruebes desde un navegador con la sesión iniciada…",
+    "err.signin.pairLinkDenied":
+      "Se rechazó este navegador. Para iniciar sesión, obtén un código nuevo y apruébalo desde un navegador con la sesión iniciada.",
+    "err.signin.pairLinkEnded":
+      "Esta solicitud terminó. Obtén un código nuevo y apruébalo otra vez.",
     "err.signin.confirmLead":
       "Introduce el código que web login imprimió en {host}:",
     "err.signin.confirmGo": "Iniciar sesión",
@@ -871,6 +886,43 @@
       "Este enlace ya no funciona. En {host}, ejecuta web login de nuevo para obtener uno nuevo.",
     "err.signin.confirmWhy":
       "El enlace solo no basta: también hace falta el código que se muestra en {host}, así que alguien que vea el enlace no puede iniciar sesión.",
+    // Issue 868: the ways in this install has, on the signed-out page.
+    "err.signin.methods.title": "Formas de iniciar sesión en {name}",
+    "err.signin.methods.ready": "Configurado aquí",
+    "err.signin.methods.notReady": "No configurado aquí",
+    "err.signin.methods.hostOnly": "Solo en {host}",
+    "err.signin.methods.github": "Iniciar sesión con GitHub",
+    "err.signin.methods.githubReady":
+      "Usa Iniciar sesión con GitHub más abajo, desde cualquier ordenador.",
+    "err.signin.methods.githubNoClient":
+      "No hay ningún id de cliente de GitHub App ({setting}). Una persona lo pone en {file} en {host} y después ejecuta {restart} allí.",
+    "err.signin.methods.githubNoOwner":
+      "Aún no hay ningún propietario vinculado en GitHub, así que nadie puede usarlo desde otro ordenador.",
+    "err.signin.methods.pair": "Pedir iniciar sesión desde este dispositivo",
+    "err.signin.methods.pairReady":
+      "Un navegador que ya inició sesión en {name} aprueba este escribiendo el código que muestra esta página.",
+    "err.signin.methods.pairNone":
+      "Aún no hay ningún navegador con sesión iniciada en {name}, así que nadie puede aprobar este.",
+    "err.signin.methods.ask": "Pedir iniciar sesión",
+    "err.signin.methods.terminal": "Un enlace desde una terminal en {host}",
+    "err.signin.methods.terminalHow":
+      "Ejecuta {cmd} en una terminal en {host} y abre el enlace que imprime.",
+    "err.signin.methods.stuck":
+      "Aún no se puede iniciar sesión en {name} desde otro ordenador. Iniciar sesión con GitHub no está configurado, y no hay ningún navegador con sesión iniciada en {name} que apruebe este.",
+    "err.signin.methods.fixClient":
+      "Para arreglarlo, en {host} pon en {setting} un id de cliente de GitHub App en {file} y ejecuta {restart}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.fixOwner":
+      "Para arreglarlo, vincula al propietario en GitHub: en {host}, ejecuta {cmd}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.fixFirst":
+      "O termina el primer inicio de sesión en el propio {host}: después ese navegador puede aprobar este.",
+    "err.signin.firstRunHere":
+      "{name} aún no está configurado. Termina su primer inicio de sesión en el propio {host}: abre allí el enlace de configuración, o ejecuta web login en tu propia terminal allí.",
+    "err.signin.tooManyRequests":
+      "Demasiadas solicitudes de inicio de sesión desde esta dirección. Espera un minuto y abre el enlace de nuevo.",
+    "err.signin.tooManyWaiting":
+      "Hay demasiados dispositivos esperando aprobación en {name}. Espera unos minutos y abre el enlace de nuevo.",
+    "err.signin.claimSetUp":
+      "{name} ya está configurado, así que el enlace de configuración ya no inicia sesión por sí solo. Aprueba este navegador desde uno con la sesión iniciada: Ajustes › Acceso y luego el código de abajo.",
     "err.signin.github": "Iniciar sesión con GitHub",
     "err.signin.githubEnter": "Introduce este código en {url}:",
     "err.signin.githubOpen": "Abrir GitHub",
@@ -999,9 +1051,64 @@
       "Peticiones que un runner de CI puede tener esperando a la vez",
     "set.server.gate_remote_asks.d":
       "Peticiones de turno que aún esperan respuesta. Otra se rechaza, diciendo por qué, hasta que una responda. __DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_priority_max":
+      "Ejecuciones de versión con prioridad a la vez, por tipo",
+    "set.server.gate_priority_max.d":
+      "Una ejecución de versión que una persona espera, marcada con prioridad de versión, pasa delante de las demás que esperan de su tipo. Nunca detiene una que ya se ejecuta. Una segunda espera detrás de la primera. 0 lo desactiva. __DEN_CLI__ gate settings --priority-max 1",
+    "set.server.gate_priority_pass":
+      "Una ejecución que espera tanto nunca se adelanta, en minutos",
+    "set.server.gate_priority_pass.d":
+      "Una ejecución de versión con prioridad pasa delante de las demás que esperan, pero nunca de una que lleva esperando este tiempo. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    "set.server.gate_priority_agents":
+      "Los agentes pueden pedir prioridad de versión",
+    "set.server.gate_priority_agents.d":
+      "Activado, un agente puede marcar una ejecución de versión para un problema que tú informaste. Desactivado, solo tú puedes. Cada adelanto queda en el registro de turnos, con quién y por qué. __DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_priority_runners":
+      "Los runners de CI pueden pedir prioridad de versión",
+    "set.server.gate_priority_runners.d":
+      "Activado, un trabajo de CI con un token de runner puede marcar su ejecución como de versión, con un motivo. Desactivado, su petición se rechaza y espera en la cola normal. Cada adelanto queda en el registro de turnos, con el runner y el porqué. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container":
+      "Las ejecuciones de navegador necesitan un contenedor",
+    "set.server.gate_browser_container.d":
+      "Activado, una ejecución de pruebas de navegador en esta máquina debe indicar dónde corre su navegador: el endpoint de Playwright de un contenedor (ws:// o wss://, también desde DEN_PW_WS, HUB_PW_WEBKIT_WS o E2E_WEBKIT_WS), o self cuando la ejecución inicia su propio contenedor. Una ejecución sin él se rechaza, así ninguna prueba inicia un navegador en este Mac. Activado por defecto en macOS, desactivado en los demás. __DEN_CLI__ gate settings --browser-requires-container 1",
+    "set.server.gate_claim": "Turno de un agente: minutos para reclamarlo",
+    "set.server.gate_claim.d":
+      "Cuando se concede un turno que un agente esperaba, Den se lo dice. Si no lo reclama en este tiempo, pasa al siguiente de la cola y el agente vuelve a la cola. __DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew":
+      "Turno de un agente: renovarlo cada, en minutos",
+    "set.server.gate_mcp_renew.d":
+      "Cada cuánto se pide a un agente que tiene un turno que lo renueve mientras trabaja. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "Turno de un agente: caduca sin renovar tras, en minutos",
+    "set.server.gate_mcp_lapse.d":
+      "Un turno que un agente tiene y no renueva en este tiempo, pasada su estimación más el margen, pasa al siguiente de la cola. La campana lo dice. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "Turno de un agente: margen tras su estimación, en minutos",
+    "set.server.gate_mcp_grace.d":
+      "Un turno sin renovar se mantiene hasta pasar su estimación en este tiempo. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_class_order": "Clases de turno, de mayor a menor",
+    "set.server.gate_class_order.d":
+      "Separadas por comas, por ejemplo release, lane, other. Una ejecución en espera de una clase mayor empieza antes; dentro de una clase, por orden de llegada. Una ejecución que tiene su turno nunca se detiene. Vacío: orden de llegada para todas. __DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "Clase de turno de cada proyecto",
+    "set.server.gate_class_map.d":
+      "Separadas por comas: <proyecto>=<clase>, label:<patrón>=<clase> (* vale por cualquier texto) y *=<clase> para los demás proyectos. Sin *, la última clase. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "Horarios de las clases de turno",
+    "set.server.gate_class_windows.d":
+      "Separados por comas: <clase>=HH:MM-HH:MM/<minutos>, en la hora de esta máquina. Fuera de su horario, una ejecución de esa clase estimada en al menos esos minutos espera mientras una de clase mayor tiene turno o espera; si no hay ninguna, empieza enseguida. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
     "set.server.gate_runners": "Tokens de runners de CI",
     "set.server.gate_runners.d":
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
+    "set.server.gate_boxes": "Máquinas de pruebas",
+    "set.server.gate_boxes.d":
+      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check":
+      "Espera de la comprobación de una máquina, en segundos",
+    "set.server.gate_box_check.d":
+      "Cuánto espera Den la respuesta de una máquina de pruebas cuando está a punto de darle un turno. Sin respuesta, la máquina se omite. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck":
+      "Una máquina omitida se comprueba de nuevo tras, en segundos",
+    "set.server.gate_box_recheck.d":
+      "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1280,7 +1387,28 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "set.access.approveNeedsBrowser":
+      "Para aprobar un dispositivo hace falta un navegador con la sesión iniciada. Vuelve a iniciar sesión en esta página y apruébalo.",
+    "set.access.approveNotAgent":
+      "Solo una persona aprueba un dispositivo, desde su propio navegador con la sesión iniciada.",
+    "set.access.wrongCode":
+      "Ese código no coincide con el de la pantalla de ese ordenador. Revísalo y escríbelo de nuevo.",
+    "set.access.tooManyTries":
+      "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+    "set.access.ended": "Esa solicitud terminó o caducó. No se permitió nada.",
     "set.access.pair": "Emparejar un dispositivo",
+    "set.access.pair_requests":
+      "Solicitudes nuevas de inicio de sesión por dirección, por minuto",
+    "set.access.pair_requests.d":
+      "Cuántos dispositivos nuevos puede pedir una dirección por minuto para iniciar sesión. Los demás se rechazan hasta que pase el minuto. __DEN_CLI__ config web.pair_requests_per_minute=30",
+    "set.access.approve_attempts": "Códigos incorrectos permitidos al aprobar",
+    "set.access.approve_attempts.d":
+      "Cuántos códigos incorrectos se aceptan al aprobar un dispositivo en el intervalo de abajo antes de esperar. __DEN_CLI__ config web.approve_attempts=10",
+    "set.access.approve_window":
+      "Intervalo de códigos incorrectos, en segundos",
+    "set.access.approve_window.d":
+      "Durante cuánto tiempo se cuentan los códigos incorrectos. Cuando pasa, se puede volver a intentar aprobar. __DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",
@@ -1600,13 +1728,20 @@
     "pair.aDevice": "Un navegador",
     "pair.local": "en este ordenador, por localhost",
     "pair.help":
-      "Permítelo solo si este código aparece en la pantalla de ese equipo.",
+      "Escribe el código que se muestra en la pantalla de ese ordenador. Permite solo un ordenador en el que estés iniciando sesión tú.",
     "pair.allow": "Permitir",
     "pair.allowed": "Ese equipo ya inició sesión.",
     "pair.ended":
       "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
     "pair.expired": "Ese código caducó. No se permitió nada.",
     "pair.close": "Cerrar",
+    "pair.codeLabel": "Código en la pantalla de ese ordenador",
+    "pair.age": "Lo pidió hace {n} min.",
+    "pair.ageNow": "Lo pidió ahora mismo.",
+    "pair.fromLogin": "Del web login ejecutado a las {time}.",
+    "pair.wrong":
+      "Ese código no coincide con el de la pantalla de ese ordenador. Revísalo y escríbelo de nuevo.",
+    "pair.busy": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
     "ap.do.workspace_create": 'Crear el proyecto "{name}"',
     "ap.do.repo_add":
       'Añadir el repositorio de {path} al proyecto "{workspace}"',
@@ -1646,6 +1781,30 @@
       "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
     "ap.det.gate_runner_token_create.revoke":
       "Puedes revocarlo cuando quieras en Ajustes, en Tokens de runners de CI.",
+    "ap.do.gate_box_set": "Reemplazar la máquina de pruebas {name}",
+    "ap.do.gate_box_set.new": "Añadir la máquina de pruebas {name}",
+    "ap.do.gate_box_remove": "Quitar la máquina de pruebas {name}",
+    "ap.det.gate_box_set.adds":
+      "Añade la máquina de pruebas {name}. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.replaces":
+      "Reemplaza la máquina de pruebas {name} con estos ajustes. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "Puerto SSH: {v}",
+    "ap.det.gate_box_set.ssh_identity": "Archivo de clave SSH: {v}",
+    "ap.det.gate_box_set.playwright": "Dirección de Playwright: {v}",
+    "ap.det.gate_box_set.slots": "Turnos de navegador: {v}",
+    "ap.det.gate_box_set.hold_file": "Archivo de pausa: {v}",
+    "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
+    "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.host_restart":
+      "Reiniciar el host de terminales cuando los agentes estén libres",
+    "ap.det.host_restart.wait":
+      "Espera a que ningún agente esté a mitad de turno (como máximo {min} min) y reinicia el host de terminales con el Den instalado.",
+    "ap.det.host_restart.resume":
+      "Los agentes que ejecutaba continúan donde estaban; los terminales abiertos se cierran. El registro de actividad dice cómo fue.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
@@ -2001,6 +2160,8 @@
       "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
+    "bell.m.gateLapsed":
+      'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
@@ -2322,11 +2483,12 @@
       "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Los demás agentes lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
     "ag.rn.go": "Cambiar el nombre",
     "ag.rn.cancel": "Cancelar",
-    "ag.job.h": "Hay una tarea en curso",
+    "ag.job.h": "Hay una tarea en segundo plano en curso",
     "ag.job.q":
-      "{id} tiene en curso una tarea que inició ({min} min), como una ejecución de pruebas. ¿Reiniciar de todos modos? Eso termina la tarea.",
+      "{id}: una tarea en segundo plano que inició sigue en curso ({min} min), como una ejecución de pruebas. ¿Reiniciar de todos modos? Eso termina la tarea.",
     "ag.job.go": "Reiniciar de todos modos",
-    "ag.job.held": "{id} tiene una tarea en curso: aún no se ha reiniciado",
+    "ag.job.held":
+      "{id}: una tarea en segundo plano que inició sigue en curso: aún no se ha reiniciado",
     "ag.mv.item": "Mover a otro proyecto…",
     "ag.ord.up": "Subir",
     "ag.ord.down": "Bajar",
@@ -2363,6 +2525,20 @@
     "gate.endGo": "Terminar turno",
     "gate.rowHolds": "turno: {kind}",
     "gate.rowWaits": "espera turno: {kind}",
+    "gate.priority": "prioridad de versión: {reason}",
+    "gate.priorityWaits":
+      "prioridad de versión, después de la anterior: {reason}",
+    "gate.onBox": "en la máquina de pruebas {box}",
+    "gate.anyBox": "aquí o en una máquina de pruebas",
+    "gate.boxesH": "Máquinas de pruebas",
+    "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
+    "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
+    "gate.boxDown": "{box}: omitida, no responde ({reason})",
+    "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
+    "gate.boxSkip": "no puede usar {box}: {reason}",
+    "gate.yielded": "Dejó pasar a {to}",
+    "gate.class": "Clase: {name}",
+    "gate.window": "espera su horario {window}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
@@ -2740,6 +2916,23 @@
     "set.ui.appKeyRevoked": "revocada {when}",
     "set.ui.appKeyRevoke": "Revocar",
     "set.ui.runnerNone": "Aún no hay tokens de runner.",
+    "set.ui.boxName": "Nombre",
+    "set.ui.boxSsh": "ssh (usuario@host)",
+    "set.ui.boxPort": "Puerto ssh",
+    "set.ui.boxKey": "Archivo de clave ssh",
+    "set.ui.boxPw": "Servidor de Playwright (ws://)",
+    "set.ui.boxSlots": "Turnos de navegador",
+    "set.ui.boxHold": "Archivo de pausa (en la máquina)",
+    "set.ui.boxScale": "Escala de tiempo",
+    "set.ui.boxSave": "Guardar máquina",
+    "set.ui.boxMem": "Memoria libre a mantener (MB)",
+    "set.ui.boxPwv": "Versión de Playwright en la máquina",
+    "set.ui.boxNone":
+      "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
+    "set.ui.boxSlotsN": "{n} turnos de navegador",
+    "set.ui.boxHoldIs": "archivo de pausa {path}",
+    "set.ui.boxScaleIs": "tiempo ×{n}",
+    "set.ui.boxRemove": "Quitar",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",
@@ -2747,10 +2940,20 @@
     "set.ui.saveOrigins": "Guardar lista",
     "set.ui.approve": "Aprobar",
     "set.ui.deny": "Denegar",
+    "set.ui.codeLabel": "Código en su pantalla",
+    "set.ui.fromLogin": "del web login ejecutado a las {time}",
     "set.ui.noWaiting":
       "No hay ordenadores en espera. Una página sin iniciar sesión en otro ordenador muestra un código; aparece aquí para aprobarlo.",
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
+    "set.ui.testInstallYes": "Esta es una instalación de prueba.",
+    "set.ui.testInstallNo":
+      "No es una instalación de prueba. Las comprobaciones en vivo no pueden iniciar sesión aquí. Una persona marca una instalación de prueba a mano en la configuración de la distribución (web.test_install: true).",
+    "set.ui.testPersonReady": "La persona de prueba está configurada.",
+    "set.ui.testPersonMissing": "La persona de prueba aún no está configurada.",
+    "set.ui.testPersonSetUp": "Configurar persona de prueba",
+    "set.ui.testInstallSignedIn":
+      "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
       "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
     "set.ui.edgeStart": "Iniciar el edge",
@@ -3123,7 +3326,7 @@
     "set.access.devices.d":
       "Los navegadores con la sesión iniciada en este Den. Revocar cierra uno al instante. __DEN_CLI__ web logout --all los cierra todos.",
     "set.access.waiting.d":
-      "Ordenadores cuya página sin iniciar sesión muestra un código. Aprueba uno y su página inicia sesión sola; el código dura 10 minutos. __DEN_CLI__ web approve <code> hace lo mismo desde la línea de comandos.",
+      "Ordenadores cuya página sin iniciar sesión muestra un código. Escribe el código que muestra la pantalla de ese ordenador para aprobarlo, y su página inicia sesión sola; una solicitud dura 10 minutos. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
       "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
     "set.embed.app_keys.d":
@@ -3140,6 +3343,8 @@
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_install.d":
+      "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
     "set.distribution.brand.d":
       "brand.name: el nombre en las páginas, el banner de la CLI y la ayuda.",
     "set.distribution.github_org.d":

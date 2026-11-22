@@ -1,13 +1,17 @@
 /**
  * Issue 95 (UI kit slice 1): Den on the kit's shell looks exactly as Den
- * did before the move. Six areas, Chromium, light, at 1280×900 and 390×844:
+ * did before the move. Five areas, Chromium, light, at 1280×900 and 390×844:
  *
  *   shell     a page with the rail and the top bar
  *   version   the version chip
- *   whatsnew  the release notes pop-up, open
  *   update    the update pill, showing
  *   report    the Report form, open
  *   working   the working pop-up, open
+ *
+ * Issue 793: What's new is no longer here. It moved onto the kit's dialog
+ * frame (its look and font are the frame's, on purpose), so it no longer
+ * looks as it did before the move; popup-font.browser.test.ts and
+ * whats-new-dialog.browser.test.ts cover it.
  *
  * Two checks per area and width:
  *
@@ -39,7 +43,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { signInUrl } from "../server/helpers/den-auth.js";
+import { signInPage } from "../server/helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -56,14 +60,7 @@ const OUT_DIR =
 const BASE_DIR = path.join(OUT_DIR, "baseline");
 const AFTER_DIR = path.join(OUT_DIR, "after");
 
-const AREAS = [
-  "shell",
-  "version",
-  "whatsnew",
-  "update",
-  "report",
-  "working",
-] as const;
+const AREAS = ["shell", "version", "update", "report", "working"] as const;
 type Area = (typeof AREAS)[number];
 const WIDTHS = [
   [1280, 900],
@@ -86,14 +83,6 @@ const SELECTORS: Record<Area, string[]> = {
     ".den-collapse-btn",
   ],
   version: ["#version-pill", "#version-pill .v-txt", "#v-pip"],
-  whatsnew: [
-    "#cl-overlay",
-    "#cl-overlay .cl-box",
-    "#cl-overlay .cl-hdr",
-    "#cl-overlay .cl-body",
-    "#cl-overlay .cl-footer",
-    "#cl-got-it-btn",
-  ],
   update: [".den-upd", ".den-upd .upd-pill"],
   report: ["dialog.fb-dlg", "dialog.fb-dlg .fb-btns"],
   working: ["dialog.bz-dlg", "dialog.bz-dlg h2"],
@@ -379,7 +368,7 @@ async function open(
     /* never answered */
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(
     () =>
       "denShell" in window &&
@@ -412,17 +401,44 @@ async function settle(p: Page): Promise<void> {
       timeout: 10_000,
     })
     .catch(() => {});
-  await p.waitForTimeout(400);
+  await still(p, SELECTORS.shell);
+}
+
+/**
+ * Waits until `sels` hold still: no transition or animation with an end
+ * is running, and each match's markup and box read the same on two
+ * animation frames in a row. Replaces a fixed settle time: it returns as
+ * soon as the area is drawn, and fails (at 10 s) if it never is.
+ */
+async function still(p: Page, sels: string[]): Promise<void> {
+  await p.waitForFunction(
+    (sels) => {
+      const w = window as unknown as { __stillLast?: string };
+      const busy = document
+        .getAnimations()
+        .some(
+          (a) =>
+            a.playState === "running" &&
+            a.effect?.getComputedTiming().endTime !== Infinity,
+        );
+      const parts = sels.flatMap((sel) =>
+        [...document.querySelectorAll(sel)].map((el) => {
+          const r = el.getBoundingClientRect();
+          return `${el.outerHTML}|${r.x},${r.y},${r.width},${r.height}`;
+        }),
+      );
+      const now = parts.join("\n");
+      const same = !busy && parts.length > 0 && now === w.__stillLast;
+      w.__stillLast = now;
+      return same;
+    },
+    sels,
+    { polling: "raf", timeout: 10_000 },
+  );
 }
 
 async function show(p: Page, area: Area): Promise<void> {
-  if (area === "whatsnew") {
-    await p.evaluate(() =>
-      (window as never as { openChangelog: () => void }).openChangelog(),
-    );
-    await p.waitForSelector("#cl-overlay.open .cl-box", { state: "visible" });
-    // The heading has focus; take it off, so no ring is in the shot.
-  } else if (area === "update") {
+  if (area === "update") {
     await p.waitForSelector(".den-upd .upd-pill", {
       state: "visible",
       timeout: 20_000,
@@ -457,12 +473,12 @@ async function show(p: Page, area: Area): Promise<void> {
       timeout: 20_000,
     });
   }
-  await p.waitForTimeout(300);
+  await still(p, SELECTORS[area]);
   // Focus rings follow where focus happened to land: none in the shot.
   await p.evaluate(() =>
     (document.activeElement as HTMLElement | null)?.blur?.(),
   );
-  await p.waitForTimeout(100);
+  await still(p, SELECTORS[area]);
 }
 
 /** The area's tree and measures, from the page. */

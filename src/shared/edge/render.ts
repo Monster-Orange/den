@@ -79,10 +79,24 @@ export function webRouteHosts(
   cfg: EdgeConfig,
   ports: ReadonlySet<number>,
 ): { host: string; url: string }[] {
+  return webRouteFindings(cfg, ports).map(({ host, url }) => ({ host, url }));
+}
+
+/**
+ * webRouteHosts, each marked `named` when its route is one the config's
+ * `edge.routes` names on purpose (cfg.namedRoutes), not the one made from
+ * the brand. Same order as webRouteHosts.
+ */
+export function webRouteFindings(
+  cfg: EdgeConfig,
+  ports: ReadonlySet<number>,
+): { host: string; url: string; named: boolean }[] {
+  const named = new Set(cfg.namedRoutes ?? []);
   return webRouteNames(cfg, ports).flatMap((name) =>
     edgeDomains(cfg).map((d) => ({
       host: routeHost(name, d).toLowerCase(),
       url: routeUrl(name, cfg, d),
+      named: named.has(name),
     })),
   );
 }

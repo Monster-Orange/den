@@ -27,7 +27,7 @@ import { readRecord } from "../../../src/shared/agents/records.js";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -128,7 +128,7 @@ async function open(ws: string, more = ""): Promise<Page> {
     if (m.type() === "error") errors.push(`console: ${m.text()}`);
   });
   // Resume and Start fresh are shell-grade (SEC-1b): signed in as a person.
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}${more}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}${more}`);
   // Attached: a closed "Stopped (n)" hides its rows (D37).
   await p.waitForSelector("#agl:not([aria-busy]) .agr", {
     state: "attached",
@@ -785,7 +785,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       }, latest);
       const p = await ctx.newPage();
       p.on("pageerror", (e) => errors.push(e.message));
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+      await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
       await p.waitForSelector("#agl:not([aria-busy]) .agr", {
         state: "attached",
         timeout: 20_000,

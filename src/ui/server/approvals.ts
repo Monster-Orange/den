@@ -57,7 +57,11 @@ function ticketHash(t: string): string {
 
 export type ApproverCheck =
   | { ok: true; session: string }
-  | { ok: false; code: "signin_to_approve"; error: string };
+  | {
+      ok: false;
+      code: "signin_to_approve" | "fixture_cannot_approve";
+      error: string;
+    };
 
 /**
  * Whether this request may approve or deny an agent's change ("decide",
@@ -92,6 +96,14 @@ export function approverAllowed(
       error:
         "Approving an agent's change needs a signed-in browser. Sign in on this page, then approve.",
     };
+  // Issue 810: the fixture person (a test install's live checks) never
+  // decides what waits for a person.
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      ok: false,
+      code: "fixture_cannot_approve",
+      error: "The fixture person can't approve: that is a person's.",
+    };
   const given = req.headers[APPROVE_KEY_HEADER];
   if (
     !approveKeyMatches(
@@ -115,15 +127,16 @@ function same(a: string, b: string): boolean {
 }
 
 /**
- * Routes that let another browser in (pair a device, a sign-in link for
- * an edge hostname, link or unlink the GitHub owner). These need more
+ * Routes that let another browser in (a sign-in link for an edge
+ * hostname, link or unlink the GitHub owner). Approving a waiting device
+ * (/api/web/approve) is stricter: a signed-in browser only (issue 819,
+ * pair-routes.ts). These need more
  * than a sign-in: the person's bearer (the CLI, which
  * refuses inside an agent's session), or what may approve (a signed-in
  * browser holding its approval key).
  */
 export const PERSON_GRANT_ROUTES: readonly string[] = [
   "/api/web/pair",
-  "/api/web/approve",
   "/api/web/owner/link",
   "/api/web/owner/unlink",
 ];

@@ -39,6 +39,8 @@ describe("live checks: gate/<issue>.mjs", () => {
         "410.mjs: expect takes one argument, the result (the harness calls expect(result)); it declares 2",
         "411.mjs: line 8: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)",
         "411.mjs: line 11: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)",
+        '412.mjs: line 4: skip reason "needs a test Hub" is not "person" or "needs-<thing>" (put the words in why)',
+        '412.mjs: line 6: skip reason "needs ctx.hub" is not "person" or "needs-<thing>" (put the words in why)',
         "notes.mjs: the name is not <issue number>.mjs",
       ],
     });

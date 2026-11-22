@@ -15,7 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -93,7 +93,7 @@ async function open(
     if (accounts) body.agent_accounts = accounts;
     await r.fulfill({ response: res, json: body });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
   await p.waitForSelector("[data-keep-token-go]", { timeout: 20_000 });
   return p;
 }

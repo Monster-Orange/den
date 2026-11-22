@@ -204,6 +204,7 @@ import {
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
   agentsShellPathTimeoutSeconds,
+  readSessionsConfig,
 } from "../../shared/den-config.js";
 import {
   CONFIG_ERROR_STATUS,
@@ -216,6 +217,7 @@ import {
   engineVersion,
   getDistRoot,
   getEngineRoot,
+  getProfile,
   getStateDir,
 } from "../../shared/paths.js";
 import { enginePath } from "../../shared/engine.js";
@@ -265,6 +267,7 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import {
+  gateBoxOps,
   gateRunnerTokenOp,
   handleGateRoutes,
   isGatePath,
@@ -291,6 +294,7 @@ import {
 import {
   agentPrincipalOf,
   auditActorOf,
+  notAPersonOf,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -328,9 +332,9 @@ import {
 import {
   checkLoginCode,
   deviceName,
-  loginCodeNonce,
   ignoredConfigWarning,
   localhostOrigin,
+  loginCodeNonce,
   loginLink,
   LOGIN_CODE_MAX_TTL_MS,
   mintLoginCode,
@@ -341,6 +345,23 @@ import {
   withApproveKey,
   type WebAuthConfig,
 } from "../../shared/web-session.js";
+import {
+  checkFixtureCode,
+  FIXTURE_LABEL,
+  FIXTURE_LINK_PARAM,
+  FIXTURE_PRINCIPAL,
+  fixtureKeyFingerprint,
+  fixtureScopeRefusal,
+  fixtureSessionExpired,
+  notTestInstallRefusal,
+  setupFixturePerson,
+  TEST_INSTALL_ENV_KEY,
+  testInstallBinding,
+  testInstallByHandRefusal,
+  verifiedFixtureKey,
+} from "../../shared/fixture-person.js";
+import { routeClass } from "./route-classes.js";
+import { envName, readEnv } from "../../shared/profile.js";
 import {
   clearSessionCookies,
   readSessionCookie,
@@ -358,7 +379,11 @@ import {
   serveUiAsset,
   sitePage,
 } from "./ui-assets.js";
-import { PERSON_GRANT_ROUTES, personGrantAllowed } from "./approvals.js";
+import {
+  PERSON_GRANT_ROUTES,
+  approverAllowed,
+  personGrantAllowed,
+} from "./approvals.js";
 import {
   migrateWebUrl,
   notSetLine,
@@ -447,6 +472,8 @@ import {
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
 import { readWebOwner } from "../../shared/web-owner.js";
+import { FirstRun } from "./first-run.js";
+import { signinMethods } from "./signin-methods.js";
 import { ownerNameFromGithub } from "../../shared/owner-github.js";
 import { noRuleMessage, unclaimedSigninReason } from "./github-routes.js";
 import { DeviceFlows, type Decide } from "./device-flows.js";
@@ -457,7 +484,11 @@ import {
 } from "./github-routes.js";
 import { PairRequests, pairUnseenMs } from "./pair-requests.js";
 import { LoginWaits } from "./login-waits.js";
-import { handlePairRoutes, isPairRoute } from "./pair-routes.js";
+import {
+  CREATE_REFUSED,
+  handlePairRoutes,
+  isPairRoute,
+} from "./pair-routes.js";
 import {
   cliCommand,
   cliPrefix,
@@ -488,6 +519,7 @@ import {
   patchHubAllowTools,
   patchHubUrl,
   readHubConfig,
+  type HubConfig,
 } from "../../shared/hub.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
@@ -1229,12 +1261,23 @@ import {
   type VerifyServerDeps,
 } from "./verify-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { sessionRootPids } from "../../shared/person-here.js";
+import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
+
+/** Sign-in: Den's own processes, this server always among them. */
+function denPidsNow(): number[] | null {
+  const recorded = denProcessPids(getStateDir());
+  return recorded ? [process.pid, ...recorded] : null;
+}
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
+  callerLine,
   callerPid,
+  forwardedRequest,
   callerMiss,
   peerSettled,
+  personCallerRefusal,
   refusalDetail,
   tokenCaller,
   watchPeer,
@@ -1256,9 +1299,12 @@ import {
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
+  refreshTerminalHost,
   startAgentUpkeep,
+  terminalHostRefreshing,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
+import { hostRestartOp } from "./host-restart-held.js";
 import {
   agentInputState,
   checkAgentCreate,
@@ -1330,6 +1376,7 @@ import {
   edgeDomains,
   edgeHttps,
   edgeNames,
+  webRouteFindings,
   webRouteHosts,
 } from "../../shared/edge/render.js";
 import {
@@ -1783,6 +1830,12 @@ const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
 });
+/** Issue 819: whether a person has ever signed in here (first-run.ts). */
+const FIRST_RUN = new FirstRun({
+  stateDir: getStateDir,
+  sessionVias: () => webSessions.list().map((s) => s.via ?? "link"),
+  ownerLinked: () => readWebOwner(getStateDir()) !== null,
+});
 /**
  * The request's session cookie value, if any: over https the
  * `__Host-den_session_<port>` one (or the plain one a browser signed in
@@ -2106,6 +2159,11 @@ const GUARD: GuardContext = {
   },
   session: (req, via) => {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
+    // Issue 810: a fixture session ends as soon as what allowed it goes.
+    if (s?.via === "fixture" && !fixtureSessionStands(s)) {
+      webSessions.end(s.key);
+      return null;
+    }
     return s ? { ...s, secure: s.secure === true } : null;
   },
   // Once Den's own named https address works, the session lives there.
@@ -2171,7 +2229,13 @@ function noteExpiringToken(): void {
 }
 
 // ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
-const PAIRS = new PairRequests({ unseenMs: pairUnseenMs() });
+/** Issue 819: the new-device limits are Settings, read when used. */
+const PAIRS = new PairRequests({
+  unseenMs: pairUnseenMs(),
+  perClient: () => webAuthNow().pairRequestsPerMinute,
+  maxAttempts: () => webAuthNow().approveAttempts,
+  windowMs: () => webAuthNow().approveWindowSeconds * 1000,
+});
 
 /**
  * What every printed command starts with (cli-command.ts): `<cli>` when the
@@ -2277,21 +2341,25 @@ function closeSessionSockets(keys: Iterable<string>): void {
  */
 function startSession(
   req: http.IncomingMessage,
-  via: "github" | "link" | "code" | "claim",
+  via: "github" | "link" | "code" | "claim" | "fixture",
   login?: string,
   name?: string,
+  fixtureKey?: string,
 ): { cookie: string; approveKey: string } {
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const named = g.ok ? g.via : null;
   // Minted over the edge's proven https: the only kind that counts once
   // the address is proven.
   const secure = httpsOf(req, named);
+  // Issue 819: a person's sign-in ends first run, for good.
+  if (via !== "fixture") FIRST_RUN.mark();
   const { id, approveKey } = webSessions.create({
     userAgent: req.headers["user-agent"],
     host: req.headers.host,
     ...(named ? { reach: named } : {}),
     secure,
     via,
+    ...(fixtureKey ? { fixtureKey } : {}),
     ...(g.ok && g.client ? { client: g.client } : {}),
     ...(login ? { login } : {}),
     ...(login && name ? { name } : {}),
@@ -2530,8 +2598,23 @@ function sendSignedOut(
     search: string;
     scope: "terminal" | "agents" | "den";
     expired?: boolean;
-    /** SEC-2a: a waited-on link: ask for the code `web login` printed. */
+    /**
+     * Issue 819: the pairing screen a sign-in link opened: its request's
+     * poll id, code and expiry, for this page only.
+     */
+    pair?: { id: string; code: string; expiresAt: string; expiresIn: number };
+    /** Issue 819: the pairing screen's lead line, as a message key. */
+    pairLead?: string;
+    /**
+     * SEC-2a; issue 819: first run, a link `web login` printed opened away
+     * from the Den computer: its page asks for the code that terminal shows.
+     */
     confirm?: boolean;
+    /**
+     * Issue 819: nothing to sign in or approve here; this message key says
+     * what to do next (first run, away from the Den computer).
+     */
+    lead?: string;
     requestId: string;
     message: string;
   },
@@ -2558,6 +2641,18 @@ function sendSignedOut(
   const ssh = sshTargetOf(req);
   const user = sshUserNow();
   const gh = githubSignin();
+  // Issue 868: from another computer? The request checks' own answer
+  // (the edge's attested client), else the peer.
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const remote = g.beyond ?? !isLoopbackAddress(req.socket?.remoteAddress);
+  const methods = signinMethods({
+    github: gh,
+    signedInBrowser: personBrowserSignedIn(),
+    remote,
+    firstRun: !FIRST_RUN.done(),
+    terminal: cmd,
+    restart: cliCommand(bin, "web", "restart"),
+  });
   res.setHeader("Cache-Control", "no-store");
   sendErrorPage(req, res, {
     status: 401,
@@ -2605,9 +2700,15 @@ function sendSignedOut(
               : {}
           : { message: noClientIdMessage(product().cli) }),
       },
+      methods,
       ...(opts.expired ? { expired: true } : {}),
+      ...(opts.pair ? { pair: opts.pair } : {}),
+      ...(opts.pairLead ? { pairLead: opts.pairLead } : {}),
       ...(opts.confirm ? { confirm: true } : {}),
-      ...(toLocal && !opts.expired && !there
+      ...(opts.lead ? { lead: opts.lead } : {}),
+      // Issue 819: the pairing screen's lead in English (the page words it).
+      ...(opts.pair ? { message: opts.message } : {}),
+      ...(toLocal && !opts.expired && !there && !opts.pair
         ? {
             localhost: `${localhostOrigin(PORT)}${opts.pathname}${opts.search}`,
           }
@@ -2712,10 +2813,174 @@ function sendGuardRefusal(
 }
 
 /**
- * `GET /auth?c=<code>&next=<path>` (§2): a valid, unused login code (60 s,
- * constant-time mac, single use) becomes a session and its cookie, then a
- * 303 to `next` when it is a same-origin path, else `/`. Anything else gets
- * the signed-out page, which never echoes the code.
+ * Sign-in: a call that registers a sign-in link or lets a browser in, from
+ * anything but a signed-in browser (the CLI's bearer), is answered only
+ * for a caller on this machine outside every running session's process
+ * tree (personCallerRefusal). True when it was refused (and answered).
+ */
+async function personCallerRefused(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  guard: GuardResult,
+  pathname: string,
+): Promise<boolean> {
+  if (guard.ok && guard.principal?.kind === "person-browser") return false;
+  const why = await personCallerWhy(req);
+  if (!why) return false;
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "person-grant",
+      detail: pathname,
+      outcome: "refused" as const,
+      reason: "person_only",
+    },
+    principalOf(req),
+  );
+  sendJson(res, { ok: false, code: "person_only", error: why }, 403);
+  return true;
+}
+
+/**
+ * Why this caller isn't the person at this machine (personCallerRefusal:
+ * on loopback, not forwarded, outside every running session's process
+ * tree), or null when it is.
+ */
+async function personCallerWhy(
+  req: http.IncomingMessage,
+): Promise<string | null> {
+  await peerSettled(req, readBinding().waitMs);
+  return personCallerRefusal({
+    loopback: isLoopbackAddress(req.socket?.remoteAddress),
+    forwarded: forwardedRequest(req, GUARD),
+    line: callerLine(req),
+    roots: sessionRootPids(getStateDir()),
+    den: denPidsNow(),
+  });
+}
+
+/**
+ * Issue 819: whether this browser is the person at the Den computer
+ * itself: on loopback, not forwarded, outside every agent's session
+ * (personCallerWhy). First run signs such a browser in with a link or the
+ * setup link at once.
+ */
+async function personHere(req: http.IncomingMessage): Promise<boolean> {
+  return (await personCallerWhy(req)) === null;
+}
+
+/**
+ * Issue 819: the pairing screen a sign-in link lands on: a new request
+ * (pair-requests.ts), shown with its code on the signed-out page, which
+ * polls it by its id until a signed-in browser approves or denies it.
+ * `lead`: why it is here, as a message key and its English. The code and
+ * the id go to this page only; neither is logged.
+ */
+function sendPairing(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  requestId: string,
+  lead: { key: string; message: string },
+  link?: { nonce: string; startedAt?: number },
+  spend?: { spend: () => boolean; gone: () => void },
+): void {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const client = g.ok ? g.client : undefined;
+  const r = PAIRS.tryCreate({
+    userAgent: req.headers["user-agent"],
+    client,
+    ...(link ? { link: link.nonce, linkAt: link.startedAt } : {}),
+  });
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  if (!r.ok)
+    return sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      requestId,
+      lead:
+        r.error === "rate_limited"
+          ? "err.signin.tooManyRequests"
+          : "err.signin.tooManyWaiting",
+      message: CREATE_REFUSED[r.error].error,
+    });
+  // The link is spent only once its request is made: a refusal above
+  // leaves it usable. A link spent meanwhile ends that request.
+  if (spend && !spend.spend()) {
+    PAIRS.withdraw(r.id);
+    return spend.gone();
+  }
+  // Issue 819: the wait never carries the pairing code (it stays on the
+  // new device's screen).
+  if (link)
+    LOGIN_WAITS.pairing(link.nonce, r.expiresAt, {
+      device: deviceName(req.headers["user-agent"]),
+      ...(client ? { client } : {}),
+    });
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  return sendSignedOut(req, res, {
+    pathname: "/auth",
+    search: "",
+    scope: "den",
+    requestId,
+    message: lead.message,
+    pair: {
+      id: r.id,
+      code: r.code,
+      expiresAt: new Date(r.expiresAt).toISOString(),
+      expiresIn: Math.max(0, r.expiresAt - Date.now()),
+    },
+    pairLead: lead.key,
+  });
+}
+
+/** Issue 819: the pairing screen's lead once this install is set up. */
+function pairLinkLead(): { key: string; message: string } {
+  return {
+    key: "err.signin.pairLinkLead",
+    message:
+      "To let this browser in, approve it from a browser that is already signed in: open Settings › Access there and approve the code below.",
+  };
+}
+
+/**
+ * Issue 819: first run, a link nothing here can finish (opened away from
+ * the Den computer, or by an agent's process there): what to do next. The
+ * link is not spent and no request is made.
+ */
+function sendFirstRunHere(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  requestId: string,
+): void {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  return sendSignedOut(req, res, {
+    pathname: "/auth",
+    search: "",
+    scope: "den",
+    requestId,
+    lead: "err.signin.firstRunHere",
+    message: `${product().title} isn't set up yet: finish its first sign-in on ${machineName()} itself, with the setup link or \`${product().cli} web login\` run in your own terminal there.`,
+  });
+}
+
+/**
+ * `GET /auth?c=<code>&next=<path>` (§2; issue 819): a valid, unused login
+ * code (constant-time mac, single use). A browser already signed in keeps
+ * its session (the code is spent). Otherwise:
+ *
+ *  - first run (first-run.ts), the person at the Den computer
+ *    (personHere) is signed in at once. A link `web login` registered,
+ *    opened anywhere else, asks for the code that terminal printed (POST
+ *    with it signs in). Any other link shows what to do next, unspent;
+ *  - from then on the link is spent as it opens the pairing screen, and a
+ *    signed-in browser approves that device.
+ *
+ * Anything else gets the signed-out page, which never echoes the code. A
+ * HEAD (a link preview) spends nothing.
  */
 async function handleAuth(
   req: http.IncomingMessage,
@@ -2725,29 +2990,28 @@ async function handleAuth(
 ): Promise<void> {
   if (url.searchParams.has("claim"))
     return handleClaim(req, res, url, requestId);
+  if (url.searchParams.has(FIXTURE_LINK_PARAM))
+    return handleFixtureAuth(req, res, url, requestId);
+  const method = (req.method ?? "GET").toUpperCase();
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  if (method === "HEAD") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end();
+    return;
+  }
   const secret = webSecret.current();
   const c = url.searchParams.get("c") ?? "";
   const nonce = loginCodeNonce(c);
-  // SEC-2a: a link `web login` waits on asks for its code first. Opened,
-  // its code is checked as of the moment it was opened (then 5 minutes).
-  const wait = nonce ? LOGIN_WAITS.forNonce(nonce) : null;
+  const pending = nonce ? LOGIN_WAITS.forNonce(nonce) : null;
+  // A link whose page asks for its code is checked as of when it opened.
   const check = secret
-    ? checkLoginCode(c, secret, wait?.openedAt ?? Date.now())
+    ? checkLoginCode(c, secret, pending?.openedAt ?? Date.now())
     : null;
-  const post = req.method === "POST";
-  const gone = () => {
-    res.setHeader("Referrer-Policy", "no-referrer");
-    if (post)
-      return sendJson(
-        res,
-        {
-          ok: false,
-          code: "expired",
-          error: `This link no longer works. On ${machineName()}, run web login again for a new one.`,
-        },
-        410,
-      );
-    return sendSignedOut(req, res, {
+  if (method === "POST")
+    return confirmFirstRunLink(req, res, url, check, requestId);
+  const gone = () =>
+    sendSignedOut(req, res, {
       pathname: "/auth",
       search: "",
       scope: "den",
@@ -2755,107 +3019,63 @@ async function handleAuth(
       requestId,
       message: `That sign-in link expired or was used. Run \`${product().cli} web login\` for a new one.`,
     });
-  };
   if (!check?.ok) return gone();
-  if (wait && nonce) {
-    if (!post) {
-      if (wait.state !== "waiting" && wait.state !== "opened") return gone();
-      LOGIN_WAITS.open(nonce);
-      res.setHeader("Referrer-Policy", "no-referrer");
-      return sendSignedOut(req, res, {
-        pathname: "/auth",
-        search: "",
-        scope: "den",
-        confirm: true,
-        requestId,
-        message: "Enter the code `web login` printed.",
-      });
-    }
-    let body: { code?: unknown } = {};
-    try {
-      body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
-    } catch {
-      return sendJson(
-        res,
-        { ok: false, error: "the body must be JSON: { code }" },
-        400,
-      );
-    }
-    const r = LOGIN_WAITS.confirm(nonce, String(body.code ?? ""));
-    res.setHeader("Referrer-Policy", "no-referrer");
-    res.setHeader("Cache-Control", "no-store");
-    if (!r.ok) {
-      if (r.error === "expired") return gone();
-      return sendJson(
-        res,
-        r.error === "wrong"
-          ? {
-              ok: false,
-              code: "wrong_code",
-              left: r.left,
-              error:
-                "That code isn't right. Check what web login printed and try again.",
-            }
-          : r.error === "rate_limited"
-            ? {
-                ok: false,
-                code: "rate_limited",
-                error: "Too many wrong codes. Wait a minute and try again.",
-              }
-            : {
-                ok: false,
-                code: "refused",
-                error: `Too many wrong codes: this link no longer works. On ${machineName()}, run web login again.`,
-              },
-        r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
-      );
-    }
-    // The address may have been proven while the body was read: sign-in on
-    // a loopback name then goes there, and nothing is minted here.
-    const there = NAMED.address();
-    if (there && !onTheAddress(req, there))
-      return sendJson(
-        res,
-        {
-          ok: false,
-          code: "signin_elsewhere",
-          error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
-          address: there,
-        },
-        403,
-      );
-    if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
-    const g = checkRequest(req, GUARD, product().cli, product().title);
-    LOGIN_WAITS.used(nonce, {
-      device: deviceName(req.headers["user-agent"]),
-      ...(g.ok && g.client ? { client: g.client } : {}),
-    });
-    const s = startSession(req, "link");
-    res.setHeader("Set-Cookie", s.cookie);
-    res.setHeader("Cache-Control", "no-store");
-    return sendJson(res, {
-      ok: true,
-      next: safeNext(url.searchParams.get("next")),
-      approveKey: s.approveKey,
-    });
-  }
-  // A link nobody waits on (`web login --no-wait`, or minted with no
-  // server running): it signs in when opened, once, as before.
-  if (post || !webSessions.consumeCode(check.nonce, check.expiresAt))
+  const wait = LOGIN_WAITS.forNonce(check.nonce);
+  // A wait that ended (used, denied, refused, expired) spends its link.
+  if (wait && wait.state !== "waiting" && wait.state !== "opened")
     return gone();
+  const meta = (g: GuardResult) => ({
+    device: deviceName(req.headers["user-agent"]),
+    ...(g.ok && g.client ? { client: g.client } : {}),
+  });
   // 0.4.71: `web up` sends an open tab here each time; a browser already
   // signed in keeps its session (the code is spent), so Linked devices
-  // doesn't fill with one per run.
+  // doesn't fill with one per run. `web login` is told it was used.
   const already = checkRequest(req, GUARD, product().cli, product().title);
   if (already.ok && already.session) {
-    res.writeHead(303, {
-      Location: safeNext(url.searchParams.get("next")),
-      "Cache-Control": "no-store",
-      "Referrer-Policy": "no-referrer",
-    });
+    if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+    if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
+    res.writeHead(303, { Location: safeNext(url.searchParams.get("next")) });
     res.end();
     return;
   }
+  if (!FIRST_RUN.done()) {
+    const here = await personHere(req);
+    // The address may have been proven meanwhile: sign-in then goes there.
+    if (sendToNamedAddress(req, res, url, already)) return;
+    if (!here) {
+      // A link `web login` printed (with its code): its page asks for
+      // that code. Anything else: finish on the Den computer, unspent.
+      if (wait?.confirmable) {
+        LOGIN_WAITS.open(check.nonce);
+        return sendSignedOut(req, res, {
+          pathname: "/auth",
+          search: "",
+          scope: "den",
+          confirm: true,
+          requestId,
+          message: "Enter the code `web login` printed.",
+        });
+      }
+      return sendFirstRunHere(req, res, requestId);
+    }
+  } else if (sendToNamedAddress(req, res, url, already)) return;
+  const spendLink = () => webSessions.consumeCode(check.nonce, check.expiresAt);
+  // Checked again right before the session: another first-run sign-in
+  // may have finished while this one waited. Nothing awaits between here
+  // and startSession. Once set up, the link is spent only when its
+  // request is made.
+  if (FIRST_RUN.done())
+    return sendPairing(
+      req,
+      res,
+      requestId,
+      pairLinkLead(),
+      wait ? { nonce: check.nonce, startedAt: wait.startedAt } : undefined,
+      { spend: spendLink, gone },
+    );
+  if (!spendLink()) return gone();
+  if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
   const s = startSession(req, "link");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -2864,6 +3084,288 @@ async function handleAuth(
       s.approveKey,
     ),
     "Set-Cookie": s.cookie,
+  });
+  res.end();
+}
+
+/**
+ * SEC-2a; issue 819: `POST /auth?c=…` with `{ code }`: first run, the
+ * code `web login` printed for a link opened away from the Den computer.
+ * The right code signs this browser in (the link is spent); five wrong
+ * ones end the link. Once a person has signed in here, it signs nothing
+ * in: the link opened again shows the pairing screen.
+ */
+async function confirmFirstRunLink(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  check: ReturnType<typeof checkLoginCode> | null,
+  requestId: string,
+): Promise<void> {
+  void requestId;
+  const gone = (error?: string) =>
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "expired",
+        error:
+          error ??
+          `This link no longer works. On ${machineName()}, run web login again for a new one.`,
+      },
+      410,
+    );
+  let body: { code?: unknown } = {};
+  try {
+    body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
+    if (typeof body !== "object" || Array.isArray(body)) throw new Error();
+  } catch {
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "bad_request",
+        error: "the body must be JSON: { code }",
+      },
+      400,
+    );
+  }
+  if (!check?.ok) return gone();
+  if (FIRST_RUN.done())
+    return gone(
+      `${product().title} is already set up: open the link again, and a browser that is signed in approves this one.`,
+    );
+  const r = LOGIN_WAITS.confirm(check.nonce, String(body.code ?? ""));
+  if (!r.ok) {
+    if (r.error === "expired") return gone();
+    return sendJson(
+      res,
+      r.error === "wrong"
+        ? {
+            ok: false,
+            code: "wrong_code",
+            left: r.left,
+            error:
+              "That code isn't right. Check what web login printed and try again.",
+          }
+        : r.error === "rate_limited"
+          ? {
+              ok: false,
+              code: "rate_limited",
+              error: "Too many wrong codes. Wait a minute and try again.",
+            }
+          : {
+              ok: false,
+              code: "refused",
+              error: `Too many wrong codes: this link no longer works. On ${machineName()}, run web login again.`,
+            },
+      r.error === "wrong" ? 401 : r.error === "rate_limited" ? 429 : 410,
+    );
+  }
+  // The address may have been proven while the body was read: sign-in on
+  // a loopback name then goes there, and nothing is minted here.
+  const there = NAMED.address();
+  if (there && !onTheAddress(req, there))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_elsewhere",
+        error: `Sign in at ${there}: ${product().title} keeps the sign-in on its own address.`,
+        address: there,
+      },
+      403,
+    );
+  if (!webSessions.consumeCode(check.nonce, check.expiresAt)) return gone();
+  // Checked again right before the session (another sign-in may have
+  // finished first run meanwhile).
+  if (FIRST_RUN.done())
+    return gone(
+      `${product().title} is already set up: run web login again, and a browser that is signed in approves this one.`,
+    );
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  LOGIN_WAITS.used(check.nonce, {
+    device: deviceName(req.headers["user-agent"]),
+    ...(g.ok && g.client ? { client: g.client } : {}),
+  });
+  const s = startSession(req, "link");
+  res.setHeader("Set-Cookie", s.cookie);
+  res.setHeader("Cache-Control", "no-store");
+  return sendJson(res, {
+    ok: true,
+    next: safeNext(url.searchParams.get("next")),
+    approveKey: s.approveKey,
+  });
+}
+
+/**
+ * `GET /auth?claim=<code>` (0.4.15): the setup link `<cli> web claim-link`
+ * prints at the end of an install. A valid, unused claim code (30 min,
+ * single use across restarts), on first run and on this computer (issue
+ * 819), becomes a session ("claimed with a setup link" in Linked devices),
+ * then a 303 to `/` with the session's approval key in the fragment and no
+ * claim in the address, no referrer. Once the install is set up (or away
+ * from this computer) it is spent as it opens the pairing screen. Anything
+ * else: the signed-out page, which says the link was used and never
+ * echoes the code. An agent's token never gets here (AGENT_FORBIDDEN).
+ */
+/**
+ * Issue 810: the launcher's test-only flag, read once from the server's
+ * own start environment (never a file), then taken out of it so nothing
+ * this server starts (agents, terminals) inherits it.
+ */
+const TEST_INSTALL_LAUNCH_FLAG = (() => {
+  const on = readEnv(getProfile(), TEST_INSTALL_ENV_KEY) === "1";
+  delete process.env[envName(getProfile(), TEST_INSTALL_ENV_KEY)];
+  return on;
+})();
+
+function realOrResolved(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * Issue 810: whether this install is a test install right now: the mark,
+ * the launch flag, its own state dir (not the product's default), and no
+ * owner or signed-in person (a GitHub sign-in, the setup link, a pairing
+ * code, or a `web login` link). The one link or approved session that
+ * pressed Set up test person doesn't count, nor `except` (the caller's
+ * own, while it presses it). Checked at every fixture path and on every fixture request.
+ */
+function testInstallNow(except?: string): boolean {
+  let mark = false;
+  try {
+    mark = webAuthNow().testInstall;
+  } catch {
+    mark = false;
+  }
+  const stateDir = getStateDir();
+  return testInstallBinding({
+    mark,
+    launchFlag: TEST_INSTALL_LAUNCH_FLAG,
+    defaultStateDir:
+      realOrResolved(stateDir) === realOrResolved(getProfile().stateDir),
+    owned:
+      !!readWebOwner(stateDir) ||
+      webSessions.list().some(
+        (s) =>
+          s.via === "github" ||
+          s.via === "claim" ||
+          // A link (unset: a link from before 0.4.5), or (issue 819) a
+          // device a signed-in browser approved: the person's own browsers.
+          ((s.via === "link" || s.via === "code" || s.via === undefined) &&
+            !s.testOperator &&
+            s.key !== except),
+      ),
+  }).ok;
+}
+
+/** Issue 810: the fixture key this server sealed, or null. */
+function fixtureKeyNow(): Buffer | null {
+  return verifiedFixtureKey(getStateDir(), webSecret.current());
+}
+
+/**
+ * Issue 810: whether a fixture session still stands: a test install, the
+ * sealed key it signed in with still the current one, and within its
+ * lifetime.
+ */
+function fixtureSessionStands(s: {
+  createdAt: number;
+  fixtureKey?: string;
+}): boolean {
+  let minutes: number;
+  try {
+    minutes = webAuthNow().fixtureSessionMinutes;
+  } catch {
+    return false;
+  }
+  const key = fixtureKeyNow();
+  return (
+    testInstallNow() &&
+    !!key &&
+    !!s.fixtureKey &&
+    s.fixtureKey === fixtureKeyFingerprint(key) &&
+    !fixtureSessionExpired(s.createdAt, Date.now(), minutes)
+  );
+}
+
+/**
+ * Issue 810: `GET /auth?fixture=<code>&next=<path>`: the gate runner's
+ * sign-in as the fixture person (`web fixture-login`). Only on a test
+ * install (web.test_install in the distribution config), only with a code
+ * the fixture person's secret minted, once. The session's `via` is
+ * "fixture": logged and audited as the fixture person, never the human,
+ * and it never approves (approvals.ts) or reaches Hub (fixtureScopeRefusal).
+ * Refusals never echo the code.
+ */
+function handleFixtureAuth(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  requestId: string,
+): void {
+  const refuse = (status: number, why: string, msg: string) => {
+    recordAction(
+      null,
+      {
+        verb: "signin",
+        detail: `${FIXTURE_LABEL} sign-in refused`,
+        outcome: "refused",
+        reason: why,
+      },
+      FIXTURE_PRINCIPAL,
+    );
+    res.writeHead(status, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    });
+    res.end(`${msg} (request id ${requestId})`);
+  };
+  // GET only: a HEAD (a link preview) never spends the one-time code.
+  if (req.method !== "GET")
+    return refuse(405, "method", "Open the fixture sign-in link with GET.");
+  if (!testInstallNow())
+    return refuse(
+      403,
+      "not_test_install",
+      notTestInstallRefusal(product().configFile),
+    );
+  const secret = fixtureKeyNow();
+  const check = secret
+    ? checkFixtureCode(url.searchParams.get(FIXTURE_LINK_PARAM) ?? "", secret)
+    : null;
+  if (!check?.ok || !webSessions.consumeCode(check.nonce, check.expiresAt))
+    return refuse(
+      401,
+      check && !check.ok ? check.reason : secret ? "used" : "no_fixture_person",
+      `That ${FIXTURE_LABEL} sign-in link expired, was used, or isn't this install's. Run \`${product().cli} web fixture-login\` for a new one.`,
+    );
+  const s = startSession(
+    req,
+    "fixture",
+    undefined,
+    undefined,
+    fixtureKeyFingerprint(secret!),
+  );
+  recordAction(
+    null,
+    { verb: "signin", detail: `${FIXTURE_LABEL} signed in (live checks)` },
+    FIXTURE_PRINCIPAL,
+  );
+  serverLog(
+    `  ${logTimestamp()}  ${FIXTURE_LABEL} signed in (live checks, a test install)`,
+    "lifecycle",
+  );
+  res.writeHead(303, {
+    // No approval key: the fixture person never approves.
+    Location: safeNext(url.searchParams.get("next")),
+    "Set-Cookie": s.cookie,
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
   });
@@ -2871,29 +3373,156 @@ async function handleAuth(
 }
 
 /**
- * `GET /auth?claim=<code>` (0.4.15): the setup link `<cli> web claim-link`
- * prints at the end of an install. A valid, unused claim code (30 min,
- * single use across restarts) becomes a session ("claimed with a setup
- * link" in Linked devices), then a 303 to `/` with the session's approval
- * key in the fragment and no claim in the address, no referrer. Anything
- * else: the signed-out page, which says the link was used and never
- * echoes the code. An agent's token never gets here (AGENT_FORBIDDEN).
+ * Issue 810: Settings › Access › Test install. GET: whether this is a test
+ * install and whether the fixture person is set up (never its secret).
+ * POST: Set up test person, only from a person's own browser session (a
+ * GitHub sign-in, the setup link, a pairing code or a `web login` link,
+ * with its CSRF token), on a test install. Every bearer (the person's CLI
+ * too), a claimed agent and the fixture person are refused. Setting it up
+ * again replaces the key, which ends every older fixture session.
  */
+async function handleFixturePersonRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  const method = (req.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && method !== "POST") {
+    res.setHeader("Allow", "GET, HEAD, POST");
+    return sendJson(res, { ok: false, error: "use GET or POST" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const session = g.ok ? g.session : null;
+  const browser =
+    g.ok &&
+    g.principal?.kind === "person-browser" &&
+    !g.principal.fixture &&
+    !!session &&
+    g.principal.session === session.key &&
+    (session.via === undefined || PERSON_VIAS.has(session.via)) &&
+    !notAPersonOf(req);
+  if (method === "GET" || method === "HEAD") {
+    // The person's own session doesn't count against the install for
+    // them, as on the press: else signing in hides the button.
+    const testInstall = testInstallNow(browser ? session!.key : undefined);
+    return sendJson(res, {
+      ok: true,
+      testInstall,
+      ready: testInstall && !!fixtureKeyNow(),
+    });
+  }
+  if (g.ok && !g.principal)
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_required",
+        error: "Sign in on this page to set up the test person.",
+      },
+      401,
+    );
+  const r = setupFixturePerson(getStateDir(), {
+    testInstall: testInstallNow(browser ? session!.key : undefined),
+    agent: !browser,
+    webSecret: webSecret.current(),
+    configFile: product().configFile,
+  });
+  if (r.ok && browser) webSessions.markTestOperator(session!.key);
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "fixture-person",
+      detail: r.ok
+        ? `${FIXTURE_LABEL} set up (test install)`
+        : `${FIXTURE_LABEL} setup refused`,
+      ...(r.ok ? {} : { outcome: "refused" as const, reason: r.code }),
+    },
+    principalOf(req),
+  );
+  if (!r.ok)
+    return sendJson(res, { ok: false, code: r.code, error: r.error }, 403);
+  return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/** Issue 810: the sign-ins that are a person's own browser session. */
+const PERSON_VIAS: ReadonlySet<string> = new Set([
+  "github",
+  "claim",
+  "code",
+  "link",
+]);
+
+/**
+ * Issue 868: whether a person's browser is signed in here and could
+ * approve a new device (it holds an approval key; never the fixture
+ * person). Once Den's own address works, only a session made there counts.
+ */
+function personBrowserSignedIn(): boolean {
+  const named = NAMED.works();
+  return webSessions
+    .list()
+    .some(
+      (s) =>
+        (s.via === undefined || PERSON_VIAS.has(s.via)) &&
+        !!s.approveKeyHash &&
+        (!named || s.secure === true),
+    );
+}
+
+/**
+ * Issue 819: why this request may not approve or deny a waiting device, or
+ * null when it may: a person's signed-in browser, its session's CSRF token
+ * and approval key (approverAllowed), never the fixture person. The CLI's
+ * bearer, an agent's token and a signed-out page are each told what to do.
+ */
+function deviceApproverRefusal(
+  req: http.IncomingMessage,
+): { status: number; code: string; error: string } | null {
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const inBrowser =
+    "Approving a device needs a person's signed-in browser: open Settings › Access in a browser where you're signed in, and approve it there.";
+  if (!g.ok)
+    return {
+      status: g.status,
+      code: "approve_needs_browser",
+      error: inBrowser,
+    };
+  const p = g.principal;
+  if (p?.kind === "agent")
+    return {
+      status: 403,
+      code: "approve_not_agent",
+      error:
+        "Only a person approves a device, from a signed-in browser (Settings › Access). An agent can't.",
+    };
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      status: 403,
+      code: "fixture_cannot_approve",
+      error:
+        "The fixture person can't approve a device: a person approves it from a signed-in browser (Settings › Access).",
+    };
+  if (!p || p.kind !== "person-browser" || !g.session)
+    return { status: 403, code: "approve_needs_browser", error: inBrowser };
+  const ok = approverAllowed(req, g);
+  if (ok.ok) return null;
+  return { status: 403, code: ok.code, error: ok.error };
+}
+
 const CLAIM_NONCES = new ClaimNonces(getStateDir());
-function handleClaim(
+async function handleClaim(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   url: URL,
   requestId: string,
-): void {
+): Promise<void> {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
   const secret = webSecret.current();
   const check =
-    req.method !== "POST" && secret
+    req.method === "GET" && secret
       ? checkClaimCode(url.searchParams.get("claim") ?? "", secret)
       : null;
-  if (!check?.ok || !CLAIM_NONCES.consume(check.nonce, check.expiresAt))
+  if (!check?.ok)
     return sendSignedOut(req, res, {
       pathname: "/auth",
       search: "",
@@ -2902,6 +3531,39 @@ function handleClaim(
       requestId,
       message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
     });
+  // Issue 819: first run only, and only by the person at this computer;
+  // anywhere else on first run, it says so and stays unspent.
+  const first = !FIRST_RUN.done() && (await personHere(req));
+  if (!first && !FIRST_RUN.done()) return sendFirstRunHere(req, res, requestId);
+  // Checked again after the wait above, right before the session (another
+  // first-run sign-in may have finished meanwhile). Nothing awaits between
+  // here and startSession, and spending the setup link below leaves a
+  // trace first-run.ts reads as set up, so it is checked first.
+  const firstNow = first && !FIRST_RUN.done();
+  const claimGone = () =>
+    sendSignedOut(req, res, {
+      pathname: "/auth",
+      search: "",
+      scope: "den",
+      expired: true,
+      requestId,
+      message: `This setup link was used or has expired. If you didn't open it yourself, someone else may have: check Settings › Access › Linked devices. Sign in below, or run \`${product().cli} web claim-link\` in your own terminal for a new one.`,
+    });
+  const spendClaim = () => CLAIM_NONCES.consume(check.nonce, check.expiresAt);
+  // Once set up, the setup link is spent only when its request is made.
+  if (!firstNow)
+    return sendPairing(
+      req,
+      res,
+      requestId,
+      {
+        key: "err.signin.claimSetUp",
+        message: `${product().title} is already set up, so the setup link doesn't sign in by itself any more. Approve this browser from one that is signed in: Settings › Access, then the code below.`,
+      },
+      undefined,
+      { spend: spendClaim, gone: claimGone },
+    );
+  if (!spendClaim()) return claimGone();
   const s = startSession(req, "claim");
   res.writeHead(303, {
     // The approval key in the fragment: it never reaches a server.
@@ -3207,6 +3869,11 @@ function approvalDeps(): ApprovalDeps {
               const m = await import("./hub-connect.js");
               return new m.HubConnect().disconnect(force);
             },
+            // Issue 726: the old Hub's state is archived, its bell cleared.
+            changed: async (url) => {
+              const m = await import("./hub-change.js");
+              return m.noteHub(await m.defaultHubChangeDeps(), { url });
+            },
             // The restart den_restart_server runs (its note, audit, spawn).
             restart: (reason) =>
               actions.den_restart.run({ reason }) as Promise<{
@@ -3269,6 +3936,30 @@ function approvalDeps(): ApprovalDeps {
     // Issue 621: a gate-only token for a CI runner, on the person's Allow.
     gateRunnerToken: gateRunnerTokenOp({
       runners: () => RunnerTokens.at(getStateDir()),
+    }),
+    // Issue 625: an agent asks to add or remove a test box; the person allows.
+    ...(() => {
+      const box = gateBoxOps({ store: () => gates() });
+      return { gateBoxSet: box.set, gateBoxRemove: box.remove };
+    })(),
+    // Issue 731: doctor's fix for a terminal host Den couldn't restart:
+    // the web start's refresh (wait for idle, restart, resume, audit).
+    terminalHostRestart: hostRestartOp({
+      refreshing: terminalHostRefreshing,
+      waitSeconds: () => {
+        try {
+          return readSessionsConfig().hostRestartWaitSeconds;
+        } catch {
+          return 900;
+        }
+      },
+      start: () =>
+        refreshTerminalHost(
+          agentWebDeps(),
+          (line) => serverLog(line, "lifecycle"),
+          "held",
+        ),
+      log: (line) => serverLog(line, "lifecycle"),
     }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
@@ -3872,6 +4563,15 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
             : 10,
       };
     })(),
+    // Issue 819: new-device requests and wrong codes.
+    web_pairing: (() => {
+      const c = webAuthNow();
+      return {
+        requestsPerMinute: c.pairRequestsPerMinute,
+        approveAttempts: c.approveAttempts,
+        approveWindowSeconds: c.approveWindowSeconds,
+      };
+    })(),
     // den#143: how long `web up` waits for the server.
     web_ready: (() => {
       try {
@@ -4047,6 +4747,36 @@ async function handleRequest(
     return sendGuardRefusal(req, res, pathname, guard, requestId, url.search);
   }
   if (guard.ok) setPrincipal(req, guard.principal);
+  // Issue 810: the fixture person stays on this install and never acts
+  // as the person (approve, let a browser in, Hub).
+  if (
+    guard.ok &&
+    guard.principal?.kind === "person-browser" &&
+    guard.principal.fixture
+  ) {
+    const why = fixtureScopeRefusal(
+      req.method ?? "GET",
+      pathname,
+      routeClass(req.method ?? "GET", pathname),
+    );
+    if (why) {
+      recordAction(
+        null,
+        {
+          verb: "fixture-scope",
+          detail: pathname.slice(0, 200),
+          outcome: "refused",
+          reason: "fixture_scope",
+        },
+        FIXTURE_PRINCIPAL,
+      );
+      return sendJson(
+        res,
+        { ok: false, code: "fixture_scope", error: why },
+        403,
+      );
+    }
+  }
   // 0.4.45: a browser signed in while the cookie was SameSite=Strict still
   // holds it so. Each signed-in page load gets the same cookie again as Lax
   // (the same session, so its CSRF stays; a session never expires here, so
@@ -4101,11 +4831,12 @@ async function handleRequest(
   // SEC-2a: `web login` registers its link's wait, then polls it
   // (shell-grade: the CLI's bearer).
   if (pathname === "/api/web/logins" && req.method === "POST") {
+    if (await personCallerRefused(req, res, guard, pathname)) return;
     let body: { nonce?: unknown; code?: unknown; expiresAt?: unknown } = {};
     try {
       body = (JSON.parse((await readBody(req)) || "{}") ?? {}) as typeof body;
     } catch {
-      return send400(res, "the body must be JSON: { nonce, code, expiresAt }");
+      return send400(res, "the body must be JSON: { nonce, expiresAt }");
     }
     const exp = Number(body.expiresAt);
     const id =
@@ -4114,13 +4845,15 @@ async function handleRequest(
       exp - Date.now() <= LOGIN_CODE_MAX_TTL_MS + 5_000
         ? LOGIN_WAITS.register(
             String(body.nonce ?? ""),
-            String(body.code ?? ""),
+            body.code === undefined ? undefined : String(body.code),
             exp,
           )
         : null;
-    if (!id) return send400(res, "not a login link's nonce, code and expiry");
+    if (!id) return send400(res, "not a login link's nonce and expiry");
     res.setHeader("Cache-Control", "no-store");
-    return sendJson(res, { ok: true, id });
+    // Issue 819: on first run, `web login` prints its code for a browser
+    // on another computer to type.
+    return sendJson(res, { ok: true, id, firstRun: !FIRST_RUN.done() });
   }
   {
     const w = LOGIN_WAIT_PATH.exec(pathname);
@@ -4207,6 +4940,7 @@ async function handleRequest(
   // 0.4.15: what lets another browser in needs the person, not just
   // loopback (approvals.ts: an agent with a shell is on loopback too).
   if (req.method === "POST" && PERSON_GRANT_ROUTES.includes(pathname)) {
+    if (await personCallerRefused(req, res, guard, pathname)) return;
     const g = guard.ok ? guard : null;
     const ok = g ? personGrantAllowed(req, g, printedCli()) : null;
     if (!ok?.ok) {
@@ -4262,6 +4996,10 @@ async function handleRequest(
   )
     return;
 
+  // Issue 810: Settings › Access, the test install and its fixture person.
+  if (pathname === "/api/web/fixture-person")
+    return handleFixturePersonRoute(req, res);
+
   // SEC-2a: approve this computer with a code. Before config validation.
   if (
     isPairRoute(pathname) &&
@@ -4274,12 +5012,14 @@ async function handleRequest(
         const g = checkRequest(r, GUARD, product().cli, product().title);
         return g.ok ? g.client : undefined;
       },
-      commands: (r, code) => {
-        const approve = cliCommand(printedCli(), "web", "approve", code);
-        return {
-          approve,
-          ssh: sshCommand(sshLogin(sshTargetOf(r), sshUserNow()), approve),
-        };
+      approver: deviceApproverRefusal,
+      linkEnded: (link, how, r) => {
+        if (how === "denied") return LOGIN_WAITS.denied(link);
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        LOGIN_WAITS.used(link, {
+          device: deviceName(r.headers["user-agent"]),
+          ...(g.ok && g.client ? { client: g.client } : {}),
+        });
       },
       audit: (r, verb, detail, refused) =>
         recordAction(
@@ -7330,7 +8070,7 @@ async function handleRequest(
   if (pathname === "/api/local-dev" && req.method === "POST") {
     // MODE-5: a person's setting (Settings › Command line); an agent's
     // claim is refused, as on /api/settings.
-    if (agentPrincipalOf(req) || auditActorOf(req))
+    if (notAPersonOf(req))
       return sendJson(
         res,
         { ok: false, error: "only a person can change local_dev" },
@@ -7680,6 +8420,7 @@ async function handleRequest(
           web_bridge?: unknown;
           web_github?: unknown;
           web_ready?: unknown;
+          web_pairing?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
@@ -7694,13 +8435,28 @@ async function handleRequest(
           approvals_watch?: unknown;
           approvals_critical?: unknown;
         };
+        // Issue 810: the test-install mark is a person's, by hand, in the
+        // distribution config: never written here, by anyone.
+        if (
+          Object.prototype.hasOwnProperty.call(body, "test_install") ||
+          Object.prototype.hasOwnProperty.call(body, "web_test_install")
+        )
+          return sendJson(
+            res,
+            {
+              ok: false,
+              code: "test_install_by_hand",
+              error: testInstallByHandRefusal(product().configFile),
+            },
+            403,
+          );
         const user = readUserConfig();
         // MODE-5: settings only a person changes. An agent's claim to any
         // of them is refused before anything is written.
         const personOnly = PERSON_ONLY_SETTINGS.filter(
           (k) => (body as Record<string, unknown>)[k] !== undefined,
         );
-        if (personOnly.length && (agentPrincipalOf(req) || auditActorOf(req)))
+        if (personOnly.length && notAPersonOf(req))
           return sendJson(
             res,
             {
@@ -7720,6 +8476,7 @@ async function handleRequest(
             web_bridge: body.web_bridge,
             web_github: body.web_github,
             web_ready: body.web_ready,
+            web_pairing: body.web_pairing,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
             agent_context: body.agent_context,
@@ -7800,9 +8557,20 @@ async function handleRequest(
         }
         // #267: Hub's address (Settings › Hub); "" or null clears it. The
         // page restarts Den after, so every agent and check reads it anew.
+        // Issue 726: the Hub it was on, so the change runs on the server
+        // whatever path called (revoke, archive, bell).
+        let hubSaved: { before: HubConfig | null; url: string | null } | null =
+          null;
         if (body.hub_url !== undefined) {
+          let before: HubConfig | null = null;
+          try {
+            before = readHubConfig();
+          } catch {
+            before = null;
+          }
           const h = patchHubUrl(user as Record<string, unknown>, body.hub_url);
           if (!h.ok) return send400(res, h.error);
+          hubSaved = { before, url: h.url };
         }
         // AG-4b: the Agents tab's layout, a view preference only.
         if (body.agents_layout !== undefined) {
@@ -7952,6 +8720,22 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (hubSaved) {
+          const saved = hubSaved;
+          const m = await import("./hub-change.js");
+          await m
+            .hubUrlSaved(
+              await m.defaultHubChangeDeps(),
+              saved.before,
+              saved.url,
+            )
+            .catch((e: unknown) =>
+              serverLog(
+                `  ⚠ Hub change: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+                "warn",
+              ),
+            );
+        }
         if (gatePatch) gates().writeSettings(gatePatch);
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
@@ -8404,6 +9188,24 @@ function handleUpgrade(
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
+  // Issue 810: the fixture person never opens a terminal (or any socket).
+  if (guard.principal?.kind === "person-browser" && guard.principal.fixture) {
+    recordAction(
+      null,
+      {
+        verb: "fixture-scope",
+        detail: `WS ${routeTemplate(pathname)}`,
+        outcome: "refused",
+        reason: "fixture_scope",
+      },
+      FIXTURE_PRINCIPAL,
+    );
+    return refuse(
+      403,
+      "The fixture person can't open a terminal.",
+      "fixture_scope",
+    );
+  }
   if (!isSessionIoPath(pathname))
     return refuse(404, "No WebSocket route here", "not_found");
   if (guard.session) trackSessionSocket(guard.session.key, socket);
@@ -8716,13 +9518,16 @@ void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // install made before it takes its edge route's once, before the server
 // answers (so the first `web up` reads it), for doctor to confirm. Never
 // localhost (issue 666: migrateWebUrl takes the first alias that isn't,
-// and puts it in place of a loopback one).
+// and puts it in place of a loopback one). A route edge.routes names is
+// taken over the one made from the brand, and corrects an unconfirmed
+// brand-route address once: only the named one may reach other machines.
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
-    return webRouteHosts(readEdgeConfig(), ports).map((r) => ({
+    return webRouteFindings(readEdgeConfig(), ports).map((r) => ({
       url: r.url,
       from: "the edge route to this install",
+      named: r.named,
     }));
   } catch {
     return undefined; // no edge config: nothing to take
@@ -8781,6 +9586,15 @@ const CRASH_GATE: Promise<void> = (() => {
 void CRASH_GATE.then(() =>
   startAgentUpkeep((line) => serverLog(line, "lifecycle")),
 );
+// Sign-in: this server is one of Den's own processes while it runs.
+try {
+  registerDenProcess(getStateDir(), "server");
+} catch (e) {
+  serverLog(
+    `could not record this server's pid: ${(e as Error).message}`, // words-ok: the server's own log
+    "lifecycle",
+  );
+}
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());
@@ -8846,68 +9660,107 @@ void CRASH_GATE.then(() =>
         /* the file unreadable: the agents list heals them later */
       }
     });
+    // Issue 726: a hub.url edited to another Hub is a change: the old
+    // token revoked, its state archived, before any Hub loop reads it.
+    const hubChecked = import("./hub-change.js")
+      .then(async (m) => m.hubChangeAtStart(await m.defaultHubChangeDeps()))
+      .then((r) => {
+        if (r.kind === "change")
+          serverLog("  Hub changed: the earlier Hub's state is archived");
+      })
+      .catch((e: unknown) =>
+        serverLog(
+          `  ⚠ Hub change check: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+          "warn",
+        ),
+      );
     // H5: tell Hub this install's projects now, then whenever they change.
-    void import("./hub-sync-service.js").then((m) => {
-      let every = 30;
-      let names = 300;
-      let retry = 30;
-      try {
-        const c = readHubConfig();
-        every = c?.syncCheckSeconds ?? 30;
-        names = c?.namesCheckSeconds ?? 300;
-        retry = c?.mcpRetrySeconds ?? 30;
-      } catch {
-        /* a bad hub block: doctor says so; the default here */
-      }
-      m.startProjectSync(every);
-      // 0.4.45: a project renamed in Hub shows its new name here.
-      m.startHubNameRefresh(names);
-      // 0.4.46: an agent that started while Hub didn't answer gets its tools
-      // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
-      m.startMcpReconnect(retry, () => {
+    void hubChecked
+      .then(() => import("./hub-sync-service.js"))
+      .then((m) => {
+        let every = 30;
+        let names = 300;
+        let retry = 30;
         try {
-          return readHubConfig()?.mcpRetryAttempts ?? 0;
+          const c = readHubConfig();
+          every = c?.syncCheckSeconds ?? 30;
+          names = c?.namesCheckSeconds ?? 300;
+          retry = c?.mcpRetrySeconds ?? 30;
         } catch {
-          return 0;
+          /* a bad hub block: doctor says so; the default here */
         }
+        m.startProjectSync(every);
+        // 0.4.45: a project renamed in Hub shows its new name here.
+        m.startHubNameRefresh(names);
+        // 0.4.46: an agent that started while Hub didn't answer gets its tools
+        // back once Hub does (hub.mcp_retry_seconds, hub.mcp_retry_attempts).
+        m.startMcpReconnect(retry, () => {
+          try {
+            return readHubConfig()?.mcpRetryAttempts ?? 0;
+          } catch {
+            return 0;
+          }
+        });
       });
-    });
     // 0.4.40: Hub comments reach this install's agents.
-    void import("./hub-delivery-service.js").then((m) => {
-      // Always registered: a later Connect starts it (no token: it waits).
-      let cfg: ReturnType<typeof readHubConfig> = null;
-      try {
-        cfg = readHubConfig();
-      } catch {
-        /* a bad hub block: doctor says so; the defaults here */
-      }
-      void m.startDeliveries({
-        heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
-        pollSeconds: cfg?.deliveryPollSeconds ?? 30,
-        heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
-        // Issue 701: one agent's hang holds only itself; a held comment
-        // and a typed one with no answer are said in the bell.
-        stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
-        typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
-        heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
-        answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
-        // Issue 701: an asked question never holds a delivery.
-        waiting: deliveryHeldIds,
-        waitingWhy: (agent) =>
-          pausedAgents().has(agent)
-            ? "paused"
-            : (waitingReasons().get(agent) ?? null),
-        log: (l) => serverLog(`  ${l}`, "warn"),
+    void hubChecked
+      .then(() => import("./hub-delivery-service.js"))
+      .then((m) => {
+        // Always registered: a later Connect starts it (no token: it waits).
+        let cfg: ReturnType<typeof readHubConfig> = null;
+        try {
+          cfg = readHubConfig();
+        } catch {
+          /* a bad hub block: doctor says so; the defaults here */
+        }
+        void m.startDeliveries({
+          heartbeatSeconds: cfg?.deliveryHeartbeatSeconds ?? 15,
+          pollSeconds: cfg?.deliveryPollSeconds ?? 30,
+          heldNoteSeconds: cfg?.deliveryHeldNoteSeconds ?? 60,
+          // Issue 701: one agent's hang holds only itself; a held comment
+          // and a typed one with no answer are said in the bell.
+          stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
+          typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
+          heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
+          answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
+          // Issue 701: an asked question never holds a delivery.
+          waiting: deliveryHeldIds,
+          waitingWhy: (agent) =>
+            pausedAgents().has(agent)
+              ? "paused"
+              : (waitingReasons().get(agent) ?? null),
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        });
       });
-    });
     // Issue 193: an agent resumed on an older Hub tool list is told what
     // changed (hub.tools_check_seconds).
-    void import("./hub-tools-service.js").then((m) =>
-      m.startHubToolsWatch({
-        waiting: typingHeldIds,
-        log: (l) => serverLog(`  ${l}`, "warn"),
-      }),
-    );
+    void hubChecked
+      .then(() => import("./hub-tools-service.js"))
+      .then((m) =>
+        m.startHubToolsWatch({
+          waiting: typingHeldIds,
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
+    // Issue 714: an agent's gate slot held over MCP. Granted while it
+    // waited: it is told (typed at its prompt) and claims it; passed on
+    // unclaimed: told it is back in line; its lease lapsed: the bell.
+    void hubChecked
+      .then(() => import("./gate-notices.js"))
+      .then((m) =>
+        m.startGateNotices({
+          store: gates,
+          install: path.resolve(getStateDir()),
+          projectOf: (agent) =>
+            readAgentRecord(getStateDir(), agent)?.workspace ?? null,
+          relay: async (dv) =>
+            (await import("./hub-delivery-service.js")).relayMessage(dv),
+          bell: (n) => {
+            notificationDeps().store.add(n);
+          },
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
   }),
 );
 

@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -95,7 +95,7 @@ async function settingsPage() {
       /* a redirect or a stream: no body */
     }
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
   await p.waitForSelector("[data-keep-token-input]");
   return { p, bodies };
 }

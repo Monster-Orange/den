@@ -419,6 +419,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/signin/code/:id/withdraw",
     "issue 320: the same, as the signed-out page's beacon sends it",
   ),
+  R(
+    "/api/web/fixture-person",
+    "issue 810: whether this is a test install and its fixture person is set up (never the secret)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person",
+    "issue 810: Set up test person, a person's, on a test install only",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",
@@ -719,6 +728,20 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/gate-slots/runners/revoke",
     "Issue 621: a person revokes a runner token; it answers 401 at once",
+  ),
+  R(
+    "/api/gate-slots/boxes",
+    "Issue 625: the test boxes (browser slots on other machines) as set; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes",
+    "Issue 625: a person adds or replaces a test box; never an agent",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes/remove",
+    "Issue 625: a person removes a test box; its running slots finish",
   ),
   R(
     "/api/notifications",
