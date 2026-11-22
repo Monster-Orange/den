@@ -12,7 +12,7 @@ const REFUSED = /operation not permitted|\bEPERM\b|read-only file system/i;
 
 /** What the agent is told, beside the tool's own error. */
 export const REFUSAL_NOTE =
-  "Den's agent sandbox refused that write: Den's state is read-only to an agent's session (issue 936), and so are the install's config/local and its own launch files. Don't retry it or work around it. Ask Den instead: its MCP tools (status, agent_create, gate_slot_request, …) and their held writes for a change, which the person allows. Your own folder (handoff.md, notes) stays writable.";
+  "Den's agent sandbox refused that write: Den's state is read-only to an agent (issue 936), and so are the install's config/local and its own launch files. Don't retry it or work around it. Ask Den instead: its MCP tools (status, agent_create, gate_slot_request, …) and their held writes for a change, which the person allows. Your own folder (handoff.md, notes) stays writable.";
 
 interface HookInput {
   hook_event_name?: unknown;

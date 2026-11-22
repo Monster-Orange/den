@@ -27,7 +27,7 @@ describe("refusalNote (issue 936)", () => {
       },
     });
     const text = out!.hookSpecificOutput.additionalContext;
-    expect(text).toContain("Den's state is read-only to an agent's session");
+    expect(text).toContain("Den's state is read-only to an agent");
     expect(text).toMatch(/held write/);
   });
 
