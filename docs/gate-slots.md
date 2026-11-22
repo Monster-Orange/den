@@ -444,3 +444,24 @@ slot's box and each box's state, with why a box is skipped. The slot log
 (`events.jsonl`) names the box on each grant and release. Both settings
 are in Settings › Server, or
 `den gate settings --box-check-timeout-seconds N --box-recheck-seconds N`.
+
+## Runs inside a held slot
+
+`gate run` gives its command three variables: `DEN_GATE_SLOT` (the
+slot's id), `DEN_GATE_SLOT_KIND` (`cpu` or `browser`) and
+`DEN_GATE_SLOT_BOX` (`local`, or the test box it runs on). A `gate run`
+started from inside that command, of the same kind and on the same place,
+runs inside the held slot at once: no second entry, no wait behind its
+own slot. It must run under the slot's run (its process or a child of
+it); a process that only sets `DEN_GATE_SLOT` waits in line as any other.
+A nested run of the other kind asks as before. A nested run never
+outlives its slot: when the outer run ends and gives the slot back, the
+nested command is stopped. Inside a held slot, `--browser-endpoint` is not
+used: the held slot's browser is. A slot an agent holds through Den's
+tools (not `gate run`) has no command to nest under, so it has no nested
+runs.
+
+A project's own lock helper can read the same variables: when
+`DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
+held slot and should not lock again.
+
