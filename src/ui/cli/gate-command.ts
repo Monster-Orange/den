@@ -119,8 +119,8 @@ export const GATE_HELP = {
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
     "    [--pw <version>=ws://…] (repeat it): a box with a Playwright address",
     "    per version; a run gets the one for its version (--pw-version, else",
-    "    the nearest package.json at or below its folder that has Playwright)",
-    "    a box run: --base-url http://<name>.localhost:<port> (never 80/443)",
+    "    the installed Playwright, looking up to the repo's top folder)",
+    "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443)",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
@@ -723,7 +723,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   if (where && where !== "local") {
     if (!urls.length)
       throw new GateUsage(
-        "a box run needs --base-url http://<name>.localhost:<port>[,…]: the app's loopback addresses, never port 80 or 443",
+        "a box run needs --base-url http://<name>.localhost:<port>[,…] (or http://127.0.0.1:* for the ports the run opens itself): the app's loopback addresses, never port 80 or 443",
       );
     for (const u of urls) {
       const bad = checkBaseUrl(u);
