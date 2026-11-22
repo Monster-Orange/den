@@ -2615,7 +2615,7 @@
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.toolsListFailed":
-      "{agent} は Hub のツールを使えません。Den が一度再起動した後も、ツールの一覧を取得できませんでした。Hub が直ったら、エージェント画面から再起動してください",
+      "{agent} は Hub のツールを使えません。__DEN_TITLE__ が一度再起動した後も、ツールの一覧を取得できませんでした。Hub が直ったら、エージェント画面から再起動してください",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ が戻りました。{agent} への連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.restartedWhileWorking":

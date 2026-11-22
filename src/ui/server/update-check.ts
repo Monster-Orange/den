@@ -242,6 +242,7 @@ export const TOOLS_LIST_FAILED_SUBJECT = "record:hub-tools-list-failed";
  */
 export function toolsListFailedNote(
   store: Pick<NotificationStore, "add">,
+  title: string,
   agent: string,
   workspace: string,
   error: string,
@@ -250,7 +251,7 @@ export function toolsListFailedNote(
     kind: "service",
     subject: `${TOOLS_LIST_FAILED_SUBJECT}:${agent}`,
     scope: `workspace/${workspace}`,
-    text: `${agent} can't use Hub's tools: ${error}. Den restarted it once; restart it from Agents once Hub is fixed`,
+    text: `${agent} can't use Hub's tools: ${error}. ${title} restarted it once; restart it from Agents once Hub is fixed`,
     msg: { key: "bell.m.toolsListFailed", vars: { agent } },
     link: "/agents",
   });

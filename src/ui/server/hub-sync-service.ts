@@ -202,8 +202,10 @@ async function bellToolsListFailed(
   try {
     const { notificationDeps } = await import("./notification-service.js");
     const u = await import("./update-check.js");
+    const { product } = await import("../../shared/product.js");
     const store = notificationDeps().store;
-    if (error !== null) u.toolsListFailedNote(store, id, workspace, error);
+    if (error !== null)
+      u.toolsListFailedNote(store, product().title, id, workspace, error);
     else
       store.remove((x) => x.subject === `${u.TOOLS_LIST_FAILED_SUBJECT}:${id}`);
   } catch {

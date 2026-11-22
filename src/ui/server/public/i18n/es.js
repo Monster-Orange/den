@@ -2704,7 +2704,7 @@
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
     "bell.m.toolsListFailed":
-      "{agent} no puede usar las herramientas de Hub: no se pudieron listar otra vez después de que Den lo reiniciara una vez. Reinícialo desde Agentes cuando Hub esté arreglado",
+      "{agent} no puede usar las herramientas de Hub: no se pudieron listar otra vez después de que __DEN_TITLE__ lo reiniciara una vez. Reinícialo desde Agentes cuando Hub esté arreglado",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":

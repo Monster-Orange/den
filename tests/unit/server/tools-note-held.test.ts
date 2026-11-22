@@ -58,6 +58,7 @@ describe("issue 749: Hub's tools still didn't load after Den's one restart", () 
       {
         add: (n: unknown) => void added.push(n as Record<string, unknown>),
       } as never,
+      "Acme",
       "planner",
       "north",
       "listing Hub's tools failed (hub (500): Internal Server Error)",
@@ -71,7 +72,7 @@ describe("issue 749: Hub's tools still didn't load after Den's one restart", () 
       }),
     ]);
     expect(String(added[0].text)).toBe(
-      "planner can't use Hub's tools: listing Hub's tools failed (hub (500): Internal Server Error). Den restarted it once; restart it from Agents once Hub is fixed",
+      "planner can't use Hub's tools: listing Hub's tools failed (hub (500): Internal Server Error). Acme restarted it once; restart it from Agents once Hub is fixed",
     );
   });
 });
