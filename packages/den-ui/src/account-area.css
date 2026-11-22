@@ -455,3 +455,45 @@
   color: var(--text);
   text-transform: uppercase;
 }
+/* What a host draws in a flow slot: a note, a code with its button, a
+   pairing QR beside its link. */
+.den-aa-note {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+.den-aa-note.bad {
+  color: var(--bad);
+}
+.den-aa-gh {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin: var(--space-2) 0 0;
+}
+.den-aa-ghcode {
+  font: 600 var(--fs-l) var(--mono);
+  letter-spacing: 0.08em;
+}
+.den-aa-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-start;
+  margin-top: var(--space-2);
+}
+.den-aa-pair > div:last-child {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.den-aa-qr {
+  line-height: 0;
+}
+.den-aa-plink {
+  display: inline-block;
+  margin-top: var(--space-2);
+  font: var(--fs-s) var(--mono);
+  overflow-wrap: anywhere;
+  color: var(--accent-text);
+}

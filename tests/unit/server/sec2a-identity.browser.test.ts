@@ -230,13 +230,19 @@ describe("the identity chip", () => {
       act: "account",
     });
     await whatsNewStaysShut(p);
-    // Linked devices: this sign-in, by its method, marked This device.
-    const row = p.locator(".set-device").filter({ hasText: "This device" });
-    await row.waitFor();
+    // Issue 310: Devices and sessions (the Account area) marks This
+    // device; its place, never its address.
+    await p.goto(p.url().replace(/[?#].*$/, "") + "?account=devices");
+    const row = p
+      .locator(
+        'dialog.den-aa-dlg[open] .den-aa-pane[data-aa-pane="devices"] .den-aa-item',
+      )
+      .filter({ hasText: "This device" });
+    await row.waitFor({ timeout: 20_000 });
     expect(await row.count()).toBe(1);
-    expect((await row.textContent())?.replace(/\s+/g, " ")).toMatch(
-      /Chrome on \w+ · This device.*approved with a code · created just now · from 203\.0\.113\.7 \(Chrome on \w+\) · last seen just now.*Revoke/,
-    );
+    const text = (await row.textContent())?.replace(/\s+/g, " ") ?? "";
+    expect(text).toMatch(/^Chrome on \w+ ?This device.*Last seen.*Sign out$/);
+    expect(text).not.toContain("203.0.113.7");
     // A reload: the chip again, and no toast.
     await p.reload();
     expect((await chip(p)).kind).toBe("device");

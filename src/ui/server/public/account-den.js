@@ -12,17 +12,21 @@
  *                         Pair a device (GET /api/web/pair's hostnames)
  *   Devices and sessions  the linked browsers (GET /api/web/sessions)
  *
- * and does what each button asks through Den's routes: sign this browser
- * out (/api/session/logout), sign one or every browser out
- * (/api/web/logout), unlink the owner (/api/web/owner/unlink). Linking
- * GitHub, pairing a device and approving a waiting device (the person
- * types the code the device shows) still run in Settings › Access; Pair a
- * device goes there.
+ *   (and Waiting to be approved: GET /api/web/waiting, by ref)
+ *
+ * and does what each button asks through Den's routes, all in the area:
+ * sign this browser out (/api/session/logout), sign one or every browser
+ * out (/api/web/logout), link GitHub (/api/web/owner/link, GitHub's device
+ * code) or unlink it (/api/web/owner/unlink), pair a device (POST
+ * /api/web/pair: a one-time link and QR), approve a waiting device with the
+ * code the person types from its screen (/api/web/approve, issue 819) or
+ * deny it (/api/web/deny). Settings › Access keeps the install's rows.
  *
  *   openAccount({ section?, opener? }) → Promise<{ dialog, area, close }>
  */
 import { accountSectionOf, openAccountArea } from "/kit/account-area.js";
-import { deviceWords, placeOf } from "./device-words.js";
+import { approveRefusal, deviceWords, placeOf } from "./device-words.js";
+import { qrSvg } from "./qr.js";
 
 const sh = () => (typeof window !== "undefined" ? window.denShell : null);
 const t = (key, en) => {
@@ -31,6 +35,16 @@ const t = (key, en) => {
 };
 
 const GITHUB_PROFILE = "https://github.com/settings/profile";
+const esc = (v) =>
+  String(v ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+const note = (text, bad) =>
+  `<p class="den-aa-note${bad ? " bad" : ""}"${bad ? ' role="alert"' : ""}>${esc(text)}</p>`;
 const same = (a, b) =>
   String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase();
 
@@ -44,6 +58,8 @@ export function denAccountData({
   sessions,
   pairHosts,
   hub,
+  waiting,
+  now,
 } = {}) {
   const id = identity || {};
   const list = Array.isArray(sessions) ? sessions : null;
@@ -87,6 +103,9 @@ export function denAccountData({
     signOutAll: true,
   };
 
+  // GitHub: the owner's link; nothing linked: Link, when Den has a GitHub
+  // App client id to link with (else Not linked, alone). Owner unknown (the
+  // route didn't answer): no row.
   const access = {
     github: ownerLogin
       ? {
@@ -94,8 +113,14 @@ export function denAccountData({
           ...(owner.owner.linkedAt ? { linkedAt: owner.owner.linkedAt } : {}),
           unlink: true,
         }
-      : null,
-    pair: Array.isArray(pairHosts) && pairHosts.length > 0,
+      : owner
+        ? owner.clientId
+          ? { link: true }
+          : {}
+        : null,
+    // Pair a device: whenever Den could say where (no edge hostname yet,
+    // and the area says so and points at Settings › Access › The edge).
+    pair: Array.isArray(pairHosts),
   };
 
   const devices = list
@@ -110,10 +135,42 @@ export function denAccountData({
         })),
         pair: access.pair,
         signOutAll: true,
+        // Issue 819: by ref; the person types the code that computer shows.
+        ...(waitingRows(waiting, now ?? Date.now()).length
+          ? { waiting: waitingRows(waiting, now ?? Date.now()) }
+          : {}),
       }
     : { error: true };
 
   return { profile, access, devices, settingsHref: "/settings#access" };
+}
+
+/** A request's age, in minutes (a request lasts 10). */
+function askedWords(createdAt, now) {
+  const at = Date.parse(createdAt ?? "");
+  if (!Number.isFinite(at)) return "";
+  const n = Math.max(0, Math.round((now - at) / 60_000));
+  return n < 1
+    ? t("acct.askedNow", "asked just now")
+    : t("acct.askedMin", "asked {n} min ago").replace("{n}", String(n));
+}
+
+/** Waiting requests as the kit's typed rows; expired ones left out. */
+export function waitingRows(list, now = Date.now()) {
+  return (Array.isArray(list) ? list : [])
+    .filter(
+      (w) =>
+        w &&
+        typeof w.ref === "string" &&
+        !(w.expiresAt && Date.parse(w.expiresAt) <= now),
+    )
+    .map((w) => ({
+      ref: w.ref,
+      title: deviceWords(w.device),
+      detail: [placeOf(w.client), askedWords(w.createdAt, now)]
+        .filter(Boolean)
+        .join(" · "),
+    }));
 }
 
 /** GET a JSON route; null when it doesn't answer 2xx. */
@@ -132,19 +189,25 @@ function hubWho() {
   return h && h.state === "connected" ? { name: h.name, login: h.login } : null;
 }
 
+/** The edge hostnames a pairing link can be for (load() reads them). */
+let pairHosts = null;
+
 /** What Den knows now, as the kit's fields. */
 async function load() {
-  const [session, owner, sessions, pair] = await Promise.all([
+  const [session, owner, sessions, pair, waiting] = await Promise.all([
     get("/api/session"),
     get("/api/web/owner"),
     get("/api/web/sessions"),
     get("/api/web/pair"),
+    get("/api/web/waiting"),
   ]);
+  pairHosts = pair ? pair.hosts || [] : null;
   return denAccountData({
     identity: session?.identity,
     owner,
     sessions: sessions ? sessions.sessions || [] : null,
-    pairHosts: pair ? pair.hosts || [] : [],
+    pairHosts,
+    waiting: waiting?.waiting,
     hub: hubWho(),
   });
 }
@@ -186,9 +249,149 @@ export async function openAccount({ section, opener } = {}) {
   const refresh = () =>
     load().then((d) => {
       latest = d;
+      shownRefs = (d.devices.waiting || []).map((w) => w.ref).join(",");
       open?.area.update(d);
     });
   const lang = sh()?.lang?.() || document.documentElement.lang || "en";
+  // Timers that live while the area is open (a GitHub code being approved,
+  // a pairing link's countdown, waiting requests coming and going).
+  const timers = new Set();
+  const later = (fn, ms) => {
+    const id = setTimeout(() => {
+      timers.delete(id);
+      if (open) fn();
+    }, ms);
+    timers.add(id);
+  };
+  const flow = (name, html) => open?.area.flow(name, html);
+
+  // Link GitHub: GitHub's device flow (the code, then GitHub's page).
+  const link = async (button) => {
+    button.disabled = true;
+    let f;
+    try {
+      f = await sh().api("POST", "/api/web/owner/link", {});
+    } catch (e) {
+      button.disabled = false;
+      flow("github", note(e.message, true));
+      return;
+    }
+    const url = f.verificationUri || "https://github.com/login/device";
+    flow(
+      "github",
+      `<p class="den-aa-note">${esc(t("acct.linkEnter", "Enter this code on GitHub and approve the app. It asks for no permissions."))}</p>` +
+        `<p class="den-aa-gh"><b class="den-aa-ghcode">${esc(f.userCode)}</b> ` +
+        `<a class="den-btn sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("set.ui.openGithub", "Open GitHub"))}</a></p>` +
+        note(t("set.ui.waitingGithub", "Waiting for GitHub…")),
+    );
+    const poll = () =>
+      get(`/api/web/owner/link/${encodeURIComponent(f.id)}`).then((b) => {
+        if (b?.state === "pending") return later(poll, 1500);
+        if (b?.state === "ok") {
+          flow("github", "");
+          return refresh();
+        }
+        button.disabled = false;
+        flow(
+          "github",
+          note(
+            b?.error || t("set.ui.linkFailed", "Linking failed. Try again."),
+            true,
+          ),
+        );
+      });
+    later(poll, 1500);
+  };
+
+  // Pair a device: a one-time link and QR code for an edge hostname.
+  const pairWith = async (host) => {
+    let p;
+    try {
+      p = await sh().api("POST", "/api/web/pair", { host });
+    } catch (e) {
+      flow("pair", note(e.message, true));
+      return;
+    }
+    const until = Date.parse(p.expiresAt);
+    const draw = () => {
+      const s = Math.max(0, Math.round((until - Date.now()) / 1000));
+      flow(
+        "pair",
+        `<div class="den-aa-pair"><div class="den-aa-qr">${qrSvg(p.url, { scale: 4, margin: 4 })}</div>` +
+          `<div>${note(t("set.ui.pairScan", "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good."))}` +
+          `<a class="den-aa-plink" href="${esc(p.url)}">${esc(p.url)}</a>` +
+          `<p class="den-aa-note den-aa-left">${esc(
+            s
+              ? t("set.ui.expiresIn", "Expires in {s} s.").replace(
+                  "{s}",
+                  String(s),
+                )
+              : t(
+                  "set.ui.pairExpired",
+                  "This link expired. Pair again for a new one.",
+                ),
+          )}</p></div></div>`,
+      );
+      if (s) later(draw, 1000);
+    };
+    draw();
+  };
+  const pair = () => {
+    const hosts = pairHosts || [];
+    if (!hosts.length) {
+      flow(
+        "pair",
+        note(
+          t(
+            "acct.noEdge",
+            "No edge hostname routes to this Den yet, so another device has no address to open. Set one up in Settings, then pair.",
+          ),
+        ) +
+          `<a class="den-aa-plink" href="/settings#access.edge">${esc(t("acct.edgeLink", "The edge in Settings →"))}</a>`,
+      );
+      return;
+    }
+    if (hosts.length === 1) return pairWith(hosts[0]);
+    flow(
+      "pair",
+      `<p class="den-aa-gh"><select class="den-aa-host" aria-label="${esc(t("set.ui.edgeHost", "Edge hostname"))}">` +
+        hosts
+          .map((h) => `<option value="${esc(h)}">${esc(h)}</option>`)
+          .join("") +
+        `</select> <button type="button" class="den-btn primary sm" data-aa-act="pair-go">${esc(t("set.access.pair", "Pair a device"))}</button></p>`,
+    );
+  };
+
+  // A waiting request: the code the person typed, or Deny.
+  const answer = async (path, body, button) => {
+    const release = sh()?.holdDots?.(button) ?? (async () => {});
+    try {
+      await sh().api("POST", path, body);
+      await release();
+    } catch (e) {
+      await release();
+      sh()?.toast?.(approveRefusal(e));
+    }
+    return refresh();
+  };
+  // New requests show up while it's open (and expired ones go).
+  let shownRefs = (data.devices.waiting || []).map((w) => w.ref).join(",");
+  const watchWaiting = () =>
+    later(async () => {
+      const w = await get("/api/web/waiting");
+      const rows = waitingRows(w?.waiting);
+      const refs = rows.map((r) => r.ref).join(",");
+      if (w && refs !== shownRefs && latest.devices.list) {
+        shownRefs = refs;
+        latest = {
+          ...latest,
+          devices: { ...latest.devices, waiting: rows },
+        };
+        open?.area.update({ devices: latest.devices });
+      }
+      watchWaiting();
+    }, 5000);
+
   open = openAccountArea({
     ...data,
     current: section || accountSectionOf(location.search) || "profile",
@@ -196,8 +399,10 @@ export async function openAccount({ section, opener } = {}) {
     opener,
     onClose: () => {
       open = null;
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
     },
-    onAction(act, id, button) {
+    onAction(act, id, button, extra) {
       switch (act) {
         case "sign-out":
           return write("sign-out", "/api/session/logout", {}, button).then(
@@ -222,10 +427,22 @@ export async function openAccount({ section, opener } = {}) {
             {},
             button,
           ).then(done(refresh));
+        case "link":
+          return link(button);
         case "pair":
-          open?.close();
-          location.assign("/settings#access.pair");
-          return undefined;
+          return pair();
+        case "pair-go":
+          return pairWith(
+            button.parentElement?.querySelector(".den-aa-host")?.value,
+          );
+        case "approve":
+          return answer(
+            "/api/web/approve",
+            { ref: id, code: extra?.code },
+            button,
+          );
+        case "deny":
+          return answer("/api/web/deny", { ref: id }, button);
         case "retry-devices":
           return refresh();
         default:
@@ -233,5 +450,6 @@ export async function openAccount({ section, opener } = {}) {
       }
     },
   });
+  watchWaiting();
   return open;
 }

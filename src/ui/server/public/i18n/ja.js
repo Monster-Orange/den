@@ -1576,6 +1576,13 @@
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
+    "acct.askedNow": "たった今リクエスト",
+    "acct.askedMin": "{n} 分前にリクエスト",
+    "acct.linkEnter":
+      "このコードを GitHub に入力して、アプリを承認してください。権限は求めません。",
+    "acct.noEdge":
+      "まだこの Den に届くエッジのホスト名がないため、ほかのデバイスが開けるアドレスがありません。設定で用意してから、ペアリングしてください。",
+    "acct.edgeLink": "設定のエッジ →",
     "acct.thisComputer": "このコンピューター",
     "acct.localNetwork": "ローカルネットワーク",
     "busy.signOutDeviceS": "{device} をサインアウトしました。",
@@ -1590,6 +1597,8 @@
     "set.access.ended":
       "そのリクエストは終了したか、期限切れです。何も許可していません。",
     "set.access.pair": "デバイスをペアリング",
+    "set.access.edge": "エッジ",
+    "set.access.signout_all": "すべてのブラウザーでサインアウト",
     "set.access.pair_requests":
       "アドレスごとの新しいサインイン要求 (1 分あたり)",
     "set.access.pair_requests.d":
@@ -3361,6 +3370,8 @@
       "テスト用インストールは、サインイン中かこのマシン上でのみ読み取れます。",
     "set.ui.noPairHost":
       "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
+    "set.ui.noEdgeHost":
+      "まだ __DEN_TITLE__ に届くエッジのホスト名がないため、ほかのデバイスが開けるアドレスがありません。設定の edge ブロックに追加し（VPN 名なら edge.aliases）、下のボタンを使ってください。エッジを起動するか、動いているエッジに変更を反映します。{cmd}",
     "set.ui.edgeStart": "エッジを起動",
     "set.ui.edgeApply": "適用",
     "set.ui.edgeStarted": "エッジを起動しました",
@@ -3765,6 +3776,10 @@
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":
       "GitHub を使わない場合やオフラインの場合: エッジのホスト名 1 つに対する一回限りのリンクと QR コードです (__DEN_CLI__ web login --host <name>)。",
+    "set.access.signout_all.d":
+      "このブラウザーを含む、すべてのブラウザーとスマートフォンのサインインを終わらせます。サインインのシークレットを置き換えることもできます（動いているエージェントは再起動するまで止まります）。__DEN_CLI__ web logout --all でも同じです。",
+    "set.access.edge.d":
+      "ほかのデバイスはエッジのホスト名（設定の edge ブロック）で __DEN_TITLE__ に届きます。ここでエッジを起動するか、動いているエッジに設定を反映します。__DEN_CLI__ edge up でも同じです。",
     "set.access.test_install.d":
       "このインストールがテスト用として印付けされているかどうか: ディストリビューションの設定の web.test_install で、手作業で設定します。その場合に限り、ライブチェックはテスト用の人物としてサインインできます (あなたでも、エージェントでもありません)。ブラウザのこの画面で「テスト用の人物を設定」を押して一度作成します。",
     "set.distribution.brand.d":

@@ -1621,6 +1621,13 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "acct.askedNow": "pedido ahora mismo",
+    "acct.askedMin": "pedido hace {n} min",
+    "acct.linkEnter":
+      "Escribe este código en GitHub y aprueba la app. No pide ningún permiso.",
+    "acct.noEdge":
+      "Ningún nombre de host del edge lleva a este Den todavía, así que otro dispositivo no tiene dirección que abrir. Configura uno en Ajustes y luego empareja.",
+    "acct.edgeLink": "El edge en Ajustes →",
     "acct.thisComputer": "Este ordenador",
     "acct.localNetwork": "Red local",
     "busy.signOutDeviceS": "Desconectado: {device}.",
@@ -1634,6 +1641,8 @@
       "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
     "set.access.ended": "Esa solicitud terminó o caducó. No se permitió nada.",
     "set.access.pair": "Emparejar un dispositivo",
+    "set.access.edge": "El edge",
+    "set.access.signout_all": "Cerrar sesión en todos los navegadores",
     "set.access.pair_requests":
       "Solicitudes nuevas de inicio de sesión por dirección, por minuto",
     "set.access.pair_requests.d":
@@ -3464,6 +3473,8 @@
       "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
       "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
+    "set.ui.noEdgeHost":
+      "Ningún nombre de host del edge lleva a __DEN_TITLE__ todavía, así que otro dispositivo no tiene dirección que abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que está en marcha. {cmd}",
     "set.ui.edgeStart": "Iniciar el edge",
     "set.ui.edgeApply": "Aplicar",
     "set.ui.edgeStarted": "Edge iniciado",
@@ -3872,6 +3883,10 @@
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+    "set.access.signout_all.d":
+      "Desconecta cada navegador y teléfono, también este, y puede reemplazar el secreto de entrada (los agentes en marcha se detienen hasta que se reinician). __DEN_CLI__ web logout --all hace lo mismo.",
+    "set.access.edge.d":
+      "Otro dispositivo llega a __DEN_TITLE__ por un nombre de host del edge (el bloque edge de la configuración). Inicia el edge aquí, o aplica sus ajustes al que está en marcha. __DEN_CLI__ edge up hace lo mismo.",
     "set.access.test_install.d":
       "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
     "set.distribution.brand.d":

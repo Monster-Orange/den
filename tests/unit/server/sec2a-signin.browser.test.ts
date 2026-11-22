@@ -285,48 +285,62 @@ describe("Settings › Access", () => {
     // signed in with GitHub) leave no code for this browser to allow.
     await p.waitForTimeout(4000);
     expect(await p.$("#den-pair-dlg[open]")).toBeNull();
-    await p.waitForSelector("#set-owner");
-    expect((await p.textContent("#set-owner"))?.replace(/\s+/g, " ")).toBe(
-      "Owner: @octo-owner (github:4242)",
+    // Issue 310: the owner, the browsers and Pair a device are in the
+    // Account area now (Settings › Access links to it).
+    await p.goto(`http://localhost:${port}/settings?account=access`);
+    const pane = (k: string) =>
+      p.locator(`dialog.den-aa-dlg[open] .den-aa-pane[data-aa-pane="${k}"]`);
+    await pane("access").waitFor({ timeout: 20_000 });
+    expect(
+      (await pane("access").locator(".den-aa-item").first().textContent())
+        ?.replace(/\s+/g, " ")
+        .trim(),
+    ).toMatch(
+      /^GitHub@octo-owner · linked .+\. Den keeps its id, never a token\.Unlink$/,
     );
-    await p.waitForSelector(".set-device");
-    const before = await p.locator(".set-device").count();
-    expect(before).toBeGreaterThanOrEqual(1);
-    const rows = await p.locator(".set-device").allTextContents();
+    await p.click('.den-aa-row[data-aa-section="devices"]');
+    const devices = pane("devices").locator(".den-aa-item");
+    await devices.first().waitFor();
+    const before = await pane("devices")
+      .locator('[data-aa-act="sign-out-device"]')
+      .count();
+    expect(before).toBeGreaterThanOrEqual(2);
+    const rows = await devices.allTextContents();
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(
-          /Chrome on \w+.*signed in with GitHub \(@octo-owner\) · created just now · from .* · last seen just now/,
-        ),
-        // This browser, with Revoke (issue 819: approved from a signed-in
-        // browser, or on first run its one-time link).
-        expect.stringMatching(
-          /This device.*(approved with a code|signed in with a one-time link) · created just now.*Revoke/,
-        ),
+        expect.stringMatching(/^Chrome on \w+.*Last seen/),
+        expect.stringMatching(/This device/),
       ]),
     );
-    const section = p.locator("#setting-access-owner");
-    const access = () =>
-      p
-        .waitForSelector(".set-device")
-        .then(() => section.scrollIntoViewIfNeeded());
-    await shots(p, "settings-access", access);
+    // No address on screen (the place, or nothing).
+    expect(rows.join(" ")).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/);
+    await shots(p, "account-devices", () => devices.first().waitFor());
 
-    await p.click("#set-pair-go");
-    await p.waitForSelector("#set-pair-qr svg");
-    const link = await p.getAttribute("#set-pair-link", "href");
+    await p.click('.den-aa-row[data-aa-section="access"]');
+    await pane("access").locator('[data-aa-act="pair"]').click();
+    const qr = pane("access").locator(".den-aa-qr svg");
+    await qr.waitFor();
+    const link = await pane("access")
+      .locator("a.den-aa-plink")
+      .getAttribute("href");
     expect(link?.startsWith(`http://${EDGE}/auth?c=`)).toBe(true);
-    expect(await p.textContent("#set-pair-left")).toMatch(
+    expect(await pane("access").locator(".den-aa-left").textContent()).toMatch(
       /^Expires in \d+ s\.$/,
     );
-    await shots(p, "pair-a-device", async () => {
-      await p.waitForSelector("#set-pair-qr svg");
-      await p.locator("#set-pair-qr").scrollIntoViewIfNeeded();
-    });
+    await shots(p, "pair-a-device", () => qr.waitFor());
 
-    await p.locator("[data-revoke]").first().click();
+    await p.click('.den-aa-row[data-aa-section="devices"]');
+    await pane("devices")
+      .locator(".den-aa-item")
+      .filter({ hasNotText: "This device" })
+      .first()
+      .locator('[data-aa-act="sign-out-device"]')
+      .click();
     await p.waitForFunction(
-      (n) => document.querySelectorAll(".set-device").length < n,
+      (n) =>
+        document.querySelectorAll(
+          '.den-aa-pane[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
+        ).length < n,
       before,
       { timeout: 20_000 },
     );
@@ -356,7 +370,8 @@ describe("Settings › Access", () => {
     gh.approve(lastCode(), { id: 4242, login: "octo-owner" });
     await b.p.waitForFunction(() => !document.querySelector("#den-signin"));
     await a.p.goto(`http://localhost:${port}/settings#access`);
-    await a.p.waitForSelector(".set-device");
+    // Issue 310: its own Settings › Access row (it can replace the secret).
+    await a.p.waitForSelector("[data-signout-all]");
     const secret = readWebSecret(stateDir)!.toString("hex");
     // First a question, and Cancel ends nothing.
     await a.p.click("[data-signout-all]");

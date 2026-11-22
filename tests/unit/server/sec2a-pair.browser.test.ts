@@ -285,7 +285,7 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     await ctx.close();
   }, 90_000);
 
-  it("Approve in Settings › Access › Waiting devices on localhost signs it in too", async () => {
+  it("Approve in the Account area's Waiting to be approved on localhost signs it in too", async () => {
     if (skip()) return;
     const { ctx, p, code } = await edgePage();
     const local = await browser!.newContext({
@@ -293,7 +293,7 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     });
     const s = await local.newPage();
     await claimIn(s);
-    await s.goto(`http://localhost:${port}/settings#access`);
+    await s.goto(`http://localhost:${port}/settings?account=devices`);
     // A brand-new Den never opens What's new: it marks it seen (ON-6).
     await s.waitForFunction(() =>
       Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
@@ -306,23 +306,29 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
       () => sessionStorage.getItem("den-pair-mine") ?? "",
     );
     expect(ref).not.toBe("");
-    const row = s.locator(`.set-waiting[data-ref="${ref}"]`);
-    await row.waitFor();
+    // Issue 310: Waiting to be approved is in the Account area now.
+    const row = s
+      .locator(
+        'dialog.den-aa-dlg[open] .den-aa-pane[data-aa-pane="devices"] .den-aa-item',
+      )
+      .filter({ has: s.locator(`[data-aa-code-for="${ref}"]`) });
+    await row.waitFor({ timeout: 20_000 });
     expect(await row.textContent()).toMatch(/Chrome on \w+/);
     expect(await row.textContent()).not.toContain(code);
-    expect(await row.locator("[data-approve]").isDisabled()).toBe(true);
+    const go = row.locator('[data-aa-act="approve"]');
+    expect(await go.isDisabled()).toBe(true);
     // The shell's own "Allow this computer?" pop-up can open over the page
     // for the same request (modal, its own code field focused): this checks
-    // Settings' field and Approve, so the code goes into that field and the
+    // the area's field and Approve, so the code goes into that field and the
     // click to its button directly, as typed input does.
     await row
-      .locator("input[data-code-for]")
+      .locator("input[data-aa-code-for]")
       .evaluate((el: HTMLInputElement, v: string) => {
         el.value = v;
         el.dispatchEvent(new Event("input", { bubbles: true }));
       }, code.toLowerCase());
-    expect(await row.locator("[data-approve]").isDisabled()).toBe(false);
-    await row.locator("[data-approve]").dispatchEvent("click");
+    expect(await go.isDisabled()).toBe(false);
+    await go.dispatchEvent("click");
     await p.waitForFunction(
       () => !document.querySelector("#den-signin"),
       null,

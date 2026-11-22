@@ -64,3 +64,38 @@ export function placeOf(client, tr = L) {
     return lan();
   return "";
 }
+
+/**
+ * Issue 819: an Approve or Deny refused, in this page's language when the
+ * server says why (only a person's signed-in browser approves a device,
+ * with the code that device's screen shows).
+ */
+export function approveRefusal(e) {
+  const code = e && e.code;
+  if (code === "approve_not_agent" || code === "fixture_cannot_approve")
+    return L(
+      "set.access.approveNotAgent",
+      "Only a person approves a device, from their own signed-in browser.",
+    );
+  if (code === "approve_needs_browser" || code === "signin_to_approve")
+    return L(
+      "set.access.approveNeedsBrowser",
+      "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
+    );
+  if (code === "wrong" || code === "malformed")
+    return L(
+      "set.access.wrongCode",
+      "That code doesn't match the one on that computer's screen. Check it and type it again.",
+    );
+  if (code === "rate_limited")
+    return L(
+      "set.access.tooManyTries",
+      "Too many tries. Wait a minute and try again.",
+    );
+  if (code === "ended" || code === "expired" || code === "unknown")
+    return L(
+      "set.access.ended",
+      "That request ended or expired. Nothing was allowed.",
+    );
+  return String((e && e.message) || e);
+}

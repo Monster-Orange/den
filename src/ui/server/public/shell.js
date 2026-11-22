@@ -963,6 +963,8 @@
       "The test install can only be read signed in, or on this machine.",
     "set.ui.noPairHost":
       "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
+    "set.ui.noEdgeHost":
+      "No edge hostname routes to __DEN_TITLE__ yet, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
     "set.ui.edgeStart": "Start the edge",
     "set.ui.edgeApply": "Apply",
     "set.ui.edgeStarted": "Edge started",
@@ -1362,6 +1364,10 @@
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.access.signout_all.d":
+      "Ends every browser's and phone's sign-in, this one's too, and can replace the sign-in secret (running agents stop until they are restarted). __DEN_CLI__ web logout --all does the same.",
+    "set.access.edge.d":
+      "Another device reaches __DEN_TITLE__ through an edge hostname (the config's edge block). Start the edge here, or apply its settings to the one running. __DEN_CLI__ edge up does the same.",
     "set.access.test_install.d":
       "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     "set.distribution.brand.d":
@@ -2507,6 +2513,13 @@
     "ident.toast": "This device is signed in to {name} on {host}",
     // The install owner's role, beside their GitHub identity (the account entry's data).
     "acct.roleOwner": "Owner",
+    "acct.askedNow": "asked just now",
+    "acct.askedMin": "asked {n} min ago",
+    "acct.linkEnter":
+      "Enter this code on GitHub and approve the app. It asks for no permissions.",
+    "acct.noEdge":
+      "No edge hostname routes to this Den yet, so another device has no address to open. Set one up in Settings, then pair.",
+    "acct.edgeLink": "The edge in Settings →",
     "acct.thisComputer": "This computer",
     "acct.localNetwork": "Local network",
     "busy.signOutDeviceS": "Signed out {device}.",
@@ -2527,6 +2540,8 @@
     "set.access.tooManyTries": "Too many tries. Wait a minute and try again.",
     "set.access.ended": "That request ended or expired. Nothing was allowed.",
     "set.access.pair": "Pair a device",
+    "set.access.edge": "The edge",
+    "set.access.signout_all": "Sign out every browser",
     "set.access.pair_requests": "New sign-in requests per address, a minute",
     "set.access.pair_requests.d":
       "How many new devices one address may ask to sign in a minute. More are turned away until the minute is up. __DEN_CLI__ config web.pair_requests_per_minute=30",

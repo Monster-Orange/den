@@ -206,10 +206,9 @@ describe("issue 310 review: a device's place, never its address", () => {
       owner: OWNER,
       sessions: [SESSIONS[0], { ...SESSIONS[1], client: "203.0.113.9" }],
     });
-    expect(d.devices.list!.map((x: { where: string }) => x.where)).toEqual([
-      "Local network",
-      "",
-    ]);
+    expect(
+      (d.devices as { list: { where: string }[] }).list.map((x) => x.where),
+    ).toEqual(["Local network", ""]);
     const html = accountAreaHtml({ ...d, lang: "en" } as AccountAreaData);
     expect(html).toContain("Local network");
     expect(html).not.toContain("192.168.1.20");
@@ -226,5 +225,99 @@ describe("issue 310: Settings › Access links to the Account area", () => {
     expect(host.innerHTML).toContain('href="?account=profile"');
     expect(host.innerHTML).toContain("data-den-aa-open");
     expect(host.innerHTML).toContain("Your account →");
+  });
+});
+
+describe("issue 310 review: what moved out of Settings, into the area", () => {
+  it("Settings › Access loses Owner, Linked devices, Waiting devices and Pair a device; the install's rows stay", () => {
+    const ids = SETTINGS.filter((s) => s.category === "access").map(
+      (s) => s.id,
+    );
+    for (const gone of [
+      "access.owner",
+      "access.devices",
+      "access.waiting",
+      "access.pair",
+    ])
+      expect(ids).not.toContain(gone);
+    for (const stays of [
+      "access.account",
+      "access.pair_requests",
+      "access.machine_name",
+      "access.edge",
+      "access.signout_all",
+    ])
+      expect(ids).toContain(stays);
+  });
+
+  it("GitHub: Link when nothing is linked and Den can link; Not linked alone when it can't", () => {
+    const base = {
+      identity: { kind: "github", via: "github", login: "sam" },
+      sessions: SESSIONS,
+      pairHosts: [],
+    };
+    const can = denAccountData({
+      ...base,
+      owner: { owner: null, clientId: true },
+    });
+    expect(can.access.github).toEqual({ link: true });
+    const html = accountAreaHtml({ ...can, lang: "en" } as AccountAreaData);
+    expect(html).toMatch(/data-aa-act="link"[^>]*>Link</);
+    const cannot = denAccountData({
+      ...base,
+      owner: { owner: null, clientId: false },
+    });
+    expect(cannot.access.github).toEqual({});
+  });
+
+  it("Pair a device is offered signed in, with or without an edge hostname; not when Den can't say", () => {
+    const base = {
+      identity: { kind: "github", via: "github", login: "sam" },
+      owner: OWNER,
+      sessions: SESSIONS,
+    };
+    expect(denAccountData({ ...base, pairHosts: [] }).access.pair).toBe(true);
+    expect(
+      denAccountData({ ...base, pairHosts: ["den.example.test"] }).access.pair,
+    ).toBe(true);
+    expect(denAccountData({ ...base, pairHosts: null }).access.pair).toBe(
+      false,
+    );
+  });
+
+  it("waiting requests: by ref, the device and its place, never the address or the code; expired ones gone", () => {
+    const now = Date.parse("2026-11-20T18:00:00.000Z");
+    const d = denAccountData({
+      identity: { kind: "github", via: "github", login: "sam" },
+      owner: OWNER,
+      sessions: SESSIONS,
+      pairHosts: [],
+      now,
+      waiting: [
+        {
+          ref: "w1",
+          device: "Safari on iOS",
+          client: "192.168.1.30",
+          createdAt: "2026-11-20T17:58:00.000Z",
+          expiresAt: "2026-11-20T18:08:00.000Z",
+        },
+        {
+          ref: "w2",
+          device: "Chrome on Linux",
+          createdAt: "2026-11-20T17:40:00.000Z",
+          expiresAt: "2026-11-20T17:50:00.000Z",
+        },
+      ],
+    });
+    expect((d.devices as { waiting?: unknown }).waiting).toEqual([
+      {
+        ref: "w1",
+        title: "Safari on iOS",
+        detail: "Local network · asked 2 min ago",
+      },
+    ]);
+    const html = accountAreaHtml({ ...d, lang: "en" } as AccountAreaData);
+    expect(html).toContain('data-aa-code-for="w1"');
+    expect(html).not.toContain("192.168.1.30");
   });
 });

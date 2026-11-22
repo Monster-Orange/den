@@ -114,7 +114,7 @@ describe.each(ENGINES)("issue 395 in %s: Start the edge", (e) => {
     await p.goto(`${s.base}/settings#access`);
     const btn = p.locator("#set-edge-up");
     await btn.waitFor({ timeout: 20_000 });
-    const says = (await p.locator("#set-pair").textContent()) ?? "";
+    const says = (await p.locator("#set-edge").textContent()) ?? "";
     expect(says).not.toMatch(/\brun\b|then [^.]*edge up/i);
     expect(says).toContain("use the button below");
     expect(await btn.textContent()).toBe("Start the edge");

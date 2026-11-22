@@ -161,6 +161,30 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     await p.context().close();
   });
 
+  it("Pair a device with no edge hostname says so in place, and points at Settings' edge row", async () => {
+    if (!browsers[e] || !s) return;
+    const p = await open(e);
+    // This install has an edge hostname: say it has none.
+    await p.route("**/api/web/pair", (r) =>
+      r.request().method() === "GET"
+        ? r.fulfill({ json: { hosts: [] } })
+        : r.continue(),
+    );
+    await p.goto(`${s.base}/logs?account=access`);
+    await area(p).waitFor({ timeout: 20_000 });
+    const pane = p.locator('.den-aa-pane[data-aa-pane="access"]');
+    await pane.locator('[data-aa-act="pair"]').click();
+    const slot = pane.locator('[data-aa-flow="pair"]');
+    await slot.locator(".den-aa-note").waitFor();
+    expect(await slot.textContent()).toContain("No edge hostname");
+    expect(await slot.locator("a").getAttribute("href")).toBe(
+      "/settings#access.edge",
+    );
+    // Still in the area: nothing navigated away.
+    expect(new URL(p.url()).pathname).toBe("/logs");
+    await p.context().close();
+  });
+
   it("Settings › Access starts with Your account →, which opens it", async () => {
     if (!browsers[e] || !s) return;
     const p = await open(e);

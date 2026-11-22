@@ -36,9 +36,11 @@ import {
   timeZones,
   upgradeTimes,
 } from "/kit/time.js";
-import { deviceWords } from "./device-words.js";
+import { approveRefusal, deviceWords } from "./device-words.js";
+// Issue 310: Settings no longer approves a device (the Account area does);
+// its words stay importable from here.
+export { approveRefusal };
 import { kitT } from "/kit/strings.js";
-import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
@@ -784,11 +786,6 @@ export function deviceLine(d, now = Date.now()) {
   };
 }
 
-const ROW_STYLE =
-  "display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;padding:6px 0;border-top:1px solid var(--border)";
-const CODE_STYLE =
-  "font:22px/1.4 var(--mono);letter-spacing:0.12em;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken)";
-
 /**
  * Issue 310: "Your account →", opening the Account area (?account=, which
  * the shell opens on any page; account-den.js).
@@ -797,183 +794,6 @@ function drawAccountLink(host) {
   const sh = typeof window !== "undefined" ? window.denShell : null;
   const lang = sh?.lang?.() || "en";
   host.innerHTML = `<a class="den-btn" id="set-account-link" href="?account=profile" data-den-aa-open="profile">${escHtml(kitT(lang, "kit.aa.yours"))}</a>`;
-}
-
-/** Linking the owner in the page: start, show the code, poll the server. */
-function drawOwner(host, ctx) {
-  const api = (m, p, b) => ctx.shell.api(m, p, b);
-  let timer = null;
-  const draw = (o) => {
-    clearTimeout(timer);
-    if (o.owner) {
-      host.innerHTML =
-        `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.ownerIs", "Owner:"))} <b>@${escHtml(o.owner.login)}</b> <span class="set-note">(${escHtml(o.owner.id)})</span></output> ` +
-        `<button type="button" class="btn" id="set-owner-unlink">${escHtml(L("set.ui.unlink", "Unlink"))}</button>`;
-      host.querySelector("#set-owner-unlink").addEventListener("click", () =>
-        api("POST", "/api/web/owner/unlink", {})
-          .then(load)
-          .catch((e) => fail(e.message)),
-      );
-      return;
-    }
-    host.innerHTML =
-      `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.noOwner", "This Den has no owner identity yet."))}</output> ` +
-      (o.clientId
-        ? `<button type="button" class="btn primary" id="set-owner-link">${escHtml(L("set.ui.linkGithub", "Link your GitHub account"))}</button>`
-        : `<span class="set-note" id="set-owner-noclient" style="flex-basis:100%">${L(
-            "set.ui.noClient",
-            "Linking needs a GitHub App client id, and none is configured: set {key} in config/local/user.yml, then restart the server.", // words-ok: moved word for word into the catalog (0.4.45)
-            { key: "<code>web.github_client_id</code>" },
-          )}</span>`) +
-      '<div id="set-owner-flow" style="flex-basis:100%" aria-live="polite"></div>';
-    host.querySelector("#set-owner-link")?.addEventListener("click", startLink);
-  };
-  const fail = (text) => {
-    const box = host.querySelector("#set-owner-flow");
-    if (box)
-      box.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(text)}</span>`;
-    const b = host.querySelector("#set-owner-link");
-    if (b) b.disabled = false;
-  };
-  const poll = (id) =>
-    fetch(`/api/web/owner/link/${encodeURIComponent(id)}`, {
-      cache: "no-store",
-    })
-      .then((r) => r.json())
-      .then((b) => {
-        if (b.state === "pending") {
-          timer = setTimeout(() => poll(id), 1500);
-          return;
-        }
-        if (b.state === "ok") return load();
-        fail(b.error || L("set.ui.linkFailed", "Linking failed. Try again."));
-      })
-      .catch(
-        () =>
-          fail(L("set.ui.noAnswer", "The server didn't answer. Try again.")), // words-ok: moved word for word into the catalog (0.4.45)
-      );
-  function startLink() {
-    const b = host.querySelector("#set-owner-link");
-    if (b) b.disabled = true;
-    api("POST", "/api/web/owner/link", {})
-      .then((f) => {
-        const box = host.querySelector("#set-owner-flow");
-        const url = f.verificationUri || "https://github.com/login/device";
-        box.innerHTML =
-          `<p class="set-note" style="margin:8px 0">${L(
-            "set.ui.enterCode",
-            "Enter this code at {link} and approve the app. It asks for no permissions.",
-            {
-              link: `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(url.replace(/^https:\/\//, ""))}</a>`,
-            },
-          )}</p>` +
-          `<span id="set-owner-code" style="${CODE_STYLE}">${escHtml(f.userCode)}</span> ` +
-          `<a class="btn" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(L("set.ui.openGithub", "Open GitHub"))}</a>` +
-          `<p class="set-note" style="margin:8px 0 0">${escHtml(L("set.ui.waitingGithub", "Waiting for GitHub…"))}</p>`;
-        timer = setTimeout(() => poll(f.id), 1500);
-      })
-      .catch((e) => fail(e.message));
-  }
-  function load() {
-    fetch("/api/web/owner", { cache: "no-store" })
-      .then((r) => r.json())
-      .then(draw)
-      .catch(() => {
-        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.ownerSignedIn", "The owner can only be shown signed in."))}</output>`;
-      });
-  }
-  load();
-}
-
-function drawDevices(host, ctx) {
-  const load = () =>
-    fetch("/api/web/sessions", { cache: "no-store" })
-      .then((r) =>
-        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
-      )
-      .then((b) => {
-        const list = b.sessions || [];
-        if (!list.length) {
-          host.innerHTML = `<output class="set-ro" id="set-devices">${escHtml(L("set.ui.noDevices", "No linked devices. A browser that signs in with GitHub, is approved with a code, or opens a one-time link appears here."))}</output>`;
-          return;
-        }
-        const now = Date.now();
-        host.innerHTML =
-          '<div id="set-devices" style="width:100%">' +
-          list
-            .map((d) => {
-              const l = deviceLine(d, now);
-              return (
-                `<div class="set-device" data-id="${escHtml(d.id)}" style="${ROW_STYLE}">` +
-                `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}` +
-                (l.current
-                  ? ` <b class="set-this-device" style="font-weight:600">· ${escHtml(L("set.ui.thisDevice", "This device"))}</b>`
-                  : "") +
-                `</div>` +
-                `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
-                `<button type="button" class="btn" data-revoke="${escHtml(d.id)}">${escHtml(L("set.ui.revoke", "Revoke"))}</button></div>`
-              );
-            })
-            .join("") +
-          "</div>" +
-          // MODE-5: `web logout` (and --all) from the page, asked first.
-          `<div data-signout-box style="margin-top:10px"><button type="button" class="btn" data-signout-all>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button></div>`;
-        const box = host.querySelector("[data-signout-box]");
-        const idle = box.innerHTML;
-        box.addEventListener("click", (e) => {
-          const b = e.target.closest?.("button");
-          if (!b) return;
-          if (b.hasAttribute("data-signout-all")) {
-            box.innerHTML =
-              `<div data-signout-ask role="group" aria-label="${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}" style="display:grid;gap:8px">` +
-              `<p class="set-note" style="margin:0">${escHtml(L("set.ui.signOutAllB", "This signs out every browser and phone, including this one. Each signs in again the usual way."))}</p>` +
-              `<label class="set-note" style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" data-signout-rotate> ${escHtml(L("set.ui.signOutRotate", "Also replace the sign-in secret. Running agents stop until they are restarted."))}</label>` +
-              `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-signout-yes>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button><button type="button" class="btn" data-signout-no>${escHtml(L("set.ui.cancel", "Cancel"))}</button></div></div>`;
-            box.querySelector("[data-signout-no]")?.focus();
-            return;
-          }
-          if (b.hasAttribute("data-signout-no")) {
-            box.innerHTML = idle;
-            box.querySelector("[data-signout-all]")?.focus();
-            return;
-          }
-          if (b.hasAttribute("data-signout-yes")) {
-            const rotate = !!box.querySelector("[data-signout-rotate]")
-              ?.checked;
-            ctx.shell
-              .busyAction(
-                "sign-out-all",
-                (headers) =>
-                  ctx.shell.api(
-                    "POST",
-                    "/api/web/logout",
-                    rotate ? { rotate: true } : {},
-                    { headers },
-                  ),
-                { button: b },
-              )
-              .then((r) => {
-                // This browser is signed out too: the page shows sign-in.
-                if (r !== undefined) location.reload();
-              });
-          }
-        });
-        host.querySelectorAll("[data-revoke]").forEach((btn) =>
-          btn.addEventListener("click", () => {
-            btn.disabled = true;
-            ctx.shell
-              .api("POST", "/api/web/logout", { id: btn.dataset.revoke })
-              .then(load)
-              .catch(() => {
-                btn.disabled = false;
-              });
-          }),
-        );
-      })
-      .catch(() => {
-        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.devicesSignedIn", "The devices can only be listed signed in."))}</output>`;
-      });
-  load();
 }
 
 /** "10:42" in the person's chosen time zone (the kit's). */
@@ -1022,239 +842,6 @@ export function pairCodeReady(v) {
 }
 
 /**
- * Issue 819: an Approve or Deny refused, in this page's language when the
- * server says why (only a person's signed-in browser approves a device,
- * with the code that device's screen shows).
- */
-export function approveRefusal(e) {
-  const code = e && e.code;
-  if (code === "approve_not_agent" || code === "fixture_cannot_approve")
-    return L(
-      "set.access.approveNotAgent",
-      "Only a person approves a device, from their own signed-in browser.",
-    );
-  if (code === "approve_needs_browser" || code === "signin_to_approve")
-    return L(
-      "set.access.approveNeedsBrowser",
-      "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
-    );
-  if (code === "wrong" || code === "malformed")
-    return L(
-      "set.access.wrongCode",
-      "That code doesn't match the one on that computer's screen. Check it and type it again.",
-    );
-  if (code === "rate_limited")
-    return L(
-      "set.access.tooManyTries",
-      "Too many tries. Wait a minute and try again.",
-    );
-  if (code === "ended" || code === "expired" || code === "unknown")
-    return L(
-      "set.access.ended",
-      "That request ended or expired. Nothing was allowed.",
-    );
-  return String((e && e.message) || e);
-}
-
-/**
- * Waiting devices (SEC-2a; issue 819): the computers whose signed-out page
- * shows a code (a sign-in link opened there among them), each with a field
- * for that code, Approve and Deny. Approving needs the code typed off that
- * computer's own screen; it then signs in by itself. Only a person's
- * signed-in browser may. A request past its time is dropped.
- */
-function drawWaiting(host, ctx) {
-  let timer = null;
-  let shown = "";
-  let first = true;
-  const load = () => {
-    clearTimeout(timer);
-    if (!host.isConnected && timer !== null) return;
-    fetch("/api/web/waiting", { cache: "no-store" })
-      .then((r) =>
-        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
-      )
-      .then((b) => {
-        const now = Date.now();
-        const list = (b.waiting || []).filter(
-          (w) =>
-            w &&
-            typeof w.ref === "string" &&
-            !(w.expiresAt && Date.parse(w.expiresAt) <= now),
-        );
-        const refs = list.map((w) => w.ref).join(",");
-        // A new request shows up without a reload.
-        timer = setTimeout(load, 5000);
-        if (refs === shown && list.length) {
-          // The same requests: only their ages change; typed codes stay.
-          list.forEach((w) => {
-            const el = host.querySelector(
-              `.set-waiting[data-ref="${CSS.escape(w.ref)}"] .set-note`,
-            );
-            if (el) el.textContent = waitingLine(w, now).detail;
-          });
-          return;
-        }
-        // Typed codes survive a redraw (a request came or went).
-        const typed = {};
-        host.querySelectorAll("input[data-code-for]").forEach((i) => {
-          typed[i.dataset.codeFor] = i.value;
-        });
-        const focused =
-          document.activeElement && document.activeElement.dataset
-            ? document.activeElement.dataset.codeFor
-            : undefined;
-        shown = refs;
-        host.innerHTML = list.length
-          ? '<div id="set-waiting" style="width:100%">' +
-            list
-              .map((w, i) => {
-                const l = waitingLine(w, now);
-                const ref = escHtml(w.ref);
-                const id = `set-waiting-code-${i}`;
-                return (
-                  `<div class="set-waiting" data-ref="${ref}" style="${ROW_STYLE}">` +
-                  `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}</div>` +
-                  `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
-                  `<label for="${id}" class="set-note">${escHtml(L("set.ui.codeLabel", "Code on its screen"))}</label>` +
-                  `<input id="${id}" class="mono" data-code-for="${ref}" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" style="width:10ch">` +
-                  `<button type="button" class="btn primary" data-approve="${ref}" disabled>${escHtml(L("set.ui.approve", "Approve"))}</button>` +
-                  `<button type="button" class="btn" data-deny="${ref}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
-                );
-              })
-              .join("") +
-            '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
-          : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve."))}</output>`;
-        const act = (btn, path, body) => {
-          btn.disabled = true;
-          // Issue 698: the kit's dots on the button until the server answers.
-          const release = window.denShell?.holdDots?.(btn) ?? (async () => {});
-          ctx.shell
-            .api("POST", path, body)
-            .then(async () => {
-              await release();
-              shown = "";
-              load();
-            })
-            .catch(async (e) => {
-              await release();
-              btn.disabled = false;
-              const out = host.querySelector("#set-waiting-out");
-              if (out)
-                out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(approveRefusal(e))}</span>`;
-              if (e && (e.code === "ended" || e.code === "expired")) {
-                shown = "";
-                load();
-              }
-            });
-        };
-        host.querySelectorAll("input[data-code-for]").forEach((input) => {
-          const ref = input.dataset.codeFor;
-          const go = host.querySelector(`[data-approve="${CSS.escape(ref)}"]`);
-          const sync = () => {
-            go.disabled = !pairCodeReady(input.value);
-          };
-          if (typed[ref] !== undefined) input.value = typed[ref];
-          sync();
-          input.addEventListener("input", sync);
-          input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" && !go.disabled) {
-              e.preventDefault();
-              go.click();
-            }
-          });
-          go.addEventListener("click", () =>
-            act(go, "/api/web/approve", {
-              ref,
-              code: typedPairCode(input.value),
-            }),
-          );
-          if (focused === ref) input.focus();
-        });
-        // The first (newest, or a link's) request's field is ready to type.
-        if (first && list.length && !focused) {
-          host.querySelector("input[data-code-for]")?.focus();
-          first = false;
-        }
-        host
-          .querySelectorAll("[data-deny]")
-          .forEach((b) =>
-            b.addEventListener("click", () =>
-              act(b, "/api/web/deny", { ref: b.dataset.deny }),
-            ),
-          );
-      })
-      .catch(() => {
-        shown = "";
-        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.waitingSignedIn", "Waiting devices can only be listed signed in, or on this machine."))}</output>`;
-      });
-  };
-  load();
-}
-
-function drawPair(host, ctx) {
-  let timer = null;
-  fetch("/api/web/pair", { cache: "no-store" })
-    .then((r) => r.json())
-    .then((b) => {
-      const hosts = b.hosts || [];
-      if (!hosts.length) {
-        host.innerHTML = `<output class="set-ro" id="set-pair">${L(
-          "set.ui.noPairHost",
-          "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
-          { cmd: "<code>__DEN_CLI__ edge up</code>" },
-        )}</output>`;
-        drawEdgeUp(host, ctx);
-        return;
-      }
-      host.innerHTML =
-        `<select id="set-pair-host" aria-label="${escHtml(L("set.ui.edgeHost", "Edge hostname"))}">` +
-        hosts
-          .map((h) => `<option value="${escHtml(h)}">${escHtml(h)}</option>`)
-          .join("") +
-        "</select> " +
-        `<button type="button" class="btn primary" id="set-pair-go">${escHtml(L("set.access.pair", "Pair a device"))}</button>` +
-        '<div id="set-pair-out" style="flex-basis:100%" aria-live="polite"></div>';
-      const out = host.querySelector("#set-pair-out");
-      const go = () => {
-        clearTimeout(timer);
-        ctx.shell
-          .api("POST", "/api/web/pair", {
-            host: host.querySelector("#set-pair-host").value,
-          })
-          .then((p) => {
-            out.innerHTML =
-              `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:8px">` +
-              `<div id="set-pair-qr" style="line-height:0">${qrSvg(p.url, { scale: 4, margin: 4 })}</div>` +
-              `<div style="flex:1 1 220px;min-width:0"><p class="set-note" style="margin:0 0 8px">${escHtml(L("set.ui.pairScan", "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good."))}</p>` +
-              `<a id="set-pair-link" href="${escHtml(p.url)}" style="font:12px var(--mono);overflow-wrap:anywhere">${escHtml(p.url)}</a>` +
-              `<p class="set-note" id="set-pair-left" style="margin:8px 0 0"></p></div></div>`;
-            const until = Date.parse(p.expiresAt);
-            const left = out.querySelector("#set-pair-left");
-            const tick = () => {
-              const s = Math.max(0, Math.round((until - Date.now()) / 1000));
-              left.textContent = s
-                ? L("set.ui.expiresIn", "Expires in {s} s.", { s })
-                : L(
-                    "set.ui.pairExpired",
-                    "This link expired. Pair again for a new one.",
-                  );
-              if (s) timer = setTimeout(tick, 1000);
-            };
-            tick();
-          })
-          .catch((e) => {
-            out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
-          });
-      };
-      host.querySelector("#set-pair-go").addEventListener("click", go);
-    })
-    .catch(() => {
-      host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
-    });
-}
-
-/**
  * Issue 395: Start the edge (Apply, when it runs): what `edge up` runs, on
  * the server (POST /api/edge/up, a person's only), with the working pop-up
  * until it answers; then what it did: started, up to date (nothing
@@ -1275,6 +862,77 @@ function edgeUpText(o) {
       s: o?.downSeconds ?? 1,
     },
   );
+}
+
+/**
+ * MODE-5 (`web logout --all` from the page), asked first; issue 310 keeps
+ * it in Settings: it can replace the install's sign-in secret too.
+ */
+function drawSignOutAll(host, ctx) {
+  host.innerHTML = `<div data-signout-box><button type="button" class="btn" data-signout-all>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button></div>`;
+  const box = host.querySelector("[data-signout-box]");
+  const idle = box.innerHTML;
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest?.("button");
+    if (!b) return;
+    if (b.hasAttribute("data-signout-all")) {
+      box.innerHTML =
+        `<div data-signout-ask role="group" aria-label="${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}" style="display:grid;gap:8px">` +
+        `<p class="set-note" style="margin:0">${escHtml(L("set.ui.signOutAllB", "This signs out every browser and phone, including this one. Each signs in again the usual way."))}</p>` +
+        `<label class="set-note" style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" data-signout-rotate> ${escHtml(L("set.ui.signOutRotate", "Also replace the sign-in secret. Running agents stop until they are restarted."))}</label>` +
+        `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-signout-yes>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button><button type="button" class="btn" data-signout-no>${escHtml(L("set.ui.cancel", "Cancel"))}</button></div></div>`;
+      box.querySelector("[data-signout-no]")?.focus();
+      return;
+    }
+    if (b.hasAttribute("data-signout-no")) {
+      box.innerHTML = idle;
+      box.querySelector("[data-signout-all]")?.focus();
+      return;
+    }
+    if (b.hasAttribute("data-signout-yes")) {
+      const rotate = !!box.querySelector("[data-signout-rotate]")?.checked;
+      ctx.shell
+        .busyAction(
+          "sign-out-all",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              "/api/web/logout",
+              rotate ? { rotate: true } : {},
+              { headers },
+            ),
+          { button: b },
+        )
+        .then((r) => {
+          // This browser is signed out too: the page shows sign-in.
+          if (r !== undefined) location.reload();
+        });
+    }
+  });
+}
+
+/**
+ * Issue 310: Settings › Access › The edge: the edge hostnames another
+ * device can open (Pair a device is in the Account area), and Start the
+ * edge (Apply, when it runs).
+ */
+function drawEdge(host, ctx) {
+  fetch("/api/web/pair", { cache: "no-store" })
+    .then((r) => r.json())
+    .then((b) => {
+      const hosts = b.hosts || [];
+      host.innerHTML = hosts.length
+        ? `<output class="set-ro" id="set-edge">${escHtml(hosts.join(", "))}</output>`
+        : `<output class="set-ro" id="set-edge">${L(
+            "set.ui.noEdgeHost",
+            "No edge hostname routes to __DEN_TITLE__ yet, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
+            { cmd: "<code>__DEN_CLI__ edge up</code>" },
+          )}</output>`;
+      drawEdgeUp(host, ctx);
+    })
+    .catch(() => {
+      host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.pairSignedIn", "Pairing works only signed in."))}</output>`;
+    });
 }
 
 function drawEdgeUp(host, ctx) {
@@ -1993,39 +1651,6 @@ const ACCESS_ROWS = [
     read: () => null,
   },
   {
-    id: "access.owner",
-    category: "access",
-    label: "Owner",
-    description:
-      "The GitHub account this Den belongs to. Linking stores only its id (the token is thrown away), and from then on that account can sign in from any device. __DEN_CLI__ web owner link does the same from the command line.",
-    keywords: ["owner", "github", "identity", "link", "account"],
-    scope: "user",
-    control: { type: "custom", render: drawOwner },
-    read: () => null,
-  },
-  {
-    id: "access.devices",
-    category: "access",
-    label: "Linked devices",
-    description:
-      "The browsers signed in to this Den. Revoke ends one at once. __DEN_CLI__ web logout --all ends them all.",
-    keywords: ["devices", "sessions", "revoke", "browsers", "signed in"],
-    scope: "user",
-    control: { type: "custom", render: drawDevices },
-    read: () => null,
-  },
-  {
-    id: "access.waiting",
-    category: "access",
-    label: "Waiting devices",
-    description:
-      "Computers whose signed-out page shows a code. Type the code that computer's screen shows to approve it, and its page signs in by itself; a request lasts 10 minutes. __DEN_CLI__ web approve --list lists them.",
-    keywords: ["waiting", "approve", "code", "pair", "device", "deny"],
-    scope: "user",
-    control: { type: "custom", render: drawWaiting },
-    read: () => null,
-  },
-  {
     // Issue 819: how many new devices one address may ask for a minute.
     id: "access.pair_requests",
     category: "access",
@@ -2121,14 +1746,29 @@ const ACCESS_ROWS = [
       ctx.post({ machine_name: String(v ?? "").trim() || null }),
   },
   {
-    id: "access.pair",
+    // Issue 310: the browsers are in the Account area; ending every one of
+    // them and replacing the sign-in secret is the install's, so it stays.
+    id: "access.signout_all",
     category: "access",
-    label: "Pair a device",
+    label: "Sign out every browser",
     description:
-      "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
-    keywords: ["pair", "qr", "device", "link", "phone", "edge"],
+      "Ends every browser's and phone's sign-in, this one's too, and can replace the sign-in secret (running agents stop until they are restarted). __DEN_CLI__ web logout --all does the same.",
+    keywords: ["sign out", "everywhere", "secret", "rotate", "logout", "all"],
     scope: "user",
-    control: { type: "custom", render: drawPair },
+    control: { type: "custom", render: drawSignOutAll },
+    read: () => null,
+  },
+  {
+    // Issue 310: Pair a device moved to the Account area; the edge it
+    // needs is the install's, so starting it stays here.
+    id: "access.edge",
+    category: "access",
+    label: "The edge",
+    description:
+      "Another device reaches __DEN_TITLE__ through an edge hostname (the config's edge block). Start the edge here, or apply its settings to the one running. __DEN_CLI__ edge up does the same.",
+    keywords: ["edge", "hostname", "pair", "device", "proxy", "edge up"],
+    scope: "user",
+    control: { type: "custom", render: drawEdge },
     read: () => null,
   },
   {
