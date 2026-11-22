@@ -2652,6 +2652,10 @@
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
+    "bell.m.ranLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes trabajaron: {names}",
+    "bell.m.stoppedLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes se detuvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":

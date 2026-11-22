@@ -1365,6 +1365,7 @@ import {
   refreshTerminalHost,
   startAgentUpkeep,
   terminalHostRefreshing,
+  startLogoutWatch,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
 import { hostRestartOp } from "./host-restart-held.js";
@@ -10714,6 +10715,10 @@ try {
     "lifecycle",
   );
 }
+// Issue 163: back from a logout the server ran through: who ran meanwhile.
+void CRASH_GATE.then(() =>
+  startLogoutWatch((line) => serverLog(line, "lifecycle")),
+);
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());
