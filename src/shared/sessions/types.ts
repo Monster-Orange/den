@@ -46,6 +46,11 @@ export interface SessionInfo {
    * queries don't count. Since this host started. Never what was typed.
    */
   inputAt?: string;
+  /**
+   * Issue 482: the folder it started in (the Terminals list says it).
+   * Absent from a host older than 0.4.78.
+   */
+  cwd?: string;
   /** 0.4.45: when it exited, ISO 8601 (absent for one from before 0.4.45). */
   exitedAt?: string;
   /**

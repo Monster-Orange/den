@@ -87,6 +87,35 @@ export function pngOfDataUrl(
 }
 
 /**
+ * Issue 565: the largest screenshot file `<cli> report` and the agents'
+ * `report` take: what a report draft keeps (its data URL under 8,000,000
+ * characters, POST /api/report/drafts).
+ */
+export const SHOT_FILE_MAX_BYTES = 5_900_000;
+
+/**
+ * Issue 565: a screenshot file as the PNG data URL a report carries, read
+ * on the caller's side. Only a PNG; an error saying why otherwise.
+ */
+export function shotFileDataUrl(file: string): string {
+  let png: Buffer;
+  try {
+    const st = fs.statSync(file);
+    if (!st.isFile()) throw new Error("not a file");
+    if (st.size > SHOT_FILE_MAX_BYTES)
+      throw new Error(
+        `larger than ${Math.round(SHOT_FILE_MAX_BYTES / 100_000) / 10} MB`,
+      );
+    png = fs.readFileSync(file);
+  } catch (e) {
+    throw new Error(`the screenshot can't be read: ${(e as Error).message}`);
+  }
+  if (!png.subarray(0, 8).equals(PNG_MAGIC))
+    throw new Error("the screenshot must be a PNG file");
+  return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+/**
  * Issue 403: the screenshot limits, Settings with permissive defaults
  * (user.yml reports.*): the largest kept here (`screenshot_max_mb`, 8),
  * the largest sent to Hub (`hub_screenshot_max_mb`, 6) and how long Den
