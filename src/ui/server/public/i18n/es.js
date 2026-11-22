@@ -3242,6 +3242,7 @@
     "set.ui.boxSave": "Guardar máquina",
     "set.ui.boxMem": "Memoria libre a mantener (MB)",
     "set.ui.boxPwv": "Versión de Playwright en la máquina",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
     "set.ui.boxPws": "O Playwright por versión (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone":
       "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
