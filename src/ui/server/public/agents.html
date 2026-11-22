@@ -34,7 +34,7 @@
     <title>__DEN_TITLE__ · Agents</title>
     <style>
       /* The Agents tab (AG-4a-term, AG spec §5d): the prototype's
-         (den-shell.html) page header (.ph), list column (.agl, 300px) and
+         (den-shell.html) page header (.ph), list column (.agl, 300px; issue 773: 380px on Agents) and
          panes (.agp: 1, 2 side by side, 3-4 as 2x2), ported as they are;
          --r is --radius, --r-btn is --radius-button. */
       *,
@@ -674,8 +674,14 @@
         color: var(--muted);
         margin-right: 6px;
       }
-      .agband + .agband .wsh,
-      .agband + .agstg .wsh {
+      /* Issue 773, mock v3: the Agents list is 380 px wide (Terminals
+         keeps 300), and each band's row has a hairline on top. */
+      body:has(#den-shell[data-page="agents"]) .agx {
+        grid-template-columns: 380px minmax(0, 1fr);
+      }
+      .agband .agr {
+        gap: 2px 10px;
+        padding: 9px 12px 9px 10px;
         border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
       }
       .agband .wsh .n {
@@ -698,8 +704,6 @@
       @media (max-width: 720px) {
         .agband .agr {
           min-height: 64px;
-          padding-top: 10px;
-          padding-bottom: 10px;
         }
       }
       .wbdg {
@@ -1351,7 +1355,8 @@
            wide screen. The list keeps its rows (at least about two) while
            there is room; the panes take the rest, never less than their
            own minimum; past that the page scrolls. */
-        .agx {
+        .agx,
+        body:has(#den-shell[data-page="agents"]) .agx {
           grid-template-columns: minmax(0, 1fr);
           grid-template-rows: minmax(6rem, max-content) minmax(min-content, 1fr);
         }

@@ -228,6 +228,17 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     );
     expect(await meta("reviewer")).toMatch(/^[Cc]laude · (now|\d+ min)$/);
     expect(await meta("builder")).toMatch(/^[Cc]laude · finished /);
+    // Mock v3's rows and list: 9px 12px 9px 10px, gap 2px 10px, a
+    // hairline on top of every row; the list 380 px at 1280.
+    const css = await row("scribe").evaluate((el) => {
+      const c = getComputedStyle(el);
+      return [c.padding, c.rowGap, c.columnGap, c.borderTopWidth].join(" / ");
+    });
+    expect(css).toBe("9px 12px 9px 10px / 2px / 10px / 1px");
+    const w = await p
+      .locator("#agl")
+      .evaluate((el) => el.getBoundingClientRect().width);
+    expect(Math.abs(w - 380)).toBeLessThanOrEqual(1);
     // The sub-line: each state above zero.
     const sub = (await p.textContent("#ag-count")) ?? "";
     expect(sub).toMatch(/^\d+ agents · /);
