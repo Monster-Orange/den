@@ -1116,8 +1116,8 @@ describe("0.4.17: the Tests module picker", () => {
 
 describe("issue 169: >_ names the person's terminal app", () => {
   /** /api/settings as the server says it, with Ghostty the default terminal. */
-  const ghostty = (ctx: BrowserContext) =>
-    ctx.route(/\/api\/settings$/, async (r) => {
+  const ghostty = async (ctx: BrowserContext): Promise<void> => {
+    await ctx.route(/\/api\/settings$/, async (r) => {
       if (r.request().method() !== "GET") return r.continue();
       const res = await r.fetch();
       const d = (await res.json()) as Record<string, unknown>;
@@ -1133,6 +1133,7 @@ describe("issue 169: >_ names the person's terminal app", () => {
         },
       });
     });
+  };
   /** The person's language, set as the page's own Settings sets it. */
   const setLang = async (p: Page, language: string) =>
     expect(
