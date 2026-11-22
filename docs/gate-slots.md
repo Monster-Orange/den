@@ -391,6 +391,19 @@ out and takes only this machine's slot. The run is told what it got:
 `DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its Playwright server, when
 set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
 
+A test suite that starts its own server on a free port (Den's own browser
+suites do) names the loopback host with `*` for the port. Every port but 80
+and 443 is allowed:
+
+```sh
+den gate run --kind browser --box mini --base-url 'http://127.0.0.1:*' -- npx jest tests/unit/server/x.browser.test.ts
+```
+
+Den's browser test helper (`tests/unit/helpers/browser.ts`) then connects
+to the box's `DEN_PW_WS`, sharing this machine's loopback with it, and holds
+every page to `DEN_GATE_ALLOW`. A refused request is printed as `box guard:
+refused <url>`. A box run with no base URLs opens no browser.
+
 A CI runner that runs on a box asks for that box's slot by name
 (`"where": "box1"` in its `ask`), so the app, the browser and the tests
 all run on the box. The answer says `box` once it holds the slot.
@@ -428,7 +441,8 @@ machine as its loopback, where ports 80 and 443 may be live services. So:
 
 - `gate run --box …` needs `--base-url`: the app's loopback addresses
   (`localhost`, `*.localhost` or `127.0.0.1`), each with an explicit port
-  other than 80 or 443. Anything else is refused.
+  other than 80 or 443, or `*` for any port but those two. Anything else
+  is refused.
 - The run gets `DEN_GATE_ALLOW` (the allowed `host:port` list). Its
   Playwright setup guards every browser context with Den's
   `shared/gates/pw-guard` module (`guardBrowser`), so only those

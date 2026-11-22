@@ -34,11 +34,19 @@ export function isLoopbackHost(host: string): boolean {
   );
 }
 
+/**
+ * Issue 991: `host:*`, any port on that host but 80 and 443 (Den's own
+ * browser suites start their server on a free port). URL can't parse a
+ * `*` port, so it is read here: the URL with the port taken out.
+ */
+const ANY_PORT = /^([a-z][a-z0-9+.-]*:\/\/[^/:@]+):\*(\/.*)?$/i;
+
 /** A box run's base URL: null when fine, else what is wrong. */
 export function checkBaseUrl(raw: string): string | null {
+  const any = ANY_PORT.exec(raw);
   let u: URL;
   try {
-    u = new URL(raw);
+    u = new URL(any ? any[1]! + (any[2] ?? "") : raw);
   } catch {
     return `${raw} is not an address`;
   }
@@ -46,13 +54,16 @@ export function checkBaseUrl(raw: string): string | null {
     return `${raw}: a base URL is http or https`;
   if (!isLoopbackHost(u.hostname))
     return `${raw}: a box run's base URL is loopback (localhost, *.localhost or 127.0.0.1)`;
+  if (any) return null;
   if (!u.port || u.port === "80" || u.port === "443")
-    return `${raw}: give an explicit port other than 80 or 443 (this machine's live services may be there)`;
+    return `${raw}: give an explicit port other than 80 or 443, or * for any other port (this machine's live services may be there)`;
   return null;
 }
 
-/** "host:port" for a checked base URL. */
+/** "host:port" for a checked base URL ("host:*" for any port). */
 export function allowOf(raw: string): string {
+  const any = ANY_PORT.exec(raw);
+  if (any) return `${new URL(any[1]!).hostname.toLowerCase()}:*`;
   const u = new URL(raw);
   return `${u.hostname.toLowerCase()}:${u.port}`;
 }
@@ -67,7 +78,7 @@ export function allowFromEnv(env: NodeJS.ProcessEnv): string[] {
 
 const HARMLESS = new Set(["about:", "data:"]);
 
-/** Whether a page may load `raw`: only a declared host:port, never 80/443. */
+/** Whether a page may load `raw`: only a declared host:port (or host:*), never 80/443. */
 export function allowedUrl(raw: string, allow: string[]): boolean {
   let u: URL;
   try {
@@ -79,9 +90,14 @@ export function allowedUrl(raw: string, allow: string[]): boolean {
   if (u.protocol === "blob:") return allowedUrl(u.pathname, allow);
   if (!["http:", "https:", "ws:", "wss:"].includes(u.protocol)) return false;
   if (u.username || u.password) return false;
+  // 80 and 443 (written out, or the scheme's own) are never allowed, not
+  // even by a "host:*" entry.
   if (!u.port || u.port === "80" || u.port === "443") return false;
-  const want = `${u.hostname.toLowerCase()}:${u.port}`;
-  return allow.map((a) => a.toLowerCase()).includes(want);
+  const host = u.hostname.toLowerCase();
+  const want = `${host}:${u.port}`;
+  return allow
+    .map((a) => a.toLowerCase())
+    .some((a) => a === want || a === `${host}:*`);
 }
 
 /** The few Playwright shapes the guard uses (no Playwright import). */

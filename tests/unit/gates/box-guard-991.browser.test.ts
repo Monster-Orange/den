@@ -39,7 +39,12 @@ describe("issue 991: a box run's browser is held to its base URLs", () => {
     delete process.env.DEN_PW_WS;
     const browser = await launchBrowser("chromium");
     try {
+      // Both ways a suite gets a page: its own context, and newPage().
       const page = await (await browser.newContext()).newPage();
+      const bare = await browser.newPage();
+      let bareFailed = false;
+      await bare.goto("http://127.0.0.1:80/").catch(() => (bareFailed = true));
+      expect(bareFailed).toBe(true);
       const ok = await page.goto(`http://127.0.0.1:${port}/`);
       expect(ok?.status()).toBe(200);
       for (const url of ["http://127.0.0.1:80/", "https://127.0.0.1:443/"]) {
