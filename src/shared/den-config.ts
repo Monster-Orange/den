@@ -462,7 +462,11 @@ export interface UserConfig {
    * and their order (src/ui/server/shell-prefs.ts).
    */
   shell?: {
-    pins?: string[];
+    /**
+     * Issue 402: { item, project } (no project: none); a bare id is a pin
+     * saved before the tuple, migrated on read and write.
+     */
+    pins?: (string | { item: string; project?: string | null })[];
     collapsed?: boolean;
     hidden?: string[];
     order?: string[];
@@ -499,6 +503,38 @@ export interface UserConfig {
   agents_list?: {
     host_timeout_seconds?: unknown;
     refresh_timeout_seconds?: unknown;
+  };
+  /**
+   * Issue 403: a filed report's screenshot, kept on this install.
+   * `screenshot_keep_days` (30): how long, then the janitor deletes it.
+   * `screenshot_max_mb` (8) the largest kept, `hub_screenshot_max_mb` (6)
+   * the largest sent to Hub, `hub_timeout_seconds` (10) the wait for Hub.
+   */
+  reports?: {
+    screenshot_keep_days?: unknown;
+    screenshot_max_mb?: unknown;
+    hub_screenshot_max_mb?: unknown;
+    hub_timeout_seconds?: unknown;
+  };
+  /**
+   * Issue 609: how long Den's process lookups (lsof, ps) wait:
+   * first_seconds (5) the first try, retry_seconds (20) the one after
+   * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
+   */
+  process_lookup?: {
+    first_seconds?: unknown;
+    retry_seconds?: unknown;
+  };
+  /**
+   * Issue 609: how an agent's hooks (its attention mark, the Hub inbox
+   * check) call Den: timeout_seconds (20) a try, retries (2) after a
+   * failed or refused try, backoff_seconds (1) the first pause, doubling
+   * (agents/guardrails/hook-call.ts). Read at the agent's launch.
+   */
+  agent_hooks?: {
+    timeout_seconds?: unknown;
+    retries?: unknown;
+    backoff_seconds?: unknown;
   };
   /**
    * Issue 278: agents stuck compacting and instruction files that eat the
@@ -574,8 +610,15 @@ export interface UserConfig {
     default_mode?: unknown;
     /** 0.4.46: how often Den looks for an agent whose mode changed (30 s). */
     mode_check_seconds?: unknown;
+    /** Issue 659: how often Den looks for a folder-trust question (5 s). */
+    trust_check_seconds?: unknown;
     /** 0.4.46: how long that restore waits for Hub first (120 s). */
     restore_hub_wait_seconds?: unknown;
+    /**
+     * Issue 456: how long Den waits for your shell's PATH, the login
+     * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
+     */
+    shell_path_timeout_seconds?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -830,6 +873,61 @@ export function agentsModeCheckSeconds(
   throw new Error(
     `agents.mode_check_seconds must be a number, at least 5 (user.yml; got ${JSON.stringify(v)})`,
   );
+}
+
+/**
+ * Issue 659: agents.trust_check_seconds (user.yml): how often Den looks
+ * for an agent whose runtime asks to trust its folder. 5 when unset, at
+ * least 1.
+ */
+export function agentsTrustCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.trust_check_seconds;
+  if (v === undefined || v === null) return 5;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 1) return v;
+  throw new Error(
+    `agents.trust_check_seconds must be a number, at least 1 (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/** Issue 456: agents.shell_path_timeout_seconds when unset, and its range. */
+export const SHELL_PATH_TIMEOUT = { default: 10, min: 1, max: 120 } as const;
+
+/**
+ * Issue 456: agents.shell_path_timeout_seconds (user.yml), how long Den
+ * waits for the login and the interactive shell's PATH: 10 when unset,
+ * 1 to 120. A wrong value throws, naming the key.
+ */
+export function agentsShellPathTimeoutSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.shell_path_timeout_seconds;
+  if (v === undefined || v === null) return SHELL_PATH_TIMEOUT.default;
+  if (
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    v >= SHELL_PATH_TIMEOUT.min &&
+    v <= SHELL_PATH_TIMEOUT.max
+  )
+    return v;
+  throw new Error(
+    `agents.shell_path_timeout_seconds must be a number from ${SHELL_PATH_TIMEOUT.min} to ${SHELL_PATH_TIMEOUT.max} (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
+/**
+ * The shell PATH wait in ms for a caller that must never fail (the
+ * server's start, detection): a wrong value is the default.
+ */
+export function shellPathTimeoutMs(
+  read: () => UserConfig = readUserConfig,
+): number {
+  try {
+    return agentsShellPathTimeoutSeconds(read) * 1000;
+  } catch {
+    return SHELL_PATH_TIMEOUT.default * 1000;
+  }
 }
 
 /** agents.restore_hub_wait_seconds (user.yml): 120 when unset, at least 0. */
@@ -1271,6 +1369,25 @@ export interface ServerAgentConfig {
    * off (left to the server agent).
    */
   pin_commit?: "push" | "pr" | "off";
+  /**
+   * Issue 562: a release npm marks a security release (den.security in
+   * its package.json) updates while the server agent waits on its
+   * person's question or permission prompt; never past a pending Allow,
+   * never mid-turn (default true; false: it waits, as any release).
+   */
+  security_update_skips_questions?: boolean;
+  /**
+   * Issue 603: a security release also installs while the server agent
+   * is mid-turn; its restart still waits for the turn to end (default
+   * true; false: it waits for the turn before it installs).
+   */
+  security_update_skips_busy?: boolean;
+  /**
+   * Issue 562 review: once an auto update is installed, how long its
+   * restart waits for the server agent's turn to end (or a pending Allow)
+   * before it restarts anyway (seconds, default 900; 0: no wait).
+   */
+  update_restart_wait_seconds?: number;
 }
 
 export interface ResolvedServerAgentConfig {
@@ -1306,7 +1423,16 @@ export interface ResolvedServerAgentConfig {
   updateWaitChecks: number;
   /** #176: server_agent.pin_commit: push (default), pr or off. */
   pinCommit: "push" | "pr" | "off";
+  /** Issue 562: server_agent.security_update_skips_questions. */
+  securityUpdateSkipsQuestions: boolean;
+  /** Issue 603: server_agent.security_update_skips_busy. */
+  securityUpdateSkipsBusy: boolean;
+  /** Issue 562 review: server_agent.update_restart_wait_seconds, in ms. */
+  updateRestartWaitMs: number;
 }
+
+/** Issue 562 review: server_agent.update_restart_wait_seconds when unset. */
+export const UPDATE_RESTART_WAIT_SECONDS_DEFAULT = 900;
 
 /** #251: server_agent.update_wait_checks when unset. */
 export const UPDATE_WAIT_CHECKS_DEFAULT = 2;
@@ -1380,6 +1506,24 @@ export function readServerAgentConfig(
     throw new Error(
       `server_agent.pin_commit: push, pr or off, not ${JSON.stringify(pcm)}`,
     );
+  const ssq = sa.security_update_skips_questions;
+  if (ssq !== undefined && typeof ssq !== "boolean")
+    throw new Error(
+      `server_agent.security_update_skips_questions: true or false, not ${JSON.stringify(ssq)}`,
+    );
+  const ssb = sa.security_update_skips_busy;
+  if (ssb !== undefined && typeof ssb !== "boolean")
+    throw new Error(
+      `server_agent.security_update_skips_busy: true or false, not ${JSON.stringify(ssb)}`,
+    );
+  const rw = sa.update_restart_wait_seconds;
+  if (
+    rw !== undefined &&
+    (typeof rw !== "number" || !Number.isFinite(rw) || rw < 0)
+  )
+    throw new Error(
+      `server_agent.update_restart_wait_seconds: seconds, 0 or more (got ${JSON.stringify(rw)})`,
+    );
   const role = user.server_agent?.role;
   if (role !== undefined && role !== "lead" && role !== "follower")
     throw new Error(
@@ -1401,6 +1545,11 @@ export function readServerAgentConfig(
     role: role ?? "lead",
     updateWaitChecks: wc ?? UPDATE_WAIT_CHECKS_DEFAULT,
     pinCommit: pcm ?? "push",
+    securityUpdateSkipsQuestions: ssq ?? true,
+    securityUpdateSkipsBusy: ssb ?? true,
+    updateRestartWaitMs: Math.round(
+      (rw ?? UPDATE_RESTART_WAIT_SECONDS_DEFAULT) * 1000,
+    ),
   };
 }
 
@@ -2029,15 +2178,65 @@ export interface SessionsConfig {
    * `sessions kill` with no --signal) before it gets KILL (default 5).
    */
   close_grace_seconds?: number;
+  /**
+   * Issue 503: how long after a process exits its PTY closes, in seconds
+   * (default 0: at once). Its scrollback stays readable either way.
+   */
+  pty_close_seconds?: number;
+  /** Issue 503: doctor fails above this many PTYs held by the host (400). */
+  pty_warn_above?: number;
+  /**
+   * Issue 503: doctor fails when the machine's PTYs in use reach this
+   * percent of its limit (90).
+   */
+  pty_machine_warn_percent?: number;
+  /**
+   * Issue 563: how long the web server waits for agents mid-turn before it
+   * restarts a terminal host that isn't current with the installed Den
+   * (default 900); then it restarts anyway.
+   */
+  host_restart_wait_seconds?: number;
+  /**
+   * Issue 597: an agent the terminal host's restart cut mid-turn gets one
+   * line on resume, to check its last step and carry on (default true).
+   */
+  host_restart_note?: boolean;
+  /**
+   * Issue 631: how long after a terminal host restart's resumes Den looks
+   * for agents that ended since (a resume that didn't hold counts as
+   * failed, and the bell says so) (default 30; 0: no look).
+   */
+  host_restart_check_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
+export const DEFAULT_HOST_RESTART_CHECK_SECONDS = 30;
+export const DEFAULT_PTY_WARN_ABOVE = 400;
+export const DEFAULT_PTY_MACHINE_WARN_PERCENT = 90;
 
 /** `sessions:` with its defaults applied. */
 export interface ResolvedSessionsConfig {
   maxConcurrent: number;
   closeGraceSeconds: number;
+  ptyCloseSeconds: number;
+  ptyWarnAbove: number;
+  ptyMachineWarnPercent: number;
+  hostRestartWaitSeconds: number;
+  hostRestartNote: boolean;
+  hostRestartCheckSeconds: number;
 }
+
+const SESSIONS_KEYS = [
+  "max_concurrent",
+  "close_grace_seconds",
+  "pty_close_seconds",
+  "pty_warn_above",
+  "pty_machine_warn_percent",
+  "host_restart_wait_seconds",
+  "host_restart_note",
+  "host_restart_check_seconds",
+];
 
 /**
  * The effective sessions config. Anything malformed throws, naming the key,
@@ -2054,14 +2253,88 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
   if (!isMapping(raw))
     throw new Error(`sessions: must be a mapping (got ${JSON.stringify(raw)})`);
   for (const k of Object.keys(raw))
-    if (k !== "max_concurrent" && k !== "close_grace_seconds")
+    if (!SESSIONS_KEYS.includes(k))
       throw new Error(
-        `sessions.${k}: unknown key (sessions: takes max_concurrent, close_grace_seconds)`, // words-ok: the config key is sessions:
+        `sessions.${k}: unknown key (sessions: takes ${SESSIONS_KEYS.join(", ")})`, // words-ok: the config key is sessions:
       );
   const out: ResolvedSessionsConfig = {
     maxConcurrent: DEFAULT_SESSIONS_MAX_CONCURRENT,
     closeGraceSeconds: 5,
+    ptyCloseSeconds: 0,
+    ptyWarnAbove: DEFAULT_PTY_WARN_ABOVE,
+    ptyMachineWarnPercent: DEFAULT_PTY_MACHINE_WARN_PERCENT,
+    hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
+    hostRestartNote: true,
+    hostRestartCheckSeconds: DEFAULT_HOST_RESTART_CHECK_SECONDS,
   };
+  const check = raw.host_restart_check_seconds;
+  if (check !== undefined) {
+    if (
+      typeof check !== "number" ||
+      !Number.isFinite(check) ||
+      check < 0 ||
+      check > 3600
+    )
+      throw new Error(
+        `sessions.host_restart_check_seconds: must be a number of seconds, 0 to 3600 (got ${JSON.stringify(check)})`,
+      );
+    out.hostRestartCheckSeconds = check;
+  }
+  const note = raw.host_restart_note;
+  if (note !== undefined) {
+    if (typeof note !== "boolean")
+      throw new Error(
+        `sessions.host_restart_note: must be true or false (got ${JSON.stringify(note)})`,
+      );
+    out.hostRestartNote = note;
+  }
+  const hostWait = raw.host_restart_wait_seconds;
+  if (hostWait !== undefined) {
+    if (
+      typeof hostWait !== "number" ||
+      !Number.isFinite(hostWait) ||
+      hostWait < 0 ||
+      hostWait > 86_400
+    )
+      throw new Error(
+        `sessions.host_restart_wait_seconds: must be a number of seconds, 0 to 86400 (got ${JSON.stringify(hostWait)})`,
+      );
+    out.hostRestartWaitSeconds = hostWait;
+  }
+  const ptyClose = raw.pty_close_seconds;
+  if (ptyClose !== undefined) {
+    if (
+      typeof ptyClose !== "number" ||
+      !Number.isFinite(ptyClose) ||
+      ptyClose < 0 ||
+      ptyClose > 86_400
+    )
+      throw new Error(
+        `sessions.pty_close_seconds: must be a number of seconds, 0 to 86400 (got ${JSON.stringify(ptyClose)})`,
+      );
+    out.ptyCloseSeconds = ptyClose;
+  }
+  const warn = raw.pty_warn_above;
+  if (warn !== undefined) {
+    if (typeof warn !== "number" || !Number.isInteger(warn) || warn < 1)
+      throw new Error(
+        `sessions.pty_warn_above: must be a whole number of at least 1 (got ${JSON.stringify(warn)})`,
+      );
+    out.ptyWarnAbove = warn;
+  }
+  const pct = raw.pty_machine_warn_percent;
+  if (pct !== undefined) {
+    if (
+      typeof pct !== "number" ||
+      !Number.isFinite(pct) ||
+      pct <= 0 ||
+      pct > 100
+    )
+      throw new Error(
+        `sessions.pty_machine_warn_percent: must be a percent, above 0 and up to 100 (got ${JSON.stringify(pct)})`,
+      );
+    out.ptyMachineWarnPercent = pct;
+  }
   const grace = raw.close_grace_seconds;
   if (grace !== undefined) {
     if (

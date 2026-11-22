@@ -34,12 +34,13 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -61,11 +62,7 @@ const SHOT =
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    for (const e of ENGINES)
-      browsers[e] = ws
-        ? await pw[e].connect(ws, { exposeNetwork: "<loopback>" })
-        : await pw[e].launch();
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -157,7 +154,7 @@ async function open(
     }
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
   await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
   return p;
 }
@@ -291,11 +288,11 @@ describe.each(ENGINES)(
       // A Den restart reads it again.
       await s!.webDown();
       await s!.webUp();
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+      await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
       await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
       expect(await order(p)).toEqual(["cy", "ada", "bo"]);
       // The Projects page's agents follow the same order.
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=north"));
+      await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
       await p
         .locator('#agents-section[data-ws="north"] #agent-table tr.agent')
         .first()

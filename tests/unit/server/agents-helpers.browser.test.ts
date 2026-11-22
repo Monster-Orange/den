@@ -34,6 +34,8 @@ import {
 } from "./helpers/agents-page-server.js";
 import { pageImport } from "./helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -129,10 +131,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -174,6 +173,7 @@ async function open(width = 1280) {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s.stateDir, s.base);
   await ctx.addInitScript(() => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -192,6 +192,24 @@ async function open(width = 1280) {
     (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
   );
   return { p, errors };
+}
+
+/**
+ * Resolves once the page has fetched its list `n` times from now: after
+ * the n-th answer arrives, every poll before it has been painted (the
+ * page asks again only after it painted the last answer).
+ */
+function polls(p: Page, n: number): Promise<void> {
+  return new Promise((done) => {
+    let seen = 0;
+    const on = (r: { url(): string }) => {
+      if (new URL(r.url()).pathname !== "/api/sessions") return;
+      if (++seen < n) return;
+      p.off("response", on);
+      done();
+    };
+    p.on("response", on);
+  });
 }
 
 /** #80: open agent `agent`'s helpers badge (closed by default). */
@@ -214,7 +232,8 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(
       await rows.evaluateAll((b) => b.map((x) => x.dataset.helper)),
     ).toEqual([LIVE]);
-    expect(await rows.first().getAttribute("data-status")).toBe("running");
+    const live = group.locator(`button.agh[data-helper="${LIVE}"]`);
+    expect(await live.getAttribute("data-status")).toBe("running");
     expect(await group.locator(".aghs-all").count()).toBe(0);
     expect(
       await p
@@ -222,7 +241,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
         .textContent(),
     ).toBe("1 helper");
 
-    await rows.first().click();
+    await live.click();
     const dlg = p.locator("#tx-dlg");
     await dlg.locator(".tx-list").waitFor({ timeout: 10_000 });
     expect(await dlg.locator("#tx-h").textContent()).toContain(
@@ -263,7 +282,9 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(await p.locator(".hpbdg").count()).toBe(0);
     await btn.click();
     const body = p.locator("#hp-body");
-    await body.locator("button.agh").first().waitFor({ timeout: 10_000 });
+    await body
+      .locator(`button.agh[data-helper="${LIVE}"]`)
+      .waitFor({ timeout: 10_000 });
     expect(await body.locator("button.agh").count()).toBe(2);
     expect(await p.locator("#hp-note").textContent()).toContain(
       "can't stop or steer them",
@@ -322,7 +343,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(await focused()).toBe(`row:${LIVE}`);
     const bar = `.pane[data-id="${sid}"] [data-act="helpers"]`;
     await p.click(bar);
-    await p.locator("#hp-body button.agh").first().waitFor();
+    await p.locator(`#hp-body button.agh[data-helper="${LIVE}"]`).waitFor();
     await replace(bar);
     await p.keyboard.press("Escape");
     expect(await focused()).toBe("bar");
@@ -335,6 +356,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    await signIn(ctx, s.stateDir, s.base);
     const p = await ctx.newPage();
     const errors: string[] = [];
     p.on("pageerror", (e) => errors.push(e.message));
@@ -353,7 +375,9 @@ describe("an agent's helpers on the agents page (D32)", () => {
     if (!browser) return;
     const { p, errors } = await open(375);
     await openBadge(p, "scout");
-    const row = p.locator('.aghs[data-helpers-of="scout"] button.agh').first();
+    const row = p.locator(
+      `.aghs[data-helpers-of="scout"] button.agh[data-helper="${LIVE}"]`,
+    );
     await row.waitFor({ state: "attached", timeout: 15_000 });
     await row.scrollIntoViewIfNeeded();
     await row.click();
@@ -555,8 +579,8 @@ describe("an agent's helpers on the agents page (D32)", () => {
         from,
         { timeout: 15_000 },
       );
-    // Nothing changed: a poll later, the same row, focused.
-    await p.waitForTimeout(6_000);
+    // Nothing changed: a poll later (painted), the same row, focused.
+    await polls(p, 2);
     expect(await where()).toBe(`row:${LIVE}`);
     // The list changed (a new helper): redrawn, focus found again.
     const n0 = await count();
@@ -670,7 +694,10 @@ describe("an agent's helpers on the agents page (D32)", () => {
       { timeout: 20_000 },
     );
     await p.click(`#agl button.agr[data-id="${sids.keeper}"]`);
-    await p.waitForTimeout(500);
+    // The list has redrawn with keeper in front.
+    await p
+      .locator(`#agl button.agr[data-id="${sids.keeper}"][aria-current="true"]`)
+      .waitFor();
     expect(await rowsOf("keeper")).toBe(0);
     // Opened: its 2 running ones, none of its 5 done ones.
     await openBadge(p, "keeper");
@@ -678,7 +705,9 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(await rowsOf("scout")).toBe(0);
     // Another in front: keeper's stay open (the person opened them).
     await p.click(`#agl button.agr[data-id="${sids.crowd}"]`);
-    await p.waitForTimeout(500);
+    await p
+      .locator(`#agl button.agr[data-id="${sids.crowd}"][aria-current="true"]`)
+      .waitFor();
     expect(await rowsOf("keeper")).toBe(2);
     expect((await badge("keeper"))?.trim()).toBe("2 helpers");
     // 6 running: 3 rows (agents.helpers_shown), then "Show all (6)", which
@@ -689,7 +718,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     expect(await rowsOf("crowd")).toBe(3);
     expect(await p.locator(all).textContent()).toBe("Show all (6)");
     await p.click(all);
-    await p.locator("#hp-body > button.agh").first().waitFor();
+    await p.locator("#hp-body > button.agh", { hasText: "crowd 0" }).waitFor();
     expect(await p.locator("#hp-body > button.agh").count()).toBe(6);
     await p.keyboard.press("Escape");
     expect(errors).toEqual([]);
@@ -802,9 +831,11 @@ describe("an agent's helpers on the agents page (D32)", () => {
     // Opened: the helper's title has line 1 to itself, never cut; its
     // status, time, tool and model are line 2.
     await p.click(chip);
-    const h = p.locator('#agl .aghs[data-helpers-of="wide"] button.agh');
-    await h.first().waitFor({ timeout: 15_000 });
-    const geo = await h.first().evaluate((b) => {
+    const h = p.locator(
+      `#agl .aghs[data-helpers-of="wide"] button.agh[data-helper="${hid}"]`,
+    );
+    await h.waitFor({ timeout: 15_000 });
+    const geo = await h.evaluate((b) => {
       const n = b.querySelector(".agh-n") as HTMLElement;
       const st = b.querySelector(".agh-s") as HTMLElement;
       return {
@@ -815,7 +846,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
       };
     });
     expect(geo).toEqual({ cut: false, stBelow: true });
-    expect(await h.first().textContent()).toContain("Backend fixes: the queue");
+    expect(await h.textContent()).toContain("Backend fixes: the queue");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);
@@ -834,10 +865,10 @@ describe("an agent's helpers on the agents page (D32)", () => {
           const r = e.getBoundingClientRect();
           return { l: r.left, r: r.right, t: r.top };
         });
-      const hd = await box("#hp-dlg .hp-hd");
+      const hd = await box("#hp-dlg .dk-hd");
       const clear = await box("#hp-dlg [data-hp-clear]");
       const close = await box("#hp-dlg [data-hp-close]");
-      const pad = await p.$eval("#hp-dlg .hp-hd", (e) =>
+      const pad = await p.$eval("#hp-dlg .dk-hd", (e) =>
         parseFloat(getComputedStyle(e).paddingRight),
       );
       // Close at the end, Clear done just before it, both on the right.
@@ -861,13 +892,14 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.click(bar);
     const dlg = p.locator("#hp-dlg[open]");
     await dlg.waitFor();
-    await p.locator("#hp-body button.agh").first().waitFor();
+    const liveRow = `#hp-body button.agh[data-helper="${LIVE}"]`;
+    await p.locator(liveRow).waitFor();
     // Inside, on its note: still open.
     const nb = (await p.locator("#hp-note").boundingBox())!;
     await p.mouse.click(nb.x + 4, nb.y + 4);
     expect(await dlg.count()).toBe(1);
     // A helper's transcript over it: the backdrop closes the transcript.
-    await p.click("#hp-body button.agh >> nth=0");
+    await p.click(liveRow);
     await p.locator("#tx-dlg[open]").waitFor();
     await p.mouse.move(4, 4);
     await p.mouse.down();
@@ -900,9 +932,10 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.waitForFunction(() =>
       document.activeElement?.matches('[data-act="helpers"]'),
     );
-    // Two polls with nothing new: the button is the same one, still focused.
+    // Two polls with nothing new (both painted): the button is the same
+    // one, still focused.
     await p.$eval(bar, (b) => ((b as HTMLElement & { _k?: 1 })._k = 1));
-    await p.waitForTimeout(11_000);
+    await polls(p, 3);
     expect(await onBar()).toBe(true);
     expect(
       await p.$eval(bar, (b) => (b as HTMLElement & { _k?: 1 })._k ?? 0),

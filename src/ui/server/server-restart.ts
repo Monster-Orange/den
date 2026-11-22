@@ -188,6 +188,16 @@ export interface TellDeps {
   state: () => Promise<"missing" | "stopped" | "busy" | "idle">;
   /** Type `text` into its session, then Enter. */
   type: (text: string) => Promise<boolean>;
+  /**
+   * Whether its screen ends with a dialog for its person (a permission
+   * dialog, its trust question). While one is open nothing is typed, past
+   * waitMs too: the note is kept until the person has answered.
+   */
+  dialog?: () => Promise<boolean>;
+  /** The note is kept for an open dialog (once): the bell says so. */
+  held?: () => void;
+  /** The kept note is typed, or its agent went: the bell item goes. */
+  cleared?: () => void;
   /** How long to wait for its prompt (ui.restart_wait_seconds). */
   waitMs: number;
   pollMs?: number;
@@ -197,8 +207,9 @@ export interface TellDeps {
 
 /**
  * Tell the agent the server is back: once it is at its prompt, or when
- * waitMs has passed (a runtime queues what is typed mid-turn). What
- * happened: told, or why not.
+ * waitMs has passed (a runtime queues what is typed mid-turn). Never
+ * while a dialog for its person is open: the note is kept (the bell says
+ * so) and typed once it is answered. What happened: told, or why not.
  */
 export async function tellBack(
   text: string,
@@ -208,13 +219,36 @@ export async function tellBack(
   const sleep =
     d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const until = now() + d.waitMs;
+  let held = false;
+  const clear = () => {
+    if (held) d.cleared?.();
+    held = false;
+  };
   for (;;) {
     const s = await d.state();
-    if (s === "missing" || s === "stopped") return s;
-    if (s === "idle" || now() >= until) break;
+    if (s === "missing" || s === "stopped") {
+      clear();
+      return s;
+    }
+    // A dialog for its person: never typed into, however long it stays.
+    const dialog = d.dialog ? await d.dialog().catch(() => true) : false;
+    if (!dialog && (s === "idle" || now() >= until)) {
+      if (await d.type(text)) {
+        clear();
+        return "told";
+      }
+      // Held back by a dialog that opened just now: wait for it too.
+      if (!(d.dialog && (await d.dialog().catch(() => true)))) {
+        clear();
+        return "not_typed";
+      }
+    }
+    if (dialog && now() >= until && !held) {
+      held = true;
+      d.held?.();
+    }
     await sleep(d.pollMs ?? 1000);
   }
-  return (await d.type(text)) ? "told" : "not_typed";
 }
 
 /**

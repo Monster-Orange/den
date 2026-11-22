@@ -22,12 +22,13 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -133,7 +134,7 @@ function startHub(): Promise<void> {
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -181,7 +182,7 @@ async function page(answer?: unknown, width = 1440): Promise<Page> {
       }),
     );
   const answered = p.waitForResponse((r) => r.url().endsWith("/api/hub"));
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await answered;
   await p.waitForSelector('[data-setting="agents.hub"]');
   return p;

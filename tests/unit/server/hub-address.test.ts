@@ -89,3 +89,26 @@ describe("hub_connect (#267)", () => {
     expect(x.calls).toEqual(["write", "restart Hub's address cleared"]);
   });
 });
+
+describe("issue 726: hub_connect archives the old Hub's state", () => {
+  it("after the write and before the restart", async () => {
+    const { d, calls } = deps({
+      hub: { url: "https://hub.example.com", token: "file:/t" },
+    });
+    const r = await runHubAddress(
+      {
+        ...d,
+        changed: async (url: string | null) =>
+          void calls.push(`changed ${url}`),
+      },
+      { url: "https://other.example.com" },
+    );
+    expect(r.ok).toBe(true);
+    expect(calls).toEqual([
+      "disconnect",
+      "write",
+      "changed https://other.example.com",
+      "restart Hub's address set to https://other.example.com",
+    ]);
+  });
+});

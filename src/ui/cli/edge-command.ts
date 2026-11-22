@@ -49,8 +49,25 @@ import {
 import { portOwner } from "../../shared/edge/port-owner.js";
 import { addressWord } from "../../shared/edge/address-words.js";
 import { cliLanguage } from "../../shared/edge/address-check.js";
-import { readWebUrl } from "../../shared/web-url.js";
-import { isLoopbackName } from "../../shared/web-url-check.js";
+import { readWebUrl, type WebUrl } from "../../shared/web-url.js";
+import { isLoopbackUrl } from "../../shared/web-url-check.js";
+
+/**
+ * `edge route`'s target: Den's own route on the edge (`edgeHost`, on the
+ * edge's http port). Issue 666: a loopback web.url is never the address,
+ * so the route is never built on it (`loopback` says one was set).
+ */
+export function denRouteTarget(
+  w: WebUrl | null,
+  edgeHost: string,
+  httpPort: number,
+): { host: string; listen: number; loopback: boolean } {
+  return {
+    host: edgeHost,
+    listen: httpPort,
+    loopback: isLoopbackUrl(w?.url),
+  };
+}
 import { product } from "../../shared/product.js";
 
 /** `edge route --for <proxy>`'s proxy, from `--for x` or `--for=x`. */
@@ -131,19 +148,17 @@ export async function cmdEdge(args: string[]): Promise<void> {
           addressWord(lang, "routeUnknown", { cli: product().cli }),
         );
       const webPort = readWebPort();
-      // Den's name: the install's address when it names this machine, else
-      // Den's own route on the edge's domain.
       const w = readWebUrl();
-      const wanted = w ? new URL(w.url) : null;
-      const host =
-        wanted && isLoopbackName(wanted.hostname)
-          ? wanted.hostname
-          : (webRouteHosts(cfg, new Set([webPort]))[0]?.host ??
-            `${product().cli}.${cfg.domain}`);
-      const listen =
-        wanted && isLoopbackName(wanted.hostname)
-          ? Number(wanted.port) || (wanted.protocol === "https:" ? 443 : 80)
-          : (cfg.ports?.http ?? 80);
+      const { host, listen, loopback } = denRouteTarget(
+        w,
+        webRouteHosts(cfg, new Set([webPort]))[0]?.host ??
+          `${product().cli}.${cfg.domain}`,
+        cfg.ports?.http ?? 80,
+      );
+      if (loopback && w)
+        process.stderr.write(
+          `${w.url} names this machine only, so it is not this install's address: the route is for ${host}. Set the address: ${product().cli} web url https://${host}\n`,
+        );
       const owner = portOwner(listen);
       process.stderr.write(
         addressWord(lang, "routeHelp", {

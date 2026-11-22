@@ -643,6 +643,42 @@ async function main() {
         deviceScaleFactor: scale,
         colorScheme: scheme,
       });
+      // 0.4.71: signed in, as `web up` signs a browser in: the one-time
+      // link `web login --no-wait` prints (never printed here).
+      // Sign-in: a link is printed only in a terminal, so `web login`
+      // runs in one (script(1); macOS and util-linux spell it differently).
+      const login = [
+        path.join(ENGINE, "bin", "den"),
+        "web",
+        "login",
+        "--no-wait",
+        "--port",
+        new URL(url).port,
+        "--origin",
+        url,
+      ];
+      const shown = execFileSync(
+        "script",
+        process.platform === "darwin"
+          ? ["-q", "/dev/null", ...login]
+          : [
+              "-qec",
+              login.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
+              "/dev/null",
+            ],
+        {
+          cwd: demo.root,
+          env: serverEnv,
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      const link = /https?:\/\/\S+/.exec(shown.replace(/\r/g, ""))?.[0] ?? "";
+      const sp = await ctx.newPage();
+      const signed = await sp.goto(link);
+      await sp.close();
+      if (!signed?.ok())
+        throw new Error("doc-shots: the one-time sign-in link didn't sign in");
       // "What's new" is for people, not screenshots.
       await ctx.addInitScript((v) => {
         try {

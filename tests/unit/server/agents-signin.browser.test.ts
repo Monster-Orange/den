@@ -15,6 +15,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 const servers: AgentsPageServer[] = [];
@@ -22,7 +24,7 @@ const servers: AgentsPageServer[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -67,6 +69,7 @@ async function open(s: AgentsPageServer, id: string, width = 1280) {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s.stateDir, s.base);
   await ctx.addInitScript(() => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])

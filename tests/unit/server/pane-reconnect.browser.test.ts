@@ -29,12 +29,13 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signIn, signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -67,10 +68,7 @@ beforeAll(async () => {
         ? process.env.DEN_RECONNECT_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -130,6 +128,9 @@ async function page(): Promise<Page> {
       get: () => (w.__hidden ? "hidden" : "visible"),
     });
   }, latest);
+  // The person's browser, signed in as `web up` does (0.4.71): a pane's
+  // socket needs the session. The session outlives a web server restart.
+  await signIn(ctx, s!.stateDir, s!.base);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(`${s!.base}/agents?open=${sid}&layout=tabs`);
@@ -307,7 +308,7 @@ describe("0.4.46: the __DEN_TITLE__ agent's page reconnects on its own too", () 
     });
     const p = await ctx.newPage();
     p.on("pageerror", (e) => errors.push(e.message));
-    await p.goto(signInUrl(f!.stateDir, f!.base, "/"));
+    await signInPage(p, f!.stateDir, f!.base, "/");
     await p.waitForSelector(".sa-term .xterm", { timeout: 20_000 });
     const agent = () => f!.made[0]!;
     agent().emit("agent ready\r\n");

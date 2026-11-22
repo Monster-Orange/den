@@ -13,11 +13,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 type Engine = "chromium" | "webkit";
 const ENGINES: Engine[] = ["chromium", "webkit"];
@@ -128,14 +129,7 @@ beforeAll(async () => {
   for (const engine of ENGINES) {
     try {
       // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-      browsers.set(
-        engine,
-        process.env.DEN_PW_WS
-          ? await pw[engine].connect(process.env.DEN_PW_WS, {
-              exposeNetwork: "<loopback>",
-            })
-          : await pw[engine].launch(),
-      );
+      browsers.set(engine, await launchBrowser(pw[engine]));
     } catch (err) {
       if (process.env.DEN_SKIP_BROWSER_TESTS === "1") continue;
       throw err;
@@ -177,7 +171,7 @@ async function open(
       body: "creating an order\nPOST /orders returned 500\n",
     }),
   );
-  await p.goto(signInUrl(s!.stateDir, s!.base, opts.url ?? "/verify"));
+  await signInPage(p, s!.stateDir, s!.base, opts.url ?? "/verify");
   await p.waitForSelector('#verify-body[aria-busy="false"]');
   return p;
 }

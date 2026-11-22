@@ -134,10 +134,6 @@
     "fb.rmMask": "削除",
     "fb.area": "左から {x}%、上から {y}%、{w}% × {h}%",
     "fb.revShot": "マスク後のスクリーンショット({n} か所を非表示)",
-    "fb.sentShot":
-      "スクリーンショットは保存してコピーしました。issue に貼り付けてください。",
-    "fb.sentShotSaved":
-      "スクリーンショットはファイルとして保存しました。issue に追加してください。",
     "fb.mine": "自分の報告",
     "fb.myS":
       "GitHub からそのまま表示します。GitHub にサインインしている間は使えます。",
@@ -361,6 +357,8 @@
     "act.unpinX": "{s} のピン留めを外す",
     "toast.pinned": "{s} をピン留めしました",
     "toast.unpinned": "{s} のピン留めを外しました",
+    "toast.unpinnedAll": "すべてのプロジェクトで {s} のピン留めを外しました",
+    "toast.undo": "元に戻す",
     collapse: "折りたたむ",
     expand: "展開する",
     menu: "メニュー",
@@ -497,6 +495,7 @@
     // prompt() and alert().
     "dlg.ok": "OK",
     "dlg.cancel": "キャンセル",
+    "dlg.close": "閉じる",
     "dlg.keep": "残す",
     "dlg.delete": "削除",
     "dlg.remove": "外す",
@@ -520,6 +519,10 @@
       "Terminal.app を自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "ターミナルを自動で開けませんでした。\n\nターミナルで次を実行してください:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "{repo} の自動起動をオフにしますか?",
+    "dlg.autoOff":
+      "次のものが強く依存しています: {list}。オフの間は、そのプロジェクトの Up が準備完了の確認で失敗することがあります。",
+    "dlg.autoOffGo": "オフにする",
     "rd.keepsHead": "動き続けるもの:",
     "rd.keepsAgents": "エージェントとそのターミナル",
     "rd.keepsServices": "サービスと GitHub 上のデプロイ",
@@ -539,6 +542,9 @@
     "busy.startW": "{name} を開始しています…",
     "busy.startS": "{name} を開始しました。",
     "busy.startF": "{name} を開始できませんでした。",
+    "busy.termW": "ターミナルを開いています…",
+    "busy.termS": "ターミナルを開きました。",
+    "busy.termF": "ターミナルを開けませんでした。",
     "busy.sayW": "{name} に送信しています…",
     "busy.sayS": "{name} に送信しました。",
     "busy.sayF": "{name} に送信できませんでした。",
@@ -566,6 +572,9 @@
     "busy.edgeW": "エッジを起動しています…",
     "busy.edgeS": "エッジを起動しました",
     "busy.edgeF": "エッジを起動できませんでした。",
+    "busy.testPersonW": "テスト用の人物を設定しています…",
+    "busy.testPersonS": "テスト用の人物を設定しました",
+    "busy.testPersonF": "テスト用の人物を設定できませんでした。",
     "keep.onNow": "オン: ログアウト後もエージェントは動き続けます。",
     "keep.offNow": "オフ: ログアウトするとエージェントは止まります。",
     "keep.saved":
@@ -710,6 +719,15 @@
     "err.signin.expiredTitle": "サインインリンクの期限切れ",
     "err.signin.local":
       "サインインはアドレスごとです。このページは {host} にあります。サインイン済みの localhost で同じページを開いてください。",
+    "err.signin.atAddress": "{name} のサインインは {address} で行います",
+    "err.signin.offerTitle": "{alias} を {name} のアドレスにする",
+    "err.signin.offerLoop":
+      "{name} のアドレスは {url} ですが、これはそのマシンでしか開けないため、サインインでそこへ移動できません。",
+    "err.signin.offerWrong":
+      "{name} のアドレスは {url} ですが、ここからは使えません。",
+    "err.signin.offerUnset": "{name} にはまだアドレスがありません。",
+    "err.signin.offerHow":
+      "下で {name} のオーナーとしてサインインしてください（GitHub、またはそのマシンで承認するコード）。そのあと {alias} をアドレスにすると、ここでサインインできます。",
     "err.signin.copy": "コマンドをコピー",
     "err.signin.title": "{name} にサインイン",
     "err.signin.where":
@@ -766,6 +784,15 @@
     "err.signin.other": "その他の方法({cmd} による一回限りのリンク)",
     "err.signin.otherStep":
       "{host} で(このコンピューターではありません)次を実行し、表示されたリンクをこのブラウザで開きます:",
+    "err.signin.whereLocal":
+      "{name} はこのコンピューターで動いています。このブラウザがあなたであることを確認するため、一度サインインしてください。サインインは続きます。",
+    "err.signin.step1Local": "このコンピューターのターミナルで次を実行します:",
+    "err.signin.otherLocal":
+      "その他の方法({cmd} が一回限りのサインインリンクを開きます)",
+    "err.signin.otherStepLocal":
+      "このコンピューターのターミナルで次を実行します。このページがサインインした状態で開きます:",
+    "shell.signin.line": "ここで変更するにはサインインしてください。",
+    "shell.signin.btn": "サインイン",
     "err.signin.codeExpired": "このコードは期限切れです。",
     "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
     "err.signin.codeFailed":
@@ -774,6 +801,14 @@
     "err.signin.youreIn": "サインインしました。",
     "err.signin.expiredLead":
       "このサインインリンクは期限切れか、使用済みです。下から改めてサインインしてください。",
+    "err.signin.pairLinkLead":
+      "このブラウザーを入れるには、すでにサインインしているブラウザーで承認してください。そちらで 設定 › アクセス を開き、下のコードを承認します。",
+    "err.signin.pairLinkWaiting":
+      "サインイン済みのブラウザーでの承認を待っています…",
+    "err.signin.pairLinkDenied":
+      "このブラウザーは拒否されました。サインインするには、新しいコードを取得し、サインイン済みのブラウザーで承認してください。",
+    "err.signin.pairLinkEnded":
+      "このリクエストは終了しました。新しいコードを取得して、もう一度承認してください。",
     "err.signin.confirmLead":
       "{host} で web login が表示したコードを入力してください:",
     "err.signin.confirmGo": "サインイン",
@@ -785,6 +820,43 @@
       "このリンクはもう使えません。{host} で web login をもう一度実行して新しいリンクを取得してください。",
     "err.signin.confirmWhy":
       "リンクだけでは足りません。{host} に表示されたコードも必要なので、他の人がリンクを見てもサインインできません。",
+    // Issue 868: the ways in this install has, on the signed-out page.
+    "err.signin.methods.title": "{name} にサインインする方法",
+    "err.signin.methods.ready": "ここで設定済み",
+    "err.signin.methods.notReady": "ここでは未設定",
+    "err.signin.methods.hostOnly": "{host} でのみ",
+    "err.signin.methods.github": "GitHub でサインイン",
+    "err.signin.methods.githubReady":
+      "下の「GitHub でサインイン」を使ってください。どのコンピューターからでも使えます。",
+    "err.signin.methods.githubNoClient":
+      "GitHub App のクライアント ID（{setting}）が設定されていません。{host} で人が {file} に設定し、そこで {restart} を実行します。",
+    "err.signin.methods.githubNoOwner":
+      "所有者がまだ GitHub でリンクされていないため、他のコンピューターからは誰も使えません。",
+    "err.signin.methods.pair": "このデバイスからサインインを依頼",
+    "err.signin.methods.pairReady":
+      "{name} にサインイン済みのブラウザーで、このページに表示されたコードを入力すると承認されます。",
+    "err.signin.methods.pairNone":
+      "{name} にサインインしているブラウザーがまだないため、誰もこのデバイスを承認できません。",
+    "err.signin.methods.ask": "サインインを依頼",
+    "err.signin.methods.terminal": "{host} のターミナルからのリンク",
+    "err.signin.methods.terminalHow":
+      "{host} のターミナルで {cmd} を実行し、表示されたリンクを開きます。",
+    "err.signin.methods.stuck":
+      "{name} にはまだ他のコンピューターからサインインできません。GitHub でのサインインが設定されておらず、このデバイスを承認できる、{name} にサインイン済みのブラウザーもありません。",
+    "err.signin.methods.fixClient":
+      "解決するには、{host} で {file} の {setting} に GitHub App のクライアント ID を設定し、{restart} を実行します。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
+    "err.signin.methods.fixOwner":
+      "解決するには、所有者を GitHub でリンクします。{host} で {cmd} を実行してください。そうすれば、どのコンピューターからでも GitHub でサインインできます。",
+    "err.signin.methods.fixFirst":
+      "または、{host} 本体で最初のサインインを済ませてください。そのブラウザーからこのデバイスを承認できます。",
+    "err.signin.firstRunHere":
+      "{name} はまだセットアップされていません。最初のサインインは {host} 本体で行ってください。そこでセットアップリンクを開くか、自分のターミナルで web login を実行します。",
+    "err.signin.tooManyRequests":
+      "このアドレスからのサインイン要求が多すぎます。1 分待ってから、もう一度リンクを開いてください。",
+    "err.signin.tooManyWaiting":
+      "{name} で承認待ちのデバイスが多すぎます。数分待ってから、もう一度リンクを開いてください。",
+    "err.signin.claimSetUp":
+      "{name} はすでにセットアップ済みのため、セットアップリンクだけではサインインしません。サインイン済みのブラウザーで 設定 › アクセス を開き、下のコードを承認してください。",
     "err.signin.github": "GitHub でサインイン",
     "err.signin.githubEnter": "{url} でこのコードを入力してください:",
     "err.signin.githubOpen": "GitHub を開く",
@@ -846,6 +918,12 @@
     "set.server.crash_loop_minutes": "再起動ガードの時間枠(分)",
     "set.server.crash_loop_minutes.d":
       "上の、正常に終了しなかった回数を数える分数です。__DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "プロセス検索の待ち時間",
+    "set.server.lookup_first.d":
+      "接続を持っているプロセスをシステムに問い合わせるとき (lsof、ps)、__DEN_TITLE__ が最初の試行で待つ時間です。エージェント自身の呼び出しはこの方法で特定されます。__DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "プロセス検索の再試行の待ち時間",
+    "set.server.lookup_retry.d":
+      "最初の試行が時間切れになったときに、2 回目の試行が待つ時間です。混み合ったマシンでは応答が遅れることがあります。__DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout": "アドレス確認の待ち時間",
     "set.server.address_check_timeout.d":
       "アドレスがこの __DEN_TITLE__ に届くか確認するとき、表示したり開いたりする前に __DEN_TITLE__ が応答を待つ時間。__DEN_CLI__ config web.address_check_timeout_seconds=5",
@@ -855,6 +933,13 @@
     "set.server.address_check_cache": "アドレス確認の保持時間",
     "set.server.address_check_cache.d":
       "ページのバナーと Edge が __DEN_TITLE__ のアドレスの前回の確認を使い回す時間。0 は読むたびに確認します。__DEN_CLI__ config web.address_check_cache_seconds=60",
+    "set.server.address_check_drop_after":
+      "サインインが戻るまでのアドレス失敗回数",
+    "set.server.address_unknown_keep": "確認が判断できない間アドレスを保つ時間",
+    "set.server.address_unknown_keep.d":
+      "__DEN_TITLE__ の https アドレスが確認された後、判断できない確認（時間内に応答なし）がサインインをそこに保つ時間。最後の応答から数えます。過ぎると失敗として扱い、サインインはこのマシン自身の名前に戻ります。短くしてください。__DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    "set.server.address_check_drop_after.d":
+      "__DEN_TITLE__ の https アドレスが確認されると、サインインはそこだけに置かれます。そのアドレスで別のものが応答するか何も応答しない確認が何回続いたら、このマシン自身の名前でサインインが再び使えるようになるか。判断できない確認は無視します。__DEN_CLI__ config web.address_check_drop_after=2",
     "set.server.bridge_listen": "Docker ブリッジ (edge 用)",
     "set.server.bridge_listen.d":
       "Linux のみ。ここに edge がある場合、__DEN_TITLE__ は Docker ブリッジのアドレスでも待ち受けます。edge はそこからこのマシンに届きます。オフ: 127.0.0.1 のみで、edge から __DEN_TITLE__ に届きません。次の起動から反映されます。__DEN_CLI__ config web.bridge_listen=off",
@@ -863,6 +948,9 @@
     "set.server.bridge_probe": "Docker ブリッジの確認 (秒)",
     "set.server.bridge_probe.d":
       "起動時に Docker がブリッジのアドレスを返すまで __DEN_TITLE__ が待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
+    "set.server.owner_name_timeout.d":
+      "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
@@ -881,16 +969,97 @@
     "set.server.gate_overrun": "見込みを過ぎたテストに印を付けるまで (分)",
     "set.server.gate_overrun.d":
       "見込みをこの時間過ぎても続くテスト実行は、`gate status` とエージェント画面で印が付きます。止められることはありません。__DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_remote_renew": "CI ランナーがスロットを更新する間隔 (秒)",
+    "set.server.gate_remote_renew.d":
+      "ランナー VM の CI ジョブは、この間隔で更新してゲートスロットを保ちます (頼んだときに数を伝えます)。__DEN_CLI__ gate settings --remote-renew-seconds 30",
+    "set.server.gate_remote_lapse": "CI ランナーのスロットを取り戻すまで (秒)",
+    "set.server.gate_remote_lapse.d":
+      "この時間スロットを更新しなかった CI ランナーはスロットを失い、次の順番が始まります。更新間隔の 2 倍以上です。__DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_remote_slots":
+      "1 つの CI ランナーが同時に持てるゲートスロット",
+    "set.server.gate_remote_slots.d":
+      "使用中と待機中の合計です。超えた依頼は理由を添えて断られ、ランナーが 1 つ返すまで続きます。__DEN_CLI__ gate settings --remote-max-slots 4",
+    "set.server.gate_remote_asks": "1 つの CI ランナーが同時に待てる依頼",
+    "set.server.gate_remote_asks.d":
+      "まだ返事を待っているスロットの依頼です。超えた依頼は理由を添えて断られ、1 つが返事を受けるまで続きます。__DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_priority_max":
+      "種類ごとに同時に順番を飛ばせるリリース実行",
+    "set.server.gate_priority_max.d":
+      "人が待っていて、リリース優先の印が付いたリリース実行は、同じ種類の待機中の実行より先に進みます。実行中のものを止めることはありません。2 つ目は 1 つ目の後ろで待ちます。0 でオフになります。__DEN_CLI__ gate settings --priority-max 1",
+    "set.server.gate_priority_pass": "この時間待った実行は追い越されない（分）",
+    "set.server.gate_priority_pass.d":
+      "優先されたリリース実行は他の待機中の実行より先に進みますが、この時間待っている実行は追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    "set.server.gate_priority_agents":
+      "エージェントもリリースの優先を依頼できる",
+    "set.server.gate_priority_agents.d":
+      "オンなら、あなたが報告した問題のリリース実行をエージェントが優先にできます。オフなら、あなただけができます。追い越しはすべて、誰がなぜ行ったかとともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_priority_runners":
+      "CI ランナーもリリースの優先を依頼できる",
+    "set.server.gate_priority_runners.d":
+      "オンなら、ランナートークンを持つ CI ジョブが理由を添えて実行をリリース実行として優先にできます。オフなら、その依頼は断られ、通常の列で待ちます。追い越しはすべて、ランナーと理由とともにスロットの記録に残ります。__DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container": "ブラウザ実行にはコンテナが必要",
+    "set.server.gate_browser_container.d":
+      "オンなら、このマシンでのブラウザのテスト実行は、ブラウザがどこで動くかを示す必要があります: コンテナの Playwright エンドポイント (ws:// または wss://。DEN_PW_WS、HUB_PW_WEBKIT_WS、E2E_WEBKIT_WS からも読みます)、または実行が自分でコンテナを起動するときは self。示さない実行は断られるので、この Mac 自体でブラウザを起動するテストはありません。macOS では既定でオン、それ以外ではオフ。__DEN_CLI__ gate settings --browser-requires-container 1",
+    "set.server.gate_claim": "エージェントのゲート枠: 受け取るまでの分数",
+    "set.server.gate_claim.d":
+      "エージェントが待っていた枠が割り当てられると、Den がエージェントに伝えます。この時間内に受け取らなければ、枠は次に回り、エージェントは列に戻ります。__DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew": "エージェントのゲート枠: 更新の間隔（分）",
+    "set.server.gate_mcp_renew.d":
+      "枠を持つエージェントに、作業中にどれくらいの間隔で更新するよう伝えるか。__DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "エージェントのゲート枠: 更新なしで失効するまで（分）",
+    "set.server.gate_mcp_lapse.d":
+      "エージェントが持つ枠がこの時間更新されず、見積もりと猶予を過ぎると、次に回ります。ベルで知らせます。__DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "エージェントのゲート枠: 見積もり後の猶予（分）",
+    "set.server.gate_mcp_grace.d":
+      "更新されない枠も、見積もりをこの時間過ぎるまでは保持されます。__DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_class_order": "順番のクラス(高い順)",
+    "set.server.gate_class_order.d":
+      "カンマ区切りで、たとえば release, lane, other。高いクラスの待機中の実行が先に始まり、同じクラスの中では先着順です。順番を持っている実行は止まりません。空なら全員が先着順です。__DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "プロジェクトごとの順番のクラス",
+    "set.server.gate_class_map.d":
+      "カンマ区切りで <プロジェクト>=<クラス>、label:<パターン>=<クラス>(* は任意の文字列)、その他のプロジェクトには *=<クラス>。* がなければ最後のクラスです。__DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "順番のクラスの時間帯",
+    "set.server.gate_class_windows.d":
+      "カンマ区切りで <クラス>=HH:MM-HH:MM/<分>、このマシンの時刻です。時間帯の外では、そのクラスで見込みがその分数以上の実行は、より高いクラスの実行が順番を持つか待つ間は待ちます。それがなければすぐに始まります。__DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
+    "set.server.gate_runners": "CI ランナーのトークン",
+    "set.server.gate_runners.d":
+      "ランナー VM の CI ジョブが、このマシンのゲートスロットを頼み、更新し、返すためのトークンです。それ以外はできません。エージェントが頼み、あなたが許可します。ここで取り消せます。",
+    "set.server.gate_boxes": "テストマシン",
+    "set.server.gate_boxes.d":
+      "ブラウザテストを実行する他のマシンです。それぞれに自分のブラウザスロットがあります。マシンを使えるブラウザ実行は、ここかマシンのうち先に空いたスロットを取ります。保留ファイルがあるマシンは新しい実行を取りません。応答のないマシンは飛ばし、待ちません。__DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check": "テストマシンの確認の待ち時間 (秒)",
+    "set.server.gate_box_check.d":
+      "テストマシンにスロットを渡す直前に、Den がその応答を待つ時間です。応答がなければ、そのマシンは飛ばします。__DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck": "飛ばしたテストマシンを再確認するまで (秒)",
+    "set.server.gate_box_recheck.d":
+      "保留中か応答のなかったマシンはこの時間飛ばし、その後そのマシンのスロットが求められたときに再確認します。タイマーでは確認しません。__DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_screenshot_days": "報告のスクリーンショットの保存期間",
+    "set.server.report_screenshot_days.d":
+      "ここから送った報告のマスク済みスクリーンショットを __DEN_TITLE__ が保存する日数です。あなたとこのインストール自身のエージェントが読めます(report_screenshot)。過ぎると削除されます。__DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max":
+      "報告のスクリーンショットの最大サイズ（保存）",
+    "set.server.report_screenshot_max.d":
+      "__DEN_TITLE__ が報告と一緒に保存するマスク済みスクリーンショットの最大サイズです。これより大きいものは、何も送る前に断られます。__DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "報告のスクリーンショットの最大サイズ（Hub へ送信）",
+    "set.server.report_screenshot_hub_max.d":
+      "__DEN_TITLE__ が Hub に送るマスク済みスクリーンショットの最大サイズです。これより大きいものもここには保存され、報告は送られます。__DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait":
+      "報告のスクリーンショット、Hub を待つ時間",
+    "set.server.report_screenshot_hub_wait.d":
+      "__DEN_TITLE__ が報告のスクリーンショットを Hub が受け取るのを待つ時間です。過ぎるとスクリーンショットはここに保存され、報告はすでに送られています。__DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "報告：リポジトリの公開範囲を保持する時間",
     "set.server.report_visibility_cache.d":
       "各報告先リポジトリが公開か非公開かを __DEN_TITLE__ が覚えておく時間です。これを過ぎると、GitHub にもう一度確認します。__DEN_CLI__ config feedback.visibility_cache_hours=24",
     "set.server.report_visibility_wait": "報告：リポジトリの公開範囲の待ち時間",
     "set.server.report_visibility_wait.d":
-      "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると公開として表示し、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "リポジトリが公開か非公開かを GitHub が答えるまで、報告が待つ時間です。これを過ぎると「不明」と表示し（注意書きは残ります）、答えは次に開いたときに表示されます。__DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     "set.server.report_visibility_retry": "報告：リポジトリの公開範囲の再確認",
     "set.server.report_visibility_retry.d":
       "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
@@ -903,9 +1072,21 @@
     "set.agents.pane_reconnect_wait": "試行の間の最長の待ち時間",
     "set.agents.pane_reconnect_wait.d":
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.shell_path_wait": "シェルの PATH の待ち時間",
+    "set.agents.shell_path_wait.d":
+      "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH の応答を待つ時間です。起動ファイルも含め、新しいシェルと同じ PATH です。これを過ぎると、通常の場所を探します。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.hook_wait": "エージェントのフックの待ち時間",
+    "set.agents.hook_wait.d":
+      "エージェントのフックが、あなたが必要だと __DEN_TITLE__ に知らせるときや Hub の受信箱を確認するときに、1 回の試行で __DEN_TITLE__ を待つ時間です。混み合ったマシンでは応答が遅れることがあります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    "set.agents.hook_retries": "エージェントのフックの再試行回数",
+    "set.agents.hook_retries.d":
+      "__DEN_TITLE__ が時間内に応答しなかったか呼び出しを断ったときに、エージェントのフックがあと何回試すかです。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.retries=2",
+    "set.agents.hook_backoff": "エージェントのフックの間隔",
+    "set.agents.hook_backoff.d":
+      "エージェントのフックが最初の再試行の前に待つ時間です。その後の間隔は毎回倍になります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "圧縮の繰り返し: 回数",
     "set.agents.compaction_loop.d":
       "下の分数のうちにエージェントが自動圧縮をこの回数より多く行うと、ベルが圧縮を繰り返していると知らせます。1 回の繰り返しにつきベルは 1 回です。__DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -936,6 +1117,10 @@
     "addr.saved": "保存しました: {url} が応答しました。",
     "addr.notSaved": "保存していません。前のアドレスのままです。",
     "addr.empty": "先にアドレスを入力してください。",
+    "addr.loopback":
+      "{url} はこのマシンでしか開けません。ほかのデバイスからは届きません。",
+    "addr.adopt": "{alias} を __DEN_TITLE__ のアドレスにする",
+    "addr.adopted": "保存しました: {url} がアドレスになりました。",
     "set.workspace.approvals_policy":
       "このプロジェクトでのエージェントの書き込み",
     "set.workspace.approvals_policy.d":
@@ -1069,6 +1254,11 @@
     "hubgh.none": "なし (アクセスなし)",
     "hubgh.give": "Den Hub にアクセスを許可",
     "hubgh.change": "リポジトリを変更",
+    "hubgh.error":
+      "Den Hub は GitHub で {org} を確認できませんでした: {reason}。後でもう一度お試しください。",
+    "hubgh.errorNoReason":
+      "Den Hub は GitHub で {org} を確認できませんでした。後でもう一度お試しください。",
+    "hubgh.retry": "もう一度確認",
     "set.distribution.hub_github": "Den Hub の GitHub アクセス",
     "set.agents.hub_github": "Den Hub の GitHub アクセス",
     "hubla.noProjects": "まだプロジェクトがありません。",
@@ -1119,7 +1309,28 @@
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
+    "set.access.approveNeedsBrowser":
+      "デバイスの承認には、サインイン済みのブラウザーが必要です。このページで改めてサインインしてから承認してください。",
+    "set.access.approveNotAgent":
+      "デバイスを承認できるのは人だけで、その人自身のサインイン済みブラウザーから行います。",
+    "set.access.wrongCode":
+      "そのコードは、そのコンピューターの画面のコードと一致しません。確認して、もう一度入力してください。",
+    "set.access.tooManyTries":
+      "試行回数が多すぎます。1 分待ってから、もう一度お試しください。",
+    "set.access.ended":
+      "そのリクエストは終了したか、期限切れです。何も許可していません。",
     "set.access.pair": "デバイスをペアリング",
+    "set.access.pair_requests":
+      "アドレスごとの新しいサインイン要求 (1 分あたり)",
+    "set.access.pair_requests.d":
+      "1 つのアドレスが 1 分間にサインインを要求できる新しいデバイスの数です。超えた分は 1 分たつまで受け付けません。__DEN_CLI__ config web.pair_requests_per_minute=30",
+    "set.access.approve_attempts": "承認時に許される誤ったコードの数",
+    "set.access.approve_attempts.d":
+      "下の時間内にデバイスの承認で受け付ける誤ったコードの数です。超えると待ちになります。__DEN_CLI__ config web.approve_attempts=10",
+    "set.access.approve_window": "誤ったコードを数える時間 (秒)",
+    "set.access.approve_window.d":
+      "誤ったコードを数える時間です。過ぎると、もう一度承認を試せます。__DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
     "set.distribution.orgs": "組織のラベル",
@@ -1172,6 +1383,8 @@
     "ag.stopped": "エージェント {id} を停止しました",
     "ag.stillStopping": "{id} はまだ停止中です",
     "ag.resumedFresh": "{id}: まだ再開するものがないため、新しく開始しました",
+    "ag.resumedHandoff":
+      "{id}: 会話が書き込まれていなかったため、最後の引き継ぎから新しく開始しました",
     "ag.inactive": "プロジェクト {ws} はアクティブではありません",
     "ag.otherTabs": "他のプロジェクトのタブ {n} 件を非表示",
     "ag.showAllActive": "すべてのアクティブで表示",
@@ -1184,6 +1397,9 @@
     "ag.state.interrupted": "中断",
     "ag.why.stopped": "{time} に停止しました",
     "ag.why.interrupted": "中断: {name} が再起動しました",
+    "ag.why.restartFailed": "再起動後に戻りませんでした: {why}",
+    "ag.why.trustDeclined":
+      "開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "ag.why.exited": "終了しました",
     "ag.why.exitedCode": "終了しました（コード {code}）",
     "ag.fresh": "新しく始める",
@@ -1200,6 +1416,7 @@
     "ag.relaunch": "今すぐ再起動",
     "ag.relaunchName": "{id} を今すぐ再起動",
     "ag.relaunched": "{id} を引き継ぎから再起動しました",
+    "ag.relaunchHandoff": "最後の引き継ぎから再起動",
     "ag.rc.autoAsk":
       "交代の時期です（{why}）。待機中になったら Den が引き継ぎを書かせ、再起動します。",
     "ag.rc.autoReady":
@@ -1422,14 +1639,23 @@
     "pair.title": "このコンピューターを許可しますか?",
     "pair.what": "{device} {client} が Den にサインインしようとしています。",
     "pair.aDevice": "ブラウザー",
+    "pair.local": "このコンピューター(localhost 経由)",
     "pair.help":
-      "このコードがそのコンピューターの画面に表示されている場合のみ許可してください。",
+      "そのコンピューターの画面に表示されているコードを入力してください。自分でサインインしているコンピューターだけを許可してください。",
     "pair.allow": "許可",
     "pair.allowed": "そのコンピューターはサインインしました。",
     "pair.ended":
       "そのリクエストは終了しました。そのコンピューターはページを閉じたか、すでにサインインしています。何も許可していません。",
     "pair.expired": "そのコードは期限切れです。何も許可していません。",
     "pair.close": "閉じる",
+    "pair.codeLabel": "そのコンピューターの画面のコード",
+    "pair.age": "{n} 分前に要求。",
+    "pair.ageNow": "たった今要求。",
+    "pair.fromLogin": "{time} に実行した web login から。",
+    "pair.wrong":
+      "そのコードは、そのコンピューターの画面のコードと一致しません。確認して、もう一度入力してください。",
+    "pair.busy":
+      "試行回数が多すぎます。1 分待ってから、もう一度お試しください。",
     "ap.do.workspace_create": "プロジェクト「{name}」を作成",
     "ap.do.repo_add": "{path} のリポジトリをプロジェクト「{workspace}」に追加",
     "ap.do.repo_add.new":
@@ -1458,6 +1684,39 @@
       "キーは許可した後に、ここで一度だけ表示されます。Den はハッシュだけを保存します。",
     "ap.det.embed_key_create.revoke":
       "設定 › 埋め込み でいつでも取り消せます。",
+    "ap.do.gate_runner_token_create":
+      "CI ランナー {name} 用のゲート専用トークンを作る",
+    "ap.det.gate_runner_token_create.reach":
+      "CI ランナー {name} 用のトークンを作ります。このマシンのゲートスロットを頼み、更新し、返すことしかできません。Den のほかのことはできません。",
+    "ap.det.gate_runner_token_create.onceAgent":
+      "トークンは頼んだエージェント {agent} に一度だけ渡され、二度と表示されません。Den はハッシュだけを保存します。",
+    "ap.det.gate_runner_token_create.once":
+      "トークンは頼んだ人に一度だけ渡され、二度と表示されません。Den はハッシュだけを保存します。",
+    "ap.det.gate_runner_token_create.revoke":
+      "設定の「CI ランナーのトークン」でいつでも取り消せます。",
+    "ap.do.gate_box_set": "テスト用マシン {name} を置き換え",
+    "ap.do.gate_box_set.new": "テスト用マシン {name} を追加",
+    "ap.do.gate_box_remove": "テスト用マシン {name} を削除",
+    "ap.det.gate_box_set.adds":
+      "テスト用マシン {name} を追加します。そのブラウザスロットはエージェントのゲート実行を受けます。",
+    "ap.det.gate_box_set.replaces":
+      "テスト用マシン {name} をこの設定で置き換えます。そのブラウザスロットはエージェントのゲート実行を受けます。",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "SSH ポート: {v}",
+    "ap.det.gate_box_set.ssh_identity": "SSH 鍵ファイル: {v}",
+    "ap.det.gate_box_set.playwright": "Playwright のアドレス: {v}",
+    "ap.det.gate_box_set.slots": "ブラウザスロット: {v}",
+    "ap.det.gate_box_set.hold_file": "保留ファイル: {v}",
+    "ap.det.gate_box_set.time_scale": "時間倍率: {v}",
+    "ap.det.gate_box_set.playwright_version": "Playwright のバージョン: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "最小空きメモリ (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
+    "ap.det.host_restart.wait":
+      "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
+    "ap.det.host_restart.resume":
+      "実行中だったエージェントは元の場所から再開し、開いているターミナルは閉じます。結果はアクティビティ履歴に記録されます。",
     "ap.det.embed_key_revoke.reach":
       "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
     "ap.det.embed_key_revoke.held":
@@ -1474,6 +1733,14 @@
     "ap.hc.name": "Hub での名前: {name}",
     "ap.hc.owner":
       "Hub のオーナーが Hub で許可します。許可されると Den がプロジェクトをリンクします。",
+    "ap.do.hub_link":
+      "プロジェクト {project} を Hub プロジェクト {hub} にリンク",
+    "ap.hl.project": "プロジェクト: {project}",
+    "ap.hl.now": "現在: {hub}",
+    "ap.hl.nowNone": "現在: Hub プロジェクトにリンクされていません",
+    "ap.hl.then": "変更後: {hub}",
+    "ap.hl.filed":
+      "エージェントの Hub での作業は、次の呼び出しからそこに記録されます。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
@@ -1726,6 +1993,8 @@
     "n.terminalTip": "このプロジェクトのフォルダーでシェルを Den 内に開く",
     "ag.term.started": "{w} でターミナルを開きました",
     "ag.term.failed": "Den はターミナルを開けませんでした: {e}",
+    "ag.term.ptyFailed":
+      "Den はターミナルを開けませんでした: このマシンが PTY を割り当てませんでした ({e})。不要なターミナルを閉じるか、doctor を実行してください。",
     "ag.term.noWs": "有効なプロジェクトがありません。先に有効にしてください。",
     "ws.termHere": "ここでターミナル",
     "kind.agent": "エージェント",
@@ -1740,6 +2009,7 @@
     "ag.waiting.permission": "権限の確認待ち",
     "ag.waiting.input": "入力待ち",
     "ag.waiting.asked": "質問があります",
+    "ag.waiting.trust": "待機中: このフォルダを信頼しますか?",
     "bell.title": "通知",
     "bell.n": "通知: 未読 {n} 件",
     "bell.markAll": "すべて既読にする",
@@ -1771,13 +2041,52 @@
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
+    "bell.m.hostRestarted":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。",
+    "bell.m.hostRestartedAgents":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。",
+    "bell.m.hostRestartedTerminals":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。実行中のエージェントはありませんでした。終了したターミナル: {terminals} 件。",
+    "bell.m.hostRestartedNone":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。実行中のエージェントもターミナルもありませんでした。",
+    "bell.m.hostRestartedCut":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
+    "bell.m.hostRestartedAgentsCut":
+      "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
+    "bell.m.trust": "{name}: 待機中: このフォルダを信頼しますか?",
+    "bell.m.trustDeclined":
+      "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
+    "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
+    "bell.m.gateLapsed":
+      "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
+    "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.notAtPrompt":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが入力プロンプトにいません",
+    "bell.m.held.busy":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントはターンの途中です",
+    "bell.m.held.trust":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: フォルダーを信頼するかの質問が画面に出ています",
+    "bell.m.held.permission":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: 権限の質問が画面に出ています",
+    "bell.m.held.approval":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: 変更の許可を待っています",
+    "bell.m.held.paused":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: 圧縮のループのあと、続けるまで一時停止しています",
+    "bell.m.held.stopped":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが動いていません",
+    "bell.m.held.owner":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den があなたが誰かを Hub にまだ問い合わせています",
+    "bell.m.held.unread":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den がエージェントの状態を時間内に読めませんでした",
+    "bell.m.hubNoAnswer":
+      "{name}: Hub コメント {n} 件を入力しましたが、{m} 分たってもまだ返事がありません",
     "bell.m.crashLoop":
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":
@@ -1789,6 +2098,12 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.updateWaitsWhat":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
+    "bell.m.updatedSecurity":
+      "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.backNoteHeld":
+      "__DEN_TITLE__ が戻りました。{agent} への連絡は、{agent} のターミナルであなたが応答するまで待機します",
+    "bell.m.restartedWhileWorking":
+      "{agent} が作業中でしたが、__DEN_TITLE__ は更新を完了するために再起動しました",
     "bell.m.updateWaitsAskedWhat":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました: {what} ({since} から)",
     "bell.m.pinNotCommitted":
@@ -1807,6 +2122,18 @@
       "__DEN_TITLE__ {v}: 固定バージョンのコミットはあなたの許可を待っています",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがコミットされていません: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubCommentsRejected":
+      "Hub のコメントが届いていません: Hub がこのインストールのトークンを受け付けませんでした (設定 › Hub: 再接続)",
+    "bell.m.hubCommentsForbidden":
+      "Hub のコメントが届いていません: Hub がこのインストールへのコメント配信を拒否しました",
+    "bell.m.hubCommentsRefused":
+      "Hub のコメントが届いていません: Hub にこのインストール向けのコメント配信がありません",
+    "bell.m.hubCommentsUnreachable":
+      "Hub のコメントが届いていません: __DEN_TITLE__ から Hub に接続できません",
+    "bell.m.hubCommentsClosed":
+      "Hub のコメントが届いていません: Hub がコメントのストリームを何度も閉じています",
+    "bell.m.hubCommentsSilent":
+      "Hub のコメントが届いていません: コメントのストリームが途絶えました",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",
@@ -1833,6 +2160,7 @@
     "ag.ins.tip":
       "指示ファイルが {size} あり、コンテキストの {share}% を超えています。最も大きいのは {path} ({big}) です。",
     "ag.hub.queued": "Hub のコメント {n} 件が待っています",
+    "ag.hub.notAtPrompt": "待機中: エージェントが入力プロンプトにいません",
     "tx.asked": "依頼",
     "tx.result": "結果",
     "tx.error": "エラー",
@@ -2022,11 +2350,12 @@
       "タブ、行、ペインの見出しに表示されます。ID {id} は変わりません。ほかのエージェントからは、次の開始または再開から {peer} として見えます。空にすると {id} に戻ります。",
     "ag.rn.go": "名前を変更",
     "ag.rn.cancel": "キャンセル",
-    "ag.job.h": "実行中のジョブがあります",
+    "ag.job.h": "バックグラウンドのジョブが実行中です",
     "ag.job.q":
-      "{id} が開始したジョブ（テスト実行など）がまだ実行中です（{min} 分）。それでも再起動しますか？ジョブは終了します。",
+      "{id} が開始したバックグラウンドのジョブ（テスト実行など）がまだ実行中です（{min} 分）。それでも再起動しますか？ジョブは終了します。",
     "ag.job.go": "それでも再起動",
-    "ag.job.held": "{id} はジョブを実行中のため、まだ再起動していません",
+    "ag.job.held":
+      "{id} が開始したバックグラウンドのジョブがまだ実行中のため、まだ再起動していません",
     "ag.mv.item": "別のプロジェクトへ移動…",
     "ag.ord.up": "上へ移動",
     "ag.ord.down": "下へ移動",
@@ -2063,6 +2392,19 @@
     "gate.endGo": "順番を終える",
     "gate.rowHolds": "順番: {kind}",
     "gate.rowWaits": "順番待ち: {kind}",
+    "gate.priority": "リリース優先: {reason}",
+    "gate.priorityWaits": "リリース優先、前の実行の後: {reason}",
+    "gate.onBox": "テストマシン {box} で",
+    "gate.anyBox": "ここかテストマシンで",
+    "gate.boxesH": "テストマシン",
+    "gate.boxSlots": "{box}: ブラウザスロット {n} 個中 {held} 個使用中",
+    "gate.boxHeld": "{box}: 保留中のため飛ばします ({reason})",
+    "gate.boxDown": "{box}: 応答がないため飛ばします ({reason})",
+    "gate.boxLow": "{box}: 空きメモリが少ないため飛ばします ({reason})",
+    "gate.boxSkip": "{box} は使えません: {reason}",
+    "gate.yielded": "{to} に先を譲りました",
+    "gate.class": "クラス: {name}",
+    "gate.window": "時間帯 {window} を待っています",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
@@ -2105,6 +2447,19 @@
       "プロジェクトで独自の CLI として動きます。Den のツールと権限モードは今後対応します。",
     "ag.rt.notInstalled": "未インストール",
     "ag.rt.needsArgv": "ペルソナに argv テンプレートがありません",
+    // issue 479: a quarantined runtime copy is never started.
+    "ag.rt.quarantined":
+      "{name} を開始できません: macOS がこのコピーを隔離しているため、Den は実行しておらず、macOS の警告も出ていません:",
+    "ag.rt.useOther": "見つかった別のコピーを使う:",
+    "ag.rt.clearSelf":
+      "または Den のマシンで自分で解除: そこでターミナルから一度実行し、macOS に聞かれたら許可します。Den が隔離を外すことはありません。",
+    "ag.rt.copyPath": "パスをコピー",
+    "ag.rt.openTerminal": "そこでターミナルを開く",
+    "ag.rt.copied": "コピーしました",
+    "ag.rt.copyByHand": "選択しました: ⌘C または Ctrl+C でコピーしてください",
+    "ag.rt.openRuntimes": "設定 › ランタイムを開く",
+    "ag.rt.checkAgain": "もう一度確認",
+    "ag.rt.notDone": "うまくいきませんでした",
     "pj.expand": "プロジェクト一覧を展開",
     "gr.act.autostartOff": "自動起動: オフ (オンにする)",
     "gr.act.autostartOn": "自動起動: オン (オフにする)",
@@ -2423,6 +2778,24 @@
     "set.ui.appKeyUnused": "未使用",
     "set.ui.appKeyRevoked": "取り消し済み {when}",
     "set.ui.appKeyRevoke": "取り消す",
+    "set.ui.runnerNone": "ランナーのトークンはまだありません。",
+    "set.ui.boxName": "名前",
+    "set.ui.boxSsh": "ssh (login@host)",
+    "set.ui.boxPort": "ssh ポート",
+    "set.ui.boxKey": "ssh 鍵ファイル",
+    "set.ui.boxPw": "Playwright のアドレス (ws://)",
+    "set.ui.boxSlots": "ブラウザスロット",
+    "set.ui.boxHold": "保留ファイル (マシン上)",
+    "set.ui.boxScale": "時間の倍率",
+    "set.ui.boxSave": "マシンを保存",
+    "set.ui.boxMem": "残しておく空きメモリ (MB)",
+    "set.ui.boxPwv": "マシン上の Playwright のバージョン",
+    "set.ui.boxNone":
+      "テストマシンはありません。ブラウザ実行はこのマシンだけを使います。",
+    "set.ui.boxSlotsN": "ブラウザスロット {n} 個",
+    "set.ui.boxHoldIs": "保留ファイル {path}",
+    "set.ui.boxScaleIs": "時間 ×{n}",
+    "set.ui.boxRemove": "削除",
     "set.ui.appKeyOnce":
       "このキーを今すぐウェブアプリのバックエンドにコピーしてください。もう表示されません。",
     "set.ui.appKeyNew": "新しいアプリキー",
@@ -2430,10 +2803,20 @@
     "set.ui.saveOrigins": "リストを保存",
     "set.ui.approve": "承認",
     "set.ui.deny": "拒否",
+    "set.ui.codeLabel": "画面のコード",
+    "set.ui.fromLogin": "{time} に実行した web login から",
     "set.ui.noWaiting":
       "承認待ちのコンピューターはありません。別のコンピューターのサインアウト中のページにはコードが表示され、承認できるようここに表示されます。",
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
+    "set.ui.testInstallYes": "これはテスト用インストールです。",
+    "set.ui.testInstallNo":
+      "テスト用インストールではありません。ここではライブチェックはサインインできません。テスト用インストールは、人がディストリビューションの設定で手作業で印付けします (web.test_install: true)。",
+    "set.ui.testPersonReady": "テスト用の人物は設定済みです。",
+    "set.ui.testPersonMissing": "テスト用の人物はまだ設定されていません。",
+    "set.ui.testPersonSetUp": "テスト用の人物を設定",
+    "set.ui.testInstallSignedIn":
+      "テスト用インストールは、サインイン中かこのマシン上でのみ読み取れます。",
     "set.ui.noPairHost":
       "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
     "set.ui.edgeStart": "エッジを起動",
@@ -2791,7 +3174,7 @@
     "set.cli.web_port.d":
       "config/local/user.yml の web.port はディストリビューションの値より優先されます。次に Web サーバーが起動したときに適用されます。", // words-ok: the en string's own word, translated
     "set.cli.signin.d":
-      "localhost ではサインインを求められません。エッジ経由では、このマシンだとエッジが示さない限りブラウザはサインインします (web.edge_unattested: local の場合、判別できないものはローカルとみなします)。別のマシンからは必ずサインインします: GitHub でサインイン、または一回限りのリンク (__DEN_CLI__ web login) を使います。設定 › アクセス にサインイン済みのブラウザが表示されます。",
+      "どのブラウザも、このマシンでも一度サインインすると、サインインが続きます。ここでは __DEN_CLI__ web up が一回限りのサインインリンクを開きます。サインインしていないブラウザは表示はできますが、何も変更できません。別のマシンからは: GitHub でサインイン、または一回限りのリンク (__DEN_CLI__ web login)。設定 › アクセス にサインイン済みのブラウザが表示されます。",
     "set.cli.sudo.d":
       "Den が実行するコマンドに sudo が必要なときだけ使い、そのときだけ尋ねます。サインインではないので、ほかには必要ありません。",
     "set.cli.op_token.d":
@@ -2801,7 +3184,7 @@
     "set.access.devices.d":
       "この Den にサインインしているブラウザです。「取り消す」ですぐにサインアウトさせます。__DEN_CLI__ web logout --all ですべてサインアウトさせます。",
     "set.access.waiting.d":
-      "サインアウト中のページにコードが表示されているコンピューターです。承認すると、そのページは自動でサインインします。コードの有効期限は 10 分です。__DEN_CLI__ web approve <code> でもコマンドラインから同じことができます。",
+      "サインアウト中のページにコードが表示されているコンピューターです。そのコンピューターの画面のコードを入力して承認すると、そのページは自動でサインインします。リクエストの有効期限は 10 分です。__DEN_CLI__ web approve --list で一覧できます。",
     "set.embed.url_max.d":
       "エージェントへのリンクがメッセージ欄に渡せるウェブアドレスの最大長です。これより長いと、その旨を示すページが開きます。",
     "set.embed.app_keys.d":
@@ -2818,6 +3201,8 @@
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":
       "GitHub を使わない場合やオフラインの場合: エッジのホスト名 1 つに対する一回限りのリンクと QR コードです (__DEN_CLI__ web login --host <name>)。",
+    "set.access.test_install.d":
+      "このインストールがテスト用として印付けされているかどうか: ディストリビューションの設定の web.test_install で、手作業で設定します。その場合に限り、ライブチェックはテスト用の人物としてサインインできます (あなたでも、エージェントでもありません)。ブラウザのこの画面で「テスト用の人物を設定」を押して一度作成します。",
     "set.distribution.brand.d":
       "brand.name: ページ、CLI のバナー、ヘルプに表示される名前です。",
     "set.distribution.github_org.d":
@@ -2844,6 +3229,11 @@
     "set.ui.rt.src.well-known": "検出 · インストール先",
     "set.ui.rt.src.interactive-shell": "検出 · 対話シェル",
     "set.ui.rt.setPath": "パスを設定…",
+    "set.ui.rt.quarantined": "隔離済み、実行していません",
+    "set.ui.rt.alsoFound": "ほかに見つかったもの:",
+    "set.ui.rt.versionUnknown": "バージョン不明",
+    "set.ui.rt.useThis": "これを使う",
+    "set.ui.rt.useThisFor": "{name} に {path} を使う",
     "set.ui.rt.clear": "解除",
     "set.ui.rt.pathToIn": "{ws} での {name} のパス",
     "set.ui.rt.pathToAll": "{name} のパス (すべてのプロジェクト)",
@@ -2914,7 +3304,7 @@
       "ポート {port} は {owner} が使っているため、{host} は {owner} に届きます。",
     "edgeAddr.banner.unknown":
       "ポート {port} は __DEN_TITLE__ が特定できない何かが使っているため、{host} はそこに届きます。",
-    "edgeAddr.banner.none": "{host} ではまだ何も応答しません。",
+    "edgeAddr.banner.none": "まだ届きません: {host} では何も応答していません。",
     "edgeAddr.banner.fix": "Edge で直す",
     "edgeAddr.banner.dismiss": "閉じる",
     "edgeAddr.card.title":
@@ -2927,7 +3317,9 @@
     "edgeAddr.card.unknown":
       "__DEN_TITLE__ が特定できない何かが使っています。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
     "edgeAddr.card.none":
-      "{wanted} ではまだ何も応答しません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+      "まだ届きません: {wanted} では何も応答していません。代わりに __DEN_TITLE__ は {address} で動いています。確認 {time}。",
+    "edgeAddr.sub.held": "停止中: ポート {port} は使用中です",
+    "edgeAddr.sub.none": "まだ届きません",
     "edgeAddr.kind.container": "Docker コンテナ",
     "edgeAddr.kind.process": "プロセス",
     "edgeAddr.what": "どうしますか？",

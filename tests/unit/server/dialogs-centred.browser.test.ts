@@ -9,12 +9,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -24,11 +25,7 @@ beforeAll(async () => {
     const pw = await import("playwright");
     const kind =
       process.env.DEN_DIALOGS_BROWSER === "webkit" ? pw.webkit : pw.chromium;
-    browser = process.env.DEN_PW_WS
-      ? await kind.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await kind.launch();
+    browser = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -131,7 +128,7 @@ describe("D68: dialogs open centred", () => {
             reducedMotion: "reduce",
           });
           const p = await ctx.newPage();
-          await p.goto(signInUrl(s!.stateDir, s!.base, path));
+          await signInPage(p, s!.stateDir, s!.base, path);
           await p.waitForFunction(() => "denShell" in window, undefined, {
             timeout: 20_000,
           });

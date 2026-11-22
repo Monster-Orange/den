@@ -5,6 +5,8 @@ import type {
   BusyOptions,
   Progress,
   configureBusy,
+  pending,
+  watchForms,
 } from "./busy.js";
 import type { saveShell } from "./save-shell.js";
 import type {
@@ -26,6 +28,7 @@ import type {
   hydrateBell,
   hydrateScope,
   hydrateSearch,
+  PageMenuHydrateOptions,
 } from "./shell-client.js";
 import type {
   ShellModel,
@@ -49,12 +52,24 @@ import type {
   appearanceButtonHtml,
   appearanceMenuHtml,
   waitingHtml,
+  menuRowHtml,
+  pageMenuButtonHtml,
+  pageMenuHtml,
   icon,
   esc,
 } from "./shell-html.js";
+import type { buttonHtml } from "./button.js";
+import type {
+  SettingRow,
+  SettingRowHydrateOptions,
+  SettingRowOptions,
+  settingRowHtml,
+} from "./setting-row.js";
 import type { syncPinToggles } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
+import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
+import type { BulkBar, BulkBarOptions } from "./bulk-bar.js";
 
 /** Every call to the product goes through it; the kit names no URL. */
 export interface Adapter extends ReportAdapter {
@@ -158,6 +173,10 @@ export declare const busy: {
     ) => Promise<T> | T,
     opts?: BusyOptions<T>,
   ): Promise<T | null>;
+  /** Issue 699: a fetch-driven button shows dots until the answer. */
+  pending: typeof pending;
+  /** Issue 699: plain POST forms' submitters show dots. Returns stop(). */
+  watchForms: typeof watchForms;
   configure: typeof configureBusy;
 };
 /** An autosaving editor's save-state line, in the kit's language. */
@@ -165,6 +184,26 @@ export declare function saveState(
   el: HTMLElement,
   opts: SaveStateOptions,
 ): SaveState;
+/** A list's filter bar, in the kit's language. */
+export declare function filterBar(
+  el: HTMLElement,
+  opts: FilterBarOptions,
+): FilterBar;
+/** A list's bulk bar, in the kit's language. */
+export declare function bulkBar(el: HTMLElement, opts: BulkBarOptions): BulkBar;
+/** The page action menu on a drawn More ▾ button, in the kit's language. */
+export declare function pageMenu(
+  btn: HTMLElement,
+  opts: PageMenuHydrateOptions,
+): AppearanceHandle;
+/**
+ * The settings on/off row, in the kit's language: with a row's data (a
+ * label), drawn into el first; else the row el holds is wired.
+ */
+export declare function settingRow(
+  el: HTMLElement,
+  opts: SettingRowHydrateOptions & Partial<SettingRowOptions>,
+): SettingRow;
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
@@ -217,6 +256,15 @@ export interface DenUIKit {
   busy: typeof busy;
   saveShell: typeof saveShell;
   saveState: typeof saveState;
+  filterBar: typeof filterBar;
+  bulkBar: typeof bulkBar;
+  buttonHtml: typeof buttonHtml;
+  menuRowHtml: typeof menuRowHtml;
+  pageMenuButtonHtml: typeof pageMenuButtonHtml;
+  pageMenuHtml: typeof pageMenuHtml;
+  pageMenu: typeof pageMenu;
+  settingRowHtml: typeof settingRowHtml;
+  settingRow: typeof settingRow;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

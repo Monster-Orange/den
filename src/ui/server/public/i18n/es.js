@@ -142,10 +142,6 @@
     "fb.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
     "fb.revShot": "Captura tras ocultar ({n} zonas tapadas)",
     "fb.revShot.one": "Captura tras ocultar ({n} zona tapada)",
-    "fb.sentShot":
-      "La captura está guardada y copiada: pégala en la incidencia.",
-    "fb.sentShotSaved":
-      "La captura está guardada como archivo: añádela a la incidencia.",
     "fb.mine": "Mis informes",
     "fb.myS":
       "Se muestran en vivo desde GitHub. Funciona mientras tengas la sesión iniciada en GitHub.",
@@ -369,6 +365,8 @@
     "act.unpinX": "Quitar {s}",
     "toast.pinned": "{s} fijado",
     "toast.unpinned": "{s} ya no está fijado",
+    "toast.unpinnedAll": "{s} ya no está fijado en ningún proyecto",
+    "toast.undo": "Deshacer",
     collapse: "Contraer",
     expand: "Expandir",
     menu: "Menú",
@@ -515,6 +513,7 @@
     // prompt() and alert().
     "dlg.ok": "Aceptar",
     "dlg.cancel": "Cancelar",
+    "dlg.close": "Cerrar",
     "dlg.keep": "Conservar",
     "dlg.delete": "Eliminar",
     "dlg.remove": "Quitar",
@@ -542,6 +541,10 @@
       "No se pudo abrir Terminal.app automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
     "dlg.termFail":
       "No se pudo abrir la terminal automáticamente.\n\nEjecuta esto en tu terminal:\n\n  {cmd}\n\n{msg}",
+    "dlg.autoOffT": "¿Desactivar el inicio automático de {repo}?",
+    "dlg.autoOff":
+      "Es una dependencia estricta de: {list}. Mientras esté desactivado, el Up de su proyecto puede fallar la comprobación de disponibilidad.",
+    "dlg.autoOffGo": "Desactivar",
     "rd.keepsHead": "Sigue en marcha:",
     "rd.keepsAgents": "Los agentes y sus terminales",
     "rd.keepsServices": "Los servicios y los despliegues en GitHub",
@@ -562,6 +565,9 @@
     "busy.startW": "Iniciando {name}…",
     "busy.startS": "{name} iniciado.",
     "busy.startF": "No se pudo iniciar {name}.",
+    "busy.termW": "Abriendo una terminal…",
+    "busy.termS": "Terminal abierta.",
+    "busy.termF": "No se pudo abrir una terminal.",
     "busy.sayW": "Enviando a {name}…",
     "busy.sayS": "Enviado a {name}.",
     "busy.sayF": "No se pudo enviar a {name}.",
@@ -587,6 +593,9 @@
     "busy.edgeW": "Iniciando el edge…",
     "busy.edgeS": "Edge iniciado",
     "busy.edgeF": "El edge no se inició.",
+    "busy.testPersonW": "Configurando la persona de prueba…",
+    "busy.testPersonS": "Persona de prueba configurada",
+    "busy.testPersonF": "La persona de prueba no se configuró.",
     "keep.onNow": "Activado: los agentes siguen al cerrar sesión.",
     "keep.offNow": "Desactivado: los agentes se detienen al cerrar sesión.",
     "keep.saved": "Guardado. __DEN_TITLE__ ya funciona así.",
@@ -730,6 +739,15 @@
     "err.signin.expiredTitle": "El enlace de inicio de sesión caducó",
     "err.signin.local":
       "Un inicio de sesión pertenece a una sola dirección. Esta página está en {host}: abre la misma página en localhost, donde este navegador tiene la sesión iniciada.",
+    "err.signin.atAddress": "{name} inicia sesión en {address}",
+    "err.signin.offerTitle": "Hacer de {alias} la dirección de {name}",
+    "err.signin.offerLoop":
+      "La dirección de {name} es {url}, que solo se abre en su propia máquina, así que el inicio de sesión no puede llevarte allí.",
+    "err.signin.offerWrong":
+      "La dirección de {name} es {url}, y no funciona desde aquí.",
+    "err.signin.offerUnset": "{name} aún no tiene dirección.",
+    "err.signin.offerHow":
+      "Inicia sesión abajo como propietario de {name}: con GitHub o con un código que apruebes en su máquina. Luego haz de {alias} su dirección y el inicio de sesión funcionará aquí.",
     "err.signin.copy": "Copiar comando",
     "err.signin.title": "Inicia sesión en {name}",
     "err.signin.where":
@@ -785,6 +803,15 @@
     "err.signin.other": "Otras formas (el enlace de un solo uso con {cmd})",
     "err.signin.otherStep":
       "En {host} (no en este ordenador), ejecuta esto y abre en este navegador el enlace que imprime:",
+    "err.signin.whereLocal":
+      "{name} corre en este ordenador. Inicia sesión una vez para que sepa que este navegador eres tú. La sesión se mantiene.",
+    "err.signin.step1Local": "En una terminal de este ordenador, ejecuta:",
+    "err.signin.otherLocal":
+      "Otras formas ({cmd} abre un enlace de inicio de sesión de un solo uso)",
+    "err.signin.otherStepLocal":
+      "En una terminal de este ordenador, ejecuta esto. Abre esta página con la sesión iniciada:",
+    "shell.signin.line": "Inicia sesión para hacer cambios aquí.",
+    "shell.signin.btn": "Iniciar sesión",
     "err.signin.codeExpired": "Este código caducó.",
     "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
     "err.signin.codeFailed":
@@ -793,6 +820,14 @@
     "err.signin.youreIn": "Ya estás dentro.",
     "err.signin.expiredLead":
       "Ese enlace de inicio de sesión caducó o ya se usó. Inicia sesión de nuevo abajo.",
+    "err.signin.pairLinkLead":
+      "Para dejar entrar a este navegador, apruébalo desde un navegador que ya tenga la sesión iniciada: abre allí Ajustes › Acceso y aprueba el código de abajo.",
+    "err.signin.pairLinkWaiting":
+      "Esperando a que lo apruebes desde un navegador con la sesión iniciada…",
+    "err.signin.pairLinkDenied":
+      "Se rechazó este navegador. Para iniciar sesión, obtén un código nuevo y apruébalo desde un navegador con la sesión iniciada.",
+    "err.signin.pairLinkEnded":
+      "Esta solicitud terminó. Obtén un código nuevo y apruébalo otra vez.",
     "err.signin.confirmLead":
       "Introduce el código que web login imprimió en {host}:",
     "err.signin.confirmGo": "Iniciar sesión",
@@ -804,6 +839,43 @@
       "Este enlace ya no funciona. En {host}, ejecuta web login de nuevo para obtener uno nuevo.",
     "err.signin.confirmWhy":
       "El enlace solo no basta: también hace falta el código que se muestra en {host}, así que alguien que vea el enlace no puede iniciar sesión.",
+    // Issue 868: the ways in this install has, on the signed-out page.
+    "err.signin.methods.title": "Formas de iniciar sesión en {name}",
+    "err.signin.methods.ready": "Configurado aquí",
+    "err.signin.methods.notReady": "No configurado aquí",
+    "err.signin.methods.hostOnly": "Solo en {host}",
+    "err.signin.methods.github": "Iniciar sesión con GitHub",
+    "err.signin.methods.githubReady":
+      "Usa Iniciar sesión con GitHub más abajo, desde cualquier ordenador.",
+    "err.signin.methods.githubNoClient":
+      "No hay ningún id de cliente de GitHub App ({setting}). Una persona lo pone en {file} en {host} y después ejecuta {restart} allí.",
+    "err.signin.methods.githubNoOwner":
+      "Aún no hay ningún propietario vinculado en GitHub, así que nadie puede usarlo desde otro ordenador.",
+    "err.signin.methods.pair": "Pedir iniciar sesión desde este dispositivo",
+    "err.signin.methods.pairReady":
+      "Un navegador que ya inició sesión en {name} aprueba este escribiendo el código que muestra esta página.",
+    "err.signin.methods.pairNone":
+      "Aún no hay ningún navegador con sesión iniciada en {name}, así que nadie puede aprobar este.",
+    "err.signin.methods.ask": "Pedir iniciar sesión",
+    "err.signin.methods.terminal": "Un enlace desde una terminal en {host}",
+    "err.signin.methods.terminalHow":
+      "Ejecuta {cmd} en una terminal en {host} y abre el enlace que imprime.",
+    "err.signin.methods.stuck":
+      "Aún no se puede iniciar sesión en {name} desde otro ordenador. Iniciar sesión con GitHub no está configurado, y no hay ningún navegador con sesión iniciada en {name} que apruebe este.",
+    "err.signin.methods.fixClient":
+      "Para arreglarlo, en {host} pon en {setting} un id de cliente de GitHub App en {file} y ejecuta {restart}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.fixOwner":
+      "Para arreglarlo, vincula al propietario en GitHub: en {host}, ejecuta {cmd}. Así Iniciar sesión con GitHub funciona desde cualquier ordenador.",
+    "err.signin.methods.fixFirst":
+      "O termina el primer inicio de sesión en el propio {host}: después ese navegador puede aprobar este.",
+    "err.signin.firstRunHere":
+      "{name} aún no está configurado. Termina su primer inicio de sesión en el propio {host}: abre allí el enlace de configuración, o ejecuta web login en tu propia terminal allí.",
+    "err.signin.tooManyRequests":
+      "Demasiadas solicitudes de inicio de sesión desde esta dirección. Espera un minuto y abre el enlace de nuevo.",
+    "err.signin.tooManyWaiting":
+      "Hay demasiados dispositivos esperando aprobación en {name}. Espera unos minutos y abre el enlace de nuevo.",
+    "err.signin.claimSetUp":
+      "{name} ya está configurado, así que el enlace de configuración ya no inicia sesión por sí solo. Aprueba este navegador desde uno con la sesión iniciada: Ajustes › Acceso y luego el código de abajo.",
     "err.signin.github": "Iniciar sesión con GitHub",
     "err.signin.githubEnter": "Introduce este código en {url}:",
     "err.signin.githubOpen": "Abrir GitHub",
@@ -865,6 +937,12 @@
     "set.server.crash_loop_minutes": "Ventana de la protección, en minutos",
     "set.server.crash_loop_minutes.d":
       "Los minutos en los que se cuentan los cierres no limpios de arriba. __DEN_CLI__ config web.crash_loop_minutes=10",
+    "set.server.lookup_first": "Espera de la búsqueda de procesos",
+    "set.server.lookup_first.d":
+      "Cuánto espera __DEN_TITLE__ en su primer intento cuando pregunta al sistema qué proceso tiene una conexión (lsof, ps). Así se ubican las llamadas de un agente. __DEN_CLI__ config process_lookup.first_seconds=5",
+    "set.server.lookup_retry": "Espera del reintento de la búsqueda",
+    "set.server.lookup_retry.d":
+      "Cuánto espera el segundo intento cuando el primero se quedó sin tiempo. Una máquina ocupada puede tardar en responder. __DEN_CLI__ config process_lookup.retry_seconds=20",
     "set.server.address_check_timeout":
       "Espera de la comprobación de dirección",
     "set.server.address_check_timeout.d":
@@ -877,6 +955,14 @@
       "Comprobación de dirección guardada durante",
     "set.server.address_check_cache.d":
       "Cuánto tiempo reutilizan el aviso de la página y Edge la última comprobación de la dirección de __DEN_TITLE__. 0 comprueba en cada lectura. __DEN_CLI__ config web.address_check_cache_seconds=60",
+    "set.server.address_check_drop_after":
+      "Fallos de la dirección antes de que el inicio de sesión vuelva",
+    "set.server.address_unknown_keep":
+      "Dirección mantenida mientras las comprobaciones no saben",
+    "set.server.address_unknown_keep.d":
+      "Una vez comprobada la dirección https de __DEN_TITLE__, cuánto tiempo las comprobaciones que no pueden saberlo (sin respuesta a tiempo) mantienen el inicio de sesión allí, desde su última respuesta. Después se toman como fallos, y el inicio de sesión vuelve al nombre propio de esta máquina. Mejor corto. __DEN_CLI__ config web.address_unknown_keep_seconds=300",
+    "set.server.address_check_drop_after.d":
+      "Una vez comprobada la dirección https de __DEN_TITLE__, el inicio de sesión vive solo allí. Cuántas comprobaciones seguidas deben encontrar otra cosa, o nada, respondiendo en esa dirección antes de que el inicio de sesión vuelva a funcionar en el nombre propio de esta máquina. Una comprobación que no puede saberlo se ignora. __DEN_CLI__ config web.address_check_drop_after=2",
     "set.server.bridge_listen": "Puente de Docker, para el edge",
     "set.server.bridge_listen.d":
       "Solo en Linux, con un edge configurado aquí: __DEN_TITLE__ también escucha en la dirección del puente de Docker, por donde el edge llega a esta máquina. Desactivado: solo 127.0.0.1, y el edge no llega a __DEN_TITLE__. Se aplica en el siguiente arranque. __DEN_CLI__ config web.bridge_listen=off",
@@ -885,6 +971,10 @@
     "set.server.bridge_probe": "Comprobación del puente de Docker, en segundos",
     "set.server.bridge_probe.d":
       "Cuánto espera __DEN_TITLE__ a que Docker dé la dirección del puente al arrancar. Nunca retrasa el arranque. __DEN_CLI__ config web.bridge_probe_seconds=10",
+    "set.server.owner_name_timeout":
+      "Consulta del nombre en GitHub al arrancar, en segundos",
+    "set.server.owner_name_timeout.d":
+      "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
@@ -906,9 +996,98 @@
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
       "Una prueba que sigue tanto tiempo después de su estimación se marca en `gate status` y en la página Agentes. Nunca se detiene. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
+    "set.server.gate_remote_renew":
+      "El runner de CI renueva su turno cada, en segundos",
+    "set.server.gate_remote_renew.d":
+      "Un trabajo de CI en una VM runner mantiene su turno de pruebas renovándolo con esta frecuencia (se le dice el número cuando lo pide). __DEN_CLI__ gate settings --remote-renew-seconds 30",
+    "set.server.gate_remote_lapse":
+      "El turno de un runner de CI se recupera tras, en segundos",
+    "set.server.gate_remote_lapse.d":
+      "Un runner de CI que no renueva su turno en este tiempo lo pierde, y empieza el siguiente en la cola. Al menos el doble del tiempo de renovación. __DEN_CLI__ gate settings --remote-lapse-seconds 120",
+    "set.server.gate_remote_slots":
+      "Turnos de pruebas que un runner de CI puede tener a la vez",
+    "set.server.gate_remote_slots.d":
+      "Ocupados o en espera. Otra petición se rechaza, diciendo por qué, hasta que el runner devuelva uno. __DEN_CLI__ gate settings --remote-max-slots 4",
+    "set.server.gate_remote_asks":
+      "Peticiones que un runner de CI puede tener esperando a la vez",
+    "set.server.gate_remote_asks.d":
+      "Peticiones de turno que aún esperan respuesta. Otra se rechaza, diciendo por qué, hasta que una responda. __DEN_CLI__ gate settings --remote-max-asks 4",
+    "set.server.gate_priority_max":
+      "Ejecuciones de versión con prioridad a la vez, por tipo",
+    "set.server.gate_priority_max.d":
+      "Una ejecución de versión que una persona espera, marcada con prioridad de versión, pasa delante de las demás que esperan de su tipo. Nunca detiene una que ya se ejecuta. Una segunda espera detrás de la primera. 0 lo desactiva. __DEN_CLI__ gate settings --priority-max 1",
+    "set.server.gate_priority_pass":
+      "Una ejecución que espera tanto nunca se adelanta, en minutos",
+    "set.server.gate_priority_pass.d":
+      "Una ejecución de versión con prioridad pasa delante de las demás que esperan, pero nunca de una que lleva esperando este tiempo. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+    "set.server.gate_priority_agents":
+      "Los agentes pueden pedir prioridad de versión",
+    "set.server.gate_priority_agents.d":
+      "Activado, un agente puede marcar una ejecución de versión para un problema que tú informaste. Desactivado, solo tú puedes. Cada adelanto queda en el registro de turnos, con quién y por qué. __DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_priority_runners":
+      "Los runners de CI pueden pedir prioridad de versión",
+    "set.server.gate_priority_runners.d":
+      "Activado, un trabajo de CI con un token de runner puede marcar su ejecución como de versión, con un motivo. Desactivado, su petición se rechaza y espera en la cola normal. Cada adelanto queda en el registro de turnos, con el runner y el porqué. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container":
+      "Las ejecuciones de navegador necesitan un contenedor",
+    "set.server.gate_browser_container.d":
+      "Activado, una ejecución de pruebas de navegador en esta máquina debe indicar dónde corre su navegador: el endpoint de Playwright de un contenedor (ws:// o wss://, también desde DEN_PW_WS, HUB_PW_WEBKIT_WS o E2E_WEBKIT_WS), o self cuando la ejecución inicia su propio contenedor. Una ejecución sin él se rechaza, así ninguna prueba inicia un navegador en este Mac. Activado por defecto en macOS, desactivado en los demás. __DEN_CLI__ gate settings --browser-requires-container 1",
+    "set.server.gate_claim": "Turno de un agente: minutos para reclamarlo",
+    "set.server.gate_claim.d":
+      "Cuando se concede un turno que un agente esperaba, Den se lo dice. Si no lo reclama en este tiempo, pasa al siguiente de la cola y el agente vuelve a la cola. __DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew":
+      "Turno de un agente: renovarlo cada, en minutos",
+    "set.server.gate_mcp_renew.d":
+      "Cada cuánto se pide a un agente que tiene un turno que lo renueve mientras trabaja. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "Turno de un agente: caduca sin renovar tras, en minutos",
+    "set.server.gate_mcp_lapse.d":
+      "Un turno que un agente tiene y no renueva en este tiempo, pasada su estimación más el margen, pasa al siguiente de la cola. La campana lo dice. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "Turno de un agente: margen tras su estimación, en minutos",
+    "set.server.gate_mcp_grace.d":
+      "Un turno sin renovar se mantiene hasta pasar su estimación en este tiempo. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_class_order": "Clases de turno, de mayor a menor",
+    "set.server.gate_class_order.d":
+      "Separadas por comas, por ejemplo release, lane, other. Una ejecución en espera de una clase mayor empieza antes; dentro de una clase, por orden de llegada. Una ejecución que tiene su turno nunca se detiene. Vacío: orden de llegada para todas. __DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "Clase de turno de cada proyecto",
+    "set.server.gate_class_map.d":
+      "Separadas por comas: <proyecto>=<clase>, label:<patrón>=<clase> (* vale por cualquier texto) y *=<clase> para los demás proyectos. Sin *, la última clase. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "Horarios de las clases de turno",
+    "set.server.gate_class_windows.d":
+      "Separados por comas: <clase>=HH:MM-HH:MM/<minutos>, en la hora de esta máquina. Fuera de su horario, una ejecución de esa clase estimada en al menos esos minutos espera mientras una de clase mayor tiene turno o espera; si no hay ninguna, empieza enseguida. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
+    "set.server.gate_runners": "Tokens de runners de CI",
+    "set.server.gate_runners.d":
+      "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
+    "set.server.gate_boxes": "Máquinas de pruebas",
+    "set.server.gate_boxes.d":
+      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check":
+      "Espera de la comprobación de una máquina, en segundos",
+    "set.server.gate_box_check.d":
+      "Cuánto espera Den la respuesta de una máquina de pruebas cuando está a punto de darle un turno. Sin respuesta, la máquina se omite. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck":
+      "Una máquina omitida se comprueba de nuevo tras, en segundos",
+    "set.server.gate_box_recheck.d":
+      "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
+    "set.server.report_screenshot_days": "Capturas de informes, se guardan",
+    "set.server.report_screenshot_days.d":
+      "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.report_screenshot_max":
+      "Capturas de informes, la más grande guardada",
+    "set.server.report_screenshot_max.d":
+      "La captura con las zonas tapadas más grande que __DEN_TITLE__ guarda con un informe. Una mayor se rechaza antes de enviar nada. __DEN_CLI__ config reports.screenshot_max_mb=8",
+    "set.server.report_screenshot_hub_max":
+      "Capturas de informes, la más grande enviada a Hub",
+    "set.server.report_screenshot_hub_max.d":
+      "La captura con las zonas tapadas más grande que __DEN_TITLE__ envía a Hub. Una mayor se guarda aquí igualmente, y el informe se envía igual. __DEN_CLI__ config reports.hub_screenshot_max_mb=6",
+    "set.server.report_screenshot_hub_wait":
+      "Capturas de informes, espera a Hub",
+    "set.server.report_screenshot_hub_wait.d":
+      "Cuánto espera __DEN_TITLE__ a que Hub reciba la captura de un informe. Pasado ese tiempo, la captura se guarda aquí, y el informe ya está enviado. __DEN_CLI__ config reports.hub_timeout_seconds=10",
     "set.server.report_visibility_cache":
       "Informe: visibilidad del repositorio guardada durante",
     "set.server.report_visibility_cache.d":
@@ -916,7 +1095,7 @@
     "set.server.report_visibility_wait":
       "Informe: espera de la visibilidad del repositorio",
     "set.server.report_visibility_wait.d":
-      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice público, y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
+      "Cuánto espera Informe a que GitHub diga si un repositorio es público o privado. Pasado este tiempo, dice que no se sabe (con el aviso), y la respuesta se ve la próxima vez. __DEN_CLI__ config feedback.visibility_timeout_seconds=3",
     "set.server.report_visibility_retry":
       "Informe: reintento de la visibilidad del repositorio",
     "set.server.report_visibility_retry.d":
@@ -930,9 +1109,21 @@
     "set.agents.pane_reconnect_wait": "Espera máxima entre intentos",
     "set.agents.pane_reconnect_wait.d":
       "El primer intento espera 1 s y cada espera se duplica, hasta este valor. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.shell_path_wait": "Espera al PATH del shell",
+    "set.agents.shell_path_wait.d":
+      "Cuánto espera __DEN_TITLE__ a que tu shell diga su PATH al buscar las CLI de agentes: el PATH que recibe un shell nuevo, con sus archivos de inicio. Pasado este tiempo, busca en los lugares habituales. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.hook_wait": "Espera de los hooks de agente",
+    "set.agents.hook_wait.d":
+      "Cuánto esperan los hooks de un agente a __DEN_TITLE__ en cada intento cuando le avisan de que el agente te necesita o revisan la bandeja de Hub. Una máquina ocupada puede tardar en responder. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+    "set.agents.hook_retries": "Reintentos de los hooks de agente",
+    "set.agents.hook_retries.d":
+      "Cuántas veces más lo intenta el hook de un agente cuando __DEN_TITLE__ no respondió a tiempo o rechazó la llamada. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.retries=2",
+    "set.agents.hook_backoff": "Pausa de los hooks de agente",
+    "set.agents.hook_backoff.d":
+      "Cuánto espera el hook de un agente antes de su primer reintento. Cada pausa siguiente se duplica. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "Compactación repetida: compactaciones",
     "set.agents.compaction_loop.d":
       "Cuántas compactaciones automáticas puede tener un agente dentro de los minutos de abajo antes de que la campana avise de que se compacta una y otra vez. Una campana por episodio. __DEN_CLI__ config agent_context.compaction_loop_count=3",
@@ -965,6 +1156,10 @@
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
     "addr.empty": "Escribe primero una dirección.",
+    "addr.loopback":
+      "{url} solo se abre en esta máquina: otros dispositivos no llegan a ella.",
+    "addr.adopt": "Hacer de {alias} la dirección de __DEN_TITLE__",
+    "addr.adopted": "Guardada: {url} es ahora la dirección.",
     "set.workspace.approvals_policy": "Escrituras de los agentes aquí",
     "set.workspace.approvals_policy.d":
       "Lo que un agente de este proyecto puede hacer sin tu Permitir, por encima de Escrituras de agentes. Una escritura que amplía lo que un agente puede hacer, toca secretos, borra datos o gasta dinero siempre pregunta.",
@@ -1098,6 +1293,11 @@
     "hubgh.none": "ningún repo (sin acceso)",
     "hubgh.give": "Dar acceso a Den Hub",
     "hubgh.change": "Cambiar repos",
+    "hubgh.error":
+      "Den Hub no pudo comprobar {org} en GitHub: {reason}. Inténtalo más tarde.",
+    "hubgh.errorNoReason":
+      "Den Hub no pudo comprobar {org} en GitHub. Inténtalo más tarde.",
+    "hubgh.retry": "Comprobar de nuevo",
     "set.distribution.hub_github": "Acceso de Den Hub a GitHub",
     "set.agents.hub_github": "Acceso de Den Hub a GitHub",
     "hubla.noProjects": "Aún no hay proyectos.",
@@ -1148,7 +1348,28 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "set.access.approveNeedsBrowser":
+      "Para aprobar un dispositivo hace falta un navegador con la sesión iniciada. Vuelve a iniciar sesión en esta página y apruébalo.",
+    "set.access.approveNotAgent":
+      "Solo una persona aprueba un dispositivo, desde su propio navegador con la sesión iniciada.",
+    "set.access.wrongCode":
+      "Ese código no coincide con el de la pantalla de ese ordenador. Revísalo y escríbelo de nuevo.",
+    "set.access.tooManyTries":
+      "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+    "set.access.ended": "Esa solicitud terminó o caducó. No se permitió nada.",
     "set.access.pair": "Emparejar un dispositivo",
+    "set.access.pair_requests":
+      "Solicitudes nuevas de inicio de sesión por dirección, por minuto",
+    "set.access.pair_requests.d":
+      "Cuántos dispositivos nuevos puede pedir una dirección por minuto para iniciar sesión. Los demás se rechazan hasta que pase el minuto. __DEN_CLI__ config web.pair_requests_per_minute=30",
+    "set.access.approve_attempts": "Códigos incorrectos permitidos al aprobar",
+    "set.access.approve_attempts.d":
+      "Cuántos códigos incorrectos se aceptan al aprobar un dispositivo en el intervalo de abajo antes de esperar. __DEN_CLI__ config web.approve_attempts=10",
+    "set.access.approve_window":
+      "Intervalo de códigos incorrectos, en segundos",
+    "set.access.approve_window.d":
+      "Durante cuánto tiempo se cuentan los códigos incorrectos. Cuando pasa, se puede volver a intentar aprobar. __DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
     "set.distribution.orgs": "Etiquetas de org",
@@ -1202,6 +1423,8 @@
     "ag.stopped": "Agente {id} detenido",
     "ag.stillStopping": "{id} todavía se está deteniendo",
     "ag.resumedFresh": "{id}: aún no hay nada que reanudar; se inició de nuevo",
+    "ag.resumedHandoff":
+      "{id}: su conversación nunca se escribió; se inició de nuevo desde su último traspaso",
     "ag.inactive": "El proyecto {ws} no está activo",
     "ag.otherTabs.one": "{n} pestaña de otros proyectos oculta",
     "ag.otherTabs": "{n} pestañas de otros proyectos ocultas",
@@ -1215,6 +1438,9 @@
     "ag.state.interrupted": "interrumpido",
     "ag.why.stopped": "Lo detuviste a las {time}",
     "ag.why.interrupted": "Interrumpido: {name} se reinició",
+    "ag.why.restartFailed": "No volvió tras un reinicio: {why}",
+    "ag.why.trustDeclined":
+      "No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "ag.why.exited": "Salió",
     "ag.why.exitedCode": "Salió (código {code})",
     "ag.fresh": "Empezar de cero",
@@ -1232,6 +1458,7 @@
     "ag.relaunch": "Relanzar ahora",
     "ag.relaunchName": "Relanzar {id} ahora",
     "ag.relaunched": "{id} relanzado desde su traspaso",
+    "ag.relaunchHandoff": "Relanzar desde su último traspaso",
     "ag.rc.autoAsk":
       "Toca rotar ({why}). Den le pide el traspaso cuando esté libre y luego lo relanza.",
     "ag.rc.autoReady":
@@ -1460,14 +1687,22 @@
     "pair.title": "¿Permitir este equipo?",
     "pair.what": "{device} {client} quiere iniciar sesión en Den.",
     "pair.aDevice": "Un navegador",
+    "pair.local": "en este ordenador, por localhost",
     "pair.help":
-      "Permítelo solo si este código aparece en la pantalla de ese equipo.",
+      "Escribe el código que se muestra en la pantalla de ese ordenador. Permite solo un ordenador en el que estés iniciando sesión tú.",
     "pair.allow": "Permitir",
     "pair.allowed": "Ese equipo ya inició sesión.",
     "pair.ended":
       "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
     "pair.expired": "Ese código caducó. No se permitió nada.",
     "pair.close": "Cerrar",
+    "pair.codeLabel": "Código en la pantalla de ese ordenador",
+    "pair.age": "Lo pidió hace {n} min.",
+    "pair.ageNow": "Lo pidió ahora mismo.",
+    "pair.fromLogin": "Del web login ejecutado a las {time}.",
+    "pair.wrong":
+      "Ese código no coincide con el de la pantalla de ese ordenador. Revísalo y escríbelo de nuevo.",
+    "pair.busy": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
     "ap.do.workspace_create": 'Crear el proyecto "{name}"',
     "ap.do.repo_add":
       'Añadir el repositorio de {path} al proyecto "{workspace}"',
@@ -1497,6 +1732,40 @@
       "La clave se muestra una vez, aquí, después de que lo permitas. Den guarda solo su hash.",
     "ap.det.embed_key_create.revoke":
       "Puedes revocarla cuando quieras en Ajustes › Incrustación.",
+    "ap.do.gate_runner_token_create":
+      "Crear un token solo para turnos de pruebas para el runner de CI {name}",
+    "ap.det.gate_runner_token_create.reach":
+      "Crea un token para el runner de CI {name}. Solo puede pedir, renovar y devolver turnos de pruebas en esta máquina: nada más en Den.",
+    "ap.det.gate_runner_token_create.onceAgent":
+      "El token va una vez a {agent}, el agente que lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
+    "ap.det.gate_runner_token_create.once":
+      "El token va una vez a quien lo pidió, y no se vuelve a mostrar. Den guarda solo su hash.",
+    "ap.det.gate_runner_token_create.revoke":
+      "Puedes revocarlo cuando quieras en Ajustes, en Tokens de runners de CI.",
+    "ap.do.gate_box_set": "Reemplazar la máquina de pruebas {name}",
+    "ap.do.gate_box_set.new": "Añadir la máquina de pruebas {name}",
+    "ap.do.gate_box_remove": "Quitar la máquina de pruebas {name}",
+    "ap.det.gate_box_set.adds":
+      "Añade la máquina de pruebas {name}. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.replaces":
+      "Reemplaza la máquina de pruebas {name} con estos ajustes. Sus turnos de navegador reciben ejecuciones de pruebas de los agentes.",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "Puerto SSH: {v}",
+    "ap.det.gate_box_set.ssh_identity": "Archivo de clave SSH: {v}",
+    "ap.det.gate_box_set.playwright": "Dirección de Playwright: {v}",
+    "ap.det.gate_box_set.slots": "Turnos de navegador: {v}",
+    "ap.det.gate_box_set.hold_file": "Archivo de pausa: {v}",
+    "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
+    "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.host_restart":
+      "Reiniciar el host de terminales cuando los agentes estén libres",
+    "ap.det.host_restart.wait":
+      "Espera a que ningún agente esté a mitad de turno (como máximo {min} min) y reinicia el host de terminales con el Den instalado.",
+    "ap.det.host_restart.resume":
+      "Los agentes que ejecutaba continúan donde estaban; los terminales abiertos se cierran. El registro de actividad dice cómo fue.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
@@ -1513,6 +1782,13 @@
     "ap.hc.name": "Nombre en Hub: {name}",
     "ap.hc.owner":
       "Un propietario en Hub lo permite allí; Den vincula el proyecto en cuanto lo haga.",
+    "ap.do.hub_link": "Vincular el proyecto {project} al proyecto de Hub {hub}",
+    "ap.hl.project": "Proyecto: {project}",
+    "ap.hl.now": "Ahora: {hub}",
+    "ap.hl.nowNone": "Ahora: sin vincular a un proyecto de Hub",
+    "ap.hl.then": "Después: {hub}",
+    "ap.hl.filed":
+      "El trabajo de sus agentes en Hub se archiva allí desde su próxima llamada.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":
@@ -1774,6 +2050,8 @@
       "Abrir una terminal en la carpeta de este proyecto, en Den",
     "ag.term.started": "Terminal abierta en {w}",
     "ag.term.failed": "Den no pudo abrir una terminal: {e}",
+    "ag.term.ptyFailed":
+      "Den no pudo abrir una terminal: esta máquina no le dio un PTY ({e}). Cierra las terminales que ya no uses o ejecuta doctor.",
     "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
     "ws.termHere": "Terminal aquí",
     "kind.agent": "Agente",
@@ -1788,6 +2066,7 @@
     "ag.waiting.permission": "necesita permiso",
     "ag.waiting.input": "te espera",
     "ag.waiting.asked": "te preguntó",
+    "ag.waiting.trust": "En espera: ¿confiar en esta carpeta?",
     "bell.title": "Notificaciones",
     "bell.n": "Notificaciones: {n} sin leer",
     "bell.n.one": "Notificaciones: {n} sin leer",
@@ -1823,15 +2102,74 @@
     "bell.pickBody.one":
       "Den no sabe qué proyecto de Hub le corresponde. Haz clic para elegir. No se guarda nada de él hasta entonces.",
     "bell.m.pick.one": "{n} proyecto necesita tu elección",
+    "bell.m.hostRestarted":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. Terminales que terminaron: {terminals}.",
+    "bell.m.hostRestartedAgents":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha.",
+    "bell.m.hostRestartedTerminals":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. No había ningún agente en marcha. Terminales que terminaron: {terminals}.",
+    "bell.m.hostRestartedNone":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. No había ningún agente ni terminal en marcha.",
+    "bell.m.hostRestartedCut":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. Terminales que terminaron: {terminals}. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
+    "bell.m.hostRestartedAgentsCut":
+      "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
+    "bell.m.trust": "{name}: En espera: ¿confiar en esta carpeta?",
+    "bell.m.trustDeclined":
+      "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
+    "bell.m.heldAllow": "{name} espera tu permiso: {what}",
+    "bell.m.gateLapsed":
+      'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
+    "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
+    "bell.m.notAtPrompt":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
+    "bell.m.notAtPrompt.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente no está en su indicador de entrada",
+    "bell.m.held.busy":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente está ocupado con un turno",
+    "bell.m.held.busy.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente está ocupado con un turno",
+    "bell.m.held.trust":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: hay una pregunta sobre confiar en su carpeta en su pantalla",
+    "bell.m.held.trust.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: hay una pregunta sobre confiar en su carpeta en su pantalla",
+    "bell.m.held.permission":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: hay una pregunta de permiso en su pantalla",
+    "bell.m.held.permission.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: hay una pregunta de permiso en su pantalla",
+    "bell.m.held.approval":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: espera a que permitas un cambio",
+    "bell.m.held.approval.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: espera a que permitas un cambio",
+    "bell.m.held.paused":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: está en pausa tras un bucle de compactación hasta que sigas",
+    "bell.m.held.paused.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: está en pausa tras un bucle de compactación hasta que sigas",
+    "bell.m.held.stopped":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en marcha",
+    "bell.m.held.stopped.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: el agente no está en marcha",
+    "bell.m.held.owner":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den aún pregunta a Hub quién eres",
+    "bell.m.held.owner.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: Den aún pregunta a Hub quién eres",
+    "bell.m.held.unread":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.held.unread.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.hubNoAnswer":
+      "{name}: {n} comentarios de Hub escritos, aún sin respuesta tras {m} min",
+    "bell.m.hubNoAnswer.one":
+      "{name}: {n} comentario de Hub escrito, aún sin respuesta tras {m} min",
     "bell.m.crashLoop":
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
@@ -1843,6 +2181,12 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "bell.m.updateWaitsWhat":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
+    "bell.m.updatedSecurity":
+      "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.backNoteHeld":
+      "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
+    "bell.m.restartedWhileWorking":
+      "__DEN_TITLE__ se reinició para terminar una actualización mientras {agent} trabajaba",
     "bell.m.updateWaitsAskedWhat":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta: {what} (desde {since})",
     "bell.m.pinNotCommitted":
@@ -1861,6 +2205,18 @@
       "__DEN_TITLE__ {v}: confirmar su versión fijada espera tu permiso",
     "bell.m.pinNotCommittedAllow":
       "__DEN_TITLE__ {v} funciona aquí, pero su nueva versión fijada no está confirmada: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubCommentsRejected":
+      "Los comentarios de Hub no llegan: Hub no aceptó el token de esta instalación (Ajustes › Hub: Volver a conectar)",
+    "bell.m.hubCommentsForbidden":
+      "Los comentarios de Hub no llegan: Hub rechazó la entrega de comentarios de esta instalación",
+    "bell.m.hubCommentsRefused":
+      "Los comentarios de Hub no llegan: Hub no tiene entrega de comentarios para esta instalación",
+    "bell.m.hubCommentsUnreachable":
+      "Los comentarios de Hub no llegan: __DEN_TITLE__ no puede conectar con Hub",
+    "bell.m.hubCommentsClosed":
+      "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
+    "bell.m.hubCommentsSilent":
+      "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
@@ -1892,6 +2248,8 @@
     "ag.ins.tip":
       "Sus archivos de instrucciones ocupan {size}: más del {share}% de su contexto. El más grande es {path} ({big}).",
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
+    "ag.hub.notAtPrompt":
+      "En espera: el agente no está en su indicador de entrada",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
     "tx.error": "Error",
@@ -2086,11 +2444,12 @@
       "Lo muestran su pestaña, su fila y la cabecera del panel; el id {id} no cambia. Los demás agentes lo ven como {peer} desde su próximo inicio o reanudación. Vacío: vuelve a {id}.",
     "ag.rn.go": "Cambiar el nombre",
     "ag.rn.cancel": "Cancelar",
-    "ag.job.h": "Hay una tarea en curso",
+    "ag.job.h": "Hay una tarea en segundo plano en curso",
     "ag.job.q":
-      "{id} tiene en curso una tarea que inició ({min} min), como una ejecución de pruebas. ¿Reiniciar de todos modos? Eso termina la tarea.",
+      "{id}: una tarea en segundo plano que inició sigue en curso ({min} min), como una ejecución de pruebas. ¿Reiniciar de todos modos? Eso termina la tarea.",
     "ag.job.go": "Reiniciar de todos modos",
-    "ag.job.held": "{id} tiene una tarea en curso: aún no se ha reiniciado",
+    "ag.job.held":
+      "{id}: una tarea en segundo plano que inició sigue en curso: aún no se ha reiniciado",
     "ag.mv.item": "Mover a otro proyecto…",
     "ag.ord.up": "Subir",
     "ag.ord.down": "Bajar",
@@ -2127,6 +2486,20 @@
     "gate.endGo": "Terminar turno",
     "gate.rowHolds": "turno: {kind}",
     "gate.rowWaits": "espera turno: {kind}",
+    "gate.priority": "prioridad de versión: {reason}",
+    "gate.priorityWaits":
+      "prioridad de versión, después de la anterior: {reason}",
+    "gate.onBox": "en la máquina de pruebas {box}",
+    "gate.anyBox": "aquí o en una máquina de pruebas",
+    "gate.boxesH": "Máquinas de pruebas",
+    "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
+    "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
+    "gate.boxDown": "{box}: omitida, no responde ({reason})",
+    "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
+    "gate.boxSkip": "no puede usar {box}: {reason}",
+    "gate.yielded": "Dejó pasar a {to}",
+    "gate.class": "Clase: {name}",
+    "gate.window": "espera su horario {window}",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
@@ -2169,6 +2542,19 @@
       "Se ejecuta como su propia CLI en el proyecto: las herramientas y los modos de permiso de Den llegarán más adelante.",
     "ag.rt.notInstalled": "no instalado",
     "ag.rt.needsArgv": "la persona no tiene plantilla argv",
+    // issue 479: a quarantined runtime copy is never started.
+    "ag.rt.quarantined":
+      "{name} no puede iniciarse: macOS puso esta copia en cuarentena, así que Den no la ejecutó y macOS no mostró ningún aviso:",
+    "ag.rt.useOther": "Usar otra copia encontrada:",
+    "ag.rt.clearSelf":
+      "O quítala tú en la máquina de Den: ejecútala una vez desde una terminal allí y permítela cuando macOS lo pregunte. Den nunca quita la cuarentena.",
+    "ag.rt.copyPath": "Copiar ruta",
+    "ag.rt.openTerminal": "Abrir una terminal allí",
+    "ag.rt.copied": "Copiado",
+    "ag.rt.copyByHand": "Seleccionada: cópiala con ⌘C o Ctrl+C",
+    "ag.rt.openRuntimes": "Abrir Ajustes › Runtimes",
+    "ag.rt.checkAgain": "Comprobar de nuevo",
+    "ag.rt.notDone": "No funcionó",
     "pj.expand": "Expandir la lista de proyectos",
     "gr.act.autostartOff": "Inicio automático: desactivado (activar)",
     "gr.act.autostartOn": "Inicio automático: activado (desactivar)",
@@ -2490,6 +2876,24 @@
     "set.ui.appKeyUnused": "nunca usada",
     "set.ui.appKeyRevoked": "revocada {when}",
     "set.ui.appKeyRevoke": "Revocar",
+    "set.ui.runnerNone": "Aún no hay tokens de runner.",
+    "set.ui.boxName": "Nombre",
+    "set.ui.boxSsh": "ssh (usuario@host)",
+    "set.ui.boxPort": "Puerto ssh",
+    "set.ui.boxKey": "Archivo de clave ssh",
+    "set.ui.boxPw": "Servidor de Playwright (ws://)",
+    "set.ui.boxSlots": "Turnos de navegador",
+    "set.ui.boxHold": "Archivo de pausa (en la máquina)",
+    "set.ui.boxScale": "Escala de tiempo",
+    "set.ui.boxSave": "Guardar máquina",
+    "set.ui.boxMem": "Memoria libre a mantener (MB)",
+    "set.ui.boxPwv": "Versión de Playwright en la máquina",
+    "set.ui.boxNone":
+      "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
+    "set.ui.boxSlotsN": "{n} turnos de navegador",
+    "set.ui.boxHoldIs": "archivo de pausa {path}",
+    "set.ui.boxScaleIs": "tiempo ×{n}",
+    "set.ui.boxRemove": "Quitar",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",
@@ -2497,10 +2901,20 @@
     "set.ui.saveOrigins": "Guardar lista",
     "set.ui.approve": "Aprobar",
     "set.ui.deny": "Denegar",
+    "set.ui.codeLabel": "Código en su pantalla",
+    "set.ui.fromLogin": "del web login ejecutado a las {time}",
     "set.ui.noWaiting":
       "No hay ordenadores en espera. Una página sin iniciar sesión en otro ordenador muestra un código; aparece aquí para aprobarlo.",
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
+    "set.ui.testInstallYes": "Esta es una instalación de prueba.",
+    "set.ui.testInstallNo":
+      "No es una instalación de prueba. Las comprobaciones en vivo no pueden iniciar sesión aquí. Una persona marca una instalación de prueba a mano en la configuración de la distribución (web.test_install: true).",
+    "set.ui.testPersonReady": "La persona de prueba está configurada.",
+    "set.ui.testPersonMissing": "La persona de prueba aún no está configurada.",
+    "set.ui.testPersonSetUp": "Configurar persona de prueba",
+    "set.ui.testInstallSignedIn":
+      "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
       "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
     "set.ui.edgeStart": "Iniciar el edge",
@@ -2863,7 +3277,7 @@
     "set.cli.web_port.d":
       "web.port en config/local/user.yml tiene prioridad sobre el de la distribución. Se aplica la próxima vez que se inicie el servidor web.", // words-ok: the en string's own word, translated
     "set.cli.signin.d":
-      "En localhost no se pide iniciar sesión. A través del edge, un navegador inicia sesión salvo que el edge indique que es esta máquina (web.edge_unattested: local trata como local uno que no puede situar), y desde otra máquina siempre: Iniciar sesión con GitHub o un enlace de un solo uso (__DEN_CLI__ web login). Ajustes › Acceso lista los navegadores con la sesión iniciada.",
+      "Cada navegador inicia sesión una vez, también en esta máquina, y la sesión se mantiene. Aquí, __DEN_CLI__ web up abre un enlace de acceso de un solo uso; un navegador que no ha iniciado sesión puede mirar pero no cambiar nada. Desde otra máquina: Iniciar sesión con GitHub o un enlace de un solo uso (__DEN_CLI__ web login). Ajustes › Acceso lista los navegadores con la sesión iniciada.", // words-ok: "iniciar sesión" is how Spanish says sign in
     "set.cli.sudo.d":
       "Solo se usa cuando un comando que ejecuta Den necesita sudo, y solo se pide entonces. No es un inicio de sesión: nada más lo necesita.",
     "set.cli.op_token.d":
@@ -2873,7 +3287,7 @@
     "set.access.devices.d":
       "Los navegadores con la sesión iniciada en este Den. Revocar cierra uno al instante. __DEN_CLI__ web logout --all los cierra todos.",
     "set.access.waiting.d":
-      "Ordenadores cuya página sin iniciar sesión muestra un código. Aprueba uno y su página inicia sesión sola; el código dura 10 minutos. __DEN_CLI__ web approve <code> hace lo mismo desde la línea de comandos.",
+      "Ordenadores cuya página sin iniciar sesión muestra un código. Escribe el código que muestra la pantalla de ese ordenador para aprobarlo, y su página inicia sesión sola; una solicitud dura 10 minutos. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
       "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
     "set.embed.app_keys.d":
@@ -2890,6 +3304,8 @@
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_install.d":
+      "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
     "set.distribution.brand.d":
       "brand.name: el nombre en las páginas, el banner de la CLI y la ayuda.",
     "set.distribution.github_org.d":
@@ -2916,6 +3332,11 @@
     "set.ui.rt.src.well-known": "detectado · carpeta de instalación",
     "set.ui.rt.src.interactive-shell": "detectado · shell interactivo",
     "set.ui.rt.setPath": "Definir ruta…",
+    "set.ui.rt.quarantined": "en cuarentena, no se ejecutó",
+    "set.ui.rt.alsoFound": "También encontrado:",
+    "set.ui.rt.versionUnknown": "versión desconocida",
+    "set.ui.rt.useThis": "Usar este",
+    "set.ui.rt.useThisFor": "Usar {path} para {name}",
     "set.ui.rt.clear": "Quitar",
     "set.ui.rt.pathToIn": "Ruta de {name} para {ws}",
     "set.ui.rt.pathToAll": "Ruta de {name} (todos los proyectos)",
@@ -2988,7 +3409,7 @@
       "El puerto {port} lo ocupa {owner}, así que {host} va a {owner}.",
     "edgeAddr.banner.unknown":
       "El puerto {port} lo usa algo que __DEN_TITLE__ no sabe nombrar, así que {host} va allí.",
-    "edgeAddr.banner.none": "Todavía nada responde en {host}.",
+    "edgeAddr.banner.none": "Aún no se puede llegar: nada responde en {host}.",
     "edgeAddr.banner.fix": "Arréglalo en Edge",
     "edgeAddr.banner.dismiss": "Descartar",
     "edgeAddr.card.title":
@@ -3002,7 +3423,9 @@
     "edgeAddr.card.unknown":
       "Lo ocupa algo que __DEN_TITLE__ no sabe nombrar. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
     "edgeAddr.card.none":
-      "Todavía nada responde en {wanted}. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+      "Aún no se puede llegar: nada responde en {wanted}. __DEN_TITLE__ sirve en {address} en su lugar. Comprobado {time}.",
+    "edgeAddr.sub.held": "no está en marcha: el puerto {port} está en uso",
+    "edgeAddr.sub.none": "aún no se puede llegar",
     "edgeAddr.kind.container": "contenedor de Docker",
     "edgeAddr.kind.process": "proceso",
     "edgeAddr.what": "¿Qué quieres hacer?",

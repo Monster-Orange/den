@@ -14,16 +14,17 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
-import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
 import { readWebSecret } from "../../../src/shared/web-secret.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { writeWebOwner } from "../../../src/shared/web-owner.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -38,7 +39,7 @@ let server: ChildProcess;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch({
+    browser = await launchBrowser(chromium, {
       args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
     });
   } catch (err) {
@@ -148,12 +149,8 @@ async function edgePage(): Promise<{ ctx: BrowserContext; p: Page }> {
  * device in needs a signed-in browser holding its approval key).
  */
 async function claimIn(page: Page): Promise<void> {
-  await page.goto(
-    claimLink(
-      `http://localhost:${port}`,
-      mintClaimCode(readWebSecret(stateDir)!),
-    ),
-  );
+  // Issue 819: first run, then approved by a signed-in browser.
+  await signInPage(page, stateDir, `http://localhost:${port}`);
   await page.waitForFunction(
     () => localStorage.getItem("den.approveKey")?.length === 43,
   );
@@ -301,9 +298,10 @@ describe("Settings › Access", () => {
         expect.stringMatching(
           /Chrome on \w+.*signed in with GitHub \(@octo-owner\) · created just now · from .* · last seen just now/,
         ),
-        // 0.4.12: this browser, signed in with the setup link, with Revoke.
+        // This browser, with Revoke (issue 819: approved from a signed-in
+        // browser, or on first run its one-time link).
         expect.stringMatching(
-          /This device.*claimed with a setup link · created just now.*Revoke/,
+          /This device.*(approved with a code|signed in with a one-time link) · created just now.*Revoke/,
         ),
       ]),
     );

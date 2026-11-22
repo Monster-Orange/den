@@ -17,13 +17,14 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vm from "vm";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { kitPseudo } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 let browser: Browser | null = null;
@@ -122,11 +123,7 @@ beforeAll(async () => {
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await pw[engine].connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -177,7 +174,7 @@ async function open(next: string): Promise<Page> {
       document.head.appendChild(st);
     });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, next));
+  await signInPage(p, s!.stateDir, s!.base, next);
   return p;
 }
 
@@ -355,7 +352,7 @@ describe("den#171: Edge, Tests, Release, Logs, Environments and Services in es a
           const p = await browser.newPage({
             viewport: { width: 1440, height: 1000 },
           });
-          await p.goto(signInUrl(s!.stateDir, s!.base, url));
+          await signInPage(p, s!.stateDir, s!.base, url);
           await p.waitForLoadState("networkidle").catch(() => {});
           await p.waitForTimeout(300);
           const shown = await p.evaluate(() => {
@@ -431,7 +428,7 @@ describe("issue 171: values the server sends, in es and ja", () => {
               body: JSON.stringify(EDGE),
             }),
           );
-          await p.goto(signInUrl(s!.stateDir, s!.base, url));
+          await signInPage(p, s!.stateDir, s!.base, url);
           if (url === "/edge")
             await p.waitForSelector("#edge-body:not([aria-busy])");
           else {

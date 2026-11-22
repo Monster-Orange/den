@@ -1,0 +1,184 @@
+/* den-ui: the filter bar's look (filter-bar.js, issue 552). Tokens only:
+   no colour of its own. Linked, never injected: clean under style-src
+   'self'. The row (the host's start node, Filters, the host's end nodes),
+   the chosen chips under it, the facet panel under them. */
+.den-fb {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  font-family: var(--sans);
+  font-size: var(--fs-s);
+  color: var(--text);
+}
+.den-fb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.den-fb-start {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.den-fb-toggle,
+.den-fb-end {
+  flex: none;
+}
+/* Filters, a chip, Clear all, a facet's Clear and an option: one button. */
+.den-fb-toggle,
+.den-fb-chip,
+.den-fb-clear-all,
+.den-fb-facet-clear,
+.den-fb-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-height: var(--tap-min);
+  margin: 0;
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: var(--fs-s);
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+.den-fb-toggle[aria-expanded="true"] {
+  background: var(--sunken);
+}
+.den-fb-chip,
+.den-fb-opt {
+  border-radius: 999px;
+}
+/* A chosen value: an accent edge; the facet's name muted before it. */
+.den-fb-chip {
+  border-color: var(--accent);
+}
+.den-fb-chip-facet,
+.den-fb-n {
+  color: var(--muted);
+}
+.den-fb-x {
+  color: var(--muted);
+}
+/* Clear all and a facet's Clear: quiet, link-like buttons. */
+.den-fb-clear-all,
+.den-fb-facet-clear {
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent-text);
+}
+.den-fb-toggle:hover,
+.den-fb-chip:hover,
+.den-fb-opt:hover:not([disabled]) {
+  border-color: var(--accent);
+}
+.den-fb-clear-all:hover,
+.den-fb-facet-clear:hover {
+  text-decoration: underline;
+}
+.den-fb-toggle:focus-visible,
+.den-fb-chip:focus-visible,
+.den-fb-clear-all:focus-visible,
+.den-fb-facet-clear:focus-visible,
+.den-fb-opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* The chips: a list in a row of their own, wrapping on a wide page. */
+.den-fb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.den-fb-chips > li {
+  flex: none;
+}
+/* The panel: a facet per column, as many as fit. */
+.den-fb-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.den-fb-panel[hidden] {
+  display: none;
+}
+.den-fb-facet {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+}
+.den-fb-facet-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+}
+.den-fb-facet-name {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.den-fb-facet-clear {
+  padding: 0 var(--space-2);
+}
+.den-fb-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.den-fb-opt[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--sunken);
+  font-weight: 500;
+}
+.den-fb-opt[disabled] {
+  cursor: not-allowed;
+  border-style: dashed;
+  color: var(--muted);
+}
+/* A phone or a narrow pane: the start node (a find box) on its own line,
+   Filters fills the next; the chips scroll in their own row. */
+@media (max-width: 720px) {
+  .den-fb-start {
+    flex-basis: 100%;
+  }
+  .den-fb-toggle {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .den-fb-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 2px;
+  }
+}
+/* Touch and narrow: every control a 44px target. */
+@media (max-width: 720px), (pointer: coarse) {
+  .den-fb-toggle,
+  .den-fb-chip,
+  .den-fb-clear-all,
+  .den-fb-facet-clear,
+  .den-fb-opt,
+  .den-fb-facet-head {
+    min-height: var(--tap);
+  }
+}

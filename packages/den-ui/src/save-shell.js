@@ -1,5 +1,5 @@
 /**
- * den-ui 0.7.7 (issue 394): a rail change saved so that leaving the page
+ * den-ui 0.10.0 (issue 394): a rail change saved so that leaving the page
  * can't lose it. A pin, an unpin, collapse, an order or the dock is saved
  * as the person goes on clicking; a plain fetch is cancelled when the page
  * unloads, and the next page then shows the server's older copy.

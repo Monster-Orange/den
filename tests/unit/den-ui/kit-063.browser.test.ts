@@ -27,6 +27,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -39,11 +40,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -128,6 +125,15 @@ async function open(
 const step = (p: Page) =>
   p.locator("dialog.fb-dlg").evaluate((d) => (d as HTMLElement).dataset.step);
 
+/** Two frames painted since the last change, so a screenshot shows it. */
+const painted = (p: Page) =>
+  p.evaluate(
+    () =>
+      new Promise<void>((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r())),
+      ),
+  );
+
 const PRIMARY = process.platform === "darwin" ? "Meta+Enter" : "Control+Enter";
 
 for (const engine of ["chromium", "webkit"]) {
@@ -156,6 +162,8 @@ for (const engine of ["chromium", "webkit"]) {
       await p.locator("dialog.fb-dlg h2").press("Control+Enter");
       await expect(step(p)).resolves.toBe("review");
       await p.locator("dialog.fb-dlg h2").press(PRIMARY);
+      // Kept: this proves nothing is sent (and Review stays) within a time
+      // after the shortcut; there is no state to wait for.
       await p.waitForTimeout(200);
       await expect(step(p)).resolves.toBe("review");
       expect(
@@ -298,7 +306,11 @@ for (const engine of ["chromium", "webkit"]) {
         const p = await open(b, { width: 1280, height: 800 });
         await p.emulateMedia({ colorScheme: scheme });
         await p.evaluate(() => document.fonts.ready);
-        await p.waitForTimeout(150);
+        await p.waitForFunction(
+          (q) => matchMedia(q).matches,
+          `(prefers-color-scheme: ${scheme})`,
+        );
+        await painted(p);
         // The bar's left end: the mark and the product's name.
         const clip = { x: 0, y: 0, width: 120, height: 40 };
         const before = await p.screenshot({ clip });
@@ -308,12 +320,19 @@ for (const engine of ["chromium", "webkit"]) {
           ).DenUI.update.set({});
         });
         await p.locator(".den-upd .upd-pill").waitFor();
-        await p.waitForTimeout(150);
+        // Settled once the screen reader's status is filled, just after.
+        await p.waitForFunction(
+          () =>
+            (document.querySelector(".den-upd .upd-sr")?.textContent ?? "") !==
+            "",
+        );
+        await painted(p);
         const shown = await p.screenshot({ clip });
         await p.evaluate(() => {
           (document.querySelector(".den-upd") as HTMLElement).hidden = true;
         });
-        await p.waitForTimeout(100);
+        await p.locator(".den-upd .upd-pill").waitFor({ state: "hidden" });
+        await painted(p);
         const hidden = await p.screenshot({ clip });
         expect(shown.equals(before)).toBe(true);
         expect(hidden.equals(shown)).toBe(true);

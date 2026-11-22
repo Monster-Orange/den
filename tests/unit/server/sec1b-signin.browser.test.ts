@@ -22,9 +22,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -39,7 +40,7 @@ let server: ChildProcess;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch({
+    browser = await launchBrowser(chromium, {
       args: [
         `--host-resolver-rules=MAP evil.test 127.0.0.1, MAP ${EDGE} 127.0.0.1`,
       ],
@@ -105,20 +106,28 @@ const signedIn = (p: Page) =>
     return ((await r.json()) as { signedIn?: boolean }).signedIn === true;
   });
 
-describe("no sign-in prompt on loopback (Ward, 2026-11-06)", () => {
-  it("a browser that never signed in: /signin goes on to its page on localhost and 127.0.0.1, with no signed-out page", async () => {
+describe("a sign-in on this machine too (0.4.71)", () => {
+  it("a browser that never signed in: /signin on localhost is the sign-in page, worded for this computer; a page still reads", async () => {
     if (skip()) return;
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 800 },
     });
     const p = await ctx.newPage();
-    for (const host of [`localhost:${port}`, `127.0.0.1:${port}`]) {
-      const r = await p.goto(`http://${host}/signin?next=%2Fsettings`);
-      await p.waitForURL(`http://${host}/settings`);
-      expect([host, r?.status()]).toEqual([host, 200]);
-      expect(await p.locator("#den-signin").count()).toBe(0);
-      expect(await signedIn(p)).toBe(false);
-    }
+    const r = await p.goto(`http://localhost:${port}/signin?next=%2Fsettings`);
+    expect(r?.status()).toBe(401);
+    await p.waitForSelector("#den-signin");
+    expect(await p.textContent("#den-signin-where")).toContain(
+      "runs on this computer",
+    );
+    expect(await signedIn(p)).toBe(false);
+    const page = await p.goto(`http://localhost:${port}/settings`);
+    expect(page?.status()).toBe(200);
+    expect(await signedIn(p)).toBe(false);
+    // Signed in through the one-time link: /signin goes on to its page.
+    await signInPage(p, stateDir, `http://localhost:${port}`, "/");
+    await p.goto(`http://localhost:${port}/signin?next=%2Fsettings`);
+    await p.waitForURL(`http://localhost:${port}/settings`);
+    expect(await signedIn(p)).toBe(true);
     await ctx.close();
   }, 60_000);
 });
@@ -190,7 +199,7 @@ describe("refusal pages start no polls (no /api answers 421 or 401 after load)",
       ),
     );
     expect(await p.locator("#den-signin-local").count()).toBe(0);
-    const r = await p.goto(signInUrl(stateDir, `http://${EDGE}:${port}`, "/"));
+    const r = await signInPage(p, stateDir, `http://${EDGE}:${port}`, "/");
     expect(r?.status()).toBe(200);
     expect(await p.locator("#den-error-page").count()).toBe(0);
     await ctx.close();
@@ -209,7 +218,7 @@ describe("a link from another site", () => {
     const ctx = await browser!.newContext({ extraHTTPHeaders: AWAY });
     const p = await ctx.newPage();
     const den = `http://${EDGE}:${port}`;
-    const r = await p.goto(signInUrl(stateDir, den, "/"));
+    const r = await signInPage(p, stateDir, den, "/");
     expect(r?.status()).toBe(200);
     expect(await signedIn(p)).toBe(true);
     // Another site: a link to Den, and a form that posts to it.

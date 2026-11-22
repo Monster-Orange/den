@@ -35,6 +35,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -62,10 +64,7 @@ beforeAll(async () => {
         ? process.env.DEN_TERMINAL_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -145,6 +144,7 @@ async function page(url: string, stub = true): Promise<Page> {
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript(
     ([v, stubbed]) => {
       try {
@@ -377,7 +377,18 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     expect(String(listed?.name)).toMatch(/:planner$/);
     await p.click("#den-search");
     await p.fill("#den-pal-q", "api spike");
-    await p.waitForSelector('#den-pal-list li[role="option"]');
+    // The sessions arrive after the palette opens; any row that matches
+    // the letters in order (a setting's label can) shows first, so wait
+    // for the agent's row, then check it ranks first.
+    await p
+      .locator("#den-pal-list")
+      .getByRole("option")
+      .filter({
+        has: p.getByText("Agents › north / planner · api spike", {
+          exact: true,
+        }),
+      })
+      .waitFor();
     expect(
       await p
         .locator('#den-pal-list li[role="option"] .den-pal-l')

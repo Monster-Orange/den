@@ -28,6 +28,14 @@ let timer: NodeJS.Timeout | null = null;
 let watch: HubToolsWatch | null = null;
 
 /** The agents Den is restarting now to load Hub's tools (their rows say so). */
+/**
+ * Issue 726: the Hub changed: forget the tool lists seen (the next beat
+ * reads the fresh file).
+ */
+export function dropToolsWatch(): void {
+  watch = null;
+}
+
 export function hubToolsRestarting(): ReadonlySet<string> {
   return new Set(watch?.restarting() ?? []);
 }
@@ -104,7 +112,12 @@ export function startHubToolsWatch(o: {
             if (!r) throw new Error(`agent ${id} is gone`);
             const what = `restart ${id} in ${r.workspace} (at its next idle), same conversation, to load Hub's new tools, by Den itself`;
             try {
-              const s = await ops.restartAgent(d, id, r.workspace, "after-turn");
+              const s = await ops.restartAgent(
+                d,
+                id,
+                r.workspace,
+                "after-turn",
+              );
               recordAction(null, {
                 verb: "agents",
                 detail: s.already

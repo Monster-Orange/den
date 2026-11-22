@@ -1,5 +1,5 @@
 /**
- * den-ui 0.7.7, issue 394: DUI.saveShell keeps a rail change that the
+ * den-ui 0.10.0, issue 394: DUI.saveShell keeps a rail change that the
  * person leaves the page right after. A bare page built from the kit's own
  * file saves a patch to a small server here and, in the same tick, goes to
  * another page. The server reads a save's body only after 300 ms, as a

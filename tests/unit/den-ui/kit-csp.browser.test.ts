@@ -18,6 +18,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -55,10 +56,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "webkit" | "firefox";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -192,7 +190,21 @@ async function open(width: number): Promise<{ p: Page; bad: string[] }> {
   return { p, bad };
 }
 
-const click = (p: Page, sel: string) => p.locator(sel).first().click();
+/** Each control clicked here is the only one on the page. */
+const click = (p: Page, sel: string) => p.locator(sel).click();
+
+/** Resolves once `bad` holds an entry matching `re` (now or when added). */
+function badGets(bad: string[], re: RegExp): Promise<void> {
+  return new Promise((done) => {
+    const push = bad.push.bind(bad);
+    bad.push = (...items: string[]) => {
+      const n = push(...items);
+      if (items.some((s) => re.test(s))) done();
+      return n;
+    };
+    if (bad.some((s) => re.test(s))) done();
+  });
+}
 
 describe("a kit page under script-src 'self'; style-src 'self'", () => {
   it("runs the shell, version chip, What's new, update pill and Report with no violation", async () => {
@@ -226,7 +238,7 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
     await p.evaluate(() =>
       (window as unknown as KitWin).DenUI.update.set({ version: "2.1.0" }),
     );
-    await p.locator(".den-upd").first().waitFor();
+    await p.locator(".den-upd").waitFor();
     await p.evaluate(() => (window as unknown as KitWin).DenUI.update.hide());
     // Report: the top bar's button, the simple adapter, "Filed as #42".
     await click(p, ".den-top [data-den-report]");
@@ -431,12 +443,13 @@ describe("a kit page under script-src 'self'; style-src 'self'", () => {
     if (!browser) return;
     const { p, bad } = await open(1280);
     // An injected <style> is what the policy forbids.
+    const caught = badGets(bad, /style-src/);
     await p.evaluate(() => {
       const s = document.createElement("style");
       s.textContent = "body { color: red }";
       document.head.appendChild(s);
     });
-    await p.waitForTimeout(200);
+    await caught;
     expect(bad.join("\n")).toMatch(/style-src/);
     await p.context().close();
   }, 60_000);

@@ -16,6 +16,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const PS_DELAY_S = 0.8;
@@ -37,7 +38,17 @@ function timed(
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const req = http.get(
-      { host: "127.0.0.1", port, path: p, timeout: 15_000, agent: false },
+      {
+        host: "127.0.0.1",
+        port,
+        path: p,
+        timeout: 15_000,
+        agent: false,
+        // 0.4.71: the history route runs docker: the CLI's token.
+        headers: p.startsWith("/api/service/history")
+          ? denAuth(path.join(tmp, "home"))
+          : {},
+      },
       (res) => {
         let body = "";
         res.on("data", (d: Buffer) => (body += d.toString()));

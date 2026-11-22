@@ -16,12 +16,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -31,7 +32,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -79,7 +80,7 @@ async function open(
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   for (const [glob, fn] of Object.entries(routes)) await p.route(glob, fn);
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
+  await signInPage(p, s!.stateDir, s!.base, path);
   return p;
 }
 
@@ -128,8 +129,11 @@ describe("Den Hub's GitHub access (H5)", () => {
     expect(syncs).toBe(0);
 
     installed = true;
-    await p.goto(
-      signInUrl(s!.stateDir, s!.base, "/settings?hub=installed#distribution"),
+    await signInPage(
+      p,
+      s!.stateDir,
+      s!.base,
+      "/settings?hub=installed#distribution",
     );
     await p.waitForSelector(`${row} [data-hubgh-access="all"]`);
     expect(syncs).toBe(1);

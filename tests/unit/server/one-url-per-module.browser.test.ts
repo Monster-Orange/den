@@ -23,13 +23,14 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { SERVED_PAGES } from "./helpers/served-pages.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 /** Each page once: a `.html` twin serves the same file as its bare path. */
 const PAGES = SERVED_PAGES.filter(
@@ -47,12 +48,7 @@ let latest = "";
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    for (const e of ENGINES)
-      browsers[e] = process.env.DEN_PW_WS
-        ? await pw[e].connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await pw[e].launch();
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -152,7 +148,7 @@ async function loads(
       set.add(u.pathname + u.search);
       seen.set(u.pathname, set);
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, route + (QUERY[route] ?? "")));
+    await signInPage(p, s!.stateDir, s!.base, route + (QUERY[route] ?? ""));
     await p.waitForLoadState("networkidle").catch(() => {});
     if (inject)
       await p.addScriptTag({ type: "module", content: inject }).catch(() => {});

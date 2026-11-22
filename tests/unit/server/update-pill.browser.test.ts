@@ -19,12 +19,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 const browsers: Record<string, Browser | null> = {
@@ -37,11 +38,7 @@ beforeAll(async () => {
     const pw = await import("playwright");
     for (const name of ["chromium", "webkit"] as const) {
       const kind = pw[name];
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
     }
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
@@ -116,7 +113,7 @@ async function open(
     await route.fulfill({ json: { ok: true } });
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, o.path ?? "/agents"));
+  await signInPage(p, s!.stateDir, s!.base, o.path ?? "/agents");
   await p.waitForFunction(() => "denShell" in window, undefined, {
     timeout: 20_000,
   });
@@ -138,8 +135,35 @@ const PILL = ".den-upd .upd-pill";
 
 async function pillShows(p: Page): Promise<void> {
   await p.waitForSelector(PILL, { state: "visible", timeout: 20_000 });
-  // The words settle after the screen reader's status (50 ms).
-  await p.waitForTimeout(150);
+  // The words settle with the screen reader's status, filled just after.
+  await p.waitForFunction(
+    (sel) => (document.querySelector(sel)?.textContent ?? "") !== "",
+    ".den-upd .upd-sr",
+  );
+}
+
+/** Two frames painted since the last change, so a screenshot shows it. */
+async function painted(p: Page): Promise<void> {
+  await p.evaluate(
+    () =>
+      new Promise<void>((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r())),
+      ),
+  );
+}
+
+/** The bar's colour is `colour` and everything in it hidden, as computed. */
+async function barPainted(p: Page, colour: string): Promise<void> {
+  await p.waitForFunction((c) => {
+    const bar = document.querySelector(".den-top")!;
+    return (
+      getComputedStyle(bar).backgroundColor === c &&
+      [...bar.querySelectorAll("*")].every(
+        (e) => getComputedStyle(e).visibility === "hidden",
+      )
+    );
+  }, colour);
+  await painted(p);
 }
 
 type Rect = { left: number; top: number; right: number; bottom: number };
@@ -200,7 +224,7 @@ for (const name of ["chromium", "webkit"]) {
         await p.$$eval(`${PILL} > *`, (els) =>
           els.forEach((e) => ((e as HTMLElement).style.visibility = "hidden")),
         );
-        await p.waitForTimeout(100);
+        await barPainted(p, "rgb(0, 160, 0)");
         const r = await rect(p, PILL);
         const [red, green, blue] = await pixel(
           p,
@@ -218,7 +242,7 @@ for (const name of ["chromium", "webkit"]) {
         };
         const greenShot = await p.screenshot({ clip: inside });
         await paintBar(p, "rgb(0, 0, 255)");
-        await p.waitForTimeout(100);
+        await barPainted(p, "rgb(0, 0, 255)");
         expect(greenShot.equals(await p.screenshot({ clip: inside }))).toBe(
           false,
         );
@@ -257,12 +281,18 @@ for (const name of ["chromium", "webkit"]) {
             ),
           ),
         );
-        await p.waitForTimeout(100);
+        await p.waitForFunction(() =>
+          [...document.querySelectorAll(".den-top *")].every(
+            (e) => getComputedStyle(e).visibility === "hidden",
+          ),
+        );
+        await painted(p);
         const shot = () =>
           Promise.all(clips.map((clip) => p.screenshot({ clip })));
         const withPill = await shot();
         await p.$eval(".den-upd", (el) => ((el as HTMLElement).hidden = true));
-        await p.waitForTimeout(100);
+        await p.locator(PILL).waitFor({ state: "hidden" });
+        await painted(p);
         const without = await shot();
         for (let i = 0; i < clips.length; i++)
           expect(withPill[i].equals(without[i])).toBe(true);
@@ -389,6 +419,8 @@ for (const name of ["chromium", "webkit"]) {
         );
         expect(stub.restarts).toBe(1);
         await p.waitForFunction(() => "denShell" in window);
+        // Kept: this proves the pill does NOT come back once the new page
+        // has had time to ask server-info; there is no state to wait for.
         await p.waitForTimeout(1500);
         expect(await p.$(PILL)).toBeNull();
       } finally {
@@ -406,6 +438,8 @@ for (const name of ["chromium", "webkit"]) {
         // Another page, the same tab: still hidden.
         await p.goto(`${s!.base}/services`);
         await p.waitForFunction(() => "denShell" in window);
+        // Kept: this proves the pill does NOT show again on this page once
+        // it has had time to ask server-info; there is no state to wait for.
         await p.waitForTimeout(2000);
         expect(await p.$(PILL)).toBeNull();
         // A newer version: it shows again.

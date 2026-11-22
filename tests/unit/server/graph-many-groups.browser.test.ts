@@ -28,6 +28,8 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 // org → its repos' service counts (31 services, 15 repos).
@@ -181,7 +183,7 @@ beforeAll(async () => {
       ?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -201,6 +203,7 @@ async function page(url: string, w: number, h: number): Promise<Page> {
     // DEN_SHOTS_DIR: screenshots for the release notes, in Den dark.
     ...(SHOTS ? { colorScheme: "dark" as const } : {}),
   });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);
@@ -235,9 +238,52 @@ async function settled(p: Page, cards = SERVICES, orgs = ORGS.length) {
       `want ${cards} cards in ${orgs} orgs, drew ${JSON.stringify(drawn)}: ${String(err)}`,
     );
   }
-  // The fit follows the last layout; give a late redraw time to land.
-  await p.waitForTimeout(800);
+  // The fit follows the last layout: wait until the drawn view holds
+  // still (a late redraw restarts the wait).
+  await quiet(p);
 }
+
+/**
+ * Waits until the graph holds still for `ms`: the world's transform and
+ * size unchanged and its cards not redrawn. A redraw (new card elements)
+ * or a re-fit restarts the count, so a late layout is waited for, not
+ * raced. 800ms, as the sleep it replaces, so a view that must NOT move
+ * (the zoomed one below) is watched at least as long as before.
+ */
+async function quiet(p: Page, ms = 800): Promise<void> {
+  await p.waitForFunction(
+    ([q, id]) => {
+      const g = window as unknown as {
+        __dgQuiet?: { id: number; sig: string; at: number };
+      };
+      const w = document.querySelector<HTMLElement>(".dg-world");
+      const c = document.querySelector(".dg-card") as
+        | (Element & { __dgSeen?: number })
+        | null;
+      const redrawn = !!c && c.__dgSeen !== id;
+      if (c) c.__dgSeen = id;
+      const sig = `${w?.style.transform}|${w?.style.width}|${w?.style.height}`;
+      const now = performance.now();
+      const last = g.__dgQuiet;
+      if (redrawn || !last || last.id !== id || last.sig !== sig) {
+        g.__dgQuiet = { id, sig, at: now };
+        return false;
+      }
+      return now - last.at >= q;
+    },
+    [ms, Math.random()] as const,
+    { timeout: 20_000 },
+  );
+}
+
+/** Fit is applied in its click; the view it leaves sits FIT_TOP (16px)
+ * from the stage's top. */
+const fitted = (p: Page) =>
+  p.waitForFunction(() =>
+    /,\s*16px\)/.test(
+      document.querySelector<HTMLElement>(".dg-world")?.style.transform ?? "",
+    ),
+  );
 
 /** Cards (and org frames) not wholly inside the stage's viewport. */
 const outside = (p: Page) =>
@@ -284,7 +330,7 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
         });
       // Fit agrees with the first paint: it was already the fitted view.
       await p.click('[data-z="fit"]');
-      await p.waitForTimeout(150);
+      await fitted(p);
       const f = await outside(p);
       process.stdout.write(
         `graph-many ${w}x${h}: first paint ${r.zoom}% (${r.cards} cards outside), Fit ${f.zoom}% (${f.cards} outside)\n`,
@@ -307,11 +353,14 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
     await settled(p);
     try {
       for (const dir of ["down", "right"]) {
+        // The click redraws every card (a new layout), then fits.
+        const old = await p.$(".dg-card");
         await p.click(`[data-seg="dir"] [data-v="${dir}"]`);
-        await p.waitForTimeout(800);
+        await p.waitForFunction((c) => !c?.isConnected, old);
+        await quiet(p);
         // Fit (so this measures the wrap, not the first paint's fit).
         await p.click('[data-z="fit"]');
-        await p.waitForTimeout(150);
+        await fitted(p);
         const g = await p.evaluate((d) => {
           const px = (e: HTMLElement, k: "top" | "left") =>
             parseFloat(e.style[k]);
@@ -368,8 +417,15 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
         expect(r.zoom).toBeGreaterThanOrEqual(35);
       }
     } finally {
-      await p.click('[data-seg="dir"] [data-v="down"]');
-      await p.waitForTimeout(300);
+      // Top-down back as the saved pref: the next tests load it.
+      await Promise.all([
+        p.waitForResponse(
+          (r) =>
+            r.url().includes("/api/settings") &&
+            r.request().method() === "POST",
+        ),
+        p.click('[data-seg="dir"] [data-v="down"]'),
+      ]);
       await p.context().close();
     }
   }, 60_000);
@@ -392,6 +448,11 @@ describe("/graph with many groups (0.3.0-dev.34)", () => {
     const ctx = await browser!.newContext({
       viewport: { width: 1440, height: 900 },
     });
+    await signIn(
+      ctx,
+      path.join(tmp, "home", ".den"),
+      `http://localhost:${port}`,
+    );
     await ctx.addInitScript((v) => {
       try {
         localStorage.setItem("den-changelog-seen", v);

@@ -64,6 +64,8 @@
   --kit-scrim: rgb(0 0 0 / 0.35);
   --kit-veil: rgba(0, 0, 0, 0.65);
   --kit-backdrop: rgba(0, 0, 0, 0.3);
+  /* Issue 644: the mark's edge, drawn in dark mode only (shell.css). */
+  --den-mark-edge: rgba(244, 239, 232, 0.18);
 }
 
 /* Light: the default. */

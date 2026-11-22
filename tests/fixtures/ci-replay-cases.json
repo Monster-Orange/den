@@ -4625,5 +4625,25 @@
       "tests/unit/test-infra/release-check.test.ts"
     ],
     "related": false
+  },
+  {
+    "run": "44696606723#1 main 9a0b927",
+    "file": "tests/unit/server/hub-delivery.integration.test.ts",
+    "verdict": "real",
+    "why": "the pull request passed its subset without it; main ran it and it failed on both Nodes (issue 701 changed the delivery acks the server process sends)",
+    "nodes": ["22.13.0", "24.13.0"],
+    "changed": [
+      "src/shared/hub-delivery-loop.ts",
+      "src/shared/hub-delivery.ts",
+      "src/ui/cli/agent-ops.ts",
+      "src/ui/server/attention.ts",
+      "src/ui/server/hub-delivery-service.ts",
+      "src/ui/server/index.ts",
+      "tests/unit/server/attention-answered.test.ts",
+      "tests/unit/server/delivery-idle-input.test.ts",
+      "tests/unit/shared/hub-delivery-held-ack.test.ts",
+      "tests/unit/shared/hub-delivery-loop.test.ts"
+    ],
+    "related": false
   }
 ]

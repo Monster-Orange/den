@@ -11,12 +11,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
 
@@ -27,11 +28,7 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    for (const e of ENGINES)
-      browsers[e] = ws
-        ? await pw[e].connect(ws, { exposeNetwork: "<loopback>" })
-        : await pw[e].launch();
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -93,7 +90,7 @@ describe.each(ENGINES)("issue 393 in %s: Browser sign-in", (e) => {
   it("signed in: Sign out, and no Sign in", async () => {
     if (!browsers[e] || !s) return;
     const p = await open(e);
-    await p.goto(signInUrl(s.stateDir, s.base, "/settings#cli"));
+    await signInPage(p, s.stateDir, s.base, "/settings#cli");
     await p.locator("#set-signout").waitFor({ timeout: 20_000 });
     expect(await p.locator("#set-signin").count()).toBe(0);
     await p.context().close();

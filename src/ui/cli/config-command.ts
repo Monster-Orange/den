@@ -8,6 +8,10 @@ import {
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
 import { patchAlerts } from "../../shared/alerts.js";
+import { testInstallByHandRefusal } from "../../shared/fixture-person.js";
+
+/** Issue 810: the test-install mark's names, refused by `config`. */
+const TEST_INSTALL_KEYS = new Set(["web.test_install", "test_install"]);
 
 import { product } from "../../shared/product.js";
 type ConfigKey = keyof UserConfig;
@@ -44,18 +48,34 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   // 0.4.48: Den on the Docker bridge for the edge (Linux).
   "web.bridge_listen": ["web_bridge", "listen"],
   "web.bridge_probe_seconds": ["web_bridge", "probe_seconds"],
+  // Issue 406: the start's wait for the owner's GitHub name.
+  "web.owner_name_timeout_seconds": [
+    "web_github",
+    "owner_name_timeout_seconds",
+  ],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
   // Issue 394: how far ahead of this clock a rail save's time may be.
   "web.shell_save_skew_seconds": ["shell_save", "skew_seconds"],
   "web.shell_save_max_kb": ["shell_save", "max_kb"],
+  // Issue 819: new-device requests and wrong codes.
+  "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
+  "web.approve_attempts": ["web_pairing", "approve_attempts"],
+  "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
+  // Issue 456: how long Den waits for the shell's PATH.
+  "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",
   ],
+  // Issue 403: how long a filed report's screenshot is kept here.
+  "reports.screenshot_keep_days": ["reports", "screenshot_keep_days"],
+  "reports.screenshot_max_mb": ["reports", "screenshot_max_mb"],
+  "reports.hub_screenshot_max_mb": ["reports", "hub_screenshot_max_mb"],
+  "reports.hub_timeout_seconds": ["reports", "hub_timeout_seconds"],
   // Issue 278: when an agent counts as stuck compacting; instruction size.
   "agent_context.compaction_loop_count": [
     "agent_context",
@@ -85,6 +105,15 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.address_check_timeout_seconds": ["address_check", "timeout_seconds"],
   "web.address_check_retries": ["address_check", "retries"],
   "web.address_check_cache_seconds": ["address_check", "cache_seconds"],
+  "web.address_check_drop_after": ["address_check", "drop_after"],
+  "web.address_unknown_keep_seconds": ["address_check", "unknown_keep_seconds"],
+  // Issue 609: how long Den's process lookups (lsof, ps) wait.
+  "process_lookup.first_seconds": ["process_lookup", "first_seconds"],
+  "process_lookup.retry_seconds": ["process_lookup", "retry_seconds"],
+  // Issue 609: how agents' hooks wait for Den, and retry.
+  "agent_hooks.timeout_seconds": ["agent_hooks", "timeout_seconds"],
+  "agent_hooks.retries": ["agent_hooks", "retries"],
+  "agent_hooks.backoff_seconds": ["agent_hooks", "backoff_seconds"],
 };
 
 /**
@@ -155,6 +184,8 @@ export async function cmdConfig(args: string[]): Promise<void> {
   if (args[0] === "rm") {
     const keyArg = args[1];
     if (!keyArg) throw new Error(`Usage: ${product().cli} config rm <key>`);
+    if (TEST_INSTALL_KEYS.has(keyArg))
+      throw new Error(testInstallByHandRefusal(product().configFile));
     if (DOTTED_SWITCH[keyArg]) {
       setSwitch(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
@@ -180,6 +211,10 @@ export async function cmdConfig(args: string[]): Promise<void> {
   }
 
   const name = assignment.slice(0, eq);
+  // Issue 810: the test-install mark is set by hand in the distribution
+  // config, never here (an agent can run this command).
+  if (TEST_INSTALL_KEYS.has(name))
+    throw new Error(testInstallByHandRefusal(product().configFile));
   if (DOTTED_SWITCH[name]) {
     setSwitch(name, parseValue(assignment.slice(eq + 1)));
     console.log(chalk.green(`  ✓ Set ${name}`));

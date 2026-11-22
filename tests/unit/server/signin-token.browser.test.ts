@@ -14,12 +14,13 @@ import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
 
@@ -31,7 +32,7 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -94,7 +95,7 @@ async function settingsPage() {
       /* a redirect or a stream: no body */
     }
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
   await p.waitForSelector("[data-keep-token-input]");
   return { p, bodies };
 }
@@ -122,7 +123,8 @@ describe("#299: Settings › Sign-in token", () => {
     await p.waitForTimeout(500);
     expect(await input.inputValue()).toBe("");
     expect(await p.locator('[data-keep-token="set"]').textContent()).toMatch(
-      /set .*20\d\d/,
+      // The kit's date (issue 668): the year only when it isn't this year's.
+      /set [A-Z][a-z]{2} \d{1,2}(, 20\d\d)?\b/,
     );
     // The store has it.
     const kept = path.join(s!.tmp, "kept");

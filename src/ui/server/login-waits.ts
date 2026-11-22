@@ -1,67 +1,82 @@
 /**
- * SEC-2a: `<cli> web login` waits, and its link asks for a code (SEC-2
- * spec, "Seeing that you're signed in"). The CLI mints the one-time link
- * as before, makes an 8-character confirmation code, and registers both
- * with the running server (its bearer): the link's nonce and a hash of the
- * code. Then:
+ * `<cli> web login` waits (SEC-2a; issue 819). The CLI mints the one-time
+ * link and a confirmation code, registers both with the running server
+ * (its bearer, from the person's own terminal: personCallerRefusal): the
+ * link's nonce and a hash of the code. It polls the wait by its own id.
+ * Then:
  *
- *  - the link (GET /auth) no longer signs in by itself: it opens a page
- *    that asks for the code, so a leaked link alone is useless. Opening it
- *    starts a 5-minute window to type the code;
- *  - the page posts the code; the right one signs the browser in (the link
- *    is consumed: still single-use), a wrong one is refused. Five wrong
- *    codes burn the link; past 20 wrong codes a minute (any link), every
- *    attempt waits;
- *  - the CLI polls the wait by its own id and prints who signed in, or
- *    that nobody did.
+ *  - first run (first-run.ts: no person has ever signed in here), the link
+ *    signs in a browser on this computer at once ("used"). Opened anywhere
+ *    else, its page asks for the confirmation code the CLI printed (the
+ *    person's terminal proves it is theirs): the right code signs in, five
+ *    wrong ones end the link ("refused");
+ *  - from then on, the link opens the pairing screen (pair-requests.ts):
+ *    the wait is "pairing" (with the device and address, never the code:
+ *    that stays on the new device's screen, where the person reads it),
+ *    until a signed-in browser approves the device and it signs in
+ *    ("used"), or denies it ("denied"), or the request runs out
+ *    ("expired").
  *
- * In memory only. The code is kept as a hash and never logged; the nonce
- * alone (without the link's mac) signs nothing in. Clock injected.
+ * In memory only. The confirmation code is kept as a hash and never
+ * logged; the nonce alone (without the link's mac) signs nothing in.
+ * Clock injected.
  */
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { normalizeConfirmCode } from "../../shared/confirm-code.js";
 
-export {
-  newConfirmCode,
-  normalizeConfirmCode,
-} from "../../shared/confirm-code.js";
-
-/** How long an opened link's page waits for its code. */
-export const CONFIRM_WINDOW_MS = 5 * 60_000;
-/** Wrong codes before a link is burned. */
-export const MAX_WRONG_PER_LINK = 5;
-/** Wrong codes a minute, all links together, before every attempt waits. */
-export const MAX_WRONG_PER_MINUTE = 20;
 /** The most waits at once; a new one drops the oldest. */
 export const MAX_LOGIN_WAITS = 10;
 /** How long an ended wait still answers the CLI. */
 const ENDED_KEEP_MS = 5 * 60_000;
+/** First run, away from this computer: how long an opened link's page waits for its code. */
+export const CONFIRM_WINDOW_MS = 5 * 60_000;
+/** Wrong confirmation codes before a link is ended. */
+export const MAX_WRONG_PER_LINK = 5;
+/** Wrong confirmation codes a minute, all links together, before every attempt waits. */
+export const MAX_WRONG_PER_MINUTE = 20;
 
 const hash = (s: string) => createHash("sha256").update(s).digest();
 
 export type LoginWaitState =
   | "waiting"
+  /** First run, opened away from this computer: its page asks for the code. */
   | "opened"
+  /** Issue 819: opened; its device waits for a signed-in browser's approval. */
+  | "pairing"
   | "used"
-  | "expired"
-  | "refused";
+  | "denied"
+  /** Too many wrong confirmation codes: the link no longer works. */
+  | "refused"
+  | "expired";
 
 export interface LoginWaitView {
   state: LoginWaitState;
-  /** used: the browser and OS that signed in, its address, and when. */
+  /** pairing, used: the browser and OS that opened it, its address. */
+  device?: string;
+  client?: string;
+  /** used: when it signed in. */
+  usedAt?: number;
+  /** When the CLI registered it (the `web login` run began). */
+  startedAt: number;
+  /** opened: when its page first asked for the code (the link is checked as of then). */
+  openedAt?: number;
+  expiresAt: number;
+  /** Whether a confirmation code was registered with it. */
+  confirmable: boolean;
+}
+
+interface LoginWait {
+  id: string;
+  nonce: string;
+  state: LoginWaitState;
   device?: string;
   client?: string;
   usedAt?: number;
-  expiresAt: number;
-}
-
-interface LoginWait extends LoginWaitView {
-  id: string;
-  nonce: string;
-  codeHash: Buffer;
-  createdAt: number;
   openedAt?: number;
+  codeHash?: Buffer;
   wrong: number;
+  createdAt: number;
+  expiresAt: number;
   forgetAt?: number;
 }
 
@@ -83,13 +98,22 @@ export class LoginWaits {
   }
 
   /**
-   * A wait for the link with this nonce (it must be opened by `linkExpiresAt`),
-   * confirmed by `code`. Its id is the CLI's to poll.
+   * A wait for the link with this nonce (it must be opened by
+   * `linkExpiresAt`). Its id is the CLI's to poll. `code`: the
+   * confirmation code the CLI printed, kept as a hash (an older or
+   * minimal caller may leave it off: then a first-run link opened away
+   * from this computer can't be finished there).
    */
-  register(nonce: string, code: string, linkExpiresAt: number): string | null {
-    const norm = normalizeConfirmCode(code);
-    if (!norm || !/^[A-Za-z0-9_-]{16,64}$/.test(nonce)) return null;
+  register(
+    nonce: string,
+    code: string | undefined,
+    linkExpiresAt: number,
+  ): string | null {
+    const norm = code === undefined ? null : normalizeConfirmCode(code);
+    if (code !== undefined && !norm) return null;
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(nonce)) return null;
     this.sweep();
+    if (this.find(nonce)) return null;
     const live = [...this.byId.values()].sort(
       (a, b) => a.createdAt - b.createdAt,
     );
@@ -98,11 +122,11 @@ export class LoginWaits {
     this.byId.set(id, {
       id,
       nonce,
-      codeHash: hash(norm),
+      ...(norm ? { codeHash: hash(norm) } : {}),
       state: "waiting",
+      wrong: 0,
       createdAt: this.now(),
       expiresAt: linkExpiresAt,
-      wrong: 0,
     });
     return id;
   }
@@ -114,39 +138,35 @@ export class LoginWaits {
     return w ? view(w) : null;
   }
 
-  /** The wait for a link's nonce, still open to use, or null. */
-  forNonce(nonce: string): (LoginWaitView & { openedAt?: number }) | null {
+  /** The wait for a link's nonce (any state), or null. */
+  forNonce(nonce: string): LoginWaitView | null {
     this.sweep();
     const w = this.find(nonce);
-    return w
-      ? { ...view(w), ...(w.openedAt ? { openedAt: w.openedAt } : {}) }
-      : null;
+    return w ? view(w) : null;
   }
 
-  /** Whether a link with this nonce has a wait at all (any state). */
-  has(nonce: string): boolean {
-    return !!this.find(nonce);
-  }
-
-  /** The link was opened: its code window starts (once). */
+  /** First run, away from this computer: its page asks for the code (the window starts once). */
   open(nonce: string): void {
     this.sweep();
     const w = this.find(nonce);
     if (!w || w.state !== "waiting") return;
-    const now = this.now();
     w.state = "opened";
-    w.openedAt = now;
-    w.expiresAt = now + CONFIRM_WINDOW_MS;
+    w.openedAt = this.now();
+    // Opened in time: the code window runs from now (the link is checked
+    // as of the moment it was opened).
+    w.expiresAt = this.now() + CONFIRM_WINDOW_MS;
   }
 
-  /** The page's code for this link. */
+  /** The page's confirmation code for this link (constant time). */
   confirm(nonce: string, typed: string): ConfirmResult {
     this.sweep();
     const now = this.now();
     const w = this.find(nonce);
-    if (!w || w.state === "used") return { ok: false, error: "expired" };
-    if (w.state === "expired") return { ok: false, error: "expired" };
+    if (!w || w.state === "expired" || w.state === "used")
+      return { ok: false, error: "expired" };
     if (w.state === "refused") return { ok: false, error: "refused" };
+    if (w.state !== "opened" || !w.codeHash)
+      return { ok: false, error: "expired" };
     this.wrongAt = this.wrongAt.filter((t) => now - t < 60_000);
     if (this.wrongAt.length >= MAX_WRONG_PER_MINUTE)
       return { ok: false, error: "rate_limited" };
@@ -162,14 +182,39 @@ export class LoginWaits {
     return { ok: false, error: "wrong", left: MAX_WRONG_PER_LINK - w.wrong };
   }
 
+  /** Issue 819: the link was opened on the pairing screen, until `until`. */
+  pairing(
+    nonce: string,
+    until: number,
+    meta: { device: string; client?: string },
+  ): void {
+    const w = this.find(nonce);
+    if (!w || (w.state !== "waiting" && w.state !== "opened")) return;
+    w.state = "pairing";
+    w.device = meta.device;
+    if (meta.client) w.client = meta.client;
+    w.expiresAt = until;
+  }
+
   /** The link signed a browser in: the CLI is told who. */
   used(nonce: string, meta: { device: string; client?: string }): void {
     const w = this.find(nonce);
-    if (!w) return;
+    if (
+      !w ||
+      (w.state !== "waiting" && w.state !== "opened" && w.state !== "pairing")
+    )
+      return;
     w.device = meta.device;
     if (meta.client) w.client = meta.client;
     w.usedAt = this.now();
     this.end(w, "used");
+  }
+
+  /** Issue 819: a signed-in browser denied the device the link opened. */
+  denied(nonce: string): void {
+    const w = this.find(nonce);
+    if (!w || w.state !== "pairing") return;
+    this.end(w, "denied");
   }
 
   private find(nonce: string): LoginWait | undefined {
@@ -177,7 +222,10 @@ export class LoginWaits {
     return undefined;
   }
 
-  private end(w: LoginWait, state: "used" | "expired" | "refused"): void {
+  private end(
+    w: LoginWait,
+    state: "used" | "denied" | "refused" | "expired",
+  ): void {
     w.state = state;
     w.forgetAt = this.now() + ENDED_KEEP_MS;
   }
@@ -185,8 +233,14 @@ export class LoginWaits {
   private sweep(): void {
     const now = this.now();
     for (const [id, w] of this.byId) {
-      if ((w.state === "waiting" || w.state === "opened") && now >= w.expiresAt)
+      if (
+        (w.state === "waiting" ||
+          w.state === "opened" ||
+          w.state === "pairing") &&
+        now >= w.expiresAt
+      ) {
         this.end(w, "expired");
+      }
       if (w.forgetAt !== undefined && now >= w.forgetAt) this.byId.delete(id);
     }
   }
@@ -198,6 +252,9 @@ function view(w: LoginWait): LoginWaitView {
     ...(w.device ? { device: w.device } : {}),
     ...(w.client ? { client: w.client } : {}),
     ...(w.usedAt ? { usedAt: w.usedAt } : {}),
+    startedAt: w.createdAt,
+    ...(w.openedAt ? { openedAt: w.openedAt } : {}),
     expiresAt: w.expiresAt,
+    confirmable: !!w.codeHash,
   };
 }

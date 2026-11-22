@@ -209,6 +209,11 @@ export interface WebAuthConfig {
   /** `web.bridge_probe_seconds`: how long the bridge probe waits (default 10). */
   bridgeProbeSeconds: number;
   /**
+   * `web.owner_name_timeout_seconds` (issue 406): how long the start waits
+   * for the owner's public GitHub profile (default 10).
+   */
+  ownerNameTimeoutSeconds: number;
+  /**
    * `web.ready_probe_seconds` (den#143; user.yml over the distribution's):
    * how long one readiness probe of `web up` (and of every "is Den
    * running here" check) waits for the server's answer. Default 10: a busy
@@ -221,6 +226,20 @@ export interface WebAuthConfig {
    * the wait at once.
    */
   startWaitSeconds: number;
+  /**
+   * Issue 819: `web.pair_requests_per_minute` (user.yml over the
+   * distribution's): how many new-device requests one client address may
+   * make a minute. Default 30.
+   */
+  pairRequestsPerMinute: number;
+  /**
+   * Issue 819: `web.approve_attempts` and `web.approve_window_seconds`: how
+   * many wrong codes a signed-in browser may type within the window before
+   * approving waits for it to pass. Defaults 10 and 30 s: short, so a
+   * person mistyping is never held up for long.
+   */
+  approveAttempts: number;
+  approveWindowSeconds: number;
   /**
    * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
@@ -258,7 +277,26 @@ export interface WebAuthConfig {
    * long a sign-in link lasts, in ms. Unset: LOGIN_CODE_TTL_MS (5 minutes).
    */
   loginLinkTtlMs: number;
+  /**
+   * Issue 810: `web.test_install: true`, from the distribution config only:
+   * a person marks a test install by hand, and only then may live checks
+   * sign in as the fixture person (fixture-person.ts). Never written by
+   * Settings, `config` or any agent.
+   */
+  testInstall: boolean;
+  /** `web.test_install` in user.yml: ignored there (warned at start). */
+  testInstallInUser?: true;
+  /**
+   * Issue 810: `web.fixture_session_minutes` (user.yml over the
+   * distribution's): how long a fixture person's session lasts.
+   */
+  fixtureSessionMinutes: number;
 }
+
+/** Issue 810: `web.fixture_session_minutes`' default. */
+export const FIXTURE_SESSION_MINUTES = 60;
+/** Its bounds, in minutes. */
+export const FIXTURE_SESSION_RANGE = { min: 1, max: 24 * 60 } as const;
 
 /** A GitHub login (or org name): letters, digits, single dashes, ≤ 39. */
 const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -361,6 +399,11 @@ export function ignoredConfigWarning(cfg: WebAuthConfig): string | null {
         "It is a choice for one machine, read only from config/local/user.yml; " +
         "move it there on the machine that needs it, and remove it here.",
     );
+  if (cfg.testInstallInUser)
+    lines.push(
+      "web.test_install (config/local/user.yml): ignored. A test install is marked " +
+        "by hand in the distribution config only; remove it here.",
+    );
   if (cfg.plainHttpInDistribution)
     lines.push(
       `web.allow_plain_http_remote (${cfg.plainHttpInDistribution}): ignored. ` +
@@ -414,8 +457,36 @@ export function readWebAuthConfig(
     throw new Error(
       `web.bridge_probe_seconds must be a number of seconds above 0, got ${JSON.stringify(probe)}`,
     );
+  const nameWait =
+    user.owner_name_timeout_seconds ?? team.owner_name_timeout_seconds;
+  if (
+    nameWait !== undefined &&
+    (typeof nameWait !== "number" ||
+      !Number.isFinite(nameWait) ||
+      nameWait <= 0)
+  )
+    throw new Error(
+      `web.owner_name_timeout_seconds must be a number of seconds above 0, got ${JSON.stringify(nameWait)}`,
+    );
   const readyProbe = waitSeconds(user, team, "ready_probe_seconds");
   const startWait = waitSeconds(user, team, "start_wait_seconds");
+  const pairLimits = Object.fromEntries(
+    Object.entries(PAIR_LIMITS).map(([k, l]) => {
+      const v = user[k] ?? team[k];
+      if (v === undefined || v === null) return [k, l.dflt];
+      if (
+        typeof v !== "number" ||
+        !Number.isFinite(v) ||
+        (l.int && !Number.isInteger(v)) ||
+        v < l.min ||
+        v > l.max
+      )
+        throw new Error(
+          `web.${k} must be a ${l.int ? "whole number" : "number"} from ${l.min} to ${l.max}, got ${JSON.stringify(v)}`,
+        );
+      return [k, v];
+    }),
+  ) as Record<keyof typeof PAIR_LIMITS, number>;
   const clientId =
     clientIdOf(user, "config/local/user.yml") ?? clientIdOf(team, configFile);
   const machineName = parseMachineName(user.machine_name);
@@ -443,7 +514,34 @@ export function readWebAuthConfig(
   const ttl =
     parseLoginLinkTtl(user.login_link_ttl, "config/local/user.yml") ??
     parseLoginLinkTtl(team.login_link_ttl, configFile);
+  const testMark = team.test_install;
+  if (
+    testMark !== undefined &&
+    testMark !== null &&
+    typeof testMark !== "boolean"
+  )
+    throw new Error(
+      `web.test_install (${configFile}) must be true or false, got ${JSON.stringify(testMark)}`,
+    );
+  const fxMin = user.fixture_session_minutes ?? team.fixture_session_minutes;
+  if (
+    fxMin !== undefined &&
+    fxMin !== null &&
+    (typeof fxMin !== "number" ||
+      !Number.isInteger(fxMin) ||
+      fxMin < FIXTURE_SESSION_RANGE.min ||
+      fxMin > FIXTURE_SESSION_RANGE.max)
+  )
+    throw new Error(
+      `web.fixture_session_minutes must be a whole number of minutes from ${FIXTURE_SESSION_RANGE.min} to ${FIXTURE_SESSION_RANGE.max}, got ${JSON.stringify(fxMin)}`,
+    );
   return {
+    testInstall: testMark === true,
+    fixtureSessionMinutes:
+      typeof fxMin === "number" ? fxMin : FIXTURE_SESSION_MINUTES,
+    ...(user.test_install !== undefined
+      ? { testInstallInUser: true as const }
+      : {}),
     ...(ownerGithub ? { ownerGithub } : {}),
     ...(ownerGithub && ownerGithubName ? { ownerGithubName } : {}),
     ...(allowedGithubOrg
@@ -460,8 +558,12 @@ export function readWebAuthConfig(
     edgeUnattested: unattested ?? "signin",
     bridgeListen: bridge ?? "auto",
     bridgeProbeSeconds: probe ?? 10,
+    ownerNameTimeoutSeconds: nameWait ?? 10,
     readyProbeSeconds: readyProbe ?? WEB_READY_PROBE_SECONDS,
     startWaitSeconds: startWait ?? WEB_START_WAIT_SECONDS,
+    pairRequestsPerMinute: pairLimits.pair_requests_per_minute,
+    approveAttempts: pairLimits.approve_attempts,
+    approveWindowSeconds: pairLimits.approve_window_seconds,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
     ...(team.allow_plain_http_remote !== undefined
       ? { plainHttpInDistribution: configFile }
@@ -471,6 +573,16 @@ export function readWebAuthConfig(
       : {}),
   };
 }
+
+/**
+ * Issue 819: the new-device limits (user.yml web.*, over the
+ * distribution's): their ranges and permissive defaults.
+ */
+export const PAIR_LIMITS = {
+  pair_requests_per_minute: { min: 1, max: 10_000, int: true, dflt: 30 },
+  approve_attempts: { min: 1, max: 1000, int: true, dflt: 10 },
+  approve_window_seconds: { min: 1, max: 3600, int: false, dflt: 30 },
+} as const;
 
 /** den#143: `web.ready_probe_seconds`'s default. */
 export const WEB_READY_PROBE_SECONDS = 10;
@@ -563,8 +675,29 @@ export interface SessionRecord {
   csrf: string;
   /** The Host it was issued on. */
   host: string;
+  /**
+   * How the sign-in reached Den (request-guard's via): a loopback name, the
+   * edge, or a LAN name. Unset before 0.4.72: read from `host`.
+   */
+  reach?: "loopback" | "edge" | "lan";
+  /**
+   * Minted over https through the edge with its proof (its cookie is
+   * `__Host-`). Once Den's own address is proven, only such a session
+   * counts. Unset: minted elsewhere, or before 0.4.72.
+   */
+  secure?: true;
   /** SEC-2a: how it signed in: a GitHub sign-in, a one-time link, a code (pairing), or the install's setup link (claim, 0.4.15). Unset: a link (before 0.4.5). */
-  via?: "github" | "link" | "code" | "claim";
+  via?: "github" | "link" | "code" | "claim" | "fixture";
+  /**
+   * Issue 810: a fixture session's key fingerprint (fixtureKeyFingerprint,
+   * never the key). It stands only while that key is the current one.
+   */
+  fixtureKey?: string;
+  /**
+   * Issue 810: the person's link session that pressed Set up test person
+   * on a test install: it doesn't make the install count as owned.
+   */
+  testOperator?: true;
   /** SEC-2a: the client's address when Den could attest it. */
   client?: string;
   /** SEC-2a: a GitHub sign-in's login (the account entry's "@login"). */
@@ -707,7 +840,10 @@ export class WebSessionStore {
   create(meta: {
     userAgent?: string;
     host?: string;
-    via?: "github" | "link" | "code" | "claim";
+    reach?: "loopback" | "edge" | "lan";
+    secure?: boolean;
+    via?: "github" | "link" | "code" | "claim" | "fixture";
+    fixtureKey?: string;
     client?: string;
     login?: string;
     name?: string;
@@ -730,7 +866,10 @@ export class WebSessionStore {
       host: String(meta.host ?? "")
         .toLowerCase()
         .slice(0, 255),
+      ...(meta.reach ? { reach: meta.reach } : {}),
+      ...(meta.secure ? { secure: true as const } : {}),
       ...(meta.via ? { via: meta.via } : {}),
+      ...(meta.fixtureKey ? { fixtureKey: meta.fixtureKey } : {}),
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
       ...(meta.login ? { login: String(meta.login).slice(0, 64) } : {}),
       ...(meta.login && githubDisplayName(meta.name)
@@ -789,6 +928,19 @@ export class WebSessionStore {
     return true;
   }
 
+  /**
+   * Issue 810: mark a person's link session as the one that set up the
+   * test person (SessionRecord.testOperator). False: no such session.
+   */
+  markTestOperator(key: string): boolean {
+    const data = this.load();
+    if (!data.sessions[key]) return false;
+    const next = structuredClone(data);
+    next.sessions[key].testOperator = true;
+    this.save(next);
+    return true;
+  }
+
   /** Every session, newest first. */
   list(): SessionView[] {
     return Object.entries(this.load().sessions)
@@ -803,6 +955,18 @@ export class WebSessionStore {
     delete data.sessions[key];
     this.save(data);
     return true;
+  }
+
+  /** End every session `which` picks, in one write. Returns their keys. */
+  endWhere(which: (s: SessionView) => boolean): string[] {
+    const data = structuredClone(this.load());
+    const keys = Object.entries(data.sessions)
+      .filter(([key, r]) => which({ key, ...r }))
+      .map(([key]) => key);
+    if (keys.length === 0) return [];
+    for (const k of keys) delete data.sessions[k];
+    this.save(data);
+    return keys;
   }
 
   /**

@@ -130,6 +130,14 @@ syncPinToggles }`.
   (the release notes pop-up: newest first, earlier versions on request,
   copy as Markdown or for chat), `src/report.js` and `src/report-shot.js`
   (the Report form, its screenshot and masks).
+- Issue 793: What's new is drawn by the dialog frame (`dialogHtml`, kind
+  "panel", and `mountDialog` from `dialog.js`), so serve `dialog.js` and
+  `dialog.css` wherever `whatsnew.js` is served; `whatsnew.css` styles only
+  the notes inside it. `base.css` gives `body` and every `dialog` the kit's
+  sans (`var(--sans, …)` with the kit's own list after it), so nothing a
+  script puts in `body` falls back to the browser's serif.
+  `focusWhenFree(el)` (`dialog.js`) focuses a page's own field now, or
+  when the open kit pop-up over it closes.
 
 ### The client entry: `src/kit.js` (`window.DenUI`)
 
@@ -359,7 +367,7 @@ reference again, on purpose only: `DEN_UI_NAV_CAPTURE=1` with the
 browser test, on the image (Den's real server on the demo distribution,
 `/settings`).
 
-## Saving a rail change as the page goes (0.7.7)
+## Saving a rail change as the page goes (0.10.0)
 
 - `src/save-shell.js` (export `./save-shell`; also `DenUI.saveShell`):
   a pin, an unpin, collapse, an order or the dock, saved so that leaving
@@ -417,6 +425,47 @@ browser test, on the image (Den's real server on the demo distribution,
 - Types: every `src/*.js` has a `.d.ts` beside it; the package's `types`
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.
+
+## A button that waits shows pulsing dots (issue 699)
+
+Every button the kit holds shows three pulsing dots in place of its
+label at once, until the server answers: busyAction's `opts.button`,
+`pending()`'s button, and a plain POST form's submitter. The button keeps
+its size (the label stays, hidden, and stays its accessible name), is
+disabled with `aria-busy="true"`, and keeps its own colours. The working
+pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
+
+    import { pending, watchForms, configureBusy } from "@monster-orange/den-ui/busy";
+
+    // A fetch-driven button: dots until the answer. A Response that
+    // isn't ok, or no answer, is the failure pop-up with Try again.
+    button.addEventListener("click", () =>
+      pending(button, (headers) =>
+        fetch("/api/save", { method: "POST", headers }),
+      ),
+    );
+
+    // Plain POST forms: one listener; the submitter shows dots until the
+    // next page comes.
+    watchForms();
+
+    // The wait before the pop-up (a setting; default 3000 ms).
+    configureBusy({ dotsMs: 3000 });
+
+- The button never shows an error itself. A failure before the pop-up
+  gives the label back, and the error goes where it goes today (the
+  caller for an `inline` action, else the failure pop-up). After the
+  pop-up, the pop-up shows it; Try again holds the button again; Close
+  gives the label back.
+- A button that never waits opts out with a reason:
+  `data-instant="opens a menu"`. An empty reason doesn't count;
+  `instantProblems(html)` lists each one (a kit test runs it over the
+  kit and its first product's pages).
+- `opts.dots: false` on busyAction holds a button the old way (no dots,
+  the pop-up at `OPEN_MS`).
+- The look is in `src/busy.css`, under "issue 699: the held button"
+  (`.bz-lbl`, `.bz-dots`, `@keyframes bz-dot`). Reduced motion: still
+  dots.
 
 ## The Markdown editor (0.7.5)
 
@@ -504,6 +553,213 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
+## The panel fold toggle, its edge strip and the switch
+
+- `src/panel-fold.js`, `src/panel-fold.css` (exports `./panel-fold`,
+  `./panel-fold.css`): a side panel that folds away so the main column
+  reads clean (issues 548 and 549). The host keeps the state (shown or
+  folded, remembered or not) and lays its page out; the kit draws the two
+  controls and owns their words, keys and focus.
+
+      import { foldToggleHtml, edgeStripHtml, hydrateFoldToggle,
+        hydrateEdgeStrip } from "@monster-orange/den-ui/panel-fold";
+      // link panel-fold.css after tokens.css
+      bar.innerHTML = foldToggleHtml({ pressed: true, controls: "side", lang });
+      slot.innerHTML = edgeStripHtml({ count: 2, controls: "side", lang });
+      const fold = hydrateFoldToggle(bar.querySelector(".den-fold"), {
+        onToggle: (next) => layout(next ? "panel" : "folded"),
+      });
+      const strip = hydrateEdgeStrip(slot.querySelector(".den-strip"), {
+        onShow: () => { layout("panel"); fold.set(true); },
+      });
+      fold.set(kept === "panel");   // the host's own change: no call
+      strip.setCount(3);
+
+- **The toggle** is a `<button class="den-fold">` with an icon and the
+  kit's word ("Panel"), `aria-pressed` (pressed: the panel shows) and
+  `aria-controls` when given. A press (click, Enter, Space) moves
+  `aria-pressed` and calls `onToggle(next)`; focus stays on it. 32px tall;
+  44px on a phone or a touch screen.
+- **The strip** goes where the folded panel was: 40px wide, a
+  `role="complementary"` region named "Panel, hidden", a "Show panel" icon
+  button (32px, a 44×44px tap on a phone or a touch screen) and the count
+  under it (none at 0, 99+ past 99). The count is seen as a number and
+  heard as the kit's badge words: `what` is `"open"` (default),
+  `"waiting"`, `"down"` or `"running"`. Show panel calls `onShow()`; when
+  the host then hides the strip and leaves focus there, focus goes to the
+  fold toggle for the same panel (else to the panel, when it takes
+  focus). A focus the host moved itself is kept.
+- Hosts pass data, never words: a `label`, `title` or `aria-label` given to
+  either builder is not used. Words: `kit.fold.panel`, `kit.fold.show`,
+  `kit.fold.hidden` and `kit.badge.*`, in en, es and ja. Show or hide each
+  with the `hidden` attribute.
+- `src/switch.js`, `src/switch.css` (exports `./switch`, `./switch.css`):
+  a labelled on/off control (issue 551).
+
+      import { switchHtml, hydrateSwitch } from "@monster-orange/den-ui/switch";
+      row.innerHTML = switchHtml({ label: "Show notes in the text",
+        help: "Kept on this device.", on: true, disabled: false, id: "notes" });
+      const sw = hydrateSwitch(row.querySelector(".den-switch"), {
+        onChange: (on) => save(on),
+      });
+      sw.set(false); sw.setDisabled(true); sw.on(); sw.destroy();
+
+- `<label class="den-switch">` holds the label, the help under it, then an
+  `<input type="checkbox" role="switch">` named by the label alone
+  (`aria-labelledby`) and described by the help (`aria-describedby`). The
+  label and help are the host's own words, the name of its own setting,
+  as a page's name in the rail is; the switch adds no words of its own (a
+  screen reader says on and off). No label: nothing is drawn. No `id`: one
+  of the kit's (`den-sw-N`). A click on the row, Space or Enter calls
+  `onChange(on)`; disabled is out of the tab order and calls nothing.
+- The row is 44px tall. The track is `--accent-fill` on and
+  `--border-strong` off (`--border` when disabled); the knob is
+  `--surface` and slides over `--dur-fast`, not at all under reduced
+  motion. A transparent border shows the track in forced colours.
+- Under `style-src 'self'`: no inline styles, nothing injected.
+
+## A list's filter bar and bulk bar
+
+Two parts for a list of things (issues 552 and 553). Both are data-only:
+the host passes its facets, counts, choices, actions and callbacks; the
+kit draws the markup and owns every word, in en, es and ja. A facet's,
+an option's and an action's label are the host's own words, given as data
+(as a rail page's label is); the kit never takes a host's words for its
+own parts or names.
+
+- `src/filter-bar.js`, `src/filter-bar.css` (exports `./filter-bar`,
+  `./filter-bar.css`): one "Filters (n)" button that opens a panel of
+  facets, and what is chosen as chips under the row, each with ×, then
+  Clear all.
+
+      import { mountFilterBar } from "@monster-orange/den-ui/filter-bar";
+      // link filter-bar.css after tokens.css
+      const bar = mountFilterBar(el, {
+        id: "docs-filter",
+        facets: [{ id: "status", label: "Status",
+                   options: [{ value: "draft", label: "Draft", count: 2 }] }],
+        selected: { status: ["draft"] },
+        onChange: (selected, change) => applyFilter(selected),
+        start: findBox,              // the host's nodes before Filters
+        end: [sortButton, addButton],// and after it, in the same row
+      });
+      bar.update({ facets });        // new counts; focus stays put
+
+  `change` is `{ facet, value, on }` (an option or a chip),
+  `{ clear: facetId }` (a facet's Clear) or `{ clear: null }` (Clear
+  all). Each option shows its count; one with 0 can't be chosen unless it is chosen.
+  Filters is a disclosure (`aria-expanded`, `aria-controls`); the panel
+  is a group named "Filters", a group per facet, its options toggle
+  buttons (`aria-pressed`). Esc in the panel closes it, focus on Filters.
+  Removing a chip focuses the next chip, else the one before, else
+  Filters; Clear all focuses Filters; a facet's Clear its first option.
+  Under 720px the start node takes its own line and the chips scroll in
+  their own row; there, and on `(pointer: coarse)`, every control is
+  `--tap` (44px) tall. `filterBarHtml(data)` draws it in Node.
+
+- `src/bulk-bar.js`, `src/bulk-bar.css` (exports `./bulk-bar`,
+  `./bulk-bar.css`): "{n} selected", Clear, and the host's actions with
+  their counts ("Pause 3"), sticky at the bottom of the list.
+
+      import { mountBulkBar } from "@monster-orange/den-ui/bulk-bar";
+      const bulk = mountBulkBar(el, {
+        count: 3,
+        actions: [{ id: "pause", label: "Pause", count: 3 },
+                  { id: "move", label: "Move", count: 3, disabled: true }],
+        onAction: (id, button) =>      // a host's own dialog: the button
+          askConfirm({ title, message, opener: button }), // gets focus back
+        onClear: () => unselectAll(),
+        returnFocus: () => selectAllBox,
+      });
+      bulk.update({ count: 0 });       // hidden at 0
+
+  `el` becomes the bar,
+  `<div class="den-bulk" role="region" aria-label="3 selected">`; a
+  visually hidden polite region beside it says the count when it
+  changes and "Selection cleared" after Clear. A disabled action never
+  reaches the host. Clear hides the bar at once and focus goes to
+  `returnFocus`. It sticks 12px over the bottom of the scrolling list
+  (and over the safe area). Under 720px each action takes the bar's
+  width; there, and on a touch screen, every button is 44px tall.
+  `bulkBarHtml(data)` draws it in Node.
+
+- `DenUI.filterBar(el, opts)` and `DenUI.bulkBar(el, opts)` mount them
+  in the kit's language. Den serves the four files at `/kit/`.
+- The words are `kit.filter.*` and `kit.bulk.*` in `strings.js`. Both
+  work under `script-src 'self'; style-src 'self'`.
+
+## The general button, the page action menu and the settings row
+
+Three pieces, data in, the kit's words out (en, es, ja).
+
+- **The general button** (issue 556): `src/button.css` and `src/button.js`
+  (exports `./button.css`, `./button`). `.den-btn` for any page, inside the
+  frame or not: secondary is the base, `.primary` the accent fill, `.sm`
+  the small size; a link drawn as a button is `a.den-btn`. A visible focus
+  ring, and a 44px tap on a touch screen (its box unchanged). These are
+  the values Den's frame drew; Den now links `button.css` and keeps no
+  copy.
+
+      buttonHtml({ label, variant: "primary", size: "sm", href?, type?,
+                   disabled?, id?, attrs: { "data-…": …, "aria-…": … } })
+
+  A disabled link has no href and `aria-disabled`. Any other variant,
+  size or attribute is dropped.
+
+- **The page action menu** (issue 555), in `shell-html.js` and
+  `shell-client.js` (its look in `shell.css`, More in `button.css`):
+
+      btnBox.innerHTML = pageMenuButtonHtml({ id: "doc-more", lang });
+      hydratePageMenu(document.getElementById("doc-more"), {
+        items: [                          // or () => items, each opening
+          { id: "edit", label: "Edit", href: "/doc/edit" },
+          { id: "copy", label: { key: "app.copy" }, onSelect: copyLink },
+          { hr: true },
+          { id: "dl", label: "Download", disabled: true,
+            note: "Downloads are off.", noteHref: "/settings#downloads" },
+        ],
+        onSelect: (id, item) => {},       // an item with no onSelect
+        lang,
+      });
+
+  "More ▾" is the kit's word. A label or note is the host's words, or
+  `{ key, vars }` in the kit's tables (add yours with `addStrings`). A
+  disabled item has `aria-disabled`, is faint, does nothing (the menu
+  stays open), and is described by its note, right under it: a row to
+  follow when it has `noteHref`, else a line. Keys, focus back and a press
+  outside are ◐ ▾'s. Below 720px (or on touch) More and each row are 44px.
+  `menuRowHtml(row)` is now exported: the row builder the kit's own menus
+  use (◐ ▾ and the account menu draw exactly what they drew before); it
+  takes `disabled`, `describedBy`, `id` and `cls` too.
+
+- **The settings on/off row** (issue 554): `src/setting-row.js` and
+  `src/setting-row.css` (exports `./setting-row`, `./setting-row.css`).
+  Link them with `button.css` and `savestate.css`.
+
+      const row = mountSettingRow(el, {
+        id: "downloads", label: "Owners can download", help: "…",
+        checked: true, who: ["Admins", "Owners"],   // [] is nobody
+        last: { by: "@sam", at: "2026-11-18T10:40:00Z" },  // null: none yet
+        readOnly: false, lang,
+        onSave: (checked) => api.save(checked),     // rejects on failure
+      });
+      row.set("saved"); row.checked(); row.destroy();
+
+  A checkbox and its label, the help line, Save, the save state and the
+  line "Admins and Owners can change this · Last changed 2 minutes ago by
+  @sam". Save calls `onSave` with the box's state: "Saving…" past 400 ms,
+  then "Saved", or "Not saved. Try again."; Save is busy
+  (`aria-disabled`) meanwhile and keeps focus; a change to the box clears
+  "Saved". The state line wears `savestate.css`'s look and is a polite
+  status. `settingRowHtml(o)` draws it in Node, and
+  `hydrateSettingRow(el, { onSave })` wires it. With `form` (`action`, and
+  `csrf`, `field`, `method` if needed) it is a form that posts with no
+  script. `readOnly` disables the box
+  and Save. The words are `kit.setrow.*` and `kit.savestate.*`.
+
+- `DenUI.buttonHtml`, `DenUI.pageMenu(btn, opts)` and
+  `DenUI.settingRow(el, opts)` are the same, in the kit's language.
+
 ## 0.7.1
 
 The top bar's search sits in the same place in every product (issue 303).
@@ -540,6 +796,12 @@ The top bar's search sits in the same place in every product (issue 303).
   two lines, `login` or `local` on one: `ACCOUNT_SHAPES`), the old fields
   fail (`legacy`), and the search's box is pinned. `navWarnings(snap)` lists host HTML where the kit's account
   or search should be: a warning in 0.7.1, a failure in 0.7.2.
+- **A page with no rail** (issue 694). `topBarHtml({ rail: false })`
+  draws the same bar without ☰ and without `aria-controls` for the rail;
+  `shellHtml({ rail: false })` draws no rail either. The header is stamped
+  `data-nav-shape="no-rail"` (`TOP_SHAPES`). `railShapeDiffs(snap)`, run
+  by `compareNav`, fails a top bar shape the kit doesn't draw, and a
+  no-rail page that holds ☰ or a rail, drawn or hidden.
 
 - **Three parts.** The bar is a grid: the left part (`div.den-left`: ☰,
   the brand, and what `start` holds before the search, the crumbs), the
@@ -688,7 +950,27 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   `mark: { src: "<served path>/marks/den.svg", label }` (Den serves it at
   `/kit/marks/den.svg`). An image runs no script. `markHtml(mark)` draws
   it alone; Den's own theme mark is drawn by it. `{ text }` and `{ svg }`
-  work as before.
+  work as before. Issue 644: the mark has two drawings of one design.
+  `marks/den.svg` is for 22px and up. `marks/den-16.svg` is drawn for
+  16-18px: at the kit's 18px brand pass `marks/den-16.svg` (Den serves it
+  at `/kit/marks/den-16.svg`). Both are exported (`./marks/*`).
+- **Mark edge in dark mode**: in dark mode (`data-mode="dark"`, or the
+  system's dark with no mode set) a mark gets a 1px cream edge
+  (`--den-mark-edge`, `shell.css`) so its dark tile keeps its outline on a
+  dark bar. Never in light. One mark file serves both modes.
+- **Tab icons and the head snippet** (issue 644): `src/site/` holds one
+  head snippet, `site/head.html` (the favicon as .ico and .svg, the touch
+  icon, the manifest link and `<meta name="theme-color">`), and every file
+  it names: `favicon.ico`, `favicon.svg`, `apple-touch-icon.png`,
+  `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` and
+  `site.webmanifest`. Exported as `./site/*`
+  (`@monster-orange/den-ui/site/head.html`). A host puts the snippet in
+  every page's `<head>` as it is, and serves each other file in the folder
+  at the root (`/favicon.ico`, `/site.webmanifest`, …) with its type
+  (`image/x-icon`, `image/svg+xml`, `image/png`,
+  `application/manifest+json`). It may fill the manifest's `name`,
+  `short_name` and `start_url` with its own. Den does all of this, so Den
+  and every other product on the kit emit the same tags.
 - **Mark layout**: `.den-mark` (a centred flex box, its image a block)
   and the text and raster forms are in `shell.css`. A host deletes its
   own copy.

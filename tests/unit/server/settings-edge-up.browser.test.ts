@@ -19,6 +19,9 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { shortDots } from "./helpers/short-dots.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
 
@@ -29,11 +32,7 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    for (const e of ENGINES)
-      browsers[e] = ws
-        ? await pw[e].connect(ws, { exposeNetwork: "<loopback>" })
-        : await pw[e].launch();
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -57,6 +56,7 @@ async function open(
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript(() => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -92,6 +92,8 @@ async function open(
 const dialog = (p: Page) => p.locator("dialog.bz-dlg[open]");
 
 async function press(p: Page): Promise<string> {
+  // Issue 699: the pop-up after a held button's dots, at 300 ms here.
+  await shortDots(p);
   await p.locator("#set-edge-up").click();
   await dialog(p).waitFor({ timeout: 5000 });
   expect(await dialog(p).locator("h2").textContent()).toContain(

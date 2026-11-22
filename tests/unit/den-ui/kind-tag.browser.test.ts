@@ -49,6 +49,8 @@ import {
   navWarnings,
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
+import { STRINGS } from "../../../packages/den-ui/src/strings.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -61,11 +63,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -707,8 +705,9 @@ for (const engine of ["chromium", "webkit"]) {
               .getAttribute("aria-label"),
           ),
         );
-        const hub =
-          lang === "en" ? "Hub" : got[2]!.split(" · ")[1].split(",")[0];
+        // The kind word from the kit's own table for that language.
+        const hub = STRINGS[lang]["kit.kind.hub"];
+        expect(hub).toBeTruthy();
         expect({ lang, got }).toEqual({
           lang,
           got: [

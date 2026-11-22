@@ -19,8 +19,8 @@
  *     1440x900, measured with getBoundingClientRect: MOCK below), and at
  *     390 nothing is wider than the window.
  *
- * DEN_START_SHOTS=<dir> writes screenshots. On localhost nothing asks to
- * sign in; no token or cookie is printed. Needs Playwright's chromium;
+ * DEN_START_SHOTS=<dir> writes screenshots. The page signs in through the
+ * one-time link first, as `web up` does; no token or cookie is printed. Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -34,6 +34,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -68,7 +70,7 @@ const MOCK = {
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -97,6 +99,7 @@ async function page(url: string, width = 1440, height = 900): Promise<Page> {
     viewport: { width, height },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       // No What's new on top of the dialog.

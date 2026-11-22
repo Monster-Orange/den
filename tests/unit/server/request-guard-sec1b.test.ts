@@ -26,7 +26,6 @@ const ctx = (opts: { lan?: string[] } = {}): GuardContext => ({
   edgeHosts: () => [EDGE],
   lanHosts: () => opts.lan ?? [],
   verifyBearer: (t) => (t === "den_pt_good" ? "person:someone" : null),
-  csrfToken: "start-csrf",
   // The cookie's value names the session; "good" is the live one.
   session: (req) =>
     /den_session_\d+=good/.test(String(req.headers.cookie ?? ""))
@@ -66,65 +65,66 @@ describe("on loopback", () => {
       ]).toEqual([p, true]);
   });
 
-  it("shell-grade needs no sign-in on loopback (Ward, 2026-11-06): Origin and the start's CSRF pass it, as for any mutation", () => {
-    const r = checkRequest(
-      req("POST", START, {
-        host: local,
-        origin: `http://${local}`,
-        "x-den-csrf": "start-csrf",
-      }),
-      ctx(),
-    );
-    expect(r).toMatchObject({
-      ok: true,
-      session: null,
-      beyond: false,
-      principal: { kind: "person-browser" },
-    });
-    // The terminal's io and the resume: no signin_required on loopback.
-    for (const [method, p] of [
-      ["GET", "/api/sessions/s1/io"],
-      ["POST", "/api/workspaces/north/agents/a1/resume"],
-    ] as const) {
-      const g = checkRequest(
-        req(method, p, {
-          host: local,
-          origin: `http://${local}`,
-          "sec-fetch-site": "same-origin",
-          "x-den-csrf": "start-csrf",
-        }),
-        ctx(),
-      );
-      expect([p, g.ok]).toEqual([p, true]);
-    }
-    // The browser-session admin routes too (the CLI sends its bearer).
-    expect(
-      checkRequest(
-        req("GET", "/api/web/sessions", {
-          host: local,
-          "sec-fetch-site": "same-origin",
-        }),
-        ctx(),
-      ),
-    ).toMatchObject({ ok: true });
+  it("0.4.71: a shell-grade route on loopback needs a sign-in too: 401 signin_required, whatever Origin and token it sends", () => {
+    for (const [method, p, extra] of [
+      ["POST", START, {}],
+      ["GET", "/api/sessions/s1/io", { upgrade: "websocket" }],
+      ["POST", "/api/workspaces/north/agents/a1/resume", {}],
+      ["GET", "/api/web/sessions", { "sec-fetch-site": "same-origin" }],
+    ] as const)
+      for (const csrf of ["start-csrf", "session-csrf"])
+        expect([
+          p,
+          checkRequest(
+            req(method, p, {
+              host: local,
+              origin: `http://${local}`,
+              "sec-fetch-site": "same-origin",
+              "x-den-csrf": csrf,
+              ...extra,
+            }),
+            ctx(),
+          ),
+        ]).toMatchObject([
+          p,
+          { ok: false, status: 401, code: "signin_required", beyond: false },
+        ]);
     // /signin is read-only and sign-in free (§6b.3): its handler decides,
     // on loopback and beyond.
     for (const host of [local, EDGE])
       expect(
         checkRequest(req("GET", "/signin", { host }), ctx()),
       ).toMatchObject({ ok: true, session: null });
-  });
-
-  it("shell-grade on loopback still needs Origin and CSRF: no sign-in is not no checks", () => {
+    // The person's CLI token reaches it, as before.
     expect(
       checkRequest(
-        req("POST", START, { host: local, "x-den-csrf": "start-csrf" }),
+        req("POST", START, {
+          host: local,
+          authorization: "Bearer den_pt_good",
+        }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: true, principal: { kind: "person" } });
+  });
+
+  it("signed in on loopback, shell-grade still needs Origin and CSRF: a sign-in is not no checks", () => {
+    expect(
+      checkRequest(
+        req("POST", START, {
+          host: local,
+          "x-den-csrf": "session-csrf",
+          ...cookie,
+        }),
         ctx(),
       ),
     ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
     expect(
       checkRequest(
-        req("POST", START, { host: local, origin: `http://${local}` }),
+        req("POST", START, {
+          host: local,
+          origin: `http://${local}`,
+          ...cookie,
+        }),
         ctx(),
       ),
     ).toMatchObject({ ok: false, status: 403, code: "csrf" });
@@ -133,6 +133,7 @@ describe("on loopback", () => {
         req("GET", "/api/sessions/s1/io", {
           host: local,
           "sec-fetch-site": "cross-site",
+          ...cookie,
         }),
         ctx(),
       ),
@@ -225,7 +226,7 @@ describe("on loopback", () => {
     });
   });
 
-  it("mutating without a session keeps SEC-1a's checks (Origin and the start's CSRF)", () => {
+  it("0.4.71: mutating without a session or bearer signs in on loopback too", () => {
     expect(
       checkRequest(
         req("POST", "/api/settings", {
@@ -235,7 +236,7 @@ describe("on loopback", () => {
         }),
         ctx(),
       ),
-    ).toMatchObject({ ok: true, session: null });
+    ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
   });
 });
 
@@ -333,7 +334,9 @@ describe("beyond loopback", () => {
 
 describe("HTTPS (the cookie's Secure)", () => {
   const xfp = { "x-forwarded-proto": "https" };
-  it("the edge Host from the edge's peer, with X-Forwarded-Proto https: HTTPS", () => {
+  // The edge's header counts only with its proof now (the session's Secure
+  // name is read over https only): the third argument says it was proved.
+  it("the edge Host from the edge's peer, with X-Forwarded-Proto https and the edge's proof: HTTPS", () => {
     for (const peer of [
       "127.0.0.1",
       "172.18.0.5",
@@ -345,8 +348,13 @@ describe("HTTPS (the cookie's Secure)", () => {
         requestIsHttps(
           req("GET", "/auth", { host: EDGE, ...xfp }, peer),
           "edge",
+          true,
         ),
-      ]).toEqual([peer, true]);
+        requestIsHttps(
+          req("GET", "/auth", { host: EDGE, ...xfp }, peer),
+          "edge",
+        ),
+      ]).toEqual([peer, true, false]);
   });
   it("a spoofed X-Forwarded-Proto: a localhost Host from loopback, or the edge Host from elsewhere, is not", () => {
     expect(

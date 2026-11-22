@@ -22,6 +22,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SHELL = fs.readFileSync(
   path.join(process.cwd(), "src", "ui", "server", "public", "shell.js"),
@@ -32,7 +33,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -367,8 +368,9 @@ describe("the rail", () => {
     await p.keyboard.press("Delete");
     expect(await p.$$('[data-pin="shop"]')).toHaveLength(0);
     await postsAtLeast(p, posts, 2);
+    // Issue 402: a pin is { item, project }; no project picked here: none.
     expect(posts).toEqual([
-      { shell: { pins: ["shop"] } },
+      { shell: { pins: [{ item: "shop", project: null }] } },
       { shell: { pins: [] } },
     ]);
     await p.context().close();
@@ -1109,7 +1111,15 @@ describe("Navigation prefs (R21)", () => {
       expect.arrayContaining([
         { shell: { hidden: ["release"] } },
         { shell: { hidden: [], order: ["environments"] } },
-        { shell: { pins: ["shop", "billing/api"] } },
+        {
+          shell: {
+            // Issue 402: no project picked here, so pins of none.
+            pins: [
+              { item: "shop", project: null },
+              { item: "billing/api", project: null },
+            ],
+          },
+        },
       ]),
     );
     expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(1);

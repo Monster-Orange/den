@@ -52,7 +52,10 @@
  *                                                 a new conversation whose
  *                                                 first prompt is its
  *                                                 handoff.md; a resume of
- *                                                 one is refused (409 rotated)
+ *                                                 one is refused (409 rotated);
+ *                                                 { fromHandoff: true }: from
+ *                                                 its newest handoff on file
+ *                                                 when none is due (issue 658)
  *   POST /api/workspaces/<ws>/agents/<id>/name    { name: string | null }: the
  *                                                 name its tab and the lists
  *                                                 show (AG-4b); the id never
@@ -100,6 +103,7 @@ import {
 } from "../../shared/agents/permissions.js";
 import {
   agentsModeCheckSeconds,
+  agentsTrustCheckSeconds,
   configuredRemoveStoppedAfter,
   getReposRoot,
   readAgentsConfig,
@@ -143,6 +147,12 @@ import {
   updatePersona,
   listRuntimes,
   markInterrupted,
+  runningAgentIds,
+  busyAgentIds,
+  resumeAfterHostRestart,
+  agentsOfSessions,
+  endedAfterHostRestart,
+  noteNotBackAfterHostRestart,
   modeCheck,
   modeRestartDetail,
   cancelStalePersonaChanges,
@@ -175,6 +185,10 @@ import {
   rotationSettings,
   setRotationSetting,
   rotationTick,
+  trustTick,
+  TRUST_DECLINED,
+  TRUST_WAITING,
+  undoUnbegunRelaunches,
   ROTATION_TICK_MS,
   startAgent,
   startFresh,
@@ -183,6 +197,7 @@ import {
   type AgentsResolved,
   type Started,
   FRESH_NOTE,
+  freshNote,
   workspacePermissionOf,
   followProjectMode,
   projectModeView,
@@ -218,8 +233,15 @@ import {
   agentResumeRefusal,
 } from "./agent-resume-grant.js";
 import { readBody, sendJson } from "./http-helpers.js";
+import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import {
+  HOST_RESTART_ACTION,
+  HOST_RESTART_TITLE,
+  writeHostRefreshState,
+  type HostRefreshState,
+} from "../../shared/sessions/host-refresh-state.js";
 
 export interface AgentRouteDeps {
   /** The operations' deps (tests: an in-process host, a temp state dir). */
@@ -348,6 +370,8 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
         ...(e.hints.length ? { hints: e.hints } : {}),
         ...(e.running ? { running: e.running } : {}),
         ...(e.job ? { job: e.job } : {}),
+        // Issue 479: the quarantined copy and the choices, for the page.
+        ...(e.quarantined ? { quarantined: e.quarantined } : {}),
       },
       e.status,
     );
@@ -356,7 +380,12 @@ function sendError(res: http.ServerResponse, e: unknown, ws?: string): void {
   if (e instanceof HostError) {
     sendJson(
       res,
-      { ok: false, error: e.message, code: "session_host" },
+      {
+        ok: false,
+        error: e.message,
+        // Issue 503: no PTY to open (the page has its own words for it).
+        code: e.code === "spawn" ? "pty_open" : "session_host",
+      },
       e.code === "cap" ? 429 : 503,
     );
     return;
@@ -1035,12 +1064,22 @@ export async function handleAgentRoutes(
       // never logged; its length is.
       if (instruction && !s.early) {
         const id = s.rec.id;
+        let dialog = false;
+        let notAtPrompt = false;
         void sendFirstInstruction(
           d,
           s.info.ref.id,
           s.rec.runtime,
           instruction,
-          deps.instruction ?? {},
+          {
+            ...(deps.instruction ?? {}),
+            onDialog: () => {
+              dialog = true;
+            },
+            onNotAtPrompt: () => {
+              notAtPrompt = true;
+            },
+          },
         ).then((sent) =>
           recordAction(
             actor,
@@ -1051,7 +1090,11 @@ export async function handleAgentRoutes(
                 ? {}
                 : {
                     outcome: "refused" as const,
-                    reason: "its session ended or no host",
+                    reason: dialog
+                      ? "not typed: a dialog waits for its person in its terminal"
+                      : notAtPrompt
+                        ? "not typed: the agent wasn't at its prompt"
+                        : "the agent ended, or no terminal host",
                   }),
             },
             principalOf(req),
@@ -1182,7 +1225,18 @@ export async function handleAgentRoutes(
         ...(rec.resumed ? { resumed: true } : {}),
       });
     } else if (verb === "relaunch") {
-      const s = await relaunchAgent(d, id!, ws);
+      // Issue 658: { fromHandoff: true }: from its newest handoff on file
+      // when no rotation is due. Never a file the page names.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "fromHandoff")
+          throw new AgentError(
+            `${k}: unknown field (relaunch takes fromHandoff)`,
+            { usage: true },
+          );
+      const s = await relaunchAgent(d, id!, ws, {
+        ...(body.fromHandoff === true ? { fromHandoff: {} } : {}),
+      });
       what = `relaunch ${s.rec.id} from its handoff (${s.why}) in ${ws}`;
       audit(what + onSignIn(s.rec), s.early ? "exited at once" : undefined);
       sendStarted(res, s, d);
@@ -1427,7 +1481,20 @@ export async function handleAgentRoutes(
         sendStarted(res, r.s, d, { relaunched: true });
       } else {
         audit(what);
-        sendStarted(res, r.s, d);
+        // Issue 658: a conversation never written started fresh: say so,
+        // and whether its last handoff was its first prompt.
+        sendStarted(
+          res,
+          r.s,
+          d,
+          r.s.fresh
+            ? {
+                note: freshNote(r.s),
+                ...(r.s.fromHandoff ? { handoff: true } : {}),
+                ...(r.s.newConversation ? { newConversation: true } : {}),
+              }
+            : {},
+        );
       }
     }
   } catch (e) {
@@ -1775,8 +1842,23 @@ async function plainSession(
       throw new AgentError("an agent can't start a session from the page", {
         status: 403,
       });
-    const { info } = await startPlainSession(d, ws);
-    what = `plain session ${info.name} in ${ws}`;
+    // Issue 479: an optional { cwd } (Open a terminal there). No body,
+    // or none of it: the project's folder, as before.
+    const raw = await readBody(req).catch(() => "");
+    if (raw.length > MAX_BODY)
+      throw new AgentError("request too large", { status: 413, usage: true });
+    let v: unknown;
+    try {
+      v = JSON.parse(raw || "{}");
+    } catch {
+      throw new AgentError("invalid JSON", { usage: true });
+    }
+    const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    if (b.cwd !== undefined && typeof b.cwd !== "string")
+      throw new AgentError("cwd must be a string", { usage: true });
+    const cwd = b.cwd as string | undefined;
+    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {
       ok: true,
@@ -1922,6 +2004,247 @@ export function noteStartedWithoutHub(
 }
 
 /**
+ * Issue 563: the bell's one note that the terminal host restarted on the
+ * installed version: the agents that resumed, and that open terminals
+ * ended. Issue 597: and the agents it cut mid-turn (told to carry on).
+ */
+export function noteHostRestarted(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  title: string,
+  resumed: readonly string[],
+  terminals: number,
+  cut: readonly string[] = [],
+): void {
+  const names = resumed.join(", ");
+  const n = resumed.length;
+  // Issue 597: the cut agents are named when any agent resumed.
+  const cutNames = n ? cut.join(", ") : "";
+  const cutLine = cutNames
+    ? ` Cut mid-turn, and told to check their last step and carry on: ${cutNames}.`
+    : "";
+  store.add({
+    kind: "service",
+    subject: "record:terminal-host-restarted",
+    scope: "workspace/den-server",
+    text:
+      `${title} restarted its terminal host on the installed version, so new agents and terminals start again. ` +
+      (n && terminals
+        ? `Agents resumed: ${names}. Terminals that ended: ${terminals}.`
+        : n
+          ? `Agents resumed: ${names}. No terminal was running.`
+          : terminals
+            ? `No agent was running. Terminals that ended: ${terminals}.`
+            : "No agent or terminal was running.") +
+      cutLine,
+    msg: {
+      // One key per case, so each language says it as a sentence.
+      key:
+        `bell.m.hostRestarted${n && terminals ? "" : n ? "Agents" : terminals ? "Terminals" : "None"}` +
+        (cutNames ? "Cut" : ""),
+      vars: { names, terminals, ...(cutNames ? { cut: cutNames } : {}) },
+    },
+    link: "/agents",
+  });
+}
+
+type Restarted = Extract<
+  import("../../shared/sessions/host-refresh.js").RefreshResult,
+  { did: "restarted" }
+>;
+
+/**
+ * Issue 597: the terminal host restart's audit row: the counts first in
+ * its detail (cut at 400 characters), every agent in `agents`.
+ */
+export function hostRestartAudit(r: Restarted): {
+  detail: string;
+  agents: {
+    resumed: string[];
+    failed: { agent: string; why: string }[];
+    cut: string[];
+  };
+} {
+  const detail =
+    `terminal host restarted (pid ${r.from} → ${r.to}): ` +
+    `resumed ${r.resumed.length}, failed ${r.failed.length}, cut mid-turn ${r.busy.length}; ` +
+    `open terminals ended: ${r.terminals}; ${r.why}`;
+  return {
+    detail: detail.slice(0, 400),
+    agents: {
+      resumed: [...r.resumed],
+      failed: [...r.failed],
+      cut: [...r.busy],
+    },
+  };
+}
+
+/** Issue 597: the audit row of a terminal host kept across an update. */
+export function hostKeptAudit(r: {
+  did: "kept";
+  from: string | null;
+  to: string | null;
+}): string {
+  return `host kept: code unchanged (${r.from ?? "unknown"} → ${r.to ?? "unknown"})`;
+}
+
+/**
+ * Issue 563: after an update, a terminal host still on the old version
+ * (or the old native module) restarts, and the agents it ran resume.
+ * Issue 597: only when its code or its module changed; else it is kept.
+ */
+export async function refreshTerminalHost(
+  d: AgentsResolved,
+  log: (line: string) => void,
+  by: "start" | "held" = "start",
+): Promise<
+  import("../../shared/sessions/host-refresh.js").RefreshResult | null
+> {
+  let waitS = 900;
+  let note = true;
+  let checkS = 30;
+  try {
+    const cfg = await import("../../shared/den-config.js");
+    const s = cfg.readSessionsConfig();
+    waitS = s.hostRestartWaitSeconds;
+    note = s.hostRestartNote;
+    checkS = s.hostRestartCheckSeconds;
+  } catch {
+    /* the defaults; validate names a bad value */
+  }
+  // Issue 631: no relaunch from a handoff starts while the host restarts
+  // (it would race the list of agents to resume).
+  if (hostRefreshing) return null; // Issue 731: one at a time
+  hostRefreshing = true;
+  try {
+    return await refreshAndReport(d, log, { waitS, note, checkS, by });
+  } finally {
+    hostRefreshing = false;
+  }
+}
+
+/**
+ * Issue 631: a terminal host restart is under way: the rotation tick
+ * leaves every agent as it is until it ends.
+ */
+let hostRefreshing = false;
+
+/** Issue 731: whether a terminal host refresh runs now (the held write's check). */
+export const terminalHostRefreshing = (): boolean => hostRefreshing;
+
+/**
+ * Issue 731: the server's line when its refresh failed. It names the held
+ * write, never `sessions host --stop` (that stops every agent).
+ */
+export function hostRefreshFailedLine(why: string): string {
+  return `terminal host not restarted: ${why}; ask for "${HOST_RESTART_TITLE}" (the held write ${HOST_RESTART_ACTION}; doctor offers it)`;
+}
+
+async function refreshAndReport(
+  d: AgentsResolved,
+  log: (line: string) => void,
+  o: { waitS: number; note: boolean; checkS: number; by: "start" | "held" },
+): Promise<import("../../shared/sessions/host-refresh.js").RefreshResult> {
+  const { refreshSessionHost, HOST_RESTART_NOTE } =
+    await import("../../shared/sessions/host-refresh.js");
+  const { sessionPaths } = await import("../../shared/sessions/paths.js");
+  const { installedPtyModule } = await import("../../shared/sessions/pty.js");
+  const { engineVersion } = await import("../../shared/paths.js");
+  const { hostCodeId } = await import("../../shared/sessions/host-code.js");
+  const { waitS, note, checkS, by } = o;
+  // Issue 731: what the refresh does, for doctor to read.
+  const stateDir = d.stateDir();
+  const startedAt = new Date().toISOString();
+  const state = (
+    s: Pick<HostRefreshState, "state"> & Partial<HostRefreshState>,
+  ) =>
+    writeHostRefreshState(stateDir, {
+      startedAt,
+      waitSeconds: waitS,
+      pid: process.pid,
+      by,
+      ...s,
+    });
+  const r = await refreshSessionHost({
+    onWait: ({ why }) => state({ state: "waiting", why }),
+    connectExisting: () => d.connectExisting(),
+    connect: () => d.connect(),
+    socket: sessionPaths(d.stateDir()).socket,
+    installed: () => ({
+      den: engineVersion() ?? null,
+      code: hostCodeId(),
+      pty: installedPtyModule(),
+    }),
+    running: () => runningAgentIds(d),
+    busy: (ids) => busyAgentIds(d, ids),
+    waitMs: waitS * 1000,
+    cutNote: note ? HOST_RESTART_NOTE : null,
+    resume: (id, n) => resumeAfterHostRestart(d, id, n),
+    // Issue 631: none missing, and a resume that didn't hold is failed.
+    agentsOf: async (sessions) => agentsOfSessions(d, sessions),
+    ended: (ids) => endedAfterHostRestart(d, ids),
+    checkMs: checkS * 1000,
+    log: (l) => log(`  ${l}`),
+  });
+  const endedAt = new Date().toISOString();
+  if (r.did === "failed") {
+    state({ state: "failed", why: r.why, endedAt });
+    const line = hostRefreshFailedLine(r.why);
+    log(`  ⚠ ${line}`);
+    recordAction(null, { verb: "terminal-host", detail: line.slice(0, 400) });
+    return r;
+  }
+  state({
+    state: r.did,
+    endedAt,
+    ...(r.did === "restarted" ? { why: r.why } : {}),
+  });
+  if (r.did === "kept") {
+    // Issue 597: no restart, no bell line.
+    const line = hostKeptAudit(r);
+    log(`  terminal ${line}`);
+    recordAction(null, { verb: "terminal-host", detail: line });
+    return r;
+  }
+  if (r.did !== "restarted") return r;
+  const a = hostRestartAudit(r);
+  // The server log has the lists in full; the audit row in `agents`.
+  log(
+    `  ${a.detail}` +
+      (r.busy.length ? `; cut mid-turn: ${r.busy.join(", ")}` : "") +
+      `; agents resumed: ${r.resumed.join(", ") || "none"}` +
+      (r.failed.length
+        ? `; not resumed: ${r.failed.map((f) => `${f.agent} (${f.why})`).join(", ")}`
+        : ""),
+  );
+  recordAction(null, {
+    verb: "terminal-host",
+    detail: a.detail,
+    agents: a.agents,
+  });
+  // Issue 631: each agent that didn't come back is marked, and the bell
+  // says so, with why.
+  for (const f of r.failed)
+    try {
+      noteNotBackAfterHostRestart(d, f.agent, f.why);
+    } catch (e) {
+      log(`  ⚠ agent ${f.agent}: ${(e as Error).message}`);
+    }
+  try {
+    const { notificationDeps } = await import("./notification-service.js");
+    noteHostRestarted(
+      notificationDeps().store,
+      product().title,
+      r.resumed,
+      r.terminals,
+      r.busy,
+    );
+  } catch {
+    /* the bell is best effort: the audit has it */
+  }
+  return r;
+}
+
+/**
  * Issue 163: "ran while you were away", one bell note: the agents that kept
  * running while the web server was down, and those restored at its start.
  */
@@ -1993,6 +2316,13 @@ export function startAgentUpkeep(
       }
     } catch (e) {
       log(`  ⚠ persona changes after the restart: ${(e as Error).message}`);
+    }
+    // Issue 563: a terminal host left on the old version by an update
+    // restarts first, so what resumes below starts in the new one.
+    try {
+      await refreshTerminalHost(d, log);
+    } catch (e) {
+      log(`  ⚠ terminal host after the restart: ${(e as Error).message}`);
     }
     try {
       // 0.4.46 agents.restore_on_boot: every agent that was running, after
@@ -2072,7 +2402,8 @@ export function startAgentUpkeep(
   // then relaunched from it. One look at a time.
   let looking = false;
   const rotate = async () => {
-    if (looking) return;
+    // Issue 631: never during a terminal host restart.
+    if (looking || hostRefreshing) return;
     looking = true;
     try {
       for (const e of await rotationTick(d)) {
@@ -2089,10 +2420,34 @@ export function startAgentUpkeep(
           );
         else log(`  ⚠ rotation of ${who}: ${e.why}`);
       }
+      // Issue 658: a relaunch whose conversation was never written (it
+      // ended at the folder-trust question, say) can relaunch again.
+      for (const id of await undoUnbegunRelaunches(d))
+        log(
+          `Agent ${id}: its relaunch never began; its handoff is back, so it can relaunch again`,
+        );
     } catch (e) {
       log(`  ⚠ agents.rotate: ${(e as Error).message}`);
     } finally {
       looking = false;
+    }
+  };
+  // Issue 659: an agent's folder-trust question, waiting or declined: its
+  // row, pane and bell say so. One look at a time.
+  let trusting = false;
+  const trust = async () => {
+    if (trusting || hostRefreshing) return;
+    trusting = true;
+    try {
+      for (const e of await trustTick(d))
+        if (e.kind === "waiting")
+          log(`Agent ${e.agent} in ${e.workspace}: ${TRUST_WAITING}`);
+        else if (e.kind === "declined")
+          log(`  ⚠ agent ${e.agent} in ${e.workspace}: ${TRUST_DECLINED}`);
+    } catch (e) {
+      log(`  ⚠ agents' folder-trust look: ${(e as Error).message}`);
+    } finally {
+      trusting = false;
     }
   };
   // 0.4.46 MODE-UI: a mode change applies on its own, after the turn.
@@ -2130,6 +2485,13 @@ export function startAgentUpkeep(
   }, deps.delayMs ?? 2000).unref();
   setInterval(() => void prune(), PRUNE_EVERY_MS).unref();
   setInterval(() => void rotate(), ROTATION_TICK_MS).unref();
+  let trustEvery = 5;
+  try {
+    trustEvery = agentsTrustCheckSeconds();
+  } catch (e) {
+    log(`  ⚠ ${(e as Error).message}`);
+  }
+  setInterval(() => void trust(), trustEvery * 1000).unref();
 }
 
 /**
@@ -2231,14 +2593,17 @@ async function hubConnectRoute(
       "Referrer-Policy": "no-referrer",
       "Cache-Control": "no-store",
     });
+    // Issue 644: a page made in code carries the kit's head snippet too.
     res.end(
-      m.callbackPage(product().title, {
-        ok: r.ok,
-        ...(r.ok ? {} : { reason: r.reason }),
-        message: r.ok
-          ? `Connected to Hub${r.team ? ` (${r.team})` : ""}. Going back to Settings…`
-          : r.message,
-      }),
+      sitePage(
+        m.callbackPage(product().title, {
+          ok: r.ok,
+          ...(r.ok ? {} : { reason: r.reason }),
+          message: r.ok
+            ? `Connected to Hub${r.team ? ` (${r.team})` : ""}. Going back to Settings…`
+            : r.message,
+        }),
+      ),
     );
     return true;
   }

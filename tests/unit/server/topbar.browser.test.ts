@@ -24,6 +24,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -32,7 +33,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -500,12 +501,18 @@ describe("the status drawer (R15)", () => {
     expect(await text(p, '.den-prob-card [data-pin="billing/billing"]')).toBe(
       "Unpin",
     );
-    expect(posts).toContainEqual({
-      path: "/api/settings/shell",
-      body: {
-        shell: { pins: ["billing/billing"], changedAt: expect.any(Number) },
-      },
-    });
+    // Issue 402: a pin is { item, project } (the project in view, or none).
+    expect(
+      posts
+        .filter((x) => x.path === "/api/settings/shell")
+        .map(
+          (x) =>
+            (x.body as { shell?: { pins?: { item: string }[] } }).shell?.pins,
+        )
+        .some(
+          (pins) => pins?.length === 1 && pins[0].item === "billing/billing",
+        ),
+    ).toBe(true);
     await p.click('.den-prob-card [data-start="billing/billing"]');
     expect(await p.$(".den-drawer")).toBeNull();
     expect(
@@ -557,6 +564,10 @@ describe("the ⌘K palette (R17)", () => {
       "Logs of shop/db ACTION",
       // #80 (0.4.45): a fuzzy match, last ("Sh…o…p" in its label).
       "Show up to this many helpers under an agent SETTING",
+      // Issue 403: fuzzy too ("S…h…o…p" in "Report screenshots, kept for").
+      "Report screenshots, kept for SETTING",
+      // Issue 403: and its size limit, looser still (…p in "kept").
+      "Report screenshots, largest kept SETTING",
     ]);
     await p.keyboard.press("ArrowDown");
     expect(await p.getAttribute(q, "aria-activedescendant")).toBe(

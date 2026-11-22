@@ -10,6 +10,7 @@
 import { formatTime, formatTitle } from "/kit/time.js";
 import { openReport } from "/kit/report.js";
 import "./den-kit.js";
+import { dialogHtml, mountDialog } from "/dialog-den.js";
 
 export { openReport };
 
@@ -76,10 +77,32 @@ export async function openMyReports() {
     mine.dlg.querySelector("h2")?.focus();
     return mine;
   }
-  const dlg = document.createElement("dialog");
-  dlg.className = "fb-dlg fb-my";
-  dlg.setAttribute("aria-modal", "true");
-  dlg.setAttribute("aria-label", t("fb.mine"));
+  // Issue 670: the kit's large dialog, no dialog of its own.
+  const frame = mountDialog(
+    dialogHtml({
+      kind: "panel",
+      id: "fb-my-dlg",
+      className: "fb-my",
+      ids: { body: "fb-my-body" },
+      title: t("fb.mine"),
+      closeLabel: t("tx.close"),
+      actions: [
+        {
+          label: t("fb.done"),
+          value: "done",
+          kind: "primary",
+          attrs: { "data-act": "done" },
+        },
+      ],
+    }),
+    {
+      show: false,
+      onClose: () => {
+        if (mine === self) mine = null;
+      },
+    },
+  );
+  const dlg = frame.dialog;
   const ms = {
     tab: "mine",
     gh: null,
@@ -89,7 +112,6 @@ export async function openMyReports() {
   };
   const self = { dlg, ms, close };
   mine = self;
-  document.body.append(dlg);
 
   const btn = (act, label, attrs = "") =>
     `<button type="button" data-act="${act}"${attrs}>${esc(label)}</button>`;
@@ -152,11 +174,10 @@ export async function openMyReports() {
         : `<p class="fb-fine">${esc(t("fb.myAgE"))}</p>`;
     const tab = (id, label) =>
       `<button type="button" role="tab" data-tab="${id}" aria-selected="${ms.tab === id}" aria-controls="fb-my-panel" tabindex="${ms.tab === id ? 0 : -1}">${esc(label)}</button>`;
-    dlg.innerHTML = `<div class="fb-b"><h2 tabindex="-1">${esc(t("fb.mine"))}</h2>
-<p class="fb-sub">${esc(t("fb.myS"))}</p>
-<div class="fb-tabs" role="tablist">${tab("mine", t("fb.tabMine"))}${tab("agents", t("fb.tabDraft", { n: agents.length }))}</div>
-<div id="fb-my-panel" role="tabpanel" aria-live="polite">${body}</div>
-<div class="fb-btns">${btn("done", t("fb.done"), ' class="fb-pri"')}</div></div>`;
+    dlg.querySelector("#fb-my-body").innerHTML =
+      `<div class="fb-b"><p class="fb-sub">${esc(t("fb.myS"))}</p>` +
+      `<div class="fb-tabs" role="tablist">${tab("mine", t("fb.tabMine"))}${tab("agents", t("fb.tabDraft", { n: agents.length }))}</div>` +
+      `<div id="fb-my-panel" role="tabpanel" aria-live="polite">${body}</div></div>`;
     (
       (focusSel && dlg.querySelector(focusSel)) ||
       dlg.querySelector("h2")
@@ -210,29 +231,16 @@ export async function openMyReports() {
 
   function close() {
     if (mine === self) mine = null;
-    if (dlg.open) dlg.close();
-    dlg.remove();
+    frame.close("done");
   }
 
   dlg.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      return close();
-    }
     const tb = e.target.closest?.('[role="tab"]');
     if (tb && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
       e.preventDefault();
       ms.tab = ms.tab === "mine" ? "agents" : "mine";
       render(`[data-tab="${ms.tab}"]`);
     }
-  });
-  dlg.addEventListener("cancel", (e) => {
-    e.preventDefault();
-    close();
-  });
-  dlg.addEventListener("close", () => {
-    if (mine === self) close();
   });
   dlg.addEventListener("click", (e) => {
     const o = e.target.closest?.("[data-open]");
@@ -270,7 +278,7 @@ export async function openMyReports() {
   });
 
   render();
-  dlg.showModal();
+  frame.show();
   await load();
   if (mine === self) render();
   return self;

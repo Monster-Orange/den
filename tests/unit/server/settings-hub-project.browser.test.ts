@@ -11,19 +11,24 @@
  * picker's first option is "Create a Hub project named <name>", the name
  * editable; Create asks Hub (the working pop-up meanwhile); an owner gets
  * Hub's Allow right in the row, anyone else is told who must allow it;
- * the row links on its own once Hub says it is allowed.
+ * the row links on its own once Hub says it is allowed. Issue 651: no
+ * pop-up on Settings draws in the browser's serif font (Unlink, Report,
+ * and a bare dialog that sets no font of its own), and at desktop width
+ * Switch and Unlink share one row beside the list.
  *
  * The demo distribution (helpers/agents-page-server.ts). Needs Playwright's
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
+import { shortDots } from "./helpers/short-dots.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -34,11 +39,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -68,9 +69,10 @@ const BLOG = { id: "proj_blog2", slug: "blog", name: "Blog" };
 async function page(
   answer?: (method: string, body: unknown) => unknown,
   language?: string,
+  width = 375,
 ): Promise<{ p: Page; puts: unknown[] }> {
   const ctx = await browser!.newContext({
-    viewport: { width: 375, height: 900 },
+    viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
   await ctx.addInitScript((v) => {
@@ -104,12 +106,14 @@ async function page(
         body: JSON.stringify(answer(r.request().method(), body)),
       });
     });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings?ws=north#workspace"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings?ws=north#workspace");
   if (language) {
     await setLanguage(p, language);
     await p.reload();
   }
   await p.waitForSelector('[data-setting="workspace.hub"] [data-hubp]');
+  // Issue 699: the pop-up after a held button's dots, at 300 ms here.
+  await shortDots(p);
   return { p, puts };
 }
 
@@ -131,6 +135,92 @@ const rowText = (p: Page) =>
   p.$eval('[data-setting="workspace.hub"]', (el) => el.textContent ?? "");
 const fits = (p: Page) =>
   p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+/** A linked row: north ↔ Back office, Blog the one to switch to. */
+const LINKED = () => ({
+  ok: true,
+  project: "north",
+  hub: BACK,
+  connected: true,
+  suggestions: [{ ...BACK, why: "repo" }],
+  projects: [BLOG, BACK],
+});
+
+/**
+ * Elements in the open dialog (itself included) whose computed font is
+ * the browser's serif default: a font-family with no sans-serif,
+ * monospace or system-ui in it.
+ */
+const serifIn = (p: Page, sel: string) =>
+  p.$eval(sel, (d) =>
+    [d, ...Array.from(d.querySelectorAll("*"))]
+      .map((el) => ({
+        el:
+          el.tagName.toLowerCase() +
+          (typeof el.className === "string" && el.className.trim()
+            ? "." + el.className.trim().split(/\s+/).join(".")
+            : ""),
+        ff: getComputedStyle(el).fontFamily,
+      }))
+      .filter((x) => !/sans-serif|monospace|system-ui/i.test(x.ff))
+      .map((x) => `${x.el}: ${x.ff}`),
+  );
+
+describe("issue 651: pop-ups use Den's font; Switch and Unlink in one row", () => {
+  it("the Unlink pop-up: nothing in it is serif", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.click("[data-hubp-more] summary");
+    await p.click('[data-hubp-action="unlink"]');
+    await p.waitForSelector("#hubp-dlg[open]");
+    expect(await serifIn(p, "#hubp-dlg")).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("Report from the top bar: nothing in it is serif", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.click(".den-rb-top");
+    await p.waitForSelector("dialog.fb-dlg[open]");
+    expect(await serifIn(p, "dialog.fb-dlg[open]")).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("a pop-up that sets no font of its own still gets Den's (the kit's base)", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.evaluate(() => {
+      const d = document.createElement("dialog");
+      d.id = "bare-dlg";
+      d.innerHTML =
+        "<h2>Title</h2><p>Text</p><input value='a'><select><option>b</option></select>" +
+        "<textarea>c</textarea><button type='button'>OK</button>";
+      document.body.append(d);
+      d.showModal();
+    });
+    expect(await serifIn(p, "#bare-dlg")).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("at 1280 px, Switch and Unlink share one row beside the list", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.click("[data-hubp-more] summary");
+    const box = async (sel: string) => (await (await p.$(sel))!.boundingBox())!;
+    const list = await box("#hubp-sel");
+    const sw = await box('[data-hubp-action="link"]');
+    const un = await box('[data-hubp-action="unlink"]');
+    const mid = (b: { y: number; height: number }) => b.y + b.height / 2;
+    // One row: Switch and Unlink on the same line, Unlink after Switch.
+    expect(Math.abs(mid(sw) - mid(un))).toBeLessThanOrEqual(4);
+    expect(un.x).toBeGreaterThan(sw.x + sw.width);
+    // Beside the list: the same line, to its right.
+    expect(Math.abs(mid(sw) - mid(list))).toBeLessThanOrEqual(4);
+    expect(sw.x).toBeGreaterThan(list.x + list.width);
+    expect(await fits(p)).toBeLessThanOrEqual(0);
+    await p.context().close();
+  }, 60_000);
+});
 
 describe("Settings › Project setup › Hub project (H5)", () => {
   it("not connected (the real server): says so and where to connect", async () => {
@@ -495,7 +585,7 @@ describe("Settings › Project setup › Hub project (H5)", () => {
       if (b.workspaces?.north) b.workspaces.north.hub_project = BACK;
       return r.fulfill({ response: res, body: JSON.stringify(b) });
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=north"));
+    await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
     await p.waitForSelector(".content-header #ws-hub-project");
     expect(await p.textContent("#ws-hub-project")).toBe("Hub: Back office");
     expect(await p.getAttribute("#ws-hub-project", "href")).toBe(

@@ -7,12 +7,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
 
@@ -22,7 +23,7 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -53,7 +54,7 @@ describe("no secrets store: the sign-in token field says so", () => {
     p.on("response", (r) => {
       if (r.url().endsWith("/api/agents/signin-token")) posts.push(r.status());
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+    await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
     await p.waitForSelector("[data-keep-token-input]");
     const note = p.locator("[data-keep-token-note]");
     await expect(note.isVisible()).resolves.toBe(true);

@@ -12,6 +12,7 @@ export const clauses = [
   "every new string has en/es/ja text",
   "when the edge can't start, every place uses the address that works, and says why once",
   "the route for nginx, Caddy and Traefik is ready to paste (doctor and Edge)",
+  "when nothing answers at the address, doctor and the Edge page say Not reachable yet",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1440, 390] };
 // Quiet, a cell took ~9 s (the /edge page 0.8–2.5 s on the remote browser, the 1.5 s settle, the CLI calls ~4 s): 4× that is under the 300 s floor.
@@ -21,6 +22,9 @@ const hex = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
     b.toString(16).padStart(2, "0"),
   ).join("");
+
+// Read only (issue 845): reads the identity route, /api/edge/address, doctor, `edge route` and the Edge page.
+export const readOnly = true;
 
 export async function setup(ctx) {
   const s = {};
@@ -50,7 +54,7 @@ export async function setup(ctx) {
     lines: (d.out || "")
       .split("\n")
       .filter((l) =>
-        /checked just now|is held by|in use by something|no address was checked|Options: free port|edge route --for/.test(
+        /checked just now|is held by|in use by something|no address was checked|Options: free port|edge route --for|Not reachable yet|isn't checked yet/.test(
           l,
         ),
       )
@@ -64,11 +68,15 @@ export async function setup(ctx) {
       out: r.out || "",
       err: (r.err || "").trim(),
     };
+    // Into <module>-log.txt, so a failing clause shows what the CLI said.
+    ctx.log?.(
+      `edge route --for ${kind}: exit ${r.code}\n${r.out || ""}\n${(r.err || "").trim()}`,
+    );
   }
   return s;
 }
 
-export async function run(ctx) {
+export async function run(ctx, state) {
   const tag = `${ctx.browser}-${ctx.width}`;
   await ctx.goto(ctx.page, "/edge");
   await ctx.page
@@ -77,18 +85,29 @@ export async function run(ctx) {
   await ctx.sleep(1500);
   const r = await ctx.page.evaluate(() => ({
     card: !!document.querySelector("[data-address-card]"),
+    cardText: document.querySelector("[data-address-card]")?.textContent ?? "",
+    sub: document.getElementById("edge-sub")?.textContent?.trim() ?? "",
     banner: !!document.querySelector('[data-banner="den-address"]'),
     hScroll:
       document.documentElement.scrollWidth >
       document.documentElement.clientWidth + 1,
   }));
   await ctx.shot(`edge-${tag}`);
-  return r;
+  // The harness calls expect(result) alone, so each cell carries what
+  // setup saw (identity, address, doctor, routes).
+  return { ...r, setup: state };
 }
 
-export function expect(cells, s) {
-  const st = s?.address ?? {};
-  const held = st.wantedAnswer && st.wantedAnswer !== "den";
+export function expect(cells) {
+  const s = cells.find((c) => c.result?.setup)?.result.setup ?? {};
+  const st = s.address ?? {};
+  const held = st.wantedAnswer === "other";
+  // Asked, and no answer: nothing listens, or nothing answered in time.
+  const unreachable =
+    !!st.wanted &&
+    st.directOk === true &&
+    (st.wantedAnswer === "nothing" || st.wantedAnswer === "unknown");
+  const NOT_REACHABLE = /Not reachable yet/;
   const d = (f) =>
     cells
       .map(({ cell, result }) => `${cell.browser}@${cell.width}: ${f(result)}`)
@@ -137,10 +156,14 @@ export function expect(cells, s) {
     held
       ? {
           clause: clauses[4],
-          ok: cells.every(({ result }) => result.card && !result.hScroll),
+          // The sub line follows the card: never "· running" above it.
+          ok: cells.every(
+            ({ result }) =>
+              result.card && !result.hScroll && !/· running$/.test(result.sub),
+          ),
           detail: d(
             (r) =>
-              `card ${r.card}, banner ${r.banner}, side scroll ${r.hScroll}`,
+              `card ${r.card}, banner ${r.banner}, side scroll ${r.hScroll}, sub "${r.sub}"`,
           ),
           evidence: shots,
         }
@@ -152,7 +175,7 @@ export function expect(cells, s) {
             d(
               (r) =>
                 `no card ${!r.card}, no banner ${!r.banner}, side scroll ${r.hScroll}`,
-            ) + " (the address works here, so both rightly say nothing)",
+            ) + " (another server doesn't hold the address here)",
           evidence: shots,
         },
     {
@@ -186,5 +209,28 @@ export function expect(cells, s) {
         )
         .join("; "),
     },
+    unreachable
+      ? {
+          clause: clauses[8],
+          ok:
+            (s.doctor?.lines ?? []).some((l) => NOT_REACHABLE.test(l)) &&
+            cells.every(
+              ({ result }) =>
+                result.card && NOT_REACHABLE.test(result.cardText ?? ""),
+            ),
+          detail:
+            `doctor: ${(s.doctor?.lines ?? []).filter((l) => NOT_REACHABLE.test(l)).join(" | ") || "no Not reachable yet line"}; ` +
+            d(
+              (r) =>
+                `card ${r.card}, says it ${NOT_REACHABLE.test(r.cardText ?? "")}`,
+            ),
+          evidence: shots,
+        }
+      : {
+          clause: clauses[8],
+          ok: null,
+          skip: "needs-unreachable-address",
+          detail: `the address answers here (${st.wantedAnswer ?? "not checked"})`,
+        },
   ];
 }

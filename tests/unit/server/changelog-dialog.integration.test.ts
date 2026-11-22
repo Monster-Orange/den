@@ -19,6 +19,7 @@ import {
   write,
   type SlowGitServer,
 } from "./helpers/slow-git-server.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let tmp = "";
 let srv: SlowGitServer;
@@ -29,7 +30,7 @@ const activeId = () => page.evaluate(() => document.activeElement?.id ?? "");
 const focusInDialog = () =>
   page.evaluate(
     () =>
-      !!document.activeElement?.closest("#cl-overlay .cl-box") &&
+      !!document.activeElement?.closest("#cl-overlay") &&
       document.activeElement !== document.body,
   );
 const isOpen = () =>
@@ -50,7 +51,7 @@ beforeAll(async () => {
     "active: [default]\nfocus: default\nworkspaces:\n  default:\n    services:\n      shop:\n        mode: dev-managed\n        path: /nowhere/shop\n",
   );
   srv = await startSlowGitServer({ tmp, root, slow: [], delayS: 0 });
-  browser = await chromium.launch();
+  browser = await launchBrowser(chromium);
   page = await browser.newPage({ viewport: { width: 1280, height: 700 } });
 }, 120_000);
 
@@ -68,14 +69,14 @@ describe("What's new dialog", () => {
       undefined,
       { timeout: 30_000 },
     );
-    const box = page.locator("#cl-overlay .cl-box");
+    const box = page.locator("#cl-overlay");
     expect(await box.getAttribute("role")).toBe("dialog");
     expect(await box.getAttribute("aria-modal")).toBe("true");
     const labelledBy = await box.getAttribute("aria-labelledby");
     expect(labelledBy).toBeTruthy();
     expect(
       await page.locator(`#${labelledBy}`).evaluate((el) => el.tagName),
-    ).toBe("H3");
+    ).toBe("H2");
     // Focus starts on the heading, so a screen reader reads the latest
     // notes first (not the toggle at the bottom).
     expect(await activeId()).toBe(labelledBy);
@@ -90,7 +91,7 @@ describe("What's new dialog", () => {
     expect(copyNames.length).toBeGreaterThan(0);
     for (const n of copyNames)
       expect(n).toMatch(/^Copy v\S+ (as Markdown|for Slack)$/);
-    // Each version is a heading under the dialog's H3.
+    // Each version is a heading under the dialog's H2 (the kit's frame).
     expect(
       await page.$$eval("#cl-body .cl-ver", (els) => els.map((e) => e.tagName)),
     ).toEqual(["H4"]);

@@ -5,9 +5,9 @@
  *
  *  - Navigated away: WebKit drops the keepalive DELETE its pagehide sends,
  *    so the page also sends a beacon (POST …/withdraw). Within a second
- *    the code has ended: `web approve` (POST /api/web/approve with the
- *    CLI's bearer) answers 410 ended, and the page's poll id claims no
- *    session.
+ *    the code has ended: Approve from a person's signed-in browser (POST
+ *    /api/web/approve; issue 819) answers 410 ended, and the page's poll
+ *    id claims no session.
  *  - Closed with no pagehide at all (Playwright's page.close() fires
  *    none): the server ends a request it hasn't heard from within its
  *    unseen bound (DEN_PAIR_UNSEEN_MS, short here). Same answer.
@@ -26,8 +26,9 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page, Route } from "playwright";
 import { startDenServer } from "../../child-servers.js";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -43,15 +44,13 @@ const contexts: BrowserContext[] = [];
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
     for (const name of ENGINES)
-      browsers[name] = ws
-        ? await pw[name].connect(ws, { exposeNetwork: "<loopback>" })
-        : name === "chromium"
-          ? await pw.chromium.launch({
-              args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-            })
-          : await pw[name].launch();
+      browsers[name] = await launchBrowser(
+        pw[name],
+        name === "chromium"
+          ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
+          : undefined,
+      );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -98,6 +97,7 @@ beforeAll(async () => {
   );
   server = started.server;
   port = started.port;
+  person = await signedIn(stateDir, local());
 }, 120_000);
 
 afterAll(async () => {
@@ -142,14 +142,17 @@ async function signedOut(
   return { page, pollId: () => id, code };
 }
 
-/** `web approve <code>`: the CLI's bearer, on the Den machine. */
+/** Issue 819: a person's signed-in browser on the Den machine. */
+let person: SignedIn | null = null;
+/** Approve in Settings › Access, from that browser. */
 async function approve(
   code: string,
 ): Promise<{ status: number; code: string }> {
   const r = await fetch(`${local()}/api/web/approve`, {
     method: "POST",
     headers: {
-      authorization: cliAuthHeaders(stateDir).Authorization ?? "",
+      ...person!.headers,
+      "x-den-approve-key": person!.approveKey,
       "content-type": "application/json",
     },
     body: JSON.stringify({ code }),

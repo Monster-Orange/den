@@ -75,8 +75,10 @@ That file is the install-den skill, also in the package at
 Claude skill front matter. `den --help` prints the line. The skill does three
 things only: it installs Den (after checking Node and git), helps the person
 pick its name and folder (default `~/<name>`), then runs `web up` and hands
-over the one-time link from `web claim-link`: "Den's own agent takes it from
-there." It adds no repo and creates no project: that is
+over: on the same computer, the person runs `<cli> web open` in their own
+terminal, which opens Den signed in; from another computer, they connect with
+`ssh -t <host>`, run `<cli> web login`, and open the printed link where they
+are. "Den's own agent takes it from there." It adds no repo and creates no project: that is
 [the server agent](#the-server-agent)'s job. Every command below also stays a
 person's own: `npm i -g @monster-orange/den` → `den create <name>` →
 `<cli> repo add` → `<cli> up` skips both agents. The skill runs the first
@@ -261,7 +263,15 @@ with "If you didn't ask an agent to do this, Deny." under it.
   token: its own), `GET /api/approvals/<id>` (the asking agent's own, the
   ticket holder's, or the person's) and
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
-  Every ask and decision is in the activity trail.
+  `POST /api/approvals/<id>/withdraw` (from 0.4.73) takes a request back
+  before anyone decides: only its asker may (the same agent token, or the
+  same person's bearer or session); anyone else gets 403, a decided
+  request 409, an unknown one 404. It reads `withdrawn` after, and nothing
+  runs. Every ask, decision and withdrawal is in the activity trail.
+- **A held write counts in the bell** (from 0.4.73): while it waits, it is
+  one item under Needs you, linked to the asking agent. It goes when the
+  request is allowed, denied, expired or withdrawn. Den's own "update to
+  X" ask has its one item.
 - **The server agent restarts its own Den** (`den_restart_server
 { reason }`, the held action `den_restart`). Den restarts in place on
   the version installed now, as Settings › Restart Den does; agents and
@@ -396,7 +406,8 @@ service:api/web"`).
   to re-run: `web down` answers `stopped: false` when the server wasn't
   running, and `ok` is true once nothing answers on its port. On a busy
   machine, where `lsof` or `ps` can't say which process holds the port
-  (each lookup gets 5 s, then 20 s; `DEN_LOOKUP_TIMEOUTS_MS` sets them),
+  (each lookup gets 5 s, then 20 s: the Settings `process_lookup.first_seconds`
+  and `retry_seconds`; `DEN_LOOKUP_TIMEOUTS_MS` overrides both),
   `web down` and `web restart` exit 1 saying they couldn't tell, and
   their `--json` answers `ok: false` with `stopped: false` (and `running:
 null` when the server doesn't answer either). Run them again.
@@ -2131,15 +2142,60 @@ outside a service manager.
 
 ## Signing in
 
-On localhost nothing asks you to sign in: every page, the agents and the
-terminal work as they are, and the admin password (R8) is the only prompt,
-asked only when a command Den runs needs sudo. Through the edge, a browser
-the edge shows is on this machine asks for nothing either. Signing in is
-for everything else: the edge for a client it can't place here (0.4.5), a
-LAN address, or a bind that isn't loopback (`DEN_BIND_HOST`). From another
+Every browser signs in once, on this machine too (0.4.71), and stays
+signed in. On this machine `web up` and `web open` open a one-time sign-in
+link, so you do nothing more. A browser there that isn't signed in (a
+bookmark, a tab from before) can look at every page but change nothing:
+each page says so in one line, with a Sign in button. Through the edge, a
+browser the edge shows is on this machine is treated the same way. The
+admin password (R8) is no sign-in: it is asked only when a command Den
+runs needs sudo. Beyond this machine (the edge for a client it can't place
+here (0.4.5), a LAN address, or a bind that isn't loopback,
+`DEN_BIND_HOST`) every page needs a sign-in, reads included. From another
 device, sign in with GitHub as the Den's owner, approve the computer with
 the code its page shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
+
+**The sign-in lives on Den's own address (0.4.72).** Browsers share a
+host's cookies across its ports: a cookie set on `localhost` reaches every
+other app you open on `localhost`, a dev server in a container among them.
+So once this install's https address (`web.url`, served by the edge) works,
+the session cookie is set only there, and `localhost`, `127.0.0.1` and
+`[::1]` get none:
+
+- `web up` and `web open` open the https address. `/auth`, `/signin` and
+  `/attest` on any other name (a loopback name, a LAN name, or the
+  address's name on Den's own port) answer with a plain redirect to the
+  same path there, and the sign-in APIs answer `signin_elsewhere`. A
+  signed-out page on another name says where Den signs in, with a link, and
+  its `web login` line names the address. Devices on the mesh reach the
+  address itself, so they are never sent away.
+- Once the address is proven, a session counts only if it was signed in
+  over that https address. Every other one (a loopback name, or plain http
+  on any name) ends at the proof and counts on no host after. Sign-out,
+  with that session's own page, ends the session its cookie names, even
+  one that no longer counts. Plain reads on loopback stay open, and the CLI's token
+  (`web token --print`), the MCP and agents' tokens work on loopback as
+  before.
+- **This is my computer** (`/attest`) on a loopback name goes to the
+  address. There, a signed-in browser the edge places on this machine gets
+  its code at once; one it can't place goes through `localhost` once, with
+  a link that works once for 2 minutes. A browser not signed in gets the
+  sign-in page there.
+- "Proven" means Den's own check of the address found this Den there (the
+  same check `doctor` and `web up` make, every
+  `web.address_check_cache_seconds`), or the edge brought an https request
+  for it with its proof. A check that can't tell (a timeout, no DNS answer)
+  keeps it proven for `web.address_unknown_keep_seconds` after the last
+  answer as this Den (300 unless set; 0 to 3600); past that it counts as a
+  failure. A failure (something else, or nothing, answers),
+  `web.address_check_drop_after` times in a row (2 unless set; 1 to 100),
+  moves sign-in back to the address the browser uses. `doctor` says when
+  the address last answered as this Den. Before it is proven,
+  and on an install with no https address (the edge off, its port taken, a
+  fresh install), sign-in stays where the browser is, so nothing locks you
+  out. `doctor` then warns: other apps you open on that address could see
+  the sign-in, and it says how to set up the https address.
 
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
@@ -2183,10 +2239,14 @@ user, and the CLI does that for you:
   its bearer and never logs the code. `--no-wait` prints the link alone and
   returns, as before (no code); with no server running `web login` does
   that too, and says so.
-- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Lax (a
+- **The cookie** is host-only (no Domain), HttpOnly, SameSite=Lax (a
   person's click on a link from another site lands signed in; that site's
-  own requests carry no cookie) and Path=/, and Secure when the request
-  came over HTTPS through the edge. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
+  own requests carry no cookie) and Path=/. Over HTTPS through the edge it
+  is `__Host-den_session_<port>` and Secure, so the browser sends it to
+  that address only, over https only. Over https only that name counts (a
+  browser that signed in there before 0.4.72 signs in once more). Over
+  plain http it is `den_session_<port>`. The edge's `X-Forwarded-Proto`
+  counts only with the edge's proof. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
   browser allows. Each signed-in page load sends it again (the same value),
@@ -2260,8 +2320,9 @@ user, and the CLI does that for you:
   device".
 - **The edge counts as local only when it shows the client is.** A
   request for the edge hostname from the edge (an edge peer, below) is
-  treated as loopback (no sign-in on any route, the agents and the
-  terminal included) when the client the edge reports is this machine.
+  treated as loopback (reads need no sign-in; a change, an agent or a
+  terminal does, as on localhost) when the client the edge reports is
+  this machine.
   Host, Origin, CSRF and the agent-token rules still apply. Who the client
   is comes from the right-most `X-Forwarded-For` entry, the one the edge
   itself appended (anything left of it came from the client, and is never
@@ -2959,6 +3020,7 @@ Read tools (always registered):
 | `gate_slot_status`   | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                |
 | `gate_slot_request`  | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                       |
 | `gate_slot_release`  | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                    |
+| `gate_slot_yield`    | the machine's slot store                   | Your waiting slot (`id`) lets another waiting slot (`to`) go just ahead of it, and keeps its place otherwise (issue 795); your own only, never a holder                                                                                                                        |
 | `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
 | `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
 | `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
@@ -3265,6 +3327,67 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
     max_concurrent: 4
   ```
 
+- Issue 503: each terminal holds one PTY, and a machine has a fixed
+  number of them (macOS: `kern.tty.ptmx_max`, 511 by default). An exited
+  session gives its PTY back `sessions.pty_close_seconds` after its
+  process ends (default 0: at once); it stays listed as exited and its
+  scrollback still replays. A start the machine can't give a PTY to is
+  refused with the reason, which the terminal host logs and the Agents
+  page shows. `<cli> doctor` shows how many PTYs the terminal host holds
+  and how many the machine uses of its limit, and fails above
+  `sessions.pty_warn_above` (default 400) or at
+  `sessions.pty_machine_warn_percent` of the limit (default 90).
+
+  ```yaml
+  sessions:
+    pty_close_seconds: 0
+    pty_warn_above: 400
+    pty_machine_warn_percent: 90
+  ```
+
+- Issue 563: the terminal host is a process of its own, so a web
+  restart (and a self-update's) leaves it running the version it
+  started on. When the web server starts, it asks the host which code it
+  runs (a hash of its own files: `src/shared/sessions/host.ts` and what
+  it imports) and which native terminal module it loaded. A host whose
+  code differs from the installed one, holding a module that is no
+  longer the installed one (npm deletes the old one's folder at an
+  update, and new terminals then fail with `posix_spawnp failed`), or
+  too old to say, is restarted the way `<cli> sessions host --stop`
+  does. Issue 597: another Den version alone is no reason: when the code
+  and the module are the same, the host is told the new version and
+  kept, with its agents, and the audit says "host kept: code
+  unchanged". Agents mid-turn are waited for, up to
+  `sessions.host_restart_wait_seconds` (default 900); then it restarts
+  anyway. The agents that were running resume; open terminals end. An
+  agent the restart cut mid-turn gets one line as its next input, "Den
+  restarted while you were working; check your last step and carry on."
+  (`sessions.host_restart_note`, default true). The bell names the
+  agents resumed and the ones cut; the audit row has the counts first
+  and every agent in its `agents` field. `<cli> doctor`'s Host row says
+  "current", or "restart needed: host code changed" / "terminal module
+  changed" with the restart command.
+
+  Issue 631: every agent running before the restart is in the audit
+  row's resumed, failed or cut list. The list is taken once more right
+  before the stop, and every agent whose terminal the host still ran
+  then is added, so an agent between the stop and the start of its
+  relaunch from a handoff isn't missed. No relaunch from a handoff starts
+  while the restart runs. An agent that relaunched from its handoff
+  resumes in its new conversation. Den looks again
+  `sessions.host_restart_check_seconds` (default 30; 0: no look) after
+  the resumes: an agent that ended since counts as failed, with its state
+  and last line. Each failed agent shows as interrupted, with Resume, and
+  its row says it didn't come back after a restart, and why. The bell has
+  a "needs you" item for it.
+
+  ```yaml
+  sessions:
+    host_restart_wait_seconds: 900
+    host_restart_note: true
+    host_restart_check_seconds: 30
+  ```
+
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
   optional dependency (prebuilt binaries for macOS, Linux and Windows,
   nothing downloaded at install). Without it (`npm install
@@ -3423,6 +3546,42 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   your Allow", linked to that agent. After
   `server_agent.update_wait_checks` passes in a row (default 2) it counts
   as needing you. The update never goes past a pending Allow.
+- **A security release doesn't wait on an open question** (issue 562). A
+  release whose package.json has `"den": {"security": true}` is a
+  security release. Den reads the mark only from npm's version data for
+  that version (`npm view <package>@<version> den`), never from a tag
+  name or the changelog; no mark, or npm can't say, is an ordinary
+  release. With `self_update: auto`, a security release updates while
+  the server agent waits on its person's question or permission prompt.
+  That conversation resumes after the restart, as on any restart. It
+  still never goes past a pending Allow, and never restarts while a turn
+  is working. The bell then says "Den updated for a security fix while
+  the server agent was waiting on you; its question is still open".
+  `server_agent.security_update_skips_questions` (org config, default
+  `true`): `false` makes a security release wait like any other.
+- **A security release doesn't wait for a busy agent** (issue 603). With
+  `self_update: auto`, a security release also installs while the server
+  agent is in the middle of a turn, at the first check that finds it.
+  The restart that follows still waits for the turn to end (below, up to
+  `server_agent.update_restart_wait_seconds`). That restart is the web
+  server's: the server agent's turn runs in the terminal host, which
+  keeps running unless its own code changed. A pending Allow still holds
+  the update. The log and the audit say it went ahead while the agent
+  was busy. `server_agent.security_update_skips_busy` (org config,
+  default `true`): `false` makes a security release wait for the turn
+  before it installs. Other releases wait for the turn as before.
+- **The restart looks again after the install** (issue 562). The install
+  takes a while, and a turn may start meanwhile (the person answers the
+  question). Once an auto update is installed and its doctor has run,
+  Den reads the wait again before it restarts: a security release goes
+  past the server agent's question or prompt, any other release doesn't.
+  A working turn or a pending Allow holds the restart, read again every
+  few seconds, for at most `server_agent.update_restart_wait_seconds`
+  (org config, default 900). Then Den restarts anyway, since the new
+  version is installed and the old one is still running. The log says
+  why, and the bell says "Den restarted to finish an update while the
+  server agent was working". An update the person or an agent asked for
+  restarts as before.
 - **Den commits and pushes the new pin itself** (#176). Once an update
   is verified (the watch saw the new version answer, `state: good`) and
   this Den runs it, the lead install's update check commits the pin and
@@ -4037,10 +4196,10 @@ agent of the projects in view, and their terminals in the browser.
   one's to change it.
 - Terminals need the optional PTY module (`<cli> doctor`); without it the
   page lists what there is and says so.
-- **Who can open one.** The terminal is shell-grade: on localhost the
-  page's own Origin and CSRF token, beyond loopback a signed-in browser
-  (the list says "Sign in to open terminals" otherwise), and an agent's
-  token only its own session's. Each attach and detach is in the server
+- **Who can open one.** The terminal is shell-grade: a signed-in browser,
+  on localhost too (0.4.71), with the page's own Origin and CSRF token
+  (the list says "Sign in to open terminals" otherwise); the person's
+  token from the CLI; and an agent's token only its own session's. Each attach and detach is in the server
   log's activity, with its actor.
 
 The routes: `GET /api/sessions` (`{ sessions, projects, host, backend,
@@ -4395,7 +4554,28 @@ conversation, in the new mode.
 agents:
   default_mode: auto # ask, edits, auto or all; unset: each persona's
   mode_check_seconds: 30 # how often Den looks for a changed mode
+  trust_check_seconds: 5 # how often Den looks for a folder-trust question
 ```
+
+**The folder-trust question.** Claude Code asks once per folder whether
+to trust it. While an agent's start waits on that question, its row, its
+pane and the bell say "Waiting: trust this folder?". The answer is the
+person's: Den never types it. After a No, the agent ends, and its row and
+the bell say "Didn't start: this folder isn't trusted. Resume and choose
+Yes." A relaunch from a handoff keeps the folder the agent ran in, so a
+folder it was trusted in is never asked about again.
+
+**A conversation that was never written.** Resume asks the runtime
+whether the conversation exists (its transcript). One that was never
+written (its start ended at the trust question, say) starts fresh under
+the same id, never `--resume`. If the agent has a handoff on file
+(handoff.md, or the newest kept one that passes the check), that handoff
+is the new conversation's first prompt. If the runtime refuses the id
+both ways, a new conversation starts. A relaunch that ends before its
+conversation exists is undone: handoff.md comes back and the rotation is
+due again. `agents relaunch <id> --from-handoff [<file>]` (and Relaunch
+from its last handoff in a stopped agent's ⋯ menu) relaunches from the
+newest handoff when no rotation is due.
 
 **Back after the machine restarts.** Every agent that was running comes
 back on its own conversation, project and mode, not only standing
@@ -4543,6 +4723,40 @@ process Den couldn't place. The audit row names both pids: the caller's
 ```yaml
 agents:
   token_peer_wait_ms: 30000 # ms, 0 to 600000
+```
+
+Den finds an agent's caller with the same lookups, so their limits
+(Settings › Server, `config process_lookup.*`) count here too:
+
+```yaml
+process_lookup:
+  first_seconds: 5 # the first try, 0.5 to 600
+  retry_seconds: 20 # the try after it ran out of time, 1 to 600
+```
+
+An attention mark Den never took (no answer, or a refusal) is written to
+the agent's own files folder (`agent-hooks-lost.jsonl`), and `doctor`
+shows a warning per agent with marks lost in the last day: how many, and
+the last reason.
+
+When Den can't place a caller, the audit row says why: the lookup timed
+out, failed, found no matching connection or more than one, or was
+still running when the wait ended. A caller that had already closed its
+connection is refused all the same, but nothing is there to answer, so
+its row says "the caller had gone" (reason `token_caller_gone`) and it
+isn't counted as a refused agent.
+
+An agent's hooks (its attention mark for the bell, the Hub inbox check)
+stay connected long enough for a busy machine to place them, and try
+again when a call fails or is turned away. These are Settings
+(Settings › Agents, or `config agent_hooks.*`, in user.yml), read when
+an agent starts:
+
+```yaml
+agent_hooks:
+  timeout_seconds: 20 # each try's wait, 1 to 600
+  retries: 2 # tries after the first, 0 to 10
+  backoff_seconds: 1 # the first pause, doubling, 0 to 60
 ```
 
 An agent's token reaches only its own session's routes, and never a
@@ -5124,43 +5338,89 @@ first match wins:
          bin: /Users/me/.local/bin/claude
    ```
 
-3. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
-   start, in the background, under a 3-second timeout. On a timeout or
-   any failure it is left out.
-4. **The server's own PATH.**
-5. **The runtime's install directories** (its catalog entry's; for
+3. **Your interactive shell's PATH**, the first choice: the CLI your
+   terminal runs. `$SHELL -ilc` is asked once, before the first search
+   (stdin closed, the answer kept), so a PATH set in an interactive
+   startup file such as `~/.zshrc` counts. Its source is
+   `interactive-shell`. Until it answers, or when it fails, the next
+   three decide.
+4. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
+   start, in the background. On a timeout or any failure it is left out.
+
+   Both asks wait at most **Settings › Agents › Shell PATH wait**
+   (`agents.shell_path_timeout_seconds` in user.yml: 10 when unset, 1 to
+   120), so a slow startup file is still read:
+
+   ```yaml
+   # config/local/user.yml
+   agents:
+     shell_path_timeout_seconds: 10
+   ```
+
+5. **The server's own PATH.**
+6. **The runtime's install directories** (its catalog entry's; for
    den-claude: `~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`,
    `/usr/local/bin` and npm's global bin, `$npm_config_prefix/bin` and
    node's own directory). Den never runs npm to find it.
-6. **Your interactive shell's PATH**, only while a catalog runtime is
-   still not found: `$SHELL -ilc` once (stdin closed, 3-second timeout,
-   the answer kept), for a PATH set only in an interactive startup file
-   such as `~/.zshrc`. Its source is `interactive-shell`.
+
+When more than one copy is found, the first is used and the others are
+listed with the version their install says (a Homebrew keg's directory,
+npm's `package.json`). Den never runs a copy it didn't choose: only the
+copy in use gets its version command. On macOS a copy carrying the
+`com.apple.quarantine` attribute is never run either, so a scan never
+makes macOS warn; it shows "quarantined, not run" instead. The attribute
+is read with `xattr`, never by running the file.
+
+Starting an agent on a quarantined copy stops before anything runs
+(issue 479): start, resume, restart, move, persona change and relaunch
+are refused with `runtime_quarantined` (409), and an agent already
+running is never stopped for a restart that couldn't start it again.
+The refusal names the path and the choices: another copy found that
+isn't quarantined (set `agents.runtimes.<id>.bin` to it), or clear this
+one yourself (run it once from a terminal and allow it when macOS asks).
+The Start dialog says so before Start, with the path as selectable
+text and **Copy path** (the page may be a browser on another machine,
+so nothing opens a folder on the Den machine), **Open a terminal
+there** (Den's own terminal, in this browser: a shell in the project
+shown, started in the copy's folder, through
+`POST /api/workspaces/<ws>/sessions` with `{ "cwd": "<folder>" }`; a
+person only), **Use this** for each
+such copy, and **Check again**. A refused resume from an agent's row
+offers **Open Settings › Runtimes**, which opens
+`/settings?runtime=<id>#agents.runtimes` at that runtime's row (with
+`&project=<ws>` when a project's setting chose the copy). An agent
+starting another (the CLI, or MCP) gets the same refusal as its error;
+nothing retries it. Den never removes the attribute itself.
 
 Paths are this machine's only: Den reads them from `config/local` files,
 never from the distribution's config. **Settings › Agents › Runtimes**
-shows each runtime's status, version, the path in use and its source.
+shows each runtime's status, version, the path in use and its source,
+then **Also found:** the other copies, each with **Use this**, which pins
+it (`agents.runtimes.<id>.bin`, at the scope shown).
 **Set path…** runs the runtime's version command and refuses a path that
 isn't that runtime (its output, npm package or install location must name
-it); **Clear** removes it. The **Paths for** selector switches between
+it), or a quarantined file (not run); **Clear** removes it. The **Paths for** selector switches between
 every project (`user.yml`) and one project (`workspaces.yml`). Only a
 person sets a path, never an agent (`POST /api/agents/runtimes/<id>/path`,
 audited).
 
 Sessions and agents Den starts get the same directories on their PATH
 (and a configured CLI's own directory), so the runtime's own tools are
-found too. Two engine variables override the search for tests and
+found too. Engine variables override the search for tests and
 diagnosis: `DEN_LOGIN_SHELL` (the shell to ask instead of `$SHELL`; `off`
 for none) and `DEN_RUNTIME_DIRS` (a PATH-style list that replaces every
-runtime's install directories; empty for none).
+runtime's install directories; empty for none). `DEN_QUARANTINE_CHECK=off`
+reads no file as quarantined.
 
 **`<cli> agents doctor`** prints, for each runtime (installed first), its
 status, the CLI it runs and where that came from (the project's or the
 user.yml `agents.runtimes` setting, the login shell's PATH, PATH, an
 install directory, or the interactive shell's PATH), its version (`claude
---version`, run once under a timeout), the directories it searched (names
-only, never an environment value), and the fix when it's missing. It
-resolves the login shell's PATH first, as the web server does. It exits 1
+--version`, run once under a timeout, on the copy in use only; "quarantined,
+not run" for a quarantined one), each other copy found with its version
+(`also`), the directories it searched (names only, never an environment
+value), and the fix when it's missing. It resolves the login shell's PATH
+first, as the web server does. It exits 1
 when the default runtime is unavailable; `-w <ws>` uses that project's
 paths; `--json` prints what the Start dialog gets. A search list the same
 as the one above it prints once.

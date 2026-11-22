@@ -21,6 +21,7 @@ import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { shellHtml } from "../../../packages/den-ui/src/shell-html.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -33,11 +34,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -110,6 +107,7 @@ function sampleFrames() {
     } else w.railX.push(null);
     if (w.sampling && performance.now() - t0 < 1500)
       requestAnimationFrame(tick);
+    else w.sampling = false;
   };
   requestAnimationFrame(tick);
 }
@@ -157,22 +155,25 @@ async function open(
 
 /** The samples of the page's first frames (waits for the 1.5 s window to end). */
 async function loadSamples(p: Page) {
+  // The sampler stops itself when its window ends.
   await p.waitForFunction(
     () => {
-      const w = window as unknown as { railX: unknown[] };
-      return w.railX.length > 0;
+      const w = window as unknown as { railX: unknown[]; sampling: boolean };
+      return w.railX.length > 0 && !w.sampling;
     },
     undefined,
     { timeout: 10_000 },
   );
-  await p.waitForTimeout(1600);
   return p.evaluate(
     () =>
       (window as unknown as { railX: Array<[number, number] | null> }).railX,
   );
 }
 
-/** The rail's x on every frame while `act` runs, until it has been still for 300 ms. */
+/**
+ * The rail's x on every frame while `act` runs, until it holds still: no
+ * animation on the rail, and the same x on the last 3 frames after `act`.
+ */
 async function xsDuring(p: Page, act: () => Promise<void>) {
   await p.evaluate(() => {
     const w = window as unknown as { xs: number[]; on: boolean };
@@ -186,7 +187,23 @@ async function xsDuring(p: Page, act: () => Promise<void>) {
     requestAnimationFrame(tick);
   });
   await act();
-  await p.waitForTimeout(500);
+  const after = await p.evaluate(
+    () => (window as unknown as { xs: number[] }).xs.length,
+  );
+  await p.waitForFunction(
+    (after) => {
+      const w = window as unknown as { xs: number[] };
+      const tail = w.xs.slice(after);
+      const r = document.getElementById("den-rail")!;
+      return (
+        tail.length >= 3 &&
+        r.getAnimations().length === 0 &&
+        tail.slice(-3).every((x) => x === tail[tail.length - 1])
+      );
+    },
+    after,
+    { polling: "raf", timeout: 10_000 },
+  );
   return p.evaluate(() => {
     const w = window as unknown as { xs: number[]; on: boolean };
     w.on = false;

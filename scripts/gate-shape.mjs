@@ -38,6 +38,12 @@ export function checkGateModule(file, mod) {
   for (const fn of ["setup", "run", "expect"])
     if (typeof mod[fn] !== "function")
       out.push(`${file}: ${fn} is not a function`);
+  // The harness calls expect(result) alone: a second parameter is always
+  // undefined there, so whatever reads it fails on the bed (issue 455).
+  if (typeof mod.expect === "function" && mod.expect.length > 1)
+    out.push(
+      `${file}: expect takes one argument, the result (the harness calls expect(result)); it declares ${mod.expect.length}`,
+    );
   if ("teardown" in mod && typeof mod.teardown !== "function")
     out.push(`${file}: teardown is not a function`);
   if ("matrix" in mod) {
@@ -57,6 +63,55 @@ export function checkGateModule(file, mod) {
   return out;
 }
 
+/**
+ * A module's own plain `fetch` runs on the host, where the browser's
+ * address (ctx.url) reaches the live edge; the harness refuses it there.
+ * Host-side fetches use ctx.hostUrl (or ctx.fetch / ctx.api). Flags a
+ * plain fetch whose address is built from ctx.url: `fetch(ctx.url…)`,
+ * `fetch(\`${ctx.url}…\`)` and `fetch(new URL(…, ctx.url))`. A fetch
+ * inside page.evaluate takes a relative path, so it never matches.
+ */
+const HOST_FETCH_AT_URL =
+  /(?<![\w.$])fetch\(\s*(?:ctx\.url\b|`\$\{\s*ctx\.url\s*\}|new URL\([^()]*?,\s*ctx\.url\s*\))/g;
+
+// A skip reason written in the source: `skip: "..."`, `skip = "..."`, or a
+// constant used as one (`skip: NAME`, `const NAME = "..."`).
+const SKIP_LITERAL =
+  /\bskip\s*(?::|=(?!=))\s*(?:"([^"\n]*)"|'([^'\n]*)'|([A-Z][A-Z0-9_]*)\b)/g;
+
+export function checkGateSource(file, src) {
+  const out = [];
+  const text = String(src);
+  const lineOf = (i) => text.slice(0, i).split("\n").length;
+  for (const m of text.matchAll(HOST_FETCH_AT_URL)) {
+    out.push(
+      `${file}: line ${lineOf(m.index)}: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)`,
+    );
+  }
+  // Issue 726's bed run: a skip in words, not "person" or "needs-<thing>",
+  // makes every row it answers unreadable to the harness.
+  const bad = new Map();
+  for (const m of text.matchAll(SKIP_LITERAL)) {
+    let at = m.index;
+    let reason = m[1] ?? m[2];
+    if (m[3]) {
+      const c = new RegExp(
+        `\\bconst\\s+${m[3]}\\s*=\\s*(?:"([^"\\n]*)"|'([^'\\n]*)')`,
+      ).exec(text);
+      if (!c) continue;
+      at = c.index;
+      reason = c[1] ?? c[2];
+    }
+    if (SKIP.test(reason)) continue;
+    bad.set(`${lineOf(at)}\0${reason}`, [lineOf(at), reason]);
+  }
+  for (const [line, reason] of [...bad.values()].sort((a, b) => a[0] - b[0]))
+    out.push(
+      `${file}: line ${line}: skip reason ${JSON.stringify(reason)} is not "person" or "needs-<thing>" (put the words in why)`,
+    );
+  return out;
+}
+
 const BROWSERS = ["chromium", "webkit"];
 const SKIP = /^(person|needs-[a-z0-9][a-z0-9-]*)$/;
 
@@ -64,10 +119,15 @@ const SKIP = /^(person|needs-[a-z0-9][a-z0-9-]*)$/;
 export function checkRows(rows, clauses) {
   if (!Array.isArray(rows)) return ["expect did not return a list"];
   const out = [];
+  // CONTRIBUTING.md: expect answers each clause once.
+  const seen = new Set();
   for (const [i, r] of rows.entries()) {
     const at = `row ${i + 1}`;
     if (!clauses.includes(r?.clause))
       out.push(`${at}: clause "${r?.clause}" is not one of clauses`);
+    else if (seen.has(r.clause))
+      out.push(`${at}: clause "${r.clause}" is answered more than once`);
+    else seen.add(r.clause);
     if (r?.ok === null) {
       if (!SKIP.test(String(r.skip ?? "")))
         out.push(`${at}: ok null needs skip "person" or "needs-<thing>"`);
@@ -103,6 +163,10 @@ export async function checkGateDir(dir) {
           await import(pathToFileURL(path.resolve(dir, f)).href),
         ),
       );
+      if (/^\d+\.mjs$/.test(f))
+        out.push(
+          ...checkGateSource(f, fs.readFileSync(path.resolve(dir, f), "utf-8")),
+        );
     } catch (e) {
       out.push(
         `${f}: does not load (${String(e?.message ?? e).split("\n")[0]})`,

@@ -12,7 +12,9 @@
  *    session runs). A bearer that doesn't verify: 401 `unauthorized`; an
  *    actor token `web logout --all` revoked: 401 `token_revoked` ("restart
  *    or resume the agent"). Or
- *    the browser's session cookie (SEC-1b), looked up server-side.
+ *    the browser's session cookie (SEC-1b), looked up server-side. Once
+ *    Den's own named https address works, a session cookie on a loopback
+ *    name doesn't count (loopbackSessions): it lives on that address.
  *  - An agent's token (SEC-1c, §5) never reaches: web.secret's management
  *    and sign-in (/api/web/*, /auth, /api/session/logout), the lock (R8:
  *    /api/sudo-password*), or a shell-grade route other than its own
@@ -24,10 +26,10 @@
  *  - Sign-in (§4, route-classes.ts): beyond loopback (a LAN name, a peer
  *    that isn't loopback, or the edge hostname for a client on another
  *    machine) every route needs a session or a bearer. Otherwise 401
- *    `signin_required`. On loopback no route does, shell-grade ones
- *    included (Ward, 2026-11-06: the lock, R8, is the only prompt there;
- *    Host, Origin and CSRF cover CSRF and DNS rebinding). SIGNIN_FREE
- *    routes never need one.
+ *    `signin_required`. On loopback (0.4.71) every route that isn't
+ *    `readonly` needs one too: writes, upgrades, shell-grade routes and
+ *    the GETs that run something. A plain read there passes with the Host
+ *    check. SIGNIN_FREE routes never need one.
  *  - The edge (0.4.3, 0.4.5: edgeClient): the edge hostname from an edge
  *    peer gets loopback's treatment when the edge attests the client is
  *    this machine (the right-most X-Forwarded-For entry, the one the edge
@@ -44,13 +46,13 @@
  *    allowed host (http or https). No Origin needs a valid bearer.
  *    Otherwise 403 `origin_rejected`.
  *  - CSRF: a browser mutation (Origin, no bearer) carries `X-Den-CSRF`:
- *    the session's token when it is signed in, else (loopback) this server
- *    start's. Both come from `GET /api/session`. Otherwise 403 `csrf`.
+ *    the session's own token, from `GET /api/session` (only a signed-in
+ *    browser gets one). Otherwise 403 `csrf`.
  *
  * GETs, pages and SSE streams on loopback pass with only the Host check
  * (§6), except the GETs route-classes.ts marks `mutating` or `shell-grade`
- * (a run, a service's lifecycle command): same-origin only, or a CLI's
- * bearer. A sign-in GET (SIGNIN_GETS: /auth, the GitHub sign-in poll) may
+ * (a run, a service's lifecycle command, a log tail): a sign-in, and
+ * same-origin only, or a CLI's bearer. A sign-in GET (SIGNIN_GETS: /auth, the GitHub sign-in poll) may
  * also come with no fetch metadata at all, as a plain-http LAN origin's do.
  *
  * The audit actor (auditActorOf, principalOf) comes from the credential,
@@ -58,7 +60,7 @@
  * `person:<os user>` for a person token or a signed-in browser. An
  * x-den-actor claim is kept only as an unverified label.
  */
-import { randomBytes, timingSafeEqual, createHash } from "crypto";
+import { timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
 import { readMcpConfig } from "../../shared/den-config.js";
 import { LIFECYCLE_CMDS } from "../mcp/guards.js";
@@ -77,8 +79,11 @@ import {
   type AgentActor,
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
+  RUNNER_ROUTES,
   isMutatingGet,
   pathMatches,
   routeClass,
@@ -92,7 +97,10 @@ import {
 } from "./route-classes.js";
 
 export const CSRF_HEADER = "x-den-csrf";
-const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+// Only GET and HEAD are reads: any other method is checked as a change
+// (the server answers 405 to one outside the six before this runs).
+const READS = new Set(["GET", "HEAD"]);
+const changes = (method: string) => !READS.has(method);
 
 /** An agent's actor token (SEC-1c): what it was minted as. */
 export interface AgentPrincipal {
@@ -104,11 +112,29 @@ export interface AgentPrincipal {
   session: { name: string; id?: string };
 }
 
+/**
+ * Issue 621: a gate-only runner token (a CI job in a runner VM). It
+ * reaches RUNNER_ROUTES only; it is never a person and never an agent.
+ */
+export interface RunnerPrincipal {
+  kind: "gate-runner";
+  /** The token's id (only it renews or releases its slots). */
+  id: string;
+  /** The runner's name, as the person allowed it. */
+  name: string;
+}
+
 /** Who a request proved itself to be. */
 export type Principal =
   | { kind: "person"; actor: `person:${string}` }
   | AgentPrincipal
-  | { kind: "person-browser"; session?: string };
+  | {
+      kind: "person-browser";
+      session?: string;
+      /** Issue 810: the fixture person's session (a test install's live checks). */
+      fixture?: true;
+    }
+  | RunnerPrincipal;
 
 /** What the request checks need of a signed-in browser session. */
 export interface GuardSession {
@@ -118,6 +144,14 @@ export interface GuardSession {
   csrf: string;
   /** sha256 of its approval key (approvals.ts); unset before 0.4.15. */
   approveKeyHash?: string;
+  /**
+   * Minted over https through the edge with its proof (the `__Host-`
+   * cookie). Once Den's own named https address works, only such a
+   * session counts (loopbackSessions).
+   */
+  secure?: boolean;
+  /** How it signed in (web-session.ts); "fixture": the fixture person (issue 810). */
+  via?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -146,10 +180,25 @@ export interface GuardContext {
     token: string,
     req: http.IncomingMessage,
   ) => `person:${string}` | AgentPrincipal | "revoked" | "elsewhere" | null;
-  /** This server start's CSRF token (loopback, no session). */
-  csrfToken: string;
-  /** The live session the request's cookie names (SEC-1b), or null. */
-  session?: (req: http.IncomingMessage) => GuardSession | null;
+  /**
+   * Issue 621: what a gate-only runner token (`den_gr_`) proves: its id
+   * and name, `"revoked"`, or null. Unset: no runner token verifies.
+   */
+  verifyRunner?: (
+    token: string,
+  ) => { id: string; name: string } | "revoked" | null;
+  /**
+   * The live session the request's cookie names (SEC-1b), or null. `via`:
+   * how it reached Den (which cookie name counts: session-cookie.ts).
+   */
+  session?: (req: http.IncomingMessage, via: Via) => GuardSession | null;
+  /**
+   * Whether a session counts on a loopback name. False once Den's own
+   * named https address works (named-address.ts): the session lives only
+   * there, since browsers share a host's cookies across its ports. Unset:
+   * true (an install with no working https address, a unit test).
+   */
+  loopbackSessions?: () => boolean;
   /**
    * Whether the request's peer is loopback. Unset: taken as loopback (a
    * request object without a socket, in a unit test); the server sets it.
@@ -198,6 +247,11 @@ export type GuardResult =
       beyond: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
+      /**
+       * Sign-out only: the session its cookie names when that session no
+       * longer counts (its own CSRF token proved the page). It ends it.
+       */
+      ending?: GuardSession;
       /** The client's address when Den can attest it (SEC-2a: a device's record). */
       client?: string;
     }
@@ -214,7 +268,8 @@ export type GuardResult =
         | "csrf"
         | "cross_site"
         | "agent_forbidden"
-        | "embed_key_scope";
+        | "embed_key_scope"
+        | "runner_scope";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
@@ -223,11 +278,6 @@ export type GuardResult =
       /** agent_forbidden: the agent refused, for the audit. */
       principal?: Principal;
     };
-
-/** A fresh per-start CSRF token. */
-export function newCsrfToken(): string {
-  return randomBytes(32).toString("base64url");
-}
 
 /** `host[:port]` → { name, port }; IPv6 names keep their brackets. */
 export function parseHostHeader(
@@ -436,18 +486,26 @@ export function edgeClient(
 
 /**
  * Whether the request came over HTTPS: the socket's own encryption, or,
- * only for the edge hostname from an edge peer, `X-Forwarded-Proto: https`.
- * A spoofed header on a loopback Host never counts.
+ * only for the edge hostname from an edge peer that carries the edge's
+ * proof (`proved`, H1), `X-Forwarded-Proto: https`. A spoofed header on a
+ * loopback Host, or from a local process without the proof, never counts.
+ * The edge says `wss` for a WebSocket upgrade over TLS (the terminal
+ * pane's): that is https too.
  */
 export function requestIsHttps(
   req: http.IncomingMessage,
   via: Via | null,
+  proved = false,
 ): boolean {
   if ((req.socket as { encrypted?: boolean } | undefined)?.encrypted)
     return true;
-  if (via !== "edge" || !isEdgePeer(req.socket?.remoteAddress)) return false;
-  const xfp = header(req, "x-forwarded-proto");
-  return xfp?.split(",")[0].trim().toLowerCase() === "https";
+  if (!proved || via !== "edge" || !isEdgePeer(req.socket?.remoteAddress))
+    return false;
+  const xfp = header(req, "x-forwarded-proto")
+    ?.split(",")[0]
+    .trim()
+    .toLowerCase();
+  return xfp === "https" || xfp === "wss";
 }
 
 /** A bind address that only this machine can reach. */
@@ -581,7 +639,36 @@ export function checkRequest(
   let principal: Principal | null = null;
   const auth = header(req, "authorization");
   const bearer = auth ? /^Bearer\s+(\S+)\s*$/i.exec(auth) : null;
-  if (bearer) {
+  // Issue 621: a gate-only runner token reaches the runner routes only
+  // (ask, renew, release a gate slot), and nothing else, whatever else
+  // the request carries.
+  if (bearer?.[1].startsWith(RUNNER_TOKEN_PREFIX)) {
+    const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (!RUNNER_ROUTES.includes(p))
+      return {
+        ok: false,
+        status: 403,
+        code: "runner_scope",
+        error:
+          "A runner token reaches only the gate-slot ask, renew and release routes. Nothing ran.",
+      };
+    const r = ctx.verifyRunner?.(bearer[1]) ?? null;
+    if (r === "revoked")
+      return {
+        ok: false,
+        status: 401,
+        code: "token_revoked",
+        error: "This runner token was revoked. Ask the person for a new one.",
+      };
+    if (!r)
+      return {
+        ok: false,
+        status: 401,
+        code: "unauthorized",
+        error: "This runner token is not valid here.",
+      };
+    principal = { kind: "gate-runner", id: r.id, name: r.name };
+  } else if (bearer) {
     const proved = ctx.verifyBearer(bearer[1], req);
     if (proved === "elsewhere")
       return {
@@ -611,14 +698,25 @@ export function checkRequest(
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
-  const session = principal ? null : (ctx.session?.(req) ?? null);
+  // Once Den's own named https address works, sessions count only when
+  // minted on it: none on a loopback name, and none minted elsewhere.
+  const namedOnly = ctx.loopbackSessions?.() === false;
+  const found = principal ? null : (ctx.session?.(req, via) ?? null);
+  const session =
+    namedOnly && (via === "loopback" || !found?.secure) ? null : found;
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");
   const pathname = reqUrl.pathname;
+  // Sign-out of a session that no longer counts: it may end that session
+  // only, with its own CSRF token (checked below, with the Origin).
+  const ending =
+    !session && found && method === "POST" && pathname === SIGNOUT
+      ? found
+      : null;
   const cls: RouteClass =
     routeClass(method, pathname) ??
-    (MUTATING.has(method) || isUpgrade(req) ? "mutating" : "readonly");
+    (changes(method) || isUpgrade(req) ? "mutating" : "readonly");
 
   if (principal?.kind === "agent") {
     const refused = agentRefusal(
@@ -638,9 +736,19 @@ export function checkRequest(
       };
   }
 
-  // §4: a session (or a bearer) beyond loopback; on loopback, never.
+  // §4: a session (or a bearer) beyond loopback for every route; on this
+  // machine too (0.4.71) for every route that changes something, runs
+  // something or reaches a shell: what isn't `readonly`, every write
+  // method and every upgrade. A plain read on loopback passes as before.
   const signinFree = SIGNIN_FREE.some((r) => pathMatches(r, pathname));
-  if (!principal && !session && !signinFree && beyond) {
+  const needsSignin = cls !== "readonly" || changes(method) || isUpgrade(req);
+  if (
+    !principal &&
+    !session &&
+    !ending &&
+    !signinFree &&
+    (beyond || needsSignin)
+  ) {
     const scope: SigninScope = "den";
     return {
       ok: false,
@@ -661,10 +769,14 @@ export function checkRequest(
     ...(client ? { client: normAddress(client) } : {}),
   });
   const browser: Principal | null = session
-    ? { kind: "person-browser", session: session.key }
+    ? {
+        kind: "person-browser",
+        session: session.key,
+        ...(session.via === "fixture" ? { fixture: true as const } : {}),
+      }
     : null;
 
-  if (!MUTATING.has(method) && !isUpgrade(req)) {
+  if (!changes(method) && !isUpgrade(req)) {
     if (isMutatingGet(method, pathname)) {
       const refused = mutatingGetRefusal(req, ctx, pathname, principal, cli);
       if (refused) return refused;
@@ -688,7 +800,7 @@ export function checkRequest(
       code: "origin_rejected",
       error:
         "A request that changes something needs an Origin from this server, " +
-        `or \`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `or \`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   }
   if (!originAllowed(origin, ctx))
@@ -728,9 +840,18 @@ export function checkRequest(
   const csrf =
     header(req, CSRF_HEADER) ??
     (isUpgrade(req) ? csrfFromProtocols(req) : undefined);
-  // Signed in: the session's own token; else (loopback) this start's.
-  const want = session ? session.csrf : ctx.csrfToken;
-  if (!csrf || !same(csrf, want))
+  if (ending && csrf && same(csrf, ending.csrf))
+    return {
+      ok: true,
+      principal: null,
+      via,
+      beyond,
+      session: null,
+      ending,
+      ...(client ? { client: normAddress(client) } : {}),
+    };
+  // The session's own token: there is no other (0.4.71).
+  if (!csrf || !session || !same(csrf, session.csrf))
     return {
       ok: false,
       status: 403,
@@ -740,6 +861,9 @@ export function checkRequest(
     };
   return ok(browser ?? { kind: "person-browser" });
 }
+
+/** Sign-out's route. */
+const SIGNOUT = "/api/session/logout";
 
 /** Routes an agent's token never reaches, whatever the method (SEC-1 §5). */
 export const AGENT_FORBIDDEN: readonly string[] = [
@@ -786,6 +910,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/settings/shell",
   "/api/scope",
   "/api/web-url",
+  // Issue 666: an alias made this install's address: the owner's.
+  "/api/web-url/adopt",
   // Issue 163: re-installs the launchd jobs (and may run sudo): a person's.
   "/api/keep-running-after-logout",
   // #299: the agents' sign-in token, into the secrets store: a person's.
@@ -857,12 +983,23 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/hub/names-check",
   // Issue 144: ending a gate slot early is a person's.
   "/api/gate-slots/end",
+  // Issue 621: a CI runner's slot routes take its runner token only (an
+  // agent asks with gate_slot_request); revoking one is a person's.
+  "/api/gate-slots/ask",
+  "/api/gate-slots/renew",
+  "/api/gate-slots/release",
+  "/api/gate-slots/runners/revoke",
+  // Issue 625: the test boxes are a person's to change.
+  "/api/gate-slots/boxes",
+  "/api/gate-slots/boxes/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
 export const AGENT_PERSON_RUNS: readonly string[] = [
   "/api/aws/login",
   "/api/workspace/exec",
+  // The person's own reports, live from GitHub as the person.
+  "/api/report/mine",
 ];
 
 /** `/api/sessions/<id>/…`: a session's own routes (AG-4a-term's io). */
@@ -1016,7 +1153,7 @@ function mutatingGetRefusal(
       code: "origin_rejected",
       error:
         "This request runs something: it needs this server's own page, or " +
-        `\`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `\`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   return null;
 }
@@ -1045,6 +1182,14 @@ export function setPrincipal(
   if (p) PRINCIPALS.set(req, p);
 }
 
+/** Issue 621: the gate-only runner a request's token proves, if any. */
+export function runnerPrincipalOf(
+  req: http.IncomingMessage,
+): RunnerPrincipal | null {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "gate-runner" ? p : null;
+}
+
 /** The agent a request's actor token proves (SEC-1c), if any. */
 export function agentPrincipalOf(
   req: http.IncomingMessage,
@@ -1063,6 +1208,9 @@ export function agentPrincipalOf(
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person" || p?.kind === "agent") return p.actor;
+  // Issue 810: the fixture person is named as such, never the human.
+  if (p?.kind === "person-browser" && p.session && p.fixture)
+    return FIXTURE_PRINCIPAL;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }
@@ -1091,5 +1239,26 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
     };
     return actor;
   }
+  // Issue 810: the fixture person is never the person. Every person-only
+  // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
+  // it, and the audit keeps it as a claim, labelled as such.
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      kind: "agent",
+      client: FIXTURE_PRINCIPAL,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      unverified: true,
+    };
   return claimed ? { ...claimed, unverified: true } : null;
+}
+
+/**
+ * Issue 810: whether a person-only check must refuse this request: an
+ * agent's token, a claimed agent, or the fixture person.
+ */
+export function notAPersonOf(req: http.IncomingMessage): boolean {
+  return !!agentPrincipalOf(req) || !!auditActorOf(req);
 }

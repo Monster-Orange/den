@@ -21,6 +21,7 @@ import * as http from "http";
 import * as path from "path";
 import { PLUGIN_FILE, PLUGIN_ID } from "../../shared/plugins/manifest.js";
 import { PLUGINS_DIR, readLock } from "../../shared/plugins/store.js";
+import type { SigninMethods } from "./signin-methods.js";
 
 /** A short request id: 8 hex characters. */
 export function newRequestId(): string {
@@ -307,6 +308,10 @@ export interface ErrorPageData {
     scope: "terminal" | "agents" | "den";
     name: string;
     cmd: string;
+    /** 0.4.71: a browser on this machine (localhost from a loopback peer). */
+    local?: boolean;
+    /** 0.4.71: with `local`, the command that signs it in (`web up`). */
+    up?: string;
     /** SEC-2a: the machine that runs the commands. */
     machine: string;
     /** SEC-2a: how to reach it over ssh. */
@@ -344,6 +349,11 @@ export interface ErrorPageData {
       /** D17 claim: "This is my computer"'s start, on localhost. */
       attest?: string;
     };
+    /**
+     * Issue 868: the ways in this install has set up, and whether none of
+     * them works from the computer asking (signin-methods.ts).
+     */
+    methods?: SigninMethods;
   };
 }
 

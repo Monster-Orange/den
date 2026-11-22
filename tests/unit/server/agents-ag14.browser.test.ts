@@ -27,12 +27,13 @@ import { readRecord } from "../../../src/shared/agents/records.js";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -49,7 +50,7 @@ const STOPPED_AT = "2026-11-06T10:00:00.000Z";
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -127,7 +128,7 @@ async function open(ws: string, more = ""): Promise<Page> {
     if (m.type() === "error") errors.push(`console: ${m.text()}`);
   });
   // Resume and Start fresh are shell-grade (SEC-1b): signed in as a person.
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}${more}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}${more}`);
   // Attached: a closed "Stopped (n)" hides its rows (D37).
   await p.waitForSelector("#agl:not([aria-busy]) .agr", {
     state: "attached",
@@ -784,7 +785,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       }, latest);
       const p = await ctx.newPage();
       p.on("pageerror", (e) => errors.push(e.message));
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+      await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
       await p.waitForSelector("#agl:not([aria-busy]) .agr", {
         state: "attached",
         timeout: 20_000,

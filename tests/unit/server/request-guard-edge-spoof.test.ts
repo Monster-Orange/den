@@ -22,7 +22,6 @@ const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
   loopbackNames: ["localhost", "127.0.0.1", "[::1]"],
   edgeHosts: () => [EDGE],
   verifyBearer: () => null,
-  csrfToken: "start-csrf",
   session: () => null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
   peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),

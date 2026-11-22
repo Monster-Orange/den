@@ -8,12 +8,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
 
@@ -27,10 +28,7 @@ beforeAll(async () => {
     const pw = await import("playwright");
     const engine =
       process.env.DEN_HELPERS_BROWSER === "webkit" ? "webkit" : "chromium";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -60,7 +58,7 @@ async function settings(): Promise<Page> {
       document.head.appendChild(st);
     });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#cli"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings#cli");
   await p.waitForSelector('[data-focus-key="cli-cli_tabs"]');
   return p;
 }
@@ -171,6 +169,67 @@ describe("MODE-5: Settings rows that were the command line's", () => {
       panes_reconnect: { max_failures: null },
       crash_loop: { max_wait_seconds: null },
     });
+    await p.context().close();
+  });
+
+  it("a redraw while a save is out keeps the new value, so one change saves once (issue 424)", async () => {
+    if (skip()) return;
+    const p = await settings();
+    // Every save the page sends; while `hold` is set, held until let go.
+    const posts: unknown[] = [];
+    let hold: Promise<void> | null = null;
+    let release = () => {};
+    const holdSaves = () => {
+      hold = new Promise<void>((r) => (release = r));
+    };
+    await p.route("**/api/settings", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      posts.push(route.request().postDataJSON());
+      if (hold) await hold;
+      await route.continue();
+    });
+    const sent = async (n: number) => {
+      for (let i = 0; i < 200 && posts.length < n; i++)
+        await new Promise((r) => setTimeout(r, 25));
+      expect(posts.length).toBe(n);
+    };
+    // A redraw from elsewhere (a plugin's rows) while the save is out.
+    const redraw = () =>
+      p.evaluate(() => window.dispatchEvent(new CustomEvent("den:settings")));
+    // The working pop-up of a slow save, closed again.
+    const popupGone = () =>
+      p.waitForSelector(".bz-dlg[open]", { state: "detached" });
+    try {
+      // A switch: one click, a redraw before the save answers. The row
+      // still shows on, so a second check (a person who sees it off
+      // again, or Playwright re-finding the replaced box) does nothing.
+      holdSaves();
+      expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(false);
+      await ctl(p, "cli.cli_tabs").click();
+      await sent(1);
+      await redraw();
+      expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(true);
+      await ctl(p, "cli.cli_tabs").check();
+      release();
+      await savedMark(p, "cli.cli_tabs");
+      await popupGone();
+      // A number: typed and left, a redraw before the save answers.
+      holdSaves();
+      await ctl(p, "cli.log_window_lines").fill("40000");
+      await ctl(p, "cli.log_window_lines").blur();
+      await sent(2);
+      await redraw();
+      expect(await ctl(p, "cli.log_window_lines").inputValue()).toBe("40000");
+      release();
+      await savedMark(p, "cli.log_window_lines");
+    } finally {
+      release();
+    }
+    expect(posts).toEqual([{ cli_tabs: true }, { log_window_lines: 40000 }]);
+    expect(await ctl(p, "cli.cli_tabs").isChecked()).toBe(true);
+    expect(await ctl(p, "cli.log_window_lines").inputValue()).toBe("40000");
+    await p.unroute("**/api/settings");
+    await s!.settings({ cli_tabs: null, log_window_lines: null });
     await p.context().close();
   });
 

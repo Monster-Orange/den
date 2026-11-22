@@ -37,6 +37,7 @@ import {
   searchSlot,
   versionSlotW,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -49,11 +50,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -300,7 +297,12 @@ for (const engine of ["chromium", "webkit"]) {
           ...top.querySelectorAll(
             ":scope > .den-left > *, :scope > :not(.den-left)",
           ),
-        ].map((e) => e.className.split(" ")[0]);
+        ].map(
+          (e) =>
+            ["den-brand", "den-scope", "den-search"].find((c) =>
+              e.classList.contains(c),
+            ) ?? e.tagName.toLowerCase(),
+        );
         return {
           group: scope?.getAttribute("role"),
           groupLabel: scope?.getAttribute("aria-label"),
@@ -384,6 +386,9 @@ for (const engine of ["chromium", "webkit"]) {
         text: "Ada Lovelace@ada",
         inFoot: true,
       });
+      expect(got.order).toEqual(
+        expect.arrayContaining(["den-brand", "den-scope", "den-search"]),
+      );
       expect(got.order.indexOf("den-scope")).toBeGreaterThan(
         got.order.indexOf("den-brand"),
       );

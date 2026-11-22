@@ -14,13 +14,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
-import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import {
   runningDenVersion,
   writeDistribution,
 } from "../../../src/ui/cli/create.js";
+import { quietPort } from "../helpers/quiet-port.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -68,17 +68,6 @@ function repo(rel: string, files: Record<string, string>): string {
   return dir;
 }
 
-/** A localhost port nothing listens on (taken, then let go). */
-function freePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = net.createServer();
-    s.listen(0, "localhost", () => {
-      const port = (s.address() as net.AddressInfo).port;
-      s.close(() => resolve(port));
-    });
-  });
-}
-
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-on3c-")));
   dist = path.join(tmp, "acme");
@@ -98,7 +87,7 @@ beforeAll(async () => {
   fs.mkdirSync(path.join(dist, "config", "local"), { recursive: true });
   fs.writeFileSync(
     path.join(dist, "config", "local", "user.yml"),
-    `web:\n  port: ${await freePort()}\n`,
+    `web:\n  port: ${await quietPort()}\n`,
   );
   for (const [k, v] of Object.entries(process.env))
     if (!/^(DEN_(?!LOGIN_SHELL$|RUNTIME_DIRS$)|ACME_)/.test(k)) env[k] = v;

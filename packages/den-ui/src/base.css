@@ -28,6 +28,31 @@
   }
 }
 
+/* Issue 651: no pop-up or form control falls back to the browser's font.
+   A modal dialog is put in <body>, but a page may set its font on a
+   wrapper (Den's #den-content), so a dialog that set no font of its own
+   drew in the browser's serif. Every dialog gets the kit's sans and its
+   parent's colour; form controls take their parent's font instead of the
+   browser's control font. Zero specificity: a dialog's own font wins. */
+/* Issue 793: <body> too, so anything a script puts in <body> (a pop-up,
+   a menu, a toast) is in the kit's sans on a page whose own font is on a
+   wrapper. Each names the kit's stack after var(--sans): with no --sans
+   at all (a theme or page without tokens.css), still never a serif. */
+:where(body),
+:where(dialog) {
+  /* prettier-ignore */
+  font-family: var(--sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
+}
+:where(dialog) {
+  color: inherit;
+}
+:where(button),
+:where(input),
+:where(select),
+:where(textarea) {
+  font: inherit;
+}
+
 /* An open modal dialog is as tall as its content, and centred. The
    browser's own box (inset-block 0, height fit-content) is not enough: on
    an iPad a pop-up still ran the window's full height, even with height:

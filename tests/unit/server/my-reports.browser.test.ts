@@ -13,12 +13,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, BrowserContext, Locator, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(30_000);
 
@@ -30,11 +31,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -207,7 +204,7 @@ async function page(fake: Fake, width = 1440): Promise<Page> {
     }
     return json(r, 404, { ok: false });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   return p;
 }
@@ -444,10 +441,12 @@ describe("FB: My reports", () => {
     // Sent: the kept screenshot is forgotten.
     await form(p).locator('[data-act="next"]').click();
     await form(p).locator('[data-act="review"]').click();
-    const download = p.waitForEvent("download");
     await form(p).locator('[data-act="send"]').click();
-    await download;
+    await form(p).getByRole("heading", { name: "Report sent" }).waitFor();
+    // Issue 403: the masked screenshot goes with the send, under the
+    // draft's id (Den keeps it by that id); nothing is downloaded.
     expect(fake.sent[0]).toMatchObject({ draftId: "0123456789abcdef" });
+    expect(String(fake.sent[0]!.shot)).toMatch(/^data:image\/png;base64,/);
     await p.waitForFunction(
       () =>
         new Promise((ok) => {

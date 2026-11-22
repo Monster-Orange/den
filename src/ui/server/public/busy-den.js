@@ -154,6 +154,16 @@ export const DEN_ACTIONS = {
       failure: "busy.startF",
     },
   },
+  // Issue 479: Open a terminal there (a quarantined copy's folder).
+  "open-terminal": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.termW",
+      success: "busy.termS",
+      failure: "busy.termF",
+    },
+  },
   "restart-agent": {
     who: "Den",
     autoClose: true,
@@ -268,6 +278,16 @@ export const DEN_ACTIONS = {
       working: "busy.edgeW",
       success: "busy.edgeS",
       failure: "busy.edgeF",
+    },
+  },
+  // Issue 810: Settings › Access › Set up test person.
+  "test-person": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.testPersonW",
+      success: "busy.testPersonS",
+      failure: "busy.testPersonF",
     },
   },
   "keep-running": {

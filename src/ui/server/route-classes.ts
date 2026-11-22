@@ -3,24 +3,24 @@
  * One source for the request checks (request-guard.ts) and for which routes
  * need a signed-in session (SEC-1b).
  *
- *   readonly     reads state. On loopback a GET passes with the Host check
- *                alone (§6), even when it runs a read-only probe (a health
- *                check, a `git rev-parse`, a `docker logs` tail).
- *   mutating     changes state or runs a declared lifecycle command: config,
- *                workspaces, the lock, a deploy, a service's up/down, a test
- *                run, a sync, an SSO login (§4: "up, down, restart, …").
- *                Origin and CSRF; the session's CSRF when one is signed in.
+ *   readonly     reads state, and starts no process on the request. On
+ *                loopback a GET passes with the Host check alone (§6). A
+ *                GET that starts a process (a `tail`, a `docker logs`, a
+ *                probe command) is `mutating`, never `readonly` (0.4.71).
+ *   mutating     changes state or runs something: config, workspaces, the
+ *                lock, a deploy, a service's up/down, a test run, a sync,
+ *                an SSO login (§4: "up, down, restart, …"), a log tail.
+ *                A sign-in (a session or a bearer), then Origin and the
+ *                session's CSRF.
  *   shell-grade  a shell for the caller, or what manages them: an agent's
  *                start or resume (a runtime in a PTY), the browser
- *                sessions, and (AG-4a-term) /api/sessions/*. On loopback
- *                Origin and CSRF, as mutating, and no sign-in (Ward,
- *                2026-11-06); an agent's token never reaches one but its
- *                own session's.
+ *                sessions, and (AG-4a-term) /api/sessions/*. As mutating;
+ *                an agent's token never reaches one but its own session's.
  *
  * Beyond loopback (the edge hostname, or a peer that isn't loopback) every
- * class needs a signed-in session or a bearer (§4); SIGNIN_FREE lists the
- * only routes that don't (how a browser gets a session, and what it asks
- * first).
+ * class needs a signed-in session or a bearer (§4); on loopback every class
+ * but `readonly` does (0.4.71). SIGNIN_FREE lists the only routes that
+ * never do (how a browser gets a session, and what it asks first).
  *
  * POST, PUT, PATCH and DELETE are checked as mutations by method, whatever
  * the table says; they are listed so SEC-1b reads one table. A GET that is
@@ -95,6 +95,13 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/favicon.ico",
+    // Issue 644: the kit's site files (its head snippet names them).
+    "/favicon.svg",
+    "/apple-touch-icon.png",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/icon-maskable-512.png",
+    "/site.webmanifest",
     // Issue 172: the app manifest (a phone's home screen, for push).
     "/manifest.webmanifest",
     "/theme.css",
@@ -143,8 +150,6 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/health/stream",
     "/api/services",
     "/api/service/daemons",
-    "/api/service/history",
-    "/api/logs/search",
     "/api/catalog",
     "/api/:cli/config",
     "/api/session",
@@ -174,13 +179,13 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/report/drafts",
     "/api/report/drafts/:id",
     "/api/report/github-send/:id",
-    // My reports: live from GitHub as the person (an agent gets 403).
-    "/api/report/mine",
+    // Issue 403: where a report's screenshot goes (Hub's answer, a read),
+    // and a kept one (the person or this install's own agent only).
+    "/api/report/shot-share",
+    "/api/report/shots/:id",
     "/api/themes",
     "/api/workspaces",
     "/api/workspaces/cleanup-preview",
-    "/api/github/branches",
-    "/api/github/repos",
     "/api/workspaces/available-repos",
     "/api/workspaces/services",
     "/api/workspaces/settings",
@@ -252,7 +257,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R("/api/health", "runs the manifests' health probes: read-only checks"),
   R("/api/test-sources", "git rev-parse in each repo: read-only"),
-  R("/api/manifest/validate", "GET validates a file at a path: read-only"),
+  M(
+    ["GET", "HEAD"],
+    "/api/manifest/validate",
+    "reads a file at a path, inside a repo: Den's own page or a token",
+  ),
   // ON-3 (onboard-routes.ts): reads only; nothing written, no repo tool run.
   R("/api/onboard/status", "what's set up and the next step (file reads)"),
   R(
@@ -277,8 +286,41 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/approvals/:id/decide",
     "the person's Allow runs the held write once; Deny runs nothing",
   ),
-  R("/api/service/logs", "reads (and follows) a service's log"),
-  R("/api/service/taillog", "tails a service's log (tail, docker logs)"),
+  M(
+    ["POST"],
+    "/api/approvals/:id/withdraw",
+    "the asker takes back its own held write (issue 142); nothing runs",
+  ),
+  // 0.4.71: each starts a process for its output (a log command, `tail`,
+  // `docker logs`, `grep`): a sign-in, as every GET that runs something.
+  M(
+    ["GET", "HEAD"],
+    "/api/service/logs",
+    "follows a service's log: runs its log command",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/service/taillog",
+    "tails a service's log (tail, docker logs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/service/history",
+    "a service's log history (docker ps, docker logs)",
+  ),
+  M(
+    ["GET", "HEAD"],
+    "/api/logs/search",
+    "searches the logs (grep, docker logs)",
+  ),
+  // They run gh as the person: what its sign-in can see, and its quota.
+  M(["GET", "HEAD"], "/api/github/branches", "lists a repo's branches (gh)"),
+  M(["GET", "HEAD"], "/api/github/repos", "lists the person's repos (gh)"),
+  M(
+    ["GET", "HEAD"],
+    "/api/report/mine",
+    "the person's own reports, live (gh; an agent gets 403)",
+  ),
   R(
     "/api/release/deploy",
     "GET attaches to a deploy session's log; it starts nothing",
@@ -377,6 +419,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/signin/code/:id/withdraw",
     "issue 320: the same, as the signed-out page's beacon sends it",
   ),
+  R(
+    "/api/web/fixture-person",
+    "issue 810: whether this is a test install and its fixture person is set up (never the secret)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person",
+    "issue 810: Set up test person, a person's, on a test install only",
+  ),
   S(
     ["GET", "HEAD"],
     "/api/web/waiting",
@@ -452,6 +503,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/settings/shell"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
+  // Issue 666: Make <alias> this Den's address (the owner's only).
+  M(["POST"], "/api/web-url/adopt"),
   // Issue 163: Keep agents running after logout › Apply (a person's only).
   M(
     ["POST"],
@@ -653,6 +706,44 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/gate-slots/end",
     "Issue 144: a person ends a gate slot early (never an agent); the run is not stopped",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/ask",
+    "Issue 621: a CI runner asks for a gate slot with its gate-only runner token (RUNNER_ROUTES); it holds by lease",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/renew",
+    "Issue 621: a CI runner renews its slot's lease and hears where it stands; its runner token only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/release",
+    "Issue 621: a CI runner gives back its own slot; its runner token only",
+  ),
+  R(
+    "/api/gate-slots/runners",
+    "Issue 621: the gate-only runner tokens, for Settings: names and dates, never a token or its hash; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runners/revoke",
+    "Issue 621: a person revokes a runner token; it answers 401 at once",
+  ),
+  R(
+    "/api/gate-slots/boxes",
+    "Issue 625: the test boxes (browser slots on other machines) as set; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes",
+    "Issue 625: a person adds or replaces a test box; never an agent",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes/remove",
+    "Issue 625: a person removes a test box; its running slots finish",
   ),
   R(
     "/api/notifications",
@@ -890,6 +981,17 @@ export const SIGNIN_FREE: readonly string[] = [
  * (request-guard.ts), whatever else it carries: the key never rides along
  * to a route loopback would let through.
  */
+/**
+ * Issue 621: the only routes a gate-only runner token reaches (POST): ask
+ * for a gate slot, renew its lease, give it back. Any other route answers
+ * 403 to it, before anything else looks at the request.
+ */
+export const RUNNER_ROUTES: readonly string[] = [
+  "/api/gate-slots/ask",
+  "/api/gate-slots/renew",
+  "/api/gate-slots/release",
+];
+
 export const EMBED_KEY_ROUTES: readonly string[] = [
   "/api/embed/say",
   "/api/embed/p/:project/agents/:id/state",
@@ -955,11 +1057,20 @@ export const SHELL_SAVE_BEACONS: readonly string[] = ["/api/settings/shell"];
 export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   // UK-2: how a write sent with the working pop-up's id ended.
   "index.ts:requestStatusPath": ["/requests/*", "/api/requests/*"],
+  // Sign-in's API calls on a loopback name, once Den's own address works.
+  "index.ts:SIGNIN_APIS": [
+    "/api/github/signin",
+    "/api/github/signin/:id",
+    "/api/signin/code",
+    "/api/signin/code/:id",
+    "/api/signin/code/:id/withdraw",
+  ],
   "agent-link-routes.ts:LINK_PATH": ["/p/:project/agents/:id"],
   "embed-routes.ts:EMBED_PATH": ["/embed/p/:project/agents/:id"],
   "embed-routes.ts:STATE_PATH": ["/api/embed/p/:project/agents/:id/state"],
   "report-routes.ts:DRAFT_PATH": ["/api/report/drafts/:id"],
   "report-routes.ts:FLOW_PATH": ["/api/report/github-send/:id"],
+  "report-routes.ts:SHOT_PATH": ["/api/report/shots/:id"],
   "agent-routes.ts:AGENTS_PATH": [
     "/api/workspaces/:ws/agents",
     "/api/workspaces/:ws/agents/:id/stop",
@@ -1014,6 +1125,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "index.ts:LOGIN_WAIT_PATH": ["/api/web/logins/:id"],
   "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
   "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],
+  "approval-routes.ts:WITHDRAW_PATH": ["/api/approvals/:id/withdraw"],
   // Issue 209: a Verify run's record, and a module's kept output.
   "verify-routes.ts:RUN_PATH": [
     "/api/verify/runs/:id",

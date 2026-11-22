@@ -58,6 +58,8 @@ async function login(args: string[], webUrl: string | null = ADDRESS) {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
     webUrl: () => (webUrl ? { url: webUrl, confirmed: true } : null),
   });
   return { code, out, err };
@@ -138,6 +140,8 @@ describe("web sessions --help", () => {
       out: (x) => (out += x),
       err: () => undefined,
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
     });
     expect(code).toBe(0);
     expect(out).toMatch(
@@ -163,6 +167,8 @@ const io = () => {
       out: (x: string) => (o.out += x),
       err: (x: string) => (o.err += x),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
     },
   };
 };
@@ -173,7 +179,7 @@ describe("each web subcommand's own --help (the dispatcher answers for none of t
     const a = io();
     expect(await cmdWebLogin(["--help"], a.io)).toBe(0);
     expect(a.o.out).toMatch(/^Usage: den web login \[--next <path>\]/);
-    expect(a.o.out).toMatch(/On localhost nothing asks for a sign-in/);
+    expect(a.o.out).toMatch(/On this machine `web up` opens such a link/);
     // No link was minted, so no secret was made for one.
     expect(a.o.out).not.toMatch(/\/auth\?c=/);
     const b = io();

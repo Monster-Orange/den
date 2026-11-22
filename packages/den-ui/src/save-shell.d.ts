@@ -1,4 +1,4 @@
-/** den-ui 0.7.7 (issue 394): a rail change saved so that leaving the page can't lose it. */
+/** den-ui 0.10.0 (issue 394): a rail change saved so that leaving the page can't lose it. */
 export interface SaveShellOptions {
   /** Headers for the fetch (a CSRF token); a beacon can't carry them. */
   headers?: Record<string, string>;

@@ -12,12 +12,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -26,11 +28,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -44,22 +42,39 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
+/** The newest version in the server's changelog (What's new's). */
+async function newestVersion(): Promise<string> {
+  const r = await fetch(`${s!.base}/api/changelog`, {
+    headers: denAuth(s!.stateDir),
+  });
+  const list = (await r.json()) as { version?: string }[];
+  const v = list[0]?.version;
+  if (!v) throw new Error("the changelog has no version");
+  return v;
+}
+
 async function page(at: string): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
-  });
+  // What's new stays shut: the newest version counts as seen. The page
+  // opens it unless the seen version equals the newest one exactly, so a
+  // made-up version would not do.
+  await ctx.addInitScript(
+    (v) => {
+      try {
+        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+          localStorage.setItem(k, v);
+      } catch {
+        /* none */
+      }
+    },
+    await newestVersion(),
+  );
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, at));
+  await signInPage(p, s!.stateDir, s!.base, at);
   await p.waitForFunction(
     () =>
       !!(window as { denShell?: unknown }).denShell &&
@@ -98,20 +113,27 @@ async function hold(p: Page, method: string, pathname: string): Promise<Held> {
   return { id, answer: release };
 }
 
-/** Answer each shared confirm: the first with OK, every later one Cancel. */
+/**
+ * Answer each shared confirm (askConfirm: its own data-dk-kind="confirm"),
+ * the first with OK, every later one Cancel, until `done`. Waits for the
+ * confirm to open and to go, never for time; any other pop-up is never
+ * touched.
+ */
 async function confirmFirst(p: Page, done: Promise<unknown>): Promise<void> {
-  let first = true;
-  let over = false;
-  void done.then(() => (over = true));
-  while (!over) {
-    const open = p.locator(".dk-dlg[open]");
-    if (await open.count()) {
-      await open
-        .locator(first ? '[data-dk="ok"]' : '[data-dk="cancel"]')
-        .click();
-      first = false;
-    }
-    await p.waitForTimeout(100);
+  const ask = p.locator('dialog[open][data-dk-kind="confirm"]');
+  let answer = "ok";
+  for (;;) {
+    const opened = ask
+      .waitFor({ state: "visible", timeout: 30_000 })
+      .then(() => true);
+    // Once done, the wait still pending ends with the page: nothing to see.
+    opened.catch(() => {});
+    if (!(await Promise.race([opened, done.then(() => false)]))) return;
+    const id = await ask.getAttribute("id");
+    const one = p.locator(`dialog[id="${id}"]`);
+    await one.locator(`[data-dk="${answer}"]`).click();
+    await one.waitFor({ state: "detached", timeout: 20_000 });
+    answer = "cancel";
   }
 }
 
@@ -121,13 +143,13 @@ async function expectWorking(p: Page, held: Held): Promise<void> {
   try {
     // The pop-up's request id: Try again resends it.
     expect(id).not.toBe("");
-    const dlg = p.locator('dialog.bz-dlg[open][data-state="working"]');
+    const dlg = p.locator('den-busy dialog[open][data-state="working"]');
     await dlg.waitFor({ state: "visible", timeout: 20_000 });
-    expect(await dlg.locator(".bz-bar").count()).toBe(1);
+    expect(await dlg.getByRole("progressbar").count()).toBe(1);
   } finally {
     held.answer();
   }
-  await p.locator("dialog.bz-dlg[open]").waitFor({
+  await p.locator("den-busy dialog[open]").waitFor({
     state: "detached",
     timeout: 20_000,
   });
