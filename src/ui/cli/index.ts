@@ -202,6 +202,7 @@ import { cmdDoctor } from "./doctor-command.js";
 import { cmdSessions, SESSIONS_HELP } from "./sessions-command.js";
 import { AGENTS_HELP, cmdAgents } from "./agents-command.js";
 import { USAGE_HELP, cmdUsage } from "./usage-command.js";
+import { COACH_HELP, cmdCoach } from "./coach-command.js";
 import { GATE_HELP, cmdGate } from "./gate-command.js";
 import {
   NOTIFICATIONS_HELP,
@@ -563,6 +564,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   sessions: SESSIONS_HELP,
   agents: AGENTS_HELP,
   usage: USAGE_HELP,
+  coach: COACH_HELP,
   gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
@@ -1205,6 +1207,10 @@ class DenCLI {
 
         case "usage":
           process.exitCode = await cmdUsage(args.slice(1));
+          break;
+
+        case "coach":
+          process.exitCode = await cmdCoach(args.slice(1));
           break;
 
         case "gate":

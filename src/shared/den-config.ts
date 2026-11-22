@@ -8,6 +8,7 @@
  * The user file can toggle local_dev on/off without touching the shared config.
  */
 
+import { checkCoachConfig, type CoachSettings } from "./coach/settings.js";
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
@@ -1786,6 +1787,11 @@ export interface AgentsConfig {
    */
   exited_shell_minutes?: unknown;
   /**
+   * Issue 52: the Coach, `{ enabled, window_days, keep_runs }` (default
+   * off, 7 days, 100 runs; coach/settings.ts).
+   */
+  coach?: unknown;
+  /**
    * AG-DROP: files dropped or pasted onto an agent's terminal,
    * `{ max_bytes, keep_days, dir }` (defaults 25 MB, 7 days,
    * `<state>/uploads`).
@@ -1868,6 +1874,8 @@ export const AGENTS_RESERVED_KEYS = [
   // den#3: subagents' model; the account's claude.ai connectors.
   "subagents",
   "claude_ai_connectors",
+  // Issue 52: the Coach's settings.
+  "coach",
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
@@ -1949,6 +1957,8 @@ export interface ResolvedAgentsConfig {
   lockWaitMs?: number;
   /** agents.exited_shell_minutes; unset: DEFAULT_EXITED_SHELL_MINUTES. */
   exitedShellMinutes?: number;
+  /** Issue 52: agents.coach with its defaults (coach/settings.ts). */
+  coach?: CoachSettings;
   /** agents.uploads (AG-DROP) with its defaults. */
   uploads?: UploadSettings;
   /** agents.files (AG-DROP-2) with its defaults. */
@@ -2222,6 +2232,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.exitedShellMinutes = exitedMin;
   }
+  out.coach = checkCoachConfig(raw.coach);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [
     ...DEN_CATEGORIES.map((c) => c.id),
