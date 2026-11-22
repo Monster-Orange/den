@@ -65,6 +65,11 @@ den gate status            # who holds a slot, who waits
 `gate status`, the Agents page and `GET /api/gate-slots` show every holder,
 local or remote.
 
+The command runs with your environment, as if the gate weren't there. It
+doesn't get the `DEN_ROOT`, `DEN_ENGINE_ROOT` or `DEN_INVOKE_CWD` that the
+distribution's launcher set for `den` itself (issue 1038; see
+distributions.md, under the shim).
+
 ## A browser run on a Mac uses a container browser
 
 On a macOS host, a browser slot is refused unless the ask says where its

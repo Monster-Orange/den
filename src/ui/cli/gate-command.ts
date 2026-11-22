@@ -77,6 +77,7 @@ import {
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
+import { callerEnv } from "../../shared/caller-env.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
@@ -192,9 +193,11 @@ const realExec = (
   args: string[],
   env?: Record<string, string>,
 ): GateRun => {
+  // Issue 1038: the command is the caller's: it gets the caller's install
+  // markers, not the ones this CLI's launcher set (caller-env.ts).
   const k = spawn(cmd, args, {
     stdio: "inherit",
-    ...(env ? { env: { ...process.env, ...env } } : {}),
+    env: callerEnv({ ...process.env, ...env }),
   });
   return {
     pid: k.pid,

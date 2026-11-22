@@ -9,7 +9,28 @@ set -euo pipefail
 #                    checkout (where the engine dir holds den.yml) it is set
 #                    here. Otherwise it is left unset and Den walks up from
 #                    the entry script to find den.yml.
-DEN_ENGINE_ROOT="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
+engine="$(cd "$(dirname "$(realpath "$0")")/.." && pwd -P)"
+# Issue 1038: what the caller had, for the commands Den runs on its behalf
+# (gate run; src/shared/caller-env.ts). The first bin/den in a chain records
+# it. A DEN_ROOT naming the distribution this Den is installed in (or Den's
+# own checkout) was set by its launcher, not by the caller.
+if [ -z "${DEN_CALLER_ENV_SET:-}" ]; then
+  export DEN_CALLER_ENV_SET=1
+  if [ -n "${DEN_ROOT+x}" ]; then
+    own="$(cd "$DEN_ROOT" 2>/dev/null && pwd -P || true)"
+    installed="$(cd "$DEN_ROOT/node_modules/@monster-orange/den" 2>/dev/null && pwd -P || true)"
+    if [ "$own" != "$engine" ] && [ "$installed" != "$engine" ]; then
+      export DEN_CALLER_ROOT="$DEN_ROOT"
+    fi
+  fi
+  if [ -n "${DEN_ENGINE_ROOT+x}" ]; then
+    export DEN_CALLER_ENGINE_ROOT="$DEN_ENGINE_ROOT"
+  fi
+  if [ -n "${DEN_INVOKE_CWD+x}" ]; then
+    export DEN_CALLER_INVOKE_CWD="$DEN_INVOKE_CWD"
+  fi
+fi
+DEN_ENGINE_ROOT="$engine"
 export DEN_ENGINE_ROOT
 if [ -z "${DEN_ROOT:-}" ] && [ -f "$DEN_ENGINE_ROOT/den.yml" ]; then
   DEN_ROOT="$DEN_ENGINE_ROOT"
