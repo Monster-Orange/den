@@ -653,6 +653,12 @@ function rotMessage(r) {
   const rot = r.rotation;
   const why = rotationWhy(rot);
   const auto = rot.onDue === "auto" && !rot.fellBack;
+  // Issue 914: its turn is over, but background work it started still runs.
+  if (rot.waiting > 0)
+    return t(rot.waiting === 1 ? "ag.rc.waiting.one" : "ag.rc.waiting", {
+      why,
+      n: rot.waiting,
+    });
   if (rot.relaunchWanted && !rot.ready) return t("ag.rc.wanted", { why });
   if (auto && !isStopped(r))
     return t(rot.ready ? "ag.rc.autoReady" : "ag.rc.autoAsk", { why });

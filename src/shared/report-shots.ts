@@ -50,6 +50,11 @@ export interface ShotRecord {
   repo: string;
   savedAt: string;
   /**
+   * Issue 946: filed by the fixture person (a test install's live checks).
+   * The fixture person reads only screenshots with it.
+   */
+  byFixture?: true;
+  /**
    * Hub's record of it. `confirmed`: Hub's sha256 is the one of the bytes
    * sent (false: Hub stored something else, or said so wrongly).
    */
@@ -171,7 +176,13 @@ export function shotStore(stateDir: string) {
   };
   return {
     dir,
-    save(id: string, png: Buffer, repo: string, now = Date.now()): ShotRecord {
+    save(
+      id: string,
+      png: Buffer,
+      repo: string,
+      now = Date.now(),
+      o: { byFixture?: boolean } = {},
+    ): ShotRecord {
       // The same report sent again with the same bytes keeps Hub's record.
       const had = readRec(id);
       let same = false;
@@ -184,6 +195,7 @@ export function shotStore(stateDir: string) {
         id,
         repo,
         savedAt: new Date(now).toISOString(),
+        ...(o.byFixture ? { byFixture: true as const } : {}),
         ...(same && had?.hub ? { hub: had.hub } : {}),
       };
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

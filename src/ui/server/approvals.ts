@@ -59,7 +59,7 @@ export type ApproverCheck =
   | { ok: true; session: string }
   | {
       ok: false;
-      code: "signin_to_approve" | "fixture_cannot_approve";
+      code: "signin_to_approve" | "fixture_cannot_approve" | "agent_view";
       error: string;
     };
 
@@ -98,6 +98,13 @@ export function approverAllowed(
     };
   // Issue 810: the fixture person (a test install's live checks) never
   // decides what waits for a person.
+  // Issue 796: nor does an agent's read-only view.
+  if (p?.kind === "person-browser" && p.view)
+    return {
+      ok: false,
+      code: "agent_view",
+      error: "An agent's read-only view can't approve: that is a person's.",
+    };
   if (p?.kind === "person-browser" && p.fixture)
     return {
       ok: false,

@@ -2059,6 +2059,32 @@ namespace, set `stack_namespace`.
 `stack_namespace` in the blueprint needs Den 0.3.0-dev.36 or later: an
 older Den rejects the unknown key.
 
+### A project Den didn't start
+
+A Compose project's name is only a name. A repo's manifest can render to
+one that something else runs: another tool's, another install's, or a
+service started by hand from its own checkout. Den acts only on its own:
+
+- Every container of a stack Den starts carries the label
+  `den.stack.owner`, a mark for this install, the stack and
+  its checkout. Den adds it in its override; the project's own labels
+  stay.
+- `stack up`, `stack down` and `stack restart` (with `--service` too),
+  and so a service's Start, Stop and Restart in the page and in ⌘K, are
+  refused when the project holds a container without this stack's mark.
+  The message names the project and the containers, and nothing runs.
+  Fix it with a `compose.name` of the stack's own in the repo's `.den.yml`,
+  or stop the other project yourself.
+- A container Den started before the label (0.4.34 and older) counts as
+  its own when Compose's record of its files names this stack's override
+  and compose file. It gets the label at its next `up`.
+- When docker can't be asked, Den goes on: Compose itself then fails.
+- `acme doctor` warns (`--json`: check `stacks:projects`) on a project
+  name two stacks render to (stack `a-b` in namespace `c` and stack `a`
+  in `b-c` are both `a-b-c`), and on a project already running
+  containers Den didn't start. Projects sharing a namespace on one
+  checkout are one stack, not a clash.
+
 ## Releases
 
 The Release page dispatches each repo's CD workflow on GitHub. A repo's
@@ -3972,14 +3998,30 @@ as…" line as Bring in.
     restart_wait_minutes: 120 # minutes, above 0
   ```
 
+  Session rotation waits for an agent's background work too (issue
+  914). Once a rotation is due and the agent's turn is over, Den still
+  waits while a helper it started (a background subagent, a workflow's
+  agent) or a job it left running (a gate run) is running, and rotates
+  right after they finish. The wait is at most
+  `agents.rotation_wait_minutes` (default 240). Then the rotation goes
+  ahead: Den asks for a handoff that lists each item still running (its
+  ID, what it was doing, its branch, and for a helper its own handoff
+  file, `handoffs/helper-<id>.md` in the agent's files folder). The
+  handoff check refuses one that leaves an item out, and the new
+  session's first prompt tells it to start each one again.
+
+  ```yaml
+  agents:
+    rotation_wait_minutes: 240 # minutes, above 0
+  ```
+
   A session that ends without Den asking (issue 926): no stop, restart
   or relaunch from Den or a person, such as a signal from outside Den or
   a crash. Den's sweep writes one audit row with the exit code. Exit 0
   (the agent or person quit it) is left down. Otherwise the bell says so
   and Den brings the agent back, at most once per window: it resumes it, or relaunches it
   from its handoff when its rotation is ready and on_due is auto. A
-  second such exit within `agents.unasked_exit_window_minutes` (default
-  10) is told in the bell and left down; 0 never brings one back.
+  second such exit within `agents.unasked_exit_window_minutes` (default 10) is told in the bell and left down; 0 never brings one back.
 
   ```yaml
   agents:
