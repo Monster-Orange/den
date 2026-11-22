@@ -103,12 +103,18 @@
     // Issue 441: an outside runner's gate results on Checks.
     "v.m_ran": "Se ejecutó de {a} a {b}.",
     "v.m_runner": "De un ejecutor externo.",
-    "v.i_fail": "{t} falló en {e}: fallaron {n} cláusulas.",
-    "v.i_fail.one": "{t} falló en {e}: falló {n} cláusula.",
-    "v.i_pass":
-      "{t} pasó en {e}: pasaron todas las cláusulas que se ejecutaron.",
     "v.i_nothing":
       "{t} se ejecutó en {e}, pero ninguna cláusula se ejecutó allí. Esto no es un aprobado.",
+    "v.i_fail": "{t} en {e} falló: {a}, {b}, {c}.",
+    "v.i_pass": "{t} en {e} pasó: {a}, {b}, {c}.",
+    "v.i_np": "pasaron {n} cláusulas",
+    "v.i_np.one": "pasó {n} cláusula",
+    "v.i_nm": "{n} necesitan a una persona",
+    "v.i_nm.one": "{n} necesita a una persona",
+    "v.i_nf": "fallaron {n}",
+    "v.i_nf.one": "falló {n}",
+    "v.i_from": "De resultados importados.",
+    "v.i_cfg": "Los resultados importados están desactivados: {e}",
     "v.i_b_failed": "Falló",
     "v.i_b_passed": "Pasó",
     "v.i_nchecks": "{n} comprobaciones",

@@ -338,7 +338,10 @@ describe("issue 441: gate results on an imported environment", () => {
   it("the card says the tag's answer, where it came from, and the clause counts", () => {
     const c = cardOf(answerView(withBed), "bed");
     expect(c).toContain("data-imported");
-    expect(c).toContain("<b>v1.2.3-dev.5</b> failed on bed: 1 clause failed.");
+    // Clause 6: the answer line in the issue's words, with its counts.
+    expect(c).toContain(
+      "<b>v1.2.3-dev.5</b> on bed failed: 2 clauses passed, 1 needs a person, 1 failed.",
+    );
     expect(c).toContain("Commit 4e1b9a2.");
     expect(c).toContain("From an outside runner.");
     expect(c).toContain("3 checks, 5 clauses.");
@@ -353,15 +356,15 @@ describe("issue 441: gate results on an imported environment", () => {
     ]);
   });
 
-  it("failed first, then couldn't run, then needs you, each naming its issue", () => {
+  it("failures first, then needs you, then couldn't run, each naming its issue", () => {
     const c = cardOf(answerView(withBed), "bed");
     const heads = [...c.matchAll(/<h3>([^<]+)<\/h3>/g)].map((m) =>
       m[1]!.replace(/&#39;/g, "'"),
     );
     expect(heads).toEqual([
       "Failed (1)",
-      "Couldn't run (1)",
       "Needs you (1)",
+      "Couldn't run (1)",
       "Checks on this tag",
     ]);
     expect(c).toContain("issue 327");
@@ -385,6 +388,8 @@ describe("issue 441: gate results on an imported environment", () => {
     ]);
     expect(c).toContain("1 of 3 clauses passed, 1 needs you");
     expect(c).toContain("1 of 1 clause passed");
+    // Clause 4: imported checks are marked as such.
+    expect(c).toContain("From imported results.");
   });
 
   it("a passing tag says so, and an empty imported environment is not run yet", () => {
@@ -397,7 +402,7 @@ describe("issue 441: gate results on an imported environment", () => {
     };
     const c = cardOf(answerView({ ...withBed, envs: [pass] }), "bed");
     expect(c).toContain(
-      "<b>v1.2.3-dev.5</b> passed on bed: every clause that ran passed.",
+      "<b>v1.2.3-dev.5</b> on bed passed: 2 clauses passed, 1 needs a person, 0 failed.",
     );
     expect(c).toContain("vf-ok");
     expect(c).not.toContain("Failed (");
@@ -414,6 +419,22 @@ describe("issue 441: gate results on an imported environment", () => {
     expect(n).not.toMatch(/vf-ok/);
   });
 
+  it("a tag that is a placeholder's name stays one tag", () => {
+    const odd = { ...bed, run: { ...bed.run, tag: "{t}" } };
+    const c = cardOf(answerView({ ...withBed, envs: [odd] }), "bed");
+    expect(c).toContain("<b>{t}</b> on bed failed:");
+  });
+
+  it("a bad imported setting is named, and the org's environments still answer", () => {
+    const html = answerView({
+      ...withBed,
+      importError: "verify.environments: a list of environment names",
+    });
+    expect(html).toMatch(
+      /role="status"[^>]*>Imported results are off: verify\.environments: a list of environment names/,
+    );
+  });
+
   it("a project with no declared checks but an import still shows the card", () => {
     const html = answerView({ ...withBed, modules: 0, envs: [bed] });
     expect(html).toContain('data-env="bed"');
@@ -427,8 +448,8 @@ describe("issue 441: gate results on an imported environment", () => {
     );
     expect(heads).toEqual([
       "Failed (1)",
-      "Couldn't run (1)",
       "Needs you (1)",
+      "Couldn't run (1)",
       "gate/327 on v1.2.3-dev.5",
       "gate/330 on v1.2.3-dev.5",
       "gate/406 on v1.2.3-dev.5",

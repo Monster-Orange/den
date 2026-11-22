@@ -12,7 +12,7 @@
  * server is needed.
  */
 import * as fs from "fs";
-import { isAgentTokenEnv } from "../../shared/actor-token.js";
+import { isAgentEnv } from "./gate-command.js";
 import {
   importRecord,
   parseGateVerdict,
@@ -41,6 +41,8 @@ export interface VerifyCommandDeps {
   /** The org config's `verify:` block. */
   verifyConfig?: () => unknown;
   projectExists?: (project: string) => boolean;
+  /** The org's own environments: an imported one can't take their names. */
+  orgEnvironments?: () => string[];
   out?: (line: string) => void;
   err?: (line: string) => void;
 }
@@ -77,7 +79,8 @@ export async function cmdVerify(
   const sub = args[0];
   const { pos, opt } = flags(args.slice(1));
   if (sub !== "import" && sub !== "remove") return usage();
-  if (isAgentTokenEnv(deps.env ?? process.env)) {
+  // Any agent: its token, or Den's agent marker alone (as `gate` checks).
+  if (isAgentEnv(deps.env ?? process.env)) {
     err(
       `${cli} verify ${sub} is a person's: an agent can't change Verify's results.`,
     );
@@ -124,6 +127,15 @@ export async function cmdVerify(
     return 1;
   }
   const env = opt.env;
+  const org =
+    deps.orgEnvironments?.() ??
+    (await import("../../shared/den-config.js")).orgEnvironments();
+  if (org.includes(env)) {
+    err(
+      `"${env}" is one of Den's own environments: verify.environments can't name it. Give the imported environment its own name (like bed).`,
+    );
+    return 1;
+  }
   if (!settings.environments.includes(env)) {
     err(
       `"${env}" is not an imported environment: add it to verify.environments in Den's config (now: ${settings.environments.join(", ") || "none"})`,
@@ -133,6 +145,11 @@ export async function cmdVerify(
   let text: string;
   try {
     const st = fs.statSync(pos[0]);
+    // A FIFO or a device says size 0, then reads without end.
+    if (!st.isFile()) {
+      err(`can't read ${pos[0]}: not a regular file`);
+      return 1;
+    }
     if (st.size > settings.maxBytes) {
       err(
         `the file is over ${settings.maxBytes} bytes (verify.import.max_bytes)`,
@@ -147,6 +164,20 @@ export async function cmdVerify(
   const v = parseGateVerdict(text, settings);
   if (!v.ok) {
     err(`nothing kept: ${v.error}`);
+    return 1;
+  }
+  // An import replaces only its own tag's earlier import on this environment.
+  const was = readRunRecord(stateDir, project, v.verdict.tag);
+  if (was && was.source !== "import") {
+    err(
+      `nothing kept: "${v.verdict.tag}" is already one of Den's runs in project ${project}`,
+    );
+    return 1;
+  }
+  if (was && was.env !== env) {
+    err(
+      `nothing kept: "${v.verdict.tag}" is already imported to ${was.env}. Remove it there first (${cli} verify remove ${v.verdict.tag} --project ${project}).`,
+    );
     return 1;
   }
   const rec = importRecord(project, env, v.verdict);
