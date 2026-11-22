@@ -1,0 +1,257 @@
+/**
+ * Issue 583: read a file only inside allowed folders.
+ *
+ * `readWithin` resolves every symlink in the path, checks that the result
+ * lies inside one of the roots, then reads that same resolved path: opened
+ * without following a final symlink and without waiting, refused unless it
+ * is a regular file, and confirmed afterwards to still be the file it
+ * checked (same resolved path, same file on disk). The roots are used as
+ * given: callers resolve and check them once (`realRoots`), up front.
+ *
+ * `rootRefusal` says why a configured repo root can't be a root: far too
+ * broad to read inside (`broadRootReason`: the whole disk, a top-level
+ * folder, the home folder or one that holds it, the state folder or one
+ * that holds it, however the path is spelled). `gitTop` finds the git
+ * checkout a folder is in, counting only a real `.git` (see holdsGit).
+ */
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+/** A read refused because the file is not inside an allowed folder. */
+export class OutsideError extends Error {
+  readonly code = "EOUTSIDE";
+  constructor() {
+    super("outside the folders Validate may read");
+  }
+}
+
+/** `p` resolved through every symlink, or `p` as written when it is gone. */
+function resolved(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/** The macOS data volume, which reaches the same folders by another path. */
+const DATA_VOLUME = "/System/Volumes/Data";
+
+/**
+ * A resolved path in one spelling for comparing: on macOS without the data
+ * volume's prefix, and in lower case where the disk ignores case.
+ */
+function comparable(p: string): string {
+  let q = p;
+  if (process.platform === "darwin") {
+    if (q === DATA_VOLUME) q = "/";
+    else if (q.startsWith(DATA_VOLUME + "/")) q = q.slice(DATA_VOLUME.length);
+  }
+  return process.platform === "darwin" || process.platform === "win32"
+    ? q.toLowerCase()
+    : q;
+}
+
+/** Is `x` `root` or inside it (both already resolved)? */
+export function isWithin(x: string, root: string): boolean {
+  if (x === root) return true;
+  const rel = path.relative(root, x);
+  return (
+    !!rel &&
+    rel !== ".." &&
+    !rel.startsWith(".." + path.sep) &&
+    !path.isAbsolute(rel)
+  );
+}
+
+/** The roots resolved through their symlinks; a missing one is dropped. */
+export function realRoots(roots: readonly string[]): string[] {
+  return roots.flatMap((r) => {
+    try {
+      return [fs.realpathSync.native(r)];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/** `file`'s text, when it really is inside one of `roots` (as given). */
+export function readWithin(
+  file: string,
+  roots: readonly string[],
+  hooks: { afterCheck?: () => void } = {},
+): string {
+  const real = fs.realpathSync.native(file); // ENOENT stays ENOENT
+  if (!roots.some((r) => isWithin(real, r))) throw new OutsideError();
+  hooks.afterCheck?.(); // tests only: a swap between the check and the read
+  const fd = fs.openSync(
+    real,
+    fs.constants.O_RDONLY |
+      (fs.constants.O_NOFOLLOW ?? 0) |
+      (fs.constants.O_NONBLOCK ?? 0),
+  );
+  try {
+    const opened = fs.fstatSync(fd);
+    if (!opened.isFile()) throw new OutsideError();
+    // What was opened is still the file at the path that was checked.
+    let now: fs.Stats;
+    let again: string;
+    try {
+      again = fs.realpathSync.native(real);
+      now = fs.statSync(again);
+    } catch {
+      throw new OutsideError();
+    }
+    if (again !== real || now.dev !== opened.dev || now.ino !== opened.ino)
+      throw new OutsideError();
+    return fs.readFileSync(fd, "utf-8");
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+export interface BroadRootOptions {
+  /** The home folder (default: os.homedir()). */
+  home?: string;
+  /** This install's state folder; a root holding it is refused. */
+  stateDir?: string;
+}
+
+/** Why `root` is far too broad for a repo root, or null when it is not. */
+export function broadRootReason(
+  root: string,
+  opts: BroadRootOptions = {},
+): string | null {
+  if (!root || !path.isAbsolute(root)) return null;
+  const r = comparable(resolved(root));
+  if (path.parse(r).root === r) return "it is the whole disk";
+  if (path.relative(path.parse(r).root, r).split(path.sep).length < 2)
+    return "it is a top-level folder";
+  const home = comparable(resolved(opts.home ?? os.homedir()));
+  if (home && isWithin(home, r))
+    return home === r ? "it is the home folder" : "it holds the home folder";
+  if (opts.stateDir) {
+    const state = comparable(resolved(opts.stateDir));
+    if (isWithin(state, r)) return "it holds this install's state folder";
+  }
+  return null;
+}
+
+const GITDIR_LINE = /^gitdir:\s*(.+?)\s*$/m;
+
+/** Is there a regular file at `p` (a link is not one)? */
+function isFileAt(p: string): boolean {
+  try {
+    return fs.lstatSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Is there a folder at `p` (a link is not one)? */
+function isFolderAt(p: string): boolean {
+  try {
+    return fs.lstatSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The common git folder of `gitDir` (resolved), when it is a real git
+ * folder: it holds HEAD, and either holds objects/ itself or holds a
+ * `commondir` that leads to a folder holding objects/ and HEAD (a
+ * worktree's `.git/worktrees/<name>`); else null.
+ */
+function commonGitDir(gitDir: string): string | null {
+  if (!isFileAt(path.join(gitDir, "HEAD"))) return null;
+  if (isFolderAt(path.join(gitDir, "objects"))) return gitDir;
+  const commondir = path.join(gitDir, "commondir");
+  if (!isFileAt(commondir)) return null;
+  try {
+    const rel = readWithin(commondir, [gitDir]).trim();
+    if (!rel) return null;
+    const common = fs.realpathSync.native(path.resolve(gitDir, rel));
+    return isFileAt(path.join(common, "HEAD")) &&
+      isFolderAt(path.join(common, "objects"))
+      ? common
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Does `dir` (resolved) hold a git checkout's `.git`: a folder, or a
+ * worktree's pointer file whose `gitdir:` names a real git folder (see
+ * commonGitDir) whose common git folder, and the checkout holding it, are
+ * not far too broad? Any other `.git` is none.
+ */
+export function holdsGit(dir: string, opts: BroadRootOptions = {}): boolean {
+  const dotGit = path.join(dir, ".git");
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(dotGit);
+  } catch {
+    return false;
+  }
+  if (st.isDirectory()) return true;
+  if (!st.isFile()) return false;
+  let common: string | null;
+  try {
+    const m = GITDIR_LINE.exec(readWithin(dotGit, [dir]));
+    if (!m) return false;
+    const target = fs.realpathSync.native(path.resolve(dir, m[1]));
+    if (!fs.statSync(target).isDirectory()) return false;
+    common = commonGitDir(target);
+  } catch {
+    return false;
+  }
+  if (!common) return false;
+  // The checkout the common git folder belongs to: the folder holding it
+  // when it is a `.git`, else the folder itself (a separate git dir).
+  const owner =
+    path.basename(common) === ".git" ? path.dirname(common) : common;
+  return (
+    broadRootReason(common, opts) === null &&
+    broadRootReason(owner, opts) === null
+  );
+}
+
+/**
+ * The top of the git work tree `root` is in (resolved): `root` itself or
+ * the nearest folder above it that holds a `.git` (see holdsGit); null
+ * outside one.
+ */
+export function gitTop(
+  root: string,
+  opts: BroadRootOptions = {},
+): string | null {
+  let dir: string;
+  try {
+    dir = fs.realpathSync.native(root);
+  } catch {
+    return null;
+  }
+  for (;;) {
+    if (holdsGit(dir, opts)) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * Why a configured repo root can't be a root, or null when it can: only
+ * when it is far too broad. A configured folder need not be a git checkout
+ * (configs that work today keep working); the git checkout it is in
+ * (gitTop) matters only to where its git origin may be read.
+ */
+export function rootRefusal(
+  root: string,
+  opts: BroadRootOptions = {},
+): string | null {
+  if (!root || !path.isAbsolute(root)) return "it is not an absolute path";
+  return broadRootReason(root, opts);
+}

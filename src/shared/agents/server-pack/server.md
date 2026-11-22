@@ -134,6 +134,14 @@ Reads (they change nothing):
   as `<cli> gate run -- <command>` instead. A release run your person
   waits on (they marked it, or it's for an issue they reported) may ask
   with `priority: "release"` and a `reason`; never a routine run.
+- `gate_slot_yield`: your waiting slot lets one waiting slot behind it go
+  just ahead of yours; you keep your place otherwise. Use it instead of
+  giving your place back and asking again at the back.
+- `github_watch`: Den tells you once when a pull request's checks or a
+  workflow run finish, with each failure's URL. Use it instead of
+  `gh pr checks --watch` or `gh run watch`: one watcher for every agent
+  here, under one GitHub API budget. `github_watch_list` and
+  `github_watch_cancel` show and stop your own watches.
 
 Hub files (through Den, as you; when Hub is connected):
 
@@ -141,6 +149,12 @@ Hub files (through Den, as you; when Hub is connected):
   image or doc, sent in parts. Publish files through it, never by pasting
   a page's text into one call.
 - `hub_pull`: fetch a version's files into a folder, each hash checked.
+
+Direct writes (they run at once, audited, as you):
+
+- `issue_write`: create an issue, comment, label or set a milestone in a
+  project's GitHub repo (name the project). Den adds a line naming you to
+  what you write. It never closes, deletes, transfers or locks an issue.
 
 Held (each waits for the person's Allow):
 
@@ -186,6 +200,10 @@ Held (each waits for the person's Allow):
   this machine's gate slots over HTTP, and nothing else. It waits for the
   person's Allow; the token comes back once, in the result: store it as
   the CI system's secret at once, and never print it.
+- `gate_box_set`, `gate_box_remove`: ask to add, replace or remove a test
+  box (another machine whose browsers take gate slots;
+  docs/gate-slots.md). Den checks the box first; it waits for the
+  person's Allow, and nothing changes until then.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the

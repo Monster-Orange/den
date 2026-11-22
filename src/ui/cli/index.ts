@@ -207,7 +207,9 @@ import {
   NOTIFICATIONS_HELP,
   cmdNotifications,
 } from "./notifications-command.js";
+import { GITHUB_HELP, cmdGithub } from "./github-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
+import { cmdVerify, VERIFY_HELP } from "./verify-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
 import { cmdService } from "./service-command.js";
 import { cmdStack } from "./stack-command.js";
@@ -564,7 +566,9 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
+  github: GITHUB_HELP,
   feedback: FEEDBACK_HELP,
+  verify: VERIFY_HELP,
 };
 
 function resolveCliBaseApiUrl(explicitBaseApiUrl?: string): string | undefined {
@@ -621,7 +625,9 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "gate",
   "hub",
   "notifications",
+  "github",
   "feedback",
+  "verify",
   "service",
   "theme",
   "plugin",
@@ -659,6 +665,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "hub",
   // NT: the bell's own file, no org data.
   "notifications",
+  // The shared GitHub watcher's status file, no org data.
+  "github",
   // FB: Den's own report routes; a report matters most when the config is
   // what's wrong.
   "feedback",
@@ -809,6 +817,17 @@ class DenCLI {
       try {
         const parsed = parseCliArgs(args);
         telCmd = telemetryCommandName(parsed.command);
+        // Issue 636: a test bed's driver acting as the person; refused
+        // (and nothing runs) anywhere else. A parent on the path leaves
+        // its children its tag.
+        {
+          const { enterTestPerson, testPersonAsked, testPersonCommand } =
+            await import("./test-person.js");
+          if (testPersonAsked(parsed.flags))
+            await enterTestPerson(
+              testPersonCommand(parsed.command, parsed.args),
+            );
+        }
         if (!this.applyGlobalFlags(parsed)) return;
         this.prepareServiceCommand(parsed.command);
         await this.handleCommand(
@@ -1200,8 +1219,17 @@ class DenCLI {
           process.exitCode = await cmdNotifications(args.slice(1));
           break;
 
+        case "github":
+          process.exitCode = await cmdGithub(args.slice(1));
+          break;
+
         case "feedback":
           process.exitCode = await cmdFeedback(args.slice(1));
+          break;
+
+        // Issue 441: an outside runner's gate results, imported.
+        case "verify":
+          process.exitCode = await cmdVerify(args.slice(1));
           break;
 
         case "mcp": {
@@ -5496,6 +5524,9 @@ class DenCLI {
     console.log("  --no-tabs              Force daemon mode for up/restart");
     console.log(
       "  --skip-secrets       Skip local secrets preflight for up/restart/logs",
+    );
+    console.log(
+      "  --test-person          On a test bed only: act as the person (live checks)",
     );
     console.log("\nExamples:");
     console.log(`  ${product().cli} --help`);

@@ -82,6 +82,10 @@
  *                     (gate-routes.ts gateRunnerTokenOp): it only asks
  *                     for, renews and gives back gate slots. Always the
  *                     person's own Allow; the token goes once to the asker
+ *   gate_box_set      issue 625: add or replace a test box (gate-routes.ts
+ *   gate_box_remove   gateBoxOps), checked with checkBox at the ask; the
+ *                     card shows every field. Always the person's own
+ *                     Allow; it runs as the person's own boxes route does
  *   host_restart
  *                     issue 731: restart the terminal host when agents are
  *                     idle (host-restart-held.ts): the web start's refresh,
@@ -190,6 +194,10 @@ export interface HeldActionDeps {
   verifyRun?: HeldOp;
   /** Issue 621: gate_runner_token_create (gate-routes.ts gateRunnerTokenOp). */
   gateRunnerToken?: HeldOp;
+  /** Issue 625: gate_box_set (gate-routes.ts gateBoxOps). */
+  gateBoxSet?: HeldOp;
+  /** Issue 625: gate_box_remove (gate-routes.ts gateBoxOps). */
+  gateBoxRemove?: HeldOp;
   /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
   terminalHostRestart?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
@@ -253,6 +261,8 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "embed_key_create",
   "embed_key_revoke",
   "gate_runner_token_create",
+  "gate_box_set",
+  "gate_box_remove",
   "host_restart",
 ]);
 
@@ -604,6 +614,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.gateRunnerToken,
     "this Den can't make gate runner tokens here",
   );
+  const gateBoxSet = op(d.gateBoxSet, "this Den can't set test boxes here");
+  const gateBoxRemove = op(
+    d.gateBoxRemove,
+    "this Den can't remove test boxes here",
+  );
   const terminalHostRestart = op(
     d.terminalHostRestart,
     "this Den can't restart its terminal host here",
@@ -889,6 +904,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,
+    gate_box_set: gateBoxSet,
+    gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
   };
 }

@@ -10,7 +10,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -126,7 +126,7 @@ describe("issue 144: the gate chip on Agents", () => {
         body: JSON.stringify({ ok: true, slots }),
       });
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, `/agents`));
+    await signInPage(p, s!.stateDir, s!.base, `/agents`);
     const chip = p.locator("#ag-gate");
     await chip.waitFor({ state: "visible", timeout: 20_000 });
     // The kit's time in the page (issue 668): the same text the chip draws.
@@ -206,7 +206,7 @@ describe("issue 144: the gate chip on Agents", () => {
         body: JSON.stringify({ settings: {}, slots: [] }),
       }),
     );
-    await p.goto(signInUrl(s!.stateDir, s!.base, `/agents`));
+    await signInPage(p, s!.stateDir, s!.base, `/agents`);
     await p.locator(`#agl .agr[data-id="${sid}"]`).waitFor({ timeout: 20_000 });
     expect(await p.locator("#ag-gate").isHidden()).toBe(true);
     await p.context().close();

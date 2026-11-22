@@ -11,7 +11,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Locator, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -162,7 +162,7 @@ async function page(
       const j = await res.json();
       await r.fulfill({ response: res, json: { ...j, ...fake.settings } });
     });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   expect(await p.evaluate(() => document.documentElement.lang)).toBe(lang);
   return p;

@@ -4,11 +4,64 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.79] - unreleased
+## [0.4.82] - 2026-11-22
+
+### Added
+- CLI: on a test bed (`create --test-bed`), `--test-person` lets a test driver's command line act as the person, on the record (audit `via: test-person`); refused on any other install; `doctor` shows whether an install is a test bed (issue 636).
+
+- Agents: `issue_write` lets an agent create an issue, comment, label or set a milestone in one of its own project's GitHub repos, at once and audited. It never closes, reopens, deletes, transfers or locks. Which persona roles may use it is the person-only setting `agents.issue_writes`; `agents.issue_writes_per_hour` (default 60) limits the whole install. Each issue and comment says which agent and install wrote it.
+- Agents: one shared GitHub watcher per install. `github_watch` (a pull request's checks or a run in the agent's project), `github_watch_list` and `github_watch_cancel`. Den tells the agent once when it finishes, with each failed check. It backs off while nothing changes and stops polling near the GitHub API budget. New settings: `github.watch_interval_seconds` (60), `github.watch_max_interval_seconds` (300), `github.api_budget_floor` (500), `github.watches_max` (50). Doctor and `github status` show the budget.
+- Gate slots: `local_browser_slots` (default 1): browser runs that may hold this machine at once. Browser runs on a test box don't use one. (issue 751)
+
+### Changed
+
+- Gate slots: cpu and browser runs wait in separate lines. A cpu run no longer waits behind every queued browser run, and a browser run never waits behind a cpu run. (issue 751)
+- Gate slots: up to `cpu_slots_beside_browser` cpu runs (new setting, default 2) run beside the browser runs on this machine. 0 keeps the old rule: a browser run runs alone. A browser run on a test box doesn't count. (issue 751)
+- Gate slots: a release-priority run passes every plain waiting run of its kind, however long it has waited. `priority_pass_limit_minutes` now defaults to 0 and applies only between release-priority runs. (issue 751)
+
+- Agents: when an agent exits right after it starts, the page shows the lines it printed, not just its exit code (issue 89).
+- Tests: browser tests no longer assume the browser runs on the same machine (issue 191).
+
+### Migrations
+
+- None required. To keep the old gate rules, set `cpu_slots_beside_browser` to 0 and `priority_pass_limit_minutes` to 60.
+
+## [0.4.81] - 2026-11-21
+
+### Changed
+
+- Sign-in: a new device asks to sign in, and a person already signed in approves it by typing the code the new device shows (Settings › Access, or the pop-up). Sign-in links open the request rather than signing in at once. The code stays on the new device's screen: `web login` names the device and its address, never its code. A request that is refused for being too many no longer uses up the link. (issue 819)
+- Sign-in page: a browser that isn't signed in gets a page listing this install's ways in (GitHub sign-in, asking from this device, a link from a terminal on the host), each marked set up or not. From another machine with none that works, it says so and how to fix it. API callers get the same 401 as before. (issue 868)
+
+### Fixed
+
+- Address: the one-time address Den takes from its edge prefers a route the distribution names over the route Den makes from the brand, so an install no longer takes a name only its own host can open. An address taken that way is corrected once at start, with an audit row; a confirmed address, or one a person set, is never changed. Doctor's unconfirmed-address row lists the other edge addresses.
+- `web url` no longer says to restart the web server: the address is in use as soon as it is saved.
+
+## [0.4.80] - 2026-11-21
+
+### Added
+
+- Gate slots: CI runners ask for release priority over HTTP, as `gate run --priority release` does. (issue 739)
+- Gate slots held over MCP: the agent is told when its slot is granted, a slot never claimed passes to the next run, and a held slot has a lease. (issue 714)
+- Test boxes: a browser slot per test box. An agent asks to add or remove a box with the held writes `gate_box_set` and `gate_box_remove`. Nothing changes until a person Allows it in the browser, and the card shows every field. (issue 625)
+- `gate yield <my-id> --to <their-id>` and the MCP tool `gate_slot_yield`: the owner of a waiting entry lets one waiting entry behind it go just ahead. Never a holder; the slot log records it. (issue 795)
+- Priority classes per project, with optional windows. New settings `class_order`, `class_map` and `class_windows`. A higher class goes first among waiting runs; nothing is pre-empted. With no classes set, the queue works as before. (issue 803)
+
+### Changed
+
+- Gate: on macOS a browser slot needs a container browser (a `ws://` or `wss://` address, or `self`). A browser started on a shared Mac can take its window server down and sign every session out.
+
+### Checks
+
+- The bed's touched run of v0.4.80-dev.2 (715 and 726): 715 passes 5 of 5. Its two reds are the same as on 0.4.79 and nothing in this release touches them: 653's terminal attach over https gets a 403 (being proven as the test person's scope), and 726 skips because a throwaway Den has no person session (issue 814). Released on "no new red against the last release".
+
+## [0.4.79] - 2026-11-21
 
 ### Changed
 
 - Sign-in: Den prints a sign-in link or code only in a terminal. Where there is none (a script, a service log), `den web up` prints the address and says to run `den web login` in a terminal.
+- The UI kit (`@monster-orange/den-ui`) is published as 0.9.1. It carries 0.4.78's pop-up font fix to apps that use the kit from npm.
 
 ## [0.4.78] - 2026-11-21
 

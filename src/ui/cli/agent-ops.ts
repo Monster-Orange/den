@@ -116,6 +116,7 @@ import {
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
+  UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
   setUserRuntimeBin,
   userConfigPath,
@@ -137,8 +138,10 @@ import {
   setWorkspaceAgentPermission,
   workspacePermissionKey,
   workspaceMcpServersRaw,
+  workspaceEntryRaw,
   setWorkspaceMcpServers,
 } from "../../shared/environment-manager/workspaces.js";
+import { hubLoopPrompt, projectHubLoop } from "../../shared/hub-loop.js";
 import { namedSecretRef } from "../../shared/secrets/index.js";
 import {
   checkProjectMcpServer,
@@ -157,6 +160,10 @@ import {
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
 import { getDistRoot } from "../../shared/paths.js";
+import {
+  operatorStubArgv,
+  operatorStubEnv,
+} from "../../shared/test-operator.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
@@ -425,6 +432,8 @@ export interface AgentsDeps extends SessionsDeps {
     mcpUrl?: string;
     /** D41: hub.inbox_on_stop (default nudge). */
     inboxOnStop?: "nudge" | "off";
+    /** Issue 158: hub.delivery_loop (default on). */
+    deliveryLoop?: boolean;
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
@@ -454,6 +463,12 @@ export interface AgentsDeps extends SessionsDeps {
    * workspaces.yml's; undefined: unset). Checked where it is used.
    */
   workspaceMcpServers?: (ws: string) => unknown;
+  /**
+   * Issue 158: project `ws`'s workspaces.yml entry, for its Hub delivery
+   * loop setting (hub_delivery_loop, hub_delivery_loop_extra); undefined
+   * when it has none.
+   */
+  workspaceHubLoop?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
@@ -497,8 +512,10 @@ export interface AgentsResolved extends Resolved {
     allowTools?: boolean;
     mcpUrl?: string;
     inboxOnStop?: "nudge" | "off";
+    deliveryLoop?: boolean;
   } | null>;
   workspaceRepos: (ws: string) => string[];
+  workspaceHubLoop: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
   secretRefSet: (name: string) => boolean;
@@ -655,13 +672,25 @@ export async function loadAgentWorkspaces(d: AgentsDeps): Promise<void> {
  */
 export async function agentHub(
   d: AgentsResolved,
+  ws?: string,
 ): Promise<AgentMcp["hub"] | undefined> {
   const h = await d.hub().catch(() => null);
   if (!h) return undefined;
   const proxy = denHubProxy(d);
+  // Issue 158: the Hub delivery loop, on unless the project or the
+  // install turned it off.
+  let project = projectHubLoop(undefined);
+  try {
+    if (ws) project = projectHubLoop(d.workspaceHubLoop(ws));
+  } catch {
+    // Unreadable workspaces.yml: as the install. So a project a person
+    // turned off gets the loop back until it reads again (the next start).
+  }
+  const loop = hubLoopPrompt(h.deliveryLoop !== false, project);
   return {
     name: HUB_SERVER,
     url: `${proxy}/mcp`,
+    ...(loop ? { loop } : {}),
     allowTools: h.allowTools !== false,
     // D41: the Stop hook's inbox check, through Den's proxy too.
     ...(h.inboxOnStop !== "off" ? { inboxBase: proxy } : {}),
@@ -826,6 +855,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
+    workspaceHubLoop: d.workspaceHubLoop ?? workspaceEntryRaw,
     workspaceMcpServers:
       d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
     saveWorkspaceMcpServers:
@@ -944,6 +974,7 @@ async function defaultHub(): Promise<{
   allowTools: boolean;
   mcpUrl: string;
   inboxOnStop: "nudge" | "off";
+  deliveryLoop: boolean;
 } | null> {
   const { readHubConfig, readHubToken } = await import("../../shared/hub.js");
   let cfg;
@@ -961,6 +992,7 @@ async function defaultHub(): Promise<{
         allowTools: cfg.allowTools,
         mcpUrl: cfg.mcpUrl,
         inboxOnStop: cfg.inboxOnStop,
+        deliveryLoop: cfg.deliveryLoop,
       }
     : null;
 }
@@ -1119,9 +1151,10 @@ export interface AgentRow {
   interruptedAt?: string;
   /**
    * Issues 124, 631: Den restarted it (or its terminal host) and it
-   * didn't come back: when, and why.
+   * didn't come back: when, and why. Issue 923: `relaunchTried`, the
+   * rotation sweep tried to relaunch it from its handoff once and failed.
    */
-  restartFailed?: { at: string; why: string };
+  restartFailed?: { at: string; why: string; relaunchTried?: boolean };
   /**
    * Issue 658: a handoff is on file (handoff.md, or one kept from a
    * relaunch) while no rotation is ready: Relaunch from its last handoff.
@@ -3759,7 +3792,7 @@ export async function startAgent(
       },
     );
     // HUB-1.5: Den Hub's MCP server, when hub.url is set.
-    const hub = await agentHub(d);
+    const hub = await agentHub(d, ws);
     const input = {
       ...base,
       ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
@@ -5884,6 +5917,38 @@ export interface Resumed extends Started {
    * this one didn't restart it again. `at`: when that session started.
    */
   already?: { at: string; note: string };
+  /**
+   * Issue 923: its rotation was ready, so the restart relaunched it from
+   * its handoff in a new conversation (why it rotated, where it was kept).
+   */
+  relaunched?: { why: string; handoff: string };
+}
+
+/**
+ * Issue 923: relaunch agent `id` from its handoff when its rotation is
+ * ready (due, the handoff passes) and Den may relaunch it (on_due auto,
+ * or a person asked for Relaunch now), as resumeOrRelaunch does.
+ * Undefined otherwise: on ask the resume is refused and the person is
+ * told (notBackAfterRestart); not ready, it resumes as before.
+ */
+async function relaunchIfReady(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+): Promise<Resumed | undefined> {
+  const rot = rotationOf(d, agentRecord(d, id, ws));
+  if (!rot?.ready || (rot.onDue !== "auto" && !rot.relaunchWanted))
+    return undefined;
+  const r = await relaunchAgent(d, id, ws, {
+    ...(rot.onDue === "auto" ? { auto: true } : {}),
+  });
+  const { why, handoff, reason: _reason, ...started } = r;
+  return {
+    ...started,
+    fresh: true,
+    newConversation: true,
+    relaunched: { why, handoff },
+  };
 }
 
 /** Issue 216: what a restart says when another request already did it. */
@@ -6011,7 +6076,7 @@ export async function resumeAgent(
       // Resume in the cwd the agent had, wherever the workspace points now.
       // D24 (and D25: a rename since) the name peers see it by.
       const peerName = peerSessionName(d.cli, rec.workspace, rec);
-      const hub = await agentHub(d);
+      const hub = await agentHub(d, rec.workspace);
       const at = {
         ...input,
         ...(hub ? { mcp: { ...input.mcp, hub } } : {}),
@@ -6650,7 +6715,11 @@ export async function restartAgent(
     // Issue 124: a resume that fails never leaves it stopped by Den.
     let out: Resumed;
     try {
-      out = await resumeAgent(d, rec.id, rec.workspace);
+      // Issue 923: its rotation is ready, so a resume is bound to be
+      // refused. Den stopped it: it relaunches from its handoff instead.
+      out =
+        (await relaunchIfReady(d, rec.id, rec.workspace)) ??
+        (await resumeAgent(d, rec.id, rec.workspace));
     } catch (e) {
       if (stopped.session)
         notBackAfterRestart(d, rec.id, rec.workspace, (e as Error).message);
@@ -6696,13 +6765,18 @@ function notBackAfterRestart(
   id: string,
   ws: string,
   why: string,
+  o: { relaunchTried?: boolean } = {},
 ): void {
   const rec = readRecord(d.stateDir(), id);
   if (!rec) return;
   const { stoppedAt: _s, ...rest } = rec;
   writeRecord(d.stateDir(), {
     ...rest,
-    restartFailed: { at: new Date().toISOString(), why },
+    restartFailed: {
+      at: new Date().toISOString(),
+      why,
+      ...(o.relaunchTried ? { relaunchTried: true } : {}),
+    },
   });
   auditConfig(
     {
@@ -8577,15 +8651,33 @@ const TRUST_MAX_MOVES = 4;
  * quiet (as a first instruction is, AG-10.1). False when it isn't running,
  * or its screen ends with a dialog for its person (never typed into).
  */
+export function typeIntoAgent(
+  d: AgentsResolved,
+  id: string,
+  text: string,
+): Promise<boolean>;
+/**
+ * Issue 629: with `ready`, it is asked once this text's turn in the queue
+ * comes (what was typed just ahead may have started a turn); "not-ready"
+ * when it says no, and nothing is typed.
+ */
+export function typeIntoAgent(
+  d: AgentsResolved,
+  id: string,
+  text: string,
+  opts: { ready: () => Promise<boolean> },
+): Promise<boolean | "not-ready">;
 export async function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-): Promise<boolean> {
+  opts?: { ready: () => Promise<boolean> },
+): Promise<boolean | "not-ready"> {
   // Everything Den types into one agent (Hub comments, the tools note)
   // goes one at a time: two texts at once would land mixed in the pane.
   const before = typing.get(id) ?? Promise.resolve();
-  const mine = before.then(async () => {
+  const mine = before.then(async (): Promise<boolean | "not-ready"> => {
+    if (opts && !(await opts.ready())) return "not-ready";
     const rec = readRecord(d.stateDir(), id);
     if (!rec) return false;
     return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
@@ -8620,7 +8712,7 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
-  opts: { cwd?: string } = {},
+  opts: { cwd?: string; operator?: boolean } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
@@ -8657,8 +8749,10 @@ export async function startPlainSession(
         {
           name,
           cwd: dir,
-          argv: [shell, "-l"],
-          env: plainSessionEnv(d.env),
+          // Issue 814, the Builder's decision (a): the test operator's
+          // terminal is Den's fixed stub, never a shell, with its own env.
+          argv: opts.operator ? operatorStubArgv() : [shell, "-l"],
+          env: opts.operator ? operatorStubEnv() : plainSessionEnv(d.env),
           cols: 80,
           rows: 24,
         },
@@ -8726,9 +8820,43 @@ export async function rotationTick(
     const who = { agent: rec.id, workspace: rec.workspace };
     try {
       const s = rec.session ? sessionOf(sessions, rec) : undefined;
-      if (!s || s.exited) continue;
       const pol = policyOf(rec);
       if (!pol) continue;
+      if (!s || s.exited) {
+        // Issue 923: a due agent that a Den restart stopped and left not
+        // back (never one a person stopped) relaunches from a passing
+        // handoff, once. Nothing to ask: it isn't running. On ask the
+        // person was told when the restart failed.
+        const failed = rec.restartFailed;
+        if (!failed || failed.relaunchTried || rec.stoppedAt || rec.endedAt)
+          continue;
+        const rot = rotationOf(d, rec);
+        if (!rot?.ready || (rot.onDue !== "auto" && !rot.relaunchWanted))
+          continue;
+        let r: Relaunched;
+        try {
+          r = await relaunchAgent(d, rec.id, rec.workspace, {
+            ...(rot.onDue === "auto" ? { auto: true } : {}),
+          });
+        } catch (e) {
+          // One try: the person is told, and the sweep leaves it be.
+          notBackAfterRestart(
+            d,
+            rec.id,
+            rec.workspace,
+            `relaunch from its handoff failed: ${(e as Error).message}`,
+            { relaunchTried: true },
+          );
+          throw e;
+        }
+        events.push({
+          kind: "relaunched",
+          ...who,
+          why: r.why,
+          ...(rec.resumeToken ? { old: rec.resumeToken } : {}),
+        });
+        continue;
+      }
       const files = agentFilesDir(d.stateDir(), rec.id);
       const st = readRotation(files);
       if (!st) continue;
@@ -8890,6 +9018,165 @@ export async function resumeOrRelaunch(
       }),
     };
   return { kind: "resumed", s: await resumeAgent(d, id, ws) };
+}
+
+/** Issue 926: what the exit sweep did about one agent. */
+export type ExitEvent = {
+  agent: string;
+  workspace: string;
+  /** The ended session's exit code (128 + signal for a signal). */
+  code: number;
+} & (
+  | { kind: "recorded" } // exit 0: it quit by itself; left down
+  | { kind: "resumed" | "relaunched" }
+  | { kind: "left"; why: string } // told, not brought back
+);
+
+/** Issue 926: how long after an exit the sweep looks at it. */
+const EXIT_SEEN_MS = 5_000;
+
+/** Issue 926: when the sweep first saw each exit with no time from its host. */
+const exitFirstSeen = new Map<string, number>();
+
+/**
+ * Issue 926: when session `s` ended: its host's exit time, else when the
+ * sweep first saw it ended (`now` the first time).
+ */
+export function exitSeenAt(s: SessionInfo, now: Date): number {
+  const t = s.exitedAt ? Date.parse(s.exitedAt) : NaN;
+  if (Number.isFinite(t)) return t;
+  const seen = exitFirstSeen.get(s.ref.id);
+  if (seen !== undefined) return seen;
+  exitFirstSeen.set(s.ref.id, now.getTime());
+  return now.getTime();
+}
+
+/** Issue 926: agents.unasked_exit_window_minutes, in ms. */
+function unaskedExitWindowOf(d: AgentsResolved): number {
+  try {
+    return d.agentsConfig().unaskedExitWindowMs;
+  } catch {
+    return UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000;
+  }
+}
+
+/**
+ * Issue 926: agents whose session ended without Den asking (no stop,
+ * restart or relaunch from Den or a person: a signal from outside, a
+ * crash). Each gets one audit row. Exit 0 (it quit by itself) is left
+ * down. Otherwise the person is told, and Den brings it back once
+ * (resumeOrRelaunch: from its handoff when its rotation is ready); a
+ * second such exit within agents.unasked_exit_window_minutes is told and
+ * left down. A host that went down (no exit code) is restore-on-boot's.
+ */
+export async function exitTick(
+  d: AgentsResolved,
+  now: Date = new Date(),
+): Promise<ExitEvent[]> {
+  const out: ExitEvent[] = [];
+  let sessions: SessionInfo[];
+  try {
+    sessions = await hostSessions(d);
+  } catch {
+    return out;
+  }
+  const byId = new Map(sessions.map((x) => [x.ref.id, x]));
+  const windowMs = unaskedExitWindowOf(d);
+  for (const rec of listRecords(d.stateDir())) {
+    const s = rec.session ? byId.get(rec.session.id) : undefined;
+    if (!s?.exited || s.exitCode === undefined) continue;
+    // Asked for: a stop (Den's or a person's), or a restart left not back.
+    if (rec.stoppedAt || rec.restartFailed) continue;
+    if (rec.unaskedExit?.session === s.ref.id) continue; // seen
+    // A stop marks its record just after its TERM: give it time to. A
+    // host that gives no exit time: from when the sweep first saw it.
+    if (now.getTime() - exitSeenAt(s, now) < EXIT_SEEN_MS) continue;
+    const e = await lockAgent(d, rec.id, () =>
+      unaskedExit(d, s, now, windowMs),
+    );
+    if (e) out.push(e);
+  }
+  return out;
+}
+
+/** Issue 926: one agent's unasked exit, under its lock; undefined: none. */
+async function unaskedExit(
+  d: AgentsResolved,
+  s: SessionInfo,
+  now: Date,
+  windowMs: number,
+): Promise<ExitEvent | undefined> {
+  {
+    // Again under the lock: a stop or restart may have marked it since.
+    const rec = listRecords(d.stateDir()).find(
+      (r) => r.session?.id === s.ref.id,
+    );
+    if (!rec || rec.stoppedAt || rec.restartFailed) return undefined;
+    if (rec.unaskedExit?.session === s.ref.id) return undefined;
+    const code = s.exitCode ?? 0;
+    const who = { agent: rec.id, workspace: rec.workspace, code };
+    const prev = rec.unaskedExit;
+    const at = now.toISOString();
+    writeRecord(d.stateDir(), {
+      ...rec,
+      unaskedExit: { at, session: s.ref.id, code },
+    });
+    auditConfig(
+      {
+        verb: "agents",
+        detail: `agent ${rec.id} in ${rec.workspace} ended without Den asking (exit ${code})`,
+        ...(code === 0 ? {} : { outcome: "refused" as const }),
+        ...(code === 0 ? {} : { reason: `exit ${code}` }),
+      },
+      d.stateDir(),
+    );
+    if (code === 0) {
+      return { kind: "recorded", ...who };
+    }
+    const name = rec.displayName || rec.persona || rec.id;
+    const tell = (kind: "waiting" | "finished", why: string) => {
+      try {
+        new NotificationStore(d.stateDir()).add({
+          kind,
+          subject: `agent:${rec.id}`,
+          scope: `workspace/${rec.workspace}`,
+          text: `${name} ended without Den asking (exit ${code}): ${why}`,
+          msg: { key: "bell.m.unaskedExit", vars: { name, code, why } },
+          link: `/agents?ws=${encodeURIComponent(rec.workspace)}`,
+        });
+      } catch {
+        /* best effort: the audit row and the row's state still say so */
+      }
+    };
+    const recent =
+      prev !== undefined && now.getTime() - Date.parse(prev.at) < windowMs;
+    if (windowMs <= 0 || recent) {
+      const why = recent
+        ? "it ended again soon after Den brought it back, so it is left down"
+        : "bringing it back is off";
+      tell("waiting", why);
+      return { kind: "left", ...who, why };
+    }
+    try {
+      const r = await resumeOrRelaunch(d, rec.id, rec.workspace);
+      const back = agentRecord(d, rec.id, rec.workspace);
+      writeRecord(d.stateDir(), {
+        ...back,
+        unaskedExit: { at, session: s.ref.id, code, back: true },
+      });
+      tell(
+        "finished",
+        r.kind === "relaunched"
+          ? "Den relaunched it from its handoff"
+          : "Den resumed it",
+      );
+      return { kind: r.kind, ...who };
+    } catch (e) {
+      const why = `Den couldn't bring it back: ${(e as Error).message}`;
+      tell("waiting", why);
+      return { kind: "left", ...who, why };
+    }
+  }
 }
 
 /** D28: the rotation settings, and agent `agent`'s effective values. */

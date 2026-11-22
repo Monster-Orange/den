@@ -268,6 +268,10 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
     ["login_link_ttl: 5s", /web.login_link_ttl .* between 30s and 60m/],
     ["login_link_ttl: 2h", /web.login_link_ttl/],
     ["login_link_ttl: soon", /web.login_link_ttl/],
+    // Issue 819: the new-device limits.
+    ["pair_requests_per_minute: 0", /web.pair_requests_per_minute/],
+    ["approve_attempts: 2.5", /web.approve_attempts/],
+    ["approve_window_seconds: soon", /web.approve_window_seconds/],
   ])("a wrong value names its key: %s", (line, want) => {
     fs.mkdirSync(path.join(tmp, "config", "local"), { recursive: true });
     fs.writeFileSync(
@@ -291,6 +295,10 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       // den#143: `web up`'s readiness waits.
       readyProbeSeconds: 10,
       startWaitSeconds: 120,
+      // Issue 819: the new-device limits' permissive defaults.
+      pairRequestsPerMinute: 30,
+      approveAttempts: 10,
+      approveWindowSeconds: 30,
       // D16: a sign-in link lasts 5 minutes unless set.
       loginLinkTtlMs: 5 * 60_000,
       // Issue 810: not a test install unless a person marks it by hand.

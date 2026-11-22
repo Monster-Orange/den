@@ -11,7 +11,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -90,7 +90,7 @@ describe.each(ENGINES)("issue 393 in %s: Browser sign-in", (e) => {
   it("signed in: Sign out, and no Sign in", async () => {
     if (!browsers[e] || !s) return;
     const p = await open(e);
-    await p.goto(signInUrl(s.stateDir, s.base, "/settings#cli"));
+    await signInPage(p, s.stateDir, s.base, "/settings#cli");
     await p.locator("#set-signout").waitFor({ timeout: 20_000 });
     expect(await p.locator("#set-signin").count()).toBe(0);
     await p.context().close();

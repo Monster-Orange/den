@@ -28,6 +28,9 @@
  *                 runtime has no name of its own; Den's rename still works.
  *   titleFromOsc  the terminal title (OSC 0/2) is a session name. Off by
  *                 default: many CLIs put a spinner or the cwd there.
+ *   screenRules   the screen rule set (issue 770, agents/detect) that reads
+ *                 whether its agents are working, need the person or are
+ *                 idle: one Den ships (claude, codex, gemini, grok).
  *
  * And, optional, how its agents sign in without a person (issue 338):
  *
@@ -62,6 +65,7 @@
  * built-in one: a path is set with agents.runtimes.<id>.bin instead.
  */
 import * as path from "path";
+import { RULE_SETS } from "./detect/index.js";
 
 export interface CatalogIdentity {
   /** A case-insensitive pattern the version command's output matches. */
@@ -113,6 +117,8 @@ export interface CatalogEntry {
   sessionName?: SessionNameSource;
   /** The terminal title (OSC 0/2) names the session. Unset: no. */
   titleFromOsc?: boolean;
+  /** Issue 770: the screen rule set its agents' state is read with. */
+  screenRules?: string;
   /** How its agents sign in without a person (issue 338). None: they can't. */
   signIn?: CatalogSignIn;
   /**
@@ -148,6 +154,7 @@ const ENTRY_KEYS = [
   "softNewline",
   "sessionName",
   "titleFromOsc",
+  "screenRules",
   "signIn",
   "accountName",
 ] as const;
@@ -182,6 +189,8 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["~/.local/bin", "~/.claude/local", "{system}"],
     launch: { argv: ["{bin}"] },
+    // Hooks report its status; the screen rules read it with hooks off.
+    screenRules: "claude",
     // https://code.claude.com/docs/en/terminal-config: Option+Enter (Meta,
     // ESC CR) is a newline; /terminal-setup binds Shift+Enter to it.
     softNewline: "esc-cr",
@@ -231,6 +240,7 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // API key is an "OpenAI Platform account"; the subscription sign-in is
     // ChatGPT's).
     accountName: "ChatGPT",
+    screenRules: "codex",
   },
   // Gemini CLI. https://github.com/google-gemini/gemini-cli: binary
   // `gemini`, npm @google/gemini-cli, Homebrew formula gemini-cli;
@@ -254,6 +264,7 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/authentication.mdx:
     // "Sign in with Google", "your personal Google account".
     accountName: "Google",
+    screenRules: "gemini",
   },
   // Grok Build. https://docs.x.ai/build/overview: install with
   // https://x.ai/cli/install.sh, run `grok` in a project directory. The
@@ -276,6 +287,7 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     // authentication" (or XAI_API_KEY) and never names the account, so the
     // vendor's company name.
     accountName: "xAI",
+    screenRules: "grok",
   },
 ];
 
@@ -515,7 +527,7 @@ export function validateCatalogEntry(
     );
   const traits: Pick<
     CatalogEntry,
-    "softNewline" | "sessionName" | "titleFromOsc"
+    "softNewline" | "sessionName" | "titleFromOsc" | "screenRules"
   > = {};
   if (raw.softNewline !== undefined) {
     if (!(SOFT_NEWLINES as readonly unknown[]).includes(raw.softNewline))
@@ -535,6 +547,14 @@ export function validateCatalogEntry(
     if (typeof raw.titleFromOsc !== "boolean")
       throw new Error(`${where}.titleFromOsc: must be true or false`);
     traits.titleFromOsc = raw.titleFromOsc;
+  }
+  if (raw.screenRules !== undefined) {
+    const r = raw.screenRules;
+    if (typeof r !== "string" || !Object.hasOwn(RULE_SETS, r))
+      throw new Error(
+        `${where}.screenRules: ${shown(r)} must be one of ${Object.keys(RULE_SETS).join(", ")}`,
+      );
+    traits.screenRules = r;
   }
   const signIn =
     raw.signIn === undefined

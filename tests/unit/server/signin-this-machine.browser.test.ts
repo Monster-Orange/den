@@ -16,7 +16,7 @@ import {
   startFrameServer,
   type FrameServer,
 } from "./helpers/error-frame-server.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -72,9 +72,7 @@ describe("sign-in on this machine too", () => {
     const context = await browser.newContext();
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(String(e)));
-    await page.goto(
-      signInUrl(path.join(s!.tmp, "den-home"), s!.base, "/settings"),
-    );
+    await signInPage(page, path.join(s!.tmp, "den-home"), s!.base, "/settings");
     await page.waitForURL(`${s!.base}/settings`);
     await page.waitForFunction(() => "denShell" in window);
     expect(await signedIn(page)).toBe(true);

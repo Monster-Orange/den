@@ -259,9 +259,8 @@ describe("issue 699: the held button in a browser", () => {
     expect(
       await b
         .locator(".bz-dots > i")
-        .first()
-        .evaluate((i) => getComputedStyle(i).animationName),
-    ).toBe("none");
+        .evaluateAll((is) => is.map((i) => getComputedStyle(i).animationName)),
+    ).toEqual(["none", "none", "none"]);
     expect(await out(p)).toEqual({ ok: { ok: true } });
     expect(await b.locator(".bz-dots").count()).toBe(0);
     expect(await b.textContent()).toBe("Go");
@@ -361,6 +360,7 @@ describe("UK-2 kit: the working pop-up", () => {
     const { p } = await open([[1500, 200]]);
     await go(p, "save");
     expect(await p.locator("#go").isDisabled()).toBe(true);
+    // Kept on purpose: it proves the pop-up does NOT show before 300 ms.
     await p.waitForTimeout(150);
     expect(await dlg(p).count()).toBe(0);
     await dlg(p).waitFor({ state: "visible", timeout: 1000 });
@@ -529,6 +529,7 @@ describe("UK-2 kit: the working pop-up", () => {
       `{ extra: () => { const s = document.createElement("span"); s.id = "x"; s.textContent = "more"; return s; } }`,
     );
     await dlg(b.p).locator("#x").waitFor();
+    // Kept on purpose: it proves the pop-up does NOT close by itself.
     await b.p.waitForTimeout(1500);
     expect(await dlg(b.p).isVisible()).toBe(true);
     expect(await dlg(b.p).locator('[data-bz="done"]').count()).toBe(0);
@@ -545,6 +546,8 @@ describe("UK-2 kit: the working pop-up", () => {
     expect(await dlg(p).locator(".bz-live").textContent()).toBe(
       "Waiting for it to come back…",
     );
+    // Kept on purpose: it proves it does NOT say Back while the pid is the
+    // old one.
     await p.waitForTimeout(1500);
     expect(await dlg(p).locator("h2").textContent()).toContain("Restarting");
     probe.infoPid = 200;
@@ -565,6 +568,8 @@ describe("UK-2 kit: the working pop-up", () => {
     // before: pid 300 is the old run, so the answer it has now is not back.
     await go(p, "restart", "{ before: { pid: 300 } }");
     await dlg(p).locator("h2", { hasText: "Restarting" }).waitFor();
+    // Kept on purpose: it proves it does NOT say Back while the pid is the
+    // old one.
     await p.waitForTimeout(1500);
     expect(await dlg(p).locator("h2").textContent()).toContain("Restarting");
     probe.infoPid = 301;
@@ -593,10 +598,14 @@ describe("UK-2 kit: the working pop-up", () => {
     if (skip()) return;
     const { p, probe } = await open([[0, 202]]);
     probe.infoHang = 1;
+    // The request answered (the route has counted it by then).
+    const sent = p
+      .waitForResponse((r) => new URL(r.url()).pathname === "/probe", {
+        timeout: 10_000,
+      })
+      .catch(() => undefined);
     await go(p, "restart");
-    const until = Date.now() + 10_000;
-    while (probe.ids.length === 0 && Date.now() < until)
-      await p.waitForTimeout(100);
+    await sent;
     expect(probe.ids.length).toBe(1);
     await p.context().close();
   });

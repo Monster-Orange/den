@@ -19,6 +19,10 @@ brand:
 # web:
 #   allowed_github_org: your-github-org
 
+# The Hub this Den connects to (Settings › Hub › Connect).
+# hub:
+#   url: https://hub.example.com
+
 # Secrets backend: none (this distribution needs no secrets store), or
 # env (plain environment variables), doppler or 1password. A backend's
 # refs say where Den's own features find their secrets, e.g.

@@ -38,6 +38,9 @@ function agent(workspace: string) {
   };
 }
 
+/** Issue 403 after 810: the fixture person, as a test install's live checks sign in. */
+const FIXTURE = { ...SESSION, key: "sess-fixture", via: "fixture" as const };
+
 function ctx(): GuardContext {
   return {
     port: PORT,
@@ -55,7 +58,9 @@ function ctx(): GuardContext {
     session: (req) =>
       String(req.headers.cookie ?? "").includes(`den_session_${PORT}=good`)
         ? SESSION
-        : null,
+        : String(req.headers.cookie ?? "").includes(`den_session_${PORT}=fx`)
+          ? FIXTURE
+          : null,
   };
 }
 
@@ -110,6 +115,24 @@ describe("issue 403: reading a kept screenshot, through the real guard", () => {
   it("this install's own agent reads it with its token", () => {
     expect(read({ authorization: "Bearer den_at_server" }).reader).toEqual({
       ok: true,
+    });
+  });
+
+  // The fixture person runs a test install's live checks. It may never
+  // decide what waits for a person (issue 810), but reading a kept
+  // screenshot decides nothing: there it is the person who runs the install.
+  it("the fixture person's signed-in browser (CSRF) reads it", () => {
+    const { reader } = read({
+      cookie: `den_session_${PORT}=fx`,
+      "x-den-csrf": FIXTURE.csrf,
+    });
+    expect(reader).toEqual({ ok: true });
+  });
+
+  it("the fixture person's cookie with no CSRF token is refused (401)", () => {
+    expect(read({ cookie: `den_session_${PORT}=fx` }).reader).toEqual({
+      ok: false,
+      status: 401,
     });
   });
 });

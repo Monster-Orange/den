@@ -129,6 +129,46 @@ export function setWebUrl(
 export interface WebUrlFinding {
   url: string;
   from: string;
+  /** A route the config's edge.routes names on purpose (not the brand's). */
+  named?: boolean;
+}
+
+/**
+ * The addresses the migration may take, best first: aliasCandidates (valid,
+ * never loopback, https first), and within a scheme a route the config's
+ * edge.routes names on purpose before the one made from the brand. A
+ * distribution names a route when only that name is reachable from other
+ * machines.
+ */
+export function rankFindings(
+  hits: readonly WebUrlFinding[],
+): { url: string; hit: WebUrlFinding }[] {
+  const origin = (u: string) => {
+    const c = checkWebUrl(u);
+    return "url" in c ? c.url : null;
+  };
+  const ranked = aliasCandidates(hits.map((h) => h.url)).flatMap((url) => {
+    const same = hits.filter((h) => origin(h.url) === url);
+    const hit = same.find((h) => h.named) ?? same[0];
+    return hit ? [{ url, hit }] : [];
+  });
+  const key = (r: { url: string; hit: WebUrlFinding }) =>
+    (r.url.startsWith("https:") ? 0 : 2) + (r.hit.named ? 0 : 1);
+  return ranked
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => key(a.r) - key(b.r) || a.i - b.i)
+    .map(({ r }) => r);
+}
+
+function readFindings(
+  found: () => WebUrlFinding | readonly WebUrlFinding[] | undefined,
+): readonly WebUrlFinding[] {
+  try {
+    const f = found();
+    return !f ? [] : Array.isArray(f) ? f : [f as WebUrlFinding];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -142,6 +182,12 @@ export interface WebUrlFinding {
  * alias that isn't one is (https first). A loopback web.url already there
  * is replaced by that alias, unconfirmed, for doctor to show; with no
  * alias it stays, and doctor fails it.
+ *
+ * A route the config's edge.routes names (`named`) is taken over the one
+ * made from the brand (rankFindings). An address this migration already
+ * wrote from the brand route (unconfirmed, url_from set) while a named
+ * route exists is corrected to it, once, still unconfirmed. A confirmed
+ * address, or one a person set, is never changed.
  */
 export function migrateWebUrl(
   found: () => WebUrlFinding | readonly WebUrlFinding[] | undefined,
@@ -149,25 +195,26 @@ export function migrateWebUrl(
   read: () => UserConfig = readUserConfig,
 ): WebUrl | null {
   const now = readWebUrl(read);
-  if (now && !isLoopbackUrl(now.url)) return now;
-  let hits: readonly WebUrlFinding[] = [];
-  try {
-    const f = found();
-    hits = !f ? [] : Array.isArray(f) ? f : [f as WebUrlFinding];
-  } catch {
-    hits = [];
+  const migrated = !!now && !now.confirmed && now.from !== undefined;
+  if (now && !isLoopbackUrl(now.url) && !migrated) return now;
+  const hits = readFindings(found);
+  const best = rankFindings(hits)[0];
+  if (!best) return now;
+  const { url, hit } = best;
+  let from: string;
+  if (!now) from = hit.from;
+  else if (isLoopbackUrl(now.url))
+    from = `${hit.from}, in place of ${now.url}, which only this machine opens`;
+  else {
+    // Migrated from a route: correct it only when it was the brand route
+    // and a named one is there.
+    const tookBrand = hits.some((h) => {
+      const c = checkWebUrl(h.url);
+      return !h.named && "url" in c && c.url === now.url;
+    });
+    if (!hit.named || url === now.url || !tookBrand) return now;
+    from = `${hit.from}, in place of ${now.url}, the route made from the brand name`;
   }
-  const [url] = aliasCandidates(hits.map((h) => h.url));
-  const hit = url
-    ? hits.find((h) => {
-        const c = checkWebUrl(h.url);
-        return "url" in c && c.url === url;
-      })
-    : undefined;
-  if (!url || !hit) return now;
-  const from = now
-    ? `${hit.from}, in place of ${now.url}, which only this machine opens`
-    : hit.from;
   try {
     merge({
       web: {
