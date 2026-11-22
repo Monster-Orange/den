@@ -4449,10 +4449,76 @@
    * person who unpins and clicks a link at once keeps the unpin. The save
    * carries when it was made, and the server keeps the newer one.
    */
-  function saveShell(patch) {
+  function saveShell(patch, at) {
     remember();
     if (typeof fetch !== "function") return Promise.resolve();
-    return DUI.saveShell("/api/settings/shell", patch);
+    var changedAt = typeof at === "number" ? at : Date.now();
+    notePending(patch, changedAt);
+    return DUI.saveShell("/api/settings/shell", patch, {
+      changedAt: changedAt,
+    }).then(function (ok) {
+      if (ok) clearPending(patch, changedAt);
+      return ok;
+    });
+  }
+  /**
+   * Issue 394: a save not yet confirmed, per key, with when it was made.
+   * The next page may read the server's copy before a save sent as this
+   * page left has landed: it keeps these over that older copy, and sends
+   * them again with the same time (the server stores a repeat once).
+   */
+  var PENDING_LS = LS + "-pending";
+  function readPending() {
+    try {
+      var v = JSON.parse(localStorage.getItem(PENDING_LS) || "{}");
+      return v && typeof v === "object" ? v : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function writePending(v) {
+    try {
+      if (Object.keys(v).length)
+        localStorage.setItem(PENDING_LS, JSON.stringify(v));
+      else localStorage.removeItem(PENDING_LS);
+    } catch (e) {
+      /* a convenience only */
+    }
+  }
+  function notePending(patch, at) {
+    var v = readPending();
+    Object.keys(patch || {}).forEach(function (k) {
+      v[k] = { value: patch[k], at: at };
+    });
+    writePending(v);
+  }
+  function clearPending(patch, at) {
+    var v = readPending();
+    Object.keys(patch || {}).forEach(function (k) {
+      if (v[k] && v[k].at === at) delete v[k];
+    });
+    writePending(v);
+  }
+  /** The server's shell block, with this browser's unconfirmed saves over it. */
+  function withPending(shell) {
+    var v = readPending();
+    var out = {};
+    Object.keys(shell).forEach(function (k) {
+      out[k] = shell[k];
+    });
+    Object.keys(v).forEach(function (k) {
+      if (v[k] && typeof v[k].at === "number") out[k] = v[k].value;
+    });
+    return out;
+  }
+  function resendPending() {
+    var v = readPending();
+    Object.keys(v).forEach(function (k) {
+      if (!v[k] || typeof v[k].at !== "number") return;
+      var patch = {};
+      patch[k] = v[k].value;
+      saveShell(patch, v[k].at);
+    });
   }
   /**
    * Issue 402: pins as the server and older copies hold them: { item,
@@ -8959,6 +9025,7 @@
       .then(function (s) {
         if (s && s.feedback_enabled === false) setState({ reportOff: true });
         if (!s || !s.shell) return markPrefsApplied();
+        s.shell = withPending(s.shell);
         setState({
           pinList: pinTuples(s.shell.pins),
           pinsLoaded: true,
@@ -8971,6 +9038,7 @@
         });
         remember();
         dockFromPrefs();
+        resendPending();
         markPrefsApplied();
       })
       .catch(markPrefsApplied);
