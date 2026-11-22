@@ -14,6 +14,10 @@
  *
  * --update never raises a file's number: a file that got worse is left
  * failing, and one fixed to zero leaves the baseline.
+ *
+ * Known limit: a per-file count misses a swap (one error fixed and a new
+ * one added in the same file). That's accepted, since counts only go down
+ * and each fix lowers the baseline.
  */
 import { spawnSync } from "child_process";
 import fs from "fs";
