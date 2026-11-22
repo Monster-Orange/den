@@ -500,7 +500,9 @@ export function bellPanel(b, ui = {}) {
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
       // Issue 773: Done, not seen, under Needs you (when there is any).
-      ...(done.length ? { done: done.map((d) => doneRowHtml(d)).join("") } : {}),
+      ...(done.length
+        ? { done: done.map((d) => doneRowHtml(d)).join("") }
+        : {}),
       earlier:
         seenDone.map((d) => doneRowHtml(d, true)).join("") +
         updatesHtml +

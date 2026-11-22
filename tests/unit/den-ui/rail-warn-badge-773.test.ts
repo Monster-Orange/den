@@ -7,7 +7,12 @@ import * as fs from "fs";
 import * as path from "path";
 import { navItemHtml } from "../../../packages/den-ui/src/shell-html.js";
 
-const item = (badge: Record<string, unknown>) =>
+const item = (badge: {
+  n: number;
+  what?: "waiting";
+  warn?: boolean;
+  bad?: boolean;
+}) =>
   navItemHtml(
     { id: "agents", label: "Agents", href: "/agents", group: "develop", badge },
     "item",

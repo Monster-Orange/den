@@ -33,7 +33,7 @@ const rec = (id: string): AgentRecord =>
     session: { host: "local", id: `s-${id}` },
     sessionName: `shop-${id}`,
     startedAt: "2026-11-20T10:00:00.000Z",
-  }) as AgentRecord;
+  }) as unknown as AgentRecord;
 
 function finishedAndSeen(id: string): SeenMarks {
   const m = new SeenMarks(st);
