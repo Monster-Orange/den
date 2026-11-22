@@ -50,6 +50,7 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
+import { localDateTime } from "../../shared/local-time.js";
 import {
   readRestartsWaiting,
   type RestartsWaiting,
@@ -425,7 +426,7 @@ export function restartsWaitingLines(
   const more = w.ids.length > 5 ? ` and ${w.ids.length - 5} more` : "";
   return [
     "",
-    `  ℹ ${w.waiting} agent${w.waiting === 1 ? "" : "s"} waiting to restart, a few at a time (as of ${w.at}): ${names}${more}`,
+    `  ℹ ${w.waiting} agent${w.waiting === 1 ? "" : "s"} waiting to restart, a few at a time (as of ${localDateTime(w.at)}): ${names}${more}`,
   ];
 }
 

@@ -65,6 +65,18 @@ export function readRestartsWaiting(stateDir: string): RestartsWaiting | null {
   }
 }
 
+/**
+ * A new server holds no queue: what an earlier one left waiting is gone,
+ * so its file (and doctor's line) goes too.
+ */
+export function clearRestartsWaiting(stateDir: string): void {
+  try {
+    fs.rmSync(restartsWaitingFile(stateDir), { force: true });
+  } catch {
+    /* doctor's line is best effort */
+  }
+}
+
 /** agents.resume as the queue reads it; the defaults when user.yml is wrong. */
 export function queueConfig(
   read?: () => UserConfig,
@@ -81,6 +93,7 @@ export function queueConfig(
     batch: c.batch,
     gapMs: c.gapSeconds * 1000,
     loadCeiling: c.loadCeiling,
+    maxWaitMs: c.maxWaitSeconds * 1000,
   };
 }
 
@@ -99,6 +112,13 @@ export function restartQueue(
   if (o.log) logTo = o.log;
   if (o.store) storeOf = o.store;
   if (queue) return queue;
+  // A new process: nothing waits yet, whatever an earlier one wrote.
+  clearRestartsWaiting(getStateDir());
+  try {
+    if (storeOf) noteRestartsWaiting(storeOf(), 0);
+  } catch {
+    /* the bell is best effort */
+  }
   let told = 0;
   let saidBad = "";
   const q: RestartQueue = new RestartQueue({

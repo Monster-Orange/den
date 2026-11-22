@@ -3,7 +3,16 @@
  * from agents/restarts-waiting.json. Nothing when none wait. Invented names.
  */
 import { describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { restartsWaitingLines } from "../../../src/ui/cli/doctor-command";
+import { localDateTime } from "../../../src/shared/local-time";
+import {
+  clearRestartsWaiting,
+  readRestartsWaiting,
+  restartsWaitingFile,
+} from "../../../src/ui/server/restart-queue-service";
 
 const at = "2026-01-02T10:00:00.000Z";
 
@@ -26,7 +35,9 @@ describe("issue 1129: doctor's restart queue line", () => {
     }));
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain("2 agents waiting to restart");
-    expect(lines[1]).toContain(at);
+    // People read it: the machine's own zone, never the UTC ISO stamp.
+    expect(lines[1]).toContain(localDateTime(at));
+    expect(lines[1]).not.toContain(at);
     expect(lines[1]).toContain("alpha, beta");
   });
 
@@ -44,5 +55,22 @@ describe("issue 1129: doctor's restart queue line", () => {
       at,
     }));
     expect(line).toContain("1 agent waiting to restart");
+  });
+
+  it("a new server clears what an earlier one left waiting", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-1129-"));
+    try {
+      const f = restartsWaitingFile(dir);
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, JSON.stringify({ waiting: 3, ids: ["x"], at }));
+      expect(readRestartsWaiting(dir)?.waiting).toBe(3);
+      clearRestartsWaiting(dir);
+      expect(fs.existsSync(f)).toBe(false);
+      expect(readRestartsWaiting(dir)).toBeNull();
+      expect(restartsWaitingLines(() => readRestartsWaiting(dir))).toEqual([]);
+      clearRestartsWaiting(dir); // nothing there: no throw
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

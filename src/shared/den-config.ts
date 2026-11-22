@@ -641,7 +641,12 @@ export interface UserConfig {
      * waiting while the 1-minute load is over `load_ceiling` (cores × 2;
      * 0: no ceiling).
      */
-    resume?: { batch?: unknown; gap_seconds?: unknown; load_ceiling?: unknown };
+    resume?: {
+      batch?: unknown;
+      gap_seconds?: unknown;
+      load_ceiling?: unknown;
+      max_wait_seconds?: unknown;
+    };
     /**
      * Issue 456: how long Den waits for your shell's PATH, the login
      * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
@@ -1012,11 +1017,14 @@ export interface AgentsResume {
   gapSeconds: number;
   /** The 1-minute load over which the next batch waits; 0: no ceiling. */
   loadCeiling: number;
+  /** The longest the load holds an agent back; 0: no limit. */
+  maxWaitSeconds: number;
 }
 
 /**
  * Issue 1129: agents.resume (user.yml): batch 4 (a whole number, at least
- * 0), gap_seconds 30 (at least 0), load_ceiling `cores` × 2 (at least 0).
+ * 0), gap_seconds 30 (at least 0), load_ceiling `cores` × 2 (at least 0),
+ * max_wait_seconds 600 (at least 0; 0: the load may hold them any time).
  */
 export function agentsResume(
   read: () => UserConfig = readUserConfig,
@@ -1042,6 +1050,7 @@ export function agentsResume(
     batch: num("batch", 4, true),
     gapSeconds: num("gap_seconds", 30, false),
     loadCeiling: num("load_ceiling", Math.max(1, cores) * 2, false),
+    maxWaitSeconds: num("max_wait_seconds", 600, false),
   };
 }
 

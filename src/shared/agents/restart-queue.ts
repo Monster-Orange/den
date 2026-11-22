@@ -10,6 +10,10 @@
  *   batch. 0: every agent at once, as before.
  * - While the 1-minute load is over `agents.resume.load_ceiling` (default
  *   cores × 2), the next batch waits, and looks again after another gap.
+ *   Once the oldest waiting agent has waited `agents.resume.max_wait_seconds`
+ *   (default 600), the next window starts a batch whatever the load, and
+ *   logs why: a busy machine never keeps an agent down for hours. 0: the
+ *   load may hold them as long as it stays over.
  * - Agents that were working when the install stopped go first, then the
  *   idle ones, each in the order they came.
  * - An agent a person opens starts at once, ahead of the rest (openNow).
@@ -38,6 +42,11 @@ export interface RestartQueueConfig {
   gapMs: number;
   /** The 1-minute load above which the next batch waits; 0: no ceiling. */
   loadCeiling: number;
+  /**
+   * The longest the load may hold an agent back (ms): once the oldest has
+   * waited this long, a batch starts whatever the load. 0: no limit.
+   */
+  maxWaitMs?: number;
 }
 
 export interface RestartQueueDeps {
@@ -54,6 +63,8 @@ export interface RestartQueueDeps {
 
 interface Entry extends RestartJob {
   seq: number;
+  /** When it was added (ms): the most wait counts from here. */
+  addedAt: number;
   promise: Promise<unknown>;
   resolve: (v: unknown) => void;
   reject: (e: unknown) => void;
@@ -88,7 +99,14 @@ export class RestartQueue {
     });
     // Its caller may not wait for it: a failure is still not unhandled.
     promise.catch(() => undefined);
-    this.pending.push({ ...job, seq: ++this.seq, promise, resolve, reject });
+    this.pending.push({
+      ...job,
+      seq: ++this.seq,
+      addedAt: (this.d.now ?? Date.now)(),
+      promise,
+      resolve,
+      reject,
+    });
     this.d.changed?.(this.pending.length);
     this.kick();
     return promise;
@@ -162,11 +180,20 @@ export class RestartQueue {
       if (this.lastAt === null || t - this.lastAt >= cfg.gapMs) {
         this.lastAt = t;
         const load = this.d.load();
+        const maxWait = cfg.maxWaitMs ?? 0;
+        const waited = t - Math.min(...this.pending.map((e) => e.addedAt));
         if (cfg.loadCeiling > 0 && load > cfg.loadCeiling) {
-          this.inWindow = cfg.batch; // this window starts nobody
-          this.d.log?.(
-            `Agent restarts wait: load ${load.toFixed(1)} is over ${cfg.loadCeiling} (${this.pending.length} waiting)`,
-          );
+          if (maxWait > 0 && waited >= maxWait) {
+            this.inWindow = 0; // the most wait is up: a batch goes anyway
+            this.d.log?.(
+              `Agent restarts go although load ${load.toFixed(1)} is over ${cfg.loadCeiling}: the oldest waited ${Math.round(waited / 1000)} s, the most wait (agents.resume.max_wait_seconds) is ${Math.round(maxWait / 1000)} s`,
+            );
+          } else {
+            this.inWindow = cfg.batch; // this window starts nobody
+            this.d.log?.(
+              `Agent restarts wait: load ${load.toFixed(1)} is over ${cfg.loadCeiling} (${this.pending.length} waiting)`,
+            );
+          }
         } else this.inWindow = 0;
       }
       // Room left in this window: restarts that came one at a time fill it.

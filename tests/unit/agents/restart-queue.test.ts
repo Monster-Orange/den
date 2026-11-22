@@ -9,7 +9,15 @@
 import { describe, expect, it } from "@jest/globals";
 import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
 
-function world(o: { batch?: number; gapMs?: number; ceiling?: number } = {}) {
+function world(
+  o: {
+    batch?: number;
+    gapMs?: number;
+    ceiling?: number;
+    maxWaitMs?: number;
+  } = {},
+) {
+  const logs: string[] = [];
   const started: string[] = [];
   const sleeps: Array<{ ms: number; go: () => void }> = [];
   let load = 0;
@@ -20,8 +28,10 @@ function world(o: { batch?: number; gapMs?: number; ceiling?: number } = {}) {
       batch: o.batch ?? 4,
       gapMs: o.gapMs ?? 30_000,
       loadCeiling: o.ceiling ?? 16,
+      maxWaitMs: o.maxWaitMs ?? 600_000,
     }),
     load: () => load,
+    log: (l) => logs.push(l),
     sleep: (ms) => new Promise<void>((go) => sleeps.push({ ms, go })),
   });
   const job = (id: string, working = false) =>
@@ -50,6 +60,7 @@ function world(o: { batch?: number; gapMs?: number; ceiling?: number } = {}) {
     sleeps,
     flush,
     pass,
+    logs,
     setLoad: (v: number) => (load = v),
     tick: (ms: number) => (clock += ms),
   };
@@ -102,6 +113,34 @@ describe("issue 1129: restarts go in batches", () => {
     w.setLoad(3);
     await w.pass();
     expect(w.started).toHaveLength(4);
+  });
+
+  it("most wait: with the load pinned over the ceiling, a batch still starts once the oldest has waited max_wait, and says why", async () => {
+    const w = world({ batch: 2, ceiling: 8, gapMs: 30_000, maxWaitMs: 90_000 });
+    w.setLoad(50);
+    ids(4).forEach((id) => w.job(id));
+    await w.flush();
+    expect(w.started).toHaveLength(0);
+    w.tick(30_000);
+    await w.pass();
+    w.tick(30_000);
+    await w.pass();
+    expect(w.started).toHaveLength(0);
+    w.tick(30_000); // the oldest has now waited 90 s
+    await w.pass();
+    expect(w.started).toEqual(["a1", "a2"]);
+    expect(w.logs.join("\n")).toMatch(/waited .*most wait/);
+  });
+
+  it("most wait 0: the load holds them as long as it stays over", async () => {
+    const w = world({ batch: 2, ceiling: 8, gapMs: 30_000, maxWaitMs: 0 });
+    w.setLoad(50);
+    ids(2).forEach((id) => w.job(id));
+    for (let i = 0; i < 10; i++) {
+      w.tick(30_000);
+      await w.pass();
+    }
+    expect(w.started).toHaveLength(0);
   });
 
   it("an agent a person opens starts at once, ahead of the queue", async () => {
@@ -205,6 +244,7 @@ describe("issue 1129: agents.resume in user.yml", () => {
       batch: 4,
       gapSeconds: 30,
       loadCeiling: 16,
+      maxWaitSeconds: 600,
     });
   });
 
@@ -212,10 +252,17 @@ describe("issue 1129: agents.resume in user.yml", () => {
     const { agentsResume } = await import("../../../src/shared/den-config.js");
     expect(
       agentsResume(
-        cfg({ resume: { batch: 0, gap_seconds: 5, load_ceiling: 0 } }),
+        cfg({
+          resume: {
+            batch: 0,
+            gap_seconds: 5,
+            load_ceiling: 0,
+            max_wait_seconds: 0,
+          },
+        }),
         8,
       ),
-    ).toEqual({ batch: 0, gapSeconds: 5, loadCeiling: 0 });
+    ).toEqual({ batch: 0, gapSeconds: 5, loadCeiling: 0, maxWaitSeconds: 0 });
   });
 
   it.each([
@@ -223,6 +270,7 @@ describe("issue 1129: agents.resume in user.yml", () => {
     [{ batch: 1.5 }, /agents\.resume\.batch/],
     [{ gap_seconds: "30" }, /agents\.resume\.gap_seconds/],
     [{ load_ceiling: -2 }, /agents\.resume\.load_ceiling/],
+    [{ max_wait_seconds: -1 }, /agents\.resume\.max_wait_seconds/],
   ])("refuses %j, naming the key", async (resume, re) => {
     const { agentsResume } = await import("../../../src/shared/den-config.js");
     expect(() => agentsResume(cfg({ resume }), 8)).toThrow(re);
