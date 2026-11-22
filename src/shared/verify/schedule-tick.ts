@@ -111,3 +111,67 @@ export function noteScheduleRun(
   fs.renameSync(tmp, file);
   return next;
 }
+
+/** Issue 964: the lock that keeps two servers on one state folder from both running. */
+export const scheduleLockOf = (stateDir: string) =>
+  path.join(stateDir, "verify", "schedules.lock");
+
+/** A lock older than this is taken over, whatever its process (a run that hung). */
+const LOCK_STALE_MS = 6 * 3_600_000;
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Takes the scheduled-run lock, or returns null when another run holds it
+ * (in this process or another one). The lock names its process; one
+ * whose process is gone, or that is older than 6 hours, is taken over.
+ * Call the returned function to let it go.
+ */
+export function takeScheduleLock(
+  stateDir: string,
+  now = Date.now(),
+): (() => void) | null {
+  const file = scheduleLockOf(stateDir);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const mine = `${process.pid} ${now} ${Math.random().toString(36).slice(2)}\n`;
+  for (let i = 0; i < 2; i++) {
+    try {
+      fs.writeFileSync(file, mine, { flag: "wx", mode: 0o600 });
+      return () => {
+        try {
+          if (fs.readFileSync(file, "utf-8") === mine) fs.unlinkSync(file);
+        } catch {
+          /* already gone */
+        }
+      };
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
+    let held = "";
+    try {
+      held = fs.readFileSync(file, "utf-8");
+    } catch {
+      continue; // let go between the two calls: try again
+    }
+    const [pid, at] = held.split(" ").map(Number);
+    const stale =
+      !Number.isFinite(pid) ||
+      !Number.isFinite(at) ||
+      now - at > LOCK_STALE_MS ||
+      !alive(pid);
+    if (!stale) return null;
+    try {
+      if (fs.readFileSync(file, "utf-8") === held) fs.unlinkSync(file);
+    } catch {
+      /* someone else took it over */
+    }
+  }
+  return null;
+}

@@ -41,6 +41,7 @@ import {
 import {
   decide,
   noteScheduleRun,
+  takeScheduleLock,
   readScheduleRuns,
   type ScheduleRunState,
 } from "../../shared/verify/schedule-tick.js";
@@ -278,14 +279,13 @@ function bellExpiry(
   });
 }
 
-let busy = false;
-
 /** Runs one schedule now (the loop's due run, or a person's Run now). */
 async function runSchedule(
   d: ScheduleServerDeps,
   s: Schedule,
   a: ScheduleAllow | undefined,
-  due: string,
+  /** The due time this run handles; null for Run now (issue 964: it leaves the next due run alone). */
+  due: string | null,
   runId?: string,
 ): Promise<
   { ok: true; runId: string; verdict: string } | { ok: false; error: string }
@@ -389,7 +389,7 @@ async function runSchedule(
     schedule: s.id,
   });
   noteScheduleRun(d.stateDir(), s.project, s.id, {
-    lastDue: due,
+    ...(due ? { lastDue: due } : {}),
     last: { runId: r.runId, verdict: r.verdict, at: now().toISOString() },
   });
   const passed = r.modules.filter((m) => m.state === "passed").length;
@@ -409,8 +409,8 @@ export async function tickSchedules(
   d: ScheduleServerDeps,
 ): Promise<TickNote[]> {
   const out: TickNote[] = [];
-  if (busy) return out;
-  busy = true;
+  const release = takeScheduleLock(d.stateDir());
+  if (!release) return out;
   try {
     const now = (d.now ?? (() => new Date()))();
     let set: ScheduleSettings;
@@ -471,7 +471,7 @@ export async function tickSchedules(
     }
     return out;
   } finally {
-    busy = false;
+    release();
   }
 }
 
@@ -685,7 +685,8 @@ export async function handleScheduleRoutes(
     );
     return true;
   }
-  if (busy) {
+  const release = takeScheduleLock(d.stateDir());
+  if (!release) {
     sendJson(
       res,
       {
@@ -701,12 +702,9 @@ export async function handleScheduleRoutes(
     .toISOString()
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14)}-${Math.random().toString(36).slice(2, 8)}`;
-  busy = true;
-  runSchedule(d, s, a, now.toISOString(), runId)
+  runSchedule(d, s, a, null, runId)
     .catch((e) => d.log?.(`verify schedules: run now: ${(e as Error).message}`))
-    .finally(() => {
-      busy = false;
-    });
+    .finally(release);
   sendJson(res, { ok: true, runId }, 202);
   return true;
 }

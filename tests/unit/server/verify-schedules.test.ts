@@ -410,6 +410,50 @@ describe("issue 964: a scheduled command runs from the allowed commit", () => {
   });
 });
 
+describe("issue 964: another server on the same state folder", () => {
+  it("while it holds the run lock, the tick runs nothing and Run now is busy", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    // Another live process holds the lock (this test's own pid stands in for it).
+    const lock = path.join(stateDir, "verify", "schedules.lock");
+    fs.writeFileSync(lock, `${process.pid} ${Date.now()} other\n`);
+    expect(await tick(at(22, 2, 1))).toEqual([]);
+    expect(cmds).toEqual([]);
+    const r = await post("/api/verify/schedules/run", { project: "north", id });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("busy");
+    fs.unlinkSync(lock);
+    await tick(at(22, 2, 2));
+    expect(cmds).toEqual(["web/speed"]);
+  });
+});
+
+describe("issue 964: Run now", () => {
+  it("leaves the schedule's next due run alone", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    // Run now at 02:00:30: tonight's 02:00 run is due, and the tick
+    // hasn't handled it yet. The scheduled run still goes.
+    clock = new Date(2026, 10, 22, 2, 0, 30);
+    expect(
+      (await post("/api/verify/schedules/run", { project: "north", id }))
+        .status,
+    ).toBe(202);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(cmds).toEqual(["web/speed"]);
+    cmds = [];
+    const notes = await tick(at(22, 2, 1));
+    expect(notes.find((n) => n.schedule === id)).toMatchObject({
+      action: "run",
+    });
+    expect(cmds).toEqual(["web/speed"]);
+  });
+});
+
 describe("T19: a scheduled production run is read-only", () => {
   it("issue 964: off until the org opts in; the Allow is refused and the row says why", async () => {
     await tick(at(21, 12));

@@ -18,6 +18,8 @@ import {
   decide,
   readScheduleRuns,
   noteScheduleRun,
+  scheduleLockOf,
+  takeScheduleLock,
 } from "../../../src/shared/verify/schedule-tick.js";
 
 // A repo with the script the scheduled commands run (Den follows only a
@@ -272,5 +274,30 @@ describe("the run state", () => {
     });
     expect(r.skipped).toHaveLength(10);
     expect(r.skipped!.map((x) => x.due)[0]).toBe(at(22, 2).toISOString());
+  });
+});
+
+describe("issue 964: one scheduled run at a time, across processes", () => {
+  it("a second take waits; letting go frees it", () => {
+    const d = tmp();
+    const release = takeScheduleLock(d)!;
+    expect(release).not.toBeNull();
+    expect(takeScheduleLock(d)).toBeNull();
+    release();
+    const again = takeScheduleLock(d);
+    expect(again).not.toBeNull();
+    again!();
+  });
+
+  it("a lock whose process is gone, or older than 6 hours, is taken over", () => {
+    const d = tmp();
+    fs.mkdirSync(path.dirname(scheduleLockOf(d)), { recursive: true });
+    fs.writeFileSync(scheduleLockOf(d), `999999999 ${Date.now()} x\n`);
+    expect(takeScheduleLock(d)).not.toBeNull();
+    fs.writeFileSync(
+      scheduleLockOf(d),
+      `${process.pid} ${Date.now() - 7 * 3_600_000} x\n`,
+    );
+    expect(takeScheduleLock(d)).not.toBeNull();
   });
 });
