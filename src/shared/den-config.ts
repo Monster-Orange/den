@@ -1753,6 +1753,13 @@ export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
 export const RESTART_WAIT_MINUTES_DEFAULT = 120;
 
+/**
+ * Issue 914: agents.rotation_wait_minutes when unset: how long a due
+ * rotation waits for the agent's running background work (helpers, jobs)
+ * before it goes ahead anyway.
+ */
+export const ROTATION_WAIT_MINUTES_DEFAULT = 240;
+
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
 
@@ -1771,6 +1778,8 @@ export const AGENTS_RESERVED_KEYS = [
   // D39: how far back the mid-turn check reads.
   "turn_read_max_mb",
   "restart_wait_minutes",
+  // Issue 914: how long a due rotation waits for background work.
+  "rotation_wait_minutes",
   // Issue 218: how long a change waits for another process's on one agent.
   "lock_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
@@ -1844,6 +1853,12 @@ export interface ResolvedAgentsConfig {
    * restart is skipped and tried later; nothing is ever cut off.
    */
   restartWaitMs: number;
+  /**
+   * Issue 914: agents.rotation_wait_minutes (default 240): how long a due
+   * rotation waits for the helpers and jobs the agent left running. Out of
+   * time, it goes ahead: the handoff must list each one.
+   */
+  rotationWaitMs?: number;
   /**
    * Issue 218: agents.lock_wait_minutes (default LOCK_WAIT_MINUTES_DEFAULT):
    * how long a change to an agent waits while another process changes it.
@@ -2039,6 +2054,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
+    rotationWaitMs: ROTATION_WAIT_MINUTES_DEFAULT * 60_000,
     tokenBinding: tb !== false,
     tokenPeerWaitMs: typeof pw === "number" ? pw : TOKEN_PEER_WAIT_MS_DEFAULT,
     personaPacks: [],
@@ -2086,6 +2102,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.restart_wait_minutes: minutes, above 0 (got ${JSON.stringify(rw)})`,
       );
     out.restartWaitMs = Math.round(rw * 60_000);
+  }
+  const tw = raw.rotation_wait_minutes;
+  if (tw !== undefined && tw !== null) {
+    if (typeof tw !== "number" || !Number.isFinite(tw) || tw <= 0)
+      throw new Error(
+        `agents.rotation_wait_minutes: minutes, above 0 (got ${JSON.stringify(tw)})`,
+      );
+    out.rotationWaitMs = Math.round(tw * 60_000);
   }
   const lw = raw.lock_wait_minutes;
   if (lw !== undefined && lw !== null) {

@@ -3908,6 +3908,23 @@ as…" line as Bring in.
     restart_wait_minutes: 120 # minutes, above 0
   ```
 
+  Session rotation waits for an agent's background work too (issue
+  914). Once a rotation is due and the agent's turn is over, Den still
+  waits while a helper it started (a background subagent, a workflow's
+  agent) or a job it left running (a gate run) is running, and rotates
+  right after they finish. The wait is at most
+  `agents.rotation_wait_minutes` (default 240). Then the rotation goes
+  ahead: Den asks for a handoff that lists each item still running (its
+  ID, what it was doing, its branch, and for a helper its own handoff
+  file, `handoffs/helper-<id>.md` in the agent's files folder). The
+  handoff check refuses one that leaves an item out, and the new
+  session's first prompt tells it to start each one again.
+
+  ```yaml
+  agents:
+    rotation_wait_minutes: 240 # minutes, above 0
+  ```
+
   One change to an agent at a time, across processes too (issue 218): a
   stop, resume or restart from the CLI waits while the web server
   changes the same agent, and the other way round. Each change holds a

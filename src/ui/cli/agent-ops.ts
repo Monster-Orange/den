@@ -116,6 +116,7 @@ import {
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
+  ROTATION_WAIT_MINUTES_DEFAULT,
   readUserConfig,
   setUserRuntimeBin,
   userConfigPath,
@@ -256,8 +257,12 @@ import {
 } from "../../shared/agents/rotate-settings.js";
 import {
   archiveHandoff,
+  clearWaiting,
   keepConversation,
   noteAsked,
+  noteLeftRunning,
+  noteWaiting,
+  type LeftRunning,
   noteFellBack,
   rotationInstruction,
   syncAfter,
@@ -6402,6 +6407,62 @@ function restartWaitOf(d: AgentsResolved): number {
   }
 }
 
+/** Issue 914: agents.rotation_wait_minutes, in ms (its default if unreadable). */
+function rotationWaitOf(d: AgentsResolved): number {
+  try {
+    return (
+      d.agentsConfig().rotationWaitMs ?? ROTATION_WAIT_MINUTES_DEFAULT * 60_000
+    );
+  } catch {
+    return ROTATION_WAIT_MINUTES_DEFAULT * 60_000;
+  }
+}
+
+/**
+ * Issue 914: the background work agent `rec` has running under live
+ * session `s`: its active helpers (running or idle, of this session) and
+ * the jobs it left running (background shells). Empty when its runtime
+ * can't tell. Never throws.
+ */
+async function leftRunningOf(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  s: SessionInfo,
+): Promise<LeftRunning[]> {
+  const rt = getRuntime(rec.runtime);
+  const out: LeftRunning[] = [];
+  const since = liveSince(s, rec);
+  try {
+    for (const h of rt?.helpers?.(rec, {
+      env: d.env,
+      settings: helperSettings(d),
+      agentLive: true,
+      ...(since !== undefined ? { liveSince: since } : {}),
+    }) ?? [])
+      if (!h.earlier && (h.status === "running" || h.status === "idle"))
+        out.push({
+          kind: "helper",
+          id: h.id,
+          what: h.description ?? h.workflow?.label ?? h.type ?? "",
+          ...(h.branch ? { branch: h.branch } : {}),
+        });
+  } catch {
+    /* its helpers can't be read: none counted */
+  }
+  try {
+    if (rt?.jobPattern && s.pid)
+      for (const j of jobsUnder(s.pid, rt.jobPattern, d.processes()))
+        out.push({
+          kind: "job",
+          id: String(j.pid),
+          what: `a background shell, running ${Math.round((j.secs ?? 0) / 60)} min`,
+        });
+  } catch {
+    /* no process list: none counted */
+  }
+  return out;
+}
+
 /** Issue 218: agents.lock_wait_minutes, in ms (its default if unreadable). */
 function lockWaitOf(d: AgentsResolved): number {
   try {
@@ -7566,7 +7627,12 @@ export async function relaunchAgent(
         ...(folder ? { folder } : {}),
       },
       {
-        firstPrompt: handoffPrompt(h.text!, reason, compactions),
+        firstPrompt: handoffPrompt(
+          h.text!,
+          reason,
+          compactions,
+          manual ? [] : (before?.leftRunning ?? []),
+        ),
         rotations: [...(rec.rotations ?? []), entry],
         beforeLaunch: () => {
           kept = archive
@@ -8688,6 +8754,8 @@ export const ROTATION_MAX_ASKS = 2;
 
 export type RotationEvent =
   | { kind: "asked"; agent: string; workspace: string; asked: number }
+  /** Issue 914: due, turn over, background work still running: it waits. */
+  | { kind: "waiting"; agent: string; workspace: string; running: number }
   | { kind: "fell-back"; agent: string; workspace: string }
   | {
       kind: "relaunched";
@@ -8744,8 +8812,25 @@ export async function rotationTick(
       // Relaunch now, asked before the handoff, relaunches whatever on_due says.
       const wanted = rot.relaunchWanted === true;
       if (!wanted && (pol.onDue !== "auto" || rot.fellBack)) continue;
-      if ((await agentBusy(d, rec)) !== false) continue;
-      if (rot.handoff === "ok") {
+      // Its turn first: never mid-turn (unknown counts as busy).
+      if ((await agentTurnBusy(d, rec, s)) !== false) continue;
+      // Issue 914: then the background work it left running (helpers,
+      // jobs such as a gate run): the rotation waits for it, at most
+      // agents.rotation_wait_minutes, then goes ahead with a handoff
+      // that lists each one.
+      const left = await leftRunningOf(d, rec, s);
+      if (!left.length) clearWaiting(files);
+      else {
+        const was = readRotation(files)?.waitingSince;
+        const since = noteWaiting(files, now);
+        if (now.getTime() - since < rotationWaitOf(d)) {
+          if (!was)
+            events.push({ kind: "waiting", ...who, running: left.length });
+          continue;
+        }
+        noteLeftRunning(files, left);
+      }
+      if (readHandoff(files).status === "ok") {
         const r = await relaunchAgent(d, rec.id, rec.workspace, {
           auto: true,
         });
