@@ -254,7 +254,7 @@ export function hydrateShell(root, opts = {}) {
     if (nav && !nav.querySelector(".den-rb-drawer"))
       nav.insertAdjacentHTML(
         "beforeend",
-        '<div class="den-rb-foot den-rb-drawer">' +
+        '<div class="den-rb-foot den-rb-drawer" data-den-drawer-report>' +
           reportButtonHtml({ inFoot: true, lang: lang() }) +
           "</div>",
       );

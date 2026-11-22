@@ -242,13 +242,11 @@ describe("FB: Report an issue, the dialog", () => {
     if (skip()) return;
     const p = await page(fresh());
     await p.click("#appearance-btn");
-    const menu = p.locator(
-      '.den-pop:has([role="menuitemradio"], [role="menuitem"])',
-    );
-    await menu.first().waitFor();
+    const menu = p.getByRole("menu");
+    await menu.waitFor();
     await p.keyboard.press("ControlOrMeta+Shift+F");
     await dlg(p).waitFor();
-    expect(await menu.first().isVisible()).toBe(true);
+    expect(await menu.isVisible()).toBe(true);
     await dlg(p).locator('[data-f="title"]').fill("x");
     await p.context().close();
   });
@@ -257,9 +255,12 @@ describe("FB: Report an issue, the dialog", () => {
     if (skip()) return;
     const p = await page(fresh(), 390);
     // Closed: no Report on the rail (issue 94: it is in the top bar).
-    expect(await p.locator(".den-rail [data-den-report]").count()).toBe(0);
-    await p.click(".den-menu-btn");
-    const rb = p.locator(".den-rail .den-rb-drawer [data-den-report]");
+    const onRail = p.locator("#den-rail [data-den-report]");
+    expect(await onRail.count()).toBe(0);
+    await p.click("#den-menu-btn");
+    const rb = p.locator(
+      "#den-rail [data-den-drawer-report] [data-den-report]",
+    );
     await rb.waitFor({ state: "visible" });
     // The top bar's Report is under the scrim: the drawer's is the one a
     // tap reaches.
@@ -267,7 +268,9 @@ describe("FB: Report an issue, the dialog", () => {
     expect(
       await p.evaluate(
         ([x, y]) =>
-          !!document.elementFromPoint(x, y)?.closest(".den-rb-drawer"),
+          !!document
+            .elementFromPoint(x, y)
+            ?.closest("[data-den-drawer-report]"),
         [box.x + box.width / 2, box.y + box.height / 2],
       ),
     ).toBe(true);
@@ -275,14 +278,25 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p).waitFor();
     // The drawer makes the page inert; the form is on top of it, holds
     // the focus, and takes typing.
-    await p.waitForFunction(
-      () => !!document.activeElement?.closest("dialog.fb-dlg"),
-    );
+    expect(
+      await dlg(p).evaluate(
+        (d) =>
+          new Promise<boolean>((done) => {
+            const t0 = Date.now();
+            const tick = () =>
+              d.contains(document.activeElement)
+                ? done(true)
+                : Date.now() - t0 > 5000
+                  ? done(false)
+                  : requestAnimationFrame(tick);
+            tick();
+          }),
+      ),
+    ).toBe(true);
     expect(await dlg(p).evaluate((d) => !!d.closest("[inert]"))).toBe(false);
-    await dlg(p).locator('[data-f="title"]').fill("From the drawer");
-    expect(await dlg(p).locator('[data-f="title"]').inputValue()).toBe(
-      "From the drawer",
-    );
+    const title = dlg(p).locator('[data-f="title"]');
+    await title.fill("fb-81-drawer");
+    expect(await title.inputValue()).toBe("fb-81-drawer");
     await p.keyboard.press("Escape");
     // Text typed: Esc asks to keep it; Discard closes.
     await dlg(p).locator('[data-act="discard"]').click();
@@ -292,7 +306,7 @@ describe("FB: Report an issue, the dialog", () => {
     await p.waitForFunction(
       () => !document.body.classList.contains("den-rail-open"),
     );
-    expect(await p.locator(".den-rail [data-den-report]").count()).toBe(0);
+    expect(await onRail.count()).toBe(0);
     await p.context().close();
   });
 
