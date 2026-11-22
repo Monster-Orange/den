@@ -14,6 +14,7 @@ import { CLAUDE_RULES } from "./rules/claude.js";
 import { CODEX_RULES } from "./rules/codex.js";
 import { GEMINI_RULES } from "./rules/gemini.js";
 import { GROK_RULES } from "./rules/grok.js";
+import { ANTIGRAVITY_RULES } from "./rules/antigravity.js";
 
 export {
   detect,
@@ -37,6 +38,7 @@ export const RULE_SETS: Readonly<Record<string, RuleSet>> = {
   codex: CODEX_RULES,
   gemini: GEMINI_RULES,
   grok: GROK_RULES,
+  antigravity: ANTIGRAVITY_RULES,
 };
 
 /** The rule set a name gives, if Den ships it. */

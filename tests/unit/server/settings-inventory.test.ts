@@ -234,6 +234,8 @@ describe("the settings inventory (R21)", () => {
         "shell.hidden",
         "shell.order",
         "shell.pins",
+        // Issue 168: a project's colour, the person's own.
+        "shell.projectColours",
         // 0.4.45: this person's project order.
         "shell.projectOrder",
         "terminal",
