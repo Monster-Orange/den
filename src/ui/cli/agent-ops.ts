@@ -8476,6 +8476,34 @@ export async function agentDialogKind(
 }
 
 /**
+ * Issue 954: whether agent `id`'s screen ends with something it waits on
+ * its person for that isn't its input prompt: a list to pick from, a
+ * question, a dialog (agentScreenCheck's "dialog"). False with no live
+ * session or when Den can't read it. Never throws.
+ */
+export async function agentScreenShowsDialog(
+  d: AgentsResolved,
+  id: string,
+): Promise<boolean> {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec || rec.stoppedAt) return false;
+  try {
+    const c = await d.connectExisting();
+    if (!c) return false;
+    try {
+      const s = sessionOf(await c.list(), rec);
+      if (!s || s.exited) return false;
+      const out = (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8");
+      return agentScreenCheck(rec.runtime, out) === "dialog";
+    } finally {
+      c.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
  * SRV-1a: the server agent's input state, for Den's own "Server is back"
  * line. (agentInputState skips it: Hub's comments never reach it.)
  */
@@ -8887,7 +8915,7 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
-  opts: { cwd?: string; operator?: boolean } = {},
+  opts: { cwd?: string; replaces?: string; operator?: boolean } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
@@ -8942,6 +8970,20 @@ export async function startPlainSession(
           });
         throw e;
       });
+    // Issue 482: Restart on an exited terminal: once the new one runs, the
+    // host forgets the exited one, so the list keeps one row for it. Only
+    // an exited plain shell of this project: never a running one, never an
+    // agent's (its record keeps its session).
+    if (opts.replaces) {
+      const old = (await c.list()).find((s) => s.ref.id === opts.replaces);
+      const agents = listRecords(d.stateDir());
+      if (
+        old?.exited &&
+        old.name.startsWith(`${d.dist}-${ws}:`) &&
+        !agents.some((r) => r.session.id === old.ref.id)
+      )
+        await c.forget(old.ref.id).catch(() => {});
+    }
     return { info };
   });
 }

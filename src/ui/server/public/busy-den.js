@@ -202,6 +202,25 @@ export const DEN_ACTIONS = {
       failure: "sa.fresh.fail",
     },
   },
+  // Issue 172: Settings › Notifications › Devices that get push.
+  "push-test": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pushTestW",
+      success: "busy.pushTestS",
+      failure: "busy.pushTestF",
+    },
+  },
+  "push-forget": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pushForgetW",
+      success: "busy.pushForgetS",
+      failure: "busy.pushForgetF",
+    },
+  },
   "sign-out-all": {
     who: "__DEN_TITLE__",
     keys: {
@@ -421,3 +440,9 @@ export function busyAction(name, run, opts = {}) {
   setUp();
   return kitBusy(name, run, opts);
 }
+
+/**
+ * Issue 698: the kit's dots alone (no pop-up), for a wait that says its
+ * own words: holdDots(button), then holdDots(button, false).
+ */
+export { holdDots } from "/kit/busy.js";

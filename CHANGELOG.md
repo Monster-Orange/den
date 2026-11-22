@@ -12,12 +12,16 @@ config and manifest changes a distribution must make to move to it under
 - Agents: `issue_write` lets an agent create an issue, comment, label or set a milestone in one of its own project's GitHub repos, at once and audited. It never closes, reopens, deletes, transfers or locks. Which persona roles may use it is the person-only setting `agents.issue_writes`; `agents.issue_writes_per_hour` (default 60) limits the whole install. Each issue and comment says which agent and install wrote it.
 - Agents: one shared GitHub watcher per install. `github_watch` (a pull request's checks or a run in the agent's project), `github_watch_list` and `github_watch_cancel`. Den tells the agent once when it finishes, with each failed check. It backs off while nothing changes and stops polling near the GitHub API budget. New settings: `github.watch_interval_seconds` (60), `github.watch_max_interval_seconds` (300), `github.api_budget_floor` (500), `github.watches_max` (50). Doctor and `github status` show the budget.
 - Gate slots: `local_browser_slots` (default 1): browser runs that may hold this machine at once. Browser runs on a test box don't use one. (issue 751)
+- Terminals: shells have their own Terminals page and list, apart from agents. Running ones first, then exited ones with Restart and Remove. (issue 482)
+- Notifications: Settings lists the devices that get push alerts, with Send a test alert and Forget. (issue 172)
+- Agents: an agent can file a report through Report, with `den report` or the MCP `report` tool. A public destination waits for the person's Allow. (issue 565)
 
 ### Changed
 
 - Gate slots: cpu and browser runs wait in separate lines. A cpu run no longer waits behind every queued browser run, and a browser run never waits behind a cpu run. (issue 751)
 - Gate slots: up to `cpu_slots_beside_browser` cpu runs (new setting, default 2) run beside the browser runs on this machine. 0 keeps the old rule: a browser run runs alone. A browser run on a test box doesn't count. (issue 751)
 - Gate slots: a release-priority run passes every plain waiting run of its kind, however long it has waited. `priority_pass_limit_minutes` now defaults to 0 and applies only between release-priority runs. (issue 751)
+- Buttons that wait on the server show pulsing dots in place of their label until it answers. The UI kit is 0.9.2. (issue 698)
 
 - Agents: when an agent exits right after it starts, the page shows the lines it printed, not just its exit code (issue 89).
 - Tests: browser tests no longer assume the browser runs on the same machine (issue 191).

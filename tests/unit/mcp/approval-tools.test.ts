@@ -789,3 +789,126 @@ describe("issue 647: hub_link", () => {
     expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
   });
 });
+
+describe("issue 565: report", () => {
+  const PNG = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(16),
+  ]);
+  const DESTS = {
+    ok: true,
+    repos: [
+      { repo: "acme-eng/engine", visibility: "public" },
+      { repo: "acme-eng/inside", visibility: "private" },
+    ],
+  };
+  /** The fake, plus Report's own routes: destinations and drafts. */
+  function reportApi() {
+    const f = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, url: "https://github.com/acme-eng/inside/issues/9" },
+    }));
+    const inner = f.api.get.bind(f.api);
+    f.api.get = async (p, query, method, body, headers) => {
+      if (p === "/api/report" && (method ?? "GET") === "GET") {
+        f.calls.push({ path: p, method: "GET" });
+        return DESTS;
+      }
+      if (p === "/api/report/drafts" && method === "POST") {
+        f.calls.push({ path: p, method, body });
+        return { ok: true, draft: { id: "0123456789abcdef" } };
+      }
+      return inner(p, query, method, body, headers);
+    };
+    return f;
+  }
+
+  it("is a held write with no mcp.actions; the API client reaches only Report's list and drafts", () => {
+    expect(toolsFor(cfg()).map((t) => t.name)).toContain("report");
+    expect(toolsFor(cfg()).find((t) => t.name === "report")?.action).toBe(true);
+    expect(() => assertAllowedRequest("GET", "/api/report", {})).not.toThrow();
+    expect(() =>
+      assertAllowedRequest("POST", "/api/report/drafts", {}),
+    ).not.toThrow();
+    // Never the person's own send.
+    expect(() => assertAllowedRequest("POST", "/api/report/send", {})).toThrow(
+      Refusal,
+    );
+  });
+
+  it("with no title it lists the destinations with the page's labels, and asks nothing", async () => {
+    const { api, calls } = reportApi();
+    const r = await callTool("report", {}, ctx(api, true));
+    expect(r.isError).toBe(false);
+    expect(r.text).toMatch(/acme-eng\/engine.*Public repository/);
+    expect(r.text).toMatch(/acme-eng\/inside.*Private repository/);
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+
+  it("asks the person with the page, the form and the destination", async () => {
+    const { api, calls } = reportApi();
+    const r = await callTool(
+      "report",
+      {
+        kind: "bug",
+        title: "Agents page blank",
+        description: "Nothing renders",
+        page: "/agents",
+        repo: "acme-eng/inside",
+      },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "report",
+      args: {
+        kind: "bug",
+        title: "Agents page blank",
+        description: "Nothing renders",
+        page: "/agents",
+        repo: "acme-eng/inside",
+      },
+    });
+  });
+
+  it("a screenshot path is read here and kept as the agent's own draft; its id goes with the ask", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const pth = await import("path");
+    const dir = fs.mkdtempSync(pth.join(os.tmpdir(), "den-report-mcp-"));
+    try {
+      const shot = pth.join(dir, "shot.png");
+      fs.writeFileSync(shot, PNG);
+      const { api, calls } = reportApi();
+      const r = await callTool(
+        "report",
+        { title: "Blank", repo: "acme-eng/inside", screenshot: shot },
+        ctx(api, true),
+      );
+      expect(r.isError).toBe(false);
+      const draft = calls.find((c) => c.path === "/api/report/drafts");
+      expect((draft?.body as { shot?: string }).shot).toBe(
+        `data:image/png;base64,${PNG.toString("base64")}`,
+      );
+      const asked = calls.find((c) => c.path === "/api/approvals")?.body as {
+        args: Record<string, unknown>;
+      };
+      expect(asked.args.draftId).toBe("0123456789abcdef");
+      // Not a PNG: refused before anything is kept or asked.
+      const txt = pth.join(dir, "notes.txt");
+      fs.writeFileSync(txt, "not an image");
+      const b = reportApi();
+      const n = await callTool(
+        "report",
+        { title: "Blank", screenshot: txt },
+        ctx(b.api, true),
+      );
+      expect(n.isError).toBe(true);
+      expect(b.calls.some((c) => c.path === "/api/report/drafts")).toBe(false);
+      expect(b.calls.some((c) => c.path === "/api/approvals")).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

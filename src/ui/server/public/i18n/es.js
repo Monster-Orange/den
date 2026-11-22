@@ -542,7 +542,6 @@
     "lock.saveTo": "Guardar en {s}",
     "lock.pw": "Contraseña de administrador",
     "lock.go": "Continuar",
-    "lock.checking": "Comprobando…",
     "lock.note":
       "Den la usa solo para sudo. Los agentes no pueden introducirla.",
     "lock.saved": "Contraseña de administrador guardada para esta sesión",
@@ -723,6 +722,12 @@
     "busy.askAllowW": "Preguntando…",
     "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
     "busy.askAllowF": "No se pudo preguntar.",
+    "busy.pushTestW": "Enviando un aviso de prueba…",
+    "busy.pushTestS": "Aviso de prueba hecho. Cada dispositivo dice cómo fue.",
+    "busy.pushTestF": "No se pudo enviar el aviso de prueba.",
+    "busy.pushForgetW": "Olvidando este dispositivo…",
+    "busy.pushForgetS": "Este dispositivo ya no recibe push.",
+    "busy.pushForgetF": "No se pudo olvidar este dispositivo.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -1248,7 +1253,6 @@
     "addr.unset": "Sin definir. Los enlaces que da __DEN_TITLE__ la necesitan.",
     "addr.label": "Dirección",
     "addr.check": "Comprobar y guardar",
-    "addr.checking": "Comprobando…",
     "addr.checkW": "Comprobando que {url} responde",
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
@@ -1543,8 +1547,6 @@
     "ag.runtime.default": "{name} (la de la persona)",
     "ag.unavailable": "no disponible",
     "ag.go": "Iniciar",
-    "ag.starting": "Iniciando…",
-    "ag.working": "Procesando…",
     "ag.cancel": "Cancelar",
     "ag.started": "Agente {id} iniciado",
     "ag.stopped": "Agente {id} detenido",
@@ -1715,7 +1717,6 @@
     "ag.pc.note":
       "Den lo detiene y reanuda la misma conversación con la nueva persona. Su id, nombre, carpeta y pestaña se mantienen.",
     "ag.pc.go": "Cambiar persona",
-    "ag.pc.going": "Cambiando…",
     "ag.pc.current": "actual",
     "ag.pc.busy":
       "Está trabajando. ¿Cambiar después de este turno o detenerlo ahora?",
@@ -1803,7 +1804,6 @@
     "ag.stoppedGroupTip":
       "Agentes que no están en marcha. Abre uno para ver sus detalles.",
     "ag.bring.go": "Traer",
-    "ag.bring.going": "Trayendo…",
     "ag.bring.done": "Traída como {id}",
     "ag.bring.now": "ahora mismo",
     "ag.bring.min": "hace {n} min",
@@ -1897,6 +1897,22 @@
       "Espera a que ningún agente esté a mitad de turno (como máximo {min} min) y reinicia el host de terminales con el Den instalado.",
     "ap.det.host_restart.resume":
       "Los agentes que ejecutaba continúan donde estaban; los terminales abiertos se cierran. El registro de actividad dice cómo fue.",
+    "ap.do.report": "Enviar un reporte a {repo}: {title}",
+    "ap.det.report.to": "Va a: {repo}",
+    "ap.det.report.pub":
+      "Repositorio público: el texto lo puede ver cualquiera; la captura no se publica allí. Antes se quitan secretos, tokens, correos, direcciones IP y referencias a almacenes.",
+    "ap.det.report.priv":
+      "Repositorio privado: solo lo ven las personas con acceso a este repositorio.",
+    "ap.det.report.int":
+      "Repositorio interno: solo lo ven las personas con acceso a este repositorio.",
+    "ap.det.report.unk":
+      "Visibilidad desconocida: no se sabe quién puede ver este repositorio, así que se trata como público. El texto puede ser visible para cualquiera; la captura no se publica allí.",
+    "ap.det.report.title": "Título: {title}",
+    "ap.det.report.addTo": "Se añade como comentario al issue {n}.",
+    "ap.det.report.as":
+      "Se publica en GitHub a tu nombre (con tu gh). Lo que se publicará:",
+    "ap.det.report.shot":
+      "Con una captura que tomó el agente. No se enmascara: solo se limpia el texto de arriba.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
@@ -2335,17 +2351,37 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agentes",
-    "n.terminal": "Terminal",
+    "n.terminal": "Terminales",
     "n.terminalTip":
-      "Abrir una terminal en la carpeta de este proyecto, en Den",
+      "Tus terminales en una lista, cada una en la carpeta de un proyecto",
     "ag.term.started": "Terminal abierta en {w}",
     "ag.term.failed": "Den no pudo abrir una terminal: {e}",
     "ag.start.lastLines": "Lo que mostró antes de detenerse:",
     "ag.term.ptyFailed":
       "Den no pudo abrir una terminal: esta máquina no le dio un PTY ({e}). Cierra las terminales que ya no uses o ejecuta doctor.",
     "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
-    "ws.termHere": "Terminal aquí",
+    "ws.termHere": "Nueva terminal",
+    // Issue 482: la página Terminales.
+    "ws.termHereTip":
+      "Abrir una terminal nueva en la carpeta de este proyecto, en Den",
+    "tm.count": "{n} terminales",
+    "tm.count1": "{n} terminal",
+    "tm.running": "En ejecución ({n})",
+    "tm.exited": "Terminadas ({n})",
+    "tm.lastUsed": "Último uso {when}",
+    "tm.restart": "Reiniciar",
+    "tm.restartName": "Reiniciar {id} en la misma carpeta",
+    "tm.none": "Aún no hay terminales",
+    "tm.noneP": "Pulsa Nueva terminal para abrir una en {scope}.",
+    "tm.empty":
+      "Elige una terminal a la izquierda para abrirla. Abre más para verlas en mosaico (hasta 4).",
+    "tm.pick": "Nueva terminal en…",
+    "tm.moved": "{n} terminales se movieron a Terminales. No se cerró nada.",
+    "tm.moved1": "{n} terminal se movió a Terminales. No se cerró nada.",
+    "tm.openList": "Abrir Terminales",
+    "tm.dismiss": "Descartar",
     "kind.agent": "Agente",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agentes",
     "ag.sub.agent": "{n} agente",
     "ag.sub.shells": "{n} shells",
@@ -2618,8 +2654,8 @@
       "La dirección de Hub no es https, así que Den no la abre. Mira Ajustes › Hub.",
     "ag.session": "shell",
     "ag.empty":
-      "Elige un agente o un shell a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
-    "ag.none.scope": "Aún no hay agentes ni shells en {scope}",
+      "Elige un agente a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
+    "ag.none.scope": "Aún no hay agentes en {scope}",
     "ag.detach": "Cerrar panel",
     "ag.to": "Para {name} · {ws}",
     "ag.toName": "Para {name}",
@@ -2674,6 +2710,7 @@
       "No hay ningún host de sesiones en marcha: aún no se ha iniciado nada",
     "ag.ws": "Proyecto",
     "ag.pal": "Agentes › {ws} / {name}",
+    "tm.pal": "Terminales › {ws} / {name}",
     "ag.palStart": "Iniciar agente…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "Agente de __DEN_TITLE__",
@@ -3551,6 +3588,27 @@
     "set.notifications.phone.none":
       "Este navegador no puede recibir push. En un iPhone, añade __DEN_TITLE__ a la pantalla de inicio (Compartir y luego Añadir a pantalla de inicio) y ábrelo desde allí.",
     "set.notifications.phone.failed": "No se pudo activar el push aquí.",
+    "set.notifications.push_devices": "Dispositivos que reciben push",
+    "set.notifications.push_devices.d":
+      "Cada dispositivo que activó el push. Envía un aviso de prueba para comprobar que tu teléfono lo recibe: cada dispositivo dice si su servicio de push lo aceptó. Olvida el que ya no uses.",
+    "set.notifications.devices.none":
+      "Ningún dispositivo recibe push todavía. Abre __DEN_TITLE__ en tu teléfono (Emparejar un dispositivo, en Acceso, inicia sesión en él) y activa allí Avisos en este dispositivo por push.",
+    "set.notifications.devices.this": "(este dispositivo)",
+    "set.notifications.devices.added": "Añadido {t}",
+    "set.notifications.devices.forget": "Olvidar",
+    "set.notifications.devices.test": "Enviar un aviso de prueba",
+    "set.notifications.test.reached": "Enviado: su servicio de push lo aceptó.",
+    "set.notifications.test.gone":
+      "Ya no está: este dispositivo ya no recibe push, así que se quitó.",
+    "set.notifications.test.refused":
+      "No enviado: su servicio de push respondió {status}.",
+    "set.notifications.test.noAnswer":
+      "No enviado: su servicio de push no respondió a tiempo (Espera del push).",
+    "set.notifications.svc.apple": "Push de Apple",
+    "set.notifications.svc.google": "Push de Google",
+    "set.notifications.svc.mozilla": "Push de Firefox",
+    "set.notifications.svc.microsoft": "Push de Microsoft",
+    "set.notifications.svc.other": "Otro servicio de push",
     "set.notifications.quiet_from": "Inicio de las horas de silencio",
     "set.notifications.quiet_from.d":
       "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",
@@ -3915,7 +3973,6 @@
       'no hay coincidencias para "{q}" en el historial de ningún servicio',
     "lg.aws.expired": "El acceso a AWS ha caducado",
     "lg.aws.reauth": "Volver a autenticar",
-    "lg.aws.authenticating": "Autenticando…",
     "lg.aws.retry": "Reintentar",
     "lg.aws.failed": "no se pudo iniciar sesión",
     "lg.aws.connErr": "error de conexión",

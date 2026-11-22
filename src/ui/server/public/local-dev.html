@@ -2124,7 +2124,7 @@
           } else if (action === "add-svc") {
             addService(wsName);
           } else if (action === "remove-svc") {
-            removeService(wsName, btn.dataset.address);
+            removeService(wsName, btn.dataset.address, btn);
           } else if (action === "add-dep") {
             openAddSvcModal(wsName);
             setTimeout(() => {
@@ -2303,7 +2303,7 @@
           <span class="badge ws-agents" id="ws-agents-count" hidden></span>
           ${hubChip}
           ${hubWarn}
-          <a class="ws-head-link" id="ws-term-here" href="/agents?terminal=1&amp;ws=${enc}" title="${escHtml(wsT("n.terminalTip", "Open a shell in this project's folder, in Den"))}">${escHtml(wsT("ws.termHere", "Terminal here"))}</a>
+          <a class="ws-head-link" id="ws-term-here" href="/terminals?terminal=1&amp;fresh=1&amp;project=${enc}" title="${escHtml(wsT("ws.termHereTip", "Open a new terminal in this project's folder, in Den"))}">${escHtml(wsT("ws.termHere", "New terminal"))}</a>
           <a class="ws-head-link" id="ws-open-graph" href="/graph?project=${enc}">${escHtml(pT("pj.openGraph", "Open in Graph →"))}</a>
           <div class="action-menu-wrap ws-more">
             <button type="button" class="switch-btn" data-action="toggle-svc-menu" data-menu-id="ws-more-menu" aria-haspopup="menu" aria-expanded="false" aria-label="${escHtml(pT("pj.moreFor", "More for {ws}", { ws: projectLabel(wsData, wsName) }))}" title="${escHtml(pT("pj.moreProject", "More for this project"))}">⋯</button>
@@ -4236,7 +4236,7 @@
         };
 
         // ── Remove service ────────────────────────────────────────────────────────
-        window.removeService = async function (wsName, address) {
+        window.removeService = async function (wsName, address, button) {
           const dT = (k, v) => window.denShell?.t?.(k, v) ?? k;
           const sure = await askConfirm({
             title: dT("dlg.removeSvcT"),
@@ -4256,7 +4256,8 @@
                 { workspace: wsName, address },
                 { headers },
               ),
-            { vars: { name: address } },
+            // Issue 698: the row's Remove shows the kit's dots.
+            { button, vars: { name: address } },
           );
           await loadWorkspaces();
           await renderContent(wsName);

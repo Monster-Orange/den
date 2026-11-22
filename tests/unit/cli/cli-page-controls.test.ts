@@ -60,6 +60,8 @@ const LISTING: Record<string, Entry> = {
   // Issue 95: the top bar's Report button is drawn by the UI kit
   // (shell-html.js's reportButtonHtml), through shell.js.
   feedback: page("shell.js", "DUI.reportButtonHtml("),
+  // Issue 565: the same command, by the button's own name.
+  report: page("shell.js", "DUI.reportButtonHtml("),
   onboard: R,
   repo: R,
 
