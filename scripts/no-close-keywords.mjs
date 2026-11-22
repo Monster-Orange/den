@@ -38,44 +38,55 @@ function main() {
     for (const h of closingRefs(text)) hits.push(`${where}: ${h}`);
   const range = process.argv[2];
   if (range) {
-    // Builder 2, 11-22: a commit already on a shared branch (next/*,
-    // release/*) was checked, or came before this rule, when it landed. A
-    // release PR (next/queue into main) carries them all, and history is
-    // never rewritten, so only commits new to every shared branch count.
-    const shared = execFileSync(
-      "git",
-      [
-        "for-each-ref",
-        "--format=%(refname)",
-        "refs/remotes/origin/next/",
-        "refs/remotes/origin/release/",
-      ],
-      { encoding: "utf-8" },
+    const git = (...a) => execFileSync("git", a, { encoding: "utf-8" });
+    // Builder 2, 11-22: a release PR (next/queue into main) carries commits
+    // that landed before, and history is never rewritten. Not checked: a
+    // commit already on another shared branch (origin/next/*, release/*;
+    // the PR's own head branch never counts, so a fresh release/x can't
+    // skip its own commits), or one older than the commit that added this
+    // script (the rule's start, read from the history, so no date to keep).
+    const headRef = (process.env.PR_HEAD_REF ?? "").trim();
+    const shared = git(
+      "for-each-ref",
+      "--format=%(refname)",
+      "refs/remotes/origin/next/",
+      "refs/remotes/origin/release/",
     )
       .split("\n")
-      .filter(Boolean);
-    const all = execFileSync("git", ["rev-list", "--count", range], {
-      encoding: "utf-8",
-    }).trim();
-    const log = execFileSync(
-      "git",
-      [
-        "log",
-        "--format=%H%x00%B%x01",
-        range,
-        ...(shared.length ? ["--not", ...shared] : []),
-      ],
-      { encoding: "utf-8" },
+      .filter((r) => r && r !== `refs/remotes/origin/${headRef}`);
+    const tip = range.split("..")[1] || "HEAD";
+    const added = git(
+      "log",
+      tip,
+      "--diff-filter=A",
+      "--format=%ct",
+      "--",
+      "scripts/no-close-keywords.mjs",
+    )
+      .split("\n")
+      .filter(Boolean)
+      .map(Number);
+    const since = added.length ? Math.min(...added) : 0;
+    const all = git("rev-list", "--count", range).trim();
+    const log = git(
+      "log",
+      "--format=%H%x00%ct%x00%B%x01",
+      range,
+      ...(shared.length ? ["--not", ...shared] : []),
     );
-    const checked = log.split("\x01").filter((e) => e.trim()).length;
-    const skipped = Number(all) - checked;
-    if (skipped > 0)
+    const fresh = log.split("\x01").filter((e) => e.trim());
+    const onShared = Number(all) - fresh.length;
+    const plural = (n) => `${n} commit${n === 1 ? "" : "s"}`;
+    if (onShared > 0)
       console.log(
-        `${skipped} commit${skipped === 1 ? "" : "s"} already on a shared branch, not checked`,
+        `${plural(onShared)} already on a shared branch, not checked`,
       );
-    for (const entry of log.split("\x01")) {
-      const [sha, body] = entry.trim().split("\0");
-      if (!sha) continue;
+    const old = fresh.filter((e) => Number(e.trim().split("\0")[1]) < since);
+    if (old.length)
+      console.log(`${plural(old.length)} from before this check, not checked`);
+    for (const entry of fresh) {
+      const [sha, ct, body] = entry.trim().split("\0");
+      if (!sha || Number(ct) < since) continue;
       for (const h of closingRefs(body))
         hits.push(`commit ${sha.slice(0, 8)}: ${h}`);
     }

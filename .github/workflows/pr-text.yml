@@ -27,6 +27,8 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          # Never counted as a shared branch, so its own commits are checked.
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           RANGE_BASE: ${{ github.event.pull_request.base.sha }}
           RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
         run: node scripts/no-close-keywords.mjs "$RANGE_BASE..$RANGE_HEAD"

@@ -82,35 +82,104 @@ describe("the CI check", () => {
     ).toBe(0);
   });
 
-  it("skips commits already on a shared branch (next/*, release/*): a release PR carries them (Builder 2, 11-22)", () => {
-    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "noclose-shared-"));
-    const git = (...a: string[]) =>
-      spawnSync(
-        "git",
-        ["-c", "user.email=t@example.com", "-c", "user.name=t", ...a],
-        { cwd: repo, encoding: "utf-8" },
-      ).stdout.trim();
-    git("init", "-q");
-    git("commit", "-q", "--allow-empty", "-m", "main");
-    const base = git("rev-parse", "HEAD");
-    git("commit", "-q", "--allow-empty", "-m", "old\n\nFixes #1");
-    git("update-ref", "refs/remotes/origin/next/queue", "HEAD");
-    const run = (range: string) =>
-      spawnSync("node", [SCRIPT, range], {
-        cwd: repo,
-        encoding: "utf-8",
-        env: { ...process.env, PR_TITLE: "", PR_BODY: "" },
-      });
-    const release = run(`${base}..refs/remotes/origin/next/queue`);
-    expect(release.status).toBe(0);
-    expect(release.stdout).toContain(
-      "1 commit already on a shared branch, not checked",
-    );
-    git("commit", "-q", "--allow-empty", "-m", "new\n\nFixes #2");
-    const feature = run(`${base}..HEAD`);
-    expect(feature.status).toBe(1);
-    expect(feature.stderr).toMatch(/commit [0-9a-f]{8}: Fixes #2/);
-    expect(feature.stderr).not.toContain("Fixes #1");
+  // Builder 2, 11-22: a release PR (next/queue into main) carries commits that
+  // came before the rule, and history is never rewritten. Commits on another
+  // shared branch, or older than the commit that added this script, are not
+  // checked; the PR's own head branch never counts as shared, so a fresh
+  // release/x branch can't skip its own commits.
+  describe("history", () => {
+    const at = (iso: string) => ({
+      GIT_COMMITTER_DATE: iso,
+      GIT_AUTHOR_DATE: iso,
+    });
+    function repo() {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "noclose-hist-"));
+      const git = (env: Record<string, string>, ...a: string[]) =>
+        spawnSync(
+          "git",
+          ["-c", "user.email=t@example.com", "-c", "user.name=t", ...a],
+          { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } },
+        ).stdout.trim();
+      git({}, "init", "-q");
+      git(
+        at("2026-11-01T00:00:00Z"),
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "main",
+      );
+      const base = git({}, "rev-parse", "HEAD");
+      git(
+        at("2026-11-10T00:00:00Z"),
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "old\n\nFixes #1",
+      );
+      fs.mkdirSync(path.join(dir, "scripts"));
+      fs.writeFileSync(path.join(dir, "scripts", "no-close-keywords.mjs"), "");
+      git({}, "add", "-A");
+      git(at("2026-11-22T00:00:00Z"), "commit", "-q", "-m", "add the check");
+      git({}, "update-ref", "refs/remotes/origin/next/queue", "HEAD");
+      const run = (range: string, head: string) =>
+        spawnSync("node", [SCRIPT, range], {
+          cwd: dir,
+          encoding: "utf-8",
+          env: { ...process.env, PR_TITLE: "", PR_BODY: "", PR_HEAD_REF: head },
+        });
+      return { git, base, run };
+    }
+
+    it("a release PR from next/queue passes: its old closing keyword came before the check", () => {
+      const { base, run } = repo();
+      const r = run(`${base}..refs/remotes/origin/next/queue`, "next/queue");
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain(
+        "1 commit from before this check, not checked",
+      );
+    });
+
+    it("a commit already on another shared branch is not checked", () => {
+      const { git, base, run } = repo();
+      git(
+        at("2026-11-23T00:00:00Z"),
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "landed\n\nFixes #3",
+      );
+      git({}, "update-ref", "refs/remotes/origin/next/0.4.86", "HEAD");
+      git({}, "update-ref", "refs/remotes/origin/release/0.4.86", "HEAD");
+      const r = run(
+        `${base}..refs/remotes/origin/release/0.4.86`,
+        "release/0.4.86",
+      );
+      expect(r.status).toBe(0);
+      // The old commit, the check's own and the landed one: all on next/*.
+      expect(r.stdout).toContain(
+        "3 commits already on a shared branch, not checked",
+      );
+    });
+
+    it("a PR from a fresh release/x branch can't skip its own new commit", () => {
+      const { git, base, run } = repo();
+      git(
+        at("2026-11-23T00:00:00Z"),
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "new\n\nFixes #1",
+      );
+      git({}, "update-ref", "refs/remotes/origin/release/x", "HEAD");
+      const r = run(`${base}..refs/remotes/origin/release/x`, "release/x");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/commit [0-9a-f]{8}: Fixes #1/);
+      expect(r.stderr.match(/Fixes #1/g)?.length).toBe(1);
+    });
   });
 
   it("fails on a commit in the range", () => {
