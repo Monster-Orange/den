@@ -28,12 +28,19 @@ import {
   installRunsSudo,
   type KeepRunningCore,
 } from "./keep-running-routes.js";
+import {
+  line,
+  reviewLines,
+  type ReviewLine,
+} from "../../shared/review-lines.js";
 
 /** The server agent proposed it on this install: never again. */
 export const KEEP_PROPOSED_FILE = "keep-running-proposed.json";
 
 /** Where the Review's link goes: the Setting, its Sign-in token below it. */
-export const KEEP_TOKEN_LINK = "/settings#agents.keep_running";
+export /** The Review's link to Settings › Sign-in token: its words' key. */
+const SIGNIN_LINK_KEY = "ap.link.signinToken";
+const KEEP_TOKEN_LINK = "/settings#agents.keep_running";
 
 export interface KeepRunningHeldDeps extends KeepRunningCore {
   /**
@@ -99,20 +106,25 @@ export function keepRunningHeld(d: KeepRunningHeldDeps): HeldAction {
       }
       const from = installed;
       const sudo = installRunsSudo(mode, installed);
-      const details: string[] = [
-        `How Den runs: ${from} → ${mode}.`,
-        "Den restarts; running agents come back where they were.",
+      const to = mode;
+      // Issue 205: each Review line beside its key (review-lines.ts).
+      const lines: ReviewLine[] = [
+        line(`How Den runs: ${from} → ${to}.`, "ap.det.keep_running.mode", {
+          from,
+          to,
+        }),
+        line(
+          "Den restarts; running agents come back where they were.",
+          "ap.det.keep_running.restart",
+        ),
       ];
-      const detailKeys: { key: string; vars?: Record<string, string> }[] = [
-        { key: "ap.det.keep_running.mode", vars: { from, to: mode } },
-        { key: "ap.det.keep_running.restart" },
-      ];
-      if (sudo) {
-        details.push(
-          "The admin password is asked once, in this browser, when you Allow. The agent never sees it.",
+      if (sudo)
+        lines.push(
+          line(
+            "The admin password is asked once, in this browser, when you Allow. The agent never sees it.",
+            "ap.det.keep_running.sudo",
+          ),
         );
-        detailKeys.push({ key: "ap.det.keep_running.sudo" });
-      }
       let link: { href: string; key: string } | undefined;
       if (on) {
         let token: boolean | null;
@@ -122,17 +134,21 @@ export function keepRunningHeld(d: KeepRunningHeldDeps): HeldAction {
           token = null;
         }
         if (token === false) {
-          details.push(
-            "No sign-in token is set: agents won't be able to sign in after you log out. Set one in Settings › Agents › Sign-in token.",
+          lines.push(
+            line(
+              "No sign-in token is set: agents won't be able to sign in after you log out. Set one in Settings › Agents › Sign-in token.",
+              "ap.det.keep_running.noToken",
+            ),
           );
-          detailKeys.push({ key: "ap.det.keep_running.noToken" });
-          link = { href: KEEP_TOKEN_LINK, key: "ap.link.signinToken" };
-        } else {
-          details.push(
-            "After logout, agents sign in with the long-lived token in Settings › Agents › Sign-in token.",
+          // A link under the lines, not a line: its own words' key.
+          link = { href: KEEP_TOKEN_LINK, key: SIGNIN_LINK_KEY };
+        } else
+          lines.push(
+            line(
+              "After logout, agents sign in with the long-lived token in Settings › Agents › Sign-in token.",
+              "ap.det.keep_running.token",
+            ),
           );
-          detailKeys.push({ key: "ap.det.keep_running.token" });
-        }
       }
       if (who?.agent && on)
         try {
@@ -156,9 +172,8 @@ export function keepRunningHeld(d: KeepRunningHeldDeps): HeldAction {
         summary: on
           ? "keep agents running after logout"
           : "stop agents when you log out",
-        params: { from, to: mode },
-        details,
-        detailKeys,
+        params: { from, to },
+        ...reviewLines(lines),
         ...(link ? { link } : {}),
       };
     },
