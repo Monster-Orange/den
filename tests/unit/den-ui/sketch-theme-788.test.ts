@@ -217,6 +217,16 @@ describe("issue 788: the sketch theme", () => {
       ),
     ).not.toThrow();
   }, 60_000);
+
+  it("ships: a package export, and Den serves it at /kit/themes/sketch.css", () => {
+    const pkg = JSON.parse(
+      read(path.join(ROOT, "packages/den-ui/package.json")),
+    ) as { exports: Record<string, string> };
+    expect(pkg.exports["./themes/sketch.css"]).toBe("./src/themes/sketch.css");
+    expect(read(path.join(ROOT, "src/ui/server/ui-assets.ts"))).toMatch(
+      /KIT_FILES[^\]]*"themes\/sketch\.css"/,
+    );
+  });
 });
 
 describe("issue 788: the schema and its doc", () => {
