@@ -347,6 +347,21 @@ export function launchRotation(
 }
 
 /**
+ * Issue 765: whether a hook input came from a helper (a background
+ * subagent, a fork) rather than the agent's own session. A helper runs in
+ * the agent's process with its session_id, and Claude Code adds
+ * `agent_id` and `agent_type` to its hook input. Den never launches with
+ * `--agent`, so `agent_type` alone marks a helper too. A helper's
+ * compactions and merges are its own: they never count for the agent.
+ */
+export function fromHelper(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const i = input as Record<string, unknown>;
+  const set = (v: unknown) => typeof v === "string" && v.length > 0;
+  return set(i.agent_id) || set(i.agent_type);
+}
+
+/**
  * One compaction that happened (SessionStart with source "compact"; never
  * PreCompact, which runs even when nothing is compacted). `input` is the
  * hook input: `session_id` and `trigger` (manual, auto) are read when present.
@@ -362,9 +377,11 @@ export function noteCompaction(
     string,
     unknown
   >;
+  const prev = readRotation(filesDir);
+  // Issue 765: a helper's compaction is its own.
+  if (fromHelper(i)) return prev ?? { compactions: 0, after };
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
-  const prev = readRotation(filesDir);
   const fresh =
     !prev ||
     (conversation !== undefined &&
@@ -719,6 +736,7 @@ export function rotationInstruction(
     `Den: this session is done, because ${why} (session rotation).`,
     `Write your handoff now, to ${handoffFile(filesDir)}, with these headings, each filled in:`,
     "## Objective, ## State, ## Open items, ## How to QA, ## Next step.",
+    `If you are a helper or a fork of this agent, not the agent Den started, never write ${HANDOFF_FILE}: write your own handoff to ${path.join(filesDir, HANDOFFS_DIR, "helper-<your id>.md")}, then end your turn.`,
     ...(left.length ? leftRunningLines(filesDir, left) : []),
     "Write plainly and explain every ID. Then end your turn.",
     "Den relaunches your role from it in a fresh conversation.",

@@ -372,3 +372,74 @@ describe("rotationInstruction, one compaction (D28 nit)", () => {
     expect(t).not.toMatch(/1 times/);
   });
 });
+
+/**
+ * Issue 765: a helper (a background subagent, a fork) runs in the agent's
+ * process and conversation: its hook input has the agent's session_id
+ * plus `agent_id` and `agent_type` (Claude Code's hooks reference). Its
+ * compactions are its own: they never count toward the agent's limit, and
+ * the rotation notice never goes to it.
+ */
+describe("issue 765: a helper's compactions are its own", () => {
+  const helper = (a: ReturnType<typeof agent>, event: string, extra = {}) =>
+    a.sh(event, {
+      session_id: CONV,
+      transcript_path: path.join(root, `${CONV}.jsonl`),
+      cwd: root,
+      hook_event_name: event,
+      agent_id: "agent-def456",
+      agent_type: "fork",
+      ...extra,
+    });
+  const helperCompact = (a: ReturnType<typeof agent>) => ({
+    pre: helper(a, "PreCompact", { trigger: "auto", custom_instructions: "" }),
+    start: helper(a, "SessionStart", { source: "compact" }),
+  });
+
+  it("a helper's compaction leaves the agent's count as it was", () => {
+    const a = agent();
+    a.compact();
+    for (let i = 0; i < 4; i++) {
+      const r = helperCompact(a);
+      expect(r.pre.status).toBe(0);
+      expect(r.start.status).toBe(0);
+    }
+    expect(readRotation(a.files)).toMatchObject({
+      conversation: CONV,
+      compactions: 1,
+    });
+    expect(readRotation(a.files)?.due).toBeUndefined();
+  });
+
+  it("agent_type alone (no agent_id) is a helper too: Den never launches with --agent", () => {
+    const a = agent();
+    a.compact();
+    a.sh("SessionStart", {
+      session_id: CONV,
+      hook_event_name: "SessionStart",
+      source: "compact",
+      agent_type: "general-purpose",
+    });
+    expect(readRotation(a.files)?.compactions).toBe(1);
+  });
+
+  it("the rotation notice never reaches a helper, while the agent's own session still gets it", () => {
+    const a = agent();
+    a.compact();
+    a.compact();
+    const own = a.compact();
+    expect(readRotation(a.files)?.due).toBe("compactions");
+    expect(own.start.stdout).toContain("handoff.md");
+    const h = helperCompact(a);
+    expect(h.pre.stdout).toBe("");
+    expect(h.start.stdout).toBe("");
+    expect(helper(a, "SessionStart", { source: "resume" }).stdout).toBe("");
+  });
+
+  it("the notice tells a helper that read it (a fork shares the context) to write its own handoff, never handoff.md", () => {
+    const files = path.join(root, "files-notice");
+    const text = rotationInstruction(files, "compactions", 3);
+    expect(text).toContain(path.join(files, "handoffs"));
+    expect(text).toMatch(/helper or a fork[^\n]*never[^\n]*handoff\.md/i);
+  });
+});
