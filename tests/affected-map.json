@@ -33,7 +33,13 @@
     "tests/unit/server/ui-assets.test.ts",
     "tests/unit/server/route-classes.test.ts"
   ],
-  "subjects": {},
+  "subjects": {
+    "tests/unit/server/picker-tablet-981.browser.test.ts": [
+      "packages/den-ui/src/shell.css",
+      "packages/den-ui/inventory/nav-inventory.js",
+      "src/ui/server/public/shell.js"
+    ]
+  },
   "subjectless": [
     "tests/unit/cli/address-455-unchecked.integration.test.ts",
     "tests/unit/cli/dev-metrics-cli-ship.integration.test.ts",
