@@ -67,7 +67,7 @@ local or remote.
 
 The slot is given back the moment the command ends, however it ends: its
 own exit, or any signal (Ctrl-C, `kill`, a hang-up). A signal sent to
-`gate run` itself (SIGINT, SIGTERM, SIGHUP or SIGQUIT) is passed to the
+`gate run` itself (SIGINT, SIGTERM or SIGHUP) is passed to the
 command, and the slot is free once the command ends. An agent can also
 give back a slot its own `gate run` made with the MCP tool
 `gate_slot_release` (its id from `gate status`); giving it back does not

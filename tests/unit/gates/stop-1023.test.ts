@@ -103,11 +103,10 @@ describe("issue 1023: a stopped gate run frees its slot at once", () => {
     }, 30_000);
 
   // Every signal gate run passes on (gate-command.ts, which run-child.ts runs).
-  it("passes on SIGINT, SIGTERM, SIGHUP and SIGQUIT", () => {
+  it("passes on SIGINT, SIGTERM and SIGHUP", () => {
     expect([...GATE_RUN_SIGNALS].sort()).toEqual([
       "SIGHUP",
       "SIGINT",
-      "SIGQUIT",
       "SIGTERM",
     ]);
   });
