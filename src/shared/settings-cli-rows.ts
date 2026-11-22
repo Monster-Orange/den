@@ -139,6 +139,15 @@ export const PERSON_ONLY_SETTINGS = [
 ] as const;
 
 /**
+ * Issue 402: the person-only fields a test install's fixture person may
+ * still change, as its pages do: the rail's own view prefs (pins, collapse,
+ * order, dock), which a live check sets by pressing ☆/★. Never an agent's
+ * token or a claimed agent, and never a field that names a program or
+ * widens what agents may do.
+ */
+export const FIXTURE_PAGE_SETTINGS: readonly string[] = ["shell"];
+
+/**
  * The POST /api/settings fields anyone signed in may change, agents too,
  * each with why: how a page looks, never what runs or what agents may do.
  * Every other field is in PERSON_ONLY_SETTINGS (a test keeps the two
