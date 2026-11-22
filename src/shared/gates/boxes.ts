@@ -844,16 +844,12 @@ export function defaultPlace(o: {
 /**
  * Issue 1033: why a default pick can't send a run with --base-url to this
  * box, or "". Only an explicit --box <name> takes such a box (as before):
- *   no ssh: the box can't reach this machine's ports, so the run's own
- *     servers here refuse its browser;
  *   no declared Playwright version (playwright_version or
  *     playwright_endpoints): its server refuses a client of another
  *     version (HTTP 428), and which one it runs can't be said;
  *   a declared version that doesn't serve the run's (clause 11).
  */
 function defaultSkip(b: GateBox, pwVersion: string | undefined): string {
-  if (!b.ssh)
-    return `box ${b.name} has no ssh, so it can't reach this machine's ports`;
   if (!b.playwright_version && !b.playwright_endpoints)
     return `box ${b.name} declares no Playwright version`;
   const v = boxSkipReason({ pwVersion }, b);

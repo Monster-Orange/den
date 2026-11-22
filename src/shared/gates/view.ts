@@ -126,7 +126,7 @@ export function gateView(store: GateStore, now = Date.now()) {
         // Issue 1033: a default pick leaves out a box that can't serve it.
         reason:
           e.onlyBoxes && !e.onlyBoxes.includes(b.name)
-            ? "no ssh or no declared Playwright version: a run takes it only with --box"
+            ? "it declares no Playwright version: a run takes it only with --box"
             : boxSkipReason(e, b),
       }))
       .filter((x) => x.reason);

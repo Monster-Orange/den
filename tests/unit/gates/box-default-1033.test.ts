@@ -486,34 +486,23 @@ describe("a default pick skips a box that can't serve the run", () => {
     for (const b of boxes) store.setBox(b as never);
     return store;
   }
-  const NO_SSH = {
+  const OTHER_VERSION = {
     name: "b1",
+    ssh: "ci@b1.test",
     playwright: "ws://b1.test:3000",
-    playwright_version: "1.48.0",
+    playwright_version: "1.61.0",
   };
   const NO_VERSION = {
     name: "b2",
     ssh: "ci@b2.test",
     playwright: "ws://b2.test:3000",
   };
+  // No ssh: its browser still reaches this machine's ports (exposeNetwork).
   const GOOD = {
     name: "b3",
-    ssh: "ci@b3.test",
     playwright: "ws://b3.test:3000",
     playwright_version: "1.48.0",
   };
-
-  it("a box with no ssh: skipped, the run stays here saying why", async () => {
-    const store = storeOf([NO_SSH]);
-    holdHost(store);
-    const t = deps(store);
-    expect(await cmdGate(plain(BASE), t.d)).toBe(1);
-    expect(t.err).toContain("gate: waited for this machine's slot");
-    expect(t.ran).toEqual([]);
-    expect(t.err).toContain(
-      "gate: stays on this machine: no test box can take it: box b1 has no ssh, so it can't reach this machine's ports",
-    );
-  });
 
   it("a box that declares no Playwright version: skipped, saying why", async () => {
     const store = storeOf([NO_VERSION]);
@@ -527,30 +516,27 @@ describe("a default pick skips a box that can't serve the run", () => {
   });
 
   it("every box skipped: here, with each reason, and it never fails", async () => {
-    const store = storeOf([NO_SSH, NO_VERSION]);
+    const store = storeOf([OTHER_VERSION, NO_VERSION]);
     const t = deps(store);
     expect(await cmdGate(plain(BASE), t.d)).toBe(0);
     expect(t.ran[0]!.env?.DEN_GATE_SLOT_BOX).toBe("local");
     expect(t.err).toContain(
-      "gate: stays on this machine: no test box can take it: box b1 has no ssh, so it can't reach this machine's ports; box b2 declares no Playwright version",
+      "gate: stays on this machine: no test box can take it: box b1: client 1.48.0 ≠ server 1.61.0; box b2 declares no Playwright version",
     );
   });
 
-  it("a good box beside them: the run gets it, never a skipped one", async () => {
-    const store = storeOf([NO_SSH, NO_VERSION, GOOD]);
+  it("a good box (no ssh) beside them: the run gets it, never a skipped one", async () => {
+    const store = storeOf([OTHER_VERSION, NO_VERSION, GOOD]);
     holdHost(store);
     const t = deps(store);
     expect(await cmdGate(plain(BASE), t.d)).toBe(0);
     expect(t.ran[0]!.env?.DEN_GATE_BOX).toBe("b3");
     expect(t.err).toContain(
-      "gate: skips box b1 has no ssh, so it can't reach this machine's ports; box b2 declares no Playwright version",
+      "gate: skips box b1: client 1.48.0 ≠ server 1.61.0; box b2 declares no Playwright version",
     );
   });
 
-  it.each([
-    ["no ssh", NO_SSH],
-    ["no declared version", NO_VERSION],
-  ])(
+  it.each([["no declared version", NO_VERSION]])(
     "an explicit --box on a box with %s runs there, as before",
     async (_w, b) => {
       const store = storeOf([b]);

@@ -427,9 +427,8 @@ A run with no `--box` stays on this machine, and says why in one line
   for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
   `E2E_WEBKIT_WS` in its environment;
 - it has no `--base-url`, or one a box can't use;
-- no box can serve it. By default a run skips a box with no `ssh` (it
-  can't reach this machine's ports), a box that declares no Playwright
-  version (`playwright_version` or `--pw`; its server refuses another
+- no box can serve it. By default a run skips a box that declares no
+  Playwright version (`playwright_version` or `--pw`; its server refuses another
   client version), and a box whose versions don't serve the run's. It
   takes a box like that only with `--box <name>`. When some boxes are
   skipped and others aren't, it says which (`gate: skips …`) and takes
