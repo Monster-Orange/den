@@ -1072,6 +1072,21 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.server.sessions_max": "同時に開けるターミナル数",
+    "set.server.sessions_max.d":
+      "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",
+    "set.server.sessions_close_grace": "ターミナルを閉じるときの猶予",
+    "set.server.sessions_close_grace.d":
+      "ターミナルを閉じてから、強制的に止めるまでに、ターミナルが終了できる時間です。__DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_pty_close": "終了後にターミナルを閉じるまで",
+    "set.server.sessions_pty_close.d":
+      "ターミナルのプログラムが終了してから、そのターミナルを閉じるまでの時間です。0 ならすぐに閉じます。どちらの場合もスクロールバックは読めます。ターミナルホストが次に起動したときに反映されます。__DEN_CLI__ config sessions.pty_close_seconds=0",
+    "set.server.sessions_pty_warn": "ターミナル数の警告",
+    "set.server.sessions_pty_warn.d":
+      "ターミナルホストが持つターミナルがこの数を超えると、doctor は失敗します。__DEN_CLI__ config sessions.pty_warn_above=400",
+    "set.server.sessions_pty_machine": "マシンのターミナル警告（パーセント）",
+    "set.server.sessions_pty_machine.d":
+      "このマシンで使われているターミナルが上限のこの割合に達すると、doctor は失敗します。__DEN_CLI__ config sessions.pty_machine_warn_percent=90",
     "set.agents.hook_wait": "エージェントのフックの待ち時間",
     "set.agents.hook_wait.d":
       "エージェントのフックが、あなたが必要だと __DEN_TITLE__ に知らせるときや Hub の受信箱を確認するときに、1 回の試行で __DEN_TITLE__ を待つ時間です。混み合ったマシンでは応答が遅れることがあります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.timeout_seconds=20",

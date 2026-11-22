@@ -45,6 +45,10 @@
  *                                     user.yml process_lookup.* (issue 609)
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
+ *   sessions: { max_concurrent?, close_grace_seconds?, pty_close_seconds?,
+ *               pty_warn_above?, pty_machine_warn_percent? }
+ *                                     user.yml sessions.* (issue 532),
+ *                                     checked as den-config checks them
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
@@ -57,7 +61,11 @@ import {
 } from "./report-shots.js";
 import { PAIR_LIMITS, WEB_WAIT_RANGE } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
-import { SHELL_PATH_TIMEOUT } from "./den-config.js";
+import {
+  SESSIONS_SETTINGS_KEYS,
+  SHELL_PATH_TIMEOUT,
+  sessionsValueError,
+} from "./den-config.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
@@ -117,6 +125,8 @@ export const PERSON_ONLY_SETTINGS = [
   "process_lookup",
   // Issue 609: how agents' hooks wait for Den, and retry.
   "agent_hooks",
+  // Issue 532: the terminal limits.
+  "sessions",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -387,6 +397,37 @@ function patchBlock(
 }
 
 /**
+ * Issue 532: user.yml sessions.*, the terminal limits, checked with
+ * den-config's own ranges and words (sessionsValueError).
+ */
+function patchSessions(
+  user: Record<string, unknown>,
+  value: unknown,
+  apply: (() => void)[],
+): string | null {
+  if (value === undefined) return null;
+  const keys: readonly string[] = SESSIONS_SETTINGS_KEYS;
+  if (!isObj(value)) return `sessions is an object: ${keys.join(", ")}`;
+  for (const [k, v] of Object.entries(value)) {
+    if (!keys.includes(k))
+      return `sessions.${k} is not a terminal limit (${keys.join(", ")})`;
+    if (v === null) continue;
+    const e = sessionsValueError(k, v);
+    if (e) return e;
+  }
+  apply.push(() => {
+    const b = isObj(user.sessions) ? { ...user.sessions } : {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === null) delete b[k];
+      else b[k] = v;
+    }
+    if (Object.keys(b).length) user.sessions = b;
+    else delete user.sessions;
+  });
+  return null;
+}
+
+/**
  * The limits Settings has a row for, per field. `config` takes the rest
  * too (the first wait, the connect timeout): they have no row.
  */
@@ -578,7 +619,8 @@ export function patchCliRows(
       AGENT_HOOKS,
       body.agent_hooks,
       apply,
-    );
+    ) ??
+    patchSessions(user, body.sessions, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

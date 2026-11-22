@@ -1107,6 +1107,22 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.server.sessions_max": "Terminales a la vez",
+    "set.server.sessions_max.d":
+      "Cuántas terminales simples pueden funcionar a la vez. Los agentes nunca cuentan. Una nueva por encima de esto se rechaza, y lo dice. __DEN_CLI__ config sessions.max_concurrent=8",
+    "set.server.sessions_close_grace": "Margen al cerrar una terminal",
+    "set.server.sessions_close_grace.d":
+      "Cuánto tiempo tiene una terminal para terminar después de que la cierras, antes de que se detenga a la fuerza. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_pty_close": "Cierre de terminal tras salir",
+    "set.server.sessions_pty_close.d":
+      "Cuánto tiempo después de que termina el programa de una terminal se cierra su terminal. 0 la cierra al instante. Su historial sigue legible en ambos casos. Se aplica la próxima vez que arranque el host de terminales. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    "set.server.sessions_pty_warn": "Aviso por número de terminales",
+    "set.server.sessions_pty_warn.d":
+      "Doctor falla cuando el host de terminales tiene más terminales que esto. __DEN_CLI__ config sessions.pty_warn_above=400",
+    "set.server.sessions_pty_machine":
+      "Aviso de terminales de la máquina, en porcentaje",
+    "set.server.sessions_pty_machine.d":
+      "Doctor falla cuando las terminales en uso en esta máquina llegan a esta parte de su límite. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
     "set.agents.hook_wait": "Espera de los hooks de agente",
     "set.agents.hook_wait.d":
       "Cuánto esperan los hooks de un agente a __DEN_TITLE__ en cada intento cuando le avisan de que el agente te necesita o revisan la bandeja de Hub. Una máquina ocupada puede tardar en responder. Se aplica la próxima vez que el agente arranque. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
