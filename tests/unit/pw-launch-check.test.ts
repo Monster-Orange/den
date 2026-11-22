@@ -15,7 +15,9 @@ import * as fs from "fs";
 import * as path from "path";
 import type { BrowserType } from "playwright";
 import {
+  browserWaitMs,
   directBrowserOpens,
+  localBrowserAssumptions,
   hostWebkitRefusal,
   launchBrowser,
   openBrowser,
@@ -185,5 +187,39 @@ describe("no local WebKit on a Mac without DEN_PW_WS", () => {
     } as unknown as BrowserType;
     await expect(launchBrowser(type)).rejects.toThrow(/DEN_PW_WS/);
     expect(launched).toBe(false);
+  });
+});
+
+describe("issue 191: browser tests assume no local browser", () => {
+  it("no browser test picks a key from the runner's OS, maps a host by a launch argument, or reads a download's path", () => {
+    const bad = sources(TESTS)
+      .filter((f) => f.endsWith(".browser.test.ts"))
+      .flatMap((f) =>
+        localBrowserAssumptions(fs.readFileSync(f, "utf-8")).map(
+          (w) => `${path.relative(TESTS, f)}: ${w}`,
+        ),
+      );
+    expect(bad).toEqual([]);
+  });
+
+  it("finds each one", () => {
+    const src = [
+      'const mod = process.platform === "darwin" ? "Meta" : "Control";',
+      "args: [`--host-resolver-rules=MAP evil.test 127.0.0.1`],",
+      "const where = await download.path();",
+      "args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1, MAP den.acme.localhost 127.0.0.1`],",
+      "// process.platform in a comment is fine",
+    ].join("\n");
+    expect(localBrowserAssumptions(src)).toEqual([
+      "line 1: the runner's OS, not the browser's",
+      "line 2: maps evil.test by a launch argument",
+      "line 3: a download's local path",
+    ]);
+  });
+
+  it("a page wait is a setting, 20 s unset", () => {
+    expect(browserWaitMs({})).toBe(20_000);
+    expect(browserWaitMs({ DEN_BROWSER_WAIT_MS: "45000" })).toBe(45_000);
+    expect(browserWaitMs({ DEN_BROWSER_WAIT_MS: "nope" })).toBe(20_000);
   });
 });
