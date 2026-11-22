@@ -30,3 +30,9 @@
 .den-upd .upd-pill.card .upd-msg { flex: 1 0 100%; line-height: 1.35; }
 .den-upd .upd-pill.card .upd-acts { margin-left: auto; }
 .den-upd .upd-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* Issue 286: a browser that can't blur (a WebKit build without
+   backdrop-filter) would show the bar's search box through the pill: there
+   the pill is the opaque surface. Where the blur works, nothing changes. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .den-upd .upd-pill { background: var(--surface); background-image: none; }
+}

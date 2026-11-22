@@ -7,6 +7,8 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+// Issue 322: #rgb … #rrggbbaa anywhere, but an issue number in a comment.
+import { colourLiterals } from "../helpers/colour-literals.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const files = fs
@@ -14,22 +16,18 @@ const files = fs
   .filter((f) => /\.(html|css|js)$/.test(f))
   .sort();
 
-/** #rgb, #rgba, #rrggbb, #rrggbbaa; not an HTML entity (&#9654;) or an id. */
-const HEX = /(?<![&\w])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/gi;
 /** rgb()/hsl() of a real color. Black alone is allowed: a modal scrim. */
 const FN = /\b(?:rgba?|hsla?)\(\s*([^)]*)\)/gi;
 const black = (args: string) =>
   /^0[\s,]+0[\s,]+0(?:[\s,/]+[\d.]+%?)?$/.test(args.trim());
 
 function literals(file: string): string[] {
-  const out: string[] = [];
-  fs.readFileSync(path.join(PUBLIC, file), "utf-8")
-    .split("\n")
-    .forEach((line, i) => {
-      for (const m of line.matchAll(HEX)) out.push(`${file}:${i + 1}: ${m[0]}`);
-      for (const m of line.matchAll(FN))
-        if (!black(m[1])) out.push(`${file}:${i + 1}: ${m[0]}`);
-    });
+  const text = fs.readFileSync(path.join(PUBLIC, file), "utf-8");
+  const out = colourLiterals(text).map((h) => `${file}:${h.line}: ${h.hex}`);
+  text.split("\n").forEach((line, i) => {
+    for (const m of line.matchAll(FN))
+      if (!black(m[1])) out.push(`${file}:${i + 1}: ${m[0]}`);
+  });
   return out;
 }
 

@@ -74,6 +74,8 @@ export interface OnboardCheck {
     state: "waiting" | "failed";
     since: string;
     waitSeconds: number;
+    /** Issue 732: agents a background job they started holds it for. */
+    jobs?: { agent: string; minutes: number }[];
     endedAt?: string;
     why?: string;
   };

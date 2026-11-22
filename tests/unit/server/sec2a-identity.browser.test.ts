@@ -211,8 +211,13 @@ describe("the identity chip", () => {
     // It goes on to the link's next, not back to the spent link.
     await p.waitForURL((u) => u.pathname === "/settings", { timeout: 20_000 });
     // The first load after the sign-in: the toast, once.
-    await p.waitForSelector(".den-toast");
-    expect((await p.textContent(".den-toast"))?.trim()).toBe(
+    // Read the toast's text in the same step that sees it: a toast can
+    // close between a wait and a later read.
+    const toast = await p.waitForFunction(() => {
+      const t = document.querySelector(".den-toast")?.textContent?.trim();
+      return t || null;
+    });
+    expect(await toast.jsonValue()).toBe(
       `This device is signed in to Den on ${SHORT}`,
     );
     expect(await chip(p)).toEqual({
