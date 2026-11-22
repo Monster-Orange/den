@@ -2129,7 +2129,6 @@ async function previousHubRows(): Promise<
   return previousHubDoctor(getStateDir(), url);
 }
 
-/** Issue 701: doctor's held Hub comments, from Den's held file. */
 /** Issue 1131: agents' refused calls in the last hour, from the audit. */
 async function tokenRefusalRow(): Promise<{
   lines: string[];
@@ -2144,6 +2143,7 @@ async function tokenRefusalRow(): Promise<{
   );
 }
 
+/** Issue 701: doctor's held Hub comments, from Den's held file. */
 async function heldHubLines(): Promise<
   ReturnType<typeof import("./doctor-hub-held.js").heldLines>
 > {

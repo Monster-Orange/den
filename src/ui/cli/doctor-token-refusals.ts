@@ -6,7 +6,7 @@
  * refused and what to do. A caller that had gone isn't counted: nothing
  * was refused. Never a token: anything shaped like one is cut out.
  */
-import * as fs from "fs";
+import { readTailLines } from "../../shared/dev-metrics/polling.js";
 import type { OnboardCheck } from "./doctor-onboard.js";
 
 export interface RefusalEntry {
@@ -68,16 +68,17 @@ export function tokenRefusalLines(
   };
 }
 
-/** The audit's last lines (at most `max`), as entries; bad lines skipped. */
-export function readRefusalEntries(file: string, max = 1000): RefusalEntry[] {
-  let text = "";
-  try {
-    text = fs.readFileSync(file, "utf-8");
-  } catch {
-    return [];
-  }
+/**
+ * The audit's tail (at most `maxBytes`, 4 MB: far more than an hour of
+ * entries), as entries; bad lines skipped. The audit only grows, so doctor
+ * never reads the whole file.
+ */
+export function readRefusalEntries(
+  file: string,
+  maxBytes = 4 * 1024 * 1024,
+): RefusalEntry[] {
   const out: RefusalEntry[] = [];
-  for (const l of text.split("\n").filter(Boolean).slice(-max)) {
+  for (const l of readTailLines(file, maxBytes)) {
     try {
       const e = JSON.parse(l) as RefusalEntry;
       if (e && typeof e.ts === "string" && typeof e.verb === "string")
