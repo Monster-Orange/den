@@ -257,7 +257,7 @@ export function leftRunningProblems(
   for (const l of left) {
     if (!text.includes(l.id))
       problems.push(
-        `It leaves out ${leftName(l)}, still running when this session ended. List it: what it was doing, its branch, and its handoff file.`,
+        `It leaves out ${leftName(l)}, still running when this conversation ended. List it: what it was doing, its branch, and its handoff file.`,
       );
     if (
       l.kind === "helper" &&
@@ -681,7 +681,7 @@ function leftRunningLines(
   left: readonly LeftRunning[],
 ): string[] {
   return [
-    "This background work is still running, and it ends with this session:",
+    "This background work is still running, and it ends with this conversation:",
     ...left.map(
       (l) =>
         `- ${leftName(l)}${l.branch ? `, branch ${l.branch}` : ""}` +
@@ -703,7 +703,7 @@ export function handoffPrompt(
 ): string {
   const again = left.length
     ? [
-        "Your last session ended with background work still running, and it stopped. The handoff lists it. Read each one's own handoff, then start each one again:",
+        "Your last conversation ended with background work still running, and it stopped. The handoff lists it. Read each one's own handoff, then start each one again:",
         ...left.map((l) => `- ${leftName(l)}`),
       ]
     : [];
