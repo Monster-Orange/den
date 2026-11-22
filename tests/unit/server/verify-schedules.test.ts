@@ -48,6 +48,7 @@ let cmds: string[] = [];
 let cmdDirs: string[] = [];
 let head: string | null = "c0ffee1";
 let dirty: string[] = [];
+let links: string[] = [];
 const PIN = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-pin-"));
 let probes: string[] = [];
 let bell: BellNote[] = [];
@@ -107,6 +108,7 @@ function deps(): ScheduleServerDeps {
     git: { head: () => head, changedSince: () => [] },
     pin: {
       dirty: () => dirty,
+      symlinks: () => links,
       tree: (_sd, _p, _rp, commit) => path.join(PIN, commit),
     },
     runCmd: async (m) => {
@@ -135,6 +137,7 @@ beforeEach(() => {
   cmdDirs = [];
   head = "c0ffee1";
   dirty = [];
+  links = [];
   probes = [];
   bell = [];
   onRepos = null;
@@ -177,7 +180,22 @@ const get = async () =>
   (
     await fetch(`${base}/api/verify/schedules?project=north`)
   ).json() as Promise<any>;
-const post = async (p: string, body: object) => {
+// An Allow sends what the page showed (its hash and commits), as the page
+// does; `raw` sends the body as given.
+const post = async (p: string, body0: Record<string, unknown>) => {
+  let body: Record<string, unknown> = { ...body0 };
+  if (body.raw) delete body.raw;
+  else if (p.endsWith("/allow") && !("hash" in body)) {
+    const row = ((await get()).schedules as any[]).find(
+      (x) => x.id === body.id,
+    );
+    if (row)
+      body = {
+        ...body,
+        hash: row.hash,
+        ...(row.commits ? { commits: row.commits } : {}),
+      };
+  }
   const r = await fetch(`${base}${p}`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-den-approve-key": AK },
@@ -380,6 +398,56 @@ describe("issue 964: a scheduled command runs from the allowed commit", () => {
     expect(r.body.code).toBe("uncommitted");
     expect(r.body.error).toMatch(/scripts\/speed\.sh/);
     expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+  });
+
+  it("the person allows what the page showed: a commit or plan that changed since is refused", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    const row = ((await get()).schedules as any[]).find((x) => x.id === id);
+    expect(row.commits).toEqual({ shop: "c0ffee1" });
+    expect(typeof row.hash).toBe("string");
+    // An agent commits between the page load and the click.
+    head = "beef002";
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+      hash: row.hash,
+      commits: row.commits,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("stale");
+    expect(r.body.schedule.commits).toEqual({ shop: "beef002" });
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+    // The plan changed since the page showed it.
+    const r2 = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+      hash: "0000000000000000",
+      commits: { shop: "beef002" },
+    });
+    expect(r2.body.code).toBe("stale");
+    // No hash at all: refused too.
+    const r3 = await post("/api/verify/schedules/allow", {
+      raw: true,
+      project: "north",
+      id,
+    });
+    expect(r3.body.code).toBe("stale");
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+  });
+
+  it("a commit holding a symlink can't be allowed", async () => {
+    await tick(at(21, 12));
+    links = ["scripts/helper.sh"];
+    const id = await idOf("Nightly speed");
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("symlink");
+    expect(r.body.error).toMatch(/scripts\/helper\.sh/);
   });
 
   it("not a git checkout: can't be allowed", async () => {

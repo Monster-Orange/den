@@ -505,6 +505,8 @@ describe("issue 964: production schedules", () => {
     expect(metadataHost("169.254.169.254")).toBe(true);
     expect(metadataHost("[fe80::1]")).toBe(true);
     expect(metadataHost("metadata.google.internal")).toBe(true);
+    expect(metadataHost("[::ffff:169.254.169.254]")).toBe(true);
+    expect(metadataHost("metadata.google.internal.")).toBe(true);
     expect(metadataHost("shop.example.com")).toBe(false);
     expect(
       productionLimit(

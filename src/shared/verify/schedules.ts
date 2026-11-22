@@ -536,7 +536,11 @@ export function shortestGapMs(cron: string, from = new Date(0)): number {
 
 /** A link-local or cloud metadata address: never a production run's to reach. */
 export function metadataHost(host: string): boolean {
-  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  const h = host
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "")
+    .replace(/^::ffff:/, "");
   return (
     /^169\.254\./.test(h) ||
     /^fe[89ab][0-9a-f]:/.test(h) ||

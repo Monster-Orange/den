@@ -47,8 +47,15 @@ describe("issue 964: commit pin", () => {
       "echo allowed\n",
     );
     expect(dir.startsWith(state)).toBe(true);
-    // Made once, then reused.
+    // Made fresh each time: a change to the folder doesn't last.
+    fs.writeFileSync(path.join(dir, "scripts/helper.sh"), "tampered\n");
     expect(realPin.tree(state, "north", r, sha)).toBe(dir);
+    expect(fs.readFileSync(path.join(dir, "scripts/helper.sh"), "utf-8")).toBe(
+      "echo helper\n",
+    );
+    expect(
+      fs.readdirSync(path.dirname(dir)).filter((f) => f.endsWith(".tmp")),
+    ).toEqual([]);
     expect(() => realPin.tree(state, "north", r, "not-a-sha")).toThrow(
       /not a commit/,
     );
@@ -62,5 +69,27 @@ describe("issue 964: commit pin", () => {
     expect(
       realPin.dirty(r, ["scripts/speed.sh", "scripts/new.sh"]).sort(),
     ).toEqual(["scripts/new.sh", "scripts/speed.sh"]);
+  });
+
+  it("a commit holding a symlink is refused: it could run what it points at now", () => {
+    const r = repo();
+    const state = fs.mkdtempSync(path.join(os.tmpdir(), "den-pin-state-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "den-pin-out-"));
+    fs.writeFileSync(path.join(outside, "x.sh"), "echo allowed\n");
+    fs.rmSync(path.join(r, "scripts/helper.sh"));
+    fs.symlinkSync(
+      path.join(outside, "x.sh"),
+      path.join(r, "scripts/helper.sh"),
+    );
+    g(r, "add", "-A");
+    g(r, "commit", "-q", "-m", "link");
+    const sha = g(r, "rev-parse", "HEAD");
+    expect(realPin.symlinks(r, sha)).toEqual(["scripts/helper.sh"]);
+    expect(() => realPin.tree(state, "north", r, sha)).toThrow(
+      /symlinks: scripts\/helper\.sh/,
+    );
+    // Nothing is left behind: no pin, no temp folder.
+    const pins = path.join(state, "verify", "north", "pins");
+    expect(fs.existsSync(pins) ? fs.readdirSync(pins) : []).toEqual([]);
   });
 });

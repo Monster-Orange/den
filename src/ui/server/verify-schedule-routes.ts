@@ -143,6 +143,9 @@ function changeOf(s: Schedule, a: ScheduleAllow): PlanChange {
 
 export interface ScheduleRow {
   id: string;
+  /** Issue 964: the plan's fingerprint and commits as shown; an Allow sends them back. */
+  hash: string;
+  commits?: Record<string, string | null>;
   name?: string;
   env: string;
   cron: string;
@@ -171,16 +174,30 @@ export interface ScheduleRow {
   change?: PlanChange;
 }
 
+/** Issue 964: the commit each pinned command's repo is at now. */
+function commitsOf(
+  d: VerifyServerDeps,
+  s: Schedule,
+): Record<string, string | null> {
+  const git = d.git ?? realGit;
+  return Object.fromEntries(
+    pinnedModules(s).map((m) => [m.repo, git.head(m.repoPath)]),
+  );
+}
+
 function rowOf(
   s: Schedule,
   a: ScheduleAllow | undefined,
   r: ScheduleRunState,
   now: Date,
   set: ScheduleSettings,
+  commits: Record<string, string | null> = {},
 ): ScheduleRow {
   const state = scheduleState(s, a, now, set);
   return {
     id: s.id,
+    hash: s.hash,
+    ...(Object.keys(commits).length ? { commits } : {}),
     ...(s.name ? { name: s.name } : {}),
     env: s.env,
     cron: s.cron,
@@ -225,7 +242,7 @@ export function scheduleRows(
   return {
     ok: true,
     schedules: got.schedules.map((s) =>
-      rowOf(s, allows[s.id], runs[s.id] ?? {}, now, set),
+      rowOf(s, allows[s.id], runs[s.id] ?? {}, now, set, commitsOf(d, s)),
     ),
   };
 }
@@ -623,7 +640,14 @@ export async function handleScheduleRoutes(
     const runs = readScheduleRuns(d.stateDir(), p.project);
     sendJson(res, {
       ok: true,
-      schedule: rowOf(s, undefined, runs[s.id] ?? {}, now, set),
+      schedule: rowOf(
+        s,
+        undefined,
+        runs[s.id] ?? {},
+        now,
+        set,
+        commitsOf(d, s),
+      ),
     });
     return true;
   }
@@ -647,8 +671,35 @@ export async function handleScheduleRoutes(
     const commits: Record<string, string> = {};
     const pin = d.pin ?? realPin;
     const git = d.git ?? realGit;
+    // Issue 964: the person allows what the page showed them. A plan or a
+    // commit that changed since: refused, and the row shows again.
+    const shown = (body.commits ?? {}) as Record<string, unknown>;
+    const stale = () => {
+      const runs = readScheduleRuns(d.stateDir(), p.project);
+      sendJson(
+        res,
+        {
+          ok: false,
+          code: "stale",
+          error:
+            "This schedule changed since the page showed it. Look at it again, then allow it.",
+          schedule: rowOf(
+            s,
+            allows[s.id],
+            runs[s.id] ?? {},
+            now,
+            set,
+            commitsOf(d, s),
+          ),
+        },
+        409,
+      );
+      return true;
+    };
+    if (body.hash !== s.hash) return stale();
     for (const m of pinnedModules(s)) {
       const head = git.head(m.repoPath);
+      if (head && shown[m.repo] !== head) return stale();
       if (!head) {
         sendJson(
           res,
@@ -677,6 +728,24 @@ export async function handleScheduleRoutes(
         );
         return true;
       }
+      let links: string[];
+      try {
+        links = pin.symlinks(m.repoPath, head);
+      } catch (e) {
+        links = [(e as Error).message];
+      }
+      if (links.length) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            code: "symlink",
+            error: `${m.name}: the commit holds symlinks, which could run something other than what you allow: ${links.join(", ")}.`,
+          },
+          409,
+        );
+        return true;
+      }
       commits[m.repo] = head;
     }
     const a = writeAllow(
@@ -691,7 +760,7 @@ export async function handleScheduleRoutes(
     const runs = readScheduleRuns(d.stateDir(), p.project);
     sendJson(res, {
       ok: true,
-      schedule: rowOf(s, a, runs[s.id] ?? {}, now, set),
+      schedule: rowOf(s, a, runs[s.id] ?? {}, now, set, commitsOf(d, s)),
     });
     return true;
   }

@@ -662,6 +662,22 @@ function allowLine(row) {
   return esc(t("v.sch_allow_until", { t: day(row.allow.expiresAt) }));
 }
 
+/**
+ * The body of a schedule POST. An Allow carries the plan's fingerprint and
+ * commits the page showed (issue 964), so the person allows what they saw.
+ */
+export function allowBody(sv, path, id) {
+  const row = (sv?.schedules ?? []).find((r) => r.id === id);
+  return path === "allow" && row
+    ? {
+        project: sv?.project,
+        id,
+        hash: row.hash,
+        ...(row.commits ? { commits: row.commits } : {}),
+      }
+    : { project: sv?.project, id };
+}
+
 /** Issue 964: production limits, the page's words and the line to show. */
 const LIMIT_KEYS = {
   "production-off": [
@@ -943,7 +959,10 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
     const run = async (headers) =>
       getJson(
         `/api/verify/schedules/${path}`,
-        { method: "POST", body: JSON.stringify({ project: sv?.project, id }) },
+        {
+          method: "POST",
+          body: JSON.stringify(allowBody(sv, path, id)),
+        },
         { headers },
       );
     const busy = globalThis.window?.denShell?.busyAction;

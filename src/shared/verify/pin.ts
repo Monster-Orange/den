@@ -14,7 +14,9 @@ import * as path from "path";
 export interface PinProbe {
   /** Files among `files` (from the repo root) that differ from HEAD, or untracked. */
   dirty(repoPath: string, files: string[]): string[];
-  /** A folder holding the repo's files at `commit`; throws when git can't make one. */
+  /** Paths that are symlinks in `commit` (git mode 120000): a pin refuses them. */
+  symlinks(repoPath: string, commit: string): string[];
+  /** A folder holding the repo's files at `commit`, made fresh; throws when git can't make one, or the commit holds a symlink. */
   tree(
     stateDir: string,
     project: string,
@@ -29,7 +31,17 @@ const git = (repoPath: string, args: string[], input?: Buffer) =>
     ...(input ? { input } : {}),
   });
 
+const SHA_RE = /^[0-9a-f]{7,64}$/;
+
 export const realPin: PinProbe = {
+  symlinks(repoPath, commit) {
+    if (!SHA_RE.test(commit)) throw new Error(`not a commit: ${commit}`);
+    return git(repoPath, ["ls-tree", "-r", "-z", commit])
+      .toString("utf-8")
+      .split("\0")
+      .filter((l) => l.startsWith("120000 "))
+      .map((l) => l.slice(l.indexOf("\t") + 1));
+  },
   dirty(repoPath, files) {
     if (!files.length) return [];
     try {
@@ -43,8 +55,11 @@ export const realPin: PinProbe = {
     }
   },
   tree(stateDir, project, repoPath, commit) {
-    if (!/^[0-9a-f]{7,64}$/.test(commit))
-      throw new Error(`not a commit: ${commit}`);
+    if (!SHA_RE.test(commit)) throw new Error(`not a commit: ${commit}`);
+    // A symlink would run whatever it points at now, not what was allowed.
+    const links = realPin.symlinks(repoPath, commit);
+    if (links.length)
+      throw new Error(`the commit holds symlinks: ${links.join(", ")}`);
     const dir = path.join(
       stateDir,
       "verify",
@@ -52,23 +67,21 @@ export const realPin: PinProbe = {
       "pins",
       `${path.basename(repoPath)}-${commit}`,
     );
-    const mark = path.join(dir, ".den-pin");
+    // Made fresh for each run: a folder left from before may have been changed.
+    const tmp = `${dir}.${process.pid}.${Date.now()}.tmp`;
     try {
-      if (fs.readFileSync(mark, "utf-8").trim() === commit) return dir;
-    } catch {
-      /* not made yet */
+      fs.mkdirSync(tmp, { recursive: true, mode: 0o700 });
+      const tar = git(repoPath, ["archive", "--format=tar", commit]);
+      execFileSync("tar", ["-x", "-C", tmp], {
+        input: tar,
+        stdio: ["pipe", "ignore", "ignore"],
+      });
+      fs.writeFileSync(path.join(tmp, ".den-pin"), commit + "\n");
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.renameSync(tmp, dir);
+      return dir;
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
-    const tmp = `${dir}.${process.pid}.tmp`;
-    fs.rmSync(tmp, { recursive: true, force: true });
-    fs.mkdirSync(tmp, { recursive: true, mode: 0o700 });
-    const tar = git(repoPath, ["archive", "--format=tar", commit]);
-    execFileSync("tar", ["-x", "-C", tmp], {
-      input: tar,
-      stdio: ["pipe", "ignore", "ignore"],
-    });
-    fs.writeFileSync(path.join(tmp, ".den-pin"), commit + "\n");
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.renameSync(tmp, dir);
-    return dir;
   },
 };

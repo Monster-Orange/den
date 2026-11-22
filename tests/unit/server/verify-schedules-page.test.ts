@@ -14,6 +14,7 @@ import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  allowBody,
   answerView,
   schedulesView,
 } from "../../../src/ui/server/public/verify-page.js";
@@ -333,6 +334,20 @@ describe("issue 214: Schedules (S11)", () => {
       else expect(row).not.toMatch(/data-sch-revoke=/);
     }
     expect((SV.schedules as any[]).some((r) => r.allow)).toBe(true);
+  });
+
+  it("issue 964: an Allow sends back the hash and commits the row showed", () => {
+    const sv = {
+      project: "north",
+      schedules: [{ id: "a1", hash: "h1", commits: { shop: "c1" } }],
+    };
+    expect(allowBody(sv, "allow", "a1")).toEqual({
+      project: "north",
+      id: "a1",
+      hash: "h1",
+      commits: { shop: "c1" },
+    });
+    expect(allowBody(sv, "run", "a1")).toEqual({ project: "north", id: "a1" });
   });
 
   it("a name or a module from the repo stays plain text", () => {
