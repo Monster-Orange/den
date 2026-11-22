@@ -46,6 +46,7 @@ import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   expectedStart,
   queueEnd,
+  queueMinOf,
   overrun,
   priorityIds,
   yieldedTo,
@@ -616,7 +617,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       if (!now || flagged || !now.flaggedAt) return;
       flagged = true;
       d.err(
-        `gate: ${label} is past its estimate (${now.estimateMin} min); it is not stopped, and the slot stays its own until it ends`,
+        `gate: ${label} is past its estimate (${queueMinOf(now)} min${now.padded ? `, measured; ${now.estimateMin} min was given` : ""}); it is not stopped, and the slot stays its own until it ends`,
       );
     });
     try {

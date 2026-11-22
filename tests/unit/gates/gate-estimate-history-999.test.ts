@@ -202,3 +202,37 @@ describe("gate status and the Gate panel show the flag (issue 999)", () => {
       );
   });
 });
+
+describe("a padded slot can't hide from the bell (issue 999 with 993)", () => {
+  it("past its measured time plus the margin it's overrun; past 2× that it's in the bell", async () => {
+    const { overrun, overrunBell } =
+      await import("../../../src/shared/gates/rules.js");
+    const { gateOverrunWaiting } =
+      await import("../../../src/ui/server/gate-overrun-bell.js");
+    const t = setup();
+    ran(t, [8, 8, 8]);
+    const e = ask(t, 600);
+    expect(e).toMatchObject({ padded: true, expectedMin: 8 });
+    const s = t.store.settings();
+    const at = (m: number) => e.grantedAt && Date.parse(e.grantedAt) + m * MIN;
+    // Overrun: the measured 8 plus the 15 min margin, not 600.
+    expect(overrun(e, s, at(22) as number)).toBe(false);
+    expect(overrun(e, s, at(24) as number)).toBe(true);
+    // The bell: past 2 × 8 = 16 min, not 1200.
+    expect(overrunBell(e, s, at(15) as number)).toBe(false);
+    expect(overrunBell(e, s, at(17) as number)).toBe(true);
+    const [w] = gateOverrunWaiting(t.store.list(), s, at(17) as number);
+    expect(w).toMatchObject({ id: e.id, estimateMin: 8, overMin: 9 });
+  });
+
+  it("an unpadded slot still goes by its given estimate", async () => {
+    const { overrunBell } = await import("../../../src/shared/gates/rules.js");
+    const t = setup();
+    ran(t, [8, 8, 8]);
+    const e = ask(t, 12);
+    expect(e.padded).toBeUndefined();
+    const g = Date.parse(e.grantedAt!);
+    expect(overrunBell(e, t.store.settings(), g + 23 * MIN)).toBe(false);
+    expect(overrunBell(e, t.store.settings(), g + 25 * MIN)).toBe(true);
+  });
+});

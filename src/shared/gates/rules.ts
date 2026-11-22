@@ -554,15 +554,16 @@ export function queueEnd(e: GateEntry): number {
   );
 }
 
-/** Past its estimate plus the margin: flagged, never stopped. */
+/**
+ * Past its estimate plus the margin: flagged, never stopped. Issue 999: a
+ * padded estimate's measured median, so padding can't hide a slot.
+ */
 export function overrun(
   e: GateEntry,
   s: Pick<GateSettings, "overrunMarginMinutes">,
   now: number,
 ): boolean {
-  return (
-    !!e.grantedAt && now > expectedEnd(e) + s.overrunMarginMinutes * 60_000
-  );
+  return !!e.grantedAt && now > queueEnd(e) + s.overrunMarginMinutes * 60_000;
 }
 
 /**
@@ -575,7 +576,8 @@ export function overrunBell(
   now: number,
 ): boolean {
   if (!e.grantedAt) return false;
-  const est = e.estimateMin * (e.boxTimeScale ?? 1) * 60_000;
+  // Issue 999: a padded estimate's measured median, as overrun.
+  const est = queueMinOf(e) * (e.boxTimeScale ?? 1) * 60_000;
   return now - t(e.grantedAt) > s.overrunBellMultiple * est;
 }
 

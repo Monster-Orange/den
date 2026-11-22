@@ -5814,7 +5814,10 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   last 10 runs of that kind, else 10 minutes. A given estimate over twice
   that median is kept but flagged ("estimate 150 min; this usually takes
   74" in `gate status` and on the Gate panel), and the queue's wait times
-  use the median. `gate status --json` gives each slot's `estimate` (given
+  use the median. So do "past its estimate" and the bell's overrun line
+  (`overrun_bell_multiple`): a padded estimate can't keep a slot out of
+  sight. Only an MCP slot's lease still goes by the given estimate.
+  `gate status --json` gives each slot's `estimate` (given
   or measured) and `expected` (what the queue uses), each with `from`:
   `given`, `label`, `actor` or `default`.
 - Past its estimate plus `overrun_margin_minutes` (default 15) a run is

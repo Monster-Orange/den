@@ -10,6 +10,7 @@
  */
 import {
   overrunBell,
+  queueMinOf,
   type GateEntry,
   type GateSettings,
 } from "../../shared/gates/rules.js";
@@ -42,7 +43,8 @@ export function gateOverrunWaiting(
     .sort((a, b) => Date.parse(a.grantedAt!) - Date.parse(b.grantedAt!))
     .map((e) => {
       const held = (now - Date.parse(e.grantedAt!)) / 60_000;
-      const est = e.estimateMin * (e.boxTimeScale ?? 1);
+      // Issue 999: a padded estimate's measured median (queueMinOf).
+      const est = queueMinOf(e) * (e.boxTimeScale ?? 1);
       const agent = e.actor?.startsWith("agent:")
         ? e.actor.slice("agent:".length)
         : "";
@@ -53,7 +55,7 @@ export function gateOverrunWaiting(
         who: e.who,
         label: e.label,
         since: e.grantedAt!,
-        estimateMin: e.estimateMin,
+        estimateMin: queueMinOf(e),
         overMin: Math.max(1, Math.round(held - est)),
         ...(agent ? { agent } : {}),
       };
