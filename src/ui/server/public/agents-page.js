@@ -106,7 +106,11 @@ import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
-import { startFailText, terminalFailText } from "/pty-refusal.js";
+import {
+  startFailTail,
+  startFailText,
+  terminalFailText,
+} from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -4648,6 +4652,18 @@ function showStartError(err) {
     return;
   }
   el.textContent = startFailText(err, t);
+  // Issue 89: it exited at once: the lines it printed, as it printed them.
+  const tail = startFailTail(err);
+  if (tail.length) {
+    const h = document.createElement("span");
+    h.className = "ag-tail-h";
+    h.textContent = t("ag.start.lastLines");
+    const pre = document.createElement("code");
+    pre.className = "ag-tail den-mono";
+    pre.dataset.startTail = "";
+    pre.textContent = tail.join("\n");
+    el.append(h, pre);
+  }
   // AG-10.10: that agent is running: offer to open it.
   const running = err?.data?.running;
   if (running?.sessionId) {
