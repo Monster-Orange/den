@@ -45,6 +45,7 @@
  * A runner's ask may say `where`: "any", or a box's name (a runner on
  * that box). The box is checked just before its slot is given.
  */
+import { line, reviewLines } from "../../shared/review-lines.js";
 import type * as http from "http";
 import {
   expectedEnd,
@@ -591,12 +592,6 @@ export function gateRunnerTokenOp(d: {
           error: `the runner ${name} has a token already: revoke it in Settings first`,
         };
       const asker = who?.agent ?? "";
-      const once: { key: string; vars?: Record<string, string> } = asker
-        ? {
-            key: "ap.det.gate_runner_token_create.onceAgent",
-            vars: { agent: asker },
-          }
-        : { key: "ap.det.gate_runner_token_create.once" };
       // Critical by its name (a token) and its placement (approval-policy.ts).
       return {
         ok: true,
@@ -604,18 +599,27 @@ export function gateRunnerTokenOp(d: {
         args: { name },
         summary: `make a gate-only token for the CI runner "${name}"`,
         params: { name },
-        details: [
-          `Makes a token for the CI runner "${name}". It can only ask for, renew and give back gate slots on this machine: nothing else in Den.`,
+        ...reviewLines([
+          line(
+            `Makes a token for the CI runner ${name}. It can only ask for, renew and give back gate slots on this machine: nothing else in Den.`,
+            "ap.det.gate_runner_token_create.reach",
+            { name },
+          ),
           asker
-            ? `The token goes once to ${asker}, the agent that asked, and is never shown again. Den keeps only its hash.`
-            : "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
-          "You can revoke it any time in Settings, under CI runner tokens.",
-        ],
-        detailKeys: [
-          { key: "ap.det.gate_runner_token_create.reach", vars: { name } },
-          once,
-          { key: "ap.det.gate_runner_token_create.revoke" },
-        ],
+            ? line(
+                `The token goes once to ${asker}, the agent that asked, and is never shown again. Den keeps only its hash.`,
+                "ap.det.gate_runner_token_create.onceAgent",
+                { agent: asker },
+              )
+            : line(
+                "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
+                "ap.det.gate_runner_token_create.once",
+              ),
+          line(
+            "You can revoke it any time in Settings, under CI runner tokens.",
+            "ap.det.gate_runner_token_create.revoke",
+          ),
+        ]),
       };
     },
     run(a, asked) {
@@ -837,10 +841,13 @@ export function gateBoxOps(d: {
         args: { name },
         summary: `remove the test box "${name}"`,
         params: { name },
-        details: [
-          `Removes the test box "${name}". Runs on it now finish; no new run goes there.`,
-        ],
-        detailKeys: [{ key: "ap.det.gate_box_remove.what", vars: { name } }],
+        ...reviewLines([
+          line(
+            `Removes the test box ${name}. Runs on it now finish; no new run goes there.`,
+            "ap.det.gate_box_remove.what",
+            { name },
+          ),
+        ]),
       };
     },
     run(a, asked) {
