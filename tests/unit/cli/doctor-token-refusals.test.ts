@@ -5,7 +5,11 @@
  * token.
  */
 import { describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
+  readRefusalEntries,
   tokenRefusalLines,
   type RefusalEntry,
 } from "../../../src/ui/cli/doctor-token-refusals.js";
@@ -80,5 +84,30 @@ describe("issue 1131: doctor's refused agent calls", () => {
     const r = tokenRefusalLines("Den", [leak], NOW);
     const all = r.lines.join("\n") + r.check.detail + (r.check.fix ?? "");
     expect(all).not.toContain("den_at_TESTONLY_leak");
+  });
+});
+
+describe("issue 1131: doctor reads only the audit's tail", () => {
+  it("an audit bigger than the cap still gives the recent refusals, and skips its start", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-1131-audit-"));
+    const file = path.join(dir, "audit.jsonl");
+    const line = (e: RefusalEntry) => JSON.stringify(e) + "\n";
+    const filler = line({
+      ts: ago(200),
+      verb: "exec",
+      detail: "x".repeat(200),
+    });
+    let text = line(refusal("first", 120));
+    while (text.length < 64 * 1024) text += filler;
+    text += line(refusal("recent", 1));
+    fs.writeFileSync(file, text);
+    try {
+      const got = readRefusalEntries(file, 16 * 1024);
+      const agents = got.map((e) => e.principal);
+      expect(agents).toContain("agent:recent");
+      expect(agents).not.toContain("agent:first");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
