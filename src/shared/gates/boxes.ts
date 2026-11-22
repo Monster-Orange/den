@@ -734,7 +734,9 @@ export function boxEnv(
   return {
     DEN_GATE_BOX: box.name,
     DEN_GATE_TIME_SCALE: String(box.time_scale ?? 1),
-    ...(ws ? { DEN_PW_WS: ws } : {}),
+    // Issue 1033: the box's browser reaches this machine's ports only
+    // through a client that exposes the loopback; pw-guard reads this.
+    ...(ws ? { DEN_PW_WS: ws, DEN_PW_EXPOSE: "<loopback>" } : {}),
     ...(box.ssh ? { DEN_GATE_BOX_SSH: box.ssh } : {}),
   };
 }
