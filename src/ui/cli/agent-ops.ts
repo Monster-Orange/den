@@ -56,9 +56,9 @@ import {
   addressNotSetNote,
   agentLinks,
   peopleAddress,
+  peopleWebUrl,
   type AgentLinks,
 } from "../../shared/agent-links.js";
-import { readWebUrl } from "../../shared/web-url.js";
 import {
   line as rl,
   reviewLines as review,
@@ -878,7 +878,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
           ? setWorkspaceRuntimeBin(ws, id, bin)
           : setUserRuntimeBin(id, bin)),
     userConfigFile: d.userConfigFile ?? userConfigPath,
-    webUrl: d.webUrl ?? (() => readWebUrl()?.url ?? null),
+    webUrl: d.webUrl ?? (() => peopleWebUrl()),
     workspaceServices:
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,

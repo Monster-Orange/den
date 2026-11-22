@@ -23,6 +23,7 @@ import {
   type Principal,
 } from "../../../src/ui/server/request-guard.js";
 import { callTool, type ToolContext } from "../../../src/ui/mcp/tools.js";
+import { peopleWebUrl } from "../../../src/shared/agent-links.js";
 import { DenHttpError, type DenApi } from "../../../src/ui/mcp/api.js";
 
 const ADDRESS = "https://den.example.test";
@@ -203,5 +204,26 @@ describe("issue 1016: the MCP held write's answer carries the Allow link", () =>
     );
     expect(r.text).toContain(`request ${ID}`);
     expect(r.text).not.toMatch(/https?:\/\//);
+  });
+});
+
+describe("issue 1016: the server's held writes read web.url through agent-links", () => {
+  it("the approvals deps' webUrl is peopleWebUrl, never readWebUrl", () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "src/ui/server/index.ts"),
+      "utf-8",
+    );
+    const at = src.indexOf("function approvalDeps(): ApprovalDeps");
+    const block = src.slice(at, src.indexOf("\n  return approvals;\n}", at));
+    expect(at).toBeGreaterThan(0);
+    expect(block).toContain("webUrl: () => peopleWebUrl()");
+    expect(block).not.toMatch(/readWebUrl/);
+  });
+
+  it("with user.yml's http://127.0.0.1:4000 behind peopleWebUrl: no Allow link", async () => {
+    webUrl = peopleWebUrl(() => ({ web: { url: "http://127.0.0.1:4000" } }));
+    const a = (await (await ask()).json()) as Record<string, unknown>;
+    expect(a.state).toBe("pending");
+    expect("allowLink" in a).toBe(false);
   });
 });

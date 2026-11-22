@@ -12,6 +12,9 @@ import {
   resolveAgentsDeps,
 } from "../../../src/ui/cli/agent-ops.js";
 import { callTool } from "../../../src/ui/mcp/tools.js";
+import { peopleWebUrl } from "../../../src/shared/agent-links.js";
+import * as fs from "fs";
+import * as path from "path";
 import type { DenApi } from "../../../src/ui/mcp/api.js";
 import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
 
@@ -135,4 +138,36 @@ describe("issue 1016: a loopback web.url counts as unset", () => {
       expect(brief).toContain("Den's address for people is not set");
       expect(brief).not.toContain(stored);
     });
+});
+
+describe("issue 1016: whoami and the brief read web.url through agent-links", () => {
+  const stored = (url: string) => () => ({ web: { url } });
+  it("peopleWebUrl: a loopback web.url in user.yml is no address", () => {
+    expect(peopleWebUrl(stored("http://127.0.0.1:4000"))).toBeNull();
+    expect(peopleWebUrl(stored("http://localhost:4000"))).toBeNull();
+    expect(peopleWebUrl(stored(ADDRESS))).toBe(ADDRESS);
+  });
+
+  it("the start brief, from user.yml's http://127.0.0.1:4000: the unset line, no loopback link", async () => {
+    const r = await started(null);
+    r.deps.webUrl = () => peopleWebUrl(stored("http://127.0.0.1:4000"));
+    expect(
+      await cmdAgents(
+        ["start", "-w", "north", "--persona", "planner", "--name", "two"],
+        r.deps,
+      ),
+    ).toBe(0);
+    const brief = argAfter(r.made[1].args, "--append-system-prompt");
+    expect(brief).toContain("Den's address for people is not set");
+    expect(brief).not.toContain("127.0.0.1:4000");
+  });
+
+  it("agent-ops never reads web.url but through agent-links (its default is peopleWebUrl)", () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "src/ui/cli/agent-ops.ts"),
+      "utf-8",
+    );
+    expect(src).not.toMatch(/readWebUrl/);
+    expect(src).toContain("webUrl: d.webUrl ?? (() => peopleWebUrl())");
+  });
 });

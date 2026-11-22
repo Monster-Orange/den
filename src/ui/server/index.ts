@@ -436,6 +436,7 @@ import {
   readWebUrl,
   setWebUrl,
 } from "../../shared/web-url.js";
+import { peopleWebUrl } from "../../shared/agent-links.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
@@ -4515,7 +4516,7 @@ function approvalDeps(): ApprovalDeps {
     // Issue 142: a held write counts in the bell while it waits.
     changed: syncHeldWrites,
     // Issue 1016: an agent's held write carries its full Allow link.
-    webUrl: () => readWebUrl()?.url ?? null,
+    webUrl: () => peopleWebUrl(),
   };
   return approvals;
 }

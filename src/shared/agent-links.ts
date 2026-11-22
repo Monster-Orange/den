@@ -7,6 +7,8 @@
  */
 import { isServerScope } from "./agents/server-agent.js";
 import { isLoopbackUrl } from "./web-url-check.js";
+import { readWebUrl } from "./web-url.js";
+import type { UserConfig } from "./den-config.js";
 
 /** The Settings page where the address (web.url) is set. */
 export const ADDRESS_SETTING_PAGE = "/settings#server.address";
@@ -35,6 +37,15 @@ export function allowPath(
 export function peopleAddress(url: string | null | undefined): string | null {
   if (typeof url !== "string" || !url.trim()) return null;
   return isLoopbackUrl(url) ? null : url;
+}
+
+/**
+ * The install's web.url as an address people open (peopleAddress), or
+ * null. Whoami, the start brief and the held-write Allow link read it
+ * here, never readWebUrl directly. `read`: user.yml (tests pass one).
+ */
+export function peopleWebUrl(read?: () => UserConfig): string | null {
+  return peopleAddress((read ? readWebUrl(read) : readWebUrl())?.url);
 }
 
 /** `url`'s full Allow link for agent `agent` in `project`; null without an address. */
