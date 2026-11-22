@@ -13,6 +13,13 @@ Up to `cpu_slots_beside_browser` cpu runs (default 2, never more than
 browser run runs alone, as before. A browser run on a test box (below) does
 not hold this machine, so it doesn't count.
 
+A release-priority browser run uses `cpu_slots_beside_release_browser`
+instead (default 0): it runs alone, so other runs don't slow its checks.
+While one waits, cpu runs drain to that number and no new ones start; while
+one holds this machine, cpu runs wait for it. Other browser runs keep
+`cpu_slots_beside_browser`. `gate settings --cpu-slots-beside-release-browser N`
+sets it.
+
 A browser run that waits only because more cpu runs hold the machine than
 may run beside it is never starved: while it waits, no new cpu run starts
 past that number. Once they drop to it, the browser run starts.

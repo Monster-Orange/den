@@ -674,6 +674,7 @@ function settings(args: string[], d: GateDeps): number {
     "--remote-max-slots": true,
     "--remote-max-asks": true,
     "--cpu-slots-beside-browser": true,
+    "--cpu-slots-beside-release-browser": true,
     "--local-browser-slots": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
@@ -694,6 +695,7 @@ function settings(args: string[], d: GateDeps): number {
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
     ["--cpu-slots-beside-browser", "cpu_slots_beside_browser"],
+    ["--cpu-slots-beside-release-browser", "cpu_slots_beside_release_browser"],
     ["--local-browser-slots", "local_browser_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
@@ -735,7 +737,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""
