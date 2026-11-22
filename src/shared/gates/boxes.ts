@@ -32,7 +32,7 @@ import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
-import { windowHeld } from "./classes.js";
+import { glob, items, windowHeld } from "./classes.js";
 import {
   loadHold,
   localRoom,
@@ -732,4 +732,93 @@ export function boxEnv(
     ...(ws ? { DEN_PW_WS: ws } : {}),
     ...(box.ssh ? { DEN_GATE_BOX_SSH: box.ssh } : {}),
   };
+}
+
+/** Issue 1033: one host-only rule: a project, or a label pattern. */
+type HostOnlyRule = { project?: string; label?: string; text: string };
+
+/**
+ * Issue 1033: "den, label:*webkit*" (browser_host_only) → the rules; or
+ * what is wrong. A project by name (* is every project), a label by
+ * pattern (* matches any text), as class_map names them.
+ */
+export function parseHostOnly(s: string): HostOnlyRule[] | string {
+  const out: HostOnlyRule[] = [];
+  for (const it of items(s)) {
+    if (it.length > 120 || it.includes("="))
+      return `"${it.slice(0, 60)}" is not <project> or label:<pattern>`;
+    if (it.startsWith("label:")) {
+      const pattern = it.slice(6).trim();
+      if (!pattern) return `"${it}" needs a label pattern`;
+      out.push({ label: pattern, text: it });
+    } else out.push({ project: it, text: it });
+  }
+  return out;
+}
+
+/** Issue 1033: the host-only rule a run matches, as written; else none. */
+export function hostOnlyMatch(
+  e: { project?: string; label: string },
+  setting: string,
+): HostOnlyRule | undefined {
+  const rules = parseHostOnly(setting);
+  if (typeof rules === "string") return undefined;
+  return rules.find((r) =>
+    r.label
+      ? glob(r.label).test(e.label)
+      : r.project === "*" || (!!e.project && r.project === e.project),
+  );
+}
+
+/** Issue 1033: browser_box_default is any or local; null when it is. */
+export function checkBoxDefault(v: string): string | null {
+  const t = v.trim();
+  return t === "any" || t === "local"
+    ? null
+    : `any or local, not ${t.slice(0, 40)}`;
+}
+
+/**
+ * Issue 1033: where a browser `gate run` with no --box goes. With the
+ * setting at any and a test box set: anywhere (`where` "any": the first
+ * free browser slot, here or on a box), unless it can't or mustn't go to
+ * a box; then it stays here, and `why` says so in one line. The setting
+ * at local, or no box set: here, as before, with nothing to say.
+ */
+export function defaultPlace(o: {
+  setting: "any" | "local";
+  hostOnly: string;
+  label: string;
+  project?: string;
+  boxes: GateBox[];
+  /** The run gave --base-url (a box's browser reaches the app by it). */
+  baseUrl: boolean;
+  pwVersion?: string;
+  /** The run starts its own browser container (--browser-endpoint self). */
+  ownBrowser: boolean;
+}): { where?: "any"; why?: string } {
+  if (o.setting === "local" || !o.boxes.length) return {};
+  const rule = hostOnlyMatch(o, o.hostOnly);
+  if (rule)
+    return {
+      why: rule.label
+        ? `${o.label} is host-only (browser_host_only ${rule.text})`
+        : `project ${o.project ?? "*"} is host-only (browser_host_only ${rule.text})`,
+    };
+  if (o.ownBrowser) return { why: "it starts its own browser container" };
+  if (!o.baseUrl)
+    return { why: "no --base-url, so a test box can't reach the app" };
+  const skips = o.boxes.map((b) => ({
+    name: b.name,
+    reason: boxSkipReason({ pwVersion: o.pwVersion }, b),
+  }));
+  if (skips.every((x) => x.reason))
+    return {
+      why: oneLine(
+        `no test box serves ${o.pwVersion ? `Playwright ${o.pwVersion}` : "this run's Playwright"} (${skips
+          .map((x) => `${x.name}: ${x.reason}`)
+          .join("; ")})`,
+      ),
+    };
+  return { where: "any" };
 }

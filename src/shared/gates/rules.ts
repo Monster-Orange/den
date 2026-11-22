@@ -140,6 +140,11 @@ export interface GateEntry {
    * "self" (the run starts its own), or the address without its path.
    */
   browserEndpoint?: string;
+  /**
+   * Issue 1033: a browser run that could have gone to a test box by
+   * default but stays on this machine: why, in one line.
+   */
+  hostWhy?: string;
   box?: string;
   boxTimeScale?: number;
   /**
@@ -227,6 +232,18 @@ export interface GateSettings {
    * (browser-container.ts). Default: on for a macOS host, off elsewhere.
    */
   browserRequiresContainer: boolean;
+  /**
+   * Issue 1033: where a browser `gate run` with no --box goes: "any",
+   * the first free browser slot here or on a test box (the default), or
+   * "local", this machine only (as before).
+   */
+  browserBoxDefault: "any" | "local";
+  /**
+   * Issue 1033: projects and label patterns whose browser runs stay on
+   * this machine, comma-separated: <project>, label:<pattern> (* matches
+   * any text). Empty: none.
+   */
+  browserHostOnly: string;
 }
 
 /** Issue 1009: the default hold load, cores × 4 / 3 (24 on 18 cores). */
@@ -256,6 +273,8 @@ export const GATE_DEFAULTS: GateSettings = {
   mcpLapseMinutes: 15,
   mcpGraceMinutes: 15,
   browserRequiresContainer: process.platform === "darwin",
+  browserBoxDefault: "any",
+  browserHostOnly: "",
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);

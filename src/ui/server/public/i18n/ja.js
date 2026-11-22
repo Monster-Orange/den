@@ -1121,6 +1121,14 @@
     "set.server.gate_box_recheck": "飛ばしたテストマシンを再確認するまで (秒)",
     "set.server.gate_box_recheck.d":
       "保留中か応答のなかったマシンはこの時間飛ばし、その後そのマシンのスロットが求められたときに再確認します。タイマーでは確認しません。__DEN_CLI__ gate settings --box-recheck-seconds 30",
+    "set.server.gate_box_default": "ブラウザテストの行き先",
+    "set.server.gate_box_default.d":
+      "--box のないブラウザテストの行き先です。ここかテストマシン: ここかテストマシンのうち、先に空いたブラウザ枠。--base-url がない実行や、Playwright のバージョンに合うマシンがない実行は、ここに残り、その理由を表示します。ここだけ: これまでどおりで、--box を付けたときだけマシンに行きます。__DEN_CLI__ gate settings --browser-box-default any",
+    "set.server.gate_box_default.any": "ここかテストマシン",
+    "set.server.gate_box_default.local": "ここだけ",
+    "set.server.gate_host_only": "ここに残すブラウザテスト",
+    "set.server.gate_host_only.d":
+      "カンマ区切りで <プロジェクト>、label:<パターン>(* は任意の文字列)。これらのブラウザテストはテストマシンに行きません。たとえばレイアウトのテストや macOS の WebKit。空なら、なしです。__DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

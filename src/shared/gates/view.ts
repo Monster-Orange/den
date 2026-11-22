@@ -36,6 +36,10 @@ export interface GateSlotView {
   claimBy?: string;
   /** Issue 625: the test box it holds a slot on (absent: this machine). */
   box?: string;
+  /** Issue 1033: a held browser slot's machine: the box's name, or "local". */
+  machine?: string;
+  /** Issue 1033: why a run that could go to a box stays here. */
+  hostWhy?: string;
   /** Issue 625: a waiter that may go to a box: "any", or the box's name. */
   where?: string;
   /** Issue 625 clause 11: boxes this waiter can't use, and why. */
@@ -142,6 +146,10 @@ export function gateView(store: GateStore, now = Date.now()) {
     // Issue 714: an agent's MCP slot granted while it waited, unclaimed.
     ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
     ...(e.box ? { box: e.box } : {}),
+    ...(e.grantedAt && e.kind === "browser"
+      ? { machine: e.box ?? "local" }
+      : {}),
+    ...(e.hostWhy ? { hostWhy: e.hostWhy } : {}),
     ...(!e.grantedAt && e.where ? { where: e.where } : {}),
     ...(skipsOf(e).length ? { skips: skipsOf(e) } : {}),
     ...(e.browserEndpoint ? { browserEndpoint: e.browserEndpoint } : {}),

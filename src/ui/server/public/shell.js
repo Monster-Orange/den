@@ -2197,6 +2197,14 @@
       "A skipped test box is checked again after, in seconds",
     "set.server.gate_box_recheck.d":
       "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    "set.server.gate_box_default": "Browser runs go to",
+    "set.server.gate_box_default.d":
+      "Where a browser test run with no --box goes. Here or a test box: the first free browser slot, here or on a test box. A run with no --base-url, or no box for its Playwright version, stays here and says why. Here only: as before; a run goes to a box only with --box. __DEN_CLI__ gate settings --browser-box-default any",
+    "set.server.gate_box_default.any": "Here or a test box",
+    "set.server.gate_box_default.local": "Here only",
+    "set.server.gate_host_only": "Browser runs kept here",
+    "set.server.gate_host_only.d":
+      "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",

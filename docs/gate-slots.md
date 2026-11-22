@@ -404,18 +404,45 @@ who asked and who allowed. Deny changes nothing.
 
 ### Which runs go to a box
 
-A browser run says where it may go:
+A browser run with no `--box` takes whichever browser slot frees first:
+this machine's, then the first test box with a free slot. It needs
+`--base-url` for that (a box's browser reaches the app by it):
 
 ```sh
-den gate run --kind browser --box any --base-url http://app.localhost:4100 -- npm run test:e2e
-den gate run --kind browser -- npm run test:e2e             # this machine only
+den gate run --kind browser --base-url http://app.localhost:4100 -- npm run test:e2e
+den gate run --kind browser --box local -- npm run test:e2e    # this machine only
+den gate run --kind browser --box box1 --base-url http://app.localhost:4100 -- npm run test:e2e
 ```
 
-`--box any` takes whichever slot frees first: this machine's, then the
-first box with a free slot. A run that needs a local browser leaves `--box`
-out and takes only this machine's slot. The run is told what it got:
-`DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its Playwright server, when
-set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
+`--box local` (or this machine's own name) keeps a run here; `--box <name>`
+sends it to that box; `--box any` is the default spelled out. The run is
+told what it got: `DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its
+Playwright server, when set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
+
+A run with no `--box` stays on this machine, and says why in one line
+(`gate: stays on this machine: …`), when:
+
+- its project or label is host-only (`browser_host_only`, below);
+- it starts its own browser container (`--browser-endpoint=self`);
+- it has no `--base-url`, or one a box can't use;
+- no box serves its Playwright version.
+
+It never fails for that: it waits for this machine's slot, as before.
+`gate status` shows each held browser slot's machine (`on box box1`, or
+`on this machine` with the reason it stayed), and so do `gate status
+--json` (`machine`, `hostWhy`) and the slot log's `granted` rows.
+
+Two settings (Settings, or `den gate settings`):
+
+- `browser_box_default`: `any` (the default) or `local`. At `local`, a run
+  with no `--box` takes only this machine's slot, as before boxes were the
+  default: `den gate settings --browser-box-default local`.
+- `browser_host_only`: projects and label patterns whose browser runs
+  stay here, comma-separated, as `class_map` names them: a project by
+  name, `label:<pattern>` with `*` for any text. For example layout suites
+  and WebKit on macOS:
+  `den gate settings --browser-host-only "label:layout*, label:*webkit*"`.
+  Empty (the default): none.
 
 A CI runner that runs on a box asks for that box's slot by name
 (`"where": "box1"` in its `ask`), so the app, the browser and the tests
