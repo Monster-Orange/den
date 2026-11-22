@@ -18,6 +18,12 @@
  * would pass budget_tokens, and the report states what judging cost.
  */
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { DEN_CLAUDE_FIND, DEN_CLAUDE_ID } from "../agents/den-claude.js";
+import { locateRuntime, type Located } from "../agents/runtime-search.js";
+import { configuredRuntimeBin } from "../den-config.js";
 import { redactSecrets } from "../redact.js";
 import type { CoachReport } from "./breakdown.js";
 import type { CoachFinding, FindingSample } from "./findings.js";
@@ -173,8 +179,8 @@ function verdictsOf(text: string, ids: Set<string>): Verdict[] {
   });
 }
 
-/** Tokens a call is expected to use: its prompt, plus room for the answer. */
-const estimate = (prompt: string) => Math.ceil(prompt.length / 4) + 500;
+/** Tokens a call is expected to use: its prompt, the CLI's own context (about 650 measured), and the answer. */
+const estimate = (prompt: string) => Math.ceil(prompt.length / 4) + 1200;
 
 const TITLE: Record<JudgeKind, (who: string, n: number) => string> = {
   repeat_ask: (who, n) =>
@@ -202,10 +208,13 @@ export async function judgeReport(
   report: CoachReport,
   s: JudgeSettings,
   run: ModelRun = claudeRun,
+  o: { spentToday?: number } = {},
 ): Promise<{ tokens: number; skipped: number }> {
   if (!s.enabled) return { tokens: 0, skipped: 0 };
   const items = judgeCandidates(report, s.max_items);
   const verdicts: Verdict[] = [];
+  const why = new Set<string>();
+  const today = Math.max(0, o.spentToday ?? 0);
   let tokens = 0;
   let skipped = 0;
   let calls = 0;
@@ -213,8 +222,19 @@ export async function judgeReport(
     const batch = items.filter((i) => i.kind === kind);
     if (!batch.length) continue;
     const prompt = promptFor(kind, batch);
-    if (tokens + estimate(prompt) > s.budget_tokens) {
+    const need = estimate(prompt);
+    if (today + tokens + need > s.budget_tokens_day) {
       skipped += batch.length;
+      why.add(
+        `the day's budget (agents.coach.judge.budget_tokens_day, ${s.budget_tokens_day}) is spent`,
+      );
+      continue;
+    }
+    if (tokens + need > s.budget_tokens) {
+      skipped += batch.length;
+      why.add(
+        `the run's budget (agents.coach.judge.budget_tokens, ${s.budget_tokens}) is spent`,
+      );
       continue;
     }
     calls++;
@@ -222,11 +242,20 @@ export async function judgeReport(
       const out = await run(prompt, { model: s.model });
       tokens += Math.max(0, out.tokens);
       verdicts.push(...verdictsOf(out.text, new Set(batch.map((i) => i.id))));
-    } catch {
+    } catch (e) {
       skipped += batch.length;
+      why.add(String((e as Error)?.message ?? e).slice(0, 200));
     }
   }
   if (calls) report.cost = { model: s.model, tokens };
+  if (items.length)
+    report.judge = {
+      model: s.model,
+      tokens,
+      items: items.length,
+      skipped,
+      ...(why.size ? { why: [...why].slice(0, 5) } : {}),
+    };
   const byId = new Map(items.map((i) => [i.id, i]));
   const groups = new Map<
     string,
@@ -286,12 +315,28 @@ export function claudeArgs(model: string): string[] {
 
 const CALL_MS = 120_000;
 
-/** One call through the runtime's CLI; the prompt goes on stdin. */
-export const claudeRun: ModelRun = (prompt, o) =>
+/** Where the runtime's CLI is: the way agent launches find it. */
+export type LocateCli = () => Located;
+
+/** Runs the CLI at `file` in `cwd` with the prompt on stdin; its stdout. */
+export type SpawnCli = (
+  file: string,
+  args: string[],
+  cwd: string,
+  input: string,
+) => Promise<string>;
+
+const locateCli: LocateCli = () =>
+  locateRuntime(
+    DEN_CLAUDE_ID,
+    DEN_CLAUDE_FIND,
+    process.env,
+    configuredRuntimeBin(DEN_CLAUDE_ID),
+  );
+
+const spawnCli: SpawnCli = (file, args, cwd, input) =>
   new Promise((resolve, reject) => {
-    const child = spawn("claude", claudeArgs(o.model), {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawn(file, args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     const timer = setTimeout(() => child.kill("SIGTERM"), CALL_MS);
     child.stdout.on("data", (b: Buffer) => {
@@ -303,26 +348,56 @@ export const claudeRun: ModelRun = (prompt, o) =>
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new Error(`claude exited ${code}`));
-      try {
-        const v = JSON.parse(out) as {
-          result?: unknown;
-          usage?: Record<string, unknown>;
-        };
-        const u = v.usage ?? {};
-        const n = (k: string) =>
-          typeof u[k] === "number" ? (u[k] as number) : 0;
-        resolve({
-          text: typeof v.result === "string" ? v.result : "",
-          tokens:
-            n("input_tokens") +
-            n("output_tokens") +
-            n("cache_read_input_tokens") +
-            n("cache_creation_input_tokens"),
-        });
-      } catch (e) {
-        reject(e as Error);
-      }
+      if (code !== 0) reject(new Error(`the runtime's CLI exited ${code}`));
+      else resolve(out);
     });
-    child.stdin.end(prompt);
+    child.stdin.end(input);
   });
+
+/**
+ * A model call through the runtime's CLI. It runs in a fresh empty folder
+ * (removed after), so no project's CLAUDE.md is near it; a CLI it can't
+ * find is a named reason, not a bare failure.
+ */
+export function makeClaudeRun(
+  d: { locate?: LocateCli; spawn?: SpawnCli } = {},
+): ModelRun {
+  return async (prompt, o) => {
+    const at = (d.locate ?? locateCli)();
+    if (!at.available || !at.path)
+      throw new Error(`the runtime's CLI: ${at.why ?? "not found"}`);
+    if (at.quarantined)
+      throw new Error(
+        `the runtime's CLI at ${at.path} is quarantined, not run`,
+      );
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "den-coach-judge-"));
+    try {
+      const raw = await (d.spawn ?? spawnCli)(
+        at.path,
+        claudeArgs(o.model),
+        cwd,
+        prompt,
+      );
+      const v = JSON.parse(raw) as {
+        result?: unknown;
+        usage?: Record<string, unknown>;
+      };
+      const u = v.usage ?? {};
+      const n = (k: string) =>
+        typeof u[k] === "number" ? (u[k] as number) : 0;
+      return {
+        text: typeof v.result === "string" ? v.result : "",
+        tokens:
+          n("input_tokens") +
+          n("output_tokens") +
+          n("cache_read_input_tokens") +
+          n("cache_creation_input_tokens"),
+      };
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  };
+}
+
+/** The default model call: the runtime's CLI, found as agent launches find it. */
+export const claudeRun: ModelRun = makeClaudeRun();

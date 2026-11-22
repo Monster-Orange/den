@@ -105,6 +105,17 @@ export interface CoachReport {
   totalsPerDay: PerDay;
   /** What the run itself cost: a counted run calls no model. */
   cost: { model: string | null; tokens: number };
+  /**
+   * Slice T-d: what judging did, when it had items: its model, the tokens
+   * it spent, the items picked and skipped, and why any were skipped.
+   */
+  judge?: {
+    model: string;
+    tokens: number;
+    items: number;
+    skipped: number;
+    why?: string[];
+  };
   /** Slice T-b: the counted findings, all of them (findings.ts). */
   findings?: CoachFinding[];
 }

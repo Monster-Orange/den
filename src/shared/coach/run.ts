@@ -9,7 +9,11 @@ import type { UsageSource } from "../usage/sources.js";
 import { coachBreakdown, type CoachReport } from "./breakdown.js";
 import { coachFindings } from "./findings.js";
 import type { CoachSettings } from "./settings.js";
-import { writeCoachReport } from "./store.js";
+import {
+  judgeSpentSince,
+  recordJudgeSpend,
+  writeCoachReport,
+} from "./store.js";
 import { judgeReport, type ModelRun } from "./judge.js";
 
 export interface CoachRunOptions {
@@ -54,7 +58,11 @@ export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
     sentenceWords: o.settings.findings.sentence_words,
   });
   report.findings = coachFindings(report, o.settings.findings);
-  await judgeReport(report, o.settings.judge, o.judgeRun);
+  const now = Date.parse(report.ranAt);
+  const judged = await judgeReport(report, o.settings.judge, o.judgeRun, {
+    spentToday: judgeSpentSince(o.stateDir, now - 86_400_000),
+  });
+  if (judged.tokens > 0) recordJudgeSpend(o.stateDir, now, judged.tokens);
   stripEvidence(report);
   writeCoachReport(o.stateDir, report, o.settings.keep_runs);
   return report;

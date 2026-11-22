@@ -66,6 +66,8 @@ export interface JudgeSettings {
   model: string;
   /** Tokens a run may spend judging; it stops before a call would pass it. */
   budget_tokens: number;
+  /** Tokens judging may spend in any 24 hours, across runs (Run now pressed again). */
+  budget_tokens_day: number;
   /** Items judged a run, at most. */
   max_items: number;
 }
@@ -74,6 +76,7 @@ export const JUDGE_DEFAULTS: Readonly<JudgeSettings> = Object.freeze({
   enabled: false,
   model: "haiku",
   budget_tokens: 200_000,
+  budget_tokens_day: 1_000_000,
   max_items: 40,
 });
 
@@ -131,6 +134,13 @@ function checkJudge(raw: unknown): JudgeSettings {
   }
   if (r.budget_tokens !== undefined)
     out.budget_tokens = wholeIn("judge.budget_tokens", r.budget_tokens, 0, 1e9);
+  if (r.budget_tokens_day !== undefined)
+    out.budget_tokens_day = wholeIn(
+      "judge.budget_tokens_day",
+      r.budget_tokens_day,
+      0,
+      1e10,
+    );
   if (r.max_items !== undefined)
     out.max_items = wholeIn("judge.max_items", r.max_items, 0, 10_000);
   return out;
