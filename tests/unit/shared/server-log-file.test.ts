@@ -18,7 +18,8 @@ import { patchCliRows } from "../../../src/shared/settings-cli-rows.js";
 
 const dirs: string[] = [];
 afterEach(() => {
-  for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of dirs.splice(0))
+    fs.rmSync(d, { recursive: true, force: true });
 });
 const state = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "den-707-"));
@@ -52,6 +53,20 @@ describe("issue 707: the server's warning lines on disk", () => {
     expect(fs.statSync(path.dirname(serverLogPath(st))).mode & 0o777).toBe(
       0o700,
     );
+  });
+
+  it("a secret that slips into a line is redacted before it reaches the disk", () => {
+    const st = state();
+    const write = serverLogWriter({
+      stateDir: () => st,
+      maxBytes: () => 1024 * 1024,
+      now: () => NOW,
+    });
+    const token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8";
+    write("warn", `hub delivery: call failed with ${token}`);
+    const text = fs.readFileSync(serverLogPath(st), "utf8");
+    expect(text).not.toContain(token);
+    expect(text).toContain("[REDACTED]");
   });
 
   it("rotates once at its cap: server.log.1 holds the older lines, and the next rotation replaces it", () => {

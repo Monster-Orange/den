@@ -5,10 +5,12 @@
  * runs silent, warn and error lines also go to <state>/logs/server.log,
  * capped by user.yml server_log.max_mb (20) and rotated once to
  * server.log.1: never more than two files. The lines are the server's own
- * log lines, which already carry no tokens; nothing else is written.
+ * log lines, which already carry no tokens, and each is passed through
+ * redactSecrets before it is written, so a slip is never kept on disk.
  */
 import * as fs from "fs";
 import * as path from "path";
+import { redactSecrets } from "./redact.js";
 
 /** server_log.max_mb: a Setting with a permissive default. */
 export const SERVER_LOG_LIMITS = {
@@ -55,7 +57,8 @@ export function serverLogWriter(o: {
     try {
       const file = serverLogPath(o.stateDir());
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      const line = `${(o.now?.() ?? new Date()).toISOString()} ${kind} ${text}\n`;
+      // A secret that slipped into a line never reaches the disk.
+      const line = `${(o.now?.() ?? new Date()).toISOString()} ${kind} ${redactSecrets(text)}\n`;
       let size = 0;
       try {
         size = fs.statSync(file).size;
