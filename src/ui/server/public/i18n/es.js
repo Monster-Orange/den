@@ -1892,6 +1892,16 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.web_url_set": "Hacer de {url} la dirección de este Den",
+    "ap.det.web_url_set.now": "Ahora: {from}.",
+    "ap.det.web_url_set.nowUnconfirmed": "Ahora: {from} (sin confirmar).",
+    "ap.det.web_url_set.none": "Ahora: no hay dirección.",
+    "ap.det.web_url_set.answers":
+      "{url} responde ahora como este Den: Den le pidió un token de un solo uso, a través de su nombre.",
+    "ap.det.web_url_set.saves":
+      "Se guarda como confirmada, igual que la guarda Ajustes; vale sin reiniciar, y Den se lo dice al Hub conectado.",
+    "set.ui.hub.denUrlRefused":
+      "Hub no aceptó la dirección de este Den ({url}): {why}",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":

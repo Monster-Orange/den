@@ -1834,6 +1834,16 @@
       "バージョン別の Playwright: {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.web_url_set": "{url} をこの Den のアドレスにする",
+    "ap.det.web_url_set.now": "現在: {from}。",
+    "ap.det.web_url_set.nowUnconfirmed": "現在: {from} (未確認)。",
+    "ap.det.web_url_set.none": "現在: アドレスは設定されていません。",
+    "ap.det.web_url_set.answers":
+      "{url} は今この Den として応答します: Den がその名前経由で一回限りのトークンを問い合わせました。",
+    "ap.det.web_url_set.saves":
+      "設定と同じ方法で確認済みとして保存します。再起動なしで有効になり、Den は接続中の Hub に伝えます。",
+    "set.ui.hub.denUrlRefused":
+      "Hub はこの Den のアドレス ({url}) を受け付けませんでした: {why}",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
