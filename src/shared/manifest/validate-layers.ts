@@ -78,6 +78,13 @@ export type ReadLayerFile = (file: string, layer: ManifestLayer) => string;
 
 export interface ValidateLayersOptions {
   read?: ReadLayerFile;
+  /**
+   * The one message for any layer file that can't be read, whatever the
+   * cause; unset, the cause's own message.
+   */
+  readFailure?: string;
+  /** Where the git origin may be read (see HeldLookup). */
+  gitRoots?: readonly string[];
 }
 
 const readAsIs: ReadLayerFile = (file) => fs.readFileSync(file, "utf-8");
@@ -184,6 +191,7 @@ function readLayer(
   file: string,
   layer: ManifestLayer,
   read: ReadLayerFile,
+  readFailure?: string,
 ): { value: unknown } | { error: string } {
   try {
     const raw = read(file, layer);
@@ -197,7 +205,7 @@ function readLayer(
     }
     return { value: value ?? (raw.trim() ? raw : null) };
   } catch (e) {
-    return { error: `could not read: ${(e as Error).message}` };
+    return { error: readFailure ?? `could not read: ${(e as Error).message}` };
   }
 }
 
@@ -233,8 +241,9 @@ export function validateLayers(
   opts: ValidateLayersOptions = {},
 ): LayeredValidation {
   const read = opts.read ?? readAsIs;
+  const look = opts.gitRoots ? { gitRoots: opts.gitRoots } : {};
   // Located by name only: every file is read below, through `read`.
-  const { baseFile, baseLayer, overrideFile } = locateManifest(repoPath);
+  const { baseFile, baseLayer, overrideFile } = locateManifest(repoPath, look);
   const layers: LayerValidation[] = [];
 
   if (!baseFile || !baseLayer) {
@@ -247,13 +256,13 @@ export function validateLayers(
     return { valid: false, layers, applied: [] };
   }
 
-  const base = readLayer(baseFile, baseLayer, read);
+  const base = readLayer(baseFile, baseLayer, read, opts.readFailure);
   let baseResult =
     "error" in base
       ? failure(tools.version, baseFile, base.error)
       : withFile(tools.validate(base.value), baseFile);
   const redundantHeld =
-    baseLayer === "repo" ? heldManifestPath(repoPath) : null;
+    baseLayer === "repo" ? heldManifestPath(repoPath, look) : null;
   if (redundantHeld)
     baseResult = {
       ...baseResult,
@@ -266,7 +275,12 @@ export function validateLayers(
 
   let overrideRead: ReturnType<typeof readLayer> | null = null;
   if (overrideFile) {
-    const override = readLayer(overrideFile, "override", read);
+    const override = readLayer(
+      overrideFile,
+      "override",
+      read,
+      opts.readFailure,
+    );
     overrideRead = override;
     const baseMap = "value" in base && isPlainMap(base.value) ? base.value : {};
     const overrideResult =

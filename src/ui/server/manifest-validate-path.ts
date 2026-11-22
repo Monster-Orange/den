@@ -6,11 +6,15 @@
  * each is read at the resolved path that was checked (readWithin):
  *   - the requested path: inside a configured repo root, as written and
  *     after every symlink;
- *   - the repo's own manifest: inside the requested repo folder;
+ *   - the repo's own manifest: inside the configured repo roots;
  *   - a held manifest or override: inside the held manifests folder.
- * A configured repo root that is far too broad (broadRootReason: the whole
- * disk, a top-level folder, the home folder or one holding it, the state
- * folder or one holding it) is never a root; `doctor` says why.
+ * A configured repo root is used only when it is a git checkout and not
+ * far too broad (rootRefusal); `doctor` says why one is not. The roots are
+ * resolved and checked once, here, and every read uses those same roots.
+ * The repo's own manifest may be anywhere in the configured repo roots (a
+ * monorepo folder's manifest may link to another folder of its repo); the
+ * git origin, which picks the held manifest, is read only inside them too.
+ * Every read failure gets the one same answer.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -19,10 +23,10 @@ import {
   validateManifestLayers,
 } from "../../shared/manifest/validate-manifest.js";
 import {
-  broadRootReason,
   isWithin,
   readWithin,
   realRoots,
+  rootRefusal,
   type BroadRootOptions,
 } from "../../shared/manifest/contained-read.js";
 import { product } from "../../shared/product.js";
@@ -34,33 +38,46 @@ export interface ValidatePathDeps extends BroadRootOptions {
   heldDir: string;
 }
 
+/** The one answer for a manifest that can't be read, whatever the cause. */
+const UNREADABLE = "The manifest couldn't be read.";
+
 /** A message's first line: a parser's code frame quotes the file. */
 function firstLine(m: string): string {
   return String(m).split("\n")[0].replace(/:\s*$/, "");
 }
 
-/** The configured roots that are absolute and not far too broad. */
-function usableRoots(deps: ValidatePathDeps): string[] {
-  return deps.repoRoots.filter(
-    (r) => !!r && path.isAbsolute(r) && broadRootReason(r, deps) === null,
+/** The configured roots that can be roots: as written, and resolved. */
+function usableRoots(deps: ValidatePathDeps): {
+  written: string[];
+  real: string[];
+} {
+  const written = deps.repoRoots.filter(
+    (r) => !!r && rootRefusal(r, deps) === null,
   );
+  return {
+    written: written.map((r) => path.resolve(r)),
+    real: realRoots(written),
+  };
 }
 
 /**
  * Where `p` really is, when it is a usable repo root or inside one, both as
  * written and after resolving every symlink; else null.
  */
-function inRepo(p: string, roots: string[]): string | null {
+function inRepo(
+  p: string,
+  roots: { written: string[]; real: string[] },
+): string | null {
   if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
   const asWritten = path.resolve(p);
-  if (!roots.some((r) => isWithin(asWritten, path.resolve(r)))) return null;
+  if (!roots.written.some((r) => isWithin(asWritten, r))) return null;
   let real: string;
   try {
-    real = fs.realpathSync(p);
+    real = fs.realpathSync.native(p);
   } catch {
     return null;
   }
-  return realRoots(roots).some((r) => isWithin(real, r)) ? real : null;
+  return roots.real.some((r) => isWithin(real, r)) ? real : null;
 }
 
 export function validateAtPath(
@@ -80,6 +97,8 @@ export function validateAtPath(
           "Validate reads only a repo folder (or a file in one) of a project here.",
       },
     };
+  const repoRoots = roots.real;
+  const heldRoots = realRoots([deps.heldDir]);
   // Errors name the file's line and column, never its text.
   const plain = (r: ReturnType<typeof validateManifest>) => ({
     ...r,
@@ -91,11 +110,11 @@ export function validateAtPath(
     if (isDir) {
       // A repo folder: every layer that applies (repo or held, override,
       // merged), flattened into the usual shape; each error names its file.
-      // The repo's own manifest is read inside this folder only; a held
-      // manifest or override inside the held folder only.
       const layered = validateManifestLayers(real, {
         read: (file, layer) =>
-          readWithin(file, layer === "repo" ? [real] : [deps.heldDir]),
+          readWithin(file, layer === "repo" ? repoRoots : heldRoots),
+        readFailure: UNREADABLE,
+        gitRoots: repoRoots,
       });
       if (layered.layers.length > 0)
         return {
@@ -114,23 +133,15 @@ export function validateAtPath(
         };
     }
     const file = isDir ? path.join(real, `${product().manifestYml}`) : real;
-    const content = readWithin(file, isDir ? [real] : realRoots(roots));
+    const content = readWithin(file, repoRoots);
     return { status: 200, body: plain(validateManifest(content)) };
-  } catch (e) {
+  } catch {
     return {
       status: 200,
       body: {
         valid: false,
         version: 1,
-        errors: [
-          {
-            path: "",
-            message:
-              (e as NodeJS.ErrnoException).code === "ENOENT"
-                ? "No manifest there."
-                : "The manifest couldn't be read.",
-          },
-        ],
+        errors: [{ path: "", message: UNREADABLE }],
         warnings: [],
       },
     };

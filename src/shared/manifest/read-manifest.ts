@@ -15,7 +15,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { readOriginUrl } from "../git/origin-url.js";
+import { readOriginUrl, type GitLookup } from "../git/origin-url.js";
 import { cachedRead } from "../read-cache.js";
 import { getDistRoot } from "../paths.js";
 import { parse as parseYaml } from "yaml";
@@ -46,19 +46,35 @@ export function repoManifestPath(repoPath: string): string | null {
 
 const originCache = new Map<string, string | null>();
 
+/**
+ * How a held manifest is looked up (issue 583): with `gitRoots` (resolved,
+ * checked repo roots), the git origin is read only inside them, and is not
+ * cached (another caller's answer could come from outside them).
+ */
+export interface HeldLookup {
+  gitRoots?: readonly string[];
+}
+
 /** Repo name of `repoPath`'s git origin (`…/<name>.git`), cached. */
-export function originRepoName(repoPath: string): string | null {
-  if (originCache.has(repoPath)) return originCache.get(repoPath)!;
+export function originRepoName(
+  repoPath: string,
+  look: HeldLookup = {},
+): string | null {
+  const contained: GitLookup | undefined = look.gitRoots
+    ? { roots: look.gitRoots }
+    : undefined;
+  if (!contained && originCache.has(repoPath))
+    return originCache.get(repoPath)!;
   // Read from the git config file, never by spawning git: this runs on the
   // web server's request path for every repo without its own manifest.
-  const url = readOriginUrl(repoPath);
+  const url = readOriginUrl(repoPath, contained);
   const name = url
     ? url
         .replace(/\.git$/, "")
         .split(/[/:]/)
         .pop() || null
     : null;
-  originCache.set(repoPath, name);
+  if (!contained) originCache.set(repoPath, name);
   return name;
 }
 
@@ -76,9 +92,9 @@ function managedCloneRepo(repoPath: string): string | null {
 }
 
 /** The names `repoPath` is known by: origin repo, managed clone, folder. */
-function repoKeys(repoPath: string): string[] {
+function repoKeys(repoPath: string, look: HeldLookup = {}): string[] {
   return [
-    originRepoName(repoPath),
+    originRepoName(repoPath, look),
     // A managed clone lives at .den-services/<repo>/<branch>,
     // and need not be cloned yet.
     managedCloneRepo(repoPath),
@@ -87,8 +103,12 @@ function repoKeys(repoPath: string): string[] {
 }
 
 /** The first `manifests/<key><suffix>` that exists, or null. */
-function heldFile(repoPath: string, suffix: string): string | null {
-  for (const key of repoKeys(repoPath)) {
+function heldFile(
+  repoPath: string,
+  suffix: string,
+  look: HeldLookup = {},
+): string | null {
+  for (const key of repoKeys(repoPath, look)) {
     const p = path.join(heldManifestsDir(), `${key}${suffix}`);
     if (fs.existsSync(p)) return p;
   }
@@ -96,8 +116,11 @@ function heldFile(repoPath: string, suffix: string): string | null {
 }
 
 /** The den-held manifest for `repoPath`, or null. */
-export function heldManifestPath(repoPath: string): string | null {
-  return heldFile(repoPath, `${product().manifestYml}`);
+export function heldManifestPath(
+  repoPath: string,
+  look: HeldLookup = {},
+): string | null {
+  return heldFile(repoPath, `${product().manifestYml}`, look);
 }
 
 /**
@@ -112,8 +135,11 @@ export function overrideSuffix(): string {
  * The override for `repoPath` (`manifests/<repo>.override.yml`), or null.
  * Matched by the same names, in the same order, as the held manifest.
  */
-export function overrideManifestPath(repoPath: string): string | null {
-  return heldFile(repoPath, overrideSuffix());
+export function overrideManifestPath(
+  repoPath: string,
+  look: HeldLookup = {},
+): string | null {
+  return heldFile(repoPath, overrideSuffix(), look);
 }
 
 /**
@@ -205,17 +231,20 @@ export interface Located {
  * Which manifest files apply to `repoPath` (the base and its layer, the
  * override), found by name only: nothing is read.
  */
-export function locateManifest(repoPath: string): Located {
-  return locate(repoPath);
+export function locateManifest(
+  repoPath: string,
+  look: HeldLookup = {},
+): Located {
+  return locate(repoPath, look);
 }
 
-function locate(repoPath: string): Located {
+function locate(repoPath: string, look: HeldLookup = {}): Located {
   const own = repoManifestPath(repoPath);
-  const held = own ? null : heldManifestPath(repoPath);
+  const held = own ? null : heldManifestPath(repoPath, look);
   return {
     baseFile: own ?? held,
     baseLayer: own ? "repo" : held ? "held" : null,
-    overrideFile: overrideManifestPath(repoPath),
+    overrideFile: overrideManifestPath(repoPath, look),
   };
 }
 

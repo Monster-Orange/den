@@ -9,9 +9,12 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, describe, expect, it } from "@jest/globals";
+import { spawnSync } from "child_process";
 import {
   broadRootReason,
+  isWithin,
   readWithin,
+  rootRefusal,
 } from "../../../src/shared/manifest/contained-read.js";
 
 const tmpDirs: string[] = [];
@@ -96,6 +99,71 @@ describe("readWithin", () => {
   });
 });
 
+describe("readWithin: roots and odd files", () => {
+  it("uses the roots as given: a root that is a link is not followed", () => {
+    const real = tempDir();
+    fs.writeFileSync(path.join(real, "a.yml"), "name: a\n");
+    const link = path.join(tempDir(), "link");
+    fs.symlinkSync(real, link);
+    expect(() => readWithin(path.join(real, "a.yml"), [link])).toThrow(
+      /outside/,
+    );
+  });
+
+  it("a file that isn't a regular file is refused without waiting", () => {
+    const root = tempDir();
+    const odd = path.join(root, "odd.yml");
+    expect(spawnSync("mkfifo", [odd]).status).toBe(0);
+    // In a child: a read that waits would hold this process too.
+    const tsx = path.resolve("node_modules/.bin/tsx");
+    const mod = path.resolve("src/shared/manifest/contained-read.ts");
+    const r = spawnSync(
+      tsx,
+      [
+        "-e",
+        `import { readWithin } from ${JSON.stringify(mod)};
+         try { readWithin(${JSON.stringify(odd)}, [${JSON.stringify(root)}]); console.log("read"); }
+         catch { console.log("refused"); }`,
+      ],
+      { encoding: "utf-8", timeout: 20000 },
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.stdout.trim()).toBe("refused");
+  });
+});
+
+describe("isWithin", () => {
+  it("a folder whose name starts with two dots is inside", () => {
+    const root = tempDir();
+    expect(isWithin(path.join(root, "..x"), root)).toBe(true);
+    expect(isWithin(path.join(root, "..x", "a.yml"), root)).toBe(true);
+    expect(isWithin(path.dirname(root), root)).toBe(false);
+    expect(isWithin(path.join(path.dirname(root), "other"), root)).toBe(false);
+  });
+});
+
+describe("rootRefusal", () => {
+  it("a root that isn't a repo is refused", () => {
+    const home = tempDir();
+    const plain = path.join(home, "work", "plain");
+    fs.mkdirSync(plain, { recursive: true });
+    expect(rootRefusal(plain, { home })).toMatch(/not a git checkout/);
+  });
+
+  it("a repo root passes", () => {
+    const home = tempDir();
+    const repo = path.join(home, "work", "shop");
+    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
+    expect(rootRefusal(repo, { home })).toBe(null);
+  });
+
+  it("a far too broad root is refused even when it holds a .git", () => {
+    const home = tempDir();
+    fs.mkdirSync(path.join(home, ".git"));
+    expect(rootRefusal(home, { home })).toMatch(/home folder/);
+  });
+});
+
 describe("broadRootReason", () => {
   it("passes a repo folder", () => {
     const home = tempDir();
@@ -134,6 +202,25 @@ describe("broadRootReason", () => {
     fs.mkdirSync(stateDir);
     expect(broadRootReason(top, { home: tempDir(), stateDir })).toMatch(
       /state folder/,
+    );
+  });
+
+  const onMac = process.platform === "darwin" ? it : it.skip;
+
+  onMac("refuses the home folder spelled in other capitals", () => {
+    const home = path.join(tempDir(), "me");
+    fs.mkdirSync(home);
+    const other = path.join(path.dirname(home), "ME");
+    expect(broadRootReason(other, { home })).toMatch(/home folder/);
+  });
+
+  onMac("refuses the home folder reached through the data volume", () => {
+    const home = path.join(tempDir(), "me");
+    fs.mkdirSync(home);
+    const data = "/System/Volumes/Data";
+    if (!fs.existsSync(path.join(data, home))) return;
+    expect(broadRootReason(path.join(data, home), { home })).toMatch(
+      /home folder/,
     );
   });
 });

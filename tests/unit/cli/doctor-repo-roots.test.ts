@@ -28,7 +28,7 @@ describe("repoRootLines", () => {
   it("is ok when every repo root is one repo's folder", () => {
     const home = tempDir();
     const repo = path.join(home, "work", "shop");
-    fs.mkdirSync(repo, { recursive: true });
+    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
     const r = repoRootLines([{ project: "north", repoPath: repo }], {
       home,
       stateDir: path.join(home, ".den"),
@@ -61,5 +61,28 @@ describe("repoRootLines", () => {
     );
     expect(r.check.status).toBe("fail");
     expect(r.check.detail).toMatch(/whole disk/);
+  });
+
+  it("warns on a root that isn't a repo, naming it", () => {
+    const home = tempDir();
+    const plain = path.join(home, "work", "plain");
+    fs.mkdirSync(plain, { recursive: true });
+    const r = repoRootLines([{ project: "north", repoPath: plain }], {
+      home,
+      stateDir: path.join(home, ".den"),
+    });
+    expect(r.check.status).toBe("warn");
+    expect(r.problem).toBe(false);
+    expect(r.check.detail).toContain(plain);
+    expect(r.check.detail).toMatch(/not a git checkout/);
+  });
+
+  it("says nothing about a root not there yet", () => {
+    const home = tempDir();
+    const r = repoRootLines(
+      [{ project: "north", repoPath: path.join(home, "work", "later") }],
+      { home, stateDir: path.join(home, ".den") },
+    );
+    expect(r.check.status).toBe("ok");
   });
 });
