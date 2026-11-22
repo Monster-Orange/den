@@ -7930,18 +7930,32 @@ export async function busyAgentIds(
   d: AgentsResolved,
   ids: readonly string[],
 ): Promise<string[]> {
-  const out: string[] = [];
+  return (await busyAgentHolds(d, ids)).map((h) => h.agent);
+}
+
+/**
+ * Issue 732: busyAgentIds with why each one holds the wait: mid-turn (no
+ * `job`), or its turn ended and a background job it started still runs
+ * (`job`, with its minutes), for doctor's honest words.
+ */
+export async function busyAgentHolds(
+  d: AgentsResolved,
+  ids: readonly string[],
+): Promise<{ agent: string; job?: { minutes: number } }[]> {
+  const out: { agent: string; job?: { minutes: number } }[] = [];
   for (const id of ids) {
     const rec = readRecord(d.stateDir(), id);
     if (!rec) continue;
     const st = await inputState(d, rec, new Set(), 3000, {
       promptCheck: false,
     });
-    if (
-      st === "busy" ||
-      (st === "idle" && (await agentJob(d, rec).catch(() => null)) !== null)
-    )
-      out.push(id);
+    if (st === "busy") {
+      out.push({ agent: id });
+      continue;
+    }
+    if (st !== "idle") continue;
+    const job = await agentJob(d, rec).catch(() => null);
+    if (job) out.push({ agent: id, job: { minutes: job.minutes } });
   }
   return out;
 }

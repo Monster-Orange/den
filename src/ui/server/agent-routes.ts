@@ -148,7 +148,7 @@ import {
   listRuntimes,
   markInterrupted,
   runningAgentIds,
-  busyAgentIds,
+  busyAgentHolds,
   resumeAfterHostRestart,
   agentsOfSessions,
   endedAfterHostRestart,
@@ -2164,8 +2164,14 @@ async function refreshAndReport(
       by,
       ...s,
     });
+  // Issue 732: while it waits, which agents a background job holds it for.
+  let waitWhy: string | null = null;
+  let heldBy = "";
   const r = await refreshSessionHost({
-    onWait: ({ why }) => state({ state: "waiting", why }),
+    onWait: ({ why }) => {
+      waitWhy = why;
+      state({ state: "waiting", why });
+    },
     connectExisting: () => d.connectExisting(),
     connect: () => d.connect(),
     socket: sessionPaths(d.stateDir()).socket,
@@ -2175,7 +2181,22 @@ async function refreshAndReport(
       pty: installedPtyModule(),
     }),
     running: () => runningAgentIds(d),
-    busy: (ids) => busyAgentIds(d, ids),
+    busy: async (ids) => {
+      const holds = await busyAgentHolds(d, ids);
+      const jobs = holds.flatMap((h) =>
+        h.job ? [{ agent: h.agent, minutes: h.job.minutes }] : [],
+      );
+      const key = JSON.stringify(jobs);
+      if (waitWhy !== null && key !== heldBy) {
+        heldBy = key;
+        state({
+          state: "waiting",
+          why: waitWhy,
+          ...(jobs.length ? { jobs } : {}),
+        });
+      }
+      return holds.map((h) => h.agent);
+    },
     waitMs: waitS * 1000,
     cutNote: note ? HOST_RESTART_NOTE : null,
     resume: (id, n) => resumeAfterHostRestart(d, id, n),

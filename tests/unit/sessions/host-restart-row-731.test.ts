@@ -107,6 +107,27 @@ describe("issue 731: doctor's terminal host row", () => {
     expect(allText(r)).not.toMatch(/\bacme sessions\b/);
   });
 
+  it("issue 732: while a background job an agent started holds the wait, the row says so, never busy with a turn", async () => {
+    const r = await hostModuleLines("acme", {
+      ...staleHost,
+      refresh: () => ({
+        ...waiting,
+        jobs: [{ agent: "planner", minutes: 42 }],
+      }),
+      zone: () => "UTC",
+    });
+    expect(r.check.status).toBe("warn");
+    expect(r.check.detail).toContain(
+      "agent planner: a background job it started is still running (42 min)",
+    );
+    expect(allText(r)).not.toMatch(/busy with a turn/);
+    // The page reads it too.
+    expect(r.check.refresh).toMatchObject({
+      state: "waiting",
+      jobs: [{ agent: "planner", minutes: 42 }],
+    });
+  });
+
   it("after a failed refresh, the row gives Den's reason and the fix is the held write", async () => {
     const r = await hostModuleLines("acme", {
       ...staleHost,
@@ -176,6 +197,21 @@ describe("issue 731: doctor's terminal host row", () => {
 });
 
 describe("issue 731: the refresh state doctor reads", () => {
+  it("issue 732: keeps the agents a background job holds it for; drops a bad entry", () => {
+    const dir = tmp();
+    writeHostRefreshState(dir, {
+      ...waiting,
+      jobs: [
+        { agent: "planner", minutes: 7 },
+        { agent: "", minutes: 1 },
+        { agent: "scout", minutes: -1 },
+      ] as never,
+    });
+    expect(readHostRefreshState(dir, () => true)?.jobs).toEqual([
+      { agent: "planner", minutes: 7 },
+    ]);
+  });
+
   it("round-trips; a wait whose server is gone is no refresh", () => {
     const dir = tmp();
     expect(readHostRefreshState(dir)).toBeNull();
