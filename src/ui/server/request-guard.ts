@@ -962,6 +962,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/approvals/:id/decide",
   // Issue 52: the Coach's Run now is a person's (the handler checks too).
   "/api/coach/run",
+  // Issue 52: Dismiss a Coach finding, with the reason: a person's.
+  "/api/coach/dismiss",
   "/api/settings",
   "/api/scope",
   "/api/web-url",
