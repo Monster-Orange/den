@@ -468,21 +468,22 @@ const READ_TOOLS: DenTool[] = [
         why: "asked",
         text: question,
       })) as { lead?: unknown; askId?: unknown } | null;
-      // Issue 101: a project with a lead: the question went to it.
-      if (typeof r?.lead === "string" && r.lead)
-        return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.`;
       // Issue 1008: its id, to withdraw it if it is settled elsewhere.
       const id =
         typeof r?.askId === "string" && r.askId
           ? ` Its id is ${r.askId}: if it is settled another way, withdraw it with ask_withdraw.`
           : "";
+      // Issue 101: a project with a lead: the question went to it. Issue
+      // 1058: it has an id too.
+      if (typeof r?.lead === "string" && r.lead)
+        return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.${id}`;
       return `Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.${id}`;
     },
   ),
   read(
     "ask_withdraw",
     "Withdraw your question",
-    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
+    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
     {
       id: z.string().describe("The question's id, from ask_human"),
       reason: z
