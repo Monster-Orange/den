@@ -15,6 +15,8 @@
 import type * as http from "http";
 import type { SeenMarks } from "../../shared/seen-mark.js";
 import { principalOf } from "./request-guard.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+import { osUser } from "../../shared/web-secret.js";
 
 export type AgentAttn = "needs" | "done" | "working" | "idle";
 
@@ -30,13 +32,17 @@ export interface AgentStateDeps {
 export const agentSubject = (id: string): string => `agent:${id}`;
 
 /**
- * The person a request is: the person it proved ("person:<user>"; a
- * signed-in browser is its OS user's, so a phone and a desktop are one
- * person), else Den's one person.
+ * Whose seen marks a request reads and writes: the person it proved
+ * ("person:<user>"; a signed-in browser is its OS user's, so a phone and
+ * a desktop are one person). A loopback page with no session, or no
+ * credential, is that same person. The test install's fixture person
+ * (issue 810) and an agent keep their own key: never the person's marks.
  */
 export function personKey(req: http.IncomingMessage): string {
   const p = principalOf(req);
-  return p && p.startsWith("person:") ? p : "person";
+  if (p && (p.startsWith("person:") || p.startsWith("agent:"))) return p;
+  if (p === FIXTURE_PRINCIPAL) return p;
+  return `person:${osUser()}`;
 }
 
 interface RowLike {

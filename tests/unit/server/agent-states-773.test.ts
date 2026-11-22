@@ -30,7 +30,12 @@ import {
   type AgentStateDeps,
 } from "../../../src/ui/server/agent-state.js";
 import { handleNotificationRoutes } from "../../../src/ui/server/notification-routes.js";
-import { setPrincipal } from "../../../src/ui/server/request-guard.js";
+import {
+  setPrincipal,
+  type Principal,
+} from "../../../src/ui/server/request-guard.js";
+import { osUser } from "../../../src/shared/web-secret.js";
+import { FIXTURE_PRINCIPAL } from "../../../src/shared/fixture-person.js";
 
 let dir = "";
 let clock = 1_800_000_000_000;
@@ -74,11 +79,17 @@ const row = (agent: string, extra: Record<string, unknown> = {}) => ({
 });
 
 /** A request as the route sees it: a body, and who it proved to be. */
-function req(method: string, url: string, body: unknown, actor?: string) {
+function req(
+  method: string,
+  url: string,
+  body: unknown,
+  actor?: string | Principal,
+) {
   const r = new PassThrough() as unknown as http.IncomingMessage & PassThrough;
   Object.assign(r, { method, url, headers: {} });
-  if (actor)
+  if (typeof actor === "string")
     setPrincipal(r, { kind: "person", actor: actor as `person:${string}` });
+  else if (actor) setPrincipal(r, actor);
   (r as PassThrough).end(body === undefined ? "" : JSON.stringify(body));
   return r;
 }
@@ -101,7 +112,7 @@ function res() {
 async function look(
   d: ReturnType<typeof mk>,
   agents: string[],
-  actor?: string,
+  actor?: string | Principal,
 ) {
   const { r, out } = res();
   await handleNotificationRoutes(
@@ -158,10 +169,61 @@ describe("issue 773 clause 3: seen is per person", () => {
     );
   });
 
-  it("the person is who the request proved: a person token, else the one person", () => {
+  it("the person is who the request proved: a person token, a signed-in browser or a loopback page is the person; the fixture and an agent are their own", () => {
     const withActor = req("GET", "/", undefined, "person:a");
     expect(personKey(withActor)).toBe("person:a");
-    expect(personKey(req("GET", "/", undefined))).toBe("person");
+    const me = `person:${osUser()}`;
+    const browser = (session?: string, fixture?: true): Principal => ({
+      kind: "person-browser",
+      ...(session ? { session } : {}),
+      ...(fixture ? { fixture } : {}),
+    });
+    expect(personKey(req("GET", "/", undefined, browser("s1")))).toBe(me);
+    // A loopback page (no session) and no credential: the same person.
+    expect(personKey(req("GET", "/", undefined, browser()))).toBe(me);
+    expect(personKey(req("GET", "/", undefined))).toBe(me);
+    // The test install's fixture person: never the human's marks.
+    expect(personKey(req("GET", "/", undefined, browser("f1", true)))).toBe(
+      FIXTURE_PRINCIPAL,
+    );
+    const agent: Principal = {
+      kind: "agent",
+      actor: "agent:builder",
+      workspace: "north",
+      grants: [],
+      session: { name: "s" },
+    };
+    expect(personKey(req("GET", "/", undefined, agent))).toBe("agent:builder");
+  });
+
+  it("two signed-in browsers of one person agree; the fixture and a second person keep their own", async () => {
+    const d = mk();
+    await d.a.event("builder", "north", { event: "finished" });
+    const phone: Principal = { kind: "person-browser", session: "phone" };
+    const desk: Principal = { kind: "person-browser", session: "desk" };
+    const fixture: Principal = {
+      kind: "person-browser",
+      session: "fx",
+      fixture: true,
+    };
+    await look(d, ["builder"], phone);
+    const of = (who: string | Principal) =>
+      withAgentStates(
+        [row("builder")],
+        personKey(req("GET", "/", undefined, who)),
+        d.deps,
+      )[0].attn;
+    expect(of(desk)).toBe("idle");
+    expect(of({ kind: "person-browser" })).toBe("idle");
+    expect(of(fixture)).toBe("done");
+    expect(of("person:b")).toBe("done");
+    // The fixture opening it doesn't mark the human's.
+    await d.a.event("builder", "north", { event: "finished" });
+    clock += 1000;
+    await d.a.event("builder", "north", { event: "finished" });
+    await look(d, ["builder"], fixture);
+    expect(of(fixture)).toBe("idle");
+    expect(of(desk)).toBe("done");
   });
 });
 
