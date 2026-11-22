@@ -19,6 +19,7 @@ import * as path from "path";
 import type { Browser } from "playwright";
 import { launchBrowser } from "../helpers/browser.js";
 import { denAuth } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 
@@ -105,8 +106,11 @@ describe.each(["chromium", "webkit"])("the rail in %s", (engine) => {
     const ctx = await browsers[engine]!.newContext({
       viewport: { width: 1280, height: 800 },
     });
-    const p = await ctx.newPage();
     const base = `http://localhost:${port}`;
+    // A person signed in: a page that isn't can read the rail but not
+    // save it (signin_required).
+    await signIn(ctx, path.join(tmp, "home", ".den"), base);
+    const p = await ctx.newPage();
     await p.goto(`${base}/settings`);
     await p.waitForSelector('#den-rail [data-pin="shop"]');
     // The race under test is the save against leaving, not against this
