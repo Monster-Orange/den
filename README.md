@@ -105,6 +105,17 @@ That's it: `acme` is now your tool, with your name, your CLI and your config, in
 One project focus with Switch, agent pane layouts, and a Start dialog with personas, roles and a choice of
 runtime and model.
 
+## Browser tests through the gate
+
+Projects that run browser tests on a test box import Den's box guard instead of copying it:
+
+```js
+import { allowFromEnv, connectGuarded, guardBrowser, ownPorts, pinLoopbackNames } from "@monster-orange/den/pw-guard";
+```
+
+It holds a box's pages to the run's base URLs, never this machine's ports 80 or 443, and has no Playwright
+dependency. `@monster-orange/den/pw-guard` follows semver: These names and their behaviour change only in a major version. A new option is a minor. The guard never gets looser in a patch.
+
 ## Docs
 
 [Reference](docs/reference.md) (configuration, manifests, strategies, CLI) · [Distributions](docs/distributions.md) ·

@@ -27,6 +27,7 @@ import {
   renderThemeCss,
   renderThemeTokens,
 } from "../../../src/ui/server/theme-runtime.js";
+import { KIT_FILES } from "../../../src/ui/server/ui-assets.js";
 
 const ROOT = path.resolve(__dirname, "../../..");
 // The schema is read from the engine root: this checkout's, whichever
@@ -102,12 +103,9 @@ function drawn(theme: ThemeManifest, mode: "light" | "dark") {
       ),
       text: resolve(declOf(button, ".den-btn.primary", "color")!, vars),
     },
-    dialogPrimary: resolve(
-      declOf(dialog, ".dk-btn.dk-primary", "background")!,
-      vars,
-    ),
+    // Issue 673: a dialog's buttons are .den-btn; its danger is dialog.css's.
     dialogDanger: resolve(
-      declOf(dialog, ".dk-btn.dk-danger", "background")!,
+      declOf(dialog, ".den-btn.dk-danger", "background")!,
       vars,
     ),
   };
@@ -126,7 +124,6 @@ describe("issue 788: themes without the new keys draw as before", () => {
           border: c["accent-fill"],
           text: c["on-accent"],
         },
-        dialogPrimary: c["accent-fill"],
         dialogDanger: c.bad,
       });
     },
@@ -198,7 +195,6 @@ describe("issue 788: the sketch theme", () => {
       const d = drawn(sketch, mode);
       expect(d.edge).toBe("1px dashed " + sketch.modes[mode].border);
       expect(d.primary.bg).toBe("transparent");
-      expect(d.dialogPrimary).toBe("transparent");
       expect(d.dialogDanger).toBe("transparent");
       expect(d.primary.border).toBe(sketch.modes[mode]["border-strong"]);
       expect(d.primary.text).toBe(sketch.modes[mode].text);
@@ -217,6 +213,14 @@ describe("issue 788: the sketch theme", () => {
       ),
     ).not.toThrow();
   }, 60_000);
+
+  it("ships: a package export, and Den serves it at /kit/themes/sketch.css", () => {
+    const pkg = JSON.parse(
+      read(path.join(ROOT, "packages/den-ui/package.json")),
+    ) as { exports: Record<string, string> };
+    expect(pkg.exports["./themes/sketch.css"]).toBe("./src/themes/sketch.css");
+    expect(KIT_FILES).toContain("themes/sketch.css");
+  });
 });
 
 describe("issue 788: the schema and its doc", () => {
