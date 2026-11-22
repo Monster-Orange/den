@@ -123,7 +123,9 @@ async function open(
   around = false,
 ): Promise<Page> {
   const ctx = await b.newContext({
-    viewport: { width, height: 800 },
+    // Around: the window is the banner taller, so the host's frame (and
+    // the rail in it) is as tall as the plain page's window.
+    viewport: { width, height: around ? 840 : 800 },
     reducedMotion: "reduce",
   });
   const p = await ctx.newPage();
