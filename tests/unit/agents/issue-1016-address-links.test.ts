@@ -62,7 +62,7 @@ describe("issue 1016: whoami gives the address and full links", () => {
     expect(t.links).toBeUndefined();
     expect(t.address).toMatch(/not set/);
     expect(t.address).toMatch(
-      /Settings › Server \(\/settings#server\.address\)/,
+      /Settings \(\/settings#server\.address\)/,
     );
     expect(JSON.stringify(t)).not.toMatch(/https?:\/\//);
   });

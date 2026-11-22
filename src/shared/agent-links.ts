@@ -106,7 +106,7 @@ export function agentLinks(
 
 /** What an agent is told when the address isn't set. */
 export function addressNotSetNote(): string {
-  return `This Den's address for people (web.url) is not set, so there are no links to give. A person sets it in Settings › Server (${ADDRESS_SETTING_PAGE}). Never give a localhost or 127.0.0.1 link: it works only on this machine.`; // words-ok: Server is the Settings category's own label
+  return `This Den's address for people (web.url) is not set, so there are no links to give. A person sets it in Settings (${ADDRESS_SETTING_PAGE}). Never give a localhost or 127.0.0.1 link: it works only on this machine.`;
 }
 
 /** Issue 1016: the start brief's one line about the address. */
@@ -114,5 +114,5 @@ export function addressBriefLine(url: string | null | undefined): string {
   const at = peopleAddress(url);
   return at
     ? `Den's address for people: ${at}. Give full links, never 127.0.0.1.`
-    : `Den's address for people is not set (Settings › Server, ${ADDRESS_SETTING_PAGE}): give no links, never 127.0.0.1.`; // words-ok: Server is the Settings category's own label
+    : `Den's address for people is not set (Settings, ${ADDRESS_SETTING_PAGE}): give no links, never 127.0.0.1.`;
 }
