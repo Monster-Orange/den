@@ -570,6 +570,16 @@
       .agstg[open] > summary::before {
         content: "▾";
       }
+      /* Issue 1086: Remove all stopped (N), at the end of the group's own
+         header, in the kit's button text (not the header's mono caps). */
+      .agl .agstg > summary {
+        align-items: center;
+      }
+      .agl .agstg > summary .den-btn {
+        margin-inline-start: auto;
+        text-transform: none;
+        letter-spacing: normal;
+      }
       .agstg > summary:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: -2px;
@@ -1348,9 +1358,6 @@
               Tile
             </button>
           </div>
-          <button type="button" class="den-btn" id="ag-clear" hidden>
-            Clear stopped
-          </button>
           <button type="button" class="den-btn" id="ag-bring">Bring in</button>
           <button type="button" class="den-btn primary" id="ag-start">
             + Start agent

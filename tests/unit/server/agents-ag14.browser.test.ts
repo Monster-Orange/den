@@ -11,7 +11,9 @@
  *   - a runtime that can't resume offers Start fresh, and says why;
  *   - after a restart, one line: "N agents were interrupted when … restarted
  *     · Resume all · Review"; Review marks them, Resume all resumes each;
- *   - Clear stopped removes every stopped agent in view, never a running one;
+ *   - Remove all stopped (N), on the Stopped group's header (issue 1086):
+ *     one confirm naming the count, its Remove busy until the server
+ *     answers, every stopped agent in view gone, never a running one;
  *   - never the admin password, and no page errors.
  *
  * The demo distribution (acme; north, south) with a session host in this
@@ -227,8 +229,16 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       "Stopped (3)",
     );
     expect(await group.getAttribute("open")).not.toBeNull();
-    // Clear stopped shows while anything stopped is in view.
-    expect(await p.locator("#ag-clear").isVisible()).toBe(true);
+    // Issue 1086: Remove all stopped (N) is on the group's own header,
+    // the kit's small size, counting the stopped agents.
+    const all = group.locator('summary [data-act="remove-stopped"]');
+    expect(await all.isVisible()).toBe(true);
+    expect(await all.getAttribute("class")).toBe("den-btn sm");
+    expect((await all.textContent())?.trim()).toMatch(
+      /^Remove all stopped \(\d+\)$/,
+    );
+    // The page header's old Clear stopped is gone.
+    expect(await p.locator("#ag-clear").count()).toBe(0);
     await p.context().close();
   }, 60_000);
 
@@ -955,11 +965,57 @@ describe("after a restart (AG-14.3)", () => {
   }, 60_000);
 });
 
-describe("Clear stopped (AG-14.1b)", () => {
-  it("removes every stopped agent in view, never a running one, with Undo", async () => {
+describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () => {
+  it("one confirm names the count; its Remove is busy until the server answers; every stopped agent goes, never a running one, with Undo", async () => {
     if (skip()) return;
     const p = await open("north");
-    await p.locator("#ag-clear").click();
+    const all = p.locator('#agl summary [data-act="remove-stopped"]');
+    const n = Number(
+      ((await all.textContent()) ?? "").match(/\((\d+)\)/)?.[1] ?? "0",
+    );
+    expect(n).toBeGreaterThan(0);
+    // The stopped agents in view, and no running one among what it counts.
+    expect(
+      await p.locator("#agl details[data-stopped] .agst[data-agent]").count(),
+    ).toBe(n);
+    // The answer is held, so the busy state is seen, never timed.
+    let release: () => void = () => {};
+    const go = new Promise<void>((r) => (release = r));
+    await p.route(
+      (u) => u.pathname === "/api/agents/clear-stopped",
+      async (r) => {
+        await go;
+        await r.fallback();
+      },
+    );
+    const group = p.locator("#agl details[data-stopped]");
+    const wasOpen = (await group.getAttribute("open")) !== null;
+    await all.click();
+    const ask = p.locator('dialog[open][data-dk-kind="confirm"]');
+    await ask.waitFor();
+    expect((await group.getAttribute("open")) !== null).toBe(wasOpen);
+    const said = ((await ask.textContent()) ?? "").replace(/\s+/g, " ");
+    expect(said).toContain(
+      n === 1 ? `Remove ${n} stopped agent?` : `Remove ${n} stopped agents?`,
+    );
+    const ok = ask.locator('[data-dk="ok"]');
+    expect((await ok.textContent())?.trim()).toBe(`Remove ${n}`);
+    await ok.click();
+    try {
+      await p.waitForFunction(
+        () =>
+          document
+            .querySelector(
+              'dialog[open][data-dk-kind="confirm"] [data-dk="ok"]',
+            )
+            ?.getAttribute("aria-busy") === "true",
+      );
+      expect(await ask.count()).toBe(1);
+      expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+    } finally {
+      release();
+    }
+    await ask.waitFor({ state: "detached" });
     const toast = p.locator(".den-toast.den-toast-act");
     await toast.waitFor();
     expect(
@@ -970,7 +1026,7 @@ describe("Clear stopped (AG-14.1b)", () => {
       undefined,
       { timeout: 15_000 },
     );
-    expect(await p.locator("#ag-clear").isHidden()).toBe(true);
+    expect(await p.locator('#agl [data-act="remove-stopped"]').count()).toBe(0);
     // scout runs (resumed above, when the PTY module is here): still listed.
     if (PTY)
       expect(

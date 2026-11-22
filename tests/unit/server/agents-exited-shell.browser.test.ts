@@ -6,7 +6,7 @@
  *   1. A shell that exits moves into Exited, with Remove on its row.
  *   2. Remove takes it out. Issue 482: shells are on the Terminals page
  *      now (Running, then Exited); Restart opens a new one in the same
- *      folder; Clear stopped on Agents takes stopped agents only.
+ *      folder; Remove all stopped on Agents takes stopped agents only.
  *   3. A running shell never shows Remove; its pane shows Close.
  *   4. An exited shell with nothing unread leaves by itself after
  *      agents.exited_shell_minutes (default 10); one with unread output
@@ -128,7 +128,7 @@ describe("#80: an exited shell has a way out", () => {
     await p.context().close();
   }, 60_000);
 
-  it("issue 482: Clear stopped on Agents takes stopped agents; the exited shell stays on Terminals", async () => {
+  it("issues 482, 1086: Remove all stopped on Agents takes stopped agents; the exited shell stays on Terminals", async () => {
     if (!browser) return;
     const sh = await shell("two");
     sh.pty.exit(0);
@@ -144,7 +144,13 @@ describe("#80: an exited shell has a way out", () => {
     await p.waitForSelector('#agl div[data-agent="idle"]');
     // Agents lists no shell, exited or not.
     expect(await p.$$(`#agl [data-shell]`)).toHaveLength(0);
-    await p.locator("#ag-clear").click();
+    // Issue 1086: Remove all stopped (N) counts the agent, not the shell.
+    const all = p.locator('#agl summary [data-act="remove-stopped"]');
+    expect((await all.textContent())?.trim()).toBe("Remove all stopped (1)");
+    await all.click();
+    await p
+      .locator('dialog[open][data-dk-kind="confirm"] [data-dk="ok"]')
+      .click();
     await p.waitForSelector('#agl .agst[data-agent="idle"]', {
       state: "detached",
     });

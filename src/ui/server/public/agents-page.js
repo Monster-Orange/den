@@ -50,8 +50,9 @@
  * "Interrupted: Den restarted", "Exited (code 1)") and its actions:
  * Resume (the same conversation; its pane opens), Start fresh, Remove (one
  * click, and Undo in the toast for 10 s). A runtime that can't resume
- * shows only Start fresh, saying so. Clear stopped removes every stopped
- * agent in view. After a restart, one line says how many were interrupted,
+ * shows only Start fresh, saying so. Remove all stopped (N), on the
+ * Stopped group's header, removes every stopped agent in view (issue
+ * 1086). After a restart, one line says how many were interrupted,
  * with Resume all and Review.
  *
  * Layouts (AG-4b): Focus (the default: one pane; a click replaces it,
@@ -1234,9 +1235,6 @@ function paintList() {
       body +
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
-  const clear = st.root.querySelector("#ag-clear");
-  if (clear)
-    clear.hidden = PAGE === "terminal" || !visibleRows().some(inStopped);
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
@@ -1338,9 +1336,16 @@ function stoppedGroupHtml(rows) {
   if (!rows.length) return "";
   // More than one workspace among them: each row names its own.
   const wsTag = new Set(rows.map((r) => r.workspace)).size > 1;
+  // Issue 1086: Remove all stopped (N), on this list's own header: stopped
+  // agents only (an exited shell is the Terminals page's), shown only when
+  // one is stopped.
+  const agents = rows.filter(isStopped).length;
+  const rmAll = agents
+    ? `<button type="button" class="den-btn sm" data-act="remove-stopped">${esc(t("ag.rmAll", { n: agents }))}</button>`
+    : "";
   return (
     `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
-    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span></summary>` +
+    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span>${rmAll}</summary>` +
     reorderStoppedHtml(rows) +
     rows
       .map((r) =>
@@ -3940,59 +3945,46 @@ async function newTerminal(button) {
   });
 }
 
-/** Clear stopped: every stopped agent and exited shell in view (AG-14.1b). */
-async function clearStopped(button) {
-  const workspaces = [
-    ...new Set(
-      visibleRows()
-        .filter(isStopped)
-        .map((r) => r.workspace),
-    ),
-  ];
-  const shells = visibleRows().filter(exitedShell);
-  if (!workspaces.length && !shells.length) return;
-  const release = window.denShell?.holdDots
-    ? window.denShell.holdDots(button)
-    : () => {};
-  try {
-    const out = workspaces.length
-      ? await api("POST", "/api/agents/clear-stopped", { workspaces })
-      : null;
-    const ids = (out?.removed ?? []).map((x) => x.agent);
-    for (const r of visibleRows())
-      if (ids.includes(r.agent) && st.panes.has(r.id))
-        closePane(r.id, { quiet: true });
-    // 0.4.45: the exited shells too (nothing to undo: a shell can't come
-    // back).
-    let gone = 0;
-    for (const r of shells)
-      try {
-        await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
-        if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
-        gone++;
-      } catch {
-        /* still listed: its row says so */
-      }
-    await refresh();
-    const n = ids.length + gone;
-    if (gone && n)
-      removedToast(
-        t(n === 1 ? "ag.clearedMany.one" : "ag.clearedMany", { n }),
-        ids,
-      );
-    else if (ids.length)
-      removedToast(
-        t(ids.length === 1 ? "ag.removedMany.one" : "ag.removedMany", {
-          n: ids.length,
-        }),
-        ids,
-      );
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-    await refresh();
-  } finally {
-    void release();
-  }
+/**
+ * Issue 1086 (was Clear stopped, AG-14.1b): every stopped agent in view,
+ * never a running one, never a shell. One confirm names the count; its
+ * own Remove sends and holds the kit's busy state until the server answers
+ * (issue 1054: no Working pop-up), and a refusal is said in it. Then a
+ * toast says how many, with Undo, as a single Remove has.
+ */
+async function removeAllStopped(button) {
+  const rows = visibleRows().filter(isStopped);
+  const n = rows.length;
+  if (!n) return;
+  const workspaces = [...new Set(rows.map((r) => r.workspace))];
+  let out = null;
+  const yes = await askConfirm({
+    title: t(n === 1 ? "ag.rmAll.t.one" : "ag.rmAll.t", { n }),
+    message: t("ag.rmAll.m"),
+    okLabel: t("ag.rmAll.ok", { n }),
+    danger: true,
+    opener: button,
+    onAnswer: (ok) =>
+      ok
+        ? // busy-ok: sent from the confirm's own Remove, which the kit dialog holds
+          api("POST", "/api/agents/clear-stopped", { workspaces }).then(
+            (o) => (out = o),
+          )
+        : undefined,
+  });
+  if (!yes || !out) return;
+  const ids = (out.removed ?? []).map((x) => x.agent);
+  for (const r of visibleRows())
+    if (ids.includes(r.agent) && st.panes.has(r.id))
+      closePane(r.id, { quiet: true });
+  await refresh();
+  if (ids.length)
+    removedToast(
+      t(ids.length === 1 ? "ag.removedMany.one" : "ag.removedMany", {
+        n: ids.length,
+      }),
+      ids,
+    );
 }
 
 /** Resume all: every interrupted agent in view that can resume (AG-14.3). */
@@ -5419,14 +5411,13 @@ function translateStatic(root) {
   set("#ag-h", term ? "n.terminal" : "n.agents");
   set("#ag-start", term ? "ag.newShell" : "ag.start");
   if (term)
-    for (const id of ["#ag-bring", "#ag-clear"]) {
+    for (const id of ["#ag-bring"]) {
       const b = root.querySelector(id);
       if (b) b.hidden = true;
     }
   if (!term) set("#ag-bring", "ag.bring");
   set("#ag-conv-t", "ag.bring.conv");
   set("#ag-conv-ot", "ag.bring.outside");
-  set("#ag-clear", "ag.clear");
   set("#ag-dlg-h", "ag.new.title");
   set("#ag-ws-t", "ag.ws");
   set("#ag-p-t", "ag.persona");
@@ -5833,6 +5824,11 @@ export async function mountAgentsPage(root) {
     if (act) {
       const which = act.dataset.act;
       if (which === "resume-all") return void resumeAll(act);
+      // Issue 1086: on the Stopped group's summary; it never toggles it.
+      if (which === "remove-stopped") {
+        e.preventDefault();
+        return void removeAllStopped(act);
+      }
       if (which === "review") return review();
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
@@ -6060,9 +6056,6 @@ export async function mountAgentsPage(root) {
   });
   root.querySelector("#ag-bring")?.addEventListener("click", () => {
     void openStart(true);
-  });
-  root.querySelector("#ag-clear")?.addEventListener("click", (e) => {
-    void clearStopped(e.currentTarget);
   });
   wireStartDialog(root);
   root.querySelector("#ag-cancel").addEventListener("click", () => {
