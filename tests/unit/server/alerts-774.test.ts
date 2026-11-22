@@ -32,7 +32,7 @@ import {
   patchAlerts,
 } from "../../../src/ui/server/alerts.js";
 import { AlertFeed } from "../../../src/ui/server/alert-feed.js";
-import { Attention, needsYouAgents } from "../../../src/ui/server/attention.js";
+import { Attention } from "../../../src/ui/server/attention.js";
 import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
 import {
   alertPlan,
@@ -45,6 +45,15 @@ import {
 } from "../../../src/ui/server/public/tab-count.js";
 import { ALERT_SOUNDS } from "../../../src/ui/server/public/alert-sounds.js";
 import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
+
+/** The fields of a settings row these tests read. */
+type Row = {
+  read: (ctx: unknown) => unknown;
+  keys?: readonly string[];
+  label: string;
+  shown?: () => boolean;
+  control: { notice: () => string };
+};
 
 let dir = "";
 let clock = Date.parse("2026-11-20T12:00:00Z");
@@ -131,7 +140,8 @@ describe("774 clause 1: the settings and their defaults", () => {
     expect(at("notifications.tab_count")).toBeLessThan(
       at("notifications.phone"),
     );
-    const row = (id: string) => DEN_SETTINGS.find((r) => r.id === id)!;
+    const row = (id: string) =>
+      DEN_SETTINGS.find((r) => r.id === id) as unknown as Row;
     const ctx = { data: { alerts: {} } };
     expect(row("notifications.alert_finished").read(ctx)).toBe(false);
     expect(row("notifications.alert_sound").read(ctx)).toBe(false);
@@ -150,7 +160,8 @@ describe("774 clause 1: the settings and their defaults", () => {
 });
 
 describe("774 clauses 1c and 1d: a browser that can't notify", () => {
-  const row = (id: string) => DEN_SETTINGS.find((r) => r.id === id)!;
+  const row = (id: string) =>
+    DEN_SETTINGS.find((r) => r.id === id) as unknown as Row;
   const withNotification = (N: unknown, fn: () => void) => {
     const g = globalThis as Record<string, unknown>;
     const had = "window" in g;
@@ -179,8 +190,8 @@ describe("774 clauses 1c and 1d: a browser that can't notify", () => {
       expect(note).toContain("Home Screen");
       expect(note).toContain("The bell and the tab count still work.");
       // Fewer rows: the finished alert and push need notifications.
-      expect(row("notifications.alert_finished").shown()).toBe(false);
-      expect(row("notifications.phone").shown()).toBe(false);
+      expect(row("notifications.alert_finished").shown?.()).toBe(false);
+      expect(row("notifications.phone").shown?.()).toBe(false);
       // Sounds and the count still work there.
       expect(row("notifications.alert_sound").shown?.() ?? true).toBe(true);
       expect(row("notifications.tab_count").shown?.() ?? true).toBe(true);
@@ -250,17 +261,8 @@ describe("774 clause 4: the tab title and icon", () => {
     expect(badgeText(12)).toBe("9+");
   });
 
-  it("the count is the agents that need you, every project; finished and idle don't count", () => {
-    const why = new Map<string, string>([
-      ["a1", "permission"],
-      ["a2", "asked"],
-      ["a3", "input"],
-    ]);
-    // A held Allow (a4), and one for an agent already waiting (a1).
-    expect(
-      [...needsYouAgents(why, ["agent:a4", "agent:a1", "person:x"])].sort(),
-    ).toEqual(["a1", "a2", "a4"]);
-  });
+  // The count's rule (running agents on a permission, a question or an
+  // Allow) is the rail's: tab-count-773-774.test.ts.
 });
 
 describe("774 clause 6: when it stays quiet", () => {

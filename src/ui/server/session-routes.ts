@@ -1660,14 +1660,51 @@ async function helpersRunning(
   let needs = 0;
   for (const r of listedSessions(sessions, d)) {
     running += r.helpers?.running ?? 0;
-    if (
-      r.kind === "agent" &&
-      r.state === "running" &&
-      r.waiting &&
-      r.waitingWhy !== "input"
-    )
-      needs += 1;
+    if (isNeedsYouRow(r)) needs += 1;
   }
   sendJson(res, { running, needs });
   return true;
+}
+
+/**
+ * Issues 773 and 774: one rule for "needs you", for the rail's count and
+ * the tab's: a running agent stopped on a permission, a question or an
+ * Allow. Idle ("input"), stopped and terminals don't count.
+ */
+export function isNeedsYouRow(r: {
+  kind?: string;
+  state?: string;
+  waiting?: boolean;
+  waitingWhy?: string;
+}): boolean {
+  return (
+    r.kind === "agent" &&
+    r.state === "running" &&
+    !!r.waiting &&
+    r.waitingWhy !== "input"
+  );
+}
+
+/**
+ * Issue 774: how many agents need the person now, every project (the
+ * tab's title and icon), by the same rows and rule as the rail. No host:
+ * nothing runs, so none.
+ */
+export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
+  const d = resolve(deps);
+  let sessions: SessionInfo[] = [];
+  try {
+    const c = await d.connectExisting();
+    if (!c) return 0;
+    try {
+      sessions = await c.list();
+    } finally {
+      c.close();
+    }
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const r of listedSessions(sessions, d)) if (isNeedsYouRow(r)) n += 1;
+  return n;
 }

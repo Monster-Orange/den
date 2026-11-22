@@ -92,25 +92,6 @@ export function deliveryHeld(
   return typingHeld(asked, approvalActors, paused);
 }
 
-/**
- * Issue 774: the agents that need their person now, in every project: a
- * permission prompt or a question (the hooks), or a held Allow
- * (`approvalActors`, "agent:<id>"). An idle agent ("input") or one that
- * finished needs nobody. The tab's count; the one place to point at
- * issue 773's "needs you" state when it lands.
- */
-export function needsYouAgents(
-  why: ReadonlyMap<string, string>,
-  approvalActors: Iterable<string>,
-): Set<string> {
-  const out = new Set<string>();
-  for (const [agent, w] of why)
-    if (w === "permission" || w === "asked") out.add(agent);
-  for (const actor of approvalActors)
-    if (actor.startsWith("agent:")) out.add(actor.slice("agent:".length));
-  return out;
-}
-
 export interface AttentionDeps {
   store: NotificationStore;
   /**

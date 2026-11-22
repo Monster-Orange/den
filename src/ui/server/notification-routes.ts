@@ -143,7 +143,7 @@ export interface NotificationRouteDeps {
    * Issue 774: how many agents need the person now, every project (the
    * tab's title and icon). Absent: none.
    */
-  needsYou?: () => number;
+  needsYou?: () => number | Promise<number>;
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -414,7 +414,7 @@ export async function handleNotificationRoutes(
     res.setHeader("Cache-Control", "no-store");
     let count = 0;
     try {
-      count = deps.needsYou?.() ?? 0;
+      count = (await deps.needsYou?.()) ?? 0;
     } catch {
       count = 0;
     }

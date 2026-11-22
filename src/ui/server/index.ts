@@ -58,7 +58,7 @@ import {
   updateWaitNotes,
 } from "./update-check.js";
 import { applyKeepAlive } from "./keep-alive.js";
-import { deliveryHeld, needsYouAgents, typingHeld } from "./attention.js";
+import { deliveryHeld, typingHeld } from "./attention.js";
 import { pausedAgents, startContextWatch } from "./context-watch-service.js";
 import { contextWatchSettings } from "../../shared/agents/context-watch.js";
 import {
@@ -1404,8 +1404,10 @@ import {
   handleSessionList,
   handleSessionUpgrade,
   isSessionIoPath,
+  needsYouNow,
   sendSessionHttp,
   SESSION_HELPERS_PATH,
+  type SessionRouteDeps,
 } from "./session-routes.js";
 import { refuseUpgrade } from "./websocket.js";
 import {
@@ -5133,14 +5135,24 @@ function waitingAgentIds(): Set<string> {
 
 /**
  * Issue 774: how many agents need the person now, every project (the
- * tab's title and icon): attention.ts needsYouAgents. The one hook to
- * point at issue 773's "needs you" state.
+ * tab's title and icon): the rail's rows and rule (session-routes.ts
+ * isNeedsYouRow), so the tab, the rail and the Agents page agree.
  */
-function needsYouCount(): number {
-  return needsYouAgents(
-    attentionWaiting(),
-    approvals ? approvals.queue.waitingActors() : [],
-  ).size;
+function needsYouCount(): Promise<number> {
+  return needsYouNow(sessionListDeps());
+}
+
+/** The Agents list's deps (session-routes.ts), shared with the tab count. */
+function sessionListDeps(): SessionRouteDeps {
+  return {
+    waitingAgents: waitingAgentIds,
+    waitingWhy: waitingReasons,
+    rotationPolicy: () => policyResolver(agentWebDeps()),
+    restartResume: () => restartResolver(agentWebDeps()),
+    modeOf: () => modeResolver(agentWebDeps()),
+    // Issue 773: each agent's state for the person asking.
+    agentStates: agentStateDeps,
+  };
 }
 
 /**
@@ -8950,15 +8962,7 @@ async function handleRequest(
       res,
       pathname,
       guard.ok && (!guard.beyond || !!guard.session || !!guard.principal),
-      {
-        waitingAgents: waitingAgentIds,
-        waitingWhy: waitingReasons,
-        rotationPolicy: () => policyResolver(agentWebDeps()),
-        restartResume: () => restartResolver(agentWebDeps()),
-        modeOf: () => modeResolver(agentWebDeps()),
-        // Issue 773: each agent's state for the person asking.
-        agentStates: agentStateDeps,
-      },
+      sessionListDeps(),
     )
   )
     return;
