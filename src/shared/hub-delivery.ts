@@ -264,6 +264,50 @@ export function stripLookalikes(body: string): string {
     .join("\n");
 }
 
+/** Hub's info comment on an approval, until it sends kinds (P0-D2). */
+const APPROVED_COMMENT = /\bapproved v\d+ of\b/i;
+/** A held write's id, as Hub names it. */
+const HELD_ID =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
+/**
+ * P0-D2: whether `d` is the owner's approval: kind "approve", a held
+ * decision (kind "held"), or, until Hub sends kinds, its "approved vN of"
+ * comment. Someone else's never is.
+ */
+export function isApproval(d: Delivery, o: DeliveryOwner | null): boolean {
+  if (!o || !isOwner(d.author, o)) return false;
+  if (d.kind === "approve" || d.kind === "held") return true;
+  return (!d.kind || d.kind === "comment") && APPROVED_COMMENT.test(d.body);
+}
+
+/**
+ * P0-D2: what a question names when it is about this approval: its link,
+ * its thread, the doc's title, and any held id Hub's text gives. Short
+ * ones (under 6 characters) are left out: they would match by chance.
+ */
+export function approvalKeys(d: Delivery): string[] {
+  const keys = [d.thread.url, d.thread.id, d.thread.artifact ?? ""];
+  for (const m of d.body.match(HELD_ID) ?? []) keys.push(m.toLowerCase());
+  return [...new Set(keys.map((k) => k.trim()).filter((k) => k.length >= 6))];
+}
+
+/**
+ * P0-D2: what Den types into another agent whose question names an
+ * approval's link: who decided what, and where. Den's own words.
+ */
+export function approvalNoticeText(d: Delivery, o: DeliveryOwner): string {
+  const art = d.thread.artifact ? `"${line(d.thread.artifact)}"` : "a Hub doc";
+  const ver = d.version !== undefined ? `, version ${d.version}` : "";
+  const what = d.kind === "held" ? "decided a held change on" : "approved";
+  const link = d.thread.url || "(no link)";
+  return [
+    `from: Den (this install · via: Hub decision ${link})`,
+    `${d.author.name} (${who(d.author, o)}) ${what} ${art}${ver}. Link: ${link}`,
+    "Your open question named it, so Den cleared it from the bell. Read the decision as information, then carry on.",
+  ].join("\n");
+}
+
 /** Whether `a` is the install's own person in Hub. */
 export function isOwner(a: DeliveryAuthor, o: DeliveryOwner): boolean {
   if (a.kind !== "person") return false;

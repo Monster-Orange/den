@@ -403,6 +403,25 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
         )
         .catch(() => undefined);
     },
+    // P0-D2: an owner's approval clears the questions that name it, on
+    // arrival; another agent whose question named it is told.
+    approved: (dv) => {
+      void Promise.all([
+        import("./notification-service.js"),
+        import("./hub-approval.js"),
+      ])
+        .then(([{ notificationDeps }, { settleApproval }]) =>
+          settleApproval(dv, {
+            approvedAbout: (a, ws, keys) =>
+              notificationDeps().attention.approvedAbout(a, ws, keys),
+            workspaceOf: (a) => readRecord(getStateDir(), a)?.workspace ?? null,
+            owner: () => owner,
+            takeLocal: (x) =>
+              loop ? loop.takeLocal(x) : Promise.resolve(false),
+          }),
+        )
+        .catch(() => undefined);
+    },
     // Issue 664: text held because the agent isn't at its prompt: the
     // bell says so once it has waited hub.delivery_held_note_seconds, and
     // keeps saying it (refreshed each minute) until it's typed.

@@ -520,6 +520,24 @@ export class Attention {
     if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
   }
 
+  /**
+   * P0-D2: an approval came for `agent`'s doc or held write (`keys`, from
+   * approvalKeys). Its question that names one of them goes, and so does
+   * a question of another agent in `workspace` that names one. Returns
+   * those other agents (Den tells them). A dialog (permission) stays.
+   */
+  approvedAbout(agent: string, workspace: string, keys: string[]): string[] {
+    const others: string[] = [];
+    for (const [a, w] of [...this.waiting]) {
+      if (w.why !== "asked") continue;
+      if (a !== agent && w.workspace !== workspace) continue;
+      if (!keys.some((k) => namesKey(w.text, k))) continue;
+      this.clear(a);
+      if (a !== agent) others.push(a);
+    }
+    return others;
+  }
+
   private clear(agent: string): void {
     const w = this.waiting.get(agent);
     this.waiting.delete(agent);
@@ -737,4 +755,15 @@ export class Attention {
       this.clear(agent);
     }
   }
+}
+
+/**
+ * P0-D2: whether `text` names `key`, case aside: whole, never inside a
+ * longer word or id.
+ */
+function namesKey(text: string, key: string): boolean {
+  const esc = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9_-])${esc}($|[^A-Za-z0-9_-])`, "i").test(
+    text,
+  );
 }

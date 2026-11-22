@@ -23,6 +23,7 @@ import {
   deliveryRaw,
   deliveryText,
   EMBED_PREFIX,
+  isApproval,
   isOwner,
   LOCAL_PREFIX,
   parseDelivery,
@@ -169,6 +170,11 @@ export interface DeliveryLoopDeps {
    * a question it asked that person is answered.
    */
   answered?: (agent: string) => void;
+  /**
+   * P0-D2: the owner's approval (isApproval) arrived, once per delivery,
+   * typed or not yet: Den clears the questions that name it.
+   */
+  approved?: (dv: Delivery) => void;
   /** NT: the agent finished its Hub comments (done, not failed). */
   finished?: (
     agent: string,
@@ -549,6 +555,13 @@ export class DeliveryLoop {
         this.d.held?.(dv);
       } catch {
         /* the hook's own trouble never stops a delivery */
+      }
+    }
+    if (isApproval(dv, this.d.owner())) {
+      try {
+        this.d.approved?.(dv);
+      } catch {
+        /* the bell's trouble never stops a delivery */
       }
     }
     const at = Date.parse(dv.createdAt);
