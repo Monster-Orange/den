@@ -93,6 +93,7 @@ import {
   menuFilterParts,
   menuHasFilter,
   pageMenuHtml,
+  reportButtonHtml,
   waitingHtml,
 } from "./shell-html.js";
 import { focusBack } from "./dialog.js";
@@ -247,6 +248,16 @@ export function hydrateShell(root, opts = {}) {
     railBox.setAttribute("role", "dialog");
     railBox.setAttribute("aria-modal", "true");
     railBox.setAttribute("aria-label", kitT(lang(), "kit.pages"));
+    // Issue 81: the drawer's scrim covers the top bar (and its Report), so
+    // the drawer has Report of its own while it is open; never on the
+    // wide rail (issue 94: Report is in the top bar there).
+    if (nav && !nav.querySelector(".den-rb-drawer"))
+      nav.insertAdjacentHTML(
+        "beforeend",
+        '<div class="den-rb-foot den-rb-drawer">' +
+          reportButtonHtml({ inFoot: true, lang: lang() }) +
+          "</div>",
+      );
     if (!scrim) {
       scrim = document.createElement("div");
       scrim.className = "den-scrim";
@@ -268,6 +279,7 @@ export function hydrateShell(root, opts = {}) {
     railBox.removeAttribute("role");
     railBox.removeAttribute("aria-modal");
     railBox.removeAttribute("aria-label");
+    nav?.querySelector(".den-rb-drawer")?.remove();
     if (scrim) scrim.remove();
     setInert(false);
     if (refocus && menu) menu.focus();

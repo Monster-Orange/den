@@ -238,6 +238,52 @@ describe("FB: Report an issue, the dialog", () => {
     await p.context().close();
   });
 
+  it("⌘⇧F opens it over an open menu, which stays open (issue 81)", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    await p.click("#appearance-btn");
+    const menu = p.locator(
+      '.den-pop:has([role="menuitemradio"], [role="menuitem"])',
+    );
+    await menu.first().waitFor();
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).waitFor();
+    expect(await menu.first().isVisible()).toBe(true);
+    await dlg(p).locator('[data-f="title"]').fill("x");
+    await p.context().close();
+  });
+
+  it("on a phone, the open rail drawer has its own Report: its scrim covers the top bar (issue 81)", async () => {
+    if (skip()) return;
+    const p = await page(fresh(), 390);
+    // Closed: no Report on the rail (issue 94: it is in the top bar).
+    expect(await p.locator(".den-rail [data-den-report]").count()).toBe(0);
+    await p.click(".den-menu-btn");
+    const rb = p.locator(".den-rail .den-rb-drawer [data-den-report]");
+    await rb.waitFor({ state: "visible" });
+    // The top bar's Report is under the scrim: the drawer's is the one a
+    // tap reaches.
+    const box = (await rb.boundingBox())!;
+    expect(
+      await p.evaluate(
+        ([x, y]) =>
+          !!document.elementFromPoint(x, y)?.closest(".den-rb-drawer"),
+        [box.x + box.width / 2, box.y + box.height / 2],
+      ),
+    ).toBe(true);
+    await rb.click();
+    await dlg(p).waitFor();
+    await p.keyboard.press("Escape");
+    await dlg(p).waitFor({ state: "hidden" });
+    // Shut, the drawer's Report goes with it.
+    await p.keyboard.press("Escape");
+    await p.waitForFunction(
+      () => !document.body.classList.contains("den-rail-open"),
+    );
+    expect(await p.locator(".den-rail [data-den-report]").count()).toBe(0);
+    await p.context().close();
+  });
+
   it("Write, Include, Review: the server's exact text, the public warning just above Send; Send files it (F6)", async () => {
     if (skip()) return;
     const f = fresh();
