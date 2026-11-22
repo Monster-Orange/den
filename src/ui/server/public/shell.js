@@ -8805,11 +8805,14 @@
     });
     // Issue 592: one link the Review offers (a Settings row on this Den).
     var lk = a.link;
+    // A plain path on this Den: "/x", never "//host" or "/\\host" (a
+    // browser reads a backslash as a slash), and a key of the Review's own.
     var lkOk =
       !!lk &&
       typeof lk.href === "string" &&
-      lk.href.charAt(0) === "/" &&
-      lk.href.charAt(1) !== "/";
+      /^\/(?![\/\\])[^\\\s]*$/.test(lk.href) &&
+      typeof lk.key === "string" &&
+      /^ap\.link\.[\w-]+$/.test(lk.key);
     $("den-ap-link-row").hidden = !lkOk;
     var la = $("den-ap-link");
     if (lkOk) {

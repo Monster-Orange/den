@@ -502,6 +502,51 @@ describe("the approval dialog (ON-3)", () => {
     await p.context().close();
   }, 90_000);
 
+  it.each([
+    "//elsewhere.example/x",
+    "/\\elsewhere.example/x",
+    "https://elsewhere.example/",
+  ])(
+    "issue 592: a Review link that leaves this Den (%s) is never shown",
+    async (href) => {
+      if (skip()) return;
+      const p = await page(true);
+      const item = {
+        id: "KeepRunningLink01",
+        action: "keep_running",
+        agent: "server",
+        summary: "keep agents running after logout",
+        params: { from: "login", to: "always" },
+        details: ["How Den runs: login → always."],
+        detailKeys: [
+          {
+            key: "ap.det.keep_running.mode",
+            vars: { from: "login", to: "always" },
+          },
+        ],
+        link: { href, key: "ap.link.signinToken" },
+        state: "pending",
+        requestedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      };
+      await p.route("**/api/approvals", (r) =>
+        r.request().method() === "GET"
+          ? r.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ ok: true, pending: [item] }),
+            })
+          : r.fallback(),
+      );
+      await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+      await p.click("#den-ap-review");
+      expect(await p.isVisible("#den-ap-link")).toBe(false);
+      expect(await p.getAttribute("#den-ap-link", "href")).toBeNull();
+      await p.context().close();
+    },
+    90_000,
+  );
+
   it("raised no page errors", () => {
     expect(errors).toEqual([]);
   });

@@ -281,6 +281,14 @@ describe("keep_running, the server agent's offer", () => {
     expect(again.body.error).toMatch(/once/);
   });
 
+  it("an agent never asks to stop agents at logout (on: false)", async () => {
+    reset({ installed: "always" });
+    const a = await ask({ on: false });
+    expect(a.status).toBe(400);
+    expect(a.body.error).toMatch(/only offers to keep agents running/);
+    expect(world.installs).toEqual([]);
+  });
+
   it("never when the person turned it off", async () => {
     reset({ setting: false });
     const a = await ask({ on: true });
@@ -313,6 +321,14 @@ describe("keep_running, the server agent's offer", () => {
       mode: "always",
       restarting: true,
     });
+  });
+
+  it("a password that lapsed before the run: nothing ran, Allow again", async () => {
+    reset({ sudo: false });
+    const r = (await keep.run({ on: true })) as Record<string, unknown>;
+    expect(world.installs).toEqual([]);
+    expect(r).toMatchObject({ ok: false });
+    expect(String(r.error)).toMatch(/nothing ran\. Allow again/);
   });
 
   it("run calls the injected install with mode always (the Settings code)", async () => {

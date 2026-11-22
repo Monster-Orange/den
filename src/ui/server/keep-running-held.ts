@@ -37,10 +37,10 @@ import {
 /** The server agent proposed it on this install: never again. */
 export const KEEP_PROPOSED_FILE = "keep-running-proposed.json";
 
-/** Where the Review's link goes: the Setting, its Sign-in token below it. */
-export /** The Review's link to Settings › Sign-in token: its words' key. */
+/** The Review's link to Settings › Sign-in token: its words' key. */
 const SIGNIN_LINK_KEY = "ap.link.signinToken";
-const KEEP_TOKEN_LINK = "/settings#agents.keep_running";
+/** Where the Review's link goes: the Setting, its Sign-in token below it. */
+export const KEEP_TOKEN_LINK = "/settings#agents.keep_running";
 
 export interface KeepRunningHeldDeps extends KeepRunningCore {
   /**
@@ -76,6 +76,14 @@ export function keepRunningHeld(d: KeepRunningHeldDeps): HeldAction {
           error: `Den isn't running as a service yet: ${d.cli} service install first`,
         };
       const on = a.on;
+      // An agent only offers to keep agents running; stopping them at
+      // logout is the person's own switch (Settings › Agents).
+      if (who?.agent && !on)
+        return {
+          ok: false,
+          error:
+            "an agent only offers to keep agents running; stopping them at logout is the person's switch in Settings › Agents",
+        };
       const mode = modeOf(on);
       if (installed === mode)
         return {
@@ -188,6 +196,13 @@ export function keepRunningHeld(d: KeepRunningHeldDeps): HeldAction {
     },
     async run(a) {
       const r = await applyKeepRunningMode(a.on === true, d);
+      // The password held at the Allow has lapsed since: say so plainly.
+      if (r.body.ok === false && r.body.needsSudo)
+        return {
+          ...r.body,
+          error:
+            "The admin password is no longer held, so nothing ran. Allow again, and this browser asks for it.",
+        };
       // Applied: Den re-installs its jobs and restarts; the page waits.
       return r.body.ok === true && r.body.applied === true
         ? { ...r.body, restarting: true }
