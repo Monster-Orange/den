@@ -41,6 +41,8 @@ import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { dialogHtml, mountDialog } from "./dialog-den.js";
+import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
+import { projectColour, projectLabel } from "./workspace-picker.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -3407,6 +3409,26 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
   {
+    // Issue 168: the project's colour, the person's own (Manage projects
+    // has the same control on its dot).
+    id: "workspace.colour",
+    category: "workspace",
+    label: "Colour",
+    description:
+      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
+    keywords: ["colour", "color", "hue", "project"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectColour },
+    keys: ["shell.projectColours"],
+    read: () => null,
+    // The control saves through the choice (project-colour-picker.js);
+    // a write sets this project's colour, "" or null for Automatic.
+    write: (v, ctx) =>
+      ctx.post({
+        shell: { projectColours: { [ctx.workspace]: v || null } },
+      }),
+  },
+  {
     id: "workspace.editor",
     category: "workspace",
     label: "IDE for this project",
@@ -5537,6 +5559,46 @@ function wireHubRename(host, ctx, ws, current, t) {
           if (r !== undefined) return renderProjectName(host, ctx);
         });
     });
+  });
+}
+
+/**
+ * Issue 168: Settings › Project setup › Colour: the project's dot and its
+ * colour's name (Automatic, or the one chosen), and Change colour, which
+ * opens the same choice as Manage projects.
+ */
+export function projectColourHtml(data, slug, t) {
+  const c = projectColour(data, slug);
+  if (!c) return "";
+  const said = chosenColour(data, slug)
+    ? t(`pc.${c}`)
+    : t("pc.autoIs", { colour: t(`pc.${c}`) });
+  return (
+    `<span class="pcp-now" data-pc="${escR(c)}"><span class="den-pc" aria-hidden="true"></span><span data-pc-said>${escR(said)}</span></span> ` +
+    `<button type="button" class="den-btn sm" data-pc-change>${escR(t("pc.change"))}</button>`
+  );
+}
+
+function renderProjectColour(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell.api("GET", "/api/workspaces").then((data) => {
+    host.innerHTML = projectColourHtml(data, ws, t);
+    const btn = host.querySelector("[data-pc-change]");
+    btn?.addEventListener("click", () =>
+      pickProjectColour({
+        slug: ws,
+        name: projectLabel(data, ws),
+        data,
+        opener: btn,
+      }).then((saved) => {
+        if (saved) return renderProjectColour(host, ctx);
+      }),
+    );
   });
 }
 

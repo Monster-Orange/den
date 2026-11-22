@@ -181,6 +181,11 @@ export function buildScopeMenuModel(scope, data, t = enT, locale) {
     // (the only active project): no project is selected, so the pins of
     // no project show too, and a new pin is of no project.
     pinProject: one ?? null,
+    // Issue 168: the project in view's colour (its chip's dot); null under
+    // All active.
+    colour: one ? projectColour(data, one) : null,
+    // Issue 168: every project's colour, for what the shell draws (the bell).
+    colours: projectColours(data),
     pinImplicit: !!one && !multi && scope?.scope !== one,
     focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
@@ -200,4 +205,84 @@ export function ownersLabel(owners) {
   return Array.isArray(owners) && owners.length > 1
     ? ` · ${owners.join(", ")}`
     : "";
+}
+
+/**
+ * Issue 168: the eight project colours (shell-prefs.ts lists the same).
+ * No orange and no red: orange is the brand and the selection, red means
+ * a problem. Each is a theme token, --pc-<name>, light and dark.
+ */
+export const PROJECT_COLOURS = [
+  "blue",
+  "teal",
+  "green",
+  "purple",
+  "pink",
+  "gold",
+  "brown",
+  "slate",
+];
+
+/** The server agent's scope: no project, so no colour (neutral grey). */
+const NO_COLOUR = new Set(["den-server"]);
+
+/** A stable start in the eight for `slug`: the same on every screen. */
+function colourSeed(slug) {
+  let h = 2166136261;
+  for (const c of String(slug)) {
+    h ^= c.codePointAt(0);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h % PROJECT_COLOURS.length;
+}
+
+/**
+ * Issue 168: every project's colour, slug to colour name. A project the
+ * person gave a colour (data.projectColours, theirs only) has it. Each
+ * other one starts at its slug's own pick and takes the next colour no
+ * project has yet, in slug order, so two projects differ while there are
+ * colours to go round, and the answer never depends on the list's order.
+ */
+export function projectColours(data) {
+  const saved =
+    data?.projectColours && typeof data.projectColours === "object"
+      ? data.projectColours
+      : {};
+  const slugs = Object.keys(data?.workspaces ?? {})
+    .filter((s) => !NO_COLOUR.has(s))
+    .sort();
+  const out = {};
+  const taken = new Set();
+  for (const s of slugs)
+    if (PROJECT_COLOURS.includes(saved[s])) {
+      out[s] = saved[s];
+      taken.add(saved[s]);
+    }
+  for (const s of slugs) {
+    if (out[s]) continue;
+    const seed = colourSeed(s);
+    let pick = PROJECT_COLOURS[seed];
+    for (let i = 0; i < PROJECT_COLOURS.length; i++) {
+      const c = PROJECT_COLOURS[(seed + i) % PROJECT_COLOURS.length];
+      if (!taken.has(c)) {
+        pick = c;
+        break;
+      }
+    }
+    out[s] = pick;
+    taken.add(pick);
+  }
+  return out;
+}
+
+/**
+ * Issue 168: one project's colour name, or null for none (the server
+ * agent, no project). A project the payload doesn't list takes its slug's
+ * own pick.
+ */
+export function projectColour(data, slug) {
+  if (!slug || NO_COLOUR.has(slug)) return null;
+  return (
+    projectColours(data)[slug] ?? PROJECT_COLOURS[colourSeed(slug)] ?? null
+  );
 }

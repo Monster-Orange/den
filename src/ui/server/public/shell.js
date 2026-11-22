@@ -361,6 +361,26 @@
     "ws.pickTip":
       "Picking a project here also makes it the CLI default, so __DEN_CLI__ commands run there.",
     "ws.none": "No active projects",
+    "pc.title": "Colour for {name}",
+    "pc.help":
+      "Used for its agents, tabs and the To line. Yours only, never shared. Automatic picks one for you.",
+    "pc.auto": "Automatic",
+    "pc.autoIs": "Automatic ({colour})",
+    "pc.save": "Save",
+    "pc.change": "Change colour",
+    "pc.changeFor": "Change the colour for {name}",
+    "pc.failed": "The colour wasn't saved: {err}",
+    "pc.blue": "Blue",
+    "pc.teal": "Teal",
+    "pc.green": "Green",
+    "pc.purple": "Purple",
+    "pc.pink": "Pink",
+    "pc.gold": "Gold",
+    "pc.brown": "Brown",
+    "pc.slate": "Slate",
+    "set.workspace.colour": "Colour",
+    "set.workspace.colour.d":
+      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
     "ws.manage": "Manage projects…",
     "ws.order.az": "Sorted A to Z",
     "ws.order.mine": "Your order",
@@ -5519,7 +5539,32 @@
   function workspaceNames() {
     return workspaceNameList.slice();
   }
+  /**
+   * Issue 168: the top bar's project chip carries the project's colour, a
+   * dot beside its name (never colour alone); none under All active.
+   */
+  function paintProjectColour(btn, colour) {
+    var vn = btn.querySelector(".den-vn");
+    var dot = btn.querySelector(".den-pc");
+    if (!colour || !vn) {
+      if (dot) dot.parentNode.removeChild(dot);
+      return;
+    }
+    if (!dot) {
+      dot = document.createElement("span");
+      dot.className = "den-pc";
+      dot.setAttribute("aria-hidden", "true");
+      vn.parentNode.insertBefore(dot, vn);
+    }
+    dot.setAttribute("data-pc", colour);
+  }
+  /** Issue 168: every project's colour, from the last setWorkspaces. */
+  var projectColourMap = {};
   function setWorkspaces(model) {
+    projectColourMap =
+      model && model.colours && typeof model.colours === "object"
+        ? model.colours
+        : {};
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
     // Issue 402: the project picked (null under All): the rail and every
@@ -5549,6 +5594,7 @@
       return;
     }
     setValue(btn, model.label, model.title || null);
+    paintProjectColour(btn, model.colour);
     btn.hidden = false;
     if (sep) sep.hidden = false;
     var items = [{ heading: t("k.ws") }];
@@ -8821,6 +8867,12 @@
     pin: pin,
     unpin: unpin,
     isPinned: isPinned,
+    /** Issue 168: a project's colour name (null: none, or not known yet). */
+    projectColour: function (slug) {
+      return Object.prototype.hasOwnProperty.call(projectColourMap, slug)
+        ? projectColourMap[slug]
+        : null;
+    },
     toast: toast,
     toastAction: toastAction,
     /** R26c: a call that resolves with its data or throws a DenApiError. */
@@ -9318,6 +9370,23 @@
     "@media (max-width: 479.98px) {",
     "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
     "}",
+    // Issue 168: project colours (workspace-picker.js projectColour). Eight,
+    // none orange or red, each 3:1 against the page in both modes, for
+    // edges, dots and tiles only: text is never coloured by project. An
+    // element names its project's colour with data-pc; --pc is the colour.
+    ":root { --pc-blue: hsl(212 70% 42%); --pc-teal: hsl(176 60% 30%); --pc-green: hsl(135 50% 30%); --pc-purple: hsl(272 50% 48%); --pc-pink: hsl(330 60% 44%); --pc-gold: hsl(44 80% 36%); --pc-brown: hsl(25 40% 34%); --pc-slate: hsl(215 14% 40%); }",
+    ':root[data-mode="dark"] { --pc-blue: hsl(212 80% 66%); --pc-teal: hsl(176 55% 55%); --pc-green: hsl(135 45% 58%); --pc-purple: hsl(272 70% 76%); --pc-pink: hsl(330 70% 70%); --pc-gold: hsl(44 85% 60%); --pc-brown: hsl(25 45% 62%); --pc-slate: hsl(215 18% 68%); }',
+    "@media (prefers-color-scheme: dark) { :root:not([data-mode]) { --pc-blue: hsl(212 80% 66%); --pc-teal: hsl(176 55% 55%); --pc-green: hsl(135 45% 58%); --pc-purple: hsl(272 70% 76%); --pc-pink: hsl(330 70% 70%); --pc-gold: hsl(44 85% 60%); --pc-brown: hsl(25 45% 62%); --pc-slate: hsl(215 18% 68%); } }",
+    '[data-pc="blue"] { --pc: var(--pc-blue); }',
+    '[data-pc="teal"] { --pc: var(--pc-teal); }',
+    '[data-pc="green"] { --pc: var(--pc-green); }',
+    '[data-pc="purple"] { --pc: var(--pc-purple); }',
+    '[data-pc="pink"] { --pc: var(--pc-pink); }',
+    '[data-pc="gold"] { --pc: var(--pc-gold); }',
+    '[data-pc="brown"] { --pc: var(--pc-brown); }',
+    '[data-pc="slate"] { --pc: var(--pc-slate); }',
+    ".den-pc { display: inline-block; width: 10px; height: 10px; border-radius: 50%;",
+    "  background: var(--pc, var(--faint)); flex: none; vertical-align: 0; margin-inline-end: 6px; }",
   ].join("\n");
   document.head.appendChild(style);
 })();
