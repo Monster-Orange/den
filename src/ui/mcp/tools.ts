@@ -1930,6 +1930,8 @@ async function askPerson(
   ctx: ToolContext,
   /** SRV-1a: the answer when Den stops answering after the ask (it restarted). */
   lostAfterAsk?: string,
+  /** The answer while it still waits (default: waitingText). */
+  waiting: (id: string) => string = waitingText,
 ): Promise<unknown> {
   const clean = Object.fromEntries(
     Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
@@ -1951,7 +1953,7 @@ async function askPerson(
   const id = String(asked?.id ?? "");
   keepTicket(id, asked?.ticket);
   try {
-    return await waitForPerson(tool, id, asked, ctx);
+    return await waitForPerson(tool, id, asked, ctx, waiting);
   } catch (e) {
     if (
       lostAfterAsk &&
@@ -1964,11 +1966,17 @@ async function askPerson(
   }
 }
 
+/** A held write's answer while it still waits for the person. */
+function waitingText(id: string): string {
+  return `Waiting for the person to approve in Den (request ${id}); call approval_check with this id later.`;
+}
+
 async function waitForPerson(
   tool: string,
   id: string,
   asked: unknown,
   ctx: ToolContext,
+  waiting: (id: string) => string = waitingText,
 ): Promise<unknown> {
   const w = ctx.approvalWait ?? APPROVAL_WAIT;
   const sleep =
@@ -2020,7 +2028,7 @@ async function waitForPerson(
     if (Date.now() >= until) break;
     await sleep(w.intervalMs);
   }
-  return `Waiting for the person to approve in Den (request ${id}); call approval_check with this id later.`;
+  return waiting(id);
 }
 
 /** A required string argument, or a refusal before anything is asked. */
@@ -2072,6 +2080,13 @@ function refuseScoped(tool: string, scope: McpScope | undefined): void {
 /** SRV-1a: what the agent does after den_restart_server. */
 const RESTART_NEXT =
   'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you.'; // words-ok: SRV-1's own line, for the agent
+
+/**
+ * A project's agent's den_update, while it waits: it changes Den beyond
+ * the project, so it runs only on a person's Allow (never a setting).
+ */
+const updateWaitingScoped = (id: string): string =>
+  `Held for a person's Allow: Den is not updated until a person Allows it in Den's browser (the Allow dialog, and Needs you in the bell) (request ${id}). Carry on with other work; call approval_check with this id later. Once it is allowed, Den updates, restarts and tells you when it is back.`;
 
 /** SRV-1b: what the agent does after den_update. */
 const UPDATE_NEXT =
@@ -2288,7 +2303,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "den_update",
     title: "Update Den",
     description:
-      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (Den's line when it is back says what it found, and so do release_status's doctor results), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person." + // words-ok: SRV-1's own line
+      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (Den's line when it is back says what it found, and so do release_status's doctor results), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person. A project's agent's ask is always held for a person's Allow." + // words-ok: SRV-1's own line
       HELD,
     action: true,
     shape: {
@@ -2305,7 +2320,9 @@ const APPROVAL_TOOLS: DenTool[] = [
       ask: askArg,
     },
     async run(a, ctx) {
-      refuseScoped("den_update", ctx.scope);
+      // A project's agent may ask too: den_update is critical (approval
+      // policy), and server_agent.self_update covers Den's own agent only,
+      // so its ask always waits for a person's Allow.
       const reason = needArg("den_update", a, "reason", "one line: why update");
       const r = await askPerson(
         "den_update",
@@ -2314,6 +2331,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
         `Den stopped answering after the ask: if it was allowed, Den is updating and restarting. ${UPDATE_NEXT}`,
+        ctx.scope ? updateWaitingScoped : undefined,
       );
       return typeof r === "string"
         ? r

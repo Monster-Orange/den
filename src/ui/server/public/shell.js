@@ -6100,7 +6100,7 @@
       items.push({
         label: it.label,
         checked: !!it.checked,
-        tag: it.focused ? t("ws.focus") : null,
+        // Issue 897: no "CLI default" tag: picking a project sets it.
         title: it.title || null,
         onSelect: function () {
           if (typeof model.onSelect !== "function") return;
