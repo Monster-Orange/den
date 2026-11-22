@@ -85,6 +85,9 @@ export function queueConfig(
 }
 
 let queue: RestartQueue | null = null;
+/** The log and the bell, as the latest caller gave them. */
+let logTo: ((line: string) => void) | undefined;
+let storeOf: (() => Pick<NotificationStore, "add" | "remove">) | undefined;
 
 /** The server's one restart queue. */
 export function restartQueue(
@@ -93,13 +96,15 @@ export function restartQueue(
     store?: () => Pick<NotificationStore, "add" | "remove">;
   } = {},
 ): RestartQueue {
+  if (o.log) logTo = o.log;
+  if (o.store) storeOf = o.store;
   if (queue) return queue;
   let told = 0;
   let saidBad = "";
   const q: RestartQueue = new RestartQueue({
     config: () =>
       queueConfig(undefined, (line) => {
-        if (line !== saidBad) o.log?.(line);
+        if (line !== saidBad) logTo?.(line);
         saidBad = line;
       }),
     load: () => os.loadavg()[0],
@@ -108,7 +113,7 @@ export function restartQueue(
         const t = setTimeout(go, ms);
         t.unref?.();
       }),
-    ...(o.log ? { log: o.log } : {}),
+    log: (line) => logTo?.(line),
     changed: (n) => {
       const ids = q.waiting().map((x) => x.id);
       try {
@@ -125,7 +130,7 @@ export function restartQueue(
       if (n === told) return;
       told = n;
       try {
-        if (o.store) noteRestartsWaiting(o.store(), n);
+        if (storeOf) noteRestartsWaiting(storeOf(), n);
       } catch {
         /* the bell is best effort */
       }

@@ -104,12 +104,15 @@ export class RestartQueue {
 
   /**
    * A person opened agent `id`: when it waits here, it starts now, ahead
-   * of the queue (its promise). Null when it isn't waiting.
+   * of the queue, and leaves it (its promise; whoever added it gets the
+   * result too). `run`, when given, starts it instead of the queued run
+   * (the person's own Resume). Null when it isn't waiting.
    */
-  openNow(id: string): Promise<unknown> | null {
+  openNow(id: string, run?: () => Promise<unknown>): Promise<unknown> | null {
     const i = this.pending.findIndex((e) => e.id === id);
     if (i < 0) return null;
     const [e] = this.pending.splice(i, 1);
+    if (run) e.run = run;
     this.d.changed?.(this.pending.length);
     this.start(e);
     return e.promise;

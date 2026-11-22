@@ -118,6 +118,21 @@ describe("issue 1129: restarts go in batches", () => {
     expect(w.q.openNow("nobody")).toBeNull();
   });
 
+  it("the person's own Resume replaces the queued run: it starts once, and the queue's caller gets its result", async () => {
+    const w = world({ batch: 1 });
+    w.job("a1");
+    const queued = w.job("a2");
+    await w.flush();
+    const mine = w.q.openNow("a2", async () => {
+      w.started.push("a2-by-person");
+      return "by person";
+    });
+    await expect(mine).resolves.toBe("by person");
+    await expect(queued).resolves.toBe("by person");
+    await w.pass();
+    expect(w.started).toEqual(["a1", "a2-by-person"]);
+  });
+
   it("restarts that come one at a time still keep the gap (Hub's tools add them so)", async () => {
     const w = world({ batch: 2 });
     w.job("a1");
