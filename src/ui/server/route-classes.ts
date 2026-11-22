@@ -96,6 +96,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/header.js",
     "/perf-report.js",
     "/workspace-picker.js",
+    "/project-colour-picker.js",
     "/favicon.ico",
     // Issue 644: the kit's site files (its head snippet names them).
     "/favicon.svg",
@@ -168,6 +169,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/release/branches",
     "/api/release/deploy/active",
     "/api/changelog",
+    // Issue 52: the Coach's settings and last report (counts only).
+    "/api/coach",
     "/api/sudo-password/status",
     "/api/sudo-password/vault-status",
     "/api/scope",
@@ -427,6 +430,16 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/coach/run",
+    "issue 52: the Coach's Run now, a person's (read-only: it reads transcripts and saves counts)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/dismiss",
+    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+  ),
+  M(
+    ["POST"],
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),
@@ -500,6 +513,22 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
+  ),
+  R("/api/verify/schedules", "issue 214: Verify's schedules and their Allows"),
+  M(
+    ["POST"],
+    "/api/verify/schedules/allow",
+    "issue 214: a person's standing Allow for a schedule's plan (a signed-in browser only)",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/schedules/run",
+    "issue 214: runs a schedule now, under its own Allow (a signed-in browser only)",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/schedules/revoke",
+    "issue 964: takes back a schedule's standing Allow (a signed-in browser only)",
   ),
   M(["POST"], "/api/local-dev"),
   M(["POST"], "/api/sudo-password", "sets the admin password, for sudo (R8)"),

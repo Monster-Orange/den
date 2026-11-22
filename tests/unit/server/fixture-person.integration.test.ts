@@ -24,6 +24,7 @@ import {
   it,
 } from "@jest/globals";
 import { spawnSync, type ChildProcess } from "child_process";
+import * as yaml from "yaml";
 import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
@@ -552,6 +553,35 @@ describe("the fixture person's pins never touch the person's", () => {
     });
     expect(r.status).toBe(200);
     expect(await items(f.cookie)).toEqual(["svc-person"]);
+  });
+
+  // Issue 957: Den's record of the fixture's own pins follows the stored
+  // pins. A fixture pin dropped from user.yml by hand, then pinned again by
+  // the person, is the person's: the fixture can't take it off.
+  it("a fixture pin dropped by hand and pinned again by the person is the person's", async () => {
+    const f = await fixtureSignIn(test);
+    await call(test, "POST", "/api/settings", f.headers, {
+      shell: { pins: [{ item: "svc-check", project: null }] },
+    });
+    expect(await items(f.cookie)).toEqual(["svc-check"]);
+    // By hand: the pin is gone from user.yml.
+    const file = path.join(test.root, "config", "local", "user.yml");
+    const doc = yaml.parse(fs.readFileSync(file, "utf8")) as {
+      shell?: { pins?: unknown[] };
+    };
+    if (doc.shell) doc.shell.pins = [];
+    fs.writeFileSync(file, yaml.stringify(doc));
+    // Den reads its settings (as any page load does).
+    expect(await items(f.cookie)).toEqual([]);
+    // The person pins it again.
+    await call(test, "POST", "/api/settings", person(), {
+      shell: { pins: [{ item: "svc-check", project: null }] },
+    });
+    // The fixture person's empty list leaves it: it is the person's now.
+    await call(test, "POST", "/api/settings", f.headers, {
+      shell: { pins: [] },
+    });
+    expect(await items(f.cookie)).toEqual(["svc-check"]);
   });
 
   it("it adds a pin and takes off only its own", async () => {
