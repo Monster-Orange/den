@@ -595,7 +595,11 @@ export function deviceLine(d, now = Date.now()) {
         ? L("set.ui.viaCode", "approved with a code")
         : d.via === "claim"
           ? L("set.ui.viaClaim", "claimed with a setup link")
-          : L("set.ui.viaLink", "signed in with a one-time link");
+          : d.via === "agent-view"
+            ? L("set.ui.viaAgentView", "{agent}'s read-only view", {
+                agent: d.agent || "",
+              })
+            : L("set.ui.viaLink", "signed in with a one-time link");
   const name = deviceWords(d.name);
   const from = d.client || d.host;
   return {
@@ -1618,6 +1622,111 @@ const EMBED_ROWS = [
     write: (v, ctx) => ctx.post({ embed: { app_key_audit_window_seconds: v } }),
   },
   {
+    // Issue 459: app event feeds read at once, across every project.
+    id: "embed.feed_max_streams",
+    category: "embed",
+    label: "App feeds read at once",
+    description:
+      "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
+    keywords: ["feed", "events", "stream", "limit"],
+    scope: "user",
+    keys: ["embed.feed_max_streams"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.embed?.feed_max_streams ?? 50,
+    write: (v, ctx) => ctx.post({ embed: { feed_max_streams: v } }),
+  },
+  {
+    id: "embed.feed_event_max_kb",
+    category: "embed",
+    label: "Largest app feed event",
+    description:
+      "The largest event an app feed keeps for its agent. A larger one is kept as a note that it came, without its data, and the project's notifications say so.",
+    keywords: ["feed", "event", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_event_max_kb"],
+    control: { type: "number", min: 1, max: 10240, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.feed_event_max_kb ?? 32,
+    write: (v, ctx) => ctx.post({ embed: { feed_event_max_kb: v } }),
+  },
+  {
+    id: "embed.feed_events_per_minute",
+    category: "embed",
+    label: "App feed events a minute",
+    description:
+      "How many events Den reads from one app feed in a minute. Past it, Den reads the rest as the rate allows, and the project's notifications say so.",
+    keywords: ["feed", "events", "rate", "minute", "limit"],
+    scope: "user",
+    keys: ["embed.feed_events_per_minute"],
+    control: { type: "number", min: 1, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.embed?.feed_events_per_minute ?? 600,
+    write: (v, ctx) => ctx.post({ embed: { feed_events_per_minute: v } }),
+  },
+  {
+    id: "embed.feed_keep_events",
+    category: "embed",
+    label: "Events one app feed keeps",
+    description:
+      "The most events Den keeps for one app feed. Past it, the oldest go, and the project's notifications say so when one wasn't read yet.",
+    keywords: ["feed", "events", "keep", "limit"],
+    scope: "user",
+    keys: ["embed.feed_keep_events"],
+    control: { type: "number", min: 1, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.embed?.feed_keep_events ?? 1000,
+    write: (v, ctx) => ctx.post({ embed: { feed_keep_events: v } }),
+  },
+  {
+    id: "embed.feed_read_max_kb",
+    category: "embed",
+    label: "Most app feed data in one read",
+    description:
+      "The most event data one app_feed_read call gives an agent. It reads the rest with another call.",
+    keywords: ["feed", "read", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_read_max_kb"],
+    control: { type: "number", min: 1, max: 102400, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.feed_read_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { feed_read_max_kb: v } }),
+  },
+  {
+    id: "embed.feed_list_timeout",
+    category: "embed",
+    label: "App feed list wait",
+    description:
+      "How long Den waits for an app's list of events (it fills a gap after a cut) before it tries again later.",
+    keywords: ["feed", "list", "timeout", "wait"],
+    scope: "user",
+    keys: ["embed.feed_list_timeout_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.embed?.feed_list_timeout_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ embed: { feed_list_timeout_seconds: v } }),
+  },
+  {
+    id: "embed.feed_list_max_mb",
+    category: "embed",
+    label: "Largest app feed list answer",
+    description:
+      "The largest list of events Den reads from an app at once. A larger answer is refused and tried again later.",
+    keywords: ["feed", "list", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_list_max_mb"],
+    control: { type: "number", min: 1, max: 1024, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.embed?.feed_list_max_mb ?? 8,
+    write: (v, ctx) => ctx.post({ embed: { feed_list_max_mb: v } }),
+  },
+  {
+    id: "embed.paste_max_kb",
+    category: "embed",
+    label: "Most text typed into an agent at once",
+    description:
+      "The most text Den types into an agent in one go: Hub comments, relayed messages and app feed lines. The rest are typed next.",
+    keywords: ["paste", "type", "agent", "limit", "size"],
+    scope: "user",
+    keys: ["embed.paste_max_kb"],
+    control: { type: "number", min: 1, max: 102400, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.paste_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { paste_max_kb: v } }),
+  },
+  {
     id: "embed.url_max",
     category: "embed",
     label: "Longest link context",
@@ -1719,6 +1828,33 @@ const ACCESS_ROWS = [
     control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.web_pairing?.approveWindowSeconds ?? 30,
     write: (v, ctx) => ctx.post({ web_pairing: { approve_window_seconds: v } }),
+  },
+  {
+    // Issue 796: an agent's read-only view of these pages (MCP page_view).
+    id: "access.agent_view",
+    category: "access",
+    label: "Agents may view pages, read-only",
+    description:
+      "On, an agent running here may open these pages read-only, as itself, to look or take a screenshot (page_view). It changes nothing, and each page it opens is logged with its name. Off, the agent is told views are off. __DEN_CLI__ config web.agent_view=true",
+    keywords: ["agent", "view", "read-only", "page_view", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.on"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.web_agent_view?.on !== false,
+    write: (v, ctx) => ctx.post({ web_agent_view: { on: !!v } }),
+  },
+  {
+    id: "access.agent_view_minutes",
+    category: "access",
+    label: "An agent's view lasts, in minutes",
+    description:
+      "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+    keywords: ["agent", "view", "read-only", "minutes", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.minutes"],
+    control: { type: "number", min: 1, max: 60, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.web_agent_view?.minutes ?? 10,
+    write: (v, ctx) => ctx.post({ web_agent_view: { minutes: v } }),
   },
   {
     id: "access.machine_name",
@@ -3697,6 +3833,20 @@ export const DEN_SETTINGS = [
     control: { type: "custom", render: renderProjectMcp },
     read: () => null,
   },
+  {
+    // Issue 459: the project's app event feeds (agents.event_feeds in
+    // workspaces.yml), each with its state. Names, agents and addresses
+    // only: a bearer is read from the install's secrets store and never shown.
+    id: "workspace.event_feeds",
+    category: "workspace",
+    label: "App event feeds: this project",
+    description:
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+    keywords: ["feed", "events", "stream", "app", "sse"],
+    scope: "workspace",
+    control: { type: "custom", render: renderAppFeeds },
+    read: () => null,
+  },
 
   // ── Agents ─────────────────────────────────────────────────────────────
   {
@@ -3745,6 +3895,29 @@ export const DEN_SETTINGS = [
     read: (ctx) => (ctx.data.approvals_critical ?? []).join(", "),
     write: (v, ctx) =>
       ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
+  },
+  {
+    // Issue 742: how long an agent's request waits for your Allow
+    // (user.yml held_writes.wait_minutes). A person's only.
+    id: "agents.held_wait",
+    category: "agents",
+    label: "Requests wait for your Allow",
+    description:
+      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    keywords: [
+      "approval",
+      "allow",
+      "wait",
+      "expire",
+      "lapse",
+      "held",
+      "request",
+    ],
+    scope: "user",
+    keys: ["held_writes.wait_minutes"],
+    control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
+    write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
   },
   {
     // issue_write: which persona roles write GitHub issues in their
@@ -5470,6 +5643,66 @@ export function projectMcpHtml(v, t) {
     `</ul>` +
     `<div class="rt-err" role="alert" hidden></div>`
   );
+}
+
+/**
+ * Issue 459: Settings › Project setup › App event feeds, as GET
+ * /api/workspaces/:ws/event-feeds serves them: each feed's name, agent,
+ * address and state, with its last event's time. `fmt`: a time's words.
+ */
+export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
+  const feeds = Array.isArray(v?.feeds) ? v.feeds : [];
+  const problems = Array.isArray(v?.problems) ? v.problems : [];
+  const STATES = [
+    "connecting",
+    "connected",
+    "retrying",
+    "no_secret",
+    "over_limit",
+    "no_agent",
+    "stopped",
+  ];
+  const rows = feeds.map((f) => {
+    const state = STATES.includes(f.state) ? f.state : "connecting";
+    const last =
+      typeof f.last_event_at === "number"
+        ? t("feed.last", { time: fmt(f.last_event_at) })
+        : t("feed.noEvents");
+    const waiting = f.unread > 0 ? ` ${t("feed.unread", { n: f.unread })}` : "";
+    return (
+      `<li data-feed="${escR(f.name)}" data-feed-state="${escR(state)}">` +
+      `<span data-feed-text>${escR(t("feed.row", { name: f.name, agent: f.agent, url: f.url }))}</span> ` +
+      `<strong data-feed-st>${escR(t(`feed.st.${state}`))}</strong>` +
+      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span></li>`
+    );
+  });
+  const list = rows.length
+    ? `<ul class="set-note" data-feed-list>${rows.join("")}</ul>`
+    : `<p class="set-note" data-feed-none>${escR(t("feed.none"))}</p>`;
+  const bad = problems.length
+    ? `<p class="set-note" data-feed-problems>${escR(t("feed.problems", { n: problems.length }))}</p>` +
+      `<ul class="set-note">${problems.map((p) => `<li>${escR(p)}</li>`).join("")}</ul>`
+    : "";
+  return list + bad;
+}
+
+function renderAppFeeds(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell
+    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`)
+    .then((v) => {
+      host.innerHTML = appFeedsHtml(v, t, (ms) =>
+        formatTime(new Date(ms).toISOString()),
+      );
+    })
+    .catch(() => {
+      host.innerHTML = `<p class="set-note">${escR(t("feed.failed"))}</p>`;
+    });
 }
 
 function renderProjectMcp(host, ctx) {

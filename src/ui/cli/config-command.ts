@@ -65,6 +65,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
   "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
+  // Issue 796: agents' read-only page views, and how long one lasts.
+  "web.agent_view": ["web_agent_view", "on"],
+  "web.agent_view_minutes": ["web_agent_view", "minutes"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
@@ -120,6 +123,8 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "agent_hooks.timeout_seconds": ["agent_hooks", "timeout_seconds"],
   "agent_hooks.retries": ["agent_hooks", "retries"],
   "agent_hooks.backoff_seconds": ["agent_hooks", "backoff_seconds"],
+  // Issue 742: how long a held write waits for the person's Allow.
+  "held_writes.wait_minutes": ["held_writes", "wait_minutes"],
 };
 
 /**

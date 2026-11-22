@@ -51,6 +51,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     approve_attempts: true,
     approve_window_seconds: true,
   },
+  // Issue 796: agents' read-only page views.
+  web_agent_view: { on: true, minutes: true },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
@@ -148,6 +150,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     api_budget_floor: true,
     watches_max: true,
   },
+  // Issue 742: how long a held write waits for the person's Allow.
+  held_writes: { wait_minutes: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -236,6 +240,8 @@ describe("the settings inventory (R21)", () => {
         "crash_loop.minutes",
         "crash_loop.max_wait_seconds",
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
+        "web_agent_view.minutes",
+        "web_agent_view.on",
         "web_bridge.listen",
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.
@@ -298,6 +304,14 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        "embed.feed_event_max_kb",
+        "embed.feed_events_per_minute",
+        "embed.feed_max_streams",
+        "embed.feed_keep_events",
+        "embed.feed_read_max_kb",
+        "embed.feed_list_timeout_seconds",
+        "embed.feed_list_max_mb",
+        "embed.paste_max_kb",
         // Issue 172: alerts outside the bell.
         "alerts.desktop",
         "alerts.phone",
@@ -329,6 +343,8 @@ describe("the settings inventory (R21)", () => {
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
         "agent_hooks.backoff_seconds",
+        // Issue 742: how long a held write waits for the person's Allow.
+        "held_writes.wait_minutes",
       ].sort(),
     );
   });

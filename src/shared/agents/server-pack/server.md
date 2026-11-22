@@ -126,7 +126,11 @@ Reads (they change nothing):
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
+- `page_view`: a one-time link to open this Den's own pages read-only, as
+  you, to look, take a screenshot or check a fix. It changes nothing, and
+  ends in a few minutes.
 - `notifications_list`: your person's bell.
+- `app_feed_read`: the events an app's feed sent you, when Den types you that some are unread (only your own project's feeds that name you).
 - `approval_check`: where one of your held asks stands.
 - `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several

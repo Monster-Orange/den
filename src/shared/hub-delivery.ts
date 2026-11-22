@@ -73,6 +73,12 @@ export const LOCAL_PREFIX = "inbox:";
  */
 export const EMBED_PREFIX = `${LOCAL_PREFIX}embed:`;
 
+/**
+ * Issue 459: an app feed's pointer (Den's own, like a relayed message).
+ * The loop keeps these ids in a seen store of their own.
+ */
+export const FEED_PREFIX = `${EMBED_PREFIX}feed:`;
+
 /** Issue 334: a relayed message as the delivery loop holds it. */
 export function embedDelivery(m: {
   id: string;
@@ -574,9 +580,23 @@ export class SseReader {
   private data: string[] = [];
   lastId: string | null = null;
   private readonly max: number;
+  private readonly overflow: (() => void) | undefined;
+  /** Issue 459: the most data one event holds (its data: lines together). */
+  private readonly maxEvent: number;
+  private eventBytes = 0;
+  private eventOver = false;
 
-  constructor(o: { maxBuffer?: number } = {}) {
+  /**
+   * `onOverflow` (issue 459): a line longer than `maxBuffer`, or an event
+   * whose data: lines together pass `maxEvent`, was skipped, so whoever
+   * reads can say so (never dropped without a word).
+   */
+  constructor(
+    o: { maxBuffer?: number; maxEvent?: number; onOverflow?: () => void } = {},
+  ) {
     this.max = o.maxBuffer ?? 1024 * 1024;
+    this.maxEvent = o.maxEvent ?? Infinity;
+    this.overflow = o.onOverflow;
   }
 
   feed(chunk: string): SseEvent[] {
@@ -595,6 +615,7 @@ export class SseReader {
     }
     if (this.buf.length > this.max) {
       this.buf = "";
+      if (!this.skipping) this.overflow?.();
       this.skipping = true;
     }
     return out;
@@ -602,6 +623,15 @@ export class SseReader {
 
   private line(l: string, out: SseEvent[]): void {
     if (l === "") {
+      const over = this.eventOver;
+      this.eventOver = false;
+      this.eventBytes = 0;
+      if (over) {
+        this.id = undefined;
+        this.event = "";
+        this.data = [];
+        return;
+      }
       if (this.data.length) {
         out.push({
           id: this.id,
@@ -620,8 +650,18 @@ export class SseReader {
     const field = i < 0 ? l : l.slice(0, i);
     let value = i < 0 ? "" : l.slice(i + 1);
     if (value.startsWith(" ")) value = value.slice(1);
-    if (field === "data") this.data.push(value);
-    else if (field === "event") this.event = value;
+    if (field === "data") {
+      if (this.eventOver) return;
+      this.eventBytes += value.length + 1;
+      if (this.eventBytes > this.maxEvent) {
+        // Issue 459: an event past its cap: its data goes, it is said.
+        this.eventOver = true;
+        this.data = [];
+        this.overflow?.();
+        return;
+      }
+      this.data.push(value);
+    } else if (field === "event") this.event = value;
     else if (field === "id" && !value.includes("\0")) this.id = value;
   }
 }
