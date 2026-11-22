@@ -84,12 +84,12 @@ export function makeComposer({ t, name, send, onClose, holds = false }) {
   acts.className = "agc-acts";
   const sendBtn = document.createElement("button");
   sendBtn.type = "submit";
-  sendBtn.className = "btn primary agc-send";
+  sendBtn.className = "den-btn primary agc-send";
   sendBtn.textContent = t("agc.send");
   if (onClose) {
     const close = document.createElement("button");
     close.type = "button";
-    close.className = "btn agc-close";
+    close.className = "den-btn agc-close";
     close.textContent = t("agc.close");
     close.addEventListener("click", () => onClose());
     acts.append(close);

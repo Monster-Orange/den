@@ -1167,6 +1167,10 @@
       "リリース用ブラウザーテストと並んで動かす単体テスト",
     "set.server.gate_cpu_beside_release.d":
       "リリース優先のブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。0 (既定) ではリリース用の実行は単独で動き、ほかの実行がそのチェックを遅くしません。ほかのブラウザーテストは上の設定に従います。__DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_load_hold_per_core":
+      "コアあたりこの負荷を超えたら新しい単体テストを待たせる",
+    "set.server.gate_load_hold_per_core.d":
+      "このマシンの 5 分間の平均負荷がコア数のこの倍数を超えている間、新しい単体テストは待ちます。ただし待つのは別の単体テストが動いている間だけで、動いているものがなければ負荷にかかわらず次が始まります。リリース用の実行とすでに動いている実行は待ちません。各単体テストには DEN_GATE_WORKERS でコアの割り当て分も渡します。0 で待たせません。__DEN_CLI__ gate settings --load-hold-per-core 3",
     "set.server.gate_cpu_hold_load":
       "リリース用ブラウザーテスト中に単体テストを待たせるマシン負荷",
     "set.server.gate_cpu_hold_load.d":
@@ -1382,6 +1386,12 @@
     "set.agents.approvals_critical": "重要な書き込み",
     "set.agents.approvals_critical.d":
       "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "set.server.health_poll": "表示中のヘルスチェック",
+    "set.server.health_poll.d":
+      "開いて表示中のページが各サービスのヘルスを確認する間隔: 2〜300 秒。__DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden": "非表示タブでのヘルスチェック",
+    "set.server.health_poll_hidden.d":
+      "非表示のタブにあるページがヘルスを確認する間隔: 10〜3600 秒。表示中のページがないとき、チェックは最大でもこの間隔でしか実行されません。表示に戻ると、すぐに確認します。__DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -2925,6 +2935,8 @@
     "gate.yielded": "{to} に先を譲りました",
     "gate.class": "クラス: {name}",
     "gate.window": "時間帯 {window} を待っています",
+    "gate.loadHoldCores":
+      "待機中: このマシンの負荷は {load} で、{perCore} × {cores} コア ({limit}) を超えており、別の単体テストが動いています。負荷が下がるかその実行が終わると始まります",
     "gate.loadHold":
       "待機中: 負荷 {load} ≥ {limit}、リリース用の実行がブラウザー枠を使っています",
     "busy.gateEndW": "{name} の順番を終えています…",
@@ -2933,6 +2945,9 @@
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",
+    "busy.addSvcW": "{name} を追加しています…",
+    "busy.addSvcS": "{name} を追加しました。",
+    "busy.addSvcF": "{name} を追加できませんでした。",
     "ag.orphan.one":
       "{names} にはプロジェクトがありません (削除されました)。⋯ › 別のプロジェクトへ移動… で割り当ててください。",
     "ag.orphan.many":
@@ -3221,6 +3236,39 @@
     "pj.th.lastRun": "前回のテスト",
     "pj.th.actions": "操作",
     "pj.addRepo": "リポジトリを追加",
+    "addSvc.title": "サービスを追加: {ws}",
+    "addSvc.filter": "リポジトリを絞り込む",
+    "addSvc.filterPh": "リポジトリを絞り込む…",
+    "addSvc.tab.local": "ローカル",
+    "addSvc.tab.gh": "GitHub",
+    "addSvc.sortBy": "並べ替え",
+    "addSvc.sort.name": "名前",
+    "addSvc.sort.project": "プロジェクト",
+    "addSvc.loading": "読み込み中…",
+    "addSvc.noLocal": "このマシンにリポジトリがありません",
+    "addSvc.noResults": "一致するリポジトリがありません",
+    "addSvc.added": "追加済み",
+    "addSvc.group.dev": "開発者が管理",
+    "addSvc.group.managed": "__DEN_TITLE__ が管理",
+    "addSvc.ghLoading": "GitHub のリポジトリを読み込み中…",
+    "addSvc.ghNoMatch": "「{q}」に一致するリポジトリがありません",
+    "addSvc.ghNone": "GitHub のリポジトリがありません",
+    "addSvc.noManifest": "マニフェストなし",
+    "addSvc.group.supported": "__DEN_TITLE__ 対応",
+    "addSvc.group.unsupported": "__DEN_MANIFEST_YML__ なし",
+    "addSvc.refresh": "再読み込み",
+    "addSvc.refreshTip": "GitHub のリポジトリ一覧をもう一度取得",
+    "addSvc.refreshing": "再読み込み中…",
+    "addSvc.manage": "管理",
+    "addSvc.mode.dev": "開発者が管理",
+    "addSvc.mode.managed": "管理対象",
+    "addSvc.branch": "ブランチ",
+    "addSvc.newBranch": "新しいブランチ",
+    "addSvc.optional": "任意",
+    "addSvc.add": "追加",
+    "addSvc.done": "✓ {name} を追加しました",
+    "addSvc.doneSetup": "✓ {name} を追加しました · セットアップ中(ログを確認)",
+    "addSvc.missingDeps": "不足している依存関係: {deps}",
     "pj.validate.title": "マニフェストを検証",
     "pj.validate.path": "パスまたはディレクトリ",
     "pj.validate.pathPh": "/absolute/path/to/repo  または  /path/to/{file}",
