@@ -40,6 +40,7 @@
  * session. Slot writes move to the server with issue 621; slice 2 (agents
  * as a second OS user, issue 988) closes the rest.
  */
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -63,7 +64,51 @@ export const LAUNCH_FILES = [
  */
 export const GATE_LOCKED_FILES = ["settings.json"] as const;
 
-/** Files in the state dir no agent's session reads, relative to it. */
+/**
+ * What a session reads in the state dir, relative to it: the rest of it
+ * can't be read (only listed). Each entry holds no secret; a test keeps
+ * secret-looking names out of it. Den's CLI inside a session needs these
+ * to find the web server and run `gate run`, `doctor` and `mcp --call`.
+ */
+export const SESSION_READ_DIRS: readonly string[] = [
+  // Agents' records and the personas (`agents list`, doctor).
+  "agents",
+  "personas",
+];
+export const SESSION_READ_FILES: readonly string[] = [
+  // Where the web server is, and what runs (every CLI call to it).
+  "web.json",
+  "daemons.json",
+  "sessions-host-job.json",
+  "web-owner.json",
+  "address-proof.json",
+  // The actor tokens' hashes and what each proves (the MCP server checks
+  // its own is live): hashes only, never a token.
+  "actor-tokens.json",
+  // The api_only guardrail's rules (the PreToolUse hook reads them).
+  path.join("guardrails", "api-only.json"),
+  // Status doctor shows.
+  path.join("server-agent", "update", "check.json"),
+  path.join("server-agent", "update", "state.json"),
+  path.join("github", "watch-status.json"),
+  path.join("github", "watches.json"),
+  path.join("hub", "bound.json"),
+  path.join("hub", "links-seen.json"),
+  path.join("hub", "deliveries.jsonl"),
+  path.join("hub", "deliveries-seen.json"),
+  path.join("hub", "deliveries-health.json"),
+  path.join("hub", "inbox-watch.json"),
+  path.join("hub", "tools-seen.json"),
+];
+/** Folders whose names a session lists (not their files). */
+export const SESSION_LIST_DIRS: readonly string[] = ["agent-files"];
+/**
+ * Written from the session: the api_only guardrail's audit (its hook runs
+ * there). Slice 2 (issue 988) moves it to the server.
+ */
+export const SESSION_WRITE_DIRS: readonly string[] = ["audit"];
+
+/** Never readable inside a session, whatever SESSION_READS says. */
 export const HIDDEN_FILES = [
   "web.secret",
   "web-sessions.json",
@@ -81,6 +126,25 @@ export interface AgentSandboxInput {
   /** The gate store (gates/store.ts gateDir). */
   gateDir: string;
   agentId: string;
+  /** More folders no session reads (a machine-wide secret's folder). */
+  deniedDirs?: string[];
+  /** More unix-socket folders a session may connect to (user.yml). */
+  socketsAllowed?: string[];
+  /** The env the session starts from (its SSH agent, its runtime dir). */
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * The unix sockets every session may reach: the system's own daemons (DNS,
+ * the log), and the agents' own messages to each other (Claude Code's
+ * peer sockets). The SSH agent's, when the env names one.
+ */
+export function defaultSocketsAllowed(env: NodeJS.ProcessEnv): string[] {
+  const out = ["/private/var/run", "/var/run", "/run/systemd/resolve"];
+  out.push(realPath(path.join("/tmp", "cc-socks")));
+  const ssh = env.SSH_AUTH_SOCK?.trim();
+  if (ssh) out.push(realPath(path.dirname(ssh)));
+  return [...new Set(out)];
 }
 
 export interface SandboxPolicy {
@@ -89,11 +153,29 @@ export interface SandboxPolicy {
   /** The gate store (in `writable`; its settings in `locked`). */
   gateDir: string;
   locked: string[];
+  /**
+   * Not readable: the state dir as a whole (its names can be listed, no
+   * contents read), and `deniedDirs` (other private folders). What a
+   * session reads in the state dir is `readable`, allowed back.
+   */
+  unreadable: string[];
+  /** Read back inside `unreadable`: folders (with all inside them). */
+  readable: string[];
+  /** Read back inside `unreadable`: single files. */
+  readableFiles: string[];
+  /** Listed (names only) inside `unreadable`. */
+  listable: string[];
+  /** Belt and braces: never readable, even if `readable` names them. */
   hidden: string[];
-  /** Every agent's actor-token folder: hidden but for `ownTokenDir`. */
-  tokensDir: string;
   ownTokenDir: string;
   sockets: string[];
+  /**
+   * Unix sockets a session may connect to (folders); every other one is
+   * refused (macOS). A process listening on one runs outside the sandbox.
+   */
+  socketsAllowed: string[];
+  /** Linux: folders of the person's own sockets, covered by a tmpfs. */
+  socketDirsHidden: string[];
   /** The home folder: renames are refused below it (macOS). */
   home: string;
 }
@@ -122,18 +204,84 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
   const gate = realPath(i.gateDir);
   return {
     readOnly: [state, realPath(path.join(i.distRoot, "config", "local"))],
-    writable: [own, gate],
+    writable: [
+      own,
+      gate,
+      ...SESSION_WRITE_DIRS.map((f) => path.join(state, f)),
+    ],
     locked: [
       ...LAUNCH_FILES.map((f) => path.join(own, f)),
       ...GATE_LOCKED_FILES.map((f) => path.join(gate, f)),
     ],
     gateDir: gate,
+    unreadable: [state, ...(i.deniedDirs ?? []).map(realPath)],
+    readable: [
+      own,
+      path.join(tokensDir, i.agentId),
+      ...SESSION_READ_DIRS.map((f) => path.join(state, f)),
+      ...SESSION_WRITE_DIRS.map((f) => path.join(state, f)),
+    ],
+    readableFiles: SESSION_READ_FILES.map((f) => path.join(state, f)),
+    listable: SESSION_LIST_DIRS.map((f) => path.join(state, f)),
     hidden: HIDDEN_FILES.map((f) => path.join(state, f)),
-    tokensDir,
     ownTokenDir: path.join(tokensDir, i.agentId),
     sockets: [path.join(state, "sessions.sock")],
+    socketsAllowed: [
+      ...defaultSocketsAllowed(i.env ?? process.env),
+      ...(i.socketsAllowed ?? []).map(realPath),
+    ],
+    socketDirsHidden: linuxSocketDirs(i.env ?? process.env),
     home: realPath(os.homedir()),
   };
+}
+
+/**
+ * The folders of the machine's local proof (the loopback check's secret,
+ * per user and machine; its files per install): the OS's app folder for
+ * Den, and the folder the env moves it to. No session reads them: an
+ * agent's CLI and MCP use its actor token.
+ */
+export function localProofDirs(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  home: string = os.homedir(),
+  prefixedEnv?: string,
+): string[] {
+  const out: string[] = [];
+  if (platform === "darwin")
+    out.push(
+      path.join(home, "Library", "Application Support", "den", "local-proof"),
+    );
+  else if (platform === "linux")
+    out.push(
+      path.join(
+        env.XDG_STATE_HOME?.trim() || path.join(home, ".local", "state"),
+        "den",
+        "local-proof",
+      ),
+    );
+  for (const k of ["DEN_LOCAL_PROOF_DIR", prefixedEnv])
+    if (k && env[k]?.trim()) out.push(path.resolve(env[k]!.trim()));
+  return [...new Set(out)];
+}
+
+/** Linux: the person's own socket folders (tmux, the user runtime dir). */
+function linuxSocketDirs(env: NodeJS.ProcessEnv): string[] {
+  const uid = typeof process.getuid === "function" ? process.getuid() : -1;
+  const out: string[] = [];
+  if (uid >= 0)
+    out.push(path.join(env.TMUX_TMPDIR?.trim() || "/tmp", `tmux-${uid}`));
+  const run = env.XDG_RUNTIME_DIR?.trim();
+  if (run) out.push(path.resolve(run));
+  return out;
+}
+
+/** A regex that matches `dir` and everything under it, for SBPL. */
+function underRegex(dir: string): string {
+  if (/["\0\n\r]/.test(dir))
+    throw new Error(`sandbox: a socket folder can't hold a quote: ${dir}`);
+  const esc = dir.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  return `#"^${esc}(/|$)"`;
 }
 
 /** A string in a sandbox profile: backslash and quote escaped. */
@@ -161,6 +309,9 @@ export function macProfile(p: SandboxPolicy): string {
   const above = [
     ...new Set(p.readOnly.flatMap((r) => ancestors(r, p.home))),
   ].filter((a) => !p.readOnly.some((r) => a.startsWith(r + path.sep)));
+  const guarded = [
+    ...new Set(p.writable.flatMap((w) => [w, ...ancestors(w, p.home)])),
+  ];
   return [
     "(version 1)",
     "(allow default)",
@@ -168,8 +319,17 @@ export function macProfile(p: SandboxPolicy): string {
     ...(above.length ? [`(deny file-write* ${above.map(lit).join(" ")})`] : []),
     `(allow file-write* ${p.writable.map(sub).join(" ")})`,
     `(deny file-write* ${p.locked.map(lit).join(" ")})`,
-    `(deny file-read* ${p.hidden.map(lit).join(" ")} ${sub(p.tokensDir)})`,
-    `(allow file-read* ${lit(p.tokensDir)} ${sub(p.ownTokenDir)})`,
+    // The writable folders themselves, and those above them, can't be
+    // moved away (and a forged one moved in): renames refused.
+    `(deny file-write* ${guarded.map(lit).join(" ")})`,
+    `(deny file-read* ${p.unreadable.map(sub).join(" ")})`,
+    // Names can be listed and stat'd, never read.
+    `(allow file-read-metadata ${p.unreadable.map(sub).join(" ")})`,
+    `(allow file-read* ${[...p.readable.map(sub), ...p.readableFiles.map(lit), ...p.listable.map(lit)].join(" ")})`,
+    `(deny file-read* ${p.hidden.map(lit).join(" ")})`,
+    // Unix sockets: none but the allowed (a listener runs outside it).
+    "(deny network-outbound (remote unix-socket))",
+    `(allow network-outbound ${p.socketsAllowed.map((d) => `(remote unix-socket (path-regex ${underRegex(d)}))`).join(" ")})`,
     `(deny network-outbound ${p.sockets.map((s) => `(remote unix-socket (path-literal ${sbString(s)}))`).join(" ")})`,
     "",
   ].join("\n");
@@ -181,6 +341,12 @@ export function macProfile(p: SandboxPolicy): string {
  * macOS needs none of this (its rule names the path).
  */
 export function ensureLockedGateFiles(p: SandboxPolicy): void {
+  for (const w of p.writable)
+    try {
+      fs.mkdirSync(w, { recursive: true, mode: 0o700 });
+    } catch {
+      /* made by Den as it starts the agent, or not makeable here */
+    }
   for (const f of GATE_LOCKED_FILES) {
     const file = path.join(p.gateDir, f);
     try {
@@ -197,17 +363,40 @@ export function bwrapArgs(
   p: SandboxPolicy,
   exists: (f: string) => boolean = fs.existsSync,
 ): string[] {
-  const a = ["--dev-bind", "/", "/"];
+  // Its own pid namespace and /proc: no other process's env or files;
+  // and it ends with the session.
+  const a = [
+    "--dev-bind",
+    "/",
+    "/",
+    "--unshare-pid",
+    "--proc",
+    "/proc",
+    "--die-with-parent",
+  ];
   for (const r of p.readOnly) if (exists(r)) a.push("--ro-bind", r, r);
+  // An unreadable folder: an empty tmpfs over it, what it may read bound
+  // back (read-only), then the writable folders inside it.
+  const inside = (x: string) =>
+    p.unreadable.some((u) => x === u || x.startsWith(u + path.sep));
+  for (const u of p.unreadable) if (exists(u)) a.push("--tmpfs", u);
+  // The person's own sockets (tmux, the user runtime dir): a tmpfs, then
+  // the allowed ones bound back.
+  for (const d of p.socketDirsHidden) if (exists(d)) a.push("--tmpfs", d);
+  for (const ok of p.socketsAllowed)
+    if (
+      exists(ok) &&
+      p.socketDirsHidden.some((d) => ok === d || ok.startsWith(d + path.sep))
+    )
+      a.push("--bind", ok, ok);
+  for (const r of [...p.readable, ...p.readableFiles])
+    if (inside(r) && exists(r) && !p.writable.includes(r))
+      a.push("--ro-bind", r, r);
   for (const w of p.writable) if (exists(w)) a.push("--bind", w, w);
   for (const l of p.locked) if (exists(l)) a.push("--ro-bind", l, l);
   for (const h of [...p.hidden, ...p.sockets])
-    if (exists(h)) a.push("--ro-bind", "/dev/null", h);
-  if (exists(p.tokensDir)) {
-    a.push("--tmpfs", p.tokensDir);
-    if (exists(p.ownTokenDir))
-      a.push("--ro-bind", p.ownTokenDir, p.ownTokenDir);
-  }
+    if (exists(h) && !inside(h)) a.push("--ro-bind", "/dev/null", h);
+  for (const u of p.unreadable) if (exists(u)) a.push("--remount-ro", u);
   a.push("--");
   return a;
 }
@@ -216,6 +405,16 @@ export function bwrapArgs(
  * agents.sandbox and agents.<id>.sandbox, as den-config resolves them: on
  * unless the person set off for all, or for this agent (its own wins).
  */
+export function sandboxRequired(
+  cfg: {
+    sandboxRequired?: boolean;
+    agents?: Record<string, { sandboxRequired?: boolean }>;
+  },
+  agentId: string,
+): boolean {
+  return cfg.agents?.[agentId]?.sandboxRequired ?? cfg.sandboxRequired ?? false;
+}
+
 export function sandboxSetting(
   cfg: { sandbox?: boolean; agents?: Record<string, { sandbox?: boolean }> },
   agentId: string,
@@ -259,6 +458,27 @@ export interface SandboxOptions {
   /** The person's setting (sandboxSetting). */
   on: boolean;
   which?: (bin: string) => string | undefined;
+  /** Linux: whether bwrap starts here (default: runs it once, cached). */
+  bwrapWorks?: (exe: string) => string | null;
+}
+
+const bwrapChecked = new Map<string, string | null>();
+/** Runs bwrap once: null when it starts, else why not (its first line). */
+export function bwrapStarts(exe: string): string | null {
+  const known = bwrapChecked.get(exe);
+  if (known !== undefined) return known;
+  const r = spawnSync(exe, ["--ro-bind", "/", "/", "true"], {
+    encoding: "utf-8",
+    timeout: 10_000,
+  });
+  const why =
+    r.status === 0
+      ? null
+      : (String(r.stderr || r.error?.message || `exit ${r.status}`)
+          .split("\n")[0]
+          ?.trim() ?? "it did not start");
+  bwrapChecked.set(exe, why);
+  return why;
 }
 
 /** `argv` wrapped in the agent's sandbox, or unwrapped with the reason. */
@@ -303,6 +523,14 @@ export function sandboxFor(
         argv,
         env: {},
         reason: "bwrap (bubblewrap) is not installed",
+      };
+    const why = (o.bwrapWorks ?? bwrapStarts)(exe);
+    if (why)
+      return {
+        applied: false,
+        argv,
+        env: {},
+        reason: `bwrap can't start a sandbox here: ${why}`,
       };
     ensureLockedGateFiles(policy);
     return {

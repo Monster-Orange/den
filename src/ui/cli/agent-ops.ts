@@ -183,7 +183,8 @@ import {
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { installLocationEnv, product } from "../../shared/product.js";
+import { envKey, installLocationEnv, product } from "../../shared/product.js";
+import * as os from "os";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -358,7 +359,9 @@ import {
 import { denWebBase } from "../../shared/web-dial.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
+  localProofDirs,
   sandboxFor,
+  sandboxRequired,
   sandboxSetting,
   type SandboxWrap,
 } from "../../shared/agents/sandbox.js";
@@ -856,6 +859,16 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
             distRoot: (d.distRoot ?? getDistRoot)(),
             gateDir: gateDir(base.env),
             agentId,
+            env: base.env,
+            socketsAllowed:
+              (d.agentsConfig ?? (() => readAgentsConfig()))().sandboxSockets ??
+              [],
+            deniedDirs: localProofDirs(
+              base.env,
+              process.platform,
+              os.homedir(),
+              envKey("LOCAL_PROOF_DIR"),
+            ),
           },
           {
             on: sandboxSetting(
@@ -3316,6 +3329,12 @@ async function startSession(
     );
     // Issue 936: Den's state read-only to the session (the OS sandbox).
     box = d.agentSandbox(launch.argv, launch.rec.id);
+    if (!box.applied && sandboxRequired(d.agentsConfig(), launch.rec.id))
+      throw refused(
+        `agents start: ${launch.rec.id} needs the agent sandbox (agents.sandbox: required), and it can't apply here: ${box.reason ?? "no sandbox"}`,
+        [`\`${d.cli} agents doctor\` shows why.`],
+        409,
+      );
     info = await c
       .start(
         {

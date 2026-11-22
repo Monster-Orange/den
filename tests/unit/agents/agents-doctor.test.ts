@@ -124,8 +124,8 @@ describe("agents doctor", () => {
       "",
       // Issue 936: the rig's sandbox step applies (without a real tool).
       "Agent sandbox (agents can't write Den's state)",
-      "  on here (the OS sandbox)",
-      "  every running agent is inside it",
+      "  ✓ on here (the OS sandbox)",
+      "  ✓ every running agent is inside it",
       "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);

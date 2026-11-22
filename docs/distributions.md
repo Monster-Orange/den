@@ -4933,9 +4933,11 @@ runs as you, so each agent's session starts inside the OS sandbox:
 - The gate store's settings (the machine's gate settings and test boxes)
   can't be written. Its slot queue can, so `gate run` and the MCP slot
   tools work as before.
-- Den's private files and other agents' files can't be read. The agent's
-  own token can.
-- The terminal host's socket can't be reached. A session started there
+- The agent's own token can be read. Den's other files are read only
+  where the agent's tools need them.
+- Unix sockets can't be reached, except the system's own and the agents'
+  message sockets (and the SSH agent's, when the session has one). The
+  terminal host's socket can't be reached. A session started there
   would run outside the sandbox. So `<cli> agents list`, `start` and
   `stop` don't work from an agent's shell. An agent starts another with
   the `agent_create` tool.
@@ -4955,10 +4957,19 @@ that file:
 
 ```yaml
 agents:
-  sandbox: on # or off
+  sandbox: on # or off, or required
+  sandbox_sockets: [/var/run/some-tool] # more socket folders it may reach
   some-agent:
     sandbox: off # this agent's sessions start outside it
 ```
+
+With `required`, an agent whose sandbox can't apply on this machine
+doesn't start: the start says why. On Linux, Den runs `bwrap` once to
+check it works here, not only that it is installed.
+
+This first slice covers Den's state. It doesn't limit what a session can
+reach over the network on this machine, or files outside Den's state that
+you can write. Later slices do.
 
 On macOS a program inside the sandbox can't start a sandbox of its own,
 so Claude Code's own Bash sandbox setting doesn't work in an agent's

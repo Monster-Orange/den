@@ -28,6 +28,10 @@ import {
   agentSandboxPolicy,
   bwrapArgs,
   macProfile,
+  realPath,
+  SESSION_READ_DIRS,
+  SESSION_READ_FILES,
+  localProofDirs,
   sandboxErrorHint,
   sandboxFor,
   sandboxSetting,
@@ -52,6 +56,21 @@ const tmp = fs.realpathSync(
 );
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 afterAll(cleanupRigs);
+
+/**
+ * Den's private files in the state dir that no session reads: each must
+ * stay unreadable (the real-sandbox test reads every one).
+ */
+const KNOWN_PRIVATE = [
+  "push-vapid.json",
+  "fixture-person.key",
+  "claim-nonces.json",
+  "agent-signin-accounts.json",
+  path.join("hub", "unrevoked", "x.token"),
+  path.join("hub", "previous", "20261122", "bound.json"),
+  path.join("embed", "server-keys.json"),
+  "web-sessions.json",
+];
 
 function layout(name: string) {
   const base = path.join(tmp, name);
@@ -82,7 +101,25 @@ function layout(name: string) {
   put(path.join(distRoot, "config", "local", "user.yml"), "local_dev: true\n");
   put(path.join(gateDir, "settings.json"), "{}\n");
   for (const f of LAUNCH_FILES) put(path.join(own, f), "{}\n");
-  return { base, stateDir, distRoot, gateDir, own, agentId: "a1" };
+  // Den's other private files in the state dir (none on any read list).
+  for (const f of KNOWN_PRIVATE) {
+    fs.mkdirSync(path.dirname(path.join(stateDir, f)), { recursive: true });
+    put(path.join(stateDir, f), "private\n");
+  }
+  put(path.join(stateDir, "web.json"), '{"port":1}\n');
+  const proof = path.join(base, "app", "den", "local-proof");
+  fs.mkdirSync(proof, { recursive: true });
+  put(path.join(proof, "k"), "proof\n");
+  return {
+    base,
+    stateDir,
+    distRoot,
+    gateDir,
+    own,
+    agentId: "a1",
+    deniedDirs: [proof],
+    proof,
+  };
 }
 
 describe("agentSandboxPolicy (issue 936)", () => {
@@ -98,26 +135,85 @@ describe("agentSandboxPolicy (issue 936)", () => {
   it("leaves its own folder and the slot queue writable, launch files and gate settings locked", () => {
     const l = layout("policy-own");
     const p = agentSandboxPolicy(l);
-    expect(p.writable).toEqual([l.own, l.gateDir]);
+    // And the api_only guardrail's audit folder (its hook writes there).
+    expect(p.writable).toEqual([
+      l.own,
+      l.gateDir,
+      path.join(l.stateDir, "audit"),
+    ]);
     for (const f of ["settings.json", "mcp.json", "compacting.json"])
       expect(p.locked).toContain(path.join(l.own, f));
     expect(p.locked).toContain(path.join(l.gateDir, "settings.json"));
   });
 
-  it("hides Den's private files and other agents' tokens", () => {
+  it("refuses moving a writable folder, or one above it, on macOS", () => {
+    const l = layout("policy-rename");
+    const prof = macProfile(agentSandboxPolicy(l));
+    const guard = prof
+      .split("\n")
+      .filter((x) => x.startsWith("(deny file-write*"))
+      .join(" ");
+    for (const d of [l.gateDir, path.dirname(l.gateDir), l.own])
+      expect(guard).toContain(`(literal "${d}")`);
+    // Guards come after the allows, so they win.
+    const at = (s: string) => prof.indexOf(s);
+    expect(at(`(literal "${l.gateDir}")`)).toBeGreaterThan(
+      at("(allow file-write*"),
+    );
+  });
+
+  it("refuses every unix socket but the allowed folders, on macOS", () => {
+    const l = layout("policy-socks");
+    const prof = macProfile(
+      agentSandboxPolicy({ ...l, socketsAllowed: ["/var/ok"] }),
+    );
+    expect(prof).toContain("(deny network-outbound (remote unix-socket))");
+    expect(prof).toContain(
+      `(remote unix-socket (path-regex #"^${realPath("/var/ok")}(/|$)"))`,
+    );
+  });
+
+  it("can't read the state dir, but what it names; nor the denied folders", () => {
     const l = layout("policy-read");
     const p = agentSandboxPolicy(l);
+    expect(p.unreadable).toEqual([l.stateDir, l.proof]);
+    expect(p.readable).toEqual(
+      expect.arrayContaining([
+        l.own,
+        path.join(l.stateDir, "actor-token", "a1"),
+        path.join(l.stateDir, "agents"),
+      ]),
+    );
+    expect(p.readable).not.toContain(path.join(l.stateDir, "actor-token"));
+    expect(p.readable).not.toContain(path.join(l.stateDir, "hub"));
     expect(p.hidden).toEqual(
       expect.arrayContaining([
         path.join(l.stateDir, "web.secret"),
-        path.join(l.stateDir, "web-sessions.json"),
         path.join(l.stateDir, "hub", "token"),
-        path.join(l.stateDir, "gate", "runner-tokens.json"),
       ]),
     );
-    expect(p.tokensDir).toBe(path.join(l.stateDir, "actor-token"));
-    expect(p.ownTokenDir).toBe(path.join(l.stateDir, "actor-token", "a1"));
     expect(p.sockets).toEqual([path.join(l.stateDir, "sessions.sock")]);
+  });
+
+  it("reads back only what was reviewed: a new entry fails this until it is", () => {
+    // Each holds no secret (checked by its keys): bookkeeping, hashes,
+    // the web server's port. A name like a secret's needs its line here.
+    const reviewed: Record<string, string> = {
+      "actor-tokens.json": "sha256 of each token, with what it proves",
+      "sessions-host-job.json": "the host job's label and mode",
+      "address-proof.json": "whether the address was proven, and when",
+    };
+    const secretish =
+      /token|secret|key|seal|session|vapid|claim|account|proof|passw/i;
+    for (const f of [...SESSION_READ_FILES, ...SESSION_READ_DIRS])
+      if (secretish.test(f))
+        expect([f, reviewed[f]]).toEqual([f, expect.any(String)]);
+    for (const f of KNOWN_PRIVATE) {
+      expect(SESSION_READ_FILES).not.toContain(f);
+      expect(SESSION_READ_DIRS.some((d) => f.startsWith(d + path.sep))).toBe(
+        false,
+      );
+    }
   });
 
   it("refuses an agent id that would name a path", () => {
@@ -136,21 +232,37 @@ describe("macProfile and bwrapArgs (issue 936)", () => {
     expect(prof).not.toMatch(/q"uote/);
   });
 
-  it("binds the read-only paths, the own folder back, and its launch files read-only", () => {
+  it("gives bwrap its own pid namespace and /proc, ending with the session", () => {
+    const a = bwrapArgs(agentSandboxPolicy(layout("bwrap-pid")));
+    expect(a.slice(0, 7)).toEqual([
+      "--dev-bind",
+      "/",
+      "/",
+      "--unshare-pid",
+      "--proc",
+      "/proc",
+      "--die-with-parent",
+    ]);
+  });
+
+  it("covers the state dir with an empty tmpfs, binds back what it reads, read-only", () => {
     const l = layout("bwrap");
     const a = bwrapArgs(agentSandboxPolicy(l));
     const pairs = a.join(" ");
-    expect(pairs).toContain(`--ro-bind ${l.stateDir} ${l.stateDir}`);
+    expect(pairs).toContain(`--tmpfs ${l.stateDir}`);
+    expect(pairs).toContain(`--tmpfs ${l.proof}`);
+    const web = path.join(l.stateDir, "web.json");
+    expect(pairs).toContain(`--ro-bind ${web} ${web}`);
     expect(pairs).toContain(`--bind ${l.own} ${l.own}`);
     expect(pairs).toContain(
       `--ro-bind ${path.join(l.own, "settings.json")} ${path.join(l.own, "settings.json")}`,
     );
-    expect(pairs).toContain(
-      `--ro-bind /dev/null ${path.join(l.stateDir, "web.secret")}`,
-    );
-    expect(pairs).toContain(`--tmpfs ${path.join(l.stateDir, "actor-token")}`);
-    // The own folder is bound after the state dir, so it wins.
+    // Nothing private is bound back; the tmpfs hides it.
+    expect(pairs).not.toContain("web.secret");
+    expect(pairs).not.toContain(path.join("actor-token", "a2"));
+    // Order: the tmpfs first, then what it reads, then read-only again.
     expect(a.indexOf(l.own)).toBeGreaterThan(a.indexOf(l.stateDir));
+    expect(a.lastIndexOf("--remount-ro")).toBeGreaterThan(a.indexOf(l.own));
     expect(a[a.length - 1]).toBe("--");
   });
 });
@@ -173,11 +285,40 @@ describe("sandboxSetting (issue 936)", () => {
     const user = (agents: Record<string, unknown>) =>
       readAgentsConfig({ agents: {} } as DenConfig, { agents } as UserConfig);
     expect(() => user({ sandbox: "maybe" })).toThrow(
-      /agents.sandbox: must be on or off/,
+      /agents.sandbox: must be on, off or required/,
     );
     expect(() => user({ a1: { sandbox: 1 } })).toThrow(
-      /agents.a1.sandbox: must be on or off/,
+      /agents.a1.sandbox: must be on, off or required/,
     );
+  });
+
+  it("takes required, and more socket folders, from user.yml", () => {
+    const c = readAgentsConfig(
+      { agents: {} } as DenConfig,
+      {
+        agents: {
+          sandbox: "required",
+          sandbox_sockets: ["/var/x"],
+          a1: { sandbox: "required" },
+        },
+      } as unknown as UserConfig,
+    );
+    expect(c.sandbox).toBe(true);
+    expect(c.sandboxRequired).toBe(true);
+    expect(c.sandboxSockets).toEqual(["/var/x"]);
+    expect(c.agents.a1).toEqual({
+      grants: [],
+      sandbox: true,
+      sandboxRequired: true,
+    });
+    expect(() =>
+      readAgentsConfig(
+        { agents: {} } as DenConfig,
+        {
+          agents: { sandbox_sockets: ["rel/x"] },
+        } as unknown as UserConfig,
+      ),
+    ).toThrow(/agents.sandbox_sockets: a list of absolute folder paths/);
   });
 
   it("is never read from the org config, a file agents may edit", () => {
@@ -191,6 +332,20 @@ describe("sandboxSetting (issue 936)", () => {
 });
 
 describe("sandboxFor (issue 936)", () => {
+  it("on Linux, a bwrap that can't start here is no sandbox, and says why", () => {
+    const l = layout("wrap-bwrap-broken");
+    const w = sandboxFor(["claude"], l, {
+      platform: "linux",
+      on: true,
+      which: () => "/usr/bin/bwrap",
+      bwrapWorks: () => "setting up uid map: Permission denied",
+    });
+    expect(w).toMatchObject({ applied: false, argv: ["claude"] });
+    expect(w.reason).toBe(
+      "bwrap can't start a sandbox here: setting up uid map: Permission denied",
+    );
+  });
+
   it("wraps the argv with sandbox-exec on macOS and marks the env", () => {
     const l = layout("wrap-mac");
     const w = sandboxFor(["claude", "--x"], l, {
@@ -211,6 +366,7 @@ describe("sandboxFor (issue 936)", () => {
       platform: "linux",
       on: true,
       which: (b) => (b === "bwrap" ? "/usr/bin/bwrap" : undefined),
+      bwrapWorks: () => null,
     });
     expect(w.applied).toBe(true);
     expect(w.argv[0]).toBe("/usr/bin/bwrap");
@@ -318,6 +474,71 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
     },
   );
 
+  itReal(
+    "can't move the gate store, or a folder above it, to forge its settings",
+    () => {
+      const l = layout("real-rename");
+      const parent = path.dirname(l.gateDir);
+      const out = inSandbox(
+        l,
+        [
+          step("mvgate", `mv ${l.gateDir} ${l.gateDir}.old`),
+          step("mvparent", `mv ${parent} ${parent}.old`),
+          step(
+            "over",
+            `echo '{"boxes":[]}' > ${l.gateDir}/s.tmp && mv ${l.gateDir}/s.tmp ${l.gateDir}/settings.json`,
+          ),
+          step("link", `ln ${l.gateDir}/settings.json ${l.gateDir}/h.json`),
+          step("rmset", `rm -f ${l.gateDir}/settings.json`),
+        ].join("; "),
+      );
+      for (const s of ["mvgate", "mvparent", "over", "link", "rmset"])
+        expect(out).toMatch(new RegExp(`^${s}=[1-9]`, "m"));
+      expect(
+        fs.readFileSync(path.join(l.gateDir, "settings.json"), "utf-8"),
+      ).toBe("{}\n");
+    },
+  );
+
+  itReal(
+    "connects to no unix socket of the person's, only the allowed ones",
+    async () => {
+      const l = layout("real-socks");
+      const other = path.join(l.base, "o.sock");
+      const okDir = path.join(l.base, "ok");
+      fs.mkdirSync(okDir);
+      const ok = path.join(okDir, "k.sock");
+      const servers = [other, ok].map((p) => {
+        const sv = net.createServer((c) => c.end("hi\n"));
+        return new Promise<net.Server>((r) => sv.listen(p, () => r(sv)));
+      });
+      const live = await Promise.all(servers);
+      try {
+        const probe = (sock: string) =>
+          `require("net").connect(${JSON.stringify(sock)}).on("connect",()=>{console.log("connected");process.exit(0)}).on("error",()=>{console.log("refused");process.exit(0)})`;
+        const run = (sock: string) => {
+          const w = sandboxFor(
+            [process.execPath, "-e", probe(sock)],
+            {
+              ...l,
+              socketsAllowed: [okDir],
+            },
+            { platform: process.platform, on: true },
+          );
+          const r = spawnSync(w.argv[0]!, w.argv.slice(1), {
+            encoding: "utf-8",
+            env: { ...process.env, ...w.env },
+          });
+          return r.stdout.trim();
+        };
+        expect(run(other)).toBe("refused");
+        expect(run(ok)).toBe("connected");
+      } finally {
+        for (const sv of live) sv.close();
+      }
+    },
+  );
+
   itReal("can't read Den's private files or another agent's token", () => {
     const l = layout("real-read");
     const out = inSandbox(
@@ -329,10 +550,25 @@ describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
         step("other", `grep -q other-token ${l.stateDir}/actor-token/a2/token`),
         step("own", `grep -q own-token ${l.stateDir}/actor-token/a1/token`),
         step("record", `grep -q permission ${l.stateDir}/agents/a1.json`),
+        step("web", `grep -q port ${l.stateDir}/web.json`),
+        step("proof", `cat ${l.proof}/k`),
+        step("list", `ls ${l.stateDir}`),
+        ...KNOWN_PRIVATE.map((f, i) =>
+          step(`private${i}`, `grep -q private ${l.stateDir}/${f}`),
+        ),
       ].join("; "),
     );
-    for (const s of ["secret", "sessions", "hub", "other"])
+    for (const s of [
+      "secret",
+      "sessions",
+      "hub",
+      "other",
+      "proof",
+      "list",
+      ...KNOWN_PRIVATE.map((_, i) => `private${i}`),
+    ])
       expect(out).toMatch(new RegExp(`^${s}=[1-9]`, "m"));
+    expect(out).toMatch(/^web=0$/m);
     expect(out).toMatch(/^own=0$/m);
     expect(out).toMatch(/^record=0$/m);
   });
@@ -440,6 +676,24 @@ describe("agents start runs the agent in its sandbox (issue 936)", () => {
     },
   );
 
+  it("agents.sandbox: required refuses a start where no sandbox applies", async () => {
+    const r = await plannerRig();
+    r.config.sandboxRequired = true;
+    r.deps.agentSandbox = (argv) => ({
+      applied: false,
+      argv,
+      env: {},
+      reason: "bwrap (bubblewrap) is not installed",
+    });
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+    ).not.toBe(0);
+    expect(r.made).toHaveLength(0);
+    expect(r.err.join("\n")).toContain(
+      "planner needs the agent sandbox (agents.sandbox: required), and it can't apply here: bwrap (bubblewrap) is not installed",
+    );
+  });
+
   it("agents.<id>.sandbox: off starts it unwrapped, and the record says why", async () => {
     const r = await plannerRig();
     r.config.agents.planner = { grants: [], sandbox: false };
@@ -477,7 +731,7 @@ describe("agents start runs the agent in its sandbox (issue 936)", () => {
       },
     ]);
     expect(sandboxLines(rep.sandbox)).toContain(
-      "  planner (north) runs outside it: the sandbox is off for this agent in user.yml",
+      "  ⚠ planner (north) runs outside it: the sandbox is off for this agent in user.yml",
     );
   });
 });
@@ -516,5 +770,28 @@ describe("sandboxErrorHint (issue 936)", () => {
     expect(
       sandboxErrorHint(new Error("no such project"), inside, "acme"),
     ).toBeNull();
+  });
+});
+
+describe("localProofDirs (issue 936)", () => {
+  it("names the OS app folder's local-proof, and the env's own", () => {
+    expect(localProofDirs({}, "darwin", "/h")).toEqual([
+      "/h/Library/Application Support/den/local-proof",
+    ]);
+    expect(localProofDirs({}, "linux", "/h")).toEqual([
+      "/h/.local/state/den/local-proof",
+    ]);
+    expect(
+      localProofDirs(
+        {
+          XDG_STATE_HOME: "/x",
+          DEN_LOCAL_PROOF_DIR: "/p",
+          ACME_LOCAL_PROOF_DIR: "/q",
+        },
+        "linux",
+        "/h",
+        "ACME_LOCAL_PROOF_DIR",
+      ),
+    ).toEqual(["/x/den/local-proof", "/p", "/q"]);
   });
 });

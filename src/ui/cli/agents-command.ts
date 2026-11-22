@@ -2496,14 +2496,15 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
 
 export function sandboxLines(r: SandboxReport): string[] {
   const out = ["Agent sandbox (agents can't write Den's state)"];
+  // On by default: an agent outside it is a warning, never information.
   out.push(
     r.here.applied
-      ? `  on here (${r.here.tool ?? "the OS sandbox"})`
-      : `  not here: ${r.here.reason ?? "no sandbox"}`,
+      ? `  ✓ on here (${r.here.tool ?? "the OS sandbox"})`
+      : `  ⚠ not here: ${r.here.reason ?? "no sandbox"}`,
   );
-  if (!r.outside.length) out.push("  every running agent is inside it");
+  if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)
-    out.push(`  ${x.id} (${x.project}) runs outside it: ${x.reason}`);
+    out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);
   return out;
 }
 
