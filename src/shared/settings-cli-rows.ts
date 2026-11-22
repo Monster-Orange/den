@@ -51,7 +51,12 @@
  *                                     user.yml process_lookup.* (issue 609)
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
+ *   sessions: { max_concurrent?, close_grace_seconds?, pty_close_seconds?,
+ *               pty_warn_above?, pty_machine_warn_percent? }
+ *                                     user.yml sessions.* (issue 532),
+ *                                     checked as den-config checks them
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
+ *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
  *     api_budget_floor?, watches_max? }
  *                                     user.yml github.* (the shared GitHub
@@ -72,7 +77,13 @@ import {
   WEB_WAIT_RANGE,
 } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
-import { HELD_WAIT_MINUTES, SHELL_PATH_TIMEOUT } from "./den-config.js";
+import {
+  HELD_WAIT_MINUTES,
+  SESSIONS_SETTINGS_KEYS,
+  SHELL_PATH_TIMEOUT,
+  sessionsValueError,
+} from "./den-config.js";
+import { HEALTH_POLL } from "./health-poll.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
@@ -140,6 +151,8 @@ export const PERSON_ONLY_SETTINGS = [
   "process_lookup",
   // Issue 609: how agents' hooks wait for Den, and retry.
   "agent_hooks",
+  // Issue 532: the terminal limits.
+  "sessions",
   // The shared GitHub watcher's pace and API budget: every agent's polls.
   "github",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
@@ -148,6 +161,8 @@ export const PERSON_ONLY_SETTINGS = [
   "approvals_critical",
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes",
+  // Issue 1022: how often the page polls health, visible and hidden.
+  "health_poll",
 ] as const;
 
 /**
@@ -406,6 +421,16 @@ const HELD_WRITES: Record<string, Limit> = {
   },
 };
 
+/** Issue 1022: user.yml health_poll.* (health-poll.ts). */
+const HEALTH_POLL_LIMITS: Record<string, Limit> = {
+  visible_seconds: {
+    key: "visible_seconds",
+    ...HEALTH_POLL.visible,
+    int: true,
+  },
+  hidden_seconds: { key: "hidden_seconds", ...HEALTH_POLL.hidden, int: true },
+};
+
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
 const LOG_LINES = { min: 1000, max: 1_000_000 };
 
@@ -455,6 +480,37 @@ function patchBlock(
     }
     if (Object.keys(b).length) user[block] = b;
     else delete user[block];
+  });
+  return null;
+}
+
+/**
+ * Issue 532: user.yml sessions.*, the terminal limits, checked with
+ * den-config's own ranges and words (sessionsValueError).
+ */
+function patchSessions(
+  user: Record<string, unknown>,
+  value: unknown,
+  apply: (() => void)[],
+): string | null {
+  if (value === undefined) return null;
+  const keys: readonly string[] = SESSIONS_SETTINGS_KEYS;
+  if (!isObj(value)) return `the terminal limits are ${keys.join(", ")}`;
+  for (const [k, v] of Object.entries(value)) {
+    if (!keys.includes(k))
+      return `${k} is not a terminal limit (${keys.join(", ")})`;
+    if (v === null) continue;
+    const e = sessionsValueError(k, v);
+    if (e) return e;
+  }
+  apply.push(() => {
+    const b = isObj(user.sessions) ? { ...user.sessions } : {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === null) delete b[k];
+      else b[k] = v;
+    }
+    if (Object.keys(b).length) user.sessions = b;
+    else delete user.sessions;
   });
   return null;
 }
@@ -723,12 +779,21 @@ export function patchCliRows(
       body.agent_hooks,
       apply,
     ) ??
+    patchSessions(user, body.sessions, apply) ??
     patchBlock(
       user,
       "held_writes",
       "held_writes",
       HELD_WRITES,
       body.held_writes,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "health_poll",
+      "health_poll",
+      HEALTH_POLL_LIMITS,
+      body.health_poll,
       apply,
     ) ??
     patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);

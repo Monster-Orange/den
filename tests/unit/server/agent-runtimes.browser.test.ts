@@ -119,6 +119,7 @@ describe("Settings › Agents › Runtimes (AG-0.5)", () => {
       ["codex", "true"],
       ["gemini", "false"],
       ["grok", "false"],
+      ["antigravity", "false"],
     ]);
     const row = '.rt[data-runtime="codex"]';
     expect(await text(p, `${row} .rt-n`)).toBe(
@@ -273,6 +274,7 @@ describe("the Start agent dialog (AG-0.5)", () => {
         "Codex CLI · 0.50.0 · Den tools: coming",
         "Gemini CLI — not installed",
         "Grok Build — not installed",
+        "Antigravity CLI — not installed",
         "Generic command — the persona has no argv template",
       ]);
       if (SHOTS)
