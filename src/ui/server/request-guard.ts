@@ -1252,3 +1252,16 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
 export function notAPersonOf(req: http.IncomingMessage): boolean {
   return !!agentPrincipalOf(req) || !!auditActorOf(req);
 }
+
+/**
+ * Issue 402: whether this request is a test install's fixture person
+ * itself: its browser session, with no agent's token or claim on it.
+ */
+export function fixturePersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return (
+    p?.kind === "person-browser" &&
+    p.fixture === true &&
+    !actorFromHeaders(req.headers)
+  );
+}

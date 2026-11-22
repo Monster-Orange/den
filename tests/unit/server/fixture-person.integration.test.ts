@@ -481,6 +481,37 @@ describe("the fixture sign-in", () => {
   });
 });
 
+/**
+ * Issue 402: live checks press ☆/★ on the Services page as the fixture
+ * person, and the page saves the rail's pins (POST /api/settings, shell).
+ * Those are the page's own view prefs, never a program Den runs: refused,
+ * every pin check failed on the bed from the day it signed in as the
+ * fixture person.
+ */
+describe("what the fixture person saves from a page", () => {
+  it("the rail's pins, as the Services page's ☆ saves them", async () => {
+    const f = await fixtureSignIn(test);
+    const pins = [
+      { item: "svc-a", project: null },
+      { item: "svc-b", project: null },
+    ];
+    const r = await call(test, "POST", "/api/settings", f.headers, {
+      shell: { pins },
+    });
+    expect([r.status, r.json.ok]).toEqual([200, true]);
+    const back = await call(test, "GET", "/api/settings", {
+      cookie: f.cookie,
+      "sec-fetch-site": "same-origin",
+    });
+    const stored = (back.json.shell as { pins?: { item: string }[] }).pins;
+    expect((stored ?? []).map((p) => p.item)).toEqual(["svc-a", "svc-b"]);
+    const clear = await call(test, "POST", "/api/settings", f.headers, {
+      shell: { pins: [] },
+    });
+    expect(clear.status).toBe(200);
+  });
+});
+
 describe("what the fixture person can't reach", () => {
   it("can't Allow a held write", async () => {
     const f = await fixtureSignIn(test);
@@ -518,6 +549,30 @@ describe("what the fixture person can't reach", () => {
     const r = await call(test, "POST", "/api/settings", f.headers, {
       agents_default_mode: "auto",
     });
+    expect(r.status).toBe(403);
+  });
+
+  it("can't change a person-only setting alongside the rail's own prefs", async () => {
+    const f = await fixtureSignIn(test);
+    const r = await call(test, "POST", "/api/settings", f.headers, {
+      shell: { collapsed: ["develop"] },
+      editor: "vi",
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("a claimed agent on the fixture session can't change the rail's prefs", async () => {
+    const f = await fixtureSignIn(test);
+    const r = await call(
+      test,
+      "POST",
+      "/api/settings",
+      {
+        ...f.headers,
+        ...AGENT_CLAIM,
+      },
+      { shell: { pins: [{ item: "svc-claimed", project: null }] } },
+    );
     expect(r.status).toBe(403);
   });
 
