@@ -177,3 +177,59 @@ describe("gate slots over MCP", () => {
     expect(c.gates!.list().map((e) => e.id)).toEqual([other.id]);
   });
 });
+
+describe("issue 1023: gate_slot_release and a gate run's own entry", () => {
+  /** An entry as `gate run` from an agent's shell makes it. */
+  const cliEntry = (c: ToolContext, actor?: string) =>
+    c.gates!.ask({
+      kind: "browser",
+      who: `Den · north · ${actor ?? "a person"}`,
+      label: "e2e",
+      pid: 7,
+      estimateMin: 6,
+      agent: !!actor,
+      project: "north",
+      ...(actor ? { actor } : {}),
+    });
+
+  it("the same agent frees the entry its own gate run made", async () => {
+    const c = ctx(undefined, "agent:coder");
+    const e = cliEntry(c, "agent:coder");
+    const r = await callTool("gate_slot_release", { id: e.id }, c);
+    expect(r.isError).toBeFalsy();
+    expect(json(r)).toEqual({ released: true });
+    expect(c.gates!.list()).toEqual([]);
+    expect(c.gates!.events().map((x) => x.event)).toEqual([
+      "asked",
+      "granted",
+      "released",
+    ]);
+  });
+
+  it("another agent, or a person's entry, is refused and stays", async () => {
+    const c = ctx(undefined, "agent:other");
+    const theirs = cliEntry(c, "agent:coder");
+    const persons = cliEntry(c);
+    for (const id of [theirs.id, persons.id]) {
+      const r = await callTool("gate_slot_release", { id }, c);
+      expect(r.isError).toBe(true);
+      expect(r.text).toContain("that slot isn't yours");
+    }
+    expect(c.gates!.list().map((x) => x.id)).toEqual([theirs.id, persons.id]);
+  });
+
+  it("a CI runner's entry with the same name is never the agent's", async () => {
+    const c = ctx(undefined, "agent:coder");
+    const e = c.gates!.askRemote({
+      kind: "cpu",
+      who: "runner",
+      label: "ci",
+      estimateMin: 5,
+      runner: "agent:coder",
+      tokenId: "t1",
+    });
+    const r = await callTool("gate_slot_release", { id: e.id }, c);
+    expect(r.isError).toBe(true);
+    expect(c.gates!.list().map((x) => x.id)).toEqual([e.id]);
+  });
+});

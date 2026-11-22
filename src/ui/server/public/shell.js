@@ -809,6 +809,7 @@
     "set.ui.boxSave": "Save box",
     "set.ui.boxMem": "Keep free memory (MB)",
     "set.ui.boxPwv": "Playwright version on the box",
+    "set.ui.boxPws": "Or Playwright by version (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone": "No test boxes. Browser runs use this machine only.",
     "set.ui.boxSlotsN": "{n} browser slots",
     "set.ui.boxHoldIs": "hold file {path}",
@@ -2744,6 +2745,7 @@
     "ap.det.gate_box_set.time_scale": "Time scale: {v}",
     "ap.det.gate_box_set.playwright_version": "Playwright version: {v}",
     "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
+    "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",

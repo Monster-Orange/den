@@ -55,6 +55,14 @@ den gate status            # who holds a slot, who waits
 `gate status`, the Agents page and `GET /api/gate-slots` show every holder,
 local or remote.
 
+The slot is given back the moment the command ends, however it ends: its
+own exit, or any signal (Ctrl-C, `kill`, a hang-up). A signal sent to
+`gate run` itself (SIGINT, SIGTERM, SIGHUP or SIGQUIT) is passed to the
+command, and the slot is free once the command ends. An agent can also
+give back a slot its own `gate run` made with the MCP tool
+`gate_slot_release` (its id from `gate status`); giving it back does not
+stop the command. Another agent's slot is refused.
+
 ## A browser run on a Mac uses a container browser
 
 On a macOS host, a browser slot is refused unless the ask says where its
@@ -348,6 +356,14 @@ den gate box remove box2
   Den reads the box. Keys only; Den names the key file and never reads it.
 - `--playwright ws://…`: the box's Playwright server. A run that gets the
   box is given it as `DEN_PW_WS`.
+- `--pw <version>=ws://…`, repeated: a box with several Playwright servers,
+  one per version (`--pw 1.61=ws://box1.example:3931 --pw
+  1.63=ws://box1.example:3932`). A run gets the one whose version matches
+  its own (`1.61` serves any 1.61.x). Use it instead of `--playwright` and
+  `--playwright-version`. The box's `--slots` count is the box's, whatever
+  version a run takes. In settings.json it is `playwright_endpoints`
+  (version → address); a box set before, with one address, reads and runs
+  as it did.
 - `--slots N`: browser runs the box takes at once (its "one heavy job at a
   time" rule is 1).
 - `--hold-file <path>` (needs ssh; relative to the box user's home): while
@@ -415,9 +431,14 @@ it); with only a Playwright address, a TCP connect.
   another box or waits. An ssh that connects but stalls before its banner
   is killed at that time and counts as unreachable.
 - **Version mismatch**: a box set with `--playwright-version` takes only
-  runs whose Playwright client is that version (`gate run` reads it from
-  the run's `node_modules`, or `--pw-version`). Any other run skips the
-  box, and the queue says "client X ≠ server Y".
+  runs whose Playwright client is that version. Any other run skips the
+  box, and the queue says "client X ≠ server Y". A box set with `--pw`
+  takes a run when one of its versions serves the run's; otherwise the
+  queue says "client X: box serves 1.61, 1.63". `gate run` takes the run's
+  version from `--pw-version`, else from its folder's `node_modules`, else
+  from the nearest `package.json` at or below its folder that depends on
+  Playwright (a repo with Playwright in `web/`): the version installed for
+  it, or the one its range names. `gate status` lists each box's versions.
 
 A box slot is one heavy job at a time unless `--slots` says more.
 

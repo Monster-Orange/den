@@ -1637,6 +1637,13 @@ function drawGateBoxes(host, ctx) {
       "text",
       'maxlength="48" placeholder="1.48.0"',
     ) +
+    field(
+      "set-box-pws",
+      "set.ui.boxPws",
+      "Or Playwright by version (1.61=ws://…, 1.63=ws://…)",
+      "text",
+      'maxlength="2048" placeholder="1.61=ws://box:3931, 1.63=ws://box:3932"',
+    ) +
     `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
     `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
@@ -1646,6 +1653,19 @@ function drawGateBoxes(host, ctx) {
   const save = host.querySelector("#set-box-save");
   const val = (id) => host.querySelector(id).value.trim();
   const num = (id) => (val(id) === "" ? undefined : Number(val(id)));
+  const pwPairs = (text) => {
+    if (!text) return undefined;
+    const map = {};
+    for (const part of text.split(",")) {
+      const p = part.trim();
+      if (!p) continue;
+      const eq = p.indexOf("=");
+      // A pair without "=" goes to the server as is, which says what is wrong.
+      if (eq < 1) map[p] = "";
+      else map[p.slice(0, eq).trim()] = p.slice(eq + 1).trim();
+    }
+    return map;
+  };
   const warn = (e) => {
     out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
   };
@@ -1682,7 +1702,15 @@ function drawGateBoxes(host, ctx) {
                   }),
                 )}</span>` +
                 `<span class="set-note mono">${escHtml(
-                  [x.ssh, x.playwright].filter(Boolean).join(" · "),
+                  [
+                    x.ssh,
+                    x.playwright,
+                    ...Object.entries(x.playwright_endpoints || {}).map(
+                      ([v, ws]) => `${v}=${ws}`,
+                    ),
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
                 )}</span>` +
                 (x.hold_file
                   ? `<span class="set-note">${escHtml(L("set.ui.boxHoldIs", "hold file {path}", { path: x.hold_file }))}</span>`
@@ -1717,6 +1745,8 @@ function drawGateBoxes(host, ctx) {
       time_scale: num("#set-box-scale"),
       min_free_mem_mb: num("#set-box-mem"),
       playwright_version: val("#set-box-pwv") || undefined,
+      // Issue 1017: "1.61=ws://…, 1.63=ws://…" → version → address.
+      playwright_endpoints: pwPairs(val("#set-box-pws")),
     };
     post("/api/gate-slots/boxes", { box }, save).catch(warn);
   });

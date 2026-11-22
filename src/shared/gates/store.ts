@@ -32,6 +32,7 @@ import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
   assign,
+  boxCapOf,
   boxesOf,
   boxesWanted,
   checkBox,
@@ -1211,12 +1212,9 @@ export class GateStore {
     const boxes = this.boxes();
     const states = boxes.length ? readBoxStates(this.dir) : {};
     const s = this.settings();
-    const caps: BoxCap[] = boxes.map((b) => ({
-      name: b.name,
-      slots: b.browser_slots,
-      open: freshYes(states[b.name], now, s.boxCheckTimeoutSeconds),
-      ...(b.playwright_version ? { version: b.playwright_version } : {}),
-    }));
+    const caps: BoxCap[] = boxes.map((b) =>
+      boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
+    );
     return { boxes, states, caps, used: false };
   }
 
@@ -1251,12 +1249,7 @@ export class GateStore {
       const states = readBoxStates(this.dir);
       const caps = boxes
         .filter((b) => !freshNo(states[b.name], now, s.boxRecheckSeconds))
-        .map((b) => ({
-          name: b.name,
-          slots: b.browser_slots,
-          open: true,
-          ...(b.playwright_version ? { version: b.playwright_version } : {}),
-        }));
+        .map((b) => boxCapOf(b, true));
       const want = boxesWanted(this.readAll(), s, now, caps).filter(
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),
       );
