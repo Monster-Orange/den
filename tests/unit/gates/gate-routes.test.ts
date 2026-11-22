@@ -105,6 +105,7 @@ describe("gate-slot routes", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
+      loadHold: 1.5,
       remoteRenewSeconds: 30,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,

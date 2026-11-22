@@ -1070,6 +1070,10 @@
       "Pruebas unitarias junto a una prueba de navegador de versión",
     "set.server.gate_cpu_beside_release.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador con prioridad de versión. 0 (el valor predeterminado): la prueba de versión se ejecuta sola, para que otras no ralenticen sus comprobaciones. Las demás pruebas de navegador usan el ajuste de arriba. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_load_hold":
+      "Esperar nuevas pruebas unitarias por encima de esta carga",
+    "set.server.gate_load_hold.d":
+      "Las nuevas pruebas unitarias esperan mientras la carga media de 5 minutos de esta máquina supere este número de veces sus núcleos. Las que ya se ejecutan nunca se detienen. Cada prueba unitaria recibe también su parte de los núcleos en DEN_GATE_WORKERS. 0 desactiva la espera. __DEN_CLI__ gate settings --load-hold 1.5",
     "set.server.gate_local_browser":
       "Pruebas de navegador a la vez en esta máquina",
     "set.server.gate_local_browser.d":

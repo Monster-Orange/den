@@ -17,6 +17,7 @@ import {
   GateYieldRefused,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
+import { gateWorkers } from "../../shared/gates/rules.js";
 import {
   browserSlotCheck,
   browserSlotRefusal,
@@ -286,8 +287,16 @@ function lapseNotices(): string[] {
 function slotView(store: GateStore, id: string) {
   const v = gateView(store);
   const mine = v.slots.find((x) => x.id === id);
+  // Issue 1048: a cpu run here uses its share of the cores; one waiting
+  // on the machine's load is told so.
+  const cpu = mine?.kind === "cpu";
+  const load = cpu && !mine?.granted ? store.loadState() : undefined;
   return {
     ...mine,
+    ...(cpu && mine?.granted && !mine.box
+      ? { workers: gateWorkers(store.cores(), v.settings.cpuSlots) }
+      : {}),
+    ...(load?.held ? { loadHold: load } : {}),
     // Issue 714: renew it this often while you work (gate_slot_request
     // with its id), or it lapses once past its estimate.
     renewEveryMinutes: v.settings.mcpRenewMinutes,
