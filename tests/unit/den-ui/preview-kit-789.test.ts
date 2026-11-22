@@ -8,7 +8,6 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { pathToFileURL } from "url";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const SRC = path.join(ROOT, "packages/den-ui/src");
@@ -20,7 +19,7 @@ type Preview = {
   previewTheme: (t: unknown) => string | null;
 };
 const load = async (): Promise<Preview> =>
-  (await import(pathToFileURL(path.join(SRC, "preview.js")).href)) as Preview;
+  (await import("../../../packages/den-ui/src/preview.js")) as Preview;
 
 describe("issue 789: the preview's document", () => {
   it("links the kit, the theme and the frame script, with the body", async () => {
