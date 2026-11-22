@@ -19,6 +19,12 @@
  *   /api/verify/runs/:id?project=       one run's record
  *   /api/verify/runs/:id/report?project=&module=
  *                                       a module's kept output, as text
+ *
+ * Issue 212 (GET):
+ *   /api/verify/modules/:module/history?project=&env=&limit=
+ *                                       its runs, first failing range, flaky
+ *   /api/verify/runs/:id/modules/:module/findings?project=
+ *                                       a scan's findings and threshold
  */
 import type * as http from "http";
 import {
@@ -49,7 +55,13 @@ import {
 } from "../../shared/verify/run.js";
 import { verifyOverview } from "../../shared/verify/overview.js";
 import { readImportSettings } from "../../shared/verify/imports.js";
+import { moduleHistory } from "../../shared/verify/history.js";
 import {
+  DEFAULT_VERIFY_SETTINGS,
+  type VerifySettings,
+} from "../../shared/verify/settings.js";
+import {
+  listRunRecords,
   recentRuns,
   readRunRecord,
   type RunActor,
@@ -82,6 +94,8 @@ export interface VerifyServerDeps {
   probe?: RunDeps["probe"];
   /** Issue 441: the org config's `verify:` block (read per request). */
   verifyConfig?: () => unknown;
+  /** Issue 212: the org config's `verify:` settings (defaults when unset). */
+  settings?: () => VerifySettings;
 }
 
 /**
@@ -372,8 +386,26 @@ export async function runVerify(
     runCmd: d.runCmd ?? spawnCmd,
     probe: d.probe ?? httpProbe,
     by: { startedBy, ...(allowedBy ? { allowedBy } : {}) },
+    retries: settingsOf(d).retries,
+    failOn: settingsOf(d).failOn,
   });
 }
+
+const settingsOf = (d: VerifyServerDeps): VerifySettings =>
+  d.settings?.() ?? { ...DEFAULT_VERIFY_SETTINGS };
+
+/** Issue 212: a module's history, and one run's findings for a module. */
+const HISTORY_PATH = /^\/api\/verify\/modules\/([^/]+)\/history$/;
+const FINDINGS_PATH =
+  /^\/api\/verify\/runs\/([A-Za-z0-9][A-Za-z0-9._-]{0,79})\/modules\/([^/]+)\/findings$/;
+
+const decoded = (v: string): string | null => {
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return null;
+  }
+};
 
 const RUN_PATH =
   /^\/api\/verify\/runs\/([A-Za-z0-9][A-Za-z0-9._-]{0,79})(\/report)?$/;
@@ -386,7 +418,10 @@ function handleVerifyReads(
   d: () => VerifyServerDeps,
 ): boolean {
   const run = RUN_PATH.exec(pathname);
-  if (pathname !== "/api/verify/overview" && !run) return false;
+  const hist = HISTORY_PATH.exec(pathname);
+  const finds = FINDINGS_PATH.exec(pathname);
+  if (pathname !== "/api/verify/overview" && !run && !hist && !finds)
+    return false;
   if ((req.method ?? "GET").toUpperCase() !== "GET") {
     sendJson(res, { ok: false, error: "GET only" }, 405);
     return true;
@@ -403,6 +438,72 @@ function handleVerifyReads(
     return true;
   }
   const stateDir = deps.stateDir();
+  if (hist) {
+    const module = decoded(hist[1]);
+    const env = q.get("env") ?? "local";
+    if (!module || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(env)) {
+      sendJson(
+        res,
+        { ok: false, error: "name a module and an environment" },
+        400,
+      );
+      return true;
+    }
+    const s = settingsOf(deps);
+    const raw = q.get("limit");
+    const limit = raw === null ? s.historyLimit : Number(raw);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+      sendJson(
+        res,
+        { ok: false, error: "limit is a whole number, 1 to 1000" },
+        400,
+      );
+      return true;
+    }
+    sendJson(res, {
+      ok: true,
+      ...moduleHistory(
+        listRunRecords(stateDir, p.project, Math.max(limit, s.flakyWindow) * 4),
+        module,
+        env,
+        { ...s, historyLimit: limit },
+      ),
+    });
+    return true;
+  }
+  if (finds) {
+    const rec = readRunRecord(stateDir, p.project, finds[1]);
+    const name = decoded(finds[2]);
+    const m = rec?.modules.find((x) => x.name === name || x.id === name);
+    if (!rec || !m) {
+      sendJson(
+        res,
+        { ok: false, error: `there is no such run or module` },
+        404,
+      );
+      return true;
+    }
+    if (!m.findings) {
+      sendJson(
+        res,
+        { ok: false, error: `${m.name} wrote no findings in run ${rec.runId}` },
+        404,
+      );
+      return true;
+    }
+    sendJson(res, {
+      ok: true,
+      runId: rec.runId,
+      module: m.name,
+      state: m.state,
+      commit: rec.commit ?? null,
+      failOn: m.findings.failOn,
+      counts: m.findings.counts,
+      findings: m.findings.list,
+      report: !!m.tail?.length,
+    });
+    return true;
+  }
   if (!run) {
     const mods = modulesOf(deps, p.project);
     if (!mods.ok) {

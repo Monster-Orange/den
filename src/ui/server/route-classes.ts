@@ -504,6 +504,14 @@ export const ROUTES: readonly RouteEntry[] = [
   R("/api/verify/overview", "issue 209: Verify's answer on each environment"),
   R("/api/verify/runs/:id", "issue 209: one Verify run's record"),
   R("/api/verify/runs/:id/report", "issue 209: a module's kept output"),
+  R(
+    "/api/verify/modules/:module/history",
+    "issue 212: a module's runs on an environment, its first failing range and flaky mark",
+  ),
+  R(
+    "/api/verify/runs/:id/modules/:module/findings",
+    "issue 212: a scan's findings by severity, and the threshold it met",
+  ),
   M(
     ["POST"],
     "/api/verify/plan",
@@ -1221,6 +1229,11 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "verify-routes.ts:RUN_PATH": [
     "/api/verify/runs/:id",
     "/api/verify/runs/:id/report",
+  ],
+  // Issue 212: a module's history, and a scan's findings in one run.
+  "verify-routes.ts:HISTORY_PATH": ["/api/verify/modules/:module/history"],
+  "verify-routes.ts:FINDINGS_PATH": [
+    "/api/verify/runs/:id/modules/:module/findings",
   ],
 };
 

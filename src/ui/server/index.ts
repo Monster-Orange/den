@@ -1349,6 +1349,7 @@ import {
   isSchedulePath,
   type ScheduleServerDeps,
 } from "./verify-schedule-routes.js";
+import { readVerifySettings } from "../../shared/verify/settings.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
@@ -5272,6 +5273,7 @@ function verifyDeps(): VerifyServerDeps {
     focusedProject: () => getFocusedWorkspaceName(),
     repos: (p) => listReposWithManifests(p),
     environments: () => orgEnvironments(),
+    settings: () => readVerifySettings(readDenConfig().verify),
     // Issue 441: verify.environments and verify.import, read per request.
     verifyConfig: () => readDenConfig().verify,
   };
