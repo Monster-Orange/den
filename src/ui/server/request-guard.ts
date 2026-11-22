@@ -80,6 +80,10 @@ import {
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+import {
+  OPERATOR_PRINCIPAL,
+  type OperatorAct,
+} from "../../shared/test-operator.js";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
@@ -1164,6 +1168,13 @@ export function sessionRequestAllowed(
 
 const PRINCIPALS = new WeakMap<http.IncomingMessage, Principal>();
 
+/**
+ * Issue 814: the test operator's act a request was let through as (the
+ * request gate in index.ts sets it, after operatorRefusal), or none. Only
+ * on a fixture session's request; it never makes the request the person's.
+ */
+const OPERATOR_ACTS = new WeakMap<http.IncomingMessage, OperatorAct>();
+
 /** Remember what the request proved (for the audit trail). */
 export function setPrincipal(
   req: http.IncomingMessage,
@@ -1198,9 +1209,10 @@ export function agentPrincipalOf(
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person" || p?.kind === "agent") return p.actor;
-  // Issue 810: the fixture person is named as such, never the human.
+  // Issue 810: the fixture person is named as such, never the human;
+  // issue 814: the test operator's act as the test operator.
   if (p?.kind === "person-browser" && p.session && p.fixture)
-    return FIXTURE_PRINCIPAL;
+    return OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }
@@ -1236,7 +1248,7 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
   if (p?.kind === "person-browser" && p.fixture)
     return {
       kind: "agent",
-      client: FIXTURE_PRINCIPAL,
+      client: OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL,
       clientVersion: "-",
       mcpPid: null,
       session: "",
@@ -1251,4 +1263,30 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
  */
 export function notAPersonOf(req: http.IncomingMessage): boolean {
   return !!agentPrincipalOf(req) || !!auditActorOf(req);
+}
+
+export function markOperatorAct(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): void {
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture) OPERATOR_ACTS.set(req, act);
+}
+
+export function operatorActOf(req: http.IncomingMessage): OperatorAct | null {
+  return OPERATOR_ACTS.get(req) ?? null;
+}
+
+/**
+ * Issue 814: a person-only check that also lets the test operator through
+ * for `act`, and only that act: a person, or a fixture session's request
+ * the gate let through as `act`. Every other caller is refused as
+ * notAPersonOf refuses it.
+ */
+export function personOrOperator(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): boolean {
+  if (!notAPersonOf(req)) return true;
+  return !agentPrincipalOf(req) && OPERATOR_ACTS.get(req) === act;
 }

@@ -112,6 +112,7 @@ import {
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
+import { rememberOperatorShell } from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
@@ -225,6 +226,9 @@ import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
   auditActorOf,
+  notAPersonOf,
+  operatorActOf,
+  personOrOperator,
   principalOf,
 } from "./request-guard.js";
 import {
@@ -1002,7 +1006,7 @@ export async function handleAgentRoutes(
       });
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
-    if (verb === "say" && (agent || actor))
+    if (verb === "say" && !personOrOperator(req, "agent-say"))
       throw new AgentError("only a person can send an agent a message", {
         status: 403,
       });
@@ -1838,10 +1842,13 @@ async function plainSession(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person,
+    // except as the test operator's terminal-start.
+    if (!personOrOperator(req, "terminal-start"))
       throw new AgentError("an agent can't start a session from the page", {
         status: 403,
       });
+    const operator = operatorActOf(req) === "terminal-start";
     // Issue 479: an optional { cwd } (Open a terminal there). No body,
     // or none of it: the project's folder, as before.
     const raw = await readBody(req).catch(() => "");
@@ -1857,7 +1864,18 @@ async function plainSession(
     if (b.cwd !== undefined && typeof b.cwd !== "string")
       throw new AgentError("cwd must be a string", { usage: true });
     const cwd = b.cwd as string | undefined;
-    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    // Issue 814: the test operator's shell opens in the project's folder
+    // only, and Den's CLI in it sends no person credential.
+    if (operator && cwd !== undefined)
+      throw new AgentError("the test operator's terminal takes no cwd", {
+        status: 403,
+      });
+    const { info } = await startPlainSession(
+      d,
+      ws,
+      operator ? { operator: true } : cwd ? { cwd } : {},
+    );
+    if (operator) rememberOperatorShell(info.ref.id, info.name);
     what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {
@@ -1895,7 +1913,9 @@ async function runtimePath(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person
+    // (it was let through here by its unverified claim).
+    if (notAPersonOf(req))
       throw new AgentError("an agent can't set a runtime's path", {
         status: 403,
       });

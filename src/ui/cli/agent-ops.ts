@@ -156,7 +156,10 @@ import {
   peerSessionName,
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
-import { getDistRoot } from "../../shared/paths.js";
+import { getDistRoot, getProfile } from "../../shared/paths.js";
+import { envName } from "../../shared/profile.js";
+import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
+import { OPERATOR_SHELL_ACTOR } from "../../shared/test-operator.js";
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
@@ -8617,10 +8620,29 @@ export interface PlainStarted {
  * (the allowlist, every runtime's scrubEnv); it counts against
  * sessions.max_concurrent, never the agents' cap.
  */
+/**
+ * Issue 814: the test operator's shell. Den's CLI run in it acts as no
+ * person (the agent marker: it sends no person credential, and a claim the
+ * server refuses at every person-only check), and on this install only
+ * (its state folder and distribution, pinned).
+ */
+function operatorShellEnv(
+  env: Record<string, string>,
+  d: AgentsResolved,
+): Record<string, string> {
+  const profile = getProfile();
+  return {
+    ...env,
+    [AGENT_ACTOR_ENV]: OPERATOR_SHELL_ACTOR,
+    [envName(profile, "HOME")]: d.stateDir(),
+    [envName(profile, "ROOT")]: d.distRoot(),
+  };
+}
+
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
-  opts: { cwd?: string } = {},
+  opts: { cwd?: string; operator?: boolean } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
@@ -8658,7 +8680,9 @@ export async function startPlainSession(
           name,
           cwd: dir,
           argv: [shell, "-l"],
-          env: plainSessionEnv(d.env),
+          env: opts.operator
+            ? operatorShellEnv(plainSessionEnv(d.env), d)
+            : plainSessionEnv(d.env),
           cols: 80,
           rows: 24,
         },
