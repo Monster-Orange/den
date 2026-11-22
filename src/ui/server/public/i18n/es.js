@@ -1887,7 +1887,7 @@
     "ag.chip.stopped": "Detenido",
     "ag.chip.exited": "Terminado",
     "ag.chip.interrupted": "Interrumpido",
-    "agc.label": "Mensaje para {name}",
+    "agc.label": "Mensaje a {name}",
     "agc.hint": "No se envía nada hasta que pulses Enviar.",
     "agc.send": "Enviar",
     "agc.close": "Cerrar",

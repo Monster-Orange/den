@@ -2767,7 +2767,7 @@
     "ag.chip.stopped": "Stopped",
     "ag.chip.exited": "Exited",
     "ag.chip.interrupted": "Interrupted",
-    "agc.label": "Message to {name}",
+    "agc.label": "Message {name}",
     "agc.hint": "Nothing is sent until you press Send.",
     "agc.send": "Send",
     "agc.close": "Close",

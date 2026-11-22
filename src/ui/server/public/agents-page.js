@@ -6138,6 +6138,28 @@ export async function mountAgentsPage(root) {
                 },
               ]
             : []),
+          // Issue 302: on a phone the bar is one row, so the repo's
+          // Change is here.
+          ...(phone() && r.kind === "agent" && !r.server
+            ? [
+                {
+                  label: t("ag.link.changeName", { id: r.agent }),
+                  onSelect: () => void openLink(r, b),
+                },
+              ]
+            : []),
+          // Issue 302: Attach too (agents.html hides the bar's on a phone).
+          ...(phone() && !isStopped(r) && !p.lost && !p.exited
+            ? [
+                {
+                  label: t("ag.up.attachName", { id: r.agent }),
+                  onSelect: () =>
+                    pickFiles(
+                      (files) => void attachFiles(p.el, files, dropOpts(p)),
+                    ),
+                },
+              ]
+            : []),
           // Issue 302: a phone's keys a message can't send (Esc, Ctrl-C,
           // the arrows), as a row above the message box.
           ...(phone() && !isStopped(r) && p.term
@@ -6452,7 +6474,9 @@ function ensureComposer(r) {
     const onPhone = phone();
     const c = makeComposer({
       t,
-      name,
+      // The box names the agent itself ("Message scout"), or the name a
+      // person gave it; the persona is not who you are writing to.
+      name: r.displayName || r.agent || r.label,
       draft: composerDraft(r),
       holds: true,
       // BUSY-1: Send goes through the working pop-up. A quick refusal

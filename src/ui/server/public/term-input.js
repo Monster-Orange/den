@@ -192,9 +192,9 @@ export const TERM_KEYS = [
   "ctrlc",
   "tab",
   "enter",
+  "left",
   "up",
   "down",
-  "left",
   "right",
 ];
 

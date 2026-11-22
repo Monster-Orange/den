@@ -1830,7 +1830,7 @@
     "ag.chip.stopped": "停止",
     "ag.chip.exited": "終了",
     "ag.chip.interrupted": "中断",
-    "agc.label": "{name} へのメッセージ",
+    "agc.label": "{name} にメッセージ",
     "agc.hint": "送信を押すまで何も送られません。",
     "agc.send": "送信",
     "agc.close": "閉じる",

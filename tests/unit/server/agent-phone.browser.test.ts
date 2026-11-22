@@ -23,7 +23,9 @@
  * names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
 import * as http from "http";
+import * as path from "path";
 import type { AddressInfo } from "net";
 import type { Browser, Frame, Page } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
@@ -189,6 +191,15 @@ const frameTick = (p: Page) =>
     () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50))),
   );
 
+/** DEN_PHONE_SHOTS=<dir>: each frame's screenshot, Chromium only (for a design check). */
+const SHOTS = process.env.DEN_PHONE_SHOTS ?? "";
+async function shot(p: Page, engine: Engine, name: string): Promise<void> {
+  if (!SHOTS || engine !== "chromium") return;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await frameTick(p);
+  await p.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+}
+
 async function openAgent(p: Page, id: string): Promise<void> {
   const res = await p.goto(`${s.base}/p/north/agents/${id}`);
   expect(res?.status()).toBe(200);
@@ -283,6 +294,7 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     const term = (await pane(p, "scout").locator(".term").boundingBox())!;
     expect(term.height).toBeGreaterThan(100);
     expect(term.y).toBeGreaterThanOrEqual(0);
+    await shot(p, engine, "3-keyboard-up-390");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);
@@ -489,6 +501,43 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       if (!browsers[engine]) return;
       const { p, errors } = await phone(engine, { width, height });
       await openAgent(p, "scout");
+      await shot(p, engine, `2-agent-open-${width}`);
+      // The mock's frame 2: the box names the agent, and the bar is one
+      // row: Change is in ⋯, not a link on its own line.
+      expect(await box(p, "scout").getAttribute("placeholder")).toBe(
+        "Message scout",
+      );
+      expect(
+        await shown(p, `.pane[data-id="${sid.scout}"] .bar2 [data-act="link"]`),
+      ).toBeNull();
+      expect(
+        await shown(
+          p,
+          `.pane[data-id="${sid.scout}"] .bar2 [data-act="attach"]`,
+        ),
+      ).toBeNull();
+      const rowTops = await pane(p, "scout")
+        .locator(
+          '.bar2 [data-act="back"], .bar2 [data-act="stop"], .bar2 [data-act="more"]',
+        )
+        .evaluateAll((bs) =>
+          bs.map((b) => {
+            const r = b.getBoundingClientRect();
+            return Math.round(r.top + r.height / 2);
+          }),
+        );
+      expect(rowTops).toHaveLength(3);
+      expect(Math.max(...rowTops) - Math.min(...rowTops)).toBeLessThanOrEqual(
+        2,
+      );
+      await pane(p, "scout").locator('.bar2 [data-act="more"]').tap();
+      await p
+        .getByRole("menuitem", { name: "Change the repo scout works on" })
+        .waitFor();
+      await p
+        .getByRole("menuitem", { name: "Attach a file to scout" })
+        .waitFor();
+      await p.keyboard.press("Escape");
       // Frame 2: no list, no page header, no tab strip; the pane fills
       // the window under the top bar; a 44px Back named for the list.
       expect(await shown(p, "#agl")).toBeNull();
@@ -518,6 +567,19 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       // open (the address keeps it).
       await p.locator(back("scout")).tap();
       await p.locator(row("scout")).waitFor({ state: "visible" });
+      await shot(p, engine, `1-list-${width}`);
+      // The mock's frame 1: plain rows. The count, never the address; no
+      // desktop hint, no Reorder, no drag handles.
+      expect(await p.locator("#ag-count").textContent()).toMatch(
+        /^2 agents · 0 waiting · /,
+      );
+      for (const sel of [
+        "#ag-url",
+        "#agl-hint",
+        '#agl [data-act="reorder"]',
+        "#agl .agrip",
+      ])
+        expect([sel, await shown(p, sel)]).toEqual([sel, null]);
       expect(await shown(p, `.pane[data-id="${sid.scout}"]`)).toBeNull();
       expect(await p.locator("#den-dock").isVisible()).toBe(true);
       const after = new URL(p.url());
@@ -585,6 +647,8 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     expect(await keys.count()).toBe(0);
     await pane(p, "scout").locator('.bar2 [data-act="more"]').tap();
     await p.getByRole("menuitem", { name: "Terminal keys" }).tap();
+    await keys.waitFor();
+    await shot(p, engine, "4-terminal-keys-390");
     await keys.waitFor({ state: "visible" });
     expect(await keys.getAttribute("aria-label")).toBe("Terminal keys");
     const sizes = await keys
@@ -601,11 +665,26 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       "Control-C",
       "Tab",
       "Enter",
+      "Left arrow",
       "Up arrow",
       "Down arrow",
-      "Left arrow",
       "Right arrow",
     ]);
+    // Two lines of four (the mock): Esc Ctrl-C Tab Enter / ← ↑ ↓ →, every
+    // key inside the window, nothing scrolled sideways.
+    const at = await keys.locator("button").evaluateAll((bs) =>
+      bs.map((b) => {
+        const r = b.getBoundingClientRect();
+        return { top: Math.round(r.top), right: r.right };
+      }),
+    );
+    expect(new Set(at.slice(0, 4).map((a) => a.top)).size).toBe(1);
+    expect(new Set(at.slice(4).map((a) => a.top)).size).toBe(1);
+    expect(at[4].top).toBeGreaterThan(at[0].top);
+    for (const a of at) expect(a.right).toBeLessThanOrEqual(390);
+    expect(
+      await keys.evaluate((el) => el.scrollWidth - el.clientWidth),
+    ).toBeLessThanOrEqual(0);
     for (const [, w, h] of sizes) {
       expect(w).toBeGreaterThanOrEqual(44);
       expect(h).toBeGreaterThanOrEqual(44);

@@ -1475,6 +1475,55 @@
         body[data-phone-list] .agl {
           max-height: none;
         }
+        /* Frame 1, the list: plain rows. The count line without the
+           address, and none of the desktop's hint, Reorder or drag
+           handles. */
+        #ag-sub > .ag-at,
+        #agl-hint,
+        #agl .agord-t,
+        #agl .agord-sb,
+        #agl .agr .agrip {
+          display: none;
+        }
+        /* Terminal keys: two lines of four, nothing scrolled sideways. */
+        .pane .agkeys {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          overflow-x: visible;
+        }
+        #agr .pane .agkeys > button {
+          min-width: 0;
+          padding-inline: 4px;
+        }
+        /* The bar is one row: the repo and its Change are in ⋯
+           (agents-page.js). */
+        body[data-phone-agent] .pane .bar2 .aglink,
+        body[data-phone-agent]
+          .pane
+          .bar2:has([data-act="more"])
+          [data-act="attach"] {
+          display: none;
+        }
+        /* Tags and notes take the line under the bar's one row, and a
+           tags box left with only the repo (in ⋯ now) is gone. */
+        body[data-phone-agent] .pane .bar2 > :is(.agtags, .agrot, .agctx) {
+          order: 1;
+        }
+        body[data-phone-agent]
+          .pane
+          .bar2
+          > .agtags:not(:has(> :not(.aglink))) {
+          display: none;
+        }
+        /* The project and runtime give way (an ellipsis) before Stop and
+           ⋯ would drop to a line of their own. */
+        body[data-phone-agent] .pane .bar2 > .where {
+          flex: 1 1 0;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
       }
       .pane .agc.agc-phone .agc-send {
         min-height: 44px;
@@ -1523,8 +1572,10 @@
         <div>
           <h1 id="ag-h">Agents</h1>
           <div class="sub" id="ag-sub">
-            <span id="ag-count"></span> ·
-            <span class="mono" id="ag-url">/agents</span>
+            <span id="ag-count"></span
+            ><span class="ag-at">
+              · <span class="mono" id="ag-url">/agents</span></span
+            >
             <button
               type="button"
               class="gate-chip"
