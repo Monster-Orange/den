@@ -26,6 +26,8 @@ import {
   type ScheduleServerDeps,
 } from "../../../src/ui/server/verify-schedule-routes.js";
 import { readRunRecord } from "../../../src/shared/verify/records.js";
+import { readAllows } from "../../../src/shared/verify/schedules.js";
+import { readLatest } from "../../../src/shared/verify/changes.js";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -42,6 +44,11 @@ fs.writeFileSync(path.join(REPO, "scripts/speed.sh"), "echo ok\n");
 const ON = { shared_commands: true };
 let speedCmd = "./scripts/speed.sh";
 let cmds: string[] = [];
+// Issue 964: where each command ran, and the fake commit pin.
+let cmdDirs: string[] = [];
+let head: string | null = "c0ffee1";
+let dirty: string[] = [];
+const PIN = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-pin-"));
 let probes: string[] = [];
 let bell: BellNote[] = [];
 let stateDir = "";
@@ -97,9 +104,14 @@ function deps(): ScheduleServerDeps {
         },
       ];
     },
-    git: { head: () => "c0ffee1", changedSince: () => [] },
+    git: { head: () => head, changedSince: () => [] },
+    pin: {
+      dirty: () => dirty,
+      tree: (_sd, _p, _rp, commit) => path.join(PIN, commit),
+    },
     runCmd: async (m) => {
       cmds.push(m.name);
+      cmdDirs.push(m.repoPath);
       return {
         exitCode: m.name === "web/speed" && speedCmd.includes("fail") ? 1 : 0,
       };
@@ -120,6 +132,9 @@ beforeEach(() => {
   verifyBlock = { schedule: ON };
   speedCmd = "./scripts/speed.sh";
   cmds = [];
+  cmdDirs = [];
+  head = "c0ffee1";
+  dirty = [];
   probes = [];
   bell = [];
   onRepos = null;
@@ -326,6 +341,72 @@ describe("T18: the standing Allow", () => {
     });
     expect(r.status).toBe(202);
     expect(r.body.runId).toMatch(/^\d{14}-/);
+  });
+});
+
+describe("issue 964: a scheduled command runs from the allowed commit", () => {
+  it("the Allow records the commit; the run uses that commit's files, not the working tree", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    expect(
+      (await post("/api/verify/schedules/allow", { project: "north", id }))
+        .status,
+    ).toBe(200);
+    expect(readAllows(stateDir, "north")[id].commits).toEqual({
+      shop: "c0ffee1",
+    });
+    // A newer commit lands after the Allow: the run still uses the allowed one.
+    head = "beef002";
+    await tick(at(22, 2, 1));
+    expect(cmds).toEqual(["web/speed"]);
+    expect(cmdDirs).toEqual([path.join(PIN, "c0ffee1")]);
+    const row = ((await get()).schedules as any[]).find((s) => s.id === id);
+    expect(row.last).toMatchObject({ verdict: "passed" });
+    expect(
+      readLatest(stateDir, "north").staging["shop:web/speed"],
+    ).toMatchObject({ commit: "c0ffee1" });
+  });
+
+  it("files the command names must be committed before it can be allowed", async () => {
+    await tick(at(21, 12));
+    dirty = ["scripts/speed.sh"];
+    const id = await idOf("Nightly speed");
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("uncommitted");
+    expect(r.body.error).toMatch(/scripts\/speed\.sh/);
+    expect(readAllows(stateDir, "north")[id]).toBeUndefined();
+  });
+
+  it("not a git checkout: can't be allowed", async () => {
+    await tick(at(21, 12));
+    head = null;
+    const id = await idOf("Nightly speed");
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("no-commit");
+  });
+
+  it("an Allow that names no commit (made before the pin): not run", async () => {
+    await tick(at(21, 12));
+    clock = at(21, 13);
+    const id = await idOf("Nightly speed");
+    await post("/api/verify/schedules/allow", { project: "north", id });
+    const all = readAllows(stateDir, "north");
+    delete all[id].commits;
+    fs.writeFileSync(
+      path.join(stateDir, "verify", "north", "schedule-allows.json"),
+      JSON.stringify(all),
+    );
+    await tick(at(22, 2, 1));
+    expect(cmds).not.toContain("web/speed");
   });
 });
 

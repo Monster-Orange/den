@@ -51,6 +51,12 @@ export interface ScheduleAllow {
   env: string;
   cron: string;
   window?: string;
+  /**
+   * Issue 964: each repo's commit when the person allowed it, for a
+   * schedule that runs a command on a shared environment. The command
+   * runs from these files, never the working tree.
+   */
+  commits?: Record<string, string>;
 }
 
 /** Issue 964: what production schedules may do (verify.schedule.production). */
@@ -376,6 +382,7 @@ export function writeAllow(
   by: RunActor,
   now: Date,
   settings: ScheduleSettings,
+  commits?: Record<string, string>,
 ): ScheduleAllow {
   const a: ScheduleAllow = {
     schedule: s.id,
@@ -391,6 +398,7 @@ export function writeAllow(
     env: s.env,
     cron: s.cron,
     ...(s.window !== undefined ? { window: s.window } : {}),
+    ...(commits && Object.keys(commits).length ? { commits } : {}),
   };
   save(stateDir, project, { ...readAllows(stateDir, project), [s.id]: a });
   return a;
@@ -611,6 +619,11 @@ export function limitMessage(l: ScheduleLimit): string {
     default:
       return `Den can't follow this schedule's command, so it can't be allowed: ${l.why}.`;
   }
+}
+
+/** The modules whose commands run from a pinned commit: a shared schedule's. */
+export function pinnedModules(s: Schedule): Schedule["modules"] {
+  return s.shared ? s.modules.filter(runsCmd) : [];
 }
 
 export function mayRun(

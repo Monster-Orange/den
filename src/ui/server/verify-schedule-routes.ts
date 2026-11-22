@@ -20,9 +20,11 @@ import { methodRules } from "../../shared/verify/guard.js";
 import { runPlan } from "../../shared/verify/run.js";
 import { httpProbe, spawnCmd } from "../../shared/verify/run.js";
 import { realGit } from "../../shared/verify/changes.js";
+import { realPin, type PinProbe } from "../../shared/verify/pin.js";
 import {
   cmdFiles,
   limitMessage,
+  pinnedModules,
   scheduleLimit,
   listSchedules,
   mayRun,
@@ -66,6 +68,8 @@ export interface BellNote {
 }
 
 export interface ScheduleServerDeps extends VerifyServerDeps {
+  /** Issue 964: the commit pin (git status and git archive by default). */
+  pin?: PinProbe;
   /** Every project with a schedule to look at. */
   projects: () => string[];
   bell?: (n: BellNote) => void;
@@ -333,10 +337,45 @@ async function runSchedule(
   }
   const git = d.git ?? realGit;
   const now = d.now ?? (() => new Date());
+  // Issue 964: a shared schedule's commands run from the allowed commit.
+  const pinned = new Map<string, { dir: string; commit: string }>();
+  for (const m of pinnedModules(s)) {
+    const commit = a?.commits?.[m.repo];
+    if (!commit)
+      return {
+        ok: false,
+        error: "its Allow names no commit to run from, so it did not run",
+      };
+    try {
+      pinned.set(m.id, {
+        dir: (d.pin ?? realPin).tree(
+          d.stateDir(),
+          s.project,
+          m.repoPath,
+          commit,
+        ),
+        commit,
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        error: `Den couldn't check out the allowed commit, so it did not run (${(e as Error).message})`,
+      };
+    }
+  }
+  const baseCmd = d.runCmd ?? spawnCmd;
+  const byPath = new Map(
+    plan.modules
+      .filter((m) => pinned.has(m.id))
+      .map((m) => [m.repoPath, pinned.get(m.id)!.commit]),
+  );
   const r = await runPlan(plan.plan, {
     stateDir: d.stateDir(),
-    head: (p) => git.head(p),
-    runCmd: d.runCmd ?? spawnCmd,
+    head: (p) => byPath.get(p) ?? git.head(p),
+    runCmd: (m, ctx) => {
+      const pin = pinned.get(m.id);
+      return baseCmd(pin ? { ...m, repoPath: pin.dir } : m, ctx);
+    },
     probe: d.probe ?? httpProbe,
     now,
     ...(runId ? { runId: () => runId } : {}),
@@ -578,6 +617,44 @@ export async function handleScheduleRoutes(
       sendJson(res, { ok: false, error: "This schedule needs no Allow." }, 409);
       return true;
     }
+    // Issue 964: a command on a shared environment runs from the commit
+    // allowed now. Its files must be committed, so what was allowed is
+    // what runs.
+    const commits: Record<string, string> = {};
+    const pin = d.pin ?? realPin;
+    const git = d.git ?? realGit;
+    for (const m of pinnedModules(s)) {
+      const head = git.head(m.repoPath);
+      if (!head) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            code: "no-commit",
+            error: `${m.name}: its repo isn't a git checkout, so Den can't pin the command to a commit.`,
+          },
+          409,
+        );
+        return true;
+      }
+      const files = Object.keys(cmdFiles(m.repoPath, m.cmd!)).filter(
+        (f) => !f.startsWith("/"),
+      );
+      const dirty = pin.dirty(m.repoPath, files);
+      if (dirty.length) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            code: "uncommitted",
+            error: `${m.name}: commit these first, so the run uses what you allow: ${dirty.join(", ")}.`,
+          },
+          409,
+        );
+        return true;
+      }
+      commits[m.repo] = head;
+    }
     const a = writeAllow(
       d.stateDir(),
       p.project,
@@ -585,6 +662,7 @@ export async function handleScheduleRoutes(
       { kind: "person" },
       now,
       set,
+      commits,
     );
     const runs = readScheduleRuns(d.stateDir(), p.project);
     sendJson(res, {

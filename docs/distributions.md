@@ -782,6 +782,11 @@ verify:
   interpreter and a script (`bash scripts/speed.sh`), every file there. A
   runner such as `make` or `npm`, shell syntax, or a file Den can't find:
   the schedule can't be allowed, and its row says why.
+- Such a command runs from the commit the Allow named, never the working
+  tree. Den copies that commit's files (`git archive`) into its state
+  folder and runs there, so a later edit can't reach the run. The files
+  the command names must be committed when a person allows it. Untracked
+  files (installed packages, a local `.env`) aren't in the copy.
 - A schedule on staging or production runs only under a standing Allow. A
   person gives it once, on the Checks page's Schedules screen
   (`/verify?schedules=1`). It covers every run of that plan. It lapses when
