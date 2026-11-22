@@ -126,7 +126,9 @@ describe("issue 646: settling one plan that made several projects", () => {
 
 describe("issue 646: previousLinkOf", () => {
   let dir: string;
-  beforeEach(() => (dir = fs.mkdtempSync(path.join(os.tmpdir(), "hub646-"))));
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "hub646-"));
+  });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   it("the link a project had on the Hub before the change", () => {
