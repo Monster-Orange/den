@@ -90,6 +90,12 @@ export interface BellHandle {
   paint(): void;
   setCount(n: number): void;
 }
+/**
+ * Issue 1024: makes `live`'s children match `next`'s, keeping every
+ * unchanged node (a bell row is matched by data-ap-row, data-go-row,
+ * data-id or id, and replaced whole only when it changed).
+ */
+export declare function patchChildren(live: Element, next: Element): void;
 export declare function hydrateBell(
   button: HTMLElement,
   opts?: BellHydrateOptions,
