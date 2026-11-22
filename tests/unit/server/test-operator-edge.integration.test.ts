@@ -249,6 +249,34 @@ describe("nothing else widens through the edge", () => {
     expect(await attach(id, viaEdge({ "x-forwarded-proto": "wss" }))).toBe(403);
   }, 30_000);
 
+  it("closing a person's shell through the edge: refused, and it stays open", async () => {
+    const open = await raw(
+      "POST",
+      "/api/workspaces/north/sessions",
+      asPerson(),
+    );
+    expect(open.status).toBe(200);
+    const { id } = open.json.session as { id: string };
+    const pty = s.made.at(-1)!;
+    const r = await raw(
+      "POST",
+      `/api/sessions/${encodeURIComponent(id)}/close`,
+      viaEdge(),
+    );
+    expect([r.status, r.json.code]).toEqual([403, "fixture_scope"]);
+    expect(pty.signals).toEqual([]);
+  }, 30_000);
+
+  it("closing its own shell from a client the edge can't place: refused", async () => {
+    const id = await ownShell();
+    const r = await raw(
+      "POST",
+      `/api/sessions/${encodeURIComponent(id)}/close`,
+      viaEdge({ "x-forwarded-for": "0.250.250.254" }),
+    );
+    expect([r.status, r.json.code]).toEqual([403, "fixture_scope"]);
+  }, 30_000);
+
   it("a client beyond this machine: refused", async () => {
     const id = await ownShell();
     const st = await attach(
