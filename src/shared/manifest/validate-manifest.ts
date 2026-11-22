@@ -20,6 +20,7 @@ import {
   validateLayers,
   type LayeredValidation,
   type SchemaTools,
+  type ValidateLayersOptions,
 } from "./validate-layers.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -227,6 +228,9 @@ const schemaTools: SchemaTools = {
  * held manifest, then manifests/<repo>.override.yml), then the merge.
  * See validate-layers.ts.
  */
-export function validateManifestLayers(repoPath: string): LayeredValidation {
-  return validateLayers(schemaTools, repoPath);
+export function validateManifestLayers(
+  repoPath: string,
+  opts: ValidateLayersOptions = {},
+): LayeredValidation {
+  return validateLayers(schemaTools, repoPath, opts);
 }

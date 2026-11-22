@@ -60,7 +60,7 @@ describe("the gate queue, every rule together", () => {
     expect(order(es, { classes: classes() })).toEqual(["rel", "hi", "mid"]);
   });
 
-  it("release priority still never passes a waiter past the pass limit", () => {
+  it("release priority passes a plain waiter however long it waited (issue 751)", () => {
     const es = [
       entry("old", 0, { project: "top" }),
       entry("rel", 70, {
@@ -69,8 +69,8 @@ describe("the gate queue, every rule together", () => {
       }),
     ];
     expect(order(es, { classes: classes() }, T0 + 75 * 60_000)).toEqual([
-      "old",
       "rel",
+      "old",
     ]);
   });
 
@@ -125,8 +125,8 @@ describe("the gate queue, every rule together", () => {
     ];
     // rel goes first (priority); a then lets c ahead of it.
     expect(order(es)).toEqual(["rel", "c", "a"]);
-    // A priority run held behind the yielder (it waited past the pass
-    // limit) stays ahead of the run the yielder lets through.
+    // Issue 751: however long the yielder has waited, the priority run
+    // goes ahead of it, and the run it lets through goes just ahead of it.
     const es2 = [
       entry("y", 0, { yields: [{ to: "c", at: at(80) }] }),
       entry("rel", 70, {
@@ -134,7 +134,7 @@ describe("the gate queue, every rule together", () => {
       }),
       entry("c", 71),
     ];
-    expect(order(es2, {}, T0 + 90 * 60_000)).toEqual(["y", "rel", "c"]);
+    expect(order(es2, {}, T0 + 90 * 60_000)).toEqual(["rel", "c", "y"]);
   });
 
   it("a granted slot is never pre-empted by priority, class or yield", () => {

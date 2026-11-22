@@ -269,6 +269,119 @@
           font-size: 12px;
         }
       }
+      /* Issue 441: an imported environment's card and why view: the
+         clause counts, the three lists, a row per check (the whole row
+         opens it) and each check's clauses. Tones colour a mark, never
+         alone: each has its word beside it or for a screen reader. */
+      .vf-counts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 20px;
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+        color: var(--muted);
+      }
+      .vf-counts b {
+        color: var(--c);
+        font-size: 18px;
+        margin-inline-end: 4px;
+      }
+      .vf-clist {
+        margin: 14px 0 0;
+      }
+      .vf-clist h3,
+      .vf-gate h3 {
+        font: 600 14px/1.3 var(--sans);
+        margin: 0 0 6px;
+        overflow-wrap: anywhere;
+      }
+      .vf-clist .vf-meta {
+        margin-bottom: 6px;
+      }
+      .vf-rows {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .vf-rows li {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        padding: 7px 0;
+        border-top: 1px solid var(--border);
+      }
+      .vf-rows li:first-child {
+        border-top: 0;
+      }
+      .vf-rows .vf-mk,
+      .vf-clauses td:first-child,
+      b.vf-warn {
+        color: var(--c);
+      }
+      .vf-rows .vf-mk {
+        width: 18px;
+        flex: none;
+        text-align: center;
+      }
+      .vf-grow {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .vf-rows li:has(> .vf-row) {
+        padding: 0;
+      }
+      .vf-row {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 36px;
+        padding: 8px 0;
+        color: var(--text);
+        text-decoration: none;
+      }
+      .vf-row:hover .vf-grow {
+        text-decoration: underline;
+      }
+      .vf-gate .vf-head {
+        align-items: baseline;
+        margin-bottom: 8px;
+      }
+      .vf-gate:focus {
+        outline: none;
+      }
+      .vf-gate .vf-tablewrap {
+        padding: 0;
+      }
+      .vf-clauses td:first-child {
+        white-space: nowrap;
+      }
+      .vf-clauses td {
+        overflow-wrap: anywhere;
+      }
+      .vf-sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+      @media (max-width: 700px) {
+        .vf-clauses .vf-sr {
+          position: static;
+          width: auto;
+          height: auto;
+          clip-path: none;
+        }
+        /* The result says "Needs you" on a phone: no second tag. */
+        .vf-clauses b.vf-warn {
+          display: none;
+        }
+      }
       .vf-old {
         color: var(--muted);
         font-size: 12.5px;

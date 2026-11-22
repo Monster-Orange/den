@@ -155,6 +155,9 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/agents/self/attention": "POST",
   // Issue 796 (MCP page_view): a one-time link to a read-only view.
   "/api/agents/self/view": "POST",
+  // issue_write: one GitHub issue write in the agent's own project's repos
+  // (the server checks the role, the repo and the limit, and audits it).
+  "/api/agents/self/issue-write": "POST",
   // Issue 208 (MCP verify_run): the plan (runs nothing), and a run on
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",
@@ -182,6 +185,11 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/helpers(?:\/[A-Za-z0-9_-]{1,128})?$/,
     method: "GET",
   },
+  // MCP github_watch, github_watch_list, github_watch_cancel: the agent's
+  // own watches in Den's one shared GitHub watcher (the server checks scope).
+  { re: /^\/api\/agents\/self\/github-watches$/, method: "GET" },
+  { re: /^\/api\/agents\/self\/github-watches$/, method: "POST" },
+  { re: /^\/api\/agents\/self\/github-watches\/cancel$/, method: "POST" },
   // Issue 403 (MCP report_screenshot): a filed report's kept screenshot.
   // A read; the route itself answers only the person or the server agent.
   { re: /^\/api\/report\/shots\/[a-f0-9]{16}$/, method: "GET" },
