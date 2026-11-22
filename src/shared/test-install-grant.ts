@@ -19,7 +19,9 @@
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
+import { product } from "./product.js";
 
 export const TEST_ANNOUNCE_ENV_KEY = "TEST_ANNOUNCE";
 export const SETUP_GRANT_SPENT_FILE = "fixture-grant.spent";
@@ -39,6 +41,11 @@ const real = (p: string): string => {
 };
 const uid = (): number | null =>
   typeof process.getuid === "function" ? process.getuid() : null;
+
+/** Where this user's test installs announce themselves: ~/.<cli>/test-installs. */
+export function announceDir(home: string = os.homedir()): string {
+  return path.join(home, `.${product().cli}`, "test-installs");
+}
 
 /** The install's id: sha256 of its state folder's real path, 16 hex. */
 export function installIdOf(stateDir: string): string {

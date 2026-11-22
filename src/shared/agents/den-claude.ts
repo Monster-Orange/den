@@ -717,6 +717,10 @@ function common(input: LaunchInput): {
                                       input.env?.HOME,
                                     )
                                   : []),
+                                // Issue 816: announced test installs'.
+                                ...(input.otherStateDirs ?? []).flatMap((d) =>
+                                  stateDirDenyRules(d, input.env?.HOME),
+                                ),
                                 ...(input.personConfigDir
                                   ? personConfigDenyRules(
                                       input.personConfigDir,
