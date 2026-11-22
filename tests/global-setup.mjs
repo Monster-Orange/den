@@ -19,7 +19,10 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import { alive, reap } from "./child-reaper.mjs";
+import { checkDeps } from "./deps-check.js";
+import { stripInstallEnv } from "./install-env.js";
 
 const STUB_BINS = ["claude", "codex", "gemini", "grok", "gh", "launchctl"];
 /**
@@ -70,6 +73,16 @@ exit 99
 `;
 
 export default function globalSetup() {
+  // Issue 1036: a node_modules that drifted from the lock stops the run
+  // here, with what to do, not as a 503 deep in a test.
+  checkDeps(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
+  // Issues 1036, 1026: the running install's markers (an agent's session,
+  // a gate run) never reach a worker: a local run sees what CI sees.
+  const gone = stripInstallEnv(process.env);
+  if (gone.length)
+    process.stderr.write(
+      `[jest] left out the running install's ${gone.join(", ")} (issue 1036)\n`,
+    );
   process.env.DEN_TEST_RUN = String(process.pid);
   const killed = reap((r) => !alive(Number(r.run)) && !alive(Number(r.owner)));
   if (killed.length)
