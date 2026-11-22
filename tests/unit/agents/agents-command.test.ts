@@ -129,8 +129,6 @@ describe("agents start", () => {
         "sessionName",
         "startedAt",
         "resumeToken",
-        // Issue 52: every conversation it has had.
-        "conversations",
         // AG-14: the grants it started with, kept by a resume.
         "grants",
         // 0.4.8: launched on resumeToken, so a resume continues it.

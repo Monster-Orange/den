@@ -1,10 +1,10 @@
 /**
  * Issue 52, Coach slice T-a (TUNE-1): every conversation an agent has had
- * is on its record, `conversations: [{ id, from, to?, why }]`, appended
- * whenever its conversation id (resumeToken) changes. Before, only a
- * rotation kept the old id, so a Start fresh or a relaunch lost it. A
- * record from before this is backfilled from its resumeToken and its
- * rotations.
+ * is kept, `[{ id, from, to?, why }]`, appended whenever its conversation
+ * id (resumeToken) changes. Before, only a rotation kept the old id, so a
+ * Start fresh or a relaunch lost it. An agent from before this is
+ * backfilled from its resumeToken and its rotations. The list lives
+ * beside the record, never in it.
  */
 import * as fs from "fs";
 import * as os from "os";
@@ -13,10 +13,14 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import {
   backfillConversations,
   conversationIds,
-  withConversations,
+  nextConversations,
+  type ConversationEntry,
 } from "../../../src/shared/agents/conversation-history.js";
 import {
+  conversationsFile,
+  readConversations,
   readRecord,
+  removeRecord,
   writeRecord,
   type AgentRecord,
 } from "../../../src/shared/agents/records.js";
@@ -32,53 +36,61 @@ function rec(over: Partial<AgentRecord> = {}): AgentRecord {
     workspace: "shop",
     persona: "builder",
     runtime: "den-claude",
+    session: { host: "local", id: "s1" },
     sessionName: "shop-builder",
     startedAt: T0,
     ...over,
   } as AgentRecord;
 }
 
-describe("withConversations: a new conversation id is appended", () => {
+/** Write `next` over `prev`, carrying the list along as writeRecord does. */
+function step(
+  list: ConversationEntry[] | null,
+  prev: AgentRecord | null,
+  next: AgentRecord,
+  now: string,
+): ConversationEntry[] {
+  return nextConversations(list, prev, next, now) ?? list ?? [];
+}
+
+describe("nextConversations: a new conversation id is appended", () => {
   it("a first start records its conversation as `start`", () => {
-    const r = withConversations(null, rec({ resumeToken: "c1" }), T0);
-    expect(r.conversations).toEqual([{ id: "c1", from: T0, why: "start" }]);
+    expect(step(null, null, rec({ resumeToken: "c1" }), T0)).toEqual([
+      { id: "c1", from: T0, why: "start" },
+    ]);
   });
 
   it("the same id again changes nothing", () => {
-    const a = withConversations(null, rec({ resumeToken: "c1" }), T0);
-    const b = withConversations(a, { ...a, stoppedAt: T1 }, T1);
-    expect(b.conversations).toEqual(a.conversations);
+    const a = rec({ resumeToken: "c1" });
+    const l = step(null, null, a, T0);
+    expect(nextConversations(l, a, { ...a, stoppedAt: T1 }, T1)).toBeNull();
   });
 
   it("a Start fresh (a new id, no rotation) ends the old one and adds `fresh`", () => {
-    const a = withConversations(null, rec({ resumeToken: "c1" }), T0);
-    const b = withConversations(a, { ...a, resumeToken: "c2" }, T1);
-    expect(b.conversations).toEqual([
+    const a = rec({ resumeToken: "c1" });
+    const l = step(step(null, null, a, T0), a, { ...a, resumeToken: "c2" }, T1);
+    expect(l).toEqual([
       { id: "c1", from: T0, to: T1, why: "start" },
       { id: "c2", from: T1, why: "fresh" },
     ]);
   });
 
   it("a relaunch from its handoff is a `rotation`", () => {
-    const a = withConversations(null, rec({ resumeToken: "c1" }), T0);
-    const b = withConversations(
-      a,
-      {
-        ...a,
-        resumeToken: "c2",
-        rotations: [
-          {
-            at: T1,
-            reason: "manual",
-            compactions: 3,
-            conversation: "c1",
-            next: "c2",
-          },
-        ],
-      },
-      T1,
-    );
-    expect(b.conversations?.[1]).toEqual({
+    const a = rec({ resumeToken: "c1" });
+    const b = {
+      ...a,
+      resumeToken: "c2",
+      rotations: [
+        {
+          at: T1,
+          reason: "manual" as const,
+          compactions: 3,
+          conversation: "c1",
+          next: "c2",
+        },
+      ],
+    };
+    expect(step(step(null, null, a, T0), a, b, T1)[1]).toEqual({
       id: "c2",
       from: T1,
       why: "rotation",
@@ -86,36 +98,27 @@ describe("withConversations: a new conversation id is appended", () => {
   });
 
   it("a conversation brought in is a `bring-in`", () => {
-    const r = withConversations(
-      null,
-      rec({ resumeToken: "c9", broughtInAt: T0 }),
-      T0,
-    );
-    expect(r.conversations).toEqual([{ id: "c9", from: T0, why: "bring-in" }]);
+    expect(
+      step(null, null, rec({ resumeToken: "c9", broughtInAt: T0 }), T0),
+    ).toEqual([{ id: "c9", from: T0, why: "bring-in" }]);
   });
 
-  it("a record with no conversation id yet records none", () => {
-    expect(withConversations(null, rec(), T0).conversations).toEqual([]);
+  it("an agent with no conversation id yet has none", () => {
+    expect(step(null, null, rec(), T0)).toEqual([]);
   });
 
   it("never drops an id: c1 → c2 → c1 keeps all three entries", () => {
-    let r = withConversations(null, rec({ resumeToken: "c1" }), T0);
-    r = withConversations(r, { ...r, resumeToken: "c2" }, T1);
-    r = withConversations(r, { ...r, resumeToken: "c1" }, T2);
-    expect(r.conversations?.map((c) => c.id)).toEqual(["c1", "c2", "c1"]);
-    expect(conversationIds(r)).toEqual(["c1", "c2"]);
-  });
-
-  it("a caller's own conversations list is kept, not rebuilt", () => {
-    const prev = withConversations(null, rec({ resumeToken: "c1" }), T0);
-    // A caller that built the next record from an old copy, without the list.
-    const { conversations: _dropped, ...stale } = prev;
-    const next = withConversations(prev, { ...stale, resumeToken: "c2" }, T1);
-    expect(next.conversations?.map((c) => c.id)).toEqual(["c1", "c2"]);
+    const a = rec({ resumeToken: "c1" });
+    const b = { ...a, resumeToken: "c2" };
+    let l = step(null, null, a, T0);
+    l = step(l, a, b, T1);
+    l = step(l, b, a, T2);
+    expect(l.map((c) => c.id)).toEqual(["c1", "c2", "c1"]);
+    expect(conversationIds(l)).toEqual(["c1", "c2"]);
   });
 });
 
-describe("backfillConversations: a record from before this", () => {
+describe("backfillConversations: an agent from before this", () => {
   it("is rebuilt from its rotations and its resumeToken, marked backfilled", () => {
     const old = rec({
       resumeToken: "c3",
@@ -163,52 +166,100 @@ describe("backfillConversations: a record from before this", () => {
     ]);
   });
 
-  it("a brought-in record starts as `bring-in`, from when it was brought in", () => {
-    const old = rec({ resumeToken: "c1", broughtInAt: T3 });
-    expect(backfillConversations(old)).toEqual([
-      { id: "c1", from: T3, why: "bring-in", backfilled: true },
-    ]);
-  });
-
-  it("conversationIds reads an un-backfilled record the same way", () => {
-    const old = rec({
-      resumeToken: "c2",
-      rotations: [
-        {
-          at: T1,
-          reason: "manual",
-          compactions: 3,
-          conversation: "c1",
-          next: "c2",
-        },
-      ],
-    });
-    expect(conversationIds(old)).toEqual(["c1", "c2"]);
+  it("a brought-in agent starts as `bring-in`, from when it was brought in", () => {
+    expect(
+      backfillConversations(rec({ resumeToken: "c1", broughtInAt: T3 })),
+    ).toEqual([{ id: "c1", from: T3, why: "bring-in", backfilled: true }]);
   });
 });
 
-describe("writeRecord keeps the list", () => {
+describe("writeRecord keeps the list beside the record", () => {
   const tmp: string[] = [];
   afterEach(() => {
     for (const d of tmp.splice(0))
       fs.rmSync(d, { recursive: true, force: true });
   });
-
-  it("every write that changes the id appends to it, and an old record is backfilled on its first write", () => {
+  const state = () => {
     const st = fs.mkdtempSync(path.join(os.tmpdir(), "den-conv-"));
     tmp.push(st);
-    // An old record, written before the list existed.
-    const dir = path.join(st, "agents");
-    fs.mkdirSync(dir, { recursive: true });
+    return st;
+  };
+  const ids = (st: string) =>
+    readConversations(st, readRecord(st, "builder")!).map((c) => [c.id, c.why]);
+
+  it("the record itself never carries the list", () => {
+    const st = state();
+    writeRecord(st, rec({ resumeToken: "c1" }));
+    writeRecord(st, rec({ resumeToken: "c2" }));
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(st, "agents", "builder.json"), "utf-8"),
+    );
+    expect(raw).not.toHaveProperty("conversations");
+    expect(fs.statSync(conversationsFile(st, "builder")).mode & 0o777).toBe(
+      0o600,
+    );
+    expect(ids(st)).toEqual([
+      ["c1", "start"],
+      ["c2", "fresh"],
+    ]);
+  });
+
+  it("an old agent is backfilled on its first write, then appended to", () => {
+    const st = state();
+    fs.mkdirSync(path.join(st, "agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(dir, "builder.json"),
+      path.join(st, "agents", "builder.json"),
       JSON.stringify(rec({ resumeToken: "c1" })),
     );
+    // Read before any write: backfilled, nothing written.
+    expect(ids(st)).toEqual([["c1", "start"]]);
+    expect(fs.existsSync(conversationsFile(st, "builder"))).toBe(false);
     writeRecord(st, { ...readRecord(st, "builder")!, resumeToken: "c2" });
-    const got = readRecord(st, "builder")!;
-    expect(got.conversations?.map((c) => [c.id, c.why, !!c.to])).toEqual([
-      ["c1", "start", true],
-      ["c2", "fresh", false],
+    const got = readConversations(st, readRecord(st, "builder")!);
+    expect(got.map((c) => [c.id, c.why, !!c.to, !!c.backfilled])).toEqual([
+      ["c1", "start", true, true],
+      ["c2", "fresh", false, false],
     ]);
+  });
+
+  it("a write from a caller's copy keeps the stored list", () => {
+    const st = state();
+    writeRecord(st, rec({ resumeToken: "c1" }));
+    const copy = readRecord(st, "builder")!;
+    writeRecord(st, { ...copy, resumeToken: "c2" });
+    // The caller's older copy, saved for another reason (a rename).
+    writeRecord(st, { ...readRecord(st, "builder")!, displayName: "Night" });
+    expect(ids(st)).toEqual([
+      ["c1", "start"],
+      ["c2", "fresh"],
+    ]);
+  });
+
+  it("an ordinary save that doesn't change the id doesn't rewrite the list", () => {
+    const st = state();
+    writeRecord(st, rec({ resumeToken: "c1" }));
+    const f = conversationsFile(st, "builder");
+    const before = fs.readFileSync(f, "utf-8");
+    fs.utimesSync(f, new Date(0), new Date(0));
+    writeRecord(st, { ...readRecord(st, "builder")!, stoppedAt: T1 });
+    expect(fs.readFileSync(f, "utf-8")).toBe(before);
+    expect(fs.statSync(f).mtimeMs).toBe(0);
+  });
+
+  it("a new agent with an earlier agent's id starts its own list", () => {
+    const st = state();
+    writeRecord(st, rec({ resumeToken: "old1" }));
+    removeRecord(st, "builder");
+    fs.rmSync(path.join(st, "removed-agents"), { recursive: true });
+    writeRecord(st, rec());
+    writeRecord(st, rec({ resumeToken: "new1" }));
+    expect(ids(st)).toEqual([["new1", "start"]]);
+  });
+
+  it("a list file that isn't one is ignored, and the record backfills", () => {
+    const st = state();
+    writeRecord(st, rec({ resumeToken: "c1" }));
+    fs.writeFileSync(conversationsFile(st, "builder"), '[{"id": 5}]');
+    expect(ids(st)).toEqual([["c1", "start"]]);
   });
 });

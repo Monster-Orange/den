@@ -328,12 +328,7 @@ describe("sessionName is the session handle; sessionTitle is the name shown (0.4
     expect(readRecord(stateDir, "planner")).toEqual(OLD);
     expect(listRecords(stateDir)).toEqual([OLD]);
     writeRecord(stateDir, readRecord(stateDir, "planner")!);
-    // Issue 52: the rewrite adds its conversations, backfilled; nothing else.
-    const { conversations, ...rest } = JSON.parse(
-      fs.readFileSync(file, "utf-8"),
-    );
-    expect(rest).toEqual(OLD);
-    expect(conversations).toHaveLength(1);
+    expect(JSON.parse(fs.readFileSync(file, "utf-8"))).toEqual(OLD);
   });
 
   it("agents list --json and /api/sessions: the name shown is sessionTitle; sessionName (the handle) is never the display name", () => {
