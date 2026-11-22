@@ -211,8 +211,10 @@ function allowRowHtml(w, open) {
   const det = `den-bell-det-${w.id}`;
   const review = lines.length
     ? `<button type="button" class="den-bell-rv" data-bell="review" data-ap="${esc(w.id)}" aria-expanded="${open ? "true" : "false"}" aria-controls="${esc(det)}">${esc(tr(open ? "ap.hide" : "ap.review"))}</button>` +
-      `<div class="den-bell-det" id="${esc(det)}"${open ? "" : " hidden"}>` +
-      lines.map((l) => `<div class="den-bell-detl">${esc(l)}</div>`).join("") +
+      `<div class="den-bell-det" data-ap-det id="${esc(det)}"${open ? "" : " hidden"}>` +
+      lines
+        .map((l) => `<div class="den-bell-detl" data-ap-line>${esc(l)}</div>`)
+        .join("") +
       `</div>`
     : "";
   return (

@@ -122,7 +122,7 @@ describe("the bell's Allow row: Review", () => {
       if (skip()) return;
       const p = await bellAt(width);
       const review = row(p).locator('[data-bell="review"]');
-      const det = row(p).locator(".den-bell-det");
+      const det = row(p).locator("[data-ap-det]");
       await expect(review.getAttribute("aria-expanded")).resolves.toBe("false");
       expect(await det.isVisible()).toBe(false);
       const before = {
@@ -140,7 +140,7 @@ describe("the bell's Allow row: Review", () => {
         held,
       );
       expect(await det.isVisible()).toBe(true);
-      const lines = await det.locator(".den-bell-detl").allTextContents();
+      const lines = await det.locator("[data-ap-line]").allTextContents();
       expect(lines.length).toBeGreaterThan(1);
       expect(lines.some((l) => l.includes("box1"))).toBe(true);
       // The button keeps focus across the bell's repaint.
