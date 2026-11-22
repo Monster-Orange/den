@@ -7376,6 +7376,16 @@
         );
       })
       .join("");
+    // Issue 194: how tall the banners are, for a page whose panes fit the
+    // window (Agents at phone width keeps its To line above the runs dock).
+    try {
+      document.body.style.setProperty(
+        "--den-banners-h",
+        (box.hidden ? 0 : box.offsetHeight) + "px",
+      );
+    } catch (e) {
+      /* no body yet */
+    }
   }
   document.addEventListener("click", function (e) {
     var x = e.target && e.target.closest && e.target.closest("[data-bn-x]");

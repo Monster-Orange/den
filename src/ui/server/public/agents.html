@@ -1171,6 +1171,12 @@
         body:has(.den-dock.open) .pane {
           min-height: 180px;
         }
+        /* Issue 194: a banner (Den's server isn't responding) pushes the
+           page down; the pane gives way by its height, so the To line
+           stays above the open dock while it shows. */
+        body:has(.den-dock.open):has(#den-banners:not([hidden])) .pane {
+          min-height: max(110px, calc(180px - var(--den-banners-h, 0px)));
+        }
         /* A pane's height comes from its row, never its terminal's (a
            24-row terminal held it taller than the screen, under the dock). */
         .pane .term {
