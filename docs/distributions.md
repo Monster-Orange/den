@@ -5798,6 +5798,15 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   once, each in its own container. A browser run waiting
   for cpu runs to drop to that number stops new cpu grants past it, so it
   can't starve.
+- While the machine's 5-minute load average is at or above
+  `cpu_hold_load` and a release-priority browser run holds a browser slot
+  (here or on a test box), cpu asks wait (issue 1009). The default is the
+  machine's cores × 4 / 3 (24 on 18 cores); 0 turns it off. Holders are
+  never stopped, and a release-priority cpu ask goes through (a release
+  run's own next step never waits on it). A plain cpu ask is granted on the next pass once either
+  condition stops. Its line in `gate status` and on the Gate panel says
+  why: "waiting: load 38 ≥ 24 while a release run holds the browser
+  slot". Set it with `gate settings --cpu-hold-load N`, or in Settings.
 - Nothing is pre-empted. A later run only waits, and says each minute who
   holds the slot and when it should end. A live holder keeps its slot
   however long it runs.
@@ -5809,11 +5818,29 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - A slot whose processes are gone is taken back at once (on the next
   read): the wrapper and the command it started both count, so a wrapper
   killed with SIGKILL leaves the slot to its command until that ends.
+- A run's estimate is measured when it gives none (issue 999): the median
+  of its label's last 10 finished runs (3 or more), else of the asker's
+  last 10 runs of that kind, else 10 minutes. A given estimate over twice
+  that median is kept but flagged ("estimate 150 min; this usually takes
+  74" in `gate status` and on the Gate panel), and the queue's wait times
+  use the median. So do "past its estimate" and the bell's overrun line
+  (`overrun_bell_multiple`): a padded estimate can't keep a slot out of
+  sight. Only an MCP slot's lease still goes by the given estimate.
+  `gate status --json` gives each slot's `estimate` (given
+  or measured) and `expected` (what the queue uses), each with `from`:
+  `given`, `label`, `actor` or `default`.
 - Past its estimate plus `overrun_margin_minutes` (default 15) a run is
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
-- A person ends a slot early on the Agents page (the gate chip) or with
-  `gate end`; the run is not stopped. An agent can't: the web route
+- Held past `overrun_bell_multiple` times its estimate (default 2; `gate
+  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+  the bell's Needs you: who holds it, what it runs, since when and its
+  estimate, with End for the person. When an agent holds it, Den types one
+  line at that agent's prompt, once per slot, to release it with
+  `gate_slot_release` or let its command finish. The line leaves the bell
+  as soon as the slot ends, however it ends (issue 993).
+- A person ends a slot early on the Agents page (the gate chip), from the
+  bell, or with `gate end`; the run is not stopped. An agent can't: the web route
   refuses an agent's token, `gate end` refuses in an agent's terminal, and
   the MCP tools give back only the agent's own slot.
 - The slots are the machine user's, shared by every install and repo, and

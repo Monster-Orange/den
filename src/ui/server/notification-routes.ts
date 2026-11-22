@@ -48,6 +48,7 @@ import {
 import type { Approval } from "./approvals.js";
 import type { Attention, WaitingWhy } from "./attention.js";
 import { heldWaiting } from "./held-bell.js";
+import type { GateOverrunWaiting } from "./gate-overrun-bell.js";
 import type { AlertFeed } from "./alert-feed.js";
 import {
   deviceId,
@@ -100,6 +101,11 @@ export interface NotificationRouteDeps {
    * queue's pending()); they lead `waiting`, kind "allow".
    */
   held?: () => readonly Approval[];
+  /**
+   * Issue 993: the gate slots held past the overrun multiple of their
+   * estimate; they follow the held writes in `waiting`, kind gate_overrun.
+   */
+  gateOverruns?: () => readonly GateOverrunWaiting[];
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -139,6 +145,17 @@ const inputKeyOf = (v: unknown) =>
   typeof v === "string" && /^[0-9a-f]{16}$/.test(v) ? v : undefined;
 
 /** Issue 746: what waits on the person's Allow now; best effort. */
+/** Issue 993: the overrun slots, or none when the store can't be read. */
+function gateOverrunsNow(
+  deps: NotificationRouteDeps,
+): readonly GateOverrunWaiting[] {
+  try {
+    return deps.gateOverruns?.() ?? [];
+  } catch {
+    return [];
+  }
+}
+
 function heldNow(deps: NotificationRouteDeps): readonly Approval[] {
   try {
     return deps.held?.() ?? [];
@@ -318,6 +335,7 @@ export async function handleNotificationRoutes(
       // then (issue 327) each agent waiting, what on, since when.
       waiting: [
         ...heldWaiting(heldNow(deps)),
+        ...gateOverrunsNow(deps),
         ...[...deps.attention.waitingNow()].map(([a, why]) => {
           const w = deps.attention.waitingDetail(a);
           return {

@@ -20,6 +20,16 @@ one holds this machine, cpu runs wait for it. Other browser runs keep
 `cpu_slots_beside_browser`. `gate settings --cpu-slots-beside-release-browser N`
 sets it.
 
+Issue 1009: while the machine's 5-minute load average is at or above
+`cpu_hold_load` and a release-priority browser run holds a browser slot,
+here or on a test box (its app still runs here), cpu asks wait. The default
+is the machine's cores × 4 / 3 (24 on 18 cores); 0 turns it off. Holders
+are never stopped, and a release-priority cpu ask goes through (a release
+run's own next step never waits on it). A plain cpu ask is granted on the next pass once the load
+drops or the release run ends. `gate status` and the Gate panel say why:
+"waiting: load 38 ≥ 24 while a release run holds the browser slot".
+`gate settings --cpu-hold-load N` sets it.
+
 A browser run that waits only because more cpu runs hold the machine than
 may run beside it is never starved: while it waits, no new cpu run starts
 past that number. Once they drop to it, the browser run starts.

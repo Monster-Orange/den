@@ -3,11 +3,14 @@
  * `gate status --json` show it.
  */
 import {
-  expectedEnd,
   expectedStart,
+  loadHold,
   overrun,
   priorityIds,
+  queueEnd,
+  queueMinOf,
   yieldedTo,
+  type EstimateSource,
 } from "./rules.js";
 import { boxEndpoints, boxSkipReason, type GateBox } from "./boxes.js";
 import { classOf, windowHeld } from "./classes.js";
@@ -19,6 +22,12 @@ export interface GateSlotView {
   who: string;
   label: string;
   granted: boolean;
+  /** Issue 999: the estimate given (or measured), and where from. */
+  estimate: { minutes: number; from: EstimateSource };
+  /** Issue 999: what the queue's wait times use, and where from. */
+  expected: { minutes: number; from: EstimateSource };
+  /** Issue 999: the given estimate is over twice the measured median. */
+  padded?: boolean;
   agent: boolean;
   actor?: string;
   /** Issue 621: a CI runner's slot (held by lease): the runner's name. */
@@ -49,6 +58,11 @@ export interface GateSlotView {
   class?: string;
   /** Issue 803: held for its class's window ("22:00-06:00"). */
   window?: string;
+  /**
+   * Issue 1009: a cpu waiter held by the machine's load while a release
+   * browser run holds a browser slot: the load and the setting.
+   */
+  loadHold?: { load: number; limit: number };
 }
 
 /**
@@ -107,12 +121,21 @@ export function gateView(store: GateStore, now = Date.now()) {
       .filter((x) => x.reason);
   };
   const held = windowHeld(all, settings.classes, now);
+  const hold = loadHold(all, settings, store.load());
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
     who: e.who,
     label: e.label,
     granted: !!e.grantedAt,
+    // Issue 999: the given estimate and what the queue uses, each with
+    // where it came from; padded: the given one is over twice the median.
+    estimate: { minutes: e.estimateMin, from: e.estimateFrom ?? "given" },
+    expected: {
+      minutes: queueMinOf(e),
+      from: e.expectedFrom ?? e.estimateFrom ?? "given",
+    },
+    ...(e.padded ? { padded: true } : {}),
     agent: e.agent === true,
     ...(e.actor ? { actor: e.actor } : {}),
     ...(e.remote ? { runner: e.remote.runner } : {}),
@@ -128,10 +151,14 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(yieldedTo(e, all).length ? { yieldedTo: yieldedTo(e, all) } : {}),
     ...(settings.classes ? { class: classOf(e, settings.classes) } : {}),
     ...(held.has(e.id) ? { window: held.get(e.id)!.text } : {}),
+    ...(hold && !e.grantedAt && e.kind === "cpu" && !e.priority
+      ? { loadHold: { load: Math.round(hold.load), limit: hold.limit } }
+      : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,
-          expectedEnd: new Date(expectedEnd(e)).toISOString(),
+          // Issue 999: what the queue expects (a padded one's median).
+          expectedEnd: new Date(queueEnd(e)).toISOString(),
           overrun: overrun(e, settings, now),
         }
       : {

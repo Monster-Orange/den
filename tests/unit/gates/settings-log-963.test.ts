@@ -132,6 +132,7 @@ describe("issue 963: each setting says what it means", () => {
     "cpu_slots",
     "cpu_slots_beside_browser",
     "cpu_slots_beside_release_browser",
+    "cpu_hold_load",
     "local_browser_slots",
     "overrun_margin_minutes",
     "remote_renew_seconds",

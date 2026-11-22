@@ -384,8 +384,12 @@ export async function cmdService(
       `Unknown service command "${sub}". Use: ${SUBCOMMANDS.join(" | ")} (${product().cli} service help)`,
     );
   // A typo'd --plan must not install for real.
+  // Issue 317: install takes --no-open as web up does, so a script can
+  // pass both the same flags; install opens no browser, so it does nothing.
   const extra = (
-    sub === "install" ? withoutMode(args.slice(1)) : args.slice(1)
+    sub === "install"
+      ? withoutMode(args.slice(1)).filter((a) => a !== "--no-open")
+      : args.slice(1)
   ).filter((a) => !SUBCOMMAND_FLAGS[sub!].includes(a));
   if (extra.length)
     throw new Error(

@@ -34,6 +34,7 @@ import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import { windowHeld } from "./classes.js";
 import {
+  loadHold,
   localRoom,
   queueOrder,
   type GateEntry,
@@ -418,6 +419,8 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
  * run up to the beside count; a browser run on a box holds no room here.
  * Issue 803: a waiter its class's window holds back is passed over and
  * holds no slot from the runs behind it.
+ * Issue 1009: `load` is the machine's 5-minute load; at or above
+ * cpuHoldLoad under a release browser run, cpu waiters are passed over.
  */
 export function assign(
   entries: GateEntry[],
@@ -431,10 +434,12 @@ export function assign(
         | "priorityMax"
         | "priorityPassLimitMinutes"
         | "classes"
+        | "cpuHoldLoad"
       >
     >,
   now: number,
   boxes: BoxCap[] = [],
+  load?: number,
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
   const room = localRoom(entries, s);
@@ -453,8 +458,12 @@ export function assign(
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
   const held = windowHeld(entries, s.classes, now);
+  // Issue 1009: a loaded machine under a release browser run: plain cpu
+  // asks wait; a release one goes through.
+  const cpuHeld = !!loadHold(entries, s, load);
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
+    if (cpuHeld && w.kind === "cpu" && !w.priority) continue;
     const places = placesOf(w, boxes);
     const at = places.find((p) => free(p, w));
     if (at === undefined) {

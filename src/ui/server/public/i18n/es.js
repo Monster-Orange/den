@@ -1074,10 +1074,18 @@
       "Pruebas unitarias junto a una prueba de navegador de versión",
     "set.server.gate_cpu_beside_release.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador con prioridad de versión. 0 (el valor predeterminado): la prueba de versión se ejecuta sola, para que otras no ralenticen sus comprobaciones. Las demás pruebas de navegador usan el ajuste de arriba. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_cpu_hold_load":
+      "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
+    "set.server.gate_cpu_hold_load.d":
+      "Mientras la carga media de 5 minutos de esta máquina sea igual o mayor que este valor, y una prueba de navegador con prioridad de versión tenga un puesto de navegador, las pruebas unitarias esperan. Las que ya corren nunca se detienen. El valor predeterminado es el número de núcleos × 4 / 3. 0 lo apaga. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser":
       "Pruebas de navegador a la vez en esta máquina",
     "set.server.gate_local_browser.d":
       "Cuántas pruebas de navegador pueden ejecutarse a la vez en esta máquina, cada una en su propio contenedor. Una prueba de navegador en una máquina de pruebas no se incluye. 1: una a la vez. __DEN_CLI__ gate settings --local-browser-slots 1",
+    "set.server.gate_overrun_bell":
+      "Turno de prueba en la campana pasadas estas veces su estimación",
+    "set.server.gate_overrun_bell.d":
+      "Un turno de prueba que dura estas veces más que su estimación aparece en la campana, en Te necesitan, con Terminar. Si lo tiene un agente, Den le dice una vez que lo libere. 2: el doble de su estimación. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
@@ -2448,6 +2456,12 @@
       "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
     "bell.m.heldLostAll":
       "Las solicitudes que esperaban tu permiso no se pudieron recuperar tras un reinicio. Se perdieron; los agentes que vuelvan a pedirlo aparecerán aquí.",
+    "bell.go.h": "Turnos de prueba pasados de su estimación",
+    "bell.go.row": "{who} tiene el turno de prueba {kind}: {label}",
+    "bell.go.sub": "Desde {time} · estimación {est} min · {over} min de más",
+    "bell.go.end": "Terminar",
+    "bell.go.ended":
+      "Turno de prueba terminado. Empieza el siguiente en la fila.",
     "bell.ap.h": "Esperan tu permiso",
     "bell.ap.row": "{name} pide: {what}",
     "bell.ap.rowAsk": "Pedido: {what}",
@@ -2813,6 +2827,7 @@
     "gate.popH": "Pruebas en esta máquina",
     "gate.holds": "Ejecuta {kind}, hasta las {at} más o menos",
     "gate.waits": "Espera para ejecutar {kind}, desde las {at} más o menos",
+    "gate.padded": "estimación {est} min; esto suele tardar {usual}",
     "gate.over": "pasada su estimación",
     "gate.none": "Ninguna prueba tiene turno ni espera.",
     "gate.end": "Terminar antes",
@@ -2836,6 +2851,8 @@
     "gate.yielded": "Dejó pasar a {to}",
     "gate.class": "Clase: {name}",
     "gate.window": "espera su horario {window}",
+    "gate.loadHold":
+      "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
