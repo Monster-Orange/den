@@ -197,8 +197,24 @@
   border-color: var(--bad);
   color: var(--on-accent);
 }
+/* Issue 805: every button in the footer, the product's Report too, is one
+   height, one font size and one line height, set here and not per page.
+   Report's key hint keeps its own smaller style and adds no height. */
+.dk-ft > .dk-btn,
+.dk-ft > .den-rb {
+  font-family: inherit;
+  font-size: var(--fs-s);
+  line-height: 1.25;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  box-sizing: border-box;
+}
+.dk-ft > .den-rb kbd {
+  line-height: 1;
+}
 @media (max-width: 480px) {
-  .dk-btn {
+  .dk-btn,
+  .dk-ft > .den-rb {
     min-height: var(--tap);
   }
 }
