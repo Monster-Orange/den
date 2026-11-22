@@ -382,6 +382,13 @@ trusted publishing (no token anywhere):
   such tag of the version is in the release commit's history
   (`scripts/release-ancestry.sh`): a candidate that passed its gate but
   never merged stops the release.
+- Before the tag, the release checks the version's milestone
+  (`Den <version>`, `scripts/release-milestone.mjs`, issue 743). Each open
+  issue there needs its fix on main (a merged pull request or a commit on
+  main that names it; it stays open until its live proof), or the label
+  `moved`: the release moves it to the next milestone and takes the label
+  off. Any other open issue stops the release, listed with its number,
+  title and why. Nothing moves unless every open issue is accounted for.
 - Every pushed dev tag starts the release's dry run
   (`.github/workflows/release-dry-run.yml`, issue 615). It applies the
   release commit's edits to the runner's copy only
