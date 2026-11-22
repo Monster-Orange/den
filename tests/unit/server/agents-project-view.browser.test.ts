@@ -177,6 +177,30 @@ const listedT = (p: Page) =>
 const openParam = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
+/**
+ * Issue 983: until `state()` has read the same for `ticks` checks in a
+ * row, 100 ms apart (or 10 s).
+ */
+async function quiet(state: () => string, ticks: number): Promise<void> {
+  let last = state();
+  let same = 0;
+  await until(() => {
+    const now = state();
+    same = now === last ? same + 1 : 0;
+    last = now;
+    return same >= ticks;
+  }, 10_000);
+}
+
+/** Issue 983: until `cond` holds (Node-side state), or a timeout. */
+async function until(cond: () => boolean, ms: number): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 describe("#80: a project's view holds only its own", () => {
   it("the list, the tabs and ?open= hold north's; south's tab is hidden, said in one line", async () => {
     if (!browser) return;
@@ -338,17 +362,34 @@ describe("#80: scope wins", () => {
     expect(await frontId(p)).toBe(sid.bo);
     expect(param(p, "project")).toBe("south");
     expect(await toLine(p)).toBe("To bo · south");
+    // Issue 983: type only once the reloaded pane's terminal is connected.
+    // Its socket replays bo's "ready" line into the pane when it opens.
+    await p.waitForFunction(
+      (i) =>
+        (
+          document.querySelector(`section[data-id="${i}"]`)?.textContent ?? ""
+        ).includes("bo ready"),
+      sid.bo,
+      { timeout: 20_000 },
+    );
     await p.click(".pane:not([hidden]) .term");
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
     await p.keyboard.type("zz-stop-ship");
-    await p.waitForTimeout(500);
-    const got = s!.made.filter((x, i) =>
-      Buffer.concat(x.writes.slice(from[i]))
-        .toString()
-        .includes("zz-stop-ship"),
-    );
-    expect(got).toEqual([ptys.bo]);
+    const reached = () =>
+      s!.made.filter((x, i) =>
+        Buffer.concat(x.writes.slice(from[i]))
+          .toString()
+          .includes("zz-stop-ship"),
+      );
+    // Wait until some PTY has it (a loaded runner is slow), then hold the
+    // stop-ship check as strict as ever: bo's, and no other.
+    await until(() => reached().length > 0, 10_000);
+    // A stray copy to another PTY (the bug this guards) can land a few ms
+    // after bo's: wait until no PTY's writes have changed for 3 ticks in a
+    // row (about 300 ms of quiet), so it would be seen.
+    await quiet(() => s!.made.map((x) => x.writes.length).join(","), 3);
+    expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
 });
