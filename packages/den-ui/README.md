@@ -754,9 +754,9 @@ short?, title?, name?, popup?, busy?, hidden?, href? })` draws a status
   letters and "…"; one narrower than `--den-crumb-label-min` (24px, on
   `.den-top`) hides, so no part of a glyph ever shows.
 - **The inventory and a host's own HTML.** `compareNav` measures every
-  box from the top bar's corner (`atBar`), and the slot checks use the
-  bar's width: a banner above the bar, or a wrapper with a margin, moves
-  the whole nav and is no difference. One element moved inside the bar
+  box from the top bar's corner (`atBar`), the slot checks too: a banner
+  above the bar, or a wrapper that moves it, moves the whole nav and is
+  no difference. One element moved inside the bar
   still is.
 
 ## 0.7.1
