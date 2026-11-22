@@ -177,6 +177,15 @@ const listedT = (p: Page) =>
 const openParam = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
+/** Issue 983: until `cond` holds (Node-side state), or a timeout. */
+async function until(cond: () => boolean, ms: number): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 describe("#80: a project's view holds only its own", () => {
   it("the list, the tabs and ?open= hold north's; south's tab is hidden, said in one line", async () => {
     if (!browser) return;
@@ -360,9 +369,7 @@ describe("#80: scope wins", () => {
       );
     // Wait until some PTY has it (a loaded runner is slow), then hold the
     // stop-ship check as strict as ever: bo's, and no other.
-    for (let t = Date.now(); !reached().length && Date.now() - t < 10_000; )
-      await p.waitForTimeout(100);
-    await p.waitForTimeout(300);
+    await until(() => reached().length > 0, 10_000);
     expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
