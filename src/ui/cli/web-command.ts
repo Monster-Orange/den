@@ -508,17 +508,58 @@ export function startupRefusal(logPath: string, offset = 0): string | null {
   return last ? redactSecrets(last).slice(0, 600) : null;
 }
 
-async function waitForDenWeb(port: number, pid?: number): Promise<boolean> {
-  const { probeMs, startMs } = webReadyWaits();
-  const deadline = Date.now() + startMs;
-  while (Date.now() < deadline) {
-    if (await isDenWebRunning(port, probeMs)) return true;
-    // A server that refused to start has exited: no point waiting it out.
-    if (pid !== undefined && !pidAlive(pid))
-      return isDenWebRunning(port, probeMs);
-    await new Promise((resolve) => setTimeout(resolve, WEB_START_POLL_MS));
+/** What `web up`'s wait found (issue 804). */
+export type ReadyWait =
+  | { ready: true; afterAll?: true }
+  | { ready: false; refusal?: string };
+
+/**
+ * Issue 804: waits for a server just started to answer as Den, until
+ * `startMs` (web.start_wait_seconds) runs out. The pid it started exiting
+ * is never, by itself, a failure: it may be a launcher or wrapper that
+ * exits once the real server is up. Only a pid that has exited AND a
+ * refusal in this start's part of the server's log (startupRefusal) ends
+ * the wait early. When the wait runs out, one more probe: a Den that
+ * answers then is ready, after all.
+ */
+export async function waitForReady(d: {
+  startMs: number;
+  pollMs: number;
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  probe: () => Promise<boolean>;
+  /** Whether the started pid still runs (true when there is none). */
+  alive: () => boolean;
+  /** The server's own refusal line for this start, or null. */
+  refusal: () => string | null;
+}): Promise<ReadyWait> {
+  const deadline = d.now() + d.startMs;
+  while (d.now() < deadline) {
+    if (await d.probe()) return { ready: true };
+    if (!d.alive()) {
+      const why = d.refusal();
+      if (why) return { ready: false, refusal: why };
+    }
+    await d.sleep(d.pollMs);
   }
-  return false;
+  return (await d.probe()) ? { ready: true, afterAll: true } : { ready: false };
+}
+
+async function waitForDenWeb(
+  port: number,
+  started?: { pid?: number; logPath: string; logOffset?: number },
+): Promise<ReadyWait> {
+  const { probeMs, startMs } = webReadyWaits();
+  return waitForReady({
+    startMs,
+    pollMs: WEB_START_POLL_MS,
+    now: Date.now,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    probe: () => isDenWebRunning(port, probeMs),
+    alive: () => started?.pid === undefined || pidAlive(started.pid),
+    refusal: () =>
+      started ? startupRefusal(started.logPath, started.logOffset) : null,
+  });
 }
 
 /**
@@ -1526,7 +1567,7 @@ async function runWeb(args: string[]): Promise<void> {
     options.action,
     options.port,
     identity.kind === "ours",
-    (p) => waitForDenWeb(p),
+    async (p) => (await waitForDenWeb(p)).ready,
     webServiceDeps,
   );
   if (svc.handled) {
@@ -1629,10 +1670,18 @@ async function runWeb(args: string[]): Promise<void> {
     );
     try {
       started = startDenWebServer(options);
-      running = await waitForDenWeb(options.port, started.pid);
-      if (!running) {
+      const wait = await waitForDenWeb(options.port, started);
+      running = wait.ready;
+      if (wait.ready && wait.afterAll)
+        console.log(
+          chalk.yellow(
+            `  ${product().title} answered after all, past web.start_wait_seconds: it is slow to start here.`,
+          ),
+        );
+      if (!wait.ready) {
         // The server's own reason, when it gave one, then where to look.
-        const why = startupRefusal(started.logPath, started.logOffset);
+        const why =
+          wait.refusal ?? startupRefusal(started.logPath, started.logOffset);
         throw new Error(
           why
             ? `${product().title} web refused to start: ${why}\n  See ${started.logPath}`
