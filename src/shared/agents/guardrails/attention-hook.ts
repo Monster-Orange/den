@@ -2,8 +2,13 @@
  * NT-1: Claude Code's hooks tell Den an agent needs its person, and when
  * it went on. `--den <base>`: Den's web server as the agent reaches it.
  *   PermissionRequest (a permission dialog shows) → waiting, "permission";
- *   Notification ("Claude needs your permission…", "…waiting for your
- *   input") → waiting, why "permission" or "input";
+ *   Notification → waiting, by its notification_type (issue 828):
+ *   permission_prompt → "permission"; elicitation_dialog,
+ *   elicitation_url_dialog, agent_needs_input → "asked" (a question on
+ *   screen, `dialog`); idle_prompt → "input". With no type, the wording
+ *   ("…permission…" or not);
+ *   PermissionRequest for AskUserQuestion → "asked", its question
+ *   (issue 828), not a permission for a tool;
  *   PostToolUse (a tool ran: it was allowed) → resumed, from "tool";
  *   UserPromptSubmit (the person sent a prompt) → resumed, from "prompt";
  *   Stop (the turn ended) → finished;
@@ -40,8 +45,10 @@ import {
 export type AttentionEvent =
   | {
       event: "waiting";
-      why: "permission" | "input";
+      why: "permission" | "input" | "asked";
       text: string;
+      /** Issue 828: a question on the agent's screen (its answer ends it). */
+      dialog?: true;
       /** Issue 327: the tool asked about, or the notice, ≤ WHAT_MAX chars. */
       what: string;
       /** Issue 609: inputKey of the tool's input, for a permission dialog. */
@@ -119,6 +126,38 @@ export function inputKey(input: unknown): string | undefined {
   return createHash("sha256").update(s).digest("hex").slice(0, 16);
 }
 
+/** Issue 828: Claude Code's notice types that ask the person something. */
+const ASKS = new Set([
+  "elicitation_dialog",
+  "elicitation_url_dialog",
+  "agent_needs_input",
+]);
+
+/**
+ * Issue 828: what a notice waits on, by its notification_type; the
+ * wording only when it has none (or one Den doesn't know).
+ */
+function noticeWhy(
+  type: unknown,
+  msg: string,
+): "permission" | "input" | "asked" {
+  if (type === "permission_prompt") return "permission";
+  if (typeof type === "string" && ASKS.has(type)) return "asked";
+  if (type === "idle_prompt") return "input";
+  return /permission/i.test(msg) ? "permission" : "input";
+}
+
+/** Issue 828: AskUserQuestion's first question, ≤ 300 chars, or "". */
+function askedOf(input: unknown): string {
+  const qs = (input as { questions?: unknown } | null)?.questions;
+  const q = Array.isArray(qs)
+    ? (qs[0] as { question?: unknown })?.question
+    : "";
+  return typeof q === "string"
+    ? q.replace(/\s+/g, " ").trim().slice(0, 300)
+    : "";
+}
+
 /** What Den is told for one hook input, or null for nothing. */
 export function attentionOf(input: unknown): AttentionEvent | null {
   if (!input || typeof input !== "object") return null;
@@ -136,6 +175,19 @@ export function attentionOf(input: unknown): AttentionEvent | null {
   const tool = typeof i.tool_name === "string" ? trimWhat(i.tool_name) : "";
   const key = inputKey(i.tool_input);
   if (i.hook_event_name === "PermissionRequest") {
+    // Issue 828: AskUserQuestion asks the person; it is its question.
+    if (tool === "AskUserQuestion") {
+      const q = askedOf(i.tool_input) || "Claude Code needs your input";
+      return {
+        event: "waiting",
+        why: "asked",
+        text: q,
+        what: trimWhat(q),
+        dialog: true,
+        ...(key ? { input: key } : {}),
+        hooked: true,
+      };
+    }
     return {
       event: "waiting",
       why: "permission",
@@ -147,15 +199,18 @@ export function attentionOf(input: unknown): AttentionEvent | null {
       hooked: true,
     };
   }
-  if (i.hook_event_name === "Notification")
+  if (i.hook_event_name === "Notification") {
+    const why = noticeWhy(i.notification_type, msg);
     return {
       event: "waiting",
-      why: /permission/i.test(msg) ? "permission" : "input",
+      why,
       text: msg,
       what: trimWhat(msg),
+      ...(why === "asked" ? { dialog: true as const } : {}),
       ...(i.notification_type === "idle_prompt" ? { idle: true as const } : {}),
       hooked: true,
     };
+  }
   // A compaction keeps the session (and any dialog); anything else is new.
   if (i.hook_event_name === "SessionStart" && i.source !== "compact")
     return { event: "resumed", from: "session", hooked: true };

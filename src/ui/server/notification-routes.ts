@@ -231,6 +231,10 @@ export async function handleNotificationRoutes(
       return true;
     }
     const id = agent.actor.slice("agent:".length);
+    // Issue 828: a question on the agent's screen (its hook says so). It
+    // counts toward the ask limit like any question: the flag is the
+    // agent's own word.
+    const dialog = ev === "waiting" && why === "asked" && b?.dialog === true;
     if (ev === "waiting" && why === "asked" && deps.asks) {
       let perHour: number;
       try {
@@ -264,6 +268,7 @@ export async function handleNotificationRoutes(
             input: inputKeyOf(b?.input),
             idle: b?.idle === true,
             hooked: b?.hooked === true,
+            ...(dialog ? { dialog: true } : {}),
           }
         : ev === "resumed"
           ? {
