@@ -90,6 +90,23 @@ describe("the rule (pure)", () => {
     expect(assign(release, off, at(2), [], 99)).toEqual([{ id: "c1" }]);
   });
 
+  it("a release cpu ask goes through it; a plain one waits", () => {
+    // A release run's own next step (typecheck beside its browser run)
+    // never waits on the release run itself.
+    const q = [
+      entry("rel", "browser", 0, { granted: 0, release: true }),
+      entry("c1", "cpu", 1),
+      entry("rc", "cpu", 2, { release: true }),
+    ];
+    expect(grants(q, S, at(3), 30)).toEqual(["rc"]);
+    expect(assign(q, S, at(3), [], 30)).toEqual([{ id: "rc" }]);
+    const all = q;
+    const line = (id: string) =>
+      slotLine(all.find((e) => e.id === id)!, all, at(3), { ...S, load: 30 });
+    expect(line("c1")).toContain("waiting: load 30 ≥ 24");
+    expect(line("rc")).not.toContain("waiting: load");
+  });
+
   it("a browser waiter isn't held by it", () => {
     const q = [
       entry("rel", "browser", 0, { granted: 0, release: true, box: "mini" }),

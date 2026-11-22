@@ -495,7 +495,8 @@ export function passedBy(
  * Issue 1009: why cpu asks wait now, if they do: the machine's 5-minute
  * load (`load`) is at or above cpuHoldLoad (0: off) while a release browser
  * run holds a browser slot, here or on a test box (its app runs here).
- * Absent: they don't (or no load was read).
+ * A release cpu ask goes through (a release run's own next step never
+ * waits on it). Absent: they don't (or no load was read).
  */
 export function loadHold(
   entries: GateEntry[],
@@ -530,7 +531,7 @@ export function grants(
   const stopped = new Set<GateKind>();
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
-    if (cpuHeld && w.kind === "cpu") continue; // issue 1009: load
+    if (cpuHeld && w.kind === "cpu" && !w.priority) continue; // issue 1009
     if (stopped.has(w.kind)) continue;
     if (!room.fits(w)) {
       room.wait(w);

@@ -313,7 +313,7 @@ export function slotLine(
   const yields = yieldedTo(e, all);
   // Issue 1009: a cpu waiter held by the load under a release run.
   const hold =
-    !e.grantedAt && e.kind === "cpu"
+    !e.grantedAt && e.kind === "cpu" && !e.priority
       ? loadHold(all, margin, margin.load)
       : undefined;
   // Issue 803: its class, and a wait for its class's window.
@@ -591,7 +591,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           d.err(`waiting: ${slotLine(h, all, d.now(), set)}`);
         // Issue 1009: a cpu run held by the load says so.
         const hold =
-          e.kind === "cpu" ? loadHold(all, set, s.load()) : undefined;
+          e.kind === "cpu" && !e.priority
+            ? loadHold(all, set, s.load())
+            : undefined;
         if (hold)
           d.err(
             `waiting: load ${Math.round(hold.load)} ≥ ${hold.limit} while a release run holds the browser slot`,

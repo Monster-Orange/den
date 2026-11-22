@@ -140,7 +140,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(yieldedTo(e, all).length ? { yieldedTo: yieldedTo(e, all) } : {}),
     ...(settings.classes ? { class: classOf(e, settings.classes) } : {}),
     ...(held.has(e.id) ? { window: held.get(e.id)!.text } : {}),
-    ...(hold && !e.grantedAt && e.kind === "cpu"
+    ...(hold && !e.grantedAt && e.kind === "cpu" && !e.priority
       ? { loadHold: { load: Math.round(hold.load), limit: hold.limit } }
       : {}),
     ...(e.grantedAt
