@@ -529,11 +529,12 @@ import {
   type ReportRouteDeps,
 } from "./report-routes.js";
 import { reportHeld } from "./report-held.js";
-import {
-  publicRepoVisibility,
-  repoVisibilities,
-} from "./report-visibility.js";
+import { publicRepoVisibility, repoVisibilities } from "./report-visibility.js";
 import { orgPatterns } from "../../shared/org-names.js";
+import {
+  filedTextCheck,
+  type FiledText,
+} from "../../shared/filed-text-check.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -1285,6 +1286,7 @@ import {
 import {
   IssueWriteLimit,
   issueWriteSettings,
+  ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
 import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
@@ -2336,6 +2338,56 @@ const issueWriteLimit = new IssueWriteLimit();
  * project's GitHub repos (the catalog's gh, else the project's org), the
  * settings from user.yml, pr_close's gh call path (runGh), and the audit.
  */
+/**
+ * Issue 1127: a repo's visibility (null: not known) no older than
+ * `maxAgeMs`, through the cache Report uses (feedback.visibility_timeout_
+ * seconds and _retry_seconds).
+ */
+async function repoVisibilityFor(
+  repo: string,
+  maxAgeMs: number,
+): Promise<"public" | "private" | "internal" | null> {
+  const fb = reportRouteDeps().settings();
+  const vis = await repoVisibilities(getStateDir(), [repo], {
+    gh: (a) => runGh(a),
+    anon: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    ttlMs: maxAgeMs,
+    timeoutMs: fb.visibilityTimeoutSeconds * 1000,
+    retryMs: fb.visibilityRetrySeconds * 1000,
+  });
+  return vis[repo] ?? null;
+}
+
+/**
+ * Issue 1127: Report's listed-names check, as issue_write's: the listed
+ * names, the destination's visibility (agents.issue_writes_visibility_
+ * minutes old at most), then the refusal or null. A list file named but
+ * missing refuses: the check fails closed.
+ */
+async function reportWordsCheck(
+  repo: string,
+  texts: FiledText[],
+): Promise<string | null> {
+  let patterns: RegExp[];
+  try {
+    patterns = orgPatterns();
+  } catch {
+    return "the listed-names file this install names can't be read; nothing was sent";
+  }
+  if (!patterns.length) return null;
+  let minutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
+  try {
+    minutes = issueWriteSettings(
+      () => readUserConfig(),
+      () => readDenConfig(),
+    ).visibilityMinutes;
+  } catch {
+    /* a wrong agents.* value: the default */
+  }
+  const vis = await repoVisibilityFor(repo, minutes * 60_000);
+  return filedTextCheck(texts, repo, vis, patterns);
+}
+
 function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
   return {
     agentOf: (id) => {
@@ -2383,17 +2435,7 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     // cache Report uses (feedback.visibility_timeout_seconds and
     // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
     namePatterns: () => orgPatterns(),
-    visibility: async (repo, maxAgeMs) => {
-      const fb = reportRouteDeps().settings();
-      const vis = await repoVisibilities(getStateDir(), [repo], {
-        gh: (a) => runGh(a),
-        anon: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
-        ttlMs: maxAgeMs,
-        timeoutMs: fb.visibilityTimeoutSeconds * 1000,
-        retryMs: fb.visibilityRetrySeconds * 1000,
-      });
-      return vis[repo] ?? null;
-    },
+    visibility: repoVisibilityFor,
     audit: (e) => {
       try {
         recordAction(
@@ -4276,6 +4318,8 @@ function reportRouteDeps(): ReportRouteDeps {
       ),
     stateDir: () => getStateDir(),
     gh: runGh,
+    // Issue 1127: listed names, before a report is filed.
+    wordsCheck: reportWordsCheck,
     names: () => {
       const w = readWebUrl();
       let webHost: string | undefined;

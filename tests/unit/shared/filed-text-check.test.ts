@@ -8,6 +8,7 @@
 import { describe, expect, it } from "@jest/globals";
 import * as path from "path";
 import {
+  filedTextCheck,
   filedTextHits,
   filedTextRefusal,
   needsFiledCheck,
@@ -30,16 +31,27 @@ describe("issue 1127: one matcher", () => {
 describe("issue 1127: the filing check", () => {
   it("refuses a title, a body and a comment that hold a listed term", () => {
     expect(
-      filedTextHits([{ field: "title", text: "Crash at Acme Widgets" }], patterns),
+      filedTextHits(
+        [{ field: "title", text: "Crash at Acme Widgets" }],
+        patterns,
+      ),
     ).toEqual([{ field: "title", line: 1, index: 1 }]);
     expect(
       filedTextHits(
-        [{ field: "body", text: "Steps:\n1. open it\n2. see acme-widgets.example" }],
+        [
+          {
+            field: "body",
+            text: "Steps:\n1. open it\n2. see acme-widgets.example",
+          },
+        ],
         patterns,
       ),
     ).toEqual([{ field: "body", line: 3, index: 1 }]);
     expect(
-      filedTextHits([{ field: "comment", text: "seen on ZORBLAX too" }], patterns),
+      filedTextHits(
+        [{ field: "comment", text: "seen on ZORBLAX too" }],
+        patterns,
+      ),
     ).toEqual([{ field: "comment", line: 1, index: 2 }]);
   });
 
@@ -85,5 +97,21 @@ describe("issue 1127: the filing check", () => {
     expect(needsFiledCheck(null)).toBe(true);
     expect(needsFiledCheck("private")).toBe(false);
     expect(needsFiledCheck("internal")).toBe(false);
+  });
+});
+
+describe("issue 1127: the check as a write runs it", () => {
+  const texts = [{ field: "title" as const, text: "Crash at Zorblax" }];
+  it("no listed names: nothing refused", () => {
+    expect(filedTextCheck(texts, "o/r", "public", [])).toBeNull();
+  });
+  it("a private repo: nothing refused; public or unknown: refused", () => {
+    expect(filedTextCheck(texts, "o/r", "private", patterns)).toBeNull();
+    expect(filedTextCheck(texts, "o/r", "public", patterns)).toContain(
+      "title line 1",
+    );
+    expect(filedTextCheck(texts, "o/r", null, patterns)).toContain(
+      "nothing was sent",
+    );
   });
 });

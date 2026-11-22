@@ -11,7 +11,7 @@
  * refused. Private and internal repos are not checked: the check guards
  * what the public can read. A repo whose visibility isn't known is checked.
  */
-import { orgHitsWide, orgPatterns } from "./org-names.js";
+import { orgHitsByLine } from "./org-names.js";
 
 export type FiledField = "title" | "body" | "comment";
 
@@ -27,28 +27,16 @@ export interface FiledHit {
   index: number;
 }
 
-/** "Owner-Name/repo" as the matcher's allowed list writes it. */
-function runTogether(repo: string): string {
-  return repo.replace(/[\s_-]+/g, "").toLowerCase();
-}
-
 /**
- * Every hit in `texts`, line by line. `repo` (owner/name) is the target:
- * its own owner/name is allowed, so a link to it is not a hit.
+ * Every hit in `texts`, line by line (shared/org-names.js orgHitsByLine).
+ * `repo` (owner/name) is the target: its own owner/name is allowed.
  */
 export function filedTextHits(
   texts: readonly FiledText[],
   patterns: RegExp[],
   repo?: string,
 ): FiledHit[] {
-  const allowed = repo ? [runTogether(repo)] : [];
-  const hits: FiledHit[] = [];
-  for (const { field, text } of texts)
-    text.split("\n").forEach((line, i) => {
-      for (const { index } of orgHitsWide(line, patterns, allowed))
-        hits.push({ field, line: i + 1, index });
-    });
-  return hits;
+  return orgHitsByLine(texts, patterns, repo) as FiledHit[];
 }
 
 /** The refusal: where each hit is, never what it matched. */
@@ -67,20 +55,16 @@ export function needsFiledCheck(
 }
 
 /**
- * The check as a write runs it: the configured list (none: no refusal), the
- * repo's visibility, then the hits. Returns the refusal, or null to go on.
- * A list file that is named but missing throws in orgPatterns: the write
- * fails closed.
+ * The check as a write runs it: the listed names (none: no refusal), the
+ * repo's visibility, then the hits. The refusal, or null to go on.
  */
 export function filedTextCheck(
   texts: readonly FiledText[],
   repo: string,
   visibility: "public" | "private" | "internal" | null,
-  env: NodeJS.ProcessEnv = process.env,
+  patterns: RegExp[],
 ): string | null {
-  if (!needsFiledCheck(visibility)) return null;
-  const patterns = orgPatterns(env);
-  if (!patterns.length) return null;
+  if (!patterns.length || !needsFiledCheck(visibility)) return null;
   const hits = filedTextHits(texts, patterns, repo);
   return hits.length ? filedTextRefusal(hits) : null;
 }

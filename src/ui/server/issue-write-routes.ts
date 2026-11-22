@@ -186,11 +186,19 @@ export async function runIssueWrite(
       return refuse(500, "bad_config", (e as Error).message, issueNo);
     }
     if (patterns.length) {
-      const vis = await d.visibility(op.repo, settings.visibilityMinutes * 60_000);
+      const vis = await d.visibility(
+        op.repo,
+        settings.visibilityMinutes * 60_000,
+      );
       if (needsFiledCheck(vis)) {
         const hits = filedTextHits(texts, patterns, op.repo);
         if (hits.length)
-          return refuse(400, "issue_write_words", filedTextRefusal(hits), issueNo);
+          return refuse(
+            400,
+            "issue_write_words",
+            filedTextRefusal(hits),
+            issueNo,
+          );
       }
     }
   }

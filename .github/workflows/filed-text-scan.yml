@@ -1,0 +1,57 @@
+# Issue 1127: text filed on GitHub (issues, pull requests, comments) is
+# checked for listed names, as commits and files are. Daily and on demand,
+# it scans what was created or edited since its last successful run and
+# files one finding per item (scripts/filed-text-scan.mjs): a neutral title,
+# a link, the field, line and pattern number, never the matched text. It
+# never edits the item. The list is the DEN_ORG_NAMES secret, never the
+# repo; with no secret the run fails. A finding points at the item, so it
+# goes to a private repo (the FILED_TEXT_FINDINGS_REPO variable), never
+# this one, filed with a GitHub App's token minted for that repo alone
+# (DEN_FINDINGS_APP_ID and DEN_FINDINGS_APP_KEY; no personal token). With no
+# destination or no App secrets the run fails, its log saying only a count
+# and the items' numbers. This repo's token only reads.
+name: filed-text-scan
+on:
+  schedule:
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Scan from this ISO time (default: the last successful run)"
+        required: false
+permissions:
+  contents: read
+  issues: read
+  actions: read
+concurrency:
+  group: filed-text-scan
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HAS_FINDINGS_APP: ${{ secrets.DEN_FINDINGS_APP_ID != '' && secrets.DEN_FINDINGS_APP_KEY != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.13.0"
+      # The findings repo's token, for this run only. Skipped with no App
+      # secrets: the scan then files nothing and fails safely.
+      - id: findings-token
+        if: env.HAS_FINDINGS_APP == 'true'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          app-id: ${{ secrets.DEN_FINDINGS_APP_ID }}
+          private-key: ${{ secrets.DEN_FINDINGS_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: den-bed
+      - name: Scan issues, pull requests and comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+          FILED_TEXT_FINDINGS_REPO: ${{ vars.FILED_TEXT_FINDINGS_REPO }}
+          FILED_TEXT_FINDINGS_TOKEN: ${{ steps.findings-token.outputs.token }}
+          SINCE: ${{ inputs.since }}
+        run: node scripts/filed-text-scan.mjs --repo "$GITHUB_REPOSITORY" ${SINCE:+--since "$SINCE"}

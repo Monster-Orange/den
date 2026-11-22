@@ -77,3 +77,24 @@ export function orgHitsWide(text, patterns, allowed = []) {
   });
   return hits;
 }
+
+/**
+ * Issue 1127: the hits in text filed on GitHub (an issue's title and body,
+ * a comment), line by line: [{ field, line, index }] (1-based line and
+ * pattern number), never the matched text. `repo` (owner/name) is the
+ * target: its own owner/name is allowed, so a link to it is not a hit.
+ * shared/filed-text-check.ts (Den's tooling) and scripts/filed-text-scan.js
+ * (the scheduled scan) both use it.
+ */
+export function orgHitsByLine(texts, patterns, repo) {
+  const allowed = repo ? [repo.replace(/[\s_-]+/g, "").toLowerCase()] : [];
+  const hits = [];
+  for (const { field, text } of texts)
+    String(text ?? "")
+      .split("\n")
+      .forEach((line, i) => {
+        for (const { index } of orgHitsWide(line, patterns, allowed))
+          hits.push({ field, line: i + 1, index });
+      });
+  return hits;
+}

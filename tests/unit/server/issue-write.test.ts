@@ -607,7 +607,9 @@ describe("issue_write: its Settings rows", () => {
     });
     // Issue 1127: the words check's visibility age, its own row.
     expect(
-      rows.find((r) => r.keys?.includes("agent_issue_writes.visibility_minutes")),
+      rows.find((r) =>
+        r.keys?.includes("agent_issue_writes.visibility_minutes"),
+      ),
     ).toMatchObject({
       category: "agents",
       scope: "user",

@@ -53,6 +53,7 @@
  *
  * `gh` runs through `deps.gh` (tests pass a fake: never the real one).
  */
+import type { FiledText } from "../../shared/filed-text-check.js";
 import * as http from "http";
 import * as os from "os";
 import { spawn } from "child_process";
@@ -108,6 +109,13 @@ export function reportAgentOf(
 }
 
 export interface ReportRouteDeps {
+  /**
+   * Issue 1127: the listed-names check (shared/filed-text-check.ts) for a
+   * report's title and body in its destination: the refusal, or null to
+   * file it. The server checks public destinations and those whose
+   * visibility isn't known; none given, nothing is checked.
+   */
+  wordsCheck?: (repo: string, texts: FiledText[]) => Promise<string | null>;
   settings: () => FeedbackSettings;
   stateDir: () => string;
   /** Runs `gh` with `args` (stdin: the body), as the person. */
@@ -617,6 +625,13 @@ export async function fileReport(
   const c = await compose(b, d);
   if (typeof c === "string")
     return { status: 400, body: { ok: false, error: c } };
+  // Issue 1127: listed names, before anything is counted or sent.
+  const refusal = await d.wordsCheck?.(c.repo, [
+    { field: "title", text: c.title },
+    { field: "body", text: c.body },
+  ]);
+  if (refusal)
+    return { status: 400, body: { ok: false, code: "words", error: refusal } };
   const s = d.settings();
   const log = sentLog(d.stateDir());
   if (log.recent(who, now()) >= s.maxPerHour)
