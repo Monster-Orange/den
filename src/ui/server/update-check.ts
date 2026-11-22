@@ -210,6 +210,29 @@ export function backNoteHeldNote(
   });
 }
 
+/** Issue 629: the bell item while Den's tools note waits on a dialog. */
+export const TOOLS_NOTE_HELD_SUBJECT = "record:hub-tools-note-held";
+
+/**
+ * Issue 629: Den restarted `agent` to load Hub's tools, and its note
+ * saying so waits: a dialog for the person is open in its terminal.
+ */
+export function toolsNoteHeldNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  workspace: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: `${TOOLS_NOTE_HELD_SUBJECT}:${agent}`,
+    scope: `workspace/${workspace}`,
+    text: `${title} reconnected Hub's tools for ${agent}; its note waits until you answer ${agent} in its terminal`,
+    msg: { key: "bell.m.toolsNoteHeld", vars: { agent } },
+    link: "/agents",
+  });
+}
+
 /** Issue 562 review: the bell line after a restart that stopped waiting. */
 export const RESTARTED_WORKING_SUBJECT = "record:den-update-restarted-working";
 

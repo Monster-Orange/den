@@ -3023,6 +3023,8 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.toolsNoteHeld":
+      "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":

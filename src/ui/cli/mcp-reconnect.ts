@@ -8,11 +8,16 @@
  * Restart does) and tells it in its pane. At most
  * `hub.mcp_retry_attempts` restarts per agent (0: no limit), counted only
  * when Hub answered, so a long outage spends none.
+ *
+ * Issue 629: Den never types into a dialog for the agent's person. While
+ * one is open the note is kept (held: the bell says it waits) and typed
+ * once the person has answered (cleared: the bell item goes).
  */
 import { readHubMcpInit } from "../../shared/agents/hub-mcp-connect.js";
 import { listRecords } from "../../shared/agents/records.js";
 import {
   AgentError,
+  agentDialogKind,
   hubNow,
   restartAgent,
   typeIntoAgent,
@@ -65,8 +70,37 @@ export function mcpReconnect(
       d: AgentsResolved,
     ) => Promise<{ id: string; workspace: string }[]>;
     log?: (line: string) => void;
+    /** Issue 629: its note waits for the person's dialog (once). */
+    held?: (id: string, workspace: string) => void;
+    /** Issue 629: the kept note was typed, or its agent went. */
+    cleared?: (id: string) => void;
+    /** How often a kept note looks at the dialog again (tests). */
+    heldPollMs?: number;
   },
 ): McpReconnect {
+  /** Type the line; while a dialog for its person is open, keep it. */
+  const tell = async (id: string, workspace: string): Promise<boolean> => {
+    let held = false;
+    for (;;) {
+      if (await typeIntoAgent(d, id, RECONNECTED_LINE)) {
+        if (held) opts.cleared?.(id);
+        return true;
+      }
+      // Not typed: a dialog for its person (kept), or it went (dropped).
+      if (!(await agentDialogKind(d, id))) {
+        if (held) opts.cleared?.(id);
+        return false;
+      }
+      if (!held) {
+        held = true;
+        opts.held?.(id, workspace);
+        opts.log?.(
+          `agent ${id}: Den's note about Hub's tools waits until its person answers its dialog`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, opts.heldPollMs ?? 2000));
+    }
+  };
   const tries = new Map<string, number>();
   const running = new Map<string, Promise<void>>();
   return {
@@ -87,9 +121,13 @@ export function mcpReconnect(
         const p = restartAgent(d, m.id, m.workspace, "after-turn", {
           pollMs: opts.pollMs,
         })
-          .then(() => typeIntoAgent(d, m.id, RECONNECTED_LINE))
-          .then(() =>
-            opts.log?.(`agent ${m.id}: restarted to load Hub's tools`),
+          .then(() => tell(m.id, m.workspace))
+          .then((told) =>
+            opts.log?.(
+              told
+                ? `agent ${m.id}: restarted to load Hub's tools`
+                : `agent ${m.id}: restarted to load Hub's tools; its note wasn't typed (it stopped)`,
+            ),
           )
           .catch((err: unknown) => {
             // 0.4.48: still working (a turn, or a job it left running) when

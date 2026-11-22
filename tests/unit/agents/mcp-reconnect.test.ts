@@ -137,6 +137,47 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     expect(await rc.tick()).toEqual([]);
   }, 30_000);
 
+  // Issue 629: the reconnected-tools note was dropped when a dialog for
+  // the agent's person was on its screen. It is kept, the bell says it
+  // waits, and it is typed once the person has answered.
+  it("issue 629: a dialog for its person on screen: nothing typed, the note kept and belled, typed once answered", async () => {
+    const { r, d } = await startedWhileHubFailed();
+    const held: string[] = [];
+    const cleared: string[] = [];
+    const rc = mcpReconnect(d, {
+      hubUp: async () => true,
+      attempts: () => 3,
+      pollMs: 20,
+      heldPollMs: 50,
+      held: (id, ws) => held.push(`${id}@${ws}`),
+      cleared: (id) => cleared.push(id),
+      log: () => undefined,
+    });
+    expect(await rc.tick()).toEqual(["planner"]);
+    for (let i = 0; i < 250 && r.made.length < 2; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    // The restarted agent opens with a permission dialog for its person.
+    r.made[1].emit(
+      "Bash command\r\n\r\n  npm run build\r\n  Build it\r\n\r\n" +
+        "Do you want to proceed?\r\n❯ 1. Yes\r\n" +
+        "  2. Yes, and don't ask again for npm run build commands in /work\r\n" +
+        "  3. No, and tell Claude what to do differently (esc)\r\n",
+    );
+    for (let i = 0; i < 300 && held.length === 0; i++)
+      await new Promise((res) => setTimeout(res, 20));
+    expect(held).toEqual(["planner@north"]);
+    expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
+    // Still waiting: belled once, nothing typed.
+    await new Promise((res) => setTimeout(res, 300));
+    expect(held).toHaveLength(1);
+    expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
+    // The person answers: the dialog goes, its prompt shows.
+    r.made[1].emit("\x1b[2J\x1b[H> ");
+    await rc.pending();
+    expect(typed(r, 1)).toContain(RECONNECTED_LINE);
+    expect(cleared).toEqual(["planner"]);
+  }, 30_000);
+
   it("stops after hub.mcp_retry_attempts restarts that didn't bring them; 0 never stops", async () => {
     const { d } = await startedWhileHubFailed();
     const missing = async () => [{ id: "planner", workspace: "north" }];
