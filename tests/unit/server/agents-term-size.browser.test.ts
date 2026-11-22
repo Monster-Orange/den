@@ -220,6 +220,15 @@ const last = (pty: ScriptedPty) => pty.resizes.at(-1) ?? [0, 0];
  * the agent's queries take too.)
  */
 const type = async (v: { p: Page }, d: string) => {
+  // Issue 819: another viewer's sign-in is a new device asking to be let
+  // in, and this signed-in page's "Allow this computer?" pop-up (modal)
+  // may show it until its next poll sees it approved. Keys typed then go
+  // to the pop-up, so wait for it to close first.
+  await v.p.waitForFunction(
+    () => !document.getElementById("den-pair-dlg")?.hasAttribute("open"),
+    null,
+    { timeout: 10_000 },
+  );
   await v.p.focus(".pane .xterm-helper-textarea");
   await v.p.keyboard.type(d);
 };
@@ -252,6 +261,7 @@ describe("the Agents tab's terminal size", () => {
     await narrow.p.evaluate(() =>
       document.dispatchEvent(new Event("visibilitychange")),
     );
+    // Kept on purpose: this proves no resize comes; nothing marks "never".
     await new Promise((r) => setTimeout(r, 300));
     expect(pty.resizes.length).toBe(resizes);
 
@@ -321,6 +331,7 @@ describe("the Agents tab's terminal size", () => {
     });
     await type(narrow, "y");
     await eventually(() => Buffer.concat(pty.writes).toString().includes("y"));
+    // Kept on purpose: this proves no resize comes; nothing marks "never".
     await new Promise((r) => setTimeout(r, 200));
     expect(pty.resizes.length).toBe(before);
     expect(last(pty)).toEqual(wideSize);
@@ -339,8 +350,12 @@ describe("the Agents tab's terminal size", () => {
     // What a TUI asks on start: the terminal's kind (DA1), the cursor's
     // place (DSR), focus reports on. A view that opens replays them, and
     // its xterm answers each.
+    const asked = pty.writes.length;
     pty.emit("\x1b[c\x1b[6n\x1b[?1004h> ready\r\n");
-    await new Promise((r) => setTimeout(r, 300));
+    // The wide view has them: its own answer (DA1) reached the agent.
+    await eventually(() =>
+      Buffer.concat(pty.writes.slice(asked)).toString().includes("\x1b[?"),
+    );
     const resizes = pty.resizes.length;
     const writes = pty.writes.length;
     const narrow = await viewer(sid, 900);
@@ -351,6 +366,7 @@ describe("the Agents tab's terminal size", () => {
     await eventually(() =>
       Buffer.concat(pty.writes.slice(writes)).toString().includes("\x1b[?"),
     );
+    // Kept on purpose: this proves no resize comes; nothing marks "never".
     await new Promise((r) => setTimeout(r, 500));
     // …and the size stayed the wide one's: no redraw there.
     const sent = await narrow.p.evaluate(
@@ -376,14 +392,18 @@ describe("the Agents tab's terminal size", () => {
     const wide = await viewer(sid, 1440);
     await eventually(async () => same(last(pty), await termSize(wide.p)));
     const narrow = await viewer(sid, 700);
-    await new Promise((r) => setTimeout(r, 500));
+    // It follows the PTY's size, and says so.
+    await narrow.p
+      .locator(`.pane[data-id="${sid}"] .agfollow`)
+      .waitFor({ timeout: 10_000 });
     // The person types in the wide one: the PTY is its width.
     const writes = pty.writes.length;
     await type(wide, "x");
     await eventually(() => pty.writes.length > writes);
     const [W] = last(pty);
     expect(W).toBe((await termSize(wide.p))[0]);
-    await new Promise((r) => setTimeout(r, 300));
+    // The narrow view has heard the PTY's new width.
+    await eventually(async () => (await termSize(narrow.p))[0] === W);
     // Claude Code's input box: the prompt hard-wrapped at the PTY's
     // width; each redraw moves up as many lines as it drew, clears them,
     // and draws again (Ink's log-update).
@@ -420,6 +440,8 @@ describe("the Agents tab's terminal size", () => {
           text += b.getLine(y)?.translateToString(true) ?? "";
         return text.split("MARK-").length - 1;
       });
+    // Kept on purpose: this proves no extra copy of the prompt shows after
+    // the redraws arrive; no state marks the last redraw drawn.
     await new Promise((r) => setTimeout(r, 500));
     expect(await marks(wide)).toBe(1);
     expect(await marks(narrow)).toBe(1);
@@ -453,6 +475,7 @@ describe("the Agents tab's terminal size", () => {
     // frames it can't follow it either, so it keeps its own fit until
     // typed in.
     const narrow = await viewer(sid, 900, { noSizeFrames: true });
+    // Kept on purpose: this proves opening never resizes the PTY.
     await new Promise((r) => setTimeout(r, 300));
     expect(last(pty)).toEqual(wideSize);
     const narrowSize = await termSize(narrow.p);

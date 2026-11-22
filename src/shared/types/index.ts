@@ -702,6 +702,12 @@ export interface WorkspaceConfig {
      * (shared/agents/project-mcp.ts).
      */
     mcp_servers?: unknown;
+    /**
+     * Issue 459: app event feeds, each to one of this project's agents:
+     * `[{ name, agent, url, bearer?, list_url? }]`, bearer the name of a
+     * secrets.refs entry (shared/agents/app-feeds.ts).
+     */
+    event_feeds?: unknown;
   };
   /**
    * Issue 160: this project's approval policy, over the install's

@@ -326,8 +326,11 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:start|stop|resume)$/],
 ];
 
-/** Reads never open to a fixture session, whatever their route class. */
-const READ_DENY: readonly RegExp[] = [
+/**
+ * Reads never open to a fixture session (or, issue 796, an agent's view),
+ * whatever their route class.
+ */
+export const FIXTURE_READ_DENY: readonly RegExp[] = [
   // Hub: only Den's own view of it (the rail).
   /\/hub(?:[-_][^/]*)?\/./,
   /\/hub[-_][^/]*$/,
@@ -339,7 +342,7 @@ const READ_DENY: readonly RegExp[] = [
 /**
  * Why a fixture session may not make this request, or null when it may.
  * An allow-list: a page or asset (a GET off /api/), a /api/ GET the route
- * table classes `readonly` and READ_DENY doesn't name, or one of
+ * table classes `readonly` and FIXTURE_READ_DENY doesn't name, or one of
  * FIXTURE_WRITES. Everything else (shell-grade and mutating GETs,
  * unclassified routes, every other write) is refused. `cls` is the
  * route's class (route-classes.ts routeClass), null when unclassified.
@@ -362,7 +365,7 @@ export function fixtureScopeRefusal(
           : refused
         : null;
     if (cls !== "readonly") return refused;
-    if (READ_DENY.some((re) => re.test(pathname))) return refused;
+    if (FIXTURE_READ_DENY.some((re) => re.test(pathname))) return refused;
     return null;
   }
   return FIXTURE_WRITES.some(([wm, re]) => wm === m && re.test(pathname))

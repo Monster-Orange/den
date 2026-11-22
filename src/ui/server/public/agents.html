@@ -34,7 +34,7 @@
     <title>__DEN_TITLE__ · Agents</title>
     <style>
       /* The Agents tab (AG-4a-term, AG spec §5d): the prototype's
-         (den-shell.html) page header (.ph), list column (.agl, 300px) and
+         (den-shell.html) page header (.ph), list column (.agl, 300px; issue 773: 380px on Agents) and
          panes (.agp: 1, 2 side by side, 3-4 as 2x2), ported as they are;
          --r is --radius, --r-btn is --radius-button. */
       *,
@@ -327,8 +327,53 @@
       .agr[aria-pressed="true"] {
         background: var(--sunken);
       }
+      /* Issue 168: the agent in front is a shaded row with an outline and
+         bold text, never an orange edge (that would clash with a project
+         colour). */
       .agr[aria-current="true"] {
-        border-left-color: var(--accent);
+        background: var(--sunken);
+        outline: 2px solid var(--text);
+        outline-offset: -2px;
+        font-weight: 600;
+      }
+      .agr[aria-current="true"] .nm {
+        font-weight: 600;
+      }
+      /* Issue 168: an agent inherits its project's colour: an edge on its
+         row and its letter tile. */
+      .agr[data-pc] {
+        border-left: 4px solid var(--pc);
+        padding-left: 10px;
+      }
+      .agtile {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        background: var(--pc, var(--faint));
+        color: var(--bg);
+        font: 600 11px/1 var(--sans);
+        margin-inline-end: 6px;
+        vertical-align: 1px;
+        flex: none;
+      }
+      .agtile::before {
+        content: attr(data-l);
+      }
+      .pane .bar2 .agtile {
+        width: 22px;
+        height: 22px;
+        font-size: 12px;
+        margin: 0;
+      }
+      .agtab[data-pc] {
+        box-shadow: inset 0 3px 0 var(--pc);
+      }
+      /* An edge only: a tinted bar takes its links under 4.5:1. */
+      .pane[data-pc] .bar2 {
+        border-bottom: 3px solid var(--pc);
       }
       .agr .nm {
         font-weight: 500;
@@ -561,6 +606,132 @@
       .aghub .den-dot {
         vertical-align: middle;
       }
+      /* Issue 773: the four states' marks; each has its own shape (a
+         filled dot with "!", one with a tick, one with a halo, a hollow
+         ring), so colour is never the only sign. */
+      .agm {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        flex: none;
+        display: inline-grid;
+        place-items: center;
+        font: 700 9px/1 var(--mono);
+        box-sizing: border-box;
+        margin: 0 2px;
+      }
+      .agm.need {
+        background: var(--warn);
+        color: var(--on-accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent);
+      }
+      .agm.done {
+        background: var(--ok);
+        color: var(--on-accent);
+      }
+      .agm.work {
+        background: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+      }
+      .agm.idle {
+        border: 1.5px solid var(--faint);
+        background: transparent;
+      }
+      /* Issue 773: the state's chip, at the row's right. */
+      .agr .cp {
+        font: 11.5px var(--mono);
+        border-radius: 999px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      .agr .cp.need {
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+        background: color-mix(in srgb, var(--warn) 9%, transparent);
+      }
+      .agr .cp.done {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+        background: color-mix(in srgb, var(--ok) 9%, transparent);
+      }
+      .agr .cp.work {
+        color: var(--accent-text);
+      }
+      .agr .cp.idle {
+        color: var(--faint);
+      }
+      .agr[data-attn="idle"] .nm {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      /* Issue 773: the project tag (All projects) and "Server". */
+      .agr .ptag {
+        font: 11px var(--mono);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0 5px;
+        color: var(--muted);
+        margin-right: 6px;
+      }
+      /* Issue 773, mock v3: the Agents list is 380 px wide (Terminals
+         keeps 300), and each band's row has a hairline on top. */
+      body:has(#den-shell:not([data-page="terminal"])) .agx {
+        grid-template-columns: 380px minmax(0, 1fr);
+      }
+      .agband .cp .cpn,
+      .agchev {
+        display: none;
+      }
+      .agband .agr {
+        gap: 2px 10px;
+        padding: 9px 12px 9px 10px;
+        border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+      }
+      .agband .wsh .n {
+        font: 11px var(--mono);
+      }
+      /* Issue 773: the first list loading: three placeholder rows. */
+      .agskel .skel {
+        height: 44px;
+        margin: 8px 12px;
+        border-radius: 6px;
+        background: linear-gradient(
+          90deg,
+          var(--sunken),
+          var(--border),
+          var(--sunken)
+        );
+      }
+      /* Issue 773, phone: each card 64 px tall or more; the project tag
+         stays on the second line. */
+      @media (max-width: 720px) {
+        .agband .agr {
+          min-height: 64px;
+          position: relative;
+          padding: 10px 40px 10px 16px;
+        }
+        /* Mock v3's phone card: the chip says just "Needs you", line 2 is
+           the tag and the detail (no runtime, no Needs you time), a › at
+           the right. */
+        .agband .cp .cpw,
+        .agband .meta .mrt,
+        .agband .meta .mtm {
+          display: none;
+        }
+        .agband .cp .cpn {
+          display: inline;
+        }
+        .agband .agchev {
+          display: block;
+          position: absolute;
+          right: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--faint);
+          font-size: 18px;
+        }
+      }
       .wbdg {
         font: 10.5px var(--mono);
         color: var(--warn);
@@ -753,19 +924,21 @@
         justify-content: flex-end;
         flex-wrap: wrap;
       }
-      /* 0.4.44: who the keyboard types to, in the project's colour. */
+      /* 0.4.44: who the keyboard types to, in the project's colour (issue
+         168: the project's own; the server agent's, neutral grey). */
       .pane .agto {
         padding: 3px 10px;
         border-top: 1px solid var(--border);
-        /* The theme's accent, turned to the project's hue (wsHue). */
-        border-left: 3px solid var(--accent);
-        border-left-color: oklch(from var(--accent) l c var(--ws-h, 210));
+        border-left: 4px solid var(--pc, var(--faint));
         background: var(--surface);
         color: var(--muted);
         font-size: 12px;
         white-space: nowrap; /* words-ok: a CSS property */
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .pane[data-pc] .agto {
+        background: color-mix(in srgb, var(--pc) 12%, var(--surface));
       }
       .pane .bar2 {
         display: flex;
@@ -1043,6 +1216,47 @@
         color: var(--muted);
         font-size: 12.5px;
       }
+      /* Issue 482: the Terminals page's rows. The whole row is its open
+         button; an exited one's Restart and Remove sit beside it, full
+         strength, while the row itself is dimmed. */
+      .tmrow {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .tmrow > .agr {
+        flex: 1 1 0;
+        min-width: min(100%, 12em);
+      }
+      .tmrow > .agacts {
+        flex: none;
+        flex-wrap: nowrap;
+        gap: 4px;
+        padding: 0 8px 0 0;
+      }
+      .tmrow.exited > .agr {
+        opacity: 0.55;
+      }
+      .tmrow .proj {
+        color: var(--muted);
+      }
+      .agl .tmnone {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .agl .tmnone strong {
+        color: var(--text);
+      }
+      /* A phone: rows at least 64px, their buttons 44px (the mock). */
+      @media (max-width: 480px) {
+        .tmrow > .agr {
+          min-height: 64px;
+        }
+        .tmrow > .agacts .den-btn {
+          min-height: 44px;
+        }
+      }
       dialog.ag-dlg {
         /* The approved mock's Start agent dialog (AG-0.5), measured on
            den-shell.html: .dlg.wide, min(600px, 100%) of content in a
@@ -1139,6 +1353,24 @@
         border-radius: var(--radius-button);
         padding: 6px 8px;
       }
+      /* Issue 89: what a failed start printed, line by line. */
+      #ag-err .ag-tail-h,
+      #ag-err .ag-tail {
+        display: block;
+        margin-top: 6px;
+      }
+      #ag-err .ag-tail {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 12em;
+        overflow: auto;
+        font: 12px/1.4 var(--mono);
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 6px 8px;
+      }
       .ag-dlg .btns {
         display: flex;
         gap: 8px;
@@ -1149,7 +1381,8 @@
            wide screen. The list keeps its rows (at least about two) while
            there is room; the panes take the rest, never less than their
            own minimum; past that the page scrolls. */
-        .agx {
+        .agx,
+        body:has(#den-shell:not([data-page="terminal"])) .agx {
           grid-template-columns: minmax(0, 1fr);
           grid-template-rows: minmax(6rem, max-content) minmax(min-content, 1fr);
         }
@@ -1170,6 +1403,18 @@
            260px ran about 56px under it. Shut, it keeps its 260px. */
         body:has(.den-dock.open) .pane {
           min-height: 180px;
+        }
+        /* Issue 194: a banner (Den's server isn't responding) pushes the
+           page down. While it shows, the pane gives way to its own minimum
+           (its bar and the To line) and the list to about one row (it
+           scrolls), so the To line stays above the open dock. At 390x844
+           the list's two-row floor was what held it 26px too tall; with
+           room to spare both rows still fill as before. */
+        body:has(.den-dock.open):has(#den-banners:not([hidden])) .pane {
+          min-height: 0;
+        }
+        body:has(.den-dock.open):has(#den-banners:not([hidden])) .agx {
+          grid-template-rows: minmax(3rem, max-content) minmax(min-content, 1fr);
         }
         /* A pane's height comes from its row, never its terminal's (a
            24-row terminal held it taller than the screen, under the dock). */

@@ -518,9 +518,10 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await termsUp(p, 2);
     expect(await shown(p)).toEqual([sid.reviewer, sid.builder]);
     await expectFits(p);
-    // The list's row says it waits with its dot as well as its badge.
+    // The list's row says it needs you with its mark as well as its chip
+    // (issue 773: the "!" mark, in the Needs you band).
     expect(
-      await p.locator(`.agr[data-id="${sid.builder}"] .den-dot.warn`).count(),
+      await p.locator(`.agr[data-id="${sid.builder}"] .agm.need`).count(),
     ).toBe(1);
 
     await p.keyboard.press("Control+Shift+Digit2");
@@ -976,6 +977,62 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await check("dock open, as loaded", p2);
     await p.click('.den-dock [data-act="dock"]');
     await shot(p, "issue-170-390");
+    await ctx.unrouteAll({ behavior: "ignoreErrors" });
+    await ctx.close();
+    await s!.settings({ shell: { dock: null } });
+  }, 60_000);
+
+  // Issue 194 (a phone, 390x844): with the runs dock open, the "server
+  // isn't responding" banner pushed the page down about 59px, and the
+  // pane's To line sat under the dock until the banner went.
+  it("issue 194: at 390x844 with the dock open, the server-down banner never pushes the To line under the dock", async () => {
+    if (skip()) return;
+    await s!.settings({ agents_layout: null, shell: { dock: true } });
+    const ctx = await browser!.newContext({
+      viewport: { width: 390, height: 844 },
+      reducedMotion: "reduce",
+    });
+    await signIn(ctx, s!.stateDir, s!.base);
+    await ctx.addInitScript((v) => {
+      try {
+        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+          localStorage.setItem(k, v);
+      } catch {
+        /* none */
+      }
+    }, latest);
+    const p = await ctx.newPage();
+    p.on("pageerror", (e) => errors.push(`issue 194: ${e.message}`));
+    await p.goto(`${s!.base}/agents?layout=tabs&open=${all()}`);
+    await p.waitForSelector("#agl:not([aria-busy]) [data-kind]", {
+      timeout: 20_000,
+    });
+    await termsUp(p, 1);
+    if (!(await p.$("#den-dock-out")))
+      await p.click('#den-dock [data-act="dock"]');
+    await p.waitForSelector("#den-dock-out");
+    // Den's server stops answering: every call fails as a network error.
+    await ctx.route(/\/api\//, (r) => r.abort("connectionrefused"));
+    await p.evaluate(() => fetch("/api/server-info").catch(() => undefined));
+    await p.waitForSelector('#den-banners:not([hidden]) [data-banner="net"]');
+    const m = await p.evaluate(() => {
+      const box = (e: Element | null) => {
+        const r = e!.getBoundingClientRect();
+        return { t: r.top, b: r.bottom, h: r.height };
+      };
+      const pane = document.querySelector(
+        "#agr section[data-id]:not([hidden])",
+      )!;
+      return {
+        banner: box(document.getElementById("den-banners")),
+        to: box(pane.querySelector("[data-to]")),
+        dock: box(document.getElementById("den-dock")),
+      };
+    });
+    expect(m.banner.h).toBeGreaterThan(0);
+    expect(m.to.t).toBeGreaterThanOrEqual(m.banner.b - 0.5);
+    expect(m.to.b).toBeLessThanOrEqual(m.dock.t + 0.5);
+    await shot(p, "issue-194-390-banner");
     await ctx.unrouteAll({ behavior: "ignoreErrors" });
     await ctx.close();
     await s!.settings({ shell: { dock: null } });

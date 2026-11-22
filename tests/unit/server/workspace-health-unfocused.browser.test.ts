@@ -173,14 +173,59 @@ async function open(ws: string): Promise<Page> {
       /* none */
     }
   }, latest);
+  // Issue 87: each painted health cycle (header.js paints the chip, then
+  // says so with acme:health-update), so the test waits for the poll's
+  // answer, not for painted text within a fixed time.
+  await ctx.addInitScript(() => {
+    const w = window as unknown as {
+      __healthPaints?: { repo: string; ok?: boolean | null }[][];
+    };
+    w.__healthPaints = [];
+    document.addEventListener("acme:health-update", (e) => {
+      const rows = (e as CustomEvent).detail;
+      if (Array.isArray(rows))
+        w.__healthPaints!.push(
+          rows.map((r: { repo: string; ok?: boolean | null }) => ({
+            repo: r.repo,
+            ok: r.ok,
+          })),
+        );
+    });
+  });
   const p = await ctx.newPage();
   await p.goto(api(`/?ws=${ws}`));
   await p.waitForSelector("#repo-table tbody tr.repo", { timeout: 15_000 });
   return p;
 }
 
+/**
+ * Issue 87: the first health cycle that answered for both repos (notes
+ * down, blog up) has been painted. A loaded machine can take longer than
+ * a poll interval or two; this waits on that answer, bounded only by the
+ * test's own timeout, never on a painted word.
+ */
+async function healthPainted(p: Page): Promise<void> {
+  await p.waitForFunction(
+    () =>
+      (
+        (
+          window as unknown as {
+            __healthPaints?: { repo: string; ok?: boolean | null }[][];
+          }
+        ).__healthPaints ?? []
+      ).some(
+        (rows) =>
+          rows.some((r) => r.repo === "notes" && r.ok === false) &&
+          rows.some((r) => r.repo === "blog" && r.ok === true),
+      ),
+    undefined,
+    { timeout: 0, polling: 250 },
+  );
+}
+
 /** A repo row's health cell, once a health round has landed: its state and text. */
 async function healthOf(p: Page, repo: string) {
+  await healthPainted(p);
   const cell = `#repo-table tr.repo[data-repo="${repo}"] .tbl-health`;
   await p.waitForFunction(
     (sel) => {
@@ -204,15 +249,10 @@ describe("WS-6.4: a workspace outside the view", () => {
     expect(blog.text).toBe("1/1 healthy");
     expect(blog.cls).not.toMatch(/\bunk\b/);
     // The status chip counts the view (north: notes is down), never blog.
-    await p.waitForFunction(
-      () =>
-        /down/i.test(document.querySelector("#den-status")?.textContent ?? ""),
-      undefined,
-      { timeout: 30_000 },
-    );
+    // It is painted with the cycle healthOf waited for (issue 87).
     // notes only: 0/1 (with blog it would read 1/2).
     const chip = (await p.textContent("#den-status"))?.trim() ?? "";
     expect(chip).toBe("0/1 healthy · 1 down");
     await p.context().close();
-  }, 90_000);
+  }, 150_000);
 });

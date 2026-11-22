@@ -343,6 +343,12 @@ function computeEdgeConfig(root: string): EdgeConfig {
       ...(team.routes ?? {}),
       ...(user.routes ?? {}),
     },
+    namedRoutes: [
+      ...new Set([
+        ...Object.keys(team.routes ?? {}),
+        ...Object.keys(user.routes ?? {}),
+      ]),
+    ],
     ports: publish
       ? {
           http: port(user.http_port ?? team.http_port ?? 80, "edge.http_port"),

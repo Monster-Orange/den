@@ -1168,6 +1168,33 @@ export function workspaceMcpServersRaw(
   }
 }
 
+/** Issue 158: project `ws`'s entry as written, or undefined (none, or unreadable). */
+export function workspaceEntryRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws] ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Issue 459: workspace `ws`'s `agents.event_feeds` as written (checked
+ * where it is used); undefined when unset or the file can't be read.
+ */
+export function workspaceEventFeedsRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws]?.agents?.event_feeds ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Issue 335: set workspace `ws`'s `agents.mcp_servers` (the caller checks
  * each one); an empty list clears it.

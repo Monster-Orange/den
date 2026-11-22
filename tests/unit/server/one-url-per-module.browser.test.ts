@@ -23,7 +23,7 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -148,7 +148,7 @@ async function loads(
       set.add(u.pathname + u.search);
       seen.set(u.pathname, set);
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, route + (QUERY[route] ?? "")));
+    await signInPage(p, s!.stateDir, s!.base, route + (QUERY[route] ?? ""));
     await p.waitForLoadState("networkidle").catch(() => {});
     if (inject)
       await p.addScriptTag({ type: "module", content: inject }).catch(() => {});

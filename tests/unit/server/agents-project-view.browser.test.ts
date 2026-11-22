@@ -1,6 +1,7 @@
 /**
  * #80 (0.4.45): in a project, the Agents page holds only that project's
- * agents and shells, plus the server agent. 0.4.44 added the open tabs'
+ * agents, plus the server agent (issue 482: its shells are on the
+ * Terminals page, which follows the project the same way). 0.4.44 added the open tabs'
  * projects to the list, so a tabs link from another project showed every
  * project's agents and mixed their tabs in.
  *
@@ -32,7 +33,7 @@ import {
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { ScriptedPty } from "../../sessions/helpers/fake-pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -144,35 +145,74 @@ async function open(next: string): Promise<Page> {
     });
     try {
       localStorage.removeItem("den-agents-open");
+      localStorage.removeItem("den-terminals-open");
     } catch {
       /* none */
     }
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, next));
+  await signInPage(p, s!.stateDir, s!.base, next);
   return p;
 }
 
-/** The projects of the list's groups, and the tabs' ids. */
+/**
+ * The projects the list shows (issue 773: its bands' rows, each naming
+ * its project, and its stopped rows), and the tabs' ids. Issue 482: a
+ * project whose only running session was a shell has no running row on
+ * Agents now; its stopped agents still show, in Stopped.
+ */
 const listed = (p: Page) =>
-  p.$$eval("#agl .wsg", (xs) => xs.map((x) => (x as HTMLElement).dataset.ws));
+  p.$$eval(
+    "#agl .agband button.agr[data-ws], #agl [data-stopped] .agst[data-ws]",
+    (xs) => [...new Set(xs.map((x) => (x as HTMLElement).dataset.ws))],
+  );
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),
   );
+/** Issue 482: the Terminals page's rows' projects. */
+const listedT = (p: Page) =>
+  p.$$eval("#agl [data-shell][data-ws]", (xs) => [
+    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
+  ]);
 const openParam = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
+
+/**
+ * Issue 983: until `state()` has read the same for `ticks` checks in a
+ * row, 50 ms apart (or 10 s).
+ */
+async function quiet(state: () => string, ticks: number): Promise<void> {
+  let last = state();
+  let same = 0;
+  await until(() => {
+    const now = state();
+    same = now === last ? same + 1 : 0;
+    last = now;
+    return same >= ticks;
+  }, 10_000);
+}
+
+/** Issue 983: until `cond` holds (Node-side state), or a timeout. */
+async function until(cond: () => boolean, ms: number): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) return;
+    // A short step (under the brittle-ratchet's 100 ms): a poll, not a sleep.
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
 
 describe("#80: a project's view holds only its own", () => {
   it("the list, the tabs and ?open= hold north's; south's tab is hidden, said in one line", async () => {
     if (!browser) return;
     expect(shells.north && shells.south).toBeTruthy();
     const p = await open(
-      `/agents?ws=north&layout=tabs&open=${shells.north},${shells.south}`,
+      `/terminals?ws=north&layout=tabs&open=${shells.north},${shells.south}`,
     );
-    await p.waitForSelector("#agl .wsg");
+    await p.waitForSelector("#agl [data-shell]");
     await p.waitForTimeout(500);
-    expect(await listed(p)).toEqual(["north"]);
+    expect(await listedT(p)).toEqual(["north"]);
     expect(await tabs(p)).toEqual([shells.north]);
     expect(openParam(p)).toEqual([shells.north]);
     const note = p.locator('#agl [data-note="other-tabs"]');
@@ -186,7 +226,7 @@ describe("#80: a project's view holds only its own", () => {
     );
     await p.waitForSelector(`.agtab[data-id="${shells.south}"]`);
     expect((await tabs(p)).sort()).toEqual([shells.north, shells.south].sort());
-    expect((await listed(p)).sort()).toEqual(["north", "south"]);
+    expect(((await listedT(p)) as string[]).sort()).toEqual(["north", "south"]);
     await p.context().close();
   }, 60_000);
 
@@ -243,9 +283,9 @@ describe("#80: a project's view holds only its own", () => {
       () => new URLSearchParams(location.search).get("project") === "north",
     );
     await p.waitForFunction(() =>
-      Array.from(document.querySelectorAll("#agl .wsg")).every(
-        (x) => (x as HTMLElement).dataset.ws === "north",
-      ),
+      Array.from(
+        document.querySelectorAll("#agl .agband button.agr[data-ws]"),
+      ).every((x) => (x as HTMLElement).dataset.ws === "north"),
     );
     expect(await listed(p)).toEqual(["north"]);
     await expect(p.locator("#ws-pill").textContent()).resolves.toContain(
@@ -300,14 +340,21 @@ describe("#80: scope wins", () => {
   it("stop-ship: typing reaches exactly the To line's agent after a project switch, a tab switch and a reload", async () => {
     if (!browser) return;
     if (!sid.bo) await run("bo", "south", "2026-11-13T09:05:00.000Z");
+    // Issue 482: another agent in south for the tab switch (shells are on
+    // the Terminals page now); it started before bo.
+    if (!sid.cy) await run("cy", "south", "2026-11-13T09:01:00.000Z");
     const p = await open(`/agents?project=north&layout=tabs&open=${sid.ada}`);
     await p.waitForSelector(`.pane[data-id="${sid.ada}"]`);
     // A project switch …
     await chooseInTopBar(p, "south");
-    await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
-    // … a tab switch (south's shell, then bo again) …
-    await p.click(`#agl .agr[data-id="${shells.south}"]`);
-    await p.waitForSelector(`.pane[data-id="${shells.south}"]:not([hidden])`);
+    await p.waitForSelector(
+      `section[data-id="${sid.bo}"]:not([hidden]), section[data-id="${sid.cy}"]:not([hidden])`,
+    );
+    // … a tab switch (bo, south's other agent, then bo again) …
+    await p.click(`#agl button[data-id="${sid.bo}"]`);
+    await p.waitForSelector(`section[data-id="${sid.bo}"]:not([hidden])`);
+    await p.click(`#agl button[data-id="${sid.cy}"]`);
+    await p.waitForSelector(`section[data-id="${sid.cy}"]:not([hidden])`);
     await p.click(`.agtab[data-id="${sid.bo}"]`);
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
     // … and a reload.
@@ -317,17 +364,34 @@ describe("#80: scope wins", () => {
     expect(await frontId(p)).toBe(sid.bo);
     expect(param(p, "project")).toBe("south");
     expect(await toLine(p)).toBe("To bo · south");
+    // Issue 983: type only once the reloaded pane's terminal is connected.
+    // Its socket replays bo's "ready" line into the pane when it opens.
+    await p.waitForFunction(
+      (i) =>
+        (
+          document.querySelector(`section[data-id="${i}"]`)?.textContent ?? ""
+        ).includes("bo ready"),
+      sid.bo,
+      { timeout: 20_000 },
+    );
     await p.click(".pane:not([hidden]) .term");
     // Every PTY, the shells' too: only bo's gets the typing.
     const from = s!.made.map((x) => x.writes.length);
+    const reached = () =>
+      s!.made.filter((x, i) =>
+        Buffer.concat(x.writes.slice(from[i]))
+          .toString()
+          .includes("zz-stop-ship"),
+      );
     await p.keyboard.type("zz-stop-ship");
-    await p.waitForTimeout(500);
-    const got = s!.made.filter((x, i) =>
-      Buffer.concat(x.writes.slice(from[i]))
-        .toString()
-        .includes("zz-stop-ship"),
-    );
-    expect(got).toEqual([ptys.bo]);
+    // Wait until some PTY has it (a loaded runner is slow), then hold the
+    // stop-ship check as strict as ever: bo's, and no other.
+    await until(() => reached().length > 0, 10_000);
+    // A stray copy to another PTY (the bug this guards) can land a few ms
+    // after bo's: wait until no PTY's writes have changed for 6 ticks in a
+    // row (about 300 ms of quiet), so it would be seen.
+    await quiet(() => s!.made.map((x) => x.writes.length).join(","), 6);
+    expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
 });

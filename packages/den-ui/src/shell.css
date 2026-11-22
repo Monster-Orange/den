@@ -76,18 +76,28 @@ body.den-has-shell > #den-content {
      inside its column (the host's chips, then the version's text),
      never Report, the bell or ◐. searchSlot() in the inventory is the
      same sum. */
+  /* Issue 981: on a short bar the search gives way before the left part:
+     the left part keeps --den-top-left-min (220px, the project picker in
+     it) while the search narrows, down to its icon (--den-top-search-min,
+     56px). At 944px and wider nothing changes. */
+  --den-top-search-w: clamp(
+    var(--den-top-search-min, 56px),
+    calc(
+      100% - var(--den-top-left-min, 220px) - var(--den-top-right, 380px) - 16px
+    ),
+    var(--den-top-search, 304px)
+  );
   grid-template-columns:
     minmax(
       0,
       min(
         var(--den-top-left, 444px),
         calc(
-          100% - var(--den-top-search, 304px) - var(--den-top-right, 380px) -
-            16px
+          100% - var(--den-top-search-w) - var(--den-top-right, 380px) - 16px
         )
       )
     )
-    var(--den-top-search, 304px)
+    var(--den-top-search-w)
     minmax(0, 1fr);
   align-items: center;
   column-gap: 8px;
@@ -554,6 +564,13 @@ body.den-has-shell > #den-content {
   background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--bad);
 }
+/* Issue 773: something needs the person (the rail's Agents count): the
+   amber pill. */
+.den-bdg.warn {
+  background: var(--warn);
+  color: var(--bg);
+  font-weight: 600;
+}
 /* Issue 307: a pin's or a cross-app link's kind (PROJECT, DEN, SERVICE,
    HUB, an artifact's word), at the row's end. Its look is the scope
    labels' (.den-k); this only places it. */
@@ -924,6 +941,12 @@ body.den-has-shell .den-upd {
 }
 .den-search-ic {
   flex: none;
+}
+/* A narrowed search (issue 981): its words and ⌘K give way, its ⌕ stays. */
+.den-search > kbd {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 /* A key cap: the search's ⌘K, the top bar's Report ⌘⇧F, and any .den-kbd
    a host draws. One rule, so they never drift apart. */
@@ -1346,7 +1369,8 @@ body.den-has-shell .den-upd {
    and tabs): a hit area centred on the control, transparent, with no
    change to its look or layout, on a touch screen only. Key hints
    (.den-kbd, and the bar's kbd) hide on a touch screen, wherever they
-   are. */
+   are. A menu row (.den-mi) is left out: its ::after is its ✓, and a
+   row is already a full-width target (issue 898). */
 @media (pointer: coarse) {
   .den-hit,
   .den-top button,
@@ -1354,8 +1378,8 @@ body.den-has-shell .den-upd {
     position: relative;
   }
   .den-hit::after,
-  .den-top button::after,
-  .den-top a[href]::after {
+  .den-top button:not(.den-mi)::after,
+  .den-top a[href]:not(.den-mi)::after {
     content: "";
     position: absolute;
     left: 50%;

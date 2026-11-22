@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -72,7 +72,7 @@ async function open(
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   if (before) await before(p);
-  await p.goto(signInUrl(s.stateDir, s.base, at));
+  await signInPage(p, s.stateDir, s.base, at);
   return p;
 }
 
@@ -271,22 +271,54 @@ describe("after setup", () => {
     await p.context().close();
   }, 60_000);
 
-  it("Agents lists it under Server, not under a workspace", async () => {
+  it("Agents ranks it by its state like any agent, tagged Server (issue 773)", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");
-    const g = p.locator('#agl .wsg[data-ws="den-server"]');
-    await g.waitFor({ timeout: 20_000 });
-    expect((await g.locator(".wsh span").first().textContent())?.trim()).toBe(
-      "Server",
+    const row = p.locator("#agl [data-band] button[data-kind]", {
+      hasText: "Acme agent",
+    });
+    await row.waitFor({ timeout: 20_000 });
+    // Its tag says Server; it has no group of its own.
+    expect(await row.locator('[data-ptag="server"]').count()).toBe(1);
+    // (Its row carries data-ws too; a group of its own would sit outside
+    // the four bands.)
+    expect(
+      await p.evaluate(
+        () =>
+          [...document.querySelectorAll('#agl [data-ws="den-server"]')].filter(
+            (e) => !e.closest("[data-band]"),
+          ).length,
+      ),
+    ).toBe(0);
+    // In one of the four bands, by its state.
+    const band = await row.evaluate((e) =>
+      e.closest("[data-band]")?.getAttribute("data-band"),
     );
-    expect(await g.locator(".wsh a").count()).toBe(0);
-    expect(await g.locator(".agr").first().textContent()).toContain(
-      "Acme agent",
+    expect(["needs", "done", "working", "idle"]).toContain(band);
+    await p.context().close();
+  }, 60_000);
+
+  it("one project's view leaves it out: only All projects lists it (issue 773)", async () => {
+    if (!browser) return;
+    const p = await open(s!, "/agents?ws=north");
+    // The list has loaded: no placeholder rows (their status) left.
+    await p.waitForFunction(
+      () => {
+        const l = document.getElementById("agl");
+        return (
+          !!l &&
+          !l.hasAttribute("aria-busy") &&
+          !l.querySelector("[role=status][aria-label]")
+        );
+      },
+      null,
+      { timeout: 20_000 },
     );
-    // It is the list's first group.
-    expect(await p.locator("#agl .wsg").first().getAttribute("data-ws")).toBe(
-      "den-server",
-    );
+    expect(
+      await p
+        .locator("#agl button[data-kind]", { hasText: "Acme agent" })
+        .count(),
+    ).toBe(0);
     await p.context().close();
   }, 60_000);
 

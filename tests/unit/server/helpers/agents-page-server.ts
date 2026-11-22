@@ -36,6 +36,10 @@ import {
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
+import { ensureWebSecret } from "../../../../src/shared/web-secret.js";
+import { setupFixturePerson } from "../../../../src/shared/fixture-person.js";
+import { writeCreationRecord } from "../../../../src/shared/test-operator.js";
+import { writeTestEdgeProof } from "./edge-proof.js";
 import { CLAUDE_SHIM } from "../../agents/helpers/rig.js";
 import {
   startDenServer,
@@ -123,6 +127,16 @@ export async function startAgentsPageServer(
      * (its hello), as a host that outlived an update would.
      */
     hostPty?: { path: string; version: string | null; id: string | null };
+    /**
+     * Issue 814: an operator install. The mark in the distribution config,
+     * the launcher's flag, its own state folder (not ~/.acme), and the
+     * creation record and fixture person a new test install's first start
+     * makes, made here (this helper's session host writes to the folder
+     * before the server starts, so the server's own claim can't run).
+     */
+    testInstall?: boolean;
+    /** Issue 1034: write the invented edge proof (helpers/edge-proof.ts). */
+    edgeProof?: boolean;
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -276,9 +290,26 @@ export async function startAgentsPageServer(
       `#!/bin/sh\n${body.split("$TMP").join(tmp)}\n`,
       0o755,
     );
+  if (opts.edgeProof) writeTestEdgeProof(path.join(tmp, "edge-state"));
   const home = path.join(tmp, "home");
-  const stateDir = path.join(home, ".acme");
+  const stateDir = opts.testInstall
+    ? path.join(tmp, "state")
+    : path.join(home, ".acme");
   fs.mkdirSync(stateDir, { recursive: true });
+  if (opts.testInstall) {
+    const cfg = path.join(root, "config", "acme.yml");
+    fs.writeFileSync(
+      cfg,
+      `${fs.readFileSync(cfg, "utf-8")}\nweb:\n  test_install: true\n`,
+    );
+    const secret = ensureWebSecret(stateDir);
+    writeCreationRecord(stateDir, secret);
+    setupFixturePerson(stateDir, {
+      testInstall: true,
+      agent: false,
+      webSecret: secret,
+    });
+  }
   const { factory, made } = scriptedFactory();
   const load: PtyLoad = { available: true, factory };
   const host = new SessionHost({
@@ -324,6 +355,7 @@ export async function startAgentsPageServer(
     DEN_NO_OPEN: "1",
     ACME_NO_OPEN: "1",
     NO_COLOR: "1",
+    ...(opts.testInstall ? { ACME_TEST_INSTALL: "1" } : {}),
   };
   // node itself, by path: the env's PATH may not have it.
   const startWeb = (pickPort?: () => Promise<number>) =>

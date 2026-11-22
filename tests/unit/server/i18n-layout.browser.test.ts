@@ -18,7 +18,8 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -66,7 +67,7 @@ async function open(lang: string, width: number, next: string): Promise<Page> {
       document.head.appendChild(st);
     });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, next));
+  await signInPage(p, s!.stateDir, s!.base, next);
   return p;
 }
 
@@ -243,7 +244,8 @@ describe("translated pages fit", () => {
     });
     const { session } = (await r.json()) as { session: { id: string } };
     const pty = s!.made.at(-1)!;
-    const p = await open("ja", 1280, "/agents?ws=north");
+    // Issue 482: a shell's row is on the Terminals page.
+    const p = await open("ja", 1280, "/terminals?ws=north");
     const row = p.locator(`#agl .agr[data-id="${session.id}"]`);
     await row.waitFor();
     // A toast that stays up (an Undo's, 10 s), shown before the pane.

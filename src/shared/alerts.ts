@@ -75,6 +75,16 @@ export const ALERT_WORDS: Readonly<
   },
 };
 
+/**
+ * A test alert's words (Settings › Notifications › Devices that get push:
+ * Send a test alert), in each language the UI ships. No agent in it.
+ */
+export const ALERT_TEST_WORDS: Readonly<Record<UiLanguage, string>> = {
+  en: "Test alert: this device gets alerts when an agent needs you.",
+  es: "Aviso de prueba: este dispositivo recibe avisos cuando un agente te necesita.",
+  ja: "テスト通知: エージェントがあなたを必要とするとき、このデバイスに通知が届きます。",
+};
+
 /** An agent's name as an alert says it: plain, one line, short. */
 export function alertName(name: string): string {
   const s = String(name ?? "")

@@ -54,7 +54,13 @@ export interface NavItem {
    * A count. `what` (0.7.3): what it counts; the kit words it with the
    * name ("North · Den, 3 waiting"). Hosts pass data, never the words.
    */
-  badge?: { n: number | string; bad?: boolean; what?: BadgeWhat } | null;
+  /** warn (issue 773): the amber pill, e.g. the agents that need you. */
+  badge?: {
+    n: number | string;
+    bad?: boolean;
+    warn?: boolean;
+    what?: BadgeWhat;
+  } | null;
   /** HTML in place of the icon (a status dot). */
   lead?: string;
   mono?: boolean;
@@ -241,7 +247,7 @@ export interface BellPanelOptions {
    * Issue 101: the rows of the panel's two sections, in place of rows:
    * the kit heads them "Needs you" (always first) and "Earlier".
    */
-  sections?: { needs: string; earlier?: string };
+  sections?: { needs: string; done?: string; earlier?: string };
   /** The empty state: its words, and HTML under them. */
   empty?: { text?: string; more?: string };
   after?: string;

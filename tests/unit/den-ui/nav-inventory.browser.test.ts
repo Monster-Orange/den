@@ -34,7 +34,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { signInUrl } from "../server/helpers/den-auth.js";
+import { signInPage } from "../server/helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -141,7 +141,7 @@ async function open(
     await route.fulfill({ response: res, json: j });
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(
     () =>
       "denShell" in window &&
@@ -167,11 +167,44 @@ async function open(
       timeout: 10_000,
     })
     .catch(() => {});
-  await p.waitForTimeout(400);
+  await navStill(p);
   await p.evaluate(() =>
     (document.activeElement as HTMLElement | null)?.blur?.(),
   );
   return { p, ctx };
+}
+
+/**
+ * Waits until the nav holds still: no transition or animation with an end
+ * is running, and the top bar's and rail's markup and boxes read the same
+ * on two animation frames in a row. Replaces a fixed settle time: it
+ * returns as soon as the nav is drawn, and fails (at 10 s) if it never is.
+ */
+async function navStill(p: Page): Promise<void> {
+  await p.waitForFunction(
+    () => {
+      const w = window as unknown as { __navLast?: string };
+      const busy = document
+        .getAnimations()
+        .some(
+          (a) =>
+            a.playState === "running" &&
+            a.effect?.getComputedTiming().endTime !== Infinity,
+        );
+      const parts = [...document.querySelectorAll("header, #den-rail")].map(
+        (el) => {
+          const r = el.getBoundingClientRect();
+          return `${el.outerHTML}|${r.x},${r.y},${r.width},${r.height}`;
+        },
+      );
+      const now = parts.join("\n");
+      const same = !busy && parts.length > 0 && now === w.__navLast;
+      w.__navLast = now;
+      return same;
+    },
+    undefined,
+    { polling: "raf", timeout: 10_000 },
+  );
 }
 
 function readRef(b: BrowserName, w: number): NavSnapshot {
@@ -209,7 +242,7 @@ async function diffAfter(
     const ref = readRef(b, w);
     const before = new Set(compareNav(await snapOf(p), ref, o).map(id));
     await p.evaluate(change, opts.arg ?? "");
-    await p.waitForTimeout(100);
+    await navStill(p);
     return compareNav(await snapOf(p), ref, o).filter(
       (d) => !before.has(id(d)),
     );
@@ -567,8 +600,9 @@ for (const b of BROWSERS)
     it("fails when a crumb's label shows while its value is hidden (COMPANY / with no value)", async () => {
       if (skip(b)) return;
       const d = await diffAfter(b, W, H, () => {
+        // The crumb's value: its one child that is not the label.
         const v = document.querySelector<HTMLElement>(
-          "#org-crumb > :last-child",
+          "#org-crumb > :not(.den-k)",
         );
         if (v)
           Object.assign(v.style, {

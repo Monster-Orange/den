@@ -1,8 +1,11 @@
 # The release's gates and its tarball, in one place (CONTRIBUTING › Releasing). Two workflows call this one, so their
 # steps can't drift apart:
-# - release.yml, on main: with no inputs, the commit's own versions. Its tag, publish and GitHub release wait on these.
+# - release.yml, on main: the commit's own versions, and no tests (tests: false, issue 996). The tree was tested
+#   before: its pull request's CI and the bed (scripts/release-tree-check.mjs, release.yml's tested job). Its tag,
+#   publish and GitHub release wait on these.
 # - release-dry-run.yml, on every dev tag (v<version>-dev.N): with the versions the release will carry, which each job
-#   applies to its own copy first (scripts/release-dry-run.mjs apply), as the release commit will. Nothing is committed.
+#   applies to its own copy first (scripts/release-dry-run.mjs apply), as the release commit will, and with the tests:
+#   it runs beside the bed, off the release's path. Nothing is committed.
 # Nothing here tags, publishes or needs a token: it reads the repository only.
 name: release gates
 
@@ -21,6 +24,10 @@ on:
         description: "the date the release commit gives the changelog entry (YYYY-MM-DD)"
         type: string
         default: ""
+      tests:
+        description: "run the unit suite (the release itself doesn't: its tree was tested on its pull request)"
+        type: boolean
+        default: true
     secrets:
       DEN_ORG_NAMES:
         required: false
@@ -68,6 +75,7 @@ jobs:
         run: node scripts/org-name-gate.mjs
 
   tests:
+    if: inputs.tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -122,6 +130,8 @@ jobs:
   # once the gates have passed on both.
   pack:
     needs: [checks, tests]
+    # the tests skipped (tests: false) is fine; failed or cancelled is not
+    if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.tests.result == 'success' || needs.tests.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:

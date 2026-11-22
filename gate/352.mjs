@@ -11,6 +11,9 @@ export const clauses = [
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 90000;
 
+// Read only (issue 845): reads Settings › Project's MCP server row and its buttons.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }

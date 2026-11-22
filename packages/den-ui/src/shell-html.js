@@ -52,7 +52,7 @@
  * search field with ⌘K inside), bellButtonHtml and bellPanelHtml (the
  * bell and its panel); and accountHtml (the rail's account entry).
  */
-import { esc, kitT } from "./strings.js";
+import { esc, kitT, safeId } from "./strings.js";
 import { icon } from "./icons.js";
 
 export { icon } from "./icons.js";
@@ -193,7 +193,7 @@ export function navItemHtml(n, navRole, lang) {
   const off = navOff(n.off);
   const extra = b
     ? '<span class="den-bdg' +
-      (b.bad ? " bad" : "") +
+      (b.bad ? " bad" : b.warn ? " warn" : "") +
       '" aria-hidden="true">' +
       esc(b.n) +
       "</span>"
@@ -800,10 +800,10 @@ function bellRowHtml(it) {
  * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
  * under the heading; `after`: HTML after the rows; `foot`: the footer (a
  * Report button). Every HTML part is the host's own.
- * Issue 101: `sections` { needs, earlier? } in place of rows: the kit
- * heads them "Needs you" (first, always; its own line when `needs` is
- * empty) and "Earlier" (when given), in its words; the host gives only
- * each section's rows.
+ * Issue 101: `sections` { needs, done?, earlier? } in place of rows: the
+ * kit heads them "Needs you" (first, always; its own line when `needs` is
+ * empty), "Done, not seen" (issue 773, when given) and "Earlier" (when
+ * given), in its words; the host gives only each section's rows.
  */
 export function bellPanelHtml({
   title,
@@ -863,7 +863,7 @@ function bellSectionHtml(id, word, rows) {
   );
 }
 
-/** Issue 101: Needs you, then Earlier (the host's rows in each). */
+/** Issue 101: Needs you, then Done (issue 773), then Earlier. */
 function bellSectionsHtml(s, lang) {
   const needs = s.needs || "";
   return (
@@ -875,6 +875,10 @@ function bellSectionsHtml(s, lang) {
           esc(kitT(lang, "kit.bell.needsNone")) +
           "</p>",
     ) +
+    // Issue 773: the agents that finished since the person last looked.
+    (s.done
+      ? bellSectionHtml("done", kitT(lang, "kit.bell.done"), s.done)
+      : "") +
     (s.earlier
       ? bellSectionHtml("earlier", kitT(lang, "kit.bell.earlier"), s.earlier)
       : "")
@@ -1071,9 +1075,6 @@ export function menuRowHtml(r) {
     ">"
   );
 }
-
-/** An id made of safe characters: letters, digits, - and _. */
-const safeId = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "-");
 
 /** A host's words: text, or { key, vars } in the kit's tables (addStrings). */
 const words = (w, lang) =>

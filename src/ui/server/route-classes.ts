@@ -73,6 +73,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/graph.html",
     "/agents",
     "/agents.html",
+    // Issue 482: the Terminals page.
+    "/terminals",
     "/server-agent",
     "/server-agent.html",
     "/tests",
@@ -94,6 +96,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/header.js",
     "/perf-report.js",
     "/workspace-picker.js",
+    "/project-colour-picker.js",
     "/favicon.ico",
     // Issue 644: the kit's site files (its head snippet names them).
     "/favicon.svg",
@@ -166,6 +169,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/release/branches",
     "/api/release/deploy/active",
     "/api/changelog",
+    // Issue 52: the Coach's settings and last report (counts only).
+    "/api/coach",
     "/api/sudo-password/status",
     "/api/sudo-password/vault-status",
     "/api/scope",
@@ -425,8 +430,28 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/coach/run",
+    "issue 52: the Coach's Run now, a person's (read-only: it reads transcripts and saves counts)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/dismiss",
+    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+  ),
+  M(
+    ["POST"],
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person/setup-secret",
+    "issue 1018: the person's CLI makes the test person from the launcher's one-time setup value, on a test install only",
+  ),
+  M(
+    ["POST"],
+    "/api/web/test-person",
+    "issue 636: a test bed's CLI starts a --test-person command (the person's token, on a test bed only)",
   ),
   S(
     ["GET", "HEAD"],
@@ -488,6 +513,22 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
+  ),
+  R("/api/verify/schedules", "issue 214: Verify's schedules and their Allows"),
+  M(
+    ["POST"],
+    "/api/verify/schedules/allow",
+    "issue 214: a person's standing Allow for a schedule's plan (a signed-in browser only)",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/schedules/run",
+    "issue 214: runs a schedule now, under its own Allow (a signed-in browser only)",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/schedules/revoke",
+    "issue 964: takes back a schedule's standing Allow (a signed-in browser only)",
   ),
   M(["POST"], "/api/local-dev"),
   M(["POST"], "/api/sudo-password", "sets the admin password, for sudo (R8)"),
@@ -597,6 +638,10 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/workspaces/:ws/mcp-servers",
     "issue 335: a project's extra MCP servers, names and urls only (an agent adds one with project_mcp_add)",
+  ),
+  R(
+    "/api/workspaces/:ws/event-feeds",
+    "issue 459: a project's app event feeds and their state, names, agents and urls only",
   ),
   M(
     ["POST", "DELETE"],
@@ -730,13 +775,64 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 621: a person revokes a runner token; it answers 401 at once",
   ),
   R(
+    "/api/gate-slots/boxes",
+    "Issue 625: the test boxes (browser slots on other machines) as set; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes",
+    "Issue 625: a person adds or replaces a test box; never an agent",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes/remove",
+    "Issue 625: a person removes a test box; its running slots finish",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/boxes/enable",
+    "Issue 625: a person turns a test box on or off; off, it gets no slot and no contact",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
+  ),
+  R(
+    "/api/agents/self/app-feeds",
+    "issue 459: an agent's own app feeds and their unread counts (its own token only)",
+  ),
+  R(
+    "/api/agents/self/app-feeds/:name",
+    "issue 459: an agent's own app feed's events, capped per call (its own token only)",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/view",
+    "Issue 796: an agent (its own token only) asks for a read-only view of these pages; a one-time link",
   ),
   M(
     ["POST"],
     "/api/agents/self/attention",
     "NT-1: an agent (its own token only) says it waits for its person or finished its turn",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/issue-write",
+    "issue_write: an agent (its own token only) writes a GitHub issue in its own project's repos; audited",
+  ),
+  R(
+    "/api/agents/self/github-watches",
+    "An agent's own watches in the shared GitHub watcher (its token only); reads Den's state, asks GitHub nothing",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/github-watches",
+    "An agent asks the shared GitHub watcher to watch a pull request's checks or a run in its project's repo; one GitHub call at most",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/github-watches/cancel",
+    "An agent stops one of its own GitHub watches",
   ),
   M(["POST"], "/api/notifications/read", "NT-3: mark notifications read"),
   M(["POST"], "/api/notifications/clear", "NT-3: clear the read ones"),
@@ -744,6 +840,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/notifications/mute",
     "NT-3: mute an agent or a project for a time",
+  ),
+  M(
+    ["POST"],
+    "/api/notifications/withdraw",
+    "Issue 1008: withdraw a question settled elsewhere (the agent that asked, or the person); audited",
   ),
   M(
     ["POST"],
@@ -767,6 +868,20 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/alerts/unsubscribe",
     "Issue 172: a person stops push alerts to a device",
+  ),
+  R(
+    "/api/alerts/devices",
+    "Issue 172: the person's devices that get push (what each is, its push service, when added); never an endpoint, never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/test",
+    "Issue 172: a person sends a test alert to each device that gets push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/forget",
+    "Issue 172: a person stops push alerts to one device, by its id",
   ),
   R(
     "/api/hub/link-suggestions",
@@ -1075,6 +1190,9 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
+  "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
+  "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],

@@ -29,8 +29,7 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
-import { signIn } from "./helpers/signed-in.js";
+import { signIn, signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -309,7 +308,7 @@ describe("0.4.46: the __DEN_TITLE__ agent's page reconnects on its own too", () 
     });
     const p = await ctx.newPage();
     p.on("pageerror", (e) => errors.push(e.message));
-    await p.goto(signInUrl(f!.stateDir, f!.base, "/"));
+    await signInPage(p, f!.stateDir, f!.base, "/");
     await p.waitForSelector(".sa-term .xterm", { timeout: 20_000 });
     const agent = () => f!.made[0]!;
     agent().emit("agent ready\r\n");

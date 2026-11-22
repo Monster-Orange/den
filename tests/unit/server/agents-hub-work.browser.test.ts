@@ -9,7 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -77,7 +77,7 @@ async function open(work: Record<string, unknown>): Promise<Page> {
         (row as Record<string, unknown>).hubWork = work;
     await r.fulfill({ response: res, json: b });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
   await p.waitForSelector("#agl:not([aria-busy]) .agr", {
     state: "attached",
     timeout: 20_000,

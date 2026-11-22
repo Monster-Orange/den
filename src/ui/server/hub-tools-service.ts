@@ -122,7 +122,9 @@ export function startHubToolsWatch(o: {
                 verb: "agents",
                 detail: s.already
                   ? `${what}: already restarted at ${s.already.at}`
-                  : what,
+                  : s.relaunched
+                    ? `${what}: it had rotated (${s.relaunched.why}), so it relaunched from its handoff in a new conversation`
+                    : what,
                 ...(s.early
                   ? { outcome: "refused" as const, reason: "exited at once" }
                   : {}),

@@ -28,11 +28,13 @@
  *   - a text frame `{"type":"session",…}` first (what is attached), and
  *     `{"type":"exit","exitCode":n}` when the session ends;
  *   - `{"type":"size","cols":c,"rows":r}`: the PTY's size, on attach and
- *     each time any viewer (another browser, a CLI attach) resizes it. The
- *     size is last-writer-wins; a pane that learns it is out of step says
- *     its own again when it is used (focused, typed in, shown);
+ *     each time any viewer (another browser, a CLI attach) resizes it.
+ *     Issue 791: among browsers the last active viewer sets it (term-size-
+ *     lead.ts): the one typed in, or that claimed it; another's resize is
+ *     kept for later and answered with the size in use, `"lead":false`;
  *   - in: binary frames are input; a text frame is JSON control:
- *     `{"type":"resize","cols":c,"rows":r}` (or `{"type":"input","data":s}`).
+ *     `{"type":"resize","cols":c,"rows":r[,"claim":true]}` (claim: Take
+ *     over, a pane just opened) or `{"type":"input","data":s}`.
  * Closing the socket detaches. Nothing here ever signals a session: leaving
  * the tab never kills it.
  *
@@ -43,8 +45,10 @@
  * with the actor from the credential.
  */
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
+import { SizeLead } from "./term-size-lead.js";
 import * as fs from "fs";
 import type * as http from "http";
+import * as os from "os";
 import * as path from "path";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
@@ -58,6 +62,11 @@ import {
   SERVER_SCOPE,
   isServerScope,
 } from "../../shared/agents/server-agent.js";
+import {
+  personKey,
+  withAgentStates,
+  type AgentStateDeps,
+} from "./agent-state.js";
 import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
@@ -98,6 +107,7 @@ import {
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import { stopSession } from "../../shared/sessions/stop.js";
+import { forgetOperatorShell } from "../../shared/test-operator.js";
 import { hubTokenProblem } from "../../shared/hub.js";
 import {
   agentRows,
@@ -113,13 +123,18 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
-import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
+import {
+  agentOrderOf,
+  inAgentOrder,
+  placeInOrder,
+} from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
   agentPrincipalOf,
   auditActorOf,
+  operatorActOf,
   principalOf,
 } from "./request-guard.js";
 import {
@@ -183,6 +198,11 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
+  /**
+   * Issue 773: what each running agent's state for the person asking is
+   * made of (absent: no states; the page ranks every agent Idle).
+   */
+  agentStates?: () => AgentStateDeps;
 }
 
 /** den#156: how long a list waits for the host, and the page for a list. */
@@ -322,6 +342,12 @@ const VIEWERS = new Map<
   Set<{ open: boolean; send(d: string): void }>
 >();
 
+/**
+ * Issue 791: who sets each session's PTY size among its browsers: the
+ * last active viewer (term-size-lead.ts). By session id, beside VIEWERS.
+ */
+const LEADS = new Map<string, SizeLead<object>>();
+
 function tellViewers(id: string): void {
   const set = VIEWERS.get(id);
   if (!set) return;
@@ -333,6 +359,11 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
+  /**
+   * Issue 773 + issue 96: an agent's place (0 first) in its project's saved
+   * order, when the person set one; the page keeps it inside each band.
+   */
+  place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
   workspace: string;
@@ -397,6 +428,8 @@ export interface ListedSession {
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
   cwd?: string;
+  /** Issue 482: a shell's cwd with the home folder as ~ (its row says it). */
+  folder?: string;
   /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
   state: string;
   exited: boolean;
@@ -453,6 +486,14 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
+  /**
+   * Issue 773: its state for the person asking (running agents only):
+   * needs, done (finished, not seen), working or idle; and since when.
+   */
+  attn?: "needs" | "done" | "working" | "idle";
+  attnSince?: string;
+  /** Issue 773: what it waits to do (Needs you: a permission's tool). */
+  attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;
@@ -522,6 +563,13 @@ export async function leaveExitedShells(
     }
   }
   return sessions.filter((s) => !gone.has(s.ref.id));
+}
+
+/** Issue 482: `dir` with the home folder written as ~ (a row's folder). */
+export function homeTilde(dir: string, home = os.homedir()): string {
+  if (!home || home === "/") return dir;
+  if (dir === home) return "~";
+  return dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir;
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -750,10 +798,25 @@ export function listedSessions(
       startedAt: s.startedAt,
       // Issue 448: when a person last typed in it (the rail's Terminal).
       ...(s.inputAt ? { inputAt: s.inputAt } : {}),
+      // Issue 482: its folder, and the same with the home folder as ~ (the
+      // Terminals list's row).
+      ...(s.cwd ? { cwd: s.cwd, folder: homeTilde(s.cwd) } : {}),
       attachable: true,
     });
   }
   const order = [...active];
+  // Issue 773: each agent's place in its project's saved order (read once
+  // per project), for the page's bands.
+  const saved = new Map<string, readonly string[]>();
+  const orderOf = (ws: string) => {
+    if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
+    return saved.get(ws)!;
+  };
+  for (const r of out)
+    if (r.kind === "agent" && r.agent) {
+      const place = placeInOrder(orderOf, r.workspace, r.agent);
+      if (place !== undefined) r.place = place;
+    }
   // Issue 96: within a project, the person's order for its agents (one helper
   // for every list: the page, the rail, the flyout read this one).
   return inAgentOrder(
@@ -767,7 +830,7 @@ export function listedSessions(
       r.kind === "agent" && r.agent
         ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
         : null,
-    (ws) => agentOrderOf(ws),
+    orderOf,
   );
 }
 
@@ -831,13 +894,21 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const listed = listedSessions(
+    sessions,
+    d,
+    wanted?.known ? wanted.workspace : undefined,
+    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
+  );
+  // Issue 773: each running agent's state for this person.
+  let states: AgentStateDeps | undefined;
+  try {
+    states = deps.agentStates?.();
+  } catch {
+    states = undefined;
+  }
   sendJson(res, {
-    sessions: listedSessions(
-      sessions,
-      d,
-      wanted?.known ? wanted.workspace : undefined,
-      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-    ),
+    sessions: states ? withAgentStates(listed, personKey(req), states) : listed,
     workspaces: d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
@@ -939,6 +1010,39 @@ async function ioRefusal(
 }
 
 /** The served session `target` names, or why there is none. */
+/**
+ * Issue 814: the test operator attaches only to a live shell it started,
+ * named by that shell's exact host id, that no agent's record owns (a
+ * name an agent reused never counts). A shell that ended is forgotten.
+ * Null for anyone else's request, or when it may attach.
+ */
+function operatorAttachRefusal(
+  req: http.IncomingMessage,
+  s: SessionInfo,
+  target: string,
+  d: Resolved,
+): { status: number; error: string; code: string } | null {
+  if (!operatorActOf(req)) return null;
+  if (
+    listRecords(d.stateDir()).some(
+      (r) => r.session?.id === s.ref.id || r.sessionName === s.name,
+    )
+  )
+    return {
+      status: 403,
+      error: `${s.name} is an agent's terminal, not a test terminal.`,
+      code: "agent_session",
+    };
+  if (s.exited) forgetOperatorShell(s.ref.id);
+  if (s.exited || s.ref.id !== target)
+    return {
+      status: 403,
+      error: "The test operator opens only its own test terminals.",
+      code: "fixture_scope",
+    };
+  return null;
+}
+
 async function servedTarget(
   target: string,
   d: Resolved,
@@ -1228,6 +1332,7 @@ async function handleClose(
     const still = (await c.list()).find((x) => x.ref.id === s.ref.id);
     if (still?.exited) await c.forget(s.ref.id);
     audit(`${s.name}: ${result}`);
+    if (operatorActOf(req)) forgetOperatorShell(s.ref.id);
     sendJson(res, { ok: true, result, forgotten: !!still?.exited || !still });
   } catch (e) {
     refuse(503, `the session host: ${(e as Error).message}`, "session_host"); // words-ok: "session host" as the other errors here
@@ -1277,7 +1382,12 @@ export async function sendSessionHttp(
     } catch {
       /* as given */
     }
-    const why = await ioRefusal(target, resolve(deps));
+    const rd = resolve(deps);
+    let why = await ioRefusal(target, rd);
+    if (!why && operatorActOf(req)) {
+      const f = await servedTarget(target, rd);
+      why = "s" in f ? operatorAttachRefusal(req, f.s, target, rd) : f;
+    }
     if (why) {
       sendJson(
         res,
@@ -1372,6 +1482,11 @@ export async function handleSessionUpgrade(
     client.close();
     return refuse(404, `no session "${target}" here`, "not_found");
   }
+  const opWhy = operatorAttachRefusal(req, info, target, d);
+  if (opWhy) {
+    client.close();
+    return refuse(opWhy.status, opWhy.error, opWhy.code);
+  }
   if (socket.destroyed) {
     client.close();
     return;
@@ -1392,6 +1507,14 @@ export async function handleSessionUpgrade(
   VIEWERS.set(s.ref.id, set);
   set.add(ws);
   const viewers = set.size;
+  const lead = LEADS.get(s.ref.id) ?? new SizeLead<object>();
+  LEADS.set(s.ref.id, lead);
+  lead.attach(ws);
+  // The PTY's size as last heard, to tell a view that doesn't lead.
+  let ptySize: { cols: number; rows: number } | null = null;
+  const resize = (z: { cols: number; rows: number } | null) => {
+    if (z && !exited) client.resize(s.ref.id, z.cols, z.rows);
+  };
   ws.send(
     JSON.stringify({
       type: "session",
@@ -1410,6 +1533,7 @@ export async function handleSessionUpgrade(
   const att = client.attach(s.ref.id, {
     onData: (data) => ws.send(data),
     onSize: (cols, rows) => {
+      ptySize = { cols, rows };
       if (ws.open) ws.send(JSON.stringify({ type: "size", cols, rows }));
     },
     onExit: (exitCode) => {
@@ -1429,13 +1553,22 @@ export async function handleSessionUpgrade(
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
       if (!exited && data.length) {
+        // Issue 791: the person typing here makes this view the active
+        // one (its size came with its own resize, if it said one).
+        if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
         if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
       return;
     }
-    let msg: { type?: unknown; cols?: unknown; rows?: unknown; data?: unknown };
+    let msg: {
+      type?: unknown;
+      cols?: unknown;
+      rows?: unknown;
+      data?: unknown;
+      claim?: unknown;
+    };
     try {
       msg = JSON.parse(data.toString("utf-8")) as typeof msg;
     } catch {
@@ -1445,11 +1578,23 @@ export async function handleSessionUpgrade(
       // Never below 2x2: a pane measured before it was laid out.
       const ok = (n: unknown): n is number =>
         typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
-      if (!exited && ok(msg.cols) && ok(msg.rows))
-        client.resize(s.ref.id, msg.cols, msg.rows);
+      if (!exited && ok(msg.cols) && ok(msg.rows)) {
+        // Issue 791: the last active viewer sets the size. Another view's
+        // refit is kept for when it leads; it hears the size in use
+        // (`lead: false`) and draws at it.
+        const z = lead.resize(
+          ws,
+          { cols: msg.cols, rows: msg.rows },
+          msg.claim === true,
+        );
+        if (z) resize(z);
+        else if (ptySize && ws.open)
+          ws.send(JSON.stringify({ type: "size", ...ptySize, lead: false }));
+      }
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
         const data = Buffer.from(msg.data, "utf-8");
+        if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
         if (!terminalReportOnly(data)) d.typed(s.ref.id);
       }
@@ -1461,8 +1606,13 @@ export async function handleSessionUpgrade(
     done = true;
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
+    // Issue 791: the view that led went: the newest one left leads.
+    lead.detach(ws);
     if (viewing?.size) tellViewers(s.ref.id);
-    else VIEWERS.delete(s.ref.id);
+    else {
+      VIEWERS.delete(s.ref.id);
+      LEADS.delete(s.ref.id);
+    }
     // Detach only: the session keeps running in the host.
     att.detach();
     client.close();
@@ -1506,8 +1656,18 @@ async function helpersRunning(
     /* no host: nothing runs, so no helper runs */
   }
   let running = 0;
-  for (const r of listedSessions(sessions, d))
+  // Issue 773: the rail's Agents item counts the agents that need you.
+  let needs = 0;
+  for (const r of listedSessions(sessions, d)) {
     running += r.helpers?.running ?? 0;
-  sendJson(res, { running });
+    if (
+      r.kind === "agent" &&
+      r.state === "running" &&
+      r.waiting &&
+      r.waitingWhy !== "input"
+    )
+      needs += 1;
+  }
+  sendJson(res, { running, needs });
   return true;
 }

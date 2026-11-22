@@ -4,6 +4,8 @@
  * host (never starts one); a check every 2 s clears a waiting mark whose
  * agent's output moved.
  */
+import { projectDisplayName } from "../../shared/workspace-name.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import crypto from "node:crypto";
 import {
   listRecords,
@@ -21,14 +23,22 @@ import {
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
 import { AlertFeed } from "./alert-feed.js";
-import { alertPrefs } from "./alerts.js";
+import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
 import { uiLanguage } from "./ui-language.js";
 import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
 import { readWebUrl } from "../../shared/web-url.js";
 import { pushContact } from "../../shared/push-contact.js";
-import { PushSubscriptions, pushAll, vapidKeys } from "./web-push.js";
+import { PushSubscriptions, pushAll, pushEach, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
+import { seenMarks } from "../../shared/seen-mark.js";
+import {
+  agentSubject,
+  doneAgents,
+  seenDoneAgents,
+  type AgentStateDeps,
+  type DoneAgent,
+} from "./agent-state.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -233,11 +243,34 @@ let pushSubs: PushSubscriptions | null = null;
 export function pushDeps(): {
   subs: PushSubscriptions;
   publicKey: () => string;
+  test: () => Promise<{ endpoint: string; status: number }[]>;
 } {
   pushSubs ??= new PushSubscriptions(getStateDir());
+  const subs = pushSubs;
   return {
-    subs: pushSubs,
+    subs,
     publicKey: () => vapidKeys(getStateDir()).publicKey,
+    // Issue 172: Settings' Send a test alert. It goes now, whatever the
+    // switches and quiet hours say: the person asked for it.
+    test: () => {
+      const user = readUserConfig();
+      const prefs = alertPrefs(user);
+      return pushEach(
+        {
+          title: product().title,
+          body: ALERT_TEST_WORDS[uiLanguage(user.language)],
+          link: "/settings#notifications",
+          tag: `test-${crypto.randomUUID()}`,
+        },
+        {
+          subs,
+          keys: () => vapidKeys(getStateDir()),
+          subject: pushSubject(),
+          timeoutMs: prefs.pushTimeoutSeconds * 1000,
+          ttlSeconds: prefs.pushTtlSeconds,
+        },
+      );
+    },
   };
 }
 
@@ -278,6 +311,9 @@ export function notificationDeps(): {
   push: ReturnType<typeof pushDeps>;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
+  seen: ReturnType<typeof seenMarks>;
+  doneAgents: (person: string) => DoneAgent[];
+  seenDone: (person: string) => DoneAgent[];
 } {
   store ??= new NotificationStore(getStateDir());
   attention ??= new Attention({
@@ -293,6 +329,16 @@ export function notificationDeps(): {
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
+    // Issue 773: a turn's end is a new version of the agent's finished
+    // work: Done for each person until they open it.
+    turnEnded: (id, at) =>
+      seenMarks(getStateDir()).noteVersion(
+        agentSubject(id),
+        String(at),
+        new Date(at).toISOString(),
+      ),
+    // Issue 1008: an answer after a withdraw; the agent is told.
+    tell: tellLead,
   });
   if (!timer) {
     let busy = false;
@@ -326,6 +372,55 @@ export function notificationDeps(): {
         return bellPrefs(null);
       }
     },
+    seen: seenMarks(getStateDir()),
+    // Issue 773: the bell's Done, not seen (not one waiting again).
+    doneAgents: (person) =>
+      doneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        busyNow(attention!),
+        // Mock v3: each Done row names its project as the person sees it.
+        doneProjectName(),
+      ),
+    // Mock v3's Earlier: the seen ones, newest first.
+    seenDone: (person) =>
+      seenDoneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        busyNow(attention!),
+        doneProjectName(),
+      ),
+  };
+}
+
+/** The agents waiting on their person now (not an idle notice). */
+function busyNow(a: Attention): Set<string> {
+  return new Set(
+    [...a.waitingNow()]
+      .filter(([, why]) => why !== "input")
+      .map(([agent]) => agent),
+  );
+}
+
+/** The project names a Done row shows (one read of workspaces.yml). */
+function doneProjectName(): (ws: string) => string {
+  const ws = readWorkspacesFile().workspaces ?? {};
+  return (slug) => projectDisplayName(slug, ws[slug]);
+}
+
+/**
+ * Issue 773: what each agent's state for a person is made of: the seen
+ * marks, the agents in a turn, and since when each waits.
+ */
+export function agentStateDeps(): AgentStateDeps {
+  const a = notificationDeps().attention;
+  return {
+    seen: seenMarks(getStateDir()),
+    working: () => a.workingNow(),
+    waitingSince: (agent) => a.waitingDetail(agent)?.since,
+    waitingWhat: (agent) => a.waitingDetail(agent)?.what,
   };
 }
 
@@ -334,7 +429,8 @@ export function notificationDeps(): {
  * is answered. Never throws.
  */
 export function personTyped(sessionId: string): void {
-  if (!attention?.waitingNow().size) return;
+  // Issue 1008: a withdrawn question counts too (a late answer).
+  if (!attention?.waitingNow().size && !attention?.hasSettled()) return;
   try {
     const rec = listRecords(getStateDir()).find(
       (r) => r.session.id === sessionId,

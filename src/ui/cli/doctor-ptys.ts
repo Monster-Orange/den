@@ -271,11 +271,17 @@ export async function hostModuleLines(
           zone = undefined;
         }
         const min = Math.max(1, Math.ceil(r.waitSeconds / 60));
-        detail = `${head}; Den restarts it when agents are idle (waiting since ${localDateTime(r.startedAt, zone)}, at most ${min} min)`;
+        // Issue 732: a job an agent started holds it, not a turn: said so.
+        const jobs = r.jobs ?? [];
+        const jobWait = jobs.length
+          ? `; it waits for ${jobs.map((j) => `agent ${j.agent}: a background job it started is still running (${j.minutes} min)`).join("; ")}`
+          : "";
+        detail = `${head}; Den restarts it when agents are idle (waiting since ${localDateTime(r.startedAt, zone)}, at most ${min} min)${jobWait}`;
         refresh = {
           state: "waiting",
           since: r.startedAt,
           waitSeconds: r.waitSeconds,
+          ...(jobs.length ? { jobs } : {}),
         };
       } else {
         status = "fail";

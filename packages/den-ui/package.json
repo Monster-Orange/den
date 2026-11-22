@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.9.0",
+  "version": "0.12.0",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
   "repository": {
@@ -15,6 +15,7 @@
     "./fonts.css": "./src/fonts.css",
     "./base.css": "./src/base.css",
     "./time": "./src/time.js",
+    "./attention": "./src/attention.js",
     "./update-pill": "./src/update-pill.js",
     "./update-pill.css": "./src/update-pill.css",
     "./busy": "./src/busy.js",
@@ -50,6 +51,8 @@
     "./button.css": "./src/button.css",
     "./setting-row": "./src/setting-row.js",
     "./setting-row.css": "./src/setting-row.css",
+    "./setting-field": "./src/setting-field.js",
+    "./setting-field.css": "./src/setting-field.css",
     "./marks/*": "./src/marks/*",
     "./site/*": "./src/site/*",
     "./inventory": {

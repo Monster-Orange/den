@@ -52,6 +52,8 @@ export const UI_MODULES: readonly string[] = [
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
+  // Issue 773: the Agents list in four bands, sorted by who needs you.
+  "/agent-bands.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
@@ -88,8 +90,13 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
+  // Issue 791: Peek, one agent's terminal over the page, from the bell.
+  "/peek.js",
+  "/peek.css",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
+  // Issue 482: the Terminals list's rules.
+  "/terminals-list.js",
   // Issue 503: the words for a terminal that got no PTY.
   "/pty-refusal.js",
   // D64: Restart Den from the browser, in place.
@@ -179,8 +186,12 @@ export const KIT_FILES: readonly string[] = [
   "button.css",
   "setting-row.js",
   "setting-row.css",
+  "setting-field.js",
+  "setting-field.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  // Issue 773: who needs the person, one sort rule for Den and Hub.
+  "attention.js",
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",

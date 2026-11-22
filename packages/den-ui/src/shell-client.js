@@ -582,6 +582,88 @@ export function hydrateSearch(btn, opts = {}) {
   };
 }
 
+/**
+ * Issue 1024: what a bell row is known by, across repaints.
+ * @param {Node} n
+ */
+function rowKey(n) {
+  if (n.nodeType !== 1) return "";
+  const el = /** @type {Element} */ (n);
+  for (const a of ["data-ap-row", "data-go-row", "data-id", "id"]) {
+    const v = el.getAttribute(a);
+    if (v) return `${a}=${v}`;
+  }
+  return "";
+}
+
+/**
+ * Issue 1024: what a container (a section) is known by: it is matched by
+ * it, and patched inside, never replaced whole.
+ * @param {Node} n
+ */
+function boxKey(n) {
+  if (n.nodeType !== 1) return "";
+  const el = /** @type {Element} */ (n);
+  return el.getAttribute("data-sec") ?? el.getAttribute("data-scope") ?? "";
+}
+
+/**
+ * Issue 1024: makes `live`'s children match `next`'s, keeping every node
+ * that is unchanged. A keyed node (a row, by rowKey) whose content changed
+ * is replaced whole; an unkeyed element with the same tag keeps its
+ * element, takes the new attributes and is patched inside. So a repaint
+ * never swaps an unchanged row's buttons under the pointer or the finger,
+ * and a focused button keeps its focus.
+ * @param {Element} live
+ * @param {Element} next
+ */
+export function patchChildren(live, next) {
+  const keyed = new Map();
+  for (const c of live.childNodes) {
+    const k = rowKey(c);
+    if (k && !keyed.has(k)) keyed.set(k, c);
+  }
+  const used = new Set();
+  // Every node before `cursor` is placed.
+  let cursor = live.firstChild;
+  for (const want of [...next.childNodes]) {
+    const k = rowKey(want);
+    let keep = null;
+    if (k) {
+      const old = keyed.get(k);
+      // A row is kept only when nothing in it changed.
+      if (old && !used.has(old) && old.isEqualNode(want)) keep = old;
+    } else {
+      for (const c of live.childNodes)
+        if (
+          !used.has(c) &&
+          !rowKey(c) &&
+          c.nodeType === want.nodeType &&
+          c.nodeName === want.nodeName &&
+          boxKey(c) === boxKey(want)
+        ) {
+          keep = c;
+          break;
+        }
+      if (keep && !keep.isEqualNode(want)) {
+        if (want.nodeType === 1) {
+          for (const a of [...keep.attributes])
+            if (!want.hasAttribute(a.name)) keep.removeAttribute(a.name);
+          for (const a of [...want.attributes])
+            if (keep.getAttribute(a.name) !== a.value)
+              keep.setAttribute(a.name, a.value);
+          patchChildren(keep, want);
+        } else keep.nodeValue = want.nodeValue;
+      }
+    }
+    const node = keep ?? want;
+    used.add(node);
+    if (node === cursor) cursor = cursor.nextSibling;
+    else live.insertBefore(node, cursor);
+  }
+  for (const c of [...live.childNodes]) if (!used.has(c)) c.remove();
+}
+
 /** The bell and its panel (see the top). */
 export function hydrateBell(btn, opts = {}) {
   const lang = () =>
@@ -600,7 +682,9 @@ export function hydrateBell(btn, opts = {}) {
 
   function paint() {
     const own = opts.panel ? opts.panel() : null;
-    pop.innerHTML =
+    // Issue 1024: drawn aside, then patched in, so unchanged rows stay.
+    const next = document.createElement("div");
+    next.innerHTML =
       typeof own === "string"
         ? own
         : bellPanelHtml({
@@ -612,6 +696,7 @@ export function hydrateBell(btn, opts = {}) {
             foot: val(opts.foot) || "",
             ...(own || {}),
           });
+    patchChildren(pop, next);
   }
   const isOpen = () => !pop.hidden;
   function open() {
@@ -645,6 +730,10 @@ export function hydrateBell(btn, opts = {}) {
   btn.addEventListener("click", () => (isOpen() ? close() : open()));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !isOpen()) return;
+    // While a dialog is open over the page (Peek, a kit dialog), Esc is
+    // the dialog's, wherever focus is: the panel under it stays open.
+    for (const dlg of document.querySelectorAll("dialog[open]"))
+      if (!dlg.contains(pop)) return;
     if (opts.onEscape && opts.onEscape(e) === true) return;
     e.preventDefault();
     close(true);

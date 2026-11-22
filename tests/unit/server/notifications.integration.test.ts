@@ -127,12 +127,17 @@ describe("NT: the bell on the real server", () => {
       (await call("POST", "/api/settings", { bell_kinds: { finished: true } }))
         .status,
     ).toBe(200);
-    // ATTN-5 (den#142): a finished turn is an update: listed, not counted.
+    // ATTN-5 (den#142): a finished turn is not counted. Issue 773 (mock v3,
+    // section 4) replaces "listed in the updates": while nobody has seen
+    // it, it shows once, in Done; the updates hold only what was seen.
     const bell = await call("GET", "/api/notifications");
     expect(bell.json.unread).toBe(0);
     expect(bell.json.off).not.toContain("finished");
     expect(bell.json.groups).toEqual([]);
-    expect(bell.json.updates).toMatchObject({ count: 1, unread: 1 });
+    expect(bell.json.done).toEqual([
+      expect.objectContaining({ agent: "planner" }),
+    ]);
+    expect(bell.json.updates).toMatchObject({ count: 0, unread: 0 });
   }, 30_000);
 
   it("a person can't say an agent waits; an agent can't change the bell", async () => {
@@ -238,11 +243,14 @@ describe("NT: the bell on the real server", () => {
       { event: "finished" },
       "agent",
     );
-    expect(
-      (await call("GET", "/api/notifications")).json.updates,
-    ).toMatchObject({ count: 1, unread: 1 });
+    // Issue 773: unseen, it shows once, in Done (not in the updates too).
+    const before = (await call("GET", "/api/notifications")).json;
+    expect(before.done).toEqual([
+      expect.objectContaining({ agent: "planner" }),
+    ]);
+    expect(before.updates).toMatchObject({ count: 0, unread: 0 });
     // #142: opening the agent clears its updates: they leave the list and
-    // the count drops (not only marked read).
+    // the count drops (not only marked read). Issue 773: and Done.
     expect(
       (
         await call("POST", "/api/notifications/looking", {
@@ -251,6 +259,7 @@ describe("NT: the bell on the real server", () => {
       ).status,
     ).toBe(200);
     const seen = await call("GET", "/api/notifications");
+    expect(seen.json.done).toEqual([]);
     expect(seen.json.updates).toMatchObject({ count: 0, unread: 0 });
   }, 30_000);
 });

@@ -55,6 +55,27 @@ async function loopback(port, path) {
   }
 }
 
+/**
+ * Den's loopback port: from the bed's host address first (no signed-in
+ * call: once the address is proven, a loopback sign-in is sent to the
+ * address, so the bed's signed calls on loopback can't sign in), else
+ * from /api/server-info; 0 when neither answers (the loopback clauses are
+ * then not run).
+ */
+export async function loopbackPort(ctx) {
+  try {
+    const p = Number(new URL(ctx.hostUrl).port);
+    if (p > 0) return p;
+  } catch {
+    /* no host address */
+  }
+  try {
+    return Number((await ctx.api("/api/server-info"))?.port) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function setup() {
   return {};
 }
@@ -77,19 +98,18 @@ export async function run(ctx) {
   });
   await ctx.shot("601-signed-in");
 
-  let port = 0;
-  try {
-    port = Number((await ctx.api("/api/server-info"))?.port) || 0;
-  } catch {
-    /* no port: the loopback clauses can't run */
-  }
+  const port = await loopbackPort(ctx);
   const signin = port ? await loopback(port, "/signin") : null;
   // No https address: a whole sign-in where the browser is (clause 3).
   const whole = port && !proven ? await signInOnLoopback(ctx, port) : null;
 
   // Last: the address is down after this.
   let afterDead;
-  if (proven && origin.startsWith("https:") && typeof ctx.addressDead === "function") {
+  if (
+    proven &&
+    origin.startsWith("https:") &&
+    typeof ctx.addressDead === "function"
+  ) {
     try {
       afterDead = await ctx.addressDead({ keepSeconds: 30, maxMs: 180000 });
       if (port && !afterDead.timedOut && !afterDead.windowTimedOut)
@@ -217,20 +237,22 @@ export function expect(cells) {
     },
     !r.afterDead
       ? { clause: clauses[4], ok: null, skip: "needs-dead-address" }
-      : r.afterDead.timedOut || r.afterDead.windowTimedOut
-        ? {
-            clause: clauses[4],
-            ok: false,
-            note: r.afterDead.timedOut
-              ? `the address never stopped counting (waited ${r.afterDead.waitedMs} ms)`
-              : `loopback still sent to the address after ${r.afterDead.windowMs} ms`,
-          }
-        : {
-            clause: clauses[4],
-            ok: !!r.afterDead.whole?.ok,
-            note: r.afterDead.error
-              ? `addressDead failed: ${r.afterDead.error}`
-              : `${r.afterDead.whole?.ok ? "signed in" : "not signed in"} ${r.afterDead.windowMs ?? "?"} ms after the address left: ${said(r.afterDead.whole)}`,
-          },
+      : !r.port && !r.afterDead.error
+        ? { clause: clauses[4], ok: null, skip: "needs-loopback-port" }
+        : r.afterDead.timedOut || r.afterDead.windowTimedOut
+          ? {
+              clause: clauses[4],
+              ok: false,
+              note: r.afterDead.timedOut
+                ? `the address never stopped counting (waited ${r.afterDead.waitedMs} ms)`
+                : `loopback still sent to the address after ${r.afterDead.windowMs} ms`,
+            }
+          : {
+              clause: clauses[4],
+              ok: !!r.afterDead.whole?.ok,
+              note: r.afterDead.error
+                ? `addressDead failed: ${r.afterDead.error}`
+                : `${r.afterDead.whole?.ok ? "signed in" : "not signed in"} ${r.afterDead.windowMs ?? "?"} ms after the address left: ${said(r.afterDead.whole)}`,
+            },
   ];
 }
