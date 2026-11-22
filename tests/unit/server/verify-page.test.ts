@@ -8,6 +8,9 @@
  *   S7  a project with no checks shows how to add one
  *   S8  nothing ran is never green
  *   S9  an agent's run says the agent started it and a person allowed it
+ *   441 an imported environment ("bed"): the tag's answer, clause counts,
+ *       failed first, then couldn't run and needs you; its why view has a
+ *       clauses table per check; a runner's text stays plain text
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -144,7 +147,8 @@ describe("issue 209: the Verify page", () => {
     const keys = new Set(
       [...src.matchAll(/"(v\.[a-z0-9_]+(?:\.[a-z0-9_]+)*)"/g)].map((m) => m[1]),
     );
-    for (const k of ["agent", "person", "den"]) keys.add(`v.actor_${k}`);
+    for (const k of ["agent", "person", "den", "runner"])
+      keys.add(`v.actor_${k}`);
     for (const k of [
       "smoke",
       "integration",
@@ -229,5 +233,256 @@ describe("issue 209: the Verify page", () => {
     expect(html).toContain("verify:");
     expect(html).toContain('href="/test-runs"');
     expect(html).not.toMatch(/vf-ok/);
+  });
+});
+
+const bed = {
+  env: "bed",
+  answer: "failed",
+  imported: true,
+  counts: { passed: 1, failed: 1, error: 0, blocked: 1, notrun: 0, total: 3 },
+  run: {
+    runId: "v1.2.3-dev.5",
+    tag: "v1.2.3-dev.5",
+    startedAt: "2026-11-15T14:06:00Z",
+    endedAt: at,
+    verdict: "failed",
+    scope: "imported",
+    startedBy: { kind: "runner" },
+    commit: "4e1b9a2c",
+    checks: 3,
+  },
+  failures: [],
+  blocked: [],
+  clauses: {
+    passed: 2,
+    failed: 1,
+    error: 0,
+    needsPerson: 1,
+    cantRun: 1,
+    total: 5,
+  },
+  clauseFailures: [
+    {
+      check: "gate/327",
+      clause: "the bell row names the prompt",
+      result: "failed",
+      note: "webkit: page row <b>not</b> found",
+    },
+  ],
+  needsPerson: [
+    {
+      check: "gate/327",
+      clause: "answering the prompt clears the wait",
+      result: "needs-person",
+      note: "answering a permission prompt is a person's act",
+    },
+  ],
+  cantRun: [
+    {
+      check: "gate/406",
+      clause: "the person signs in on a second device",
+      result: "cant-run",
+      note: "needs second device",
+    },
+  ],
+  gateChecks: [
+    {
+      module: "gate/327",
+      state: "failed",
+      clauses: [
+        {
+          clause: "the bell row names the prompt",
+          result: "failed",
+          note: "webkit: page row <b>not</b> found",
+          ms: 94000,
+        },
+        { clause: "stopping clears it", result: "passed", ms: 1346 },
+        {
+          clause: "answering the prompt clears the wait",
+          result: "needs-person",
+          note: "answering a permission prompt is a person's act",
+        },
+      ],
+    },
+    {
+      module: "gate/330",
+      state: "passed",
+      clauses: [{ clause: "the row opens", result: "passed", ms: 12 }],
+    },
+    {
+      module: "gate/406",
+      state: "blocked",
+      clauses: [
+        {
+          clause: "the person signs in on a second device",
+          result: "cant-run",
+          note: "needs second device",
+        },
+      ],
+    },
+  ],
+};
+const withBed = {
+  ...ov,
+  envOrder: [...ov.envOrder, "bed"],
+  envs: [...ov.envs, bed],
+};
+
+describe("issue 441: gate results on an imported environment", () => {
+  const cardOf = (html: string, env: string) =>
+    new RegExp(`<section[^>]*data-env="${env}"[^>]*>[\\s\\S]*?</section>`).exec(
+      html,
+    )![0];
+
+  it("the card says the tag's answer, where it came from, and the clause counts", () => {
+    const c = cardOf(answerView(withBed), "bed");
+    expect(c).toContain("data-imported");
+    // Clause 6: the answer line in the issue's words, with its counts.
+    expect(c).toContain(
+      "<b>v1.2.3-dev.5</b> on bed failed: 2 clauses passed, 1 needs a person, 1 failed.",
+    );
+    expect(c).toContain("Commit 4e1b9a2.");
+    expect(c).toContain("From an outside runner.");
+    expect(c).toContain("3 checks, 5 clauses.");
+    const counts = [
+      ...c.matchAll(/<li data-count="([a-z-]+)"><b[^>]*>(\d+)<\/b>/g),
+    ].map((m) => [m[1], m[2]]);
+    expect(counts).toEqual([
+      ["passed", "2"],
+      ["failed", "1"],
+      ["needs-person", "1"],
+      ["cant-run", "1"],
+    ]);
+  });
+
+  it("failures first, then needs you, then couldn't run, each naming its issue", () => {
+    const c = cardOf(answerView(withBed), "bed");
+    const heads = [...c.matchAll(/<h3>([^<]+)<\/h3>/g)].map((m) =>
+      m[1]!.replace(/&#39;/g, "'"),
+    );
+    expect(heads).toEqual([
+      "Failed (1)",
+      "Needs you (1)",
+      "Couldn't run (1)",
+      "Checks on this tag",
+    ]);
+    expect(c).toContain("issue 327");
+    expect(c).toContain("needs second device");
+    // A runner's note is untrusted text: never markup.
+    expect(c).toContain("webkit: page row &lt;b&gt;not&lt;/b&gt; found");
+    expect(c).not.toContain("<b>not</b>");
+  });
+
+  it("each check on the tag is one row, the whole row opening its clauses", () => {
+    const c = cardOf(answerView(withBed), "bed");
+    const rows = [
+      ...c.matchAll(
+        /<a class="vf-row" href="([^"]+)" data-why="bed" data-check="[^"]+">/g,
+      ),
+    ].map((m) => m[1]);
+    expect(rows).toEqual([
+      "?why=bed#gate-327",
+      "?why=bed#gate-330",
+      "?why=bed#gate-406",
+    ]);
+    expect(c).toContain("1 of 3 clauses passed, 1 needs you");
+    expect(c).toContain("1 of 1 clause passed");
+    // Clause 4: imported checks are marked as such.
+    expect(c).toContain("From imported results.");
+  });
+
+  it("a passing tag says so, and an empty imported environment is not run yet", () => {
+    const pass = {
+      ...bed,
+      answer: "ready",
+      clauses: { ...bed.clauses, failed: 0, cantRun: 0 },
+      clauseFailures: [],
+      cantRun: [],
+    };
+    const c = cardOf(answerView({ ...withBed, envs: [pass] }), "bed");
+    expect(c).toContain(
+      "<b>v1.2.3-dev.5</b> on bed passed: 2 clauses passed, 1 needs a person, 0 failed.",
+    );
+    expect(c).toContain("vf-ok");
+    expect(c).not.toContain("Failed (");
+    const none = {
+      env: "bed",
+      answer: "notrun",
+      imported: true,
+      counts: bed.counts,
+      failures: [],
+      blocked: [],
+    };
+    const n = cardOf(answerView({ ...withBed, envs: [none] }), "bed");
+    expect(n).toContain("bed has not been checked yet.");
+    expect(n).not.toMatch(/vf-ok/);
+  });
+
+  it("a tag that is a placeholder's name stays one tag", () => {
+    const odd = { ...bed, run: { ...bed.run, tag: "{t}" } };
+    const c = cardOf(answerView({ ...withBed, envs: [odd] }), "bed");
+    expect(c).toContain("<b>{t}</b> on bed failed:");
+  });
+
+  it("a bad imported setting is named, and the org's environments still answer", () => {
+    const html = answerView({
+      ...withBed,
+      importError: "verify.environments: a list of environment names",
+    });
+    expect(html).toMatch(
+      /role="status"[^>]*>Imported results are off: verify\.environments: a list of environment names/,
+    );
+  });
+
+  it("a project with no declared checks but an import still shows the card", () => {
+    const html = answerView({ ...withBed, modules: 0, envs: [bed] });
+    expect(html).toContain('data-env="bed"');
+    expect(html).not.toContain('data-answer="empty"');
+  });
+
+  it("the why view: the lists, then a clauses table per check with result, clause, note and time", () => {
+    const html = whyView(withBed, "bed");
+    const heads = [...html.matchAll(/<h3[^>]*>([\s\S]*?)<\/h3>/g)].map((m) =>
+      m[1]!.replace(/<[^>]+>/g, "").replace(/&#39;/g, "'"),
+    );
+    expect(heads).toEqual([
+      "Failed (1)",
+      "Needs you (1)",
+      "Couldn't run (1)",
+      "gate/327 on v1.2.3-dev.5",
+      "gate/330 on v1.2.3-dev.5",
+      "gate/406 on v1.2.3-dev.5",
+    ]);
+    expect(html).toContain('id="gate-327"');
+    const t327 = /<section[^>]*id="gate-327"[\s\S]*?<\/section>/.exec(html)![0];
+    const rows = [...t327.matchAll(/<tr data-result="([a-z-]+)">/g)].map(
+      (m) => m[1],
+    );
+    expect(rows).toEqual(["failed", "passed", "needs-person"]);
+    expect(t327).toContain("94 s");
+    expect(t327).toContain("1.3 s");
+    expect(t327).toContain("Needs you");
+    expect(t327).toContain("webkit: page row &lt;b&gt;not&lt;/b&gt; found");
+    expect(html).toContain("Commit 4e1b9a2.");
+  });
+
+  it("the activity names the outside runner and the tag it sent", () => {
+    const html = answerView({
+      ...withBed,
+      activity: [
+        {
+          runId: "v1.2.3-dev.5",
+          env: "bed",
+          verdict: "failed",
+          startedAt: at,
+          endedAt: at,
+          startedBy: { kind: "runner" },
+          checks: 3,
+        },
+      ],
+    });
+    expect(html).toContain("An outside runner");
+    expect(html).toContain("sent its results for v1.2.3-dev.5 on bed.");
   });
 });

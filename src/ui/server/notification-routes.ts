@@ -38,7 +38,9 @@ import {
   type NotificationStore,
   type Which,
 } from "../../shared/notifications.js";
+import type { Approval } from "./approvals.js";
 import type { Attention, WaitingWhy } from "./attention.js";
+import { heldWaiting } from "./held-bell.js";
 import type { AlertFeed } from "./alert-feed.js";
 import { parseSubscription, type PushSubscriptions } from "./web-push.js";
 import { readBody, sendJson } from "./http-helpers.js";
@@ -71,6 +73,11 @@ export interface NotificationRouteDeps {
   alerts?: AlertFeed;
   /** Issue 172 S2: the person's devices, and this install's public key. */
   push?: { subs: PushSubscriptions; publicKey: () => string };
+  /**
+   * Issue 746: the held writes waiting on the person (the approval
+   * queue's pending()); they lead `waiting`, kind "allow".
+   */
+  held?: () => readonly Approval[];
 }
 
 async function jsonBody(
@@ -100,6 +107,15 @@ const str = (v: unknown, max = 300) =>
 /** Issue 609: a tool input's hash (attention-hook.ts inputKey), or undefined. */
 const inputKeyOf = (v: unknown) =>
   typeof v === "string" && /^[0-9a-f]{16}$/.test(v) ? v : undefined;
+
+/** Issue 746: what waits on the person's Allow now; best effort. */
+function heldNow(deps: NotificationRouteDeps): readonly Approval[] {
+  try {
+    return deps.held?.() ?? [];
+  } catch {
+    return [];
+  }
+}
 
 function whichOf(b: Record<string, unknown>): Which | null {
   if (b.all === true) return { all: true };
@@ -253,16 +269,20 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ok: true,
       unread: v.unread,
-      // Issue 327: and what it waits on, since when.
-      waiting: [...deps.attention.waitingNow()].map(([a, why]) => {
-        const w = deps.attention.waitingDetail(a);
-        return {
-          agent: a,
-          why,
-          ...(w?.what ? { what: w.what } : {}),
-          ...(w ? { since: w.since } : {}),
-        };
-      }),
+      // Issue 746: a held write waiting for the person's Allow first,
+      // then (issue 327) each agent waiting, what on, since when.
+      waiting: [
+        ...heldWaiting(heldNow(deps)),
+        ...[...deps.attention.waitingNow()].map(([a, why]) => {
+          const w = deps.attention.waitingDetail(a);
+          return {
+            agent: a,
+            why,
+            ...(w?.what ? { what: w.what } : {}),
+            ...(w ? { since: w.since } : {}),
+          };
+        }),
+      ],
       groups: groupNotifications(v.recent),
       // ATTN-5 (den#142): updates, collapsed; never in the badge.
       updates: {

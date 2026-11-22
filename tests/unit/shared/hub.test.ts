@@ -63,6 +63,7 @@ describe("readHubConfig", () => {
       deliveryHeartbeatSeconds: 15,
       deliveryPollSeconds: 30,
       deliveryHeldNoteSeconds: 60,
+      deliveryLoop: true,
       deliveryStateTimeoutSeconds: 60,
       deliveryTypeTimeoutSeconds: 120,
       deliveryHeldBellMinutes: 5,

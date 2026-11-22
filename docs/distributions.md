@@ -242,12 +242,26 @@ with "If you didn't ask an agent to do this, Deny." under it.
   `<cli> web claim-link` prints a one-time setup link that signs the
   browser in.
 - **Allow runs it once**, from the arguments stored when it was asked,
-  checked again first. Deny, 10 minutes with no answer, or the agent being
-  stopped run nothing. An agent may have 5 requests waiting; a restart drops
-  what waits (the agent asks again).
+  checked again first: an old request whose target changed gets the
+  check's error, and nothing runs. Deny, no answer within the window, or
+  the agent being stopped run nothing. An agent may have 5 requests
+  waiting.
+- **The window** (from 0.4.81): `held_writes.wait_minutes` in
+  `config/local/user.yml` (Settings › Agents, "Requests wait for your
+  Allow"), 24 hours by default, 10 minutes to 7 days. The tool texts and
+  `approval_check` say the window set.
+- **What waits survives a restart** (from 0.4.81): the queue is kept in
+  `held-writes.json` under the state dir (written whole, then renamed;
+  owner-only), and read back at the start. A request that can't come back
+  is `lost`, never silently gone: its action no longer exists, a restart
+  cut it off while it ran (check whether it took effect), or the file was
+  unreadable (it is kept aside as `held-writes.json.corrupt-<time>`, and an
+  id Den no longer knows reads `lost` for a week). The bell says so, the
+  asking agent is told, and the trail has `approval-lost`. Den's own
+  update ask is not kept: the update check asks again.
 - **The agent waits** up to 2 minutes for the answer, then gets the request
   id: `approval_check` says `pending`, `done` (with what the run said),
-  `denied` or `expired`. While a request waits, its agent is "waiting" on
+  `denied`, `expired`, `withdrawn` or `lost`. While a request waits, its agent is "waiting" on
   the Agents page.
 - **Only the person sees what waits.** `GET /api/approvals` needs what
   Allow needs: the session cookie, that session's CSRF token
@@ -679,6 +693,56 @@ starts and one when it ends. Past 2000 lines it keeps the newest 1000.
 `GET /api/runs/last` (read only) gives `{ repos: { <repo>: { id, pillar,
 env, repos, startedAt, endedAt, exitCode, running } } }`. A run a restart
 cut off has no end and is not shown.
+
+### Verify settings
+
+The org config's `verify:` block holds Verify's settings. Every one is
+optional, and the defaults are permissive.
+
+```yaml
+# config/acme.yml
+verify:
+  # Environments whose answer on the Checks page comes from an outside
+  # runner's results, not from runs Den starts. Den never plans a run on
+  # one.
+  environments: [bed]
+  import:
+    max_bytes: 5000000 # the largest verdict file Den reads
+    max_clauses: 5000 # the most clauses in one file
+    max_text: 2000 # a clause or note longer than this is cut
+```
+
+A bad value is named in the error: the CLI exits 1, and the Checks API
+answers 422.
+
+### Gate results from an outside runner
+
+An outside runner (a test bed that runs each build's live checks,
+`gate/<issue>.mjs`) writes one verdict file per build tag. Den keeps that
+file as one Verify run on an imported environment:
+
+```sh
+acme verify import verdict.json --env bed --project shop
+acme verify remove v1.2.3-dev.4 --project shop
+```
+
+- The run's id is the tag. Each gate file becomes one check,
+  `gate/<issue>`, holding its clauses in the runner's order. Importing the
+  same tag again replaces it.
+- A clause is passed, failed, error, "needs you" (not run, because it is a
+  person's act: its note ends `skip: person`) or "couldn't run" (not run,
+  because the bed lacks something: any other skip).
+- The file is untrusted input. Den checks its shape and the limits above,
+  drops evidence paths, and shows every text as plain text.
+- An agent can't import or remove: the CLI refuses it.
+
+The Checks page (`/verify`) shows the environment's newest import: the tag,
+its commit, when it ran, and how many clauses passed, failed, need you or
+couldn't run. Under that are the failed clauses first, then couldn't run,
+then needs you, then one row for each check. A row opens its clauses
+(`?why=bed`): the result, the clause, the runner's note and the time.
+Before any import the environment says it hasn't been checked yet, and an
+import where nothing ran is never a pass.
 
 ## Placement
 
@@ -1997,6 +2061,32 @@ namespace, set `stack_namespace`.
 
 `stack_namespace` in the blueprint needs Den 0.3.0-dev.36 or later: an
 older Den rejects the unknown key.
+
+### A project Den didn't start
+
+A Compose project's name is only a name. A repo's manifest can render to
+one that something else runs: another tool's, another install's, or a
+service started by hand from its own checkout. Den acts only on its own:
+
+- Every container of a stack Den starts carries the label
+  `den.stack.owner`, a mark for this install, the stack and
+  its checkout. Den adds it in its override; the project's own labels
+  stay.
+- `stack up`, `stack down` and `stack restart` (with `--service` too),
+  and so a service's Start, Stop and Restart in the page and in ⌘K, are
+  refused when the project holds a container without this stack's mark.
+  The message names the project and the containers, and nothing runs.
+  Fix it with a `compose.name` of the stack's own in the repo's `.den.yml`,
+  or stop the other project yourself.
+- A container Den started before the label (0.4.34 and older) counts as
+  its own when Compose's record of its files names this stack's override
+  and compose file. It gets the label at its next `up`.
+- When docker can't be asked, Den goes on: Compose itself then fails.
+- `acme doctor` warns (`--json`: check `stacks:projects`) on a project
+  name two stacks render to (stack `a-b` in namespace `c` and stack `a`
+  in `b-c` are both `a-b-c`), and on a project already running
+  containers Den didn't start. Projects sharing a namespace on one
+  checkout are one stack, not a clash.
 
 ## Releases
 
@@ -3911,6 +4001,36 @@ as…" line as Bring in.
     restart_wait_minutes: 120 # minutes, above 0
   ```
 
+  Session rotation waits for an agent's background work too (issue
+  914). Once a rotation is due and the agent's turn is over, Den still
+  waits while a helper it started (a background subagent, a workflow's
+  agent) or a job it left running (a gate run) is running, and rotates
+  right after they finish. The wait is at most
+  `agents.rotation_wait_minutes` (default 240). Then the rotation goes
+  ahead: Den asks for a handoff that lists each item still running (its
+  ID, what it was doing, its branch, and for a helper its own handoff
+  file, `handoffs/helper-<id>.md` in the agent's files folder). The
+  handoff check refuses one that leaves an item out, and the new
+  session's first prompt tells it to start each one again.
+
+  ```yaml
+  agents:
+    rotation_wait_minutes: 240 # minutes, above 0
+  ```
+
+  A session that ends without Den asking (issue 926): no stop, restart
+  or relaunch from Den or a person, such as a signal from outside Den or
+  a crash. Den's sweep writes one audit row with the exit code. Exit 0
+  (the agent or person quit it) is left down. Otherwise the bell says so
+  and Den brings the agent back, at most once per window: it resumes it, or relaunches it
+  from its handoff when its rotation is ready and on_due is auto. A
+  second such exit within `agents.unasked_exit_window_minutes` (default 10) is told in the bell and left down; 0 never brings one back.
+
+  ```yaml
+  agents:
+    unasked_exit_window_minutes: 10 # minutes; 0: record and tell only
+  ```
+
   One change to an agent at a time, across processes too (issue 218): a
   stop, resume or restart from the CLI waits while the web server
   changes the same agent, and the other way round. Each change holds a
@@ -5656,7 +5776,9 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - `cpu` runs share the machine, up to `cpu_slots` (default 2). Browser and
   cpu runs wait in separate lines, first come within each. Up to
   `cpu_slots_beside_browser` (default 2) cpu runs run beside the
-  `browser` runs here; at 0 a browser run holds the machine alone.
+  `browser` runs here; at 0 a browser run holds the machine alone. A
+  release-priority browser run allows `cpu_slots_beside_release_browser`
+  (default 0) beside it instead.
   `local_browser_slots` (default 1) browser runs may hold the machine at
   once, each in its own container. A browser run waiting
   for cpu runs to drop to that number stops new cpu grants past it, so it

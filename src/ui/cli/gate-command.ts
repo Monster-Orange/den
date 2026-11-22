@@ -69,6 +69,7 @@ import {
   personLanguage,
   type UiLanguage,
 } from "../../shared/gates/browser-container.js";
+import { descendsFrom } from "../../shared/peer-process.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
 import { gateBoxesView, gateView } from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
@@ -143,6 +144,38 @@ export interface GateDeps {
   cwd: string;
   /** The language refusals are in (default: the person's, from user.yml). */
   lang?: UiLanguage;
+  /** Issue 928: whether process `pid` runs under `root` (default: ps). */
+  descends?: (pid: number, root: number) => boolean;
+}
+
+/** Issue 928: how often a nested run checks its slot still holds. */
+const NESTED_LOOK_MS = 5_000;
+
+/** Issue 928: what `gate run` tells its command about the slot it holds. */
+export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
+export const GATE_SLOT_KIND_ENV = "DEN_GATE_SLOT_KIND";
+export const GATE_SLOT_BOX_ENV = "DEN_GATE_SLOT_BOX";
+
+/**
+ * Issue 928: the slot this run is nested in, when it may run inside it:
+ * DEN_GATE_SLOT names a slot that holds, of this kind and place, and this
+ * process runs under that slot's run (naming the id alone is not enough).
+ */
+function heldSlotFor(
+  d: GateDeps,
+  kind: GateKind,
+  where: string | undefined,
+): GateEntry | undefined {
+  const id = d.env[GATE_SLOT_ENV]?.trim();
+  if (!id) return undefined;
+  const e = d.store.get(id);
+  if (!e?.grantedAt || e.kind !== kind) return undefined;
+  const place = e.box ?? "local";
+  const want = where ?? "local";
+  if (want !== "any" && want !== place) return undefined;
+  const under = d.descends ?? ((p, r) => descendsFrom(p, r));
+  const roots = [e.runPid, e.pid].filter((p): p is number => !!p && p > 1);
+  return roots.some((r) => under(d.pid, r)) ? e : undefined;
 }
 
 const signalCode = (s: NodeJS.Signals | null) =>
@@ -369,6 +402,46 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         })`,
       );
   }
+  // Issue 928: inside a held slot of this kind and place: run in it, at
+  // once. The outer run checked the browser and keeps the slot.
+  const inside = heldSlotFor(d, kind as GateKind, where);
+  if (inside) {
+    const label =
+      typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
+    d.err(
+      `gate: inside ${inside.id} (holds ${kind}${inside.box ? ` on box ${inside.box}` : ""}); running ${label} in it`,
+    );
+    if (typeof f["--browser-endpoint"] === "string")
+      d.err(
+        `gate: --browser-endpoint is not used inside ${inside.id}: the held slot's browser is`,
+      );
+    const child = d.exec(pos[0]!, pos.slice(1));
+    const off = d.onSignal((sig) => child.kill(sig));
+    // Never past its slot: when the outer run gives it back (it ended),
+    // this command stops too, so two runs never share a slot unheld.
+    // A command that ignores TERM gets KILL at the next look.
+    let gone = false;
+    let ended = false;
+    void child.done.then(() => (ended = true));
+    const look = d.every(NESTED_LOOK_MS, () => {
+      if (gone) {
+        if (!ended) child.kill("SIGKILL");
+        return;
+      }
+      if (d.store.get(inside.id)?.grantedAt) return;
+      gone = true;
+      d.err(
+        `gate: ${inside.id}'s run ended and gave its slot back; stopping ${label}`,
+      );
+      child.kill("SIGTERM");
+    });
+    try {
+      return await child.done;
+    } finally {
+      look();
+      off();
+    }
+  }
   // On macOS a browser run declares a container browser (a Setting):
   // --browser-endpoint, else the run's environment. Checked before it asks.
   const flagEndpoint =
@@ -501,15 +574,25 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     d.err(
       `gate: ${id} holds ${kind}${e.box ? ` on box ${e.box}` : ""}; running ${label}`,
     );
+    // Issue 928: the command knows the slot it runs in.
+    const slotEnv = {
+      [GATE_SLOT_ENV]: id,
+      [GATE_SLOT_KIND_ENV]: kind,
+      [GATE_SLOT_BOX_ENV]: e.box ?? "local",
+    };
     child = box
       ? d.exec(pos[0]!, pos.slice(1), {
           ...boxEnv(box),
           DEN_GATE_ALLOW: allow.join(","),
+          ...slotEnv,
         })
       : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
         ? // The address given on the command line reaches the run.
-          d.exec(pos[0]!, pos.slice(1), { DEN_PW_WS: flagEndpoint })
-        : d.exec(pos[0]!, pos.slice(1));
+          d.exec(pos[0]!, pos.slice(1), {
+            DEN_PW_WS: flagEndpoint,
+            ...slotEnv,
+          })
+        : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
     // Past its estimate plus the margin, it says so once; never stopped.
     let flagged = false;
@@ -674,6 +757,7 @@ function settings(args: string[], d: GateDeps): number {
     "--remote-max-slots": true,
     "--remote-max-asks": true,
     "--cpu-slots-beside-browser": true,
+    "--cpu-slots-beside-release-browser": true,
     "--local-browser-slots": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
@@ -694,6 +778,7 @@ function settings(args: string[], d: GateDeps): number {
   for (const [flag, key] of [
     ["--cpu-slots", "cpu_slots"],
     ["--cpu-slots-beside-browser", "cpu_slots_beside_browser"],
+    ["--cpu-slots-beside-release-browser", "cpu_slots_beside_release_browser"],
     ["--local-browser-slots", "local_browser_slots"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
@@ -735,7 +820,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

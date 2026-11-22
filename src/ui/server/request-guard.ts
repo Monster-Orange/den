@@ -81,10 +81,17 @@ import {
 import { osUser } from "../../shared/web-secret.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import {
+  OPERATOR_PRINCIPAL,
+  type OperatorAct,
+} from "../../shared/test-operator.js";
+import {
   notTestBedRefusal,
   TEST_PERSON_HEADER,
   testPersonCredentialRefusal,
 } from "../../shared/test-person.js";
+
+/** Issue 796: the audit client of an agent's read-only view. */
+export const AGENT_VIEW_CLIENT = "page view (read-only)";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
@@ -142,6 +149,8 @@ export type Principal =
       session?: string;
       /** Issue 810: the fixture person's session (a test install's live checks). */
       fixture?: true;
+      /** Issue 796: an agent's read-only view: the agent and its project. */
+      view?: { agent: string; workspace: string };
     }
   | RunnerPrincipal;
 
@@ -161,6 +170,9 @@ export interface GuardSession {
   secure?: boolean;
   /** How it signed in (web-session.ts); "fixture": the fixture person (issue 810). */
   via?: string;
+  /** Issue 796: an agent's view (via "agent-view"): whose, and its project. */
+  agent?: string;
+  agentWorkspace?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -739,8 +751,13 @@ export function checkRequest(
   // minted on it: none on a loopback name, and none minted elsewhere.
   const namedOnly = ctx.loopbackSessions?.() === false;
   const found = principal ? null : (ctx.session?.(req, via) ?? null);
+  // Issue 796: an agent's read-only view lives on loopback only, so it
+  // still counts there.
+  const loopView = via === "loopback" && found?.via === "agent-view";
   const session =
-    namedOnly && (via === "loopback" || !found?.secure) ? null : found;
+    namedOnly && (via === "loopback" || !found?.secure) && !loopView
+      ? null
+      : found;
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");
@@ -810,6 +827,14 @@ export function checkRequest(
         kind: "person-browser",
         session: session.key,
         ...(session.via === "fixture" ? { fixture: true as const } : {}),
+        ...(session.via === "agent-view" && session.agent
+          ? {
+              view: {
+                agent: session.agent,
+                workspace: session.agentWorkspace ?? "",
+              },
+            }
+          : {}),
       }
     : null;
 
@@ -1202,6 +1227,13 @@ export function sessionRequestAllowed(
 
 const PRINCIPALS = new WeakMap<http.IncomingMessage, Principal>();
 
+/**
+ * Issue 814: the test operator's act a request was let through as (the
+ * request gate in index.ts sets it, after operatorRefusal), or none. Only
+ * on a fixture session's request; it never makes the request the person's.
+ */
+const OPERATOR_ACTS = new WeakMap<http.IncomingMessage, OperatorAct>();
+
 /** Remember what the request proved (for the audit trail). */
 export function setPrincipal(
   req: http.IncomingMessage,
@@ -1223,7 +1255,26 @@ export function agentPrincipalOf(
   req: http.IncomingMessage,
 ): AgentPrincipal | null {
   const p = PRINCIPALS.get(req);
-  return p?.kind === "agent" ? p : null;
+  if (p?.kind === "agent") return p;
+  // Issue 796: an agent's read-only view is that agent everywhere a
+  // handler refuses an agent's token or scopes it to its project, so no
+  // handler can forget it. It carries no grants.
+  if (p?.kind === "person-browser" && p.view) return viewAgent(p.view);
+  return null;
+}
+
+/** Issue 796: the agent an agent's view stands for (agentRefusal's shape). */
+export function viewAgent(v: {
+  agent: string;
+  workspace: string;
+}): AgentPrincipal {
+  return {
+    kind: "agent",
+    actor: v.agent as `agent:${string}`,
+    workspace: v.workspace,
+    grants: [],
+    session: { name: "" },
+  };
 }
 
 /**
@@ -1236,9 +1287,12 @@ export function agentPrincipalOf(
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person" || p?.kind === "agent") return p.actor;
-  // Issue 810: the fixture person is named as such, never the human.
+  // Issue 810: the fixture person is named as such, never the human;
+  // issue 814: the test operator's act as the test operator.
   if (p?.kind === "person-browser" && p.session && p.fixture)
-    return FIXTURE_PRINCIPAL;
+    return OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL;
+  // Issue 796: an agent's view is the agent, never the person.
+  if (p?.kind === "person-browser" && p.session && p.view) return p.view.agent;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }
@@ -1254,6 +1308,19 @@ export function principalOf(req: http.IncomingMessage): string | undefined {
  */
 export function auditActorOf(req: http.IncomingMessage): Actor {
   const claimed = actorFromHeaders(req.headers);
+  const p = PRINCIPALS.get(req);
+  // Issue 796: an agent's read-only view, named as that agent (its session
+  // was minted for the agent's own token), never the person.
+  if (p?.kind === "person-browser" && p.view)
+    return {
+      kind: "agent",
+      client: AGENT_VIEW_CLIENT,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      agent: p.view.agent as `agent:${string}`,
+      workspace: p.view.workspace,
+    };
   const agent = agentPrincipalOf(req);
   if (agent) {
     const actor: AgentActor = {
@@ -1270,11 +1337,10 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
   // Issue 810: the fixture person is never the person. Every person-only
   // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
   // it, and the audit keeps it as a claim, labelled as such.
-  const p = PRINCIPALS.get(req);
   if (p?.kind === "person-browser" && p.fixture)
     return {
       kind: "agent",
-      client: FIXTURE_PRINCIPAL,
+      client: OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL,
       clientVersion: "-",
       mcpPid: null,
       session: "",
@@ -1285,8 +1351,48 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
 
 /**
  * Issue 810: whether a person-only check must refuse this request: an
- * agent's token, a claimed agent, or the fixture person.
+ * agent's token, a claimed agent, the fixture person, or (issue 796) an
+ * agent's read-only view.
  */
 export function notAPersonOf(req: http.IncomingMessage): boolean {
   return !!agentPrincipalOf(req) || !!auditActorOf(req);
+}
+
+/**
+ * Issue 402: whether this request is a test install's fixture person
+ * itself: its browser session, with no agent's token or claim on it.
+ */
+export function fixturePersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return (
+    p?.kind === "person-browser" &&
+    p.fixture === true &&
+    !actorFromHeaders(req.headers)
+  );
+}
+
+export function markOperatorAct(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): void {
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture) OPERATOR_ACTS.set(req, act);
+}
+
+export function operatorActOf(req: http.IncomingMessage): OperatorAct | null {
+  return OPERATOR_ACTS.get(req) ?? null;
+}
+
+/**
+ * Issue 814: a person-only check that also lets the test operator through
+ * for `act`, and only that act: a person, or a fixture session's request
+ * the gate let through as `act`. Every other caller is refused as
+ * notAPersonOf refuses it.
+ */
+export function personOrOperator(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): boolean {
+  if (!notAPersonOf(req)) return true;
+  return !agentPrincipalOf(req) && OPERATOR_ACTS.get(req) === act;
 }

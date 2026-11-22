@@ -93,6 +93,7 @@ describe("gate-slot routes", () => {
     expect(r.json.settings).toEqual({
       cpuSlots: 2,
       cpuSlotsBesideBrowser: 2,
+      cpuSlotsBesideReleaseBrowser: 0,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       priorityMax: 1,

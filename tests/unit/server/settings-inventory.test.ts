@@ -51,11 +51,15 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     approve_attempts: true,
     approve_window_seconds: true,
   },
+  // Issue 796: agents' read-only page views.
+  web_agent_view: { on: true, minutes: true },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
     // Issue 751: cpu runs beside a browser run.
     cpu_slots_beside_browser: true,
+    // Its follow-up: cpu runs beside a release browser run.
+    cpu_slots_beside_release_browser: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     remote_renew_seconds: true,
@@ -154,6 +158,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     api_budget_floor: true,
     watches_max: true,
   },
+  // Issue 742: how long a held write waits for the person's Allow.
+  held_writes: { wait_minutes: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -211,6 +217,8 @@ describe("the settings inventory (R21)", () => {
         "graph.workspaces",
         // HUB-1.5: Hub's tools without asking.
         "hub_allow_tools",
+        // Issue 158: the Hub delivery loop in agents' instructions.
+        "hub_delivery_loop",
         "hub_url",
         // The UI's language (R19, 0.3.0-dev.39).
         "language",
@@ -240,6 +248,8 @@ describe("the settings inventory (R21)", () => {
         "crash_loop.minutes",
         "crash_loop.max_wait_seconds",
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
+        "web_agent_view.minutes",
+        "web_agent_view.on",
         "web_bridge.listen",
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.
@@ -264,6 +274,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.class_windows",
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
+        "gate_slots.cpu_slots_beside_release_browser",
         "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
@@ -338,6 +349,8 @@ describe("the settings inventory (R21)", () => {
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
         "agent_hooks.backoff_seconds",
+        // Issue 742: how long a held write waits for the person's Allow.
+        "held_writes.wait_minutes",
       ].sort(),
     );
   });

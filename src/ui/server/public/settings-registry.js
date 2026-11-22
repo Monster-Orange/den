@@ -595,7 +595,11 @@ export function deviceLine(d, now = Date.now()) {
         ? L("set.ui.viaCode", "approved with a code")
         : d.via === "claim"
           ? L("set.ui.viaClaim", "claimed with a setup link")
-          : L("set.ui.viaLink", "signed in with a one-time link");
+          : d.via === "agent-view"
+            ? L("set.ui.viaAgentView", "{agent}'s read-only view", {
+                agent: d.agent || "",
+              })
+            : L("set.ui.viaLink", "signed in with a one-time link");
   const name = deviceWords(d.name);
   const from = d.client || d.host;
   return {
@@ -1721,6 +1725,33 @@ const ACCESS_ROWS = [
     write: (v, ctx) => ctx.post({ web_pairing: { approve_window_seconds: v } }),
   },
   {
+    // Issue 796: an agent's read-only view of these pages (MCP page_view).
+    id: "access.agent_view",
+    category: "access",
+    label: "Agents may view pages, read-only",
+    description:
+      "On, an agent running here may open these pages read-only, as itself, to look or take a screenshot (page_view). It changes nothing, and each page it opens is logged with its name. Off, the agent is told views are off. __DEN_CLI__ config web.agent_view=true",
+    keywords: ["agent", "view", "read-only", "page_view", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.on"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.web_agent_view?.on !== false,
+    write: (v, ctx) => ctx.post({ web_agent_view: { on: !!v } }),
+  },
+  {
+    id: "access.agent_view_minutes",
+    category: "access",
+    label: "An agent's view lasts, in minutes",
+    description:
+      "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+    keywords: ["agent", "view", "read-only", "minutes", "web.agent_view"],
+    scope: "user",
+    keys: ["web_agent_view.minutes"],
+    control: { type: "number", min: 1, max: 60, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.web_agent_view?.minutes ?? 10,
+    write: (v, ctx) => ctx.post({ web_agent_view: { minutes: v } }),
+  },
+  {
     id: "access.machine_name",
     category: "access",
     label: "Machine name",
@@ -2733,6 +2764,31 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_browser: v } }),
   },
   {
+    // Issue 751 follow-up: cpu runs beside a release browser run (0).
+    id: "server.gate_cpu_beside_release",
+    category: "server",
+    label: "Unit test runs beside a release browser test run",
+    description:
+      "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "browser",
+      "beside",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_slots_beside_release_browser"],
+    control: { type: "number", min: 0, max: 64, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuSlotsBesideReleaseBrowser ?? 0,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
+  },
+  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",
@@ -3610,6 +3666,56 @@ export const DEN_SETTINGS = [
   },
 
   {
+    // Issue 158: the Hub delivery loop for this project, over the install.
+    id: "workspace.hub_delivery_loop",
+    category: "workspace",
+    label: "Hub delivery loop: this project",
+    description:
+      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+    keywords: [
+      "hub",
+      "delivery",
+      "loop",
+      "instructions",
+      "project",
+      "override",
+    ],
+    scope: "workspace",
+    control: seg([
+      { value: "install", label: "As everywhere" },
+      { value: "on", label: "On" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) =>
+      ctx.wsSettings?.hub_delivery_loop === true
+        ? "on"
+        : ctx.wsSettings?.hub_delivery_loop === false
+          ? "off"
+          : "install",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop: v === "on" ? true : v === "off" ? false : null,
+      }),
+  },
+  {
+    // Issue 158: the project's own text after Den's copy of the loop.
+    id: "workspace.hub_delivery_loop_extra",
+    category: "workspace",
+    label: "Added to the Hub delivery loop",
+    description:
+      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
+    keywords: ["hub", "delivery", "loop", "add", "project", "instructions"],
+    scope: "workspace",
+    // The server's limit (HUB_LOOP_EXTRA_MAX), so a long paste stops here.
+    control: { type: "text", maxLength: 2000 },
+    read: (ctx) => ctx.wsSettings?.hub_delivery_loop_extra ?? "",
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        hub_delivery_loop_extra: String(v ?? "").trim() || null,
+      }),
+  },
+
+  {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
     // Issue 268: named as the override of the Den-wide default.
@@ -3743,6 +3849,29 @@ export const DEN_SETTINGS = [
     read: (ctx) => (ctx.data.approvals_critical ?? []).join(", "),
     write: (v, ctx) =>
       ctx.post({ approvals_critical: String(v ?? "").trim() || null }),
+  },
+  {
+    // Issue 742: how long an agent's request waits for your Allow
+    // (user.yml held_writes.wait_minutes). A person's only.
+    id: "agents.held_wait",
+    category: "agents",
+    label: "Requests wait for your Allow",
+    description:
+      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    keywords: [
+      "approval",
+      "allow",
+      "wait",
+      "expire",
+      "lapse",
+      "held",
+      "request",
+    ],
+    scope: "user",
+    keys: ["held_writes.wait_minutes"],
+    control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
+    write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
   },
   {
     // issue_write: which persona roles write GitHub issues in their
@@ -4117,6 +4246,22 @@ export const DEN_SETTINGS = [
     keys: ["hub_allow_tools", "hub_url"],
     read: () => null,
     write: (v, ctx) => ctx.post({ hub_allow_tools: v }),
+  },
+
+  {
+    // Issue 158: the Hub delivery loop, built into every Den.
+    id: "agents.hub_delivery_loop",
+    category: "hub",
+    label: "Hub delivery loop",
+    description:
+      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    keywords: ["hub", "delivery", "loop", "instructions", "agents", "review"],
+    scope: "user",
+    keys: ["hub_delivery_loop"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.hub_delivery_loop !== false,
+    write: (v, ctx) =>
+      ctx.post({ hub_delivery_loop: v === true ? null : false }),
   },
 
   {
