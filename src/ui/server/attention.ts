@@ -411,8 +411,16 @@ export class Attention {
     }
     const prev = this.waiting.get(agent);
     // Issue 828: the permission notice that comes with AskUserQuestion's
-    // dialog is that question, not a permission.
-    if (prev?.why === "asked" && prev.dialog && ev.why === "permission") return;
+    // dialog is that question, not a permission: a permission with no
+    // tool input (a Notification), or one naming AskUserQuestion. Another
+    // tool's PermissionRequest is its own wait.
+    if (
+      prev?.why === "asked" &&
+      prev.dialog &&
+      ev.why === "permission" &&
+      (!ev.input || /AskUserQuestion/.test(`${ev.what ?? ""} ${ev.text ?? ""}`))
+    )
+      return;
     // Issue 327: Claude Code's idle notice means no dialog is open: a
     // permission wait from before it is over.
     if (
