@@ -273,7 +273,19 @@ describe("FB: Report an issue, the dialog", () => {
     ).toBe(true);
     await rb.click();
     await dlg(p).waitFor();
+    // The drawer makes the page inert; the form is on top of it, holds
+    // the focus, and takes typing.
+    await p.waitForFunction(
+      () => !!document.activeElement?.closest("dialog.fb-dlg"),
+    );
+    expect(await dlg(p).evaluate((d) => !!d.closest("[inert]"))).toBe(false);
+    await dlg(p).locator('[data-f="title"]').fill("From the drawer");
+    expect(await dlg(p).locator('[data-f="title"]').inputValue()).toBe(
+      "From the drawer",
+    );
     await p.keyboard.press("Escape");
+    // Text typed: Esc asks to keep it; Discard closes.
+    await dlg(p).locator('[data-act="discard"]').click();
     await dlg(p).waitFor({ state: "hidden" });
     // Shut, the drawer's Report goes with it.
     await p.keyboard.press("Escape");
