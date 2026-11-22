@@ -7,6 +7,8 @@
  * The shell mirrors it to localStorage so the first paint does not wait on
  * the server.
  */
+import * as fs from "fs";
+import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 
 /**
@@ -309,4 +311,98 @@ export function storedShell(p: ShellPrefs): StoredShell | undefined {
   if (p.dockHeight) out.dockHeight = p.dockHeight;
   if (p.projectOrder?.length) out.projectOrder = p.projectOrder;
   return Object.keys(out).length ? out : undefined;
+}
+
+/** Issue 946: one pin's key (item and project). */
+const pinKey = (p: Pin) => `${p.item}\u0000${p.project ?? ""}`;
+
+/**
+ * Issue 946: a pin is more than a view pref: a held write on a pinned item
+ * waits for an Allow (approval-policy.ts, favorited). So a save by the
+ * fixture person (a test install's live checks) adds pins and takes off
+ * only the ones it added (`added`, kept in the state dir, never user.yml).
+ * The person's own pins always stay, in place; the fixture's follow, in
+ * the order it asked. Returns the pins to store and what the fixture owns.
+ */
+export function fixtureSave(
+  before: readonly Pin[],
+  asked: readonly Pin[],
+  added: readonly Pin[],
+): { pins: Pin[]; added: Pin[] } {
+  const own = new Set(added.map(pinKey));
+  const persons = before.filter((p) => !own.has(pinKey(p)));
+  const theirs = new Set(persons.map(pinKey));
+  const seen = new Set<string>();
+  const mine: Pin[] = [];
+  for (const p of asked) {
+    const k = pinKey(p);
+    if (theirs.has(k) || seen.has(k)) continue;
+    seen.add(k);
+    mine.push({ item: p.item, project: p.project ?? null });
+  }
+  return { pins: [...persons, ...mine], added: mine };
+}
+
+/** Issue 946: where the fixture person's own pins are recorded. */
+export function fixturePinsFile(stateDir: string): string {
+  return path.join(stateDir, "fixture-pins.json");
+}
+
+/** Issue 946: the pins the fixture person added (none when unreadable). */
+export function readFixturePins(stateDir: string): Pin[] {
+  try {
+    const v: unknown = JSON.parse(
+      fs.readFileSync(fixturePinsFile(stateDir), "utf8"),
+    );
+    if (!Array.isArray(v)) return [];
+    return v.flatMap((x) =>
+      x && typeof x === "object" && typeof (x as Pin).item === "string"
+        ? [
+            {
+              item: (x as Pin).item,
+              project:
+                typeof (x as Pin).project === "string"
+                  ? (x as Pin).project
+                  : null,
+            },
+          ]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Issue 946: record the fixture person's own pins (only those still stored). */
+export function writeFixturePins(
+  stateDir: string,
+  added: readonly Pin[],
+  stored: readonly Pin[],
+): void {
+  const now = new Set(stored.map(pinKey));
+  const keep = added.filter((p) => now.has(pinKey(p)));
+  const file = fixturePinsFile(stateDir);
+  if (!keep.length) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, JSON.stringify(keep), { mode: 0o600 });
+}
+
+/**
+ * Issue 957: the fixture person's own pins, kept only while they are still
+ * stored. A pin dropped from user.yml (by hand, or any other way) leaves
+ * the record at once, so the same pin made again later is the person's.
+ * Rewrites the record when it shrinks.
+ */
+export function prunedFixturePins(
+  stateDir: string,
+  stored: readonly Pin[],
+): Pin[] {
+  const had = readFixturePins(stateDir);
+  const now = new Set(stored.map(pinKey));
+  const keep = had.filter((p) => now.has(pinKey(p)));
+  if (keep.length !== had.length) writeFixturePins(stateDir, keep, stored);
+  return keep;
 }

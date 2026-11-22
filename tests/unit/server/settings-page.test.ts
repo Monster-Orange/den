@@ -76,6 +76,17 @@ describe("search", () => {
           "agents.list_host_wait",
         ],
       ],
+      // Issue 532: Server › the terminal limits.
+      [
+        "server",
+        [
+          "server.sessions_max",
+          "server.sessions_close_grace",
+          "server.sessions_pty_close",
+          "server.sessions_pty_warn",
+          "server.sessions_pty_machine",
+        ],
+      ],
       ["cli", ["cli.cli_tabs"]],
     ]);
     // A description word: "stack.yml" is in Per-language IDE's.

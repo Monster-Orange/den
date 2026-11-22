@@ -127,10 +127,22 @@ export type HeldActions = Readonly<Record<string, HeldAction>>;
 export function createApprovalQueue(
   actions: HeldActions,
   stateDir: () => string,
-  o: { ttlMs?: number; now?: () => number } = {},
+  o: {
+    /** Issue 742: the wait, read at each ask (held_writes.wait_minutes). */
+    ttlMs?: number | (() => number);
+    now?: () => number;
+    /** Issue 746: a request ended unanswered. */
+    onExpire?: (a: Approval) => void;
+    /** Issue 742: the file the queue is kept in, under the state dir. */
+    file?: string;
+    /** Issue 742: a restart lost a request (null: the file was unreadable). */
+    onLost?: (a: Approval | null, why: string) => void;
+  } = {},
 ): ApprovalQueue {
   return new ApprovalQueue({
     ...o,
+    // Issue 742: a request read back for an action this Den lacks is lost.
+    knownAction: (action) => Object.hasOwn(actions, action),
     // An agent with no live token (stopped, `web logout --all`) is gone.
     actorLive: (actor) =>
       !actor.startsWith("agent:") ||
@@ -222,6 +234,19 @@ export function approvalView(
       ? { result: resultFor(a, o.asker === true) }
       : {}),
     ...(a.endedBecause ? { endedBecause: a.endedBecause } : {}),
+    // Issue 746: why it ended, and what the asker can do.
+    ...(a.state === "expired"
+      ? {
+          reason:
+            "Lapsed unanswered: the person did not answer before it expired. Nothing ran. Ask again if it is still needed.",
+        }
+      : {}),
+    // Issue 742: a restart could not bring it back; never silently gone.
+    ...(a.state === "lost"
+      ? {
+          reason: `Lost at a restart: ${a.lostBecause ?? "Den could not bring it back."} Nothing ran from here. Ask again if it is still needed.`,
+        }
+      : {}),
   };
 }
 
@@ -574,12 +599,14 @@ export async function handleApprovalRoutes(
     const ticket = req.headers[APPROVAL_TICKET_HEADER];
     const mayRead =
       !!a &&
-      (agent
-        ? a.actor === agent.actor
-        : deps.queue.ticketMatches(
-            a.id,
-            typeof ticket === "string" ? ticket : undefined,
-          ) || approverAllowed(req, guard, "read").ok);
+      // Issue 742: a stand-in for a lost id holds nothing but that it was lost.
+      (a.unknown === true ||
+        (agent
+          ? a.actor === agent.actor
+          : deps.queue.ticketMatches(
+              a.id,
+              typeof ticket === "string" ? ticket : undefined,
+            ) || approverAllowed(req, guard, "read").ok));
     if (!a || !mayRead) {
       refuse(
         res,
@@ -667,7 +694,11 @@ export async function handleApprovalRoutes(
     } else
       refuse(
         res,
-        r.code === "not_found" ? 404 : r.code === "expired" ? 410 : 409,
+        r.code === "not_found"
+          ? 404
+          : r.code === "expired" || r.code === "lost"
+            ? 410
+            : 409,
         r.code,
         r.error,
       );

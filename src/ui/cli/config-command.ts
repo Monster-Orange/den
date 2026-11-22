@@ -2,8 +2,11 @@ import chalk from "chalk";
 import * as yaml from "yaml";
 import {
   mergeUserConfig,
+  readSessionsConfig,
   readUserConfig,
+  SESSIONS_SETTINGS_KEYS,
   writeUserConfig,
+  type ResolvedSessionsConfig,
   type UserConfig,
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
@@ -65,6 +68,9 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
   "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
+  // Issue 796: agents' read-only page views, and how long one lasts.
+  "web.agent_view": ["web_agent_view", "on"],
+  "web.agent_view_minutes": ["web_agent_view", "minutes"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
@@ -120,7 +126,21 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "agent_hooks.timeout_seconds": ["agent_hooks", "timeout_seconds"],
   "agent_hooks.retries": ["agent_hooks", "retries"],
   "agent_hooks.backoff_seconds": ["agent_hooks", "backoff_seconds"],
+  // Issue 532: the terminal limits (sessions.max_concurrent and the rest).
+  ...Object.fromEntries(
+    SESSIONS_SETTINGS_KEYS.map((k) => [`sessions.${k}`, ["sessions", k]]),
+  ),
+  // Issue 742: how long a held write waits for the person's Allow.
+  "held_writes.wait_minutes": ["held_writes", "wait_minutes"],
 };
+
+/** Issue 532: a terminal limit's effective value (user.yml over den.yml). */
+function sessionsValue(name: string): number | undefined {
+  const [field, limit] = DOTTED[name] ?? [];
+  if (field !== "sessions" || !limit) return undefined;
+  const camel = limit.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+  return readSessionsConfig()[camel as keyof ResolvedSessionsConfig] as number;
+}
 
 /**
  * Dotted switches, as Settings names them: the Settings field each sets
@@ -210,6 +230,12 @@ export async function cmdConfig(args: string[]): Promise<void> {
 
   const assignment = args[0];
   const eq = assignment.indexOf("=");
+  // Issue 532: `config sessions.<key>` prints the value in force.
+  const effective = eq < 0 ? sessionsValue(assignment) : undefined;
+  if (effective !== undefined) {
+    console.log(String(effective));
+    return;
+  }
   if (eq <= 0) {
     throw new Error(
       `Usage: ${product().cli} config <key>=<value> or ${product().cli} config rm <key>`,

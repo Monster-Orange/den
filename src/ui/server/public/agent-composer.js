@@ -4,11 +4,14 @@
  * pane. What is written here stays here until the person presses Send:
  * nothing reaches the agent before.
  *
- *   makeComposer({ t, name, send, onClose? })  → { el, setText, focus,
- *                                                 text, addContext,
+ *   makeComposer({ t, name, send, onClose?, holds? })  → { el, setText,
+ *                                                 focus, text, addContext,
  *                                                 contexts }
- *     send({ text, context? })  resolves when the agent has it; rejects
- *                      with an Error whose message is shown
+ *     send({ text, context?, button })  resolves when the agent has it;
+ *                      rejects with an Error whose message is shown.
+ *                      button is Send, for the kit's dots (issue 698)
+ *     holds            send holds Send with the kit's dots, so the line
+ *                      under the box doesn't say Sending… too
  *     addContext({ url, title, text })  a page shared with the message
  *                      (issue 103's "share this page"): a chip above the
  *                      box, with Remove. The same URL again replaces it.
@@ -24,7 +27,7 @@ import { focusWhenFree } from "/kit/dialog.js";
 export const MAX_SHARED = 5;
 
 /** The composer's element and its controls. */
-export function makeComposer({ t, name, send, onClose }) {
+export function makeComposer({ t, name, send, onClose, holds = false }) {
   const el = document.createElement("form");
   el.className = "agc";
   el.noValidate = true;
@@ -111,14 +114,19 @@ export function makeComposer({ t, name, send, onClose }) {
     }
     busy = true;
     sendBtn.disabled = true;
-    say(t("agc.sending"));
+    // Issue 698: held with the kit's dots, Send says it; else this line.
+    say(holds ? "" : t("agc.sending"));
     try {
       const context = shared.map(({ url, title, text: words }) => ({
         url,
         title,
         ...(words ? { text: words } : {}),
       }));
-      await send(context.length ? { text, context } : { text });
+      await send(
+        context.length
+          ? { text, context, button: sendBtn }
+          : { text, button: sendBtn },
+      );
       ta.value = "";
       shared = [];
       paintChips();
