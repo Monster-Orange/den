@@ -69,8 +69,10 @@ gh workflow run release.yml -f promote=<the version commit's sha>
 
 The jobs that publish (Den, and the UI kit) run in the `release`
 environment. That environment allows only `main`, and its required
-reviewers are the people who approve each publish. Both are repository
-settings: set them before the first release that should prove them.
+reviewers are the people who approve each publish. On npm, the package's
+trusted publisher must name that `release` environment too, so npm takes
+a publish only from it. These are settings outside the repository: set
+them before the first release that should prove them.
 
 Then the release builds that commit: the gates, the tarball, SHA256SUMS,
 the tag `v<version>`, `npm publish`, and a GitHub release. The tarball
