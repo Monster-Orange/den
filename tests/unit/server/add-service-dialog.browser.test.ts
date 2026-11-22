@@ -6,7 +6,8 @@
  * and the Report button inside it. Its words are the page's language.
  *
  * The repos it lists and the add itself are routed here (invented names),
- * so nothing is cloned or written. Needs Playwright's chromium;
+ * so nothing is cloned or written. The module is served as ui-assets.ts
+ * lists it. Needs Playwright's chromium;
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -261,16 +262,14 @@ describe("issue 806: Add Service on the kit's dialog", () => {
   it("a refused add says why inside the dialog, which stays open", async () => {
     if (!browser) return;
     const { p } = await open();
-    await p
-      .context()
-      .route("**/api/workspaces/services", (r) =>
-        r.request().method() === "POST"
-          ? r.fulfill({
-              status: 409,
-              json: { error: "orchard is already there" },
-            })
-          : r.fallback(),
-      );
+    await p.context().route("**/api/workspaces/services", (r) =>
+      r.request().method() === "POST"
+        ? r.fulfill({
+            status: 409,
+            json: { error: "orchard is already there" },
+          })
+        : r.fallback(),
+    );
     await openDialog(p);
     await p.click(`${DLG} [data-as-tab="gh"]`);
     await p.locator(`${DLG} [data-as-gh="orchard"]`).click();

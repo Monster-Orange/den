@@ -54,11 +54,11 @@ const LEGACY: Record<string, number> = {
 const OVERLAYS: Record<string, { n: number; why: string }> = {
   "shell.js": {
     n: 1,
-    why: "the command palette (.den-pal-wrap): a search field and its list, not a dialog; it sets its own font",
+    why: "the command palette (.den-pal-wrap): a search field and its list over the page, not a dialog with a footer; it sets its own font (reviewed in issue 806)",
   },
   "graph.css": {
     n: 1,
-    why: "the graph's details panel popped out (.dg-modal-back): the side panel itself, inside the graph's own .dg root, which sets the font",
+    why: "the graph's details panel popped out (.dg-modal-back): the same side panel, moved, keeping the graph's own state, menus and Esc; inside the graph's .dg root, which sets the font (reviewed in issue 806)",
   },
 };
 
