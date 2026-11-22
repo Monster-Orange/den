@@ -16,7 +16,8 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { startDenServer, stopServer } from "../../child-servers.js";
+import { closeBrowserSuite } from "../../browser-teardown.js";
+import { startDenServer } from "../../child-servers.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -161,8 +162,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await stopServer(server);
+  await closeBrowserSuite({ browsers: [browser], servers: [server] });
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
