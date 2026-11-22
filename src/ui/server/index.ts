@@ -12,6 +12,7 @@
 
 // Issue 814: first, before anything writes to the state folder.
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
+import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
   handleNotificationRoutes,
@@ -4716,12 +4717,23 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
         args: { version },
         summary: `commit the distribution's pin to Den ${version}`,
         params: { version },
-        details: [
+        // Issue 205: each Review line in the page's language.
+        ...reviewLines([
           mode === "pr"
-            ? `Den commits package.json and package-lock.json on the branch den/pin-${version} and opens a pull request.`
-            : "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
-          "Nothing else in the distribution's folder is committed.",
-        ],
+            ? line(
+                `Den commits package.json and package-lock.json on the branch den/pin-${version} and opens a pull request.`,
+                "ap.det.den_pin_commit.pr",
+                { version },
+              )
+            : line(
+                "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
+                "ap.det.den_pin_commit.push",
+              ),
+          line(
+            "Nothing else in the distribution's folder is committed.",
+            "ap.det.den_pin_commit.only",
+          ),
+        ]),
       };
     },
     run: async (a) => {

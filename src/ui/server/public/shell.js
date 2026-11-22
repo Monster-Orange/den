@@ -2730,6 +2730,107 @@
       "{origin} can no longer message {agent} or read its state with this key.",
     "ap.det.embed_key_revoke.held":
       "Messages it sent that wait for the agent's turn are still typed.",
+    "ap.det.workspace_create.new":
+      'A new, empty project named "{name}", made active so its services can start.',
+    "ap.det.service_try.activates":
+      'Activates the project "{project}" first, so it can run.',
+    "ap.det.service_try.up":
+      "Runs the service's local \"up\", as the Services page's Start does.",
+    "ap.det.service_try.reports":
+      "Den reports the exit code and the last lines of its output.",
+    "ap.det.den_restart.restart":
+      "Den stops and starts again at the same address, on the version installed now.",
+    "ap.det.den.carryOn":
+      "Agents and terminals carry on where they were; open pages reconnect.",
+    "ap.det.den_restart.told": "The agent that asked is told when Den is back.",
+    "ap.det.den_update.latest":
+      "Den gets the latest version from npm for this distribution, checks it with doctor, and restarts on it.",
+    "ap.det.den_update.version":
+      "Den gets version {version} from npm for this distribution, checks it with doctor, and restarts on it.",
+    "ap.det.den_update.rollback":
+      "If the new version isn't up in time, Den rolls back by itself to the version it runs now, and says why.",
+    "ap.det.repo_clone.fromBranch": "From: {source}, branch {branch}.",
+    "ap.det.repo_clone.from": "From: {source}, its default branch.",
+    "ap.det.repo_clone.gh": "With your gh login (a GitHub repo).",
+    "ap.det.repo_clone.git":
+      "With git and your own credentials (not gh: it isn't GitHub).",
+    "ap.det.repo_clone.into":
+      "Into: {path} (a new folder; nothing there changes).",
+    "ap.det.repo_clone.then":
+      "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
+    "ap.det.agent_import.what": "Project: {project}. Persona: {persona}.",
+    "ap.det.agent_import.whatRuntime":
+      "Project: {project}. Persona: {persona}. Runtime: {runtime}.",
+    "ap.det.agent_import.goesOn":
+      "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
+    "ap.det.agent_import.refused":
+      "Refused if it is still open in another terminal, or an agent already continues it.",
+    "ap.det.approval_policy.now": "Now: {v}.",
+    "ap.det.approval_policy.nowNone": "Now: none.",
+    "ap.det.approval_policy.then": "Then: {v}.",
+    "ap.det.approval_policy.thenNone": "Then: none.",
+    "ap.det.approval_policy.person":
+      "Only a person changes the approval policy without an Allow: an agent always asks.",
+    "ap.det.pr_close.what": "Repo: {repo}. Pull request: {pr}.",
+    "ap.det.pr_close.comment": "Den closes it with this comment: {comment}",
+    "ap.det.pr_close.nothing": "Nothing is merged and no branch is deleted.",
+    "ap.det.hub_connect.set": "Hub's address: {was} → {url}.",
+    "ap.det.hub_connect.setNew": "Hub's address: none → {url}.",
+    "ap.det.hub_connect.clear":
+      "Hub's address {was} is cleared; this Den stops using Hub.",
+    "ap.det.hub_connect.leave":
+      "Den disconnects from the Hub it uses now first, so that Hub revokes its key.",
+    "ap.det.hub_connect.restart":
+      "Then Den restarts, and agents get Hub's tools when they next restart.",
+    "ap.det.hub_connect.connect":
+      "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
+    "ap.det.den_pin_commit.pr":
+      "Den commits package.json and package-lock.json on the branch den/pin-{version} and opens a pull request.",
+    "ap.det.den_pin_commit.push":
+      "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
+    "ap.det.den_pin_commit.only":
+      "Nothing else in the distribution's folder is committed.",
+    "ap.det.persona.local":
+      "File: this machine's own personas (not shared with the project)",
+    "ap.det.persona.newFile":
+      "File: {file} (new; commit it so the project's other Dens get it)",
+    "ap.det.persona.changedFile":
+      "File: {file} (changed; commit it so the project's other Dens get it)",
+    "ap.det.persona.name": "Name: {v}",
+    "ap.det.persona.role": "Role: {v}",
+    "ap.det.persona.category": "Category: {v}",
+    "ap.det.persona.description": "Description: {v}",
+    "ap.det.persona.runtime": "Runtime: {v}",
+    "ap.det.persona.runtimeModel": "Runtime: {v}, model {model} ({version})",
+    "ap.det.persona.mode": "Mode: {v}",
+    "ap.det.persona.commands": "Allowed commands: {v}",
+    "ap.det.persona.commandsNone": "Allowed commands: none",
+    "ap.det.persona.instructions": "Instructions:",
+    "ap.det.asWritten": "{v}",
+    "ap.det.persona.field": "{field}: {v}",
+    "ap.det.persona.fieldNone": "{field}: none",
+    "ap.det.persona.asItWillRead": "As it will read:",
+    "ap.det.agent_create.persona": "Persona: {v}",
+    "ap.det.agent_create.project": "Project: {v}",
+    "ap.det.agent_create.folder": "Folder: {v}",
+    "ap.det.agent_create.runtime": "Runtime: {v}",
+    "ap.det.agent_create.mode": "Mode: {mode} (the project's: {cap})",
+    "ap.det.agent.who": "Agent: {agent}, project {project}",
+    "ap.det.agent.whoId": "Agent: {agent} ({id}), project {project}",
+    "ap.det.agent_folder.from": "From: {v}",
+    "ap.det.agent_folder.to": "To: {v}",
+    "ap.det.agent_folder.running":
+      "It is running: Den stops it, moves it, and starts it fresh there (a new conversation; the old one stays in its history).",
+    "ap.det.agent_folder.stopped":
+      "It is stopped and stays so: its next start is a new conversation there.",
+    "ap.det.agent_folder.self":
+      "This is the agent that asked: it stops when you Allow, and its answer to you ends there.",
+    "ap.det.agent_mode.loosens": "This lets {agent} act without asking you.",
+    "ap.det.agent_mode.now": "Now: its own mode, {mode}",
+    "ap.det.agent_mode.then": "Then: it follows the project, {mode}",
+    "ap.det.agent_mode.running":
+      "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
+    "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
