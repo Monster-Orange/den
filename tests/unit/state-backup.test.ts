@@ -14,7 +14,8 @@ import {
   readStateJson,
 } from "../../src/shared/state-backup.js";
 import { NotificationStore } from "../../src/shared/notifications.js";
-import { readRecord } from "../../src/shared/agents/records.js";
+import { agentIdTaken, readRecord } from "../../src/shared/agents/records.js";
+import { defaultId } from "../../src/ui/cli/agent-ops.js";
 import { stateKeptLines } from "../../src/ui/cli/doctor-command.js";
 import { startStateKeptBell } from "../../src/ui/server/state-kept-bell.js";
 
@@ -99,6 +100,19 @@ describe("a state file that can't be read", () => {
     fs.writeFileSync(f, '{"id":"a1",');
     expect(readRecord(d, "a1")).toBeNull();
     expect(readKept(d).map((k) => k.file)).toEqual(["agents/a1.json"]);
+  });
+});
+
+describe("a kept record's id stays taken", () => {
+  it("a new agent never takes the id of a broken record kept in backup", () => {
+    const d = stateDir();
+    fs.mkdirSync(path.join(d, "agents"), { recursive: true });
+    fs.writeFileSync(path.join(d, "agents", "planner.json"), '{"id":');
+    expect(readRecord(d, "planner")).toBeNull();
+    expect(agentIdTaken(d, "planner")).toBe(true);
+    expect(defaultId(d, "planner", "north")).not.toBe("planner");
+    expect(agentIdTaken(d, "reviewer")).toBe(false);
+    expect(defaultId(d, "reviewer", "north")).toBe("reviewer");
   });
 });
 

@@ -22,7 +22,7 @@ import { WORKSPACE_NAME_RE } from "../agent-actor.js";
 import type { SessionRef } from "../sessions/types.js";
 import type { RotationEntry } from "./rotation.js";
 import type { PermissionIntent } from "./permissions.js";
-import { keepUnreadable } from "../state-backup.js";
+import { keepUnreadable, readKept } from "../state-backup.js";
 
 export interface AgentRecord {
   id: string;
@@ -337,6 +337,21 @@ export function readRecord(stateDir: string, id: string): AgentRecord | null {
     keepUnreadable(stateDir, file, (e as Error).message);
     return null;
   }
+}
+
+/**
+ * Whether an agent id is in use: a record reads, its file is there, or a
+ * broken one was kept in backup (issue 786). A kept one still owns its
+ * agent files, actor token and maybe a running session, so a new agent
+ * never takes its id.
+ */
+export function agentIdTaken(stateDir: string, id: string): boolean {
+  if (!AGENT_ID_RE.test(id)) return false;
+  if (readRecord(stateDir, id)) return true;
+  const file = recordFile(stateDir, id);
+  if (fs.existsSync(file)) return true;
+  const rel = path.relative(stateDir, file).split(path.sep).join("/");
+  return readKept(stateDir).some((k) => k.file === rel);
 }
 
 /** Where removed records wait for Undo (AG-14.1b). */

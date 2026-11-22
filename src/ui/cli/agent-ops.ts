@@ -227,6 +227,7 @@ import {
   listRemovedRecords,
   purgeRemoved,
   readRecord,
+  agentIdTaken,
   removeRecord,
   restoreRecord,
   writeRecord,
@@ -3127,11 +3128,11 @@ async function namedId(
       });
   }
   if (!slug) return null;
-  if (!readRecord(d.stateDir(), slug)) return slug;
+  if (!agentIdTaken(d.stateDir(), slug)) return slug;
   const stem = slug.slice(0, 58);
   for (let n = 2; n < 1000; n++) {
     const id = `${stem}-${n}`;
-    if (!readRecord(d.stateDir(), id)) return id;
+    if (!agentIdTaken(d.stateDir(), id)) return id;
   }
   throw refused(`no free agent id for ${slug}: give one with --id`);
 }
@@ -3142,13 +3143,14 @@ export function defaultId(
   ws: string,
 ): string {
   const rec = readRecord(stateDir, persona);
-  if (!rec) return persona;
-  const base = rec.workspace === ws ? persona : `${persona}-${ws}`.slice(0, 64);
-  if (base !== persona && !readRecord(stateDir, base)) return base;
+  if (!rec && !agentIdTaken(stateDir, persona)) return persona;
+  const base =
+    rec?.workspace === ws ? persona : `${persona}-${ws}`.slice(0, 64);
+  if (base !== persona && !agentIdTaken(stateDir, base)) return base;
   const stem = base.slice(0, 58);
   for (let n = 2; n < 1000; n++) {
     const id = `${stem}-${n}`;
-    if (!readRecord(stateDir, id)) return id;
+    if (!agentIdTaken(stateDir, id)) return id;
   }
   throw refused(`no free agent id for ${persona}: give one with --id`);
 }
@@ -4346,10 +4348,10 @@ export interface ImportRequest {
 
 /** The persona's id, else the first `<persona>-<n>` no agent has. */
 function freeId(d: AgentsResolved, persona: string): string {
-  if (!readRecord(d.stateDir(), persona)) return persona;
+  if (!agentIdTaken(d.stateDir(), persona)) return persona;
   for (let n = 2; n < 1000; n++) {
     const id = `${persona.slice(0, 58)}-${n}`;
-    if (!readRecord(d.stateDir(), id)) return id;
+    if (!agentIdTaken(d.stateDir(), id)) return id;
   }
   throw refused(`no free agent id for ${persona}: give one with --id`);
 }
