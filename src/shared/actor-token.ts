@@ -40,6 +40,12 @@ export const ACTOR_TOKEN_ENV = "DEN_ACTOR_TOKEN";
 export const ACTOR_TOKEN_FILE_ENV = "DEN_ACTOR_TOKEN_FILE";
 /** A person's token in an env: never forwarded to any session. */
 export const PERSON_TOKEN_ENV = "DEN_PERSON_TOKEN";
+/**
+ * Issue 636: the tag a CLI on a test bed's test-person path leaves the
+ * processes it starts (test-person.ts). A person's credential for a
+ * session: no agent's session ever gets it.
+ */
+export const TEST_PERSON_ENV = "DEN_TEST_PERSON";
 export const ACTOR_TOKENS_FILE = "actor-tokens.json";
 
 const TOKEN_RE = /^den_at_[A-Za-z0-9_-]{43}$/;
@@ -346,7 +352,7 @@ export function isPersonCredentialEnv(
   name: string,
   value: string | undefined,
 ): boolean {
-  if (name === PERSON_TOKEN_ENV) return true;
+  if (name === PERSON_TOKEN_ENV || name === TEST_PERSON_ENV) return true;
   if (value === undefined) return false;
   const v = value.trim();
   if (v.includes(PERSON_PREFIX)) return true;

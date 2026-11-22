@@ -26,6 +26,7 @@ import {
 } from "./actor-token.js";
 import { getStateDir } from "./paths.js";
 import { AGENT_ACTOR_ENV } from "./sessions/env.js";
+import { TEST_PERSON_HEADER, testPersonOn } from "./test-person.js";
 
 export const WEB_SECRET_FILE = "web.secret";
 const SECRET_BYTES = 32;
@@ -135,6 +136,8 @@ export function verifyPersonToken(
  *  - inside an agent's session (SEC-1c): its DEN_ACTOR_TOKEN, never the
  *    person's; an agent (DEN_AGENT set) without one sends no credential
  *    rather than fall back to the person token;
+ *  - on a test bed's test-person path (issue 636), the person token and
+ *    the test-person header, whatever the environment;
  *  - otherwise the person token, or none when there is no secret yet (a
  *    server that predates SEC-1, or none started).
  */
@@ -142,6 +145,17 @@ export function cliAuthHeaders(
   stateDir: string = getStateDir(),
   env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
+  // Issue 636: on a test bed's test-person path (only once the server
+  // allowed it), the person's token, marked as that path.
+  if (testPersonOn()) {
+    const secret = readWebSecret(stateDir);
+    return secret
+      ? {
+          Authorization: `Bearer ${personToken(secret)}`,
+          [TEST_PERSON_HEADER]: "1",
+        }
+      : {};
+  }
   const actorToken = actorTokenOf(env);
   if (isActorTokenShape(actorToken))
     return { Authorization: `Bearer ${actorToken}` };
