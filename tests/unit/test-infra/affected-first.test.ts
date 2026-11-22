@@ -273,3 +273,11 @@ describe("issue 844 clause 4: time to first red in the run summary", () => {
     expect(s?.run).toMatch(/GITHUB_STEP_SUMMARY/);
   });
 });
+
+// PLANT (issue 844 proof run): a failing assertion in a directly affected
+// test. Removed in the next commit.
+describe("issue 844 proof plant", () => {
+  it("fails on purpose", () => {
+    expect("planted").toBe("not planted");
+  });
+});
