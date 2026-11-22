@@ -8,10 +8,10 @@
  * Written by `<cli> web owner link` and Settings › Access; removed by
  * `web owner unlink`. Re-read whenever it changes on disk.
  */
-import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { getStateDir } from "./paths.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export const WEB_OWNER_FILE = "web-owner.json";
 
@@ -140,11 +140,9 @@ export function syncWebOwnerName(
 function saveWebOwner(rec: WebOwner, stateDir: string): WebOwner {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const file = webOwnerPath(stateDir);
-  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify({ v: 1, ...rec })}\n`, {
+  writeFileAtomic(file, `${JSON.stringify({ v: 1, ...rec })}\n`, {
     mode: 0o600,
   });
-  fs.renameSync(tmp, file);
   return rec;
 }
 

@@ -177,7 +177,9 @@ describe("Edge's card (mock v3)", () => {
   });
   it("44px targets, a snippet that scrolls inside itself", () => {
     const css = fs.readFileSync(path.join(PUBLIC, "edge.html"), "utf-8");
-    expect(css).toMatch(/\.addr-copy,[\s\S]*?min-height: 44px/);
+    expect(css).toMatch(/\.addr-copy \{[\s\S]*?min-height: 44px/);
+    // Issue 673: the card's buttons are the kit's, at the mock's 44px.
+    expect(css).toMatch(/\.addr-card \.den-btn \{\s*min-height: 44px;/);
     expect(css).toMatch(/\.addr-snip pre \{[\s\S]*?overflow: auto/);
   });
   it("nothing to say when the address works, or nothing was proven", () => {

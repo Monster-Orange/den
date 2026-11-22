@@ -17,6 +17,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export const BOOTS_FILE = "web-boots.json";
 const KEEP = 50;
@@ -87,11 +88,9 @@ function readBoots(file: string): Boot[] {
 function writeBoots(file: string, boots: Boot[]): void {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(boots.slice(-KEEP))}\n`, {
+    writeFileAtomic(file, `${JSON.stringify(boots.slice(-KEEP))}\n`, {
       mode: 0o600,
     });
-    fs.renameSync(tmp, file);
   } catch {
     // A state dir that can't be written never stops the web app.
   }

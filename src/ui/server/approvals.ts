@@ -62,6 +62,7 @@ import {
 import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { keepUnreadable } from "../../shared/state-backup.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** The header an anonymous asker reads its own request with. */
 export const APPROVAL_TICKET_HEADER = "x-den-approval-ticket";
@@ -664,18 +665,11 @@ export class ApprovalQueue {
         ? { lostAt: this.lostUnknown.at, lostWhy: this.lostUnknown.why }
         : {}),
     };
-    const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(tmp, JSON.stringify(doc), { mode: 0o600 });
-      fs.renameSync(tmp, file);
+      writeFileAtomic(file, JSON.stringify(doc), { mode: 0o600 });
     } catch {
       // Best effort: the queue in memory still holds it.
-      try {
-        fs.rmSync(tmp, { force: true });
-      } catch {
-        /* nothing more to do */
-      }
     }
   }
 

@@ -386,6 +386,12 @@ async function list(args: string[], d: AgentsResolved): Promise<number> {
     ]),
   ]))
     d.out(l);
+  // Issue 749: a member whose tools didn't load can't be reached on them.
+  for (const r of rows)
+    for (const f of r.mcpFailed ?? [])
+      d.out(
+        `  ${r.agent}: ${f.server}'s tools didn't load (${f.error}); it can't use them until it restarts (same conversation)`,
+      );
   return 0;
 }
 

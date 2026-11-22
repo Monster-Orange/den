@@ -35,6 +35,7 @@ import {
   LOGIN_CODE_TTL_MS,
   safeNext,
 } from "./web-session.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export { FIXTURE_SESSION_MINUTES, FIXTURE_SESSION_RANGE };
 
@@ -197,10 +198,7 @@ export function setupFixturePerson(
   const f = fixturePersonPath(stateDir);
   const key = randomBytes(32).toString("base64url");
   const seal = sealOf(key, o.webSecret).toString("base64url");
-  const tmp = `${f}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  fs.writeFileSync(tmp, `${key}.${seal}\n`, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, f);
+  writeFileAtomic(f, `${key}.${seal}\n`, { mode: 0o600 });
   return { ok: true };
 }
 

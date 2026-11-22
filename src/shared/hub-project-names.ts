@@ -11,6 +11,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { HubProjectLink } from "./hub-project-link.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export interface HubNamesDeps {
   /** Every project linked to Hub, with its stored link. */
@@ -105,9 +106,7 @@ export function recordHubNamesCheck(
   try {
     fs.mkdirSync(stateDir, { recursive: true });
     const file = path.join(stateDir, HUB_NAMES_CHECK_FILE);
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(next)}\n`, { mode: 0o600 });
-    fs.renameSync(tmp, file);
+    writeFileAtomic(file, `${JSON.stringify(next)}\n`, { mode: 0o600 });
   } catch {
     /* the next check writes it */
   }

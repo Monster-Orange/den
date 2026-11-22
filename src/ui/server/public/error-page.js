@@ -166,7 +166,7 @@ function cmdLine(id, cmd, t, extra = "") {
   return (
     `<div class="den-cmd" data-cmd="${esc(id)}">` +
     `<pre class="code" id="${esc(id)}">${esc(cmd)}</pre>` +
-    `<button type="button" class="btn den-copy" data-copy-for="${esc(id)}" aria-label="${esc(t("err.signin.copy"))}" title="${esc(t("err.signin.copy"))}">` +
+    `<button type="button" class="den-btn den-copy" data-copy-for="${esc(id)}" aria-label="${esc(t("err.signin.copy"))}" title="${esc(t("err.signin.copy"))}">` +
     `${COPY_ICON}<span class="den-copied" aria-live="polite"></span></button>` +
     extra +
     `</div>`
@@ -320,7 +320,7 @@ function githubBlock(s, t) {
     `</ol>` +
     (ready
       ? `<div class="acts" style="margin-top:0">` +
-        `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
+        `<button type="button" class="den-btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
         `</div><div id="den-gh-flow" aria-live="polite"></div>`
       : "") +
     (!ready && g.message
@@ -355,10 +355,10 @@ function claimBlock(s, t) {
   const back = location.origin + location.pathname + location.search;
   const here = g.attest ? `${g.attest}?return=${encodeURIComponent(back)}` : "";
   const as = g.ownerGithub
-    ? `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.claimAs", { login: g.ownerGithub }))}</button>`
+    ? `<button type="button" class="den-btn primary" id="den-gh-start">${esc(t("err.signin.claimAs", { login: g.ownerGithub }))}</button>`
     : "";
   const hereBtn = here
-    ? `<a class="btn${as ? "" : " primary"}" id="den-claim-here" href="${esc(here)}">${
+    ? `<a class="den-btn${as ? "" : " primary"}" id="den-claim-here" href="${esc(here)}">${
         host
           ? withHost(t, "err.signin.claimHereOn", { host })
           : esc(t("err.signin.claimHere"))
@@ -535,7 +535,7 @@ function wireGithub(root, t, s, attest = "") {
               'class="den-cmd den-gh-coderow"',
             ) +
             `<div class="acts" style="margin-top:0">` +
-            `<a class="btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a></div>` +
+            `<a class="den-btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a></div>` +
             `<p class="den-gh-wait" style="margin-top:12px">${esc(t("err.signin.githubWaiting"))}</p>`,
         );
         wireCopy(box, t);
@@ -643,14 +643,14 @@ function wirePair(root, t, s) {
     stop();
     box.innerHTML =
       `<p class="den-pair-end" role="alert" id="den-pair-ended">${withHost(t, key, { host, name: s.name })}</p>` +
-      `<div class="acts" style="margin-top:0"><button type="button" class="btn primary" id="den-pair-new">${esc(t("err.signin.newCode"))}</button></div>`;
+      `<div class="acts" style="margin-top:0"><button type="button" class="den-btn primary" id="den-pair-new">${esc(t("err.signin.newCode"))}</button></div>`;
     box.querySelector("#den-pair-new").addEventListener("click", begin);
   };
   const failed = () => {
     stop();
     box.innerHTML =
       `<p class="den-pair-end" role="alert">${esc(t("err.signin.codeFailed", { name: s.name }))}</p>` +
-      `<div class="acts" style="margin-top:0"><button type="button" class="btn" id="den-pair-new">${esc(t("err.retry"))}</button></div>`;
+      `<div class="acts" style="margin-top:0"><button type="button" class="den-btn" id="den-pair-new">${esc(t("err.retry"))}</button></div>`;
     box.querySelector("#den-pair-new").addEventListener("click", begin);
   };
   const show = (b) => {
@@ -972,7 +972,7 @@ function mountSignedOut(root, sh, d) {
       `<div class="acts" style="margin-top:0">` +
       `<input id="den-confirm-code" class="mono" name="code" required maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="ABCD-EFGH" ` +
       `style="font:16px/1.45 var(--mono);letter-spacing:0.08em;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken);color:var(--text);width:12ch">` +
-      `<button type="submit" class="btn primary" id="den-confirm-go">${esc(t("err.signin.confirmGo"))}</button></div>` +
+      `<button type="submit" class="den-btn primary" id="den-confirm-go">${esc(t("err.signin.confirmGo"))}</button></div>` +
       `<p class="den-confirm-err" id="den-confirm-err" role="alert" style="margin-top:12px"></p>` +
       `</form>` +
       `<p class="den-signin-why">${withHost(t, "err.signin.confirmWhy", { host })}</p>` +
@@ -1038,7 +1038,7 @@ function mountSignedOut(root, sh, d) {
       `<div class="empty" id="den-signin">` +
       `<p class="lead">${esc(t("err.signin.local", { host: location.host }))}</p>` +
       facts +
-      `<div class="acts"><a class="btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a></div></div>`;
+      `<div class="acts"><a class="den-btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a></div></div>`;
     return;
   }
   const claim = claimBlock(s, t);
@@ -1145,7 +1145,7 @@ export function mountErrorPage(root) {
       `<dl class="facts">` +
       `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
       `</dl><div class="acts">` +
-      `<a class="btn primary" id="den-err-agents" href="${esc(back)}">${esc(t("err.link.agents"))}</a>` +
+      `<a class="den-btn primary" id="den-err-agents" href="${esc(back)}">${esc(t("err.link.agents"))}</a>` +
       `</div></div>`;
     return;
   }
@@ -1188,8 +1188,8 @@ export function mountErrorPage(root) {
         ),
       ) +
       `<div class="empty">${lines.join("")}` +
-      `<div class="acts"><a class="btn primary" href="/local-dev">${esc(t("err.404.workspaces"))}</a>` +
-      `<button type="button" class="btn" id="den-err-search">${esc(t("err.404.search"))} <kbd>⌘K</kbd></button></div>` +
+      `<div class="acts"><a class="den-btn primary" href="/local-dev">${esc(t("err.404.workspaces"))}</a>` +
+      `<button type="button" class="den-btn" id="den-err-search">${esc(t("err.404.search"))} <kbd>⌘K</kbd></button></div>` +
       `<h2 class="sec">${esc(t("err.404.pages"))}</h2><ul class="pages">` +
       items
         .map((i) => `<li><a href="${esc(i.href)}">${esc(i.label)}</a></li>`)
@@ -1229,9 +1229,9 @@ export function mountErrorPage(root) {
       `<dl class="facts">` +
       `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
       `</dl><div class="acts">` +
-      `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.422.reload"))}</button>` +
-      `<a class="btn" href="/logs">${esc(t("err.422.logs"))}</a>` +
-      `<a class="btn" href="/settings">${esc(t("err.422.settings"))}</a>` +
+      `<button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.422.reload"))}</button>` +
+      `<a class="den-btn" href="/logs">${esc(t("err.422.logs"))}</a>` +
+      `<a class="den-btn" href="/settings">${esc(t("err.422.settings"))}</a>` +
       `</div></div>`;
     root
       .querySelector("#den-err-retry")
@@ -1267,8 +1267,8 @@ export function mountErrorPage(root) {
       `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
       `</dl><div class="acts">` +
       (here
-        ? `<a class="btn primary" id="den-err-local" href="${esc(here)}">${esc(t("err.421.open"))}</a>`
-        : `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>`) +
+        ? `<a class="den-btn primary" id="den-err-local" href="${esc(here)}">${esc(t("err.421.open"))}</a>`
+        : `<button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>`) +
       `</div></div>`;
     root
       .querySelector("#den-err-retry")
@@ -1290,8 +1290,8 @@ export function mountErrorPage(root) {
     `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
     `<dt>${esc(t("err.500.version"))}</dt><dd class="mono">${esc(d.version ?? "unknown")}</dd>` +
     `</dl><div class="acts">` +
-    `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>` +
-    `<button type="button" class="btn" id="den-err-copy">${esc(t("err.copy"))}</button>` +
+    `<button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>` +
+    `<button type="button" class="den-btn" id="den-err-copy">${esc(t("err.copy"))}</button>` +
     `</div></div>`;
   root
     .querySelector("#den-err-retry")

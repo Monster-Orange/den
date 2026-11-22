@@ -33,6 +33,7 @@ import * as path from "node:path";
 import { embedDelivery, type Delivery } from "../hub-delivery.js";
 import type { GithubWatchSettings } from "./settings.js";
 import type { GhGet, GhResponse } from "./gh-http.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export interface GithubWatchDeps {
   /** GitHub's REST API (gh api -i); tests pass a fake. */
@@ -740,9 +741,7 @@ export class GithubWatcher {
 function writeJson(file: string, v: unknown): void {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(v, null, 2) + "\n", { mode: 0o600 });
-    fs.renameSync(tmp, file);
+    writeFileAtomic(file, JSON.stringify(v, null, 2) + "\n", { mode: 0o600 });
   } catch {
     /* a status that can't be written is only doctor's loss */
   }
