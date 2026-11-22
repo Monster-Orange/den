@@ -1251,10 +1251,7 @@ import {
   issueWriteSettings,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
-import {
-  listRecords,
-  readRecord as readAgentRecord,
-} from "../../shared/agents/records.js";
+import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1290,6 +1287,7 @@ import {
 } from "./verify-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import {
+  agentSessionIds,
   agentSessionRoots,
   sessionRootPids,
 } from "../../shared/person-here.js";
@@ -2217,17 +2215,19 @@ const GUARD: GuardContext = {
   testBed: () => testInstallNow(),
   // The person's token only from outside every agent's processes.
   personTokenFrom: (req) => {
-    const from = personTokenPlace({
-      loopback: isLoopbackAddress(req.socket?.remoteAddress),
-      forwarded: forwardedRequest(req, GUARD),
-      line: callerLine(req),
-      roots: agentSessionRoots(
-        getStateDir(),
-        listRecords(getStateDir()).flatMap((r) =>
-          r.session?.id ? [r.session.id] : [],
-        ),
-      ),
-    });
+    let from: "ok" | "in_agent" | "unknown";
+    try {
+      const ids = agentSessionIds(getStateDir());
+      from = personTokenPlace({
+        loopback: isLoopbackAddress(req.socket?.remoteAddress),
+        // Only the edge's proof, never a forwarding header any caller can send.
+        edgeProved: EDGE_PROVED(req),
+        line: callerLine(req),
+        roots: ids ? agentSessionRoots(getStateDir(), ids) : null,
+      });
+    } catch {
+      from = "unknown";
+    }
     if (from !== "ok")
       recordAction(
         null,

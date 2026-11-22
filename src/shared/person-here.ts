@@ -19,6 +19,7 @@ import * as path from "path";
 import { personGrantRefusal } from "./claim-code.js";
 import { parentLine } from "./peer-process.js";
 import { sessionPaths } from "./sessions/paths.js";
+import { agentsDir } from "./agents/records.js";
 import { denProcessPids } from "./den-procs.js";
 
 /** Where else a browser gets in: one already signed in adds the device. */
@@ -71,6 +72,37 @@ export function sessionRootPids(stateDir: string): number[] | null {
     pids.push(rec.pid as number);
   }
   return pids;
+}
+
+/**
+ * The session ids in the install's agent records ([] with no agents
+ * folder yet); null when the folder or a record can't be read, so a
+ * caller Den can't check is refused, never let through.
+ */
+export function agentSessionIds(stateDir: string): string[] | null {
+  const dir = agentsDir(stateDir);
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT" ? [] : null;
+  }
+  const ids: string[] = [];
+  for (const n of names) {
+    if (!n.endsWith(".json")) continue;
+    let rec: unknown;
+    try {
+      rec = JSON.parse(fs.readFileSync(path.join(dir, n), "utf-8"));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+      return null;
+    }
+    const r = rec as { id?: unknown; session?: { id?: unknown } } | null;
+    // Only an agent's record (its own id and a session), as listRecords.
+    if (!r || typeof r !== "object" || r.id !== n.slice(0, -5)) continue;
+    if (typeof r.session?.id === "string") ids.push(r.session.id);
+  }
+  return ids;
 }
 
 /**

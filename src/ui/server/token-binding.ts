@@ -33,6 +33,7 @@ import {
   type LookupMiss,
 } from "../../shared/peer-process.js";
 import { ACTOR_TOKEN_PREFIX } from "../../shared/actor-token.js";
+import { PERSON_TOKEN_PREFIX } from "../../shared/web-secret.js";
 import {
   IN_A_SESSION,
   IN_DEN,
@@ -210,8 +211,9 @@ export function agentPeerWait(
   const m = /^Bearer\s+(\S+)\s*$/i.exec(auth);
   if (!m) return null;
   // The person's token is placed always (personTokenPlace); an agent's
-  // only with binding on.
-  if (!m[1].startsWith(ACTOR_TOKEN_PREFIX)) return binding.waitMs;
+  // only with binding on; anything else goes on at once.
+  if (m[1].startsWith(PERSON_TOKEN_PREFIX)) return binding.waitMs;
+  if (!m[1].startsWith(ACTOR_TOKEN_PREFIX)) return null;
   return binding.on ? binding.waitMs : null;
 }
 
@@ -219,15 +221,17 @@ export function agentPeerWait(
  * Where the person's token came from: "in_agent" when the caller's line
  * holds a running agent's session root, "unknown" when Den can't read
  * the line or the roots (refused all the same), else "ok". Not on
- * loopback, or through the edge: "ok" (the peer isn't the caller).
+ * loopback, or through the edge with its proof: "ok" (the peer isn't the
+ * caller). Forwarding headers without the edge's proof count for nothing:
+ * any caller can send them.
  */
 export function personTokenPlace(o: {
   loopback: boolean;
-  forwarded: boolean;
+  edgeProved: boolean;
   line: number[] | null;
   roots: number[] | null;
 }): "ok" | "in_agent" | "unknown" {
-  if (!o.loopback || o.forwarded) return "ok";
+  if (!o.loopback || o.edgeProved) return "ok";
   if (!o.line || o.line.length === 0 || !o.roots) return "unknown";
   return o.line.some((p) => o.roots!.includes(p)) ? "in_agent" : "ok";
 }

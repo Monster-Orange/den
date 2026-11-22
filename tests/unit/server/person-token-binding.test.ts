@@ -18,7 +18,11 @@ import {
   agentPeerWait,
   personTokenPlace,
 } from "../../../src/ui/server/token-binding.js";
-import { agentSessionRoots } from "../../../src/shared/person-here.js";
+import {
+  agentSessionIds,
+  agentSessionRoots,
+} from "../../../src/shared/person-here.js";
+import { agentsDir } from "../../../src/shared/agents/records.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 
 const PORT = 41237;
@@ -82,12 +86,22 @@ describe("the person's token from an agent's processes", () => {
 
 describe("placing the caller", () => {
   it("a line through an agent's session root is the agent's", () => {
-    const o = { loopback: true, forwarded: false, roots: [500] };
+    const o = { loopback: true, edgeProved: false, roots: [500] };
     expect(personTokenPlace({ ...o, line: [900, 500, 1] })).toBe("in_agent");
     expect(personTokenPlace({ ...o, line: [900, 400, 1] })).toBe("ok");
     expect(personTokenPlace({ ...o, line: null })).toBe("unknown");
     expect(personTokenPlace({ ...o, line: [900, 1], roots: null })).toBe(
       "unknown",
+    );
+  });
+
+  it("headers that only look forwarded don't skip it; only the edge's proof does", () => {
+    const o = { loopback: true, roots: [500], line: [900, 500, 1] };
+    // X-Forwarded-For, or an edge Host, with no proof: still placed.
+    expect(personTokenPlace({ ...o, edgeProved: false })).toBe("in_agent");
+    expect(personTokenPlace({ ...o, edgeProved: true })).toBe("ok");
+    expect(personTokenPlace({ ...o, loopback: false, edgeProved: false })).toBe(
+      "ok",
     );
   });
 
@@ -99,6 +113,10 @@ describe("placing the caller", () => {
     );
     expect(agentPeerWait(r("Bearer den_pt_x"), { on: true, waitMs: 77 })).toBe(
       77,
+    );
+    // Not a person's token (garbage, a runner's): no wait.
+    expect(agentPeerWait(r("Bearer junk"), { on: true, waitMs: 77 })).toBe(
+      null,
     );
   });
 });
@@ -119,5 +137,35 @@ describe("agent session roots", () => {
     expect(agentSessionRoots(dir, ["s-agent", "s-ended", "s-gone"])).toEqual([
       501,
     ]);
+  });
+});
+
+describe("agent session ids", () => {
+  let dir = "";
+  afterEach(() => {
+    if (!dir) return;
+    try {
+      fs.chmodSync(agentsDir(dir), 0o700);
+    } catch {
+      /* gone */
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("no agents folder yet: none; one Den can't read, or a corrupt record: unknown", () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-ids-"));
+    expect(agentSessionIds(dir)).toEqual([]);
+    const a = agentsDir(dir);
+    fs.mkdirSync(a, { recursive: true });
+    fs.writeFileSync(
+      path.join(a, "be.json"),
+      JSON.stringify({ id: "be", session: { id: "s-1", name: "be" } }),
+    );
+    expect(agentSessionIds(dir)).toEqual(["s-1"]);
+    fs.writeFileSync(path.join(a, "bad.json"), "{not json");
+    expect(agentSessionIds(dir)).toBeNull();
+    fs.rmSync(path.join(a, "bad.json"));
+    fs.chmodSync(a, 0o000);
+    expect(agentSessionIds(dir)).toBeNull();
   });
 });
