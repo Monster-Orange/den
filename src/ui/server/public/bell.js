@@ -113,6 +113,8 @@ const KIND_SWITCH = {
   mention: "hub",
   decision: "pick",
   service: "release",
+  // Issue 581: Hub's "shared with you".
+  shared: "shared",
 };
 export const switchOf = (kind) => KIND_SWITCH[kind] ?? "release";
 /** A switch's name: its Settings › Notifications label. */

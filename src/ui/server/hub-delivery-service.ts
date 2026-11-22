@@ -254,6 +254,7 @@ function startHubNotes(log: (line: string) => void): void {
       const { notificationDeps } = await import("./notification-service.js");
       await syncHubNotes({
         store: notificationDeps().store,
+        hubUrl: at.url,
         owner: () => owner?.ownerLogin ?? null,
         list: () => hub.hubNotifications(at.url, at.token),
         markRead: (ids) => hub.hubMarkNotificationsRead(at.url, at.token, ids),

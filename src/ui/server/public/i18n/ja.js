@@ -2390,6 +2390,11 @@
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
+    "bell.m.shared": "{actor} さんが {title} を共有しました",
+    "bell.m.sharedNote": "{actor} さんが {title} を共有しました: {note}",
+    "bell.m.sharedAgent": "エージェント {actor} が {title} を共有しました",
+    "bell.m.sharedAgentNote":
+      "エージェント {actor} が {title} を共有しました: {note}",
     "bell.m.heldLapsed":
       "{name} の依頼は応答がないまま期限切れになりました: {what}。何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLapsedAsk":
