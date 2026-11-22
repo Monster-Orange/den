@@ -3347,6 +3347,9 @@
     "busy.ordW": "Moving {id}…",
     "busy.ordS": "Done: {id} moved.",
     "busy.ordF": "Couldn't move {id}.",
+    "busy.pcW": "Saving the project's colour…",
+    "busy.pcS": "Done: the project's colour is saved.",
+    "busy.pcF": "Couldn't save the project's colour.",
     // Issue 133: Delete project and Remove service, on the working pop-up.
     "busy.delProjW": "Deleting {name}…",
     "busy.delProjS": "Deleted {name}.",

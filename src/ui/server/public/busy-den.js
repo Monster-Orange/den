@@ -49,6 +49,16 @@ export const DEN_ACTIONS = {
       failure: "busy.ordF",
     },
   },
+  // Issue 168: a project's colour, saved from its colour picker.
+  "project-colour": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pcW",
+      success: "busy.pcS",
+      failure: "busy.pcF",
+    },
+  },
   // Issue 133: the Projects and Services pages' confirm actions.
   "delete-project": {
     who: "__DEN_TITLE__",
