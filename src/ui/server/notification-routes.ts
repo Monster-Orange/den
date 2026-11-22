@@ -132,6 +132,8 @@ export interface NotificationRouteDeps {
   seen?: SeenMarks;
   /** Issue 773: the agents Done, not seen, for `person` (the bell). */
   doneAgents?: (person: string) => DoneAgent[];
+  /** Mock v3's Earlier: the agents whose finished work `person` has seen. */
+  seenDone?: (person: string) => DoneAgent[];
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -449,9 +451,18 @@ export async function handleNotificationRoutes(
       } catch {
         /* the bell is best effort: no Done section this time */
       }
-    // Issue 773: an agent in Done shows once: its "finished" item is left
-    // out of Earlier (the updates and Older hold only what was seen).
-    const inDone = new Set(done.map((d) => agentSubject(d.agent)));
+    let seenDone: DoneAgent[] = [];
+    if (!prefs.finishedChosenOff)
+      try {
+        seenDone = deps.seenDone?.(personKey(req)) ?? [];
+      } catch {
+        /* best effort: no seen rows this time */
+      }
+    // Issue 773: an agent in Done (or its seen row in Earlier) shows once:
+    // its "finished" item is left out of the updates and Older.
+    const inDone = new Set(
+      [...done, ...seenDone].map((d) => agentSubject(d.agent)),
+    );
     const once = (ns: Notification[]) =>
       ns.filter((n) => !(n.kind === "finished" && inDone.has(n.subject)));
     const v = { ...all, updates: once(all.updates), older: once(all.older) };
@@ -460,6 +471,8 @@ export async function handleNotificationRoutes(
       unread: v.unread,
       // Issue 773: Done, not seen, for this person (its own section).
       done,
+      // Mock v3: the ones seen, first in Earlier.
+      seenDone,
       // Issue 746: a held write waiting for the person's Allow first,
       // then (issue 327) each agent waiting, what on, since when.
       waiting: [

@@ -29,6 +29,7 @@ import {
   agentStateOf,
   agentSubject,
   doneAgents,
+  seenDoneAgents,
   personKey,
   withAgentStates,
   type AgentStateDeps,
@@ -397,6 +398,26 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
     ]);
   });
 
+  it("mock v3's Earlier: the agents whose finished work the person has seen, newest first, at most five", async () => {
+    const d = mk();
+    for (const id of ["a1", "a2", "a3", "a4", "a5", "a6", "fresh"]) {
+      await d.a.event(id, "north", { event: "finished" });
+      clock += 1000;
+    }
+    for (const id of ["a1", "a2", "a3", "a4", "a5", "a6"])
+      d.seen.markSeen({ subject: agentSubject(id), person: "person:a" });
+    const recs = ["a1", "a2", "a3", "a4", "a5", "a6", "fresh"].map((id) => ({
+      id,
+      workspace: "north",
+    }));
+    const seen = seenDoneAgents(recs, "person:a", d.deps, new Set(["a6"]));
+    // Newest first; a6 is busy (working or waiting again), fresh is unseen.
+    expect(seen.map((x) => x.agent)).toEqual(["a5", "a4", "a3", "a2", "a1"]);
+    expect(seen[0]).toMatchObject({ project: "north", workspace: "north" });
+    // Another person has seen none.
+    expect(seenDoneAgents(recs, "person:b", d.deps)).toEqual([]);
+  });
+
   it("GET /api/notifications says the person's Done agents", async () => {
     const d = mk();
     await d.a.event("builder", "north", { event: "finished" });
@@ -415,8 +436,13 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
           doneAgents([{ id: "builder", workspace: "north" }], person, d.deps),
       },
     );
-    const b = JSON.parse(out.body) as { done: { agent: string }[] };
+    const b = JSON.parse(out.body) as {
+      done: { agent: string }[];
+      seenDone: { agent: string }[];
+    };
     expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
+    // No seenDone list given: none.
+    expect(b.seenDone).toEqual([]);
   });
 
   async function bell(

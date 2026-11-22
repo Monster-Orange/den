@@ -2513,6 +2513,7 @@
     "ag.list.keepRunning": "エージェントは動き続けています。",
     "ag.list.loading": "エージェントを読み込み中",
     "bell.doneRow": "{name} が完了",
+    "bell.seenSub": "{where} · 確認済み",
     "bell.title": "通知",
     "bell.n": "通知: 未読 {n} 件",
     "bell.markAll": "すべて既読にする",

@@ -158,6 +158,32 @@ describe("issue 101: Needs you first, then Earlier", () => {
     expect(bellCountOf({ unread: 0, done: b.done })).toBe(1);
   });
 
+  it("issue 773, mock v3: Earlier shows seen Done rows first: '<name> finished', '<project> · seen', when", async () => {
+    const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel({
+      groups: [],
+      unread: 0,
+      seenDone: [
+        {
+          agent: "scribe",
+          name: "scribe",
+          workspace: "acme",
+          project: "Acme Shop",
+          at,
+          link: "/agents?project=acme&agent=scribe",
+        },
+      ],
+    });
+    if (!("sections" in p)) throw new Error("no sections");
+    expect(p.sections.earlier).toContain('data-kind="seen-done"');
+    expect(p.sections.earlier).toContain("[bell.doneRow:scribe]");
+    expect(p.sections.earlier).toContain("[bell.seenSub:Acme Shop]");
+    expect(p.sections.earlier).toContain(
+      'href="/agents?project=acme&amp;agent=scribe"',
+    );
+    expect(p.sections.done ?? "").toBe("");
+  });
+
   it("nothing at all: the empty state, no sections", async () => {
     const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
     const p = bellPanel({ groups: [], unread: 0 });

@@ -3436,6 +3436,7 @@
     "ag.list.keepRunning": "Your agents keep running.",
     "ag.list.loading": "Loading the agents",
     "bell.doneRow": "{name} finished",
+    "bell.seenSub": "{where} · seen",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",

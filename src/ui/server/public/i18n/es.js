@@ -2571,6 +2571,7 @@
     "ag.list.keepRunning": "Tus agentes siguen en marcha.",
     "ag.list.loading": "Cargando los agentes",
     "bell.doneRow": "{name} terminó",
+    "bell.seenSub": "{where} · visto",
     "bell.title": "Notificaciones",
     "bell.n": "Notificaciones: {n} sin leer",
     "bell.n.one": "Notificaciones: {n} sin leer",

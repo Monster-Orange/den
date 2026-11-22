@@ -202,18 +202,21 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
-/** Issue 773: one Done, not seen row: "<name> finished", its project, when. */
-function doneRowHtml(d) {
+/**
+ * Issue 773: one Done row: "<name> finished", its project, when. `seen`
+ * (mock v3's Earlier): "<project> · seen" under it, and its own kind.
+ */
+function doneRowHtml(d, seen = false) {
   const link = safeLink(d.link);
   const text = tr("bell.doneRow", { name: d.name || d.agent });
   // Mock v3: "Server" for the server agent, as everywhere else; else the
   // project's name as the person sees it.
   const where = d.server ? tr("ag.tag.server") : d.project || d.workspace || "";
   return (
-    `<div class="den-bell-row" data-kind="done" data-agent="${esc(d.agent)}">` +
+    `<div class="den-bell-row" data-kind="${seen ? "seen-done" : "done"}" data-agent="${esc(d.agent)}">` +
     `<span class="den-dot ok" aria-hidden="true"></span>` +
     (link
-      ? `<a href="${esc(link)}" data-bell="open-done">${esc(text)}<span class="den-bell-sub">${esc(where)}</span></a>`
+      ? `<a href="${esc(link)}" data-bell="open-done">${esc(text)}<span class="den-bell-sub">${esc(seen ? tr("bell.seenSub", { where }) : where)}</span></a>`
       : `<span class="den-bell-t">${esc(text)}</span>`) +
     `<time datetime="${esc(d.at)}" title="${esc(formatTitle(d.at))}">${esc(bellAgo(d.at))}</time>` +
     `</div>`
@@ -415,6 +418,7 @@ export function bellPanel(b, ui = {}) {
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
   const done = Array.isArray(b?.done) ? b.done : [];
+  const seenDone = Array.isArray(b?.seenDone) ? b.seenDone : [];
   const actions =
     (b?.unread || updates.unread
       ? `<button type="button" data-bell="all">${esc(tr("bell.markAll"))}</button>`
@@ -440,7 +444,8 @@ export function bellPanel(b, ui = {}) {
     !groups.length &&
     !older.count &&
     !updates.count &&
-    !done.length
+    !done.length &&
+    !seenDone.length
   )
     return {
       ...panel,
@@ -465,8 +470,9 @@ export function bellPanel(b, ui = {}) {
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
       // Issue 773: Done, not seen, under Needs you (when there is any).
-      ...(done.length ? { done: done.map(doneRowHtml).join("") } : {}),
+      ...(done.length ? { done: done.map((d) => doneRowHtml(d)).join("") } : {}),
       earlier:
+        seenDone.map((d) => doneRowHtml(d, true)).join("") +
         updatesHtml +
         (older.count
           ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
