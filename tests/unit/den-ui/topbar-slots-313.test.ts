@@ -26,6 +26,7 @@ import {
   fitChips,
   fitCrumbLabels,
   keepChipsMenu,
+  ownRect,
   standInChip,
 } from "../../../packages/den-ui/src/shell-client.js";
 import {
@@ -181,6 +182,31 @@ function fakeRow(widths: number[], room: number, gap = 4, moreW = 28) {
 }
 
 describe("2. the ⋯ overflow (fitChips)", () => {
+  it("the fit measures a chip's own box, not ⋯'s that it stands in at", () => {
+    class Box {
+      constructor(public left: number) {}
+      getBoundingClientRect() {
+        return { left: this.left, right: this.left + 60 };
+      }
+      focus() {}
+    }
+    const chip = new Box(500);
+    // ⋯ hidden: its box is empty, at 0.
+    const more = new Box(0);
+    standInChip(chip as never, more as never);
+    expect(chip.getBoundingClientRect().left).toBe(0);
+    expect(ownRect(chip)).toEqual({ left: 500, right: 560 });
+    standInChip(chip as never, null);
+    expect(ownRect(chip)).toEqual({ left: 500, right: 560 });
+  });
+
+  it("ownRect falls back to the element's own method when its prototype has none", () => {
+    const bare = Object.assign(Object.create(null), {
+      getBoundingClientRect: () => ({ left: 7, right: 9 }),
+    }) as { getBoundingClientRect(): { left: number; right: number } };
+    expect(ownRect(bare)).toEqual({ left: 7, right: 9 });
+  });
+
   it("everything fits: no ⋯, nothing hidden", () => {
     const r = fakeRow([60, 60], 200);
     expect(fitChips(r.io)).toEqual([]);

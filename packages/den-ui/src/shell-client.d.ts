@@ -59,6 +59,10 @@ export declare function standInChip(
   chip: object | null,
   at: { getBoundingClientRect(): unknown; focus(o?: unknown): void } | null,
 ): void;
+/** Issue 313: an element's own box, even while it stands in at ⋯ (the fit measures with it). */
+export declare function ownRect<R = DOMRect>(el: {
+  getBoundingClientRect(): R;
+}): R;
 /** Issue 313: repaint a chip from new data, in place. */
 export declare function setChip(el: Element | null, c?: Chip): void;
 export declare function hydrateShell(

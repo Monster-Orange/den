@@ -312,6 +312,21 @@ for (const engine of ["chromium", "webkit"]) {
       expect(w.over).toEqual([]);
       expect(w.outside).toEqual([]);
       expect(w.more).toBe(false);
+      // Review 4: narrow again, and the chips go back behind ⋯; none
+      // stuck behind it, none spilling past the bar.
+      await p.setViewportSize({ width: 1000, height: 800 });
+      await p.waitForFunction(
+        () => !!document.querySelector("[data-den-over]"),
+        undefined,
+        { timeout: 5000 },
+      );
+      const n = await chipState(p);
+      expect(n.over.length).toBeGreaterThan(0);
+      expect([...n.shown, ...n.over]).toEqual(
+        Array.from({ length: 8 }, (_, i) => `chip-${i}`),
+      );
+      expect(n.outside).toEqual([]);
+      expect(n.more).toBe(true);
       await p.context().close();
     }, 60_000);
 

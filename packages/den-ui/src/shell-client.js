@@ -171,6 +171,21 @@ export function standInChip(chip, at) {
 }
 
 /**
+ * Issue 313 (review): an element's own box, even while it stands in at ⋯
+ * (standInChip gives it ⋯'s). The fit measures with this, never with the
+ * stand-in's box: a hidden ⋯'s box is empty, at 0, and would read as a
+ * chip outside the bar. Order: a host's own override saved by
+ * standInChip, then the prototype's method, then the element's own.
+ */
+export function ownRect(el) {
+  const was = el.__denStandIn && el.__denOwn ? el.__denOwn.rect : null;
+  if (typeof was === "function") return was.call(el);
+  const proto = Object.getPrototypeOf(el);
+  const f = proto && proto.getBoundingClientRect;
+  return typeof f === "function" ? f.call(el) : el.getBoundingClientRect();
+}
+
+/**
  * Issue 313: a crumb's label ends in whole letters and "…", or hides. io:
  * { labels(), min() (the least width, px), width(label) (-1: not drawn),
  * whole(label) (its words fit), setCut(label, on) }. Every label shows
@@ -310,8 +325,7 @@ export function hydrateShell(root, opts = {}) {
     });
     return more;
   }
-  let settle = 0;
-  function fitHostChips(settling) {
+  function fitHostChips() {
     if (!end || !end.getClientRects().length) return;
     const chips = Array.prototype.filter.call(
       end.children,
@@ -325,7 +339,7 @@ export function hydrateShell(root, opts = {}) {
       const r = end.getBoundingClientRect();
       for (const c of end.children) {
         if (!c.getClientRects().length) continue;
-        const b = c.getBoundingClientRect();
+        const b = ownRect(c);
         if (b.left < r.left - 0.5 || b.right > r.right + 0.5) return true;
       }
       return false;
@@ -355,23 +369,6 @@ export function hydrateShell(root, opts = {}) {
       moreMenu.close(false);
     if (hadFocus && overChips.length && document.activeElement !== more)
       more.focus({ preventScroll: true });
-    // A fit that moved chips can measure a bar still settling (the chips
-    // shrink and grow around ⋯): fit once more on the next frame. A
-    // settling fit never asks for another, so one real change makes at
-    // most two fits, never a loop.
-    const same =
-      before.length === overChips.length &&
-      before.every((c, i) => c === overChips[i]);
-    if (
-      !same &&
-      !settling &&
-      !settle &&
-      typeof requestAnimationFrame === "function"
-    )
-      settle = requestAnimationFrame(() => {
-        settle = 0;
-        fitHostChips(true);
-      });
   }
 
   // Issue 313: a crumb's label that gives way ends in "…"; narrower than
