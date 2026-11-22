@@ -150,6 +150,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     api_budget_floor: true,
     watches_max: true,
   },
+  // Issue 742: how long a held write waits for the person's Allow.
+  held_writes: { wait_minutes: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -302,6 +304,14 @@ describe("the settings inventory (R21)", () => {
         "embed.origins",
         "embed.key_minutes",
         "embed.context_max_kb",
+        "embed.feed_event_max_kb",
+        "embed.feed_events_per_minute",
+        "embed.feed_max_streams",
+        "embed.feed_keep_events",
+        "embed.feed_read_max_kb",
+        "embed.feed_list_timeout_seconds",
+        "embed.feed_list_max_mb",
+        "embed.paste_max_kb",
         // Issue 172: alerts outside the bell.
         "alerts.desktop",
         "alerts.phone",
@@ -333,6 +343,8 @@ describe("the settings inventory (R21)", () => {
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
         "agent_hooks.backoff_seconds",
+        // Issue 742: how long a held write waits for the person's Allow.
+        "held_writes.wait_minutes",
       ].sort(),
     );
   });

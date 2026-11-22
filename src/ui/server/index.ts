@@ -17,6 +17,7 @@ import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
+import { handleAppFeedRoutes, isAppFeedPath } from "./app-feed-routes.js";
 import { githubWatchSettings } from "../../shared/github-watch/settings.js";
 import {
   handleGithubWatchRoutes,
@@ -128,6 +129,7 @@ import {
   parseAddress,
   readManifestAnyBranch,
   workspacesOverridingAgentMode,
+  workspaceEventFeedsRaw,
 } from "../../shared/environment-manager/workspaces.js";
 import {
   parseScope,
@@ -215,6 +217,7 @@ import {
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
   agentsShellPathTimeoutSeconds,
+  heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import {
@@ -482,9 +485,12 @@ import {
   handleReportRoutes,
   machineSection,
   publicSearchOpen,
+  reportAgentOf,
   runGh,
   shotReaderOf,
+  type ReportRouteDeps,
 } from "./report-routes.js";
+import { reportHeld } from "./report-held.js";
 import { publicRepoVisibility } from "./report-visibility.js";
 import {
   feedbackSettings,
@@ -579,6 +585,7 @@ import {
 import { ServerKeys } from "./embed-server-keys.js";
 import { handleAgentLink } from "./agent-link-routes.js";
 import { graphPageHtml } from "./graph-page.js";
+import { terminalLinkRedirect, terminalsPageHtml } from "./terminals-page.js";
 import {
   fixtureSave,
   mergeShellPrefs,
@@ -1226,7 +1233,7 @@ import {
   notePolicyRun,
   type HeldActions,
 } from "./approval-routes.js";
-import { syncHeldBell } from "./held-bell.js";
+import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
 import {
   ISSUE_WRITE_PATH,
   handleIssueWriteRoute,
@@ -1301,7 +1308,7 @@ import {
   tellBack,
   writeRestartMarker,
 } from "./server-restart.js";
-import type { ApprovalQueue } from "./approvals.js";
+import type { Approval, ApprovalQueue } from "./approvals.js";
 import { processPathRules } from "../cli/onboard-reads.js";
 import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
@@ -4003,6 +4010,62 @@ function declaredCommand<T>(
   return own(forEnv, cmd) ? forEnv![cmd] : undefined;
 }
 
+/**
+ * FB (den#81): Report's server side, as the page, the command line and
+ * (issue 565) an agent's held `report` use it. A request's own reader of
+ * kept screenshots is added by the route.
+ */
+function reportRouteDeps(): ReportRouteDeps {
+  return {
+    settings: () =>
+      readFeedbackSettings(
+        getEngineRoot(),
+        path.join(getDistRoot(), product().configFile),
+        readUserConfig().feedback,
+      ),
+    stateDir: () => getStateDir(),
+    gh: runGh,
+    names: () => {
+      const w = readWebUrl();
+      let webHost: string | undefined;
+      try {
+        webHost = w ? new URL(w.url).hostname : undefined;
+      } catch {
+        webHost = undefined;
+      }
+      return {
+        home: os.homedir(),
+        hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
+        orgs: [product().name],
+      };
+    },
+    diagnostics: async () => ({
+      Den: `${product().cli} ${engineVersion() ?? "?"}`,
+      Machine: machineSection(),
+    }),
+    agentOf: (r) => reportAgentOf(agentPrincipalOf(r), auditActorOf(r)),
+    personOf: () => "person",
+    flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
+    searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
+    // Issue 403: a report's screenshot to Hub, with the install's Bearer.
+    shotHub: REPORT_SHOT_HUB,
+    shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+    publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    // Issue 565: who filed a report and where it went, in the trail.
+    audit: ({ by, repo, url, added }) =>
+      recordAction(
+        null,
+        {
+          verb: "report-file",
+          detail: `${added ? "added to" : "filed"} ${url || repo} on ${repo}, by ${by}`,
+        },
+        by.startsWith("agent:") ? by : undefined,
+      ),
+    readBody,
+    sendJson: (r, body, status) => sendJson(r, body, status),
+  };
+}
+
 // ── ON-3: the writes held for the person (approval-routes.ts) ─────────────────
 type ApprovalDeps = {
   queue: ApprovalQueue;
@@ -4215,6 +4278,8 @@ function approvalDeps(): ApprovalDeps {
       );
       return res;
     },
+    // Issue 565: an agent files a report as the page does (public: Allow).
+    report: reportHeld(reportRouteDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
     // Issue 160: an agent closes a stale or superseded pull request after
@@ -4404,7 +4469,16 @@ function approvalDeps(): ApprovalDeps {
   });
   approvals = {
     actions,
-    queue: createApprovalQueue(actions, () => getStateDir()),
+    // Issue 746: one that lapses unanswered rings the bell and tells its asker.
+    // Issue 742: it waits held_writes.wait_minutes (read per ask), and
+    // what waits is kept under the state dir: a restart brings it back,
+    // and what it can't bring back is lost, out loud.
+    queue: createApprovalQueue(actions, () => getStateDir(), {
+      ttlMs: () => heldWriteWaitMinutes() * 60_000,
+      file: path.join(getStateDir(), HELD_WRITES_FILE),
+      onExpire: (a) => void heldWriteLapsed(a),
+      onLost: (a, why) => void heldWriteLost(a, why),
+    }),
     // Read per ask: a config edit takes effect without a restart. A bad
     // value throws, and the handler holds nothing then.
     enabled: () => readMcpConfig().approvals,
@@ -4448,26 +4522,120 @@ function syncHeldWrites(): void {
     syncHeldBell(
       notificationDeps().store,
       approvals ? approvals.queue.pending() : [],
-      {
-        projectOf: (a) =>
-          typeof a.args.project === "string"
-            ? a.args.project
-            : a.agent
-              ? (readAgentRecord(getStateDir(), a.agent)?.workspace ??
-                undefined)
-              : undefined,
-      },
+      { projectOf: heldProjectOf },
     );
   } catch {
     /* the bell is best effort */
   }
 }
+/** The project a held write is in: its args', else its asking agent's. */
+function heldProjectOf(a: Approval): string | undefined {
+  return typeof a.args.project === "string"
+    ? a.args.project
+    : a.agent
+      ? (readAgentRecord(getStateDir(), a.agent)?.workspace ?? undefined)
+      : undefined;
+}
 /**
- * Issue 142: at the start (a restart ended every request: their items go)
- * and every few seconds while any wait (one that expired: its item goes).
+ * Issue 746: a held write lapsed unanswered. The bell says so, and the
+ * agent that asked is told in its session once it is at its prompt (never
+ * into a dialog for its person), as Den's own "Server is back" line is
+ * (tellBack, up to ui.restart_wait_seconds). One audit row says who was
+ * told what.
+ */
+async function heldWriteLapsed(a: Approval): Promise<void> {
+  let store: ReturnType<typeof notificationDeps>["store"];
+  try {
+    store = notificationDeps().store;
+  } catch {
+    return;
+  }
+  const told = await heldLapsed(a, {
+    store,
+    projectOf: heldProjectOf,
+    tell: tellHeldAsker,
+  });
+  try {
+    recordAction(
+      null,
+      {
+        verb: "approval-expired",
+        detail: `lapsed unanswered: ${a.action}: ${a.summary} [${a.id}]; ${a.actor} ${told}`,
+      },
+      a.actor,
+    );
+  } catch {
+    /* the trail is best effort here */
+  }
+}
+/**
+ * Issue 746: tells a held write's asking agent `text` in its session once
+ * it is at its prompt (never into a dialog for its person), as Den's own
+ * "Server is back" line is (tellBack, up to ui.restart_wait_seconds).
+ */
+async function tellHeldAsker(agent: string, text: string): Promise<string> {
+  const ops = await import("../cli/agent-ops.js");
+  const { webDeps } = await import("./agent-routes.js");
+  const d = webDeps();
+  const server = agent === SERVER_AGENT_ID;
+  return tellBack(text, {
+    state: () =>
+      server
+        ? ops.serverAgentInputState(d)
+        : ops.agentInputState(d, agent, typingHeldIds()),
+    type: (t) => ops.typeIntoAgent(d, agent, t),
+    dialog: () =>
+      server
+        ? ops.serverAgentDialogOpen(d)
+        : ops.agentDialogKind(d, agent).then((k) => k !== null),
+    waitMs: restartWaitSeconds() * 1000,
+  });
+}
+/** Issue 742: the held-write queue's file, under the state dir. */
+const HELD_WRITES_FILE = "held-writes.json";
+/**
+ * Issue 742: a restart could not bring back a held write (or, the queue
+ * file unreadable, any). The bell says so, the asking agent is told, and
+ * one audit row says what was lost and who was told.
+ */
+async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
+  let told = "nobody told";
+  try {
+    told = await heldLost(a, why, {
+      store: notificationDeps().store,
+      projectOf: heldProjectOf,
+      tell: tellHeldAsker,
+    });
+  } catch {
+    /* the bell is best effort; the trail below still says it */
+  }
+  try {
+    recordAction(
+      null,
+      {
+        verb: "approval-lost",
+        detail: a
+          ? `lost at a restart: ${a.action}: ${a.summary} [${a.id}] (${why}); ${a.actor} ${told}`
+          : `lost at a restart: ${why}`,
+      },
+      a?.actor,
+    );
+  } catch {
+    /* the trail is best effort here */
+  }
+}
+/**
+ * Issue 142: at the start and every few seconds while any wait (one that
+ * expired: its item goes). Issue 742: the queue is made at the start, so
+ * what waited before a restart is read back and shows in the bell.
  */
 function startHeldWritesBell(): void {
   let shown = true;
+  try {
+    approvalDeps();
+  } catch {
+    /* made on first use instead; the bell follows then */
+  }
   syncHeldWrites();
   setInterval(() => {
     const n = approvals ? approvals.queue.pending().length : 0;
@@ -4569,7 +4737,7 @@ async function runPinCommit(
                 summary: ok.summary,
                 params: ok.params,
                 details: ok.details,
-                ttlMs: UPDATE_ASK_TTL_MS,
+                ttlMs: updateAskTtlMs(),
               });
               recordAction(null, {
                 verb: "approval-ask",
@@ -5014,6 +5182,8 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       const [first, retry] = lookupTimeouts({}, () => user);
       return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
     })(),
+    // Issue 742: how long a held write waits for the person's Allow.
+    held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
     // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
     agent_hooks: (() => {
       const c = hookCallSettings(() => user);
@@ -5440,6 +5610,11 @@ async function handleRequest(
     });
     return;
   }
+  // Issue 459: an agent reads its own app feeds (app_feed_read).
+  if (guard.ok && isAppFeedPath(pathname)) {
+    await handleAppFeedRoutes(req, res, pathname, url);
+    return;
+  }
   // Issue 796: an agent asks for a read-only view of these pages.
   if (guard.ok && pathname === "/api/agents/self/view") {
     if (req.method !== "POST") return sendMethodNotAllowed(res);
@@ -5453,7 +5628,11 @@ async function handleRequest(
   }
   // NT: the bell, and agents saying they wait for their person.
   if (guard.ok && isNotificationPath(pathname)) {
-    await handleNotificationRoutes(req, res, pathname, notificationDeps());
+    await handleNotificationRoutes(req, res, pathname, {
+      ...notificationDeps(),
+      // Issue 746: what waits for the person's Allow leads Needs you.
+      held: () => (approvals ? approvals.queue.pending() : []),
+    });
     return;
   }
   // The shared GitHub watcher: an agent's own watches (MCP github_watch).
@@ -5711,6 +5890,26 @@ async function handleRequest(
   )
     return;
 
+  // Issue 482: an older Terminal link goes to the Terminals page.
+  {
+    const to = terminalLinkRedirect(pathname, url.searchParams);
+    if (to) {
+      res.writeHead(302, { Location: to });
+      res.end();
+      return;
+    }
+  }
+  // Issue 482: the Terminals page, agents.html with its own page id.
+  if (pathname === "/terminals") {
+    const bad = sectionConfigError("agents");
+    if (bad && wantsHtmlPage(req, pathname)) throw bad;
+    return serveFile(
+      res,
+      path.join(PUBLIC_DIR, "agents.html"),
+      terminalsPageHtml,
+    );
+  }
+
   // The Agents tab (AG-4a-term, AG spec §5d): sessions and terminal panes.
   if (pathname === "/agents" || pathname === "/agents.html") {
     // A typo under agents: is the 422 config page here (only here: the
@@ -5938,42 +6137,7 @@ async function handleRequest(
   // FB (den#81): Report an issue, filed as the person with their `gh`.
   if (
     handleReportRoutes(req, res, pathname, {
-      settings: () =>
-        readFeedbackSettings(
-          getEngineRoot(),
-          path.join(getDistRoot(), product().configFile),
-          readUserConfig().feedback,
-        ),
-      stateDir: () => getStateDir(),
-      gh: runGh,
-      names: () => {
-        const w = readWebUrl();
-        let webHost: string | undefined;
-        try {
-          webHost = w ? new URL(w.url).hostname : undefined;
-        } catch {
-          webHost = undefined;
-        }
-        return {
-          home: os.homedir(),
-          hosts: [os.hostname(), ...(webHost ? [webHost] : [])],
-          orgs: [product().name],
-        };
-      },
-      diagnostics: async () => ({
-        Den: `${product().cli} ${engineVersion() ?? "?"}`,
-        Machine: machineSection(),
-      }),
-      agentOf: (r) => {
-        const a = agentPrincipalOf(r) || auditActorOf(r);
-        return a ? String(a) : null;
-      },
-      personOf: () => "person",
-      flows: GITHUB_CLIENT_ID ? DEVICE_FLOWS : undefined,
-      searchOpen: GITHUB.fake ? undefined : publicSearchOpen(GITHUB.api),
-      // Issue 403: a report's screenshot to Hub, with the install's Bearer.
-      shotHub: REPORT_SHOT_HUB,
-      shotMaxBytes: () => shotLimits(readUserConfig()).keptBytes,
+      ...reportRouteDeps(),
       // Issue 403: a kept screenshot is the person's (proved, as approvals
       // ask) or this install's own agent's; never an anonymous request.
       shotReader: (r) => shotReaderOf(r, guard),
@@ -5981,9 +6145,6 @@ async function handleRequest(
         guard.ok &&
         guard.principal?.kind === "person-browser" &&
         guard.principal.fixture === true,
-      publicRepo: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
-      readBody,
-      sendJson: (r, body, status) => sendJson(r, body, status),
     })
   )
     return;
@@ -8976,6 +9137,7 @@ async function handleRequest(
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
+          held_writes?: unknown;
           github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
@@ -9039,6 +9201,7 @@ async function handleRequest(
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
+            held_writes: body.held_writes,
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
@@ -10392,6 +10555,55 @@ void CRASH_GATE.then(() =>
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
+    // Issue 459: a project's app event feeds, each to one of its agents,
+    // through the same loop as Hub's comments (typed when it is idle).
+    void hubChecked
+      .then(() =>
+        Promise.all([
+          import("./app-feed-service.js"),
+          import("./hub-delivery-service.js"),
+          import("../../shared/secrets/index.js"),
+        ]),
+      )
+      .then(([m, dl, sec]) =>
+        m.startAppFeeds({
+          projects: () => {
+            try {
+              return Object.keys(readWorkspacesFile().workspaces ?? {});
+            } catch {
+              return [];
+            }
+          },
+          feedsOf: (ws) => workspaceEventFeedsRaw(ws),
+          agentProject: (agent) =>
+            readAgentRecord(getStateDir(), agent)?.workspace ?? null,
+          secret: async (ref) => {
+            const sref = sec.namedSecretRef(ref);
+            if (!sref) return null;
+            return sec.getSecretsProvider().get(sref);
+          },
+          relay: (dv) => dl.relayMessage(dv),
+          seen: (id) => dl.relaySeen(id),
+          holds: (id) => dl.relayHolds(id),
+          limits: () => {
+            const e = embedSettings(readUserConfig());
+            return {
+              maxStreams: e.feed_max_streams,
+              eventMaxKb: e.feed_event_max_kb,
+              perMinute: e.feed_events_per_minute,
+              keepEvents: e.feed_keep_events,
+              readMaxKb: e.feed_read_max_kb,
+              listTimeoutSeconds: e.feed_list_timeout_seconds,
+              listMaxMb: e.feed_list_max_mb,
+            };
+          },
+          bell: (n) => {
+            notificationDeps().store.add(n);
+          },
+          stateDir: getStateDir(),
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
     // The shared GitHub watcher: one loop for every agent's watches; a
     // finished one is typed at its agent's prompt (the relayed path).
     void hubChecked
@@ -10510,8 +10722,13 @@ function updateCheckSettings(): {
   };
 }
 
-/** SRV-P6: how long Den's own "update to X" waits in Needs you. */
-const UPDATE_ASK_TTL_MS = 24 * 60 * 60_000;
+/**
+ * SRV-P6: how long Den's own "update to X" waits in Needs you: a day, or
+ * the held-write window when that is longer (issue 742).
+ */
+function updateAskTtlMs(): number {
+  return Math.max(24 * 60 * 60_000, heldWriteWaitMinutes() * 60_000);
+}
 /** The update states that mean an update is under way. */
 const UPDATE_UNDER_WAY = new Set(["installing", "watching", "rolling_back"]);
 
@@ -10827,7 +11044,7 @@ function startUpdateCheck(): void {
               summary: ok.summary,
               params: ok.params,
               details: ok.details,
-              ttlMs: UPDATE_ASK_TTL_MS,
+              ttlMs: updateAskTtlMs(),
             });
             recordAction(null, {
               verb: "approval-ask",

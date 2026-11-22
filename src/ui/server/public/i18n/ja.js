@@ -499,7 +499,6 @@
     "lock.saveTo": "{s} に保存",
     "lock.pw": "管理者パスワード",
     "lock.go": "続行",
-    "lock.checking": "確認中…",
     "lock.note":
       "Den はこれを sudo にだけ使います。エージェントは入力できません。",
     "lock.saved": "このセッションの間、管理者パスワードを保持します",
@@ -675,6 +674,13 @@
     "busy.askAllowW": "確認しています…",
     "busy.askAllowS": "確認しました。ダイアログで許可してください。",
     "busy.askAllowF": "確認できませんでした。",
+    "busy.pushTestW": "テスト通知を送信中…",
+    "busy.pushTestS":
+      "テスト通知を送りました。結果はデバイスごとに表示されます。",
+    "busy.pushTestF": "テスト通知を送信できませんでした。",
+    "busy.pushForgetW": "このデバイスを削除中…",
+    "busy.pushForgetS": "このデバイスはプッシュを受け取らなくなりました。",
+    "busy.pushForgetF": "このデバイスを削除できませんでした。",
     "busy.saveW": "保存しています…",
     "busy.saveS": "保存しました。",
     "busy.saveF": "保存できませんでした。",
@@ -1180,7 +1186,6 @@
     "addr.unset": "未設定です。__DEN_TITLE__ が渡すリンクに必要です。",
     "addr.label": "アドレス",
     "addr.check": "確認して保存",
-    "addr.checking": "確認しています…",
     "addr.checkW": "{url} が応答するか確認しています",
     "addr.saved": "保存しました: {url} が応答しました。",
     "addr.notSaved": "保存していません。前のアドレスのままです。",
@@ -1215,6 +1220,9 @@
     "set.agents.approvals_critical": "重要な書き込み",
     "set.agents.approvals_critical.d":
       "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "set.agents.held_wait": "依頼があなたの許可を待つ時間",
+    "set.agents.held_wait.d":
+      "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.agents.issue_writes": "GitHub の issue を書けるロール",
     "set.agents.issue_writes.d":
       "自分のプロジェクトの GitHub リポジトリで、issue の作成、コメント、ラベル付け、マイルストーン設定をすぐに行えるエージェントのロールです。すべて記録されます。カンマ区切り、空欄はなし。未設定: planner、orchestrator、lead、sde、builder、reviewer、install（__DEN_TITLE__ 自身のエージェント）。__DEN_CLI__ config agents.issue_writes=[planner,sde]",
@@ -1470,8 +1478,6 @@
     "ag.runtime.default": "{name}（ペルソナの既定）",
     "ag.unavailable": "利用不可",
     "ag.go": "開始",
-    "ag.starting": "開始中…",
-    "ag.working": "処理中…",
     "ag.cancel": "キャンセル",
     "ag.started": "エージェント {id} を開始しました",
     "ag.stopped": "エージェント {id} を停止しました",
@@ -1632,7 +1638,6 @@
     "ag.pc.note":
       "Den はいったん停止し、同じ会話を新しいペルソナで再開します。ID、名前、フォルダー、タブはそのままです。",
     "ag.pc.go": "ペルソナを変更",
-    "ag.pc.going": "変更中…",
     "ag.pc.current": "現在",
     "ag.pc.busy":
       "作業中です。このターンの後に変更しますか、それとも今すぐ停止しますか?",
@@ -1719,7 +1724,6 @@
     "ag.stoppedGroupTip":
       "実行していないエージェント。開くと詳細が表示されます。",
     "ag.bring.go": "取り込む",
-    "ag.bring.going": "取り込み中…",
     "ag.bring.done": "{id} として取り込みました",
     "ag.bring.now": "たった今",
     "ag.bring.min": "{n} 分前",
@@ -1813,6 +1817,20 @@
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
     "ap.det.host_restart.resume":
       "実行中だったエージェントは元の場所から再開し、開いているターミナルは閉じます。結果はアクティビティ履歴に記録されます。",
+    "ap.do.report": "{repo} にレポートを送る: {title}",
+    "ap.det.report.to": "送り先: {repo}",
+    "ap.det.report.pub":
+      "公開リポジトリ: 本文とスクリーンショットは誰でも見られます。送る前にシークレット、トークン、メールアドレス、IP アドレス、ストア参照は取り除かれます。",
+    "ap.det.report.priv":
+      "非公開リポジトリ: このリポジトリにアクセスできる人だけが見られます。",
+    "ap.det.report.int":
+      "内部リポジトリ: このリポジトリにアクセスできる人だけが見られます。",
+    "ap.det.report.unk":
+      "公開範囲が不明: __DEN_TITLE__ はこのリポジトリを誰が見られるか分からないため、公開として扱います。本文とスクリーンショットは誰でも見られる可能性があります。",
+    "ap.det.report.as":
+      "あなたとして GitHub に送ります（あなたの gh サインイン）。送られる内容:",
+    "ap.det.report.shot":
+      "エージェントが撮ったスクリーンショット付き。__DEN_TITLE__ はスクリーンショットをマスクしません。消去されるのは上の本文だけです。",
     "ap.det.embed_key_revoke.reach":
       "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
     "ap.det.embed_key_revoke.held":
@@ -1935,6 +1953,62 @@
     "set.workspace.mcp_servers.d":
       "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。ここで変更や削除もできます。エージェントは project_mcp_add、project_mcp_update、project_mcp_remove で求め、あなたが許可します。",
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
+    "set.workspace.event_feeds": "アプリのイベントフィード: このプロジェクト",
+    "set.workspace.event_feeds.d":
+      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。agents.event_feeds に追加します。bearer は secrets.refs の名前です。",
+    "set.embed.feed_max_streams": "同時に読むアプリフィード",
+    "set.embed.feed_max_streams.d":
+      "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数です。超えたフィードは読まれず、そのプロジェクトの通知でお知らせします。",
+    "set.embed.feed_event_max_kb": "アプリフィードのイベントの最大サイズ",
+    "set.embed.feed_event_max_kb.d":
+      "アプリフィードがエージェントのために保存するイベントの最大サイズです。それより大きいものは、データなしで届いたことを示すメモとして保存され、プロジェクトの通知でお知らせします。",
+    "set.embed.feed_events_per_minute":
+      "アプリフィードの 1 分あたりのイベント数",
+    "set.embed.feed_events_per_minute.d":
+      "Den が 1 つのアプリフィードから 1 分間に読むイベント数です。超えた分は許される速さで読み、プロジェクトの通知でお知らせします。",
+    "feed.none": "このプロジェクトにはアプリのイベントフィードがありません。",
+    "feed.row": "{name} から {agent} へ: {url}",
+    "feed.last": "最後のイベント {time}。",
+    "feed.noEvents": "まだイベントはありません。",
+    "set.embed.feed_keep_events": "1 つのアプリフィードが保存するイベント数",
+    "set.embed.feed_keep_events.d":
+      "Den が 1 つのアプリフィードのために保存するイベントの最大数です。超えると古いものから消え、未読のものが消えたときはプロジェクトの通知でお知らせします。",
+    "set.embed.feed_read_max_kb": "1 回の読み取りのアプリフィードデータ",
+    "set.embed.feed_read_max_kb.d":
+      "app_feed_read の 1 回の呼び出しでエージェントに渡すイベントデータの最大量です。残りは次の呼び出しで読みます。",
+    "set.embed.feed_list_timeout": "アプリフィードの一覧の待ち時間",
+    "set.embed.feed_list_timeout.d":
+      "切断後の抜けを埋めるアプリのイベント一覧を Den が待つ時間です。過ぎると後でもう一度試します。",
+    "set.embed.feed_list_max_mb": "アプリフィードの一覧の最大サイズ",
+    "set.embed.feed_list_max_mb.d":
+      "Den がアプリから一度に読むイベント一覧の最大サイズです。それより大きい応答は断り、後でもう一度試します。",
+    "set.embed.paste_max_kb": "エージェントに一度に入力する最大テキスト",
+    "set.embed.paste_max_kb.d":
+      "Den がエージェントに一度に入力するテキストの最大量です (Hub のコメント、転送メッセージ、アプリフィードの行)。残りは次に入力します。",
+    "feed.unread": "未読: {n}。",
+    "bell.m.appFeed.dropped":
+      "{agent} のアプリフィード {name}: 保存数の上限のため未読のイベントが消えました。",
+    "feed.problems": "読めない agents.event_feeds の項目: {n}。",
+    "feed.failed":
+      "このプロジェクトのアプリのイベントフィードを読めませんでした。",
+    "feed.st.connecting": "接続中",
+    "feed.st.connected": "接続済み",
+    "feed.st.retrying": "再試行中",
+    "feed.st.no_secret": "bearer がシークレットストアにありません",
+    "feed.st.over_limit": "読んでいません: フィード数の上限を超えています",
+    "feed.st.no_agent":
+      "読んでいません: このプロジェクトにそのエージェントはいません",
+    "feed.st.stopped": "停止",
+    "bell.m.appFeed.no_secret":
+      "{agent} のアプリフィード {name}: bearer をシークレットストアから読めません。Den は再試行を続けます。",
+    "bell.m.appFeed.rejected":
+      "{agent} のアプリフィード {name}: アプリが Den のリクエストを拒否しました。Den は再試行を続けます。",
+    "bell.m.appFeed.too_big":
+      "{agent} のアプリフィード {name}: イベントがサイズの上限を超えました。エージェントにはデータなしで届いたことを伝えました。",
+    "bell.m.appFeed.over_rate":
+      "{agent} のアプリフィード {name}: 速さの上限を超えています。イベントは待ち、許される速さで入力されます。",
+    "bell.m.appFeed.over_streams":
+      "{agent} のアプリフィード {name}: 同時に読むフィードの上限を超えているため読んでいません。",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "このプロジェクトの MCP を読み込めませんでした。",
     "pmcp.edit": "変更",
@@ -2086,15 +2160,38 @@
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "エージェント",
     "n.terminal": "ターミナル",
-    "n.terminalTip": "このプロジェクトのフォルダーでシェルを Den 内に開く",
+    "n.terminalTip":
+      "ターミナルの一覧。それぞれプロジェクトのフォルダーで開きます",
     "ag.term.started": "{w} でターミナルを開きました",
     "ag.term.failed": "Den はターミナルを開けませんでした: {e}",
     "ag.start.lastLines": "停止する前に表示した内容:",
     "ag.term.ptyFailed":
       "Den はターミナルを開けませんでした: このマシンが PTY を割り当てませんでした ({e})。不要なターミナルを閉じるか、doctor を実行してください。",
     "ag.term.noWs": "有効なプロジェクトがありません。先に有効にしてください。",
-    "ws.termHere": "ここでターミナル",
+    "ws.termHere": "新しいターミナル",
+    // Issue 482: ターミナルのページ。
+    "ws.termHereTip":
+      "このプロジェクトのフォルダーで新しいターミナルを Den 内に開く",
+    "tm.count": "ターミナル {n}",
+    "tm.count1": "ターミナル {n}",
+    "tm.running": "実行中 ({n})",
+    "tm.exited": "終了 ({n})",
+    "tm.lastUsed": "最終使用 {when}",
+    "tm.restart": "再起動",
+    "tm.restartName": "{id} を同じフォルダーで再起動",
+    "tm.none": "まだターミナルはありません",
+    "tm.noneP": "「新しいターミナル」を押すと {scope} で開きます。",
+    "tm.empty":
+      "左のターミナルを選ぶと開きます。複数開くと並べて表示します（最大 4）。",
+    "tm.pick": "新しいターミナルを開くプロジェクト…",
+    "tm.moved":
+      "{n} 個のターミナルを「ターミナル」に移しました。閉じたものはありません。",
+    "tm.moved1":
+      "{n} 個のターミナルを「ターミナル」に移しました。閉じたものはありません。",
+    "tm.openList": "ターミナルを開く",
+    "tm.dismiss": "閉じる",
     "kind.agent": "エージェント",
+    "kind.terminal": "ターミナル",
     "ag.sub.agents": "エージェント {n}",
     "ag.sub.agent": "エージェント {n}",
     "ag.sub.shells": "シェル {n}",
@@ -2162,6 +2259,25 @@
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
+    "bell.m.heldLapsed":
+      "{name} の依頼は応答がないまま期限切れになりました: {what}。何も実行していません。エージェントにもう一度依頼するよう伝えました。",
+    "bell.m.heldLapsedAsk":
+      "依頼が応答のないまま期限切れになりました: {what}。何も実行していません。",
+    "bell.m.heldLost":
+      "{name} の依頼は再起動で失われました: {what}。この依頼からは何も実行していません。エージェントにもう一度依頼するよう伝えました。",
+    "bell.m.heldLostAsk":
+      "依頼が再起動で失われました: {what}。この依頼からは何も実行していません。",
+    "bell.m.heldLostAll":
+      "あなたの許可を待っていた依頼を再起動後に読み戻せませんでした。失われています。もう一度依頼したエージェントはここに表示されます。",
+    "bell.ap.h": "あなたの許可待ち",
+    "bell.ap.row": "{name} の依頼: {what}",
+    "bell.ap.rowAsk": "依頼: {what}",
+    "bell.ap.waits": "{ago} 待機中 · 期限 {time}",
+    "bell.ap.allow": "許可",
+    "bell.ap.deny": "拒否",
+    "bell.ap.done": "許可しました: {what}",
+    "bell.ap.denied": "拒否しました: {what}",
+    "bell.ap.failed": "うまくいきませんでした: {error}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
@@ -2313,8 +2429,8 @@
       "Hub のアドレスが https ではないため、Den は開きません。設定 › Hub を確認してください。",
     "ag.session": "シェル",
     "ag.empty":
-      "左のエージェントかシェルを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
-    "ag.none.scope": "{scope} にはまだエージェントもシェルもありません",
+      "左のエージェントを選ぶとターミナルが開きます。複数開くと並べて表示します（最大 4）。",
+    "ag.none.scope": "{scope} にはまだエージェントはありません",
     "ag.detach": "ペインを閉じる",
     "ag.to": "宛先: {name} · {ws}",
     "ag.toName": "宛先: {name}",
@@ -2367,6 +2483,7 @@
     "ag.noHost": "セッションホストは動いていません。まだ何も開始されていません",
     "ag.ws": "プロジェクト",
     "ag.pal": "エージェント › {ws} / {name}",
+    "tm.pal": "ターミナル › {ws} / {name}",
     "ag.palStart": "エージェントを開始…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ エージェント",
@@ -3234,6 +3351,28 @@
       "このブラウザーはプッシュを受け取れません。iPhone では、__DEN_TITLE__ をホーム画面に追加し（共有から「ホーム画面に追加」）、そこから開いてください。",
     "set.notifications.phone.failed":
       "ここではプッシュをオンにできませんでした。",
+    "set.notifications.push_devices": "プッシュを受け取るデバイス",
+    "set.notifications.push_devices.d":
+      "プッシュをオンにした各デバイスです。テスト通知を送って、スマートフォンに届くか確かめてください。デバイスごとに、プッシュサービスが受け取ったかが表示されます。使わなくなったデバイスは削除できます。",
+    "set.notifications.devices.none":
+      "プッシュを受け取るデバイスはまだありません。スマートフォンで __DEN_TITLE__ を開き（「アクセス」の「デバイスをペアリング」でサインインできます）、そこで「このデバイスへのプッシュ通知」をオンにしてください。",
+    "set.notifications.devices.this": "（このデバイス）",
+    "set.notifications.devices.added": "追加: {t}",
+    "set.notifications.devices.forget": "削除",
+    "set.notifications.devices.test": "テスト通知を送る",
+    "set.notifications.test.reached":
+      "送信済み: プッシュサービスが受け取りました。",
+    "set.notifications.test.gone":
+      "なし: このデバイスはもうプッシュを受け取らないため、削除しました。",
+    "set.notifications.test.refused":
+      "送信できませんでした: プッシュサービスの応答は {status} でした。",
+    "set.notifications.test.noAnswer":
+      "送信できませんでした: プッシュサービスから時間内に応答がありませんでした（プッシュの待ち時間）。",
+    "set.notifications.svc.apple": "Apple のプッシュ",
+    "set.notifications.svc.google": "Google のプッシュ",
+    "set.notifications.svc.mozilla": "Firefox のプッシュ",
+    "set.notifications.svc.microsoft": "Microsoft のプッシュ",
+    "set.notifications.svc.other": "その他のプッシュサービス",
     "set.notifications.quiet_from": "通知を止める時間の開始",
     "set.notifications.quiet_from.d":
       "この時刻から終了時刻まで、ベル以外の通知を出しません。ベルにはすべて残ります。あなたのタイムゾーンで。",
@@ -3584,7 +3723,6 @@
     "lg.search.none": "どのサービスの履歴にも「{q}」は見つかりません",
     "lg.aws.expired": "AWS のサインインが期限切れです",
     "lg.aws.reauth": "再認証",
-    "lg.aws.authenticating": "認証中…",
     "lg.aws.retry": "再試行",
     "lg.aws.failed": "ログインに失敗しました",
     "lg.aws.connErr": "接続エラー",

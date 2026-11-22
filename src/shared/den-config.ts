@@ -367,6 +367,11 @@ export interface UserConfig {
    */
   approvals?: unknown;
   /**
+   * Issue 742: held writes. wait_minutes (default 1440, 10 to 10080): how
+   * long a request waits for the person's Allow before it lapses.
+   */
+  held_writes?: { wait_minutes?: unknown };
+  /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
    */
@@ -900,6 +905,46 @@ export function agentsTrustCheckSeconds(
   throw new Error(
     `agents.trust_check_seconds must be a number, at least 1 (user.yml; got ${JSON.stringify(v)})`,
   );
+}
+
+/**
+ * Issue 742: held_writes.wait_minutes, how long a held write waits for the
+ * person's Allow: 24 hours when unset, 10 minutes to 7 days.
+ */
+export const HELD_WAIT_MINUTES = {
+  default: 1440,
+  min: 10,
+  max: 10080,
+} as const;
+
+/**
+ * Issue 742: held_writes.wait_minutes (user.yml), read at each ask. A
+ * value out of range, or none, is the default: the queue never fails an
+ * ask over it, and never waits less than the person may expect.
+ */
+export function heldWriteWaitMinutes(
+  read: () => UserConfig = readUserConfig,
+): number {
+  let v: unknown;
+  try {
+    v = read().held_writes?.wait_minutes;
+  } catch {
+    return HELD_WAIT_MINUTES.default;
+  }
+  return typeof v === "number" &&
+    Number.isInteger(v) &&
+    v >= HELD_WAIT_MINUTES.min &&
+    v <= HELD_WAIT_MINUTES.max
+    ? v
+    : HELD_WAIT_MINUTES.default;
+}
+
+/** Issue 742: a wait in minutes as words ("24 hours", "7 days", "90 minutes"). */
+export function heldWaitText(minutes: number): string {
+  const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  if (minutes >= 2880 && minutes % 1440 === 0) return n(minutes / 1440, "day");
+  if (minutes >= 60 && minutes % 60 === 0) return n(minutes / 60, "hour");
+  return n(minutes, "minute");
 }
 
 /** Issue 456: agents.shell_path_timeout_seconds when unset, and its range. */
@@ -1634,6 +1679,11 @@ export interface ResolvedMcpConfig {
   logsRemote: boolean;
   /** Whether the held writes are registered (default true). */
   approvals: boolean;
+  /**
+   * Issue 742: the held-write window, in minutes, for the tool texts
+   * (unset: user.yml held_writes.wait_minutes, read by toolsFor).
+   */
+  heldWaitMinutes?: number;
 }
 
 /**

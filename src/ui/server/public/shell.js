@@ -1146,6 +1146,27 @@
     "set.notifications.phone.none":
       "This browser can't get push. On an iPhone, add __DEN_TITLE__ to the Home Screen (Share, then Add to Home Screen) and open it from there.",
     "set.notifications.phone.failed": "Couldn't turn on push here.",
+    "set.notifications.push_devices": "Devices that get push",
+    "set.notifications.push_devices.d":
+      "Each device that turned on push. Send a test alert to check that your phone gets it: each device says whether its push service took it. Forget one you no longer use.",
+    "set.notifications.devices.none":
+      "No device gets push yet. Open __DEN_TITLE__ on your phone (Pair a device, under Access, signs it in), then turn on Alerts on this device by push there.",
+    "set.notifications.devices.this": "(this device)",
+    "set.notifications.devices.added": "Added {t}",
+    "set.notifications.devices.forget": "Forget",
+    "set.notifications.devices.test": "Send a test alert",
+    "set.notifications.test.reached": "Sent: its push service took it.",
+    "set.notifications.test.gone":
+      "Gone: this device no longer takes push, so it was removed.",
+    "set.notifications.test.refused":
+      "Not sent: its push service answered {status}.",
+    "set.notifications.test.noAnswer":
+      "Not sent: no answer from its push service in time (Push wait).",
+    "set.notifications.svc.apple": "Apple push",
+    "set.notifications.svc.google": "Google push",
+    "set.notifications.svc.mozilla": "Firefox push",
+    "set.notifications.svc.microsoft": "Microsoft push",
+    "set.notifications.svc.other": "Other push service",
     "set.notifications.quiet_from": "Quiet hours start",
     "set.notifications.quiet_from.d":
       "From this time, no alerts outside the bell until quiet hours end. The bell still has everything. In your time zone.",
@@ -1416,7 +1437,6 @@
     "lock.saveTo": "Save to {s}",
     "lock.pw": "Admin password",
     "lock.go": "Continue",
-    "lock.checking": "Checking…",
     "lock.note": "Den uses it only for sudo. Agents can't enter it.",
     "lock.saved": "Admin password kept for this session",
     "lock.savedTo": "Admin password kept for this session and saved to {s}",
@@ -1601,6 +1621,12 @@
     "busy.askAllowW": "Asking…",
     "busy.askAllowS": "Asked. Allow it in the dialog.",
     "busy.askAllowF": "Couldn't ask.",
+    "busy.pushTestW": "Sending a test alert…",
+    "busy.pushTestS": "Test alert done. Each device says how it went.",
+    "busy.pushTestF": "Couldn't send the test alert.",
+    "busy.pushForgetW": "Forgetting this device…",
+    "busy.pushForgetS": "This device no longer gets push.",
+    "busy.pushForgetF": "Couldn't forget this device.",
     "busy.saveW": "Saving…",
     "busy.saveS": "Saved.",
     "busy.saveF": "Couldn't save.",
@@ -2233,7 +2259,6 @@
     "addr.unset": "Not set. The links __DEN_TITLE__ gives people need it.",
     "addr.label": "Address",
     "addr.check": "Check and save",
-    "addr.checking": "Checking…",
     "addr.checkW": "Checking that {url} answers",
     "addr.saved": "Saved: {url} answered.",
     "addr.notSaved": "Not saved. The old address stays.",
@@ -2267,6 +2292,9 @@
     "set.agents.approvals_critical": "Critical",
     "set.agents.approvals_critical.d":
       "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    "set.agents.held_wait": "Requests wait for your Allow",
+    "set.agents.held_wait.d":
+      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
       "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
@@ -2382,8 +2410,6 @@
     "ag.runtime.default": "{name} (persona default)",
     "ag.unavailable": "unavailable",
     "ag.go": "Start",
-    "ag.starting": "Starting…",
-    "ag.working": "Working…",
     "ag.cancel": "Cancel",
     "ag.started": "Started agent {id}",
     "ag.stopped": "Stopped agent {id}",
@@ -2552,7 +2578,6 @@
     "ag.pc.note":
       "Den stops it and resumes the same conversation as the new persona. Its id, name, folder and tab stay.",
     "ag.pc.go": "Change persona",
-    "ag.pc.going": "Changing…",
     "ag.pc.current": "current",
     "ag.pc.busy": "It's working. Change after this turn, or stop it now?",
     "ag.pc.after": "After this turn",
@@ -2634,7 +2659,6 @@
     "ag.stoppedGroupTip":
       "Agents that aren't running. Open one for its details.",
     "ag.bring.go": "Bring in",
-    "ag.bring.going": "Bringing in…",
     "ag.bring.done": "Brought in as {id}",
     "ag.bring.now": "just now",
     "ag.bring.min": "{n} min ago",
@@ -2723,6 +2747,20 @@
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
     "ap.det.host_restart.resume":
       "The agents it ran resume where they were; open terminals end. The activity trail says how it went.",
+    "ap.do.report": "File a report on {repo}: {title}",
+    "ap.det.report.to": "Goes to: {repo}",
+    "ap.det.report.pub":
+      "Public repository: the text and the screenshot are visible to everyone. Secrets, tokens, emails, IP addresses and store references are removed first.",
+    "ap.det.report.priv":
+      "Private repository: only people with access to this repository can see it.",
+    "ap.det.report.int":
+      "Internal repository: only people with access to this repository can see it.",
+    "ap.det.report.unk":
+      "Visibility not known: __DEN_TITLE__ can't tell who can see this repository, so it is treated as public. The text and the screenshot may be visible to everyone.",
+    "ap.det.report.as":
+      "Filed on GitHub as you (your gh sign-in). What will be posted:",
+    "ap.det.report.shot":
+      "With a screenshot the agent took. __DEN_TITLE__ does not mask a screenshot: only the text above is scrubbed.",
     "ap.det.embed_key_revoke.reach":
       "{origin} can no longer message {agent} or read its state with this key.",
     "ap.det.embed_key_revoke.held":
@@ -2847,6 +2885,59 @@
     "set.workspace.mcp_servers.d":
       "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
     "pmcp.none": "No extra MCP servers for this project's agents.",
+    "set.workspace.event_feeds": "App event feeds: this project",
+    "set.workspace.event_feeds.d":
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+    "set.embed.feed_max_streams": "App feeds read at once",
+    "set.embed.feed_max_streams.d":
+      "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
+    "set.embed.feed_event_max_kb": "Largest app feed event",
+    "set.embed.feed_event_max_kb.d":
+      "The largest event an app feed keeps for its agent. A larger one is kept as a note that it came, without its data, and the project's notifications say so.",
+    "set.embed.feed_events_per_minute": "App feed events a minute",
+    "set.embed.feed_events_per_minute.d":
+      "How many events Den reads from one app feed in a minute. Past it, Den reads the rest as the rate allows, and the project's notifications say so.",
+    "feed.none": "No app event feeds for this project.",
+    "feed.row": "{name} to {agent}: {url}",
+    "feed.last": "Last event {time}.",
+    "feed.noEvents": "No events yet.",
+    "set.embed.feed_keep_events": "Events one app feed keeps",
+    "set.embed.feed_keep_events.d":
+      "The most events Den keeps for one app feed. Past it, the oldest go, and the project's notifications say so when one wasn't read yet.",
+    "set.embed.feed_read_max_kb": "Most app feed data in one read",
+    "set.embed.feed_read_max_kb.d":
+      "The most event data one app_feed_read call gives an agent. It reads the rest with another call.",
+    "set.embed.feed_list_timeout": "App feed list wait",
+    "set.embed.feed_list_timeout.d":
+      "How long Den waits for an app's list of events (it fills a gap after a cut) before it tries again later.",
+    "set.embed.feed_list_max_mb": "Largest app feed list answer",
+    "set.embed.feed_list_max_mb.d":
+      "The largest list of events Den reads from an app at once. A larger answer is refused and tried again later.",
+    "set.embed.paste_max_kb": "Most text typed into an agent at once",
+    "set.embed.paste_max_kb.d":
+      "The most text Den types into an agent in one go: Hub comments, relayed messages and app feed lines. The rest are typed next.",
+    "feed.unread": "Unread: {n}.",
+    "bell.m.appFeed.dropped":
+      "App feed {name} for {agent}: unread events went because the feed keeps at most its limit.",
+    "feed.problems": "Entries in agents.event_feeds that can't be read: {n}.",
+    "feed.failed": "Couldn't read this project's app event feeds.",
+    "feed.st.connecting": "Connecting",
+    "feed.st.connected": "Connected",
+    "feed.st.retrying": "Retrying",
+    "feed.st.no_secret": "Its bearer isn't in the secrets store",
+    "feed.st.over_limit": "Not read: over the limit of feeds",
+    "feed.st.no_agent": "Not read: no such agent in this project",
+    "feed.st.stopped": "Stopped",
+    "bell.m.appFeed.no_secret":
+      "App feed {name} for {agent}: its bearer can't be read from the secrets store. Den keeps trying.",
+    "bell.m.appFeed.rejected":
+      "App feed {name} for {agent}: the app refused Den's request. Den keeps trying.",
+    "bell.m.appFeed.too_big":
+      "App feed {name} for {agent}: an event was over the size limit. The agent was told it came, without its data.",
+    "bell.m.appFeed.over_rate":
+      "App feed {name} for {agent}: over the rate limit. Its events wait and are typed as the rate allows.",
+    "bell.m.appFeed.over_streams":
+      "App feed {name} for {agent}: not read, over the limit of feeds read at once.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "Couldn't read this project's MCP servers.",
     "pmcp.edit": "Change",
@@ -2996,8 +3087,8 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agents",
-    "n.terminal": "Terminal",
-    "n.terminalTip": "Open a shell in this project's folder, in Den",
+    "n.terminal": "Terminals",
+    "n.terminalTip": "Your terminals in one list, each in a project's folder",
     "ag.term.started": "Terminal opened in {w}",
     "ag.term.failed": "Den couldn't open a terminal: {e}",
     // Issue 503: the machine gave no PTY (the reason in {e}).
@@ -3005,8 +3096,27 @@
     "ag.term.ptyFailed":
       "Den couldn't open a terminal: this machine gave it no PTY ({e}). Close terminals you no longer need, or run doctor.",
     "ag.term.noWs": "no project is active. Activate one first.",
-    "ws.termHere": "Terminal here",
+    "ws.termHere": "New terminal",
+    // Issue 482: the Terminals page (its own list; never "shell").
+    "ws.termHereTip": "Open a new terminal in this project's folder, in Den",
+    "tm.count": "{n} terminals",
+    "tm.count1": "{n} terminal",
+    "tm.running": "Running ({n})",
+    "tm.exited": "Exited ({n})",
+    "tm.lastUsed": "Last used {when}",
+    "tm.restart": "Restart",
+    "tm.restartName": "Restart {id} in the same folder",
+    "tm.none": "No terminals yet",
+    "tm.noneP": "Press New terminal to open one in {scope}.",
+    "tm.empty":
+      "Pick a terminal on the left to open it. Open more to tile them (up to 4).",
+    "tm.pick": "New terminal in…",
+    "tm.moved": "{n} terminals moved to Terminals. Nothing was closed.",
+    "tm.moved1": "{n} terminal moved to Terminals. Nothing was closed.",
+    "tm.openList": "Open Terminals",
+    "tm.dismiss": "Dismiss",
     "kind.agent": "Agent",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agents",
     "ag.sub.agent": "{n} agent",
     "ag.sub.shells": "{n} shells",
@@ -3078,6 +3188,24 @@
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.heldLapsed":
+      "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
+    "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
+    "bell.m.heldLost":
+      "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
+    "bell.m.heldLostAsk":
+      "A request was lost at a restart: {what}. Nothing ran from it.",
+    "bell.m.heldLostAll":
+      "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
+    "bell.ap.h": "Waiting for your Allow",
+    "bell.ap.row": "{name} asks: {what}",
+    "bell.ap.rowAsk": "Asked: {what}",
+    "bell.ap.waits": "Waiting {ago} · expires {time}",
+    "bell.ap.allow": "Allow",
+    "bell.ap.deny": "Deny",
+    "bell.ap.done": "Allowed: {what}",
+    "bell.ap.denied": "Denied: {what}",
+    "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
@@ -3256,8 +3384,8 @@
       "Hub's address isn't https, so Den won't open it. See Settings › Hub.",
     "ag.session": "shell",
     "ag.empty":
-      "Pick an agent or shell on the left to open its terminal. Open more to tile them (up to 4).",
-    "ag.none.scope": "No agents or shells in {scope} yet",
+      "Pick an agent on the left to open its terminal. Open more to tile them (up to 4).",
+    "ag.none.scope": "No agents in {scope} yet",
     "ag.detach": "Close pane",
     "ag.to": "To {name} · {ws}",
     "ag.toName": "To {name}",
@@ -3310,6 +3438,7 @@
     "ag.noHost": "No session host is running: nothing has started yet",
     "ag.ws": "Project",
     "ag.pal": "Agents › {ws} / {name}",
+    "tm.pal": "Terminals › {ws} / {name}",
     "ag.palStart": "Start agent…",
     // ON-6: the __DEN_TITLE__ agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "__DEN_TITLE__ agent",
@@ -3747,7 +3876,6 @@
     "lg.search.none": 'no matches for "{q}" in any service\'s history',
     "lg.aws.expired": "AWS sign-in expired",
     "lg.aws.reauth": "Re-authenticate",
-    "lg.aws.authenticating": "Authenticating…",
     "lg.aws.retry": "Retry",
     "lg.aws.failed": "login failed",
     "lg.aws.connErr": "connection error",
@@ -4129,8 +4257,8 @@
   if (!host || host.dataset.mounted) return;
   host.dataset.mounted = "1";
   var page = host.dataset.page || "";
-  // 0.4.45: the rail item lit; a page may light another of its own (the
-  // Agents page lights Terminal while a shell is in front).
+  // 0.4.45: the rail item lit; a page may light another of its own.
+  // Issue 482: the Terminals page's id is its rail item's ("terminal").
   var railLit = page;
   // The page id on the body (den-page-<id>), for CSS from first paint: the
   // Graph page is the Workspaces page's file at /graph (R22, 0.3.0-dev.32).
@@ -5263,15 +5391,18 @@
     },
     // D73: a plain shell in the project's folder, the same terminal pane
     // agents use with no agent in it: a person's, signed in like the page.
+    // Issue 482: Terminals, a page of their own (/terminals), never rows
+    // in the Agents list. A click opens the one used last in the project
+    // in view, or starts one (terminalHref).
     {
       id: "terminal",
       label: "n.terminal",
       tip: "n.terminalTip",
       icon: "terminal",
       group: "develop",
-      // 0.4.45: right under Agents (a view of the same pane).
+      // 0.4.45: right under Agents.
       order: 17.5,
-      href: "/agents?terminal=1",
+      href: "/terminals",
       keywords: ["terminal", "shell", "console", "command line"],
     },
     // 0.4.45: the __DEN_TITLE__ agent is off the rail: one door, the SERVER row
@@ -5751,7 +5882,10 @@
     var repo = id.split("/")[0];
     return "/services#repo-" + encodeURIComponent(repo);
   }
-  /** D73: the rail's Terminal, in the project in view when there is one. */
+  /**
+   * D73: the rail's Terminals, in the project in view when there is one.
+   * Issue 482: on the Terminals page itself (/terminals?terminal=1).
+   */
   function terminalHref() {
     var ws = "";
     try {
@@ -5761,7 +5895,7 @@
       ws = "";
     }
     return (
-      "/agents?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
+      "/terminals?terminal=1" + (ws ? "&project=" + encodeURIComponent(ws) : "")
     );
   }
   /**
@@ -8343,6 +8477,14 @@
     ap.busy = true;
     var btns = ap.dlg.querySelectorAll("button");
     for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    // Issue 698: the button pressed shows the kit's dots until the answer.
+    var pressed = ap.dlg.querySelector(
+      decision === "allow" ? "#den-ap-allow" : "#den-ap-deny",
+    );
+    var releaseDots =
+      window.denShell && window.denShell.holdDots
+        ? window.denShell.holdDots(pressed)
+        : function () {};
     // Issue 199: the person's choice, sent with Allow only.
     var follow =
       decision === "allow" &&
@@ -8404,6 +8546,9 @@
           apError(String((e && e.message) || e));
         },
       )
+      .then(function () {
+        return releaseDots();
+      })
       .then(function () {
         ap.busy = false;
         for (var j = 0; j < btns.length; j++) btns[j].disabled = false;
@@ -8763,7 +8908,13 @@
   // (GET /api/sessions/helpers, a count). The Agents page sets it itself
   // from its own list. Quiet on any failure: the badge just isn't there.
   (function () {
-    if (page === "agents" || typeof rawFetch !== "function") return;
+    // Issue 482: the Terminals page is the same page (agents-page.js).
+    if (
+      page === "agents" ||
+      page === "terminal" ||
+      typeof rawFetch !== "function"
+    )
+      return;
     function poll() {
       // A refusal page or a bad config: no polls (each would be refused).
       if (configInvalid()) return;
@@ -8966,6 +9117,34 @@
       return loadBusy().then(function (m) {
         return m.busyAction(name, run, opts);
       });
+    },
+    /**
+     * Issue 698: the kit's pulsing dots alone, no pop-up, for a wait that
+     * says its own words (a stream, a form with its own error line).
+     * holdDots(button) holds it at once; it returns release(), which gives
+     * the label back (a label the page drew meanwhile stays).
+     */
+    holdDots: function (button) {
+      if (!button) return function () {};
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      var held = loadBusy()
+        .then(function (m) {
+          m.holdDots(button, true);
+          return m;
+        })
+        .catch(function () {
+          return null;
+        });
+      return function () {
+        return held.then(function (m) {
+          if (m) m.holdDots(button, false);
+          else {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+        });
+      };
     },
     /** Light rail item `id` for this page (null: the page's own). */
     setRailLit: function (id) {

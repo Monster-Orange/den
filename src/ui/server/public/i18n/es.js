@@ -522,7 +522,6 @@
     "lock.saveTo": "Guardar en {s}",
     "lock.pw": "Contraseña de administrador",
     "lock.go": "Continuar",
-    "lock.checking": "Comprobando…",
     "lock.note":
       "Den la usa solo para sudo. Los agentes no pueden introducirla.",
     "lock.saved": "Contraseña de administrador guardada para esta sesión",
@@ -703,6 +702,12 @@
     "busy.askAllowW": "Preguntando…",
     "busy.askAllowS": "Preguntado. Permítelo en el cuadro de diálogo.",
     "busy.askAllowF": "No se pudo preguntar.",
+    "busy.pushTestW": "Enviando un aviso de prueba…",
+    "busy.pushTestS": "Aviso de prueba hecho. Cada dispositivo dice cómo fue.",
+    "busy.pushTestF": "No se pudo enviar el aviso de prueba.",
+    "busy.pushForgetW": "Olvidando este dispositivo…",
+    "busy.pushForgetS": "Este dispositivo ya no recibe push.",
+    "busy.pushForgetF": "No se pudo olvidar este dispositivo.",
     "busy.saveW": "Guardando…",
     "busy.saveS": "Guardado.",
     "busy.saveF": "No se pudo guardar.",
@@ -1228,7 +1233,6 @@
     "addr.unset": "Sin definir. Los enlaces que da __DEN_TITLE__ la necesitan.",
     "addr.label": "Dirección",
     "addr.check": "Comprobar y guardar",
-    "addr.checking": "Comprobando…",
     "addr.checkW": "Comprobando que {url} responde",
     "addr.saved": "Guardada: {url} respondió.",
     "addr.notSaved": "No se guardó. Se mantiene la dirección anterior.",
@@ -1262,6 +1266,9 @@
     "set.agents.approvals_critical": "Crítico",
     "set.agents.approvals_critical.d":
       "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.agents.held_wait": "Las solicitudes esperan tu permiso",
+    "set.agents.held_wait.d":
+      "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.agents.issue_writes": "Quién escribe issues de GitHub",
     "set.agents.issue_writes.d":
       "Los roles cuyos agentes pueden crear issues, comentar, poner etiquetas y fijar hitos en los repositorios de GitHub de su propio proyecto, al momento y con registro. Separados por comas; vacío: ninguno. Sin definir: planner, orchestrator, lead, sde, builder, reviewer e install (el agente propio de __DEN_TITLE__). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
@@ -1520,8 +1527,6 @@
     "ag.runtime.default": "{name} (la de la persona)",
     "ag.unavailable": "no disponible",
     "ag.go": "Iniciar",
-    "ag.starting": "Iniciando…",
-    "ag.working": "Procesando…",
     "ag.cancel": "Cancelar",
     "ag.started": "Agente {id} iniciado",
     "ag.stopped": "Agente {id} detenido",
@@ -1692,7 +1697,6 @@
     "ag.pc.note":
       "Den lo detiene y reanuda la misma conversación con la nueva persona. Su id, nombre, carpeta y pestaña se mantienen.",
     "ag.pc.go": "Cambiar persona",
-    "ag.pc.going": "Cambiando…",
     "ag.pc.current": "actual",
     "ag.pc.busy":
       "Está trabajando. ¿Cambiar después de este turno o detenerlo ahora?",
@@ -1780,7 +1784,6 @@
     "ag.stoppedGroupTip":
       "Agentes que no están en marcha. Abre uno para ver sus detalles.",
     "ag.bring.go": "Traer",
-    "ag.bring.going": "Trayendo…",
     "ag.bring.done": "Traída como {id}",
     "ag.bring.now": "ahora mismo",
     "ag.bring.min": "hace {n} min",
@@ -1874,6 +1877,20 @@
       "Espera a que ningún agente esté a mitad de turno (como máximo {min} min) y reinicia el host de terminales con el Den instalado.",
     "ap.det.host_restart.resume":
       "Los agentes que ejecutaba continúan donde estaban; los terminales abiertos se cierran. El registro de actividad dice cómo fue.",
+    "ap.do.report": "Enviar un reporte a {repo}: {title}",
+    "ap.det.report.to": "Va a: {repo}",
+    "ap.det.report.pub":
+      "Repositorio público: el texto y la captura los puede ver cualquiera. Antes se quitan secretos, tokens, correos, direcciones IP y referencias a almacenes.",
+    "ap.det.report.priv":
+      "Repositorio privado: solo lo ven las personas con acceso a este repositorio.",
+    "ap.det.report.int":
+      "Repositorio interno: solo lo ven las personas con acceso a este repositorio.",
+    "ap.det.report.unk":
+      "Visibilidad desconocida: __DEN_TITLE__ no sabe quién puede ver este repositorio, así que lo trata como público. El texto y la captura pueden ser visibles para cualquiera.",
+    "ap.det.report.as":
+      "Se publica en GitHub a tu nombre (con tu gh). Lo que se publicará:",
+    "ap.det.report.shot":
+      "Con una captura que tomó el agente. __DEN_TITLE__ no enmascara las capturas: solo se limpia el texto de arriba.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
@@ -2001,6 +2018,61 @@
     "set.workspace.mcp_servers.d":
       "MCP por HTTP que reciben los agentes de este proyecto, además de los de Den y Hub, por nombre y dirección. El bearer se lee del almacén de secretos de la instalación en cada llamada y nunca se muestra. Cambia o quita uno aquí. Un agente lo pide con project_mcp_add, project_mcp_update o project_mcp_remove, y tú lo permites.",
     "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
+    "set.workspace.event_feeds": "Flujos de eventos de apps: este proyecto",
+    "set.workspace.event_feeds.d":
+      "Eventos que una app de este proyecto envía en su propio flujo, para un agente. Den escribe al agente una línea corta cuando hay sin leer, cuando está libre, nunca a mitad de turno; el agente los lee con app_feed_read. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade uno en agents.event_feeds; el bearer es un nombre de secrets.refs.",
+    "set.embed.feed_max_streams": "Flujos de apps leídos a la vez",
+    "set.embed.feed_max_streams.d":
+      "El máximo de flujos de eventos de apps que Den lee a la vez, en todos los proyectos. Por encima, un flujo no se lee y las notificaciones de su proyecto lo dicen.",
+    "set.embed.feed_event_max_kb": "Evento de flujo más grande",
+    "set.embed.feed_event_max_kb.d":
+      "El evento más grande que un flujo de app guarda para su agente. Uno mayor se guarda como un aviso de que llegó, sin sus datos, y las notificaciones del proyecto lo dicen.",
+    "set.embed.feed_events_per_minute": "Eventos de flujo por minuto",
+    "set.embed.feed_events_per_minute.d":
+      "Cuántos eventos lee Den de un flujo de app por minuto. Por encima, Den lee el resto según lo permita el ritmo, y las notificaciones del proyecto lo dicen.",
+    "feed.none": "Este proyecto no tiene flujos de eventos de apps.",
+    "feed.row": "{name} a {agent}: {url}",
+    "feed.last": "Último evento {time}.",
+    "feed.noEvents": "Aún no hay eventos.",
+    "set.embed.feed_keep_events": "Eventos que guarda un flujo de app",
+    "set.embed.feed_keep_events.d":
+      "El máximo de eventos que Den guarda para un flujo de app. Por encima, se van los más antiguos, y las notificaciones del proyecto lo dicen si alguno no se había leído.",
+    "set.embed.feed_read_max_kb": "Datos de flujo en una lectura",
+    "set.embed.feed_read_max_kb.d":
+      "El máximo de datos de eventos que da una llamada a app_feed_read. El agente lee el resto con otra llamada.",
+    "set.embed.feed_list_timeout": "Espera de la lista de un flujo",
+    "set.embed.feed_list_timeout.d":
+      "Cuánto espera Den la lista de eventos de una app (llena un hueco tras un corte) antes de volver a intentarlo más tarde.",
+    "set.embed.feed_list_max_mb": "Lista de flujo más grande",
+    "set.embed.feed_list_max_mb.d":
+      "La lista de eventos más grande que Den lee de una app de una vez. Una respuesta mayor se rechaza y se vuelve a intentar más tarde.",
+    "set.embed.paste_max_kb": "Texto máximo escrito en un agente de una vez",
+    "set.embed.paste_max_kb.d":
+      "El máximo de texto que Den escribe en un agente de una vez: comentarios de Hub, mensajes reenviados y líneas de flujos de apps. El resto se escribe después.",
+    "feed.unread": "Sin leer: {n}.",
+    "bell.m.appFeed.dropped":
+      "Flujo {name} para {agent}: se fueron eventos sin leer porque el flujo guarda como máximo su límite.",
+    "feed.problems":
+      "Entradas de agents.event_feeds que no se pueden leer: {n}.",
+    "feed.failed":
+      "No se pudieron leer los flujos de eventos de este proyecto.",
+    "feed.st.connecting": "Conectando",
+    "feed.st.connected": "Conectado",
+    "feed.st.retrying": "Reintentando",
+    "feed.st.no_secret": "Su bearer no está en el almacén de secretos",
+    "feed.st.over_limit": "No se lee: supera el límite de flujos",
+    "feed.st.no_agent": "No se lee: ese agente no está en este proyecto",
+    "feed.st.stopped": "Detenido",
+    "bell.m.appFeed.no_secret":
+      "Flujo {name} para {agent}: su bearer no se puede leer del almacén de secretos. Den sigue intentándolo.",
+    "bell.m.appFeed.rejected":
+      "Flujo {name} para {agent}: la app rechazó la petición de Den. Den sigue intentándolo.",
+    "bell.m.appFeed.too_big":
+      "Flujo {name} para {agent}: un evento superó el límite de tamaño. Se avisó al agente de que llegó, sin sus datos.",
+    "bell.m.appFeed.over_rate":
+      "Flujo {name} para {agent}: supera el límite de ritmo. Sus eventos esperan y se escriben según lo permita el ritmo.",
+    "bell.m.appFeed.over_streams":
+      "Flujo {name} para {agent}: no se lee, supera el límite de flujos leídos a la vez.",
     "pmcp.row": "{name}: {url}",
     "pmcp.failed": "No se pudieron leer los MCP de este proyecto.",
     "pmcp.edit": "Cambiar",
@@ -2153,17 +2225,37 @@
     "set.agents.hub": "Hub",
     // The Agents tab (AG-4a-term, agents-page.js).
     "n.agents": "Agentes",
-    "n.terminal": "Terminal",
+    "n.terminal": "Terminales",
     "n.terminalTip":
-      "Abrir una terminal en la carpeta de este proyecto, en Den",
+      "Tus terminales en una lista, cada una en la carpeta de un proyecto",
     "ag.term.started": "Terminal abierta en {w}",
     "ag.term.failed": "Den no pudo abrir una terminal: {e}",
     "ag.start.lastLines": "Lo que mostró antes de detenerse:",
     "ag.term.ptyFailed":
       "Den no pudo abrir una terminal: esta máquina no le dio un PTY ({e}). Cierra las terminales que ya no uses o ejecuta doctor.",
     "ag.term.noWs": "no hay ningún proyecto activo. Activa uno primero.",
-    "ws.termHere": "Terminal aquí",
+    "ws.termHere": "Nueva terminal",
+    // Issue 482: la página Terminales.
+    "ws.termHereTip":
+      "Abrir una terminal nueva en la carpeta de este proyecto, en Den",
+    "tm.count": "{n} terminales",
+    "tm.count1": "{n} terminal",
+    "tm.running": "En ejecución ({n})",
+    "tm.exited": "Terminadas ({n})",
+    "tm.lastUsed": "Último uso {when}",
+    "tm.restart": "Reiniciar",
+    "tm.restartName": "Reiniciar {id} en la misma carpeta",
+    "tm.none": "Aún no hay terminales",
+    "tm.noneP": "Pulsa Nueva terminal para abrir una en {scope}.",
+    "tm.empty":
+      "Elige una terminal a la izquierda para abrirla. Abre más para verlas en mosaico (hasta 4).",
+    "tm.pick": "Nueva terminal en…",
+    "tm.moved": "{n} terminales se movieron a Terminales. No se cerró nada.",
+    "tm.moved1": "{n} terminal se movió a Terminales. No se cerró nada.",
+    "tm.openList": "Abrir Terminales",
+    "tm.dismiss": "Descartar",
     "kind.agent": "Agente",
+    "kind.terminal": "Terminal",
     "ag.sub.agents": "{n} agentes",
     "ag.sub.agent": "{n} agente",
     "ag.sub.shells": "{n} shells",
@@ -2235,6 +2327,25 @@
     "bell.m.gateLapsed":
       'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.heldLapsed":
+      "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
+    "bell.m.heldLapsedAsk":
+      "Una solicitud venció sin respuesta: {what}. No se ejecutó nada.",
+    "bell.m.heldLost":
+      "La solicitud de {name} se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella; se le pidió al agente que vuelva a pedirlo.",
+    "bell.m.heldLostAsk":
+      "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
+    "bell.m.heldLostAll":
+      "Las solicitudes que esperaban tu permiso no se pudieron recuperar tras un reinicio. Se perdieron; los agentes que vuelvan a pedirlo aparecerán aquí.",
+    "bell.ap.h": "Esperan tu permiso",
+    "bell.ap.row": "{name} pide: {what}",
+    "bell.ap.rowAsk": "Pedido: {what}",
+    "bell.ap.waits": "Espera desde hace {ago} · vence {time}",
+    "bell.ap.allow": "Permitir",
+    "bell.ap.deny": "Denegar",
+    "bell.ap.done": "Permitido: {what}",
+    "bell.ap.denied": "Denegado: {what}",
+    "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
@@ -2417,8 +2528,8 @@
       "La dirección de Hub no es https, así que Den no la abre. Mira Ajustes › Hub.",
     "ag.session": "shell",
     "ag.empty":
-      "Elige un agente o un shell a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
-    "ag.none.scope": "Aún no hay agentes ni shells en {scope}",
+      "Elige un agente a la izquierda para abrir su terminal. Abre más para verlos en mosaico (hasta 4).",
+    "ag.none.scope": "Aún no hay agentes en {scope}",
     "ag.detach": "Cerrar panel",
     "ag.to": "Para {name} · {ws}",
     "ag.toName": "Para {name}",
@@ -2473,6 +2584,7 @@
       "No hay ningún host de sesiones en marcha: aún no se ha iniciado nada",
     "ag.ws": "Proyecto",
     "ag.pal": "Agentes › {ws} / {name}",
+    "tm.pal": "Terminales › {ws} / {name}",
     "ag.palStart": "Iniciar agente…",
     // ON-6: the server agent (server-agent-page.js, the rail, ⌘K).
     "n.serverAgent": "Agente de __DEN_TITLE__",
@@ -3347,6 +3459,27 @@
     "set.notifications.phone.none":
       "Este navegador no puede recibir push. En un iPhone, añade __DEN_TITLE__ a la pantalla de inicio (Compartir y luego Añadir a pantalla de inicio) y ábrelo desde allí.",
     "set.notifications.phone.failed": "No se pudo activar el push aquí.",
+    "set.notifications.push_devices": "Dispositivos que reciben push",
+    "set.notifications.push_devices.d":
+      "Cada dispositivo que activó el push. Envía un aviso de prueba para comprobar que tu teléfono lo recibe: cada dispositivo dice si su servicio de push lo aceptó. Olvida el que ya no uses.",
+    "set.notifications.devices.none":
+      "Ningún dispositivo recibe push todavía. Abre __DEN_TITLE__ en tu teléfono (Emparejar un dispositivo, en Acceso, inicia sesión en él) y activa allí Avisos en este dispositivo por push.",
+    "set.notifications.devices.this": "(este dispositivo)",
+    "set.notifications.devices.added": "Añadido {t}",
+    "set.notifications.devices.forget": "Olvidar",
+    "set.notifications.devices.test": "Enviar un aviso de prueba",
+    "set.notifications.test.reached": "Enviado: su servicio de push lo aceptó.",
+    "set.notifications.test.gone":
+      "Ya no está: este dispositivo ya no recibe push, así que se quitó.",
+    "set.notifications.test.refused":
+      "No enviado: su servicio de push respondió {status}.",
+    "set.notifications.test.noAnswer":
+      "No enviado: su servicio de push no respondió a tiempo (Espera del push).",
+    "set.notifications.svc.apple": "Push de Apple",
+    "set.notifications.svc.google": "Push de Google",
+    "set.notifications.svc.mozilla": "Push de Firefox",
+    "set.notifications.svc.microsoft": "Push de Microsoft",
+    "set.notifications.svc.other": "Otro servicio de push",
     "set.notifications.quiet_from": "Inicio de las horas de silencio",
     "set.notifications.quiet_from.d":
       "Desde esta hora, ningún aviso fuera de la campana hasta que terminen las horas de silencio. La campana lo sigue teniendo todo. En tu zona horaria.",
@@ -3711,7 +3844,6 @@
       'no hay coincidencias para "{q}" en el historial de ningún servicio',
     "lg.aws.expired": "El acceso a AWS ha caducado",
     "lg.aws.reauth": "Volver a autenticar",
-    "lg.aws.authenticating": "Autenticando…",
     "lg.aws.retry": "Reintentar",
     "lg.aws.failed": "no se pudo iniciar sesión",
     "lg.aws.connErr": "error de conexión",

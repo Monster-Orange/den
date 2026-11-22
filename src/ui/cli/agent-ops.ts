@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { auditVia } from "../../shared/test-person.js";
 import {
   agentOrderOf,
   inAgentOrder,
@@ -3898,6 +3899,10 @@ export async function startAgent(
               ? { resumeToken: out.resumeToken, launched: true }
               : {}),
             ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
+            // Issue 943: started on the test-person path, never brought in.
+            ...(auditVia() === "test-person" && !more.bringIn
+              ? { testBed: true as const }
+              : {}),
             // D56: started outside its project, brought in by an ask naming
             // that folder.
             ...(more.bringIn?.outside ? { outside: true } : {}),
@@ -8779,7 +8784,7 @@ export interface PlainStarted {
 export async function startPlainSession(
   d: AgentsResolved,
   ws: string,
-  opts: { cwd?: string; operator?: boolean } = {},
+  opts: { cwd?: string; replaces?: string; operator?: boolean } = {},
 ): Promise<PlainStarted> {
   checkWorkspaceName("sessions start", ws);
   if (!d.workspaceExists(ws))
@@ -8834,6 +8839,20 @@ export async function startPlainSession(
           });
         throw e;
       });
+    // Issue 482: Restart on an exited terminal: once the new one runs, the
+    // host forgets the exited one, so the list keeps one row for it. Only
+    // an exited plain shell of this project: never a running one, never an
+    // agent's (its record keeps its session).
+    if (opts.replaces) {
+      const old = (await c.list()).find((s) => s.ref.id === opts.replaces);
+      const agents = listRecords(d.stateDir());
+      if (
+        old?.exited &&
+        old.name.startsWith(`${d.dist}-${ws}:`) &&
+        !agents.some((r) => r.session.id === old.ref.id)
+      )
+        await c.forget(old.ref.id).catch(() => {});
+    }
     return { info };
   });
 }

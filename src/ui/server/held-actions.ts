@@ -91,6 +91,9 @@
  *                     idle (host-restart-held.ts): the web start's refresh,
  *                     its wait, restart, resumes and audit. Doctor's fix,
  *                     never `sessions host --stop`. The person's own Allow
+ *   report            issue 565: file a report the way the page's Report
+ *                     does (report-held.ts): to a public destination the
+ *                     person's own Allow, to a private one the policy
  */
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
@@ -227,6 +230,8 @@ export interface HeldActionDeps {
     pr: number;
     comment: string;
   }) => Promise<unknown>;
+  /** Issue 565: file a report as the page does (report-held.ts reportHeld). */
+  report?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
@@ -900,6 +905,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     agent_import: agentImport,
     approval_policy: approvalPolicy,
     pr_close: prClose,
+    report: d.report ?? {
+      check: () => ({ ok: false, error: "this Den can't file reports here" }),
+      run: async () => ({
+        ok: false,
+        error: "this Den can't file reports here",
+      }),
+    },
     den_pin_commit: pinCommit,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,

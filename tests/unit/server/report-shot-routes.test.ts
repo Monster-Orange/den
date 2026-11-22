@@ -368,6 +368,7 @@ const editedBody = () =>
 const LOCAL_LINE = (id: string) =>
   `Screenshot: kept on the reporting install; its agent can read it with report_screenshot(${id})`;
 const HUB_LINE = "Screenshot: hub_report_screenshot shot_7 (sent to Den Hub)";
+const NOT_KEPT_LINE = "Screenshot: not kept on the reporting install";
 /** Approve the held GitHub App send: its flow polls and files it. */
 async function approve() {
   for (let i = 0; i < 5 && !apiCalls.some((c) => c.method !== "GET"); i++) {
@@ -1077,6 +1078,12 @@ describe("issue 946: the fixture person reads only what a fixture session filed"
     const kept = shotStore(state).get(id);
     expect(kept?.record.byFixture).toBe(true);
     expect(kept?.png.equals(PNG_2)).toBe(true);
+    // The person's filed issue never names an id that holds another
+    // filer's screenshot: its line says this one wasn't kept.
+    const patch = apiCalls.find((c) => c.method === "PATCH");
+    const updated = String((patch?.body as { body?: string })?.body ?? "");
+    expect(updated).toContain(NOT_KEPT_LINE);
+    expect(updated).not.toContain(LOCAL_LINE(id));
   });
 
   it("the same filer sending its own report id again still keeps it", async () => {

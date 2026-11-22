@@ -295,7 +295,8 @@ describe("the gate order with the test-person path (issue 636)", () => {
 
 describe("the test operator's messages and relaunch", () => {
   it("a message to an agent passes the person-only check, audited as the test operator", async () => {
-    s.seed({ id: "planner", workspace: "north" });
+    // Issue 956: one of the bed's own agents (Den marked it at start).
+    s.seed({ id: "planner", workspace: "north", testBed: true });
     const r = await asOperator(
       "POST",
       "/api/workspaces/north/agents/planner/say",
@@ -313,11 +314,42 @@ describe("the test operator's messages and relaunch", () => {
   });
 
   it("a relaunch passes the gate", async () => {
+    s.seed({ id: "planner", workspace: "north", testBed: true });
     const r = await asOperator(
       "POST",
       "/api/workspaces/north/agents/planner/relaunch",
     );
     expect(r.json.code).not.toBe("fixture_scope");
+    expect(r.status === 403 && /only a person/.test(r.body)).toBe(false);
+  });
+});
+
+/**
+ * Issue 956: the operator's message and relaunch reach only the bed's own
+ * agents: those Den marked testBed when it started them on the test-person
+ * path (issue 943). Any other agent on the install is refused, as a
+ * person-only act is, and nothing reaches it.
+ */
+describe("the test operator reaches only the bed's own agents", () => {
+  it.each(["say", "relaunch"])(
+    "%s to an agent Den didn't mark: refused",
+    async (verb) => {
+      s.seed({ id: "real", workspace: "north" });
+      const r = await asOperator(
+        "POST",
+        `/api/workspaces/north/agents/real/${verb}`,
+        { text: "hello" },
+      );
+      expect(r.status).toBe(403);
+      expect(r.body).toMatch(/only a person/);
+    },
+  );
+
+  it("the person still sends an unmarked agent a message", async () => {
+    s.seed({ id: "real", workspace: "north" });
+    const r = await asPerson("POST", "/api/workspaces/north/agents/real/say", {
+      text: "hello",
+    });
     expect(r.status === 403 && /only a person/.test(r.body)).toBe(false);
   });
 });
