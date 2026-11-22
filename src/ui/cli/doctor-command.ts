@@ -49,6 +49,10 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
+  readTestResolveState,
+  testResolveDoctorLine,
+} from "../../shared/test-resolve.js";
+import {
   deliveryAlert,
   readDeliveryHealth,
   TROUBLE_TEXT,
@@ -1984,6 +1988,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       addressLastAnswered(),
     ).lines)
       console.log(l);
+  }
+  // Issue 1073: the test install's name map, used or ignored.
+  {
+    const tr = testResolveDoctorLine(readTestResolveState(getStateDir()));
+    if (tr) console.log(tr);
   }
   for (const l of pushContactLines(
     readWebUrl(),
