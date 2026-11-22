@@ -25,6 +25,10 @@
  *     push_timeout_seconds: 30     # how long one push may take (1..3600)
  *     push_ttl_seconds: 86400      # how long a push service keeps it
  *                                  # (0..2419200); both Settings rows (#367)
+ *     tab_first_seconds: 3   # issue 774: an open tab's time to show an
+ *                            # alert before the push to its device (1..10)
+ *     max_streams: 20        # issue 774: open tabs' alert streams per
+ *                            # person (1..200; the oldest goes past it)
  */
 import type { UserConfig } from "./den-config.js";
 import type { UiLanguage } from "../ui/server/ui-language.js";
@@ -126,6 +130,10 @@ export interface AlertPrefs {
   sound: boolean;
   /** Issue 774: the count in the tab's title and icon (default on). */
   tabCount: boolean;
+  /** Issue 774: an open tab's time to show an alert before the push. */
+  tabFirstSeconds: number;
+  /** Issue 774: open tabs' alert streams per person. */
+  maxStreams: number;
 }
 
 export const ALERT_DEFAULTS: AlertPrefs = {
@@ -137,6 +145,8 @@ export const ALERT_DEFAULTS: AlertPrefs = {
   finished: false,
   sound: false,
   tabCount: true,
+  tabFirstSeconds: 3,
+  maxStreams: 20,
 };
 
 /** The switches as user.yml stores them, and each one's prefs field. */
@@ -187,14 +197,37 @@ export function alertPrefs(user: unknown): AlertPrefs {
       ttl <= 2_419_200
         ? ttl
         : ALERT_DEFAULTS.pushTtlSeconds,
+    tabFirstSeconds: within(
+      a.tab_first_seconds,
+      "tab_first_seconds",
+      ALERT_DEFAULTS.tabFirstSeconds,
+    ),
+    maxStreams: within(a.max_streams, "max_streams", ALERT_DEFAULTS.maxStreams),
   };
 }
 
-/** Issue 367: the push limits a page may set, and each one's widest range. */
+/**
+ * Issue 367: the push limits a page may set, and each one's widest range.
+ * Issue 774: the tab-first window and the stream cap.
+ */
 const PUSH_LIMITS = {
   push_timeout_seconds: { min: 1, max: 3600 },
   push_ttl_seconds: { min: 0, max: 2_419_200 },
+  tab_first_seconds: { min: 1, max: 10 },
+  max_streams: { min: 1, max: 200 },
 } as const;
+
+/** A stored whole number within `k`'s range, else `fallback`. */
+function within(
+  v: unknown,
+  k: keyof typeof PUSH_LIMITS,
+  fallback: number,
+): number {
+  const { min, max } = PUSH_LIMITS[k];
+  return Number.isInteger(v) && (v as number) >= min && (v as number) <= max
+    ? (v as number)
+    : fallback;
+}
 
 /** What /api/settings serves as `alerts`. */
 export function alertSettings(user: UserConfig): Record<string, unknown> {
@@ -216,13 +249,16 @@ export function alertSettings(user: UserConfig): Record<string, unknown> {
     finished: p.finished,
     sound: p.sound,
     tab_count: p.tabCount,
+    tab_first_seconds: p.tabFirstSeconds,
+    max_streams: p.maxStreams,
   };
 }
 
 /**
  * A POSTed `alerts`: {desktop?, phone?, finished?, sound?, tab_count?: boolean; quiet_from?, quiet_to?:
  * "HH:MM" or "" (none); push_timeout_seconds? (1..3600),
- * push_ttl_seconds? (0..2419200): whole seconds}; null clears one (back
+ * push_ttl_seconds? (0..2419200), tab_first_seconds? (1..10),
+ * max_streams? (1..200): whole numbers}; null clears one (back
  * to its default).
  */
 export function patchAlerts(
@@ -247,8 +283,8 @@ export function patchAlerts(
       else return { ok: false, error: `alerts.${k} must be HH:MM, or empty` };
       if (Object.keys(q).length) a.quiet = q;
       else delete a.quiet;
-    } else if (k === "push_timeout_seconds" || k === "push_ttl_seconds") {
-      const { min, max } = PUSH_LIMITS[k];
+    } else if (Object.hasOwn(PUSH_LIMITS, k)) {
+      const { min, max } = PUSH_LIMITS[k as keyof typeof PUSH_LIMITS];
       if (x === null) delete a[k];
       else if (
         Number.isInteger(x) &&

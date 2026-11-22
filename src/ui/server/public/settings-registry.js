@@ -560,6 +560,34 @@ function alertRows() {
       read: (ctx) => ctx.data.alerts?.push_ttl_seconds ?? 86400,
       write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
     },
+    {
+      // Issue 774 row 7b: with a tab open on a device, it shows the alert
+      // first; the push to that device waits this long for it.
+      id: "notifications.tab_first",
+      category: "notifications",
+      label: "Open tab first",
+      description:
+        "When a __DEN_TITLE__ tab is open and in front on a device that also gets push, the tab shows the alert and the push to that device is skipped. If the tab hasn't shown it within this many seconds, the push goes. __DEN_CLI__ config alerts.tab_first_seconds=3",
+      keywords: ["notifications", "alerts", "push", "tab", "double", "wait"],
+      scope: "user",
+      keys: ["alerts.tab_first_seconds"],
+      control: { type: "number", min: 1, max: 10, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.tab_first_seconds ?? 3,
+      write: (v, ctx) => ctx.post({ alerts: { tab_first_seconds: v } }),
+    },
+    {
+      id: "notifications.max_streams",
+      category: "notifications",
+      label: "Open tabs that get alerts",
+      description:
+        "How many open __DEN_TITLE__ tabs of yours get alerts at once. Past this, the oldest stops getting them until it is reloaded. __DEN_CLI__ config alerts.max_streams=20",
+      keywords: ["notifications", "alerts", "tabs", "limit", "streams"],
+      scope: "user",
+      keys: ["alerts.max_streams"],
+      control: { type: "number", min: 1, max: 200, step: 1 },
+      read: (ctx) => ctx.data.alerts?.max_streams ?? 20,
+      write: (v, ctx) => ctx.post({ alerts: { max_streams: v } }),
+    },
   ];
 }
 

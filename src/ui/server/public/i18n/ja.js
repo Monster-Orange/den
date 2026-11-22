@@ -3757,6 +3757,12 @@
     "set.notifications.push_ttl": "プッシュの保持時間",
     "set.notifications.push_ttl.d":
       "電源が切れているかオフラインの端末向けに、プッシュサービスが通知を保持する時間 (秒) です。86400 で 1 日です。0 にすると、端末がいまオンでなければ破棄されます。__DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "開いているタブを優先",
+    "set.notifications.tab_first.d":
+      "プッシュも受け取る端末で __DEN_TITLE__ のタブが開いていて前面にあるときは、タブが通知を表示し、その端末へのプッシュは送りません。この秒数のうちにタブが表示しなければ、プッシュを送ります。__DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "通知を受け取る開いたタブ",
+    "set.notifications.max_streams.d":
+      "通知を同時に受け取れる、開いている __DEN_TITLE__ のタブの数です。これを超えると、最も古いタブは再読み込みするまで通知を受け取りません。__DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "デスクトップ通知",
     "set.notifications.desktop.d":
       "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",

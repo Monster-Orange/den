@@ -131,6 +131,9 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     finished: true,
     sound: true,
     tab_count: true,
+    // Issue 774 row 7b: the open tab first, and the stream cap.
+    tab_first_seconds: true,
+    max_streams: true,
   },
   // Issue 415: how long a Report destination's visibility is kept, waited for.
   feedback: {
@@ -350,6 +353,8 @@ describe("the settings inventory (R21)", () => {
         "alerts.finished",
         "alerts.sound",
         "alerts.tab_count",
+        "alerts.tab_first_seconds",
+        "alerts.max_streams",
         // Issue 334: an app key's reads, one audit line per window.
         "embed.app_key_audit_window_seconds",
         // Issue 160: the install's approval policy.

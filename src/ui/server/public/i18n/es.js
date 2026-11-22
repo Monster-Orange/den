@@ -3863,6 +3863,12 @@
     "set.notifications.push_ttl": "Push guardado durante",
     "set.notifications.push_ttl.d":
       "Cuánto guarda un servicio de push un aviso para un dispositivo apagado o sin conexión, en segundos. 86400 es un día; 0 lo descarta si el dispositivo no está encendido ahora. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "Primero la pestaña abierta",
+    "set.notifications.tab_first.d":
+      "Cuando una pestaña de __DEN_TITLE__ está abierta y al frente en un dispositivo que también recibe push, la pestaña muestra el aviso y se omite el push a ese dispositivo. Si la pestaña no lo ha mostrado en estos segundos, el push se envía. __DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "Pestañas abiertas que reciben avisos",
+    "set.notifications.max_streams.d":
+      "Cuántas pestañas abiertas de __DEN_TITLE__ reciben avisos a la vez. Pasado este número, la más antigua deja de recibirlos hasta que se recarga. __DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "Avisos en el escritorio",
     "set.notifications.desktop.d":
       "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
