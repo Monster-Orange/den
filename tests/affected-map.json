@@ -51,6 +51,11 @@
       "src/ui/server/public/settings.html",
       "src/ui/server/public/shell.js"
     ],
+    "tests/unit/server/test-operator-edge.integration.test.ts": [
+      "src/shared/test-operator.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/request-guard.ts"
+    ],
     "tests/unit/server/picker-tablet.browser.test.ts": [
       "packages/den-ui/src/shell.css",
       "packages/den-ui/src/shell-html.js",

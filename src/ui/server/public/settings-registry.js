@@ -3461,6 +3461,49 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { box_recheck_seconds: v } }),
   },
   {
+    // Issue 1033: a browser run with no --box takes a test box by default.
+    id: "server.gate_box_default",
+    category: "server",
+    label: "Browser runs go to",
+    description:
+      "Where a browser test run with no --box goes. Here or a test box: the first free browser slot, here or on a test box. A run with no --base-url, or no box for its Playwright version, stays here and says why. Here only: as before; a run goes to a box only with --box. __DEN_CLI__ gate settings --browser-box-default any",
+    keywords: ["gate", "slot", "box", "browser", "default", "any", "local"],
+    scope: "user",
+    keys: ["gate_slots.browser_box_default"],
+    control: {
+      type: "select",
+      options: () => [
+        {
+          value: "any",
+          label: L("set.server.gate_box_default.any", "Here or a test box"),
+        },
+        {
+          value: "local",
+          label: L("set.server.gate_box_default.local", "Here only"),
+        },
+      ],
+    },
+    read: (ctx) => ctx.data.gate_slots?.browserBoxDefault ?? "any",
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { browser_box_default: v || null } }),
+  },
+  {
+    id: "server.gate_host_only",
+    category: "server",
+    label: "Browser runs kept here",
+    description:
+      "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    keywords: ["gate", "slot", "box", "browser", "host", "label", "project"],
+    scope: "user",
+    keys: ["gate_slots.browser_host_only"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.browserHostOnly ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { browser_host_only: String(v ?? "").trim() || null },
+      }),
+  },
+  {
     // SRV-P6 (0.4.48): how this install takes a new version
     // (user.yml server_agent.self_update). A person's only.
     id: "server.self_update",

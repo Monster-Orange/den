@@ -242,6 +242,13 @@ export function approvalView(
             "Lapsed unanswered: the person did not answer before it expired. Nothing ran. Ask again if it is still needed.",
         }
       : {}),
+    // A finished one read from its small record: how it ended, and when.
+    ...(a.ended &&
+    (a.state === "done" || a.state === "denied" || a.state === "withdrawn")
+      ? {
+          reason: `${a.state === "done" ? "Done" : a.state === "denied" ? "Denied" : "Withdrawn"} at ${new Date(a.decidedAt ?? a.expiresAt).toISOString()}. Den keeps how it ended and whether it worked, not what it returned.`,
+        }
+      : {}),
     // Issue 742: a restart could not bring it back; never silently gone.
     ...(a.state === "lost"
       ? {
@@ -775,7 +782,7 @@ export async function handleApprovalRoutes(
           ? 404
           : r.code === "not_asker"
             ? 403
-            : r.code === "expired"
+            : r.code === "expired" || r.code === "lost"
               ? 410
               : 409,
         r.code,

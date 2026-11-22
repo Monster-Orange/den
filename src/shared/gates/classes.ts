@@ -37,7 +37,7 @@ export interface GateClasses {
 
 const NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 
-const items = (s: string) =>
+export const items = (s: string) =>
   s
     .split(",")
     .map((x) => x.trim())
@@ -54,7 +54,7 @@ export function parseClassOrder(s: string): string[] | string {
   return names;
 }
 
-const glob = (p: string) =>
+export const glob = (p: string) =>
   new RegExp(
     "^" +
       p
