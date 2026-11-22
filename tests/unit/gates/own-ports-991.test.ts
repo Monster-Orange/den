@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import * as net from "net";
-import { boxOwnPort, ownPorts } from "../helpers/own-ports.js";
+import { boxOwnPort, ownPorts } from "@monster-orange/den/pw-guard";
 
 const listen = (s: net.Server) =>
   new Promise<number>((r) =>

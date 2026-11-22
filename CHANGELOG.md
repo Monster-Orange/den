@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.86] - unreleased
+
+### Added
+
+- Package: the box guard is exported as `@monster-orange/den/pw-guard`, with types and no Playwright dependency: `checkBaseUrl`, `allowOf`, `allowFromEnv`, `allowedUrl`, `guardContext`, `guardBrowser`, `pinLoopbackNames`, `connectOptions`, `connectGuarded`, `warnBoxExpose`, and the run's own-ports registry (`ownPorts`, `boxOwnPort`) that a `host:*` base URL needs. These names and their behaviour change only in a major version. A new option is a minor. The guard never gets looser in a patch. (issue 1010)
+
 ## [0.4.84] - 2026-11-22
 
 This release includes 0.4.83, which was not published.

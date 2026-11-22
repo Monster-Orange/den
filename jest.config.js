@@ -53,6 +53,9 @@ export default {
     : {}),
   extensionsToTreatAsEsm: [".ts"],
   moduleNameMapper: {
+    // Issue 1010: the package's own box-guard export, from its source.
+    "^@monster-orange/den/pw-guard$":
+      "<rootDir>/src/shared/gates/pw-guard-export.ts",
     // Stub ESM-only packages so UI modules can be unit-tested under Jest/CJS
     "^chalk$": "<rootDir>/tests/__mocks__/chalk.cjs",
     "^inquirer$": "<rootDir>/tests/__mocks__/inquirer.cjs",
