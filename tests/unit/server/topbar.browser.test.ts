@@ -24,7 +24,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
-import { launchBrowser } from "../helpers/browser.js";
+import { launchBrowser, pageIsMac } from "../helpers/browser.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -656,7 +656,9 @@ describe("the ⌘K palette (R17)", () => {
         : r.fulfill({ contentType: "text/html", body: "<title>t</title>t" }),
     );
     const here = p.url();
-    const mod = process.platform === "darwin" ? "Meta" : "Control";
+    // The browser's own OS picks the key (a remote browser runs on
+    // another OS than this runner), and the page's label follows it.
+    const mod = "ControlOrMeta";
     const open = async (q: string) => {
       await p.keyboard.press(`${mod}+k`);
       await p.waitForSelector(".den-pal");
@@ -664,7 +666,7 @@ describe("the ⌘K palette (R17)", () => {
     };
     await open("");
     expect(await p.locator(".den-pal .den-foot").textContent()).toContain(
-      `${process.platform === "darwin" ? "⌘" : "Ctrl+"}↵ new tab`,
+      `${(await pageIsMac(p)) ? "⌘" : "Ctrl+"}↵ new tab`,
     );
     const wsHref = await p.evaluate(
       () =>
