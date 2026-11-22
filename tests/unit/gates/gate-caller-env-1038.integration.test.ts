@@ -97,7 +97,28 @@ describe("gate run gives the command the caller's environment (issue 1038)", () 
     fs.mkdirSync(work, { recursive: true });
     const e = childEnv(path.join(dist, "bin", "dist"), work);
     expect(markersOf(e)).toEqual({});
-    expect(e.DEN_CALLER_ENV_SET).toBeUndefined();
+    // The record lasts one invocation: nothing the CLI starts gets it.
+    expect(Object.keys(e).filter((k) => k.startsWith("DEN_CALLER_"))).toEqual(
+      [],
+    );
+  }, 90_000);
+
+  it("a stale record (an older Den's session) is recorded afresh", () => {
+    const dist = distribution(path.join(tmp, "dist-d"));
+    const e = childEnv(path.join(dist, "bin", "dist"), tmp, {
+      DEN_CALLER_ENV_SET: "1",
+      DEN_CALLER_ROOT: "/stale/dist",
+    });
+    expect(markersOf(e)).toEqual({});
+  }, 90_000);
+
+  it("an agent's shell: the install's DEN_ROOT and DEN_ENGINE_ROOT it inherited don't reach the command", () => {
+    const dist = distribution(path.join(tmp, "dist-e"));
+    const e = childEnv(path.join(dist, "bin", "dist"), tmp, {
+      DEN_ROOT: dist,
+      DEN_ENGINE_ROOT: ENGINE,
+    });
+    expect(markersOf(e)).toEqual({});
   }, 90_000);
 
   it("the caller's own DEN_ROOT (another distribution) reaches the command", () => {
