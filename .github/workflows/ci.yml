@@ -17,6 +17,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A merge queue's run tests the base and the pull request together: the
+  # tree that lands. pr and pr-shards run on it as on a pull request.
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -50,7 +53,7 @@ jobs:
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
@@ -230,7 +233,7 @@ jobs:
   # tests are left out of the blocking steps and run in a last step that
   # can't block.
   pr:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -264,7 +267,7 @@ jobs:
       # gains a fixed sleep, a positional pick, a class selector or an
       # English-text assert, counted at the merge base and at HEAD (needs
       # the fetch-depth: 0 above). Untouched files are never judged.
-      - run: node scripts/brittle-ratchet.mjs --base "${{ github.event.pull_request.base.sha }}"
+      - run: node scripts/brittle-ratchet.mjs --base "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
       # A change to the UI kit (packages/den-ui) bumps its version: with the
       # version already on npm, the release would skip publishing it
       # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
@@ -276,14 +279,14 @@ jobs:
       - name: Org-name gate, commit messages
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
-          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
-          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
       - run: bash scripts/dist-smoke.sh
       - name: Pick the tests this change affects
         id: select
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
           # Large: everything, more than 150 files, or more than 30 browser
@@ -369,7 +372,7 @@ jobs:
       - run: npm ci
       - name: Pick the tests this change affects
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
           # ALL: no file list, jest runs every test.

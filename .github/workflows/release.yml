@@ -91,9 +91,10 @@ jobs:
           echo "$name@$version: release=$release ($GITHUB_EVENT_NAME)"
 
   # Issue 996: the release runs no test suite. It publishes only a tree that was tested: this commit is the newest
-  # dev tag of its version with the release's versions applied, and that tag's tree has a green pull-request CI run
-  # and the bed's success status (context: the DEN_BED_CONTEXT variable, default den/bed; posted from the bed's
-  # verdict). scripts/release-tree-check.mjs decides, and says in one line why not.
+  # dev tag of its version with the release's versions applied, and that tag's tree has a green ci.yml run on a pull
+  # request or in the merge queue. With DEN_BED_REQUIRED "true", the bed's success status too (context
+  # DEN_BED_CONTEXT, default den/bed; from DEN_BED_POSTER only, default github-actions[bot]).
+  # scripts/release-tree-check.mjs decides, and says in one line why not.
   tested:
     needs: check
     if: needs.check.outputs.release == 'true'
@@ -115,6 +116,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEN_BED_CONTEXT: ${{ vars.DEN_BED_CONTEXT }}
+          # "true": the bed's status is required too (off by default: the bed's PASS stays the dev tag and its verdict)
+          DEN_BED_REQUIRED: ${{ vars.DEN_BED_REQUIRED }}
+          # whose status counts, when required: one login, default github-actions[bot] (the bed's own workflow token)
+          DEN_BED_POSTER: ${{ vars.DEN_BED_POSTER }}
         run: node scripts/release-tree-check.mjs "${{ needs.check.outputs.version }}"
 
   # The checks and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615), here

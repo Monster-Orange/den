@@ -11,9 +11,14 @@
  *        versions applied (scripts/release-dry-run.mjs apply, with HEAD's
  *        own versions and changelog date): the release commit changes
  *        versions and the date, nothing else.
- *     2. The tag's tree must have a green pull-request ci.yml run, and a
- *        commit with that tree must carry the bed's status (context
- *        DEN_BED_CONTEXT, default den/bed) as success.
+ *     2. The tag's tree must have a green ci.yml run on a pull request or in
+ *        the merge queue (merge_group: the base and the pull request
+ *        together, the tree that lands).
+ *     3. Only when DEN_BED_REQUIRED is "true": a commit with that tree must
+ *        carry the bed's status (context DEN_BED_CONTEXT, default den/bed)
+ *        as success, posted by DEN_BED_POSTER (default github-actions[bot]:
+ *        the bed's own workflow token). Off, the bed's PASS stays as before:
+ *        the dev tag and the bed's verdict.
  *     Exit 0: tested. 1: not (one line says why). 2: bad arguments.
  *
  * `decide` is the rule, with no network or git: the tests call it.
@@ -24,34 +29,62 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
+/** The bed's poster when DEN_BED_POSTER isn't set: its workflow's GITHUB_TOKEN. */
+export const DEFAULT_POSTER = "github-actions[bot]";
+
 /**
+ * The rule. A tree is tested when a green ci.yml run (pull request or
+ * merge queue) has it. When `required` (DEN_BED_REQUIRED "true"), the bed's
+ * status must say so too, and only the bed's own poster counts: `poster`
+ * (DEN_BED_POSTER, default github-actions[bot]) is matched exactly but in
+ * any case against each status's creator. Every agent on the bed's machine
+ * shares one gh login, so a status from any other login proves nothing. Of
+ * the poster's statuses on commits with this tree, the newest decides.
+ *
  * @param {{ tree: string,
- *   green: { tree: string, sha: string, run: number }[],
- *   statuses: { tree: string, sha: string, context: string, state: string }[],
- *   context: string }} o
+ *   green: { tree: string, sha: string, run: number, event?: string }[],
+ *   statuses: { tree: string, sha: string, context: string, state: string,
+ *     creator: string, at: string }[],
+ *   context: string, poster?: string, required?: boolean }} o
  * @returns {{ ok: boolean, line: string }}
  */
-export function decide({ tree, green, statuses, context }) {
+export function decide({ tree, green, statuses, context, poster, required }) {
   const run = green.find((g) => g.tree === tree);
   if (!run)
     return {
       ok: false,
-      line: `tree ${tree}: no green pull-request CI run has this tree, so it was never tested`,
+      line: `tree ${tree}: no green pull-request or merge-queue CI run has this tree, so it was never tested`,
     };
-  const mine = statuses.filter((s) => s.tree === tree && s.context === context);
-  if (mine.some((s) => s.state === "success"))
+  const ran = `${run.event === "merge_group" ? "merge_group" : "pull-request CI"} run ${run.run} on ${run.sha.slice(0, 8)}`;
+  if (!required)
     return {
       ok: true,
-      line: `tree ${tree}: tested (pull-request CI run ${run.run} on ${run.sha.slice(0, 8)}, ${context} success)`,
+      line: `tree ${tree}: tested (${ran}; the bed's ${context} status isn't required: DEN_BED_REQUIRED isn't "true")`,
     };
+  poster = (poster ?? "").trim() || DEFAULT_POSTER;
+  const who = poster.toLowerCase();
+  const mine = statuses
+    .filter(
+      (s) =>
+        s.tree === tree &&
+        s.context === context &&
+        String(s.creator ?? "").toLowerCase() === who,
+    )
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
   if (!mine.length)
     return {
       ok: false,
-      line: `tree ${tree}: pull-request CI run ${run.run} passed, but there is no ${context} status on a commit with this tree`,
+      line: `tree ${tree}: ${ran} passed, but there is no ${context} status from ${poster} on a commit with this tree`,
+    };
+  const newest = mine[0];
+  if (newest.state === "success")
+    return {
+      ok: true,
+      line: `tree ${tree}: tested (${ran}, ${context} success from ${poster} on ${newest.sha.slice(0, 8)})`,
     };
   return {
     ok: false,
-    line: `tree ${tree}: pull-request CI run ${run.run} passed, but ${context} is ${mine.map((s) => s.state).join(", ")}, not success`,
+    line: `tree ${tree}: ${ran} passed, but ${poster}'s newest ${context} is ${newest.state}, not success`,
   };
 }
 
@@ -154,23 +187,43 @@ function main(version) {
   console.log(
     `${tag} (${tagTree}) is the tested candidate; this commit only sets the release's versions`,
   );
-  const runs = gh(
-    `repos/${repo}/actions/workflows/ci.yml/runs?event=pull_request&status=success&per_page=100`,
-  ).workflow_runs;
+  // A pull request's run, or the merge queue's (the base and the pull
+  // request together: the tree that lands).
   const green = [];
-  for (const r of runs) {
-    const tree = r.head_commit?.tree_id ?? treeOf(r.head_sha);
-    if (tree) green.push({ tree, sha: r.head_sha, run: r.id });
-  }
+  for (const event of ["pull_request", "merge_group"])
+    for (const r of gh(
+      `repos/${repo}/actions/workflows/ci.yml/runs?event=${event}&status=success&per_page=100`,
+    ).workflow_runs) {
+      const tree = r.head_commit?.tree_id ?? treeOf(r.head_sha);
+      if (tree) green.push({ tree, sha: r.head_sha, run: r.id, event });
+    }
+  const required = process.env.DEN_BED_REQUIRED === "true";
   const shas = new Set([
     git("rev-parse", `${tag}^{commit}`),
     ...green.filter((g) => g.tree === tagTree).map((g) => g.sha),
   ]);
+  // Every status, with who made it: the combined /status keeps only the
+  // newest per context, from anyone, which would hide the poster's own.
   const statuses = [];
-  for (const sha of shas)
-    for (const s of gh(`repos/${repo}/commits/${sha}/status`).statuses ?? [])
-      statuses.push({ tree: tagTree, sha, context: s.context, state: s.state });
-  const r = decide({ tree: tagTree, green, statuses, context });
+  if (required)
+    for (const sha of shas)
+      for (const s of gh(`repos/${repo}/commits/${sha}/statuses?per_page=100`))
+        statuses.push({
+          tree: tagTree,
+          sha,
+          context: s.context,
+          state: s.state,
+          creator: s.creator?.login ?? "",
+          at: s.created_at,
+        });
+  const r = decide({
+    tree: tagTree,
+    green,
+    statuses,
+    context,
+    poster: process.env.DEN_BED_POSTER,
+    required,
+  });
   if (r.ok) console.log(r.line);
   else console.error(`::error::${r.line}`);
   return r.ok ? 0 : 1;

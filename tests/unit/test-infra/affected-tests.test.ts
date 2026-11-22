@@ -677,7 +677,9 @@ describe("ci.yml (issue 398)", () => {
   // Issue 996: a push to main runs the checks only; the full matrix runs by
   // hand (workflow_dispatch). None of it runs on a pull request.
   it("the full matrix runs by hand, the checks on main too; none of it on a pull request", () => {
-    expect(ci.jobs.checks.if).toBe("github.event_name != 'pull_request'");
+    expect(ci.jobs.checks.if).toBe(
+      "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+    );
     for (const name of ["tests", "dist-smoke"])
       expect([name, ci.jobs[name].if]).toEqual([
         name,
@@ -695,7 +697,9 @@ describe("ci.yml (issue 398)", () => {
 
   it("a pull request: both Nodes, the checks, then the subset with its reasons in the summary", () => {
     const pr = ci.jobs.pr;
-    expect(pr.if).toBe("github.event_name == 'pull_request'");
+    expect(pr.if).toBe(
+      "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
+    );
     expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
     const text = runs(pr);
     for (const gate of [
