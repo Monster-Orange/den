@@ -10,6 +10,7 @@ import * as path from "path";
 import type { UiLanguage } from "../../../src/shared/gates/browser-container.js";
 import { GATE_MEANINGS } from "../../../src/shared/gates/meanings.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { product } from "../../../src/shared/product.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
 
 const tmps: string[] = [];
@@ -55,7 +56,8 @@ describe("issue 963: a settings change is in the slot log", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       event: "settings",
-      by: "Den · some-repo · a person",
+      // Named as an ask is: the install's product title, the repo, who.
+      by: `${product().title} · some-repo · a person`,
       changes: {
         cpu_slots: { from: 2, to: 4 },
         priority_pass_limit_minutes: { from: 0, to: 5 },
