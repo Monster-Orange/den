@@ -791,6 +791,7 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/bring-in.browser.test.ts",
+        "tests/unit/server/dialog-footer-buttons.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -1133,6 +1134,7 @@
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/d17-claim.browser.test.ts",
         "tests/unit/server/d67-remote-approve.browser.test.ts",
+        "tests/unit/server/dialog-footer-buttons.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
@@ -1240,6 +1242,7 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/bring-in.browser.test.ts",
+        "tests/unit/server/dialog-footer-buttons.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -1331,6 +1334,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/confirm-busy.browser.test.ts",
+        "tests/unit/server/dialog-footer-buttons.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -1430,6 +1434,7 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/bring-in.browser.test.ts",
+        "tests/unit/server/dialog-footer-buttons.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -1516,6 +1521,7 @@
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/d17-claim.browser.test.ts",
         "tests/unit/server/d67-remote-approve.browser.test.ts",
+        "tests/unit/server/dialog-footer-buttons.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -1783,6 +1789,7 @@
         "tests/unit/server/confirm-busy.browser.test.ts",
         "tests/unit/server/d17-claim.browser.test.ts",
         "tests/unit/server/d67-remote-approve.browser.test.ts",
+        "tests/unit/server/dialog-footer-buttons.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/edge-page.browser.test.ts",
@@ -2798,6 +2805,11 @@
         "src/ui/server/pair-routes.ts"
       ],
       "run": ["tests/unit/server/d67-remote-approve.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/ui-assets.ts"],
+      "run": ["tests/unit/server/dialog-footer-buttons.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
