@@ -33,8 +33,8 @@ export const KEEPALIVE_MAX_BYTES = 64 * 1024;
  * either way the server has decided), and pendingOver lays what is still
  * kept over the server's copy, so that page doesn't show the old value.
  *
- * An entry is dropped, never laid over, when it is older than
- * PENDING_MAX_AGE_MS, when the server has a newer save of its key (another
+ * An entry is dropped, never laid over, when it is older than maxAgeMs
+ * (PENDING_MAX_AGE_MS unless the page gives its setting), when the server has a newer save of its key (another
  * device's: `stamps`, the server's per-key times), or when it was made by
  * someone else (`who`, when both are known).
  */
@@ -74,7 +74,13 @@ function settlePending(store, patch, at) {
  * and the saves to send again (each with its own time, so the server
  * stores a repeat once). Entries that may not be laid over are removed.
  */
-export function pendingOver(store, shell, stamps, now = Date.now()) {
+export function pendingOver(
+  store,
+  shell,
+  stamps,
+  now = Date.now(),
+  maxAgeMs = PENDING_MAX_AGE_MS,
+) {
   const v = readPending(store);
   const out = { ...(shell || {}) };
   const resend = [];
@@ -84,10 +90,12 @@ export function pendingOver(store, shell, stamps, now = Date.now()) {
     const theirs = stamps && typeof stamps[k] === "number" ? stamps[k] : -1;
     const stale =
       !Number.isFinite(at) ||
-      now - at > PENDING_MAX_AGE_MS ||
-      at > now + PENDING_MAX_AGE_MS ||
+      now - at > maxAgeMs ||
+      at > now + maxAgeMs ||
       theirs >= at ||
-      (store.who != null && e.who != null && e.who !== store.who);
+      // Once the page knows who is signed in, only that person's saves:
+      // one made before anyone was known can't be told apart, so it goes.
+      (store.who != null && e.who !== store.who);
     if (stale) {
       delete v[k];
       changed = true;

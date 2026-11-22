@@ -58,6 +58,7 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
   // Issue 394: how far ahead of this clock a rail save's time may be.
   "web.shell_save_skew_seconds": ["shell_save", "skew_seconds"],
+  "web.shell_pending_minutes": ["shell_save", "pending_minutes"],
   "web.shell_save_max_kb": ["shell_save", "max_kb"],
   // Issue 819: new-device requests and wrong codes.
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],

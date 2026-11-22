@@ -20,9 +20,10 @@
  *   web_ready: { probe_seconds?, start_seconds? }
  *                                     user.yml web.ready_probe_seconds,
  *                                     web.start_wait_seconds (den#143)
- *   shell_save: { skew_seconds?, max_kb? }
+ *   shell_save: { skew_seconds?, max_kb?, pending_minutes? }
  *                                     user.yml web.shell_save_skew_seconds,
- *                                     web.shell_save_max_kb (issue 394)
+ *                                     web.shell_save_max_kb,
+ *                                     web.shell_pending_minutes (issue 394)
  *   web_pairing: { requests_per_minute?, approve_attempts?,
  *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
@@ -63,6 +64,7 @@ import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
   SHELL_SAVE_MAX_KB_RANGE,
   SHELL_SAVE_SKEW_RANGE,
+  SHELL_PENDING_RANGE,
 } from "../ui/server/shell-prefs.js";
 import { SHELL_PATH_TIMEOUT } from "./den-config.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
@@ -272,6 +274,11 @@ const SHELL_SAVE: Record<string, Limit> = {
     int: true,
   },
   max_kb: { key: "shell_save_max_kb", ...SHELL_SAVE_MAX_KB_RANGE, int: true },
+  pending_minutes: {
+    key: "shell_pending_minutes",
+    ...SHELL_PENDING_RANGE,
+    int: true,
+  },
 };
 
 /** Issue 819: the new-device limits (web-session.ts PAIR_LIMITS). */

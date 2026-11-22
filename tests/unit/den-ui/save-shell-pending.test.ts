@@ -113,6 +113,10 @@ describe("pendingOver drops what may not be laid over", () => {
     const s = store(memory(), "sam");
     kept(s, 1000, "pat");
     expect(pendingOver(s, { pins: OLD }, {}, 2000).resend).toEqual([]);
+    // Saved before the page knew who: once it knows, it can't tell, so dropped.
+    const n = store(memory(), "sam");
+    kept(n, 1000, null);
+    expect(pendingOver(n, { pins: OLD }, {}, 2000).resend).toEqual([]);
     // Not yet known who: same browser, same install, still laid over.
     const t = store(memory(), null);
     kept(t, 1000, "pat");
@@ -136,5 +140,31 @@ describe("pendingOver drops what may not be laid over", () => {
       shell: { pins: OLD },
       resend: [],
     });
+  });
+});
+
+describe("the age limit is the page's to give (Settings › web.shell_pending_minutes)", () => {
+  it("maxAgeMs replaces the default", () => {
+    const s = store();
+    s.storage.setItem(
+      KEY,
+      JSON.stringify({ pins: { value: PINS, at: 1000, who: "pat" } }),
+    );
+    expect(
+      pendingOver(s, { pins: OLD }, {}, 1000 + 61_000, 60_000).resend,
+    ).toEqual([]);
+    s.storage.setItem(
+      KEY,
+      JSON.stringify({ pins: { value: PINS, at: 1000, who: "pat" } }),
+    );
+    expect(
+      pendingOver(
+        s,
+        { pins: OLD },
+        {},
+        1000 + PENDING_MAX_AGE_MS + 1,
+        2 * PENDING_MAX_AGE_MS,
+      ).resend,
+    ).toHaveLength(1);
   });
 });

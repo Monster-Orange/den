@@ -1991,6 +1991,9 @@
     "set.server.shell_save_max": "Largest rail save, in KB",
     "set.server.shell_save_max.d":
       "How large one rail save may be. A larger one is refused and nothing is saved. __DEN_CLI__ config web.shell_save_max_kb=256",
+    "set.server.shell_pending": "Unanswered rail save kept, in minutes",
+    "set.server.shell_pending.d":
+      "How long this browser keeps a rail change that got no answer, for example when you clicked away as it was saved. The next page shows it and sends it again. An older one is dropped. __DEN_CLI__ config web.shell_pending_minutes=10",
     "set.server.start_wait": "Start wait, in seconds",
     "set.server.start_wait.d":
       "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
@@ -8988,7 +8991,15 @@
         if (!s || !s.shell) return markPrefsApplied();
         var store = pendingStore();
         var over = store
-          ? DUI.pendingOver(store, s.shell, s.shell_changed_at)
+          ? DUI.pendingOver(
+              store,
+              s.shell,
+              s.shell_changed_at,
+              Date.now(),
+              s.shell_save && s.shell_save.pendingMinutes > 0
+                ? s.shell_save.pendingMinutes * 60000
+                : undefined,
+            )
           : { shell: s.shell, resend: [] };
         s.shell = over.shell;
         setState({

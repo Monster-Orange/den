@@ -349,6 +349,10 @@ export const SHELL_SAVE_MAX_KB_RANGE = { min: 16, max: 4096 } as const;
 
 /** How far ahead of the server's clock a save's changedAt may be (5 min). */
 export const SHELL_SAVE_SKEW_SECONDS = 300;
+/** How long an unanswered rail save is kept in the browser (10 min). */
+export const SHELL_PENDING_MINUTES = 10;
+/** web.shell_pending_minutes' range, in minutes. */
+export const SHELL_PENDING_RANGE = { min: 1, max: 1440 } as const;
 /** web.shell_save_skew_seconds' range, in seconds. */
 export const SHELL_SAVE_SKEW_RANGE = { min: 0, max: 86_400 } as const;
 

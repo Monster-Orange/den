@@ -550,6 +550,8 @@ import {
   SHELL_SAVE_MAX_KB,
   SHELL_SAVE_MAX_KB_RANGE,
   SHELL_SAVE_SKEW_SECONDS,
+  SHELL_PENDING_MINUTES,
+  SHELL_PENDING_RANGE,
   type PinProjects,
   type ShellSaveClock,
   shellChangedAt,
@@ -1037,6 +1039,18 @@ function shellSaveClock(user: { web?: unknown }): ShellSaveClock {
       ? s
       : SHELL_SAVE_SKEW_SECONDS;
   return { skewMs: seconds * 1000 };
+}
+
+/** Issue 394: how long a page keeps a rail save no answer came back for. */
+function shellPendingMinutes(user: { web?: unknown }): number {
+  const w = (user.web ?? {}) as Record<string, unknown>;
+  const m = w.shell_pending_minutes;
+  return typeof m === "number" &&
+    Number.isInteger(m) &&
+    m >= SHELL_PENDING_RANGE.min &&
+    m <= SHELL_PENDING_RANGE.max
+    ? m
+    : SHELL_PENDING_MINUTES;
 }
 
 /** Issue 394: POST /api/settings/shell's body cap, in KB (web.shell_save_max_kb). */
@@ -4674,6 +4688,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     shell_save: {
       skewSeconds: (shellSaveClock(user).skewMs ?? 0) / 1000,
       maxKb: shellSaveMaxKb(user),
+      pendingMinutes: shellPendingMinutes(user),
     },
     // Issue 406: the start's wait for the owner's GitHub name.
     web_github: (() => {

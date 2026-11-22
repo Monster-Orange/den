@@ -2674,6 +2674,27 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ shell_save: { max_kb: v } }),
   },
   {
+    // Issue 394: how long a page keeps a rail save no answer came back for
+    // (user.yml web.shell_pending_minutes). A person's only.
+    id: "server.shell_pending",
+    category: "server",
+    label: "Unanswered rail save kept, in minutes",
+    description:
+      "How long this browser keeps a rail change that got no answer, for example when you clicked away as it was saved. The next page shows it and sends it again. An older one is dropped. __DEN_CLI__ config web.shell_pending_minutes=10",
+    keywords: [
+      "rail",
+      "pins",
+      "save",
+      "unanswered",
+      "web.shell_pending_minutes",
+    ],
+    scope: "user",
+    keys: ["shell_save.pending_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.shell_save?.pendingMinutes ?? 10,
+    write: (v, ctx) => ctx.post({ shell_save: { pending_minutes: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",

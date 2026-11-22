@@ -963,6 +963,9 @@
     "set.server.shell_save_max": "サイドバー保存の最大サイズ (KB)",
     "set.server.shell_save_max.d":
       "サイドバーの保存 1 回の大きさの上限です。これより大きいものは断り、何も保存しません。__DEN_CLI__ config web.shell_save_max_kb=256",
+    "set.server.shell_pending": "応答のないサイドバーの保存を保つ時間（分）",
+    "set.server.shell_pending.d":
+      "保存中にページを離れたときなど、応答のなかったサイドバーの変更をこのブラウザーが保つ時間です。次のページがそれを表示し、もう一度送ります。それより古いものは捨てます。__DEN_CLI__ config web.shell_pending_minutes=10",
     "set.server.gate_cpu": "このマシンで同時に動かす単体テスト",
     "set.server.gate_cpu.d":
       "このマシンを共有する単体テスト実行 (`gate run --kind cpu`) の数です。ブラウザーテストは常に単独で動きます。ここにあるすべてのインストールとリポジトリが同じ待ち行列を使います。__DEN_CLI__ gate settings --cpu-slots 2",

@@ -26,6 +26,8 @@ export declare function pendingOver(
   shell: Record<string, unknown> | null | undefined,
   stamps: Record<string, number> | null | undefined,
   now?: number,
+  /** How old an unanswered save may be (default PENDING_MAX_AGE_MS). */
+  maxAgeMs?: number,
 ): {
   shell: Record<string, unknown>;
   resend: { patch: Record<string, unknown>; at: number }[];

@@ -46,7 +46,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
   // Issue 394: a rail save's clock allowance (web.shell_save_skew_seconds).
-  shell_save: { skew_seconds: true, max_kb: true },
+  // How long an unanswered rail save is kept (web.shell_pending_minutes).
+  shell_save: { skew_seconds: true, max_kb: true, pending_minutes: true },
   // Issue 819: the new-device limits.
   web_pairing: {
     requests_per_minute: true,
@@ -212,6 +213,7 @@ describe("the settings inventory (R21)", () => {
         // 0.4.45: this person's project order.
         "shell.projectOrder",
         "shell_save.max_kb",
+        "shell_save.pending_minutes",
         "shell_save.skew_seconds",
         "terminal",
         // MODE-5: what only `config` could change.

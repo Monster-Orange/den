@@ -989,6 +989,10 @@
       "Tamaño máximo al guardar la barra lateral, en KB",
     "set.server.shell_save_max.d":
       "Qué tamaño puede tener un guardado de la barra lateral. Uno más grande se rechaza y no se guarda nada. __DEN_CLI__ config web.shell_save_max_kb=256",
+    "set.server.shell_pending":
+      "Guardado de la barra lateral sin respuesta, en minutos",
+    "set.server.shell_pending.d":
+      "Cuánto tiempo guarda este navegador un cambio en la barra lateral que no recibió respuesta, por ejemplo si saliste de la página mientras se guardaba. La página siguiente lo muestra y lo envía de nuevo. Uno más antiguo se descarta. __DEN_CLI__ config web.shell_pending_minutes=10",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
       "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
