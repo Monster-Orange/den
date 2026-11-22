@@ -4337,7 +4337,6 @@ type ApprovalDeps = {
   webUrl: () => string | null;
 };
 let approvals: ApprovalDeps | null = null;
-/** The held writes and their queue, made on first use. */
 /**
  * Issue 869: web_url_set's deps. Outside approvalDeps on purpose: this held
  * write reads the stored web.url (its "Now:" line, and the address it
@@ -4353,6 +4352,7 @@ function webUrlSetDeps(): Parameters<typeof webUrlSetAction>[0] {
   };
 }
 
+/** The held writes and their queue, made on first use. */
 function approvalDeps(): ApprovalDeps {
   if (approvals) return approvals;
   const actions = heldActions({
