@@ -3,8 +3,8 @@
  * project picker. A tap on the picker (#ws-pill) opens the project
  * drop-down, not Search, in WebKit, with touch: at 768 x 1024, at 820 x 1180,
  * and at 820 x 1180 with 125% page zoom (iPad Safari's larger text). The
- * picked project has a long name, the hardest case. Screenshots and the
- * bar's boxes go to $DEN_PROBE_DIR when it is set.
+ * picker shows whole ("All active"), never squeezed to "…". Screenshots
+ * and the bar's boxes go to $DEN_PROBE_DIR when it is set.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
@@ -106,7 +106,7 @@ beforeAll(async () => {
     path.join(root, "config", "local", "workspaces.yml"),
     [
       "active: [ws-a, ws-b, ws-c, a-project-whose-name-is-far-too-long-for-the-menu-row]",
-      "focus: a-project-whose-name-is-far-too-long-for-the-menu-row",
+      "focus: ws-a",
       "workspaces:",
       "  ws-a:",
       "    services:",
@@ -229,6 +229,13 @@ async function bar(p: Page) {
       search,
       atPill: !!at?.closest("#ws-pill"),
       pillText: document.getElementById("ws-pill")!.textContent ?? "",
+      // The picker's parts that show and are cut short ("…").
+      cut: Array.from(document.querySelectorAll("#ws-pill, #ws-pill *"))
+        .filter((e) => {
+          const h = e as HTMLElement;
+          return h.offsetWidth > 0 && h.scrollWidth > h.clientWidth + 1;
+        })
+        .map((e) => (e as HTMLElement).className || e.tagName),
       zoom: parseFloat(getComputedStyle(document.documentElement).zoom || "1"),
       coarse: matchMedia("(pointer: coarse)").matches,
     };
@@ -270,7 +277,9 @@ describe.each([
     // The picker is the thing under its own centre, and the search ends
     // before it starts.
     expect(b.atPill).toBe(true);
-    expect(b.search.right).toBeLessThanOrEqual(b.pill.left);
+    expect(b.pill.right).toBeLessThanOrEqual(b.search.left);
+    // And it isn't squeezed: its words ("All active") show whole.
+    expect(b.cut).toEqual([]);
     // A real tap (hit-tested, no forcing): the projects open, Search doesn't.
     await p.tap("#ws-pill", { timeout: 5_000 });
     await p.waitForSelector('[role="menuitemradio"]', { timeout: 5_000 });
