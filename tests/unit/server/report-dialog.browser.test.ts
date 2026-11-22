@@ -628,17 +628,19 @@ describe("FB: Report an issue, the dialog", () => {
   it("the user menu (◐ ▾) has Report an issue and My reports; Report an issue opens the dialog", async () => {
     if (skip()) return;
     const p = await page(fresh());
+    // The catalog's words for them, as the menu draws them.
+    const [report, mine] = await p.evaluate(() => {
+      const sh = (window as { denShell?: { t: (k: string) => string } })
+        .denShell!;
+      return [sh.t("fb.palette"), sh.t("fb.mine")];
+    });
     await p.click("#appearance-btn");
-    await p.waitForSelector(".den-pop");
-    const rows = await p.$$eval(".den-pop .den-mi", (r) =>
-      r.map((x) => x.textContent?.trim()),
-    );
-    expect(rows).toEqual(
-      expect.arrayContaining(["Report an issue", "My reports"]),
-    );
-    await p.click('.den-pop .den-mi:has-text("Report an issue")');
+    const item = (name: string) =>
+      p.getByRole("menuitem", { name, exact: true });
+    await item(mine).waitFor();
+    await item(report).click();
     await dlg(p).waitFor();
-    expect(await dlg(p).getAttribute("aria-label")).toBe("Report an issue");
+    expect(await dlg(p).getAttribute("aria-label")).toBe(report);
     await p.context().close();
   });
 
@@ -649,24 +651,26 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p).waitFor();
     await dlg(p).locator('[data-f="title"]').fill("Remembered");
     await dlg(p).locator('[data-act="next"]').click();
-    await dlg(p).locator("[data-sec]").first().waitFor();
+    await dlg(p).locator('[data-sec="Machine"]').waitFor();
     // The (i): on every section, its words filled in (never a {placeholder}).
-    const secs = await dlg(p).locator("details summary").count();
-    expect(secs).toBe(4);
     const infos = await dlg(p)
-      .locator("summary .fb-i")
-      .evaluateAll((els) => els.map((e) => e.getAttribute("title") ?? ""));
-    expect(infos).toHaveLength(4);
-    for (const i of infos) {
-      expect(i).toMatch(/uses this/);
-      expect(i).not.toMatch(/[{}]/);
+      .locator("summary span[title]")
+      .evaluateAll((els) =>
+        els.map((e) => [e.getAttribute("title"), e.getAttribute("aria-label")]),
+      );
+    expect(infos).toHaveLength(await dlg(p).locator("[data-sec]").count());
+    expect(infos.length).toBe(4);
+    for (const [title, label] of infos) {
+      expect(title).toBe(label);
+      expect(title?.trim()).toBeTruthy();
+      expect(title).not.toMatch(/[{}]/);
     }
-    // How each server section is used, under it.
+    // How each section is used, under it.
     for (const n of ["Machine", "Browser", "Page"]) {
       const use = await dlg(p)
-        .locator("details", { has: p.locator("summary b", { hasText: n }) })
-        .locator(".fb-fine")
-        .first()
+        .locator("details")
+        .filter({ has: p.locator(`[data-sec="${n}"]`) })
+        .locator("p")
         .textContent();
       expect((use ?? "").trim()).not.toBe("");
     }
@@ -675,7 +679,7 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p).locator('[data-sec="Machine"]').check();
     await dlg(p).locator('[data-f="remember"]').check();
     await dlg(p).locator('[data-act="review"]').click();
-    await dlg(p).locator("[data-preview]").first().waitFor();
+    await dlg(p).locator("[data-preview]").waitFor();
     // A new page in the same browser: the next report starts with them.
     await p.reload();
     await p.waitForFunction(
@@ -685,7 +689,7 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p).waitFor();
     await dlg(p).locator('[data-f="title"]').fill("Again");
     await dlg(p).locator('[data-act="next"]').click();
-    await dlg(p).locator("[data-sec]").first().waitFor();
+    await dlg(p).locator('[data-sec="Machine"]').waitFor();
     expect(
       await dlg(p)
         .locator("[data-sec]:checked")
