@@ -7,6 +7,7 @@ config and manifest changes a distribution must make to move to it under
 ## [0.4.82] - unreleased
 
 ### Added
+- CLI: on a test bed (`create --test-bed`), `--test-person` lets a test driver's command line act as the person, on the record (audit `via: test-person`); refused on any other install; `doctor` shows whether an install is a test bed (issue 636).
 
 - Agents: `issue_write` lets an agent create an issue, comment, label or set a milestone in one of its own project's GitHub repos, at once and audited. It never closes, reopens, deletes, transfers or locks. Which persona roles may use it is the person-only setting `agents.issue_writes`; `agents.issue_writes_per_hour` (default 60) limits the whole install. Each issue and comment says which agent and install wrote it.
 - Agents: one shared GitHub watcher per install. `github_watch` (a pull request's checks or a run in the agent's project), `github_watch_list` and `github_watch_cancel`. Den tells the agent once when it finishes, with each failed check. It backs off while nothing changes and stops polling near the GitHub API budget. New settings: `github.watch_interval_seconds` (60), `github.watch_max_interval_seconds` (300), `github.api_budget_floor` (500), `github.watches_max` (50). Doctor and `github status` show the budget.
