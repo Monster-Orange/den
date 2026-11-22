@@ -308,6 +308,21 @@ function draftError(r: RepoAddResult): string {
     .join(" ");
 }
 
+/** Issue 205: a Review line with its message key (the page's language). */
+type ReviewLine = [string, { key: string; vars?: Record<string, string> }];
+const line = (
+  text: string,
+  key: string,
+  vars?: Record<string, string>,
+): ReviewLine => [text, vars ? { key, vars } : { key }];
+/** The Review lines and their keys, one per line. */
+const reviewLines = (lines: ReviewLine[]) => ({
+  details: lines.map((l) => l[0]),
+  detailKeys: lines.map((l) => l[1]),
+});
+const CARRY_ON =
+  "Agents and terminals carry on where they were; open pages reconnect.";
+
 export function heldActions(d: HeldActionDeps): HeldActions {
   /**
    * D70: a workspace given by name ("back office") or slug, as its key; a
@@ -333,6 +348,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         details: [
           `A new, empty project named "${name}", made active so its services can start.`,
         ],
+        detailKeys: [{ key: "ap.det.workspace_create.new", vars: { name } }],
       };
     },
     async run(a) {
@@ -459,13 +475,25 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           ...(workspace ? { workspace } : {}),
           ...(activates ? { activates: "1" } : {}),
         },
-        details: [
+        ...reviewLines([
           ...(activates
-            ? [`Activates the project "${workspace}" first, so it can run.`]
+            ? [
+                line(
+                  `Activates the project "${workspace}" first, so it can run.`,
+                  "ap.det.service_try.activates",
+                  { project: workspace! },
+                ),
+              ]
             : []),
-          `Runs the service's local "up", as the Services page's Start does.`,
-          `Den reports the exit code and the last lines of its output.`,
-        ],
+          line(
+            `Runs the service's local "up", as the Services page's Start does.`,
+            "ap.det.service_try.up",
+          ),
+          line(
+            `Den reports the exit code and the last lines of its output.`,
+            "ap.det.service_try.reports",
+          ),
+        ]),
       };
     },
     async run(a) {
@@ -494,8 +522,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         params: { reason },
         details: [
           "Den stops and starts again at the same address, on the version installed now.",
-          "Agents and terminals carry on where they were; open pages reconnect.",
+          CARRY_ON,
           "The agent that asked is told when Den is back.",
+        ],
+        detailKeys: [
+          { key: "ap.det.den_restart.restart" },
+          { key: "ap.det.den.carryOn" },
+          { key: "ap.det.den_restart.told" },
         ],
       };
     },
@@ -526,7 +559,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         details: [
           `Den gets ${version === "latest" ? "the latest version" : `version ${version}`} from npm for this distribution, checks it with doctor, and restarts on it.`,
           "If the new version isn't up in time, Den rolls back by itself to the version it runs now, and says why.",
-          "Agents and terminals carry on where they were; open pages reconnect.",
+          CARRY_ON,
+        ],
+        detailKeys: [
+          version === "latest"
+            ? { key: "ap.det.den_update.latest" }
+            : { key: "ap.det.den_update.version", vars: { version } },
+          { key: "ap.det.den_update.rollback" },
+          { key: "ap.det.den.carryOn" },
         ],
       };
     },
@@ -659,6 +699,17 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           `Into: ${t.dest} (a new folder; nothing there changes).`,
           "Then the agent drafts its manifest (manifest_draft) and asks to add it (repo_add): each asks you again.",
         ],
+        detailKeys: [
+          t.branch
+            ? {
+                key: "ap.det.repo_clone.fromBranch",
+                vars: { source: t.shown, branch: t.branch },
+              }
+            : { key: "ap.det.repo_clone.from", vars: { source: t.shown } },
+          { key: t.gh ? "ap.det.repo_clone.gh" : "ap.det.repo_clone.git" },
+          { key: "ap.det.repo_clone.into", vars: { path: t.dest } },
+          { key: "ap.det.repo_clone.then" },
+        ],
       };
     },
     async run(a) {
@@ -720,6 +771,19 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           `Project: ${project}. Persona: ${persona}${runtime ? `. Runtime: ${runtime}` : ""}.`,
           "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
           "Refused if it is still open in another terminal, or an agent already continues it.",
+        ],
+        detailKeys: [
+          runtime
+            ? {
+                key: "ap.det.agent_import.whatRuntime",
+                vars: { project, persona, runtime },
+              }
+            : {
+                key: "ap.det.agent_import.what",
+                vars: { project, persona },
+              },
+          { key: "ap.det.agent_import.goesOn" },
+          { key: "ap.det.agent_import.refused" },
         ],
       };
     },
@@ -802,6 +866,15 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           `Then: ${shown}.`,
           "Only a person changes the approval policy without an Allow: an agent always asks.",
         ],
+        detailKeys: [
+          now === "none"
+            ? { key: "ap.det.approval_policy.nowNone" }
+            : { key: "ap.det.approval_policy.now", vars: { v: now } },
+          next
+            ? { key: "ap.det.approval_policy.then", vars: { v: shown } }
+            : { key: "ap.det.approval_policy.thenNone" },
+          { key: "ap.det.approval_policy.person" },
+        ],
         personOnly: true,
       };
     },
@@ -865,6 +938,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           `Repo: ${repo}. Pull request: ${pr}.`,
           `Den closes it with this comment: ${comment}`,
           "Nothing is merged and no branch is deleted.",
+        ],
+        detailKeys: [
+          { key: "ap.det.pr_close.what", vars: { repo, pr: String(pr) } },
+          { key: "ap.det.pr_close.comment", vars: { comment } },
+          { key: "ap.det.pr_close.nothing" },
         ],
       };
     },

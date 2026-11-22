@@ -1742,6 +1742,113 @@
       "{origin} はこのキーで {agent} にメッセージを送ったり状態を読んだりできなくなります。",
     "ap.det.embed_key_revoke.held":
       "送信済みでエージェントのターンを待っているメッセージは、そのまま入力されます。",
+    "ap.det.workspace_create.new":
+      "「{name}」という名前の新しい空のプロジェクトです。サービスを起動できるよう、アクティブにします。",
+    "ap.det.service_try.activates":
+      "まずプロジェクト「{project}」をアクティブにして、動かせるようにします。",
+    "ap.det.service_try.up":
+      "サービスのローカルの「up」を、サービスのページの「開始」と同じように実行します。",
+    "ap.det.service_try.reports":
+      "Den は終了コードと出力の最後の数行を伝えます。",
+    "ap.det.den_restart.restart":
+      "Den はいったん止まり、同じアドレスで、いまインストールされているバージョンのまま再び起動します。",
+    "ap.det.den.carryOn":
+      "エージェントとターミナルはそのまま続きます。開いているページは再接続します。",
+    "ap.det.den_restart.told":
+      "頼んだエージェントには、Den が戻ったときに知らせます。",
+    "ap.det.den_update.latest":
+      "Den はこのディストリビューション用の最新バージョンを npm から取得し、doctor で確認してから、そのバージョンで再起動します。",
+    "ap.det.den_update.version":
+      "Den はこのディストリビューション用のバージョン {version} を npm から取得し、doctor で確認してから、そのバージョンで再起動します。",
+    "ap.det.den_update.rollback":
+      "新しいバージョンが時間内に起動しなければ、Den は自動でいまのバージョンに戻り、その理由を伝えます。",
+    "ap.det.repo_clone.fromBranch": "元: {source}、ブランチ {branch}。",
+    "ap.det.repo_clone.from": "元: {source}、既定のブランチ。",
+    "ap.det.repo_clone.gh":
+      "あなたの gh のログインで行います（GitHub のリポジトリ）。",
+    "ap.det.repo_clone.git":
+      "git とあなた自身の認証情報で行います（GitHub ではないので gh は使いません）。",
+    "ap.det.repo_clone.into":
+      "先: {path}（新しいフォルダーです。既にあるものは何も変わりません）。",
+    "ap.det.repo_clone.then":
+      "その後、エージェントがマニフェストを下書きし（manifest_draft）、追加を頼みます（repo_add）。どちらも改めてあなたに確認します。",
+    "ap.det.agent_import.what":
+      "プロジェクト: {project}。ペルソナ: {persona}。",
+    "ap.det.agent_import.whatRuntime":
+      "プロジェクト: {project}。ペルソナ: {persona}。ランタイム: {runtime}。",
+    "ap.det.agent_import.goesOn":
+      "会話は Den のエージェントとして、動いていたフォルダーで、Den のトークン・フック・ガードのもとで続きます。",
+    "ap.det.agent_import.refused":
+      "別のターミナルでまだ開いているか、すでにエージェントが続けている場合は断られます。",
+    "ap.det.approval_policy.now": "現在: {v}。",
+    "ap.det.approval_policy.nowNone": "現在: なし。",
+    "ap.det.approval_policy.then": "変更後: {v}。",
+    "ap.det.approval_policy.thenNone": "変更後: なし。",
+    "ap.det.approval_policy.person":
+      "承認ポリシーを「許可」なしで変えられるのは人だけです。エージェントは必ず確認を求めます。",
+    "ap.det.pr_close.what": "リポジトリ: {repo}。プルリクエスト: {pr}。",
+    "ap.det.pr_close.comment": "Den は次のコメントを付けて閉じます: {comment}",
+    "ap.det.pr_close.nothing": "何もマージされず、ブランチも削除されません。",
+    "ap.det.hub_connect.set": "Hub のアドレス: {was} → {url}。",
+    "ap.det.hub_connect.setNew": "Hub のアドレス: なし → {url}。",
+    "ap.det.hub_connect.clear":
+      "Hub のアドレス {was} を消します。この Den は Hub を使わなくなります。",
+    "ap.det.hub_connect.leave":
+      "Den はまず、いま使っている Hub との接続を切り、その Hub に鍵を取り消してもらいます。",
+    "ap.det.hub_connect.restart":
+      "その後 Den が再起動し、エージェントは次に再起動したときに Hub のツールを使えるようになります。",
+    "ap.det.hub_connect.connect":
+      "その後、設定 › Hub で接続します。そこで「接続」を押すと Hub にサインインします。",
+    "ap.det.den_pin_commit.pr":
+      "Den は package.json と package-lock.json をブランチ den/pin-{version} にコミットし、プルリクエストを開きます。",
+    "ap.det.den_pin_commit.push":
+      "Den は package.json と package-lock.json をコミットし、ブランチの upstream にプッシュします。",
+    "ap.det.den_pin_commit.only":
+      "ディストリビューションのフォルダーのほかのものはコミットしません。",
+    "ap.det.persona.local":
+      "ファイル: このマシン自身のペルソナ（プロジェクトとは共有しません）",
+    "ap.det.persona.newFile":
+      "ファイル: {file}（新規。プロジェクトのほかの Den にも届くようコミットしてください）",
+    "ap.det.persona.changedFile":
+      "ファイル: {file}（変更あり。プロジェクトのほかの Den にも届くようコミットしてください）",
+    "ap.det.persona.name": "名前: {v}",
+    "ap.det.persona.role": "役割: {v}",
+    "ap.det.persona.category": "カテゴリ: {v}",
+    "ap.det.persona.description": "説明: {v}",
+    "ap.det.persona.runtime": "ランタイム: {v}",
+    "ap.det.persona.runtimeModel":
+      "ランタイム: {v}、モデル {model}（{version}）",
+    "ap.det.persona.mode": "モード: {v}",
+    "ap.det.persona.commands": "許可するコマンド: {v}",
+    "ap.det.persona.commandsNone": "許可するコマンド: なし",
+    "ap.det.persona.instructions": "指示:",
+    "ap.det.asWritten": "{v}",
+    "ap.det.persona.field": "{field}: {v}",
+    "ap.det.persona.fieldNone": "{field}: なし",
+    "ap.det.persona.asItWillRead": "変更後の内容:",
+    "ap.det.agent_create.persona": "ペルソナ: {v}",
+    "ap.det.agent_create.project": "プロジェクト: {v}",
+    "ap.det.agent_create.folder": "フォルダー: {v}",
+    "ap.det.agent_create.runtime": "ランタイム: {v}",
+    "ap.det.agent_create.mode": "モード: {mode}（プロジェクトのモード: {cap}）",
+    "ap.det.agent.who": "エージェント: {agent}、プロジェクト {project}",
+    "ap.det.agent.whoId":
+      "エージェント: {agent}（{id}）、プロジェクト {project}",
+    "ap.det.agent_folder.from": "移動元: {v}",
+    "ap.det.agent_folder.to": "移動先: {v}",
+    "ap.det.agent_folder.running":
+      "動作中です。Den はいったん止めて移動し、そこで新しく起動します（新しい会話になり、前の会話は履歴に残ります）。",
+    "ap.det.agent_folder.stopped":
+      "停止中で、そのままです。次に起動するときは、そこで新しい会話になります。",
+    "ap.det.agent_folder.self":
+      "頼んだのはこのエージェントです。あなたが許可すると止まり、あなたへの返答もそこで終わります。",
+    "ap.det.agent_mode.loosens":
+      "これにより、{agent} はあなたに確認せずに動けるようになります。",
+    "ap.det.agent_mode.now": "現在: 独自のモード、{mode}",
+    "ap.det.agent_mode.then": "変更後: プロジェクトに従う、{mode}",
+    "ap.det.agent_mode.running":
+      "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
+    "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",

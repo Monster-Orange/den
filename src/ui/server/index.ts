@@ -4379,6 +4379,13 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
             : "Den commits package.json and package-lock.json and pushes them to the branch's upstream.",
           "Nothing else in the distribution's folder is committed.",
         ],
+        // Issue 205: each Review line in the page's language.
+        detailKeys: [
+          mode === "pr"
+            ? { key: "ap.det.den_pin_commit.pr", vars: { version } }
+            : { key: "ap.det.den_pin_commit.push" },
+          { key: "ap.det.den_pin_commit.only" },
+        ],
       };
     },
     run: async (a) => {
