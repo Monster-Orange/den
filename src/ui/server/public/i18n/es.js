@@ -975,6 +975,22 @@
       "Consulta del nombre en GitHub al arrancar, en segundos",
     "set.server.owner_name_timeout.d":
       "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.github_watch_interval":
+      "Vigilancia de GitHub: primer intervalo, en segundos",
+    "set.server.github_watch_interval.d":
+      "Cada cuánto el único vigilante de GitHub de __DEN_TITLE__ mira las solicitudes de cambios y las ejecuciones que vigilan los agentes (MCP github_watch). Se duplica mientras nada cambia y vuelve a empezar cuando algo cambia. __DEN_CLI__ config github.watch_interval_seconds=60",
+    "set.server.github_watch_max_interval":
+      "Vigilancia de GitHub: intervalo más largo, en segundos",
+    "set.server.github_watch_max_interval.d":
+      "Lo más que espera el vigilante de GitHub entre una mirada y otra mientras nada cambia. __DEN_CLI__ config github.watch_max_interval_seconds=300",
+    "set.server.github_api_budget_floor":
+      "Vigilancia de GitHub: llamadas a la API en reserva",
+    "set.server.github_api_budget_floor.d":
+      "Con menos llamadas a la API de GitHub que estas en lo que queda de hora, el vigilante no pregunta nada a GitHub y rechaza vigilancias nuevas hasta que GitHub reinicia el límite, y lo dice con la hora del reinicio. __DEN_CLI__ config github.api_budget_floor=500",
+    "set.server.github_watches_max":
+      "Vigilancia de GitHub: vigilancias a la vez",
+    "set.server.github_watches_max.d":
+      "Cuántas solicitudes de cambios y ejecuciones vigila a la vez el vigilante de GitHub, para todos los agentes de aquí juntos. Una más se rechaza, diciendo por qué. __DEN_CLI__ config github.watches_max=50",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
@@ -983,7 +999,15 @@
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
     "set.server.gate_cpu": "Pruebas unitarias a la vez, en esta máquina",
     "set.server.gate_cpu.d":
-      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Una prueba de navegador siempre se ejecuta sola. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+      "Cuántas ejecuciones de pruebas unitarias (`gate run --kind cpu`) comparten esta máquina. Las pruebas unitarias y las de navegador esperan en colas separadas. Cada instalación y repositorio de aquí comparte la misma cola. __DEN_CLI__ gate settings --cpu-slots 2",
+    "set.server.gate_cpu_beside":
+      "Pruebas unitarias junto a una prueba de navegador",
+    "set.server.gate_cpu_beside.d":
+      "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador, nunca más que las pruebas unitarias a la vez. 0: una prueba de navegador se ejecuta sola. Una prueba de navegador en una máquina de pruebas no se incluye. __DEN_CLI__ gate settings --cpu-slots-beside-browser 2",
+    "set.server.gate_local_browser":
+      "Pruebas de navegador a la vez en esta máquina",
+    "set.server.gate_local_browser.d":
+      "Cuántas pruebas de navegador pueden ejecutarse a la vez en esta máquina, cada una en su propio contenedor. Una prueba de navegador en una máquina de pruebas no se incluye. 1: una a la vez. __DEN_CLI__ gate settings --local-browser-slots 1",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
@@ -1009,9 +1033,9 @@
     "set.server.gate_priority_max.d":
       "Una ejecución de versión que una persona espera, marcada con prioridad de versión, pasa delante de las demás que esperan de su tipo. Nunca detiene una que ya se ejecuta. Una segunda espera detrás de la primera. 0 lo desactiva. __DEN_CLI__ gate settings --priority-max 1",
     "set.server.gate_priority_pass":
-      "Una ejecución que espera tanto nunca se adelanta, en minutos",
+      "Una ejecución de versión marcada que espera tanto nunca se adelanta, en minutos",
     "set.server.gate_priority_pass.d":
-      "Una ejecución de versión con prioridad pasa delante de las demás que esperan, pero nunca de una que lleva esperando este tiempo. __DEN_CLI__ gate settings --priority-pass-limit-minutes 60",
+      "Una ejecución de versión con prioridad pasa delante de todas las demás que esperan de su tipo. Entre las marcadas con prioridad de versión, nunca pasa a una que lleva esperando este tiempo. 0: nunca pasa a otra marcada. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
     "set.server.gate_priority_agents":
       "Los agentes pueden pedir prioridad de versión",
     "set.server.gate_priority_agents.d":
@@ -1193,6 +1217,13 @@
     "set.agents.approvals_critical": "Crítico",
     "set.agents.approvals_critical.d":
       "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.agents.issue_writes": "Quién escribe issues de GitHub",
+    "set.agents.issue_writes.d":
+      "Los roles cuyos agentes pueden crear issues, comentar, poner etiquetas y fijar hitos en los repositorios de GitHub de su propio proyecto, al momento y con registro. Separados por comas; vacío: ninguno. Sin definir: planner, orchestrator, lead, sde, builder, reviewer e install (el agente propio de __DEN_TITLE__). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+    "set.agents.issue_writes_per_hour":
+      "Escrituras de issues de GitHub por hora",
+    "set.agents.issue_writes_per_hour.d":
+      "Cuántas escrituras de issues pueden hacer todos los agentes juntos en una hora. Pasado ese número, al agente se le dice cuánto esperar. __DEN_CLI__ config agents.issue_writes_per_hour=60",
     "ap.do.agent_import":
       'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
     "ap.do.approval_policy":

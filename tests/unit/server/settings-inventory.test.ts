@@ -54,6 +54,9 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
+    // Issue 751: cpu runs beside a browser run.
+    cpu_slots_beside_browser: true,
+    local_browser_slots: true,
     overrun_margin_minutes: true,
     remote_renew_seconds: true,
     remote_lapse_seconds: true,
@@ -91,6 +94,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // issue_write: which roles write GitHub issues, and how many an hour.
+  agent_issue_writes: { roles: true, per_hour: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -142,6 +147,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     timeout_seconds: true,
     retries: true,
     backoff_seconds: true,
+  }, // The shared GitHub watcher's pace and API budget.
+  github: {
+    watch_interval_seconds: true,
+    watch_max_interval_seconds: true,
+    api_budget_floor: true,
+    watches_max: true,
   },
 };
 
@@ -233,6 +244,11 @@ describe("the settings inventory (R21)", () => {
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.
         "web_github.owner_name_timeout_seconds",
+        // The shared GitHub watcher's pace and API budget.
+        "github.watch_interval_seconds",
+        "github.watch_max_interval_seconds",
+        "github.api_budget_floor",
+        "github.watches_max",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",
@@ -247,6 +263,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.class_order",
         "gate_slots.class_windows",
         "gate_slots.cpu_slots",
+        "gate_slots.cpu_slots_beside_browser",
+        "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
@@ -269,6 +287,9 @@ describe("the settings inventory (R21)", () => {
         "reports.hub_timeout_seconds",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
+        // issue_write: which roles write GitHub issues, and how many an hour.
+        "agent_issue_writes.roles",
+        "agent_issue_writes.per_hour",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",

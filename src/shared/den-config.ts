@@ -623,6 +623,13 @@ export interface UserConfig {
      * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
      */
     shell_path_timeout_seconds?: unknown;
+    /**
+     * issue_write: the persona roles that write GitHub issues in their
+     * project's repos (a list), and the install's writes an hour
+     * (shared/issue-write.ts).
+     */
+    issue_writes?: unknown;
+    issue_writes_per_hour?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -1793,6 +1800,9 @@ export const AGENTS_RESERVED_KEYS = [
   // den#3: subagents' model; the account's claude.ai connectors.
   "subagents",
   "claude_ai_connectors",
+  // issue_write: which roles write GitHub issues, and how many an hour.
+  "issue_writes",
+  "issue_writes_per_hour",
 ];
 
 /**

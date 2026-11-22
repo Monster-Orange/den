@@ -28,6 +28,7 @@ import {
 } from "../../shared/den-config.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
+import { checkIssueWrite } from "../../shared/issue-write.js";
 import { actorTokenOf } from "../../shared/actor-token.js";
 import {
   hubPull,
@@ -174,6 +175,12 @@ function tail(r: StreamResult, n: number): string[] {
 }
 
 /** One line per stream: how it ended and its exit code. */
+/**
+ * A refusal the web server already recorded in the activity trail (it
+ * refused the call itself): said as any refusal, never reported again.
+ */
+class ServerRefusal extends Refusal {}
+
 /**
  * Whether a streamed action failed: a non-zero exit, a detached service whose
  * launcher exited non-zero, or a run that never finished (timeout).
@@ -324,6 +331,37 @@ async function denUpdateOf(api: DenApi): Promise<unknown> {
   }
 }
 
+/** The shared GitHub watcher tells an agent: a scoped (agent's) server only. */
+function githubWatchAgent(tool: string, ctx: ToolContext): void {
+  if (!ctx.scope?.actor.startsWith("agent:"))
+    throw new Refusal(
+      `${tool}: a GitHub watch is an agent's (Den tells the agent itself when it finishes); this MCP server isn't an agent's.`,
+    );
+}
+
+/** The watcher's refusal (scope, budget, limits) as the agent's refusal. */
+async function githubWatchCall(
+  tool: string,
+  call: () => Promise<unknown>,
+): Promise<unknown> {
+  try {
+    return await call();
+  } catch (e) {
+    if (e instanceof DenHttpError && e.status >= 400 && e.status < 500) {
+      let why = e.body;
+      try {
+        const j = JSON.parse(e.body) as { error?: unknown };
+        if (typeof j.error === "string") why = j.error;
+      } catch {
+        /* the body as is */
+      }
+      if (e.status === 403) throw new ScopeRefusal(`${tool}: ${why}`);
+      throw new Refusal(`${tool}: ${why}`);
+    }
+    throw e;
+  }
+}
+
 const READ_TOOLS: DenTool[] = [
   read(
     "agent_helpers",
@@ -435,7 +473,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_status",
     "Gate slots on this machine",
-    "Issue 144: who holds a heavy-test slot on this machine and who waits, across every repo and install here: each slot's id, kind (browser runs alone; cpu shares), who, label, grantedAt and expectedEnd (overrun when past it by the margin), or its expectedStart in the queue, and the machine's settings. Read this instead of messaging other agents. Reads only.",
+    "Issue 144: who holds a heavy-test slot on this machine and who waits, across every repo and install here: each slot's id, kind (one browser run at a time; cpu shares, some beside a browser run; each kind waits in its own line), who, label, grantedAt and expectedEnd (overrun when past it by the margin), or its expectedStart in the queue, and the machine's settings. Read this instead of messaging other agents. Reads only.",
     {},
     async (_a, ctx) => gateView(gatesOf(ctx)),
   ),
@@ -448,7 +486,7 @@ const READ_TOOLS: DenTool[] = [
       kind: z
         .enum(["browser", "cpu"])
         .optional()
-        .describe("browser (runs alone) or cpu (shares); default cpu"),
+        .describe("browser (one at a time) or cpu (shares); default cpu"),
       estimate_minutes: z
         .number()
         .positive()
@@ -545,6 +583,71 @@ const READ_TOOLS: DenTool[] = [
       }
       mySlots.set(e.id, store);
       return slotView(store, e.id);
+    },
+  ),
+  read(
+    "github_watch",
+    "Watch a pull request's checks or a workflow run",
+    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: after a new push, watch again. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
+    {
+      repo: z.string().describe("The GitHub repo, owner/name"),
+      pr: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("A pull request's number (or give run)"),
+      run: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("A workflow run's id (or give pr)"),
+    },
+    async (a, ctx) => {
+      githubWatchAgent("github_watch", ctx);
+      const repo = needArg("github_watch", a, "repo", "owner/name");
+      const pr = typeof a.pr === "number" ? a.pr : undefined;
+      const run = typeof a.run === "number" ? a.run : undefined;
+      if ((pr === undefined) === (run === undefined))
+        throw new Refusal(
+          "github_watch: give pr (a pull request's number) or run (a workflow run's id), one of them.",
+        );
+      return githubWatchCall("github_watch", () =>
+        ctx.api.get(
+          "/api/agents/self/github-watches",
+          {},
+          "POST",
+          pr !== undefined ? { repo, pr } : { repo, run },
+        ),
+      );
+    },
+  ),
+  read(
+    "github_watch_list",
+    "Your GitHub watches",
+    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
+    {},
+    async (_a, ctx) => {
+      githubWatchAgent("github_watch_list", ctx);
+      return githubWatchCall("github_watch_list", () =>
+        ctx.api.get("/api/agents/self/github-watches", {}, "GET"),
+      );
+    },
+  ),
+  read(
+    "github_watch_cancel",
+    "Stop one of your GitHub watches",
+    "Stop a watch you asked for with github_watch (its `id`); you are not told when it finishes. Only your own.",
+    { id: z.string().describe("The watch's id (gw-…)") },
+    async (a, ctx) => {
+      githubWatchAgent("github_watch_cancel", ctx);
+      const id = needArg("github_watch_cancel", a, "id", "the watch's id");
+      return githubWatchCall("github_watch_cancel", () =>
+        ctx.api.get("/api/agents/self/github-watches/cancel", {}, "POST", {
+          id,
+        }),
+      );
     },
   ),
   read(
@@ -1598,6 +1701,99 @@ const HUB_FILE_TOOLS: DenTool[] = [
     },
   },
 ];
+
+// ── Direct writes: audited, no person (issue_write) ────────────────────────
+
+/**
+ * issue_write: an agent writes GitHub issues in its own project's repos,
+ * at once and audited (shared/issue-write.ts; the server's checks are the
+ * gate: the role setting, the project's repos and the install's limit).
+ * Always registered, whatever mcp.actions and mcp.approvals say.
+ */
+const DIRECT_WRITE_TOOLS: DenTool[] = [
+  {
+    name: "issue_write",
+    title: "Write a GitHub issue",
+    description:
+      "Create or update a GitHub issue in one of your project's repos, at once (no person's Allow), as you: one action per call. `create`: `title` (1-256 characters), `body`, optional `labels` and `milestone` (its title). `comment`: `issue` (its number) and `body`. `label`: `issue`, with `add` and/or `remove` (label names). `milestone`: `issue` and `milestone` (its title). Den adds a line naming you and this Den to every issue and comment you write, and records each write (never its text). It never closes, reopens, deletes, transfers or locks an issue: those are a person's, and Den has no held write for them yet. `repo` (owner/name) must be one of your project's repos; Den's own agent names `project`. Only roles the person allows (agents.issue_writes), and at most agents.issue_writes_per_hour writes an hour for the whole Den.",
+    action: true,
+    shape: {
+      action: z.string().describe("create, comment, label or milestone"),
+      repo: z.string().describe("The GitHub repo, owner/name"),
+      issue: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("The issue's number (comment, label, milestone)"),
+      title: z.string().optional().describe("create: the title, one line"),
+      body: z
+        .string()
+        .optional()
+        .describe("create, comment: the text, Markdown"),
+      labels: z.array(z.string()).optional().describe("create: label names"),
+      add: z.array(z.string()).optional().describe("label: names to add"),
+      remove: z.array(z.string()).optional().describe("label: names to remove"),
+      milestone: z
+        .string()
+        .optional()
+        .describe("create, milestone: the milestone's title"),
+      project: z
+        .string()
+        .optional()
+        .describe(
+          "The project (default: the one you work in; Den's own agent names it)",
+        ),
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("issue_write", a, "project", "the project whose repo it is");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `issue_write: you work in project "${ctx.scope.workspace}" and write issues in its repos only, not project "${project}"; nothing was sent.`,
+        );
+      const c = checkIssueWrite(a);
+      if (!c.ok) throw new Refusal(`issue_write: ${c.error}`);
+      const fields = Object.fromEntries(
+        [
+          "action",
+          "repo",
+          "issue",
+          "title",
+          "body",
+          "labels",
+          "add",
+          "remove",
+          "milestone",
+        ]
+          .filter((k) => a[k] !== undefined)
+          .map((k) => [k, a[k]]),
+      );
+      try {
+        return await ctx.api.get(ISSUE_WRITE_ROUTE, {}, "POST", {
+          project,
+          ...fields,
+        });
+      } catch (e) {
+        if (!(e instanceof DenHttpError) || e.status === 404) throw e;
+        let said = e.body;
+        try {
+          const j = JSON.parse(e.body) as { error?: unknown };
+          if (typeof j.error === "string") said = j.error;
+        } catch {
+          /* the body as it came */
+        }
+        throw new ServerRefusal(`issue_write: ${said} (${e.status})`);
+      }
+    },
+  },
+];
+
+const ISSUE_WRITE_ROUTE = "/api/agents/self/issue-write";
+
+export const DIRECT_WRITE_TOOL_NAMES: readonly string[] =
+  DIRECT_WRITE_TOOLS.map((t) => t.name);
 
 export const HUB_FILE_TOOL_NAMES: readonly string[] = HUB_FILE_TOOLS.map(
   (t) => t.name,
@@ -2725,6 +2921,7 @@ export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
   const tools = [
     ...READ_TOOLS,
     ...HUB_FILE_TOOLS,
+    ...DIRECT_WRITE_TOOLS,
     ...held,
     // Issue 160: agent_import is a held write too; registered once.
     ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a))
@@ -2814,6 +3011,7 @@ export const ROUTE_SINCE: Readonly<Record<string, string>> = {
   "/api/verify/plan": "0.4.51",
   "/api/verify/run": "0.4.51",
   "/api/server-agent/update": "0.4.64",
+  "/api/agents/self/issue-write": "0.4.81",
 };
 
 /** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */
@@ -3033,7 +3231,11 @@ async function runTool(
     }
     // A call outside a scoped server's workspace is recorded whatever the
     // tool: it is an attempt to cross the boundary (AG-2a-core).
-    if (e instanceof Refusal && (tool.action || e instanceof ScopeRefusal))
+    if (
+      e instanceof Refusal &&
+      !(e instanceof ServerRefusal) &&
+      (tool.action || e instanceof ScopeRefusal)
+    )
       await reportRefusal(ctx, name, args, e.message);
     const msg =
       e instanceof Refusal
