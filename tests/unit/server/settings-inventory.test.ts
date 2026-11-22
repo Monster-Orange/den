@@ -45,6 +45,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   web_github: { owner_name_timeout_seconds: true },
   // den#143: how long `web up` waits for the server.
   web_ready: { probe_seconds: true, start_seconds: true },
+  // Issue 819: the new-device limits.
+  web_pairing: {
+    requests_per_minute: true,
+    approve_attempts: true,
+    approve_window_seconds: true,
+  },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
@@ -57,6 +63,22 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     priority_max: true,
     priority_pass_limit_minutes: true,
     priority_agents: true,
+    // Issue 739: CI runners may ask for priority.
+    priority_runners: true,
+    // Issue 714: an agent's slot held over MCP.
+    claim_minutes: true,
+    mcp_renew_minutes: true,
+    mcp_lapse_minutes: true,
+    mcp_grace_minutes: true,
+    // Issue 625: test boxes' check and recheck.
+    box_check_timeout_seconds: true,
+    box_recheck_seconds: true,
+    // A browser run on a macOS host declares a container browser.
+    browser_requires_container: true,
+    // Issue 803: priority classes per project, and their windows.
+    class_order: true,
+    class_map: true,
+    class_windows: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -203,14 +225,28 @@ describe("the settings inventory (R21)", () => {
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.
         "web_github.owner_name_timeout_seconds",
+        "web_pairing.approve_attempts",
+        "web_pairing.approve_window_seconds",
+        "web_pairing.requests_per_minute",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
+        "gate_slots.box_check_timeout_seconds",
+        "gate_slots.box_recheck_seconds",
+        "gate_slots.browser_requires_container",
+        "gate_slots.claim_minutes",
+        "gate_slots.class_map",
+        "gate_slots.class_order",
+        "gate_slots.class_windows",
         "gate_slots.cpu_slots",
+        "gate_slots.mcp_grace_minutes",
+        "gate_slots.mcp_lapse_minutes",
+        "gate_slots.mcp_renew_minutes",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
         "gate_slots.priority_max",
         "gate_slots.priority_pass_limit_minutes",
+        "gate_slots.priority_runners",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",

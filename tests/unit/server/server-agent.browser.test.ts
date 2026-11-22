@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -72,7 +72,7 @@ async function open(
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   if (before) await before(p);
-  await p.goto(signInUrl(s.stateDir, s.base, at));
+  await signInPage(p, s.stateDir, s.base, at);
   return p;
 }
 

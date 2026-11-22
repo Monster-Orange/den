@@ -15,7 +15,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -106,7 +107,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     p.on("framenavigated", (f) => {
       if (f === p.mainFrame()) leaving.delete(p);
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, path));
+    await signInPage(p, s!.stateDir, s!.base, path);
     return p;
   }
 

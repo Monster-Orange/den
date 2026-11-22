@@ -10,7 +10,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -101,7 +101,7 @@ async function open(
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agr", {
     state: "attached",
     timeout: 20_000,

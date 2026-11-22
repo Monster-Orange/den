@@ -4,11 +4,42 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.79] - unreleased
+## [0.4.81] - 2026-11-21
+
+### Changed
+
+- Sign-in: a new device asks to sign in, and a person already signed in approves it by typing the code the new device shows (Settings › Access, or the pop-up). Sign-in links open the request rather than signing in at once. The code stays on the new device's screen: `web login` names the device and its address, never its code. A request that is refused for being too many no longer uses up the link. (issue 819)
+- Sign-in page: a browser that isn't signed in gets a page listing this install's ways in (GitHub sign-in, asking from this device, a link from a terminal on the host), each marked set up or not. From another machine with none that works, it says so and how to fix it. API callers get the same 401 as before. (issue 868)
+
+### Fixed
+
+- Address: the one-time address Den takes from its edge prefers a route the distribution names over the route Den makes from the brand, so an install no longer takes a name only its own host can open. An address taken that way is corrected once at start, with an audit row; a confirmed address, or one a person set, is never changed. Doctor's unconfirmed-address row lists the other edge addresses.
+- `web url` no longer says to restart the web server: the address is in use as soon as it is saved.
+
+## [0.4.80] - 2026-11-21
+
+### Added
+
+- Gate slots: CI runners ask for release priority over HTTP, as `gate run --priority release` does. (issue 739)
+- Gate slots held over MCP: the agent is told when its slot is granted, a slot never claimed passes to the next run, and a held slot has a lease. (issue 714)
+- Test boxes: a browser slot per test box. An agent asks to add or remove a box with the held writes `gate_box_set` and `gate_box_remove`. Nothing changes until a person Allows it in the browser, and the card shows every field. (issue 625)
+- `gate yield <my-id> --to <their-id>` and the MCP tool `gate_slot_yield`: the owner of a waiting entry lets one waiting entry behind it go just ahead. Never a holder; the slot log records it. (issue 795)
+- Priority classes per project, with optional windows. New settings `class_order`, `class_map` and `class_windows`. A higher class goes first among waiting runs; nothing is pre-empted. With no classes set, the queue works as before. (issue 803)
+
+### Changed
+
+- Gate: on macOS a browser slot needs a container browser (a `ws://` or `wss://` address, or `self`). A browser started on a shared Mac can take its window server down and sign every session out.
+
+### Checks
+
+- The bed's touched run of v0.4.80-dev.2 (715 and 726): 715 passes 5 of 5. Its two reds are the same as on 0.4.79 and nothing in this release touches them: 653's terminal attach over https gets a 403 (being proven as the test person's scope), and 726 skips because a throwaway Den has no person session (issue 814). Released on "no new red against the last release".
+
+## [0.4.79] - 2026-11-21
 
 ### Changed
 
 - Sign-in: Den prints a sign-in link or code only in a terminal. Where there is none (a script, a service log), `den web up` prints the address and says to run `den web login` in a terminal.
+- The UI kit (`@monster-orange/den-ui`) is published as 0.9.1. It carries 0.4.78's pop-up font fix to apps that use the kit from npm.
 
 ## [0.4.78] - 2026-11-21
 

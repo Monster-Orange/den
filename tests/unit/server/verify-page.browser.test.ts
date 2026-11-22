@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -171,7 +171,7 @@ async function open(
       body: "creating an order\nPOST /orders returned 500\n",
     }),
   );
-  await p.goto(signInUrl(s!.stateDir, s!.base, opts.url ?? "/verify"));
+  await signInPage(p, s!.stateDir, s!.base, opts.url ?? "/verify");
   await p.waitForSelector('#verify-body[aria-busy="false"]');
   return p;
 }

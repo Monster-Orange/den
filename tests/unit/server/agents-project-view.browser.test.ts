@@ -32,7 +32,7 @@ import {
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { ScriptedPty } from "../../sessions/helpers/fake-pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -149,7 +149,7 @@ async function open(next: string): Promise<Page> {
     }
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, next));
+  await signInPage(p, s!.stateDir, s!.base, next);
   return p;
 }
 

@@ -744,6 +744,22 @@
     "set.ui.appKeyRevoked": "revoked {when}",
     "set.ui.appKeyRevoke": "Revoke",
     "set.ui.runnerNone": "No runner tokens yet.",
+    "set.ui.boxName": "Name",
+    "set.ui.boxSsh": "ssh (login@host)",
+    "set.ui.boxPort": "ssh port",
+    "set.ui.boxKey": "ssh key file",
+    "set.ui.boxPw": "Playwright address (ws://)",
+    "set.ui.boxSlots": "Browser slots",
+    "set.ui.boxHold": "Hold file (on the box)",
+    "set.ui.boxScale": "Time scale",
+    "set.ui.boxSave": "Save box",
+    "set.ui.boxMem": "Keep free memory (MB)",
+    "set.ui.boxPwv": "Playwright version on the box",
+    "set.ui.boxNone": "No test boxes. Browser runs use this machine only.",
+    "set.ui.boxSlotsN": "{n} browser slots",
+    "set.ui.boxHoldIs": "hold file {path}",
+    "set.ui.boxScaleIs": "time ×{n}",
+    "set.ui.boxRemove": "Remove",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -751,6 +767,8 @@
     "set.ui.saveOrigins": "Save list",
     "set.ui.approve": "Approve",
     "set.ui.deny": "Deny",
+    "set.ui.codeLabel": "Code on its screen",
+    "set.ui.fromLogin": "from the web login run at {time}",
     "set.ui.noWaiting":
       "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.",
     "set.ui.waitingSignedIn":
@@ -1126,7 +1144,7 @@
     "set.access.devices.d":
       "The browsers signed in to this Den. Revoke ends one at once. __DEN_CLI__ web logout --all ends them all.",
     "set.access.waiting.d":
-      "Computers whose signed-out page shows a code. Approve one and its page signs in by itself; the code lasts 10 minutes. __DEN_CLI__ web approve <code> does the same from the command line.",
+      "Computers whose signed-out page shows a code. Type the code that computer's screen shows to approve it, and its page signs in by itself; a request lasts 10 minutes. __DEN_CLI__ web approve --list lists them.",
     "set.embed.url_max.d":
       "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
     "set.embed.app_keys.d":
@@ -1695,6 +1713,14 @@
     "err.signin.youreIn": "You're in.",
     "err.signin.expiredLead":
       "That sign-in link expired or was used. Sign in again below.",
+    "err.signin.pairLinkLead":
+      "To let this browser in, approve it from a browser that is already signed in: open Settings › Access there and approve the code below.",
+    "err.signin.pairLinkWaiting":
+      "Waiting for you to approve it from a signed-in browser…",
+    "err.signin.pairLinkDenied":
+      "This browser was denied. To sign in, get a new code and approve it from a signed-in browser.",
+    "err.signin.pairLinkEnded":
+      "This request ended. Get a new code and approve it again.",
     "err.signin.confirmLead":
       "Enter the code that web login printed on {host}:",
     "err.signin.confirmGo": "Sign in",
@@ -1705,6 +1731,43 @@
       "This link no longer works. On {host}, run web login again for a new one.",
     "err.signin.confirmWhy":
       "The link alone isn't enough: it needs the code shown on {host} too, so a link someone else sees can't sign them in.",
+    // Issue 868: the ways in this install has, on the signed-out page.
+    "err.signin.methods.title": "Ways to sign in to {name}",
+    "err.signin.methods.ready": "Set up here",
+    "err.signin.methods.notReady": "Not set up here",
+    "err.signin.methods.hostOnly": "Only on {host}",
+    "err.signin.methods.github": "Sign in with GitHub",
+    "err.signin.methods.githubReady":
+      "Use Sign in with GitHub below, from any computer.",
+    "err.signin.methods.githubNoClient":
+      "No GitHub App client id is set ({setting}). A person sets it in {file} on {host}, then runs {restart} there.",
+    "err.signin.methods.githubNoOwner":
+      "No owner is linked on GitHub yet, so nobody can use it from another computer.",
+    "err.signin.methods.pair": "Ask to sign in from this device",
+    "err.signin.methods.pairReady":
+      "A browser already signed in to {name} approves this one by typing the code this page shows.",
+    "err.signin.methods.pairNone":
+      "No browser is signed in to {name} yet, so nobody can approve this one.",
+    "err.signin.methods.ask": "Ask to sign in",
+    "err.signin.methods.terminal": "A link from a terminal on {host}",
+    "err.signin.methods.terminalHow":
+      "Run {cmd} in a terminal on {host}, then open the link it prints.",
+    "err.signin.methods.stuck":
+      "{name} can't be signed into from another computer yet. Sign in with GitHub isn't set up, and no browser is signed in to {name} to approve this one.",
+    "err.signin.methods.fixClient":
+      "To fix it, on {host} set {setting} to a GitHub App client id in {file}, then run {restart}. Then Sign in with GitHub works from any computer.",
+    "err.signin.methods.fixOwner":
+      "To fix it, link the owner on GitHub: on {host}, run {cmd}. Then Sign in with GitHub works from any computer.",
+    "err.signin.methods.fixFirst":
+      "Or finish the first sign-in on {host} itself: then that browser can approve this one.",
+    "err.signin.firstRunHere":
+      "{name} isn't set up yet. Finish its first sign-in on {host} itself: open the setup link there, or run web login in your own terminal there.",
+    "err.signin.tooManyRequests":
+      "Too many sign-in requests from this address. Wait a minute, then open the link again.",
+    "err.signin.tooManyWaiting":
+      "Too many devices are waiting to be approved on {name}. Wait a few minutes, then open the link again.",
+    "err.signin.claimSetUp":
+      "{name} is already set up, so the setup link doesn't sign in by itself. Approve this browser from one that is signed in: Settings › Access, then the code below.",
     "err.signin.github": "Sign in with GitHub",
     "err.signin.githubEnter": "Enter this code at {url}:",
     "err.signin.githubOpen": "Open GitHub",
@@ -1956,9 +2019,50 @@
     "set.server.gate_priority_agents": "Agents may ask for release priority",
     "set.server.gate_priority_agents.d":
       "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
+    "set.server.gate_priority_runners":
+      "CI runners may ask for release priority",
+    "set.server.gate_priority_runners.d":
+      "On, a CI job with a runner token may mark its run as a release run, with a reason. Off, its ask is refused and it waits in the normal queue. Every jump is in the slot log, with the runner and why. __DEN_CLI__ gate settings --priority-runners 1",
+    "set.server.gate_browser_container": "Browser runs need a container",
+    "set.server.gate_browser_container.d":
+      "On, a browser test run on this machine must say where its browser runs: a container's Playwright endpoint (ws:// or wss://, also from DEN_PW_WS, HUB_PW_WEBKIT_WS or E2E_WEBKIT_WS), or self when the run starts its own container. A run without one is refused, so no test starts a browser on this Mac itself. On by default on macOS, off elsewhere. __DEN_CLI__ gate settings --browser-requires-container 1",
+    "set.server.gate_claim": "An agent's gate slot: minutes to claim it",
+    "set.server.gate_claim.d":
+      "When a slot an agent waited for is granted, Den tells the agent. Not claimed within this time, it goes to the next in line and the agent goes back in line. __DEN_CLI__ gate settings --claim-minutes 3",
+    "set.server.gate_mcp_renew":
+      "An agent's gate slot: renew it every, in minutes",
+    "set.server.gate_mcp_renew.d":
+      "How often an agent holding a slot is asked to renew it while it works. __DEN_CLI__ gate settings --mcp-renew-minutes 5",
+    "set.server.gate_mcp_lapse":
+      "An agent's gate slot lapses unrenewed after, in minutes",
+    "set.server.gate_mcp_lapse.d":
+      "A slot an agent holds and doesn't renew this long, once past its estimate plus the grace, goes to the next in line. The bell says so. __DEN_CLI__ gate settings --mcp-lapse-minutes 15",
+    "set.server.gate_mcp_grace":
+      "An agent's gate slot: grace past its estimate, in minutes",
+    "set.server.gate_mcp_grace.d":
+      "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_class_order": "Gate classes, highest first",
+    "set.server.gate_class_order.d":
+      "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
+    "set.server.gate_class_map": "Gate class of each project",
+    "set.server.gate_class_map.d":
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+    "set.server.gate_class_windows": "Gate class windows",
+    "set.server.gate_class_windows.d":
+      "Comma-separated: <class>=HH:MM-HH:MM/<minutes>, in this machine's time. Outside its window, a run of that class estimated at least that many minutes waits while a higher-class run holds or waits; with none, it runs at once. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",
     "set.server.gate_runners": "CI runner tokens",
     "set.server.gate_runners.d":
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
+    "set.server.gate_boxes": "Test boxes",
+    "set.server.gate_boxes.d":
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    "set.server.gate_box_check": "Test box check waits, in seconds",
+    "set.server.gate_box_check.d":
+      "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
+    "set.server.gate_box_recheck":
+      "A skipped test box is checked again after, in seconds",
+    "set.server.gate_box_recheck.d":
+      "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2106,7 +2210,24 @@
     "set.embed.key_minutes": "Embedded pane's permission lasts",
     "set.embed.context_max_kb": "Largest shared page",
     "set.access.machine_name": "Machine name",
+    "set.access.approveNeedsBrowser":
+      "Approving a device needs a signed-in browser. Sign in again on this page, then approve it.",
+    "set.access.approveNotAgent":
+      "Only a person approves a device, from their own signed-in browser.",
+    "set.access.wrongCode":
+      "That code doesn't match the one on that computer's screen. Check it and type it again.",
+    "set.access.tooManyTries": "Too many tries. Wait a minute and try again.",
+    "set.access.ended": "That request ended or expired. Nothing was allowed.",
     "set.access.pair": "Pair a device",
+    "set.access.pair_requests": "New sign-in requests per address, a minute",
+    "set.access.pair_requests.d":
+      "How many new devices one address may ask to sign in a minute. More are turned away until the minute is up. __DEN_CLI__ config web.pair_requests_per_minute=30",
+    "set.access.approve_attempts": "Wrong codes allowed when approving",
+    "set.access.approve_attempts.d":
+      "How many wrong codes approving a device may take in the window below before it waits. __DEN_CLI__ config web.approve_attempts=10",
+    "set.access.approve_window": "Wrong-code window, in seconds",
+    "set.access.approve_window.d":
+      "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
@@ -2418,13 +2539,21 @@
     "pair.what": "{device} {client} wants to sign in to Den.",
     "pair.aDevice": "A browser",
     "pair.local": "on this computer, via localhost",
-    "pair.help": "Allow it only if this code is on that computer's screen.",
+    "pair.help":
+      "Type the code shown on that computer's screen. Allow only a computer you are signing in yourself.",
     "pair.allow": "Allow",
     "pair.allowed": "That computer is signed in.",
     "pair.ended":
       "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
     "pair.expired": "That code expired. Nothing was allowed.",
     "pair.close": "Close",
+    "pair.codeLabel": "Code on that computer's screen",
+    "pair.age": "Asked {n} min ago.",
+    "pair.ageNow": "Asked just now.",
+    "pair.fromLogin": "From the web login run at {time}.",
+    "pair.wrong":
+      "That code doesn't match the one on that computer's screen. Check it and type it again.",
+    "pair.busy": "Too many tries. Wait a minute and try again.",
     "ap.do.workspace_create": 'Create the project "{name}"',
     "ap.do.repo_add": 'Add the repo at {path} to project "{workspace}"',
     "ap.do.repo_add.new":
@@ -2460,6 +2589,24 @@
       "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
     "ap.det.gate_runner_token_create.revoke":
       "You can revoke it any time in Settings, under CI runner tokens.",
+    "ap.do.gate_box_set": "Replace the test box {name}",
+    "ap.do.gate_box_set.new": "Add the test box {name}",
+    "ap.do.gate_box_remove": "Remove the test box {name}",
+    "ap.det.gate_box_set.adds":
+      "Adds the test box {name}. Its browser slots take gate runs from agents.",
+    "ap.det.gate_box_set.replaces":
+      "Replaces the test box {name} with these settings. Its browser slots take gate runs from agents.",
+    "ap.det.gate_box_set.ssh": "SSH: {v}",
+    "ap.det.gate_box_set.ssh_port": "SSH port: {v}",
+    "ap.det.gate_box_set.ssh_identity": "SSH key file: {v}",
+    "ap.det.gate_box_set.playwright": "Playwright address: {v}",
+    "ap.det.gate_box_set.slots": "Browser slots: {v}",
+    "ap.det.gate_box_set.hold_file": "Hold file: {v}",
+    "ap.det.gate_box_set.time_scale": "Time scale: {v}",
+    "ap.det.gate_box_set.playwright_version": "Playwright version: {v}",
+    "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
+    "ap.det.gate_box_remove.what":
+      "Removes the test box {name}. Runs on it now finish; no new run goes there.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -2848,6 +2995,8 @@
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
+    "bell.m.gateLapsed":
+      '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
@@ -3208,6 +3357,18 @@
     // Issue 715: a release run a person waits on, and why.
     "gate.priority": "release priority: {reason}",
     "gate.priorityWaits": "release priority, after the one ahead: {reason}",
+    // Issue 625: test boxes, browser slots on other machines.
+    "gate.onBox": "on box {box}",
+    "gate.anyBox": "here or on a test box",
+    "gate.boxesH": "Test boxes",
+    "gate.boxSlots": "{box}: {held} of {n} browser slots in use",
+    "gate.boxHeld": "{box}: skipped, held ({reason})",
+    "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
+    "gate.boxLow": "{box}: skipped, low on memory ({reason})",
+    "gate.boxSkip": "can't use {box}: {reason}",
+    "gate.yielded": "Let {to} go ahead",
+    "gate.class": "Class: {name}",
+    "gate.window": "waits for its {window} window",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
@@ -8201,10 +8362,29 @@
     );
   }
   // D67: another computer's signed-out page shows a code and asks to be
-  // let in: a signed-in browser asks "Allow this computer?" here, with the
-  // code to compare (Settings › Access lists them too). Not signed in, the
-  // list is refused and nothing shows.
+  // let in: a signed-in browser asks "Allow this computer?" here
+  // (Settings › Access lists them too). Issue 819: the person types the
+  // code that computer's screen shows; it is never shown here. Not signed
+  // in, the list is refused and nothing shows.
   var pr = { dlg: null, shown: null, later: {}, polling: false, off: false };
+  // Issue 819: a typed code as the server reads it (any case, spaces and
+  // dashes ignored); Allow once it has six characters.
+  function prTyped(v) {
+    return String(v == null ? "" : v)
+      .toUpperCase()
+      .replace(/[\s-]/g, "");
+  }
+  function prAge(w) {
+    var m = Math.floor((Date.now() - Date.parse(w.createdAt)) / 60000);
+    return !isFinite(m) || m < 1 ? t("pair.ageNow") : t("pair.age", { n: m });
+  }
+  function prWhen(w) {
+    var parts = [prAge(w)];
+    // The person's chosen time zone (localTime: the kit's, or its fallback).
+    var at = w.fromLogin ? localTime(w.fromLogin) : "";
+    if (at) parts.push(t("pair.fromLogin", { time: at }));
+    return parts.join(" ");
+  }
   function prDialog() {
     if (pr.dlg) return pr.dlg;
     var d = document.createElement("dialog");
@@ -8212,21 +8392,30 @@
     d.id = "den-pair-dlg";
     d.setAttribute("aria-labelledby", "den-pair-h");
     d.innerHTML =
-      '<form method="dialog">' +
+      '<form method="dialog" autocomplete="off">' +
       '<h2 id="den-pair-h"></h2>' +
       '<p class="den-ap-what" id="den-pair-what"></p>' +
-      '<p class="den-pair-code" id="den-pair-dlg-code" style="font:600 22px var(--mono);letter-spacing:.08em;margin:0"></p>' +
+      '<p class="help" id="den-pair-when"></p>' +
+      '<label for="den-pair-code-in" id="den-pair-code-label"></label>' +
+      '<input id="den-pair-code-in" class="den-pair-code" autofocus autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" ' +
+      'style="display:block;font:600 22px var(--mono);letter-spacing:.08em;width:10ch;margin:4px 0 0;padding:4px 8px">' +
       '<p class="help" id="den-pair-help"></p>' +
       '<p class="err" id="den-pair-err" role="alert" hidden></p>' +
       '<div class="btns">' +
       '<span class="sp"></span>' +
       '<button type="button" class="den-btn" id="den-pair-later"></button>' +
       '<button type="button" class="den-btn" id="den-pair-deny"></button>' +
-      '<button type="button" class="den-btn primary" id="den-pair-allow"></button>' +
+      '<button type="button" class="den-btn primary" id="den-pair-allow" disabled></button>' +
       "</div></form>";
     document.body.appendChild(d);
+    var input = d.querySelector("#den-pair-code-in");
+    var allow = d.querySelector("#den-pair-allow");
+    var sync = function () {
+      allow.disabled = prTyped(input.value).length !== 6;
+    };
+    input.addEventListener("input", sync);
     var later = function () {
-      if (pr.shown) pr.later[pr.shown.code] = true;
+      if (pr.shown) pr.later[pr.shown.ref] = true;
       pr.shown = null;
       if (d.open) d.close();
     };
@@ -8239,15 +8428,20 @@
       var w = pr.shown;
       if (!w) return;
       var err = d.querySelector("#den-pair-err");
-      api("POST", "/api/web/" + verb, { code: w.code }).then(
+      var body =
+        verb === "approve"
+          ? { ref: w.ref, code: prTyped(input.value) }
+          : { ref: w.ref };
+      api("POST", "/api/web/" + verb, body).then(
         function () {
           pr.shown = null;
           if (d.open) d.close();
           if (verb === "approve") toast(t("pair.allowed"));
         },
         function (e) {
-          // Issue 320: a code that ended (its page withdrew it, or it expired
-          // or was used): nothing happened, said plainly. Only Close stays.
+          // Issue 320: a request that ended (its page withdrew it, or it
+          // expired or was used): nothing happened, said plainly. Only
+          // Close stays.
           var code = e && e.code;
           var gone =
             code === "ended" || code === "unknown"
@@ -8255,12 +8449,29 @@
               : code === "expired"
                 ? t("pair.expired")
                 : "";
-          err.textContent = gone || (e && e.message) || String(e);
+          // Issue 819: only a person's signed-in browser approves a device,
+          // with the code its screen shows.
+          var who =
+            code === "approve_not_agent" || code === "fixture_cannot_approve"
+              ? t("set.access.approveNotAgent")
+              : code === "approve_needs_browser" || code === "signin_to_approve"
+                ? t("set.access.approveNeedsBrowser")
+                : code === "wrong" || code === "malformed"
+                  ? t("pair.wrong")
+                  : code === "rate_limited"
+                    ? t("pair.busy")
+                    : "";
+          err.textContent = gone || who || (e && e.message) || String(e);
           err.hidden = false;
           if (gone) {
-            d.querySelector("#den-pair-allow").hidden = true;
+            allow.hidden = true;
+            input.hidden = true;
+            d.querySelector("#den-pair-code-label").hidden = true;
             d.querySelector("#den-pair-deny").hidden = true;
             d.querySelector("#den-pair-later").textContent = t("pair.close");
+          } else if (verb === "approve") {
+            input.focus();
+            input.select();
           }
         },
       );
@@ -8268,8 +8479,13 @@
     d.querySelector("#den-pair-deny").addEventListener("click", function () {
       decide("deny");
     });
-    d.querySelector("#den-pair-allow").addEventListener("click", function () {
+    allow.addEventListener("click", function () {
       decide("approve");
+    });
+    // Enter in the code field approves (never closes the dialog).
+    d.querySelector("form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!allow.disabled && !allow.hidden) decide("approve");
     });
     pr.dlg = d;
     return d;
@@ -8283,13 +8499,17 @@
     $("den-pair-h").textContent = t("pair.title");
     $("den-pair-what").textContent = t("pair.what", {
       device: w.device || t("pair.aDevice"),
-      // 0.4.71: a code asked from this machine says so, never a bare
+      // 0.4.71: a request from this machine says so, never a bare
       // 127.0.0.1: a person sees where it came from before Allow.
       client: /^(127\.|::1$|::ffff:127\.)/.test(String(w.client || ""))
         ? t("pair.local")
         : w.client || "",
     });
-    $("den-pair-dlg-code").textContent = w.code;
+    $("den-pair-when").textContent = prWhen(w);
+    $("den-pair-code-label").textContent = t("pair.codeLabel");
+    $("den-pair-code-label").hidden = false;
+    $("den-pair-code-in").value = "";
+    $("den-pair-code-in").hidden = false;
     $("den-pair-help").textContent = t("pair.help");
     $("den-pair-err").hidden = true;
     $("den-pair-later").textContent = t("ap.later");
@@ -8297,7 +8517,9 @@
     $("den-pair-allow").textContent = t("pair.allow");
     $("den-pair-deny").hidden = false;
     $("den-pair-allow").hidden = false;
+    $("den-pair-allow").disabled = true;
     if (!d.open) d.showModal();
+    $("den-pair-code-in").focus();
   }
   function prPoll() {
     // One ask at a time; refused once (a session that may not read it, as
@@ -8322,28 +8544,41 @@
       .then(
         function (b) {
           pr.polling = false;
-          // Never this browser's own code (it signed in another way).
+          // Never this browser's own request (it signed in another way).
           var own = "";
           try {
             own = sessionStorage.getItem("den-pair-mine") || "";
           } catch (e) {
             /* no storage */
           }
+          var now = Date.now();
+          // Issue 819: a request past its time is dropped (the server
+          // refuses it too). The server lists a link's, then the newest.
           var list = ((b && b.waiting) || []).filter(function (w) {
-            return w && w.code && w.code !== own && !pr.later[w.code];
+            return (
+              w &&
+              w.ref &&
+              w.ref !== own &&
+              !pr.later[w.ref] &&
+              !(w.expiresAt && Date.parse(w.expiresAt) <= now)
+            );
           });
           if (!list.length) {
             pr.shown = null;
             if (pr.dlg && pr.dlg.open) pr.dlg.close();
             return;
           }
-          if (
+          var same =
             pr.shown &&
-            list.some(function (w) {
-              return w.code === pr.shown.code;
-            })
-          )
+            list.filter(function (w) {
+              return w.ref === pr.shown.ref;
+            })[0];
+          if (same) {
+            // Still waiting: only its age changes; the typed code stays.
+            if (pr.dlg)
+              pr.dlg.querySelector("#den-pair-when").textContent = prWhen(same);
             return;
+          }
           prShow(list[0]);
         },
         function () {

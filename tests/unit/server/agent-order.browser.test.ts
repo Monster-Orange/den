@@ -39,7 +39,7 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -148,7 +148,7 @@ async function open(
     }
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
   await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
   return p;
 }

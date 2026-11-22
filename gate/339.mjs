@@ -14,6 +14,9 @@ export const timeoutMs = 90000;
 const EMAIL = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
 const TOKENISH = /\b(sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{40,})\b/;
 
+// Read only (issue 845): reads `agents accounts list` and Settings › Agents' accounts.
+export const readOnly = true;
+
 export async function setup(ctx) {
   const l = ctx.cli(["agents", "accounts", "list"]);
   return { code: l.code, out: String(l.out), err: String(l.err) };

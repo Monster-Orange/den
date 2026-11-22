@@ -23,7 +23,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -145,7 +146,7 @@ async function open(path: string, width = 1280): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
+  await signInPage(p, s!.stateDir, s!.base, path);
   await p.locator("#agl .agband").first().waitFor({ timeout: 20_000 });
   return p;
 }

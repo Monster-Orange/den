@@ -77,9 +77,14 @@ describe.each(AGENT_ENVS)("inside an agent's session (%s set)", (k, v) => {
     expectRefused(await cmdWebLoginWait([], i), o);
   });
 
-  it("web approve <code> refuses (pairing lets a browser in)", async () => {
+  // Issue 819: a code is approved only from a signed-in browser, never
+  // from the CLI, so `web approve <code>` refuses everywhere.
+  it("web approve <code> refuses (only a signed-in browser approves)", async () => {
     const { o, io: i } = io();
-    expectRefused(await cmdWebApprove(["K7Q-42M"], i), o);
+    const code = await cmdWebApprove(["K7Q-42M"], i);
+    expect([code, o.out]).toEqual([1, ""]);
+    expect(o.err).toMatch(/approved only from a browser that is signed in/);
+    expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   });
 
   it.each([["link"], ["unlink"]])("web owner %s refuses", async (sub) => {

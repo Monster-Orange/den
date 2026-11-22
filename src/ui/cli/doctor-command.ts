@@ -24,11 +24,8 @@
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { readWebUrl } from "../../shared/web-url.js";
-import {
-  aliasCandidates,
-  loopbackRefusal,
-} from "../../shared/web-url-check.js";
+import { rankFindings, readWebUrl } from "../../shared/web-url.js";
+import { loopbackRefusal } from "../../shared/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
@@ -973,8 +970,10 @@ export function addressLines(
   title: string,
   cli: string,
   checked: DoctorAddress | null = null,
-  /** Issue 666: this install's edge alias (aliasCandidates), if any. */
+  /** Issue 666: this install's edge alias (edgeAddresses' first), if any. */
   alias: string | null = null,
+  /** The install's other edge addresses, named when web.url is unconfirmed. */
+  others: readonly string[] = [],
 ): { lines: string[]; problem: boolean; check: OnboardCheck } {
   // Issue 666: a loopback address is a problem, never ✓ and never one to
   // confirm: other devices can't open it. The fix is the alias, if any.
@@ -1051,9 +1050,11 @@ export function addressLines(
       };
     }
   }
+  const rest = others.filter((u) => u !== w.url);
   const detail = w.confirmed
     ? w.url
-    : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\``;
+    : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\`` +
+      (rest.length ? `. Other edge addresses: ${rest.join(", ")}` : "");
   return {
     lines: [
       "",
@@ -1167,21 +1168,24 @@ export function sessionHostLines(
  * web.url isn't set or the web port can't be read.
  */
 /**
- * Issue 666: this install's edge alias, the address doctor offers when
- * web.url names this machine only: the first edge route to Den's web port
- * that isn't loopback (https first), or null.
+ * Issue 666: the edge routes to Den's web port that can be its address,
+ * best first (doctor offers the first when web.url names this machine
+ * only, and lists the rest while web.url is unconfirmed):
+ * a route edge.routes names before the brand's, https first, never
+ * loopback (rankFindings, the migration's order). Empty with no edge.
  */
-export async function edgeAlias(): Promise<string | null> {
+export async function edgeAddresses(): Promise<string[]> {
   try {
     const { readWebPort } = await import("../../shared/edge/config.js");
-    const { webRouteHosts } = await import("../../shared/edge/render.js");
-    if (!hasEdgeBlock()) return null;
-    const urls = webRouteHosts(readEdgeConfig(), new Set([readWebPort()])).map(
-      (r) => r.url,
-    );
-    return aliasCandidates(urls)[0] ?? null;
+    const { webRouteFindings } = await import("../../shared/edge/render.js");
+    if (!hasEdgeBlock()) return [];
+    const hits = webRouteFindings(
+      readEdgeConfig(),
+      new Set([readWebPort()]),
+    ).map((r) => ({ url: r.url, from: "", named: r.named }));
+    return rankFindings(hits).map((r) => r.url);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -1682,6 +1686,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (hm.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 625: the test boxes, and why one is skipped.
+      const bx = await gateBoxRows();
+      if (bx.lines.length) r.checks.push(bx.check);
     }
     {
       const { hubStatus } = await import("../../shared/hub.js");
@@ -1714,12 +1721,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...sign.checks);
     if (sign.problem) r.ok = false;
     const checked = await doctorAddress(product().cli);
+    const edges = await edgeAddresses();
     const addr = addressLines(
       readWebUrl(),
       readBrand().name,
       product().cli,
       checked,
-      await edgeAlias(),
+      edges[0] ?? null,
+      edges,
     );
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
@@ -1793,6 +1802,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of hm.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  // Issue 625: the test boxes, and why one is skipped.
+  for (const l of (await gateBoxRows()).lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
@@ -1820,12 +1831,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
   const checked = await doctorAddress(product().cli);
+  const edges = await edgeAddresses();
   const addr = addressLines(
     readWebUrl(),
     readBrand().name,
     product().cli,
     checked,
-    await edgeAlias(),
+    edges[0] ?? null,
+    edges,
   );
   for (const l of addr.lines) console.log(l);
   {
@@ -1906,6 +1919,20 @@ export async function cmdDoctor(args: string[]): Promise<number> {
 }
 
 /** Issue 726: doctor's rows for state from an earlier Hub. */
+/** Issue 625: the machine's test boxes (never checked from here). */
+async function gateBoxRows() {
+  const { boxLines } = await import("./doctor-boxes.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    return boxLines(new GateStore());
+  } catch {
+    return {
+      lines: [] as string[],
+      check: { id: "gate_boxes", status: "ok" as const, detail: "" },
+    };
+  }
+}
+
 async function previousHubRows(): Promise<
   ReturnType<typeof import("./doctor-hub-previous.js").previousHubLines>
 > {

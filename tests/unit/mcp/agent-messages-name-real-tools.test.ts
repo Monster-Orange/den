@@ -60,6 +60,8 @@ const NOT_TOOLS: Readonly<Record<string, string>> = {
   pin_commit: "the server_agent.pin_commit setting",
   // A parameter of repo_add and manifest_draft, and a folder.
   no_run: "repo_add's and manifest_draft's parameter",
+  // A parameter of gate_slot_request (a browser slot's container browser).
+  browser_endpoint: "gate_slot_request's parameter",
   node_modules: "npm's folder",
   // A value of Den's update state (release_status's denUpdate.state).
   rolled_back: "an update's state",

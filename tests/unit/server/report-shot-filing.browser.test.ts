@@ -9,7 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -111,7 +111,7 @@ async function page(engine: Engine, fake: Fake): Promise<Page> {
     }
     return json(r, 404, { ok: false });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   return p;
 }

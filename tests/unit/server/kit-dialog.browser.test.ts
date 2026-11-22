@@ -15,7 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -97,7 +97,7 @@ async function open(
     natives.push(`${d.type()}: ${d.message()}`);
     void d.dismiss();
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, url));
+  await signInPage(p, s!.stateDir, s!.base, url);
   await p.waitForFunction(
     () =>
       Boolean((window as never as { denShell?: unknown }).denShell) &&

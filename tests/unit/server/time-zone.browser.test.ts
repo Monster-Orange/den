@@ -15,7 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserType, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
   startAgentsPageServer,
@@ -117,7 +117,7 @@ async function open(
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, route));
+  await signInPage(p, s!.stateDir, s!.base, route);
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   return p;
 }
@@ -158,7 +158,7 @@ for (const name of ["chromium", "webkit"] as const) {
       expect(await bell.getAttribute("title")).toMatch(/Pacific/);
 
       // Settings › Time zone: Tokyo. No reload: the marker survives.
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#appearance"));
+      await signInPage(p, s!.stateDir, s!.base, "/settings#appearance");
       await p.waitForFunction(
         () => !!(window as { denShell?: unknown }).denShell,
       );
