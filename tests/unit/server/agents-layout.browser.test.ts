@@ -1003,10 +1003,12 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     const p = await ctx.newPage();
     p.on("pageerror", (e) => errors.push(`issue 194: ${e.message}`));
     await p.goto(`${s!.base}/agents?layout=tabs&open=${all()}`);
-    await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+    await p.waitForSelector("#agl:not([aria-busy]) [data-kind]", {
+      timeout: 20_000,
+    });
     await termsUp(p, 1);
     if (!(await p.$("#den-dock-out")))
-      await p.click('.den-dock [data-act="dock"]');
+      await p.click('#den-dock [data-act="dock"]');
     await p.waitForSelector("#den-dock-out");
     // Den's server stops answering: every call fails as a network error.
     await ctx.route(/\/api\//, (r) => r.abort("connectionrefused"));
@@ -1017,10 +1019,12 @@ describe("the Agents tab's layouts (AG-4b)", () => {
         const r = e!.getBoundingClientRect();
         return { t: r.top, b: r.bottom, h: r.height };
       };
-      const pane = document.querySelector("#agr .pane:not([hidden])")!;
+      const pane = document.querySelector(
+        "#agr section[data-id]:not([hidden])",
+      )!;
       return {
         banner: box(document.getElementById("den-banners")),
-        to: box(pane.querySelector(".agto")),
+        to: box(pane.querySelector("[data-to]")),
         dock: box(document.getElementById("den-dock")),
       };
     });
