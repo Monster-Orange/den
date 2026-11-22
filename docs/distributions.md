@@ -5798,6 +5798,14 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   once, each in its own container. A browser run waiting
   for cpu runs to drop to that number stops new cpu grants past it, so it
   can't starve.
+- While the machine's 5-minute load average is at or above
+  `cpu_hold_load` and a release-priority browser run holds a browser slot
+  (here or on a test box), cpu asks wait (issue 1009). The default is the
+  machine's cores × 4 / 3 (24 on 18 cores); 0 turns it off. Holders are
+  never stopped, and a cpu ask is granted on the next pass once either
+  condition stops. Its line in `gate status` and on the Gate panel says
+  why: "waiting: load 38 ≥ 24 while a release run holds the browser
+  slot". Set it with `gate settings --cpu-hold-load N`, or in Settings.
 - Nothing is pre-empted. A later run only waits, and says each minute who
   holds the slot and when it should end. A live holder keeps its slot
   however long it runs.

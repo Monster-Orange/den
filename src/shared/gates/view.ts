@@ -4,6 +4,7 @@
  */
 import {
   expectedStart,
+  loadHold,
   overrun,
   priorityIds,
   queueEnd,
@@ -57,6 +58,11 @@ export interface GateSlotView {
   class?: string;
   /** Issue 803: held for its class's window ("22:00-06:00"). */
   window?: string;
+  /**
+   * Issue 1009: a cpu waiter held by the machine's load while a release
+   * browser run holds a browser slot: the load and the setting.
+   */
+  loadHold?: { load: number; limit: number };
 }
 
 /**
@@ -104,6 +110,7 @@ export function gateView(store: GateStore, now = Date.now()) {
       .filter((x) => x.reason);
   };
   const held = windowHeld(all, settings.classes, now);
+  const hold = loadHold(all, settings, store.load());
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -133,6 +140,9 @@ export function gateView(store: GateStore, now = Date.now()) {
     ...(yieldedTo(e, all).length ? { yieldedTo: yieldedTo(e, all) } : {}),
     ...(settings.classes ? { class: classOf(e, settings.classes) } : {}),
     ...(held.has(e.id) ? { window: held.get(e.id)!.text } : {}),
+    ...(hold && !e.grantedAt && e.kind === "cpu"
+      ? { loadHold: { load: Math.round(hold.load), limit: hold.limit } }
+      : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,

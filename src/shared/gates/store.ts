@@ -8,6 +8,7 @@
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
  *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
  *                     cpu_slots_beside_release_browser (its follow-up),
+ *                     cpu_hold_load (issue 1009),
  *                     local_browser_slots,
  *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -101,6 +102,8 @@ export type GateSettingsPatch = {
   cpu_slots_beside_release_browser?: number | null;
   /** Browser runs that may hold this machine at once (default 1). */
   local_browser_slots?: number | null;
+  /** Issue 1009: cpu asks wait at this load under a release run (0: off). */
+  cpu_hold_load?: number | null;
   overrun_margin_minutes?: number | null;
   /** Issue 993: held past this many times its estimate: the bell. */
   overrun_bell_multiple?: number | null;
@@ -149,6 +152,8 @@ export const GATE_LIMITS: Record<
   cpu_slots_beside_release_browser: { min: 0, max: 64, int: true },
   // Each local browser run is in its own container; 1 is one at a time.
   local_browser_slots: { min: 1, max: 64, int: true },
+  // Issue 1009: a 5-minute load average; 0 turns the hold off.
+  cpu_hold_load: { min: 0, max: 1024, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 993: 1 is "as soon as it passes its estimate".
   overrun_bell_multiple: { min: 1, max: 100, int: false },
@@ -335,6 +340,11 @@ export interface GateStoreOpts {
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
   platform?: NodeJS.Platform;
+  /**
+   * Issue 1009: the machine's 5-minute load average (default
+   * os.loadavg()[1]); tests pass a stub.
+   */
+  load?: () => number;
 }
 
 /**
@@ -381,6 +391,7 @@ export class GateStore {
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
   private readonly probe: BoxProbe;
+  private readonly readLoad: () => number;
   readonly platform: NodeJS.Platform;
 
   constructor(o: GateStoreOpts = {}) {
@@ -390,6 +401,17 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.probe = o.probe ?? realBoxProbe;
+    this.readLoad = o.load ?? (() => os.loadavg()[1]!);
+  }
+
+  /** Issue 1009: the machine's 5-minute load average now (NaN: unread). */
+  load(): number {
+    try {
+      const n = this.readLoad();
+      return Number.isFinite(n) ? n : NaN;
+    } catch {
+      return NaN;
+    }
   }
 
   private get slots() {
@@ -432,6 +454,7 @@ export class GateStore {
         localBrowserSlots: Math.floor(
           num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),
         ),
+        cpuHoldLoad: num("cpu_hold_load", GATE_DEFAULTS.cpuHoldLoad),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -756,7 +779,8 @@ export class GateStore {
     }
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
-    for (const g of assign(entries, s, now, caps.caps)) {
+    // Issue 1009: the machine's load, read once per pass.
+    for (const g of assign(entries, s, now, caps.caps, this.load())) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its

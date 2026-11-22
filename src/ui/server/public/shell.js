@@ -2113,6 +2113,10 @@
       "Unit test runs beside a release browser test run",
     "set.server.gate_cpu_beside_release.d":
       "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_cpu_hold_load":
+      "Machine load that holds unit test runs during a release browser run",
+    "set.server.gate_cpu_hold_load.d":
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
@@ -3697,6 +3701,8 @@
     "gate.yielded": "Let {to} go ahead",
     "gate.class": "Class: {name}",
     "gate.window": "waits for its {window} window",
+    "gate.loadHold":
+      "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

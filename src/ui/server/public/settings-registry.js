@@ -3061,6 +3061,30 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
   },
   {
+    // Issue 1009: cpu runs wait at this load under a release browser run.
+    id: "server.gate_cpu_hold_load",
+    category: "server",
+    label:
+      "Machine load that holds unit test runs during a release browser run",
+    description:
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "load",
+      "release",
+      "priority",
+    ],
+    scope: "user",
+    keys: ["gate_slots.cpu_hold_load"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.cpuHoldLoad ?? 0,
+    write: (v, ctx) => ctx.post({ gate_slots: { cpu_hold_load: v } }),
+  },
+  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",

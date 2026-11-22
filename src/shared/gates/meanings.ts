@@ -10,6 +10,7 @@ export type GateSettingKey =
   | "cpu_slots_beside_browser"
   | "cpu_slots_beside_release_browser"
   | "local_browser_slots"
+  | "cpu_hold_load"
   | "overrun_margin_minutes"
   | "remote_renew_seconds"
   | "remote_lapse_seconds"
@@ -41,6 +42,8 @@ export const GATE_MEANINGS: Record<
     cpu_slots_beside_release_browser:
       "Unit test runs beside a release browser run (0: it runs alone)",
     local_browser_slots: "Browser test runs at once on this machine",
+    cpu_hold_load:
+      "Machine load at which unit test runs wait while a release browser run holds (0: off)",
     overrun_margin_minutes:
       "Minutes past its estimate before a run is flagged (never stopped)",
     remote_renew_seconds: "Seconds between a CI runner's renewals of its slot",
@@ -83,6 +86,8 @@ export const GATE_MEANINGS: Record<
       "Pruebas unitarias junto a una de navegador de versión (0: va sola)",
     local_browser_slots:
       "Ejecuciones de pruebas de navegador a la vez en esta máquina",
+    cpu_hold_load:
+      "Carga de la máquina a la que las pruebas unitarias esperan mientras corre una de navegador de versión (0: apagado)",
     overrun_margin_minutes:
       "Minutos pasada su estimación antes de marcar una ejecución (nunca se detiene)",
     remote_renew_seconds:
@@ -127,6 +132,8 @@ export const GATE_MEANINGS: Record<
     cpu_slots_beside_release_browser:
       "リリースのブラウザテストと並んで動くユニットテストの数（0: 単独）",
     local_browser_slots: "このマシンで同時に動くブラウザテストの数",
+    cpu_hold_load:
+      "リリースのブラウザテスト中、ユニットテストを待たせるマシン負荷 (0: オフ)",
     overrun_margin_minutes:
       "見積もりを何分過ぎたら印を付けるか（止めはしない）",
     remote_renew_seconds: "CI ランナーが枠を更新する間隔（秒）",

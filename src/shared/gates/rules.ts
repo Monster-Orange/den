@@ -43,6 +43,7 @@
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
+import * as os from "os";
 import {
   classRank,
   windowHeld,
@@ -175,6 +176,12 @@ export interface GateSettings {
    * container), counted as a test box's slots are. Default 1.
    */
   localBrowserSlots: number;
+  /**
+   * Issue 1009: while this machine's 5-minute load average is at or above
+   * this, and a release-priority browser run holds a browser slot, cpu
+   * asks wait (holders are never stopped). 0 turns it off.
+   */
+  cpuHoldLoad: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
   /**
@@ -222,11 +229,18 @@ export interface GateSettings {
   browserRequiresContainer: boolean;
 }
 
+/** Issue 1009: the default hold load, cores × 4 / 3 (24 on 18 cores). */
+export function cpuHoldLoadDefault(): number {
+  const cores = os.availableParallelism?.() ?? os.cpus().length;
+  return Math.round((Math.max(1, cores) * 4) / 3);
+}
+
 export const GATE_DEFAULTS: GateSettings = {
   cpuSlots: 2,
   cpuSlotsBesideBrowser: 2,
   cpuSlotsBesideReleaseBrowser: 0,
   localBrowserSlots: 1,
+  cpuHoldLoad: cpuHoldLoadDefault(),
   overrunMarginMinutes: 15,
   overrunBellMultiple: 2,
   remoteRenewSeconds: 30,
@@ -478,21 +492,45 @@ export function passedBy(
 }
 
 /**
+ * Issue 1009: why cpu asks wait now, if they do: the machine's 5-minute
+ * load (`load`) is at or above cpuHoldLoad (0: off) while a release browser
+ * run holds a browser slot, here or on a test box (its app runs here).
+ * Absent: they don't (or no load was read).
+ */
+export function loadHold(
+  entries: GateEntry[],
+  s: Partial<Pick<GateSettings, "cpuHoldLoad">>,
+  load: number | undefined,
+): { load: number; limit: number } | undefined {
+  const limit = s.cpuHoldLoad ?? GATE_DEFAULTS.cpuHoldLoad;
+  if (load === undefined || !Number.isFinite(load)) return undefined;
+  if (!(limit > 0) || load < limit) return undefined;
+  const release = entries.some(
+    (e) => e.grantedAt && e.kind === "browser" && !!e.priority,
+  );
+  return release ? { load, limit } : undefined;
+}
+
+/**
  * Which waiters may start now on this machine, in order. Issue 751: each
  * kind's line on its own; a waiter that can't start holds back only its
  * own kind (and, as a browser run, cpu runs past the beside count).
  */
 export function grants(
   entries: GateEntry[],
-  s: Pick<GateSettings, "cpuSlots"> & Partial<QueueSettings>,
+  s: Pick<GateSettings, "cpuSlots"> &
+    Partial<QueueSettings & Pick<GateSettings, "cpuHoldLoad">>,
   now: number = Date.now(),
+  load?: number,
 ): string[] {
   const room = localRoom(entries, s);
   const held = windowHeld(entries, s.classes, now);
+  const cpuHeld = !!loadHold(entries, s, load); // issue 1009
   const out: string[] = [];
   const stopped = new Set<GateKind>();
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
+    if (cpuHeld && w.kind === "cpu") continue; // issue 1009: load
     if (stopped.has(w.kind)) continue;
     if (!room.fits(w)) {
       room.wait(w);

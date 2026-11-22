@@ -1074,6 +1074,10 @@
       "Pruebas unitarias junto a una prueba de navegador de versión",
     "set.server.gate_cpu_beside_release.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador con prioridad de versión. 0 (el valor predeterminado): la prueba de versión se ejecuta sola, para que otras no ralenticen sus comprobaciones. Las demás pruebas de navegador usan el ajuste de arriba. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_cpu_hold_load":
+      "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
+    "set.server.gate_cpu_hold_load.d":
+      "Mientras la carga media de 5 minutos de esta máquina sea igual o mayor que este valor, y una prueba de navegador con prioridad de versión tenga un puesto de navegador, las pruebas unitarias esperan. Las que ya corren nunca se detienen. El valor predeterminado es el número de núcleos × 4 / 3. 0 lo apaga. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser":
       "Pruebas de navegador a la vez en esta máquina",
     "set.server.gate_local_browser.d":
@@ -2846,6 +2850,8 @@
     "gate.yielded": "Dejó pasar a {to}",
     "gate.class": "Clase: {name}",
     "gate.window": "espera su horario {window}",
+    "gate.loadHold":
+      "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
