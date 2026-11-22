@@ -4461,6 +4461,20 @@
   }
 
   /**
+   * A held write's details lines as its Allow card shows them: a line with
+   * a key in the page's language, else as sent. The approval dialog and the
+   * bell's Allow row (its Review) both show these, so they can't differ.
+   */
+  function apDetailLines(a) {
+    var dk = (a && a.detailKeys) || [];
+    return ((a && a.details) || []).map(function (l, i) {
+      var k = dk[i];
+      return k && k.key ? t(k.key, k.vars || {}) : String(l);
+    });
+  }
+  window.denApDetailLines = apDetailLines;
+
+  /**
    * A built-in text's words in this page's language (0.4.45): `en` is the
    * registry's English. A built-in key whose en is word for word `en` reads
    * the catalog; otherwise `own` (a row a distribution or plugin adds:
@@ -8709,14 +8723,7 @@
     var note = $("den-ap-note");
     note.hidden = !a.note;
     note.textContent = a.note ? t("ap.says") + " “" + a.note + "”" : "";
-    // A line with a key is shown in the page's language; else as sent.
-    var dk = a.detailKeys || [];
-    $("den-ap-det").textContent = (a.details || [])
-      .map(function (l, i) {
-        var k = dk[i];
-        return k && k.key ? t(k.key, k.vars || {}) : l;
-      })
-      .join("\n");
+    $("den-ap-det").textContent = apDetailLines(a).join("\n");
     // Issue 199: the agents that keep their own mode, and the choice.
     var own = a.ownMode || [];
     $("den-ap-own").hidden = !own.length;
@@ -9719,6 +9726,13 @@
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
     // Issue 167: the pick item's line under its title.
     ".den-bell-sub { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }",
+    // Issue 746: the Allow row's Review, and the lines it opens.
+    ".den-bell-rv { display: inline; font: 500 12.5px var(--sans); background: none; border: 0;",
+    "  color: var(--accent-text); cursor: pointer; padding: 4px 0; margin-top: 2px; }",
+    ".den-bell-det { display: block; margin-top: 4px; padding: 6px 8px; border-radius: 6px;",
+    "  background: var(--surface-2, var(--surface)); color: var(--text); font-size: 12.5px; }",
+    ".den-bell-det[hidden] { display: none; }",
+    ".den-bell-detl { overflow-wrap: anywhere; }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
