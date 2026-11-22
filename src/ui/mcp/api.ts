@@ -140,6 +140,10 @@ const READ_ROUTES = new Set([
   "/api/onboard/manifest",
   // NT (MCP notifications_list): the bell, read as the agent sees it.
   "/api/notifications",
+  // Issue 565 (MCP report): Report's destinations, each with its visibility.
+  "/api/report",
+  // Issue 459 (MCP app_feed_read): the agent's own app feeds. A read.
+  "/api/agents/self/app-feeds",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
@@ -153,6 +157,8 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/approvals": "POST",
   // NT-1 (MCP ask_human): the agent's own waiting mark, nothing more.
   "/api/agents/self/attention": "POST",
+  // Issue 796 (MCP page_view): a one-time link to a read-only view.
+  "/api/agents/self/view": "POST",
   // issue_write: one GitHub issue write in the agent's own project's repos
   // (the server checks the role, the repo and the limit, and audits it).
   "/api/agents/self/issue-write": "POST",
@@ -160,6 +166,9 @@ const ACTION_ROUTES: Record<string, string> = {
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",
   "/api/verify/run": "POST",
+  // Issue 565 (MCP report): the agent's own draft, holding its screenshot
+  // until the held `report` files it. Saves on this computer only.
+  "/api/report/drafts": "POST",
 };
 
 /**
@@ -191,6 +200,12 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   // Issue 403 (MCP report_screenshot): a filed report's kept screenshot.
   // A read; the route itself answers only the person or the server agent.
   { re: /^\/api\/report\/shots\/[a-f0-9]{16}$/, method: "GET" },
+  // Issue 459 (MCP app_feed_read): one of the agent's own feeds. A read
+  // (it moves only the agent's own read mark on that feed).
+  {
+    re: /^\/api\/agents\/self\/app-feeds\/[a-z0-9][a-z0-9_-]{0,39}$/,
+    method: "GET",
+  },
   // D44 (MCP whoami): whether an agent's own tools are current. A read.
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/tools$/,

@@ -73,6 +73,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/graph.html",
     "/agents",
     "/agents.html",
+    // Issue 482: the Terminals page.
+    "/terminals",
     "/server-agent",
     "/server-agent.html",
     "/tests",
@@ -603,6 +605,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/workspaces/:ws/mcp-servers",
     "issue 335: a project's extra MCP servers, names and urls only (an agent adds one with project_mcp_add)",
   ),
+  R(
+    "/api/workspaces/:ws/event-feeds",
+    "issue 459: a project's app event feeds and their state, names, agents and urls only",
+  ),
   M(
     ["POST", "DELETE"],
     "/api/workspaces/:ws/mcp-servers/:name",
@@ -752,6 +758,19 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
+  R(
+    "/api/agents/self/app-feeds",
+    "issue 459: an agent's own app feeds and their unread counts (its own token only)",
+  ),
+  R(
+    "/api/agents/self/app-feeds/:name",
+    "issue 459: an agent's own app feed's events, capped per call (its own token only)",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/self/view",
+    "Issue 796: an agent (its own token only) asks for a read-only view of these pages; a one-time link",
+  ),
   M(
     ["POST"],
     "/api/agents/self/attention",
@@ -805,6 +824,20 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/alerts/unsubscribe",
     "Issue 172: a person stops push alerts to a device",
+  ),
+  R(
+    "/api/alerts/devices",
+    "Issue 172: the person's devices that get push (what each is, its push service, when added); never an endpoint, never an agent's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/test",
+    "Issue 172: a person sends a test alert to each device that gets push",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/forget",
+    "Issue 172: a person stops push alerts to one device, by its id",
   ),
   R(
     "/api/hub/link-suggestions",
@@ -1113,6 +1146,9 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MODES_PATH": ["/api/workspaces/:ws/agent-modes"],
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
+  "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
+  "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],

@@ -242,12 +242,26 @@ with "If you didn't ask an agent to do this, Deny." under it.
   `<cli> web claim-link` prints a one-time setup link that signs the
   browser in.
 - **Allow runs it once**, from the arguments stored when it was asked,
-  checked again first. Deny, 10 minutes with no answer, or the agent being
-  stopped run nothing. An agent may have 5 requests waiting; a restart drops
-  what waits (the agent asks again).
+  checked again first: an old request whose target changed gets the
+  check's error, and nothing runs. Deny, no answer within the window, or
+  the agent being stopped run nothing. An agent may have 5 requests
+  waiting.
+- **The window** (from 0.4.81): `held_writes.wait_minutes` in
+  `config/local/user.yml` (Settings › Agents, "Requests wait for your
+  Allow"), 24 hours by default, 10 minutes to 7 days. The tool texts and
+  `approval_check` say the window set.
+- **What waits survives a restart** (from 0.4.81): the queue is kept in
+  `held-writes.json` under the state dir (written whole, then renamed;
+  owner-only), and read back at the start. A request that can't come back
+  is `lost`, never silently gone: its action no longer exists, a restart
+  cut it off while it ran (check whether it took effect), or the file was
+  unreadable (it is kept aside as `held-writes.json.corrupt-<time>`, and an
+  id Den no longer knows reads `lost` for a week). The bell says so, the
+  asking agent is told, and the trail has `approval-lost`. Den's own
+  update ask is not kept: the update check asks again.
 - **The agent waits** up to 2 minutes for the answer, then gets the request
   id: `approval_check` says `pending`, `done` (with what the run said),
-  `denied` or `expired`. While a request waits, its agent is "waiting" on
+  `denied`, `expired`, `withdrawn` or `lost`. While a request waits, its agent is "waiting" on
   the Agents page.
 - **Only the person sees what waits.** `GET /api/approvals` needs what
   Allow needs: the session cookie, that session's CSRF token
@@ -388,6 +402,17 @@ service:api/web"`).
   person running Den. Nothing is merged and no branch is deleted. It is
   watched by either name, `repo:<owner/name>` or the repo's own name
   (`repo:api`), and a repo pinned to the rail counts too.
+
+- **Agents report issues (issue 565).** The held write `report` (the MCP
+  tool `report`, and `<cli> report` run by an agent) files a report the
+  way the Report button does: the same destinations (Den's own repo and
+  the distribution's `feedback.repo`), each with the same visibility
+  label, the same scrub, the Den version, the page and an optional PNG
+  screenshot. To a public destination, or one whose visibility is not
+  known, it widens what an agent may do: always the person's own Allow,
+  after they read what will be posted. To a private one it follows the
+  policy like any routine write. The activity trail says who filed it
+  and where it went (`report-file`).
 
 - **An agent may still ask.** `ask: true` on any held write (with a
   `note` saying why) waits for the Allow whatever the policy says.
@@ -2048,6 +2073,32 @@ namespace, set `stack_namespace`.
 `stack_namespace` in the blueprint needs Den 0.3.0-dev.36 or later: an
 older Den rejects the unknown key.
 
+### A project Den didn't start
+
+A Compose project's name is only a name. A repo's manifest can render to
+one that something else runs: another tool's, another install's, or a
+service started by hand from its own checkout. Den acts only on its own:
+
+- Every container of a stack Den starts carries the label
+  `den.stack.owner`, a mark for this install, the stack and
+  its checkout. Den adds it in its override; the project's own labels
+  stay.
+- `stack up`, `stack down` and `stack restart` (with `--service` too),
+  and so a service's Start, Stop and Restart in the page and in ⌘K, are
+  refused when the project holds a container without this stack's mark.
+  The message names the project and the containers, and nothing runs.
+  Fix it with a `compose.name` of the stack's own in the repo's `.den.yml`,
+  or stop the other project yourself.
+- A container Den started before the label (0.4.34 and older) counts as
+  its own when Compose's record of its files names this stack's override
+  and compose file. It gets the label at its next `up`.
+- When docker can't be asked, Den goes on: Compose itself then fails.
+- `acme doctor` warns (`--json`: check `stacks:projects`) on a project
+  name two stacks render to (stack `a-b` in namespace `c` and stack `a`
+  in `b-c` are both `a-b-c`), and on a project already running
+  containers Den didn't start. Projects sharing a namespace on one
+  checkout are one stack, not a clash.
+
 ## Releases
 
 The Release page dispatches each repo's CD workflow on GitHub. A repo's
@@ -3067,6 +3118,7 @@ Read tools (always registered):
 | `stacks`              | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                                                                                                                                                             |
 | `ask_human`           | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                                                                                                                                                     |
 | `notifications_list`  | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                                                                                                                                                             |
+| `app_feed_read`       | `/api/agents/self/app-feeds`               | Issue 459: the agent's own app feeds and their unread events (only its own project's feeds that name it; capped by `embed.feed_read_max_kb`). Den types a pointer line, never the event's text                                                                                                                                                                                                                |
 | `gate_slot_status`    | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                                                                                                                                               |
 | `gate_slot_request`   | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                                                                                                                                                      |
 | `gate_slot_release`   | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                                                                                                                                                   |
@@ -3961,14 +4013,30 @@ as…" line as Bring in.
     restart_wait_minutes: 120 # minutes, above 0
   ```
 
+  Session rotation waits for an agent's background work too (issue
+  914). Once a rotation is due and the agent's turn is over, Den still
+  waits while a helper it started (a background subagent, a workflow's
+  agent) or a job it left running (a gate run) is running, and rotates
+  right after they finish. The wait is at most
+  `agents.rotation_wait_minutes` (default 240). Then the rotation goes
+  ahead: Den asks for a handoff that lists each item still running (its
+  ID, what it was doing, its branch, and for a helper its own handoff
+  file, `handoffs/helper-<id>.md` in the agent's files folder). The
+  handoff check refuses one that leaves an item out, and the new
+  session's first prompt tells it to start each one again.
+
+  ```yaml
+  agents:
+    rotation_wait_minutes: 240 # minutes, above 0
+  ```
+
   A session that ends without Den asking (issue 926): no stop, restart
   or relaunch from Den or a person, such as a signal from outside Den or
   a crash. Den's sweep writes one audit row with the exit code. Exit 0
   (the agent or person quit it) is left down. Otherwise the bell says so
   and Den brings the agent back, at most once per window: it resumes it, or relaunches it
   from its handoff when its rotation is ready and on_due is auto. A
-  second such exit within `agents.unasked_exit_window_minutes` (default
-  10) is told in the bell and left down; 0 never brings one back.
+  second such exit within `agents.unasked_exit_window_minutes` (default 10) is told in the bell and left down; 0 never brings one back.
 
   ```yaml
   agents:

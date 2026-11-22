@@ -567,7 +567,12 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
   github: GITHUB_HELP,
-  feedback: FEEDBACK_HELP,
+  feedback: {
+    ...FEEDBACK_HELP,
+    usage: FEEDBACK_HELP.usage.replace(/^report/, "feedback"),
+  },
+  // Issue 565: Report from a shell, for the person and for agents.
+  report: FEEDBACK_HELP,
   verify: VERIFY_HELP,
 };
 
@@ -627,6 +632,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "notifications",
   "github",
   "feedback",
+  "report",
   "verify",
   "service",
   "theme",
@@ -668,8 +674,9 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   // The shared GitHub watcher's status file, no org data.
   "github",
   // FB: Den's own report routes; a report matters most when the config is
-  // what's wrong.
+  // what's wrong. Issue 565: `report` is the same command.
   "feedback",
+  "report",
 ]);
 
 function configCheckedCommand(command: string): boolean {
@@ -1224,6 +1231,7 @@ class DenCLI {
           break;
 
         case "feedback":
+        case "report":
           process.exitCode = await cmdFeedback(args.slice(1));
           break;
 
