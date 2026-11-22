@@ -2225,6 +2225,21 @@
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.server.sessions_max": "Terminals at once",
+    "set.server.sessions_max.d":
+      "How many plain terminals may run at once. Agents never count. A new one past this is refused, and says so. __DEN_CLI__ config sessions.max_concurrent=8",
+    "set.server.sessions_close_grace": "Terminal close grace",
+    "set.server.sessions_close_grace.d":
+      "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_pty_close": "Terminal close after exit",
+    "set.server.sessions_pty_close.d":
+      "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    "set.server.sessions_pty_warn": "Terminal count warning",
+    "set.server.sessions_pty_warn.d":
+      "Doctor fails when the terminal host holds more terminals than this. __DEN_CLI__ config sessions.pty_warn_above=400",
+    "set.server.sessions_pty_machine": "Machine terminal warning, in percent",
+    "set.server.sessions_pty_machine.d":
+      "Doctor fails when the terminals in use on this machine reach this share of its limit. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
     "set.agents.hook_wait": "Agent hook wait",
     "set.agents.hook_wait.d":
       "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",

@@ -138,6 +138,14 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 609: how long Den's process lookups wait.
   process_lookup: { first_seconds: true, retry_seconds: true },
+  // Issue 532: the terminal limits (user.yml sessions.*).
+  sessions: {
+    max_concurrent: true,
+    close_grace_seconds: true,
+    pty_close_seconds: true,
+    pty_warn_above: true,
+    pty_machine_warn_percent: true,
+  },
   // Issue 609: how agents' hooks wait for Den, and retry.
   agent_hooks: {
     timeout_seconds: true,
@@ -339,6 +347,12 @@ describe("the settings inventory (R21)", () => {
         // Issue 609: how long Den's process lookups wait.
         "process_lookup.first_seconds",
         "process_lookup.retry_seconds",
+        // Issue 532: the terminal limits.
+        "sessions.close_grace_seconds",
+        "sessions.max_concurrent",
+        "sessions.pty_close_seconds",
+        "sessions.pty_machine_warn_percent",
+        "sessions.pty_warn_above",
         // Issue 609: how agents' hooks wait for Den, and retry.
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",

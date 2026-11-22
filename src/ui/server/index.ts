@@ -5194,6 +5194,21 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       const [first, retry] = lookupTimeouts({}, () => user);
       return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
     })(),
+    // Issue 532: the terminal limits in force (user.yml over den.yml).
+    sessions: (() => {
+      try {
+        const c = readSessionsConfig(undefined, user);
+        return {
+          max_concurrent: c.maxConcurrent,
+          close_grace_seconds: c.closeGraceSeconds,
+          pty_close_seconds: c.ptyCloseSeconds,
+          pty_warn_above: c.ptyWarnAbove,
+          pty_machine_warn_percent: c.ptyMachineWarnPercent,
+        };
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 742: how long a held write waits for the person's Allow.
     held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
     // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
@@ -9149,6 +9164,7 @@ async function handleRequest(
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
+          sessions?: unknown;
           held_writes?: unknown;
           github?: unknown;
           embed?: unknown;
@@ -9213,6 +9229,7 @@ async function handleRequest(
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
+            sessions: body.sessions,
             held_writes: body.held_writes,
             github: body.github,
           });
