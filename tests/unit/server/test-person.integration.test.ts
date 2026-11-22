@@ -86,11 +86,10 @@ async function startDen(name: string, flag: boolean): Promise<Den> {
     },
     { timeoutMs: 40_000 },
   );
-  // The CLI finds its server by web.port. An agent's token from this test
-  // process (not an agent's session) is let through to the route.
+  // The CLI finds its server by web.port.
   fs.writeFileSync(
     path.join(d.root, "config", "local", "user.yml"),
-    `web:\n  port: ${s.port}\nagents:\n  token_binding: false\n`,
+    `web:\n  port: ${s.port}\n`,
   );
   return { ...d, port: s.port, server: s.server };
 }
@@ -287,7 +286,19 @@ describe("2. on a test bed --test-person acts as the person, on the record", () 
       { authorization: `Bearer ${token}`, "x-den-test-person": "1" },
       { command: "agents stop" },
     );
-    expect([r.status, r.json.code]).toEqual([403, "test_person_refused"]);
+    // Refused before any route: by the path's own check, or first by the
+    // token's binding to its agent's processes (request-guard-test-person
+    // has the path's check alone).
+    expect(r.status).toBe(403);
+    expect(["test_person_refused", "agent_token_elsewhere"]).toContain(
+      r.json.code,
+    );
+    expect(
+      auditRows(bed).some(
+        (x) =>
+          x.verb === "test-person" && String(x.detail).includes("agents stop"),
+      ),
+    ).toBe(false);
   });
 });
 

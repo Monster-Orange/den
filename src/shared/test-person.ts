@@ -82,6 +82,6 @@ export function notTestBedRefusal(configFile = "config/den.yml"): string {
 export function testPersonCredentialRefusal(): string {
   return (
     "--test-person is refused: it works only with the person's own token, from this " +
-    "computer, never with an agent's token or a browser session. Nothing ran."
+    "computer, never with an agent's token or a browser sign-in. Nothing ran."
   );
 }
