@@ -1,28 +1,33 @@
-# Releases @monster-orange/den (CONTRIBUTING › Releasing). npm's trusted publishing only: no token anywhere, in CI or out. npm
-# trusts this file by its name: never rename it.
-# - A push to main whose package.json version isn't on npm yet IS the release: the gates, the tarball and SHA256SUMS,
-#   the tag v<version> (made here, unless it already tags this commit or one before it), `npm publish` over OIDC with
-#   provenance, and a GitHub release with the tarball and SHA256SUMS. A version already on npm: nothing runs past the
-#   check. No human step, after the package's first publish (by hand, once: until then the check stops here too).
-# - By hand (workflow_dispatch): a dry run. The same gates and the same tarball, kept with SHA256SUMS as an artifact:
-#   the one-time first publish of a package (which trusted publishing can't do) is that tarball, from a maintainer's machine.
+# Releases @monster-orange/den (CONTRIBUTING › Releasing, docs/releasing.md). npm's trusted publishing only: no token
+# anywhere, in CI or out. npm trusts this file by its name: never rename it.
+# - Issue 922: a release publishes the exact tree of the dev tag that passed its test bed, never main's HEAD. It starts
+#   by hand (workflow_dispatch) with `promote`: the release's version commit, on its release branch. Its first parent
+#   is the signed dev tag v<version>-dev.N, whose commit has the bed's PASS (a commit status, release/bed); it changes
+#   only the version files (scripts/release-promote.sh decides). Then the gates, the tarball (with release.json) and
+#   SHA256SUMS (naming the dev tag), the tag v<version> on that commit, `npm publish` over OIDC with provenance, and a
+#   GitHub release.
+# - A push to main runs nothing here: main takes merges at any time, and merging the release's version commit into
+#   main afterwards publishes nothing (v<version> already tags it, and npm has it).
+# - By hand without `promote`: a dry run. The same gates and the same tarball, kept with SHA256SUMS as an artifact:
+#   the one-time first publish of a package (which trusted publishing can't do) is that tarball, from a maintainer's
+#   machine.
 # - Every dev tag (v<version>-dev.N): release-dry-run.yml runs the same gates and tarball (release-gates.yml, called
 #   by both) with the versions the release will carry, and publishes nothing (issue 615).
-# A prerelease version (0.1.0-dev.0) never publishes: main can carry work toward a
-# version without releasing it.
-# There is no tag trigger: a version is released from main, once (npm refuses to publish a version twice).
 # Only the npm tarball ships: no raw binaries.
 name: release
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      promote:
+        description: "The release's version commit (its parent is the passed dev tag); empty: a dry run"
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
-# one run at a time, in order: a run that starts after a release finds its version on npm and stops
+# one run at a time, in order: a second promotion of the same version finds v<version> tagged and stops
 concurrency:
   group: release
   cancel-in-progress: false
@@ -32,69 +37,49 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      version: ${{ steps.check.outputs.version }}
-      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.promote.outputs.version || steps.version.outputs.version }}
+      release: ${{ steps.promote.outputs.release == 'true' }}
+      ref: ${{ steps.promote.outputs.ref }}
+      dev_tag: ${{ steps.promote.outputs.dev_tag }}
+      dev_sha: ${{ steps.promote.outputs.dev_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # the parent too: only the commit that set the version releases (below)
-          fetch-depth: 2
+          # the dev tags and the history, to find the candidate and diff against it
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.14.0
-      - name: Is this version on npm yet?
-        id: check
+      - name: The version (a dry run's)
+        id: version
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: May this commit be released?
+        id: promote
+        if: inputs.promote != ''
         env:
+          PROMOTE: ${{ inputs.promote }}
           NPM_SCOPE: ${{ vars.NPM_SCOPE }}
+          RELEASE_BED_CONTEXT: ${{ vars.RELEASE_BED_CONTEXT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p 'require("./package.json").version')
-          name=$(node -p 'require("./package.json").name')
+          name=$(git show "$PROMOTE:package.json" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).name')
           case "$name" in "$NPM_SCOPE"/*) ;; *) echo "::error::$name isn't under the repository variable NPM_SCOPE ($NPM_SCOPE)"; exit 1;; esac
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          # on npm: it prints the version. Not on npm: nothing, or E404. Any other error (the registry down) fails the
-          # run rather than guess.
-          if found=$(npm view "$name@$version" version 2> npm-view.err); then
-            if [ "$found" = "$version" ]; then release=false; else release=true; fi
-          elif grep -q E404 npm-view.err; then
-            release=true
-          else
-            cat npm-view.err; exit 1
+          # trusted publishing can't create a package: its first publish is by hand (CONTRIBUTING › Releasing)
+          if ! npm view "$name" name > /dev/null 2> npm-view.err; then
+            cat npm-view.err; echo "::error::$name isn't on npm yet (or npm couldn't be asked): its first publish is by hand"; exit 1
           fi
-          # trusted publishing can't create a package: until a maintainer's first publish (README), nothing to do here
-          if [ "$release" = true ] && ! npm view "$name" name > /dev/null 2> npm-view.err; then
-            if grep -q E404 npm-view.err; then
-              echo "::warning::$name isn't on npm yet: its first publish is by hand (CONTRIBUTING › Releasing)"; release=false
-            else
-              cat npm-view.err; exit 1
-            fi
-          fi
-          # npm shows a new version 20-60 minutes after its publish: until then any later push to main still carrying
-          # that version reads "not on npm" too, and would publish it again from a commit with unreleased code. Only
-          # the commit that set the version releases: its first parent has another version, and no tag v<version>
-          # names another commit.
-          if [ "$release" = true ] && git cat-file -e HEAD^1 2> /dev/null; then
-            parent=$(git show HEAD^1:package.json | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).version')
-            if [ "$parent" = "$version" ]; then
-              echo "$version was set before this commit (its parent has it too): not published again"; release=false
-            fi
-          fi
-          if [ "$release" = true ]; then
-            # an annotated tag: the ^{} line is the commit it tags
-            tagged=$(git ls-remote origin "refs/tags/v$version^{}" "refs/tags/v$version" | sort -k2 -r | head -n 1 | cut -f1)
-            if [ -n "$tagged" ] && [ "$tagged" != "$(git rev-parse HEAD)" ]; then
-              echo "v$version already tags $tagged, not this commit: not published again"; release=false
-            fi
-          fi
-          case "$version" in *-*) echo "$version is a prerelease: not published"; release=false;; esac
-          if [ "$GITHUB_EVENT_NAME" != push ]; then release=false; fi
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "$name@$version: release=$release ($GITHUB_EVENT_NAME)"
+          sh scripts/release-promote.sh "$PROMOTE"
 
   # The gates and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615).
   gates:
     needs: check
-    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check.outputs.release == 'true' || inputs.promote == ''
     uses: ./.github/workflows/release-gates.yml
+    with:
+      ref: ${{ needs.check.outputs.ref }}
+      dev-tag: ${{ needs.check.outputs.dev_tag }}
+      dev-commit: ${{ needs.check.outputs.dev_sha }}
     secrets:
       DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
 
@@ -108,26 +93,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.check.outputs.ref }}
           fetch-depth: 0 # the history to place a tag in
           fetch-tags: true
       # Every gated candidate of this version (its tags v<version>-dev.N) is in this commit's history: a candidate
       # that passed its gate and never merged stops the release.
       - name: The gated candidates are in this release
-        run: sh scripts/release-ancestry.sh "${{ needs.check.outputs.version }}" "$GITHUB_SHA"
-      - name: The tag v<version>
+        run: sh scripts/release-ancestry.sh "${{ needs.check.outputs.version }}" "${{ needs.check.outputs.ref }}"
+      - name: The tag v<version>, on the promoted commit
         env:
           TAG: v${{ needs.check.outputs.version }}
+          REF: ${{ needs.check.outputs.ref }}
         run: |
-          # A tag already on this commit or one before it (a re-run, or a tag pushed by hand): keep it. A tag on a
-          # commit that isn't this one's ancestor: stop. A tag is never moved.
+          # A tag already on this commit (a re-run): keep it. A tag on another commit: stop. A tag is never moved.
           if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
-            if git merge-base --is-ancestor "$TAG^{commit}" "$GITHUB_SHA"; then
-              echo "$TAG already tags $(git rev-parse --short "$TAG^{commit}"), an ancestor of $GITHUB_SHA: kept"
+            if [ "$(git rev-parse "$TAG^{commit}")" = "$REF" ]; then
+              echo "$TAG already tags $(git rev-parse --short "$REF"): kept"
             else
-              echo "::error::$TAG tags $(git rev-parse --short "$TAG^{commit}"), which isn't on main before this commit"; exit 1
+              echo "::error::$TAG tags $(git rev-parse --short "$TAG^{commit}"), not the promoted $(git rev-parse --short "$REF")"; exit 1
             fi
           else
-            git tag "$TAG" "$GITHUB_SHA"
+            git tag "$TAG" "$REF"
             git push origin "refs/tags/$TAG"
           fi
 
@@ -182,7 +168,7 @@ jobs:
           name: release
           path: release
       - name: The GitHub release, with the tarball and SHA256SUMS
-        run: gh release create "$TAG" "release/${{ needs.gates.outputs.tarball }}" release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --title "@monster-orange/den $TAG" --generate-notes --verify-tag
+        run: gh release create "$TAG" "release/${{ needs.gates.outputs.tarball }}" release/SHA256SUMS release/release.json --repo "$GITHUB_REPOSITORY" --title "@monster-orange/den $TAG" --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ needs.check.outputs.version }}
@@ -193,7 +179,8 @@ jobs:
   # since, it skips. The kit changed with its version already on npm fails the job (scripts/kit-version.mjs).
   den-ui:
     # Issue 296: the kit ships only once both test halves pass, as Den does.
-    needs: [gates]
+    # Issue 922: from the promoted commit (a dry run: its own, as before).
+    needs: [check, gates]
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45
     permissions:
@@ -202,6 +189,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.check.outputs.ref }}
           # The commit npm's copy of the kit was built from must be in the history.
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
