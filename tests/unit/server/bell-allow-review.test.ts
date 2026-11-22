@@ -64,7 +64,7 @@ beforeAll(async () => {
   // A real held write's card: gate_box_set's, whose lines all have keys.
   const ops = gateBoxOps({
     store: () => new GateStore({ dir: tmp }),
-    audit: () => {},
+    audit: (() => ({})) as never,
   });
   const c = await ops.set.check({
     box: { name: "box1", ssh: "runner@box1.example", browser_slots: 2 },
@@ -97,10 +97,13 @@ async function needs(lang: string, open: string[] = []): Promise<string> {
   const t = (k: string) => s.messages[lang]?.[k] ?? s.messages.en[k] ?? k;
   g.window = { denShell: { t }, denApDetailLines: s.lines };
   const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
-  return bellPanel(
+  const p = bellPanel(
     { groups: [], waiting: [held], unread: 1 },
     { reviews: new Set(open) },
-  ).sections.needs as string;
+  );
+  // The panel is one of two shapes (items, or sections): it has sections.
+  if (!("sections" in p)) throw new Error("the bell has no sections");
+  return p.sections.needs as string;
 }
 
 /** The details lines the row shows, as text. */
