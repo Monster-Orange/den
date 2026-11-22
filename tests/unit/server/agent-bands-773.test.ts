@@ -283,3 +283,61 @@ describe("issue 773 (mock v3): the phone card", () => {
     expect(metaHtml({})).toBe("");
   });
 });
+
+describe("issue 773 + issue 96 (Vision's ruling): your drag order inside Working and Idle", () => {
+  it("A to Z until you drag; then your order sticks over A to Z", async () => {
+    const { bandsOf } = await mod();
+    const plain = bandsOf([ag("zeta", "idle"), ag("alpha", "idle")]);
+    expect(plain[0].rows.map((r) => r.agent)).toEqual(["alpha", "zeta"]);
+    const dragged = bandsOf([
+      ag("zeta", "idle", { place: 0 }),
+      ag("alpha", "idle", { place: 1 }),
+    ]);
+    expect(dragged[0].rows.map((r) => r.agent)).toEqual(["zeta", "alpha"]);
+  });
+
+  it("your order survives a state change: Working, then Idle, then Working again", async () => {
+    const { bandsOf } = await mod();
+    const rows = (st: string) => [
+      ag("zeta", st, { place: 0 }),
+      ag("alpha", st, { place: 1 }),
+    ];
+    for (const st of ["working", "idle", "working"])
+      expect(bandsOf(rows(st))[0].rows.map((r) => r.agent)).toEqual([
+        "zeta",
+        "alpha",
+      ]);
+  });
+
+  it("a new agent lands in its A-to-Z place among the ones you haven't dragged", async () => {
+    const { bandsOf } = await mod();
+    const b = bandsOf([
+      ag("zeta", "idle", { place: 0 }),
+      ag("alpha", "idle", { place: 1 }),
+      ag("beta", "idle"),
+      ag("omega", "idle"),
+    ]);
+    // A to Z: alpha beta omega zeta. Your two (alpha, zeta) hold their
+    // slots in your order (zeta, alpha); beta and omega, not dragged,
+    // keep their A-to-Z places.
+    expect(b[0].rows.map((r) => r.agent)).toEqual([
+      "zeta",
+      "beta",
+      "omega",
+      "alpha",
+    ]);
+  });
+
+  it("the page can move a running row among its project's agents in its band (keyboard and drag)", async () => {
+    const { bandGroup } = await mod();
+    const rows = [
+      ag("alpha", "idle", { place: 1 }),
+      ag("zeta", "idle", { place: 0 }),
+      ag("other", "idle", { workspace: "south" }),
+      ag("planner", "needs", { attnSince: T(3) }),
+    ];
+    expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
+    // Needs you keeps the longest wait first: nothing moves there.
+    expect(bandGroup(rows, rows[3])).toEqual([]);
+  });
+});
