@@ -133,6 +133,8 @@ describe("agents start", () => {
         "grants",
         // 0.4.8: launched on resumeToken, so a resume continues it.
         "launched",
+        // Issue 52: every conversation it has had (here: its first).
+        "conversations",
         // AG-12: its model's version ("latest": the alias); AG-10.9: what
         // it overrides of its persona (here: the model).
         "version",
