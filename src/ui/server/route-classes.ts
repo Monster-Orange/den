@@ -169,6 +169,8 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/release/branches",
     "/api/release/deploy/active",
     "/api/changelog",
+    // Issue 52: the Coach's settings and last report (counts only).
+    "/api/coach",
     "/api/sudo-password/status",
     "/api/sudo-password/vault-status",
     "/api/scope",
@@ -425,6 +427,16 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/web/fixture-person",
     "issue 810: whether this is a test install and its fixture person is set up (never the secret)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/run",
+    "issue 52: the Coach's Run now, a person's (read-only: it reads transcripts and saves counts)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/dismiss",
+    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
   ),
   M(
     ["POST"],
