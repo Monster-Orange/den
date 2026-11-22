@@ -80,14 +80,26 @@ function listTests(dir = "tests") {
     .sort();
 }
 
-/** The public files a page or module loads (not shell.js: it is "everything"). */
+const KIT = "packages/den-ui/src";
+/** A loaded file's path in the repo: `kit/x.js` is the kit's (served at /kit/). */
+const repoPath = (f) =>
+  f.startsWith("kit/") ? `${KIT}/${f.slice(4)}` : `${PUB}/${f}`;
+
+/**
+ * The files a page or module loads (not shell.js: it is "everything").
+ * Testing policy 1: `/kit/x.js` is the kit's module (kit/x.js), and a kit
+ * module's own `./y.js` imports are kit modules too, so a kit change runs
+ * the specs of the pages that load it.
+ */
 function imports(file) {
   const out = new Set();
-  for (const m of read(`${PUB}/${file}`).matchAll(
+  const inKit = file.startsWith("kit/");
+  for (const m of read(repoPath(file)).matchAll(
     /["'`(]\.?\/(kit\/)?([a-z0-9-]+\.(?:js|css))/g,
   )) {
-    if (m[1] || m[2] === "shell.js") continue;
-    if (fs.existsSync(path.join(ROOT, PUB, m[2]))) out.add(m[2]);
+    if (m[2] === "shell.js") continue;
+    const f = m[1] || inKit ? `kit/${m[2]}` : m[2];
+    if (fs.existsSync(path.join(ROOT, repoPath(f)))) out.add(f);
   }
   return [...out];
 }
@@ -269,11 +281,14 @@ export function buildRules(map = readMap()) {
     .map(([key, files]) => {
       const ps = new Set(key.split(","));
       return {
-        when: files.sort().map((f) => `${PUB}/${f}`),
+        when: files.map(repoPath).sort(),
         run: specs.filter(
           (s) => unknown.includes(s) || [...opens[s]].some((p) => ps.has(p)),
         ),
         why: ps.size > 3 ? `loaded by ${ps.size} pages` : [...ps].join(", "),
+        // Testing policy 1: how many pages load these files (the selector's
+        // shared_pages setting treats a widely loaded file as shared).
+        pages: ps.size,
       };
     });
 

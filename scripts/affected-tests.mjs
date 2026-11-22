@@ -82,6 +82,11 @@ export function validateMap(map) {
   if (!Array.isArray(map.smoke)) problems.push("smoke: a list of test files");
   if (map.browser !== undefined && !["changed", "mapped"].includes(map.browser))
     problems.push('browser: "changed" or "mapped"');
+  if (
+    map.shared_pages !== undefined &&
+    !(Number.isInteger(map.shared_pages) && map.shared_pages >= 1)
+  )
+    problems.push("shared_pages: a whole number, 1 or more");
   if (!Array.isArray(map.rules))
     problems.push("rules: a list of {when, run, why}");
   for (const [i, r] of (map.rules ?? []).entries()) {
@@ -145,12 +150,41 @@ export function selectTests({
     if (!files.has(f)) files.set(f, []);
     if (!files.get(f).includes(why)) files.get(f).push(why);
   };
+  const tests = new Set(allTests);
   if (allBecause.length) {
     for (const f of allTests) add(f, "everything");
+    // Testing policy 1: the reasons a browser spec is reached, besides the
+    // everything list, so it runs on the pull request.
+    if (map.browser === "changed")
+      reasons(
+        add,
+        changed,
+        related,
+        tests,
+        map,
+        importersOf,
+        mentioned,
+        allTests,
+      );
     for (const s of map.smoke) if (files.has(s)) add(s, "smoke");
     return { all: true, allBecause, ...deferBrowser(files, changed, map) };
   }
-  const tests = new Set(allTests);
+  reasons(add, changed, related, tests, map, importersOf, mentioned, allTests);
+  for (const s of map.smoke) if (tests.has(s)) add(s, "smoke");
+  return { all: false, allBecause, ...deferBrowser(files, changed, map) };
+}
+
+/** Changed, related, and each map rule's tests, with their reasons. */
+function reasons(
+  add,
+  changed,
+  related,
+  tests,
+  map,
+  importersOf,
+  mentioned,
+  allTests,
+) {
   for (const f of changed) if (tests.has(f)) add(f, "changed");
   for (const f of related) if (tests.has(f)) add(f, "related");
   for (const rule of map.rules) {
@@ -167,24 +201,35 @@ export function selectTests({
       for (const t of mentioned)
         if (tests.has(t)) add(t, `${why}: mentions a changed key or its text`);
   }
-  for (const s of map.smoke) if (tests.has(s)) add(s, "smoke");
-  return { all: false, allBecause, ...deferBrowser(files, changed, map) };
 }
 
 /**
  * Testing policy 1 (mo-commons specs/platform/TESTING-POLICY.md): with the
- * map's `browser: "changed"`, a pull request runs only the browser specs it
- * changes, plus the smoke set. Every other browser spec it would have run
- * is `deferred`: main's full run (every push to main runs every test) and
- * the nightly cover it. Without the setting, every selected spec runs.
+ * map's `browser: "changed"`, a pull request never runs the whole browser
+ * suite. A browser spec runs when the change reaches it: it changed, it is
+ * in the smoke set, it imports a changed file (jest's graph), it opens a
+ * page that loads a changed file (a map rule), or it names a changed key.
+ * A spec reached only through the everything list is `deferred`: the merge
+ * queue runs it once, before main, and every push to main runs it again.
+ * Without the setting, every selected spec runs.
  */
 const isBrowserSpec = (f) => f.endsWith(".browser.test.ts");
 function deferBrowser(files, changed, map) {
   if (map.browser !== "changed") return { files, deferred: new Map() };
   const keep = new Set([...changed, ...(map.smoke ?? [])]);
   const deferred = new Map();
+  // A reason that reaches a spec only through a file most pages load (more
+  // than shared_pages of them) is as broad as the everything list.
+  const wide = new Set(
+    (map.rules ?? [])
+      .filter((r) => map.shared_pages && r.pages > map.shared_pages)
+      .map((r) => r.why),
+  );
+  const broad = (w) =>
+    w === "everything" ||
+    [...wide].some((x) => w.startsWith("mapped: ") && w.endsWith(`(${x})`));
   for (const [f, why] of files)
-    if (isBrowserSpec(f) && !keep.has(f)) {
+    if (isBrowserSpec(f) && !keep.has(f) && why.every(broad)) {
       deferred.set(f, why);
       files.delete(f);
     }

@@ -31,11 +31,13 @@ interface Selection {
   deferred?: Record<string, string[]>;
 }
 interface Map {
-  /** Testing policy 1: "changed" runs only the browser specs a PR changes. */
+  /** Testing policy 1: "changed" never runs the whole browser suite on a PR. */
   browser?: "changed" | "mapped";
+  /** A file loaded by more than this many pages counts as shared. */
+  shared_pages?: number;
   everything: string[];
   smoke: string[];
-  rules: { when: string[]; run: string[]; why: string }[];
+  rules: { when: string[]; run: string[]; why: string; pages?: number }[];
 }
 interface Case {
   file: string;
@@ -254,7 +256,7 @@ describe("testing policy 1: a pull request runs only the browser specs it change
     "tests/lib.test.ts",
   ];
 
-  it("a page change runs no spec of that page; they're left to main's full run, with the reason", () => {
+  it("a page change runs that page's specs; nothing waits", () => {
     const s = select({
       changed: ["src/public/a-page.js"],
       allTests: tests,
@@ -262,16 +264,12 @@ describe("testing policy 1: a pull request runs only the browser specs it change
       map,
     });
     expect(Object.keys(s.files).sort()).toEqual([
+      "tests/a-one.browser.test.ts",
+      "tests/a-two.browser.test.ts",
       "tests/s.browser.test.ts",
       "tests/smoke.test.ts",
     ]);
-    expect(Object.keys(s.deferred ?? {}).sort()).toEqual([
-      "tests/a-one.browser.test.ts",
-      "tests/a-two.browser.test.ts",
-    ]);
-    expect(s.deferred!["tests/a-one.browser.test.ts"]).toEqual([
-      "mapped: src/public/a-page.js (page a)",
-    ]);
+    expect(s.deferred ?? {}).toEqual({});
   });
 
   it("a changed browser spec runs", () => {
@@ -306,6 +304,64 @@ describe("testing policy 1: a pull request runs only the browser specs it change
 
   it("Den's own map sets it", () => {
     expect(MAP.browser).toBe("changed");
+    expect(MAP.shared_pages).toBe(3);
+  });
+
+  it("a shared file still runs the browser specs that import it (jest's graph)", () => {
+    const s = select({
+      changed: ["src/guard.ts"],
+      allTests: tests,
+      related: ["tests/a-one.browser.test.ts"],
+      map,
+    });
+    expect(s.files["tests/a-one.browser.test.ts"]).toContain("related");
+    expect(s.deferred?.["tests/a-two.browser.test.ts"]).toEqual(["everything"]);
+  });
+
+  it("a file most pages load counts as shared (shared_pages); a page's own file doesn't", () => {
+    const wide: Map = {
+      ...map,
+      shared_pages: 3,
+      rules: [
+        {
+          when: ["src/public/a-page.js"],
+          run: ["tests/a-*.browser.test.ts"],
+          why: "page a",
+          pages: 1,
+        },
+        {
+          when: ["src/public/bell.js"],
+          run: ["tests/a-*.browser.test.ts"],
+          why: "loaded by 12 pages",
+          pages: 12,
+        },
+      ],
+    };
+    const bell = select({
+      changed: ["src/public/bell.js"],
+      allTests: tests,
+      related: [],
+      map: wide,
+    });
+    expect(Object.keys(bell.deferred ?? {}).sort()).toEqual([
+      "tests/a-one.browser.test.ts",
+      "tests/a-two.browser.test.ts",
+    ]);
+    const page = select({
+      changed: ["src/public/a-page.js"],
+      allTests: tests,
+      related: [],
+      map: wide,
+    });
+    expect(Object.keys(page.files)).toContain("tests/a-one.browser.test.ts");
+  });
+
+  it("a kit module (served at /kit/) maps to the specs of the pages that load it", () => {
+    const rule = MAP.rules.find((r) =>
+      r.when.includes("packages/den-ui/src/busy.js"),
+    );
+    expect(rule).toBeDefined();
+    expect(rule!.run.length).toBeGreaterThan(0);
   });
 });
 
@@ -377,10 +433,7 @@ describe("the map (tests/affected-map.json)", () => {
     });
     expect(s.all).toBe(false);
     const files = Object.keys(s.files);
-    // Testing policy 1: the page's specs are left to main's full run.
-    expect(Object.keys(s.deferred ?? {})).toContain(
-      "tests/unit/server/verify-page.browser.test.ts",
-    );
+    expect(files).toContain("tests/unit/server/verify-page.browser.test.ts");
     for (const f of files) {
       const why = s.files[f].join("; ");
       expect([
@@ -524,10 +577,12 @@ describe("the replay's real failures stay caught", () => {
     expect(missed).toEqual([]);
     // Testing policy 1: the real browser failures a pull request now leaves
     // to main's full run, by name. A new one here is a choice to see.
-    // Measured 11-22: 37 of the 92 real failures (30 spec files), 35 of
-    // them reached through a shared file (the "everything" list).
+    // Measured 11-22: with only changed specs, 37 of the 92 real failures
+    // were left to main (35 through a shared file). With the import graph,
+    // page rules, kit modules and shared_pages 3: 10, which the merge queue
+    // runs before main.
     const later = rows.filter((r) => r.leftToMain);
-    expect(later.length).toBe(37);
+    expect(later.length).toBe(10);
     expect(later.every((r) => r.file.endsWith(".browser.test.ts"))).toBe(true);
   });
 
@@ -925,7 +980,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
       "tests/x-imports-catalog.test.ts",
     ])
       expect([f, files.includes(f)]).toEqual([f, true]);
-    // Testing policy 1: the browser specs are picked, then left to main's run.
+    // Testing policy 1: a spec a key or page reaches runs; the rest wait.
     const later = s.deferred ?? {};
     for (const f of [
       "tests/unit/server/i18n-pages.browser.test.ts",
@@ -938,7 +993,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
     expect(s.files["tests/x-imports-catalog.test.ts"].join()).toMatch(
       /imports en-catalog\.ts/,
     );
-    expect(later["tests/unit/server/bell.browser.test.ts"].join()).toMatch(
+    expect(s.files["tests/unit/server/bell.browser.test.ts"].join()).toMatch(
       /mentions a changed key/,
     );
     // A spec that neither checks every page's words, switches language,
