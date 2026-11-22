@@ -36,6 +36,10 @@ export interface GateSlotView {
   claimBy?: string;
   /** Issue 625: the test box it holds a slot on (absent: this machine). */
   box?: string;
+  /** Issue 1033: a held browser slot's machine: the box's name, or "local". */
+  machine?: string;
+  /** Issue 1033: why a run that could go to a box stays here. */
+  hostWhy?: string;
   /** Issue 625: a waiter that may go to a box: "any", or the box's name. */
   where?: string;
   /** Issue 625 clause 11: boxes this waiter can't use, and why. */
@@ -74,11 +78,33 @@ export interface GateBoxView {
   name: string;
   slots: number;
   held: number;
-  state: "open" | "held" | "unreachable" | "low" | "unchecked";
+  /** "off": turned off; "window": outside its window (no contact either). */
+  state:
+    | "open"
+    | "held"
+    | "unreachable"
+    | "low"
+    | "unknown"
+    | "unchecked"
+    | "off"
+    | "window";
   reason?: string;
   checkedAt?: string;
   /** Issue 1017: the Playwright versions its servers serve, when set. */
   playwrightVersions?: string[];
+  /** Its window, "HH:MM-HH:MM" in the gate machine's local time. */
+  window?: string;
+  /** Outside its window: when it opens, the gate machine's "HH:MM"... */
+  opens?: string;
+  /** ...and that moment (ISO), for a page to show in its viewer's time. */
+  opensAt?: string;
+}
+
+/** Why a box is skipped by choice, in words (gate status, doctor). */
+export function boxOffWords(b: GateBoxView): string | undefined {
+  if (b.state === "off") return "turned off";
+  if (b.state === "window") return `outside its window (opens ${b.opens})`;
+  return undefined;
 }
 
 /** Issue 1017: a box's Playwright versions, never its addresses. */
@@ -94,12 +120,28 @@ export function gateBoxesView(
   slots: { box?: string; granted: boolean }[],
 ): GateBoxView[] {
   const states = store.boxStates();
+  const off = store.boxesOff();
   return store.boxes().map((b) => {
     const st = states[b.name];
-    return {
+    const o = off[b.name];
+    const base = {
       name: b.name,
       slots: b.browser_slots,
       held: slots.filter((s) => s.granted && s.box === b.name).length,
+      ...(b.window ? { window: b.window } : {}),
+    };
+    // Turned off or outside its window: never checked, whatever it said.
+    if (o)
+      return o.why === "off"
+        ? { ...base, state: "off" as const }
+        : {
+            ...base,
+            state: "window" as const,
+            opens: o.opens,
+            opensAt: new Date(o.opensAt).toISOString(),
+          };
+    return {
+      ...base,
       state: st?.state ?? "unchecked",
       ...(st?.reason ? { reason: st.reason } : {}),
       ...(st?.at ? { checkedAt: st.at } : {}),
@@ -117,7 +159,14 @@ export function gateView(store: GateStore, now = Date.now()) {
     if (e.grantedAt || !e.where) return [];
     return boxes
       .filter((b) => e.where === "any" || e.where === b.name)
-      .map((b) => ({ box: b.name, reason: boxSkipReason(e, b) }))
+      .map((b) => ({
+        box: b.name,
+        // Issue 1033: a default pick leaves out a box that can't serve it.
+        reason:
+          e.onlyBoxes && !e.onlyBoxes.includes(b.name)
+            ? "it declares no Playwright version: a run takes it only with --box"
+            : boxSkipReason(e, b),
+      }))
       .filter((x) => x.reason);
   };
   const held = windowHeld(all, settings.classes, now);
@@ -142,6 +191,10 @@ export function gateView(store: GateStore, now = Date.now()) {
     // Issue 714: an agent's MCP slot granted while it waited, unclaimed.
     ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
     ...(e.box ? { box: e.box } : {}),
+    ...(e.grantedAt && e.kind === "browser"
+      ? { machine: e.box ?? "local" }
+      : {}),
+    ...(e.hostWhy ? { hostWhy: e.hostWhy } : {}),
     ...(!e.grantedAt && e.where ? { where: e.where } : {}),
     ...(skipsOf(e).length ? { skips: skipsOf(e) } : {}),
     ...(e.browserEndpoint ? { browserEndpoint: e.browserEndpoint } : {}),

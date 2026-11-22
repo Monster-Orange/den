@@ -32,18 +32,24 @@ import { writeFileAtomic } from "../atomic-write.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
+  BOX_NAME_RE,
   assign,
   boxCapOf,
+  boxOff,
+  boxRecheckSeconds,
   boxesOf,
   boxesWanted,
   checkBox,
+  checkBoxDefault,
   freshNo,
   freshYes,
+  parseHostOnly,
   withMemory,
   readBoxStates,
   realBoxProbe,
   writeBoxStates,
   type BoxCap,
+  type BoxOff,
   type BoxProbe,
   type BoxSettings,
   type BoxState,
@@ -128,16 +134,26 @@ export type GateSettingsPatch = {
   class_order?: string | null;
   class_map?: string | null;
   class_windows?: string | null;
+  /** Issue 1033: where a browser run with no --box goes: any or local. */
+  browser_box_default?: string | null;
+  /** Issue 1033: projects and label patterns kept on this machine. */
+  browser_host_only?: string | null;
 };
 
 /** Issue 803: the settings that are a line of text, and their checks. */
 export const GATE_TEXT: Record<
-  "class_order" | "class_map" | "class_windows",
+  | "class_order"
+  | "class_map"
+  | "class_windows"
+  | "browser_box_default"
+  | "browser_host_only",
   (v: string) => unknown
 > = {
   class_order: parseClassOrder,
   class_map: parseClassMap,
   class_windows: parseClassWindows,
+  browser_box_default: checkBoxDefault,
+  browser_host_only: parseHostOnly,
 };
 type GateNumberKey = Exclude<keyof GateSettingsPatch, keyof typeof GATE_TEXT>;
 
@@ -310,6 +326,10 @@ export interface GateEventRow {
   to?: string;
   /** Issue 803: its class, when classes are set. */
   class?: string;
+  /** Issue 1033: granted (browser): the test box's name, or "local". */
+  machine?: string;
+  /** Issue 1033: why a run that could go to a box stays here. */
+  hostWhy?: string;
 }
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
@@ -376,6 +396,14 @@ function browserEndpointOf(kind: GateKind, v: string | undefined) {
     ? { browserEndpoint: v }
     : {};
 }
+
+/** Issue 1033: one line, at most 200 characters, no control characters. */
+const oneLineOf = (r: string) =>
+  r
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, " ")
+    .trim()
+    .slice(0, 200);
 
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
@@ -509,6 +537,10 @@ export class GateStore {
             "browser_requires_container",
             browserRequiresContainerDefault(this.platform) ? 1 : 0,
           ) === 1,
+        // Issue 1033: a browser run with no --box: here or a test box.
+        browserBoxDefault:
+          text("browser_box_default").trim() === "local" ? "local" : "any",
+        browserHostOnly: text("browser_host_only"),
         // Issue 803: priority classes; none set is today's queue (and
         // today's settings, key for key).
         ...classSettings(
@@ -800,6 +832,9 @@ export class GateStore {
         event: "granted",
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
         ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
+        // Issue 1033: the machine a browser run got, and why it stayed.
+        ...(e.kind === "browser" ? { machine: e.box ?? "local" } : {}),
+        ...(e.hostWhy ? { hostWhy: e.hostWhy } : {}),
       });
     }
     if (caps.used) writeBoxStates(this.dir, caps.states);
@@ -914,6 +949,10 @@ export class GateStore {
     project?: string;
     /** A browser run's declared container browser, as recorded. */
     browserEndpoint?: string;
+    /** Issue 1033: why a run that could go to a box stays here. */
+    hostWhy?: string;
+    /** Issue 1033: a default pick's boxes (the others can't serve it). */
+    onlyBoxes?: string[];
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -943,6 +982,16 @@ export class GateStore {
           ? { pwVersion: o.pwVersion }
           : {}),
         ...browserEndpointOf(o.kind, o.browserEndpoint),
+        ...(o.kind === "browser" && o.hostWhy
+          ? { hostWhy: oneLineOf(o.hostWhy) }
+          : {}),
+        ...(o.kind === "browser" && o.where === "any" && o.onlyBoxes
+          ? {
+              onlyBoxes: o.onlyBoxes
+                .filter((n) => BOX_NAME_RE.test(n))
+                .slice(0, 64),
+            }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -1316,6 +1365,33 @@ export class GateStore {
     });
   }
 
+  /**
+   * Turns a test box on or off (a person's). Off: no new slot and no
+   * contact; its running slots finish. The box, or null when none is set.
+   */
+  setBoxEnabled(name: string, on: boolean): GateBox | null {
+    return this.locked(() => {
+      const list = this.boxes();
+      const b = list.find((x) => x.name === name);
+      if (!b) return null;
+      if (on) delete b.enabled;
+      else b.enabled = false;
+      this.writeBoxes(list, name);
+      return b;
+    });
+  }
+
+  /** The boxes skipped now (turned off, or outside their window), and why. */
+  boxesOff(): Record<string, BoxOff> {
+    const now = this.now();
+    const out: Record<string, BoxOff> = {};
+    for (const b of this.boxes()) {
+      const off = boxOff(b, now);
+      if (off) out[b.name] = off;
+    }
+    return out;
+  }
+
   /** What the last check of each box found. */
   boxStates(): Record<string, BoxState> {
     return readBoxStates(this.dir);
@@ -1326,9 +1402,12 @@ export class GateStore {
     const boxes = this.boxes();
     const states = boxes.length ? readBoxStates(this.dir) : {};
     const s = this.settings();
-    const caps: BoxCap[] = boxes.map((b) =>
-      boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
-    );
+    // Turned off, or outside its window: no new slot (running ones finish).
+    const caps: BoxCap[] = boxes
+      .filter((b) => !boxOff(b, now))
+      .map((b) =>
+        boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
+      );
     return { boxes, states, caps, used: false };
   }
 
@@ -1350,9 +1429,10 @@ export class GateStore {
    * gives the slots. Called by whoever waits (gate run, a runner's ask),
    * never on a timer. A box is checked only when a slot on it is about to
    * be given; a held or unreachable box is not checked again for
-   * box_recheck_seconds. The checks run outside the lock. A held or
-   * unreachable box is passed over in the same call: the run goes to the
-   * next box, or waits.
+   * its recheck_seconds (else box_recheck_seconds). A box turned off, or
+   * outside its window, is never contacted. The checks run outside the
+   * lock. A held or unreachable box is passed over in the same call: the
+   * run goes to the next box, or waits.
    */
   async checkBoxes(): Promise<void> {
     const boxes = this.boxes();
@@ -1362,7 +1442,11 @@ export class GateStore {
       const now = this.now();
       const states = readBoxStates(this.dir);
       const caps = boxes
-        .filter((b) => !freshNo(states[b.name], now, s.boxRecheckSeconds))
+        .filter(
+          (b) =>
+            !boxOff(b, now) &&
+            !freshNo(states[b.name], now, boxRecheckSeconds(b, s)),
+        )
         .map((b) => boxCapOf(b, true));
       const want = boxesWanted(this.readAll(), s, now, caps).filter(
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),

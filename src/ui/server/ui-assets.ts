@@ -182,6 +182,8 @@ export const KIT_FILES: readonly string[] = [
   "button.css",
   "setting-row.js",
   "setting-row.css",
+  "setting-field.js",
+  "setting-field.css",
   // Issue 310: the Account area (the person's own place), and its look.
   "account-area.js",
   "account-area.css",

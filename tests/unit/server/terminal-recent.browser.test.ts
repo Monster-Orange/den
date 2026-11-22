@@ -115,12 +115,13 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
    * Issue 640: the pane's live connection is open. The pane draws before
    * its socket opens, and a key typed before then is dropped; a remote
    * browser (DEN_PW_WS) opens it later than a local one. The shell's
-   * prompt in the pane came over that socket.
+   * prompt in the pane came over that socket. Only the pane counts: a tab
+   * or a list row with the same id can hold a "$" of its own.
    */
   async function connected(p: Page, id: string) {
     await p.waitForFunction(
       (i) =>
-        [...document.querySelectorAll(`[data-id="${i}"]`)].some((el) =>
+        [...document.querySelectorAll(`section[data-id="${i}"]`)].some((el) =>
           (el.textContent ?? "").includes("$"),
         ),
       id,

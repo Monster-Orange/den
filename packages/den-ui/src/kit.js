@@ -61,6 +61,8 @@
  *                               pageMenuButtonHtml button (issue 555)
  *   DenUI.settingRow(el, { onSave, ...row })   the settings on/off row
  *                               (setting-row.js, issue 554)
+ *   DenUI.settingField(el, { onSave, ...row })   the text-field settings
+ *                               row (setting-field.js, issue 584)
  *   DenUI.strings(lang, table)  the product's own words, or its versions
  *                               of the kit's; DenUI.t(key, vars)
  */
@@ -131,6 +133,11 @@ import {
   mountSettingRow,
   settingRowHtml,
 } from "./setting-row.js";
+import {
+  hydrateSettingField,
+  mountSettingField,
+  settingFieldHtml,
+} from "./setting-field.js";
 
 const state = {
   lang: "en",
@@ -255,6 +262,18 @@ export const account = {
  */
 export function pageMenu(btn, opts = {}) {
   return hydratePageMenu(btn, { lang, ...opts });
+}
+
+/**
+ * The text-field settings row (issue 584), in the kit's language. With
+ * opts.label (a row's data), it draws the row into el first; else it wires
+ * the row el already holds.
+ */
+export function settingField(el, opts = {}) {
+  const o = { lang: lang(), ...opts };
+  return opts.label != null
+    ? mountSettingField(el, o)
+    : hydrateSettingField(el, o);
 }
 
 /**
@@ -389,6 +408,8 @@ const DenUI = {
   pageMenu,
   settingRowHtml,
   settingRow,
+  settingFieldHtml,
+  settingField,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;

@@ -414,7 +414,7 @@ describe("the queue", () => {
     expect(ask("agent:b").state).toBe("pending");
   });
 
-  it("settled requests are dropped an hour after they settle", async () => {
+  it("an hour after it settles, only a small record stays (a week)", async () => {
     const { q, tick } = queue();
     const a = q.request({
       actor: "agent:a",
@@ -425,7 +425,16 @@ describe("the queue", () => {
     await q.decide(a.id, "deny", "s");
     tick(59 * 60_000);
     expect(q.get(a.id)?.state).toBe("denied");
+    expect(q.get(a.id)?.summary).toBe("x");
     tick(2 * 60_000);
+    q.pending();
+    // The whole record is gone; how it ended stays.
+    expect(q.get(a.id)).toMatchObject({
+      state: "denied",
+      summary: "",
+      ended: true,
+    });
+    tick(7 * 24 * 60 * 60_000);
     q.pending();
     expect(q.get(a.id)).toBeNull();
   });
