@@ -301,25 +301,23 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
     });
     await s!.settings({ alerts: { quiet_from: null, quiet_to: null } });
     // Issue 774: the three new rows; their switches save.
-    const fin = p.locator(
-      "#setting-notifications-alert_finished input.set-check",
-    );
+    const fin = p.locator('[data-focus-key="notifications-alert_finished"]');
     expect(await fin.isChecked()).toBe(false);
     await fin.click();
     await p.locator("#set-alert-sound").click();
     await p
       .locator("#setting-notifications-alert_sound button[data-sound=finished]")
       .click();
-    const count = p.locator("#setting-notifications-tab_count input.set-check");
+    const count = p.locator('[data-focus-key="notifications-tab_count"]');
     expect(await count.isChecked()).toBe(true);
-    for (
-      let i = 0;
-      i < 100 &&
+    // The sound switch saves: poll the saved Settings (every 50 ms).
+    const end = Date.now() + 10_000;
+    while (
       ((await s!.settingsGet()).alerts as { sound?: boolean } | undefined)
-        ?.sound !== true;
-      i++
+        ?.sound !== true &&
+      Date.now() < end
     )
-      await p.waitForTimeout(100);
+      await new Promise((r) => setTimeout(r, 50));
     expect(await s!.settingsGet()).toMatchObject({
       alerts: { finished: true, sound: true, tab_count: true },
     });
