@@ -7379,10 +7379,14 @@
     // Issue 194: how tall the banners are, for a page whose panes fit the
     // window (Agents at phone width keeps its To line above the runs dock).
     try {
-      document.body.style.setProperty(
-        "--den-banners-h",
-        (box.hidden ? 0 : box.offsetHeight) + "px",
-      );
+      // The space it takes: its box and its margins, not rounded down.
+      var cs = box.hidden ? null : getComputedStyle(box);
+      var h = cs
+        ? box.getBoundingClientRect().height +
+          (parseFloat(cs.marginTop) || 0) +
+          (parseFloat(cs.marginBottom) || 0)
+        : 0;
+      document.body.style.setProperty("--den-banners-h", Math.ceil(h) + "px");
     } catch (e) {
       /* no body yet */
     }
