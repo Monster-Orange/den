@@ -218,16 +218,15 @@ describe("the run's version, found where Playwright is", () => {
     expect(playwrightVersion(repo)).toBe("1.63.1");
   });
 
-  it("installed higher up (hoisted), or only declared: still found", () => {
+  it("installed higher up (hoisted): found from the folder below", () => {
     const repo = tmp();
+    fs.mkdirSync(path.join(repo, ".git"));
     const web = path.join(repo, "packages", "web");
     fs.mkdirSync(web, { recursive: true });
     fs.writeFileSync(
       path.join(web, "package.json"),
       JSON.stringify({ devDependencies: { playwright: "~1.61.0" } }),
     );
-    // Declared only: the version its range names.
-    expect(playwrightVersion(repo)).toBe("1.61.0");
     fs.mkdirSync(path.join(repo, "node_modules", "playwright"), {
       recursive: true,
     });
@@ -238,18 +237,110 @@ describe("the run's version, found where Playwright is", () => {
     expect(playwrightVersion(repo)).toBe("1.61.4");
   });
 
-  it("a box run takes the version from web/ and gets that endpoint", async () => {
+  it("a range alone is unknown: never read as a version", () => {
     const repo = tmp();
+    fs.mkdirSync(path.join(repo, ".git"));
+    fs.writeFileSync(
+      path.join(repo, "package.json"),
+      JSON.stringify({ devDependencies: { "@playwright/test": "^1.48.0" } }),
+    );
     const web = path.join(repo, "web");
-    fs.mkdirSync(web, { recursive: true });
+    fs.mkdirSync(web);
     fs.writeFileSync(
       path.join(web, "package.json"),
       JSON.stringify({ devDependencies: { "@playwright/test": "1.61.0" } }),
     );
+    expect(playwrightVersion(repo)).toBeUndefined();
+    expect(playwrightVersion(web)).toBeUndefined();
+  });
+
+  it("a run in a workspace subfolder, Playwright installed at the repo root: its exact version, and that endpoint", async () => {
+    const repo = tmp();
+    fs.mkdirSync(path.join(repo, ".git"));
+    fs.writeFileSync(
+      path.join(repo, "package.json"),
+      JSON.stringify({ workspaces: ["packages/*"] }),
+    );
+    fs.mkdirSync(path.join(repo, "node_modules", "@playwright", "test"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(repo, "node_modules", "@playwright", "test", "package.json"),
+      JSON.stringify({ version: "1.63.2" }),
+    );
+    const app = path.join(repo, "packages", "app");
+    fs.mkdirSync(app, { recursive: true });
+    fs.writeFileSync(
+      path.join(app, "package.json"),
+      JSON.stringify({ devDependencies: { "@playwright/test": "^1.48.0" } }),
+    );
+    expect(playwrightVersion(app)).toBe("1.63.2");
     const store = storeWith([{ name: "b1", playwright_endpoints: TWO }]);
-    const t = deps(store, repo);
+    const t = deps(store, app);
     expect(await cmdGate(boxRun(), t.d)).toBe(0);
-    expect(t.ran[0]!.env?.DEN_PW_WS).toBe("ws://b1.test:3931");
+    expect(t.ran[0]!.env?.DEN_PW_WS).toBe("ws://b1.test:3932");
+  });
+
+  it("never looks above the repo's top folder", () => {
+    const outer = tmp();
+    fs.mkdirSync(path.join(outer, "node_modules", "playwright"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(outer, "node_modules", "playwright", "package.json"),
+      JSON.stringify({ version: "1.40.0" }),
+    );
+    const repo = path.join(outer, "repo");
+    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
+    expect(playwrightVersion(path.join(repo))).toBeUndefined();
+  });
+});
+
+describe("an unknown version", () => {
+  it("on a box with one address: runs as before, no version check", async () => {
+    const store = storeWith([
+      {
+        name: "b1",
+        playwright: "ws://b1.test:3000",
+        playwright_version: "1.48.0",
+      },
+    ]);
+    const t = deps(store, tmp());
+    expect(await cmdGate(boxRun(), t.d)).toBe(0);
+    expect(t.ran[0]!.env?.DEN_PW_WS).toBe("ws://b1.test:3000");
+  });
+
+  it("on a box with several versions: refused in one plain line", async () => {
+    const store = storeWith([{ name: "b1", playwright_endpoints: TWO }]);
+    const t = deps(store, tmp());
+    expect(await cmdGate(boxRun(), t.d)).toBe(2);
+    expect(t.ran).toEqual([]);
+    expect(t.err).toEqual([
+      "gate: box b1 serves Playwright 1.61, 1.63 and this run's Playwright version is unknown: pass --pw-version",
+    ]);
+    expect(store.list()).toEqual([]);
+  });
+
+  it("--box any: a box with several versions is skipped, saying so", () => {
+    const store = storeWith([{ name: "b1", playwright_endpoints: TWO }]);
+    store.ask({
+      kind: "browser",
+      who: "t",
+      label: "e2e",
+      pid: 1,
+      estimateMin: 10,
+      where: "b1",
+    });
+    expect(gateView(store).slots[0]!.skips).toEqual([
+      {
+        box: "b1",
+        reason: "Playwright version unknown: pass --pw-version",
+      },
+    ]);
+    expect(
+      boxEnv({ name: "b1", browser_slots: 1, playwright_endpoints: TWO })
+        .DEN_PW_WS,
+    ).toBeUndefined();
   });
 });
 

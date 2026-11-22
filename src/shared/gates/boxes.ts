@@ -130,7 +130,7 @@ export function boxEndpoints(
 
 /**
  * The endpoint a run with this client version gets on the box: the one
- * whose version serves it; with no version, the first. A one-endpoint box
+ * whose version serves it; with no version, none. A one-endpoint box
  * gives its one address, as before.
  */
 export function boxEndpointFor(
@@ -141,9 +141,9 @@ export function boxEndpointFor(
   pwVersion?: string,
 ): string | undefined {
   if (!b.playwright_endpoints) return b.playwright;
-  const all = boxEndpoints(b);
-  if (!pwVersion) return all[0]?.ws;
-  return all.find((x) => pwServes(x.version!, pwVersion))?.ws;
+  // An unknown version gets none: which server it needs can't be said.
+  if (!pwVersion) return undefined;
+  return boxEndpoints(b).find((x) => pwServes(x.version!, pwVersion))?.ws;
 }
 
 /**
@@ -168,7 +168,10 @@ function versionSkip(
   client: string | undefined,
   b: { version?: string; versions?: string[] },
 ): string {
-  if (!client) return "";
+  // A box with one address checks no unknown version, as before; one with
+  // several can't pick a server for it.
+  if (!client)
+    return b.versions ? "Playwright version unknown: pass --pw-version" : "";
   if (b.versions)
     return b.versions.some((v) => pwServes(v, client))
       ? ""

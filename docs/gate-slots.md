@@ -435,10 +435,15 @@ it); with only a Playwright address, a TCP connect.
   box, and the queue says "client X ≠ server Y". A box set with `--pw`
   takes a run when one of its versions serves the run's; otherwise the
   queue says "client X: box serves 1.61, 1.63". `gate run` takes the run's
-  version from `--pw-version`, else from its folder's `node_modules`, else
-  from the nearest `package.json` at or below its folder that depends on
-  Playwright (a repo with Playwright in `web/`): the version installed for
-  it, or the one its range names. `gate status` lists each box's versions.
+  version from `--pw-version`, else from the Playwright installed in its
+  folder's `node_modules` or one above it up to the repo's top folder (a
+  workspace with Playwright at the root), else installed for the nearest
+  `package.json` below its folder that depends on Playwright (a repo with
+  Playwright in `web/`). Only an installed version counts: a range in a
+  `package.json` is never read as one. With no version found, a box with
+  one address takes the run as before (no version check); a box with
+  `--pw` versions refuses it: pass `--pw-version`. `gate status` lists
+  each box's versions.
 
 A box slot is one heavy job at a time unless `--slots` says more.
 

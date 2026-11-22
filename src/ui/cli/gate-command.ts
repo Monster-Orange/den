@@ -289,7 +289,7 @@ function installedPlaywright(dir: string, stop: string): string | undefined {
   }
 }
 
-/** The Playwright range a package.json declares, if it depends on it. */
+/** Whether a package.json depends on Playwright (its range; never a version). */
 function declaredPlaywright(dir: string): string | undefined | null {
   const pkg = readJson(path.join(dir, "package.json"));
   if (!pkg) return null;
@@ -309,16 +309,28 @@ function declaredPlaywright(dir: string): string | undefined | null {
   return null;
 }
 
+/** The repo's top folder: the nearest at or above `dir` with a .git; else `dir`. */
+function repoTop(dir: string): string {
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, ".git"))) return d;
+    if (path.dirname(d) === d) return path.resolve(dir);
+  }
+}
+
 /**
- * Clause 11, issue 1017: the run's Playwright client version. Installed in
- * the run's folder, as before; else from the nearest package.json at or
- * below it that depends on Playwright (a repo whose Playwright lives in
- * web/): the version installed for it, else the version its range names.
- * Nearest is fewest folders down; node_modules and dot folders are never
- * looked in.
+ * Clause 11, issue 1017: the run's exact Playwright client version, from
+ * an installed package.json only. First installed for the run's folder:
+ * its node_modules, or one above it up to the repo's top folder (a
+ * workspace run with Playwright hoisted to the root). Else installed for
+ * the nearest package.json below it that depends on Playwright (a repo
+ * whose Playwright lives in web/). Nearest is fewest folders down;
+ * node_modules and dot folders are never looked in. A range in a
+ * package.json is never read as a version: with nothing installed, the
+ * version is unknown (undefined).
  */
 export function playwrightVersion(cwd: string): string | undefined {
-  const here = installedPlaywright(cwd, cwd);
+  const top = repoTop(cwd);
+  const here = installedPlaywright(cwd, top);
   if (here) return here;
   let level = [cwd];
   while (level.length) {
@@ -327,8 +339,6 @@ export function playwrightVersion(cwd: string): string | undefined {
       if (typeof range !== "string") continue;
       const v = installedPlaywright(dir, cwd);
       if (v) return v;
-      const m = /(\d+\.\d+(?:\.\d+)?)/.exec(range);
-      if (m) return m[1];
     }
     const next: string[] = [];
     for (const dir of level) {
@@ -621,6 +631,16 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       : where && where !== "local"
         ? playwrightVersion(d.cwd)
         : undefined;
+  // Issue 1017: a box with several Playwright servers can't pick one for a
+  // run whose version is unknown: said plainly, before it asks.
+  const named =
+    where && where !== "any" && where !== "local"
+      ? d.store.boxes().find((b) => b.name === where)
+      : undefined;
+  if (named?.playwright_endpoints && !pwVersion)
+    throw new GateUsage(
+      `box ${named.name} serves Playwright ${Object.keys(named.playwright_endpoints).join(", ")} and this run's Playwright version is unknown: pass --pw-version`,
+    );
   const estimateMin = parseEstimate(
     typeof f["--estimate"] === "string" ? f["--estimate"] : "10m",
   );
