@@ -259,5 +259,9 @@ describe("3. a branch that requires signed commits, and no key", () => {
       await answer("[]", 404)("git@github.com:acme/dist.git", "main"),
     ).toBe(false);
     expect(await answer("[]", 404)("/srv/remote.git", "main")).toBeNull();
+    // No admin rights: classic protection answers 403: it can't tell.
+    expect(
+      await answer("[]", 403)("git@github.com:acme/dist.git", "main"),
+    ).toBeNull();
   });
 });

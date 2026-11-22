@@ -634,13 +634,16 @@ export function ghSignaturesRequired(
       ],
       cwd,
     ).catch(() => ({ code: null, out: "" }) as Ran);
-    if (classic.code !== 0) return false;
+    // A clean 404: not protected. Anything else (no admin rights reads as
+    // 403, or an error) can't tell.
+    if (classic.code !== 0)
+      return /\b404\b|Not Found/.test(classic.out) ? false : null;
     try {
       return (
         (JSON.parse(classic.out) as { enabled?: unknown }).enabled === true
       );
     } catch {
-      return false;
+      return null;
     }
   };
 }
