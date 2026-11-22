@@ -13,6 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn, type ChildProcess } from "child_process";
 import * as http from "http";
 import type { AddressInfo } from "net";
+import type { Browser } from "playwright";
+import { closeBrowserSuite } from "../../browser-teardown.js";
 import { boxGuardBlocks, launchBrowser } from "../helpers/browser.js";
 
 const saved = { ...process.env };
@@ -21,6 +23,7 @@ let port = 0;
 // Another service on this machine: a port this run didn't open.
 let other: ChildProcess;
 let otherPort = 0;
+let browser: Browser | undefined;
 
 beforeAll(async () => {
   server = http.createServer((_req, res) => res.end("<p>ok</p>"));
@@ -40,8 +43,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   process.env = saved;
-  other?.kill();
-  await new Promise((r) => server.close(r));
+  await closeBrowserSuite({
+    browsers: [browser],
+    servers: [server, () => void other?.kill()],
+  });
 });
 
 describe("issue 991: a box run's browser is held to its base URLs", () => {
@@ -53,7 +58,7 @@ describe("issue 991: a box run's browser is held to its base URLs", () => {
       DEN_GATE_ALLOW: "127.0.0.1:*",
     };
     delete process.env.DEN_PW_WS;
-    const browser = await launchBrowser("chromium");
+    browser = await launchBrowser("chromium");
     try {
       // Both ways a suite gets a page: its own context, and newPage().
       const page = await (await browser.newContext()).newPage();
@@ -76,7 +81,8 @@ describe("issue 991: a box run's browser is held to its base URLs", () => {
         expect.arrayContaining(["http://127.0.0.1/", "https://127.0.0.1/"]),
       );
     } finally {
-      await browser.close();
+      await browser?.close();
+      browser = undefined;
     }
   }, 60_000);
 
