@@ -47,6 +47,7 @@ import {
   expectedEnd,
   expectedStart,
   overrun,
+  gateWorkers,
   priorityIds,
   yieldedTo,
   type GateEntry,
@@ -58,6 +59,7 @@ import {
   GateStore,
   GateYieldRefused,
   checkGatePatch,
+  realLoad,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import * as fs from "fs";
@@ -132,6 +134,8 @@ export interface GateDeps {
   err: (line: string) => void;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
+  /** Issue 1048: this machine's cores (the worker cap); default the host's. */
+  cores?: number;
   /** Starts the command (issue 625: `env` adds to the environment). */
   exec: (cmd: string, args: string[], env?: Record<string, string>) => GateRun;
   /** Runs `fn` every `ms` until the returned stop is called. */
@@ -155,6 +159,8 @@ const NESTED_LOOK_MS = 5_000;
 export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
 export const GATE_SLOT_KIND_ENV = "DEN_GATE_SLOT_KIND";
 export const GATE_SLOT_BOX_ENV = "DEN_GATE_SLOT_BOX";
+/** Issue 1048: the workers a cpu slot's run may use. */
+export const GATE_WORKERS_ENV = "DEN_GATE_WORKERS";
 
 /**
  * Issue 928: the slot this run is nested in, when it may run inside it:
@@ -561,6 +567,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         const set = s.settings();
         for (const h of all.filter((x) => x.grantedAt))
           d.err(`waiting: ${slotLine(h, all, d.now(), set)}`);
+        // Issue 1048: a cpu run held by the load says so.
+        const l = kind === "cpu" ? s.loadState() : undefined;
+        if (l?.held)
+          d.err(
+            `waiting: this machine's load is ${l.load5.toFixed(1)}, over the hold at ${l.hold} (${set.loadHold} × ${l.cores} cores); new unit test runs start once it drops`,
+          );
         said = d.now();
       }
       await d.sleep(2_000);
@@ -575,11 +587,16 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       `gate: ${id} holds ${kind}${e.box ? ` on box ${e.box}` : ""}; running ${label}`,
     );
     // Issue 928: the command knows the slot it runs in.
-    const slotEnv = {
+    const slotEnv: Record<string, string> = {
       [GATE_SLOT_ENV]: id,
       [GATE_SLOT_KIND_ENV]: kind,
       [GATE_SLOT_BOX_ENV]: e.box ?? "local",
     };
+    // Issue 1048: a cpu run here uses its share of the cores, no more.
+    if (kind === "cpu" && !e.box)
+      slotEnv[GATE_WORKERS_ENV] = String(
+        gateWorkers(d.cores ?? realLoad().cores, s.settings().cpuSlots),
+      );
     child = box
       ? d.exec(pos[0]!, pos.slice(1), {
           ...boxEnv(box),
@@ -773,6 +790,7 @@ function settings(args: string[], d: GateDeps): number {
     "--class-map": true,
     "--class-windows": true,
     "--browser-requires-container": true,
+    "--load-hold": true,
   });
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
@@ -796,6 +814,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--box-check-timeout-seconds", "box_check_timeout_seconds"],
     ["--box-recheck-seconds", "box_recheck_seconds"],
     ["--browser-requires-container", "browser_requires_container"],
+    ["--load-hold", "load_hold"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = Number(v);
@@ -820,7 +839,7 @@ function settings(args: string[], d: GateDeps): number {
   }
   const s = d.store.settings();
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · flagged ${s.overrunMarginMinutes} min past its estimate · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · new unit test runs wait over a load of ${s.loadHold ? `${s.loadHold} × the cores` : "any (off)"}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""
