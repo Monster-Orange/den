@@ -21,7 +21,12 @@ import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
-type Kind = "fixed" | "unfixed" | "held-for-allow" | "fixture-say";
+type Kind =
+  | "fixed"
+  | "unfixed"
+  | "held-for-allow"
+  | "fixture-say"
+  | "unmarked-say";
 
 function runGate(
   kind: Kind,
@@ -164,6 +169,8 @@ function runGate(
       async fetch(p, init) {
         if (p === "/api/settings") { await ctx.api(p, init); return { status: 200, body: "{}" }; }
         if (/\\/agents\\/gate-629-say\\/say$/.test(p)) {
+          if (kind === "unmarked-say")
+            return { status: 403, body: JSON.stringify({ ok: false, error: "only a person can send an agent a message" }) };
           if (kind === "fixture-say")
             return { status: 403, body: JSON.stringify({ ok: false, code: "fixture_scope", error: "The fixture person can only use the pages and the few writes live checks need: not this." }) };
           if (kind !== "unfixed" && dialog["gate-629-say"])
@@ -243,6 +250,16 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(row(r, 0)).toMatchObject({ ok: null, skip: "person" });
     expect(row(r, 0)?.detail).toMatch(/Allow/);
     expect(r.settingsPosts).toBe(0);
+  });
+
+  it("the test operator's say refused for a stub with no testBed mark (issue 956): clause 4 is not run, never a FAIL", () => {
+    const r = runGate("unmarked-say");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 3)).toMatchObject({ ok: null, skip: "needs-fixture-say" });
+    expect(row(r, 3)?.detail).toMatch(
+      /only a person can send an agent a message/,
+    );
+    expect(row(r, 3)?.detail).toMatch(/marked testBed false/);
   });
 
   it("the page's say refused to the fixture person: clause 4 is not run, never a FAIL", () => {

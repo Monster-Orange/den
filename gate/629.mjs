@@ -17,8 +17,11 @@
 //
 // Clause 4: a message from the page (POST .../agents/<id>/say) to a stub
 // showing the dialog answers 409 dialog_open and types nothing. The page's
-// say is refused to the fixture person (issue 810, 403 fixture_scope):
-// then the clause is not run (skip needs-fixture-say), never a FAIL.
+// say is refused to the fixture person (issue 810, 403 fixture_scope), and
+// the test operator's say reaches only an agent Den marked testBed when it
+// started it on the test-person path (issues 943, 956; a plain 403). Any
+// 403: the say never reached the dialog, so the clause is not run (skip
+// needs-fixture-say, with the code and the stub's mark), never a FAIL.
 //
 // Clauses 2 (a Hub comment) and 3 (the tools note): the bed has no Hub and
 // can't change a tool list, so both skip. With a Hub, clause 2's stub
@@ -258,6 +261,7 @@ async function sayRefused(ctx, s) {
   r.typed = await typedOf(b, since);
   const audit = ctx.readBed("state:audit.jsonl") ?? "";
   r.auditSent = audit.includes(`send ${SAY} a message`);
+  r.testBed = recordOf(ctx, SAY)?.testBed === true;
   return r;
 }
 
@@ -441,12 +445,12 @@ export function expect(r) {
       detail:
         "the bed can't change an agent's tool list, so no tools note is sent",
     },
-    y.status === 403 && y.code === "fixture_scope"
+    y.status === 403
       ? {
           clause: clauses[3],
           ok: null,
           skip: "needs-fixture-say",
-          detail: `the page's say is refused to the fixture person (403 fixture_scope, issue 810); nothing was typed: ${JSON.stringify(y.typed)}`,
+          detail: `the say never reached the dialog: 403 ${y.code ?? "(no code)"}: ${y.error}; ${SAY} marked testBed ${y.testBed === true} (issues 810, 943, 956); nothing was typed: ${JSON.stringify(y.typed)}`,
         }
       : y.running === true && y.noDialog
         ? {
