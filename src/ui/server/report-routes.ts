@@ -162,8 +162,9 @@ export type ShotReader =
  * and report ids are in public issues). The person proves it as approvals
  * ask: their command-line token, or a signed-in browser with its CSRF
  * token and approval key (approverAllowed, "read"). This install's own
- * agent reads with its token; a project agent's token gets 403. Anything
- * else: 401.
+ * agent reads with its token; a project agent's token gets 403. The
+ * fixture person (a test install, issue 810) reads with its session and
+ * CSRF token. Anything else: 401.
  */
 export function shotReaderOf(
   req: http.IncomingMessage,
@@ -176,7 +177,12 @@ export function shotReaderOf(
       ? { ok: true }
       : { ok: false, status: 403, who: p.actor };
   if (p?.kind === "person") return { ok: true };
-  if (approverAllowed(req, guard, "read").ok) return { ok: true };
+  const browser = approverAllowed(req, guard, "read");
+  if (browser.ok) return { ok: true };
+  // The fixture person (a test install's live checks, issue 810) never
+  // decides what waits for a person, but a read decides nothing: once its
+  // session and CSRF token are proven, it is the person who runs the install.
+  if (browser.code === "fixture_cannot_approve") return { ok: true };
   return { ok: false, status: 401 };
 }
 
