@@ -179,3 +179,37 @@ describe("issue 1129: restarts go in batches", () => {
     await expect(good).resolves.toBe("good");
   });
 });
+
+describe("issue 1129: agents.resume in user.yml", () => {
+  const cfg = (agents: Record<string, unknown> | undefined) => () =>
+    ({ agents }) as never;
+
+  it("defaults: 4 at a time, 30 s apart, a ceiling of the cores × 2", async () => {
+    const { agentsResume } = await import("../../../src/shared/den-config.js");
+    expect(agentsResume(cfg(undefined), 8)).toEqual({
+      batch: 4,
+      gapSeconds: 30,
+      loadCeiling: 16,
+    });
+  });
+
+  it("takes what is set; 0 means all at once (batch) or no ceiling", async () => {
+    const { agentsResume } = await import("../../../src/shared/den-config.js");
+    expect(
+      agentsResume(
+        cfg({ resume: { batch: 0, gap_seconds: 5, load_ceiling: 0 } }),
+        8,
+      ),
+    ).toEqual({ batch: 0, gapSeconds: 5, loadCeiling: 0 });
+  });
+
+  it.each([
+    [{ batch: -1 }, /agents\.resume\.batch/],
+    [{ batch: 1.5 }, /agents\.resume\.batch/],
+    [{ gap_seconds: "30" }, /agents\.resume\.gap_seconds/],
+    [{ load_ceiling: -2 }, /agents\.resume\.load_ceiling/],
+  ])("refuses %j, naming the key", async (resume, re) => {
+    const { agentsResume } = await import("../../../src/shared/den-config.js");
+    expect(() => agentsResume(cfg({ resume }), 8)).toThrow(re);
+  });
+});
