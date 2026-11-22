@@ -27,6 +27,7 @@ import {
   renderThemeCss,
   renderThemeTokens,
 } from "../../../src/ui/server/theme-runtime.js";
+import { KIT_FILES } from "../../../src/ui/server/ui-assets.js";
 
 const ROOT = path.resolve(__dirname, "../../..");
 // The schema is read from the engine root: this checkout's, whichever
@@ -223,9 +224,7 @@ describe("issue 788: the sketch theme", () => {
       read(path.join(ROOT, "packages/den-ui/package.json")),
     ) as { exports: Record<string, string> };
     expect(pkg.exports["./themes/sketch.css"]).toBe("./src/themes/sketch.css");
-    expect(read(path.join(ROOT, "src/ui/server/ui-assets.ts"))).toMatch(
-      /KIT_FILES[^\]]*"themes\/sketch\.css"/,
-    );
+    expect(KIT_FILES).toContain("themes/sketch.css");
   });
 });
 
