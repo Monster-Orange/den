@@ -239,7 +239,9 @@ export function tokenCaller(
   d: BindingDeps = {},
 ): TokenCaller {
   if (!isLoopbackAddress(req.socket?.remoteAddress)) return "elsewhere";
-  if (!root || root <= 0) return "unknown";
+  // A root of init (1) would hold every line on the machine (a bad or
+  // stale record): it places nothing.
+  if (!root || root <= 1) return "unknown";
   const pid = callerPid(req, d);
   if (pid === null) return severalCaller(req, root, d);
   const line = PEERS.get(req.socket)?.line;
