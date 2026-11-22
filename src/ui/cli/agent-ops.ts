@@ -8908,6 +8908,22 @@ export type ExitEvent = {
 /** Issue 926: how long after an exit the sweep looks at it. */
 const EXIT_SEEN_MS = 5_000;
 
+/** Issue 926: when the sweep first saw each exit with no time from its host. */
+const exitFirstSeen = new Map<string, number>();
+
+/**
+ * Issue 926: when session `s` ended: its host's exit time, else when the
+ * sweep first saw it ended (`now` the first time).
+ */
+export function exitSeenAt(s: SessionInfo, now: Date): number {
+  const t = s.exitedAt ? Date.parse(s.exitedAt) : NaN;
+  if (Number.isFinite(t)) return t;
+  const seen = exitFirstSeen.get(s.ref.id);
+  if (seen !== undefined) return seen;
+  exitFirstSeen.set(s.ref.id, now.getTime());
+  return now.getTime();
+}
+
 /** Issue 926: agents.unasked_exit_window_minutes, in ms. */
 function unaskedExitWindowOf(d: AgentsResolved): number {
   try {
@@ -8945,10 +8961,32 @@ export async function exitTick(
     // Asked for: a stop (Den's or a person's), or a restart left not back.
     if (rec.stoppedAt || rec.restartFailed) continue;
     if (rec.unaskedExit?.session === s.ref.id) continue; // seen
-    // A stop marks its record just after its TERM: give it time to.
-    if (s.exitedAt && now.getTime() - Date.parse(s.exitedAt) < EXIT_SEEN_MS)
-      continue;
-    const code = s.exitCode;
+    // A stop marks its record just after its TERM: give it time to. A
+    // host that gives no exit time: from when the sweep first saw it.
+    if (now.getTime() - exitSeenAt(s, now) < EXIT_SEEN_MS) continue;
+    const e = await lockAgent(d, rec.id, () =>
+      unaskedExit(d, s, now, windowMs),
+    );
+    if (e) out.push(e);
+  }
+  return out;
+}
+
+/** Issue 926: one agent's unasked exit, under its lock; undefined: none. */
+async function unaskedExit(
+  d: AgentsResolved,
+  s: SessionInfo,
+  now: Date,
+  windowMs: number,
+): Promise<ExitEvent | undefined> {
+  {
+    // Again under the lock: a stop or restart may have marked it since.
+    const rec = listRecords(d.stateDir()).find(
+      (r) => r.session?.id === s.ref.id,
+    );
+    if (!rec || rec.stoppedAt || rec.restartFailed) return undefined;
+    if (rec.unaskedExit?.session === s.ref.id) return undefined;
+    const code = s.exitCode ?? 0;
     const who = { agent: rec.id, workspace: rec.workspace, code };
     const prev = rec.unaskedExit;
     const at = now.toISOString();
@@ -8966,8 +9004,7 @@ export async function exitTick(
       d.stateDir(),
     );
     if (code === 0) {
-      out.push({ kind: "recorded", ...who });
-      continue;
+      return { kind: "recorded", ...who };
     }
     const name = rec.displayName || rec.persona || rec.id;
     const tell = (kind: "waiting" | "finished", why: string) => {
@@ -8991,8 +9028,7 @@ export async function exitTick(
         ? "it ended again soon after Den brought it back, so it is left down"
         : "bringing it back is off";
       tell("waiting", why);
-      out.push({ kind: "left", ...who, why });
-      continue;
+      return { kind: "left", ...who, why };
     }
     try {
       const r = await resumeOrRelaunch(d, rec.id, rec.workspace);
@@ -9007,14 +9043,13 @@ export async function exitTick(
           ? "Den relaunched it from its handoff"
           : "Den resumed it",
       );
-      out.push({ kind: r.kind, ...who });
+      return { kind: r.kind, ...who };
     } catch (e) {
       const why = `Den couldn't bring it back: ${(e as Error).message}`;
       tell("waiting", why);
-      out.push({ kind: "left", ...who, why });
+      return { kind: "left", ...who, why };
     }
   }
-  return out;
 }
 
 /** D28: the rotation settings, and agent `agent`'s effective values. */

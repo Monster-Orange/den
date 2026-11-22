@@ -25,7 +25,9 @@ import {
   noteCompaction,
   readRotation,
 } from "../../../src/shared/agents/rotation.js";
+import type { SessionInfo } from "../../../src/shared/sessions/types.js";
 import {
+  exitSeenAt,
   exitTick,
   resolveAgentsDeps,
   stopAgent,
@@ -191,5 +193,25 @@ describe("issue 926: a session that ends without Den asking", () => {
     expect(await exitTick(d, T(0))).toEqual([]);
     expect(audit(r)).toHaveLength(0);
     expect(await live(r)).toBe(false);
+  });
+});
+
+describe("issue 926: an exit with no time from its host", () => {
+  it("counts from when the sweep first saw it, so a stop's mark has time to land", () => {
+    const s = {
+      ref: { backend: "pty", id: "no-time-1" },
+      exited: true,
+      exitCode: 143,
+    } as unknown as SessionInfo;
+    const t0 = new Date("2026-11-22T08:00:00Z");
+    expect(exitSeenAt(s, t0)).toBe(t0.getTime());
+    // Seen again 3 s on: still from the first look, so it waits.
+    expect(exitSeenAt(s, new Date(t0.getTime() + 3_000))).toBe(t0.getTime());
+    const timed = {
+      ...s,
+      ref: { backend: "pty", id: "t" },
+      exitedAt: "2026-11-22T07:59:00Z",
+    } as unknown as SessionInfo;
+    expect(exitSeenAt(timed, t0)).toBe(Date.parse("2026-11-22T07:59:00Z"));
   });
 });

@@ -3912,7 +3912,7 @@ as…" line as Bring in.
   or relaunch from Den or a person, such as a signal from outside Den or
   a crash. Den's sweep writes one audit row with the exit code. Exit 0
   (the agent or person quit it) is left down. Otherwise the bell says so
-  and Den brings the agent back once: it resumes it, or relaunches it
+  and Den brings the agent back, at most once per window: it resumes it, or relaunches it
   from its handoff when its rotation is ready and on_due is auto. A
   second such exit within `agents.unasked_exit_window_minutes` (default
   10) is told in the bell and left down; 0 never brings one back.
