@@ -5648,6 +5648,11 @@ function workspaceAgentsRefusal(name: string): string | null {
 
 /** Issue 936: inside an agent's sandbox, say why a write was refused. */
 function printSandboxHint(error: unknown): void {
-  const hint = sandboxErrorHint(error, process.env, product().cli);
+  const hint = sandboxErrorHint(
+    error,
+    process.env,
+    product().cli,
+    process.argv.slice(2),
+  );
   if (hint) console.error(chalk.yellow(hint));
 }

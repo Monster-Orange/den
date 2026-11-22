@@ -484,25 +484,35 @@ describe("agents start runs the agent in its sandbox (issue 936)", () => {
 
 describe("sandboxErrorHint (issue 936)", () => {
   const inside = { [AGENT_SANDBOX_ENV]: "1", DEN_AGENT: "agent:a1" };
-  it("says what happened and what to use, for a refused write inside", () => {
-    const e = Object.assign(
-      new Error("EPERM: operation not permitted, open 'x'"),
-      {
-        code: "EPERM",
-      },
-    );
-    const h = sandboxErrorHint(e, inside, "acme");
-    expect(h).toContain("read-only");
-    expect(h).toContain("agent_create");
-    expect(h).toContain("agents.a1.sandbox: off");
-    expect(h).toContain("`acme doctor`");
+  const eperm = Object.assign(
+    new Error("EPERM: operation not permitted, open 'x'"),
+    { code: "EPERM" },
+  );
+  it("names the tool or held write to use for the verb", () => {
+    const h = sandboxErrorHint(eperm, inside, "acme", [
+      "agents",
+      "start",
+      "-w",
+      "north",
+    ]);
+    expect(h).toContain("`acme agents start` writes Den's state");
+    expect(h).toContain("agent_create tool");
     expect(
-      sandboxErrorHint(new Error("connect EPERM /s.sock"), inside, "acme"),
-    ).toBeTruthy();
+      sandboxErrorHint(new Error("connect EPERM /s.sock"), inside, "acme", [
+        "agents",
+        "list",
+      ]),
+    ).toContain("status and org_summary tools");
+  });
+  it("never sends the agent to the person for a setting", () => {
+    for (const args of [["agents", "stop", "x"], ["gate", "set"], []]) {
+      const h = sandboxErrorHint(eperm, inside, "acme", args)!;
+      expect(h).toContain("held writes");
+      expect(h).not.toMatch(/user\.yml|sandbox: off/);
+    }
   });
   it("is nothing outside the sandbox, or for another error", () => {
-    const e = Object.assign(new Error("EPERM"), { code: "EPERM" });
-    expect(sandboxErrorHint(e, {}, "acme")).toBeNull();
+    expect(sandboxErrorHint(eperm, {}, "acme")).toBeNull();
     expect(
       sandboxErrorHint(new Error("no such project"), inside, "acme"),
     ).toBeNull();

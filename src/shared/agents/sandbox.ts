@@ -321,15 +321,33 @@ export function sandboxFor(
 }
 
 /**
+ * The MCP tool or held write an agent uses for a CLI verb that writes
+ * Den's state, by `<cli> <command> <sub>`; a default for the rest.
+ */
+const INSTEAD: Record<string, string> = {
+  "agents start":
+    "start an agent with the agent_create tool (a held write: the person allows it)",
+  "agents mode":
+    "ask for a mode with the agent_mode tool (a held write: the person allows it)",
+  "agents list": "read the agents with the status and org_summary tools",
+  "agents import":
+    "bring an agent in with the agent_import tool (a held write)",
+};
+const INSTEAD_DEFAULT =
+  "use Den's MCP tools: status and org_summary read; agent_create, agent_mode and the other held writes change things on the person's Allow";
+
+/**
  * What the CLI adds to an error inside an agent's sandbox, when the OS
  * refused a write or a connection there (EPERM, EACCES, EROFS): what
- * happened and what to use instead. Null outside the sandbox, or for any
- * other error.
+ * happened, and the tool or held write to use instead (never a chore for
+ * the person). Null outside the sandbox, or for any other error.
  */
 export function sandboxErrorHint(
   error: unknown,
   env: NodeJS.ProcessEnv,
   cli: string,
+  /** The command line's words after the CLI's name. */
+  args: readonly string[] = [],
 ): string | null {
   if (env[AGENT_SANDBOX_ENV] !== "1") return null;
   const code = (error as { code?: unknown } | null)?.code;
@@ -338,10 +356,11 @@ export function sandboxErrorHint(
     ["EPERM", "EACCES", "EROFS"].includes(String(code)) ||
     /\b(EPERM|EACCES|EROFS)\b|operation not permitted/i.test(msg);
   if (!refused) return null;
-  const agent = (env.DEN_AGENT ?? "").replace(/^agent:/, "") || "<id>";
+  const words = args.filter((a) => !a.startsWith("-"));
+  const verb = `${words[0] ?? ""} ${words[1] ?? ""}`.trim();
+  const instead = INSTEAD[verb] ?? INSTEAD_DEFAULT;
   return (
-    `This runs inside an agent's sandbox, where Den's state is read-only (issue 936). ` +
-    `Ask through Den's MCP tools instead (agent_create starts an agent; status and the agents' tools read). ` +
-    `A person can turn it off for this agent with agents.${agent}.sandbox: off in config/local/user.yml (\`${cli} doctor\` shows it).`
+    `\`${cli}${verb ? ` ${verb}` : ""}\` writes Den's state, which is read-only inside an agent's sandbox (issue 936). ` +
+    `Instead, ${instead}.`
   );
 }
