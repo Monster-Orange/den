@@ -288,49 +288,163 @@
     "tests/unit/server/agents-rotation-callout.browser.test.ts": [
       "src/shared/agents/rotation.ts",
       "src/ui/server/agent-routes.ts"
+    ],
+    "tests/unit/server/agents-rotation.browser.test.ts": [
+      "src/shared/agents/rotation.ts",
+      "src/shared/agents/handoff.ts",
+      "src/ui/server/agent-routes.ts"
+    ],
+    "tests/unit/server/agents-scope.browser.test.ts": [
+      "src/shared/environment-manager/scope.ts",
+      "src/ui/server/workspace-routes.ts"
+    ],
+    "tests/unit/server/agents-signin.browser.test.ts": [
+      "src/shared/agents/signin-accounts.ts",
+      "src/ui/server/session-routes.ts"
+    ],
+    "tests/unit/server/agents-subagents.browser.test.ts": [
+      "src/shared/agents/subagents.ts",
+      "src/ui/server/session-routes.ts"
+    ],
+    "tests/unit/server/agents-tab.browser.test.ts": [
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/agent-routes.ts"
+    ],
+    "tests/unit/server/agents-term-size.browser.test.ts": [
+      "src/shared/sessions/host.ts",
+      "src/ui/server/websocket.ts"
+    ],
+    "tests/unit/server/agents-where.browser.test.ts": [
+      "src/shared/launchd-session.ts",
+      "src/ui/server/session-routes.ts"
+    ],
+    "tests/unit/server/approval-dialog.browser.test.ts": [
+      "src/ui/server/approval-routes.ts",
+      "src/ui/server/approvals.ts"
+    ],
+    "tests/unit/server/approval-policy-settings.integration.test.ts": [
+      "src/shared/approval-policy.ts",
+      "src/shared/settings-cli-rows.ts"
+    ],
+    "tests/unit/server/bell-needs-you.browser.test.ts": [
+      "src/ui/server/notification-routes.ts",
+      "src/ui/server/notification-service.ts"
+    ],
+    "tests/unit/server/bell-row.browser.test.ts": [
+      "src/ui/server/notification-routes.ts"
+    ],
+    "tests/unit/server/bell-v6.browser.test.ts": [
+      "src/ui/server/notification-routes.ts",
+      "src/ui/server/bell-prefs.ts"
+    ],
+    "tests/unit/server/bring-in.browser.test.ts": [
+      "src/ui/server/agent-routes.ts",
+      "src/shared/agents/conversations.ts"
+    ],
+    "tests/unit/server/busy-popup.browser.test.ts": [
+      "src/ui/server/public/busy-den.js"
+    ],
+    "tests/unit/server/busy-request-ledger.browser.test.ts": [
+      "src/ui/server/request-ledger.ts"
+    ],
+    "tests/unit/server/changelog-dialog.integration.test.ts": [
+      "src/ui/server/changelog-parser.ts"
+    ],
+    "tests/unit/server/config-invalid.integration.test.ts": [
+      "src/shared/config-error.ts",
+      "src/shared/den-config.ts"
+    ],
+    "tests/unit/server/confirm-busy.browser.test.ts": [
+      "src/ui/server/workspace-routes.ts",
+      "src/ui/server/public/busy-den.js"
+    ],
+    "tests/unit/server/d17-claim.browser.test.ts": [
+      "src/ui/server/github-routes.ts",
+      "src/shared/attest-code.ts"
+    ],
+    "tests/unit/server/d17-claim.integration.test.ts": [
+      "src/ui/server/github-routes.ts",
+      "src/shared/attest-code.ts",
+      "src/shared/claim-code.ts"
+    ],
+    "tests/unit/server/d67-remote-approve.browser.test.ts": [
+      "src/ui/server/pair-routes.ts",
+      "src/ui/server/pair-requests.ts",
+      "src/ui/server/login-waits.ts"
+    ],
+    "tests/unit/server/dialogs-centred.browser.test.ts": [
+      "src/ui/server/public/dialog-den.js"
+    ],
+    "tests/unit/server/dialogs-fit-ipad.browser.test.ts": [
+      "src/ui/server/public/dialog-den.js"
+    ],
+    "tests/unit/server/edge-page.browser.test.ts": [
+      "src/ui/server/readonly-routes.ts",
+      "src/shared/edge/status.ts"
+    ],
+    "tests/unit/server/environments-dead-host.browser.test.ts": [
+      "src/shared/environment-manager/health.ts",
+      "src/ui/server/health-row.ts"
+    ],
+    "tests/unit/server/environments-view.browser.test.ts": [
+      "src/ui/server/release-service.ts",
+      "src/ui/server/health-row.ts"
+    ],
+    "tests/unit/server/fresh-create-ui.browser.test.ts": [
+      "src/ui/cli/create.ts",
+      "src/ui/server/github-service.ts"
+    ],
+    "tests/unit/server/gate-chip.browser.test.ts": [
+      "src/ui/server/gate-routes.ts",
+      "src/shared/gates/view.ts"
+    ],
+    "tests/unit/server/graph-edges-flow.browser.test.ts": [
+      "src/ui/server/graph-page.ts"
+    ],
+    "tests/unit/server/graph-health-cards.browser.test.ts": [
+      "src/ui/server/graph-page.ts",
+      "src/ui/server/health-row.ts"
+    ],
+    "tests/unit/server/graph-many-groups.browser.test.ts": [
+      "src/ui/server/graph-page.ts",
+      "src/ui/server/graph-order.ts",
+      "src/ui/server/graph-prefs.ts"
+    ],
+    "tests/unit/server/health-compose-load.integration.test.ts": [
+      "src/shared/stacks/compose-health.ts",
+      "src/shared/environment-manager/health.ts"
+    ],
+    "tests/unit/server/health-docker-down.integration.test.ts": [
+      "src/shared/stacks/compose-health.ts",
+      "src/shared/environment-manager/health.ts"
+    ],
+    "tests/unit/server/health-repos-nonblocking.integration.test.ts": [
+      "src/shared/environment-manager/health.ts",
+      "src/ui/server/workspace-routes.ts"
+    ],
+    "tests/unit/server/host-refresh-web.integration.test.ts": [
+      "src/shared/sessions/host-refresh.ts"
+    ],
+    "tests/unit/server/hub-editions-den-yml.integration.test.ts": [
+      "src/shared/hub-editions.ts"
+    ],
+    "tests/unit/server/hub-tools-restart.integration.test.ts": [
+      "src/shared/hub-tools.ts",
+      "src/ui/server/hub-tools-service.ts"
+    ],
+    "tests/unit/server/hub-tools-slow-stop.integration.test.ts": [
+      "src/shared/hub-tools.ts",
+      "src/ui/server/hub-tools-service.ts"
+    ],
+    "tests/unit/server/i18n-layout.browser.test.ts": [
+      "src/ui/server/public/i18n/*.js"
+    ],
+    "tests/unit/server/kit-dialog.browser.test.ts": [
+      "src/ui/server/public/dialog-den.js",
+      "src/ui/server/workspace-routes.ts"
     ]
   },
   "subjectless": [
-    "tests/unit/server/agents-rotation.browser.test.ts",
-    "tests/unit/server/agents-scope.browser.test.ts",
-    "tests/unit/server/agents-signin.browser.test.ts",
-    "tests/unit/server/agents-subagents.browser.test.ts",
-    "tests/unit/server/agents-tab.browser.test.ts",
-    "tests/unit/server/agents-term-size.browser.test.ts",
-    "tests/unit/server/agents-where.browser.test.ts",
-    "tests/unit/server/approval-dialog.browser.test.ts",
-    "tests/unit/server/approval-policy-settings.integration.test.ts",
-    "tests/unit/server/bell-needs-you.browser.test.ts",
-    "tests/unit/server/bell-row.browser.test.ts",
-    "tests/unit/server/bell-v6.browser.test.ts",
-    "tests/unit/server/bring-in.browser.test.ts",
-    "tests/unit/server/busy-popup.browser.test.ts",
-    "tests/unit/server/busy-request-ledger.browser.test.ts",
-    "tests/unit/server/changelog-dialog.integration.test.ts",
-    "tests/unit/server/config-invalid.integration.test.ts",
-    "tests/unit/server/confirm-busy.browser.test.ts",
-    "tests/unit/server/d17-claim.browser.test.ts",
-    "tests/unit/server/d17-claim.integration.test.ts",
-    "tests/unit/server/d67-remote-approve.browser.test.ts",
-    "tests/unit/server/dialogs-centred.browser.test.ts",
-    "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
-    "tests/unit/server/edge-page.browser.test.ts",
-    "tests/unit/server/environments-dead-host.browser.test.ts",
-    "tests/unit/server/environments-view.browser.test.ts",
-    "tests/unit/server/fresh-create-ui.browser.test.ts",
-    "tests/unit/server/gate-chip.browser.test.ts",
-    "tests/unit/server/graph-edges-flow.browser.test.ts",
-    "tests/unit/server/graph-health-cards.browser.test.ts",
-    "tests/unit/server/graph-many-groups.browser.test.ts",
-    "tests/unit/server/health-compose-load.integration.test.ts",
-    "tests/unit/server/health-docker-down.integration.test.ts",
-    "tests/unit/server/health-repos-nonblocking.integration.test.ts",
-    "tests/unit/server/host-refresh-web.integration.test.ts",
-    "tests/unit/server/hub-editions-den-yml.integration.test.ts",
-    "tests/unit/server/hub-tools-restart.integration.test.ts",
-    "tests/unit/server/hub-tools-slow-stop.integration.test.ts",
-    "tests/unit/server/i18n-layout.browser.test.ts",
-    "tests/unit/server/kit-dialog.browser.test.ts",
     "tests/unit/server/lk0-sudo-only.integration.test.ts",
     "tests/unit/server/lk0-sudo.browser.test.ts",
     "tests/unit/server/lk4-save-sudo.integration.test.ts",
@@ -2192,8 +2306,62 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "src/shared/agents/handoff.ts",
+        "src/shared/agents/rotation.ts",
+        "src/ui/server/agent-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-rotation.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/environment-manager/scope.ts",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-scope.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/signin-accounts.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-signin.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/subagents.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-subagents.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/agent-routes.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-tab.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/sessions/host.ts", "src/ui/server/websocket.ts"],
+      "run": ["tests/unit/server/agents-term-size.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/server/session-routes.ts", "src/ui/server/websocket.ts"],
       "run": ["tests/unit/server/agents-terminal.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/launchd-session.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-where.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2204,6 +2372,22 @@
     {
       "when": ["src/shared/alerts.ts", "src/ui/server/alerts.ts"],
       "run": ["tests/unit/server/alerts.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/approval-routes.ts",
+        "src/ui/server/approvals.ts"
+      ],
+      "run": ["tests/unit/server/approval-dialog.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/approval-policy.ts",
+        "src/shared/settings-cli-rows.ts"
+      ],
+      "run": ["tests/unit/server/approval-policy-settings.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2218,6 +2402,27 @@
     },
     {
       "when": [
+        "src/ui/server/notification-routes.ts",
+        "src/ui/server/notification-service.ts"
+      ],
+      "run": ["tests/unit/server/bell-needs-you.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/notification-routes.ts"],
+      "run": ["tests/unit/server/bell-row.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/bell-prefs.ts",
+        "src/ui/server/notification-routes.ts"
+      ],
+      "run": ["tests/unit/server/bell-v6.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/shared/sessions/bell.ts",
         "src/ui/server/attention.ts",
         "src/ui/server/bell-prefs.ts"
@@ -2226,8 +2431,82 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "src/shared/agents/conversations.ts",
+        "src/ui/server/agent-routes.ts"
+      ],
+      "run": ["tests/unit/server/bring-in.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/busy-den.js"],
+      "run": ["tests/unit/server/busy-popup.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/request-ledger.ts"],
+      "run": ["tests/unit/server/busy-request-ledger.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/changelog-parser.ts"],
+      "run": ["tests/unit/server/changelog-dialog.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/config-error.ts", "src/shared/den-config.ts"],
+      "run": ["tests/unit/server/config-invalid.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/busy-den.js",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": ["tests/unit/server/confirm-busy.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/shared/crash-loop.ts"],
       "run": ["tests/unit/server/crash-loop.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/attest-code.ts", "src/ui/server/github-routes.ts"],
+      "run": ["tests/unit/server/d17-claim.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/attest-code.ts",
+        "src/shared/claim-code.ts",
+        "src/ui/server/github-routes.ts"
+      ],
+      "run": ["tests/unit/server/d17-claim.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/login-waits.ts",
+        "src/ui/server/pair-requests.ts",
+        "src/ui/server/pair-routes.ts"
+      ],
+      "run": ["tests/unit/server/d67-remote-approve.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/dialog-den.js"],
+      "run": ["tests/unit/server/dialogs-centred.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/dialog-den.js"],
+      "run": ["tests/unit/server/dialogs-fit-ipad.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/edge/status.ts", "src/ui/server/readonly-routes.ts"],
+      "run": ["tests/unit/server/edge-page.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2240,8 +2519,69 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "src/shared/environment-manager/health.ts",
+        "src/ui/server/health-row.ts"
+      ],
+      "run": ["tests/unit/server/environments-dead-host.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/health-row.ts",
+        "src/ui/server/release-service.ts"
+      ],
+      "run": ["tests/unit/server/environments-view.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/shared/fixture-person.ts"],
       "run": ["tests/unit/server/fixture-person.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/cli/create.ts", "src/ui/server/github-service.ts"],
+      "run": ["tests/unit/server/fresh-create-ui.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/gates/view.ts", "src/ui/server/gate-routes.ts"],
+      "run": ["tests/unit/server/gate-chip.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/graph-page.ts"],
+      "run": ["tests/unit/server/graph-edges-flow.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/graph-page.ts", "src/ui/server/health-row.ts"],
+      "run": ["tests/unit/server/graph-health-cards.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/graph-order.ts",
+        "src/ui/server/graph-page.ts",
+        "src/ui/server/graph-prefs.ts"
+      ],
+      "run": ["tests/unit/server/graph-many-groups.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/environment-manager/health.ts",
+        "src/shared/stacks/compose-health.ts"
+      ],
+      "run": ["tests/unit/server/health-compose-load.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/environment-manager/health.ts",
+        "src/shared/stacks/compose-health.ts"
+      ],
+      "run": ["tests/unit/server/health-docker-down.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2251,6 +2591,19 @@
         "src/ui/server/health-row.ts"
       ],
       "run": ["tests/unit/server/health-pending.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/environment-manager/health.ts",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": ["tests/unit/server/health-repos-nonblocking.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/sessions/host-refresh.ts"],
+      "run": ["tests/unit/server/host-refresh-web.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2273,6 +2626,11 @@
     },
     {
       "when": ["src/shared/hub-editions.ts"],
+      "run": ["tests/unit/server/hub-editions-den-yml.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -2283,7 +2641,22 @@
     },
     {
       "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "run": ["tests/unit/server/hub-tools-restart.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "run": ["tests/unit/server/hub-tools-slow-stop.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
       "run": ["tests/unit/server/hub-tools.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/i18n/*.js"],
+      "run": ["tests/unit/server/i18n-layout.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2311,6 +2684,14 @@
     {
       "when": ["src/ui/server/signin-methods.ts"],
       "run": ["tests/unit/server/issue-868-signin-methods.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/dialog-den.js",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": ["tests/unit/server/kit-dialog.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
