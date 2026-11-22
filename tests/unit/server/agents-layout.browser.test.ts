@@ -1022,14 +1022,26 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       const pane = document.querySelector(
         "#agr section[data-id]:not([hidden])",
       )!;
+      const c = document.getElementById("den-content")!;
+      const at = (e: Element | null) => {
+        const r = e!.getBoundingClientRect();
+        return `${Math.round(r.top)}-${Math.round(r.bottom)}/${Math.round(r.height)}`;
+      };
       return {
         banner: box(document.getElementById("den-banners")),
         to: box(pane.querySelector("[data-to]")),
         dock: box(document.getElementById("den-dock")),
+        // Where the height goes (issue 194's log line).
+        why:
+          `content ${at(c)} scroll ${c.scrollHeight}/${c.clientHeight}, ` +
+          `ph ${at(c.querySelector(".ph"))}, agx ${at(document.getElementById("agx"))} ` +
+          `rows ${getComputedStyle(document.getElementById("agx")!).gridTemplateRows}, ` +
+          `agl ${at(document.getElementById("agl"))}, agr ${at(document.getElementById("agr"))}, ` +
+          `pane ${at(pane)} min ${getComputedStyle(pane).minHeight}`,
       };
     });
     process.stdout.write(
-      `issue 194 at 390x844: banner ${m.banner.h}px, To ${m.to.t}-${m.to.b}, dock top ${m.dock.t}\n`,
+      `issue 194 at 390x844: banner ${m.banner.h}px, To ${m.to.t}-${m.to.b}, dock top ${m.dock.t}; ${m.why}\n`,
     );
     expect(m.banner.h).toBeGreaterThan(0);
     expect(m.to.t).toBeGreaterThanOrEqual(m.banner.b - 0.5);
