@@ -242,12 +242,26 @@ with "If you didn't ask an agent to do this, Deny." under it.
   `<cli> web claim-link` prints a one-time setup link that signs the
   browser in.
 - **Allow runs it once**, from the arguments stored when it was asked,
-  checked again first. Deny, 10 minutes with no answer, or the agent being
-  stopped run nothing. An agent may have 5 requests waiting; a restart drops
-  what waits (the agent asks again).
+  checked again first: an old request whose target changed gets the
+  check's error, and nothing runs. Deny, no answer within the window, or
+  the agent being stopped run nothing. An agent may have 5 requests
+  waiting.
+- **The window** (from 0.4.81): `held_writes.wait_minutes` in
+  `config/local/user.yml` (Settings › Agents, "Requests wait for your
+  Allow"), 24 hours by default, 10 minutes to 7 days. The tool texts and
+  `approval_check` say the window set.
+- **What waits survives a restart** (from 0.4.81): the queue is kept in
+  `held-writes.json` under the state dir (written whole, then renamed;
+  owner-only), and read back at the start. A request that can't come back
+  is `lost`, never silently gone: its action no longer exists, a restart
+  cut it off while it ran (check whether it took effect), or the file was
+  unreadable (it is kept aside as `held-writes.json.corrupt-<time>`, and an
+  id Den no longer knows reads `lost` for a week). The bell says so, the
+  asking agent is told, and the trail has `approval-lost`. Den's own
+  update ask is not kept: the update check asks again.
 - **The agent waits** up to 2 minutes for the answer, then gets the request
   id: `approval_check` says `pending`, `done` (with what the run said),
-  `denied` or `expired`. While a request waits, its agent is "waiting" on
+  `denied`, `expired`, `withdrawn` or `lost`. While a request waits, its agent is "waiting" on
   the Agents page.
 - **Only the person sees what waits.** `GET /api/approvals` needs what
   Allow needs: the session cookie, that session's CSRF token

@@ -22,6 +22,8 @@ import {
 import { gateBoxTools } from "./gate-box-tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
+  heldWaitText,
+  heldWriteWaitMinutes,
   MCP_ACTIONS,
   type McpAction,
   type ResolvedMcpConfig,
@@ -330,6 +332,12 @@ async function denUpdateOf(api: DenApi): Promise<unknown> {
     throw e;
   }
 }
+
+/**
+ * Issue 742: stands for the held-write window in a tool's text; toolsFor
+ * puts the configured one in (held_writes.wait_minutes, heldWaitText).
+ */
+const HELD_WAIT = "[held_writes.wait_minutes]";
 
 /** The shared GitHub watcher tells an agent: a scoped (agent's) server only. */
 function githubWatchAgent(tool: string, ctx: ToolContext): void {
@@ -718,7 +726,9 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart): `state` pending, done (with Den's `result`), denied, expired, or withdrawn. `id` is the request id the write tool gave you. Reads only.",
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+      HELD_WAIT +
+      " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
     async (a, { api }) => {
       const id = str(a.id)?.trim() ?? "";
@@ -1920,9 +1930,13 @@ async function waitForPerson(
     w.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const until = Date.now() + w.waitMs;
   // SRV-1a: a request the setting allowed at once answers in the ask.
-  let first: unknown = ["done", "denied", "expired", "withdrawn"].includes(
-    String((asked as { state?: unknown })?.state),
-  )
+  let first: unknown = [
+    "done",
+    "denied",
+    "expired",
+    "withdrawn",
+    "lost",
+  ].includes(String((asked as { state?: unknown })?.state))
     ? asked
     : null;
   for (;;) {
@@ -1952,6 +1966,11 @@ async function waitForPerson(
     if (a.state === "withdrawn")
       throw new Refusal(
         `${tool}: the request was withdrawn by the one that asked (request ${id}); nothing ran.`,
+      );
+    // Issue 742: a restart could not bring it back.
+    if (a.state === "lost")
+      throw new Refusal(
+        `${tool}: the request was lost at a restart (request ${id}); nothing ran from it. Ask again if it is still needed.`,
       );
     if (Date.now() >= until) break;
     await sleep(w.intervalMs);
@@ -2013,8 +2032,7 @@ const RESTART_NEXT =
 const UPDATE_NEXT =
   'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you. On the new version Den commits and pushes the new pin (package.json, package-lock.json) itself; commit it yourself only when server_agent.pin_commit is off. If Den says it rolled back, commit nothing and tell your person why.'; // words-ok: SRV-1's own line, for the agent
 
-const HELD =
-  " Den's approval policy decides: a change that widens what an agent may do waits for the person's Allow in Den's browser dialog; others may run at once (the answer says done). Give ask: true and a note saying why to wait for the Allow anyway. A request waits up to 10 minutes; this call waits up to 2 for the answer, then returns the request id for approval_check.";
+const HELD = ` Den's approval policy decides: a change that widens what an agent may do waits for the person's Allow in Den's browser dialog; others may run at once (the answer says done). Give ask: true and a note saying why to wait for the Allow anyway. A request waits up to ${HELD_WAIT} for the person (held_writes.wait_minutes); this call waits up to 2 minutes for the answer, then returns the request id for approval_check.`;
 
 /** SRV-P2: a persona's fields, as the Personas page's form has them. */
 function personaShape(update: boolean) {
@@ -2943,6 +2961,8 @@ export function approvalsState(
 /** The tools to register: every read tool, hub_put and hub_pull, the held writes (unless turned off), plus the actions the org named. */
 export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
   const held = cfg.approvals ? APPROVAL_TOOLS : [];
+  // Issue 742: the held-write window as the person set it.
+  const wait = heldWaitText(cfg.heldWaitMinutes ?? heldWriteWaitMinutes());
   const tools = [
     ...READ_TOOLS,
     ...HUB_FILE_TOOLS,
@@ -2952,7 +2972,11 @@ export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
     ...MCP_ACTIONS.filter((a) => cfg.actions.includes(a))
       .map((a) => ACTION_TOOLS[a])
       .filter((t) => !held.some((h) => h.name === t.name)),
-  ];
+  ].map((t) =>
+    t.description.includes(HELD_WAIT)
+      ? { ...t, description: t.description.split(HELD_WAIT).join(wait) }
+      : t,
+  );
   return scope ? tools.map((t) => pinnedTool(t, scope)) : tools;
 }
 

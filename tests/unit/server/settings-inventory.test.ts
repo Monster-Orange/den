@@ -150,6 +150,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     api_budget_floor: true,
     watches_max: true,
   },
+  // Issue 742: how long a held write waits for the person's Allow.
+  held_writes: { wait_minutes: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -333,6 +335,8 @@ describe("the settings inventory (R21)", () => {
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
         "agent_hooks.backoff_seconds",
+        // Issue 742: how long a held write waits for the person's Allow.
+        "held_writes.wait_minutes",
       ].sort(),
     );
   });
