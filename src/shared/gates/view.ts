@@ -12,7 +12,7 @@ import {
   yieldedTo,
   type EstimateSource,
 } from "./rules.js";
-import { boxSkipReason } from "./boxes.js";
+import { boxEndpoints, boxSkipReason, type GateBox } from "./boxes.js";
 import { classOf, windowHeld } from "./classes.js";
 import type { GateStore } from "./store.js";
 
@@ -77,7 +77,17 @@ export interface GateBoxView {
   state: "open" | "held" | "unreachable" | "low" | "unchecked";
   reason?: string;
   checkedAt?: string;
+  /** Issue 1017: the Playwright versions its servers serve, when set. */
+  playwrightVersions?: string[];
 }
+
+/** Issue 1017: a box's Playwright versions, never its addresses. */
+const versionsOf = (b: GateBox) => {
+  const vs = boxEndpoints(b)
+    .map((x) => x.version)
+    .filter((v): v is string => !!v);
+  return vs.length ? { playwrightVersions: vs } : {};
+};
 
 export function gateBoxesView(
   store: GateStore,
@@ -93,6 +103,7 @@ export function gateBoxesView(
       state: st?.state ?? "unchecked",
       ...(st?.reason ? { reason: st.reason } : {}),
       ...(st?.at ? { checkedAt: st.at } : {}),
+      ...versionsOf(b),
     };
   });
 }

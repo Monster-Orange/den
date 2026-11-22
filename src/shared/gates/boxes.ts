@@ -63,6 +63,13 @@ export interface GateBox {
   min_free_mem_mb?: number;
   /** Clause 11: the box's Playwright server version; a client must match. */
   playwright_version?: string;
+  /**
+   * Issue 1017: the box's Playwright servers, version → ws:// or wss://
+   * address ("1.61" serves any 1.61.x client). A run gets the one whose
+   * version matches its own. Instead of `playwright` and
+   * `playwright_version`, which stay as they were for a box with one.
+   */
+  playwright_endpoints?: Record<string, string>;
 }
 
 export const BOX_LIMITS = {
@@ -79,20 +86,114 @@ export const BOX_MIN_FREE_MEM_MB = 2048;
 export const BOX_CHECK_CAP_MS = 25_000;
 
 const PW_VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[A-Za-z0-9.-]{1,40})?$/;
+/** Issue 1017: an endpoint's version: major.minor, or a full version. */
+const PW_ENDPOINT_VERSION =
+  /^\d{1,4}\.\d{1,4}(?:\.\d{1,4}(?:-[A-Za-z0-9.-]{1,40})?)?$/;
+
+/**
+ * Issue 1017: whether an endpoint's version serves a client's: the same,
+ * or one names the other's major.minor (1.61 serves 1.61.2).
+ */
+export function pwServes(endpoint: string, client: string): boolean {
+  return (
+    endpoint === client ||
+    client.startsWith(endpoint + ".") ||
+    endpoint.startsWith(client + ".")
+  );
+}
+
+/**
+ * Issue 1017: a box's Playwright endpoints, in the order set. A box with
+ * one (`playwright`, maybe `playwright_version`) reads as a list of one,
+ * so a settings.json written before keeps working as it is; nothing is
+ * rewritten.
+ */
+export function boxEndpoints(
+  b: Pick<
+    GateBox,
+    "playwright" | "playwright_version" | "playwright_endpoints"
+  >,
+): { version?: string; ws: string }[] {
+  if (b.playwright_endpoints)
+    return Object.entries(b.playwright_endpoints).map(([version, ws]) => ({
+      version,
+      ws,
+    }));
+  return b.playwright
+    ? [
+        {
+          ...(b.playwright_version ? { version: b.playwright_version } : {}),
+          ws: b.playwright,
+        },
+      ]
+    : [];
+}
+
+/**
+ * The endpoint a run with this client version gets on the box: the one
+ * whose version serves it; with no version, none. A one-endpoint box
+ * gives its one address, as before.
+ */
+export function boxEndpointFor(
+  b: Pick<
+    GateBox,
+    "playwright" | "playwright_version" | "playwright_endpoints"
+  >,
+  pwVersion?: string,
+): string | undefined {
+  if (!b.playwright_endpoints) return b.playwright;
+  // An unknown version gets none: which server it needs can't be said.
+  if (!pwVersion) return undefined;
+  return boxEndpoints(b).find((x) => pwServes(x.version!, pwVersion))?.ws;
+}
 
 /**
  * Clause 11: why a run can't use a box's browser (its Playwright client
- * isn't the box server's version), or "" when it can.
+ * isn't the box server's version), or "" when it can. Issue 1017: a box
+ * with several endpoints is skipped only when none serves the client.
  */
 export function boxSkipReason(
   e: { pwVersion?: string },
-  b: Pick<GateBox, "playwright_version">,
+  b: Pick<GateBox, "playwright_version" | "playwright_endpoints">,
 ): string {
-  return e.pwVersion &&
-    b.playwright_version &&
-    e.pwVersion !== b.playwright_version
-    ? `client ${e.pwVersion} ≠ server ${b.playwright_version}`
+  return versionSkip(
+    e.pwVersion,
+    b.playwright_endpoints
+      ? { versions: Object.keys(b.playwright_endpoints) }
+      : { version: b.playwright_version },
+  );
+}
+
+/** boxSkipReason over what a BoxCap carries (one version, or several). */
+function versionSkip(
+  client: string | undefined,
+  b: { version?: string; versions?: string[] },
+): string {
+  // A box with one address checks no unknown version, as before; one with
+  // several can't pick a server for it.
+  if (!client)
+    return b.versions ? "Playwright version unknown: pass --pw-version" : "";
+  if (b.versions)
+    return b.versions.some((v) => pwServes(v, client))
+      ? ""
+      : `client ${client}: box serves ${b.versions.join(", ")}`;
+  return b.version && client !== b.version
+    ? `client ${client} ≠ server ${b.version}`
     : "";
+}
+
+/** A ws:// or wss:// address with a host and no login; or what is wrong. */
+function wsProblem(pw: string): string {
+  let u: URL | null = null;
+  try {
+    u = new URL(pw);
+  } catch {
+    /* below */
+  }
+  if (!u || (u.protocol !== "ws:" && u.protocol !== "wss:") || !u.hostname)
+    return "is a ws:// or wss:// address";
+  if (u.username || u.password) return "address carries no login or password";
+  return "";
 }
 
 /** Box settings: how long a check may take, and how long a no is kept. */
@@ -141,25 +242,55 @@ export function checkBox(
   }
   const pw = str("playwright");
   if (pw !== undefined) {
-    let u: URL | null = null;
-    try {
-      u = new URL(pw);
-    } catch {
-      /* below */
-    }
-    if (!u || (u.protocol !== "ws:" && u.protocol !== "wss:") || !u.hostname)
+    const bad = wsProblem(pw);
+    if (bad)
       return {
         ok: false,
-        error: `box ${name}: playwright is a ws:// or wss:// address`,
-      };
-    if (u.username || u.password)
-      return {
-        ok: false,
-        error: `box ${name}: playwright address carries no login or password`,
+        error: `box ${name}: playwright ${bad}`,
       };
     box.playwright = pw;
   }
-  if (!box.ssh && !box.playwright)
+  // Issue 1017: several Playwright servers, version → address.
+  const eps = o.playwright_endpoints;
+  if (eps !== undefined && eps !== null) {
+    if (typeof eps !== "object" || Array.isArray(eps))
+      return {
+        ok: false,
+        error: `box ${name}: playwright_endpoints is version → ws:// address`,
+      };
+    const list = Object.entries(eps as Record<string, unknown>);
+    if (!list.length)
+      return {
+        ok: false,
+        error: `box ${name}: playwright_endpoints names at least one version`,
+      };
+    if (box.playwright || str("playwright_version") !== undefined)
+      return {
+        ok: false,
+        error: `box ${name}: give playwright_endpoints, or playwright (and playwright_version), not both`,
+      };
+    const map: Record<string, string> = {};
+    for (const [v, ws] of list) {
+      const version = v.trim();
+      if (!PW_ENDPOINT_VERSION.test(version))
+        return {
+          ok: false,
+          error: `box ${name}: playwright_endpoints: ${version.slice(0, 48)} is not a version like 1.61 or 1.61.0`,
+        };
+      const bad =
+        typeof ws === "string" && ws.trim()
+          ? wsProblem(ws.trim())
+          : "is a ws:// or wss:// address";
+      if (bad)
+        return {
+          ok: false,
+          error: `box ${name}: playwright_endpoints ${version} ${bad}`,
+        };
+      map[version] = (ws as string).trim();
+    }
+    box.playwright_endpoints = map;
+  }
+  if (!box.ssh && !box.playwright && !box.playwright_endpoints)
     return {
       ok: false,
       error: `box ${name}: say how Den reaches it (ssh, or a playwright address)`,
@@ -245,6 +376,22 @@ export interface BoxCap {
   open: boolean;
   /** Clause 11: its Playwright server's version, when set. */
   version?: string;
+  /** Issue 1017: the versions its endpoints serve, when it lists several. */
+  versions?: string[];
+}
+
+/** Issue 1017: a box as one assignment sees it (BoxCap), from its settings. */
+export function boxCapOf(b: GateBox, open: boolean): BoxCap {
+  return {
+    name: b.name,
+    slots: b.browser_slots,
+    open,
+    ...(b.playwright_endpoints
+      ? { versions: Object.keys(b.playwright_endpoints) }
+      : b.playwright_version
+        ? { version: b.playwright_version }
+        : {}),
+  };
 }
 
 /**
@@ -256,9 +403,7 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
   if (e.kind !== "browser") return ["local"];
   const w = e.where ?? "local";
   if (w === "local") return ["local"];
-  const fits = boxes.filter(
-    (b) => !boxSkipReason(e, { playwright_version: b.version }),
-  );
+  const fits = boxes.filter((b) => !versionSkip(e.pwVersion, b));
   if (w === "any") return ["local", ...fits.map((b) => b.name)];
   return fits.some((b) => b.name === w) ? [w] : [];
 }
@@ -445,7 +590,8 @@ export function memAvailableMb(text: string): number | undefined {
  */
 export function sftpProbe(start: typeof spawn): BoxProbe {
   return (box, timeoutMs) => {
-    if (!box.ssh) return tcpReach(new URL(box.playwright!), timeoutMs);
+    // Issue 1017: with several Playwright servers, the first is reached.
+    if (!box.ssh) return tcpReach(new URL(boxEndpoints(box)[0]!.ws), timeoutMs);
     const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
     const secs = Math.max(1, Math.round(capMs / 1000));
     const args = [
@@ -571,12 +717,19 @@ export function freshYes(
   );
 }
 
-/** What the environment of a run that got a box's slot says. */
-export function boxEnv(box: GateBox): Record<string, string> {
+/**
+ * What the environment of a run that got a box's slot says. Issue 1017:
+ * DEN_PW_WS is the endpoint that serves the run's Playwright version.
+ */
+export function boxEnv(
+  box: GateBox,
+  pwVersion?: string,
+): Record<string, string> {
+  const ws = boxEndpointFor(box, pwVersion);
   return {
     DEN_GATE_BOX: box.name,
     DEN_GATE_TIME_SCALE: String(box.time_scale ?? 1),
-    ...(box.playwright ? { DEN_PW_WS: box.playwright } : {}),
+    ...(ws ? { DEN_PW_WS: ws } : {}),
     ...(box.ssh ? { DEN_GATE_BOX_SSH: box.ssh } : {}),
   };
 }

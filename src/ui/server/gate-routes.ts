@@ -739,6 +739,7 @@ const BOX_CARD_FIELDS: readonly [keyof GateBox, string][] = [
   ["time_scale", "time_scale"],
   ["playwright_version", "playwright_version"],
   ["min_free_mem_mb", "min_free_mem_mb"],
+  ["playwright_endpoints", "playwright_endpoints"],
 ];
 
 /** The English line for each field on the Allow card. */
@@ -752,10 +753,17 @@ const BOX_CARD_WORDS: Record<string, string> = {
   time_scale: "Time scale",
   playwright_version: "Playwright version",
   min_free_mem_mb: "Least free memory (MB)",
+  playwright_endpoints: "Playwright by version",
 };
 
 /** Unset on the card: the same in every language. */
 const UNSET = "—";
+
+/** Issue 1017: a box's endpoints on the card, `1.61 → ws://…, …`. */
+const endpointsText = (m: Record<string, string>) =>
+  Object.entries(m)
+    .map(([v, ws]) => `${v} → ${ws}`)
+    .join(", ");
 
 /**
  * Issue 625 follow-up: the held writes gate_box_set and gate_box_remove.
@@ -784,7 +792,11 @@ export function gateBoxOps(d: {
         .boxes()
         .some((x) => x.name === b.name);
       const shown = (k: keyof GateBox) =>
-        b[k] === undefined ? UNSET : String(b[k]);
+        b[k] === undefined
+          ? UNSET
+          : k === "playwright_endpoints"
+            ? endpointsText(b.playwright_endpoints!)
+            : String(b[k]);
       return {
         ok: true,
         personOnly: true,

@@ -41,6 +41,7 @@ function boxOf(a: Args): Args {
     "time_scale",
     "playwright_version",
     "min_free_mem_mb",
+    "playwright_endpoints",
   ];
   const box: Args = {};
   for (const k of keys) if (a[k] !== undefined) box[k] = a[k];
@@ -110,6 +111,12 @@ export function gateBoxTools(k: GateBoxToolKit): DenTool[] {
           .string()
           .optional()
           .describe("The Playwright version on the box, like 1.48.0"),
+        playwright_endpoints: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            'Issue 1017: a Playwright address per version on the box, version → ws:// address, like {"1.61": "ws://box:3931", "1.63": "ws://box:3932"}. A run gets the one for its version. Give this or the one playwright address, not both',
+          ),
         min_free_mem_mb: z
           .number()
           .int()

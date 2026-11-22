@@ -1881,6 +1881,7 @@
     "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
     "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",
     "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
+    "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
     "ap.do.host_restart":
@@ -3241,6 +3242,8 @@
     "set.ui.boxSave": "Guardar máquina",
     "set.ui.boxMem": "Memoria libre a mantener (MB)",
     "set.ui.boxPwv": "Versión de Playwright en la máquina",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
+    "set.ui.boxPws": "O Playwright por versión (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone":
       "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
     "set.ui.boxSlotsN": "{n} turnos de navegador",

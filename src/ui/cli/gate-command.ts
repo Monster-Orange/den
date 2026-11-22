@@ -40,6 +40,7 @@
  *                            803: priority classes per project ("" clears)
  */
 import { spawn } from "child_process";
+import * as os from "os";
 import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { classOf, windowHeld } from "../../shared/gates/classes.js";
@@ -103,6 +104,9 @@ export const GATE_HELP = {
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
     "    [--hold-file <path>] [--time-scale X] [--min-free-mem-mb N]",
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
+    "    [--pw <version>=ws://…] (repeat it): a box with a Playwright address",
+    "    per version; a run gets the one for its version (--pw-version, else",
+    "    the installed Playwright, looking up to the repo's top folder)",
     "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443)",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
@@ -142,7 +146,7 @@ export interface GateDeps {
   exec: (cmd: string, args: string[], env?: Record<string, string>) => GateRun;
   /** Runs `fn` every `ms` until the returned stop is called. */
   every: (ms: number, fn: () => void) => () => void;
-  /** Calls `h` on SIGINT, SIGTERM or SIGHUP; returns a stop. */
+  /** Calls `h` on each of GATE_RUN_SIGNALS; returns a stop. */
   onSignal: (h: (signal: NodeJS.Signals) => void) => () => void;
   /** Leaves at once with `code` (a signal while waiting). */
   exit: (code: number) => void;
@@ -184,8 +188,23 @@ function heldSlotFor(
   return roots.some((r) => under(d.pid, r)) ? e : undefined;
 }
 
-const signalCode = (s: NodeJS.Signals | null) =>
-  s === "SIGINT" ? 130 : s === "SIGHUP" ? 129 : 143;
+/** A signal's exit code, as a shell gives it (128 + its number). */
+const signalCode = (s: NodeJS.Signals | null) => {
+  const n = s ? os.constants.signals[s] : undefined;
+  return typeof n === "number" ? 128 + n : 143;
+};
+
+/**
+ * Issue 1023: the signals `gate run` passes to its command (or, while it
+ * waits, that give its place back). Each one that would end it: any of
+ * them reaching gate run ends its command, and so frees its slot.
+ */
+export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
+  "SIGINT",
+  "SIGTERM",
+  "SIGHUP",
+  "SIGQUIT",
+];
 
 const realExec = (
   cmd: string,
@@ -209,10 +228,17 @@ const realExec = (
 };
 
 const realOnSignal = (h: (s: NodeJS.Signals) => void) => {
-  const sigs: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
-  for (const s of sigs) process.on(s, h);
+  for (const s of GATE_RUN_SIGNALS) process.on(s, h);
+  // Issue 1023: a closed stdout or stderr (the terminal or the agent that
+  // started it went away) never ends gate run before its command, so the
+  // slot is still given back when the command ends.
+  const quiet = () => {};
+  process.stdout.on("error", quiet);
+  process.stderr.on("error", quiet);
   return () => {
-    for (const s of sigs) process.off(s, h);
+    for (const s of GATE_RUN_SIGNALS) process.off(s, h);
+    process.stdout.off("error", quiet);
+    process.stderr.off("error", quiet);
   };
 };
 
@@ -239,22 +265,101 @@ export function realGateDeps(): GateDeps {
 
 class GateUsage extends Error {}
 
-/** Clause 11: the Playwright client version installed where the run is. */
-export function playwrightVersion(cwd: string): string | undefined {
-  for (const p of ["playwright-core", "@playwright/test", "playwright"])
-    try {
-      const v = (
-        JSON.parse(
-          fs.readFileSync(
-            path.join(cwd, "node_modules", p, "package.json"),
-            "utf-8",
-          ),
-        ) as { version?: unknown }
-      ).version;
+const PW_PACKAGES = ["playwright-core", "@playwright/test", "playwright"];
+
+const readJson = (file: string): Record<string, unknown> | undefined => {
+  try {
+    const v = JSON.parse(fs.readFileSync(file, "utf-8")) as unknown;
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** The Playwright version installed for `dir` (its node_modules, or above). */
+function installedPlaywright(dir: string, stop: string): string | undefined {
+  for (let d = dir; ; d = path.dirname(d)) {
+    for (const p of PW_PACKAGES) {
+      const v = readJson(
+        path.join(d, "node_modules", p, "package.json"),
+      )?.version;
       if (typeof v === "string") return v;
-    } catch {
-      /* not this one */
     }
+    if (d === stop || path.dirname(d) === d) return undefined;
+  }
+}
+
+/** Whether a package.json depends on Playwright (its range; never a version). */
+function declaredPlaywright(dir: string): string | undefined | null {
+  const pkg = readJson(path.join(dir, "package.json"));
+  if (!pkg) return null;
+  for (const k of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ]) {
+    const deps = pkg[k];
+    if (!deps || typeof deps !== "object") continue;
+    for (const p of PW_PACKAGES) {
+      const r = (deps as Record<string, unknown>)[p];
+      if (typeof r === "string") return r;
+    }
+  }
+  return null;
+}
+
+/** The repo's top folder: the nearest at or above `dir` with a .git; else `dir`. */
+function repoTop(dir: string): string {
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, ".git"))) return d;
+    if (path.dirname(d) === d) return path.resolve(dir);
+  }
+}
+
+/**
+ * Clause 11, issue 1017: the run's exact Playwright client version, from
+ * an installed package.json only. First installed for the run's folder:
+ * its node_modules, or one above it up to the repo's top folder (a
+ * workspace run with Playwright hoisted to the root). Else installed for
+ * the nearest package.json below it that depends on Playwright (a repo
+ * whose Playwright lives in web/). Nearest is fewest folders down;
+ * node_modules and dot folders are never looked in. A range in a
+ * package.json is never read as a version: with nothing installed, the
+ * version is unknown (undefined).
+ */
+export function playwrightVersion(cwd: string): string | undefined {
+  const top = repoTop(cwd);
+  const here = installedPlaywright(cwd, top);
+  if (here) return here;
+  let level = [cwd];
+  while (level.length) {
+    for (const dir of level) {
+      const range = declaredPlaywright(dir);
+      if (typeof range !== "string") continue;
+      const v = installedPlaywright(dir, cwd);
+      if (v) return v;
+    }
+    const next: string[] = [];
+    for (const dir of level) {
+      let names: fs.Dirent[] = [];
+      try {
+        names = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const n of names)
+        if (
+          n.isDirectory() &&
+          n.name !== "node_modules" &&
+          !n.name.startsWith(".")
+        )
+          next.push(path.join(dir, n.name));
+    }
+    level = next.sort();
+  }
   return undefined;
 }
 
@@ -354,14 +459,33 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
     all.map((e) => ({ granted: !!e.grantedAt, box: e.box })),
   ).map((b) => {
     const base = `box ${b.name}: ${b.held} of ${b.slots} browser slots held`;
+    // Issue 1017: the Playwright versions it serves.
+    const pw = b.playwrightVersions?.length
+      ? `, playwright ${b.playwrightVersions.join(", ")}`
+      : "";
     if (b.state === "held" || b.state === "unreachable" || b.state === "low")
-      return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}`;
-    return b.state === "unchecked" ? `${base}, not checked yet` : base;
+      return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}${pw}`;
+    return (b.state === "unchecked" ? `${base}, not checked yet` : base) + pw;
   });
 }
 
-function flags(args: string[], known: Record<string, boolean>) {
-  const f: Record<string, string | true> = {};
+/** Issue 1017: `--pw <version>=<ws>`, repeated, as version → address. */
+function pwPairs(v: string | true | string[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const p of Array.isArray(v) ? v : [String(v)]) {
+    const eq = p.indexOf("=");
+    if (eq < 1 || eq === p.length - 1)
+      throw new GateUsage(
+        `--pw is <version>=<ws address>, like 1.61=ws://box:3931 (got ${p.slice(0, 80)})`,
+      );
+    map[p.slice(0, eq).trim()] = p.slice(eq + 1).trim();
+  }
+  return map;
+}
+
+/** A flag that takes no value (false), one (true), or repeats ("many"). */
+function flags(args: string[], known: Record<string, boolean | "many">) {
+  const f: Record<string, string | true | string[]> = {};
   const pos: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -372,15 +496,20 @@ function flags(args: string[], known: Record<string, boolean>) {
     if (a.startsWith("--")) {
       // --flag=value, for a flag that takes one.
       const eq = a.indexOf("=");
-      if (eq > 2 && known[a.slice(0, eq)] === true) {
-        f[a.slice(0, eq)] = a.slice(eq + 1);
+      const put = (k: string, v: string) => {
+        if (known[k] !== "many") return void (f[k] = v);
+        const was = f[k];
+        f[k] = [...(Array.isArray(was) ? was : []), v];
+      };
+      if (eq > 2 && known[a.slice(0, eq)]) {
+        put(a.slice(0, eq), a.slice(eq + 1));
         continue;
       }
       if (!(a in known)) throw new GateUsage(`unknown option ${a}`);
       if (known[a]) {
         const v = args[++i];
         if (v === undefined) throw new GateUsage(`${a} needs a value`);
-        f[a] = v;
+        put(a, v);
       } else f[a] = true;
     } else pos.push(a);
   }
@@ -519,6 +648,16 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       : where && where !== "local"
         ? playwrightVersion(d.cwd)
         : undefined;
+  // Issue 1017: a box with several Playwright servers can't pick one for a
+  // run whose version is unknown: said plainly, before it asks.
+  const named =
+    where && where !== "any" && where !== "local"
+      ? d.store.boxes().find((b) => b.name === where)
+      : undefined;
+  if (named?.playwright_endpoints && !pwVersion)
+    throw new GateUsage(
+      `box ${named.name} serves Playwright ${Object.keys(named.playwright_endpoints).join(", ")} and this run's Playwright version is unknown: pass --pw-version`,
+    );
   // Issue 999: none given: the gate measures it from the label's runs.
   const estimateMin =
     typeof f["--estimate"] === "string"
@@ -619,7 +758,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     };
     child = box
       ? d.exec(pos[0]!, pos.slice(1), {
-          ...boxEnv(box),
+          // Issue 1017: the box's endpoint for this run's version.
+          ...boxEnv(box, e.pwVersion),
           DEN_GATE_ALLOW: allow.join(","),
           ...slotEnv,
         })
@@ -685,6 +825,11 @@ function boxCmd(args: string[], d: GateDeps): number {
         `${b.name}  ${b.browser_slots} browser slot${b.browser_slots === 1 ? "" : "s"}` +
           (b.ssh ? `  ssh ${b.ssh}${b.ssh_port ? `:${b.ssh_port}` : ""}` : "") +
           (b.playwright ? `  playwright ${b.playwright}` : "") +
+          (b.playwright_endpoints
+            ? `  playwright ${Object.entries(b.playwright_endpoints)
+                .map(([v, ws]) => `${v}=${ws}`)
+                .join(", ")}`
+            : "") +
           (b.hold_file ? `  hold file ${b.hold_file}` : "") +
           (b.time_scale && b.time_scale !== 1
             ? `  time scale ${b.time_scale}`
@@ -708,6 +853,7 @@ function boxCmd(args: string[], d: GateDeps): number {
     "--time-scale": true,
     "--min-free-mem-mb": true,
     "--playwright-version": true,
+    "--pw": "many",
   });
   const [name, extra] = pos;
   if (!name || extra) throw new GateUsage(`gate box ${verb} needs one <name>`);
@@ -732,6 +878,7 @@ function boxCmd(args: string[], d: GateDeps): number {
     time_scale: num("--time-scale"),
     min_free_mem_mb: num("--min-free-mem-mb"),
     playwright_version: f["--playwright-version"],
+    ...(f["--pw"] ? { playwright_endpoints: pwPairs(f["--pw"]) } : {}),
   });
   if (!c.ok) throw new GateUsage(c.error);
   d.store.setBox(c.box);

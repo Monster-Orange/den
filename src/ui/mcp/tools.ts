@@ -736,14 +736,24 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_release",
     "Give a gate slot back",
-    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting). Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`.",
+    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting), or (issue 1023) one a `gate run` from your own shell made, as the same agent. Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`. Giving back a `gate run`'s slot does not stop its command.",
     { id: z.string().describe("Your slot's id") },
     async (a, ctx) => {
       const id = str(a.id) ?? "";
-      if (!mySlots.has(id))
+      const store = gatesOf(ctx);
+      const actor = ctx.scope?.actor;
+      // Issue 1023: a slot this agent's own `gate run` made (the CLI marks
+      // it with the agent's DEN_AGENT), never a runner's or an MCP ask
+      // from elsewhere.
+      const fromMyShell = (): boolean => {
+        if (!actor || !/^[a-z0-9-]{1,64}$/.test(id)) return false;
+        const e = store.get(id);
+        return !!e && !e.remote && !e.mcp && e.actor === actor;
+      };
+      if (!mySlots.has(id) && !fromMyShell())
         throw new Refusal("gate_slot_release: that slot isn't yours.");
       mySlots.delete(id);
-      return { released: gatesOf(ctx).release(id) };
+      return { released: store.release(id) };
     },
   ),
   read(

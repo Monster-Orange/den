@@ -1822,6 +1822,8 @@
     "ap.det.gate_box_set.time_scale": "時間倍率: {v}",
     "ap.det.gate_box_set.playwright_version": "Playwright のバージョン: {v}",
     "ap.det.gate_box_set.min_free_mem_mb": "最小空きメモリ (MB): {v}",
+    "ap.det.gate_box_set.playwright_endpoints":
+      "バージョン別の Playwright: {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
@@ -3138,6 +3140,9 @@
     "set.ui.boxSave": "マシンを保存",
     "set.ui.boxMem": "残しておく空きメモリ (MB)",
     "set.ui.boxPwv": "マシン上の Playwright のバージョン",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
+    "set.ui.boxPws":
+      "または バージョン別の Playwright (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone":
       "テストマシンはありません。ブラウザ実行はこのマシンだけを使います。",
     "set.ui.boxSlotsN": "ブラウザスロット {n} 個",
