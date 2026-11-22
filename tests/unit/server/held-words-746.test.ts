@@ -63,7 +63,12 @@ describe("issue 746: the bell gets what it needs to word a request", () => {
   it("a lapsed item keeps the action and params", async () => {
     const added: { msg?: { vars?: Record<string, unknown> } }[] = [];
     await heldLapsed(req({ state: "expired" }), {
-      store: { add: (n) => void added.push(n as (typeof added)[number]) },
+      store: {
+        add: (n) => {
+          added.push(n as (typeof added)[number]);
+          return null;
+        },
+      },
     });
     const vars = added[0]?.msg?.vars ?? {};
     expect(vars.action).toBe("workspace_create");
@@ -90,7 +95,7 @@ describe("issue 746: the bell words a request as the Allow dialog does", () => {
     const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
     const [w] = heldWaiting([req()]);
     const p = bellPanel({ groups: [], waiting: [w], unread: 1 });
-    expect(p.sections.needs).toContain(
+    expect("sections" in p ? p.sections.needs : "").toContain(
       "[bell.ap.row:quiet-scribe|&lt;workspace_create:proof-a&gt;]",
     );
   });
