@@ -1,8 +1,9 @@
 /**
  * Issue 991: a box run may declare a loopback host with any port
  * (`http://127.0.0.1:*`), because Den's own browser suites start their
- * server on a free port. Ports 80 and 443 stay refused, written out or
- * implied by the scheme, wildcard or not.
+ * server on a free port. The wildcard covers only the ports the run opened
+ * itself (`ownPorts`); with none known it covers nothing. Ports 80 and 443
+ * stay refused, written out or implied by the scheme, wildcard or not.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -26,10 +27,20 @@ describe("issue 991: a loopback host with any port", () => {
     expect(allowOf("http://Den.localhost:*/x")).toBe("den.localhost:*");
   });
 
-  it("allowedUrl: any port on that host but 80 and 443; no other host", () => {
+  it("allowedUrl: host:* covers only the run's own ports, never 80 or 443; no other host", () => {
     const allow = ["127.0.0.1:*"];
-    expect(allowedUrl("http://127.0.0.1:4100/a", allow)).toBe(true);
-    expect(allowedUrl("ws://127.0.0.1:51234/ws", allow)).toBe(true);
+    const own = new Set([4100, 51234, 80, 443]);
+    expect(allowedUrl("http://127.0.0.1:4100/a", allow, own)).toBe(true);
+    expect(allowedUrl("ws://127.0.0.1:51234/ws", allow, own)).toBe(true);
+    // A loopback port the run didn't open: another service on this machine.
+    expect(allowedUrl("http://127.0.0.1:5432/", allow, own)).toBe(false);
+    // No own ports known: the wildcard covers nothing.
+    expect(allowedUrl("http://127.0.0.1:4100/a", allow)).toBe(false);
+    expect(allowedUrl("http://127.0.0.1:4100/a", allow, new Set())).toBe(false);
+    // An explicit host:port needs no own ports.
+    expect(allowedUrl("http://127.0.0.1:4100/a", ["127.0.0.1:4100"])).toBe(
+      true,
+    );
     for (const url of [
       "http://127.0.0.1:80/",
       "https://127.0.0.1:443/",
@@ -39,6 +50,6 @@ describe("issue 991: a loopback host with any port", () => {
       "http://localhost:4100/",
       "http://127.0.0.2:4100/",
     ])
-      expect([url, allowedUrl(url, allow)]).toEqual([url, false]);
+      expect([url, allowedUrl(url, allow, own)]).toEqual([url, false]);
   });
 });
