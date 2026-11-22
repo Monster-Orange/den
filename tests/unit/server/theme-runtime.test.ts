@@ -272,6 +272,32 @@ describe("renderThemeCss (den)", () => {
     expect(COLOR_TOKENS).toHaveLength(17);
   });
 
+  it("issue 168: every theme carries the eight project colours, per mode", () => {
+    const names = [
+      "blue",
+      "teal",
+      "green",
+      "purple",
+      "pink",
+      "gold",
+      "brown",
+      "slate",
+    ];
+    const paper = listThemes(roots).find((t) => t.id === "paper")!;
+    for (const out of [css, renderThemeCss("paper", paper.theme!)])
+      for (const mode of ["dark", "light"] as const) {
+        const b = out.match(
+          new RegExp(`:root\\[data-mode="${mode}"\\] \\{([^}]*)\\}`),
+        )![1];
+        for (const n of names)
+          expect(b).toMatch(new RegExp(`--pc-${n}: hsl\\(`));
+      }
+    // The two modes differ: dark's are lighter, to hold 3:1 on a dark page.
+    expect(block("dark")).not.toBe(block("light"));
+    expect(block("dark")).toContain("--pc-blue: hsl(212 80% 66%);");
+    expect(block("light")).toContain("--pc-blue: hsl(212 70% 42%);");
+  });
+
   it("den-ui UK-1: writes info and violet only when the theme sets them", () => {
     expect(css).not.toMatch(/--info:|--violet:/);
     const den = listThemes(roots).find((t) => t.id === "den")!.theme!;

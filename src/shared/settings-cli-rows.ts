@@ -51,6 +51,10 @@
  *                                     user.yml process_lookup.* (issue 609)
  *   agent_hooks: { timeout_seconds?, retries?, backoff_seconds? }
  *                                     user.yml agent_hooks.* (issue 609)
+ *   sessions: { max_concurrent?, close_grace_seconds?, pty_close_seconds?,
+ *               pty_warn_above?, pty_machine_warn_percent? }
+ *                                     user.yml sessions.* (issue 532),
+ *                                     checked as den-config checks them
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
  *     api_budget_floor?, watches_max? }
@@ -72,7 +76,12 @@ import {
   WEB_WAIT_RANGE,
 } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
-import { HELD_WAIT_MINUTES, SHELL_PATH_TIMEOUT } from "./den-config.js";
+import {
+  HELD_WAIT_MINUTES,
+  SESSIONS_SETTINGS_KEYS,
+  SHELL_PATH_TIMEOUT,
+  sessionsValueError,
+} from "./den-config.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
@@ -140,6 +149,8 @@ export const PERSON_ONLY_SETTINGS = [
   "process_lookup",
   // Issue 609: how agents' hooks wait for Den, and retry.
   "agent_hooks",
+  // Issue 532: the terminal limits.
+  "sessions",
   // The shared GitHub watcher's pace and API budget: every agent's polls.
   "github",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
@@ -460,6 +471,37 @@ function patchBlock(
 }
 
 /**
+ * Issue 532: user.yml sessions.*, the terminal limits, checked with
+ * den-config's own ranges and words (sessionsValueError).
+ */
+function patchSessions(
+  user: Record<string, unknown>,
+  value: unknown,
+  apply: (() => void)[],
+): string | null {
+  if (value === undefined) return null;
+  const keys: readonly string[] = SESSIONS_SETTINGS_KEYS;
+  if (!isObj(value)) return `the terminal limits are ${keys.join(", ")}`;
+  for (const [k, v] of Object.entries(value)) {
+    if (!keys.includes(k))
+      return `${k} is not a terminal limit (${keys.join(", ")})`;
+    if (v === null) continue;
+    const e = sessionsValueError(k, v);
+    if (e) return e;
+  }
+  apply.push(() => {
+    const b = isObj(user.sessions) ? { ...user.sessions } : {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === null) delete b[k];
+      else b[k] = v;
+    }
+    if (Object.keys(b).length) user.sessions = b;
+    else delete user.sessions;
+  });
+  return null;
+}
+
+/**
  * The limits Settings has a row for, per field. `config` takes the rest
  * too (the first wait, the connect timeout): they have no row.
  */
@@ -723,6 +765,7 @@ export function patchCliRows(
       body.agent_hooks,
       apply,
     ) ??
+    patchSessions(user, body.sessions, apply) ??
     patchBlock(
       user,
       "held_writes",

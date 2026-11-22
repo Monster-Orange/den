@@ -23,6 +23,7 @@
  */
 import { z } from "zod";
 import type { ValidationError } from "../types/index.js";
+import { parseCron, parseWindow } from "./cron.js";
 
 export const VERIFY_KINDS = [
   "smoke",
@@ -98,8 +99,15 @@ const moduleSchema = z
     writes: z.boolean().optional(),
     cost: z.enum(VERIFY_COSTS).optional(),
     watch: z.array(watchPath).min(1).optional(),
+    // Issue 214: when it runs on its own. `env` defaults to local for a scan
+    // of the code, and to the module's one environment otherwise.
     schedule: z
-      .object({ cron: z.string().min(1), window: z.string().optional() })
+      .object({
+        cron: z.string().min(1),
+        window: z.string().optional(),
+        name: z.string().min(1).max(60).optional(),
+        env: z.string().min(1).optional(),
+      })
       .strict()
       .optional(),
     thresholds: z.record(z.string(), z.number()).optional(),
@@ -227,6 +235,7 @@ export function verifyErrors(
       at(`${p}.results`, "results goes with cmd: the file the command writes");
     if (m.fail_on !== undefined && m.kind !== "security")
       at(`${p}.fail_on`, "fail_on is for security modules");
+    if (m.schedule) scheduleErrors(m, `${p}.schedule`, at);
     if (environments)
       for (const e of m.environments ?? [])
         if (!environments.includes(e))
@@ -246,6 +255,42 @@ export function verifyErrors(
   const circle = circleOf(g);
   if (circle) at("layers", `the layers depend in a circle: ${circle}`);
   return out;
+}
+
+/** Issue 214: a schedule's cron, window and environment, checked. */
+function scheduleErrors(
+  m: ModuleConfig,
+  p: string,
+  at: (p: string, message: string) => void,
+): void {
+  const s = m.schedule!;
+  try {
+    parseCron(s.cron);
+  } catch (e) {
+    at(`${p}.cron`, (e as Error).message);
+  }
+  try {
+    parseWindow(s.window);
+  } catch (e) {
+    at(`${p}.window`, (e as Error).message);
+  }
+  const envs = m.environments;
+  if (s.env !== undefined && envs && !envs.includes(s.env))
+    at(`${p}.env`, `the module runs on ${envs.join(", ")}, not "${s.env}"`);
+  if (s.env === undefined && envs && envs.length > 1)
+    at(
+      `${p}.env`,
+      `the module runs on ${envs.join(", ")}: say which one the schedule uses`,
+    );
+}
+
+/** The environment a module's schedule runs on. */
+function scheduleEnv(
+  s: NonNullable<ModuleConfig["schedule"]>,
+  environments: string[] | "all",
+): string {
+  if (s.env) return s.env;
+  return environments === "all" ? "local" : environments[0];
 }
 
 /** One module, as a plan and a run use it. */
@@ -271,6 +316,8 @@ export interface VerifyModule {
   writes: boolean;
   /** Built-in smoke: the repo's HTTP health URLs, by environment. */
   healthUrls: Record<string, string[]>;
+  /** Issue 214: when it runs on its own, and where. */
+  schedule?: { cron: string; window?: string; name?: string; env: string };
 }
 
 function adapterOf(m: ModuleConfig): string {
@@ -338,6 +385,8 @@ export function readVerifyModules(
     ([name, m]): VerifyModule => {
       const layer = name.split("/")[0];
       const mark = markOf(m, layer);
+      const environments: string[] | "all" =
+        m.environments ?? (mark === "reads-code-only" ? "all" : ["local"]);
       return {
         id: `${r.repo}:${name}`,
         repo: r.repo,
@@ -347,14 +396,25 @@ export function readVerifyModules(
         kind: m.kind,
         adapter: adapterOf(m),
         mark,
-        environments:
-          m.environments ?? (mark === "reads-code-only" ? "all" : ["local"]),
+        environments,
         ...(m.cost ? { cost: m.cost } : {}),
         ...(m.watch ? { watch: m.watch } : {}),
         ...(m.cmd !== undefined ? { cmd: m.cmd } : {}),
         ...(m.results !== undefined ? { results: m.results } : {}),
         writes: m.writes === true,
         healthUrls,
+        ...(m.schedule
+          ? {
+              schedule: {
+                cron: m.schedule.cron,
+                ...(m.schedule.window !== undefined
+                  ? { window: m.schedule.window }
+                  : {}),
+                ...(m.schedule.name ? { name: m.schedule.name } : {}),
+                env: scheduleEnv(m.schedule, environments),
+              },
+            }
+          : {}),
       };
     },
   );
