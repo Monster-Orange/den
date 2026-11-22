@@ -2750,17 +2750,19 @@
     "ap.do.report": "File a report on {repo}: {title}",
     "ap.det.report.to": "Goes to: {repo}",
     "ap.det.report.pub":
-      "Public repository: the text and the screenshot are visible to everyone. Secrets, tokens, emails, IP addresses and store references are removed first.",
+      "Public repository: the text is visible to everyone; the screenshot isn't posted there. Secrets, tokens, emails, IP addresses and store references are removed first.",
     "ap.det.report.priv":
       "Private repository: only people with access to this repository can see it.",
     "ap.det.report.int":
       "Internal repository: only people with access to this repository can see it.",
     "ap.det.report.unk":
-      "Visibility not known: __DEN_TITLE__ can't tell who can see this repository, so it is treated as public. The text and the screenshot may be visible to everyone.",
+      "Visibility not known: who can see this repository can't be told, so it is treated as public. The text may be visible to everyone; the screenshot isn't posted there.",
+    "ap.det.report.title": "Title: {title}",
+    "ap.det.report.addTo": "Added as a comment to issue {n}.",
     "ap.det.report.as":
       "Filed on GitHub as you (your gh sign-in). What will be posted:",
     "ap.det.report.shot":
-      "With a screenshot the agent took. __DEN_TITLE__ does not mask a screenshot: only the text above is scrubbed.",
+      "With a screenshot the agent took. It isn't masked: only the text above is scrubbed.",
     "ap.det.embed_key_revoke.reach":
       "{origin} can no longer message {agent} or read its state with this key.",
     "ap.det.embed_key_revoke.held":

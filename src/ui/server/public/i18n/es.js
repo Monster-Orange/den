@@ -1880,17 +1880,19 @@
     "ap.do.report": "Enviar un reporte a {repo}: {title}",
     "ap.det.report.to": "Va a: {repo}",
     "ap.det.report.pub":
-      "Repositorio público: el texto y la captura los puede ver cualquiera. Antes se quitan secretos, tokens, correos, direcciones IP y referencias a almacenes.",
+      "Repositorio público: el texto lo puede ver cualquiera; la captura no se publica allí. Antes se quitan secretos, tokens, correos, direcciones IP y referencias a almacenes.",
     "ap.det.report.priv":
       "Repositorio privado: solo lo ven las personas con acceso a este repositorio.",
     "ap.det.report.int":
       "Repositorio interno: solo lo ven las personas con acceso a este repositorio.",
     "ap.det.report.unk":
-      "Visibilidad desconocida: __DEN_TITLE__ no sabe quién puede ver este repositorio, así que lo trata como público. El texto y la captura pueden ser visibles para cualquiera.",
+      "Visibilidad desconocida: no se sabe quién puede ver este repositorio, así que se trata como público. El texto puede ser visible para cualquiera; la captura no se publica allí.",
+    "ap.det.report.title": "Título: {title}",
+    "ap.det.report.addTo": "Se añade como comentario al issue {n}.",
     "ap.det.report.as":
       "Se publica en GitHub a tu nombre (con tu gh). Lo que se publicará:",
     "ap.det.report.shot":
-      "Con una captura que tomó el agente. __DEN_TITLE__ no enmascara las capturas: solo se limpia el texto de arriba.",
+      "Con una captura que tomó el agente. No se enmascara: solo se limpia el texto de arriba.",
     "ap.det.embed_key_revoke.reach":
       "{origin} ya no puede enviar mensajes a {agent} ni leer su estado con esta clave.",
     "ap.det.embed_key_revoke.held":
