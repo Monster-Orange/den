@@ -1025,8 +1025,10 @@ body.den-has-shell .den-upd {
   align-items: flex-start;
   padding: 6px 12px;
 }
-.den-bell-row:has(a[href]) {
-  /* Issue 420: a row that opens on a click looks it. */
+.den-bell-row:has(a[href]),
+.den-bell-row:has(a[href]) a[href] {
+  /* Issue 420: a row that opens on a click looks it, its link too (WebKit
+     gives a link cursor: auto of its own, so it doesn't inherit this). */
   cursor: pointer;
 }
 .den-bell-row:hover {
