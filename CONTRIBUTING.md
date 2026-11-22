@@ -73,7 +73,9 @@ node scripts/fast-checks.mjs --list   # what it runs
 In CI it is the `fast` job, under a minute. The test jobs and shards wait
 for it, so one of these failing shows in a minute or two, not after a
 ten-minute shard. The `pre-push` hook runs the same list before the
-org-name checks; `DEN_PREPUSH_FAST=0` skips it for one push. A check
+org-name checks. `DEN_PREPUSH_FAST=0` skips it for one push, as a hatch
+for a person only: agents and lanes never set it (the same rule as never
+using `--no-verify`), and CI's `fast` job runs the same list anyway. A check
 belongs on the list only when it reads the repo and nothing else (no
 server, browser, Docker or network) and takes seconds.
 
